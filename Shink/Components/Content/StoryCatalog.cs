@@ -8,8 +8,17 @@ public sealed record StoryItem(
     string AudioFileName)
 {
     public string ImagePath => ToAssetPath(ImageFileName);
+    public string ThumbnailPath => ToAssetPath($"thumbs/{ImageFileName}");
 
-    private static string ToAssetPath(string fileName) => $"/stories/{Uri.EscapeDataString(fileName)}";
+    private static string ToAssetPath(string fileName)
+    {
+        var segments = fileName
+            .Replace('\\', '/')
+            .Split('/', StringSplitOptions.RemoveEmptyEntries)
+            .Select(Uri.EscapeDataString);
+
+        return $"/stories/{string.Join('/', segments)}";
+    }
 }
 
 public static class StoryCatalog

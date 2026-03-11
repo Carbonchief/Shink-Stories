@@ -1,0 +1,279 @@
+.opsies-page {
+    width: min(1080px, 100%);
+    margin-inline: auto;
+    display: grid;
+    gap: 1.3rem;
+}
+
+.opsies-hero {
+    border-radius: 22px;
+    background:
+        radial-gradient(80% 120% at 50% 0%, rgba(255, 255, 255, 0.32) 0%, rgba(255, 255, 255, 0) 54%),
+        linear-gradient(180deg, #2d7f98 0%, #306f84 100%);
+    box-shadow: 0 18px 36px rgba(12, 60, 78, 0.24);
+    padding: 1.05rem 1.05rem 1.2rem;
+}
+
+.opsies-hero-image {
+    display: block;
+    width: min(100%, 460px);
+    height: auto;
+    margin: 0 auto;
+    filter: drop-shadow(0 10px 28px rgba(16, 52, 66, 0.32));
+}
+
+.opsies-hero-copy {
+    margin-top: 0.55rem;
+    text-align: center;
+    color: #ffffff;
+}
+
+.opsies-eyebrow {
+    margin: 0;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 700;
+    font-size: 0.78rem;
+    color: #e2f4f9;
+}
+
+.opsies-hero-copy h1 {
+    margin: 0.4rem 0 0.6rem;
+    color: #ffffff;
+    font-size: clamp(1.7rem, 2.6vw, 2.7rem);
+    line-height: 1.12;
+}
+
+.opsies-hero-copy p {
+    margin: 0;
+    max-width: 64ch;
+    margin-inline: auto;
+    color: #eaf6fa;
+}
+
+.opsies-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 1.05rem;
+    align-items: stretch;
+}
+
+.opsie-card {
+    position: relative;
+    overflow: hidden;
+    border-radius: 20px;
+    border: 1px solid #d9d6ca;
+    background: linear-gradient(180deg, #fffdfa 0%, #f8f4e8 100%);
+    padding: 1.1rem;
+    display: grid;
+    gap: 0.62rem;
+    box-shadow: 0 10px 20px rgba(28, 34, 34, 0.11);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.opsie-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 16px 30px rgba(28, 34, 34, 0.16);
+}
+
+.opsie-free {
+    background: linear-gradient(180deg, #fffef8 0%, #f6f0df 100%);
+}
+
+.opsie-monthly {
+    background: linear-gradient(180deg, #fff8e6 0%, #fff0cc 100%);
+    border-color: #d8b779;
+}
+
+.opsie-yearly {
+    background: linear-gradient(180deg, #f7fff8 0%, #ebf8ee 100%);
+    border-color: #bcd8c3;
+}
+
+.opsie-all {
+    background: linear-gradient(180deg, #f6fbff 0%, #e9f2fb 100%);
+    border-color: #bdd2e5;
+}
+
+.opsie-card.featured {
+    transform: none;
+    box-shadow: 0 18px 34px rgba(95, 65, 10, 0.22);
+}
+
+.opsie-badge {
+    margin: 0;
+    width: 112px;
+    height: 36px;
+    box-sizing: border-box;
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+    font-size: 0.74rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #fefefe;
+    background: #2d7f98;
+    border-radius: 999px;
+    padding: 0;
+}
+
+.opsie-monthly .opsie-badge {
+    background: #5a9867;
+}
+
+.opsie-head {
+    display: grid;
+    grid-template-rows: 36px 3.3rem 2.25rem;
+    gap: 0.62rem;
+}
+
+.opsie-card h2 {
+    margin: 0;
+    font-size: 1.38rem;
+    line-height: 1.2;
+    color: #1f2d2d;
+    display: flex;
+    align-items: flex-end;
+}
+
+.opsie-price {
+    margin: 0;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.32rem;
+    white-space: nowrap;
+    font-size: clamp(1.7rem, 2.2vw, 2.05rem);
+    line-height: 1;
+    color: #1f2c2c;
+    font-weight: 800;
+}
+
+.opsie-price span {
+    font-size: 0.98rem;
+    font-weight: 600;
+    color: #5f6868;
+}
+
+.opsie-detail {
+    margin: 0;
+    color: #2f4040;
+    min-height: 3em;
+    background: rgba(255, 255, 255, 0.56);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 12px;
+    padding: 0.52rem 0.62rem;
+}
+
+.opsie-card ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.38rem;
+    color: #2b3a3a;
+}
+
+.opsie-note {
+    margin: 0;
+    color: #2b3a3a;
+}
+
+.opsie-card li {
+    position: relative;
+    padding-left: 1.35rem;
+}
+
+.opsie-card li::before {
+    content: "\2713";
+    position: absolute;
+    left: 0;
+    top: 0.05rem;
+    font-size: 0.9rem;
+    color: #2f7a57;
+    font-weight: 800;
+}
+
+.opsie-btn {
+    margin-top: auto;
+    width: 100%;
+    min-height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    border-radius: 12px;
+    padding: 0.72rem 0.95rem;
+    font-weight: 800;
+    background: linear-gradient(180deg, #2f8b56 0%, #2b7648 100%);
+    color: #ffffff;
+    box-shadow: 0 8px 16px rgba(31, 87, 55, 0.3);
+}
+
+.opsie-btn:hover {
+    background: linear-gradient(180deg, #2b7f50 0%, #256b40 100%);
+}
+
+.opsies-testimonials {
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: var(--surface);
+    padding: 1rem;
+}
+
+.opsies-testimonials h2 {
+    margin-top: 0;
+    margin-bottom: 0.6rem;
+    text-align: center;
+}
+
+.opsies-review-grid {
+    display: grid;
+    gap: 0.8rem;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.opsies-review-card {
+    background: #f8f6ef;
+    border: 1px solid #e4decf;
+    border-radius: 12px;
+    padding: 0.9rem;
+    display: grid;
+    gap: 0.45rem;
+}
+
+.opsies-review-stars {
+    margin: 0;
+    color: #df9a1a;
+    letter-spacing: 0.08em;
+    font-size: 0.92rem;
+}
+
+.opsies-review-card blockquote {
+    margin: 0;
+    line-height: 1.45;
+    color: #2b3131;
+}
+
+.opsies-review-author {
+    margin: 0;
+    color: #5f6565;
+    font-weight: 650;
+    font-size: 0.88rem;
+}
+
+@media (max-width: 980px) {
+    .opsies-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .opsie-card.featured {
+        transform: none;
+    }
+
+    .opsies-review-grid {
+        grid-template-columns: 1fr;
+    }
+}

@@ -1,15 +1,24 @@
-﻿@page "/"
+@page "/"
+@rendermode InteractiveServer
+@using System.ComponentModel.DataAnnotations
+@using Shink.Components.Content
+@using Shink.Services
+@inject IContactEmailService ContactEmailService
+@inject IContactFormProtectionService ContactFormProtectionService
+@inject IHttpContextAccessor HttpContextAccessor
 
 <PageTitle>Schink Stories | Tuis</PageTitle>
 
 <section class="hero">
     <div class="hero-visual">
         <div class="hero-logo-wrap">
-            <img src="/branding/schink-stories-logo-white.png" alt="Schink Stories logo" class="hero-logo" />
+            <img src="/branding/schink-stories-logo-white.png" alt="Schink Stories logo" class="hero-logo"
+                 width="983" height="428" loading="eager" decoding="async" />
         </div>
 
         <div class="hero-media">
-            <img src="/branding/Schink_Stories_01.png" alt="Schink Stories hoofbeeld" loading="eager" />
+            <img src="/branding/Schink_Stories_01.png" alt="Schink Stories hoofbeeld"
+                 width="800" height="600" loading="eager" fetchpriority="high" decoding="async" />
         </div>
     </div>
 
@@ -27,6 +36,27 @@
     </div>
 </section>
 
+<section class="join-promo">
+    <div class="join-promo-media">
+        <img src="/branding/Schink_Stories_Kom_Luister_Saam.webp"
+             alt="Kom Luister Saam by Schink Stories" loading="lazy" decoding="async" />
+    </div>
+
+    <div class="join-promo-copy">
+        <p class="join-promo-intro">Ontdek 'n wereld vol verbeelding, pret en betekenis.</p>
+
+        <ul class="join-promo-list">
+            <li>Geniet <strong>onbeperkte toegang</strong> tot al ons Afrikaanse oudiostories en reekse</li>
+            <li>Dis veilig vir kinders - <strong>geen advertensies of donker temas nie</strong></li>
+            <li>Bou gesonde karakter, leer goeie waardes en waardevolle lewenslesse</li>
+            <li>Help met taalontwikkeling, ouditiewe ontwikkeling, fokus en soveel meer</li>
+            <li>Nuwe stories elke maand + toegang tot die volledige versameling</li>
+        </ul>
+
+        <a class="join-promo-cta" href="/opsies">Sluit aan vir slegs R 79 p/maand</a>
+    </div>
+</section>
+
 <section class="section-block">
     <h2>Gratis stories om nou te luister</h2>
     <p class="section-intro">Klik op 'n storie om die speler oop te maak en dadelik te begin luister.</p>
@@ -36,7 +66,16 @@
         {
             <article class="story-card">
                 <a class="story-link" href="@($"/gratis/{story.Slug}")" aria-label="Luister @story.Title">
-                    <img src="@story.ImagePath" alt="Voorblad van @story.Title" loading="lazy" />
+                    <span class="story-cover-link">
+                        <img class="@(story.Slug == "die-kwaaibok-se-klip" ? "story-cover-image kwaaibok-home-cover" : "story-cover-image")"
+                             src="@story.ThumbnailPath"
+                             srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
+                             sizes="(max-width: 620px) 100vw, (max-width: 900px) 50vw, 33vw"
+                             alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
+                        <span class="story-cover-play" aria-hidden="true">
+                            <span class="story-cover-play-icon">&#9654;</span>
+                        </span>
+                    </span>
                     <h3>@story.Title</h3>
                     <p>@story.Description</p>
                     <span class="story-action">Luister nou</span>
@@ -46,3 +85,157 @@
     </div>
 </section>
 
+<section class="contact-section" aria-labelledby="kontak-ons">
+    <h2 id="kontak-ons" class="contact-title">Kontak Ons</h2>
+
+    <div class="contact-copy">
+        <h3>Het jy vrae? Ons help graag.</h3>
+        <p>
+            Stuur vir ons 'n boodskap en ons kom so gou moontlik by jou terug.
+        </p>
+    </div>
+
+    <EditForm class="contact-form" Model="ContactForm" OnValidSubmit="HandleContactSubmitAsync">
+        <DataAnnotationsValidator />
+
+        <div class="contact-honeypot" aria-hidden="true">
+            <label for="contact-website">Webwerf</label>
+            <InputText id="contact-website" autocomplete="off" tabindex="-1" @bind-Value="ContactForm.Website" />
+        </div>
+
+        <div class="contact-fields-grid">
+            <div class="contact-field">
+                <label for="contact-name">Naam</label>
+                <InputText id="contact-name" @bind-Value="ContactForm.Name" />
+                <ValidationMessage For="@(() => ContactForm.Name)" />
+            </div>
+
+            <div class="contact-field">
+                <label for="contact-email">E-pos</label>
+                <InputText id="contact-email" type="email" @bind-Value="ContactForm.Email" />
+                <ValidationMessage For="@(() => ContactForm.Email)" />
+            </div>
+        </div>
+
+        <div class="contact-field">
+            <label for="contact-subject">Onderwerp</label>
+            <InputText id="contact-subject" @bind-Value="ContactForm.Subject" />
+            <ValidationMessage For="@(() => ContactForm.Subject)" />
+        </div>
+
+        <div class="contact-field">
+            <label for="contact-message">Boodskap</label>
+            <InputTextArea id="contact-message" rows="5" @bind-Value="ContactForm.Message" />
+            <ValidationMessage For="@(() => ContactForm.Message)" />
+        </div>
+
+        <button type="submit" class="contact-submit" disabled="@IsSubmitting">
+            @(IsSubmitting ? "Besig om te stuur..." : "Stuur boodskap")
+        </button>
+
+        @if (!string.IsNullOrWhiteSpace(FormStatusMessage))
+        {
+            <p class="@($"contact-status {(SubmitSucceeded ? "contact-status-success" : "contact-status-error")}")">
+                @FormStatusMessage
+            </p>
+        }
+    </EditForm>
+</section>
+
+@code {
+    private ContactFormModel ContactForm { get; set; } = new();
+    private bool IsSubmitting { get; set; }
+    private bool SubmitSucceeded { get; set; }
+    private string? FormStatusMessage { get; set; }
+    private DateTimeOffset FormShownAtUtc { get; set; } = DateTimeOffset.UtcNow;
+
+    private async Task HandleContactSubmitAsync()
+    {
+        if (IsSubmitting)
+        {
+            return;
+        }
+
+        IsSubmitting = true;
+        SubmitSucceeded = false;
+        FormStatusMessage = null;
+
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(ContactForm.Website))
+            {
+                SubmitSucceeded = true;
+                FormStatusMessage = "Dankie! Jou boodskap is gestuur.";
+                ContactForm = new ContactFormModel();
+                FormShownAtUtc = DateTimeOffset.UtcNow;
+                return;
+            }
+
+            if (DateTimeOffset.UtcNow - FormShownAtUtc < TimeSpan.FromSeconds(3))
+            {
+                SubmitSucceeded = false;
+                FormStatusMessage = "Wag asseblief 'n paar sekondes en probeer weer.";
+                return;
+            }
+
+            var clientId = HttpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString()
+                ?? ContactForm.Email.Trim().ToLowerInvariant();
+
+            if (!ContactFormProtectionService.TryValidateSubmission(
+                    clientId,
+                    ContactForm.Email.Trim(),
+                    ContactForm.Subject.Trim(),
+                    ContactForm.Message.Trim(),
+                    out var protectionMessage))
+            {
+                SubmitSucceeded = false;
+                FormStatusMessage = protectionMessage;
+                return;
+            }
+
+            var submission = new ContactFormSubmission(
+                ContactForm.Name.Trim(),
+                ContactForm.Email.Trim(),
+                ContactForm.Subject.Trim(),
+                ContactForm.Message.Trim());
+
+            await ContactEmailService.SendContactEmailAsync(submission);
+
+            SubmitSucceeded = true;
+            FormStatusMessage = "Dankie! Jou boodskap is gestuur.";
+            ContactForm = new ContactFormModel();
+            FormShownAtUtc = DateTimeOffset.UtcNow;
+        }
+        catch
+        {
+            SubmitSucceeded = false;
+            FormStatusMessage = "Jammer, iets het verkeerd geloop. Probeer asseblief weer.";
+        }
+        finally
+        {
+            IsSubmitting = false;
+        }
+    }
+
+    private sealed class ContactFormModel
+    {
+        [Required(ErrorMessage = "Vul asseblief jou naam in.")]
+        [StringLength(120)]
+        public string Name { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Vul asseblief jou e-pos in.")]
+        [EmailAddress(ErrorMessage = "Gebruik asseblief 'n geldige e-posadres.")]
+        [StringLength(254)]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Vul asseblief 'n onderwerp in.")]
+        [StringLength(140)]
+        public string Subject { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Vul asseblief jou boodskap in.")]
+        [StringLength(4000)]
+        public string Message { get; set; } = string.Empty;
+
+        public string Website { get; set; } = string.Empty;
+    }
+}

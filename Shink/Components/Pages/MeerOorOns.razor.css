@@ -77,6 +77,37 @@ h1 {
     margin-top: 0.45rem;
 }
 
+.focus-card {
+    position: relative;
+    overflow: hidden;
+    border-width: 1px;
+    border-color: #cfd6cf;
+    background: linear-gradient(180deg, #fffefb 0%, #f7f4e8 100%);
+    box-shadow: 0 10px 22px rgba(25, 41, 41, 0.1);
+}
+
+.focus-card::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 5px;
+    background: linear-gradient(90deg, #2f8e8f 0%, #7fb870 100%);
+}
+
+.mission-card::before {
+    background: linear-gradient(90deg, #2f8e8f 0%, #6cb597 100%);
+}
+
+.vision-card::before {
+    background: linear-gradient(90deg, #4b85a6 0%, #8ab191 100%);
+}
+
+.values-card::before {
+    background: linear-gradient(90deg, #6f8a5d 0%, #8cae67 100%);
+}
+
 .founder-block,
 .callout,
 .final-line {
@@ -104,6 +135,19 @@ h1 {
     box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
     display: block;
     margin: 0 auto 0.75rem;
+}
+
+.mission-image-block {
+    text-align: center;
+}
+
+.mission-aap {
+    width: min(100%, 560px);
+    height: auto;
+    border-radius: 14px;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
+    display: block;
+    margin: 0 auto;
 }
 
 .testimonials blockquote {

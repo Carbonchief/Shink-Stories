@@ -3,14 +3,15 @@
 <PageTitle>Schink Stories | Gratis Stories</PageTitle>
 
 <section class="gratis-hero">
-    <img class="gratis-banner" src="/stories/Schink_Stories_Gratis_Blad_Banner.webp" alt="Gratis stories banner" loading="eager" />
-    <div>
+    <div class="gratis-hero-copy">
         <h1>3 gratis stories vir jou gesin</h1>
         <p>
             Kom probeer drie van ons lekker stories gratis. Tik op enige storie om dit oop te maak en
             direk te luister.
         </p>
     </div>
+    <img class="gratis-banner" src="/stories/Schink_Stories_Gratis_Blad_Banner.webp"
+         alt="Gratis stories banner" loading="eager" fetchpriority="high" decoding="async" />
 </section>
 
 <section>
@@ -18,7 +19,15 @@
         @foreach (var story in StoryCatalog.All)
         {
             <article class="gratis-card">
-                <img src="@story.ImagePath" alt="Voorblad van @story.Title" loading="lazy" />
+                <a class="gratis-cover-link" href="@($"/gratis/{story.Slug}")" aria-label="Luister na @story.Title">
+                    <img src="@story.ThumbnailPath"
+                         srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
+                         sizes="(max-width: 980px) 100vw, 50vw"
+                         alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
+                    <span class="gratis-cover-play" aria-hidden="true">
+                        <span class="gratis-cover-play-icon">&#9654;</span>
+                    </span>
+                </a>
                 <div class="gratis-card-body">
                     <h2>@story.Title</h2>
                     <p>@story.Description</p>
