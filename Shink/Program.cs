@@ -85,6 +85,12 @@ app.MapGet("/media/audio/{slug}", (string slug, string? token, IAudioAccessServi
 
     return Results.File(audioFilePath, "audio/mpeg", enableRangeProcessing: true);
 }).RequireRateLimiting("audio-stream");
+
+foreach (var story in StoryCatalog.All)
+{
+    app.MapGet($"/{story.Slug}", () => Results.Redirect($"/gratis/{story.Slug}", permanent: false));
+}
+
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
