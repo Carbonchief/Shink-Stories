@@ -3,6 +3,8 @@
     flex-direction: column;
     align-items: center;
     gap: 1.2rem;
+    width: min(100%, 960px);
+    margin-inline: auto;
     margin-bottom: 2rem;
 }
 
@@ -26,6 +28,7 @@ h1 {
 .hero-copy {
     text-align: center;
     max-width: 780px;
+    margin-inline: auto;
 }
 
 .hero-copy p {
@@ -73,6 +76,7 @@ h1 {
 
 .hero-visual {
     width: min(100%, 760px);
+    margin-inline: auto;
     border-radius: 22px;
     overflow: hidden;
     background: linear-gradient(180deg, #36869f 0%, #5eaf8f 52%, #9ebd86 100%);
