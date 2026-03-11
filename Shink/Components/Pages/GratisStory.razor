@@ -6,6 +6,20 @@
 @implements IAsyncDisposable
 
 <PageTitle>@(CurrentStory is null ? "Storie nie gevind nie" : $"{CurrentStory.Title} | Schink Stories")</PageTitle>
+<HeadContent>
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="@ShareTitle" />
+    <meta property="og:description" content="@ShareDescription" />
+    <meta property="og:url" content="@ShareUrl" />
+    <meta property="og:image" content="@ShareImageUrl" />
+    <meta property="og:image:type" content="@ShareImageMimeType" />
+    <meta property="og:image:alt" content="@ShareImageAlt" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="@ShareTitle" />
+    <meta name="twitter:description" content="@ShareDescription" />
+    <meta name="twitter:image" content="@ShareImageUrl" />
+    <meta name="twitter:image:alt" content="@ShareImageAlt" />
+</HeadContent>
 
 @if (CurrentStory is null)
 {
@@ -131,6 +145,28 @@ else
 
     private string StoryArtworkMimeType =>
         CurrentStory is null ? "image/jpeg" : GetImageMimeType(CurrentStory.ImageFileName);
+
+    private string ShareTitle =>
+        CurrentStory is null ? "Schink Stories | Gratis stories" : $"{CurrentStory.Title} | Schink Stories";
+
+    private string ShareDescription =>
+        CurrentStory?.Description ?? "Luister gratis na Afrikaanse kinderstories op Schink Stories.";
+
+    private string ShareUrl =>
+        CurrentStory is null
+            ? NavigationManager.ToAbsoluteUri("/gratis").ToString()
+            : NavigationManager.ToAbsoluteUri($"/gratis/{CurrentStory.Slug}").ToString();
+
+    private string ShareImageUrl =>
+        CurrentStory is null
+            ? NavigationManager.ToAbsoluteUri("/stories/Schink_Stories_Gratis_Blad_Banner.webp").ToString()
+            : NavigationManager.ToAbsoluteUri(CurrentStory.ImagePath).ToString();
+
+    private string ShareImageMimeType =>
+        CurrentStory is null ? "image/webp" : GetImageMimeType(CurrentStory.ImageFileName);
+
+    private string ShareImageAlt =>
+        CurrentStory is null ? "Schink Stories gratis stories" : $"Voorblad van {CurrentStory.Title}";
 
     protected override void OnParametersSet()
     {

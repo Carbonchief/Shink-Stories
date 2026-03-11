@@ -1,6 +1,21 @@
 @page "/opsies"
+@inject NavigationManager NavigationManager
 
 <PageTitle>Schink Stories | Opsies</PageTitle>
+<HeadContent>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Schink Stories | Opsies" />
+    <meta property="og:description" content="Kies jou Schink Stories opsie en begin luister na veilige Afrikaanse stories." />
+    <meta property="og:url" content="@NavigationManager.ToAbsoluteUri("/opsies").ToString()" />
+    <meta property="og:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-text.png").ToString()" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:alt" content="Schink Stories logo" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Schink Stories | Opsies" />
+    <meta name="twitter:description" content="Kies jou Schink Stories opsie en begin luister na veilige Afrikaanse stories." />
+    <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-text.png").ToString()" />
+    <meta name="twitter:image:alt" content="Schink Stories logo" />
+</HeadContent>
 
 <section class="opsies-page">
     <section class="opsies-hero">
