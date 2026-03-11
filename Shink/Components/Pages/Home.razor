@@ -1,7 +1,48 @@
 ﻿@page "/"
 
-<PageTitle>Home</PageTitle>
+<PageTitle>Schink Stories | Tuis</PageTitle>
 
-<h1>Hello, world!</h1>
+<section class="hero">
+    <div class="hero-visual">
+        <div class="hero-logo-wrap">
+            <img src="/branding/schink-stories-logo-white.png" alt="Schink Stories logo" class="hero-logo" />
+        </div>
 
-Welcome to your new app.
+        <div class="hero-media">
+            <img src="/branding/Schink_Stories_01.png" alt="Schink Stories hoofbeeld" loading="eager" />
+        </div>
+    </div>
+
+    <div class="hero-copy">
+        <p class="eyebrow">Afrikaanse oudiostories</p>
+        <h1>Bou jou kind se karakter, een storie op 'n slag.</h1>
+        <p>
+            Schink Stories gee vir ouers en kinders stories wat opbou, vermaak en geloofsgesprekke maklik maak.
+            Begin vandag met drie gratis stories.
+        </p>
+        <div class="hero-actions">
+            <a class="cta cta-primary" href="/gratis">Luister gratis</a>
+            <a class="cta cta-secondary" href="/gratis">Sien alle stories</a>
+        </div>
+    </div>
+</section>
+
+<section class="section-block">
+    <h2>Gratis stories om nou te luister</h2>
+    <p class="section-intro">Klik op 'n storie om die speler oop te maak en dadelik te begin luister.</p>
+
+    <div class="story-grid">
+        @foreach (var story in StoryCatalog.All)
+        {
+            <article class="story-card">
+                <a class="story-link" href="@($"/gratis/{story.Slug}")" aria-label="Luister @story.Title">
+                    <img src="@story.ImagePath" alt="Voorblad van @story.Title" loading="lazy" />
+                    <h3>@story.Title</h3>
+                    <p>@story.Description</p>
+                    <span class="story-action">Luister nou</span>
+                </a>
+            </article>
+        }
+    </div>
+</section>
+

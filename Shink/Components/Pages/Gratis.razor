@@ -1,0 +1,31 @@
+﻿@page "/gratis"
+
+<PageTitle>Schink Stories | Gratis Stories</PageTitle>
+
+<section class="gratis-hero">
+    <img class="gratis-banner" src="/stories/Schink_Stories_Gratis_Blad_Banner.webp" alt="Gratis stories banner" loading="eager" />
+    <div>
+        <h1>3 gratis stories vir jou gesin</h1>
+        <p>
+            Kom probeer drie van ons lekker stories gratis. Tik op enige storie om dit oop te maak en
+            direk te luister.
+        </p>
+    </div>
+</section>
+
+<section>
+    <div class="gratis-grid">
+        @foreach (var story in StoryCatalog.All)
+        {
+            <article class="gratis-card">
+                <img src="@story.ImagePath" alt="Voorblad van @story.Title" loading="lazy" />
+                <div class="gratis-card-body">
+                    <h2>@story.Title</h2>
+                    <p>@story.Description</p>
+                    <a class="play-btn" href="@($"/gratis/{story.Slug}")">Luister na hierdie storie</a>
+                </div>
+            </article>
+        }
+    </div>
+</section>
+
