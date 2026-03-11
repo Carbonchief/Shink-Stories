@@ -1,0 +1,46 @@
+﻿@page "/gratis/{Slug}"
+@inject IAudioAccessService AudioAccessService
+
+<PageTitle>@(CurrentStory is null ? "Storie nie gevind nie" : $"{CurrentStory.Title} | Schink Stories")</PageTitle>
+
+@if (CurrentStory is null)
+{
+    <section class="story-player-empty">
+        <h1>Ons kon nie daardie storie kry nie.</h1>
+        <p>Gaan terug na die gratis stories om 'n storie te kies.</p>
+        <a href="/gratis">Terug na gratis stories</a>
+    </section>
+}
+else
+{
+    <section class="story-player-page">
+        <a class="back-link" href="/gratis">&lt;- Terug na gratis stories</a>
+
+        <div class="story-player-content" oncontextmenu="return false;">
+            <img src="@CurrentStory.ImagePath" alt="Voorblad van @CurrentStory.Title" class="story-cover" />
+            <audio controls controlslist="nodownload noplaybackrate noremoteplayback" disablepictureinpicture preload="metadata" class="story-audio" oncontextmenu="return false;">
+                <source src="@AudioUrl" type="audio/mpeg" />
+                Jou blaaier ondersteun nie die oudioplayer nie.
+            </audio>
+        </div>
+
+        <div class="story-description">
+            <h1>@CurrentStory.Title</h1>
+            <p>@CurrentStory.Description</p>
+        </div>
+    </section>
+}
+
+@code {
+    [Parameter]
+    public string? Slug { get; set; }
+
+    private StoryItem? CurrentStory { get; set; }
+    private string? AudioUrl { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        CurrentStory = StoryCatalog.FindBySlug(Slug);
+        AudioUrl = CurrentStory is null ? null : AudioAccessService.CreateSignedAudioUrl(CurrentStory.Slug);
+    }
+}
