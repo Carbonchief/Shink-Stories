@@ -1,6 +1,21 @@
-﻿@page "/gratis"
+@page "/gratis"
+@inject NavigationManager NavigationManager
 
 <PageTitle>Schink Stories | Gratis Stories</PageTitle>
+<HeadContent>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Schink Stories | Gratis Stories" />
+    <meta property="og:description" content="Luister gratis na drie Afrikaanse stories op Schink Stories." />
+    <meta property="og:url" content="@NavigationManager.ToAbsoluteUri("/gratis").ToString()" />
+    <meta property="og:image" content="@NavigationManager.ToAbsoluteUri("/stories/Schink_Stories_Gratis_Blad_Banner.webp").ToString()" />
+    <meta property="og:image:type" content="image/webp" />
+    <meta property="og:image:alt" content="Schink Stories gratis stories banner" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Schink Stories | Gratis Stories" />
+    <meta name="twitter:description" content="Luister gratis na drie Afrikaanse stories op Schink Stories." />
+    <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/stories/Schink_Stories_Gratis_Blad_Banner.webp").ToString()" />
+    <meta name="twitter:image:alt" content="Schink Stories gratis stories banner" />
+</HeadContent>
 
 <section class="gratis-hero">
     <div class="gratis-hero-copy">
@@ -37,4 +52,3 @@
         }
     </div>
 </section>
-

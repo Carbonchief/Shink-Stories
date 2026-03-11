@@ -1,6 +1,22 @@
 ﻿@page "/meer-oor-ons"
 
+@inject NavigationManager NavigationManager
+
 <PageTitle>Schink Stories | Meer oor Ons</PageTitle>
+<HeadContent>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Schink Stories | Meer oor Ons" />
+    <meta property="og:description" content="Leer meer oor Schink Stories se missie, visie en waardes vir veilige Afrikaanse kinderstories." />
+    <meta property="og:url" content="@NavigationManager.ToAbsoluteUri("/meer-oor-ons").ToString()" />
+    <meta property="og:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-text.png").ToString()" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:alt" content="Schink Stories logo" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Schink Stories | Meer oor Ons" />
+    <meta name="twitter:description" content="Leer meer oor Schink Stories se missie, visie en waardes vir veilige Afrikaanse kinderstories." />
+    <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-text.png").ToString()" />
+    <meta name="twitter:image:alt" content="Schink Stories logo" />
+</HeadContent>
 
 <section class="about-page">
     <div class="about-hero">

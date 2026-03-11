@@ -6,8 +6,23 @@
 @inject IContactEmailService ContactEmailService
 @inject IContactFormProtectionService ContactFormProtectionService
 @inject IHttpContextAccessor HttpContextAccessor
+@inject NavigationManager NavigationManager
 
 <PageTitle>Schink Stories | Tuis</PageTitle>
+<HeadContent>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Schink Stories | Tuis" />
+    <meta property="og:description" content="Afrikaanse oudiostories vir gesinne. Luister veilig en bou karakter, een storie op 'n slag." />
+    <meta property="og:url" content="@NavigationManager.ToAbsoluteUri("/").ToString()" />
+    <meta property="og:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-text.png").ToString()" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:alt" content="Schink Stories logo" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Schink Stories | Tuis" />
+    <meta name="twitter:description" content="Afrikaanse oudiostories vir gesinne. Luister veilig en bou karakter, een storie op 'n slag." />
+    <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-text.png").ToString()" />
+    <meta name="twitter:image:alt" content="Schink Stories logo" />
+</HeadContent>
 
 <section class="hero">
     <div class="hero-visual">

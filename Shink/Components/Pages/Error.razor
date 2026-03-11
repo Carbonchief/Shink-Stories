@@ -1,7 +1,22 @@
 ﻿@page "/Error"
 @using System.Diagnostics
+@inject NavigationManager NavigationManager
 
 <PageTitle>Error</PageTitle>
+<HeadContent>
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Fout | Schink Stories" />
+    <meta property="og:description" content="Daar was 'n probleem met die versoek op Schink Stories." />
+    <meta property="og:url" content="@NavigationManager.ToAbsoluteUri("/error").ToString()" />
+    <meta property="og:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-text.png").ToString()" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:alt" content="Schink Stories logo" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Fout | Schink Stories" />
+    <meta name="twitter:description" content="Daar was 'n probleem met die versoek op Schink Stories." />
+    <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-text.png").ToString()" />
+    <meta name="twitter:image:alt" content="Schink Stories logo" />
+</HeadContent>
 
 <h1 class="text-danger">Error.</h1>
 <h2 class="text-danger">An error occurred while processing your request.</h2>
