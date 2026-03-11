@@ -61,6 +61,12 @@
     background: rgba(11, 16, 21, 0.9);
 }
 
+@media (hover: none) and (pointer: coarse) {
+    .story-fullscreen-toggle {
+        display: none;
+    }
+}
+
 .story-audio {
     width: min(100%, 420px);
 }
