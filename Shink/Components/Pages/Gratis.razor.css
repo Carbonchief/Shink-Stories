@@ -1,13 +1,21 @@
-﻿.gratis-hero {
+.gratis-hero {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    gap: 1.3rem;
-    align-items: center;
+    grid-template-columns: 1fr;
+    gap: 0.9rem;
     margin-bottom: 1.5rem;
+}
+
+.gratis-hero-copy {
+    max-width: 72ch;
+    margin-inline: auto;
+    text-align: center;
 }
 
 .gratis-banner {
     width: 100%;
+    max-width: 760px;
+    margin: 0 auto;
+    display: block;
     border-radius: 16px;
     box-shadow: 0 14px 30px rgba(0, 0, 0, 0.1);
 }
@@ -24,18 +32,76 @@ h1 {
 }
 
 .gratis-card {
+    --gratis-card-radius: 16px;
     display: grid;
     grid-template-columns: 220px 1fr;
-    border: 1px solid var(--line);
-    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--line) 88%, #b9b7ae);
+    border-radius: var(--gratis-card-radius);
     overflow: hidden;
     background: var(--surface);
 }
 
-.gratis-card img {
+.gratis-cover-link {
+    position: relative;
+    display: block;
+    height: 100%;
+    text-decoration: none;
+    background: #111;
+    overflow: hidden;
+    border-top-left-radius: var(--gratis-card-radius);
+    border-bottom-left-radius: var(--gratis-card-radius);
+}
+
+.gratis-cover-link img {
+    display: block;
     width: 100%;
     height: 100%;
     object-fit: cover;
+    transition: transform 0.22s ease, filter 0.22s ease;
+    border-top-left-radius: var(--gratis-card-radius);
+    border-bottom-left-radius: var(--gratis-card-radius);
+}
+
+.gratis-cover-play {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.1));
+    transition: opacity 0.2s ease;
+}
+
+.gratis-cover-play-icon {
+    width: 54px;
+    height: 54px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.15rem;
+    color: #1a1a1a;
+    background: color-mix(in srgb, var(--accent) 90%, white);
+    box-shadow: 0 7px 22px rgba(0, 0, 0, 0.3);
+    padding-left: 0.16rem;
+}
+
+.gratis-cover-link:hover img,
+.gratis-cover-link:focus-visible img {
+    transform: scale(1.03);
+    filter: brightness(0.8);
+}
+
+.gratis-cover-link:hover .gratis-cover-play,
+.gratis-cover-link:focus-visible .gratis-cover-play {
+    opacity: 1;
+}
+
+.gratis-cover-link:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--accent) 70%, white);
+    outline-offset: -3px;
 }
 
 .gratis-card-body {
@@ -53,7 +119,9 @@ h1 {
 }
 
 .play-btn {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
     text-decoration: none;
     padding: 0.65rem 0.85rem;
     font-weight: 700;
@@ -62,15 +130,24 @@ h1 {
     color: #181818;
 }
 
+.play-btn::before {
+    content: "\25B6";
+    width: 1.3rem;
+    height: 1.3rem;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.68rem;
+    background: color-mix(in srgb, white 70%, var(--accent) 30%);
+    padding-left: 0.08rem;
+}
+
 .play-btn:hover {
     background: var(--accent-deep);
 }
 
 @media (max-width: 980px) {
-    .gratis-hero {
-        grid-template-columns: 1fr;
-    }
-
     .gratis-grid {
         grid-template-columns: 1fr;
     }
@@ -81,13 +158,19 @@ h1 {
         grid-template-columns: 1fr;
     }
 
-    .gratis-card img {
+    .gratis-cover-link {
+        border-top-right-radius: var(--gratis-card-radius);
+        border-bottom-left-radius: 0;
+    }
+
+    .gratis-cover-link img {
         max-height: 240px;
+        border-top-right-radius: var(--gratis-card-radius);
+        border-bottom-left-radius: 0;
     }
 
     .play-btn {
         width: 100%;
-        text-align: center;
+        justify-content: center;
     }
 }
-

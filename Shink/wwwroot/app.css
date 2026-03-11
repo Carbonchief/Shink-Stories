@@ -16,6 +16,16 @@ body {
     line-height: 1.5;
 }
 
+body.story-immersive-mode .site-shell.story-route .site-header,
+body.story-immersive-mode .site-shell.story-route .site-footer {
+    display: none !important;
+}
+
+body.story-immersive-mode .site-shell.story-route .site-main {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+
 a {
     color: inherit;
 }

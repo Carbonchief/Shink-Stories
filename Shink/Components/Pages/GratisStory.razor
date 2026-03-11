@@ -1,5 +1,9 @@
-﻿@page "/gratis/{Slug}"
+@page "/gratis/{Slug}"
+@rendermode InteractiveServer
 @inject IAudioAccessService AudioAccessService
+@inject IJSRuntime JS
+@inject NavigationManager NavigationManager
+@implements IAsyncDisposable
 
 <PageTitle>@(CurrentStory is null ? "Storie nie gevind nie" : $"{CurrentStory.Title} | Schink Stories")</PageTitle>
 
@@ -13,21 +17,98 @@
 }
 else
 {
-    <section class="story-player-page">
+    <section class="story-player-page @(IsManualFullscreenFocus ? "manual-fullscreen-focus" : null)">
         <a class="back-link" href="/gratis">&lt;- Terug na gratis stories</a>
-
-        <div class="story-player-content" oncontextmenu="return false;">
-            <img src="@CurrentStory.ImagePath" alt="Voorblad van @CurrentStory.Title" class="story-cover" />
-            <audio controls controlslist="nodownload noplaybackrate noremoteplayback" disablepictureinpicture preload="metadata" class="story-audio" oncontextmenu="return false;">
-                <source src="@AudioUrl" type="audio/mpeg" />
-                Jou blaaier ondersteun nie die oudioplayer nie.
-            </audio>
-        </div>
 
         <div class="story-description">
             <h1>@CurrentStory.Title</h1>
             <p>@CurrentStory.Description</p>
         </div>
+
+        <div class="story-player-content" oncontextmenu="return false;">
+            <div class="story-cover-wrap">
+                <img src="@CurrentStory.ThumbnailPath"
+                     srcset="@($"{CurrentStory.ThumbnailPath} 640w, {CurrentStory.ImagePath} 1024w")"
+                     sizes="(max-width: 640px) 100vw, 420px"
+                     alt="Voorblad van @CurrentStory.Title" class="story-cover"
+                     width="640" height="485" loading="eager" fetchpriority="high" decoding="async" />
+                <button type="button" class="story-fullscreen-toggle" @onclick="ToggleFullscreenFocusAsync"
+                        aria-label="Volskerm speler" title="Volskerm speler">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zm0-12h-3v2h3v3h2V5h-2z" />
+                    </svg>
+                </button>
+            </div>
+            <audio controls controlslist="nodownload noplaybackrate noremoteplayback"
+                   disablepictureinpicture preload="metadata" class="story-audio"
+                   data-story-slug="@CurrentStory.Slug"
+                   data-story-title="@CurrentStory.Title"
+                   data-story-artist="Schink Stories"
+                   data-story-image="@StoryArtworkUrl"
+                   data-story-image-type="@StoryArtworkMimeType"
+                   oncontextmenu="return false;">
+                <source src="@AudioUrl" type="audio/mpeg" />
+                Jou blaaier ondersteun nie die oudioplayer nie.
+            </audio>
+        </div>
+
+        @if (ShowSuurlemoentjieDetails)
+        {
+            <section class="story-meta-card">
+                <p><strong>Tema:</strong> Die krag van woorde; hoe om ander met sagtheid en respek te help</p>
+
+                <h2>Kort sinopsis:</h2>
+                <p>
+                    Suurlemoentjie wil graag almal op Vrugte-eiland help, maar haar "suur woordjies" maak ander
+                    vrugte kwaad in plaas daarvan om hulle te help. Wanneer Oom Pynie haar wys hoe woorde ander kan
+                    seermaak, leer sy om gawe, sagte woorde te gebruik - en skielik hoor almal haar raadvrae met
+                    waardering.
+                </p>
+
+                <h2>Les:</h2>
+                <p>
+                    Ons woorde dra krag. As ons ander wil help, moet ons dit met vriendelikheid en sagtheid doen.
+                </p>
+
+                <h2>Karakters:</h2>
+                <ul>
+                    <li><strong>Suurlemoentjie</strong> - 'n oulike suurlemoen wat goed wil doen maar soms te "suur" klink.</li>
+                    <li><strong>Piesang</strong> - 'n vriendelike piesang wat skrik vir haar direkte kommentaar.</li>
+                    <li><strong>Lemoen</strong> - 'n vrolike musikant met 'n kitaar.</li>
+                    <li><strong>Oom Pynie</strong> - 'n wyse pynappel wat Suurlemoentjie leer hoe woorde ander raak.</li>
+                    <li><strong>Verskeie vrugte</strong> - die gemeenskap op Vrugte-eiland.</li>
+                </ul>
+            </section>
+        }
+        else if (ShowKwaaibokDetails)
+        {
+            <section class="story-meta-card">
+                <p><strong>Tema:</strong> Trots, vriendskap en om na ander te luister</p>
+
+                <h2>Kort sinopsis:</h2>
+                <p>
+                    Die Kwaaibok sit heeldag op sy hoe klip en weier om met enigiemand te speel - nie met Hasie,
+                    Voeltjies of selfs Skilpad nie. Hy is vasbeslote dat die klip syne is en dat niemand hom moet pla
+                    nie. Maar elke keer as hy stamp en frons, kraak die klip 'n bietjie meer... totdat dit uiteindelik
+                    breek! Skilpad tree dapper op en keer dat Kwaaibok seer kry. Deur hierdie skrikbesef leer Kwaaibok
+                    dat trots jou soms in gevaar kan laat beland - en dat vriende jou help wanneer jy wil luister.
+                </p>
+
+                <h2>Les:</h2>
+                <p>
+                    Moenie te trots wees om te luister nie. Vriende waarsku jou omdat hulle omgee - en soms moet jy
+                    eers 'n kraak hoor om te leer.
+                </p>
+
+                <h2>Karakters:</h2>
+                <ul>
+                    <li><strong>Kwaaibok</strong> - 'n trots, koppige bok wat sy klip as sy eie beskou.</li>
+                    <li><strong>Hasie</strong> - vriendelik en nuuskierig; nooi Kwaaibok om te speel.</li>
+                    <li><strong>Voeltjies</strong> - vrolik en vol lewe; probeer hom laat saam sing.</li>
+                    <li><strong>Skilpad</strong> - wys en braaf; waarsku Kwaaibok oor die gevaar en red hom uiteindelik.</li>
+                </ul>
+            </section>
+        }
     </section>
 }
 
@@ -37,10 +118,94 @@ else
 
     private StoryItem? CurrentStory { get; set; }
     private string? AudioUrl { get; set; }
+    private IJSObjectReference? _mediaSessionModule;
+    private DotNetObjectReference<GratisStory>? _dotNetRef;
+    private bool IsManualFullscreenFocus { get; set; }
+    private bool ShowSuurlemoentjieDetails =>
+        string.Equals(CurrentStory?.Slug, "suurlemoentjie", StringComparison.OrdinalIgnoreCase);
+    private bool ShowKwaaibokDetails =>
+        string.Equals(CurrentStory?.Slug, "die-kwaaibok-se-klip", StringComparison.OrdinalIgnoreCase);
+
+    private string? StoryArtworkUrl =>
+        CurrentStory is null ? null : NavigationManager.ToAbsoluteUri(CurrentStory.ImagePath).ToString();
+
+    private string StoryArtworkMimeType =>
+        CurrentStory is null ? "image/jpeg" : GetImageMimeType(CurrentStory.ImageFileName);
 
     protected override void OnParametersSet()
     {
         CurrentStory = StoryCatalog.FindBySlug(Slug);
         AudioUrl = CurrentStory is null ? null : AudioAccessService.CreateSignedAudioUrl(CurrentStory.Slug);
+        IsManualFullscreenFocus = false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (CurrentStory is null)
+        {
+            return;
+        }
+
+        _mediaSessionModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Pages/GratisStory.razor.js");
+        _dotNetRef ??= DotNetObjectReference.Create(this);
+        await _mediaSessionModule.InvokeVoidAsync("initializeStoryMediaSession");
+        await _mediaSessionModule.InvokeVoidAsync("initializeStoryPlayerFullscreenExperience", _dotNetRef);
+    }
+
+    private async Task ToggleFullscreenFocusAsync()
+    {
+        IsManualFullscreenFocus = !IsManualFullscreenFocus;
+
+        if (_mediaSessionModule is null)
+        {
+            _mediaSessionModule = await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Pages/GratisStory.razor.js");
+        }
+
+        await _mediaSessionModule.InvokeVoidAsync("setStoryPlayerFullscreenIntent", IsManualFullscreenFocus);
+    }
+
+    [JSInvokable]
+    public Task HandleFullscreenExitedFromBrowser()
+    {
+        if (!IsManualFullscreenFocus)
+        {
+            return Task.CompletedTask;
+        }
+
+        IsManualFullscreenFocus = false;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_mediaSessionModule is not null)
+            {
+                await _mediaSessionModule.InvokeVoidAsync("disposeStoryPlayerFullscreenExperience");
+                await _mediaSessionModule.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // Ignore disposal errors when the browser connection is already closed.
+        }
+        finally
+        {
+            _dotNetRef?.Dispose();
+        }
+    }
+
+    private static string GetImageMimeType(string fileName)
+    {
+        var extension = Path.GetExtension(fileName).ToLowerInvariant();
+        return extension switch
+        {
+            ".png" => "image/png",
+            ".webp" => "image/webp",
+            ".jpg" => "image/jpeg",
+            ".jpeg" => "image/jpeg",
+            _ => "image/jpeg"
+        };
     }
 }

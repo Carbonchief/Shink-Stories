@@ -1,14 +1,24 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
+@inject NavigationManager NavigationManager
 
-<div class="site-shell">
+<div class="site-shell @(IsStoryRoute ? "story-route" : null)">
     <header class="site-header">
         <div class="site-container nav-wrap">
             <a class="brand-link" href="/">
-                <img class="brand-wordmark" src="/branding/schink-logo-text.png" alt="Schink Stories" />
+                <img class="brand-wordmark" src="/branding/schink-logo-text.png" alt="Schink Stories"
+                     width="199" height="99" loading="eager" decoding="async" />
             </a>
-            <nav class="site-nav" aria-label="Main navigation">
-                <NavLink href="/meer-oor-ons">Meer oor Ons</NavLink>
-                <NavLink href="/gratis">Gratis stories</NavLink>
+            <button type="button" class="nav-menu-toggle" @onclick="ToggleNavMenu"
+                    aria-controls="main-site-nav" aria-expanded="@IsNavMenuOpen"
+                    aria-label="Maak navigasie oop of toe">
+                <span class="nav-menu-icon-line"></span>
+                <span class="nav-menu-icon-line"></span>
+                <span class="nav-menu-icon-line"></span>
+            </button>
+            <nav id="main-site-nav" class="site-nav @(IsNavMenuOpen ? "is-open" : null)" aria-label="Main navigation">
+                <NavLink href="/meer-oor-ons" @onclick="CloseNavMenu">Meer oor Ons</NavLink>
+                <NavLink href="/gratis" @onclick="CloseNavMenu">Gratis stories</NavLink>
+                <NavLink href="/opsies" @onclick="CloseNavMenu">Opsies</NavLink>
             </nav>
         </div>
     </header>
@@ -22,7 +32,8 @@
     <footer class="site-footer">
         <div class="site-container footer-wrap">
             <a class="footer-brand" href="/">
-                <img class="brand-wordmark" src="/branding/schink-logo-text.png" alt="Schink Stories" />
+                <img class="brand-wordmark" src="/branding/schink-logo-text.png" alt="Schink Stories"
+                     width="199" height="99" loading="lazy" decoding="async" />
             </a>
             <nav class="footer-socials" aria-label="Social links">
                 <a href="https://www.facebook.com/SchinkPublishing" target="_blank" rel="noopener noreferrer" aria-label="Facebook">
@@ -36,7 +47,7 @@
                     </svg>
                 </a>
             </nav>
-            <p>© 2023 Schink</p>
+            <p>� 2023 Schink</p>
         </div>
     </footer>
 </div>
@@ -47,3 +58,19 @@
     <span class="dismiss">x</span>
 </div>
 
+@code {
+    private bool IsNavMenuOpen { get; set; }
+
+    private bool IsStoryRoute
+    {
+        get
+        {
+            var relativePath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).Trim('/');
+            return relativePath.StartsWith("gratis/", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private void ToggleNavMenu() => IsNavMenuOpen = !IsNavMenuOpen;
+
+    private void CloseNavMenu() => IsNavMenuOpen = false;
+}
