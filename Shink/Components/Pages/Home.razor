@@ -1,27 +1,33 @@
 @page "/"
 @rendermode InteractiveServer
 @using System.ComponentModel.DataAnnotations
+@using System.Net.Http.Json
+@using System.Text.Json
 @using Shink.Components.Content
-@using Shink.Services
-@inject IContactEmailService ContactEmailService
-@inject IContactFormProtectionService ContactFormProtectionService
-@inject IHttpContextAccessor HttpContextAccessor
+@using Microsoft.AspNetCore.Components
+@inject IHttpClientFactory HttpClientFactory
 @inject NavigationManager NavigationManager
 
 <PageTitle>Schink Stories | Tuis</PageTitle>
 <HeadContent>
+    <link rel="canonical" href="@HomeCanonicalUrl" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Schink Stories | Tuis" />
     <meta property="og:description" content="Afrikaanse oudiostories vir gesinne. Luister veilig en bou karakter, een storie op 'n slag." />
     <meta property="og:url" content="@NavigationManager.ToAbsoluteUri("/").ToString()" />
-    <meta property="og:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-text.png").ToString()" />
+    <meta property="og:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
+    <meta property="og:image:secure_url" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
     <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
     <meta property="og:image:alt" content="Schink Stories logo" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Schink Stories | Tuis" />
     <meta name="twitter:description" content="Afrikaanse oudiostories vir gesinne. Luister veilig en bou karakter, een storie op 'n slag." />
-    <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-text.png").ToString()" />
+    <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
     <meta name="twitter:image:alt" content="Schink Stories logo" />
+    <script type="application/ld+json">@HomeOrganizationJsonLd</script>
+    <script type="application/ld+json">@HomeWebSiteJsonLd</script>
 </HeadContent>
 
 <section class="hero">
@@ -45,8 +51,8 @@
             Begin vandag met drie gratis stories.
         </p>
         <div class="hero-actions">
-            <a class="cta cta-primary" href="/gratis">Luister gratis</a>
-            <a class="cta cta-secondary" href="/gratis">Sien alle stories</a>
+            <button type="button" class="cta cta-primary" @onclick="@(() => NavigationManager.NavigateTo("/gratis"))">Luister gratis</button>
+            <button type="button" class="cta cta-secondary" @onclick="@(() => NavigationManager.NavigateTo("/gratis"))">Sien alle stories</button>
         </div>
     </div>
 </section>
@@ -110,7 +116,7 @@
         </p>
     </div>
 
-    <EditForm class="contact-form" Model="ContactForm" OnValidSubmit="HandleContactSubmitAsync">
+    <EditForm class="contact-form" Model="ContactForm" OnValidSubmit="HandleContactSubmitAsync" aria-busy="@IsSubmitting">
         <DataAnnotationsValidator />
 
         <div class="contact-honeypot" aria-hidden="true">
@@ -121,20 +127,20 @@
         <div class="contact-fields-grid">
             <div class="contact-field">
                 <label for="contact-name">Naam</label>
-                <InputText id="contact-name" @bind-Value="ContactForm.Name" />
+                <InputText id="contact-name" autocomplete="name" @bind-Value="ContactForm.Name" />
                 <ValidationMessage For="@(() => ContactForm.Name)" />
             </div>
 
             <div class="contact-field">
                 <label for="contact-email">E-pos</label>
-                <InputText id="contact-email" type="email" @bind-Value="ContactForm.Email" />
+                <InputText id="contact-email" type="email" autocomplete="email" @bind-Value="ContactForm.Email" />
                 <ValidationMessage For="@(() => ContactForm.Email)" />
             </div>
         </div>
 
         <div class="contact-field">
             <label for="contact-subject">Onderwerp</label>
-            <InputText id="contact-subject" @bind-Value="ContactForm.Subject" />
+            <InputText id="contact-subject" autocomplete="off" @bind-Value="ContactForm.Subject" />
             <ValidationMessage For="@(() => ContactForm.Subject)" />
         </div>
 
@@ -150,7 +156,9 @@
 
         @if (!string.IsNullOrWhiteSpace(FormStatusMessage))
         {
-            <p class="@($"contact-status {(SubmitSucceeded ? "contact-status-success" : "contact-status-error")}")">
+            <p class="@($"contact-status {(SubmitSucceeded ? "contact-status-success" : "contact-status-error")}")"
+               role="@(SubmitSucceeded ? "status" : "alert")"
+               aria-live="polite">
                 @FormStatusMessage
             </p>
         }
@@ -162,7 +170,31 @@
     private bool IsSubmitting { get; set; }
     private bool SubmitSucceeded { get; set; }
     private string? FormStatusMessage { get; set; }
-    private DateTimeOffset FormShownAtUtc { get; set; } = DateTimeOffset.UtcNow;
+
+    private string HomeCanonicalUrl => NavigationManager.ToAbsoluteUri("/").ToString();
+
+    private MarkupString HomeOrganizationJsonLd => new(JsonSerializer.Serialize(new
+    {
+        @context = "https://schema.org",
+        @type = "Organization",
+        name = "Schink Stories",
+        url = HomeCanonicalUrl,
+        logo = NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString(),
+        sameAs = new[]
+        {
+            "https://www.facebook.com/SchinkPublishing",
+            "https://www.instagram.com/schinkpublishing/"
+        }
+    }));
+
+    private MarkupString HomeWebSiteJsonLd => new(JsonSerializer.Serialize(new
+    {
+        @context = "https://schema.org",
+        @type = "WebSite",
+        name = "Schink Stories",
+        url = HomeCanonicalUrl,
+        inLanguage = "af-ZA"
+    }));
 
     private async Task HandleContactSubmitAsync()
     {
@@ -177,49 +209,29 @@
 
         try
         {
-            if (!string.IsNullOrWhiteSpace(ContactForm.Website))
+            var client = HttpClientFactory.CreateClient();
+            var endpoint = NavigationManager.ToAbsoluteUri("/api/contact");
+
+            var payload = new ContactApiPayload(
+                Name: ContactForm.Name.Trim(),
+                Email: ContactForm.Email.Trim(),
+                Subject: ContactForm.Subject.Trim(),
+                Message: ContactForm.Message.Trim(),
+                Website: ContactForm.Website.Trim());
+
+            var response = await client.PostAsJsonAsync(endpoint, payload);
+
+            if (response.IsSuccessStatusCode)
             {
                 SubmitSucceeded = true;
                 FormStatusMessage = "Dankie! Jou boodskap is gestuur.";
                 ContactForm = new ContactFormModel();
-                FormShownAtUtc = DateTimeOffset.UtcNow;
                 return;
             }
 
-            if (DateTimeOffset.UtcNow - FormShownAtUtc < TimeSpan.FromSeconds(3))
-            {
-                SubmitSucceeded = false;
-                FormStatusMessage = "Wag asseblief 'n paar sekondes en probeer weer.";
-                return;
-            }
-
-            var clientId = HttpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString()
-                ?? ContactForm.Email.Trim().ToLowerInvariant();
-
-            if (!ContactFormProtectionService.TryValidateSubmission(
-                    clientId,
-                    ContactForm.Email.Trim(),
-                    ContactForm.Subject.Trim(),
-                    ContactForm.Message.Trim(),
-                    out var protectionMessage))
-            {
-                SubmitSucceeded = false;
-                FormStatusMessage = protectionMessage;
-                return;
-            }
-
-            var submission = new ContactFormSubmission(
-                ContactForm.Name.Trim(),
-                ContactForm.Email.Trim(),
-                ContactForm.Subject.Trim(),
-                ContactForm.Message.Trim());
-
-            await ContactEmailService.SendContactEmailAsync(submission);
-
-            SubmitSucceeded = true;
-            FormStatusMessage = "Dankie! Jou boodskap is gestuur.";
-            ContactForm = new ContactFormModel();
-            FormShownAtUtc = DateTimeOffset.UtcNow;
+            SubmitSucceeded = false;
+            FormStatusMessage = await ReadContactApiErrorAsync(response)
+                ?? "Jammer, iets het verkeerd geloop. Probeer asseblief weer.";
         }
         catch
         {
@@ -231,6 +243,56 @@
             IsSubmitting = false;
         }
     }
+
+    private static async Task<string?> ReadContactApiErrorAsync(HttpResponseMessage response)
+    {
+        try
+        {
+            await using var stream = await response.Content.ReadAsStreamAsync();
+            using var doc = await JsonDocument.ParseAsync(stream);
+
+            if (doc.RootElement.TryGetProperty("message", out var messageNode) &&
+                messageNode.ValueKind == JsonValueKind.String)
+            {
+                var message = messageNode.GetString();
+                if (!string.IsNullOrWhiteSpace(message))
+                {
+                    return message;
+                }
+            }
+
+            if (doc.RootElement.TryGetProperty("errors", out var errorsNode) &&
+                errorsNode.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var property in errorsNode.EnumerateObject())
+                {
+                    if (property.Value.ValueKind == JsonValueKind.Array &&
+                        property.Value.GetArrayLength() > 0 &&
+                        property.Value[0].ValueKind == JsonValueKind.String)
+                    {
+                        var firstError = property.Value[0].GetString();
+                        if (!string.IsNullOrWhiteSpace(firstError))
+                        {
+                            return firstError;
+                        }
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // Ignore parsing errors and use fallback message.
+        }
+
+        return null;
+    }
+
+    private sealed record ContactApiPayload(
+        string Name,
+        string Email,
+        string Subject,
+        string Message,
+        string Website);
 
     private sealed class ContactFormModel
     {
