@@ -1,20 +1,27 @@
 @page "/gratis"
+@using System.Text.Json
+@using Microsoft.AspNetCore.Components
 @inject NavigationManager NavigationManager
 
 <PageTitle>Schink Stories | Gratis Stories</PageTitle>
 <HeadContent>
+    <link rel="canonical" href="@GratisCanonicalUrl" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Schink Stories | Gratis Stories" />
     <meta property="og:description" content="Luister gratis na drie Afrikaanse stories op Schink Stories." />
-    <meta property="og:url" content="@NavigationManager.ToAbsoluteUri("/gratis").ToString()" />
-    <meta property="og:image" content="@NavigationManager.ToAbsoluteUri("/stories/Schink_Stories_Gratis_Blad_Banner.webp").ToString()" />
-    <meta property="og:image:type" content="image/webp" />
-    <meta property="og:image:alt" content="Schink Stories gratis stories banner" />
+    <meta property="og:url" content="@GratisCanonicalUrl" />
+    <meta property="og:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
+    <meta property="og:image:secure_url" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta property="og:image:alt" content="Schink Stories logo" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Schink Stories | Gratis Stories" />
     <meta name="twitter:description" content="Luister gratis na drie Afrikaanse stories op Schink Stories." />
-    <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/stories/Schink_Stories_Gratis_Blad_Banner.webp").ToString()" />
-    <meta name="twitter:image:alt" content="Schink Stories gratis stories banner" />
+    <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
+    <meta name="twitter:image:alt" content="Schink Stories logo" />
+    <script type="application/ld+json">@GratisJsonLd</script>
 </HeadContent>
 
 <section class="gratis-hero">
@@ -28,6 +35,27 @@
     <img class="gratis-banner" src="/stories/Schink_Stories_Gratis_Blad_Banner.webp"
          alt="Gratis stories banner" loading="eager" fetchpriority="high" decoding="async" />
 </section>
+
+@code {
+    private string GratisCanonicalUrl => NavigationManager.ToAbsoluteUri("/gratis").ToString();
+
+    private MarkupString GratisJsonLd => new(JsonSerializer.Serialize(new
+    {
+        @context = "https://schema.org",
+        @type = "CollectionPage",
+        name = "Schink Stories | Gratis Stories",
+        description = "Luister gratis na drie Afrikaanse stories op Schink Stories.",
+        url = GratisCanonicalUrl,
+        inLanguage = "af-ZA",
+        isPartOf = new
+        {
+            @type = "WebSite",
+            name = "Schink Stories",
+            url = NavigationManager.ToAbsoluteUri("/").ToString()
+        },
+        primaryImageOfPage = NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()
+    }));
+}
 
 <section>
     <div class="gratis-grid">

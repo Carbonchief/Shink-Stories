@@ -5,13 +5,13 @@
     gap: 1.2rem;
     width: min(100%, 960px);
     margin-inline: auto;
-    margin-bottom: 2rem;
+    margin-bottom: 2.8rem;
 }
 
 .eyebrow {
     display: inline-block;
     margin: 0;
-    color: var(--ink);
+    color: #ffffff;
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -22,7 +22,7 @@ h1 {
     margin: 0.6rem 0 0.8rem;
     font-size: clamp(1.8rem, 2.8vw, 3rem);
     line-height: 1.1;
-    color: #1f2727;
+    color: #ffffff;
 }
 
 .hero-copy {
@@ -32,7 +32,7 @@ h1 {
 }
 
 .hero-copy p {
-    color: var(--text);
+    color: #ffffff;
     max-width: 58ch;
     margin-inline: auto;
 }
@@ -42,30 +42,50 @@ h1 {
     flex-wrap: wrap;
     gap: 0.8rem;
     margin-top: 1.1rem;
+    margin-bottom: 0.45rem;
     justify-content: center;
 }
 
 .cta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     text-decoration: none;
+    font: inherit;
     font-weight: 700;
-    padding: 0.75rem 1rem;
+    font-size: 0.98rem;
+    line-height: 1.1;
+    min-height: 44px;
+    min-width: 168px;
+    padding: 0.75rem 1.1rem;
     border-radius: 12px;
+    cursor: pointer;
+    appearance: none;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease, background 0.18s ease;
 }
 
-.cta-primary {
-    background: var(--accent);
+.cta:hover {
+    transform: translateY(-1px);
+}
+
+.cta:focus-visible {
+    outline: 3px solid color-mix(in srgb, #ffffff 68%, var(--accent));
+    outline-offset: 2px;
+}
+
+.cta-primary,
+.cta-secondary {
+    border: 0;
+    background: linear-gradient(135deg, var(--accent) 0%, #f3a950 100%);
     color: #1a1a1a;
+    box-shadow: 0 8px 18px rgba(20, 24, 26, 0.2);
 }
 
-.cta-primary:hover {
+.cta-primary:hover,
+.cta-secondary:hover {
     background: var(--accent-deep);
     color: #111;
-}
-
-.cta-secondary {
-    border: 1px solid var(--line);
-    color: var(--ink);
-    background: var(--surface);
+    box-shadow: 0 10px 20px rgba(20, 24, 26, 0.24);
 }
 
 .hero-media {
@@ -287,8 +307,14 @@ h2 {
     align-items: center;
     gap: 0.45rem;
     margin-bottom: 0.9rem;
-    color: var(--ink);
+    color: #1a1a1a;
     font-weight: 700;
+    min-height: 40px;
+    padding: 0.6rem 0.9rem;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--accent) 0%, #f3a950 100%);
+    box-shadow: 0 7px 16px rgba(20, 24, 26, 0.18);
+    transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
 }
 
 .story-action::before {
@@ -301,8 +327,15 @@ h2 {
     justify-content: center;
     font-size: 0.66rem;
     color: #1a1a1a;
-    background: color-mix(in srgb, var(--accent) 86%, white);
+    background: color-mix(in srgb, white 62%, var(--accent) 38%);
     padding-left: 0.08rem;
+}
+
+.story-link:hover .story-action,
+.story-link:focus-visible .story-action {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 18px rgba(20, 24, 26, 0.24);
+    background: var(--accent-deep);
 }
 
 .contact-section {

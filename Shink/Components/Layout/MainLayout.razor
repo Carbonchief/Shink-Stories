@@ -1,7 +1,8 @@
-@inherits LayoutComponentBase
+﻿@inherits LayoutComponentBase
 @inject NavigationManager NavigationManager
 
 <div class="site-shell @(IsStoryRoute ? "story-route" : null)">
+    <a class="skip-link" href="#main-content">Spring na inhoud</a>
     <header class="site-header">
         <div class="site-container nav-wrap">
             <a class="brand-link" href="/">
@@ -10,12 +11,14 @@
             </a>
             <button type="button" class="nav-menu-toggle" @onclick="ToggleNavMenu"
                     aria-controls="main-site-nav" aria-expanded="@IsNavMenuOpen"
-                    aria-label="Maak navigasie oop of toe">
-                <span class="nav-menu-icon-line"></span>
-                <span class="nav-menu-icon-line"></span>
-                <span class="nav-menu-icon-line"></span>
+                    aria-label="@NavMenuToggleLabel"
+                    title="@NavMenuToggleLabel">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M4 7h16v2H4V7zm0 4h16v2H4v-2zm0 4h16v2H4v-2z" />
+                </svg>
+                <span class="sr-only">@NavMenuToggleLabel</span>
             </button>
-            <nav id="main-site-nav" class="site-nav @(IsNavMenuOpen ? "is-open" : null)" aria-label="Main navigation">
+            <nav id="main-site-nav" class="site-nav @(IsNavMenuOpen ? "is-open" : null)" aria-label="Hoofnavigasie">
                 <NavLink href="/meer-oor-ons" @onclick="CloseNavMenu">Meer oor Ons</NavLink>
                 <NavLink href="/gratis" @onclick="CloseNavMenu">Gratis stories</NavLink>
                 <NavLink href="/opsies" @onclick="CloseNavMenu">Opsies</NavLink>
@@ -23,7 +26,7 @@
         </div>
     </header>
 
-    <main class="site-main">
+    <main id="main-content" class="site-main" tabindex="-1">
         <div class="site-container">
             @Body
         </div>
@@ -35,7 +38,8 @@
                 <img class="brand-wordmark" src="/branding/schink-logo-text.png" alt="Schink Stories"
                      width="199" height="99" loading="lazy" decoding="async" />
             </a>
-            <nav class="footer-socials" aria-label="Social links">
+            <p class="footer-tagline">Motiveer. Leer. Inspireer.</p>
+            <nav class="footer-socials" aria-label="Sosiale skakels">
                 <a href="https://www.facebook.com/SchinkPublishing" target="_blank" rel="noopener noreferrer" aria-label="Facebook">
                     <svg viewBox="0 0 24 24" aria-hidden="true">
                         <path d="M13.5 21v-8h2.7l.4-3h-3.1V8.1c0-.9.3-1.5 1.6-1.5h1.7V3.9c-.3 0-1.3-.1-2.4-.1-2.4 0-4 1.5-4 4.2V10H8v3h2.4v8h3.1Z" />
@@ -47,7 +51,7 @@
                     </svg>
                 </a>
             </nav>
-            <p>� 2023 Schink</p>
+            <p>© 2023 Schink</p>
         </div>
     </footer>
 </div>
@@ -60,6 +64,7 @@
 
 @code {
     private bool IsNavMenuOpen { get; set; }
+    private string NavMenuToggleLabel => IsNavMenuOpen ? "Maak navigasie toe" : "Maak navigasie oop";
 
     private bool IsStoryRoute
     {
@@ -74,3 +79,4 @@
 
     private void CloseNavMenu() => IsNavMenuOpen = false;
 }
+

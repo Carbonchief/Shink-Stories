@@ -283,6 +283,20 @@ function restoreVolumeState(audioElement) {
     audioElement.muted = saved.muted;
 }
 
+function stopAndReleaseAudio(audioElement) {
+    saveStoryProgress(audioElement);
+    saveVolumeState(audioElement);
+    audioElement.pause();
+
+    const sources = audioElement.querySelectorAll("source");
+    sources.forEach((source) => {
+        source.setAttribute("src", "");
+    });
+
+    audioElement.removeAttribute("src");
+    audioElement.load();
+}
+
 function bindAudioEvents(audioElement) {
     if (boundAudios.has(audioElement)) {
         updateMediaMetadata(audioElement);
@@ -313,7 +327,59 @@ function bindAudioEvents(audioElement) {
 
     const coverImage = getStoryCoverImage(audioElement);
     if (coverImage) {
+        const coverWrap = coverImage.closest(".story-cover-wrap");
+        const coverPlayIcon = coverWrap instanceof HTMLElement
+            ? coverWrap.querySelector(".story-cover-play-icon")
+            : null;
+
+        const togglePlayback = async () => {
+            if (audioElement.paused) {
+                try {
+                    await audioElement.play();
+                } catch {
+                    // Ignore blocked autoplay/playback errors.
+                }
+
+                return;
+            }
+
+            audioElement.pause();
+        };
+
+        const updateCoverState = () => {
+            const isPlaying = !audioElement.paused;
+            coverImage.setAttribute("aria-pressed", String(isPlaying));
+            coverImage.setAttribute("aria-label", isPlaying ? "Pouse storie" : "Speel storie");
+            coverImage.setAttribute("title", isPlaying ? "Pouse storie" : "Speel storie");
+
+            if (coverWrap instanceof HTMLElement) {
+                coverWrap.classList.toggle("is-playing", isPlaying);
+            }
+
+            if (coverPlayIcon instanceof HTMLElement) {
+                coverPlayIcon.textContent = isPlaying ? "\u23F8" : "\u25B6";
+            }
+        };
+
+        coverImage.addEventListener("click", (event) => {
+            event.preventDefault();
+            void togglePlayback();
+        });
+
+        coverImage.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter" && event.key !== " ") {
+                return;
+            }
+
+            event.preventDefault();
+            void togglePlayback();
+        });
+
         coverImage.addEventListener("load", updateAll);
+        audioElement.addEventListener("play", updateCoverState);
+        audioElement.addEventListener("pause", updateCoverState);
+        audioElement.addEventListener("ended", updateCoverState);
+        updateCoverState();
     }
 
     audioElement.addEventListener("loadedmetadata", () => {
@@ -352,6 +418,15 @@ export function initializeStoryMediaSession() {
     }
 
     bindAudioEvents(audioElement);
+}
+
+export function stopStoryAudioPlayback() {
+    const audioElement = document.querySelector(STORY_AUDIO_SELECTOR);
+    if (!(audioElement instanceof HTMLAudioElement)) {
+        return;
+    }
+
+    stopAndReleaseAudio(audioElement);
 }
 
 function applyImmersiveChromeState(storyPage) {
