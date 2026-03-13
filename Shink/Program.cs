@@ -1,7 +1,10 @@
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
 using Shink.Components;
 using Shink.Components.Content;
 using Shink.Services;
 using System.Net.Mail;
+using System.Security.Claims;
 using System.Threading.RateLimiting;
 using System.Xml.Linq;
 
@@ -10,11 +13,27 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
+builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.Cookie.Name = "shink.auth";
+        options.LoginPath = "/teken-in";
+        options.AccessDeniedPath = "/teken-in";
+        options.SlidingExpiration = true;
+        options.ExpireTimeSpan = TimeSpan.FromDays(14);
+    });
+builder.Services.AddAuthorization();
 builder.Services.AddSingleton<IAudioAccessService, AudioAccessService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpContextAccessor();
 builder.Services.Configure<ResendOptions>(builder.Configuration.GetSection(ResendOptions.SectionName));
+builder.Services.Configure<SupabaseOptions>(builder.Configuration.GetSection(SupabaseOptions.SectionName));
+builder.Services.Configure<PayFastOptions>(builder.Configuration.GetSection(PayFastOptions.SectionName));
 builder.Services.AddHttpClient<IContactEmailService, ResendContactEmailService>();
+builder.Services.AddHttpClient<ISupabaseAuthService, SupabaseAuthService>();
+builder.Services.AddHttpClient<PayFastCheckoutService>();
+builder.Services.AddHttpClient<ISubscriptionLedgerService, SupabaseSubscriptionLedgerService>();
 builder.Services.AddSingleton<IContactFormProtectionService, ContactFormProtectionService>();
 builder.Services.AddRateLimiter(options =>
 {
@@ -41,6 +60,17 @@ builder.Services.AddRateLimiter(options =>
             AutoReplenishment = true
         });
     });
+    options.AddPolicy("auth-submit", httpContext =>
+    {
+        var clientId = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown-client";
+        return RateLimitPartition.GetFixedWindowLimiter($"auth:{clientId}", _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 24,
+            Window = TimeSpan.FromMinutes(10),
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
+    });
 });
 
 var app = builder.Build();
@@ -54,6 +84,22 @@ if (!app.Environment.IsDevelopment())
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.Use(async (httpContext, next) =>
+{
+    if (IsStoryDetailPath(httpContext.Request.Path) &&
+        !(httpContext.User.Identity?.IsAuthenticated ?? false))
+    {
+        var requestedPath = $"{httpContext.Request.Path}{httpContext.Request.QueryString}";
+        var returnUrl = Uri.EscapeDataString(requestedPath);
+        httpContext.Response.Redirect($"/teken-in?returnUrl={returnUrl}");
+        return;
+    }
+
+    await next();
+});
 
 app.Use(async (httpContext, next) =>
 {
@@ -61,8 +107,8 @@ app.Use(async (httpContext, next) =>
     {
         var headers = httpContext.Response.Headers;
         var contentSecurityPolicy = app.Environment.IsDevelopment()
-            ? "default-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'self'; img-src 'self' data: https:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' https: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* wss:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
-            : "default-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; frame-ancestors 'self'; img-src 'self' data: https:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' https: wss:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';";
+            ? "default-src 'self'; base-uri 'self'; form-action 'self' https://sandbox.payfast.co.za https://www.payfast.co.za; object-src 'none'; frame-ancestors 'self'; img-src 'self' data: https:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' https: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* wss:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
+            : "default-src 'self'; base-uri 'self'; form-action 'self' https://sandbox.payfast.co.za https://www.payfast.co.za; object-src 'none'; frame-ancestors 'self'; img-src 'self' data: https:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' https: wss:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';";
 
         headers["X-Content-Type-Options"] = "nosniff";
         headers["X-Frame-Options"] = "SAMEORIGIN";
@@ -91,6 +137,11 @@ app.Use(async (httpContext, next) =>
 
 app.MapGet("/media/audio/{slug}", (string slug, string? token, IAudioAccessService audioAccessService, IWebHostEnvironment environment, HttpContext httpContext) =>
 {
+    if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
+    {
+        return Results.Unauthorized();
+    }
+
     if (!IsLikelySameSiteAudioRequest(httpContext))
     {
         return Results.Forbid();
@@ -123,6 +174,163 @@ app.MapGet("/media/audio/{slug}", (string slug, string? token, IAudioAccessServi
 
     return Results.File(audioFilePath, "audio/mpeg", enableRangeProcessing: true);
 }).RequireRateLimiting("audio-stream");
+
+app.MapGet("/betaal/{planSlug}", (string planSlug, PayFastCheckoutService payFastCheckoutService, HttpContext httpContext) =>
+{
+    if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
+    {
+        var returnUrl = Uri.EscapeDataString($"/betaal/{Uri.EscapeDataString(planSlug)}");
+        return Results.Redirect($"/teken-in?returnUrl={returnUrl}");
+    }
+
+    var plan = PaymentPlanCatalog.FindBySlug(planSlug);
+    if (plan is null)
+    {
+        return Results.NotFound();
+    }
+
+    if (!payFastCheckoutService.TryBuildCheckout(plan, httpContext, out var checkoutForm, out var errorMessage))
+    {
+        return Results.Problem(title: "Kon nie betaling begin nie", detail: errorMessage, statusCode: StatusCodes.Status500InternalServerError);
+    }
+
+    var html = payFastCheckoutService.BuildAutoSubmitFormHtml(checkoutForm, $"Jy betaal nou vir {plan.Name}.");
+    httpContext.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
+    httpContext.Response.Headers.Pragma = "no-cache";
+    httpContext.Response.Headers.Expires = "0";
+    httpContext.Response.Headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet";
+    return Results.Content(html, "text/html; charset=utf-8");
+});
+
+app.MapPost("/api/payfast/notify", async (HttpContext httpContext, PayFastCheckoutService payFastCheckoutService, ISubscriptionLedgerService subscriptionLedgerService, ILogger<Program> logger) =>
+{
+    if (!httpContext.Request.HasFormContentType)
+    {
+        logger.LogWarning("PayFast ITN rejected: invalid content type.");
+        return Results.Ok();
+    }
+
+    var form = await httpContext.Request.ReadFormAsync(httpContext.RequestAborted);
+    var signatureValid = payFastCheckoutService.IsItnSignatureValid(form);
+    var serverValidationPayload = payFastCheckoutService.BuildItnValidationPayload(form);
+    var serverConfirmed = await payFastCheckoutService.ValidateServerConfirmationAsync(serverValidationPayload, httpContext.RequestAborted);
+    var checksPassed = signatureValid && serverConfirmed;
+
+    logger.LogInformation(
+        "PayFast ITN received. valid={ChecksPassed}, signature_valid={SignatureValid}, server_confirmed={ServerConfirmed}, pf_payment_id={PayFastPaymentId}, payment_status={PaymentStatus}, m_payment_id={MerchantPaymentId}",
+        checksPassed,
+        signatureValid,
+        serverConfirmed,
+        form["pf_payment_id"].ToString(),
+        form["payment_status"].ToString(),
+        form["m_payment_id"].ToString());
+
+    if (!checksPassed)
+    {
+        logger.LogWarning(
+            "PayFast ITN failed validation. pf_payment_id={PayFastPaymentId}, m_payment_id={MerchantPaymentId}",
+            form["pf_payment_id"].ToString(),
+            form["m_payment_id"].ToString());
+    }
+    else
+    {
+        var persistResult = await subscriptionLedgerService.RecordPayFastEventAsync(form, httpContext.RequestAborted);
+        if (!persistResult.IsSuccess)
+        {
+            logger.LogWarning(
+                "PayFast subscription persistence failed. Error={Error} m_payment_id={MerchantPaymentId}",
+                persistResult.ErrorMessage,
+                form["m_payment_id"].ToString());
+        }
+        else
+        {
+            logger.LogInformation(
+                "PayFast subscription persisted. subscription_id={SubscriptionId} m_payment_id={MerchantPaymentId}",
+                persistResult.SubscriptionId,
+                form["m_payment_id"].ToString());
+        }
+    }
+
+    // Return 200 to avoid repeated retries; process failed validations via logs/monitoring.
+    return Results.Ok();
+}).DisableAntiforgery();
+
+app.MapPost("/api/auth/login", async (AuthApiRequest request, ISupabaseAuthService supabaseAuthService, HttpContext httpContext) =>
+{
+    request = request with
+    {
+        Email = request.Email?.Trim() ?? string.Empty,
+        Password = request.Password ?? string.Empty
+    };
+
+    var validationError = ValidateAuthRequest(request);
+    if (validationError is not null)
+    {
+        return Results.BadRequest(new { message = validationError });
+    }
+
+    var signInResult = await supabaseAuthService.SignInWithPasswordAsync(request.Email!, request.Password!, httpContext.RequestAborted);
+    if (!signInResult.IsSuccess)
+    {
+        return Results.BadRequest(new
+        {
+            message = signInResult.ErrorMessage ?? "Kon nie teken in nie. Probeer asseblief weer."
+        });
+    }
+
+    var signedInEmail = signInResult.UserEmail ?? request.Email!;
+    await SignInUserAsync(httpContext, signedInEmail);
+    return Results.Ok(new { message = "Welkom terug! Jy is nou ingeteken." });
+}).RequireRateLimiting("auth-submit").DisableAntiforgery();
+
+app.MapPost("/api/auth/signup", async (AuthApiRequest request, ISupabaseAuthService supabaseAuthService, HttpContext httpContext) =>
+{
+    request = request with
+    {
+        Email = request.Email?.Trim() ?? string.Empty,
+        Password = request.Password ?? string.Empty
+    };
+
+    var validationError = ValidateAuthRequest(request);
+    if (validationError is not null)
+    {
+        return Results.BadRequest(new { message = validationError });
+    }
+
+    var signUpResult = await supabaseAuthService.SignUpWithPasswordAsync(request.Email!, request.Password!, httpContext.RequestAborted);
+    if (!signUpResult.IsSuccess)
+    {
+        return Results.BadRequest(new
+        {
+            message = signUpResult.ErrorMessage ?? "Kon nie nou registreer nie. Probeer asseblief weer."
+        });
+    }
+
+    var signInResult = await supabaseAuthService.SignInWithPasswordAsync(request.Email!, request.Password!, httpContext.RequestAborted);
+    if (!signInResult.IsSuccess)
+    {
+        return Results.BadRequest(new
+        {
+            message = "Jou rekening is geskep. Bevestig asseblief jou e-posadres en teken daarna in."
+        });
+    }
+
+    var signedInEmail = signInResult.UserEmail ?? request.Email!;
+    await SignInUserAsync(httpContext, signedInEmail);
+    return Results.Ok(new { message = "Welkom! Jou rekening is geskep en jy is nou ingeteken." });
+}).RequireRateLimiting("auth-submit").DisableAntiforgery();
+
+app.MapPost("/api/auth/logout", async (HttpContext httpContext) =>
+{
+    await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    return Results.Ok(new { message = "Jy is nou afgeteken." });
+}).RequireRateLimiting("auth-submit").DisableAntiforgery();
+
+app.MapGet("/teken-uit", async (HttpContext httpContext) =>
+{
+    await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    return Results.Redirect("/");
+}).RequireRateLimiting("auth-submit");
 
 app.MapPost("/api/contact", async (ContactApiRequest request, IContactEmailService contactEmailService, IContactFormProtectionService protectionService, HttpContext httpContext) =>
 {
@@ -178,7 +386,8 @@ app.MapGet("/sitemap.xml", (HttpContext httpContext) =>
         "/",
         "/gratis",
         "/opsies",
-        "/meer-oor-ons"
+        "/meer-oor-ons",
+        "/teken-in"
     };
 
     paths.AddRange(StoryCatalog.All.Select(story => $"/gratis/{Uri.EscapeDataString(story.Slug)}"));
@@ -249,6 +458,54 @@ static bool IsBlockedPublicAudioPath(PathString path)
         || string.Equals(extension, ".ogg", StringComparison.OrdinalIgnoreCase);
 }
 
+static bool IsStoryDetailPath(PathString path)
+{
+    var value = path.Value;
+    if (string.IsNullOrWhiteSpace(value) ||
+        !value.StartsWith("/gratis/", StringComparison.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+
+    var remainder = value["/gratis/".Length..].Trim('/');
+    return !string.IsNullOrWhiteSpace(remainder);
+}
+
+static async Task SignInUserAsync(HttpContext httpContext, string email)
+{
+    var claims = new List<Claim>
+    {
+        new(ClaimTypes.NameIdentifier, email),
+        new(ClaimTypes.Name, email),
+        new(ClaimTypes.Email, email)
+    };
+
+    var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme));
+    var authProperties = new AuthenticationProperties
+    {
+        IsPersistent = true,
+        AllowRefresh = true,
+        ExpiresUtc = DateTimeOffset.UtcNow.AddDays(14)
+    };
+
+    await httpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal, authProperties);
+}
+
+static string? ValidateAuthRequest(AuthApiRequest request)
+{
+    if (string.IsNullOrWhiteSpace(request.Email) || request.Email.Length > 254 || !IsValidEmail(request.Email))
+    {
+        return "Gebruik asseblief 'n geldige e-posadres.";
+    }
+
+    if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length is < 6 or > 200)
+    {
+        return "Jou wagwoord moet tussen 6 en 200 karakters wees.";
+    }
+
+    return null;
+}
+
 static Dictionary<string, string[]> ValidateContactRequest(ContactApiRequest request)
 {
     var errors = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
@@ -290,3 +547,4 @@ static bool IsValidEmail(string value)
 }
 
 sealed record ContactApiRequest(string? Name, string? Email, string? Subject, string? Message, string? Website);
+sealed record AuthApiRequest(string? Email, string? Password);

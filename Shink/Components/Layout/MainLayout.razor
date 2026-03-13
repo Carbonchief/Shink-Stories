@@ -1,4 +1,5 @@
-﻿@inherits LayoutComponentBase
+﻿@using Microsoft.AspNetCore.Components.Authorization
+@inherits LayoutComponentBase
 @inject NavigationManager NavigationManager
 
 <div class="site-shell @(IsStoryRoute ? "story-route" : null)">
@@ -22,6 +23,14 @@
                 <NavLink href="/meer-oor-ons" @onclick="CloseNavMenu">Meer oor Ons</NavLink>
                 <NavLink href="/gratis" @onclick="CloseNavMenu">Gratis stories</NavLink>
                 <NavLink href="/opsies" @onclick="CloseNavMenu">Opsies</NavLink>
+                <AuthorizeView>
+                    <Authorized>
+                        <NavLink href="/teken-uit" @onclick="CloseNavMenu">Teken uit</NavLink>
+                    </Authorized>
+                    <NotAuthorized>
+                        <NavLink href="@LoginHref" @onclick="CloseNavMenu">Teken in</NavLink>
+                    </NotAuthorized>
+                </AuthorizeView>
             </nav>
         </div>
     </header>
@@ -66,6 +75,27 @@
     private bool IsNavMenuOpen { get; set; }
     private string NavMenuToggleLabel => IsNavMenuOpen ? "Maak navigasie toe" : "Maak navigasie oop";
 
+    private string LoginHref
+    {
+        get
+        {
+            var currentUri = new Uri(NavigationManager.Uri);
+            var currentPathAndQuery = currentUri.PathAndQuery;
+            if (string.Equals(currentPathAndQuery, "/teken-in", StringComparison.OrdinalIgnoreCase) ||
+                currentPathAndQuery.StartsWith("/teken-in?", StringComparison.OrdinalIgnoreCase))
+            {
+                return "/teken-in";
+            }
+
+            if (string.Equals(currentPathAndQuery, "/", StringComparison.Ordinal))
+            {
+                return "/teken-in";
+            }
+
+            return $"/teken-in?returnUrl={Uri.EscapeDataString(currentPathAndQuery)}";
+        }
+    }
+
     private bool IsStoryRoute
     {
         get
@@ -79,4 +109,3 @@
 
     private void CloseNavMenu() => IsNavMenuOpen = false;
 }
-

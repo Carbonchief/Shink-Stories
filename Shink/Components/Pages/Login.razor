@@ -1,0 +1,228 @@
+@page "/teken-in"
+@rendermode InteractiveServer
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>Schink Stories | Teken in</PageTitle>
+
+<section class="auth-shell">
+    <div class="auth-frame">
+        <aside class="auth-aside" aria-label="Welkom inligting">
+            <img class="auth-logo" src="/branding/schink-logo-text.png" alt="Schink" />
+            <p class="auth-kicker">Ledeportaal</p>
+            <h1>Welkom terug</h1>
+            <p class="auth-intro">
+                Teken in om jou gunsteling stories te luister, of sluit nou aan en begin saam lees en luister.
+            </p>
+            <ul class="auth-points" aria-label="Voordele">
+                <li>Veilige toegang tot jou profiel</li>
+                <li>Stories en luister-opsies op een plek</li>
+                <li>Vinnig op selfoon en rekenaar</li>
+            </ul>
+        </aside>
+
+        <article class="auth-card">
+            <p class="login-kicker">Teken In of Sluit Aan</p>
+            <p class="login-intro">
+                Gebruik jou e-pos en wagwoord om voort te gaan.
+            </p>
+
+            <EditForm class="login-form" EditContext="FormEditContext" OnValidSubmit="HandleSignInAsync" aria-busy="@IsSubmitting">
+                <DataAnnotationsValidator />
+
+                <div class="login-field">
+                    <label for="signin-email">E-pos</label>
+                    <InputText id="signin-email" type="email" autocomplete="username" @bind-Value="SignInForm.Email" />
+                    <ValidationMessage For="@(() => SignInForm.Email)" />
+                </div>
+
+                <div class="login-field">
+                    <label for="signin-password">Wagwoord</label>
+                    <InputText id="signin-password" type="password" autocomplete="current-password" @bind-Value="SignInForm.Password" />
+                    <ValidationMessage For="@(() => SignInForm.Password)" />
+                </div>
+
+                <div class="login-actions">
+                    <button type="submit" class="login-submit" disabled="@IsSubmitting">
+                        @(IsSubmitting ? "Besig..." : "Teken in")
+                    </button>
+                    <button type="button" class="login-submit login-submit-secondary" @onclick="HandleSignUpAsync" disabled="@IsSubmitting">
+                        Skep rekening
+                    </button>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(StatusMessage))
+                {
+                    <p class="@($"login-status {(SignInSucceeded ? "login-status-success" : "login-status-error")}")"
+                       role="@(SignInSucceeded ? "status" : "alert")"
+                       aria-live="polite">
+                        @StatusMessage
+                    </p>
+                }
+            </EditForm>
+
+            <a class="login-link" href="/opsies">Sien ons planne</a>
+        </article>
+    </div>
+</section>
+
+@code {
+    private SignInFormModel SignInForm { get; set; } = new();
+    private EditContext FormEditContext { get; set; } = default!;
+    private IJSObjectReference? _authModule;
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
+    private bool IsSubmitting { get; set; }
+    private bool SignInSucceeded { get; set; }
+    private string? StatusMessage { get; set; }
+
+    protected override void OnInitialized()
+    {
+        ResetForm();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated == true)
+        {
+            NavigationManager.NavigateTo(GetRedirectTarget(), forceLoad: true);
+        }
+    }
+
+    private async Task HandleSignInAsync()
+    {
+        await SubmitAuthAsync("/api/auth/login", "Kon nie teken in nie. Probeer asseblief weer.");
+    }
+
+    private async Task HandleSignUpAsync()
+    {
+        if (IsSubmitting)
+        {
+            return;
+        }
+
+        if (!FormEditContext.Validate())
+        {
+            return;
+        }
+
+        await SubmitAuthAsync("/api/auth/signup", "Kon nie nou registreer nie. Probeer asseblief weer.");
+    }
+
+    private void ResetForm()
+    {
+        SignInForm = new SignInFormModel();
+        FormEditContext = new EditContext(SignInForm);
+    }
+
+    private async Task SubmitAuthAsync(string endpointPath, string fallbackErrorMessage)
+    {
+        if (IsSubmitting)
+        {
+            return;
+        }
+
+        IsSubmitting = true;
+        SignInSucceeded = false;
+        StatusMessage = null;
+
+        try
+        {
+            var authModule = await EnsureAuthModuleAsync();
+            var payload = new AuthApiPayload(
+                Email: SignInForm.Email.Trim(),
+                Password: SignInForm.Password);
+
+            var response = await authModule.InvokeAsync<AuthBrowserResponse>("postAuthJson", endpointPath, payload);
+            var apiMessage = response.Message;
+
+            if (response.Ok)
+            {
+                SignInSucceeded = true;
+                StatusMessage = apiMessage ?? "Suksesvol ingeteken.";
+                ResetForm();
+                NavigationManager.NavigateTo(GetRedirectTarget(), forceLoad: true);
+                return;
+            }
+
+            SignInSucceeded = false;
+            StatusMessage = apiMessage ?? fallbackErrorMessage;
+        }
+        catch
+        {
+            SignInSucceeded = false;
+            StatusMessage = fallbackErrorMessage;
+        }
+        finally
+        {
+            IsSubmitting = false;
+        }
+    }
+
+    private string GetRedirectTarget() => GetSafeReturnUrl(ReturnUrl) ?? "/gratis";
+
+    private async Task<IJSObjectReference> EnsureAuthModuleAsync()
+    {
+        if (_authModule is not null)
+        {
+            return _authModule;
+        }
+
+        _authModule = await JS.InvokeAsync<IJSObjectReference>("import", "./js/auth-browser.js");
+        return _authModule;
+    }
+
+    private static string? GetSafeReturnUrl(string? returnUrl)
+    {
+        if (string.IsNullOrWhiteSpace(returnUrl))
+        {
+            return null;
+        }
+
+        if (!returnUrl.StartsWith("/", StringComparison.Ordinal) ||
+            returnUrl.StartsWith("//", StringComparison.Ordinal) ||
+            returnUrl.StartsWith("/teken-in", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return returnUrl;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_authModule is not null)
+            {
+                await _authModule.DisposeAsync();
+            }
+        }
+        catch
+        {
+            // Ignore module disposal failures.
+        }
+    }
+
+    private sealed record AuthApiPayload(string Email, string Password);
+
+    private sealed record AuthBrowserResponse(bool Ok, int Status, string? Message);
+
+    private sealed class SignInFormModel
+    {
+        [Required(ErrorMessage = "Vul asseblief jou e-pos in.")]
+        [EmailAddress(ErrorMessage = "Gebruik asseblief 'n geldige e-posadres.")]
+        [StringLength(254)]
+        public string Email { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Vul asseblief jou wagwoord in.")]
+        [StringLength(200, MinimumLength = 6, ErrorMessage = "Jou wagwoord moet ten minste 6 karakters wees.")]
+        public string Password { get; set; } = string.Empty;
+    }
+}
