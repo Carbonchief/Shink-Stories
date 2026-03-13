@@ -14,7 +14,7 @@
     display: flex;
     flex-direction: column;
     background:
-        linear-gradient(180deg, #36869f 0%, #4f9db3 18%, #d4cf69 42%, #efefef 65%, #efefef 100%);
+        linear-gradient(180deg, #36869f 0%, #4f9db3 22%, #d4cf69 56%, #efefef 86%, #efefef 100%);
 }
 
 .site-container {
@@ -68,7 +68,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    padding: 0.9rem 0;
+    padding: 0.35rem 0;
 }
 
 .brand-link {
@@ -80,7 +80,7 @@
 
 .brand-wordmark {
     display: block;
-    width: 165px;
+    width: 132px;
     height: auto;
 }
 
@@ -91,8 +91,8 @@
 
 .nav-menu-toggle {
     display: none;
-    width: 42px;
-    height: 42px;
+    width: 36px;
+    height: 36px;
     border: 1px solid var(--line);
     border-radius: 10px;
     background: color-mix(in srgb, var(--surface) 94%, white);
@@ -100,11 +100,15 @@
     justify-content: center;
     cursor: pointer;
     color: var(--ink);
+    -webkit-appearance: none;
+    appearance: none;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .nav-menu-toggle svg {
-    width: 22px;
-    height: 22px;
+    width: 19px;
+    height: 19px;
     fill: currentColor;
 }
 
@@ -141,9 +145,42 @@
     box-shadow: 0 2px 10px rgba(169, 106, 18, 0.2);
 }
 
+.header-signin-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 31px;
+    padding: 0.28rem 0.78rem;
+    border-radius: 7px;
+    border: 1px solid #2c3136;
+    background: linear-gradient(180deg, #343a40 0%, #2f353b 100%);
+    color: #ffffff;
+    text-decoration: none;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    box-shadow: 0 7px 16px rgba(20, 24, 28, 0.3);
+    transition: filter 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.header-signin-btn:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.05);
+    box-shadow: 0 9px 18px rgba(20, 24, 28, 0.35);
+}
+
+.header-signin-btn:focus-visible {
+    outline: 3px solid color-mix(in srgb, #ffffff 62%, #343a40);
+    outline-offset: 2px;
+}
+
 .site-main {
     flex: 1;
     padding: 1.4rem 0 2rem;
+}
+
+.site-shell.home-route .site-main {
+    padding-bottom: 0;
 }
 
 .site-footer {
@@ -241,7 +278,7 @@
         display: grid;
         grid-template-columns: 1fr auto;
         align-items: center;
-        padding: 0.8rem 0;
+        padding: 0.26rem 0;
         position: relative;
     }
 
@@ -275,7 +312,14 @@
     }
 
     .brand-wordmark {
-        width: 145px;
+        width: 120px;
+    }
+
+    .header-signin-btn {
+        justify-self: end;
+        min-height: 30px;
+        padding-inline: 0.66rem;
+        font-size: 0.84rem;
     }
 
     .footer-wrap {
