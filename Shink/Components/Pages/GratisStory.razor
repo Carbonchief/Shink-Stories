@@ -2,9 +2,11 @@
 @rendermode InteractiveServer
 @using System.Text.Json
 @using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Authorization
 @inject IAudioAccessService AudioAccessService
 @inject IJSRuntime JS
 @inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
 @implements IAsyncDisposable
 
 <PageTitle>@(CurrentStory is null ? "Storie nie gevind nie" : $"{CurrentStory.Title} | Schink Stories")</PageTitle>
@@ -25,7 +27,15 @@
     <script type="application/ld+json">@StoryPageJsonLd</script>
 </HeadContent>
 
-@if (CurrentStory is null)
+@if (IsRedirectingToLogin)
+{
+    <section class="story-player-empty">
+        <h1>Neem jou nou na teken in...</h1>
+        <p>Jy moet ingeteken wees om stories te luister.</p>
+        <a href="/teken-in">Gaan na teken in</a>
+    </section>
+}
+else if (CurrentStory is null)
 {
     <section class="story-player-empty">
         <h1>Ons kon nie daardie storie kry nie.</h1>
@@ -215,6 +225,7 @@ else
     private bool IsManualFullscreenFocus { get; set; }
     private StoryItem? PreviousStory { get; set; }
     private StoryItem? NextStory { get; set; }
+    private bool IsRedirectingToLogin { get; set; }
     private bool ShowSuurlemoentjieDetails =>
         string.Equals(CurrentStory?.Slug, "suurlemoentjie", StringComparison.OrdinalIgnoreCase);
     private bool ShowKwaaibokDetails =>
@@ -282,8 +293,26 @@ else
         }
     }));
 
-    protected override void OnParametersSet()
+    protected override async Task OnParametersSetAsync()
     {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated != true)
+        {
+            IsRedirectingToLogin = true;
+            CurrentStory = null;
+            AudioUrl = null;
+            ResolveAdjacentStories();
+            IsManualFullscreenFocus = false;
+
+            var requestedPath = string.IsNullOrWhiteSpace(Slug)
+                ? "/gratis"
+                : $"/gratis/{Uri.EscapeDataString(Slug)}";
+            var returnUrl = Uri.EscapeDataString(requestedPath);
+            NavigationManager.NavigateTo($"/teken-in?returnUrl={returnUrl}");
+            return;
+        }
+
+        IsRedirectingToLogin = false;
         CurrentStory = StoryCatalog.FindBySlug(Slug);
         AudioUrl = CurrentStory is null ? null : AudioAccessService.CreateSignedAudioUrl(CurrentStory.Slug);
         ResolveAdjacentStories();

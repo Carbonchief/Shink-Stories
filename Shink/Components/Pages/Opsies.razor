@@ -25,6 +25,19 @@
 </HeadContent>
 
 <section class="opsies-page">
+    @if (string.Equals(PaymentStatus, "sukses", StringComparison.OrdinalIgnoreCase))
+    {
+        <p class="opsies-payment-status opsies-payment-success" role="status" aria-live="polite">
+            Dankie! Jou betaling is ontvang. Ons bevestig dit nou op ons kant.
+        </p>
+    }
+    else if (string.Equals(PaymentStatus, "gekanselleer", StringComparison.OrdinalIgnoreCase))
+    {
+        <p class="opsies-payment-status opsies-payment-cancelled" role="status" aria-live="polite">
+            Betaling is gekanselleer. Jy kan enige tyd weer probeer.
+        </p>
+    }
+
     <section class="opsies-hero">
         <img src="/branding/Schink_Stories_Home_Banner_White.png"
              alt="Schink Stories Opsies" class="opsies-hero-image" loading="eager" decoding="async" />
@@ -61,7 +74,7 @@
                 <p class="opsie-price">R 55.00 <span>per maand.</span></p>
             </div>
             <p class="opsie-detail">Geniet toegang tot stories uit die gewilde Storie Hoekie reeks!</p>
-            <a href="https://www.schink.co.za/membership-levels/" class="opsie-btn" target="_blank" rel="noopener noreferrer">Sluit aan</a>
+            <a href="/betaal/storie-hoekie-maandeliks" class="opsie-btn">Sluit aan</a>
         </article>
 
         <article class="opsie-card opsie-all">
@@ -78,7 +91,7 @@
                 <li>Nuwe stories elke maand</li>
                 <li>Toegang tot hulpbronne</li>
             </ul>
-            <a href="https://www.schink.co.za/membership-levels/" class="opsie-btn" target="_blank" rel="noopener noreferrer">Sluit aan</a>
+            <a href="/betaal/schink-stories-maandeliks" class="opsie-btn">Sluit aan</a>
         </article>
 
         <article class="opsie-card opsie-yearly">
@@ -91,7 +104,7 @@
                 Dieselfde onbeperkte toegang tot al ons oudiostories - teen 'n afslagprys vir ouers wat vooruit dink.
                 Spaar meer, luister langer!
             </p>
-            <a href="https://www.schink.co.za/membership-levels/" class="opsie-btn" target="_blank" rel="noopener noreferrer">Sluit aan</a>
+            <a href="/betaal/schink-stories-jaarliks" class="opsie-btn">Sluit aan</a>
         </article>
     </section>
 
@@ -126,6 +139,9 @@
 </section>
 
 @code {
+    [SupplyParameterFromQuery(Name = "betaling")]
+    public string? PaymentStatus { get; set; }
+
     private string OpsiesCanonicalUrl => NavigationManager.ToAbsoluteUri("/opsies").ToString();
 
     private MarkupString OpsiesJsonLd => new(JsonSerializer.Serialize(new
