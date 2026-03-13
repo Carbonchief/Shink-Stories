@@ -68,7 +68,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    padding: 0.35rem 0;
+    padding: 0.2rem 0;
 }
 
 .brand-link {
@@ -80,7 +80,7 @@
 
 .brand-wordmark {
     display: block;
-    width: 132px;
+    width: 120px;
     height: auto;
 }
 
@@ -91,8 +91,8 @@
 
 .nav-menu-toggle {
     display: none;
-    width: 36px;
-    height: 36px;
+    width: 32px;
+    height: 32px;
     border: 1px solid var(--line);
     border-radius: 10px;
     background: color-mix(in srgb, var(--surface) 94%, white);
@@ -107,8 +107,8 @@
 }
 
 .nav-menu-toggle svg {
-    width: 19px;
-    height: 19px;
+    width: 17px;
+    height: 17px;
     fill: currentColor;
 }
 
@@ -149,8 +149,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 31px;
-    padding: 0.28rem 0.78rem;
+    min-height: 28px;
+    padding: 0.22rem 0.66rem;
     border-radius: 7px;
     border: 1px solid #2c3136;
     background: linear-gradient(180deg, #343a40 0%, #2f353b 100%);
@@ -278,7 +278,7 @@
         display: grid;
         grid-template-columns: 1fr auto;
         align-items: center;
-        padding: 0.26rem 0;
+        padding: 0.14rem 0;
         position: relative;
     }
 
@@ -312,14 +312,14 @@
     }
 
     .brand-wordmark {
-        width: 120px;
+        width: 112px;
     }
 
     .header-signin-btn {
         justify-self: end;
-        min-height: 30px;
-        padding-inline: 0.66rem;
-        font-size: 0.84rem;
+        min-height: 27px;
+        padding-inline: 0.58rem;
+        font-size: 0.8rem;
     }
 
     .footer-wrap {

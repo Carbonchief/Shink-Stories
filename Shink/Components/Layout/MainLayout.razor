@@ -6,10 +6,20 @@
     <a class="skip-link" href="#main-content">Spring na inhoud</a>
     <header class="site-header">
         <div class="site-container nav-wrap">
-            <a class="brand-link" href="/">
-                <img class="brand-wordmark" src="/branding/schink-logo-text.png" alt="Schink Stories"
-                     width="199" height="99" loading="eager" decoding="async" />
-            </a>
+            <AuthorizeView>
+                <Authorized>
+                    <a class="brand-link" href="/?home=1">
+                        <img class="brand-wordmark" src="/branding/schink-logo-text.png" alt="Schink Stories"
+                             width="199" height="99" loading="eager" decoding="async" />
+                    </a>
+                </Authorized>
+                <NotAuthorized>
+                    <a class="brand-link" href="/">
+                        <img class="brand-wordmark" src="/branding/schink-logo-text.png" alt="Schink Stories"
+                             width="199" height="99" loading="eager" decoding="async" />
+                    </a>
+                </NotAuthorized>
+            </AuthorizeView>
             <AuthorizeView>
                 <Authorized>
                     <button type="button" class="nav-menu-toggle" @onclick="ToggleNavMenuFromInteraction"
