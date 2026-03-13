@@ -4,10 +4,13 @@
 @using System.Globalization
 @using System.Net.Http.Json
 @using System.Text.Json
+@using Microsoft.AspNetCore.WebUtilities
 @using Shink.Components.Content
 @using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Authorization
 @inject IHttpClientFactory HttpClientFactory
 @inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
 <PageTitle>Schink Stories | Tuis</PageTitle>
 <HeadContent>
@@ -167,53 +170,55 @@
             </p>
         </div>
 
-        <EditForm class="contact-form" Model="ContactForm" OnValidSubmit="HandleContactSubmitAsync" aria-busy="@IsSubmitting">
-            <DataAnnotationsValidator />
+        <div class="contact-form-shell">
+            <EditForm class="contact-form" Model="ContactForm" OnValidSubmit="HandleContactSubmitAsync" aria-busy="@IsSubmitting">
+                <DataAnnotationsValidator />
 
-            <div class="contact-honeypot" aria-hidden="true">
-                <label for="contact-website">Webwerf</label>
-                <InputText id="contact-website" autocomplete="off" tabindex="-1" @bind-Value="ContactForm.Website" />
-            </div>
+                <div class="contact-honeypot" aria-hidden="true">
+                    <label for="contact-website">Webwerf</label>
+                    <InputText id="contact-website" autocomplete="off" tabindex="-1" @bind-Value="ContactForm.Website" />
+                </div>
 
-            <div class="contact-fields-grid">
-                <div class="contact-field">
-                    <label for="contact-name">Naam</label>
-                    <InputText id="contact-name" autocomplete="name" @bind-Value="ContactForm.Name" />
-                    <ValidationMessage For="@(() => ContactForm.Name)" />
+                <div class="contact-fields-grid">
+                    <div class="contact-field">
+                        <label for="contact-name">Naam</label>
+                        <InputText id="contact-name" autocomplete="name" @bind-Value="ContactForm.Name" />
+                        <ValidationMessage For="@(() => ContactForm.Name)" />
+                    </div>
+
+                    <div class="contact-field">
+                        <label for="contact-email">E-pos</label>
+                        <InputText id="contact-email" type="email" autocomplete="email" @bind-Value="ContactForm.Email" />
+                        <ValidationMessage For="@(() => ContactForm.Email)" />
+                    </div>
                 </div>
 
                 <div class="contact-field">
-                    <label for="contact-email">E-pos</label>
-                    <InputText id="contact-email" type="email" autocomplete="email" @bind-Value="ContactForm.Email" />
-                    <ValidationMessage For="@(() => ContactForm.Email)" />
+                    <label for="contact-subject">Onderwerp</label>
+                    <InputText id="contact-subject" autocomplete="off" @bind-Value="ContactForm.Subject" />
+                    <ValidationMessage For="@(() => ContactForm.Subject)" />
                 </div>
-            </div>
 
-            <div class="contact-field">
-                <label for="contact-subject">Onderwerp</label>
-                <InputText id="contact-subject" autocomplete="off" @bind-Value="ContactForm.Subject" />
-                <ValidationMessage For="@(() => ContactForm.Subject)" />
-            </div>
+                <div class="contact-field">
+                    <label for="contact-message">Boodskap</label>
+                    <InputTextArea id="contact-message" rows="5" @bind-Value="ContactForm.Message" />
+                    <ValidationMessage For="@(() => ContactForm.Message)" />
+                </div>
 
-            <div class="contact-field">
-                <label for="contact-message">Boodskap</label>
-                <InputTextArea id="contact-message" rows="5" @bind-Value="ContactForm.Message" />
-                <ValidationMessage For="@(() => ContactForm.Message)" />
-            </div>
+                <button type="submit" class="contact-submit" disabled="@IsSubmitting">
+                    @(IsSubmitting ? "Besig om te stuur..." : "Stuur boodskap")
+                </button>
 
-            <button type="submit" class="contact-submit" disabled="@IsSubmitting">
-                @(IsSubmitting ? "Besig om te stuur..." : "Stuur boodskap")
-            </button>
-
-            @if (!string.IsNullOrWhiteSpace(FormStatusMessage))
-            {
-                <p class="@($"contact-status {(SubmitSucceeded ? "contact-status-success" : "contact-status-error")}")"
-                   role="@(SubmitSucceeded ? "status" : "alert")"
-                   aria-live="polite">
-                    @FormStatusMessage
-                </p>
-            }
-        </EditForm>
+                @if (!string.IsNullOrWhiteSpace(FormStatusMessage))
+                {
+                    <p class="@($"contact-status {(SubmitSucceeded ? "contact-status-success" : "contact-status-error")}")"
+                       role="@(SubmitSucceeded ? "status" : "alert")"
+                       aria-live="polite">
+                        @FormStatusMessage
+                    </p>
+                }
+            </EditForm>
+        </div>
     </div>
 </section>
 
@@ -222,6 +227,7 @@
     private bool IsSubmitting { get; set; }
     private bool SubmitSucceeded { get; set; }
     private string? FormStatusMessage { get; set; }
+    private bool HasHandledAuthenticatedRedirect { get; set; }
     private string? SelectedPlanSlug { get; set; }
     private IReadOnlyList<PerfectPlanCard> PerfectPlanCards =>
         BuildPerfectPlanCards();
@@ -353,6 +359,24 @@
 
     private string HomeCanonicalUrl => NavigationManager.ToAbsoluteUri("/").ToString();
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || HasHandledAuthenticatedRedirect || HasHomeOverrideQuery())
+        {
+            return;
+        }
+
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var isAuthenticated = authState.User.Identity?.IsAuthenticated ?? false;
+        if (!isAuthenticated)
+        {
+            return;
+        }
+
+        HasHandledAuthenticatedRedirect = true;
+        NavigationManager.NavigateTo("/gratis", replace: true);
+    }
+
     private MarkupString HomeOrganizationJsonLd => new(JsonSerializer.Serialize(new
     {
         @context = "https://schema.org",
@@ -465,6 +489,20 @@
         }
 
         return null;
+    }
+
+    private bool HasHomeOverrideQuery()
+    {
+        var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        var query = QueryHelpers.ParseQuery(uri.Query);
+        if (!query.TryGetValue("home", out var value))
+        {
+            return false;
+        }
+
+        var token = value.ToString();
+        return string.Equals(token, "1", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(token, "true", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string FormatAmount(decimal amount)
