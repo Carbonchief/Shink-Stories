@@ -5,6 +5,7 @@ using Shink.Components.Content;
 using Shink.Services;
 using System.Net.Mail;
 using System.Security.Claims;
+using System.Text;
 using System.Threading.RateLimiting;
 using System.Xml.Linq;
 
@@ -30,9 +31,11 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.Configure<ResendOptions>(builder.Configuration.GetSection(ResendOptions.SectionName));
 builder.Services.Configure<SupabaseOptions>(builder.Configuration.GetSection(SupabaseOptions.SectionName));
 builder.Services.Configure<PayFastOptions>(builder.Configuration.GetSection(PayFastOptions.SectionName));
+builder.Services.Configure<PaystackOptions>(builder.Configuration.GetSection(PaystackOptions.SectionName));
 builder.Services.AddHttpClient<IContactEmailService, ResendContactEmailService>();
 builder.Services.AddHttpClient<ISupabaseAuthService, SupabaseAuthService>();
 builder.Services.AddHttpClient<PayFastCheckoutService>();
+builder.Services.AddHttpClient<PaystackCheckoutService>();
 builder.Services.AddHttpClient<ISubscriptionLedgerService, SupabaseSubscriptionLedgerService>();
 builder.Services.AddSingleton<IContactFormProtectionService, ContactFormProtectionService>();
 builder.Services.AddRateLimiter(options =>
@@ -175,11 +178,29 @@ app.MapGet("/media/audio/{slug}", (string slug, string? token, IAudioAccessServi
     return Results.File(audioFilePath, "audio/mpeg", enableRangeProcessing: true);
 }).RequireRateLimiting("audio-stream");
 
-app.MapGet("/betaal/{planSlug}", (string planSlug, PayFastCheckoutService payFastCheckoutService, HttpContext httpContext) =>
+app.MapGet("/betaal/payfast/{planSlug}", (string planSlug) =>
+    Results.Redirect($"/betaal/{Uri.EscapeDataString(planSlug)}?provider=payfast"));
+
+app.MapGet("/betaal/paystack/{planSlug}", (string planSlug) =>
+    Results.Redirect($"/betaal/{Uri.EscapeDataString(planSlug)}?provider=paystack"));
+
+app.MapGet("/betaal/{planSlug}", async (
+    string planSlug,
+    string? provider,
+    PayFastCheckoutService payFastCheckoutService,
+    PaystackCheckoutService paystackCheckoutService,
+    HttpContext httpContext,
+    ILogger<Program> logger) =>
 {
     if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
     {
-        var returnUrl = Uri.EscapeDataString($"/betaal/{Uri.EscapeDataString(planSlug)}");
+        var checkoutPath = $"/betaal/{Uri.EscapeDataString(planSlug)}";
+        if (!string.IsNullOrWhiteSpace(provider))
+        {
+            checkoutPath += $"?provider={Uri.EscapeDataString(provider)}";
+        }
+
+        var returnUrl = Uri.EscapeDataString(checkoutPath);
         return Results.Redirect($"/teken-in?returnUrl={returnUrl}");
     }
 
@@ -189,9 +210,36 @@ app.MapGet("/betaal/{planSlug}", (string planSlug, PayFastCheckoutService payFas
         return Results.NotFound();
     }
 
+    if (!TryResolvePaymentProvider(provider, out var selectedProvider))
+    {
+        return Results.BadRequest(new { message = "Ongeldige betaalverskaffer. Gebruik 'paystack' of 'payfast'." });
+    }
+
+    if (string.Equals(selectedProvider, "paystack", StringComparison.OrdinalIgnoreCase))
+    {
+        var checkoutResult = await paystackCheckoutService.InitializeCheckoutAsync(plan, httpContext, httpContext.RequestAborted);
+        if (!checkoutResult.IsSuccess || string.IsNullOrWhiteSpace(checkoutResult.AuthorizationUrl))
+        {
+            return Results.Problem(
+                title: "Kon nie betaling begin nie",
+                detail: checkoutResult.ErrorMessage ?? "Paystack checkout kon nie begin nie.",
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
+
+        logger.LogInformation(
+            "Paystack checkout initialized. plan={PlanSlug} reference={Reference}",
+            plan.Slug,
+            checkoutResult.Reference);
+
+        return Results.Redirect(checkoutResult.AuthorizationUrl);
+    }
+
     if (!payFastCheckoutService.TryBuildCheckout(plan, httpContext, out var checkoutForm, out var errorMessage))
     {
-        return Results.Problem(title: "Kon nie betaling begin nie", detail: errorMessage, statusCode: StatusCodes.Status500InternalServerError);
+        return Results.Problem(
+            title: "Kon nie betaling begin nie",
+            detail: errorMessage,
+            statusCode: StatusCodes.Status500InternalServerError);
     }
 
     var html = payFastCheckoutService.BuildAutoSubmitFormHtml(checkoutForm, $"Jy betaal nou vir {plan.Name}.");
@@ -249,6 +297,42 @@ app.MapPost("/api/payfast/notify", async (HttpContext httpContext, PayFastChecko
                 persistResult.SubscriptionId,
                 form["m_payment_id"].ToString());
         }
+    }
+
+    // Return 200 to avoid repeated retries; process failed validations via logs/monitoring.
+    return Results.Ok();
+}).DisableAntiforgery();
+
+app.MapPost("/api/paystack/webhook", async (HttpContext httpContext, PaystackCheckoutService paystackCheckoutService, ISubscriptionLedgerService subscriptionLedgerService, ILogger<Program> logger) =>
+{
+    using var reader = new StreamReader(httpContext.Request.Body, Encoding.UTF8);
+    var payload = await reader.ReadToEndAsync(httpContext.RequestAborted);
+    if (string.IsNullOrWhiteSpace(payload))
+    {
+        logger.LogWarning("Paystack webhook ignored: empty payload.");
+        return Results.Ok();
+    }
+
+    var signature = httpContext.Request.Headers["x-paystack-signature"].ToString();
+    var signatureValid = paystackCheckoutService.IsWebhookSignatureValid(payload, signature);
+    if (!signatureValid)
+    {
+        logger.LogWarning("Paystack webhook rejected: invalid signature.");
+        return Results.Ok();
+    }
+
+    var persistResult = await subscriptionLedgerService.RecordPaystackEventAsync(payload, httpContext.RequestAborted);
+    if (!persistResult.IsSuccess)
+    {
+        logger.LogWarning(
+            "Paystack subscription persistence failed. Error={Error}",
+            persistResult.ErrorMessage);
+    }
+    else
+    {
+        logger.LogInformation(
+            "Paystack subscription persisted. subscription_id={SubscriptionId}",
+            persistResult.SubscriptionId);
     }
 
     // Return 200 to avoid repeated retries; process failed validations via logs/monitoring.
@@ -469,6 +553,30 @@ static bool IsStoryDetailPath(PathString path)
 
     var remainder = value["/gratis/".Length..].Trim('/');
     return !string.IsNullOrWhiteSpace(remainder);
+}
+
+static bool TryResolvePaymentProvider(string? provider, out string resolvedProvider)
+{
+    if (string.IsNullOrWhiteSpace(provider))
+    {
+        resolvedProvider = "paystack";
+        return true;
+    }
+
+    if (string.Equals(provider, "paystack", StringComparison.OrdinalIgnoreCase))
+    {
+        resolvedProvider = "paystack";
+        return true;
+    }
+
+    if (string.Equals(provider, "payfast", StringComparison.OrdinalIgnoreCase))
+    {
+        resolvedProvider = "payfast";
+        return true;
+    }
+
+    resolvedProvider = string.Empty;
+    return false;
 }
 
 static async Task SignInUserAsync(HttpContext httpContext, string email)

@@ -52,4 +52,7 @@ public static class PaymentPlanCatalog
 
     public static PaymentPlan? FindBySlug(string? slug) =>
         All.FirstOrDefault(plan => string.Equals(plan.Slug, slug, StringComparison.OrdinalIgnoreCase));
+
+    public static PaymentPlan? FindByTierCode(string? tierCode) =>
+        All.FirstOrDefault(plan => string.Equals(plan.TierCode, tierCode, StringComparison.OrdinalIgnoreCase));
 }
