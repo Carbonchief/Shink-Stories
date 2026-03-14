@@ -108,6 +108,30 @@
     </div>
 </section>
 
+<section class="section-block stories-carousel-section newest-stories-section" aria-labelledby="nuutste-stories-heading">
+    <h2 id="nuutste-stories-heading">Top 10 nuutste stories</h2>
+    <p class="section-intro">Kry 'n voorsmakie van ons nuutste uitgawes.</p>
+
+    <div class="stories-carousel" role="list" aria-label="Top 10 nuutste stories">
+        @foreach (var story in StoryCatalog.NewestTop10)
+        {
+            <article class="story-carousel-item" role="listitem">
+                <a class="story-carousel-link" href="@story.LinkPath" aria-label="Sien storie: @story.Title">
+                    <span class="story-carousel-cover">
+                        <img class="story-carousel-image"
+                             src="@story.CoverPath"
+                             alt="Voorblad van @story.Title" width="600" height="775" loading="lazy" decoding="async" />
+                        <span class="story-cover-play" aria-hidden="true">
+                            <span class="story-cover-play-icon">&#9654;</span>
+                        </span>
+                    </span>
+                    <h3>@story.Title</h3>
+                </a>
+            </article>
+        }
+    </div>
+</section>
+
 <section class="perfect-plan-section" aria-labelledby="perfekte-plan">
     <div class="perfect-plan-header">
         <h2 id="perfekte-plan">Vind jou perfekte plan</h2>
