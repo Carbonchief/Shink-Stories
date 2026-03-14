@@ -6,6 +6,22 @@ const ARTWORK_SIZES = ["96x96", "128x128", "192x192", "256x256", "384x384", "512
 const STORY_PROGRESS_PREFIX = "schink:story-progress:";
 const PROGRESS_SAVE_INTERVAL_MS = 4000;
 const AUDIO_VOLUME_KEY = "schink:audio-volume";
+const CUSTOM_PLAYER_SELECTOR = ".story-custom-player";
+const PLAY_TOGGLE_SELECTOR = ".story-play-toggle";
+const PLAY_ICON_SELECTOR = ".story-play-icon";
+const STORY_PREV_BUTTON_SELECTOR = ".story-story-prev";
+const STORY_NEXT_BUTTON_SELECTOR = ".story-story-next";
+const STORY_NAV_PREV_SELECTOR = ".story-nav-prev";
+const STORY_NAV_NEXT_SELECTOR = ".story-nav-next";
+const PROGRESS_SLIDER_SELECTOR = ".story-progress-slider";
+const CURRENT_TIME_SELECTOR = ".story-time-current";
+const TOTAL_TIME_SELECTOR = ".story-time-total";
+const VOLUME_SLIDER_SELECTOR = ".story-volume-slider";
+const MUTE_TOGGLE_SELECTOR = ".story-mute-toggle";
+const MUTE_ICON_SELECTOR = ".story-mute-icon";
+const SPEED_TOGGLE_SELECTOR = ".story-speed-toggle";
+const SPEED_LABEL_SELECTOR = ".story-speed-label";
+const SPEED_STEPS = [1, 1.25, 1.5, 0.8];
 
 const boundAudios = new WeakSet();
 const fullscreenBindings = new WeakMap();
@@ -283,6 +299,55 @@ function restoreVolumeState(audioElement) {
     audioElement.muted = saved.muted;
 }
 
+function formatTime(seconds) {
+    if (!Number.isFinite(seconds) || seconds < 0) {
+        return "0:00";
+    }
+
+    const whole = Math.floor(seconds);
+    const mins = Math.floor(whole / 60);
+    const secs = whole % 60;
+    return `${mins}:${String(secs).padStart(2, "0")}`;
+}
+
+function getCustomPlayerElements(audioElement) {
+    const container = audioElement.closest(".story-player-content");
+    if (!(container instanceof HTMLElement)) {
+        return null;
+    }
+
+    const customPlayer = container.querySelector(CUSTOM_PLAYER_SELECTOR);
+    if (!(customPlayer instanceof HTMLElement)) {
+        return null;
+    }
+
+    return {
+        container,
+        customPlayer,
+        playToggle: customPlayer.querySelector(PLAY_TOGGLE_SELECTOR),
+        playIcon: customPlayer.querySelector(PLAY_ICON_SELECTOR),
+        storyPrevButton: customPlayer.querySelector(STORY_PREV_BUTTON_SELECTOR),
+        storyNextButton: customPlayer.querySelector(STORY_NEXT_BUTTON_SELECTOR),
+        progressSlider: customPlayer.querySelector(PROGRESS_SLIDER_SELECTOR),
+        currentTime: customPlayer.querySelector(CURRENT_TIME_SELECTOR),
+        totalTime: customPlayer.querySelector(TOTAL_TIME_SELECTOR),
+        volumeSlider: customPlayer.querySelector(VOLUME_SLIDER_SELECTOR),
+        muteToggle: customPlayer.querySelector(MUTE_TOGGLE_SELECTOR),
+        muteIcon: customPlayer.querySelector(MUTE_ICON_SELECTOR),
+        speedToggle: customPlayer.querySelector(SPEED_TOGGLE_SELECTOR),
+        speedLabel: customPlayer.querySelector(SPEED_LABEL_SELECTOR)
+    };
+}
+
+function updateRangeVisual(slider, percentage) {
+    if (!(slider instanceof HTMLInputElement)) {
+        return;
+    }
+
+    const clamped = Math.max(0, Math.min(100, percentage));
+    slider.style.background = `linear-gradient(to right, #ffffff 0%, #ffffff ${clamped}%, rgba(242,247,251,0.28) ${clamped}%, rgba(242,247,251,0.28) 100%)`;
+}
+
 function stopAndReleaseAudio(audioElement) {
     saveStoryProgress(audioElement);
     saveVolumeState(audioElement);
@@ -306,9 +371,75 @@ function bindAudioEvents(audioElement) {
 
     boundAudios.add(audioElement);
 
+    const customPlayerElements = getCustomPlayerElements(audioElement);
+    if (customPlayerElements?.container instanceof HTMLElement) {
+        customPlayerElements.container.classList.add("story-player-enhanced");
+    }
+
+    const updateCustomPlayerState = () => {
+        if (!customPlayerElements) {
+            return;
+        }
+
+        const prevStoryLink = customPlayerElements.container.querySelector(STORY_NAV_PREV_SELECTOR);
+        const nextStoryLink = customPlayerElements.container.querySelector(STORY_NAV_NEXT_SELECTOR);
+        const isPlaying = !audioElement.paused;
+        const duration = Number.isFinite(audioElement.duration) ? audioElement.duration : 0;
+        const currentTime = Number.isFinite(audioElement.currentTime) ? audioElement.currentTime : 0;
+        const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+        const volumeValue = audioElement.muted ? 0 : Math.max(0, Math.min(1, audioElement.volume));
+        const volumeProgress = volumeValue * 100;
+
+        if (customPlayerElements.storyPrevButton instanceof HTMLButtonElement) {
+            customPlayerElements.storyPrevButton.disabled = !(prevStoryLink instanceof HTMLAnchorElement);
+        }
+
+        if (customPlayerElements.storyNextButton instanceof HTMLButtonElement) {
+            customPlayerElements.storyNextButton.disabled = !(nextStoryLink instanceof HTMLAnchorElement);
+        }
+
+        if (customPlayerElements.playToggle instanceof HTMLButtonElement) {
+            customPlayerElements.playToggle.classList.toggle("is-playing", isPlaying);
+            customPlayerElements.playToggle.setAttribute("aria-label", isPlaying ? "Pouse storie" : "Speel storie");
+            customPlayerElements.playToggle.setAttribute("title", isPlaying ? "Pouse" : "Speel");
+        }
+
+        if (customPlayerElements.playIcon instanceof HTMLElement) {
+            customPlayerElements.playIcon.textContent = isPlaying ? "\u23F8" : "\u25B6";
+        }
+
+        if (customPlayerElements.progressSlider instanceof HTMLInputElement) {
+            customPlayerElements.progressSlider.max = duration > 0 ? String(duration) : "100";
+            customPlayerElements.progressSlider.value = duration > 0 ? String(currentTime) : "0";
+            updateRangeVisual(customPlayerElements.progressSlider, progress);
+        }
+
+        if (customPlayerElements.currentTime instanceof HTMLElement) {
+            customPlayerElements.currentTime.textContent = formatTime(currentTime);
+        }
+
+        if (customPlayerElements.totalTime instanceof HTMLElement) {
+            customPlayerElements.totalTime.textContent = formatTime(duration);
+        }
+
+        if (customPlayerElements.volumeSlider instanceof HTMLInputElement) {
+            customPlayerElements.volumeSlider.value = String(volumeValue);
+            updateRangeVisual(customPlayerElements.volumeSlider, volumeProgress);
+        }
+
+        if (customPlayerElements.muteIcon instanceof HTMLElement) {
+            customPlayerElements.muteIcon.textContent = audioElement.muted || volumeValue <= 0.001 ? "\uD83D\uDD07" : "\uD83D\uDD0A";
+        }
+
+        if (customPlayerElements.speedLabel instanceof HTMLElement) {
+            customPlayerElements.speedLabel.textContent = `${audioElement.playbackRate.toFixed(2).replace(/\.00$/, ".0")}x`;
+        }
+    };
+
     const updateAll = () => {
         updateMediaMetadata(audioElement);
         updatePositionState(audioElement);
+        updateCustomPlayerState();
     };
 
     let lastProgressSaveAt = 0;
@@ -324,6 +455,80 @@ function bindAudioEvents(audioElement) {
 
     bindActionHandlers(audioElement);
     restoreVolumeState(audioElement);
+
+    if (customPlayerElements) {
+        if (customPlayerElements.playToggle instanceof HTMLButtonElement) {
+            customPlayerElements.playToggle.addEventListener("click", async () => {
+                if (audioElement.paused) {
+                    try {
+                        await audioElement.play();
+                    } catch {
+                        // Ignore blocked autoplay/playback errors.
+                    }
+
+                    return;
+                }
+
+                audioElement.pause();
+            });
+        }
+
+        if (customPlayerElements.storyPrevButton instanceof HTMLButtonElement) {
+            customPlayerElements.storyPrevButton.addEventListener("click", () => {
+                const prevStoryLink = customPlayerElements.container.querySelector(STORY_NAV_PREV_SELECTOR);
+                if (prevStoryLink instanceof HTMLAnchorElement) {
+                    prevStoryLink.click();
+                }
+            });
+        }
+
+        if (customPlayerElements.storyNextButton instanceof HTMLButtonElement) {
+            customPlayerElements.storyNextButton.addEventListener("click", () => {
+                const nextStoryLink = customPlayerElements.container.querySelector(STORY_NAV_NEXT_SELECTOR);
+                if (nextStoryLink instanceof HTMLAnchorElement) {
+                    nextStoryLink.click();
+                }
+            });
+        }
+
+        if (customPlayerElements.progressSlider instanceof HTMLInputElement) {
+            customPlayerElements.progressSlider.addEventListener("input", () => {
+                const nextTime = Number.parseFloat(customPlayerElements.progressSlider.value);
+                if (!Number.isFinite(nextTime)) {
+                    return;
+                }
+
+                audioElement.currentTime = Math.max(0, nextTime);
+            });
+        }
+
+        if (customPlayerElements.volumeSlider instanceof HTMLInputElement) {
+            customPlayerElements.volumeSlider.addEventListener("input", () => {
+                const nextVolume = Number.parseFloat(customPlayerElements.volumeSlider.value);
+                const clamped = Number.isFinite(nextVolume) ? Math.max(0, Math.min(1, nextVolume)) : 1;
+                audioElement.volume = clamped;
+                audioElement.muted = clamped <= 0.001;
+            });
+        }
+
+        if (customPlayerElements.muteToggle instanceof HTMLButtonElement) {
+            customPlayerElements.muteToggle.addEventListener("click", () => {
+                audioElement.muted = !audioElement.muted;
+                if (!audioElement.muted && audioElement.volume <= 0.001) {
+                    audioElement.volume = 0.6;
+                }
+            });
+        }
+
+        if (customPlayerElements.speedToggle instanceof HTMLButtonElement) {
+            customPlayerElements.speedToggle.addEventListener("click", () => {
+                const currentIndex = SPEED_STEPS.findIndex((rate) => Math.abs(rate - audioElement.playbackRate) < 0.001);
+                const nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % SPEED_STEPS.length;
+                audioElement.playbackRate = SPEED_STEPS[nextIndex];
+                updateCustomPlayerState();
+            });
+        }
+    }
 
     const coverImage = getStoryCoverImage(audioElement);
     if (coverImage) {
@@ -393,11 +598,16 @@ function bindAudioEvents(audioElement) {
     });
     audioElement.addEventListener("timeupdate", () => {
         updatePositionState(audioElement);
+        updateCustomPlayerState();
         maybeSaveProgress();
     });
-    audioElement.addEventListener("ratechange", () => updatePositionState(audioElement));
+    audioElement.addEventListener("ratechange", () => {
+        updatePositionState(audioElement);
+        updateCustomPlayerState();
+    });
     audioElement.addEventListener("seeked", () => {
         updatePositionState(audioElement);
+        updateCustomPlayerState();
         saveStoryProgress(audioElement);
     });
     audioElement.addEventListener("ended", () => {
@@ -406,6 +616,7 @@ function bindAudioEvents(audioElement) {
     });
     audioElement.addEventListener("volumechange", () => {
         saveVolumeState(audioElement);
+        updateCustomPlayerState();
     });
 
     updateAll();

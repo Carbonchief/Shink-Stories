@@ -55,19 +55,6 @@ else
 
         <div class="story-player-content" oncontextmenu="return false;">
             <div class="story-cover-wrap">
-                @if (PreviousStory is not null)
-                {
-                    <a class="story-nav-btn story-nav-prev"
-                       href="@($"/gratis/{PreviousStory.Slug}")"
-                       @onclick="() => NavigateToStoryAsync(PreviousStory.Slug)"
-                       @onclick:preventDefault="true"
-                       aria-label="@($"Vorige storie: {PreviousStory.Title}")"
-                       title="Vorige storie">
-                        <span aria-hidden="true">&#10094;</span>
-                        <span class="sr-only">Vorige storie</span>
-                    </a>
-                }
-
                 <img src="@CurrentStory.ThumbnailPath"
                      srcset="@($"{CurrentStory.ThumbnailPath} 640w, {CurrentStory.ImagePath} 1024w")"
                      sizes="(max-width: 640px) 100vw, 420px"
@@ -82,19 +69,6 @@ else
                     <span class="story-cover-play-icon">&#9654;</span>
                 </span>
 
-                @if (NextStory is not null)
-                {
-                    <a class="story-nav-btn story-nav-next"
-                       href="@($"/gratis/{NextStory.Slug}")"
-                       @onclick="() => NavigateToStoryAsync(NextStory.Slug)"
-                       @onclick:preventDefault="true"
-                       aria-label="@($"Volgende storie: {NextStory.Title}")"
-                       title="Volgende storie">
-                        <span aria-hidden="true">&#10095;</span>
-                        <span class="sr-only">Volgende storie</span>
-                    </a>
-                }
-
                 <button type="button" class="story-fullscreen-toggle" @onclick="ToggleFullscreenFocusAsync"
                         aria-pressed="@IsManualFullscreenFocus"
                         aria-label="@(IsManualFullscreenFocus ? "Verlaat volskerm speler" : "Volskerm speler")"
@@ -106,16 +80,100 @@ else
                 </button>
             </div>
             <audio controls controlslist="nodownload noplaybackrate noremoteplayback"
-                   disablepictureinpicture preload="metadata" class="story-audio"
+                   disablepictureinpicture preload="metadata" class="story-audio story-audio-native"
                    data-story-slug="@CurrentStory.Slug"
                    data-story-title="@CurrentStory.Title"
                    data-story-artist="Schink Stories"
                    data-story-image="@StoryArtworkUrl"
                    data-story-image-type="@StoryArtworkMimeType"
-                   oncontextmenu="return false;">
+                    oncontextmenu="return false;">
                 <source src="@AudioUrl" type="audio/mpeg" />
                 Jou blaaier ondersteun nie die oudioplayer nie.
             </audio>
+
+            <div class="story-custom-player" role="group" aria-label="Storie speler">
+                <div class="story-progress-wrap">
+                    <input class="story-progress-slider"
+                           type="range"
+                           min="0"
+                           max="100"
+                           step="0.1"
+                           value="0"
+                           aria-label="Storie vordering" />
+                    <div class="story-time-row">
+                        <span class="story-time-current">0:00</span>
+                        <span class="story-time-total">0:00</span>
+                    </div>
+                </div>
+
+                <div class="story-player-controls">
+                    <button type="button"
+                            class="story-control-btn story-story-prev"
+                            aria-label="@(PreviousStory is null ? "Geen vorige storie beskikbaar" : $"Vorige storie: {PreviousStory.Title}")"
+                            title="@(PreviousStory is null ? "Geen vorige storie beskikbaar" : "Vorige storie")"
+                            disabled="@(PreviousStory is null)">
+                        <span aria-hidden="true">&#171;</span>
+                        <span class="sr-only">Vorige storie</span>
+                    </button>
+                    <button type="button" class="story-control-btn story-play-toggle" aria-label="Speel storie" title="Speel/Pouse">
+                        <span class="story-play-icon" aria-hidden="true">&#9654;</span>
+                        <span class="sr-only">Speel storie</span>
+                    </button>
+                    <button type="button"
+                            class="story-control-btn story-story-next"
+                            aria-label="@(NextStory is null ? "Geen volgende storie beskikbaar" : $"Volgende storie: {NextStory.Title}")"
+                            title="@(NextStory is null ? "Geen volgende storie beskikbaar" : "Volgende storie")"
+                            disabled="@(NextStory is null)">
+                        <span aria-hidden="true">&#187;</span>
+                        <span class="sr-only">Volgende storie</span>
+                    </button>
+                </div>
+
+                <div class="story-secondary-controls">
+                    <button type="button" class="story-mini-btn story-mute-toggle" aria-label="Demp klank" title="Demp/ontdemp">
+                        <span class="story-mute-icon" aria-hidden="true">&#128266;</span>
+                        <span class="sr-only">Demp klank</span>
+                    </button>
+                    <input class="story-volume-slider"
+                           type="range"
+                           min="0"
+                           max="1"
+                           step="0.01"
+                           value="1"
+                           aria-label="Volume" />
+                    <button type="button" class="story-mini-btn story-speed-toggle" aria-label="Verander spoed" title="Spoed">
+                        <span class="story-speed-label">1.0x</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="story-nav-proxies" hidden aria-hidden="true">
+                @if (PreviousStory is not null)
+                {
+                    <a class="story-nav-prev"
+                       href="@($"/gratis/{PreviousStory.Slug}")"
+                       @onclick="() => NavigateToStoryAsync(PreviousStory.Slug)"
+                       @onclick:preventDefault="true"
+                       tabindex="-1"
+                       aria-label="@($"Vorige storie: {PreviousStory.Title}")"
+                       title="Vorige storie">
+                        <span class="sr-only">Vorige storie</span>
+                    </a>
+                }
+
+                @if (NextStory is not null)
+                {
+                    <a class="story-nav-next"
+                       href="@($"/gratis/{NextStory.Slug}")"
+                       @onclick="() => NavigateToStoryAsync(NextStory.Slug)"
+                       @onclick:preventDefault="true"
+                       tabindex="-1"
+                       aria-label="@($"Volgende storie: {NextStory.Title}")"
+                       title="Volgende storie">
+                        <span class="sr-only">Volgende storie</span>
+                    </a>
+                }
+            </div>
         </div>
 
         @if (ShowSuurlemoentjieDetails)
