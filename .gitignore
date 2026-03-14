@@ -361,3 +361,9 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# Imported media archives (not required for runtime)
+Shink/Stories/imported/
+Shink/wwwroot/stories/imported/
+Shink/wwwroot/branding/imported/
+Shink/wwwroot/media/imported/
