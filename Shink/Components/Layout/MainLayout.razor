@@ -38,6 +38,7 @@
                              @onkeydown="HandleNavMenuKeydown">
                             <NavLink href="/meer-oor-ons" @onclick="CloseNavMenu">Meer oor Ons</NavLink>
                             <NavLink href="/gratis" @onclick="CloseNavMenu">Gratis stories</NavLink>
+                            <NavLink href="/luister" @onclick="CloseNavMenu">Alle stories</NavLink>
                             <NavLink href="/opsies" @onclick="CloseNavMenu">Opsies</NavLink>
                             <NavLink href="/teken-uit" @onclick="CloseNavMenu">Teken uit</NavLink>
                         </nav>
@@ -127,7 +128,8 @@
         get
         {
             var relativePath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).Trim('/');
-            return relativePath.StartsWith("gratis/", StringComparison.OrdinalIgnoreCase);
+            return relativePath.StartsWith("gratis/", StringComparison.OrdinalIgnoreCase) ||
+                   relativePath.StartsWith("luister/", StringComparison.OrdinalIgnoreCase);
         }
     }
 

@@ -29,21 +29,21 @@ h1 {
 
 .gratis-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 1rem;
-    width: min(100%, 1500px);
+    width: min(100%, 980px);
     margin-inline: auto;
 }
 
 .gratis-card {
     --gratis-card-radius: 16px;
     display: grid;
-    grid-template-columns: 170px 1fr;
+    grid-template-columns: 220px 1fr;
     border: 1px solid color-mix(in srgb, var(--line) 88%, #b9b7ae);
     border-radius: var(--gratis-card-radius);
     overflow: hidden;
     background: var(--surface);
-    min-height: 200px;
+    min-height: 220px;
 }
 
 .gratis-cover-link {
@@ -156,7 +156,7 @@ h1 {
     background: var(--accent-deep);
 }
 
-@media (max-width: 760px) {
+@media (max-width: 980px) {
     .gratis-grid {
         grid-template-columns: 1fr;
     }

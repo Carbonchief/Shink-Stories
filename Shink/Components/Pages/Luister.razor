@@ -1,15 +1,15 @@
-@page "/gratis"
+@page "/luister"
 @using System.Text.Json
 @using Microsoft.AspNetCore.Components
 @inject NavigationManager NavigationManager
 
-<PageTitle>Schink Stories | Gratis Stories</PageTitle>
+<PageTitle>Schink Stories | Luister</PageTitle>
 <HeadContent>
-    <link rel="canonical" href="@GratisCanonicalUrl" />
+    <link rel="canonical" href="@LuisterCanonicalUrl" />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Schink Stories | Gratis Stories" />
-    <meta property="og:description" content="Luister gratis na drie Afrikaanse stories op Schink Stories." />
-    <meta property="og:url" content="@GratisCanonicalUrl" />
+    <meta property="og:title" content="Schink Stories | Luister" />
+    <meta property="og:description" content="Luister na ons nuutste stories op Schink Stories." />
+    <meta property="og:url" content="@LuisterCanonicalUrl" />
     <meta property="og:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
     <meta property="og:image:secure_url" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
     <meta property="og:image:type" content="image/png" />
@@ -17,35 +17,35 @@
     <meta property="og:image:height" content="512" />
     <meta property="og:image:alt" content="Schink Stories logo" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Schink Stories | Gratis Stories" />
-    <meta name="twitter:description" content="Luister gratis na drie Afrikaanse stories op Schink Stories." />
+    <meta name="twitter:title" content="Schink Stories | Luister" />
+    <meta name="twitter:description" content="Luister na ons nuutste stories op Schink Stories." />
     <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
     <meta name="twitter:image:alt" content="Schink Stories logo" />
-    <script type="application/ld+json">@GratisJsonLd</script>
+    <script type="application/ld+json">@LuisterJsonLd</script>
 </HeadContent>
 
 <section class="gratis-hero">
     <div class="gratis-hero-copy">
-        <h1>3 gratis stories vir jou gesin</h1>
+        <h1>Alle beskikbare stories vir jou gesin</h1>
         <p>
-            Kom probeer drie van ons lekker stories gratis. Tik op enige storie om dit oop te maak en
+            Kies enige storie hieronder. Tik om dit oop te maak en
             direk te luister.
         </p>
     </div>
-    <img class="gratis-banner" src="/stories/Schink_Stories_Gratis_Blad_Banner.webp"
-         alt="Gratis stories banner" loading="eager" fetchpriority="high" decoding="async" />
+    <img class="gratis-banner" src="/branding/Schink_Stories_Kom_Luister_Saam.webp"
+         alt="Luister stories banner" loading="eager" fetchpriority="high" decoding="async" />
 </section>
 
 @code {
-    private string GratisCanonicalUrl => NavigationManager.ToAbsoluteUri("/gratis").ToString();
+    private string LuisterCanonicalUrl => NavigationManager.ToAbsoluteUri("/luister").ToString();
 
-    private MarkupString GratisJsonLd => new(JsonSerializer.Serialize(new
+    private MarkupString LuisterJsonLd => new(JsonSerializer.Serialize(new
     {
         @context = "https://schema.org",
         @type = "CollectionPage",
-        name = "Schink Stories | Gratis Stories",
-        description = "Luister gratis na drie Afrikaanse stories op Schink Stories.",
-        url = GratisCanonicalUrl,
+        name = "Schink Stories | Luister",
+        description = "Luister na ons nuutste stories op Schink Stories.",
+        url = LuisterCanonicalUrl,
         inLanguage = "af-ZA",
         isPartOf = new
         {
@@ -59,13 +59,13 @@
 
 <section>
     <div class="gratis-grid">
-        @foreach (var story in StoryCatalog.All)
+        @foreach (var story in StoryCatalog.LuisterStories)
         {
             <article class="gratis-card">
-                <a class="gratis-cover-link" href="@($"/gratis/{story.Slug}")" aria-label="Luister na @story.Title">
+                <a class="gratis-cover-link" href="@($"/luister/{story.Slug}")" aria-label="Luister na @story.Title">
                     <img src="@story.ThumbnailPath"
                          srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
-                         sizes="(max-width: 760px) 100vw, (max-width: 1120px) 50vw, 33vw"
+                         sizes="(max-width: 980px) 100vw, 50vw"
                          alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
                     <span class="gratis-cover-play" aria-hidden="true">
                         <span class="gratis-cover-play-icon">&#9654;</span>
@@ -74,7 +74,7 @@
                 <div class="gratis-card-body">
                     <h2>@story.Title</h2>
                     <p>@story.Description</p>
-                    <a class="play-btn" href="@($"/gratis/{story.Slug}")">Luister na hierdie storie</a>
+                    <a class="play-btn" href="@($"/luister/{story.Slug}")">Luister na hierdie storie</a>
                 </div>
             </article>
         }
