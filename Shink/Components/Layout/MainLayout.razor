@@ -22,22 +22,26 @@
             </AuthorizeView>
             <AuthorizeView>
                 <Authorized>
-                    <button type="button" class="nav-menu-toggle" @onclick="ToggleNavMenuFromInteraction"
-                            @ontouchend="ToggleNavMenuFromInteraction" @ontouchend:preventDefault="true"
-                            aria-controls="main-site-nav" aria-expanded="@IsNavMenuOpen"
-                            aria-label="@NavMenuToggleLabel"
-                            title="@NavMenuToggleLabel">
-                        <svg viewBox="0 0 24 24" aria-hidden="true">
-                            <path d="M4 7h16v2H4V7zm0 4h16v2H4v-2zm0 4h16v2H4v-2z" />
-                        </svg>
-                        <span class="sr-only">@NavMenuToggleLabel</span>
-                    </button>
-                    <nav id="main-site-nav" class="site-nav @(IsNavMenuOpen ? "is-open" : null)" aria-label="Hoofnavigasie">
-                        <NavLink href="/meer-oor-ons" @onclick="CloseNavMenu">Meer oor Ons</NavLink>
-                        <NavLink href="/gratis" @onclick="CloseNavMenu">Gratis stories</NavLink>
-                        <NavLink href="/opsies" @onclick="CloseNavMenu">Opsies</NavLink>
-                        <NavLink href="/teken-uit" @onclick="CloseNavMenu">Teken uit</NavLink>
-                    </nav>
+                    <div class="nav-controls">
+                        <button type="button" class="nav-menu-toggle" @onclick="ToggleNavMenuFromInteraction"
+                                aria-controls="main-site-nav" aria-expanded="@IsNavMenuOpen"
+                                aria-label="@NavMenuToggleLabel"
+                                title="@NavMenuToggleLabel">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M4 7h16v2H4V7zm0 4h16v2H4v-2zm0 4h16v2H4v-2z" />
+                            </svg>
+                            <span class="sr-only">@NavMenuToggleLabel</span>
+                        </button>
+                        <nav id="main-site-nav"
+                             class="site-nav @(IsNavMenuOpen ? "is-open" : null)"
+                             aria-label="Hoofnavigasie"
+                             @onkeydown="HandleNavMenuKeydown">
+                            <NavLink href="/meer-oor-ons" @onclick="CloseNavMenu">Meer oor Ons</NavLink>
+                            <NavLink href="/gratis" @onclick="CloseNavMenu">Gratis stories</NavLink>
+                            <NavLink href="/opsies" @onclick="CloseNavMenu">Opsies</NavLink>
+                            <NavLink href="/teken-uit" @onclick="CloseNavMenu">Teken uit</NavLink>
+                        </nav>
+                    </div>
                 </Authorized>
                 <NotAuthorized>
                     <a class="header-signin-btn" href="@LoginHref">Teken in</a>
@@ -84,8 +88,18 @@
 
 @code {
     private bool IsNavMenuOpen { get; set; }
-    private long LastNavToggleAtMs { get; set; }
+    private string? LastKnownRoutePath { get; set; }
     private string NavMenuToggleLabel => IsNavMenuOpen ? "Maak navigasie toe" : "Maak navigasie oop";
+
+    protected override void OnParametersSet()
+    {
+        var currentPath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).Trim('/');
+        if (!string.Equals(currentPath, LastKnownRoutePath, StringComparison.OrdinalIgnoreCase))
+        {
+            IsNavMenuOpen = false;
+            LastKnownRoutePath = currentPath;
+        }
+    }
 
     private string LoginHref
     {
@@ -128,14 +142,15 @@
 
     private void ToggleNavMenuFromInteraction()
     {
-        var now = Environment.TickCount64;
-        if (now - LastNavToggleAtMs < 350)
-        {
-            return;
-        }
-
-        LastNavToggleAtMs = now;
         IsNavMenuOpen = !IsNavMenuOpen;
+    }
+
+    private void HandleNavMenuKeydown(Microsoft.AspNetCore.Components.Web.KeyboardEventArgs args)
+    {
+        if (string.Equals(args.Key, "Escape", StringComparison.Ordinal))
+        {
+            IsNavMenuOpen = false;
+        }
     }
 
     private void CloseNavMenu() => IsNavMenuOpen = false;

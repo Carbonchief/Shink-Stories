@@ -28,7 +28,7 @@ public static class StoryCatalog
         new(
             Slug: "suurlemoentjie",
             Title: "Suurlemoentjie",
-            Description: "Swem saam met Suurlemoentjie op 'n prettige avontuur onder die water.",
+            Description: "Wanneer suur woorde sag word, groei ware vriendskap. 🍋",
             ImageFileName: "Suurlemoentjie.jpeg",
             AudioFileName: "Suurlemoentjie.mpeg"),
         new(
