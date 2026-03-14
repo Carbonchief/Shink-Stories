@@ -155,7 +155,7 @@ app.MapGet("/media/audio/{slug}", (string slug, string? token, IAudioAccessServi
         return Results.Unauthorized();
     }
 
-    var story = StoryCatalog.FindBySlug(slug);
+    var story = StoryCatalog.FindAnyBySlug(slug);
     if (story is null)
     {
         return Results.NotFound();
@@ -469,12 +469,14 @@ app.MapGet("/sitemap.xml", (HttpContext httpContext) =>
     {
         "/",
         "/gratis",
+        "/luister",
         "/opsies",
         "/meer-oor-ons",
         "/teken-in"
     };
 
     paths.AddRange(StoryCatalog.All.Select(story => $"/gratis/{Uri.EscapeDataString(story.Slug)}"));
+    paths.AddRange(StoryCatalog.LuisterStories.Select(story => $"/luister/{Uri.EscapeDataString(story.Slug)}"));
 
     XNamespace ns = "http://www.sitemaps.org/schemas/sitemap/0.9";
     var document = new XDocument(
@@ -545,13 +547,23 @@ static bool IsBlockedPublicAudioPath(PathString path)
 static bool IsStoryDetailPath(PathString path)
 {
     var value = path.Value;
-    if (string.IsNullOrWhiteSpace(value) ||
-        !value.StartsWith("/gratis/", StringComparison.OrdinalIgnoreCase))
+    if (string.IsNullOrWhiteSpace(value))
     {
         return false;
     }
 
-    var remainder = value["/gratis/".Length..].Trim('/');
+    var prefix = value.StartsWith("/gratis/", StringComparison.OrdinalIgnoreCase)
+        ? "/gratis/"
+        : value.StartsWith("/luister/", StringComparison.OrdinalIgnoreCase)
+            ? "/luister/"
+            : null;
+
+    if (prefix is null)
+    {
+        return false;
+    }
+
+    var remainder = value[prefix.Length..].Trim('/');
     return !string.IsNullOrWhiteSpace(remainder);
 }
 

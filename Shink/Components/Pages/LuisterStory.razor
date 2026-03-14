@@ -1,0 +1,456 @@
+@page "/luister/{Slug}"
+@rendermode InteractiveServer
+@using System.Text.Json
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IAudioAccessService AudioAccessService
+@inject IJSRuntime JS
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@implements IAsyncDisposable
+
+<PageTitle>@(CurrentStory is null ? "Storie nie gevind nie" : $"{CurrentStory.Title} | Schink Stories")</PageTitle>
+<HeadContent>
+    <link rel="canonical" href="@ShareCanonicalUrl" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="@ShareTitle" />
+    <meta property="og:description" content="@ShareDescription" />
+    <meta property="og:url" content="@ShareUrl" />
+    <meta property="og:image" content="@ShareImageUrl" />
+    <meta property="og:image:type" content="@ShareImageMimeType" />
+    <meta property="og:image:alt" content="@ShareImageAlt" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="@ShareTitle" />
+    <meta name="twitter:description" content="@ShareDescription" />
+    <meta name="twitter:image" content="@ShareImageUrl" />
+    <meta name="twitter:image:alt" content="@ShareImageAlt" />
+    <script type="application/ld+json">@StoryPageJsonLd</script>
+</HeadContent>
+
+@if (IsRedirectingToLogin)
+{
+    <section class="story-player-empty">
+        <h1>Neem jou nou na teken in...</h1>
+        <p>Jy moet ingeteken wees om stories te luister.</p>
+        <a href="/teken-in">Gaan na teken in</a>
+    </section>
+}
+else if (CurrentStory is null)
+{
+    <section class="story-player-empty">
+        <h1>Ons kon nie daardie storie kry nie.</h1>
+        <p>Gaan terug na die luister stories om 'n storie te kies.</p>
+        <a href="/luister">Terug na luister stories</a>
+    </section>
+}
+else
+{
+    <section class="story-player-page @(IsManualFullscreenFocus ? "manual-fullscreen-focus" : null)">
+        <a class="back-link" href="/luister" @onclick="HandleBackLinkAsync" @onclick:preventDefault="true">&lt;- Terug na luister stories</a>
+
+        <div class="story-description">
+            <h1>@CurrentStory.Title</h1>
+            <p>@CurrentStory.Description</p>
+        </div>
+
+        <div class="story-player-content" oncontextmenu="return false;">
+            <div class="story-cover-wrap">
+                <img src="@CurrentStory.ThumbnailPath"
+                     srcset="@($"{CurrentStory.ThumbnailPath} 640w, {CurrentStory.ImagePath} 1024w")"
+                     sizes="(max-width: 640px) 100vw, 420px"
+                     alt="Voorblad van @CurrentStory.Title" class="story-cover"
+                     role="button"
+                     tabindex="0"
+                     aria-label="Speel of pouse storie"
+                     aria-pressed="false"
+                     title="Speel of pouse storie"
+                     width="640" height="485" loading="eager" fetchpriority="high" decoding="async" />
+                <span class="story-cover-play" aria-hidden="true">
+                    <span class="story-cover-play-icon">&#9654;</span>
+                </span>
+
+                <button type="button" class="story-fullscreen-toggle" @onclick="ToggleFullscreenFocusAsync"
+                        aria-pressed="@IsManualFullscreenFocus"
+                        aria-label="@(IsManualFullscreenFocus ? "Verlaat volskerm speler" : "Volskerm speler")"
+                        title="@(IsManualFullscreenFocus ? "Verlaat volskerm speler" : "Volskerm speler")">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zm0-12h-3v2h3v3h2V5h-2z" />
+                    </svg>
+                    <span class="sr-only">@(IsManualFullscreenFocus ? "Verlaat volskerm speler" : "Volskerm speler")</span>
+                </button>
+            </div>
+            <audio controls controlslist="nodownload noplaybackrate noremoteplayback"
+                   disablepictureinpicture preload="metadata" class="story-audio story-audio-native"
+                   data-story-slug="@CurrentStory.Slug"
+                   data-story-title="@CurrentStory.Title"
+                   data-story-artist="Schink Stories"
+                   data-story-image="@StoryArtworkUrl"
+                   data-story-image-type="@StoryArtworkMimeType"
+                    oncontextmenu="return false;">
+                <source src="@AudioUrl" type="audio/mpeg" />
+                Jou blaaier ondersteun nie die oudioplayer nie.
+            </audio>
+
+            <div class="story-custom-player" role="group" aria-label="Storie speler">
+                <div class="story-progress-wrap">
+                    <input class="story-progress-slider"
+                           type="range"
+                           min="0"
+                           max="100"
+                           step="0.1"
+                           value="0"
+                           aria-label="Storie vordering" />
+                    <div class="story-time-row">
+                        <span class="story-time-current">0:00</span>
+                        <span class="story-time-total">0:00</span>
+                    </div>
+                </div>
+
+                <div class="story-player-controls">
+                    <button type="button"
+                            class="story-control-btn story-story-prev"
+                            aria-label="@(PreviousStory is null ? "Geen vorige storie beskikbaar" : $"Vorige storie: {PreviousStory.Title}")"
+                            title="@(PreviousStory is null ? "Geen vorige storie beskikbaar" : "Vorige storie")"
+                            disabled="@(PreviousStory is null)">
+                        <span aria-hidden="true">&#171;</span>
+                        <span class="sr-only">Vorige storie</span>
+                    </button>
+                    <button type="button" class="story-control-btn story-play-toggle" aria-label="Speel storie" title="Speel/Pouse">
+                        <span class="story-play-icon" aria-hidden="true">&#9654;</span>
+                        <span class="sr-only">Speel storie</span>
+                    </button>
+                    <button type="button"
+                            class="story-control-btn story-story-next"
+                            aria-label="@(NextStory is null ? "Geen volgende storie beskikbaar" : $"Volgende storie: {NextStory.Title}")"
+                            title="@(NextStory is null ? "Geen volgende storie beskikbaar" : "Volgende storie")"
+                            disabled="@(NextStory is null)">
+                        <span aria-hidden="true">&#187;</span>
+                        <span class="sr-only">Volgende storie</span>
+                    </button>
+                </div>
+
+                <div class="story-secondary-controls">
+                    <button type="button" class="story-mini-btn story-mute-toggle" aria-label="Demp klank" title="Demp/ontdemp">
+                        <span class="story-mute-icon" aria-hidden="true">&#128266;</span>
+                        <span class="sr-only">Demp klank</span>
+                    </button>
+                    <input class="story-volume-slider"
+                           type="range"
+                           min="0"
+                           max="1"
+                           step="0.01"
+                           value="1"
+                           aria-label="Volume" />
+                    <button type="button" class="story-mini-btn story-speed-toggle" aria-label="Verander spoed" title="Spoed">
+                        <span class="story-speed-label">1.0x</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="story-nav-proxies" hidden aria-hidden="true">
+                @if (PreviousStory is not null)
+                {
+                    <a class="story-nav-prev"
+                       href="@($"/luister/{PreviousStory.Slug}")"
+                       @onclick="() => NavigateToStoryAsync(PreviousStory.Slug)"
+                       @onclick:preventDefault="true"
+                       tabindex="-1"
+                       aria-label="@($"Vorige storie: {PreviousStory.Title}")"
+                       title="Vorige storie">
+                        <span class="sr-only">Vorige storie</span>
+                    </a>
+                }
+
+                @if (NextStory is not null)
+                {
+                    <a class="story-nav-next"
+                       href="@($"/luister/{NextStory.Slug}")"
+                       @onclick="() => NavigateToStoryAsync(NextStory.Slug)"
+                       @onclick:preventDefault="true"
+                       tabindex="-1"
+                       aria-label="@($"Volgende storie: {NextStory.Title}")"
+                       title="Volgende storie">
+                        <span class="sr-only">Volgende storie</span>
+                    </a>
+                }
+            </div>
+        </div>
+
+        <section class="story-carousel-section" aria-label="Ander luister stories">
+            <h2>Ander luister stories</h2>
+            <div class="story-carousel" role="list">
+                @foreach (var story in StoryCatalog.LuisterStories)
+                {
+                    var isActiveStory = string.Equals(story.Slug, CurrentStory.Slug, StringComparison.OrdinalIgnoreCase);
+                    <article class="story-carousel-item @(isActiveStory ? "is-active" : null)" role="listitem">
+                        <a class="story-carousel-link"
+                           href="@($"/luister/{story.Slug}")"
+                           @onclick="() => NavigateToStoryAsync(story.Slug)"
+                           @onclick:preventDefault="true"
+                           aria-current="@(isActiveStory ? "page" : null)"
+                           aria-label="@(isActiveStory ? $"Huidige storie: {story.Title}" : $"Gaan na {story.Title}")">
+                            <img src="@story.ThumbnailPath"
+                                 srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
+                                 sizes="220px"
+                                 class="story-carousel-image"
+                                 alt="Voorblad van @story.Title"
+                                 width="640" height="485" loading="lazy" decoding="async" />
+                            <div class="story-carousel-copy">
+                                <h3>@story.Title</h3>
+                                @if (isActiveStory)
+                                {
+                                    <span class="story-carousel-status">Jy luister nou</span>
+                                }
+                                else
+                                {
+                                    <span class="story-carousel-status">Maak oop</span>
+                                }
+                            </div>
+                        </a>
+                    </article>
+                }
+            </div>
+        </section>
+    </section>
+}
+
+@code {
+    [Parameter]
+    public string? Slug { get; set; }
+
+    private StoryItem? CurrentStory { get; set; }
+    private string? AudioUrl { get; set; }
+    private IJSObjectReference? _mediaSessionModule;
+    private DotNetObjectReference<LuisterStory>? _dotNetRef;
+    private bool IsManualFullscreenFocus { get; set; }
+    private StoryItem? PreviousStory { get; set; }
+    private StoryItem? NextStory { get; set; }
+    private bool IsRedirectingToLogin { get; set; }
+
+    private string? StoryArtworkUrl =>
+        CurrentStory is null ? null : NavigationManager.ToAbsoluteUri(CurrentStory.ImagePath).ToString();
+
+    private string StoryArtworkMimeType =>
+        CurrentStory is null ? "image/jpeg" : GetImageMimeType(CurrentStory.ImageFileName);
+
+    private string ShareTitle =>
+        CurrentStory is null ? "Schink Stories | Luister stories" : $"{CurrentStory.Title} | Schink Stories";
+
+    private string ShareDescription =>
+        CurrentStory?.Description ?? "Luister na Afrikaanse kinderstories op Schink Stories.";
+
+    private string ShareUrl =>
+        CurrentStory is null
+            ? NavigationManager.ToAbsoluteUri("/luister").ToString()
+            : NavigationManager.ToAbsoluteUri($"/luister/{CurrentStory.Slug}").ToString();
+
+    private string ShareCanonicalUrl => ShareUrl;
+
+    private string ShareImageUrl =>
+        CurrentStory is null
+            ? NavigationManager.ToAbsoluteUri("/branding/Schink_Stories_Kom_Luister_Saam.webp").ToString()
+            : NavigationManager.ToAbsoluteUri(CurrentStory.ImagePath).ToString();
+
+    private string ShareImageMimeType =>
+        CurrentStory is null ? "image/webp" : GetImageMimeType(CurrentStory.ImageFileName);
+
+    private string ShareImageAlt =>
+        CurrentStory is null ? "Schink Stories luister stories" : $"Voorblad van {CurrentStory.Title}";
+
+    private MarkupString StoryPageJsonLd => new(JsonSerializer.Serialize(new
+    {
+        @context = "https://schema.org",
+        @type = "Article",
+        headline = ShareTitle,
+        description = ShareDescription,
+        url = ShareCanonicalUrl,
+        inLanguage = "af-ZA",
+        image = new[] { ShareImageUrl },
+        author = new
+        {
+            @type = "Organization",
+            name = "Schink Stories"
+        },
+        publisher = new
+        {
+            @type = "Organization",
+            name = "Schink Stories",
+            logo = new
+            {
+                @type = "ImageObject",
+                url = NavigationManager.ToAbsoluteUri("/branding/schink-logo-text.png").ToString()
+            }
+        },
+        isPartOf = new
+        {
+            @type = "WebSite",
+            name = "Schink Stories",
+            url = NavigationManager.ToAbsoluteUri("/").ToString()
+        }
+    }));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated != true)
+        {
+            IsRedirectingToLogin = true;
+            CurrentStory = null;
+            AudioUrl = null;
+            ResolveAdjacentStories();
+            IsManualFullscreenFocus = false;
+
+            var requestedPath = string.IsNullOrWhiteSpace(Slug)
+                ? "/luister"
+                : $"/luister/{Uri.EscapeDataString(Slug)}";
+            var returnUrl = Uri.EscapeDataString(requestedPath);
+            NavigationManager.NavigateTo($"/teken-in?returnUrl={returnUrl}");
+            return;
+        }
+
+        IsRedirectingToLogin = false;
+        CurrentStory = StoryCatalog.FindLuisterStoryBySlug(Slug);
+        AudioUrl = CurrentStory is null ? null : AudioAccessService.CreateSignedAudioUrl(CurrentStory.Slug);
+        ResolveAdjacentStories();
+        IsManualFullscreenFocus = false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (CurrentStory is null)
+        {
+            return;
+        }
+
+        _mediaSessionModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Pages/GratisStory.razor.js");
+        _dotNetRef ??= DotNetObjectReference.Create(this);
+        await _mediaSessionModule.InvokeVoidAsync("initializeStoryMediaSession");
+        await _mediaSessionModule.InvokeVoidAsync("initializeStoryPlayerFullscreenExperience", _dotNetRef);
+    }
+
+    private async Task ToggleFullscreenFocusAsync()
+    {
+        IsManualFullscreenFocus = !IsManualFullscreenFocus;
+
+        if (_mediaSessionModule is null)
+        {
+            _mediaSessionModule = await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Pages/GratisStory.razor.js");
+        }
+
+        await _mediaSessionModule.InvokeVoidAsync("setStoryPlayerFullscreenIntent", IsManualFullscreenFocus);
+    }
+
+    private async Task HandleBackLinkAsync()
+    {
+        await PrepareForNavigationAsync();
+        NavigationManager.NavigateTo("/luister");
+    }
+
+    private async Task NavigateToStoryAsync(string slug)
+    {
+        await PrepareForNavigationAsync();
+        NavigationManager.NavigateTo($"/luister/{Uri.EscapeDataString(slug)}");
+    }
+
+    private async Task PrepareForNavigationAsync()
+    {
+        if (_mediaSessionModule is null)
+        {
+            return;
+        }
+
+        try
+        {
+            using var stopCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(250));
+            await _mediaSessionModule.InvokeVoidAsync("stopStoryAudioPlayback", stopCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // Do not block navigation when cleanup takes too long.
+        }
+        catch (JSDisconnectedException)
+        {
+            // Ignore cleanup when browser connection is gone.
+        }
+    }
+
+    [JSInvokable]
+    public Task HandleFullscreenExitedFromBrowser()
+    {
+        if (!IsManualFullscreenFocus)
+        {
+            return Task.CompletedTask;
+        }
+
+        IsManualFullscreenFocus = false;
+        return InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_mediaSessionModule is not null)
+            {
+                await PrepareForNavigationAsync();
+
+                using var disposeUiCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(250));
+                await _mediaSessionModule.InvokeVoidAsync("disposeStoryPlayerFullscreenExperience", disposeUiCts.Token);
+
+                await _mediaSessionModule.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromMilliseconds(250));
+            }
+        }
+        catch (TimeoutException)
+        {
+            // Ignore slow JS module disposal so route transitions stay responsive.
+        }
+        catch (JSDisconnectedException)
+        {
+            // Ignore disposal errors when the browser connection is already closed.
+        }
+        finally
+        {
+            _dotNetRef?.Dispose();
+        }
+    }
+
+    private static string GetImageMimeType(string fileName)
+    {
+        var extension = Path.GetExtension(fileName).ToLowerInvariant();
+        return extension switch
+        {
+            ".png" => "image/png",
+            ".webp" => "image/webp",
+            ".jpg" => "image/jpeg",
+            ".jpeg" => "image/jpeg",
+            _ => "image/jpeg"
+        };
+    }
+
+    private void ResolveAdjacentStories()
+    {
+        PreviousStory = null;
+        NextStory = null;
+
+        if (CurrentStory is null || StoryCatalog.LuisterStories.Count < 2)
+        {
+            return;
+        }
+
+        var stories = StoryCatalog.LuisterStories;
+        var index = stories
+            .Select((story, idx) => new { story.Slug, idx })
+            .FirstOrDefault(x => string.Equals(x.Slug, CurrentStory.Slug, StringComparison.OrdinalIgnoreCase))?.idx ?? -1;
+
+        if (index < 0)
+        {
+            return;
+        }
+
+        var previousIndex = index == 0 ? stories.Count - 1 : index - 1;
+        var nextIndex = index == stories.Count - 1 ? 0 : index + 1;
+
+        PreviousStory = stories[previousIndex];
+        NextStory = stories[nextIndex];
+    }
+}

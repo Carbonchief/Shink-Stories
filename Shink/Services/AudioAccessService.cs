@@ -12,7 +12,7 @@ public sealed class AudioAccessService(IDataProtectionProvider dataProtectionPro
 
     public string CreateSignedAudioUrl(string slug, TimeSpan? lifetime = null)
     {
-        var story = StoryCatalog.FindBySlug(slug)
+        var story = StoryCatalog.FindAnyBySlug(slug)
             ?? throw new InvalidOperationException("Unknown story slug.");
 
         var expiresAtUtc = DateTimeOffset.UtcNow.Add(lifetime ?? DefaultTokenLifetime);
