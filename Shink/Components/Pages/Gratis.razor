@@ -2,6 +2,7 @@
 @using System.Text.Json
 @using Microsoft.AspNetCore.Components
 @inject NavigationManager NavigationManager
+@inject IStoryCatalogService StoryCatalogService
 
 <PageTitle>Schink Stories | Gratis Stories</PageTitle>
 <HeadContent>
@@ -37,6 +38,8 @@
 </section>
 
 @code {
+    private IReadOnlyList<StoryItem> FreeStories { get; set; } = Array.Empty<StoryItem>();
+
     private string GratisCanonicalUrl => NavigationManager.ToAbsoluteUri("/gratis").ToString();
 
     private MarkupString GratisJsonLd => new(JsonSerializer.Serialize(new
@@ -55,11 +58,23 @@
         },
         primaryImageOfPage = NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()
     }));
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            FreeStories = await StoryCatalogService.GetFreeStoriesAsync();
+        }
+        catch
+        {
+            FreeStories = Array.Empty<StoryItem>();
+        }
+    }
 }
 
 <section>
     <div class="gratis-grid">
-        @foreach (var story in StoryCatalog.All)
+        @foreach (var story in FreeStories)
         {
             <article class="gratis-card">
                 <a class="gratis-cover-link" href="@($"/gratis/{story.Slug}")" aria-label="Luister na @story.Title">
