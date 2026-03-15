@@ -25,6 +25,7 @@ const SPEED_STEPS = [1, 1.25, 1.5, 0.8];
 
 const boundAudios = new WeakSet();
 const fullscreenBindings = new WeakMap();
+const playerCapabilityCache = new WeakMap();
 
 function toAbsoluteUrl(url) {
     if (!url) {
@@ -129,7 +130,7 @@ function updatePositionState(audioElement) {
     }
 }
 
-function bindActionHandlers(audioElement) {
+function bindActionHandlers(audioElement, resolveTrackNavigation) {
     if (!("mediaSession" in navigator)) {
         return;
     }
@@ -166,6 +167,65 @@ function bindActionHandlers(audioElement) {
             audioElement.currentTime = event.seekTime;
         }
     });
+
+    setHandler("previoustrack", () => {
+        const navigation = typeof resolveTrackNavigation === "function" ? resolveTrackNavigation() : null;
+        if (navigation?.previous instanceof HTMLAnchorElement) {
+            navigation.previous.click();
+        }
+    });
+
+    setHandler("nexttrack", () => {
+        const navigation = typeof resolveTrackNavigation === "function" ? resolveTrackNavigation() : null;
+        if (navigation?.next instanceof HTMLAnchorElement) {
+            navigation.next.click();
+        }
+    });
+}
+
+function detectPlayerCapabilities(audioElement) {
+    const cached = playerCapabilityCache.get(audioElement);
+    if (cached) {
+        return cached;
+    }
+
+    let canControlVolume = true;
+    const originalVolume = Number.isFinite(audioElement.volume) ? audioElement.volume : 1;
+    const probeVolume = originalVolume >= 0.5 ? 0.25 : 0.75;
+
+    try {
+        audioElement.volume = probeVolume;
+        canControlVolume = Math.abs(audioElement.volume - probeVolume) < 0.01;
+    } catch {
+        canControlVolume = false;
+    } finally {
+        try {
+            audioElement.volume = originalVolume;
+        } catch {
+            // Ignore volume reset failures.
+        }
+    }
+
+    let canChangePlaybackRate = true;
+    const originalRate = Number.isFinite(audioElement.playbackRate) ? audioElement.playbackRate : 1;
+    const probeRate = Math.abs(originalRate - 1.25) < 0.001 ? 1.5 : 1.25;
+
+    try {
+        audioElement.playbackRate = probeRate;
+        canChangePlaybackRate = Math.abs(audioElement.playbackRate - probeRate) < 0.001;
+    } catch {
+        canChangePlaybackRate = false;
+    } finally {
+        try {
+            audioElement.playbackRate = originalRate;
+        } catch {
+            // Ignore playback-rate reset failures.
+        }
+    }
+
+    const capabilities = { canControlVolume, canChangePlaybackRate };
+    playerCapabilityCache.set(audioElement, capabilities);
+    return capabilities;
 }
 
 function getProgressKey(audioElement) {
@@ -371,7 +431,12 @@ function bindAudioEvents(audioElement) {
 
     boundAudios.add(audioElement);
 
+    audioElement.setAttribute("playsinline", "");
+    audioElement.setAttribute("webkit-playsinline", "true");
+
     const customPlayerElements = getCustomPlayerElements(audioElement);
+    const playerCapabilities = detectPlayerCapabilities(audioElement);
+
     if (customPlayerElements?.container instanceof HTMLElement) {
         customPlayerElements.container.classList.add("story-player-enhanced");
     }
@@ -389,6 +454,11 @@ function bindAudioEvents(audioElement) {
         const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
         const volumeValue = audioElement.muted ? 0 : Math.max(0, Math.min(1, audioElement.volume));
         const volumeProgress = volumeValue * 100;
+
+        if (customPlayerElements.customPlayer instanceof HTMLElement) {
+            customPlayerElements.customPlayer.classList.toggle("volume-unsupported", !playerCapabilities.canControlVolume);
+            customPlayerElements.customPlayer.classList.toggle("speed-unsupported", !playerCapabilities.canChangePlaybackRate);
+        }
 
         if (customPlayerElements.storyPrevButton instanceof HTMLButtonElement) {
             customPlayerElements.storyPrevButton.disabled = !(prevStoryLink instanceof HTMLAnchorElement);
@@ -425,10 +495,17 @@ function bindAudioEvents(audioElement) {
         if (customPlayerElements.volumeSlider instanceof HTMLInputElement) {
             customPlayerElements.volumeSlider.value = String(volumeValue);
             updateRangeVisual(customPlayerElements.volumeSlider, volumeProgress);
+            customPlayerElements.volumeSlider.disabled = !playerCapabilities.canControlVolume;
+            customPlayerElements.volumeSlider.setAttribute("aria-disabled", String(!playerCapabilities.canControlVolume));
         }
 
         if (customPlayerElements.muteIcon instanceof HTMLElement) {
             customPlayerElements.muteIcon.textContent = audioElement.muted || volumeValue <= 0.001 ? "\uD83D\uDD07" : "\uD83D\uDD0A";
+        }
+
+        if (customPlayerElements.speedToggle instanceof HTMLButtonElement) {
+            customPlayerElements.speedToggle.disabled = !playerCapabilities.canChangePlaybackRate;
+            customPlayerElements.speedToggle.setAttribute("aria-disabled", String(!playerCapabilities.canChangePlaybackRate));
         }
 
         if (customPlayerElements.speedLabel instanceof HTMLElement) {
@@ -453,7 +530,21 @@ function bindAudioEvents(audioElement) {
         saveStoryProgress(audioElement);
     };
 
-    bindActionHandlers(audioElement);
+    const resolveTrackNavigation = () => {
+        if (!customPlayerElements) {
+            return { previous: null, next: null };
+        }
+
+        const previous = customPlayerElements.container.querySelector(STORY_NAV_PREV_SELECTOR);
+        const next = customPlayerElements.container.querySelector(STORY_NAV_NEXT_SELECTOR);
+
+        return {
+            previous: previous instanceof HTMLAnchorElement ? previous : null,
+            next: next instanceof HTMLAnchorElement ? next : null
+        };
+    };
+
+    bindActionHandlers(audioElement, resolveTrackNavigation);
     restoreVolumeState(audioElement);
 
     if (customPlayerElements) {
@@ -504,6 +595,10 @@ function bindAudioEvents(audioElement) {
 
         if (customPlayerElements.volumeSlider instanceof HTMLInputElement) {
             customPlayerElements.volumeSlider.addEventListener("input", () => {
+                if (!playerCapabilities.canControlVolume) {
+                    return;
+                }
+
                 const nextVolume = Number.parseFloat(customPlayerElements.volumeSlider.value);
                 const clamped = Number.isFinite(nextVolume) ? Math.max(0, Math.min(1, nextVolume)) : 1;
                 audioElement.volume = clamped;
@@ -522,6 +617,10 @@ function bindAudioEvents(audioElement) {
 
         if (customPlayerElements.speedToggle instanceof HTMLButtonElement) {
             customPlayerElements.speedToggle.addEventListener("click", () => {
+                if (!playerCapabilities.canChangePlaybackRate) {
+                    return;
+                }
+
                 const currentIndex = SPEED_STEPS.findIndex((rate) => Math.abs(rate - audioElement.playbackRate) < 0.001);
                 const nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % SPEED_STEPS.length;
                 audioElement.playbackRate = SPEED_STEPS[nextIndex];
@@ -617,6 +716,18 @@ function bindAudioEvents(audioElement) {
     audioElement.addEventListener("volumechange", () => {
         saveVolumeState(audioElement);
         updateCustomPlayerState();
+    });
+
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") {
+            saveStoryProgress(audioElement);
+            saveVolumeState(audioElement);
+        }
+    });
+
+    window.addEventListener("pagehide", () => {
+        saveStoryProgress(audioElement);
+        saveVolumeState(audioElement);
     });
 
     updateAll();

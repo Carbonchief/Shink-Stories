@@ -200,10 +200,6 @@
     .story-cover-play {
         display: none;
     }
-
-    .story-fullscreen-toggle {
-        display: none;
-    }
 }
 
 .story-audio {
@@ -294,6 +290,8 @@
     align-items: center;
     justify-content: center;
     cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .story-control-btn:focus-visible,
@@ -355,6 +353,21 @@
     color: #f4f7fa;
     font-weight: 700;
     cursor: pointer;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+}
+
+.story-custom-player.volume-unsupported .story-secondary-controls {
+    grid-template-columns: auto auto;
+    justify-content: space-between;
+}
+
+.story-custom-player.volume-unsupported .story-volume-slider {
+    display: none;
+}
+
+.story-custom-player.speed-unsupported .story-speed-toggle {
+    opacity: 0.55;
 }
 
 .story-mute-icon {
@@ -596,16 +609,16 @@
     }
 
     .story-player-enhanced .story-audio-native {
-        position: static;
-        width: 100%;
-        height: auto;
-        opacity: 1;
-        pointer-events: auto;
-        overflow: visible;
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        opacity: 0;
+        pointer-events: none;
+        overflow: hidden;
     }
 
     .story-custom-player {
-        display: none;
+        display: grid;
     }
 
     .story-play-toggle {
