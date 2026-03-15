@@ -99,9 +99,14 @@
 }
 
 .story-cover-wrap:hover .story-cover-play,
-.story-cover-wrap:focus-within .story-cover-play,
-.story-cover-wrap.is-playing .story-cover-play {
+.story-cover-wrap:focus-within .story-cover-play {
     opacity: 1;
+}
+
+.story-cover-wrap.is-playing .story-cover-play,
+.story-cover-wrap.is-playing:hover .story-cover-play,
+.story-cover-wrap.is-playing:focus-within .story-cover-play {
+    opacity: 0;
 }
 
 .story-cover-wrap.is-playing .story-cover-play-icon {
@@ -590,11 +595,17 @@
         width: 100%;
     }
 
-    .story-custom-player {
+    .story-player-enhanced .story-audio-native {
+        position: static;
         width: 100%;
-        gap: 0.8rem;
-        padding: 0.82rem 0.72rem;
-        border-radius: 16px;
+        height: auto;
+        opacity: 1;
+        pointer-events: auto;
+        overflow: visible;
+    }
+
+    .story-custom-player {
+        display: none;
     }
 
     .story-play-toggle {

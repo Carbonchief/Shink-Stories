@@ -4,6 +4,7 @@
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Authorization
 @inject IAudioAccessService AudioAccessService
+@inject IStoryCatalogService StoryCatalogService
 @inject IJSRuntime JS
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -79,7 +80,7 @@ else
                     <span class="sr-only">@(IsManualFullscreenFocus ? "Verlaat volskerm speler" : "Volskerm speler")</span>
                 </button>
             </div>
-            <audio controls controlslist="nodownload noplaybackrate noremoteplayback"
+            <audio controls controlslist="nodownload noplaybackrate"
                    disablepictureinpicture preload="metadata" class="story-audio story-audio-native"
                    data-story-slug="@CurrentStory.Slug"
                    data-story-title="@CurrentStory.Title"
@@ -237,7 +238,7 @@ else
         <section class="story-carousel-section" aria-label="Ander gratis stories">
             <h2>Ander gratis stories</h2>
             <div class="story-carousel" role="list">
-                @foreach (var story in StoryCatalog.All)
+                @foreach (var story in FreeStories)
                 {
                     var isActiveStory = string.Equals(story.Slug, CurrentStory.Slug, StringComparison.OrdinalIgnoreCase);
                     <article class="story-carousel-item @(isActiveStory ? "is-active" : null)" role="listitem">
@@ -281,6 +282,7 @@ else
     private IJSObjectReference? _mediaSessionModule;
     private DotNetObjectReference<GratisStory>? _dotNetRef;
     private bool IsManualFullscreenFocus { get; set; }
+    private IReadOnlyList<StoryItem> FreeStories { get; set; } = Array.Empty<StoryItem>();
     private StoryItem? PreviousStory { get; set; }
     private StoryItem? NextStory { get; set; }
     private bool IsRedirectingToLogin { get; set; }
@@ -359,6 +361,7 @@ else
             IsRedirectingToLogin = true;
             CurrentStory = null;
             AudioUrl = null;
+            FreeStories = Array.Empty<StoryItem>();
             ResolveAdjacentStories();
             IsManualFullscreenFocus = false;
 
@@ -371,7 +374,12 @@ else
         }
 
         IsRedirectingToLogin = false;
-        CurrentStory = StoryCatalog.FindBySlug(Slug);
+        var freeStoriesTask = StoryCatalogService.GetFreeStoriesAsync();
+        var currentStoryTask = StoryCatalogService.FindFreeBySlugAsync(Slug);
+        await Task.WhenAll(freeStoriesTask, currentStoryTask);
+
+        FreeStories = freeStoriesTask.Result;
+        CurrentStory = currentStoryTask.Result;
         AudioUrl = CurrentStory is null ? null : AudioAccessService.CreateSignedAudioUrl(CurrentStory.Slug);
         ResolveAdjacentStories();
         IsManualFullscreenFocus = false;
@@ -494,12 +502,12 @@ else
         PreviousStory = null;
         NextStory = null;
 
-        if (CurrentStory is null || StoryCatalog.All.Count < 2)
+        if (CurrentStory is null || FreeStories.Count < 2)
         {
             return;
         }
 
-        var stories = StoryCatalog.All;
+        var stories = FreeStories;
         var index = stories
             .Select((story, idx) => new { story.Slug, idx })
             .FirstOrDefault(x => string.Equals(x.Slug, CurrentStory.Slug, StringComparison.OrdinalIgnoreCase))?.idx ?? -1;

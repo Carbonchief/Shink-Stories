@@ -11,6 +11,7 @@
 @inject IHttpClientFactory HttpClientFactory
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IStoryCatalogService StoryCatalogService
 
 <PageTitle>Schink Stories | Tuis</PageTitle>
 <HeadContent>
@@ -87,7 +88,7 @@
     <p class="section-intro">Dis op die huis!</p>
 
     <div class="stories-carousel" role="list" aria-label="Gratis stories">
-        @foreach (var story in StoryCatalog.All)
+        @foreach (var story in FreeStories)
         {
             <article class="story-carousel-item" role="listitem">
                 <a class="story-carousel-link" href="@($"/gratis/{story.Slug}")" aria-label="Luister @story.Title">
@@ -113,7 +114,31 @@
     <p class="section-intro">Kry 'n voorsmakie van ons nuutste uitgawes.</p>
 
     <div class="stories-carousel" role="list" aria-label="Top 10 nuutste stories">
-        @foreach (var story in StoryCatalog.NewestTop10)
+        @foreach (var story in NewestTop10Stories)
+        {
+            <article class="story-carousel-item" role="listitem">
+                <a class="story-carousel-link" href="@story.LinkPath" aria-label="Sien storie: @story.Title">
+                    <span class="story-carousel-cover">
+                        <img class="story-carousel-image"
+                             src="@story.CoverPath"
+                             alt="Voorblad van @story.Title" width="600" height="775" loading="lazy" decoding="async" />
+                        <span class="story-cover-play" aria-hidden="true">
+                            <span class="story-cover-play-icon">&#9654;</span>
+                        </span>
+                    </span>
+                    <h3>@story.Title</h3>
+                </a>
+            </article>
+        }
+    </div>
+</section>
+
+<section class="section-block stories-carousel-section bible-stories-section" aria-labelledby="bybel-stories-heading">
+    <h2 id="bybel-stories-heading">Bybelstories</h2>
+    <p class="section-intro">Luister na ons Bybelstories vir kinders.</p>
+
+    <div class="stories-carousel" role="list" aria-label="Bybelstories">
+        @foreach (var story in BibleStories)
         {
             <article class="story-carousel-item" role="listitem">
                 <a class="story-carousel-link" href="@story.LinkPath" aria-label="Sien storie: @story.Title">
@@ -247,6 +272,9 @@
 </section>
 
 @code {
+    private IReadOnlyList<StoryItem> FreeStories { get; set; } = Array.Empty<StoryItem>();
+    private IReadOnlyList<StoryPreviewItem> NewestTop10Stories { get; set; } = Array.Empty<StoryPreviewItem>();
+    private IReadOnlyList<StoryPreviewItem> BibleStories { get; set; } = Array.Empty<StoryPreviewItem>();
     private ContactFormModel ContactForm { get; set; } = new();
     private bool IsSubmitting { get; set; }
     private bool SubmitSucceeded { get; set; }
@@ -382,6 +410,27 @@
         };
 
     private string HomeCanonicalUrl => NavigationManager.ToAbsoluteUri("/").ToString();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var freeStoriesTask = StoryCatalogService.GetFreeStoriesAsync();
+            var newestStoriesTask = StoryCatalogService.GetNewestTop10Async();
+            var bibleStoriesTask = StoryCatalogService.GetBibleStoriesAsync();
+            await Task.WhenAll(freeStoriesTask, newestStoriesTask, bibleStoriesTask);
+
+            FreeStories = freeStoriesTask.Result;
+            NewestTop10Stories = newestStoriesTask.Result;
+            BibleStories = bibleStoriesTask.Result;
+        }
+        catch
+        {
+            FreeStories = Array.Empty<StoryItem>();
+            NewestTop10Stories = Array.Empty<StoryPreviewItem>();
+            BibleStories = Array.Empty<StoryPreviewItem>();
+        }
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

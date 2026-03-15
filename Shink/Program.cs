@@ -34,6 +34,7 @@ builder.Services.Configure<PayFastOptions>(builder.Configuration.GetSection(PayF
 builder.Services.Configure<PaystackOptions>(builder.Configuration.GetSection(PaystackOptions.SectionName));
 builder.Services.AddHttpClient<IContactEmailService, ResendContactEmailService>();
 builder.Services.AddHttpClient<ISupabaseAuthService, SupabaseAuthService>();
+builder.Services.AddHttpClient<IStoryCatalogService, SupabaseStoryCatalogService>();
 builder.Services.AddHttpClient<PayFastCheckoutService>();
 builder.Services.AddHttpClient<PaystackCheckoutService>();
 builder.Services.AddHttpClient<ISubscriptionLedgerService, SupabaseSubscriptionLedgerService>();
@@ -138,7 +139,13 @@ app.Use(async (httpContext, next) =>
     await next();
 });
 
-app.MapGet("/media/audio/{slug}", (string slug, string? token, IAudioAccessService audioAccessService, IWebHostEnvironment environment, HttpContext httpContext) =>
+app.MapGet("/media/audio/{slug}", async (
+    string slug,
+    string? token,
+    IAudioAccessService audioAccessService,
+    IStoryCatalogService storyCatalogService,
+    IWebHostEnvironment environment,
+    HttpContext httpContext) =>
 {
     if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
     {
@@ -155,13 +162,23 @@ app.MapGet("/media/audio/{slug}", (string slug, string? token, IAudioAccessServi
         return Results.Unauthorized();
     }
 
-    var story = StoryCatalog.FindAnyBySlug(slug);
+    var story = await storyCatalogService.FindAnyBySlugAsync(slug, httpContext.RequestAborted);
     if (story is null)
     {
         return Results.NotFound();
     }
 
-    var audioFilePath = Path.Combine(environment.ContentRootPath, "Stories", story.AudioFileName);
+    if (!string.Equals(story.AudioProvider, "local", StringComparison.OrdinalIgnoreCase))
+    {
+        // R2 streaming will be resolved from the same metadata table in a follow-up step.
+        return Results.NotFound();
+    }
+
+    if (!TryResolveLocalAudioPath(environment.ContentRootPath, story.AudioFileName, out var audioFilePath))
+    {
+        return Results.Forbid();
+    }
+
     if (!File.Exists(audioFilePath))
     {
         return Results.NotFound();
@@ -175,7 +192,8 @@ app.MapGet("/media/audio/{slug}", (string slug, string? token, IAudioAccessServi
     httpContext.Response.Headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet";
     httpContext.Response.Headers["Content-Disposition"] = "inline";
 
-    return Results.File(audioFilePath, "audio/mpeg", enableRangeProcessing: true);
+    var audioMimeType = ResolveAudioMimeType(story.AudioContentType, story.AudioFileName);
+    return Results.File(audioFilePath, audioMimeType, enableRangeProcessing: true);
 }).RequireRateLimiting("audio-stream");
 
 app.MapGet("/betaal/payfast/{planSlug}", (string planSlug) =>
@@ -461,7 +479,7 @@ app.MapGet("/robots.txt", (HttpContext httpContext) =>
     return Results.Text(robots, "text/plain; charset=utf-8");
 });
 
-app.MapGet("/sitemap.xml", (HttpContext httpContext) =>
+app.MapGet("/sitemap.xml", async (HttpContext httpContext, IStoryCatalogService storyCatalogService) =>
 {
     var baseUri = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}";
 
@@ -475,8 +493,12 @@ app.MapGet("/sitemap.xml", (HttpContext httpContext) =>
         "/teken-in"
     };
 
-    paths.AddRange(StoryCatalog.All.Select(story => $"/gratis/{Uri.EscapeDataString(story.Slug)}"));
-    paths.AddRange(StoryCatalog.LuisterStories.Select(story => $"/luister/{Uri.EscapeDataString(story.Slug)}"));
+    var freeStoriesTask = storyCatalogService.GetFreeStoriesAsync(httpContext.RequestAborted);
+    var luisterStoriesTask = storyCatalogService.GetLuisterStoriesAsync(httpContext.RequestAborted);
+    await Task.WhenAll(freeStoriesTask, luisterStoriesTask);
+
+    paths.AddRange(freeStoriesTask.Result.Select(story => $"/gratis/{Uri.EscapeDataString(story.Slug)}"));
+    paths.AddRange(luisterStoriesTask.Result.Select(story => $"/luister/{Uri.EscapeDataString(story.Slug)}"));
 
     XNamespace ns = "http://www.sitemaps.org/schemas/sitemap/0.9";
     var document = new XDocument(
@@ -487,9 +509,25 @@ app.MapGet("/sitemap.xml", (HttpContext httpContext) =>
     return Results.Content(document.ToString(SaveOptions.DisableFormatting), "application/xml; charset=utf-8");
 });
 
-foreach (var story in StoryCatalog.All)
+var legacyFreeStorySlugs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+using (var scope = app.Services.CreateScope())
 {
-    app.MapGet($"/{story.Slug}", () => Results.Redirect($"/gratis/{story.Slug}", permanent: false));
+    var storyCatalogService = scope.ServiceProvider.GetRequiredService<IStoryCatalogService>();
+    var freeStories = await storyCatalogService.GetFreeStoriesAsync();
+    foreach (var story in freeStories)
+    {
+        if (!CanMapLegacyStorySlug(story.Slug))
+        {
+            continue;
+        }
+
+        legacyFreeStorySlugs.Add(story.Slug);
+    }
+}
+
+foreach (var slug in legacyFreeStorySlugs)
+{
+    app.MapGet($"/{slug}", () => Results.Redirect($"/gratis/{slug}", permanent: false));
 }
 
 app.MapStaticAssets();
@@ -589,6 +627,82 @@ static bool TryResolvePaymentProvider(string? provider, out string resolvedProvi
 
     resolvedProvider = string.Empty;
     return false;
+}
+
+static bool CanMapLegacyStorySlug(string? slug)
+{
+    if (string.IsNullOrWhiteSpace(slug))
+    {
+        return false;
+    }
+
+    if (slug.IndexOf('/') >= 0)
+    {
+        return false;
+    }
+
+    if (slug.Contains('.', StringComparison.Ordinal))
+    {
+        return false;
+    }
+
+    var normalized = slug.Trim().ToLowerInvariant();
+    return normalized switch
+    {
+        "api" => false,
+        "betaal" => false,
+        "error" => false,
+        "gratis" => false,
+        "luister" => false,
+        "media" => false,
+        "meer-oor-ons" => false,
+        "not-found" => false,
+        "opsies" => false,
+        "robots.txt" => false,
+        "sitemap.xml" => false,
+        "teken-in" => false,
+        "teken-uit" => false,
+        _ => true
+    };
+}
+
+static bool TryResolveLocalAudioPath(string contentRootPath, string? audioObjectKey, out string audioFilePath)
+{
+    audioFilePath = string.Empty;
+    if (string.IsNullOrWhiteSpace(audioObjectKey))
+    {
+        return false;
+    }
+
+    var storiesRoot = Path.GetFullPath(Path.Combine(contentRootPath, "Stories"));
+    var combinedPath = Path.Combine(storiesRoot, audioObjectKey.Replace('/', Path.DirectorySeparatorChar));
+    var fullPath = Path.GetFullPath(combinedPath);
+    if (!fullPath.StartsWith(storiesRoot, StringComparison.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+
+    audioFilePath = fullPath;
+    return true;
+}
+
+static string ResolveAudioMimeType(string? configuredContentType, string? audioObjectKey)
+{
+    if (!string.IsNullOrWhiteSpace(configuredContentType))
+    {
+        return configuredContentType.Trim();
+    }
+
+    var extension = Path.GetExtension(audioObjectKey ?? string.Empty).ToLowerInvariant();
+    return extension switch
+    {
+        ".mp3" => "audio/mpeg",
+        ".mpeg" => "audio/mpeg",
+        ".m4a" => "audio/mp4",
+        ".wav" => "audio/wav",
+        ".ogg" => "audio/ogg",
+        _ => "audio/mpeg"
+    };
 }
 
 static async Task SignInUserAsync(HttpContext httpContext, string email)

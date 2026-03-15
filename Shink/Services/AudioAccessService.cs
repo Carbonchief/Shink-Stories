@@ -1,6 +1,5 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
-using Shink.Components.Content;
 
 namespace Shink.Services;
 
@@ -12,15 +11,17 @@ public sealed class AudioAccessService(IDataProtectionProvider dataProtectionPro
 
     public string CreateSignedAudioUrl(string slug, TimeSpan? lifetime = null)
     {
-        var story = StoryCatalog.FindAnyBySlug(slug)
-            ?? throw new InvalidOperationException("Unknown story slug.");
+        if (string.IsNullOrWhiteSpace(slug))
+        {
+            throw new ArgumentException("Story slug is required.", nameof(slug));
+        }
 
         var expiresAtUtc = DateTimeOffset.UtcNow.Add(lifetime ?? DefaultTokenLifetime);
-        var payload = new AudioTokenPayload(story.Slug, expiresAtUtc.ToUnixTimeSeconds());
+        var payload = new AudioTokenPayload(slug.Trim(), expiresAtUtc.ToUnixTimeSeconds());
         var json = JsonSerializer.Serialize(payload);
         var protectedToken = _protector.Protect(json);
 
-        return $"/media/audio/{Uri.EscapeDataString(story.Slug)}?token={Uri.EscapeDataString(protectedToken)}";
+        return $"/media/audio/{Uri.EscapeDataString(payload.Slug)}?token={Uri.EscapeDataString(protectedToken)}";
     }
 
     public bool IsTokenValid(string slug, string? token)
