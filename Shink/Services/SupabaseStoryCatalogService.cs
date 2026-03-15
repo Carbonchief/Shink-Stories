@@ -39,7 +39,7 @@ public sealed class SupabaseStoryCatalogService(
     {
         var rows = await GetPublishedRowsAsync(cancellationToken);
         return rows
-            .Where(IsSubscriberStoryRow)
+            .Where(IsLuisterStoryRow)
             .OrderByDescending(row => row.PublishedAt)
             .ThenBy(row => row.SortOrder)
             .ThenBy(row => row.Title, StringComparer.OrdinalIgnoreCase)
@@ -141,8 +141,7 @@ public sealed class SupabaseStoryCatalogService(
 
         var rows = await GetPublishedRowsAsync(cancellationToken);
         var row = rows.FirstOrDefault(candidate =>
-            string.Equals(candidate.AccessLevel, "subscriber", StringComparison.OrdinalIgnoreCase) &&
-            !IsSoundbiteRow(candidate) &&
+            IsLuisterStoryRow(candidate) &&
             string.Equals(candidate.Slug, slug, StringComparison.OrdinalIgnoreCase));
 
         return row is null ? null : MapToStoryItem(row);
@@ -275,6 +274,11 @@ public sealed class SupabaseStoryCatalogService(
 
     private static bool IsSubscriberStoryRow(StoryCatalogRow row) =>
         string.Equals(row.AccessLevel, "subscriber", StringComparison.OrdinalIgnoreCase) &&
+        !IsSoundbiteRow(row);
+
+    private static bool IsLuisterStoryRow(StoryCatalogRow row) =>
+        (string.Equals(row.AccessLevel, "subscriber", StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(row.AccessLevel, "free", StringComparison.OrdinalIgnoreCase)) &&
         !IsSoundbiteRow(row);
 
     private static bool IsSoundbiteRow(StoryCatalogRow row)

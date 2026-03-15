@@ -1,7 +1,11 @@
 @page "/opsies"
 @using System.Text.Json
+@using System.Security.Claims
 @using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Authorization
 @inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ISubscriptionLedgerService SubscriptionLedgerService
 
 <PageTitle>Schink Stories | Opsies</PageTitle>
 <HeadContent>
@@ -37,6 +41,12 @@
             Betaling is gekanselleer. Jy kan enige tyd weer probeer.
         </p>
     }
+    else if (string.Equals(PaymentStatus, "reeds-ingeteken", StringComparison.OrdinalIgnoreCase))
+    {
+        <p class="opsies-payment-status opsies-payment-blocked" role="status" aria-live="polite">
+            Jy het reeds 'n aktiewe intekening op hierdie plan. Kies asseblief 'n ander opsie.
+        </p>
+    }
 
     <section class="opsies-hero">
         <img src="/branding/Schink_Stories_Home_Banner_White.png"
@@ -63,8 +73,16 @@
                 <li>Toegang tot 3 stories</li>
                 <li>Hulpbronne deur e-pos</li>
             </ul>
-            <p class="opsie-note">Geen kaart nodig. Net storietyd, gratis.</p>
-            <a href="/gratis" class="opsie-btn">Sluit aan</a>
+            @if (HasActivePaidSubscription)
+            {
+                <p class="opsie-note">Jy is reeds ingeteken op 'n betaalde plan. Die gratis opsie is nie meer beskikbaar nie.</p>
+                <span class="opsie-btn opsie-btn-disabled" aria-disabled="true">Nie beskikbaar</span>
+            }
+            else
+            {
+                <p class="opsie-note">Geen kaart nodig. Net storietyd, gratis.</p>
+                <a href="/gratis" class="opsie-btn">Sluit aan</a>
+            }
         </article>
 
         <article class="opsie-card featured opsie-monthly">
@@ -112,7 +130,9 @@
         <h2>Wat ouers se</h2>
         <div class="opsies-review-grid">
             <article class="opsies-review-card">
-                <p class="opsies-review-stars" aria-hidden="true">&#9733;&#9733;&#9733;&#9733;&#9733;</p>
+                <p class="opsies-review-stars" aria-hidden="true">
+                    <i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i>
+                </p>
                 <blockquote>
                     Ek love al Schink se stories. Dit is in goeie taal en daar is 'n goeie lessie in elke storie.
                 </blockquote>
@@ -120,7 +140,9 @@
             </article>
 
             <article class="opsies-review-card">
-                <p class="opsies-review-stars" aria-hidden="true">&#9733;&#9733;&#9733;&#9733;&#9733;</p>
+                <p class="opsies-review-stars" aria-hidden="true">
+                    <i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i>
+                </p>
                 <blockquote>
                     Ons drie oudste kids se gunsteling. Schink Stories maak bedtyd iets waarna hulle uitsien.
                 </blockquote>
@@ -128,7 +150,9 @@
             </article>
 
             <article class="opsies-review-card">
-                <p class="opsies-review-stars" aria-hidden="true">&#9733;&#9733;&#9733;&#9733;&#9733;</p>
+                <p class="opsies-review-stars" aria-hidden="true">
+                    <i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i>
+                </p>
                 <blockquote>
                     Schink Stories help regtig kinders. Dit is opbouend en veilig vir die hele gesin.
                 </blockquote>
@@ -142,6 +166,7 @@
     [SupplyParameterFromQuery(Name = "betaling")]
     public string? PaymentStatus { get; set; }
 
+    private bool HasActivePaidSubscription { get; set; }
     private string OpsiesCanonicalUrl => NavigationManager.ToAbsoluteUri("/opsies").ToString();
 
     private MarkupString OpsiesJsonLd => new(JsonSerializer.Serialize(new
@@ -160,4 +185,24 @@
         },
         primaryImageOfPage = NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()
     }));
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            if (authState.User.Identity?.IsAuthenticated != true)
+            {
+                return;
+            }
+
+            var userEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                            ?? authState.User.Identity?.Name;
+            HasActivePaidSubscription = await SubscriptionLedgerService.HasActivePaidSubscriptionAsync(userEmail);
+        }
+        catch
+        {
+            HasActivePaidSubscription = false;
+        }
+    }
 }

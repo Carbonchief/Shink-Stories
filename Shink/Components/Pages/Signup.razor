@@ -1,0 +1,342 @@
+@page "/teken-op"
+@rendermode InteractiveServer
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ISubscriptionLedgerService SubscriptionLedgerService
+
+<PageTitle>Schink Stories | Teken op</PageTitle>
+
+<section class="signup-shell">
+    <article class="signup-card">
+        <header class="signup-header">
+            <img class="signup-logo" src="/media/imported/misc/2024/02/Teken_In-1.png" alt="Schink" />
+            <h1>Skep jou rekening</h1>
+            <p>Vul jou besonderhede in om met Schink Stories te begin.</p>
+            <p class="signup-required-note"><span class="required-indicator" aria-hidden="true">*</span> dui verpligte velde aan.</p>
+        </header>
+
+        <EditForm class="signup-form" EditContext="FormEditContext" OnValidSubmit="HandleSignUpAsync" aria-busy="@IsSubmitting">
+            <DataAnnotationsValidator />
+
+            <section class="signup-section" aria-labelledby="signup-account-information">
+                <h2 id="signup-account-information">Rekeninginligting</h2>
+                <div class="signup-grid">
+                    <div class="signup-field">
+                        <label for="signup-first-name">Voornaam <span class="required-indicator" aria-hidden="true">*</span></label>
+                        <InputText id="signup-first-name" autocomplete="given-name" @bind-Value="SignUpForm.FirstName" />
+                        <ValidationMessage For="@(() => SignUpForm.FirstName)" />
+                    </div>
+
+                    <div class="signup-field">
+                        <label for="signup-last-name">Van</label>
+                        <InputText id="signup-last-name" autocomplete="family-name" @bind-Value="SignUpForm.LastName" />
+                        <ValidationMessage For="@(() => SignUpForm.LastName)" />
+                    </div>
+
+                    <div class="signup-field">
+                        <label for="signup-display-name">Wys my naam as</label>
+                        <InputText id="signup-display-name" autocomplete="nickname" @bind-Value="SignUpForm.DisplayName" />
+                        <ValidationMessage For="@(() => SignUpForm.DisplayName)" />
+                    </div>
+
+                    <div class="signup-field">
+                        <label for="signup-email">E-pos <span class="required-indicator" aria-hidden="true">*</span></label>
+                        <InputText id="signup-email" type="email" autocomplete="email" @bind-Value="SignUpForm.Email" />
+                        <ValidationMessage For="@(() => SignUpForm.Email)" />
+                    </div>
+                </div>
+            </section>
+
+            <section class="signup-section" aria-labelledby="signup-more-information">
+                <h2 id="signup-more-information">Meer inligting</h2>
+                <div class="signup-field">
+                    <label for="signup-mobile-number">Selfoonnommer</label>
+                    <InputText id="signup-mobile-number" autocomplete="tel" @bind-Value="SignUpForm.MobileNumber" />
+                    <ValidationMessage For="@(() => SignUpForm.MobileNumber)" />
+                </div>
+            </section>
+
+            <section class="signup-section" aria-labelledby="signup-security">
+                <h2 id="signup-security">Sekuriteit</h2>
+                <div class="signup-grid">
+                    <div class="signup-field">
+                        <label for="signup-password">Wagwoord <span class="required-indicator" aria-hidden="true">*</span></label>
+                        <InputText id="signup-password" type="password" autocomplete="new-password" @bind-Value="SignUpForm.Password" />
+                        <ValidationMessage For="@(() => SignUpForm.Password)" />
+                    </div>
+
+                    <div class="signup-field">
+                        <label for="signup-password-confirm">Bevestig wagwoord <span class="required-indicator" aria-hidden="true">*</span></label>
+                        <InputText id="signup-password-confirm" type="password" autocomplete="new-password" @bind-Value="SignUpForm.ConfirmPassword" />
+                        <ValidationMessage For="@(() => SignUpForm.ConfirmPassword)" />
+                    </div>
+                </div>
+            </section>
+
+            <div class="signup-actions">
+                <button type="submit" class="signup-submit" disabled="@IsSubmitting">
+                    @(IsSubmitting ? "Besig..." : "Skep rekening")
+                </button>
+                <a class="signup-link" href="@SignInHref">Ek het reeds 'n rekening</a>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(StatusMessage))
+            {
+                <p class="@($"signup-status {(SignUpSucceeded ? "signup-status-success" : "signup-status-error")}")"
+                   role="@(SignUpSucceeded ? "status" : "alert")"
+                   aria-live="polite">
+                    @StatusMessage
+                </p>
+            }
+        </EditForm>
+    </article>
+</section>
+
+@code {
+    private SignUpFormModel SignUpForm { get; set; } = new();
+    private EditContext FormEditContext { get; set; } = default!;
+    private IJSObjectReference? _authModule;
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
+    private bool IsSubmitting { get; set; }
+    private bool SignUpSucceeded { get; set; }
+    private string? StatusMessage { get; set; }
+    private string SignInHref =>
+        GetSafeReturnUrl(ReturnUrl) is { } safeReturnUrl
+            ? $"/teken-in?returnUrl={Uri.EscapeDataString(safeReturnUrl)}"
+            : "/teken-in";
+
+    protected override void OnInitialized()
+    {
+        ResetForm();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated == true)
+        {
+            NavigationManager.NavigateTo(await GetRedirectTargetForAuthenticatedUserAsync(authState), forceLoad: true);
+        }
+    }
+
+    private async Task HandleSignUpAsync()
+    {
+        if (IsSubmitting)
+        {
+            return;
+        }
+
+        if (!FormEditContext.Validate())
+        {
+            return;
+        }
+
+        IsSubmitting = true;
+        SignUpSucceeded = false;
+        StatusMessage = null;
+
+        try
+        {
+            var authModule = await EnsureAuthModuleAsync();
+            var payload = new SignUpApiPayload(
+                FirstName: SignUpForm.FirstName.Trim(),
+                LastName: SignUpForm.LastName.Trim(),
+                DisplayName: SignUpForm.DisplayName.Trim(),
+                Email: SignUpForm.Email.Trim(),
+                MobileNumber: SignUpForm.MobileNumber.Trim(),
+                Password: SignUpForm.Password);
+
+            var response = await authModule.InvokeAsync<AuthBrowserResponse>("postAuthJson", "/api/auth/signup", payload);
+            if (response.Ok)
+            {
+                SignUpSucceeded = true;
+                StatusMessage = response.Message ?? "Welkom! Jou rekening is geskep en jy is nou ingeteken.";
+                ResetForm();
+                NavigationManager.NavigateTo(GetRedirectTarget(response.RedirectPath), forceLoad: true);
+                return;
+            }
+
+            SignUpSucceeded = false;
+            StatusMessage = response.Message ?? "Kon nie nou registreer nie. Probeer asseblief weer.";
+        }
+        catch
+        {
+            SignUpSucceeded = false;
+            StatusMessage = "Kon nie nou registreer nie. Probeer asseblief weer.";
+        }
+        finally
+        {
+            IsSubmitting = false;
+        }
+    }
+
+    private void ResetForm()
+    {
+        SignUpForm = new SignUpFormModel();
+        FormEditContext = new EditContext(SignUpForm);
+    }
+
+    private async Task<string> GetRedirectTargetForAuthenticatedUserAsync(AuthenticationState authState)
+    {
+        var safeReturnUrl = GetSafeReturnUrl(ReturnUrl);
+        if (safeReturnUrl is not null)
+        {
+            return safeReturnUrl;
+        }
+
+        var user = authState.User;
+        var email = user.FindFirst(ClaimTypes.Email)?.Value
+                    ?? user.Identity?.Name;
+        var hasPaidSubscription = await SubscriptionLedgerService.HasActivePaidSubscriptionAsync(email);
+        return hasPaidSubscription ? "/luister" : "/gratis";
+    }
+
+    private string GetRedirectTarget(string? apiRedirectPath = null) =>
+        GetSafeReturnUrl(ReturnUrl)
+        ?? GetSafePostAuthPath(apiRedirectPath)
+        ?? "/gratis";
+
+    private async Task<IJSObjectReference> EnsureAuthModuleAsync()
+    {
+        if (_authModule is not null)
+        {
+            return _authModule;
+        }
+
+        _authModule = await JS.InvokeAsync<IJSObjectReference>("import", "./js/auth-browser.js");
+        return _authModule;
+    }
+
+    private static string? GetSafeReturnUrl(string? returnUrl)
+    {
+        var normalizedReturnUrl = NormalizeReturnUrl(returnUrl);
+        if (string.IsNullOrWhiteSpace(normalizedReturnUrl))
+        {
+            return null;
+        }
+
+        if (!normalizedReturnUrl.StartsWith("/", StringComparison.Ordinal) ||
+            normalizedReturnUrl.StartsWith("//", StringComparison.Ordinal) ||
+            normalizedReturnUrl.StartsWith("/teken-in", StringComparison.OrdinalIgnoreCase) ||
+            normalizedReturnUrl.StartsWith("/teken-op", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return normalizedReturnUrl;
+    }
+
+    private static string? GetSafePostAuthPath(string? path)
+    {
+        var normalizedPath = NormalizeReturnUrl(path);
+        if (string.IsNullOrWhiteSpace(normalizedPath))
+        {
+            return null;
+        }
+
+        if (!normalizedPath.StartsWith("/", StringComparison.Ordinal) ||
+            normalizedPath.StartsWith("//", StringComparison.Ordinal) ||
+            normalizedPath.StartsWith("/teken-in", StringComparison.OrdinalIgnoreCase) ||
+            normalizedPath.StartsWith("/teken-op", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return normalizedPath;
+    }
+
+    private static string? NormalizeReturnUrl(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var candidate = value.Trim();
+        for (var index = 0; index < 2; index++)
+        {
+            if (candidate.StartsWith("/", StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            if (!candidate.Contains('%', StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            try
+            {
+                candidate = Uri.UnescapeDataString(candidate);
+            }
+            catch
+            {
+                break;
+            }
+        }
+
+        return candidate;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_authModule is not null)
+            {
+                await _authModule.DisposeAsync();
+            }
+        }
+        catch
+        {
+            // Ignore module disposal failures.
+        }
+    }
+
+    private sealed record SignUpApiPayload(
+        string FirstName,
+        string LastName,
+        string DisplayName,
+        string Email,
+        string MobileNumber,
+        string Password);
+
+    private sealed record AuthBrowserResponse(bool Ok, int Status, string? Message, string? RedirectPath);
+
+    private sealed class SignUpFormModel
+    {
+        [Required(ErrorMessage = "Vul asseblief jou voornaam in.")]
+        [StringLength(80)]
+        public string FirstName { get; set; } = string.Empty;
+
+        [StringLength(80)]
+        public string LastName { get; set; } = string.Empty;
+
+        [StringLength(120)]
+        public string DisplayName { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Vul asseblief jou e-pos in.")]
+        [EmailAddress(ErrorMessage = "Gebruik asseblief 'n geldige e-posadres.")]
+        [StringLength(254)]
+        public string Email { get; set; } = string.Empty;
+
+        [RegularExpression(@"^\+?[0-9 ()-]{7,20}$", ErrorMessage = "Gebruik asseblief 'n geldige selfoonnommer.")]
+        [StringLength(30)]
+        public string MobileNumber { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Vul asseblief jou wagwoord in.")]
+        [StringLength(200, MinimumLength = 6, ErrorMessage = "Jou wagwoord moet ten minste 6 karakters wees.")]
+        public string Password { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Bevestig asseblief jou wagwoord.")]
+        [Compare(nameof(Password), ErrorMessage = "Wagwoorde stem nie ooreen nie.")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+    }
+}

@@ -169,7 +169,9 @@ h1 {
 }
 
 .join-promo-list li::before {
-    content: "\2605";
+    content: "\f005";
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
     position: absolute;
     left: 0;
     top: 0.02rem;
@@ -614,12 +616,13 @@ h2 {
 }
 
 .perfect-plan-list li::before {
-    content: "\2713";
+    content: "\f00c";
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
     position: absolute;
     left: 0;
     top: 0.02rem;
     font-size: 1rem;
-    font-weight: 700;
     color: #151515;
 }
 

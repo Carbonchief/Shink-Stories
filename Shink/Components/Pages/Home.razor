@@ -3,6 +3,7 @@
 @using System.ComponentModel.DataAnnotations
 @using System.Globalization
 @using System.Net.Http.Json
+@using System.Security.Claims
 @using System.Text.Json
 @using Microsoft.AspNetCore.WebUtilities
 @using Shink.Components.Content
@@ -12,6 +13,7 @@
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IStoryCatalogService StoryCatalogService
+@inject ISubscriptionLedgerService SubscriptionLedgerService
 
 <PageTitle>Schink Stories | Tuis</PageTitle>
 <HeadContent>
@@ -79,7 +81,7 @@
             <li>Nuwe stories elke maand + toegang tot die volledige versameling</li>
         </ul>
 
-        <a class="join-promo-cta" href="/opsies">Sluit aan vir slegs R 79 p/maand</a>
+        <a class="join-promo-cta" href="/betaal/schink-stories-maandeliks">Sluit aan vir slegs R 79 p/maand</a>
     </div>
 </section>
 
@@ -99,7 +101,7 @@
                              sizes="(max-width: 620px) 56vw, (max-width: 900px) 35vw, 240px"
                              alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
                         <span class="story-cover-play" aria-hidden="true">
-                            <span class="story-cover-play-icon">&#9654;</span>
+                            <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
                         </span>
                     </span>
                     <h3>@story.Title</h3>
@@ -123,7 +125,7 @@
                              src="@story.CoverPath"
                              alt="Voorblad van @story.Title" width="600" height="775" loading="lazy" decoding="async" />
                         <span class="story-cover-play" aria-hidden="true">
-                            <span class="story-cover-play-icon">&#9654;</span>
+                            <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
                         </span>
                     </span>
                     <h3>@story.Title</h3>
@@ -132,6 +134,33 @@
         }
     </div>
 </section>
+
+@if (KleuterStories.Count > 0)
+{
+    <section class="section-block stories-carousel-section kleuter-stories-section" aria-labelledby="kleuter-stories-heading">
+        <h2 id="kleuter-stories-heading">Stories vir Kleuters</h2>
+        <p class="section-intro">Verken stories spesiaal vir kleuters.</p>
+
+        <div class="stories-carousel" role="list" aria-label="Stories vir kleuters">
+            @foreach (var story in KleuterStories)
+            {
+                <article class="story-carousel-item" role="listitem">
+                    <a class="story-carousel-link" href="@story.LinkPath" aria-label="Sien storie: @story.Title">
+                        <span class="story-carousel-cover">
+                            <img class="story-carousel-image"
+                                 src="@story.CoverPath"
+                                 alt="Voorblad van @story.Title" width="600" height="775" loading="lazy" decoding="async" />
+                            <span class="story-cover-play" aria-hidden="true">
+                                <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
+                            </span>
+                        </span>
+                        <h3>@story.Title</h3>
+                    </a>
+                </article>
+            }
+        </div>
+    </section>
+}
 
 <section class="section-block stories-carousel-section bible-stories-section" aria-labelledby="bybel-stories-heading">
     <h2 id="bybel-stories-heading">Bybelstories</h2>
@@ -147,7 +176,7 @@
                              src="@story.CoverPath"
                              alt="Voorblad van @story.Title" width="600" height="775" loading="lazy" decoding="async" />
                         <span class="story-cover-play" aria-hidden="true">
-                            <span class="story-cover-play-icon">&#9654;</span>
+                            <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
                         </span>
                     </span>
                     <h3>@story.Title</h3>
@@ -274,6 +303,7 @@
 @code {
     private IReadOnlyList<StoryItem> FreeStories { get; set; } = Array.Empty<StoryItem>();
     private IReadOnlyList<StoryPreviewItem> NewestTop10Stories { get; set; } = Array.Empty<StoryPreviewItem>();
+    private IReadOnlyList<StoryPreviewItem> KleuterStories { get; set; } = Array.Empty<StoryPreviewItem>();
     private IReadOnlyList<StoryPreviewItem> BibleStories { get; set; } = Array.Empty<StoryPreviewItem>();
     private ContactFormModel ContactForm { get; set; } = new();
     private bool IsSubmitting { get; set; }
@@ -411,25 +441,178 @@
 
     private string HomeCanonicalUrl => NavigationManager.ToAbsoluteUri("/").ToString();
 
+    private static readonly string[] KleuterStoryTitlesInOrder =
+    [
+        "Tiekie Tik Tik Tok",
+        "Die Kwaaibok se Klip",
+        "Rammetjie Uitnek",
+        "Die Kwaai Grommel",
+        "Hailey Hasie se Groentetuin",
+        "Maniere wys jou spiere",
+        "Seekoei Sluit sy mond toe",
+        "Koalabeertjie Klou",
+        "Robot doen reg",
+        "Babbelbessie",
+        "Dankie en die mislike skree",
+        "Dankie en die lelike praat",
+        "Fantjie Leer Skryf"
+    ];
+
     protected override async Task OnInitializedAsync()
     {
         try
         {
             var freeStoriesTask = StoryCatalogService.GetFreeStoriesAsync();
+            var luisterStoriesTask = StoryCatalogService.GetLuisterStoriesAsync();
             var newestStoriesTask = StoryCatalogService.GetNewestTop10Async();
             var bibleStoriesTask = StoryCatalogService.GetBibleStoriesAsync();
-            await Task.WhenAll(freeStoriesTask, newestStoriesTask, bibleStoriesTask);
+            await Task.WhenAll(freeStoriesTask, luisterStoriesTask, newestStoriesTask, bibleStoriesTask);
 
             FreeStories = freeStoriesTask.Result;
+            KleuterStories = BuildKleuterStories(freeStoriesTask.Result, luisterStoriesTask.Result);
             NewestTop10Stories = newestStoriesTask.Result;
             BibleStories = bibleStoriesTask.Result;
         }
         catch
         {
             FreeStories = Array.Empty<StoryItem>();
+            KleuterStories = Array.Empty<StoryPreviewItem>();
             NewestTop10Stories = Array.Empty<StoryPreviewItem>();
             BibleStories = Array.Empty<StoryPreviewItem>();
         }
+    }
+
+    private static IReadOnlyList<StoryPreviewItem> BuildKleuterStories(
+        IReadOnlyList<StoryItem> freeStories,
+        IReadOnlyList<StoryItem> luisterStories)
+    {
+        var bySlug = new Dictionary<string, StoryLinkCandidate>(StringComparer.OrdinalIgnoreCase);
+        foreach (var story in luisterStories)
+        {
+            bySlug[story.Slug] = new StoryLinkCandidate(
+                Slug: story.Slug,
+                Title: story.Title,
+                CoverPath: story.ImagePath,
+                LinkPath: $"/luister/{Uri.EscapeDataString(story.Slug)}");
+        }
+
+        foreach (var story in freeStories)
+        {
+            bySlug[story.Slug] = new StoryLinkCandidate(
+                Slug: story.Slug,
+                Title: story.Title,
+                CoverPath: story.ImagePath,
+                LinkPath: $"/gratis/{Uri.EscapeDataString(story.Slug)}");
+        }
+
+        var candidates = bySlug.Values.ToArray();
+        var selected = new List<StoryPreviewItem>();
+        var selectedSlugs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var preferredTitle in KleuterStoryTitlesInOrder)
+        {
+            var match = FindKleuterStoryCandidate(preferredTitle, candidates);
+            if (match is null || !selectedSlugs.Add(match.Slug))
+            {
+                continue;
+            }
+
+            selected.Add(new StoryPreviewItem(
+                Title: match.Title,
+                CoverPath: match.CoverPath,
+                LinkPath: match.LinkPath));
+        }
+
+        return selected;
+    }
+
+    private static StoryLinkCandidate? FindKleuterStoryCandidate(
+        string preferredTitle,
+        IReadOnlyList<StoryLinkCandidate> candidates)
+    {
+        var normalizedPreferred = NormalizeTitleKey(preferredTitle);
+        if (string.IsNullOrWhiteSpace(normalizedPreferred))
+        {
+            return null;
+        }
+
+        var exactMatch = candidates.FirstOrDefault(candidate =>
+            string.Equals(NormalizeTitleKey(candidate.Title), normalizedPreferred, StringComparison.OrdinalIgnoreCase));
+        if (exactMatch is not null)
+        {
+            return exactMatch;
+        }
+
+        var containsMatch = candidates.FirstOrDefault(candidate =>
+        {
+            var normalizedCandidate = NormalizeTitleKey(candidate.Title);
+            return normalizedCandidate.Contains(normalizedPreferred, StringComparison.OrdinalIgnoreCase) ||
+                   normalizedPreferred.Contains(normalizedCandidate, StringComparison.OrdinalIgnoreCase);
+        });
+        if (containsMatch is not null)
+        {
+            return containsMatch;
+        }
+
+        var preferredTokens = normalizedPreferred
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (preferredTokens.Length == 0)
+        {
+            return null;
+        }
+
+        var requiredSharedTokens = Math.Min(2, preferredTokens.Length);
+        return candidates
+            .Select(candidate =>
+            {
+                var normalizedCandidate = NormalizeTitleKey(candidate.Title);
+                var candidateTokens = normalizedCandidate
+                    .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                var sharedTokenCount = preferredTokens.Count(token =>
+                    candidateTokens.Contains(token, StringComparer.OrdinalIgnoreCase));
+
+                return new
+                {
+                    Candidate = candidate,
+                    SharedTokenCount = sharedTokenCount,
+                    LengthDelta = Math.Abs(normalizedCandidate.Length - normalizedPreferred.Length)
+                };
+            })
+            .Where(match => match.SharedTokenCount >= requiredSharedTokens)
+            .OrderByDescending(match => match.SharedTokenCount)
+            .ThenBy(match => match.LengthDelta)
+            .Select(match => match.Candidate)
+            .FirstOrDefault();
+    }
+
+    private static string NormalizeTitleKey(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var builder = new System.Text.StringBuilder(value.Length);
+        var previousWasSpace = false;
+        foreach (var character in value.Trim())
+        {
+            if (char.IsLetterOrDigit(character))
+            {
+                builder.Append(char.ToLowerInvariant(character));
+                previousWasSpace = false;
+                continue;
+            }
+
+            if (previousWasSpace)
+            {
+                continue;
+            }
+
+            builder.Append(' ');
+            previousWasSpace = true;
+        }
+
+        return builder.ToString().Trim();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -446,8 +629,13 @@
             return;
         }
 
+        var userEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                        ?? authState.User.Identity?.Name;
+        var hasPaidSubscription = await SubscriptionLedgerService.HasActivePaidSubscriptionAsync(userEmail);
+        var redirectPath = hasPaidSubscription ? "/luister" : "/gratis";
+
         HasHandledAuthenticatedRedirect = true;
-        NavigationManager.NavigateTo("/gratis", replace: true);
+        NavigationManager.NavigateTo(redirectPath, replace: true);
     }
 
     private MarkupString HomeOrganizationJsonLd => new(JsonSerializer.Serialize(new
@@ -612,6 +800,12 @@
     private sealed record PerfectPlanOption(
         PaymentPlan Plan,
         string Caption);
+
+    private sealed record StoryLinkCandidate(
+        string Slug,
+        string Title,
+        string CoverPath,
+        string LinkPath);
 
     private sealed record PerfectPlanCardMeta(
         string Badge,

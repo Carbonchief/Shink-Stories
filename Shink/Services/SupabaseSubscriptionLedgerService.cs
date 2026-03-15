@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 using Shink.Components.Content;
@@ -15,6 +16,168 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     private readonly HttpClient _httpClient = httpClient;
     private readonly SupabaseOptions _options = supabaseOptions.Value;
     private readonly ILogger<SupabaseSubscriptionLedgerService> _logger = logger;
+
+    public async Task<bool> HasActivePaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default)
+    {
+        return await HasActiveSubscriptionAsync(email, tierCode: null, cancellationToken);
+    }
+
+    public async Task<bool> HasActiveSubscriptionForTierAsync(string? email, string? tierCode, CancellationToken cancellationToken = default)
+    {
+        return await HasActiveSubscriptionAsync(email, tierCode, cancellationToken);
+    }
+
+    public async Task<bool> UpsertSubscriberProfileAsync(
+        string? email,
+        string? firstName,
+        string? lastName,
+        string? displayName,
+        string? mobileNumber,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return false;
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            _logger.LogWarning("Supabase subscriber upsert skipped: URL is not configured.");
+            return false;
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            _logger.LogWarning("Supabase subscriber upsert skipped: ServiceRoleKey is not configured.");
+            return false;
+        }
+
+        try
+        {
+            var subscriberId = await UpsertSubscriberAsync(
+                baseUri,
+                apiKey,
+                email,
+                firstName ?? string.Empty,
+                lastName ?? string.Empty,
+                displayName,
+                mobileNumber,
+                cancellationToken);
+            return !string.IsNullOrWhiteSpace(subscriberId);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(exception, "Supabase subscriber upsert failed unexpectedly.");
+            return false;
+        }
+    }
+
+    private async Task<bool> HasActiveSubscriptionAsync(string? email, string? tierCode, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return false;
+        }
+
+        var normalizedTierCode = string.IsNullOrWhiteSpace(tierCode)
+            ? null
+            : tierCode.Trim();
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            _logger.LogWarning("Supabase subscription lookup skipped: URL is not configured.");
+            return false;
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            _logger.LogWarning("Supabase subscription lookup skipped: ServiceRoleKey is not configured.");
+            return false;
+        }
+
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+        var escapedEmail = Uri.EscapeDataString(normalizedEmail);
+        var subscriberLookupUri = new Uri(baseUri, $"rest/v1/subscribers?select=subscriber_id&email=eq.{escapedEmail}&limit=1");
+
+        try
+        {
+            using var subscriberRequest = CreateRequest(HttpMethod.Get, subscriberLookupUri, apiKey);
+            using var subscriberResponse = await _httpClient.SendAsync(subscriberRequest, cancellationToken);
+            if (!subscriberResponse.IsSuccessStatusCode)
+            {
+                var responseBody = await subscriberResponse.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning(
+                    "Supabase subscriber lookup failed. Status={StatusCode} Body={Body}",
+                    (int)subscriberResponse.StatusCode,
+                    responseBody);
+                return false;
+            }
+
+            var subscriberResponseBody = await subscriberResponse.Content.ReadAsStringAsync(cancellationToken);
+            var subscriberId = ReadFirstStringProperty(subscriberResponseBody, "subscriber_id");
+            if (string.IsNullOrWhiteSpace(subscriberId))
+            {
+                return false;
+            }
+
+            var escapedSubscriberId = Uri.EscapeDataString(subscriberId);
+            var subscriptionsUri = new Uri(
+                baseUri,
+                $"rest/v1/subscriptions?select=status,next_renewal_at,cancelled_at,tier_code&subscriber_id=eq.{escapedSubscriberId}&status=eq.active&order=subscribed_at.desc&limit=25");
+
+            using var subscriptionsRequest = CreateRequest(HttpMethod.Get, subscriptionsUri, apiKey);
+            using var subscriptionsResponse = await _httpClient.SendAsync(subscriptionsRequest, cancellationToken);
+            if (!subscriptionsResponse.IsSuccessStatusCode)
+            {
+                var responseBody = await subscriptionsResponse.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning(
+                    "Supabase subscription lookup failed. Status={StatusCode} Body={Body}",
+                    (int)subscriptionsResponse.StatusCode,
+                    responseBody);
+                return false;
+            }
+
+            await using var subscriptionsStream = await subscriptionsResponse.Content.ReadAsStreamAsync(cancellationToken);
+            var subscriptions = await JsonSerializer.DeserializeAsync<List<SubscriptionStatusRow>>(subscriptionsStream, cancellationToken: cancellationToken)
+                ?? [];
+
+            var nowUtc = DateTimeOffset.UtcNow;
+            return subscriptions.Any(IsActiveSubscriptionRow);
+
+            bool IsActiveSubscriptionRow(SubscriptionStatusRow row)
+            {
+                if (!string.Equals(row.Status, "active", StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+
+                if (row.CancelledAt is not null && row.CancelledAt <= nowUtc)
+                {
+                    return false;
+                }
+
+                if (row.NextRenewalAt is not null && row.NextRenewalAt < nowUtc)
+                {
+                    return false;
+                }
+
+                if (!string.IsNullOrWhiteSpace(normalizedTierCode) &&
+                    !string.Equals(row.TierCode, normalizedTierCode, StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+
+                return true;
+            }
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(exception, "Supabase subscription lookup failed unexpectedly.");
+            return false;
+        }
+    }
 
     public async Task<SubscriptionPersistResult> RecordPayFastEventAsync(IFormCollection formCollection, CancellationToken cancellationToken = default)
     {
@@ -220,6 +383,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             email,
             formCollection["name_first"].ToString().Trim(),
             formCollection["name_last"].ToString().Trim(),
+            displayName: null,
+            mobileNumber: null,
             cancellationToken);
 
         if (subscriberId is null)
@@ -282,6 +447,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             email,
             TryReadNestedString(data, "customer", "first_name") ?? string.Empty,
             TryReadNestedString(data, "customer", "last_name") ?? string.Empty,
+            displayName: TryReadNestedString(data, "customer", "display_name"),
+            mobileNumber: TryReadNestedString(data, "customer", "phone"),
             cancellationToken);
 
         if (subscriberId is null)
@@ -388,14 +555,35 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string email,
         string firstName,
         string lastName,
+        string? displayName,
+        string? mobileNumber,
         CancellationToken cancellationToken)
     {
-        var payload = new
+        var payload = new Dictionary<string, object?>
         {
-            email = email.ToLowerInvariant(),
-            first_name = string.IsNullOrWhiteSpace(firstName) ? null : firstName,
-            last_name = string.IsNullOrWhiteSpace(lastName) ? null : lastName
+            ["email"] = email.Trim().ToLowerInvariant()
         };
+
+        if (!string.IsNullOrWhiteSpace(firstName))
+        {
+            payload["first_name"] = firstName.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(lastName))
+        {
+            payload["last_name"] = lastName.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(displayName))
+        {
+            payload["display_name"] = displayName.Trim();
+        }
+
+        var normalizedMobileNumber = NormalizeMobileNumber(mobileNumber);
+        if (!string.IsNullOrWhiteSpace(normalizedMobileNumber))
+        {
+            payload["mobile_number"] = normalizedMobileNumber;
+        }
 
         var uri = new Uri(baseUri, "rest/v1/subscribers?on_conflict=email&select=subscriber_id");
         using var request = CreateJsonRequest(HttpMethod.Post, uri, apiKey, payload, "resolution=merge-duplicates,return=representation");
@@ -707,6 +895,41 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string.Equals(status, "successful", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(status, "paid", StringComparison.OrdinalIgnoreCase);
 
+    private static string? NormalizeMobileNumber(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var trimmed = value.Trim();
+        var sawPlus = false;
+        var builder = new StringBuilder(trimmed.Length);
+
+        foreach (var character in trimmed)
+        {
+            if (!sawPlus && builder.Length == 0 && character == '+')
+            {
+                sawPlus = true;
+                builder.Append(character);
+                continue;
+            }
+
+            if (char.IsDigit(character))
+            {
+                builder.Append(character);
+            }
+        }
+
+        var normalized = builder.ToString();
+        return normalized.Length switch
+        {
+            < 7 => null,
+            > 20 => null,
+            _ => normalized
+        };
+    }
+
     private static DateTimeOffset? TryParseDateTimeOffset(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -810,4 +1033,19 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string? SubscriptionId = null,
         string? ProviderPaymentId = null,
         string? ProviderTransactionId = null);
+
+    private sealed class SubscriptionStatusRow
+    {
+        [JsonPropertyName("status")]
+        public string Status { get; set; } = string.Empty;
+
+        [JsonPropertyName("next_renewal_at")]
+        public DateTimeOffset? NextRenewalAt { get; set; }
+
+        [JsonPropertyName("cancelled_at")]
+        public DateTimeOffset? CancelledAt { get; set; }
+
+        [JsonPropertyName("tier_code")]
+        public string? TierCode { get; set; }
+    }
 }

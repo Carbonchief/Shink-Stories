@@ -67,16 +67,14 @@ else
                      title="Speel of pouse storie"
                      width="640" height="485" loading="eager" fetchpriority="high" decoding="async" />
                 <span class="story-cover-play" aria-hidden="true">
-                    <span class="story-cover-play-icon">&#9654;</span>
+                    <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
                 </span>
 
                 <button type="button" class="story-fullscreen-toggle" @onclick="ToggleFullscreenFocusAsync"
                         aria-pressed="@IsManualFullscreenFocus"
                         aria-label="@(IsManualFullscreenFocus ? "Verlaat volskerm speler" : "Volskerm speler")"
                         title="@(IsManualFullscreenFocus ? "Verlaat volskerm speler" : "Volskerm speler")">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zm0-12h-3v2h3v3h2V5h-2z" />
-                    </svg>
+                    <i class="fa-solid fa-expand" aria-hidden="true"></i>
                     <span class="sr-only">@(IsManualFullscreenFocus ? "Verlaat volskerm speler" : "Volskerm speler")</span>
                 </button>
             </div>
@@ -114,11 +112,11 @@ else
                             aria-label="@(PreviousStory is null ? "Geen vorige storie beskikbaar" : $"Vorige storie: {PreviousStory.Title}")"
                             title="@(PreviousStory is null ? "Geen vorige storie beskikbaar" : "Vorige storie")"
                             disabled="@(PreviousStory is null)">
-                        <span aria-hidden="true">&#171;</span>
+                        <i class="fa-solid fa-backward-step" aria-hidden="true"></i>
                         <span class="sr-only">Vorige storie</span>
                     </button>
                     <button type="button" class="story-control-btn story-play-toggle" aria-label="Speel storie" title="Speel/Pouse">
-                        <span class="story-play-icon" aria-hidden="true">&#9654;</span>
+                        <i class="story-play-icon fa-solid fa-play" aria-hidden="true"></i>
                         <span class="sr-only">Speel storie</span>
                     </button>
                     <button type="button"
@@ -126,14 +124,14 @@ else
                             aria-label="@(NextStory is null ? "Geen volgende storie beskikbaar" : $"Volgende storie: {NextStory.Title}")"
                             title="@(NextStory is null ? "Geen volgende storie beskikbaar" : "Volgende storie")"
                             disabled="@(NextStory is null)">
-                        <span aria-hidden="true">&#187;</span>
+                        <i class="fa-solid fa-forward-step" aria-hidden="true"></i>
                         <span class="sr-only">Volgende storie</span>
                     </button>
                 </div>
 
                 <div class="story-secondary-controls">
                     <button type="button" class="story-mini-btn story-mute-toggle" aria-label="Demp klank" title="Demp/ontdemp">
-                        <span class="story-mute-icon" aria-hidden="true">&#128266;</span>
+                        <i class="story-mute-icon fa-solid fa-volume-high" aria-hidden="true"></i>
                         <span class="sr-only">Demp klank</span>
                     </button>
                     <input class="story-volume-slider"

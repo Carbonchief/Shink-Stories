@@ -1,5 +1,6 @@
 ﻿@using Microsoft.AspNetCore.Components.Authorization
 @inherits LayoutComponentBase
+@using System.Security.Claims
 @inject NavigationManager NavigationManager
 
 <div class="site-shell @(IsStoryRoute ? "story-route" : null) @(IsHomeRoute ? "home-route" : null)">
@@ -21,15 +22,38 @@
                 </NotAuthorized>
             </AuthorizeView>
             <AuthorizeView>
-                <Authorized>
+                <Authorized Context="authState">
                     <div class="nav-controls">
+                        <form class="site-search-form" role="search" action="/soek" method="get" data-search-form>
+                            <button type="button"
+                                    class="site-search-toggle"
+                                    data-search-toggle
+                                    aria-expanded="false"
+                                    aria-controls="site-nav-search-auth"
+                                    aria-label="Soek op die webwerf"
+                                    title="Soek op die webwerf">
+                                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                                <span class="sr-only">Soek op die webwerf</span>
+                            </button>
+                            <div class="site-search-fields">
+                                <label class="sr-only" for="site-nav-search-auth">Soek op die webwerf</label>
+                                <input id="site-nav-search-auth"
+                                       class="site-search-input"
+                                       data-search-input
+                                       type="search"
+                                       name="q"
+                                       placeholder="Soek op die webwerf"
+                                       autocomplete="off" />
+                            </div>
+                            <section class="site-search-suggestions" data-search-suggestions hidden aria-label="Soek voorstelle">
+                                <div class="site-search-suggestions-list" data-search-suggestions-list></div>
+                            </section>
+                        </form>
                         <button type="button" class="nav-menu-toggle" data-nav-menu-toggle
                                 aria-controls="main-site-nav" aria-expanded="false"
                                 aria-label="Maak navigasie oop"
                                 title="Maak navigasie oop">
-                            <svg viewBox="0 0 24 24" aria-hidden="true">
-                                <path d="M4 7h16v2H4V7zm0 4h16v2H4v-2zm0 4h16v2H4v-2z" />
-                            </svg>
+                            <i class="fa-solid fa-bars" aria-hidden="true"></i>
                             <span class="sr-only" data-nav-menu-toggle-label>Maak navigasie oop</span>
                         </button>
                         <nav id="main-site-nav"
@@ -39,12 +63,85 @@
                             <NavLink href="/gratis">Gratis stories</NavLink>
                             <NavLink href="/luister">Alle stories</NavLink>
                             <NavLink href="/opsies">Opsies</NavLink>
-                            <NavLink href="/teken-uit">Teken uit</NavLink>
                         </nav>
+                        <div class="account-menu" data-account-menu-root>
+                            @{
+                                var profileImageUrl = ResolveProfileImageUrl(authState.User);
+                                var profileInitials = BuildProfileInitials(authState.User);
+                            }
+                            <button type="button"
+                                    class="account-toggle"
+                                    data-account-toggle
+                                    aria-expanded="false"
+                                    aria-controls="header-account-dropdown"
+                                    aria-label="Jou rekening"
+                                    title="Jou rekening">
+                                <span class="account-avatar" aria-hidden="true">
+                                    @if (!string.IsNullOrWhiteSpace(profileImageUrl))
+                                    {
+                                        <img class="account-avatar-image" src="@profileImageUrl" alt="" loading="lazy" decoding="async" />
+                                    }
+                                    else
+                                    {
+                                        <span class="account-avatar-initials">@profileInitials</span>
+                                    }
+                                </span>
+                                <i class="fa-solid fa-caret-down account-caret" aria-hidden="true"></i>
+                                <span class="sr-only">Maak jou rekening menu oop</span>
+                            </button>
+                            <section id="header-account-dropdown"
+                                     class="account-dropdown"
+                                     data-account-dropdown
+                                     aria-label="Jou rekening menu">
+                                <a href="/luister" class="account-link">
+                                    <i class="fa-solid fa-book-open" aria-hidden="true"></i>
+                                    <span>My stories</span>
+                                </a>
+                                <a href="/opsies" class="account-link">
+                                    <i class="fa-solid fa-credit-card" aria-hidden="true"></i>
+                                    <span>Intekening en betaling</span>
+                                </a>
+                                <a href="/meer-oor-ons" class="account-link">
+                                    <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
+                                    <span>Hulp sentrum</span>
+                                </a>
+                                <div class="account-divider" role="presentation"></div>
+                                <a href="/teken-uit" class="account-signout">
+                                    <span>Teken uit</span>
+                                </a>
+                            </section>
+                        </div>
                     </div>
                 </Authorized>
                 <NotAuthorized>
-                    <a class="header-signin-btn" href="@LoginHref">Teken in</a>
+                    <div class="guest-controls">
+                        <form class="site-search-form" role="search" action="/soek" method="get" data-search-form>
+                            <button type="button"
+                                    class="site-search-toggle"
+                                    data-search-toggle
+                                    aria-expanded="false"
+                                    aria-controls="site-nav-search-guest"
+                                    aria-label="Soek op die webwerf"
+                                    title="Soek op die webwerf">
+                                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                                <span class="sr-only">Soek op die webwerf</span>
+                            </button>
+                            <div class="site-search-fields">
+                                <label class="sr-only" for="site-nav-search-guest">Soek op die webwerf</label>
+                                <input id="site-nav-search-guest"
+                                       class="site-search-input"
+                                       data-search-input
+                                       type="search"
+                                       name="q"
+                                       placeholder="Soek op die webwerf"
+                                       autocomplete="off" />
+                            </div>
+                            <section class="site-search-suggestions" data-search-suggestions hidden aria-label="Soek voorstelle">
+                                <div class="site-search-suggestions-list" data-search-suggestions-list></div>
+                            </section>
+                        </form>
+                        <a class="header-signin-btn" href="@LoginHref">Teken in</a>
+                    </div>
                 </NotAuthorized>
             </AuthorizeView>
         </div>
@@ -65,14 +162,10 @@
             <p class="footer-tagline">Motiveer. Leer. Inspireer.</p>
             <nav class="footer-socials" aria-label="Sosiale skakels">
                 <a href="https://www.facebook.com/SchinkPublishing" target="_blank" rel="noopener noreferrer" aria-label="Facebook">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M13.5 21v-8h2.7l.4-3h-3.1V8.1c0-.9.3-1.5 1.6-1.5h1.7V3.9c-.3 0-1.3-.1-2.4-.1-2.4 0-4 1.5-4 4.2V10H8v3h2.4v8h3.1Z" />
-                    </svg>
+                    <i class="fa-brands fa-facebook" aria-hidden="true"></i>
                 </a>
                 <a href="https://www.instagram.com/schinkpublishing/" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                        <path d="M7.5 2h9A5.5 5.5 0 0 1 22 7.5v9a5.5 5.5 0 0 1-5.5 5.5h-9A5.5 5.5 0 0 1 2 16.5v-9A5.5 5.5 0 0 1 7.5 2Zm0 2A3.5 3.5 0 0 0 4 7.5v9A3.5 3.5 0 0 0 7.5 20h9a3.5 3.5 0 0 0 3.5-3.5v-9A3.5 3.5 0 0 0 16.5 4h-9Zm9.75 1.5a1.25 1.25 0 1 1 0 2.5 1.25 1.25 0 0 1 0-2.5ZM12 7a5 5 0 1 1 0 10 5 5 0 0 1 0-10Zm0 2a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" />
-                    </svg>
+                    <i class="fa-brands fa-instagram" aria-hidden="true"></i>
                 </a>
             </nav>
             <p>© 2023 Schink</p>
@@ -127,5 +220,104 @@
             var relativePath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).Trim('/');
             return string.IsNullOrWhiteSpace(relativePath);
         }
+    }
+
+    private static string? ResolveProfileImageUrl(ClaimsPrincipal user)
+    {
+        if (user.Identity?.IsAuthenticated != true)
+        {
+            return null;
+        }
+
+        var claimValue = user.FindFirst("picture")?.Value
+            ?? user.FindFirst("avatar_url")?.Value
+            ?? user.FindFirst("profile_image_url")?.Value
+            ?? user.FindFirst("photo_url")?.Value;
+
+        if (string.IsNullOrWhiteSpace(claimValue))
+        {
+            return null;
+        }
+
+        var trimmed = claimValue.Trim();
+        if (trimmed.StartsWith("/", StringComparison.Ordinal))
+        {
+            return trimmed;
+        }
+
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var parsed))
+        {
+            return null;
+        }
+
+        return string.Equals(parsed.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(parsed.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+            ? parsed.ToString()
+            : null;
+    }
+
+    private static string BuildProfileInitials(ClaimsPrincipal user)
+    {
+        var givenName = user.FindFirst(ClaimTypes.GivenName)?.Value;
+        var surname = user.FindFirst(ClaimTypes.Surname)?.Value;
+        var fromSeparateNames = BuildInitials(givenName, surname);
+        if (!string.IsNullOrWhiteSpace(fromSeparateNames))
+        {
+            return fromSeparateNames;
+        }
+
+        var displayName = user.FindFirst(ClaimTypes.Name)?.Value
+            ?? user.FindFirst(ClaimTypes.Email)?.Value
+            ?? user.Identity?.Name
+            ?? "Schink";
+
+        var localName = displayName.Contains('@', StringComparison.Ordinal)
+            ? displayName[..displayName.IndexOf('@')]
+            : displayName;
+
+        var tokens = localName
+            .Split([' ', '.', '_', '-'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(token => token.Length > 0)
+            .Take(2)
+            .ToArray();
+
+        if (tokens.Length >= 2)
+        {
+            return string.Concat(
+                char.ToUpperInvariant(tokens[0][0]),
+                char.ToUpperInvariant(tokens[1][0]));
+        }
+
+        if (tokens.Length == 1)
+        {
+            var token = tokens[0];
+            if (token.Length >= 2)
+            {
+                return string.Concat(
+                    char.ToUpperInvariant(token[0]),
+                    char.ToUpperInvariant(token[1]));
+            }
+
+            return char.ToUpperInvariant(token[0]).ToString();
+        }
+
+        return "S";
+    }
+
+    private static string? BuildInitials(string? first, string? last)
+    {
+        var firstInitial = string.IsNullOrWhiteSpace(first)
+            ? null
+            : char.ToUpperInvariant(first.Trim()[0]).ToString();
+        var lastInitial = string.IsNullOrWhiteSpace(last)
+            ? null
+            : char.ToUpperInvariant(last.Trim()[0]).ToString();
+
+        if (firstInitial is null && lastInitial is null)
+        {
+            return null;
+        }
+
+        return $"{firstInitial}{lastInitial}".Trim();
     }
 }

@@ -1,19 +1,21 @@
 @page "/teken-in"
 @rendermode InteractiveServer
 @using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.JSInterop
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ISubscriptionLedgerService SubscriptionLedgerService
 
 <PageTitle>Schink Stories | Teken in</PageTitle>
 
 <section class="auth-shell">
     <div class="auth-frame">
         <aside class="auth-aside" aria-label="Welkom inligting">
-            <img class="auth-logo" src="/branding/schink-logo-text.png" alt="Schink" />
+            <img class="auth-logo" src="/media/imported/misc/2024/02/Teken_In-1.png" alt="Schink" />
             <p class="auth-kicker">Ledeportaal</p>
             <h1>Welkom terug</h1>
             <p class="auth-intro">
@@ -27,7 +29,7 @@
         </aside>
 
         <article class="auth-card">
-            <p class="login-kicker">Teken In of Sluit Aan</p>
+            <p class="login-kicker">Teken In</p>
             <p class="login-intro">
                 Gebruik jou e-pos en wagwoord om voort te gaan.
             </p>
@@ -51,9 +53,9 @@
                     <button type="submit" class="login-submit" disabled="@IsSubmitting">
                         @(IsSubmitting ? "Besig..." : "Teken in")
                     </button>
-                    <button type="button" class="login-submit login-submit-secondary" @onclick="HandleSignUpAsync" disabled="@IsSubmitting">
+                    <a class="login-submit login-submit-secondary" href="@SignUpHref">
                         Skep rekening
-                    </button>
+                    </a>
                 </div>
 
                 @if (!string.IsNullOrWhiteSpace(StatusMessage))
@@ -80,6 +82,10 @@
     private bool IsSubmitting { get; set; }
     private bool SignInSucceeded { get; set; }
     private string? StatusMessage { get; set; }
+    private string SignUpHref =>
+        GetSafeReturnUrl(ReturnUrl) is { } safeReturnUrl
+            ? $"/teken-op?returnUrl={Uri.EscapeDataString(safeReturnUrl)}"
+            : "/teken-op";
 
     protected override void OnInitialized()
     {
@@ -91,28 +97,13 @@
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         if (authState.User.Identity?.IsAuthenticated == true)
         {
-            NavigationManager.NavigateTo(GetRedirectTarget(), forceLoad: true);
+            NavigationManager.NavigateTo(await GetRedirectTargetForAuthenticatedUserAsync(authState), forceLoad: true);
         }
     }
 
     private async Task HandleSignInAsync()
     {
         await SubmitAuthAsync("/api/auth/login", "Kon nie teken in nie. Probeer asseblief weer.");
-    }
-
-    private async Task HandleSignUpAsync()
-    {
-        if (IsSubmitting)
-        {
-            return;
-        }
-
-        if (!FormEditContext.Validate())
-        {
-            return;
-        }
-
-        await SubmitAuthAsync("/api/auth/signup", "Kon nie nou registreer nie. Probeer asseblief weer.");
     }
 
     private void ResetForm()
@@ -147,7 +138,7 @@
                 SignInSucceeded = true;
                 StatusMessage = apiMessage ?? "Suksesvol ingeteken.";
                 ResetForm();
-                NavigationManager.NavigateTo(GetRedirectTarget(), forceLoad: true);
+                NavigationManager.NavigateTo(GetRedirectTarget(response.RedirectPath), forceLoad: true);
                 return;
             }
 
@@ -165,7 +156,25 @@
         }
     }
 
-    private string GetRedirectTarget() => GetSafeReturnUrl(ReturnUrl) ?? "/gratis";
+    private async Task<string> GetRedirectTargetForAuthenticatedUserAsync(AuthenticationState authState)
+    {
+        var safeReturnUrl = GetSafeReturnUrl(ReturnUrl);
+        if (safeReturnUrl is not null)
+        {
+            return safeReturnUrl;
+        }
+
+        var user = authState.User;
+        var email = user.FindFirst(ClaimTypes.Email)?.Value
+                    ?? user.Identity?.Name;
+        var hasPaidSubscription = await SubscriptionLedgerService.HasActivePaidSubscriptionAsync(email);
+        return hasPaidSubscription ? "/luister" : "/gratis";
+    }
+
+    private string GetRedirectTarget(string? apiRedirectPath = null) =>
+        GetSafeReturnUrl(ReturnUrl)
+        ?? GetSafePostAuthPath(apiRedirectPath)
+        ?? "/gratis";
 
     private async Task<IJSObjectReference> EnsureAuthModuleAsync()
     {
@@ -180,19 +189,73 @@
 
     private static string? GetSafeReturnUrl(string? returnUrl)
     {
-        if (string.IsNullOrWhiteSpace(returnUrl))
+        var normalizedReturnUrl = NormalizeReturnUrl(returnUrl);
+        if (string.IsNullOrWhiteSpace(normalizedReturnUrl))
         {
             return null;
         }
 
-        if (!returnUrl.StartsWith("/", StringComparison.Ordinal) ||
-            returnUrl.StartsWith("//", StringComparison.Ordinal) ||
-            returnUrl.StartsWith("/teken-in", StringComparison.OrdinalIgnoreCase))
+        if (!normalizedReturnUrl.StartsWith("/", StringComparison.Ordinal) ||
+            normalizedReturnUrl.StartsWith("//", StringComparison.Ordinal) ||
+            normalizedReturnUrl.StartsWith("/teken-in", StringComparison.OrdinalIgnoreCase) ||
+            normalizedReturnUrl.StartsWith("/teken-op", StringComparison.OrdinalIgnoreCase))
         {
             return null;
         }
 
-        return returnUrl;
+        return normalizedReturnUrl;
+    }
+
+    private static string? GetSafePostAuthPath(string? path)
+    {
+        var normalizedPath = NormalizeReturnUrl(path);
+        if (string.IsNullOrWhiteSpace(normalizedPath))
+        {
+            return null;
+        }
+
+        if (!normalizedPath.StartsWith("/", StringComparison.Ordinal) ||
+            normalizedPath.StartsWith("//", StringComparison.Ordinal) ||
+            normalizedPath.StartsWith("/teken-in", StringComparison.OrdinalIgnoreCase) ||
+            normalizedPath.StartsWith("/teken-op", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return normalizedPath;
+    }
+
+    private static string? NormalizeReturnUrl(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var candidate = value.Trim();
+        for (var index = 0; index < 2; index++)
+        {
+            if (candidate.StartsWith("/", StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            if (!candidate.Contains('%', StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            try
+            {
+                candidate = Uri.UnescapeDataString(candidate);
+            }
+            catch
+            {
+                break;
+            }
+        }
+
+        return candidate;
     }
 
     public async ValueTask DisposeAsync()
@@ -212,7 +275,7 @@
 
     private sealed record AuthApiPayload(string Email, string Password);
 
-    private sealed record AuthBrowserResponse(bool Ok, int Status, string? Message);
+    private sealed record AuthBrowserResponse(bool Ok, int Status, string? Message, string? RedirectPath);
 
     private sealed class SignInFormModel
     {
