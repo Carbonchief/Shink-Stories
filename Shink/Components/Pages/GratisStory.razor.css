@@ -1,4 +1,4 @@
-.story-player-page {
+﻿.story-player-page {
     display: grid;
     gap: 1.1rem;
     width: min(100%, 980px);
@@ -181,10 +181,11 @@
     justify-content: center;
 }
 
-.story-fullscreen-toggle svg {
+.story-fullscreen-toggle i {
     width: 1.25rem;
     height: 1.25rem;
-    fill: currentColor;
+    font-size: 1.25rem;
+    line-height: 1;
 }
 
 .story-fullscreen-toggle:hover {
@@ -719,6 +720,4 @@
         font-size: 0.8rem;
     }
 }
-
-
 

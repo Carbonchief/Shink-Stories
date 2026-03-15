@@ -27,6 +27,29 @@ const boundAudios = new WeakSet();
 const fullscreenBindings = new WeakMap();
 const playerCapabilityCache = new WeakMap();
 
+function setFontAwesomeIcon(iconElement, iconClass) {
+    if (!(iconElement instanceof HTMLElement)) {
+        return;
+    }
+
+    iconElement.classList.add("fa-solid");
+
+    const variantClasses = [
+        "fa-play",
+        "fa-pause",
+        "fa-volume-high",
+        "fa-volume-xmark"
+    ];
+
+    variantClasses.forEach((cssClass) => {
+        if (cssClass !== iconClass) {
+            iconElement.classList.remove(cssClass);
+        }
+    });
+
+    iconElement.classList.add(iconClass);
+}
+
 function toAbsoluteUrl(url) {
     if (!url) {
         return new URL(DEFAULT_IMAGE_PATH, window.location.origin).toString();
@@ -475,7 +498,7 @@ function bindAudioEvents(audioElement) {
         }
 
         if (customPlayerElements.playIcon instanceof HTMLElement) {
-            customPlayerElements.playIcon.textContent = isPlaying ? "\u23F8" : "\u25B6";
+            setFontAwesomeIcon(customPlayerElements.playIcon, isPlaying ? "fa-pause" : "fa-play");
         }
 
         if (customPlayerElements.progressSlider instanceof HTMLInputElement) {
@@ -500,7 +523,9 @@ function bindAudioEvents(audioElement) {
         }
 
         if (customPlayerElements.muteIcon instanceof HTMLElement) {
-            customPlayerElements.muteIcon.textContent = audioElement.muted || volumeValue <= 0.001 ? "\uD83D\uDD07" : "\uD83D\uDD0A";
+            setFontAwesomeIcon(
+                customPlayerElements.muteIcon,
+                audioElement.muted || volumeValue <= 0.001 ? "fa-volume-xmark" : "fa-volume-high");
         }
 
         if (customPlayerElements.speedToggle instanceof HTMLButtonElement) {
@@ -661,7 +686,7 @@ function bindAudioEvents(audioElement) {
             }
 
             if (coverPlayIcon instanceof HTMLElement) {
-                coverPlayIcon.textContent = isPlaying ? "\u23F8" : "\u25B6";
+                setFontAwesomeIcon(coverPlayIcon, isPlaying ? "fa-pause" : "fa-play");
             }
         };
 

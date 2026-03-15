@@ -1,0 +1,294 @@
+@page "/soek"
+@using System.Globalization
+@using System.Text
+@using Microsoft.AspNetCore.Components
+@inject IStoryCatalogService StoryCatalogService
+
+<PageTitle>Schink Stories | Soek</PageTitle>
+
+<section class="search-page">
+    <header class="search-hero">
+        <p class="search-eyebrow">Soek</p>
+        <h1>Soek op Schink Stories</h1>
+
+        <form class="search-form" role="search" action="/soek" method="get">
+            <label class="search-label" for="site-search-page-input">Tik wat jy wil vind</label>
+            <div class="search-form-controls">
+                <input id="site-search-page-input"
+                       class="search-input"
+                       type="search"
+                       name="q"
+                       value="@SearchInput"
+                       placeholder="Byvoorbeeld: gratis stories, missie, Josef"
+                       autocomplete="off" />
+                <button type="submit" class="search-submit">Soek</button>
+            </div>
+        </form>
+
+        @if (HasSearchQuery)
+        {
+            <p class="search-status" role="status">
+                @if (IsLoading)
+                {
+                    <span>Besig om resultate te laai vir "@LastSearchQuery".</span>
+                }
+                else
+                {
+                    <span>@ResultsSummaryText</span>
+                }
+            </p>
+        }
+        else
+        {
+            <p class="search-status">Tik 'n woord of frase om bladsye en stories te soek.</p>
+        }
+    </header>
+
+    @if (HasSearchQuery && !IsLoading)
+    {
+        if (SearchResults.Count == 0)
+        {
+            <section class="search-empty" aria-live="polite">
+                <h2>Geen resultate gevind nie</h2>
+                <p>Probeer 'n korter woord of 'n ander term.</p>
+            </section>
+        }
+        else
+        {
+            <section class="search-results" aria-label="Soekresultate">
+                @foreach (var result in SearchResults)
+                {
+                    <article class="search-result-card">
+                        <p class="search-result-kind">@result.Kind</p>
+                        <h2><a href="@result.Url">@result.Title</a></h2>
+                        <p>@result.Description</p>
+                        <a class="search-result-link" href="@result.Url">Maak oop</a>
+                    </article>
+                }
+            </section>
+        }
+    }
+</section>
+
+@code {
+    [SupplyParameterFromQuery(Name = "q")]
+    public string? Query { get; set; }
+
+    private string SearchInput { get; set; } = string.Empty;
+    private bool IsLoading { get; set; }
+    private string LastSearchQuery { get; set; } = string.Empty;
+    private IReadOnlyList<SearchResultItem> SearchResults { get; set; } = Array.Empty<SearchResultItem>();
+    private bool HasSearchQuery => !string.IsNullOrWhiteSpace(LastSearchQuery);
+
+    private string ResultsSummaryText =>
+        SearchResults.Count switch
+        {
+            0 => $"Geen resultate vir \"{LastSearchQuery}\" nie.",
+            1 => $"1 resultaat vir \"{LastSearchQuery}\".",
+            _ => $"{SearchResults.Count} resultate vir \"{LastSearchQuery}\"."
+        };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        SearchInput = Query?.Trim() ?? string.Empty;
+        await RunSearchAsync(SearchInput);
+    }
+
+    private async Task RunSearchAsync(string query)
+    {
+        LastSearchQuery = query.Trim();
+        if (string.IsNullOrWhiteSpace(LastSearchQuery))
+        {
+            SearchResults = Array.Empty<SearchResultItem>();
+            IsLoading = false;
+            return;
+        }
+
+        IsLoading = true;
+        try
+        {
+            var freeStoriesTask = StoryCatalogService.GetFreeStoriesAsync();
+            var luisterStoriesTask = StoryCatalogService.GetLuisterStoriesAsync();
+            await Task.WhenAll(freeStoriesTask, luisterStoriesTask);
+
+            var allCandidates = BuildStaticCandidates()
+                .Concat(freeStoriesTask.Result.Select(story => new SearchCandidate(
+                    Title: story.Title,
+                    Description: story.Description,
+                    Url: $"/gratis/{Uri.EscapeDataString(story.Slug)}",
+                    Kind: "Gratis storie",
+                    Keywords: "gratis luister kinders afrikaans oudiostorie",
+                    IsSitePage: false)))
+                .Concat(luisterStoriesTask.Result.Select(story => new SearchCandidate(
+                    Title: story.Title,
+                    Description: story.Description,
+                    Url: $"/luister/{Uri.EscapeDataString(story.Slug)}",
+                    Kind: "Alle stories",
+                    Keywords: "luister stories intekening afrikaans oudiostorie",
+                    IsSitePage: false)));
+
+            SearchResults = SearchCandidates(allCandidates, LastSearchQuery);
+        }
+        catch
+        {
+            SearchResults = Array.Empty<SearchResultItem>();
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private static IReadOnlyList<SearchCandidate> BuildStaticCandidates() =>
+    [
+        new(
+            Title: "Tuis",
+            Description: "Schink Stories tuisblad met gratis stories, nuutste stories en kontak.",
+            Url: "/",
+            Kind: "Bladsy",
+            Keywords: "tuis huis kontak planne afrikaans oudiostories",
+            IsSitePage: true),
+        new(
+            Title: "Gratis stories",
+            Description: "Drie gratis Afrikaanse stories vir jou gesin.",
+            Url: "/gratis",
+            Kind: "Bladsy",
+            Keywords: "gratis luister probeer stories",
+            IsSitePage: true),
+        new(
+            Title: "Alle stories",
+            Description: "Volledige versameling stories op Schink Stories.",
+            Url: "/luister",
+            Kind: "Bladsy",
+            Keywords: "alle stories intekening luister",
+            IsSitePage: true),
+        new(
+            Title: "Meer oor Ons",
+            Description: "Lees oor Schink Stories se missie, visie, waardes en belofte.",
+            Url: "/meer-oor-ons",
+            Kind: "Bladsy",
+            Keywords: "wie ons is missie visie waardes belofte ouers",
+            IsSitePage: true),
+        new(
+            Title: "Opsies",
+            Description: "Vergelyk planne en kies die beste opsie vir jou gesin.",
+            Url: "/opsies",
+            Kind: "Bladsy",
+            Keywords: "pryse planne betaal intekening",
+            IsSitePage: true),
+        new(
+            Title: "Teken in",
+            Description: "Teken in op jou Schink Stories rekening.",
+            Url: "/teken-in",
+            Kind: "Bladsy",
+            Keywords: "login rekening registreer",
+            IsSitePage: true)
+    ];
+
+    private static IReadOnlyList<SearchResultItem> SearchCandidates(IEnumerable<SearchCandidate> candidates, string query)
+    {
+        var normalizedQuery = NormalizeForSearch(query);
+        if (string.IsNullOrWhiteSpace(normalizedQuery))
+        {
+            return Array.Empty<SearchResultItem>();
+        }
+
+        var queryTerms = normalizedQuery
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (queryTerms.Length == 0)
+        {
+            return Array.Empty<SearchResultItem>();
+        }
+
+        var results = new List<SearchResultItem>();
+        foreach (var candidate in candidates)
+        {
+            var normalizedTitle = NormalizeForSearch(candidate.Title);
+            var normalizedBody = NormalizeForSearch($"{candidate.Description} {candidate.Keywords}");
+            var normalizedContent = $"{normalizedTitle} {normalizedBody}";
+            if (!queryTerms.All(term => normalizedContent.Contains(term, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
+            var score = 0;
+            if (normalizedTitle.Contains(normalizedQuery, StringComparison.Ordinal))
+            {
+                score += 140;
+            }
+
+            if (normalizedBody.Contains(normalizedQuery, StringComparison.Ordinal))
+            {
+                score += 70;
+            }
+
+            foreach (var term in queryTerms)
+            {
+                if (normalizedTitle.Contains(term, StringComparison.Ordinal))
+                {
+                    score += 24;
+                }
+
+                if (normalizedBody.Contains(term, StringComparison.Ordinal))
+                {
+                    score += 10;
+                }
+            }
+
+            if (candidate.IsSitePage)
+            {
+                score += 4;
+            }
+
+            results.Add(new SearchResultItem(
+                Title: candidate.Title,
+                Description: candidate.Description,
+                Url: candidate.Url,
+                Kind: candidate.Kind,
+                Score: score));
+        }
+
+        return results
+            .OrderByDescending(result => result.Score)
+            .ThenBy(result => result.Title, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string NormalizeForSearch(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var normalized = value.Normalize(NormalizationForm.FormD);
+        var builder = new StringBuilder(normalized.Length);
+
+        foreach (var character in normalized)
+        {
+            if (CharUnicodeInfo.GetUnicodeCategory(character) != UnicodeCategory.NonSpacingMark)
+            {
+                builder.Append(char.ToLowerInvariant(character));
+            }
+        }
+
+        return builder.ToString().Normalize(NormalizationForm.FormC);
+    }
+
+    private sealed record SearchCandidate(
+        string Title,
+        string Description,
+        string Url,
+        string Kind,
+        string Keywords,
+        bool IsSitePage);
+
+    private sealed record SearchResultItem(
+        string Title,
+        string Description,
+        string Url,
+        string Kind,
+        int Score);
+}

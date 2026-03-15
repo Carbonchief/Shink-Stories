@@ -174,8 +174,14 @@ h1 {
 .review-stars {
     margin: 0;
     color: #df9a1a;
-    letter-spacing: 0.08em;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28rem;
     font-size: 0.92rem;
+}
+
+.review-stars i {
+    line-height: 1;
 }
 
 .review-author {

@@ -140,7 +140,9 @@ h1 {
 }
 
 .play-btn::before {
-    content: "\25B6";
+    content: "\f04b";
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
     width: 1.3rem;
     height: 1.3rem;
     border-radius: 999px;

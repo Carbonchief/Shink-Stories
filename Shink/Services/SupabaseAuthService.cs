@@ -34,7 +34,11 @@ public sealed class SupabaseAuthService(
             cancellationToken);
     }
 
-    public async Task<SupabaseSignInResult> SignUpWithPasswordAsync(string email, string password, CancellationToken cancellationToken = default)
+    public async Task<SupabaseSignInResult> SignUpWithPasswordAsync(
+        string email,
+        string password,
+        SignUpProfileData? profileData = null,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
         {
@@ -46,9 +50,26 @@ public sealed class SupabaseAuthService(
             return SupabaseSignInResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en anon key op.");
         }
 
+        var normalizedDisplayName = profileData?.DisplayName?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedDisplayName))
+        {
+            var firstName = profileData?.FirstName?.Trim();
+            var lastName = profileData?.LastName?.Trim();
+            normalizedDisplayName = $"{firstName} {lastName}".Trim();
+        }
+
+        var signUpMetadata = profileData is null
+            ? null
+            : new SupabasePasswordSignUpMetadata(
+                FirstName: profileData.FirstName?.Trim(),
+                LastName: profileData.LastName?.Trim(),
+                DisplayName: string.IsNullOrWhiteSpace(normalizedDisplayName) ? null : normalizedDisplayName,
+                FullName: string.IsNullOrWhiteSpace(normalizedDisplayName) ? null : normalizedDisplayName,
+                MobileNumber: profileData.MobileNumber?.Trim());
+
         var signupResult = await ExecuteAuthRequestAsync(
             signupEndpoint,
-            new SupabasePasswordSignUpRequest(email, password),
+            new SupabasePasswordSignUpRequest(email, password, signUpMetadata),
             failureFallbackMessage: "Kon nie nou registreer nie. Probeer asseblief weer.",
             requestActionName: "sign-up",
             cancellationToken);
@@ -212,5 +233,11 @@ public sealed class SupabaseAuthService(
     }
 
     private sealed record SupabasePasswordSignInRequest(string Email, string Password);
-    private sealed record SupabasePasswordSignUpRequest(string Email, string Password);
+    private sealed record SupabasePasswordSignUpRequest(string Email, string Password, SupabasePasswordSignUpMetadata? Data = null);
+    private sealed record SupabasePasswordSignUpMetadata(
+        string? FirstName,
+        string? LastName,
+        string? DisplayName,
+        string? FullName,
+        string? MobileNumber);
 }
