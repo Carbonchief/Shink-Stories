@@ -1,0 +1,264 @@
+@page "/intekening-en-betaling"
+@page "/intekening-en-betaaling"
+@using System.ComponentModel.DataAnnotations
+@using System.Globalization
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ISubscriptionLedgerService SubscriptionLedgerService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Schink Stories | Intekening en betaling</PageTitle>
+
+<section class="billing-page">
+    <header class="billing-hero">
+        <p class="billing-kicker">Jou rekening</p>
+        <h1>Intekening en betaling</h1>
+        <p>
+            Bestuur jou Schink Stories plan, kyk jou status en kies maklik 'n opsie wat by jou gesin pas.
+        </p>
+    </header>
+
+    @if (IsRedirectingToLogin)
+    {
+        <section class="billing-state">
+            <h2>Neem jou nou na teken in...</h2>
+            <p>Jy moet ingeteken wees om jou intekening te bestuur.</p>
+        </section>
+    }
+    else if (IsLoading)
+    {
+        <section class="billing-state">
+            <h2>Laai jou intekening...</h2>
+        </section>
+    }
+    else
+    {
+        <section class="billing-profile" aria-label="Jou profiel">
+            <h2>Jou profiel</h2>
+            <p>Werk jou besonderhede op sodat ons jou rekeninginligting korrek hou.</p>
+
+            <EditForm class="billing-profile-form" Model="ProfileForm" OnValidSubmit="SaveProfileAsync" aria-busy="@IsSavingProfile">
+                <DataAnnotationsValidator />
+
+                <div class="billing-profile-grid">
+                    <div class="billing-field">
+                        <label for="billing-first-name">Voornaam</label>
+                        <InputText id="billing-first-name" @bind-Value="ProfileForm.FirstName" autocomplete="given-name" />
+                        <ValidationMessage For="@(() => ProfileForm.FirstName)" />
+                    </div>
+                    <div class="billing-field">
+                        <label for="billing-last-name">Van</label>
+                        <InputText id="billing-last-name" @bind-Value="ProfileForm.LastName" autocomplete="family-name" />
+                        <ValidationMessage For="@(() => ProfileForm.LastName)" />
+                    </div>
+                    <div class="billing-field">
+                        <label for="billing-display-name">Publieke naam</label>
+                        <InputText id="billing-display-name" @bind-Value="ProfileForm.DisplayName" autocomplete="nickname" />
+                        <ValidationMessage For="@(() => ProfileForm.DisplayName)" />
+                    </div>
+                    <div class="billing-field">
+                        <label for="billing-mobile-number">Selfoonnommer</label>
+                        <InputText id="billing-mobile-number" @bind-Value="ProfileForm.MobileNumber" autocomplete="tel" />
+                        <ValidationMessage For="@(() => ProfileForm.MobileNumber)" />
+                    </div>
+                </div>
+
+                <div class="billing-field billing-field-readonly">
+                    <label for="billing-email">E-posadres</label>
+                    <input id="billing-email" value="@UserEmail" autocomplete="email" readonly />
+                </div>
+
+                <div class="billing-actions">
+                    <button type="submit" class="billing-btn" disabled="@IsSavingProfile">
+                        @(IsSavingProfile ? "Stoor..." : "Stoor profiel")
+                    </button>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(ProfileStatusMessage))
+                {
+                    <p class="billing-profile-status @(ProfileSaveSucceeded ? "is-success" : "is-error")"
+                       role="@(ProfileSaveSucceeded ? "status" : "alert")"
+                       aria-live="polite">
+                        @ProfileStatusMessage
+                    </p>
+                }
+            </EditForm>
+        </section>
+
+        <section class="billing-status @(HasActivePaidSubscription ? "is-active" : "is-free")" aria-live="polite">
+            @if (HasActivePaidSubscription)
+            {
+                <h2>Jou betaalde intekening is aktief</h2>
+                <p>Jy het tans toegang tot betaalde stories. Dankie dat jy deel is van Schink Stories.</p>
+                <div class="billing-actions">
+                    <a class="billing-btn" href="/luister">Gaan na alle stories</a>
+                    <a class="billing-btn billing-btn-secondary" href="/opsies">Sien plan opsies</a>
+                </div>
+            }
+            else
+            {
+                <h2>Jy is tans op die gratis opsie</h2>
+                <p>Sluit aan by 'n betaalde plan vir volle toegang tot ons stories.</p>
+                <div class="billing-actions">
+                    <a class="billing-btn" href="/opsies">Kies 'n plan</a>
+                    <a class="billing-btn billing-btn-secondary" href="/gratis">Gaan na gratis stories</a>
+                </div>
+            }
+        </section>
+
+        <section class="billing-plans" aria-label="Betaal planne">
+            <h2>Vinnige plan keuses</h2>
+            <div class="billing-plan-grid">
+                @foreach (var plan in PaymentPlanCatalog.All)
+                {
+                    <article class="billing-plan-card">
+                        <h3>@plan.Name</h3>
+                        <p class="billing-price">@FormatRand(plan.Amount) <span>@ResolveBillingLabel(plan.BillingPeriodMonths)</span></p>
+                        <p class="billing-description">@plan.ItemDescription</p>
+                        <a class="billing-btn" href="@($"/betaal/{plan.Slug}")">Kies hierdie plan</a>
+                    </article>
+                }
+            </div>
+            <p class="billing-help">Vir meer besonderhede en vergelyking, gaan na <a href="/opsies">Opsies</a>.</p>
+        </section>
+    }
+</section>
+
+@code {
+    private bool IsLoading { get; set; } = true;
+    private bool IsRedirectingToLogin { get; set; }
+    private bool HasActivePaidSubscription { get; set; }
+    private string UserEmail { get; set; } = string.Empty;
+    private ProfileFormModel ProfileForm { get; set; } = new();
+    private bool IsSavingProfile { get; set; }
+    private bool ProfileSaveSucceeded { get; set; }
+    private string? ProfileStatusMessage { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated != true)
+        {
+            IsRedirectingToLogin = true;
+            IsLoading = false;
+
+            var currentPathAndQuery = new Uri(NavigationManager.Uri).PathAndQuery;
+            var safeReturnPath = string.IsNullOrWhiteSpace(currentPathAndQuery)
+                ? "/intekening-en-betaling"
+                : currentPathAndQuery;
+            var returnUrl = Uri.EscapeDataString(safeReturnPath);
+            NavigationManager.NavigateTo($"/teken-in?returnUrl={returnUrl}");
+            return;
+        }
+
+        try
+        {
+            UserEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                        ?? authState.User.Identity?.Name
+                        ?? string.Empty;
+
+            var hasActivePaidSubscriptionTask = SubscriptionLedgerService.HasActivePaidSubscriptionAsync(UserEmail);
+            var subscriberProfileTask = SubscriptionLedgerService.GetSubscriberProfileAsync(UserEmail);
+            await Task.WhenAll(hasActivePaidSubscriptionTask, subscriberProfileTask);
+
+            HasActivePaidSubscription = hasActivePaidSubscriptionTask.Result;
+            HydrateProfileForm(subscriberProfileTask.Result, authState.User);
+        }
+        catch
+        {
+            HasActivePaidSubscription = false;
+            HydrateProfileForm(profile: null, authState.User);
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private async Task SaveProfileAsync()
+    {
+        if (IsSavingProfile || string.IsNullOrWhiteSpace(UserEmail))
+        {
+            return;
+        }
+
+        IsSavingProfile = true;
+        ProfileSaveSucceeded = false;
+        ProfileStatusMessage = null;
+
+        try
+        {
+            var saved = await SubscriptionLedgerService.UpsertSubscriberProfileAsync(
+                email: UserEmail,
+                firstName: NormalizeOptionalField(ProfileForm.FirstName),
+                lastName: NormalizeOptionalField(ProfileForm.LastName),
+                displayName: NormalizeOptionalField(ProfileForm.DisplayName),
+                mobileNumber: NormalizeOptionalField(ProfileForm.MobileNumber));
+
+            if (!saved)
+            {
+                ProfileSaveSucceeded = false;
+                ProfileStatusMessage = "Ons kon nie nou jou profiel stoor nie. Probeer asseblief weer.";
+                return;
+            }
+
+            ProfileSaveSucceeded = true;
+            ProfileStatusMessage = "Jou profiel is suksesvol opgedateer.";
+        }
+        catch
+        {
+            ProfileSaveSucceeded = false;
+            ProfileStatusMessage = "Ons kon nie nou jou profiel stoor nie. Probeer asseblief weer.";
+        }
+        finally
+        {
+            IsSavingProfile = false;
+        }
+    }
+
+    private void HydrateProfileForm(SubscriberProfile? profile, ClaimsPrincipal user)
+    {
+        ProfileForm = new ProfileFormModel
+        {
+            FirstName = profile?.FirstName ?? user.FindFirst(ClaimTypes.GivenName)?.Value ?? string.Empty,
+            LastName = profile?.LastName ?? user.FindFirst(ClaimTypes.Surname)?.Value ?? string.Empty,
+            DisplayName = profile?.DisplayName ?? string.Empty,
+            MobileNumber = profile?.MobileNumber ?? string.Empty
+        };
+    }
+
+    private static string? NormalizeOptionalField(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return value.Trim();
+    }
+
+    private static string ResolveBillingLabel(int billingPeriodMonths) =>
+        billingPeriodMonths <= 1 ? "per maand" : "per jaar";
+
+    private static string FormatRand(decimal amount)
+    {
+        var culture = CultureInfo.GetCultureInfo("en-ZA");
+        return $"R {amount.ToString("0.00", culture)}";
+    }
+
+    private sealed class ProfileFormModel
+    {
+        [StringLength(80, ErrorMessage = "Voornaam mag nie langer as 80 karakters wees nie.")]
+        public string FirstName { get; set; } = string.Empty;
+
+        [StringLength(80, ErrorMessage = "Van mag nie langer as 80 karakters wees nie.")]
+        public string LastName { get; set; } = string.Empty;
+
+        [RegularExpression(@"^$|.{2,120}$", ErrorMessage = "Publieke naam moet tussen 2 en 120 karakters wees.")]
+        public string DisplayName { get; set; } = string.Empty;
+
+        [RegularExpression(@"^\+?[0-9\s\-\(\)]{7,24}$", ErrorMessage = "Gebruik asseblief 'n geldige selfoonnommer.")]
+        public string MobileNumber { get; set; } = string.Empty;
+    }
+}

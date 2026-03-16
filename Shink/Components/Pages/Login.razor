@@ -83,7 +83,7 @@
     private bool SignInSucceeded { get; set; }
     private string? StatusMessage { get; set; }
     private string SignUpHref =>
-        GetSafeReturnUrl(ReturnUrl) is { } safeReturnUrl
+        GetSafeReturnUrlForSignUp(ReturnUrl) is { } safeReturnUrl
             ? $"/teken-op?returnUrl={Uri.EscapeDataString(safeReturnUrl)}"
             : "/teken-op";
 
@@ -197,13 +197,25 @@
 
         if (!normalizedReturnUrl.StartsWith("/", StringComparison.Ordinal) ||
             normalizedReturnUrl.StartsWith("//", StringComparison.Ordinal) ||
-            normalizedReturnUrl.StartsWith("/teken-in", StringComparison.OrdinalIgnoreCase) ||
-            normalizedReturnUrl.StartsWith("/teken-op", StringComparison.OrdinalIgnoreCase))
+            IsAuthEntryPath(normalizedReturnUrl))
         {
             return null;
         }
 
         return normalizedReturnUrl;
+    }
+
+    private static string? GetSafeReturnUrlForSignUp(string? returnUrl)
+    {
+        var normalizedReturnUrl = GetSafeReturnUrl(returnUrl);
+        if (string.IsNullOrWhiteSpace(normalizedReturnUrl))
+        {
+            return null;
+        }
+
+        return normalizedReturnUrl.StartsWith("/teken-op", StringComparison.OrdinalIgnoreCase)
+            ? null
+            : normalizedReturnUrl;
     }
 
     private static string? GetSafePostAuthPath(string? path)
@@ -216,14 +228,17 @@
 
         if (!normalizedPath.StartsWith("/", StringComparison.Ordinal) ||
             normalizedPath.StartsWith("//", StringComparison.Ordinal) ||
-            normalizedPath.StartsWith("/teken-in", StringComparison.OrdinalIgnoreCase) ||
-            normalizedPath.StartsWith("/teken-op", StringComparison.OrdinalIgnoreCase))
+            IsAuthEntryPath(normalizedPath))
         {
             return null;
         }
 
         return normalizedPath;
     }
+
+    private static bool IsAuthEntryPath(string path) =>
+        path.StartsWith("/teken-in", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("/teken-op", StringComparison.OrdinalIgnoreCase);
 
     private static string? NormalizeReturnUrl(string? value)
     {

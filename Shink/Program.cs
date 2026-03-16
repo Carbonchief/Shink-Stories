@@ -40,6 +40,7 @@ builder.Services.AddHttpClient<IStoryCatalogService, SupabaseStoryCatalogService
 builder.Services.AddHttpClient<PayFastCheckoutService>();
 builder.Services.AddHttpClient<PaystackCheckoutService>();
 builder.Services.AddHttpClient<ISubscriptionLedgerService, SupabaseSubscriptionLedgerService>();
+builder.Services.AddHttpClient<IStoryTrackingService, SupabaseStoryTrackingService>();
 builder.Services.AddSingleton<IContactFormProtectionService, ContactFormProtectionService>();
 builder.Services.AddRateLimiter(options =>
 {
@@ -73,6 +74,17 @@ builder.Services.AddRateLimiter(options =>
         {
             PermitLimit = 24,
             Window = TimeSpan.FromMinutes(10),
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
+    });
+    options.AddPolicy("story-tracking", httpContext =>
+    {
+        var clientId = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown-client";
+        return RateLimitPartition.GetFixedWindowLimiter($"story:{clientId}", _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 180,
+            Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0,
             AutoReplenishment = true
         });
@@ -180,6 +192,9 @@ app.Use(async (httpContext, next) =>
     await next();
 });
 
+// Fallback serving from physical wwwroot to avoid manifest drift issues during publish.
+app.UseStaticFiles();
+
 app.MapGet("/media/audio/{slug}", async (
     string slug,
     string? token,
@@ -193,7 +208,7 @@ app.MapGet("/media/audio/{slug}", async (
         return Results.Unauthorized();
     }
 
-    if (!IsLikelySameSiteAudioRequest(httpContext))
+    if (!IsLikelySameSiteRequest(httpContext))
     {
         return Results.Forbid();
     }
@@ -529,6 +544,100 @@ app.MapGet("/teken-uit", async (HttpContext httpContext) =>
     return Results.Redirect("/");
 }).RequireRateLimiting("auth-submit");
 
+app.MapPost("/api/stories/{slug}/view", async (
+    string slug,
+    StoryViewTrackApiRequest request,
+    IStoryTrackingService storyTrackingService,
+    HttpContext httpContext) =>
+{
+    if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
+    {
+        return Results.Unauthorized();
+    }
+
+    if (!IsLikelySameSiteRequest(httpContext))
+    {
+        return Results.Forbid();
+    }
+
+    if (!TryNormalizeStorySlug(slug, out var normalizedStorySlug))
+    {
+        return Results.BadRequest(new { message = "Ongeldige storie-identifiseerder." });
+    }
+
+    var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
+                       ?? httpContext.User.Identity?.Name;
+    var source = NormalizeStoryTrackingSource(request.Source, request.StoryPath);
+    var storyPath = ResolveStoryTrackingPath(request.StoryPath, normalizedStorySlug, source);
+    var referrerPath = ResolveOptionalTrackingPath(request.ReferrerPath);
+
+    var tracked = await storyTrackingService.RecordStoryViewAsync(
+        signedInEmail,
+        new StoryViewTrackingRequest(
+            StorySlug: normalizedStorySlug,
+            StoryPath: storyPath,
+            Source: source,
+            ReferrerPath: referrerPath),
+        httpContext.RequestAborted);
+
+    return Results.Ok(new { tracked });
+}).RequireRateLimiting("story-tracking").DisableAntiforgery();
+
+app.MapPost("/api/stories/{slug}/listen", async (
+    string slug,
+    StoryListenTrackApiRequest request,
+    IStoryTrackingService storyTrackingService,
+    HttpContext httpContext) =>
+{
+    if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
+    {
+        return Results.Unauthorized();
+    }
+
+    if (!IsLikelySameSiteRequest(httpContext))
+    {
+        return Results.Forbid();
+    }
+
+    if (!TryNormalizeStorySlug(slug, out var normalizedStorySlug))
+    {
+        return Results.BadRequest(new { message = "Ongeldige storie-identifiseerder." });
+    }
+
+    if (!Guid.TryParse(request.SessionId, out var sessionId))
+    {
+        return Results.BadRequest(new { message = "Ongeldige sessie-identifiseerder." });
+    }
+
+    var listenedSeconds = NormalizeListenSeconds(request.ListenedSeconds);
+    if (listenedSeconds <= 0)
+    {
+        return Results.Ok(new { tracked = false });
+    }
+
+    var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
+                       ?? httpContext.User.Identity?.Name;
+    var source = NormalizeStoryTrackingSource(request.Source, request.StoryPath);
+    var storyPath = ResolveStoryTrackingPath(request.StoryPath, normalizedStorySlug, source);
+    var eventType = NormalizeStoryListenEventType(request.EventType);
+
+    var tracked = await storyTrackingService.RecordStoryListenAsync(
+        signedInEmail,
+        new StoryListenTrackingRequest(
+            StorySlug: normalizedStorySlug,
+            StoryPath: storyPath,
+            SessionId: sessionId,
+            EventType: eventType,
+            ListenedSeconds: listenedSeconds,
+            PositionSeconds: NormalizeOptionalSeconds(request.PositionSeconds),
+            DurationSeconds: NormalizeOptionalDuration(request.DurationSeconds),
+            Source: source,
+            IsCompleted: request.IsCompleted ?? false),
+        httpContext.RequestAborted);
+
+    return Results.Ok(new { tracked });
+}).RequireRateLimiting("story-tracking").DisableAntiforgery();
+
 app.MapGet("/api/search/suggest", async (string? q, int? limit, IStoryCatalogService storyCatalogService, HttpContext httpContext) =>
 {
     var query = (q ?? string.Empty).Trim();
@@ -629,6 +738,8 @@ app.MapGet("/sitemap.xml", async (HttpContext httpContext, IStoryCatalogService 
         "/",
         "/gratis",
         "/luister",
+        "/intekening-en-betaling",
+        "/my-stories",
         "/opsies",
         "/meer-oor-ons",
         "/soek",
@@ -679,7 +790,7 @@ app.MapRazorComponents<App>()
 
 app.Run();
 
-static bool IsLikelySameSiteAudioRequest(HttpContext httpContext)
+static bool IsLikelySameSiteRequest(HttpContext httpContext)
 {
     var secFetchSite = httpContext.Request.Headers["Sec-Fetch-Site"].ToString();
     if (!string.IsNullOrWhiteSpace(secFetchSite) &&
@@ -790,6 +901,165 @@ static bool HasHomeOverrideQuery(IQueryCollection query)
            string.Equals(token, "true", StringComparison.OrdinalIgnoreCase);
 }
 
+static bool TryNormalizeStorySlug(string? slug, out string normalizedSlug)
+{
+    normalizedSlug = string.Empty;
+    if (string.IsNullOrWhiteSpace(slug))
+    {
+        return false;
+    }
+
+    var candidate = slug.Trim().ToLowerInvariant();
+    if (candidate.Length is < 3 or > 180)
+    {
+        return false;
+    }
+
+    if (candidate[0] == '-' || candidate[^1] == '-')
+    {
+        return false;
+    }
+
+    var previousWasDash = false;
+    foreach (var character in candidate)
+    {
+        if (character == '-')
+        {
+            if (previousWasDash)
+            {
+                return false;
+            }
+
+            previousWasDash = true;
+            continue;
+        }
+
+        previousWasDash = false;
+        if (!char.IsAsciiLetterOrDigit(character) || char.IsUpper(character))
+        {
+            return false;
+        }
+    }
+
+    normalizedSlug = candidate;
+    return true;
+}
+
+static string NormalizeStoryTrackingSource(string? source, string? storyPath)
+{
+    if (!string.IsNullOrWhiteSpace(source))
+    {
+        var normalizedSource = source.Trim().ToLowerInvariant();
+        if (normalizedSource is "gratis" or "luister")
+        {
+            return normalizedSource;
+        }
+    }
+
+    var normalizedPath = ResolveOptionalTrackingPath(storyPath);
+    if (normalizedPath is not null)
+    {
+        if (normalizedPath.StartsWith("/gratis/", StringComparison.OrdinalIgnoreCase))
+        {
+            return "gratis";
+        }
+
+        if (normalizedPath.StartsWith("/luister/", StringComparison.OrdinalIgnoreCase))
+        {
+            return "luister";
+        }
+    }
+
+    return "unknown";
+}
+
+static string ResolveStoryTrackingPath(string? storyPath, string storySlug, string source)
+{
+    var normalizedPath = ResolveOptionalTrackingPath(storyPath);
+    if (normalizedPath is not null)
+    {
+        return normalizedPath;
+    }
+
+    return source switch
+    {
+        "gratis" => $"/gratis/{Uri.EscapeDataString(storySlug)}",
+        "luister" => $"/luister/{Uri.EscapeDataString(storySlug)}",
+        _ => $"/luister/{Uri.EscapeDataString(storySlug)}"
+    };
+}
+
+static string? ResolveOptionalTrackingPath(string? value)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return null;
+    }
+
+    var candidate = value.Trim();
+    if (!candidate.StartsWith("/", StringComparison.Ordinal) ||
+        candidate.StartsWith("//", StringComparison.Ordinal))
+    {
+        return null;
+    }
+
+    if (candidate.Length > 256)
+    {
+        candidate = candidate[..256];
+    }
+
+    return candidate;
+}
+
+static decimal NormalizeListenSeconds(decimal? listenedSeconds)
+{
+    var value = listenedSeconds ?? 0m;
+    if (value <= 0m)
+    {
+        return 0m;
+    }
+
+    return decimal.Round(Math.Clamp(value, 0m, 3600m), 3, MidpointRounding.AwayFromZero);
+}
+
+static decimal? NormalizeOptionalSeconds(decimal? value)
+{
+    if (value is null || value <= 0m)
+    {
+        return null;
+    }
+
+    return decimal.Round(Math.Clamp(value.Value, 0m, 43200m), 3, MidpointRounding.AwayFromZero);
+}
+
+static decimal? NormalizeOptionalDuration(decimal? value)
+{
+    if (value is null || value <= 0m)
+    {
+        return null;
+    }
+
+    return decimal.Round(Math.Clamp(value.Value, 0m, 43200m), 3, MidpointRounding.AwayFromZero);
+}
+
+static string NormalizeStoryListenEventType(string? eventType)
+{
+    if (string.IsNullOrWhiteSpace(eventType))
+    {
+        return "progress";
+    }
+
+    return eventType.Trim().ToLowerInvariant() switch
+    {
+        "progress" => "progress",
+        "pause" => "pause",
+        "ended" => "ended",
+        "pagehide" => "pagehide",
+        "visibilityhidden" => "visibilityhidden",
+        _ => "progress"
+    };
+}
+
 static bool TryResolvePaymentProvider(string? provider, out string resolvedProvider)
 {
     if (string.IsNullOrWhiteSpace(provider))
@@ -838,6 +1108,8 @@ static bool CanMapLegacyStorySlug(string? slug)
         "betaal" => false,
         "error" => false,
         "gratis" => false,
+        "intekening-en-betaling" => false,
+        "intekening-en-betaaling" => false,
         "luister" => false,
         "media" => false,
         "meer-oor-ons" => false,
@@ -985,7 +1257,15 @@ static IReadOnlyList<SearchSiteCandidate> BuildSearchStaticCandidates() =>
         Url: "/luister",
         Kind: "Bladsy",
         Keywords: "alle stories intekening luister",
-        ThumbnailPath: "/branding/Schink_Stories_Kom_Luister_Saam.webp",
+        ThumbnailPath: "/branding/DIS_STORIETYD.png",
+        IsSitePage: true),
+    new(
+        Title: "My stories",
+        Description: "Jou persoonlike lys van stories wat jy reeds geluister het of nog besig is.",
+        Url: "/my-stories",
+        Kind: "Bladsy",
+        Keywords: "my stories geluister vordering voortgaan",
+        ThumbnailPath: "/branding/schink-logo-green.png",
         IsSitePage: true),
     new(
         Title: "Meer oor Ons",
@@ -994,6 +1274,14 @@ static IReadOnlyList<SearchSiteCandidate> BuildSearchStaticCandidates() =>
         Kind: "Bladsy",
         Keywords: "wie ons is missie visie waardes belofte ouers",
         ThumbnailPath: "/branding/Schink_Die_Ware_Wenner_Schink_Stories_600x600.png",
+        IsSitePage: true),
+    new(
+        Title: "Intekening en betaling",
+        Description: "Bestuur jou Schink Stories intekening en betaalopsies.",
+        Url: "/intekening-en-betaling",
+        Kind: "Bladsy",
+        Keywords: "intekening betaling planne opsies rekening",
+        ThumbnailPath: "/branding/schink-logo-green.png",
         IsSitePage: true),
     new(
         Title: "Opsies",
@@ -1173,6 +1461,16 @@ sealed record AuthSignUpApiRequest(
     string? Email,
     string? MobileNumber,
     string? Password);
+sealed record StoryViewTrackApiRequest(string? StoryPath, string? Source, string? ReferrerPath);
+sealed record StoryListenTrackApiRequest(
+    string? StoryPath,
+    string? Source,
+    string? SessionId,
+    string? EventType,
+    decimal? ListenedSeconds,
+    decimal? PositionSeconds,
+    decimal? DurationSeconds,
+    bool? IsCompleted);
 sealed record SearchSiteCandidate(
     string Title,
     string Description,

@@ -21,11 +21,18 @@ const MUTE_TOGGLE_SELECTOR = ".story-mute-toggle";
 const MUTE_ICON_SELECTOR = ".story-mute-icon";
 const SPEED_TOGGLE_SELECTOR = ".story-speed-toggle";
 const SPEED_LABEL_SELECTOR = ".story-speed-label";
+const SHARE_TOGGLE_SELECTOR = ".story-share-toggle";
 const SPEED_STEPS = [1, 1.25, 1.5, 0.8];
+const STORY_TRACKING_ENDPOINT_PREFIX = "/api/stories/";
+const LISTEN_FLUSH_THRESHOLD_SECONDS = 12;
+const LISTEN_MAX_DELTA_SECONDS = 30;
+const LISTEN_MAX_EVENT_SECONDS = 600;
+const LISTEN_MIN_EVENT_SECONDS = 0.2;
 
 const boundAudios = new WeakSet();
 const fullscreenBindings = new WeakMap();
 const playerCapabilityCache = new WeakMap();
+const storyTrackingStateCache = new WeakMap();
 
 function setFontAwesomeIcon(iconElement, iconClass) {
     if (!(iconElement instanceof HTMLElement)) {
@@ -393,6 +400,257 @@ function formatTime(seconds) {
     return `${mins}:${String(secs).padStart(2, "0")}`;
 }
 
+async function copyTextToClipboard(text) {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        try {
+            await navigator.clipboard.writeText(text);
+            return true;
+        } catch {
+            // Fall through to legacy copy method.
+        }
+    }
+
+    const tempInput = document.createElement("textarea");
+    tempInput.value = text;
+    tempInput.setAttribute("readonly", "");
+    tempInput.style.position = "absolute";
+    tempInput.style.left = "-9999px";
+    document.body.append(tempInput);
+    tempInput.select();
+
+    let copied = false;
+    try {
+        copied = document.execCommand("copy");
+    } catch {
+        copied = false;
+    }
+
+    tempInput.remove();
+    return copied;
+}
+
+function showShareFeedback(shareToggle, message) {
+    if (!(shareToggle instanceof HTMLButtonElement)) {
+        return;
+    }
+
+    const defaultLabel = shareToggle.dataset.defaultShareLabel || "Deel storie";
+    const defaultTitle = shareToggle.dataset.defaultShareTitle || "Deel storie";
+    shareToggle.dataset.defaultShareLabel = defaultLabel;
+    shareToggle.dataset.defaultShareTitle = defaultTitle;
+    shareToggle.setAttribute("aria-label", message);
+    shareToggle.setAttribute("title", message);
+
+    window.setTimeout(() => {
+        shareToggle.setAttribute("aria-label", defaultLabel);
+        shareToggle.setAttribute("title", defaultTitle);
+    }, 1800);
+}
+
+function resolveStorySource(pathname) {
+    if (typeof pathname !== "string") {
+        return "unknown";
+    }
+
+    if (pathname.startsWith("/gratis/")) {
+        return "gratis";
+    }
+
+    if (pathname.startsWith("/luister/")) {
+        return "luister";
+    }
+
+    return "unknown";
+}
+
+function resolveReferrerPath() {
+    if (!document.referrer) {
+        return null;
+    }
+
+    try {
+        const referrerUrl = new URL(document.referrer);
+        if (referrerUrl.origin !== window.location.origin) {
+            return null;
+        }
+
+        const localPath = `${referrerUrl.pathname}${referrerUrl.search}`;
+        return localPath || null;
+    } catch {
+        return null;
+    }
+}
+
+function createUuidV4Fallback() {
+    const bytes = new Uint8Array(16);
+
+    if (window.crypto && typeof window.crypto.getRandomValues === "function") {
+        window.crypto.getRandomValues(bytes);
+    } else {
+        for (let index = 0; index < bytes.length; index += 1) {
+            bytes[index] = Math.floor(Math.random() * 256);
+        }
+    }
+
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0"));
+    return `${hex[0]}${hex[1]}${hex[2]}${hex[3]}-${hex[4]}${hex[5]}-${hex[6]}${hex[7]}-${hex[8]}${hex[9]}-${hex[10]}${hex[11]}${hex[12]}${hex[13]}${hex[14]}${hex[15]}`;
+}
+
+function createTrackingSessionId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+        return window.crypto.randomUUID();
+    }
+
+    return createUuidV4Fallback();
+}
+
+function buildStoryTrackingState(audioElement) {
+    const slug = (audioElement.dataset.storySlug || "").trim().toLowerCase();
+    if (!slug) {
+        return null;
+    }
+
+    const storyPath = window.location.pathname || "/";
+    return {
+        slug,
+        source: resolveStorySource(storyPath),
+        storyPath,
+        sessionId: createTrackingSessionId(),
+        referrerPath: resolveReferrerPath(),
+        viewTracked: false,
+        pendingListenSeconds: 0,
+        lastTickAtMs: null,
+        sendInFlight: false
+    };
+}
+
+async function postStoryTracking(slug, endpointSuffix, payload, useKeepalive) {
+    try {
+        await fetch(`${STORY_TRACKING_ENDPOINT_PREFIX}${encodeURIComponent(slug)}/${endpointSuffix}`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            credentials: "same-origin",
+            keepalive: Boolean(useKeepalive),
+            body: JSON.stringify(payload)
+        });
+    } catch {
+        // Ignore network errors to avoid breaking playback controls.
+    }
+}
+
+function trackStoryView(trackingState) {
+    if (!trackingState || trackingState.viewTracked) {
+        return;
+    }
+
+    trackingState.viewTracked = true;
+    void postStoryTracking(trackingState.slug, "view", {
+        storyPath: trackingState.storyPath,
+        source: trackingState.source,
+        referrerPath: trackingState.referrerPath
+    }, false);
+}
+
+function captureListenDelta(trackingState) {
+    if (!trackingState || trackingState.lastTickAtMs === null) {
+        return;
+    }
+
+    const nowMs = Date.now();
+    const elapsedSeconds = (nowMs - trackingState.lastTickAtMs) / 1000;
+    trackingState.lastTickAtMs = nowMs;
+
+    if (!Number.isFinite(elapsedSeconds) || elapsedSeconds <= 0 || elapsedSeconds > LISTEN_MAX_DELTA_SECONDS) {
+        return;
+    }
+
+    trackingState.pendingListenSeconds += elapsedSeconds;
+}
+
+function flushStoryListen(audioElement, trackingState, eventType, force, useKeepalive) {
+    if (!trackingState || trackingState.sendInFlight) {
+        return;
+    }
+
+    const pendingSeconds = trackingState.pendingListenSeconds;
+    const shouldFlush = force || pendingSeconds >= LISTEN_FLUSH_THRESHOLD_SECONDS;
+    if (!shouldFlush || pendingSeconds < LISTEN_MIN_EVENT_SECONDS) {
+        return;
+    }
+
+    trackingState.pendingListenSeconds = 0;
+    trackingState.sendInFlight = true;
+
+    const listenedSeconds = Math.min(pendingSeconds, LISTEN_MAX_EVENT_SECONDS);
+    const positionSeconds = Number.isFinite(audioElement.currentTime) ? audioElement.currentTime : null;
+    const durationSeconds = Number.isFinite(audioElement.duration) && audioElement.duration > 0
+        ? audioElement.duration
+        : null;
+
+    const payload = {
+        storyPath: trackingState.storyPath,
+        source: trackingState.source,
+        sessionId: trackingState.sessionId,
+        eventType,
+        listenedSeconds: Number(listenedSeconds.toFixed(3)),
+        positionSeconds: positionSeconds === null ? null : Number(positionSeconds.toFixed(3)),
+        durationSeconds: durationSeconds === null ? null : Number(durationSeconds.toFixed(3)),
+        isCompleted: eventType === "ended"
+    };
+
+    void postStoryTracking(trackingState.slug, "listen", payload, useKeepalive)
+        .finally(() => {
+            trackingState.sendInFlight = false;
+        });
+}
+
+function startListenTimer(trackingState) {
+    if (!trackingState) {
+        return;
+    }
+
+    trackingState.lastTickAtMs = Date.now();
+}
+
+function stopListenTimer(trackingState) {
+    if (!trackingState) {
+        return;
+    }
+
+    trackingState.lastTickAtMs = null;
+}
+
+async function shareStoryFromPlayer(audioElement, shareToggle) {
+    const shareTitle = audioElement.dataset.storyTitle || "Schink Stories";
+    const shareUrl = window.location.href;
+
+    if (typeof navigator.share === "function") {
+        try {
+            await navigator.share({
+                title: shareTitle,
+                text: shareTitle,
+                url: shareUrl
+            });
+            return;
+        } catch (error) {
+            if (error instanceof DOMException && error.name === "AbortError") {
+                return;
+            }
+            // Fall through to clipboard fallback.
+        }
+    }
+
+    const copied = await copyTextToClipboard(shareUrl);
+    if (copied) {
+        showShareFeedback(shareToggle, "Skakel gekopieer");
+    }
+}
+
 function getCustomPlayerElements(audioElement) {
     const container = audioElement.closest(".story-player-content");
     if (!(container instanceof HTMLElement)) {
@@ -418,7 +676,8 @@ function getCustomPlayerElements(audioElement) {
         muteToggle: customPlayer.querySelector(MUTE_TOGGLE_SELECTOR),
         muteIcon: customPlayer.querySelector(MUTE_ICON_SELECTOR),
         speedToggle: customPlayer.querySelector(SPEED_TOGGLE_SELECTOR),
-        speedLabel: customPlayer.querySelector(SPEED_LABEL_SELECTOR)
+        speedLabel: customPlayer.querySelector(SPEED_LABEL_SELECTOR),
+        shareToggle: customPlayer.querySelector(SHARE_TOGGLE_SELECTOR)
     };
 }
 
@@ -432,6 +691,13 @@ function updateRangeVisual(slider, percentage) {
 }
 
 function stopAndReleaseAudio(audioElement) {
+    const trackingState = storyTrackingStateCache.get(audioElement);
+    if (trackingState) {
+        captureListenDelta(trackingState);
+        flushStoryListen(audioElement, trackingState, "pagehide", true, true);
+        stopListenTimer(trackingState);
+    }
+
     saveStoryProgress(audioElement);
     saveVolumeState(audioElement);
     audioElement.pause();
@@ -459,6 +725,11 @@ function bindAudioEvents(audioElement) {
 
     const customPlayerElements = getCustomPlayerElements(audioElement);
     const playerCapabilities = detectPlayerCapabilities(audioElement);
+    const trackingState = buildStoryTrackingState(audioElement);
+    if (trackingState) {
+        storyTrackingStateCache.set(audioElement, trackingState);
+        trackStoryView(trackingState);
+    }
 
     if (customPlayerElements?.container instanceof HTMLElement) {
         customPlayerElements.container.classList.add("story-player-enhanced");
@@ -652,6 +923,12 @@ function bindAudioEvents(audioElement) {
                 updateCustomPlayerState();
             });
         }
+
+        if (customPlayerElements.shareToggle instanceof HTMLButtonElement) {
+            customPlayerElements.shareToggle.addEventListener("click", async () => {
+                await shareStoryFromPlayer(audioElement, customPlayerElements.shareToggle);
+            });
+        }
     }
 
     const coverImage = getStoryCoverImage(audioElement);
@@ -715,12 +992,30 @@ function bindAudioEvents(audioElement) {
         restoreStoryProgress(audioElement);
         updateAll();
     });
-    audioElement.addEventListener("play", updateAll);
+    audioElement.addEventListener("play", () => {
+        if (trackingState) {
+            trackStoryView(trackingState);
+            startListenTimer(trackingState);
+        }
+
+        updateAll();
+    });
     audioElement.addEventListener("pause", () => {
+        if (trackingState) {
+            captureListenDelta(trackingState);
+            flushStoryListen(audioElement, trackingState, "pause", true, false);
+            stopListenTimer(trackingState);
+        }
+
         updateAll();
         saveStoryProgress(audioElement);
     });
     audioElement.addEventListener("timeupdate", () => {
+        if (trackingState && !audioElement.paused) {
+            captureListenDelta(trackingState);
+            flushStoryListen(audioElement, trackingState, "progress", false, false);
+        }
+
         updatePositionState(audioElement);
         updateCustomPlayerState();
         maybeSaveProgress();
@@ -735,6 +1030,12 @@ function bindAudioEvents(audioElement) {
         saveStoryProgress(audioElement);
     });
     audioElement.addEventListener("ended", () => {
+        if (trackingState) {
+            captureListenDelta(trackingState);
+            flushStoryListen(audioElement, trackingState, "ended", true, false);
+            stopListenTimer(trackingState);
+        }
+
         clearStoryProgress(audioElement);
         updateAll();
     });
@@ -745,12 +1046,29 @@ function bindAudioEvents(audioElement) {
 
     document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "hidden") {
+            if (trackingState) {
+                captureListenDelta(trackingState);
+                flushStoryListen(audioElement, trackingState, "visibilityhidden", true, true);
+                stopListenTimer(trackingState);
+            }
+
             saveStoryProgress(audioElement);
             saveVolumeState(audioElement);
+            return;
+        }
+
+        if (trackingState && !audioElement.paused) {
+            startListenTimer(trackingState);
         }
     });
 
     window.addEventListener("pagehide", () => {
+        if (trackingState) {
+            captureListenDelta(trackingState);
+            flushStoryListen(audioElement, trackingState, "pagehide", true, true);
+            stopListenTimer(trackingState);
+        }
+
         saveStoryProgress(audioElement);
         saveVolumeState(audioElement);
     });

@@ -1,0 +1,250 @@
+@page "/my-stories"
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IStoryTrackingService StoryTrackingService
+@inject IStoryCatalogService StoryCatalogService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Schink Stories | My stories</PageTitle>
+
+<section class="my-stories-page">
+    <header class="my-stories-hero">
+        <h1>My stories</h1>
+        <p>
+            Kyk wat jy reeds geluister het en gaan maklik voort met stories wat nog besig is.
+        </p>
+    </header>
+
+    @if (IsRedirectingToLogin)
+    {
+        <section class="my-stories-state">
+            <h2>Neem jou nou na teken in...</h2>
+            <p>Jy moet ingeteken wees om jou stories te sien.</p>
+        </section>
+    }
+    else if (IsLoading)
+    {
+        <section class="my-stories-state">
+            <h2>Laai jou stories...</h2>
+        </section>
+    }
+    else if (InProgressStories.Count == 0 && CompletedStories.Count == 0)
+    {
+        <section class="my-stories-state">
+            <h2>Jy het nog nie begin luister nie.</h2>
+            <p>Kies 'n storie en begin luister. Jou vordering sal hier wys.</p>
+            <div class="my-stories-actions">
+                <a href="/gratis" class="my-stories-btn">Gaan na gratis stories</a>
+                <a href="/luister" class="my-stories-btn my-stories-btn-secondary">Gaan na alle stories</a>
+            </div>
+        </section>
+    }
+    else
+    {
+        @if (InProgressStories.Count > 0)
+        {
+            <section class="my-stories-section" aria-label="Stories waarmee jy besig is">
+                <h2>Jy luister tans</h2>
+                <div class="my-stories-grid">
+                    @foreach (var story in InProgressStories)
+                    {
+                        <article class="my-story-card">
+                            <a class="my-story-image-link" href="@story.LinkPath" aria-label="@($"Maak {story.Title} oop")">
+                                <img src="@story.ImagePath" alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
+                            </a>
+                            <div class="my-story-body">
+                                <p class="my-story-source">@story.SourceLabel</p>
+                                <h3>@story.Title</h3>
+                                <p class="my-story-description">@story.Description</p>
+                                <p class="my-story-meta">@story.ProgressLabel</p>
+                                <div class="my-story-progress-wrap" aria-hidden="true">
+                                    <span class="my-story-progress" style="@($"width: {story.CompletionPercent:0.#}%;")"></span>
+                                </div>
+                                <p class="my-story-meta">@story.LastListenedLabel</p>
+                                <a class="my-story-link" href="@story.LinkPath">Gaan voort</a>
+                            </div>
+                        </article>
+                    }
+                </div>
+            </section>
+        }
+
+        @if (CompletedStories.Count > 0)
+        {
+            <section class="my-stories-section" aria-label="Stories wat jy reeds geluister het">
+                <h2>Reeds geluister</h2>
+                <div class="my-stories-grid">
+                    @foreach (var story in CompletedStories)
+                    {
+                        <article class="my-story-card is-complete">
+                            <a class="my-story-image-link" href="@story.LinkPath" aria-label="@($"Maak {story.Title} oop")">
+                                <img src="@story.ImagePath" alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
+                            </a>
+                            <div class="my-story-body">
+                                <p class="my-story-source">@story.SourceLabel</p>
+                                <h3>@story.Title</h3>
+                                <p class="my-story-description">@story.Description</p>
+                                <p class="my-story-meta">@story.ProgressLabel</p>
+                                <p class="my-story-meta">@story.LastListenedLabel</p>
+                                <a class="my-story-link" href="@story.LinkPath">Luister weer</a>
+                            </div>
+                        </article>
+                    }
+                </div>
+            </section>
+        }
+    }
+</section>
+
+@code {
+    private bool IsLoading { get; set; } = true;
+    private bool IsRedirectingToLogin { get; set; }
+    private IReadOnlyList<MyStoryCard> InProgressStories { get; set; } = Array.Empty<MyStoryCard>();
+    private IReadOnlyList<MyStoryCard> CompletedStories { get; set; } = Array.Empty<MyStoryCard>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated != true)
+        {
+            IsRedirectingToLogin = true;
+            IsLoading = false;
+            var returnUrl = Uri.EscapeDataString("/my-stories");
+            NavigationManager.NavigateTo($"/teken-in?returnUrl={returnUrl}");
+            return;
+        }
+
+        var signedInEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                           ?? authState.User.Identity?.Name;
+
+        var progressTask = StoryTrackingService.GetUserStoryProgressAsync(signedInEmail);
+        var freeStoriesTask = StoryCatalogService.GetFreeStoriesAsync();
+        var luisterStoriesTask = StoryCatalogService.GetLuisterStoriesAsync();
+        await Task.WhenAll(progressTask, freeStoriesTask, luisterStoriesTask);
+
+        var storiesBySlug = freeStoriesTask.Result
+            .Concat(luisterStoriesTask.Result)
+            .GroupBy(story => story.Slug, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group.First())
+            .ToDictionary(story => story.Slug, story => story, StringComparer.OrdinalIgnoreCase);
+
+        var cards = progressTask.Result
+            .Select(progress => BuildStoryCard(progress, storiesBySlug))
+            .OrderByDescending(card => card.LastListenedAtUtc)
+            .ToArray();
+
+        InProgressStories = cards.Where(card => !card.IsCompleted).ToArray();
+        CompletedStories = cards.Where(card => card.IsCompleted).ToArray();
+        IsLoading = false;
+    }
+
+    private static MyStoryCard BuildStoryCard(UserStoryProgressItem progress, IReadOnlyDictionary<string, StoryItem> storiesBySlug)
+    {
+        var hasCatalogStory = storiesBySlug.TryGetValue(progress.StorySlug, out var catalogStory);
+        var title = hasCatalogStory ? catalogStory!.Title : FormatFallbackTitle(progress.StorySlug);
+        var description = hasCatalogStory
+            ? catalogStory!.Description
+            : "Maak hierdie storie oop om weer te luister.";
+        var imagePath = hasCatalogStory
+            ? catalogStory!.ThumbnailPath
+            : "/branding/schink-logo-green.png";
+        var completionPercent = ResolveCompletionPercent(progress);
+        var linkPath = ResolveStoryLinkPath(progress);
+        var progressLabel = BuildProgressLabel(progress);
+        var lastListenedLabel = $"Laas geluister: {progress.LastListenedAtUtc.ToLocalTime():dd MMMM yyyy HH:mm}";
+
+        return new MyStoryCard(
+            StorySlug: progress.StorySlug,
+            Title: title,
+            Description: description,
+            ImagePath: imagePath,
+            LinkPath: linkPath,
+            SourceLabel: string.Equals(progress.Source, "gratis", StringComparison.OrdinalIgnoreCase) ? "Gratis storie" : "Alle stories",
+            ProgressLabel: progressLabel,
+            LastListenedLabel: lastListenedLabel,
+            LastListenedAtUtc: progress.LastListenedAtUtc,
+            CompletionPercent: completionPercent,
+            IsCompleted: progress.IsCompleted);
+    }
+
+    private static decimal ResolveCompletionPercent(UserStoryProgressItem progress)
+    {
+        if (progress.IsCompleted)
+        {
+            return 100m;
+        }
+
+        if (progress.LastPositionSeconds is > 0m && progress.DurationSeconds is > 0m)
+        {
+            var ratio = progress.LastPositionSeconds.Value / progress.DurationSeconds.Value;
+            return decimal.Round(Math.Clamp(ratio * 100m, 0m, 99.5m), 1, MidpointRounding.AwayFromZero);
+        }
+
+        return 0m;
+    }
+
+    private static string BuildProgressLabel(UserStoryProgressItem progress)
+    {
+        if (progress.LastPositionSeconds is > 0m && progress.DurationSeconds is > 0m)
+        {
+            return $"{FormatDuration(progress.LastPositionSeconds.Value)} van {FormatDuration(progress.DurationSeconds.Value)}";
+        }
+
+        return $"{FormatDuration(progress.TotalListenedSeconds)} geluister";
+    }
+
+    private static string ResolveStoryLinkPath(UserStoryProgressItem progress)
+    {
+        if (!string.IsNullOrWhiteSpace(progress.StoryPath))
+        {
+            var path = progress.StoryPath.Trim();
+            if (path.StartsWith("/", StringComparison.Ordinal) &&
+                !path.StartsWith("//", StringComparison.Ordinal))
+            {
+                return path;
+            }
+        }
+
+        return string.Equals(progress.Source, "gratis", StringComparison.OrdinalIgnoreCase)
+            ? $"/gratis/{Uri.EscapeDataString(progress.StorySlug)}"
+            : $"/luister/{Uri.EscapeDataString(progress.StorySlug)}";
+    }
+
+    private static string FormatFallbackTitle(string slug)
+    {
+        if (string.IsNullOrWhiteSpace(slug))
+        {
+            return "Storie";
+        }
+
+        var words = slug
+            .Split('-', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(word => char.ToUpperInvariant(word[0]) + word[1..]);
+        return string.Join(" ", words);
+    }
+
+    private static string FormatDuration(decimal value)
+    {
+        var seconds = value <= 0m
+            ? 0
+            : (int)Math.Floor(value);
+        var minutesPart = seconds / 60;
+        var secondsPart = seconds % 60;
+
+        return $"{minutesPart}:{secondsPart:00}";
+    }
+
+    private sealed record MyStoryCard(
+        string StorySlug,
+        string Title,
+        string Description,
+        string ImagePath,
+        string LinkPath,
+        string SourceLabel,
+        string ProgressLabel,
+        string LastListenedLabel,
+        DateTimeOffset LastListenedAtUtc,
+        decimal CompletionPercent,
+        bool IsCompleted);
+}

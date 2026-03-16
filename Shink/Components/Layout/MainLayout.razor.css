@@ -760,6 +760,11 @@
 
     .nav-controls {
         justify-self: end;
+        min-width: 0;
+    }
+
+    .guest-controls {
+        min-width: 0;
     }
 
     .nav-menu-toggle {
@@ -860,9 +865,22 @@
     }
 
     .is-search-active .site-search-form {
-        min-width: min(86vw, 355px);
+        min-width: 0;
         min-height: 50px;
         padding: 0 0.72rem;
+    }
+
+    .nav-controls.is-search-active,
+    .guest-controls.is-search-active {
+        grid-column: 1 / -1;
+        justify-self: stretch;
+        width: 100%;
+        margin-top: 0.24rem;
+    }
+
+    .nav-controls.is-search-active .site-search-form,
+    .guest-controls.is-search-active .site-search-form {
+        width: 100%;
     }
 
     .is-search-active .site-search-toggle {
