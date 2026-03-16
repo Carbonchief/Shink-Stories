@@ -27,6 +27,69 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         return await HasActiveSubscriptionAsync(email, tierCode, cancellationToken);
     }
 
+    public async Task<SubscriberProfile?> GetSubscriberProfileAsync(string? email, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return null;
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            _logger.LogWarning("Supabase subscriber profile lookup skipped: URL is not configured.");
+            return null;
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            _logger.LogWarning("Supabase subscriber profile lookup skipped: ServiceRoleKey is not configured.");
+            return null;
+        }
+
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+        var escapedEmail = Uri.EscapeDataString(normalizedEmail);
+        var uri = new Uri(
+            baseUri,
+            $"rest/v1/subscribers?select=email,first_name,last_name,display_name,mobile_number&email=eq.{escapedEmail}&limit=1");
+
+        try
+        {
+            using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning(
+                    "Supabase subscriber profile lookup failed. Status={StatusCode} Body={Body}",
+                    (int)response.StatusCode,
+                    responseBody);
+                return null;
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var profiles = await JsonSerializer.DeserializeAsync<List<SubscriberProfileRow>>(stream, cancellationToken: cancellationToken)
+                ?? [];
+            var profile = profiles.FirstOrDefault();
+            if (profile is null)
+            {
+                return new SubscriberProfile(normalizedEmail, null, null, null, null);
+            }
+
+            return new SubscriberProfile(
+                Email: string.IsNullOrWhiteSpace(profile.Email) ? normalizedEmail : profile.Email.Trim().ToLowerInvariant(),
+                FirstName: NormalizeOptionalText(profile.FirstName, 80),
+                LastName: NormalizeOptionalText(profile.LastName, 80),
+                DisplayName: NormalizeOptionalText(profile.DisplayName, 120),
+                MobileNumber: NormalizeOptionalText(profile.MobileNumber, 32));
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(exception, "Supabase subscriber profile lookup failed unexpectedly.");
+            return null;
+        }
+    }
+
     public async Task<bool> UpsertSubscriberProfileAsync(
         string? email,
         string? firstName,
@@ -864,6 +927,19 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         return null;
     }
 
+    private static string? NormalizeOptionalText(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var trimmed = value.Trim();
+        return trimmed.Length > maxLength
+            ? trimmed[..maxLength]
+            : trimmed;
+    }
+
     private static bool ShouldActivatePaystackSubscription(string eventType, string? eventStatus)
     {
         if (string.Equals(eventType, "charge.success", StringComparison.OrdinalIgnoreCase) ||
@@ -1047,5 +1123,23 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         [JsonPropertyName("tier_code")]
         public string? TierCode { get; set; }
+    }
+
+    private sealed class SubscriberProfileRow
+    {
+        [JsonPropertyName("email")]
+        public string? Email { get; set; }
+
+        [JsonPropertyName("first_name")]
+        public string? FirstName { get; set; }
+
+        [JsonPropertyName("last_name")]
+        public string? LastName { get; set; }
+
+        [JsonPropertyName("display_name")]
+        public string? DisplayName { get; set; }
+
+        [JsonPropertyName("mobile_number")]
+        public string? MobileNumber { get; set; }
     }
 }

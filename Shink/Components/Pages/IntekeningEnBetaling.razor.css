@@ -1,0 +1,272 @@
+.billing-page {
+    width: min(100%, 980px);
+    margin-inline: auto;
+    display: grid;
+    gap: 1.15rem;
+}
+
+.billing-hero {
+    border-radius: 18px;
+    padding: 1rem 1rem 1.08rem;
+    border: 1px solid color-mix(in srgb, var(--line) 84%, #bbc6c0);
+    background:
+        radial-gradient(85% 120% at 50% 0%, rgba(255, 255, 255, 0.34) 0%, rgba(255, 255, 255, 0) 55%),
+        linear-gradient(180deg, #2d7f98 0%, #2a6d81 100%);
+    color: #f7fbfc;
+}
+
+.billing-kicker {
+    margin: 0;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #d7ecf3;
+}
+
+.billing-hero h1 {
+    margin: 0.42rem 0 0.55rem;
+    font-size: clamp(1.7rem, 2.5vw, 2.3rem);
+    line-height: 1.12;
+}
+
+.billing-hero p {
+    margin: 0;
+    max-width: 66ch;
+}
+
+.billing-state,
+.billing-status,
+.billing-profile {
+    border-radius: 14px;
+    padding: 0.95rem;
+    background: var(--surface);
+}
+
+.billing-state {
+    border: 1px dashed color-mix(in srgb, var(--line) 78%, #bbc6bf);
+}
+
+.billing-state h2,
+.billing-status h2,
+.billing-profile h2 {
+    margin: 0;
+    font-size: 1.16rem;
+}
+
+.billing-state p,
+.billing-status p,
+.billing-profile p {
+    margin: 0.5rem 0 0;
+    color: var(--muted);
+}
+
+.billing-profile {
+    border: 1px solid color-mix(in srgb, var(--line) 82%, #bcc6bf);
+}
+
+.billing-profile-form {
+    margin-top: 0.85rem;
+    display: grid;
+    gap: 0.78rem;
+}
+
+.billing-profile-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.72rem;
+}
+
+.billing-field {
+    display: grid;
+    gap: 0.36rem;
+}
+
+.billing-field label {
+    font-weight: 700;
+    color: #21353d;
+}
+
+.billing-field input {
+    min-height: 42px;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--line) 84%, #b4bcb5);
+    padding: 0.55rem 0.7rem;
+    background: #ffffff;
+    color: #162227;
+    font: inherit;
+}
+
+.billing-field input:focus-visible {
+    outline: 3px solid color-mix(in srgb, #ffffff 45%, var(--accent));
+    outline-offset: 2px;
+}
+
+.billing-field-readonly input {
+    background: #f0f3f5;
+    color: #3d4d54;
+}
+
+.billing-profile-form ::deep .validation-message {
+    margin: 0;
+    font-size: 0.82rem;
+    color: #9d1d1d;
+}
+
+.billing-profile-status {
+    margin: 0;
+    border-radius: 10px;
+    padding: 0.62rem 0.72rem;
+    border: 1px solid transparent;
+    font-weight: 700;
+}
+
+.billing-profile-status.is-success {
+    background: #ecfdf3;
+    color: #166534;
+    border-color: #bbf7d0;
+}
+
+.billing-profile-status.is-error {
+    background: #fff1f2;
+    color: #9f1239;
+    border-color: #fecdd3;
+}
+
+.billing-status.is-active {
+    border: 1px solid #b7efcf;
+    background: #edfdf3;
+}
+
+.billing-status.is-free {
+    border: 1px solid #bfd9ff;
+    background: #eff6ff;
+}
+
+.billing-actions {
+    margin-top: 0.85rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+}
+
+.billing-btn {
+    min-height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.58rem 0.9rem;
+    border-radius: 10px;
+    text-decoration: none;
+    font-weight: 700;
+    color: #171717;
+    background: var(--accent);
+}
+
+.billing-btn:hover {
+    background: var(--accent-deep);
+}
+
+.billing-btn-secondary {
+    color: #13394a;
+    border: 1px solid color-mix(in srgb, var(--line) 84%, #b6c1bc);
+    background: color-mix(in srgb, var(--surface) 92%, white);
+}
+
+.billing-btn-secondary:hover {
+    background: color-mix(in srgb, var(--surface) 75%, #dbe5df);
+}
+
+.billing-plans {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.billing-plans h2 {
+    margin: 0;
+    font-size: clamp(1.15rem, 2.2vw, 1.55rem);
+}
+
+.billing-plan-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.85rem;
+}
+
+.billing-plan-card {
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--line) 84%, #bbc2b6);
+    background: var(--surface);
+    padding: 0.85rem;
+    display: grid;
+    align-content: start;
+    gap: 0.44rem;
+}
+
+.billing-plan-card h3 {
+    margin: 0;
+    font-size: 1.12rem;
+    line-height: 1.2;
+}
+
+.billing-price {
+    margin: 0;
+    font-weight: 800;
+    font-size: 1.25rem;
+    color: #1d2830;
+}
+
+.billing-price span {
+    margin-left: 0.25rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #4f5965;
+    text-transform: uppercase;
+}
+
+.billing-description {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.95rem;
+    line-height: 1.45;
+}
+
+.billing-help {
+    margin: 0;
+    color: var(--muted);
+}
+
+.billing-help a {
+    font-weight: 700;
+    color: #145169;
+}
+
+@media (max-width: 980px) {
+    .billing-profile-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .billing-plan-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 680px) {
+    .billing-page {
+        gap: 0.95rem;
+    }
+
+    .billing-hero {
+        padding: 0.9rem 0.86rem 0.95rem;
+        border-radius: 15px;
+    }
+
+    .billing-actions {
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
+    .billing-btn {
+        width: 100%;
+    }
+}

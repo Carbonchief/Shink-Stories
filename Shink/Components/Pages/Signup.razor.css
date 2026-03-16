@@ -170,8 +170,19 @@
         padding: 1rem;
     }
 
+    .signup-logo {
+        margin-inline: auto;
+    }
+
     .signup-grid {
         grid-template-columns: 1fr;
         gap: 0.62rem;
+    }
+
+    .signup-link {
+        display: block;
+        width: fit-content;
+        margin-inline: auto;
+        text-align: center;
     }
 }

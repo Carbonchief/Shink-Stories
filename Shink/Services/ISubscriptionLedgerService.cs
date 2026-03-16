@@ -6,6 +6,7 @@ public interface ISubscriptionLedgerService
     Task<SubscriptionPersistResult> RecordPaystackEventAsync(string payloadJson, CancellationToken cancellationToken = default);
     Task<bool> HasActivePaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default);
     Task<bool> HasActiveSubscriptionForTierAsync(string? email, string? tierCode, CancellationToken cancellationToken = default);
+    Task<SubscriberProfile?> GetSubscriberProfileAsync(string? email, CancellationToken cancellationToken = default);
     Task<bool> UpsertSubscriberProfileAsync(
         string? email,
         string? firstName,
@@ -16,3 +17,9 @@ public interface ISubscriptionLedgerService
 }
 
 public sealed record SubscriptionPersistResult(bool IsSuccess, string? ErrorMessage = null, string? SubscriptionId = null);
+public sealed record SubscriberProfile(
+    string Email,
+    string? FirstName,
+    string? LastName,
+    string? DisplayName,
+    string? MobileNumber);

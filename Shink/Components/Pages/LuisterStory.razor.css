@@ -38,7 +38,7 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    width: min(100%, 540px);
+    width: 100%;
     min-width: 0;
     margin-inline: auto;
     box-sizing: border-box;
@@ -54,7 +54,7 @@
 
 .story-cover-wrap {
     position: relative;
-    width: min(100%, 460px);
+    width: 100%;
     max-width: 100%;
 }
 
@@ -353,7 +353,7 @@
 
 .story-secondary-controls {
     display: grid;
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
     align-items: center;
     gap: 0.65rem;
 }
@@ -372,7 +372,7 @@
 }
 
 .story-custom-player.volume-unsupported .story-secondary-controls {
-    grid-template-columns: auto auto;
+    grid-template-columns: auto auto auto;
     justify-content: space-between;
 }
 
@@ -624,7 +624,7 @@
         width: 100%;
     }
 
-    .story-player-enhanced .story-audio-native {
+    .story-audio-native {
         position: absolute;
         width: 1px;
         height: 1px;

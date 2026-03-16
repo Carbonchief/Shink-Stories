@@ -144,6 +144,10 @@ else
                     <button type="button" class="story-mini-btn story-speed-toggle" aria-label="Verander spoed" title="Spoed">
                         <span class="story-speed-label">1.0x</span>
                     </button>
+                    <button type="button" class="story-mini-btn story-share-toggle" aria-label="Deel storie" title="Deel storie">
+                        <i class="fa-solid fa-share-nodes" aria-hidden="true"></i>
+                        <span class="sr-only">Deel storie</span>
+                    </button>
                 </div>
             </div>
 
@@ -249,11 +253,11 @@ else
 
     private string ShareImageUrl =>
         CurrentStory is null
-            ? NavigationManager.ToAbsoluteUri("/branding/Schink_Stories_Kom_Luister_Saam.webp").ToString()
+            ? NavigationManager.ToAbsoluteUri("/branding/DIS_STORIETYD.png").ToString()
             : NavigationManager.ToAbsoluteUri(CurrentStory.ImagePath).ToString();
 
     private string ShareImageMimeType =>
-        CurrentStory is null ? "image/webp" : GetImageMimeType(CurrentStory.ImageFileName);
+        CurrentStory is null ? "image/png" : GetImageMimeType(CurrentStory.ImageFileName);
 
     private string ShareImageAlt =>
         CurrentStory is null ? "Schink Stories luister stories" : $"Voorblad van {CurrentStory.Title}";
