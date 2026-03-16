@@ -1134,9 +1134,14 @@ static bool TryResolveLocalAudioPath(string contentRootPath, string? audioObject
     }
 
     var storiesRoot = Path.GetFullPath(Path.Combine(contentRootPath, "Stories"));
+    var storiesRootWithSeparator = storiesRoot.EndsWith(Path.DirectorySeparatorChar)
+        ? storiesRoot
+        : $"{storiesRoot}{Path.DirectorySeparatorChar}";
     var combinedPath = Path.Combine(storiesRoot, audioObjectKey.Replace('/', Path.DirectorySeparatorChar));
     var fullPath = Path.GetFullPath(combinedPath);
-    if (!fullPath.StartsWith(storiesRoot, StringComparison.OrdinalIgnoreCase))
+    var isInsideStoriesRoot = fullPath.StartsWith(storiesRootWithSeparator, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(fullPath, storiesRoot, StringComparison.OrdinalIgnoreCase);
+    if (!isInsideStoriesRoot)
     {
         return false;
     }
