@@ -115,23 +115,6 @@
     font-size: 0.9rem;
 }
 
-.login-field :is(input) {
-    width: 100%;
-    border: 1px solid color-mix(in srgb, var(--line) 82%, white);
-    border-radius: 13px;
-    padding: 0.68rem 0.78rem;
-    font: inherit;
-    color: var(--text);
-    background: #ffffff;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-.login-field :is(input):focus {
-    outline: none;
-    border-color: color-mix(in srgb, var(--accent-deep) 54%, #296f87);
-    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 32%, white);
-}
-
 .login-field .validation-message {
     color: #b42318;
     font-size: 0.83rem;

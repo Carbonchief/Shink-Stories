@@ -14,6 +14,13 @@ public interface ISubscriptionLedgerService
         string? displayName,
         string? mobileNumber,
         CancellationToken cancellationToken = default);
+    Task<bool> EnsureGratisAccessAsync(
+        string? email,
+        string? firstName,
+        string? lastName,
+        string? displayName,
+        string? mobileNumber,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record SubscriptionPersistResult(bool IsSuccess, string? ErrorMessage = null, string? SubscriptionId = null);

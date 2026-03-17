@@ -114,7 +114,6 @@ h1 {
     width: min(420px, 92%);
     height: auto;
     object-fit: contain;
-    transform: translateY(50px);
     margin-bottom: -50px;
 }
 
@@ -365,6 +364,64 @@ h2 {
 
 .bible-stories-section {
     margin-top: 1.1rem;
+}
+
+.home-testimonials {
+    margin: 1.4rem auto 0;
+    width: min(100%, 980px);
+}
+
+.home-testimonials h2 {
+    text-align: center;
+    color: var(--text);
+}
+
+.home-review-grid {
+    margin-top: 0.95rem;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.8rem;
+}
+
+.home-review-card {
+    background: #f8f6ef;
+    border: 1px solid #e4decf;
+    border-radius: 12px;
+    padding: 0.9rem;
+    display: grid;
+    gap: 0.45rem;
+}
+
+.home-review-stars {
+    margin: 0;
+    color: #df9a1a;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28rem;
+    font-size: 0.92rem;
+}
+
+.home-review-stars i {
+    line-height: 1;
+}
+
+.home-review-card blockquote {
+    margin: 0;
+    line-height: 1.5;
+    color: #2b3131;
+}
+
+.home-review-author {
+    margin: 0;
+    color: #5f6565;
+    font-weight: 650;
+    font-size: 0.88rem;
+}
+
+.home-review-role {
+    font-weight: 500;
+    font-size: 0.82rem;
+    color: #707878;
 }
 
 .contact-section {
@@ -761,6 +818,10 @@ h2 {
         grid-auto-columns: minmax(170px, 42vw);
     }
 
+    .home-review-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .contact-fields-grid {
         grid-template-columns: 1fr;
         gap: 0;
@@ -786,7 +847,6 @@ h2 {
     }
 
     .hero-logo {
-        transform: translateY(50px);
         margin-bottom: 0;
     }
 
@@ -794,6 +854,10 @@ h2 {
         grid-auto-columns: minmax(146px, 44vw);
         gap: 0.72rem;
         padding-bottom: 0.25rem;
+    }
+
+    .home-review-grid {
+        grid-template-columns: 1fr;
     }
 
     .perfect-plan-section {

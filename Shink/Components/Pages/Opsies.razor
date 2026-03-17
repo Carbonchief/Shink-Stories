@@ -92,7 +92,7 @@
                 <p class="opsie-price">R 55.00 <span>per maand.</span></p>
             </div>
             <p class="opsie-detail">Geniet toegang tot stories uit die gewilde Storie Hoekie reeks!</p>
-            <a href="/betaal/storie-hoekie-maandeliks" class="opsie-btn">Sluit aan</a>
+            <a href='@BuildPlanSignUpHref("storie-hoekie-maandeliks")' class="opsie-btn">Sluit aan</a>
         </article>
 
         <article class="opsie-card opsie-all">
@@ -109,7 +109,7 @@
                 <li>Nuwe stories elke maand</li>
                 <li>Toegang tot hulpbronne</li>
             </ul>
-            <a href="/betaal/schink-stories-maandeliks" class="opsie-btn">Sluit aan</a>
+            <a href='@BuildPlanSignUpHref("schink-stories-maandeliks")' class="opsie-btn">Sluit aan</a>
         </article>
 
         <article class="opsie-card opsie-yearly">
@@ -122,7 +122,7 @@
                 Dieselfde onbeperkte toegang tot al ons oudiostories - teen 'n afslagprys vir ouers wat vooruit dink.
                 Spaar meer, luister langer!
             </p>
-            <a href="/betaal/schink-stories-jaarliks" class="opsie-btn">Sluit aan</a>
+            <a href='@BuildPlanSignUpHref("schink-stories-jaarliks")' class="opsie-btn">Sluit aan</a>
         </article>
     </section>
 
@@ -204,5 +204,17 @@
         {
             HasActivePaidSubscription = false;
         }
+    }
+
+    private static string BuildPlanSignUpHref(string planSlug)
+    {
+        if (string.IsNullOrWhiteSpace(planSlug))
+        {
+            return "/teken-op";
+        }
+
+        var normalizedPlanSlug = planSlug.Trim();
+        var checkoutPath = $"/betaal/{Uri.EscapeDataString(normalizedPlanSlug)}";
+        return $"/teken-op?plan={Uri.EscapeDataString(normalizedPlanSlug)}&returnUrl={Uri.EscapeDataString(checkoutPath)}";
     }
 }

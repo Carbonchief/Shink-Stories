@@ -13,18 +13,30 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     IOptions<SupabaseOptions> supabaseOptions,
     ILogger<SupabaseSubscriptionLedgerService> logger) : ISubscriptionLedgerService
 {
+    private const string GratisTierCode = "gratis";
+    private const string GratisProvider = "paystack";
+    private const string GratisPlanSlug = "gratis";
+
     private readonly HttpClient _httpClient = httpClient;
     private readonly SupabaseOptions _options = supabaseOptions.Value;
     private readonly ILogger<SupabaseSubscriptionLedgerService> _logger = logger;
 
     public async Task<bool> HasActivePaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default)
     {
-        return await HasActiveSubscriptionAsync(email, tierCode: null, cancellationToken);
+        return await HasActiveSubscriptionAsync(
+            email,
+            tierCode: null,
+            excludeGratisTier: true,
+            cancellationToken);
     }
 
     public async Task<bool> HasActiveSubscriptionForTierAsync(string? email, string? tierCode, CancellationToken cancellationToken = default)
     {
-        return await HasActiveSubscriptionAsync(email, tierCode, cancellationToken);
+        return await HasActiveSubscriptionAsync(
+            email,
+            tierCode,
+            excludeGratisTier: false,
+            cancellationToken);
     }
 
     public async Task<SubscriberProfile?> GetSubscriberProfileAsync(string? email, CancellationToken cancellationToken = default)
@@ -136,7 +148,81 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         }
     }
 
-    private async Task<bool> HasActiveSubscriptionAsync(string? email, string? tierCode, CancellationToken cancellationToken)
+    public async Task<bool> EnsureGratisAccessAsync(
+        string? email,
+        string? firstName,
+        string? lastName,
+        string? displayName,
+        string? mobileNumber,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return false;
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            _logger.LogWarning("Gratis provisioning skipped: URL is not configured.");
+            return false;
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            _logger.LogWarning("Gratis provisioning skipped: ServiceRoleKey is not configured.");
+            return false;
+        }
+
+        try
+        {
+            var subscriberId = await UpsertSubscriberAsync(
+                baseUri,
+                apiKey,
+                email,
+                firstName ?? string.Empty,
+                lastName ?? string.Empty,
+                displayName,
+                mobileNumber,
+                cancellationToken);
+            if (string.IsNullOrWhiteSpace(subscriberId))
+            {
+                return false;
+            }
+
+            var gratisTierReady = await EnsureGratisTierAsync(baseUri, apiKey, cancellationToken);
+            if (!gratisTierReady)
+            {
+                return false;
+            }
+
+            var subscriptionId = await UpsertSubscriptionAsync(
+                baseUri,
+                apiKey,
+                subscriberId,
+                GratisTierCode,
+                provider: GratisProvider,
+                providerPaymentId: BuildGratisProviderPaymentId(subscriberId),
+                providerTransactionId: null,
+                providerToken: null,
+                subscribedAtUtc: DateTimeOffset.UtcNow,
+                nextRenewalAtUtc: null,
+                cancellationToken);
+
+            return !string.IsNullOrWhiteSpace(subscriptionId);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(exception, "Gratis provisioning failed unexpectedly.");
+            return false;
+        }
+    }
+
+    private async Task<bool> HasActiveSubscriptionAsync(
+        string? email,
+        string? tierCode,
+        bool excludeGratisTier,
+        CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(email))
         {
@@ -228,6 +314,12 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
                 if (!string.IsNullOrWhiteSpace(normalizedTierCode) &&
                     !string.Equals(row.TierCode, normalizedTierCode, StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+
+                if (excludeGratisTier &&
+                    string.Equals(row.TierCode, GratisTierCode, StringComparison.OrdinalIgnoreCase))
                 {
                     return false;
                 }
@@ -612,6 +704,36 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         return ReadFirstStringProperty(responseBody, "tier_code");
     }
 
+    private async Task<bool> EnsureGratisTierAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    {
+        var payload = new
+        {
+            tier_code = GratisTierCode,
+            display_name = "Gratis",
+            description = "Gratis toegang tot Schink Stories se proefstories.",
+            billing_period_months = 1,
+            price_zar = 0m,
+            payfast_plan_slug = GratisPlanSlug,
+            paystack_plan_code = (string?)null,
+            is_active = true
+        };
+
+        var uri = new Uri(baseUri, "rest/v1/subscription_tiers?on_conflict=tier_code");
+        using var request = CreateJsonRequest(HttpMethod.Post, uri, apiKey, payload, "resolution=merge-duplicates,return=minimal");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Supabase gratis tier upsert failed. Status={StatusCode} Body={Body}",
+                (int)response.StatusCode,
+                body);
+            return false;
+        }
+
+        return true;
+    }
+
     private async Task<string?> UpsertSubscriberAsync(
         Uri baseUri,
         string apiKey,
@@ -857,6 +979,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             ? paymentIdentifier[..suffixMatch.Index]
             : null;
     }
+
+    private static string BuildGratisProviderPaymentId(string subscriberId) =>
+        $"gratis-{subscriberId}";
 
     private static object DeserializePayloadObject(string payloadJson)
     {

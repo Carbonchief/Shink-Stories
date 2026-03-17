@@ -11,6 +11,9 @@
 @inject ISubscriptionLedgerService SubscriptionLedgerService
 
 <PageTitle>Schink Stories | Teken in</PageTitle>
+<HeadContent>
+    <link href="/lib/bootstrap/css/bootstrap.min.css" rel="stylesheet" />
+</HeadContent>
 
 <section class="auth-shell">
     <div class="auth-frame">
@@ -38,15 +41,15 @@
                 <DataAnnotationsValidator />
 
                 <div class="login-field">
-                    <label for="signin-email">E-pos</label>
-                    <InputText id="signin-email" type="email" autocomplete="username" @bind-Value="SignInForm.Email" />
-                    <ValidationMessage For="@(() => SignInForm.Email)" />
+                    <label class="form-label" for="signin-email">E-pos</label>
+                    <InputText id="signin-email" class="form-control" type="email" autocomplete="username" @bind-Value="SignInForm.Email" />
+                    <ValidationMessage class="invalid-feedback d-block" For="@(() => SignInForm.Email)" />
                 </div>
 
                 <div class="login-field">
-                    <label for="signin-password">Wagwoord</label>
-                    <InputText id="signin-password" type="password" autocomplete="current-password" @bind-Value="SignInForm.Password" />
-                    <ValidationMessage For="@(() => SignInForm.Password)" />
+                    <label class="form-label" for="signin-password">Wagwoord</label>
+                    <InputText id="signin-password" class="form-control" type="password" autocomplete="current-password" @bind-Value="SignInForm.Password" />
+                    <ValidationMessage class="invalid-feedback d-block" For="@(() => SignInForm.Password)" />
                 </div>
 
                 <div class="login-actions">

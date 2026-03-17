@@ -4,6 +4,7 @@
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.JSInterop
+@using Shink.Components.Content
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 @inject NavigationManager NavigationManager
@@ -11,106 +12,145 @@
 @inject ISubscriptionLedgerService SubscriptionLedgerService
 
 <PageTitle>Schink Stories | Teken op</PageTitle>
+<HeadContent>
+    <link href="/lib/bootstrap/css/bootstrap.min.css" rel="stylesheet" />
+</HeadContent>
 
 <section class="signup-shell">
-    <article class="signup-card">
-        <header class="signup-header">
-            <img class="signup-logo" src="/media/imported/misc/2024/02/Teken_In-1.png" alt="Schink" />
-            <h1>Skep jou rekening</h1>
-            <p>Vul jou besonderhede in om met Schink Stories te begin.</p>
-            <p class="signup-required-note"><span class="required-indicator" aria-hidden="true">*</span> dui verpligte velde aan.</p>
-        </header>
+    <header class="signup-page-header">
+        <img class="signup-logo" src="/media/imported/misc/2024/02/Teken_In-1.png" alt="Schink Stories" />
+        <h1>Skep jou rekening</h1>
+        <p>Voltooi jou besonderhede en begin met veilige Afrikaanse storietyd.</p>
+    </header>
 
-        <EditForm class="signup-form" EditContext="FormEditContext" OnValidSubmit="HandleSignUpAsync" aria-busy="@IsSubmitting">
-            <DataAnnotationsValidator />
+    <div class="signup-checkout-grid">
+        <article class="signup-card signup-card-form">
+            <header class="signup-card-header">
+                <h2>Rekeninginligting</h2>
+                <p class="signup-required-note"><span class="required-indicator" aria-hidden="true">*</span> dui verpligte velde aan.</p>
+            </header>
 
-            <section class="signup-section" aria-labelledby="signup-account-information">
-                <h2 id="signup-account-information">Rekeninginligting</h2>
+            <EditForm class="signup-form" EditContext="FormEditContext" OnValidSubmit="HandleSignUpAsync" aria-busy="@IsSubmitting">
+                <DataAnnotationsValidator />
+
                 <div class="signup-grid">
                     <div class="signup-field">
-                        <label for="signup-first-name">Voornaam <span class="required-indicator" aria-hidden="true">*</span></label>
-                        <InputText id="signup-first-name" autocomplete="given-name" @bind-Value="SignUpForm.FirstName" />
-                        <ValidationMessage For="@(() => SignUpForm.FirstName)" />
+                        <label class="form-label" for="signup-first-name">Voornaam <span class="required-indicator" aria-hidden="true">*</span></label>
+                        <InputText id="signup-first-name" class="form-control" autocomplete="given-name" @bind-Value="SignUpForm.FirstName" />
+                        <ValidationMessage class="invalid-feedback d-block" For="@(() => SignUpForm.FirstName)" />
                     </div>
 
                     <div class="signup-field">
-                        <label for="signup-last-name">Van</label>
-                        <InputText id="signup-last-name" autocomplete="family-name" @bind-Value="SignUpForm.LastName" />
-                        <ValidationMessage For="@(() => SignUpForm.LastName)" />
+                        <label class="form-label" for="signup-last-name">Van</label>
+                        <InputText id="signup-last-name" class="form-control" autocomplete="family-name" @bind-Value="SignUpForm.LastName" />
+                        <ValidationMessage class="invalid-feedback d-block" For="@(() => SignUpForm.LastName)" />
                     </div>
 
                     <div class="signup-field">
-                        <label for="signup-display-name">Wys my naam as</label>
-                        <InputText id="signup-display-name" autocomplete="nickname" @bind-Value="SignUpForm.DisplayName" />
-                        <ValidationMessage For="@(() => SignUpForm.DisplayName)" />
+                        <label class="form-label" for="signup-display-name">Wys my naam as</label>
+                        <InputText id="signup-display-name" class="form-control" autocomplete="nickname" @bind-Value="SignUpForm.DisplayName" />
+                        <ValidationMessage class="invalid-feedback d-block" For="@(() => SignUpForm.DisplayName)" />
                     </div>
 
                     <div class="signup-field">
-                        <label for="signup-email">E-pos <span class="required-indicator" aria-hidden="true">*</span></label>
-                        <InputText id="signup-email" type="email" autocomplete="email" @bind-Value="SignUpForm.Email" />
-                        <ValidationMessage For="@(() => SignUpForm.Email)" />
+                        <label class="form-label" for="signup-email">E-pos <span class="required-indicator" aria-hidden="true">*</span></label>
+                        <InputText id="signup-email" class="form-control" type="email" autocomplete="email" @bind-Value="SignUpForm.Email" />
+                        <ValidationMessage class="invalid-feedback d-block" For="@(() => SignUpForm.Email)" />
+                    </div>
+
+                    <div class="signup-field signup-field-full">
+                        <label class="form-label" for="signup-mobile-number">Selfoonnommer</label>
+                        <InputText id="signup-mobile-number" class="form-control" autocomplete="tel" @bind-Value="SignUpForm.MobileNumber" />
+                        <ValidationMessage class="invalid-feedback d-block" For="@(() => SignUpForm.MobileNumber)" />
                     </div>
                 </div>
-            </section>
 
-            <section class="signup-section" aria-labelledby="signup-more-information">
-                <h2 id="signup-more-information">Meer inligting</h2>
-                <div class="signup-field">
-                    <label for="signup-mobile-number">Selfoonnommer</label>
-                    <InputText id="signup-mobile-number" autocomplete="tel" @bind-Value="SignUpForm.MobileNumber" />
-                    <ValidationMessage For="@(() => SignUpForm.MobileNumber)" />
-                </div>
-            </section>
-
-            <section class="signup-section" aria-labelledby="signup-security">
-                <h2 id="signup-security">Sekuriteit</h2>
-                <div class="signup-grid">
+                <div class="signup-grid signup-grid-security">
                     <div class="signup-field">
-                        <label for="signup-password">Wagwoord <span class="required-indicator" aria-hidden="true">*</span></label>
-                        <InputText id="signup-password" type="password" autocomplete="new-password" @bind-Value="SignUpForm.Password" />
-                        <ValidationMessage For="@(() => SignUpForm.Password)" />
+                        <label class="form-label" for="signup-password">Wagwoord <span class="required-indicator" aria-hidden="true">*</span></label>
+                        <InputText id="signup-password" class="form-control" type="password" autocomplete="new-password" @bind-Value="SignUpForm.Password" />
+                        <ValidationMessage class="invalid-feedback d-block" For="@(() => SignUpForm.Password)" />
                     </div>
 
                     <div class="signup-field">
-                        <label for="signup-password-confirm">Bevestig wagwoord <span class="required-indicator" aria-hidden="true">*</span></label>
-                        <InputText id="signup-password-confirm" type="password" autocomplete="new-password" @bind-Value="SignUpForm.ConfirmPassword" />
-                        <ValidationMessage For="@(() => SignUpForm.ConfirmPassword)" />
+                        <label class="form-label" for="signup-password-confirm">Bevestig wagwoord <span class="required-indicator" aria-hidden="true">*</span></label>
+                        <InputText id="signup-password-confirm" class="form-control" type="password" autocomplete="new-password" @bind-Value="SignUpForm.ConfirmPassword" />
+                        <ValidationMessage class="invalid-feedback d-block" For="@(() => SignUpForm.ConfirmPassword)" />
                     </div>
                 </div>
-            </section>
 
-            <div class="signup-actions">
-                <button type="submit" class="signup-submit" disabled="@IsSubmitting">
-                    @(IsSubmitting ? "Besig..." : "Skep rekening")
-                </button>
-                <a class="signup-link" href="@SignInHref">Ek het reeds 'n rekening</a>
-            </div>
+                <div class="signup-actions">
+                    <button type="submit" class="signup-submit" disabled="@IsSubmitting">
+                        @(IsSubmitting ? "Besig..." : "Skep rekening")
+                    </button>
+                    <a class="signup-link" href="@SignInHref">Ek het reeds 'n rekening</a>
+                </div>
 
-            @if (!string.IsNullOrWhiteSpace(StatusMessage))
+                @if (!string.IsNullOrWhiteSpace(StatusMessage))
+                {
+                    <p class="@($"signup-status {(SignUpSucceeded ? "signup-status-success" : "signup-status-error")}")"
+                       role="@(SignUpSucceeded ? "status" : "alert")"
+                       aria-live="polite">
+                        @StatusMessage
+                    </p>
+                }
+            </EditForm>
+        </article>
+
+        <aside class="signup-card signup-card-membership" aria-label="Jou lidmaatskap">
+            <h2>Jou lidmaatskap</h2>
+
+            @if (SelectedPlan is not null)
             {
-                <p class="@($"signup-status {(SignUpSucceeded ? "signup-status-success" : "signup-status-error")}")"
-                   role="@(SignUpSucceeded ? "status" : "alert")"
-                   aria-live="polite">
-                    @StatusMessage
-                </p>
+                <article class="membership-plan">
+                    <p class="membership-plan-label">@GetPlanBadge(SelectedPlan)</p>
+                    <h3>@SelectedPlan.Name</h3>
+                    <p class="membership-plan-price">
+                        <strong>@FormatPlanAmount(SelectedPlan)</strong>
+                        <span>@GetPlanBillingLabel(SelectedPlan)</span>
+                    </p>
+                    <p class="membership-plan-copy">@GetPlanDescription(SelectedPlan)</p>
+                </article>
             }
-        </EditForm>
-    </article>
+            else
+            {
+                <article class="membership-plan membership-plan-placeholder">
+                    <h3>Nog geen plan gekies nie</h3>
+                    <p>Kies 'n plan op die tuisblad of opsies-blad om na registrasie direk na betaling te gaan.</p>
+                </article>
+            }
+
+            <article class="membership-plan membership-plan-gratis">
+                <p class="membership-plan-label">GRATIS</p>
+                <h3>Gratis stories is onmiddellik aktief</h3>
+                <p>As betaling misluk of gekanselleer word, behou jy steeds toegang tot die gratis stories.</p>
+            </article>
+
+            @if (SelectedPlan is not null)
+            {
+                <p class="membership-total">Totaal om vandag te betaal: <strong>@FormatPlanAmount(SelectedPlan)</strong></p>
+            }
+
+        </aside>
+    </div>
 </section>
 
 @code {
     private SignUpFormModel SignUpForm { get; set; } = new();
     private EditContext FormEditContext { get; set; } = default!;
     private IJSObjectReference? _authModule;
+
     [SupplyParameterFromQuery(Name = "returnUrl")]
     public string? ReturnUrl { get; set; }
+
+    [SupplyParameterFromQuery(Name = "plan")]
+    public string? Plan { get; set; }
+
     private bool IsSubmitting { get; set; }
     private bool SignUpSucceeded { get; set; }
     private string? StatusMessage { get; set; }
-    private string SignInHref =>
-        GetSafeReturnUrl(ReturnUrl) is { } safeReturnUrl
-            ? $"/teken-in?returnUrl={Uri.EscapeDataString(safeReturnUrl)}"
-            : "/teken-in";
+    private PaymentPlan? SelectedPlan { get; set; }
+    private string SignInHref => BuildSignInHref(GetSafeReturnUrl(ReturnUrl), SelectedPlan?.Slug);
 
     protected override void OnInitialized()
     {
@@ -119,6 +159,8 @@
 
     protected override async Task OnParametersSetAsync()
     {
+        SelectedPlan = ResolveSelectedPlan();
+
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         if (authState.User.Identity?.IsAuthenticated == true)
         {
@@ -191,6 +233,12 @@
             return safeReturnUrl;
         }
 
+        var selectedPlanCheckoutPath = GetSelectedPlanCheckoutPath();
+        if (selectedPlanCheckoutPath is not null)
+        {
+            return selectedPlanCheckoutPath;
+        }
+
         var user = authState.User;
         var email = user.FindFirst(ClaimTypes.Email)?.Value
                     ?? user.Identity?.Name;
@@ -200,8 +248,27 @@
 
     private string GetRedirectTarget(string? apiRedirectPath = null) =>
         GetSafeReturnUrl(ReturnUrl)
+        ?? GetSelectedPlanCheckoutPath()
         ?? GetSafePostAuthPath(apiRedirectPath)
         ?? "/gratis";
+
+    private PaymentPlan? ResolveSelectedPlan()
+    {
+        var planFromQuery = PaymentPlanCatalog.FindBySlug(NormalizePlanSlug(Plan));
+        if (planFromQuery is not null)
+        {
+            return planFromQuery;
+        }
+
+        var safeReturnUrl = GetSafeReturnUrl(ReturnUrl);
+        var extractedPlanSlug = TryExtractPlanSlugFromReturnUrl(safeReturnUrl);
+        return PaymentPlanCatalog.FindBySlug(extractedPlanSlug);
+    }
+
+    private string? GetSelectedPlanCheckoutPath() =>
+        SelectedPlan is null
+            ? null
+            : $"/betaal/{Uri.EscapeDataString(SelectedPlan.Slug)}";
 
     private async Task<IJSObjectReference> EnsureAuthModuleAsync()
     {
@@ -284,6 +351,121 @@
 
         return candidate;
     }
+
+    private static string BuildSignInHref(string? safeReturnUrl, string? selectedPlanSlug)
+    {
+        var queryValues = new List<string>();
+        var signInReturnUrl = ResolveSignInReturnUrl(safeReturnUrl, selectedPlanSlug);
+        if (!string.IsNullOrWhiteSpace(signInReturnUrl))
+        {
+            queryValues.Add($"returnUrl={Uri.EscapeDataString(signInReturnUrl)}");
+        }
+
+        return queryValues.Count == 0
+            ? "/teken-in"
+            : $"/teken-in?{string.Join("&", queryValues)}";
+    }
+
+    private static string? ResolveSignInReturnUrl(string? safeReturnUrl, string? selectedPlanSlug)
+    {
+        if (!string.IsNullOrWhiteSpace(selectedPlanSlug))
+        {
+            return $"/betaal/{Uri.EscapeDataString(selectedPlanSlug.Trim())}";
+        }
+
+        if (string.IsNullOrWhiteSpace(safeReturnUrl))
+        {
+            return null;
+        }
+
+        if (safeReturnUrl.StartsWith("/opsies", StringComparison.OrdinalIgnoreCase) ||
+            safeReturnUrl.StartsWith("/teken-op", StringComparison.OrdinalIgnoreCase) ||
+            safeReturnUrl.StartsWith("/teken-in", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return safeReturnUrl;
+    }
+
+    private static string? TryExtractPlanSlugFromReturnUrl(string? safeReturnUrl)
+    {
+        if (string.IsNullOrWhiteSpace(safeReturnUrl))
+        {
+            return null;
+        }
+
+        var pathOnly = safeReturnUrl;
+        var queryIndex = pathOnly.IndexOf('?');
+        if (queryIndex >= 0)
+        {
+            pathOnly = pathOnly[..queryIndex];
+        }
+
+        const string checkoutPrefix = "/betaal/";
+        if (!pathOnly.StartsWith(checkoutPrefix, StringComparison.OrdinalIgnoreCase) ||
+            pathOnly.Length <= checkoutPrefix.Length)
+        {
+            return null;
+        }
+
+        var slug = pathOnly[checkoutPrefix.Length..];
+        var pathSeparatorIndex = slug.IndexOf('/');
+        if (pathSeparatorIndex >= 0)
+        {
+            slug = slug[..pathSeparatorIndex];
+        }
+
+        try
+        {
+            slug = Uri.UnescapeDataString(slug);
+        }
+        catch
+        {
+            // Ignore decode failures and continue with the raw segment.
+        }
+
+        return NormalizePlanSlug(slug);
+    }
+
+    private static string? NormalizePlanSlug(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var trimmed = value.Trim();
+        return trimmed.Length == 0 ? null : trimmed;
+    }
+
+    private static string GetPlanBadge(PaymentPlan plan) =>
+        plan.BillingPeriodMonths switch
+        {
+            <= 1 => "MAANDELIKS",
+            12 => "JAARLIKS",
+            _ => "INTEKENING"
+        };
+
+    private static string GetPlanBillingLabel(PaymentPlan plan) =>
+        plan.BillingPeriodMonths switch
+        {
+            <= 1 => "per maand",
+            12 => "per jaar",
+            _ => $"elke {plan.BillingPeriodMonths} maande"
+        };
+
+    private static string FormatPlanAmount(PaymentPlan plan) =>
+        $"R {plan.Amount:0.00}";
+
+    private static string GetPlanDescription(PaymentPlan plan) =>
+        plan.TierCode switch
+        {
+            "story_corner_monthly" => "Toegang tot stories uit die Storie Hoekie-reeks.",
+            "all_stories_monthly" => "Volledige toegang tot alle Schink Stories en reekse.",
+            "all_stories_yearly" => "Volledige jaarlikse toegang tot alle Schink Stories teen afslag.",
+            _ => "Volledige toegang volgens jou gekose plan."
+        };
 
     public async ValueTask DisposeAsync()
     {

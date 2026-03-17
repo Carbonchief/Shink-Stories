@@ -81,7 +81,7 @@
             <li>Nuwe stories elke maand + toegang tot die volledige versameling</li>
         </ul>
 
-        <a class="join-promo-cta" href="/betaal/schink-stories-maandeliks">Sluit aan vir slegs R 79 p/maand</a>
+        <a class="join-promo-cta" href='@BuildPlanSignUpHref("schink-stories-maandeliks")'>Sluit aan vir slegs R 79 p/maand</a>
     </div>
 </section>
 
@@ -183,6 +183,44 @@
                 </a>
             </article>
         }
+    </div>
+</section>
+
+<section class="home-testimonials section-block" aria-labelledby="home-ouers-se">
+    <h2 id="home-ouers-se">Wat ouers se</h2>
+    <div class="home-review-grid">
+        <article class="home-review-card">
+            <p class="home-review-stars" aria-hidden="true">
+                <i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i>
+            </p>
+            <blockquote>
+                Ek love al Schink se stories. Dit is in goeie taal en daar is 'n goeie lessie in elke storie.
+                Maar, ek love Georgie se Radio want in die huis kan dinge loud raak.
+            </blockquote>
+            <p class="home-review-author">- Renske<br /><span class="home-review-role">Arbeidsterapeut</span></p>
+        </article>
+
+        <article class="home-review-card">
+            <p class="home-review-stars" aria-hidden="true">
+                <i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i>
+            </p>
+            <blockquote>
+                Lief lief! Ons drie oudste kids se GUNSTELING! Schink Stories maak bedtyd 'n tyd om na uit te
+                sien. My drie-jarige se woordeskat het so verbeter vandat hy saam luister. Ons sien na nog baie stories!
+            </blockquote>
+            <p class="home-review-author">- Sivonne</p>
+        </article>
+
+        <article class="home-review-card">
+            <p class="home-review-stars" aria-hidden="true">
+                <i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i>
+            </p>
+            <blockquote>
+                My dogtertjie was skaam om by haar maaitjie te gaan kuier en toe se sy dat sy soos Grotman Grootman
+                moet gaan. Dit is so mooi. Schink Stories help regtig kinders. Dit is wat mens wil he
+            </blockquote>
+            <p class="home-review-author">- Elmarette</p>
+        </article>
     </div>
 </section>
 
@@ -365,7 +403,19 @@
         var selectedPlanSlug = GetCallToActionPlanSlug(card);
         return string.IsNullOrWhiteSpace(selectedPlanSlug)
             ? "/opsies"
-            : $"/betaal/{selectedPlanSlug}";
+            : BuildPlanSignUpHref(selectedPlanSlug);
+    }
+
+    private static string BuildPlanSignUpHref(string planSlug)
+    {
+        if (string.IsNullOrWhiteSpace(planSlug))
+        {
+            return "/teken-op";
+        }
+
+        var normalizedPlanSlug = planSlug.Trim();
+        var checkoutPath = $"/betaal/{Uri.EscapeDataString(normalizedPlanSlug)}";
+        return $"/teken-op?plan={Uri.EscapeDataString(normalizedPlanSlug)}&returnUrl={Uri.EscapeDataString(checkoutPath)}";
     }
 
     private bool IsSelectedPlanOption(string planSlug) =>

@@ -520,14 +520,26 @@ app.MapPost("/api/auth/signup", async (
         request.DisplayName,
         request.MobileNumber,
         httpContext.RequestAborted);
+    var gratisProvisioned = await subscriptionLedgerService.EnsureGratisAccessAsync(
+        signedInEmail,
+        request.FirstName,
+        request.LastName,
+        request.DisplayName,
+        request.MobileNumber,
+        httpContext.RequestAborted);
 
     await SignInUserAsync(httpContext, signedInEmail);
     var redirectPath = await ResolvePostAuthRedirectPathAsync(subscriptionLedgerService, signedInEmail, httpContext.RequestAborted);
     return Results.Ok(new
     {
-        message = profileStored
-            ? "Welkom! Jou rekening is geskep en jy is nou ingeteken."
-            : "Welkom! Jou rekening is geskep en jy is nou ingeteken. Ons kon nie al jou profielbesonderhede nou stoor nie.",
+        message =
+            profileStored && gratisProvisioned
+                ? "Welkom! Jou rekening is geskep en jy is nou ingeteken."
+                : profileStored
+                    ? "Welkom! Jou rekening is geskep en jy is nou ingeteken. Ons kon nie jou gratis toegang nou aktiveer nie, maar jy kan steeds probeer luister."
+                    : gratisProvisioned
+                        ? "Welkom! Jou rekening is geskep en jy is nou ingeteken. Ons kon nie al jou profielbesonderhede nou stoor nie."
+                        : "Welkom! Jou rekening is geskep en jy is nou ingeteken. Ons kon nie al jou profiel- en gratis toegangbesonderhede nou voltooi nie.",
         redirectPath
     });
 }).RequireRateLimiting("auth-submit").DisableAntiforgery();
