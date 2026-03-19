@@ -804,14 +804,13 @@ app.Run();
 static string BuildContentSecurityPolicy(bool isDevelopment, string? postHogHostUrl)
 {
     var postHogHostOrigin = TryGetCspHostOrigin(postHogHostUrl);
-    var scriptSources = postHogHostOrigin is null
-        ? "'self' 'unsafe-inline' 'unsafe-eval'"
-        : $"'self' {postHogHostOrigin} 'unsafe-inline' 'unsafe-eval'";
+    var postHogAssetsOrigin = TryGetPostHogAssetsOrigin(postHogHostOrigin);
+    var scriptSources = BuildScriptSources(postHogHostOrigin, postHogAssetsOrigin);
     var connectSources = isDevelopment
         ? "'self' https: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* wss:"
         : "'self' https: wss:";
 
-    return $"default-src 'self'; base-uri 'self'; form-action 'self' https://sandbox.payfast.co.za https://www.payfast.co.za; object-src 'none'; frame-ancestors 'self'; img-src 'self' data: https:; media-src 'self' blob:; font-src 'self' data:; connect-src {connectSources}; script-src {scriptSources}; style-src 'self' 'unsafe-inline';";
+    return $"default-src 'self'; base-uri 'self'; form-action 'self' https://sandbox.payfast.co.za https://www.payfast.co.za; object-src 'none'; frame-ancestors 'self'; img-src 'self' data: https:; media-src 'self' blob:; font-src 'self' data:; connect-src {connectSources}; script-src {scriptSources}; script-src-elem {scriptSources}; style-src 'self' 'unsafe-inline';";
 }
 
 static string? TryGetCspHostOrigin(string? url)
@@ -828,6 +827,56 @@ static string? TryGetCspHostOrigin(string? url)
     }
 
     return uri.IsDefaultPort ? $"{uri.Scheme}://{uri.Host}" : $"{uri.Scheme}://{uri.Host}:{uri.Port}";
+}
+
+static string BuildScriptSources(string? postHogHostOrigin, string? postHogAssetsOrigin)
+{
+    var sources = new List<string> { "'self'" };
+
+    if (!string.IsNullOrWhiteSpace(postHogHostOrigin))
+    {
+        sources.Add(postHogHostOrigin);
+    }
+
+    if (!string.IsNullOrWhiteSpace(postHogAssetsOrigin) &&
+        !string.Equals(postHogAssetsOrigin, postHogHostOrigin, StringComparison.OrdinalIgnoreCase))
+    {
+        sources.Add(postHogAssetsOrigin);
+    }
+
+    sources.Add("'unsafe-inline'");
+    sources.Add("'unsafe-eval'");
+
+    return string.Join(' ', sources);
+}
+
+static string? TryGetPostHogAssetsOrigin(string? postHogHostOrigin)
+{
+    if (string.IsNullOrWhiteSpace(postHogHostOrigin) ||
+        !Uri.TryCreate(postHogHostOrigin, UriKind.Absolute, out var uri))
+    {
+        return null;
+    }
+
+    const string postHogHostSuffix = ".i.posthog.com";
+    if (!uri.Host.EndsWith(postHogHostSuffix, StringComparison.OrdinalIgnoreCase))
+    {
+        return null;
+    }
+
+    var hostPrefix = uri.Host[..^postHogHostSuffix.Length];
+    if (string.IsNullOrWhiteSpace(hostPrefix))
+    {
+        return null;
+    }
+
+    if (hostPrefix.EndsWith("-assets", StringComparison.OrdinalIgnoreCase))
+    {
+        return postHogHostOrigin;
+    }
+
+    var assetsHost = $"{hostPrefix}-assets{postHogHostSuffix}";
+    return uri.IsDefaultPort ? $"{uri.Scheme}://{assetsHost}" : $"{uri.Scheme}://{assetsHost}:{uri.Port}";
 }
 
 static bool IsLikelySameSiteRequest(HttpContext httpContext)
