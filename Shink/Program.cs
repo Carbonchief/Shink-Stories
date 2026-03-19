@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.WebUtilities;
 using Shink.Components;
 using Shink.Components.Content;
 using Shink.Services;
@@ -147,13 +148,40 @@ app.Use(async (httpContext, next) =>
 
 app.Use(async (httpContext, next) =>
 {
-    if (IsStoryDetailPath(httpContext.Request.Path) &&
-        !(httpContext.User.Identity?.IsAuthenticated ?? false))
+    if (HttpMethods.IsGet(httpContext.Request.Method) &&
+        TryResolveStoryPathTarget(httpContext.Request.Path, out var source, out var slug))
     {
         var requestedPath = $"{httpContext.Request.Path}{httpContext.Request.QueryString}";
-        var returnUrl = Uri.EscapeDataString(requestedPath);
-        httpContext.Response.Redirect($"/teken-in?returnUrl={returnUrl}");
-        return;
+
+        if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
+        {
+            httpContext.Response.Redirect(BuildOpsiesStoryRedirectPath(requestedPath));
+            return;
+        }
+
+        var storyCatalogService = httpContext.RequestServices.GetRequiredService<IStoryCatalogService>();
+        var story = string.Equals(source, "gratis", StringComparison.OrdinalIgnoreCase)
+            ? await storyCatalogService.FindFreeBySlugAsync(slug, httpContext.RequestAborted)
+            : await storyCatalogService.FindLuisterBySlugAsync(slug, httpContext.RequestAborted);
+
+        if (story is not null)
+        {
+            var requirement = StoryAccessPolicy.ResolveRequirement(source, story);
+            var subscriptionLedgerService = httpContext.RequestServices.GetRequiredService<ISubscriptionLedgerService>();
+            var email = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
+                        ?? httpContext.User.Identity?.Name;
+            var hasAccess = await HasRequiredStoryAccessAsync(
+                subscriptionLedgerService,
+                email,
+                requirement,
+                httpContext.RequestAborted);
+
+            if (!hasAccess)
+            {
+                httpContext.Response.Redirect(BuildOpsiesStoryRedirectPath(requestedPath));
+                return;
+            }
+        }
     }
 
     await next();
@@ -260,6 +288,7 @@ app.MapGet("/betaal/paystack/{planSlug}", (string planSlug) =>
 app.MapGet("/betaal/{planSlug}", async (
     string planSlug,
     string? provider,
+    string? returnUrl,
     PayFastCheckoutService payFastCheckoutService,
     PaystackCheckoutService paystackCheckoutService,
     ISubscriptionLedgerService subscriptionLedgerService,
@@ -269,8 +298,8 @@ app.MapGet("/betaal/{planSlug}", async (
     if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
     {
         var checkoutPath = $"{httpContext.Request.Path}{httpContext.Request.QueryString}";
-        var returnUrl = Uri.EscapeDataString(checkoutPath);
-        return Results.Redirect($"/teken-in?returnUrl={returnUrl}");
+        var encodedReturnUrl = Uri.EscapeDataString(checkoutPath);
+        return Results.Redirect($"/teken-in?returnUrl={encodedReturnUrl}");
     }
 
     var plan = PaymentPlanCatalog.FindBySlug(planSlug);
@@ -278,6 +307,8 @@ app.MapGet("/betaal/{planSlug}", async (
     {
         return Results.NotFound();
     }
+
+    var safeReturnUrl = GetSafeStoryReturnUrl(returnUrl);
 
     var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
                        ?? httpContext.User.Identity?.Name;
@@ -293,7 +324,16 @@ app.MapGet("/betaal/{planSlug}", async (
             plan.TierCode,
             signedInEmail);
 
-        var duplicateRedirectPath = $"/opsies?betaling=reeds-ingeteken&tier={Uri.EscapeDataString(plan.TierCode)}";
+        var duplicateRedirectQuery = new Dictionary<string, string?>
+        {
+            ["betaling"] = "reeds-ingeteken",
+            ["tier"] = plan.TierCode
+        };
+        if (!string.IsNullOrWhiteSpace(safeReturnUrl))
+        {
+            duplicateRedirectQuery["returnUrl"] = safeReturnUrl;
+        }
+        var duplicateRedirectPath = QueryHelpers.AddQueryString("/opsies", duplicateRedirectQuery);
         return Results.Redirect(duplicateRedirectPath);
     }
 
@@ -304,7 +344,7 @@ app.MapGet("/betaal/{planSlug}", async (
 
     if (string.Equals(selectedProvider, "paystack", StringComparison.OrdinalIgnoreCase))
     {
-        var checkoutResult = await paystackCheckoutService.InitializeCheckoutAsync(plan, httpContext, httpContext.RequestAborted);
+        var checkoutResult = await paystackCheckoutService.InitializeCheckoutAsync(plan, httpContext, safeReturnUrl, httpContext.RequestAborted);
         if (!checkoutResult.IsSuccess || string.IsNullOrWhiteSpace(checkoutResult.AuthorizationUrl))
         {
             return Results.Problem(
@@ -321,7 +361,7 @@ app.MapGet("/betaal/{planSlug}", async (
         return Results.Redirect(checkoutResult.AuthorizationUrl);
     }
 
-    if (!payFastCheckoutService.TryBuildCheckout(plan, httpContext, out var checkoutForm, out var errorMessage))
+    if (!payFastCheckoutService.TryBuildCheckout(plan, httpContext, safeReturnUrl, out var checkoutForm, out var errorMessage))
     {
         return Results.Problem(
             title: "Kon nie betaling begin nie",
@@ -925,27 +965,104 @@ static bool IsBlockedPublicAudioPath(PathString path)
         || string.Equals(extension, ".ogg", StringComparison.OrdinalIgnoreCase);
 }
 
-static bool IsStoryDetailPath(PathString path)
+static bool TryResolveStoryPathTarget(PathString path, out string source, out string slug)
 {
+    source = string.Empty;
+    slug = string.Empty;
     var value = path.Value;
+    return StoryAccessPolicy.TryParseStoryPath(value, out source, out slug);
+}
+
+static async Task<bool> HasRequiredStoryAccessAsync(
+    ISubscriptionLedgerService subscriptionLedgerService,
+    string? email,
+    StoryAccessRequirement requirement,
+    CancellationToken cancellationToken = default)
+{
+    if (!StoryAccessPolicy.RequiresPaidSubscription(requirement))
+    {
+        return true;
+    }
+
+    if (string.IsNullOrWhiteSpace(email))
+    {
+        return false;
+    }
+
+    var tierCodes = StoryAccessPolicy.GetAllowedTierCodes(requirement);
+    if (tierCodes.Count == 0)
+    {
+        return false;
+    }
+
+    var checks = tierCodes
+        .Select(tierCode => subscriptionLedgerService.HasActiveSubscriptionForTierAsync(email, tierCode, cancellationToken))
+        .ToArray();
+
+    var results = await Task.WhenAll(checks);
+    return results.Any(result => result);
+}
+
+static string BuildOpsiesStoryRedirectPath(string requestedPath)
+{
+    var query = new Dictionary<string, string?>
+    {
+        ["returnUrl"] = requestedPath
+    };
+
+    return QueryHelpers.AddQueryString("/opsies", query);
+}
+
+static string? GetSafeStoryReturnUrl(string? returnUrl)
+{
+    var normalized = NormalizeReturnPathCandidate(returnUrl);
+    if (string.IsNullOrWhiteSpace(normalized))
+    {
+        return null;
+    }
+
+    if (!normalized.StartsWith("/", StringComparison.Ordinal) ||
+        normalized.StartsWith("//", StringComparison.Ordinal))
+    {
+        return null;
+    }
+
+    return StoryAccessPolicy.TryParseStoryPath(normalized, out _, out _)
+        ? normalized
+        : null;
+}
+
+static string? NormalizeReturnPathCandidate(string? value)
+{
     if (string.IsNullOrWhiteSpace(value))
     {
-        return false;
+        return null;
     }
 
-    var prefix = value.StartsWith("/gratis/", StringComparison.OrdinalIgnoreCase)
-        ? "/gratis/"
-        : value.StartsWith("/luister/", StringComparison.OrdinalIgnoreCase)
-            ? "/luister/"
-            : null;
-
-    if (prefix is null)
+    var candidate = value.Trim();
+    for (var index = 0; index < 2; index++)
     {
-        return false;
+        if (candidate.StartsWith("/", StringComparison.Ordinal))
+        {
+            break;
+        }
+
+        if (!candidate.Contains('%', StringComparison.Ordinal))
+        {
+            break;
+        }
+
+        try
+        {
+            candidate = Uri.UnescapeDataString(candidate);
+        }
+        catch
+        {
+            break;
+        }
     }
 
-    var remainder = value[prefix.Length..].Trim('/');
-    return !string.IsNullOrWhiteSpace(remainder);
+    return candidate;
 }
 
 static bool IsGratisPath(PathString path)

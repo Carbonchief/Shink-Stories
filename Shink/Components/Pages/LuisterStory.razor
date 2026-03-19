@@ -1,6 +1,7 @@
 @page "/luister/{Slug}"
 @rendermode InteractiveServer
 @using System.Text.Json
+@using System.Security.Claims
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Authorization
 @inject IAudioAccessService AudioAccessService
@@ -8,6 +9,7 @@
 @inject IJSRuntime JS
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ISubscriptionLedgerService SubscriptionLedgerService
 @implements IAsyncDisposable
 
 <PageTitle>@(CurrentStory is null ? "Storie nie gevind nie" : $"{CurrentStory.Title} | Schink Stories")</PageTitle>
@@ -28,12 +30,12 @@
     <script type="application/ld+json">@StoryPageJsonLd</script>
 </HeadContent>
 
-@if (IsRedirectingToLogin)
+@if (IsRedirectingToOpsies)
 {
     <section class="story-player-empty">
-        <h1>Neem jou nou na teken in...</h1>
-        <p>Jy moet ingeteken wees om stories te luister.</p>
-        <a href="/teken-in">Gaan na teken in</a>
+        <h1>Neem jou nou na opsies...</h1>
+        <p>Kies asseblief 'n opsie wat by hierdie storie pas.</p>
+        <a href="/opsies">Gaan na opsies</a>
     </section>
 }
 else if (CurrentStory is null)
@@ -230,7 +232,7 @@ else
     private IReadOnlyList<StoryItem> LuisterStories { get; set; } = Array.Empty<StoryItem>();
     private StoryItem? PreviousStory { get; set; }
     private StoryItem? NextStory { get; set; }
-    private bool IsRedirectingToLogin { get; set; }
+    private bool IsRedirectingToOpsies { get; set; }
 
     private string? StoryArtworkUrl =>
         CurrentStory is null ? null : NavigationManager.ToAbsoluteUri(CurrentStory.ImagePath).ToString();
@@ -299,7 +301,7 @@ else
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         if (authState.User.Identity?.IsAuthenticated != true)
         {
-            IsRedirectingToLogin = true;
+            IsRedirectingToOpsies = true;
             CurrentStory = null;
             AudioUrl = null;
             LuisterStories = Array.Empty<StoryItem>();
@@ -310,20 +312,67 @@ else
                 ? "/luister"
                 : $"/luister/{Uri.EscapeDataString(Slug)}";
             var returnUrl = Uri.EscapeDataString(requestedPath);
-            NavigationManager.NavigateTo($"/teken-in?returnUrl={returnUrl}");
+            NavigationManager.NavigateTo($"/opsies?returnUrl={returnUrl}");
             return;
         }
 
-        IsRedirectingToLogin = false;
+        IsRedirectingToOpsies = false;
         var luisterStoriesTask = StoryCatalogService.GetLuisterStoriesAsync();
         var currentStoryTask = StoryCatalogService.FindLuisterBySlugAsync(Slug);
         await Task.WhenAll(luisterStoriesTask, currentStoryTask);
 
         LuisterStories = luisterStoriesTask.Result;
         CurrentStory = currentStoryTask.Result;
+        if (CurrentStory is not null &&
+            !await HasAccessToStoryAsync(authState.User, CurrentStory))
+        {
+            IsRedirectingToOpsies = true;
+            CurrentStory = null;
+            AudioUrl = null;
+            LuisterStories = Array.Empty<StoryItem>();
+            ResolveAdjacentStories();
+            IsManualFullscreenFocus = false;
+
+            var requestedPath = string.IsNullOrWhiteSpace(Slug)
+                ? "/luister"
+                : $"/luister/{Uri.EscapeDataString(Slug)}";
+            var returnUrl = Uri.EscapeDataString(requestedPath);
+            NavigationManager.NavigateTo($"/opsies?returnUrl={returnUrl}");
+            return;
+        }
+
         AudioUrl = CurrentStory is null ? null : AudioAccessService.CreateSignedAudioUrl(CurrentStory.Slug);
         ResolveAdjacentStories();
         IsManualFullscreenFocus = false;
+    }
+
+    private async Task<bool> HasAccessToStoryAsync(ClaimsPrincipal user, StoryItem story)
+    {
+        var requirement = StoryAccessPolicy.ResolveRequirement("luister", story);
+        if (!StoryAccessPolicy.RequiresPaidSubscription(requirement))
+        {
+            return true;
+        }
+
+        var email = user.FindFirst(ClaimTypes.Email)?.Value
+                    ?? user.Identity?.Name;
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return false;
+        }
+
+        var tierCodes = StoryAccessPolicy.GetAllowedTierCodes(requirement);
+        if (tierCodes.Count == 0)
+        {
+            return false;
+        }
+
+        var tierChecks = tierCodes
+            .Select(tierCode => SubscriptionLedgerService.HasActiveSubscriptionForTierAsync(email, tierCode))
+            .ToArray();
+
+        var tierResults = await Task.WhenAll(tierChecks);
+        return tierResults.Any(result => result);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

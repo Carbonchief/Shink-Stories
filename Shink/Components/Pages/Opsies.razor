@@ -2,10 +2,13 @@
 @using System.Text.Json
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.WebUtilities
 @using Microsoft.AspNetCore.Components.Authorization
+@using Shink.Components.Content
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ISubscriptionLedgerService SubscriptionLedgerService
+@inject IStoryCatalogService StoryCatalogService
 
 <PageTitle>Schink Stories | Opsies</PageTitle>
 <HeadContent>
@@ -62,68 +65,77 @@
     </section>
 
     <section class="opsies-grid" aria-label="Plan opsies">
-        <article class="opsie-card opsie-free">
-            <div class="opsie-head">
-                <p class="opsie-badge">GRATIS</p>
-                <h2>Schink Stories Gratis</h2>
-                <p class="opsie-price">Gratis.</p>
-            </div>
-            <p class="opsie-detail">Kom geniet <strong>drie</strong> van ons gunsteling Afrikaanse oudiostories - perfek vir slaaptyd en saamluister.</p>
-            <ul>
-                <li>Toegang tot 3 stories</li>
-                <li>Hulpbronne deur e-pos</li>
-            </ul>
-            @if (HasActivePaidSubscription)
-            {
-                <p class="opsie-note">Jy is reeds ingeteken op 'n betaalde plan. Die gratis opsie is nie meer beskikbaar nie.</p>
-                <span class="opsie-btn opsie-btn-disabled" aria-disabled="true">Nie beskikbaar</span>
-            }
-            else
-            {
-                <p class="opsie-note">Geen kaart nodig. Net storietyd, gratis.</p>
-                <a href="/gratis" class="opsie-btn">Sluit aan</a>
-            }
-        </article>
+        @if (ShouldShowFreePlanOption)
+        {
+            <article class="opsie-card opsie-free">
+                <div class="opsie-head">
+                    <p class="opsie-badge">GRATIS</p>
+                    <h2>Schink Stories Gratis</h2>
+                    <p class="opsie-price">Gratis.</p>
+                </div>
+                <p class="opsie-detail">Kom geniet <strong>drie</strong> van ons gunsteling Afrikaanse oudiostories - perfek vir slaaptyd en saamluister.</p>
+                <ul>
+                    <li>Toegang tot 3 stories</li>
+                    <li>Hulpbronne deur e-pos</li>
+                </ul>
+                @if (HasActivePaidSubscription)
+                {
+                    <p class="opsie-note">Jy is reeds ingeteken op 'n betaalde plan. Die gratis opsie is nie meer beskikbaar nie.</p>
+                    <span class="opsie-btn opsie-btn-disabled" aria-disabled="true">Nie beskikbaar</span>
+                }
+                else
+                {
+                    <p class="opsie-note">Geen kaart nodig. Net storietyd, gratis.</p>
+                    <a href="@BuildFreeJoinHref()" class="opsie-btn">Sluit aan</a>
+                }
+            </article>
+        }
 
-        <article class="opsie-card featured opsie-monthly">
-            <div class="opsie-head">
-                <p class="opsie-badge">MAANDELIKS</p>
-                <h2>Storie Hoekie</h2>
-                <p class="opsie-price">R 55.00 <span>per maand.</span></p>
-            </div>
-            <p class="opsie-detail">Geniet toegang tot stories uit die gewilde Storie Hoekie reeks!</p>
-            <a href='@BuildPlanSignUpHref("storie-hoekie-maandeliks")' class="opsie-btn">Sluit aan</a>
-        </article>
+        @if (ShouldShowStoryCornerPlanOption)
+        {
+            <article class="opsie-card featured opsie-monthly">
+                <div class="opsie-head">
+                    <p class="opsie-badge">MAANDELIKS</p>
+                    <h2>Storie Hoekie</h2>
+                    <p class="opsie-price">R 55.00 <span>per maand.</span></p>
+                </div>
+                <p class="opsie-detail">Geniet toegang tot stories uit die gewilde Storie Hoekie reeks!</p>
+                <a href='@BuildPlanSignUpHref("storie-hoekie-maandeliks", SafeStoryReturnPath)' class="opsie-btn">Sluit aan</a>
+            </article>
+        }
 
-        <article class="opsie-card opsie-all">
-            <div class="opsie-head">
-                <p class="opsie-badge">MAANDELIKS</p>
-                <h2>Schink Stories</h2>
-                <p class="opsie-price">R 79.00 <span>per maand.</span></p>
-            </div>
-            <p class="opsie-detail"><strong>Geniet toegang tot ALLES!</strong></p>
-            <ul>
-                <li>Onbeperkte toegang tot alle stories en reekse</li>
-                <li>Opbouende stories - veilig vir kinders</li>
-                <li>Geen advertensies</li>
-                <li>Nuwe stories elke maand</li>
-                <li>Toegang tot hulpbronne</li>
-            </ul>
-            <a href='@BuildPlanSignUpHref("schink-stories-maandeliks")' class="opsie-btn">Sluit aan</a>
-        </article>
+        @if (ShouldShowAllStoriesPlanOptions)
+        {
+            <article class="opsie-card opsie-all">
+                <div class="opsie-head">
+                    <p class="opsie-badge">MAANDELIKS</p>
+                    <h2>Schink Stories</h2>
+                    <p class="opsie-price">R 79.00 <span>per maand.</span></p>
+                </div>
+                <p class="opsie-detail"><strong>Geniet toegang tot ALLES!</strong></p>
+                <ul>
+                    <li>Onbeperkte toegang tot alle stories en reekse</li>
+                    <li>Opbouende stories - veilig vir kinders</li>
+                    <li>Geen advertensies</li>
+                    <li>Nuwe stories elke maand</li>
+                    <li>Toegang tot hulpbronne</li>
+                </ul>
+                <a href='@BuildPlanSignUpHref("schink-stories-maandeliks", SafeStoryReturnPath)' class="opsie-btn">Sluit aan</a>
+            </article>
 
-        <article class="opsie-card opsie-yearly">
-            <div class="opsie-head">
-                <p class="opsie-badge">JAARLIKS</p>
-                <h2>Schink Stories JAAR</h2>
-                <p class="opsie-price">R 790.00 <span>nou.</span></p>
-            </div>
-            <p class="opsie-detail">
-                Dieselfde onbeperkte toegang tot al ons oudiostories - teen 'n afslagprys vir ouers wat vooruit dink.
-                Spaar meer, luister langer!
-            </p>
-            <a href='@BuildPlanSignUpHref("schink-stories-jaarliks")' class="opsie-btn">Sluit aan</a>
-        </article>
+            <article class="opsie-card opsie-yearly">
+                <div class="opsie-head">
+                    <p class="opsie-badge">JAARLIKS</p>
+                    <h2>Schink Stories JAAR</h2>
+                    <p class="opsie-price">R 790.00 <span>nou.</span></p>
+                </div>
+                <p class="opsie-detail">
+                    Dieselfde onbeperkte toegang tot al ons oudiostories - teen 'n afslagprys vir ouers wat vooruit dink.
+                    Spaar meer, luister langer!
+                </p>
+                <a href='@BuildPlanSignUpHref("schink-stories-jaarliks", SafeStoryReturnPath)' class="opsie-btn">Sluit aan</a>
+            </article>
+        }
     </section>
 
     <section class="opsies-testimonials">
@@ -166,7 +178,23 @@
     [SupplyParameterFromQuery(Name = "betaling")]
     public string? PaymentStatus { get; set; }
 
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
+
     private bool HasActivePaidSubscription { get; set; }
+    private bool IsUserAuthenticated { get; set; }
+    private string? SafeStoryReturnPath { get; set; }
+    private StoryItem? RequestedStory { get; set; }
+    private StoryAccessRequirement RequiredAccess { get; set; } = StoryAccessRequirement.Unknown;
+
+    private bool ShouldShowFreePlanOption =>
+        RequiredAccess is StoryAccessRequirement.Unknown or StoryAccessRequirement.Free;
+
+    private bool ShouldShowStoryCornerPlanOption =>
+        RequiredAccess is not StoryAccessRequirement.AllStoriesOnly;
+
+    private bool ShouldShowAllStoriesPlanOptions => true;
+
     private string OpsiesCanonicalUrl => NavigationManager.ToAbsoluteUri("/opsies").ToString();
 
     private MarkupString OpsiesJsonLd => new(JsonSerializer.Serialize(new
@@ -186,27 +214,128 @@
         primaryImageOfPage = NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()
     }));
 
-    protected override async Task OnInitializedAsync()
+    protected override async Task OnParametersSetAsync()
     {
-        try
-        {
-            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            if (authState.User.Identity?.IsAuthenticated != true)
-            {
-                return;
-            }
+        SafeStoryReturnPath = GetSafeReturnUrl(ReturnUrl);
+        RequestedStory = await ResolveRequestedStoryAsync(SafeStoryReturnPath);
+        RequiredAccess = ResolveRequiredAccess(SafeStoryReturnPath, RequestedStory);
 
-            var userEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
-                            ?? authState.User.Identity?.Name;
-            HasActivePaidSubscription = await SubscriptionLedgerService.HasActivePaidSubscriptionAsync(userEmail);
-        }
-        catch
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        IsUserAuthenticated = authState.User.Identity?.IsAuthenticated == true;
+        if (!IsUserAuthenticated)
         {
             HasActivePaidSubscription = false;
+            return;
+        }
+
+        var userEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                        ?? authState.User.Identity?.Name;
+        HasActivePaidSubscription = await SubscriptionLedgerService.HasActivePaidSubscriptionAsync(userEmail);
+
+        if (string.IsNullOrWhiteSpace(SafeStoryReturnPath))
+        {
+            return;
+        }
+
+        var hasAccessToRequestedStory = await UserHasAccessToRequestedStoryAsync(authState.User);
+        if (!hasAccessToRequestedStory &&
+            string.Equals(PaymentStatus, "sukses", StringComparison.OrdinalIgnoreCase))
+        {
+            hasAccessToRequestedStory = await WaitForStoryAccessAfterPaymentAsync(authState.User);
+        }
+
+        if (hasAccessToRequestedStory)
+        {
+            NavigationManager.NavigateTo(SafeStoryReturnPath, forceLoad: true);
         }
     }
 
-    private static string BuildPlanSignUpHref(string planSlug)
+    private async Task<StoryItem?> ResolveRequestedStoryAsync(string? safeStoryReturnPath)
+    {
+        if (!StoryAccessPolicy.TryParseStoryPath(safeStoryReturnPath, out var source, out var slug))
+        {
+            return null;
+        }
+
+        return string.Equals(source, "gratis", StringComparison.OrdinalIgnoreCase)
+            ? await StoryCatalogService.FindFreeBySlugAsync(slug)
+            : await StoryCatalogService.FindLuisterBySlugAsync(slug);
+    }
+
+    private static StoryAccessRequirement ResolveRequiredAccess(string? safeStoryReturnPath, StoryItem? requestedStory)
+    {
+        if (!StoryAccessPolicy.TryParseStoryPath(safeStoryReturnPath, out var source, out _))
+        {
+            return StoryAccessRequirement.Unknown;
+        }
+
+        return StoryAccessPolicy.ResolveRequirement(source, requestedStory);
+    }
+
+    private async Task<bool> UserHasAccessToRequestedStoryAsync(ClaimsPrincipal user)
+    {
+        if (!StoryAccessPolicy.TryParseStoryPath(SafeStoryReturnPath, out _, out _))
+        {
+            return false;
+        }
+
+        if (!StoryAccessPolicy.RequiresPaidSubscription(RequiredAccess))
+        {
+            return user.Identity?.IsAuthenticated == true;
+        }
+
+        var userEmail = user.FindFirst(ClaimTypes.Email)?.Value
+                        ?? user.Identity?.Name;
+        if (string.IsNullOrWhiteSpace(userEmail))
+        {
+            return false;
+        }
+
+        var tierCodes = StoryAccessPolicy.GetAllowedTierCodes(RequiredAccess);
+        if (tierCodes.Count == 0)
+        {
+            return false;
+        }
+
+        var checks = tierCodes
+            .Select(tierCode => SubscriptionLedgerService.HasActiveSubscriptionForTierAsync(userEmail, tierCode))
+            .ToArray();
+
+        var results = await Task.WhenAll(checks);
+        return results.Any(result => result);
+    }
+
+    private async Task<bool> WaitForStoryAccessAfterPaymentAsync(ClaimsPrincipal user)
+    {
+        const int attempts = 8;
+        for (var attempt = 0; attempt < attempts; attempt++)
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(750));
+            if (await UserHasAccessToRequestedStoryAsync(user))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private string BuildFreeJoinHref()
+    {
+        if (string.IsNullOrWhiteSpace(SafeStoryReturnPath))
+        {
+            return "/gratis";
+        }
+
+        if (IsUserAuthenticated)
+        {
+            return SafeStoryReturnPath;
+        }
+
+        return QueryHelpers.AddQueryString("/teken-op", "returnUrl", SafeStoryReturnPath);
+    }
+
+    private static string BuildPlanSignUpHref(string planSlug, string? safeStoryReturnPath)
     {
         if (string.IsNullOrWhiteSpace(planSlug))
         {
@@ -215,6 +344,70 @@
 
         var normalizedPlanSlug = planSlug.Trim();
         var checkoutPath = $"/betaal/{Uri.EscapeDataString(normalizedPlanSlug)}";
-        return $"/teken-op?plan={Uri.EscapeDataString(normalizedPlanSlug)}&returnUrl={Uri.EscapeDataString(checkoutPath)}";
+        if (!string.IsNullOrWhiteSpace(safeStoryReturnPath))
+        {
+            checkoutPath = QueryHelpers.AddQueryString(checkoutPath, "returnUrl", safeStoryReturnPath);
+        }
+
+        var signUpQuery = new Dictionary<string, string?>
+        {
+            ["plan"] = normalizedPlanSlug,
+            ["returnUrl"] = checkoutPath
+        };
+
+        return QueryHelpers.AddQueryString("/teken-op", signUpQuery);
+    }
+
+    private static string? GetSafeReturnUrl(string? returnUrl)
+    {
+        var normalizedReturnUrl = NormalizeReturnUrl(returnUrl);
+        if (string.IsNullOrWhiteSpace(normalizedReturnUrl))
+        {
+            return null;
+        }
+
+        if (!normalizedReturnUrl.StartsWith("/", StringComparison.Ordinal) ||
+            normalizedReturnUrl.StartsWith("//", StringComparison.Ordinal) ||
+            normalizedReturnUrl.StartsWith("/teken-in", StringComparison.OrdinalIgnoreCase) ||
+            normalizedReturnUrl.StartsWith("/teken-op", StringComparison.OrdinalIgnoreCase) ||
+            normalizedReturnUrl.StartsWith("/opsies", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return normalizedReturnUrl;
+    }
+
+    private static string? NormalizeReturnUrl(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var candidate = value.Trim();
+        for (var index = 0; index < 2; index++)
+        {
+            if (candidate.StartsWith("/", StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            if (!candidate.Contains('%', StringComparison.Ordinal))
+            {
+                break;
+            }
+
+            try
+            {
+                candidate = Uri.UnescapeDataString(candidate);
+            }
+            catch
+            {
+                break;
+            }
+        }
+
+        return candidate;
     }
 }

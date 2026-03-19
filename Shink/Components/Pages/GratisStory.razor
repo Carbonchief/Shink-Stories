@@ -28,12 +28,12 @@
     <script type="application/ld+json">@StoryPageJsonLd</script>
 </HeadContent>
 
-@if (IsRedirectingToLogin)
+@if (IsRedirectingToOpsies)
 {
     <section class="story-player-empty">
-        <h1>Neem jou nou na teken in...</h1>
-        <p>Jy moet ingeteken wees om stories te luister.</p>
-        <a href="/teken-in">Gaan na teken in</a>
+        <h1>Neem jou nou na opsies...</h1>
+        <p>Kies asseblief 'n opsie om met hierdie storie voort te gaan.</p>
+        <a href="/opsies">Gaan na opsies</a>
     </section>
 }
 else if (CurrentStory is null)
@@ -288,7 +288,7 @@ else
     private IReadOnlyList<StoryItem> FreeStories { get; set; } = Array.Empty<StoryItem>();
     private StoryItem? PreviousStory { get; set; }
     private StoryItem? NextStory { get; set; }
-    private bool IsRedirectingToLogin { get; set; }
+    private bool IsRedirectingToOpsies { get; set; }
     private bool ShowSuurlemoentjieDetails =>
         string.Equals(CurrentStory?.Slug, "suurlemoentjie", StringComparison.OrdinalIgnoreCase);
     private bool ShowKwaaibokDetails =>
@@ -361,7 +361,7 @@ else
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         if (authState.User.Identity?.IsAuthenticated != true)
         {
-            IsRedirectingToLogin = true;
+            IsRedirectingToOpsies = true;
             CurrentStory = null;
             AudioUrl = null;
             FreeStories = Array.Empty<StoryItem>();
@@ -372,11 +372,11 @@ else
                 ? "/gratis"
                 : $"/gratis/{Uri.EscapeDataString(Slug)}";
             var returnUrl = Uri.EscapeDataString(requestedPath);
-            NavigationManager.NavigateTo($"/teken-in?returnUrl={returnUrl}");
+            NavigationManager.NavigateTo($"/opsies?returnUrl={returnUrl}");
             return;
         }
 
-        IsRedirectingToLogin = false;
+        IsRedirectingToOpsies = false;
         var freeStoriesTask = StoryCatalogService.GetFreeStoriesAsync();
         var currentStoryTask = StoryCatalogService.FindFreeBySlugAsync(Slug);
         await Task.WhenAll(freeStoriesTask, currentStoryTask);

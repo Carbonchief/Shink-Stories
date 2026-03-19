@@ -13,7 +13,7 @@ public sealed partial class PayFastCheckoutService(HttpClient httpClient, IOptio
     private readonly PayFastOptions _options = options.Value;
     private readonly HttpClient _httpClient = httpClient;
 
-    public bool TryBuildCheckout(PaymentPlan plan, HttpContext httpContext, out PayFastCheckoutForm checkoutForm, out string errorMessage)
+    public bool TryBuildCheckout(PaymentPlan plan, HttpContext httpContext, string? returnUrl, out PayFastCheckoutForm checkoutForm, out string errorMessage)
     {
         checkoutForm = default!;
         errorMessage = string.Empty;
@@ -32,8 +32,17 @@ public sealed partial class PayFastCheckoutService(HttpClient httpClient, IOptio
             return false;
         }
 
-        var returnUrl = BuildAbsoluteUrl(httpContext, _options.ReturnUrlPath, $"betaling=sukses&plan={Uri.EscapeDataString(plan.Slug)}");
-        var cancelUrl = BuildAbsoluteUrl(httpContext, _options.CancelUrlPath, $"betaling=gekanselleer&plan={Uri.EscapeDataString(plan.Slug)}");
+        var successQuery = $"betaling=sukses&plan={Uri.EscapeDataString(plan.Slug)}";
+        var cancelQuery = $"betaling=gekanselleer&plan={Uri.EscapeDataString(plan.Slug)}";
+        if (!string.IsNullOrWhiteSpace(returnUrl))
+        {
+            var encodedReturnUrl = Uri.EscapeDataString(returnUrl);
+            successQuery = $"{successQuery}&returnUrl={encodedReturnUrl}";
+            cancelQuery = $"{cancelQuery}&returnUrl={encodedReturnUrl}";
+        }
+
+        var returnPath = BuildAbsoluteUrl(httpContext, _options.ReturnUrlPath, successQuery);
+        var cancelPath = BuildAbsoluteUrl(httpContext, _options.CancelUrlPath, cancelQuery);
         var notifyUrl = BuildAbsoluteUrl(httpContext, _options.NotifyUrlPath, null);
         var paymentId = $"{plan.Slug}-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}";
         var (firstName, lastName, emailAddress) = GetBuyerDetails(httpContext.User);
@@ -42,8 +51,8 @@ public sealed partial class PayFastCheckoutService(HttpClient httpClient, IOptio
         {
             new("merchant_id", _options.MerchantId),
             new("merchant_key", _options.MerchantKey),
-            new("return_url", returnUrl),
-            new("cancel_url", cancelUrl),
+            new("return_url", returnPath),
+            new("cancel_url", cancelPath),
             new("notify_url", notifyUrl),
             new("name_first", firstName),
             new("name_last", lastName),

@@ -20,6 +20,7 @@ public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<Pays
     public async Task<PaystackCheckoutInitResult> InitializeCheckoutAsync(
         PaymentPlan plan,
         HttpContext httpContext,
+        string? returnUrl = null,
         CancellationToken cancellationToken = default)
     {
         if (!IsConfigured)
@@ -47,10 +48,16 @@ public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<Pays
         }
 
         var reference = BuildReference(plan.Slug);
+        var callbackQuery = $"betaling=sukses&provider=paystack&plan={Uri.EscapeDataString(plan.Slug)}";
+        if (!string.IsNullOrWhiteSpace(returnUrl))
+        {
+            callbackQuery = $"{callbackQuery}&returnUrl={Uri.EscapeDataString(returnUrl)}";
+        }
+
         var callbackUrl = BuildAbsoluteUrl(
             httpContext,
             _options.CallbackUrlPath,
-            $"betaling=sukses&provider=paystack&plan={Uri.EscapeDataString(plan.Slug)}");
+            callbackQuery);
 
         var amountInCents = (long)Math.Round(plan.Amount * 100m, MidpointRounding.AwayFromZero);
 
