@@ -258,6 +258,10 @@ h2 {
     margin-inline: auto;
 }
 
+.stories-carousel-free {
+    justify-content: center;
+}
+
 .stories-carousel::-webkit-scrollbar {
     height: 8px;
 }
