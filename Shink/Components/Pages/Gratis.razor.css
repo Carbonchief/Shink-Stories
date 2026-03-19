@@ -158,6 +158,114 @@ h1 {
     background: var(--accent-deep);
 }
 
+.gratis-what-you-get {
+    width: min(100%, 860px);
+    margin: 2.2rem auto 0;
+    padding: 0.4rem 0 0.2rem;
+    text-align: center;
+}
+
+.gratis-what-you-get-image {
+    width: min(100%, 420px);
+    display: block;
+    margin: 0 auto 1.1rem;
+    border-radius: 16px;
+    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.12);
+}
+
+.gratis-what-you-get h2 {
+    margin: 0;
+    font-size: clamp(1.45rem, 2.4vw, 2.15rem);
+    line-height: 1.2;
+}
+
+.gratis-what-you-get-content {
+    margin: 1rem auto 0;
+    max-width: 60ch;
+}
+
+.gratis-what-you-get-intro {
+    margin: 1.25rem 0 0.45rem;
+    font-size: 1.35rem;
+    font-weight: 700;
+}
+
+.gratis-what-you-get-intro::before {
+    display: inline-block;
+    margin-right: 0.45rem;
+}
+
+.gratis-what-you-get-intro:first-of-type::before {
+    content: "\f001";
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+    color: var(--accent-deep);
+}
+
+.gratis-what-you-get-intro:nth-of-type(2)::before {
+    content: "\f0e0";
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+    color: var(--accent-deep);
+}
+
+.gratis-what-you-get-list,
+.gratis-what-you-get-checks {
+    margin: 0.2rem 0 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 0.4rem;
+}
+
+.gratis-what-you-get-list li,
+.gratis-what-you-get-checks li {
+    font-size: clamp(1.05rem, 2.1vw, 1.25rem);
+    line-height: 1.4;
+}
+
+.gratis-what-you-get-list li {
+    color: var(--muted);
+}
+
+.gratis-what-you-get-list-email li::before {
+    display: inline-block;
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+    width: 1.2rem;
+    margin-right: 0.4rem;
+    color: var(--accent-deep);
+}
+
+.gratis-what-you-get-list-email li:nth-child(1)::before {
+    content: "\f1fc";
+}
+
+.gratis-what-you-get-list-email li:nth-child(2)::before {
+    content: "\f0eb";
+}
+
+.gratis-what-you-get-list-email li:nth-child(3)::before {
+    content: "\f0a1";
+}
+
+.gratis-what-you-get-checks {
+    margin-top: 1.3rem;
+    gap: 0.5rem;
+}
+
+.gratis-what-you-get-checks li {
+    font-weight: 700;
+}
+
+.gratis-what-you-get-checks li::before {
+    content: "\f00c";
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+    margin-right: 0.45rem;
+    color: var(--accent-deep);
+}
+
 @media (max-width: 760px) {
     .gratis-grid {
         grid-template-columns: 1fr;
@@ -216,6 +324,29 @@ h1 {
         width: 100%;
         justify-content: center;
     }
+
+    .gratis-what-you-get {
+        margin-top: 1.8rem;
+        padding-top: 0.15rem;
+    }
+
+    .gratis-what-you-get-image {
+        width: min(100%, 360px);
+        border-radius: 14px;
+    }
+
+    .gratis-what-you-get-content {
+        text-align: left;
+    }
+
+    .gratis-what-you-get-intro {
+        font-size: 1.15rem;
+    }
+
+    .gratis-what-you-get-list li,
+    .gratis-what-you-get-checks li {
+        font-size: 1.02rem;
+    }
 }
 
 @media (hover: none) and (pointer: coarse) {
@@ -249,5 +380,18 @@ h1 {
 
     .gratis-card-body {
         padding: 0.72rem;
+    }
+
+    .gratis-what-you-get-image {
+        width: min(100%, 310px);
+        border-radius: 12px;
+    }
+
+    .gratis-what-you-get h2 {
+        font-size: clamp(1.25rem, 6.4vw, 1.55rem);
+    }
+
+    .gratis-what-you-get-intro {
+        font-size: 1.05rem;
     }
 }
