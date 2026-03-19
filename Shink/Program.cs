@@ -12,6 +12,7 @@ using System.Threading.RateLimiting;
 using System.Xml.Linq;
 
 var builder = WebApplication.CreateBuilder(args);
+var postHogHostUrl = builder.Configuration["PostHog:HostUrl"];
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
@@ -163,9 +164,7 @@ app.Use(async (httpContext, next) =>
     httpContext.Response.OnStarting(() =>
     {
         var headers = httpContext.Response.Headers;
-        var contentSecurityPolicy = app.Environment.IsDevelopment()
-            ? "default-src 'self'; base-uri 'self'; form-action 'self' https://sandbox.payfast.co.za https://www.payfast.co.za; object-src 'none'; frame-ancestors 'self'; img-src 'self' data: https:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' https: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* wss:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';"
-            : "default-src 'self'; base-uri 'self'; form-action 'self' https://sandbox.payfast.co.za https://www.payfast.co.za; object-src 'none'; frame-ancestors 'self'; img-src 'self' data: https:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' https: wss:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline';";
+        var contentSecurityPolicy = BuildContentSecurityPolicy(app.Environment.IsDevelopment(), postHogHostUrl);
 
         headers["X-Content-Type-Options"] = "nosniff";
         headers["X-Frame-Options"] = "SAMEORIGIN";
@@ -801,6 +800,35 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.Run();
+
+static string BuildContentSecurityPolicy(bool isDevelopment, string? postHogHostUrl)
+{
+    var postHogHostOrigin = TryGetCspHostOrigin(postHogHostUrl);
+    var scriptSources = postHogHostOrigin is null
+        ? "'self' 'unsafe-inline' 'unsafe-eval'"
+        : $"'self' {postHogHostOrigin} 'unsafe-inline' 'unsafe-eval'";
+    var connectSources = isDevelopment
+        ? "'self' https: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* wss:"
+        : "'self' https: wss:";
+
+    return $"default-src 'self'; base-uri 'self'; form-action 'self' https://sandbox.payfast.co.za https://www.payfast.co.za; object-src 'none'; frame-ancestors 'self'; img-src 'self' data: https:; media-src 'self' blob:; font-src 'self' data:; connect-src {connectSources}; script-src {scriptSources}; style-src 'self' 'unsafe-inline';";
+}
+
+static string? TryGetCspHostOrigin(string? url)
+{
+    if (string.IsNullOrWhiteSpace(url))
+    {
+        return null;
+    }
+
+    if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var uri) ||
+        (uri.Scheme != Uri.UriSchemeHttps && uri.Scheme != Uri.UriSchemeHttp))
+    {
+        return null;
+    }
+
+    return uri.IsDefaultPort ? $"{uri.Scheme}://{uri.Host}" : $"{uri.Scheme}://{uri.Host}:{uri.Port}";
+}
 
 static bool IsLikelySameSiteRequest(HttpContext httpContext)
 {

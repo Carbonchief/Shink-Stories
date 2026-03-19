@@ -1,4 +1,5 @@
 @using Microsoft.AspNetCore.Components.Authorization
+@inject IConfiguration Configuration
 <!DOCTYPE html>
 <html lang="en">
 
@@ -23,7 +24,57 @@
         <Routes />
     </CascadingAuthenticationState>
     <ReconnectModal />
+
+    @if (IsPostHogConfigured)
+    {
+        <script id="posthog-config" data-api-key="@PostHogProjectApiKey" data-host-url="@PostHogHostUrl"></script>
+        <script>
+            (function () {
+                if (window.posthog) {
+                    return;
+                }
+
+                var configElement = document.getElementById("posthog-config");
+                if (!configElement) {
+                    return;
+                }
+
+                var apiKey = configElement.getAttribute("data-api-key");
+                var hostUrl = configElement.getAttribute("data-host-url");
+                if (!apiKey || !hostUrl) {
+                    return;
+                }
+
+                var script = document.createElement("script");
+                script.async = true;
+                script.src = hostUrl.replace(/\/+$/, "") + "/static/array.js";
+                script.onload = function () {
+                    if (!window.posthog) {
+                        return;
+                    }
+
+                    window.posthog.init(apiKey, {
+                        api_host: hostUrl,
+                        person_profiles: "identified_only",
+                        capture_pageview: true,
+                        capture_pageleave: true
+                    });
+                };
+
+                document.head.appendChild(script);
+            })();
+        </script>
+    }
+
     <script src="@Assets["_framework/blazor.web.js"]"></script>
 </body>
 
 </html>
+
+@code {
+    private string? PostHogProjectApiKey => Configuration["PostHog:ProjectApiKey"];
+    private string? PostHogHostUrl => Configuration["PostHog:HostUrl"];
+    private bool IsPostHogConfigured =>
+        !string.IsNullOrWhiteSpace(PostHogProjectApiKey) &&
+        !string.IsNullOrWhiteSpace(PostHogHostUrl);
+}
