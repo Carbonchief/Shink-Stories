@@ -3,9 +3,16 @@
     flex-direction: column;
     align-items: center;
     gap: 0;
-    width: min(100%, 960px);
-    margin-inline: auto;
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
     margin-bottom: 1rem;
+    padding-top: 0.85rem;
+    padding-bottom: 1.1rem;
+    padding-left: max(0.8rem, calc((100vw - 1080px) / 2 + 0.8rem));
+    padding-right: max(0.8rem, calc((100vw - 1080px) / 2 + 0.8rem));
+    border-radius: 0;
+    overflow: hidden;
 }
 
 .eyebrow {
@@ -19,8 +26,8 @@
 }
 
 h1 {
-    margin: 0.6rem 0 0.8rem;
-    font-size: clamp(1.8rem, 2.8vw, 3rem);
+    margin: 0.5rem 0 0.65rem;
+    font-size: clamp(1.6rem, 2.55vw, 2.5rem);
     line-height: 1.1;
     color: #ffffff;
 }
@@ -29,20 +36,22 @@ h1 {
     text-align: center;
     max-width: 780px;
     margin-inline: auto;
-    margin-top: -0.7rem;
+    margin-top: -0.45rem;
+    padding-inline: 1rem;
 }
 
 .hero-copy p {
     color: #ffffff;
     max-width: 58ch;
     margin-inline: auto;
+    margin-block: 0.22rem 0;
 }
 
 .hero-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 0.8rem;
-    margin-top: 1.1rem;
+    margin-top: 0.7rem;
     margin-bottom: 0.45rem;
     justify-content: center;
 }
@@ -56,9 +65,9 @@ h1 {
     font-weight: 700;
     font-size: 0.98rem;
     line-height: 1.1;
-    min-height: 44px;
-    min-width: 168px;
-    padding: 0.75rem 1.1rem;
+    min-height: 42px;
+    min-width: 156px;
+    padding: 0.66rem 0.98rem;
     border-radius: 12px;
     cursor: pointer;
     appearance: none;
@@ -114,7 +123,7 @@ h1 {
     width: min(420px, 92%);
     height: auto;
     object-fit: contain;
-    margin-bottom: -50px;
+    margin-bottom: -32px;
 }
 
 .hero-media img {
@@ -125,6 +134,70 @@ h1 {
     /* Fade top edge so artwork blends into logo gradient background. */
     -webkit-mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.9) 13%, #000 25%);
     mask-image: linear-gradient(to bottom, transparent 0%, rgba(0, 0, 0, 0.9) 13%, #000 25%);
+}
+
+@media (max-height: 980px) {
+    .hero {
+        padding-top: 0.55rem;
+        padding-bottom: 0.75rem;
+    }
+
+    .hero-visual {
+        width: min(100%, 700px);
+    }
+
+    .hero-logo {
+        width: min(360px, 88%);
+        margin-bottom: -20px;
+    }
+
+    .hero-copy {
+        margin-top: -0.3rem;
+    }
+
+    h1 {
+        margin: 0.4rem 0 0.5rem;
+        font-size: clamp(1.5rem, 2.3vw, 2.2rem);
+        line-height: 1.06;
+    }
+
+    .hero-copy p {
+        max-width: 54ch;
+        font-size: 0.97rem;
+        margin-top: 0.15rem;
+    }
+
+    .hero-actions {
+        margin-top: 0.55rem;
+        margin-bottom: 0.25rem;
+    }
+
+    .cta {
+        min-height: 40px;
+        min-width: 146px;
+        padding: 0.58rem 0.88rem;
+        font-size: 0.94rem;
+    }
+}
+
+@media (max-height: 860px) {
+    .hero-logo {
+        width: min(320px, 84%);
+        margin-bottom: -12px;
+    }
+
+    .hero-media img {
+        margin-top: -0.72rem;
+    }
+
+    .hero-copy p {
+        max-width: 50ch;
+        font-size: 0.9rem;
+    }
+
+    .eyebrow {
+        font-size: 0.72rem;
+    }
 }
 
 .join-promo {
@@ -852,7 +925,21 @@ h2 {
     }
 
     .hero-logo {
+        width: min(360px, 90%);
         margin-bottom: 0;
+    }
+
+    .hero-media img {
+        margin-top: 0;
+    }
+
+    .hero {
+        padding-top: 0.45rem;
+        padding-bottom: 0.65rem;
+    }
+
+    .hero-copy {
+        margin-top: -0.15rem;
     }
 
     .stories-carousel {
@@ -882,11 +969,17 @@ h2 {
     }
 
     .hero-actions {
-        flex-direction: column;
+        flex-direction: row;
+        gap: 0.55rem;
+        margin-top: 0.55rem;
     }
 
     .cta {
         text-align: center;
+        min-width: 136px;
+        min-height: 40px;
+        padding: 0.56rem 0.72rem;
+        font-size: 0.9rem;
     }
 }
 

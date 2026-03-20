@@ -14,7 +14,33 @@
     display: flex;
     flex-direction: column;
     background:
-        linear-gradient(180deg, #36869f 0%, #4f9db3 22%, #d4cf69 56%, #efefef 86%, #efefef 100%);
+        linear-gradient(180deg, #408D93 0%, #4f9db3 22%, #d4cf69 56%, #efefef 86%, #efefef 100%);
+}
+
+.site-shell.home-route {
+    position: relative;
+    isolation: isolate;
+    background: linear-gradient(180deg, #408D93 0%, #4f9db3 22%, #d4cf69 56%, #efefef 86%, #efefef 100%);
+}
+
+.site-shell.home-route::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100vh;
+    z-index: -1;
+    background:
+        linear-gradient(
+            to bottom,
+            rgba(64, 141, 147, 0.22) 0%,
+            rgba(64, 141, 147, 0.24) 66%,
+            rgba(64, 141, 147, 0.45) 80%,
+            rgba(64, 141, 147, 0.78) 92%,
+            #408D93 100%
+        ),
+        url("/branding/Schink_Background.jpeg") center top / cover no-repeat;
 }
 
 .site-shell.story-route {
@@ -67,6 +93,11 @@
     background: color-mix(in srgb, var(--surface) 97%, white);
     backdrop-filter: blur(12px) saturate(145%);
     box-shadow: 0 10px 22px rgba(17, 39, 45, 0.14);
+}
+
+.site-shell.home-route .site-header {
+    background: color-mix(in srgb, var(--surface) 82%, transparent);
+    border-bottom-color: color-mix(in srgb, var(--line) 66%, rgba(255, 255, 255, 0.45));
 }
 
 .nav-wrap {
@@ -654,6 +685,7 @@
 }
 
 .site-shell.home-route .site-main {
+    padding-top: 0.5rem;
     padding-bottom: 0;
 }
 
