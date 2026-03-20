@@ -33,6 +33,7 @@ const boundAudios = new WeakSet();
 const fullscreenBindings = new WeakMap();
 const playerCapabilityCache = new WeakMap();
 const storyTrackingStateCache = new WeakMap();
+const lastBoundAudioSource = new WeakMap();
 
 function setFontAwesomeIcon(iconElement, iconClass) {
     if (!(iconElement instanceof HTMLElement)) {
@@ -709,16 +710,36 @@ function stopAndReleaseAudio(audioElement) {
 
     audioElement.removeAttribute("src");
     audioElement.load();
+    lastBoundAudioSource.set(audioElement, "");
 }
 
 function bindAudioEvents(audioElement) {
+    const declaredSource = (audioElement.getAttribute("src") || "").trim();
+    const lastDeclaredSource = lastBoundAudioSource.get(audioElement) || "";
+
     if (boundAudios.has(audioElement)) {
+        if (declaredSource && declaredSource !== lastDeclaredSource) {
+            lastBoundAudioSource.set(audioElement, declaredSource);
+
+            try {
+                audioElement.load();
+            } catch {
+                // Ignore browser-specific load failures.
+            }
+        } else if (!declaredSource && lastDeclaredSource) {
+            lastBoundAudioSource.set(audioElement, "");
+        }
+
         updateMediaMetadata(audioElement);
         updatePositionState(audioElement);
         return;
     }
 
     boundAudios.add(audioElement);
+
+    if (declaredSource) {
+        lastBoundAudioSource.set(audioElement, declaredSource);
+    }
 
     audioElement.setAttribute("playsinline", "");
     audioElement.setAttribute("webkit-playsinline", "true");

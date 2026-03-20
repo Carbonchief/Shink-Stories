@@ -3,17 +3,15 @@
 @using System.ComponentModel.DataAnnotations
 @using System.Globalization
 @using System.Net.Http.Json
-@using System.Security.Claims
 @using System.Text.Json
-@using Microsoft.AspNetCore.WebUtilities
 @using Shink.Components.Content
 @using Microsoft.AspNetCore.Components
-@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.JSInterop
 @inject IHttpClientFactory HttpClientFactory
 @inject NavigationManager NavigationManager
-@inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IStoryCatalogService StoryCatalogService
-@inject ISubscriptionLedgerService SubscriptionLedgerService
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
 <PageTitle>Schink Stories | Tuis</PageTitle>
 <HeadContent>
@@ -89,11 +87,27 @@
     <h2 id="gratis-stories-heading">Kom probeer 3 van ons lekkerste stories</h2>
     <p class="section-intro">Dis op die huis!</p>
 
-    <div class="stories-carousel stories-carousel-free" role="list" aria-label="Gratis stories">
+    <div class="stories-carousel-shell">
+        <div class="carousel-controls" aria-label="Gratis stories navigasie">
+            <button type="button" class="carousel-nav-btn carousel-nav-btn-prev" aria-label="Vorige gratis stories"
+                    @onclick="() => ScrollCarouselAsync(FreeStoriesCarouselRef, -1)">
+                <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+            </button>
+            <button type="button" class="carousel-nav-btn carousel-nav-btn-next" aria-label="Volgende gratis stories"
+                    @onclick="() => ScrollCarouselAsync(FreeStoriesCarouselRef, 1)">
+                <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+            </button>
+        </div>
+
+        <div class="stories-carousel stories-carousel-free" role="list" aria-label="Gratis stories" @ref="FreeStoriesCarouselRef">
         @foreach (var story in FreeStories)
         {
+            var storyPath = BuildStoryPath($"/gratis/{Uri.EscapeDataString(story.Slug)}");
             <article class="story-carousel-item" role="listitem">
-                <a class="story-carousel-link" href="@($"/gratis/{story.Slug}")" aria-label="Luister @story.Title">
+                <a class="story-carousel-link"
+                   href="@storyPath"
+                   data-enhance-nav="false"
+                   aria-label="Luister @story.Title">
                     <span class="story-carousel-cover">
                         <img class="@(story.Slug == "die-kwaaibok-se-klip" ? "story-carousel-image kwaaibok-home-cover" : "story-carousel-image")"
                              src="@story.ThumbnailPath"
@@ -108,6 +122,7 @@
                 </a>
             </article>
         }
+        </div>
     </div>
 </section>
 
@@ -115,11 +130,27 @@
     <h2 id="nuutste-stories-heading">Top 10 nuutste stories</h2>
     <p class="section-intro">Kry 'n voorsmakie van ons nuutste uitgawes.</p>
 
-    <div class="stories-carousel" role="list" aria-label="Top 10 nuutste stories">
+    <div class="stories-carousel-shell">
+        <div class="carousel-controls" aria-label="Top 10 nuutste stories navigasie">
+            <button type="button" class="carousel-nav-btn carousel-nav-btn-prev" aria-label="Vorige nuutste stories"
+                    @onclick="() => ScrollCarouselAsync(NewestStoriesCarouselRef, -1)">
+                <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+            </button>
+            <button type="button" class="carousel-nav-btn carousel-nav-btn-next" aria-label="Volgende nuutste stories"
+                    @onclick="() => ScrollCarouselAsync(NewestStoriesCarouselRef, 1)">
+                <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+            </button>
+        </div>
+
+        <div class="stories-carousel" role="list" aria-label="Top 10 nuutste stories" @ref="NewestStoriesCarouselRef">
         @foreach (var story in NewestTop10Stories)
         {
+            var storyPath = BuildStoryPath(story.LinkPath);
             <article class="story-carousel-item" role="listitem">
-                <a class="story-carousel-link" href="@story.LinkPath" aria-label="Sien storie: @story.Title">
+                <a class="story-carousel-link"
+                   href="@storyPath"
+                   data-enhance-nav="false"
+                   aria-label="Sien storie: @story.Title">
                     <span class="story-carousel-cover">
                         <img class="story-carousel-image"
                              src="@story.CoverPath"
@@ -132,6 +163,7 @@
                 </a>
             </article>
         }
+        </div>
     </div>
 </section>
 
@@ -141,11 +173,27 @@
         <h2 id="kleuter-stories-heading">Stories vir Kleuters</h2>
         <p class="section-intro">Verken stories spesiaal vir kleuters.</p>
 
-        <div class="stories-carousel" role="list" aria-label="Stories vir kleuters">
+        <div class="stories-carousel-shell">
+            <div class="carousel-controls" aria-label="Stories vir kleuters navigasie">
+                <button type="button" class="carousel-nav-btn carousel-nav-btn-prev" aria-label="Vorige stories vir kleuters"
+                        @onclick="() => ScrollCarouselAsync(KleuterStoriesCarouselRef, -1)">
+                    <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                </button>
+                <button type="button" class="carousel-nav-btn carousel-nav-btn-next" aria-label="Volgende stories vir kleuters"
+                        @onclick="() => ScrollCarouselAsync(KleuterStoriesCarouselRef, 1)">
+                    <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                </button>
+            </div>
+
+            <div class="stories-carousel" role="list" aria-label="Stories vir kleuters" @ref="KleuterStoriesCarouselRef">
             @foreach (var story in KleuterStories)
             {
+                var storyPath = BuildStoryPath(story.LinkPath);
                 <article class="story-carousel-item" role="listitem">
-                    <a class="story-carousel-link" href="@story.LinkPath" aria-label="Sien storie: @story.Title">
+                    <a class="story-carousel-link"
+                       href="@storyPath"
+                       data-enhance-nav="false"
+                       aria-label="Sien storie: @story.Title">
                         <span class="story-carousel-cover">
                             <img class="story-carousel-image"
                                  src="@story.CoverPath"
@@ -158,6 +206,7 @@
                     </a>
                 </article>
             }
+            </div>
         </div>
     </section>
 }
@@ -166,11 +215,27 @@
     <h2 id="bybel-stories-heading">Bybelstories</h2>
     <p class="section-intro">Luister na ons Bybelstories vir kinders.</p>
 
-    <div class="stories-carousel" role="list" aria-label="Bybelstories">
+    <div class="stories-carousel-shell">
+        <div class="carousel-controls" aria-label="Bybelstories navigasie">
+            <button type="button" class="carousel-nav-btn carousel-nav-btn-prev" aria-label="Vorige Bybelstories"
+                    @onclick="() => ScrollCarouselAsync(BibleStoriesCarouselRef, -1)">
+                <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+            </button>
+            <button type="button" class="carousel-nav-btn carousel-nav-btn-next" aria-label="Volgende Bybelstories"
+                    @onclick="() => ScrollCarouselAsync(BibleStoriesCarouselRef, 1)">
+                <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+            </button>
+        </div>
+
+        <div class="stories-carousel" role="list" aria-label="Bybelstories" @ref="BibleStoriesCarouselRef">
         @foreach (var story in BibleStories)
         {
+            var storyPath = BuildStoryPath(story.LinkPath);
             <article class="story-carousel-item" role="listitem">
-                <a class="story-carousel-link" href="@story.LinkPath" aria-label="Sien storie: @story.Title">
+                <a class="story-carousel-link"
+                   href="@storyPath"
+                   data-enhance-nav="false"
+                   aria-label="Sien storie: @story.Title">
                     <span class="story-carousel-cover">
                         <img class="story-carousel-image"
                              src="@story.CoverPath"
@@ -183,6 +248,7 @@
                 </a>
             </article>
         }
+        </div>
     </div>
 </section>
 
@@ -249,8 +315,9 @@
                     {
                         var optionId = $"perfect-plan-{card.Key}-{option.Plan.Slug}";
                         var isSelected = IsSelectedPlanOption(option.Plan.Slug);
+                        var hasSaveBadge = IsYearlyAllStoriesPlan(option.Plan);
 
-                        <label class="@($"perfect-plan-option {(isSelected ? "is-selected" : null)}")" for="@optionId">
+                        <label class="@($"perfect-plan-option {(isSelected ? "is-selected" : null)} {(hasSaveBadge ? "has-save-badge" : null)}")" for="@optionId">
                             <input id="@optionId"
                                    type="radio"
                                    name="perfect-plan-group-global"
@@ -262,6 +329,10 @@
                                     <strong>@FormatAmount(option.Plan.Amount)</strong>
                                     <span>@GetBillingLabel(option.Plan)</span>
                                 </span>
+                                @if (hasSaveBadge)
+                                {
+                                    <span class="perfect-plan-option-save-badge">Save 2 months</span>
+                                }
                                 <span class="perfect-plan-option-caption">@option.Caption</span>
                             </span>
                         </label>
@@ -339,6 +410,12 @@
 </section>
 
 @code {
+    private ElementReference FreeStoriesCarouselRef;
+    private ElementReference NewestStoriesCarouselRef;
+    private ElementReference KleuterStoriesCarouselRef;
+    private ElementReference BibleStoriesCarouselRef;
+    private IJSObjectReference? _homeModule;
+
     private IReadOnlyList<StoryItem> FreeStories { get; set; } = Array.Empty<StoryItem>();
     private IReadOnlyList<StoryPreviewItem> NewestTop10Stories { get; set; } = Array.Empty<StoryPreviewItem>();
     private IReadOnlyList<StoryPreviewItem> KleuterStories { get; set; } = Array.Empty<StoryPreviewItem>();
@@ -347,7 +424,6 @@
     private bool IsSubmitting { get; set; }
     private bool SubmitSucceeded { get; set; }
     private string? FormStatusMessage { get; set; }
-    private bool HasHandledAuthenticatedRedirect { get; set; }
     private string? SelectedPlanSlug { get; set; }
     private IReadOnlyList<PerfectPlanCard> PerfectPlanCards =>
         BuildPerfectPlanCards();
@@ -431,6 +507,12 @@
         if (SelectedPlanSlug is not null && allOptionSlugs.Contains(SelectedPlanSlug))
         {
             return SelectedPlanSlug;
+        }
+
+        const string defaultSchinkMonthlySlug = "schink-stories-maandeliks";
+        if (allOptionSlugs.Contains(defaultSchinkMonthlySlug))
+        {
+            return defaultSchinkMonthlySlug;
         }
 
         return PerfectPlanCards
@@ -665,27 +747,43 @@
         return builder.ToString().Trim();
     }
 
+    private async Task ScrollCarouselAsync(ElementReference carouselRef, int direction)
+    {
+        if (direction is 0)
+        {
+            return;
+        }
+
+        _homeModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Pages/Home.razor.js");
+        await _homeModule.InvokeVoidAsync("scrollCarouselByPage", carouselRef, direction);
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || HasHandledAuthenticatedRedirect || HasHomeOverrideQuery())
+        if (!firstRender)
         {
             return;
         }
 
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var isAuthenticated = authState.User.Identity?.IsAuthenticated ?? false;
-        if (!isAuthenticated)
+        _homeModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Pages/Home.razor.js");
+        await _homeModule.InvokeVoidAsync("initializeHomeStoryLoading");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_homeModule is null)
         {
             return;
         }
 
-        var userEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
-                        ?? authState.User.Identity?.Name;
-        var hasPaidSubscription = await SubscriptionLedgerService.HasActivePaidSubscriptionAsync(userEmail);
-        var redirectPath = hasPaidSubscription ? "/luister" : "/gratis";
-
-        HasHandledAuthenticatedRedirect = true;
-        NavigationManager.NavigateTo(redirectPath, replace: true);
+        try
+        {
+            await _homeModule.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // Ignore JS disconnects during teardown.
+        }
     }
 
     private MarkupString HomeOrganizationJsonLd => new(JsonSerializer.Serialize(new
@@ -802,18 +900,17 @@
         return null;
     }
 
-    private bool HasHomeOverrideQuery()
+    private static string BuildStoryPath(string? linkPath)
     {
-        var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
-        var query = QueryHelpers.ParseQuery(uri.Query);
-        if (!query.TryGetValue("home", out var value))
+        if (string.IsNullOrWhiteSpace(linkPath))
         {
-            return false;
+            return "/luister";
         }
 
-        var token = value.ToString();
-        return string.Equals(token, "1", StringComparison.OrdinalIgnoreCase) ||
-               string.Equals(token, "true", StringComparison.OrdinalIgnoreCase);
+        var trimmed = linkPath.Trim();
+        return trimmed.StartsWith("/", StringComparison.Ordinal)
+            ? trimmed
+            : $"/{trimmed}";
     }
 
     private static string FormatAmount(decimal amount)
@@ -831,6 +928,9 @@
             12 => "jaarliks",
             _ => $"elke {plan.BillingPeriodMonths} maande"
         };
+
+    private static bool IsYearlyAllStoriesPlan(PaymentPlan plan) =>
+        string.Equals(plan.TierCode, "all_stories_yearly", StringComparison.OrdinalIgnoreCase);
 
     private sealed record ContactApiPayload(
         string Name,

@@ -45,6 +45,10 @@ h1 {
     min-height: 220px;
 }
 
+.gratis-card.is-navigating {
+    pointer-events: none;
+}
+
 .gratis-cover-link {
     position: relative;
     display: block;
@@ -56,6 +60,30 @@ h1 {
     border-bottom-left-radius: var(--gratis-card-radius);
 }
 
+.gratis-card.is-navigating .gratis-cover-link::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(8, 12, 16, 0.42);
+    z-index: 2;
+}
+
+.gratis-card.is-navigating .gratis-cover-link::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 2.2rem;
+    height: 2.2rem;
+    margin-top: -1.1rem;
+    margin-left: -1.1rem;
+    border-radius: 50%;
+    border: 3px solid rgba(255, 255, 255, 0.45);
+    border-top-color: #ffffff;
+    animation: luister-card-spin 0.7s linear infinite;
+    z-index: 3;
+}
+
 .gratis-cover-link img {
     display: block;
     width: 100%;
@@ -64,6 +92,17 @@ h1 {
     transition: transform 0.22s ease, filter 0.22s ease;
     border-top-left-radius: var(--gratis-card-radius);
     border-bottom-left-radius: var(--gratis-card-radius);
+}
+
+.gratis-card.is-navigating .gratis-cover-link img {
+    filter: brightness(0.72);
+    transform: scale(1.01);
+}
+
+@keyframes luister-card-spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .gratis-cover-play {

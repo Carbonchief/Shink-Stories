@@ -239,6 +239,22 @@
     color: rgba(240, 246, 250, 0.9);
 }
 
+.membership-save-badge {
+    margin: 0.32rem 0 0;
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    border-radius: 999px;
+    border: 1px solid rgba(243, 154, 50, 0.78);
+    background: rgba(243, 154, 50, 0.18);
+    color: #ffd89f;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 0.16rem 0.5rem;
+}
+
 .membership-plan-copy,
 .membership-plan p {
     margin: 0.5rem 0 0;

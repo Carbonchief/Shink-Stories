@@ -156,6 +156,22 @@
     text-transform: uppercase;
 }
 
+.opsie-save-badge {
+    margin: 0;
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    border-radius: 999px;
+    border: 1px solid rgba(243, 154, 50, 0.75);
+    background: rgba(243, 154, 50, 0.16);
+    color: #8a4f00;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 0.16rem 0.5rem;
+}
+
 .opsie-detail {
     margin: 0 0 0.75rem;
     color: #39414b;

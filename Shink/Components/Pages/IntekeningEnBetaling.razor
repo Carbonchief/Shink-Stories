@@ -115,6 +115,10 @@
                     <article class="billing-plan-card">
                         <h3>@plan.Name</h3>
                         <p class="billing-price">@FormatRand(plan.Amount) <span>@ResolveBillingLabel(plan.BillingPeriodMonths)</span></p>
+                        @if (IsYearlyAllStoriesPlan(plan))
+                        {
+                            <p class="billing-save-badge">Save 2 months</p>
+                        }
                         <p class="billing-description">@plan.ItemDescription</p>
                         <a class="billing-btn" href="@($"/betaal/{plan.Slug}")">Kies hierdie plan</a>
                     </article>
@@ -240,6 +244,9 @@
 
     private static string ResolveBillingLabel(int billingPeriodMonths) =>
         billingPeriodMonths <= 1 ? "per maand" : "per jaar";
+
+    private static bool IsYearlyAllStoriesPlan(PaymentPlan plan) =>
+        string.Equals(plan.TierCode, "all_stories_yearly", StringComparison.OrdinalIgnoreCase);
 
     private static string FormatRand(decimal amount)
     {

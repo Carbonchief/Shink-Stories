@@ -109,6 +109,10 @@
                         <strong>@FormatPlanAmount(SelectedPlan)</strong>
                         <span>@GetPlanBillingLabel(SelectedPlan)</span>
                     </p>
+                    @if (IsYearlyAllStoriesPlan(SelectedPlan))
+                    {
+                        <p class="membership-save-badge">Save 2 months</p>
+                    }
                     <p class="membership-plan-copy">@GetPlanDescription(SelectedPlan)</p>
                 </article>
             }
@@ -454,6 +458,9 @@
             12 => "per jaar",
             _ => $"elke {plan.BillingPeriodMonths} maande"
         };
+
+    private static bool IsYearlyAllStoriesPlan(PaymentPlan plan) =>
+        string.Equals(plan.TierCode, "all_stories_yearly", StringComparison.OrdinalIgnoreCase);
 
     private static string FormatPlanAmount(PaymentPlan plan) =>
         $"R {plan.Amount:0.00}";

@@ -230,12 +230,7 @@ app.MapGet("/media/audio/{slug}", async (
     IWebHostEnvironment environment,
     HttpContext httpContext) =>
 {
-    if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
-    {
-        return Results.Unauthorized();
-    }
-
-    if (!IsLikelySameSiteRequest(httpContext))
+    if (!IsLikelySameSiteMediaRequest(httpContext))
     {
         return Results.Forbid();
     }
@@ -871,7 +866,11 @@ static string? TryGetCspHostOrigin(string? url)
 
 static string BuildScriptSources(string? postHogHostOrigin, string? postHogAssetsOrigin)
 {
-    var sources = new List<string> { "'self'" };
+    var sources = new List<string>
+    {
+        "'self'",
+        "https://static.cloudflareinsights.com"
+    };
 
     if (!string.IsNullOrWhiteSpace(postHogHostOrigin))
     {
@@ -942,6 +941,30 @@ static bool IsLikelySameSiteRequest(HttpContext httpContext)
     }
 
     return string.Equals(refererUri.Host, httpContext.Request.Host.Host, StringComparison.OrdinalIgnoreCase);
+}
+
+static bool IsLikelySameSiteMediaRequest(HttpContext httpContext)
+{
+    var secFetchSite = httpContext.Request.Headers["Sec-Fetch-Site"].ToString();
+    if (!string.IsNullOrWhiteSpace(secFetchSite))
+    {
+        return string.Equals(secFetchSite, "same-origin", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(secFetchSite, "same-site", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(secFetchSite, "none", StringComparison.OrdinalIgnoreCase);
+    }
+
+    var originValue = httpContext.Request.Headers.Origin.ToString();
+    if (string.IsNullOrWhiteSpace(originValue))
+    {
+        return true;
+    }
+
+    if (!Uri.TryCreate(originValue, UriKind.Absolute, out var originUri))
+    {
+        return false;
+    }
+
+    return string.Equals(originUri.Host, httpContext.Request.Host.Host, StringComparison.OrdinalIgnoreCase);
 }
 
 static bool IsBlockedPublicAudioPath(PathString path)

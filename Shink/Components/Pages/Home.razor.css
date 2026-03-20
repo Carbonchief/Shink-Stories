@@ -315,20 +315,78 @@ h2 {
     margin-bottom: 0;
 }
 
+.stories-carousel-shell {
+    position: relative;
+    width: min(100%, 1080px);
+    margin: 0.65rem auto 0;
+}
+
+.carousel-controls {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    pointer-events: none;
+    z-index: 3;
+}
+
+.carousel-nav-btn {
+    width: 44px;
+    height: 44px;
+    border-radius: 999px;
+    border: 0;
+    background: transparent;
+    color: #132126;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: auto;
+    font: inherit;
+    line-height: 1;
+    padding: 0;
+    cursor: pointer;
+    box-shadow: 0 4px 10px rgba(15, 22, 27, 0.24);
+    transition: transform 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
+}
+
+.carousel-nav-btn i {
+    font-size: 1.18rem;
+}
+
+.carousel-nav-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 14px rgba(15, 22, 27, 0.3);
+    color: #0c1519;
+}
+
+.carousel-nav-btn-prev {
+    margin-left: -3.2rem;
+}
+
+.carousel-nav-btn-next {
+    margin-right: -3.2rem;
+}
+
+.carousel-nav-btn:focus-visible {
+    outline: 3px solid color-mix(in srgb, #ffffff 58%, var(--accent));
+    outline-offset: 2px;
+}
+
 .stories-carousel {
-    margin-top: 0.95rem;
+    margin-top: 0;
     display: grid;
     grid-auto-flow: column;
     grid-auto-columns: 220px;
     gap: 0.9rem;
     overflow-x: auto;
     overflow-y: hidden;
+    padding-inline: 1.65rem;
     padding-bottom: 0.38rem;
     scroll-snap-type: x mandatory;
-    scroll-padding-inline: 0.35rem;
+    scroll-padding-inline: 1.65rem;
     -webkit-overflow-scrolling: touch;
-    width: min(100%, 1080px);
-    margin-inline: auto;
+    width: 100%;
 }
 
 .stories-carousel-free {
@@ -353,6 +411,10 @@ h2 {
     scroll-snap-align: start;
 }
 
+.story-carousel-item.is-navigating .story-carousel-link {
+    pointer-events: none;
+}
+
 .story-carousel-link {
     color: inherit;
     text-decoration: none;
@@ -370,6 +432,30 @@ h2 {
     box-shadow: 0 10px 24px rgba(14, 18, 24, 0.3);
 }
 
+.story-carousel-item.is-navigating .story-carousel-cover::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: rgba(8, 12, 16, 0.42);
+    z-index: 2;
+}
+
+.story-carousel-item.is-navigating .story-carousel-cover::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 2.2rem;
+    height: 2.2rem;
+    margin-top: -1.1rem;
+    margin-left: -1.1rem;
+    border-radius: 50%;
+    border: 3px solid rgba(255, 255, 255, 0.45);
+    border-top-color: #ffffff;
+    animation: home-story-card-spin 0.7s linear infinite;
+    z-index: 3;
+}
+
 .story-carousel-image {
     width: 100%;
     height: 100%;
@@ -377,6 +463,11 @@ h2 {
     object-fit: cover;
     display: block;
     transition: transform 0.22s ease, filter 0.22s ease;
+}
+
+.story-carousel-item.is-navigating .story-carousel-image {
+    filter: brightness(0.72);
+    transform: scale(1.01);
 }
 
 .kwaaibok-home-cover {
@@ -433,6 +524,12 @@ h2 {
     outline: 3px solid color-mix(in srgb, #ffffff 40%, var(--accent));
     outline-offset: 4px;
     border-radius: 16px;
+}
+
+@keyframes home-story-card-spin {
+    to {
+        transform: rotate(360deg);
+    }
 }
 
 .newest-stories-section {
@@ -772,6 +869,7 @@ h2 {
     grid-template-columns: auto 1fr;
     align-items: center;
     gap: 0.62rem;
+    position: relative;
     border: 1px solid #c3c3c3;
     border-radius: 14px;
     background: #f2f2f2;
@@ -857,6 +955,28 @@ h2 {
     line-height: 1.25;
 }
 
+.perfect-plan-option-save-badge {
+    position: absolute;
+    top: 0.44rem;
+    right: 0.56rem;
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    border: 1px solid rgba(243, 154, 50, 0.75);
+    background: rgba(243, 154, 50, 0.16);
+    color: #8a4f00;
+    font-size: 0.72rem;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    padding: 0.16rem 0.5rem;
+}
+
+.perfect-plan-option.has-save-badge .perfect-plan-option-text {
+    padding-top: 0.28rem;
+    padding-right: 6.1rem;
+}
+
 .perfect-plan-select {
     margin-top: 0.85rem;
     min-height: 46px;
@@ -907,6 +1027,42 @@ h2 {
 }
 
 @media (max-width: 620px) {
+    .carousel-controls {
+        display: none;
+    }
+
+    .stories-carousel-shell {
+        overflow-x: clip;
+    }
+
+    .perfect-plan-option-save-badge {
+        top: 0.38rem;
+        right: 0.42rem;
+        font-size: 0.66rem;
+        padding: 0.14rem 0.42rem;
+    }
+
+    .perfect-plan-option.has-save-badge .perfect-plan-option-text {
+        padding-right: 5.25rem;
+    }
+
+    .carousel-nav-btn {
+        width: 36px;
+        height: 36px;
+    }
+
+    .carousel-nav-btn i {
+        font-size: 0.98rem;
+    }
+
+    .carousel-nav-btn-prev {
+        margin-left: -3.2rem;
+    }
+
+    .carousel-nav-btn-next {
+        margin-right: -3.2rem;
+    }
+
     .join-promo {
         border-radius: 18px;
         padding: 0.7rem;
@@ -945,7 +1101,9 @@ h2 {
     .stories-carousel {
         grid-auto-columns: minmax(146px, 44vw);
         gap: 0.72rem;
+        padding-inline: 0.8rem;
         padding-bottom: 0.25rem;
+        scroll-padding-inline: 0.8rem;
     }
 
     .home-review-grid {

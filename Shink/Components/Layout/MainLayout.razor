@@ -207,7 +207,7 @@
     {
         get
         {
-            var relativePath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).Trim('/');
+            var relativePath = GetCurrentRelativePathWithoutQuery();
             return relativePath.StartsWith("gratis/", StringComparison.OrdinalIgnoreCase) ||
                    relativePath.StartsWith("luister/", StringComparison.OrdinalIgnoreCase);
         }
@@ -217,9 +217,21 @@
     {
         get
         {
-            var relativePath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).Trim('/');
+            var relativePath = GetCurrentRelativePathWithoutQuery();
             return string.IsNullOrWhiteSpace(relativePath);
         }
+    }
+
+    private string GetCurrentRelativePathWithoutQuery()
+    {
+        var relativePath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+        var queryOrFragmentIndex = relativePath.IndexOfAny(['?', '#']);
+        if (queryOrFragmentIndex >= 0)
+        {
+            relativePath = relativePath[..queryOrFragmentIndex];
+        }
+
+        return relativePath.Trim('/');
     }
 
     private static string? ResolveProfileImageUrl(ClaimsPrincipal user)

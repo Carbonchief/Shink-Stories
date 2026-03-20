@@ -54,7 +54,7 @@ else
             <p>@CurrentStory.Description</p>
         </div>
 
-        <div class="story-player-content" oncontextmenu="return false;">
+        <div class="story-player-content story-player-enhanced" oncontextmenu="return false;">
             <div class="story-cover-wrap">
                 <img src="@CurrentStory.ThumbnailPath"
                      srcset="@($"{CurrentStory.ThumbnailPath} 640w, {CurrentStory.ImagePath} 1024w")"
@@ -81,13 +81,13 @@ else
             <audio controls controlslist="nodownload noplaybackrate"
                    disablepictureinpicture preload="metadata" class="story-audio story-audio-native"
                    playsinline webkit-playsinline="true"
+                   src="@AudioUrl"
                    data-story-slug="@CurrentStory.Slug"
                    data-story-title="@CurrentStory.Title"
                    data-story-artist="Schink Stories"
                    data-story-image="@StoryArtworkUrl"
                    data-story-image-type="@StoryArtworkMimeType"
                     oncontextmenu="return false;">
-                <source src="@AudioUrl" type="audio/mpeg" />
                 Jou blaaier ondersteun nie die oudioplayer nie.
             </audio>
 
@@ -395,7 +395,7 @@ else
             return;
         }
 
-        _mediaSessionModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Pages/GratisStory.razor.js");
+        _mediaSessionModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "/Components/Pages/GratisStory.razor.js");
         _dotNetRef ??= DotNetObjectReference.Create(this);
         await _mediaSessionModule.InvokeVoidAsync("initializeStoryMediaSession");
         await _mediaSessionModule.InvokeVoidAsync("initializeStoryPlayerFullscreenExperience", _dotNetRef);
@@ -407,7 +407,7 @@ else
 
         if (_mediaSessionModule is null)
         {
-            _mediaSessionModule = await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Pages/GratisStory.razor.js");
+            _mediaSessionModule = await JS.InvokeAsync<IJSObjectReference>("import", "/Components/Pages/GratisStory.razor.js");
         }
 
         await _mediaSessionModule.InvokeVoidAsync("setStoryPlayerFullscreenIntent", IsManualFullscreenFocus);
