@@ -12,8 +12,12 @@ using System.Text.RegularExpressions;
 using System.Threading.RateLimiting;
 using System.Xml.Linq;
 
+const string AuthSessionIdClaimType = "shink:session_id";
+
 var builder = WebApplication.CreateBuilder(args);
 var postHogHostUrl = builder.Configuration["PostHog:HostUrl"];
+var authSessionBootstrapOptions = builder.Configuration.GetSection(AuthSessionOptions.SectionName).Get<AuthSessionOptions>() ?? new AuthSessionOptions();
+var authSessionLifetimeDays = NormalizeSessionLifetimeDays(authSessionBootstrapOptions.SessionLifetimeDays);
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
@@ -26,7 +30,41 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         options.LoginPath = "/teken-in";
         options.AccessDeniedPath = "/teken-in";
         options.SlidingExpiration = true;
-        options.ExpireTimeSpan = TimeSpan.FromDays(14);
+        options.ExpireTimeSpan = TimeSpan.FromDays(authSessionLifetimeDays);
+        options.Events = new CookieAuthenticationEvents
+        {
+            OnValidatePrincipal = async context =>
+            {
+                if (!(context.Principal?.Identity?.IsAuthenticated ?? false))
+                {
+                    return;
+                }
+
+                var signedInEmail = context.Principal.FindFirst(ClaimTypes.Email)?.Value
+                                   ?? context.Principal.Identity?.Name;
+                var sessionIdValue = context.Principal.FindFirst(AuthSessionIdClaimType)?.Value;
+
+                if (string.IsNullOrWhiteSpace(signedInEmail) ||
+                    !Guid.TryParse(sessionIdValue, out var sessionId))
+                {
+                    context.RejectPrincipal();
+                    await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                    return;
+                }
+
+                var authSessionService = context.HttpContext.RequestServices.GetRequiredService<IAuthSessionService>();
+                var validationState = await authSessionService.ValidateSessionAsync(
+                    signedInEmail,
+                    sessionId,
+                    context.HttpContext.RequestAborted);
+
+                if (validationState == AuthSessionValidationState.Inactive)
+                {
+                    context.RejectPrincipal();
+                    await context.HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                }
+            }
+        };
     });
 builder.Services.AddAuthorization();
 builder.Services.AddSingleton<IAudioAccessService, AudioAccessService>();
@@ -34,10 +72,12 @@ builder.Services.AddMemoryCache();
 builder.Services.AddHttpContextAccessor();
 builder.Services.Configure<ResendOptions>(builder.Configuration.GetSection(ResendOptions.SectionName));
 builder.Services.Configure<SupabaseOptions>(builder.Configuration.GetSection(SupabaseOptions.SectionName));
+builder.Services.Configure<AuthSessionOptions>(builder.Configuration.GetSection(AuthSessionOptions.SectionName));
 builder.Services.Configure<PayFastOptions>(builder.Configuration.GetSection(PayFastOptions.SectionName));
 builder.Services.Configure<PaystackOptions>(builder.Configuration.GetSection(PaystackOptions.SectionName));
 builder.Services.AddHttpClient<IContactEmailService, ResendContactEmailService>();
 builder.Services.AddHttpClient<ISupabaseAuthService, SupabaseAuthService>();
+builder.Services.AddHttpClient<IAuthSessionService, SupabaseAuthSessionService>();
 builder.Services.AddHttpClient<IStoryCatalogService, SupabaseStoryCatalogService>();
 builder.Services.AddHttpClient<PayFastCheckoutService>();
 builder.Services.AddHttpClient<PaystackCheckoutService>();
@@ -464,6 +504,7 @@ app.MapPost("/api/paystack/webhook", async (HttpContext httpContext, PaystackChe
 app.MapPost("/api/auth/login", async (
     AuthSignInApiRequest request,
     ISupabaseAuthService supabaseAuthService,
+    IAuthSessionService authSessionService,
     ISubscriptionLedgerService subscriptionLedgerService,
     HttpContext httpContext) =>
 {
@@ -489,7 +530,14 @@ app.MapPost("/api/auth/login", async (
     }
 
     var signedInEmail = signInResult.UserEmail ?? request.Email!;
-    await SignInUserAsync(httpContext, signedInEmail);
+    var signInCookieResult = await SignInUserAsync(httpContext, signedInEmail, authSessionService);
+    if (!signInCookieResult.IsSuccess)
+    {
+        return Results.Json(
+            new { message = signInCookieResult.ErrorMessage ?? "Kon nie nou jou sessie begin nie. Probeer asseblief weer." },
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
     var redirectPath = await ResolvePostAuthRedirectPathAsync(subscriptionLedgerService, signedInEmail, httpContext.RequestAborted);
     return Results.Ok(new
     {
@@ -501,6 +549,7 @@ app.MapPost("/api/auth/login", async (
 app.MapPost("/api/auth/signup", async (
     AuthSignUpApiRequest request,
     ISupabaseAuthService supabaseAuthService,
+    IAuthSessionService authSessionService,
     ISubscriptionLedgerService subscriptionLedgerService,
     HttpContext httpContext) =>
 {
@@ -562,7 +611,14 @@ app.MapPost("/api/auth/signup", async (
         request.MobileNumber,
         httpContext.RequestAborted);
 
-    await SignInUserAsync(httpContext, signedInEmail);
+    var signInCookieResult = await SignInUserAsync(httpContext, signedInEmail, authSessionService);
+    if (!signInCookieResult.IsSuccess)
+    {
+        return Results.Json(
+            new { message = signInCookieResult.ErrorMessage ?? "Jou rekening is geskep, maar ons kon nie nou jou sessie begin nie. Probeer asseblief weer teken in." },
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
     var redirectPath = await ResolvePostAuthRedirectPathAsync(subscriptionLedgerService, signedInEmail, httpContext.RequestAborted);
     return Results.Ok(new
     {
@@ -578,14 +634,16 @@ app.MapPost("/api/auth/signup", async (
     });
 }).RequireRateLimiting("auth-submit").DisableAntiforgery();
 
-app.MapPost("/api/auth/logout", async (HttpContext httpContext) =>
+app.MapPost("/api/auth/logout", async (HttpContext httpContext, IAuthSessionService authSessionService) =>
 {
+    await RevokeCurrentUserSessionAsync(httpContext, authSessionService);
     await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     return Results.Ok(new { message = "Jy is nou afgeteken." });
 }).RequireRateLimiting("auth-submit").DisableAntiforgery();
 
-app.MapGet("/teken-uit", async (HttpContext httpContext) =>
+app.MapGet("/teken-uit", async (HttpContext httpContext, IAuthSessionService authSessionService) =>
 {
+    await RevokeCurrentUserSessionAsync(httpContext, authSessionService);
     await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     return Results.Redirect("/");
 }).RequireRateLimiting("auth-submit");
@@ -1398,13 +1456,26 @@ static string ResolveAudioMimeType(string? configuredContentType, string? audioO
     };
 }
 
-static async Task SignInUserAsync(HttpContext httpContext, string email)
+static async Task<AuthCookieSignInResult> SignInUserAsync(HttpContext httpContext, string email, IAuthSessionService authSessionService)
 {
+    var sessionIssueResult = await authSessionService.IssueSessionAsync(
+        email,
+        httpContext.Request.Headers.UserAgent.ToString(),
+        httpContext.Connection.RemoteIpAddress?.ToString(),
+        httpContext.RequestAborted);
+    if (!sessionIssueResult.IsSuccess || sessionIssueResult.SessionId == Guid.Empty)
+    {
+        return new AuthCookieSignInResult(
+            false,
+            sessionIssueResult.ErrorMessage ?? "Kon nie nou jou sessie begin nie. Probeer asseblief weer.");
+    }
+
     var claims = new List<Claim>
     {
         new(ClaimTypes.NameIdentifier, email),
         new(ClaimTypes.Name, email),
-        new(ClaimTypes.Email, email)
+        new(ClaimTypes.Email, email),
+        new(AuthSessionIdClaimType, sessionIssueResult.SessionId.ToString("D"))
     };
 
     var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme));
@@ -1412,10 +1483,35 @@ static async Task SignInUserAsync(HttpContext httpContext, string email)
     {
         IsPersistent = true,
         AllowRefresh = true,
-        ExpiresUtc = DateTimeOffset.UtcNow.AddDays(14)
+        ExpiresUtc = DateTimeOffset.UtcNow.AddDays(sessionIssueResult.SessionLifetimeDays)
     };
 
     await httpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal, authProperties);
+    return new AuthCookieSignInResult(true);
+}
+
+static async Task RevokeCurrentUserSessionAsync(HttpContext httpContext, IAuthSessionService authSessionService)
+{
+    if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
+    {
+        return;
+    }
+
+    var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
+                       ?? httpContext.User.Identity?.Name;
+    var sessionIdValue = httpContext.User.FindFirst(AuthSessionIdClaimType)?.Value;
+    if (string.IsNullOrWhiteSpace(signedInEmail) ||
+        !Guid.TryParse(sessionIdValue, out var sessionId))
+    {
+        return;
+    }
+
+    await authSessionService.RevokeSessionAsync(signedInEmail, sessionId, httpContext.RequestAborted);
+}
+
+static int NormalizeSessionLifetimeDays(int sessionLifetimeDays)
+{
+    return Math.Clamp(sessionLifetimeDays, 1, 90);
 }
 
 static async Task<string> ResolvePostAuthRedirectPathAsync(
@@ -1720,3 +1816,4 @@ sealed record SearchSiteResult(
     string Kind,
     string ThumbnailPath,
     int Score);
+sealed record AuthCookieSignInResult(bool IsSuccess, string? ErrorMessage = null);

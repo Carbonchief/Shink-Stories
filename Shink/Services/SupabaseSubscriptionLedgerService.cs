@@ -39,6 +39,22 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             cancellationToken);
     }
 
+    public async Task<IReadOnlyList<string>> GetActiveTierCodesAsync(string? email, CancellationToken cancellationToken = default)
+    {
+        var activeSubscriptions = await GetActiveSubscriptionsAsync(email, cancellationToken);
+        if (activeSubscriptions.Count == 0)
+        {
+            return [];
+        }
+
+        return activeSubscriptions
+            .Select(subscription => subscription.TierCode)
+            .Where(tierCode => !string.IsNullOrWhiteSpace(tierCode))
+            .Select(tierCode => tierCode!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
     public async Task<SubscriberProfile?> GetSubscriberProfileAsync(string? email, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(email))
@@ -224,26 +240,48 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         bool excludeGratisTier,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(email))
-        {
-            return false;
-        }
-
         var normalizedTierCode = string.IsNullOrWhiteSpace(tierCode)
             ? null
             : tierCode.Trim();
+        var activeSubscriptions = await GetActiveSubscriptionsAsync(email, cancellationToken);
+        return activeSubscriptions.Any(row =>
+        {
+            if (!string.IsNullOrWhiteSpace(normalizedTierCode) &&
+                !string.Equals(row.TierCode, normalizedTierCode, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (excludeGratisTier &&
+                string.Equals(row.TierCode, GratisTierCode, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            return true;
+        });
+    }
+
+    private async Task<IReadOnlyList<SubscriptionStatusRow>> GetActiveSubscriptionsAsync(
+        string? email,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return [];
+        }
 
         if (!TryBuildSupabaseBaseUri(out var baseUri))
         {
             _logger.LogWarning("Supabase subscription lookup skipped: URL is not configured.");
-            return false;
+            return [];
         }
 
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             _logger.LogWarning("Supabase subscription lookup skipped: ServiceRoleKey is not configured.");
-            return false;
+            return [];
         }
 
         var normalizedEmail = email.Trim().ToLowerInvariant();
@@ -261,14 +299,14 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                     "Supabase subscriber lookup failed. Status={StatusCode} Body={Body}",
                     (int)subscriberResponse.StatusCode,
                     responseBody);
-                return false;
+                return [];
             }
 
             var subscriberResponseBody = await subscriberResponse.Content.ReadAsStringAsync(cancellationToken);
             var subscriberId = ReadFirstStringProperty(subscriberResponseBody, "subscriber_id");
             if (string.IsNullOrWhiteSpace(subscriberId))
             {
-                return false;
+                return [];
             }
 
             var escapedSubscriberId = Uri.EscapeDataString(subscriberId);
@@ -285,53 +323,43 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                     "Supabase subscription lookup failed. Status={StatusCode} Body={Body}",
                     (int)subscriptionsResponse.StatusCode,
                     responseBody);
-                return false;
+                return [];
             }
 
             await using var subscriptionsStream = await subscriptionsResponse.Content.ReadAsStreamAsync(cancellationToken);
             var subscriptions = await JsonSerializer.DeserializeAsync<List<SubscriptionStatusRow>>(subscriptionsStream, cancellationToken: cancellationToken)
                 ?? [];
-
             var nowUtc = DateTimeOffset.UtcNow;
-            return subscriptions.Any(IsActiveSubscriptionRow);
 
-            bool IsActiveSubscriptionRow(SubscriptionStatusRow row)
-            {
-                if (!string.Equals(row.Status, "active", StringComparison.OrdinalIgnoreCase))
-                {
-                    return false;
-                }
-
-                if (row.CancelledAt is not null && row.CancelledAt <= nowUtc)
-                {
-                    return false;
-                }
-
-                if (row.NextRenewalAt is not null && row.NextRenewalAt < nowUtc)
-                {
-                    return false;
-                }
-
-                if (!string.IsNullOrWhiteSpace(normalizedTierCode) &&
-                    !string.Equals(row.TierCode, normalizedTierCode, StringComparison.OrdinalIgnoreCase))
-                {
-                    return false;
-                }
-
-                if (excludeGratisTier &&
-                    string.Equals(row.TierCode, GratisTierCode, StringComparison.OrdinalIgnoreCase))
-                {
-                    return false;
-                }
-
-                return true;
-            }
+            return subscriptions
+                .Where(row => IsCurrentlyActiveSubscription(row, nowUtc))
+                .ToArray();
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
         {
             _logger.LogWarning(exception, "Supabase subscription lookup failed unexpectedly.");
+            return [];
+        }
+    }
+
+    private static bool IsCurrentlyActiveSubscription(SubscriptionStatusRow row, DateTimeOffset nowUtc)
+    {
+        if (!string.Equals(row.Status, "active", StringComparison.OrdinalIgnoreCase))
+        {
             return false;
         }
+
+        if (row.CancelledAt is not null && row.CancelledAt <= nowUtc)
+        {
+            return false;
+        }
+
+        if (row.NextRenewalAt is not null && row.NextRenewalAt < nowUtc)
+        {
+            return false;
+        }
+
+        return true;
     }
 
     public async Task<SubscriptionPersistResult> RecordPayFastEventAsync(IFormCollection formCollection, CancellationToken cancellationToken = default)
