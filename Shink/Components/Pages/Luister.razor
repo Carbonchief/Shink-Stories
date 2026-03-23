@@ -1,8 +1,11 @@
 @page "/luister"
 @using System.Text.Json
 @using Microsoft.AspNetCore.Components
+@using Microsoft.JSInterop
 @inject NavigationManager NavigationManager
 @inject IStoryCatalogService StoryCatalogService
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
 <PageTitle>Schink Stories | Luister</PageTitle>
 <HeadContent>
@@ -38,7 +41,9 @@
 </section>
 
 @code {
-    private IReadOnlyList<StoryItem> LuisterStories { get; set; } = Array.Empty<StoryItem>();
+    private IReadOnlyList<StoryPlaylist> LuisterPlaylists { get; set; } = Array.Empty<StoryPlaylist>();
+    private ElementReference[] PlaylistCarouselRefs { get; set; } = Array.Empty<ElementReference>();
+    private IJSObjectReference? _luisterModule;
 
     private string LuisterCanonicalUrl => NavigationManager.ToAbsoluteUri("/luister").ToString();
 
@@ -63,76 +68,116 @@
     {
         try
         {
-            LuisterStories = await StoryCatalogService.GetLuisterStoriesAsync();
+            LuisterPlaylists = await StoryCatalogService.GetLuisterPlaylistsAsync();
         }
         catch
         {
-            LuisterStories = Array.Empty<StoryItem>();
+            LuisterPlaylists = Array.Empty<StoryPlaylist>();
         }
+
+        PlaylistCarouselRefs = new ElementReference[LuisterPlaylists.Count];
     }
 
     private static string GetStoryHref(string slug) => $"/luister/{Uri.EscapeDataString(slug)}";
+
+    private async Task ScrollCarouselAsync(ElementReference carouselRef, int direction)
+    {
+        if (direction is 0)
+        {
+            return;
+        }
+
+        _luisterModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Pages/Home.razor.js");
+        await _luisterModule.InvokeVoidAsync("scrollCarouselByPage", carouselRef, direction);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        _luisterModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Pages/Home.razor.js");
+        await _luisterModule.InvokeVoidAsync("initializeHomeStoryLoading");
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_luisterModule is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _luisterModule.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // Ignore JS disconnects during teardown.
+        }
+    }
 }
 
-<section>
-    <div class="gratis-grid">
-        @foreach (var story in LuisterStories)
-        {
-            <article class="gratis-card">
-                <a class="gratis-cover-link"
-                   href="@GetStoryHref(story.Slug)"
-                   data-enhance-nav="false"
-                   aria-label="Luister na @story.Title">
-                    <img src="@story.ThumbnailPath"
-                         srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
-                         sizes="(max-width: 980px) 100vw, 50vw"
-                         alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
-                    <span class="gratis-cover-play" aria-hidden="true">
-                        <i class="gratis-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
-                    </span>
-                </a>
-                <div class="gratis-card-body">
-                    <h2>@story.Title</h2>
-                    <p>@story.Description</p>
-                    <a class="play-btn"
-                       href="@GetStoryHref(story.Slug)"
-                       data-enhance-nav="false">
-                        Luister na hierdie storie
-                    </a>
+@if (LuisterPlaylists.Count == 0)
+{
+    <section class="luister-empty-state">
+        <p>Ons kon nie nou die playlists laai nie. Probeer asseblief oor 'n oomblik weer.</p>
+    </section>
+}
+else
+{
+    @for (var index = 0; index < LuisterPlaylists.Count; index++)
+    {
+        var playlist = LuisterPlaylists[index];
+        var headingId = $"luister-playlist-{playlist.Slug}-heading";
+        var carouselIndex = index;
+        var hasDescription = !string.IsNullOrWhiteSpace(playlist.Description);
+
+        <section class="section-block stories-carousel-section luister-stories-section" aria-labelledby="@headingId">
+            <h2 id="@headingId">@playlist.Title</h2>
+            @if (hasDescription)
+            {
+                <p class="section-intro">@playlist.Description</p>
+            }
+
+            <div class="stories-carousel-shell">
+                <div class="carousel-controls" aria-label="@($"{playlist.Title} navigasie")">
+                    <button type="button" class="carousel-nav-btn carousel-nav-btn-prev" aria-label="@($"Vorige stories in {playlist.Title}")"
+                            @onclick="() => ScrollCarouselAsync(PlaylistCarouselRefs[carouselIndex], -1)">
+                        <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                    </button>
+                    <button type="button" class="carousel-nav-btn carousel-nav-btn-next" aria-label="@($"Volgende stories in {playlist.Title}")"
+                            @onclick="() => ScrollCarouselAsync(PlaylistCarouselRefs[carouselIndex], 1)">
+                        <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                    </button>
                 </div>
-            </article>
-        }
-    </div>
-</section>
 
-<script>
-    (function () {
-        document.addEventListener("click", function (event) {
-            if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-                return;
-            }
-
-            var target = event.target;
-            if (!(target instanceof Element)) {
-                return;
-            }
-
-            var storyLink = target.closest(".gratis-card a[href^='/luister/']");
-            if (!(storyLink instanceof HTMLAnchorElement)) {
-                return;
-            }
-
-            var card = storyLink.closest(".gratis-card");
-            if (!(card instanceof HTMLElement)) {
-                return;
-            }
-
-            var activeCards = document.querySelectorAll(".gratis-card.is-navigating");
-            for (var index = 0; index < activeCards.length; index++) {
-                activeCards[index].classList.remove("is-navigating");
-            }
-
-            card.classList.add("is-navigating");
-        });
-    })();
-</script>
+                <div class="stories-carousel" role="list" aria-label="@playlist.Title" @ref="PlaylistCarouselRefs[carouselIndex]">
+                    @foreach (var story in playlist.Stories)
+                    {
+                        <article class="story-carousel-item" role="listitem">
+                            <a class="story-carousel-link"
+                               href="@GetStoryHref(story.Slug)"
+                               data-enhance-nav="false"
+                               aria-label="Luister na @story.Title">
+                                <span class="story-carousel-cover">
+                                    <img class="story-carousel-image"
+                                         src="@story.ThumbnailPath"
+                                         srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
+                                         sizes="(max-width: 620px) 68vw, (max-width: 980px) 42vw, 320px"
+                                         alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
+                                    <span class="story-cover-play" aria-hidden="true">
+                                        <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
+                                    </span>
+                                </span>
+                                <h3>@story.Title</h3>
+                            </a>
+                        </article>
+                    }
+                </div>
+            </div>
+        </section>
+    }
+}
