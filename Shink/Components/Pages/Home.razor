@@ -15,6 +15,7 @@
 
 <PageTitle>Schink Stories | Tuis</PageTitle>
 <HeadContent>
+    <link rel="stylesheet" href="@Assets["lib/bootstrap/css/bootstrap.min.css"]" />
     <link rel="canonical" href="@HomeCanonicalUrl" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Schink Stories | Tuis" />
@@ -392,7 +393,7 @@
                     <ValidationMessage For="@(() => ContactForm.Message)" />
                 </div>
 
-                <button type="submit" class="btn btn-primary btn-lg w-100 contact-submit" disabled="@IsSubmitting">
+                <button type="submit" class="btn btn-primary btn-lg d-block mx-auto contact-submit" disabled="@IsSubmitting">
                     @(IsSubmitting ? "Besig om te stuur..." : "Stuur boodskap")
                 </button>
 
