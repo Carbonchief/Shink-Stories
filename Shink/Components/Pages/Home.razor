@@ -366,33 +366,33 @@
                     <InputText id="contact-website" class="form-control" autocomplete="off" tabindex="-1" @bind-Value="ContactForm.Website" />
                 </div>
 
-                <div class="contact-fields-grid">
-                    <div class="contact-field">
-                        <label for="contact-name">Naam</label>
-                        <InputText id="contact-name" class="form-control" autocomplete="name" @bind-Value="ContactForm.Name" />
+                <div class="contact-fields-grid row g-3 mb-3">
+                    <div class="contact-field col-12 col-md-6">
+                        <label class="form-label" for="contact-name">Naam</label>
+                        <InputText id="contact-name" class="form-control form-control-lg" autocomplete="name" @bind-Value="ContactForm.Name" />
                         <ValidationMessage For="@(() => ContactForm.Name)" />
                     </div>
 
-                    <div class="contact-field">
-                        <label for="contact-email">E-pos</label>
-                        <InputText id="contact-email" class="form-control" type="email" autocomplete="email" @bind-Value="ContactForm.Email" />
+                    <div class="contact-field col-12 col-md-6">
+                        <label class="form-label" for="contact-email">E-pos</label>
+                        <InputText id="contact-email" class="form-control form-control-lg" type="email" autocomplete="email" @bind-Value="ContactForm.Email" />
                         <ValidationMessage For="@(() => ContactForm.Email)" />
                     </div>
                 </div>
 
-                <div class="contact-field">
-                    <label for="contact-subject">Onderwerp</label>
-                    <InputText id="contact-subject" class="form-control" autocomplete="off" @bind-Value="ContactForm.Subject" />
+                <div class="contact-field mb-3">
+                    <label class="form-label" for="contact-subject">Onderwerp</label>
+                    <InputText id="contact-subject" class="form-control form-control-lg" autocomplete="off" @bind-Value="ContactForm.Subject" />
                     <ValidationMessage For="@(() => ContactForm.Subject)" />
                 </div>
 
-                <div class="contact-field">
-                    <label for="contact-message">Boodskap</label>
-                    <InputTextArea id="contact-message" class="form-control" rows="5" @bind-Value="ContactForm.Message" />
+                <div class="contact-field mb-3">
+                    <label class="form-label" for="contact-message">Boodskap</label>
+                    <InputTextArea id="contact-message" class="form-control form-control-lg" rows="5" @bind-Value="ContactForm.Message" />
                     <ValidationMessage For="@(() => ContactForm.Message)" />
                 </div>
 
-                <button type="submit" class="contact-submit" disabled="@IsSubmitting">
+                <button type="submit" class="btn btn-primary btn-lg w-100 contact-submit" disabled="@IsSubmitting">
                     @(IsSubmitting ? "Besig om te stuur..." : "Stuur boodskap")
                 </button>
 
