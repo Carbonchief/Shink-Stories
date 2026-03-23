@@ -63,6 +63,7 @@ project.lock.json
 project.fragment.lock.json
 artifacts/
 .artifacts/
+downloads/
 
 # Local secrets / developer-only config
 appsettings.Local.json
@@ -378,3 +379,4 @@ Shink/Stories/imported/
 Shink/wwwroot/stories/imported/
 Shink/wwwroot/branding/imported/
 Shink/wwwroot/media/imported/
+/Shink/appsettings.Development.json
