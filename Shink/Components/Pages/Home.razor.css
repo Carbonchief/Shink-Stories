@@ -986,11 +986,6 @@ h2 {
     .home-review-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
-
-    .contact-fields-grid {
-        grid-template-columns: 1fr;
-        gap: 0;
-    }
 }
 
 @media (max-width: 620px) {
