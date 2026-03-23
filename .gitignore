@@ -376,6 +376,11 @@ FodyWeavers.xsd
 
 # Imported media archives (not required for runtime)
 Shink/Stories/imported/
+Shink/Stories/**/*.mpeg
+Shink/Stories/**/*.mp3
+Shink/Stories/**/*.m4a
+Shink/Stories/**/*.wav
+Shink/Stories/**/*.ogg
 Shink/wwwroot/stories/imported/
 Shink/wwwroot/branding/imported/
 Shink/wwwroot/media/imported/

@@ -1,10 +1,13 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Options;
 using Shink.Components;
 using Shink.Components.Content;
 using Shink.Services;
 using System.Globalization;
+using System.Net;
+using System.Net.Http.Headers;
 using System.Net.Mail;
 using System.Security.Claims;
 using System.Text;
@@ -72,9 +75,15 @@ builder.Services.AddMemoryCache();
 builder.Services.AddHttpContextAccessor();
 builder.Services.Configure<ResendOptions>(builder.Configuration.GetSection(ResendOptions.SectionName));
 builder.Services.Configure<SupabaseOptions>(builder.Configuration.GetSection(SupabaseOptions.SectionName));
+builder.Services.Configure<CloudflareR2Options>(builder.Configuration.GetSection(CloudflareR2Options.SectionName));
 builder.Services.Configure<AuthSessionOptions>(builder.Configuration.GetSection(AuthSessionOptions.SectionName));
 builder.Services.Configure<PayFastOptions>(builder.Configuration.GetSection(PayFastOptions.SectionName));
 builder.Services.Configure<PaystackOptions>(builder.Configuration.GetSection(PaystackOptions.SectionName));
+builder.Services.AddHttpClient("audio-origin", client =>
+{
+    // Audio responses can be long-lived streams. Keep timeout above default 100 seconds.
+    client.Timeout = TimeSpan.FromMinutes(30);
+});
 builder.Services.AddHttpClient<IContactEmailService, ResendContactEmailService>();
 builder.Services.AddHttpClient<ISupabaseAuthService, SupabaseAuthService>();
 builder.Services.AddHttpClient<IAuthSessionService, SupabaseAuthSessionService>();
@@ -268,6 +277,8 @@ app.MapGet("/media/audio/{slug}", async (
     IAudioAccessService audioAccessService,
     IStoryCatalogService storyCatalogService,
     IWebHostEnvironment environment,
+    IOptions<CloudflareR2Options> cloudflareR2Options,
+    IHttpClientFactory httpClientFactory,
     HttpContext httpContext) =>
 {
     if (!IsLikelySameSiteMediaRequest(httpContext))
@@ -286,9 +297,28 @@ app.MapGet("/media/audio/{slug}", async (
         return Results.NotFound();
     }
 
+    ApplyAudioResponseSecurityHeaders(httpContext);
+
+    if (string.Equals(story.AudioProvider, "r2", StringComparison.OrdinalIgnoreCase))
+    {
+        if (!TryBuildR2AudioUri(
+                cloudflareR2Options.Value.PublicBaseUrl,
+                story.AudioFileName,
+                out var sourceUri))
+        {
+            return Results.NotFound();
+        }
+
+        return await ProxyAudioFromOriginAsync(
+            httpContext,
+            httpClientFactory,
+            sourceUri,
+            story.AudioContentType,
+            story.AudioFileName);
+    }
+
     if (!string.Equals(story.AudioProvider, "local", StringComparison.OrdinalIgnoreCase))
     {
-        // R2 streaming will be resolved from the same metadata table in a follow-up step.
         return Results.NotFound();
     }
 
@@ -301,14 +331,6 @@ app.MapGet("/media/audio/{slug}", async (
     {
         return Results.NotFound();
     }
-
-    httpContext.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
-    httpContext.Response.Headers.Pragma = "no-cache";
-    httpContext.Response.Headers.Expires = "0";
-    httpContext.Response.Headers["X-Content-Type-Options"] = "nosniff";
-    httpContext.Response.Headers["Cross-Origin-Resource-Policy"] = "same-origin";
-    httpContext.Response.Headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet";
-    httpContext.Response.Headers["Content-Disposition"] = "inline";
 
     var audioMimeType = ResolveAudioMimeType(story.AudioContentType, story.AudioFileName);
     return Results.File(audioFilePath, audioMimeType, enableRangeProcessing: true);
@@ -1046,6 +1068,108 @@ static bool IsBlockedPublicAudioPath(PathString path)
         || string.Equals(extension, ".ogg", StringComparison.OrdinalIgnoreCase);
 }
 
+static void ApplyAudioResponseSecurityHeaders(HttpContext httpContext)
+{
+    httpContext.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
+    httpContext.Response.Headers.Pragma = "no-cache";
+    httpContext.Response.Headers.Expires = "0";
+    httpContext.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    httpContext.Response.Headers["Cross-Origin-Resource-Policy"] = "same-origin";
+    httpContext.Response.Headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet";
+    httpContext.Response.Headers["Content-Disposition"] = "inline";
+}
+
+static async Task<IResult> ProxyAudioFromOriginAsync(
+    HttpContext httpContext,
+    IHttpClientFactory httpClientFactory,
+    Uri sourceUri,
+    string? configuredContentType,
+    string? audioObjectKey)
+{
+    try
+    {
+        using var upstreamRequest = new HttpRequestMessage(HttpMethod.Get, sourceUri);
+        var requestRange = httpContext.Request.Headers.Range.ToString();
+        if (!string.IsNullOrWhiteSpace(requestRange) &&
+            RangeHeaderValue.TryParse(requestRange, out var parsedRange))
+        {
+            upstreamRequest.Headers.Range = parsedRange;
+        }
+
+        upstreamRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("audio/*"));
+
+        using var upstreamResponse = await httpClientFactory.CreateClient("audio-origin")
+            .SendAsync(upstreamRequest, HttpCompletionOption.ResponseHeadersRead, httpContext.RequestAborted);
+        if (upstreamResponse.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized)
+        {
+            return Results.NotFound();
+        }
+
+        if (upstreamResponse.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
+        {
+            httpContext.Response.StatusCode = StatusCodes.Status416RangeNotSatisfiable;
+            if (upstreamResponse.Content.Headers.ContentRange is not null)
+            {
+                httpContext.Response.Headers.ContentRange = upstreamResponse.Content.Headers.ContentRange.ToString();
+            }
+
+            return Results.Empty;
+        }
+
+        if (!upstreamResponse.IsSuccessStatusCode)
+        {
+            return Results.StatusCode(StatusCodes.Status502BadGateway);
+        }
+
+        httpContext.Response.StatusCode = (int)upstreamResponse.StatusCode;
+        if (upstreamResponse.Headers.AcceptRanges.Count > 0)
+        {
+            httpContext.Response.Headers.AcceptRanges = string.Join(", ", upstreamResponse.Headers.AcceptRanges);
+        }
+        else
+        {
+            httpContext.Response.Headers.AcceptRanges = "bytes";
+        }
+
+        if (upstreamResponse.Content.Headers.ContentRange is not null)
+        {
+            httpContext.Response.Headers.ContentRange = upstreamResponse.Content.Headers.ContentRange.ToString();
+        }
+
+        if (upstreamResponse.Content.Headers.ContentLength.HasValue)
+        {
+            httpContext.Response.ContentLength = upstreamResponse.Content.Headers.ContentLength.Value;
+        }
+
+        var upstreamContentType = upstreamResponse.Content.Headers.ContentType?.MediaType;
+        httpContext.Response.ContentType = ResolveAudioMimeType(
+            string.IsNullOrWhiteSpace(configuredContentType) ? upstreamContentType : configuredContentType,
+            audioObjectKey);
+
+        await using var upstreamStream = await upstreamResponse.Content.ReadAsStreamAsync(httpContext.RequestAborted);
+        await upstreamStream.CopyToAsync(httpContext.Response.Body, httpContext.RequestAborted);
+        return Results.Empty;
+    }
+    catch (OperationCanceledException) when (httpContext.RequestAborted.IsCancellationRequested)
+    {
+        // Client disconnected while stream was in progress.
+        return Results.Empty;
+    }
+    catch (IOException) when (httpContext.RequestAborted.IsCancellationRequested)
+    {
+        // Browser dropped the connection; treat as expected cancellation.
+        return Results.Empty;
+    }
+    catch (OperationCanceledException)
+    {
+        return Results.StatusCode(StatusCodes.Status504GatewayTimeout);
+    }
+    catch (HttpRequestException)
+    {
+        return Results.StatusCode(StatusCodes.Status502BadGateway);
+    }
+}
+
 static bool TryResolveStoryPathTarget(PathString path, out string source, out string slug)
 {
     source = string.Empty;
@@ -1434,6 +1558,60 @@ static bool TryResolveLocalAudioPath(string contentRootPath, string? audioObject
     }
 
     audioFilePath = fullPath;
+    return true;
+}
+
+static bool TryBuildR2AudioUri(string? publicBaseUrl, string? audioObjectKey, out Uri sourceUri)
+{
+    sourceUri = default!;
+    if (string.IsNullOrWhiteSpace(publicBaseUrl) ||
+        string.IsNullOrWhiteSpace(audioObjectKey))
+    {
+        return false;
+    }
+
+    if (!Uri.TryCreate(publicBaseUrl.Trim(), UriKind.Absolute, out var baseUri) ||
+        baseUri is null)
+    {
+        return false;
+    }
+
+    if (!string.Equals(baseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+
+    if (Uri.TryCreate(audioObjectKey.Trim(), UriKind.Absolute, out var absoluteUri) &&
+        absoluteUri is not null)
+    {
+        if (!string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(absoluteUri.Host, baseUri.Host, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        sourceUri = absoluteUri;
+        return true;
+    }
+
+    var normalizedPath = audioObjectKey
+        .Replace('\\', '/')
+        .Trim()
+        .TrimStart('/');
+    if (string.IsNullOrWhiteSpace(normalizedPath))
+    {
+        return false;
+    }
+
+    var segments = normalizedPath
+        .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+    if (segments.Any(segment => string.Equals(segment, "..", StringComparison.Ordinal)))
+    {
+        return false;
+    }
+
+    var encodedPath = string.Join('/', segments.Select(Uri.EscapeDataString));
+    sourceUri = new Uri(baseUri, encodedPath);
     return true;
 }
 
