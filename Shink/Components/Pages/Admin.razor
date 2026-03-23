@@ -1,0 +1,1597 @@
+@page "/admin"
+@rendermode InteractiveServer
+@using System.Globalization
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IAdminManagementService AdminManagementService
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JSRuntime
+@inject ILogger<Admin> Logger
+
+<PageTitle>@($"Schink Stories | {T("Bestuur", "Admin")}")</PageTitle>
+
+<MudThemeProvider />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<section class="admin-page">
+    <header class="admin-hero">
+        <div class="admin-hero-top">
+            <div>
+                <h1>@T("Bestuursportaal", "Admin Portal")</h1>
+                <p>@T("Bestuur intekenaars, stories en playlists op een plek.", "Manage subscribers, stories, and playlists in one place.")</p>
+            </div>
+            <div class="admin-language">
+                <MudSelect T="string"
+                           Label="@T("Taal", "Language")"
+                           Value="CurrentLanguageCode"
+                           ValueChanged="OnLanguageChangedAsync"
+                           Dense="true"
+                           Variant="Variant.Outlined">
+                    <MudSelectItem Value="@("af")">Afrikaans</MudSelectItem>
+                    <MudSelectItem Value="@("en")">English</MudSelectItem>
+                </MudSelect>
+            </div>
+        </div>
+    </header>
+
+    @if (IsRedirectingToLogin)
+    {
+        <section class="admin-state">
+            <h2>@T("Neem jou na teken in...", "Taking you to sign in...")</h2>
+            <p>@T("Jy moet ingeteken wees om die bestuursportaal te gebruik.", "You need to be signed in to use the admin portal.")</p>
+        </section>
+    }
+    else if (IsAccessDenied)
+    {
+        <section class="admin-state">
+            <h2>@T("Toegang geweier", "Access denied")</h2>
+            <p>@T("Jou rekening het nie admin regte vir hierdie blad nie.", "Your account does not have admin rights for this page.")</p>
+        </section>
+    }
+    else if (IsLoading)
+    {
+        <section class="admin-state">
+            <h2>@T("Laai bestuursdata...", "Loading admin data...")</h2>
+        </section>
+    }
+    else
+    {
+        @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+        {
+            <p class="admin-feedback is-error">@ErrorMessage</p>
+        }
+        else if (!string.IsNullOrWhiteSpace(StatusMessage))
+        {
+            <p class="admin-feedback is-success">@StatusMessage</p>
+        }
+
+        <MudTabs Class="admin-tabs"
+                 Rounded="true">
+            <MudTabPanel Text='@T("Intekenaars", "Subscribers")'>
+                <section class="admin-section">
+            <div class="admin-section-head">
+                <h2>@T("Intekenaars", "Subscribers")</h2>
+                <div class="admin-search">
+                    <MudTextField T="string"
+                                  @bind-Value="SubscriberSearch"
+                                  Placeholder='@T("Soek e-pos of naam", "Search email or name")'
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  Immediate="true" />
+                    <MudButton Class="admin-icon-btn"
+                               Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               OnClick="RefreshSubscribersAsync"
+                               aria-label='@T("Soek intekenaars", "Search subscribers")'
+                               title='@T("Soek intekenaars", "Search subscribers")'>
+                        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                        <span class="sr-only">@T("Soek intekenaars", "Search subscribers")</span>
+                    </MudButton>
+                </div>
+            </div>
+
+            <MudTable T="AdminSubscriberRecord"
+                      Class="admin-grid"
+                      Items="Subscribers"
+                      Dense="true"
+                      Hover="true"
+                      Bordered="true"
+                      Elevation="0"
+                      Breakpoint="Breakpoint.Sm"
+                      RowClassFunc="GetSubscriberRowClass"
+                      OnRowClick="OnSubscriberRowClick">
+                <HeaderContent>
+                    <MudTh>@T("E-pos", "Email")</MudTh>
+                    <MudTh>@T("Naam", "Name")</MudTh>
+                            <MudTh>@T("Vlakke", "Tiers")</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel='@T("E-pos", "Email")'>@context.Email</MudTd>
+                    <MudTd DataLabel='@T("Naam", "Name")'>@BuildSubscriberName(context)</MudTd>
+                            <MudTd DataLabel='@T("Vlakke", "Tiers")'>@BuildTierSummary(context.ActiveTierCodes)</MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Typo="Typo.body2">@T("Geen intekenaars gevind nie.", "No subscribers found.")</MudText>
+                </NoRecordsContent>
+            </MudTable>
+                </section>
+            </MudTabPanel>
+
+            <MudTabPanel Text='@T("Stories", "Stories")'>
+                <section class="admin-section">
+            <div class="admin-section-head">
+                <h2>@T("Stories", "Stories")</h2>
+                <div class="admin-search">
+                    <MudTextField T="string"
+                                  @bind-Value="StorySearch"
+                                  Placeholder='@T("Soek titel of slug", "Search title or slug")'
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  Immediate="true" />
+                    <MudButton Class="admin-icon-btn"
+                               Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               OnClick="RefreshStoriesAsync"
+                               aria-label='@T("Soek stories", "Search stories")'
+                               title='@T("Soek stories", "Search stories")'>
+                        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                        <span class="sr-only">@T("Soek stories", "Search stories")</span>
+                    </MudButton>
+                </div>
+            </div>
+
+            <MudTable T="AdminStoryRecord"
+                      Class="admin-grid"
+                      Items="Stories"
+                      Dense="true"
+                      Hover="true"
+                      Bordered="true"
+                      Elevation="0"
+                      Breakpoint="Breakpoint.Sm"
+                      RowClassFunc="GetStoryRowClass"
+                      OnRowClick="OnStoryRowClick">
+                <HeaderContent>
+                    <MudTh>@T("Titel", "Title")</MudTh>
+                    <MudTh>Slug</MudTh>
+                    <MudTh>@T("Status", "Status")</MudTh>
+                    <MudTh>@T("Toegang", "Access")</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel='@T("Titel", "Title")'>@context.Title</MudTd>
+                    <MudTd DataLabel="Slug">@context.Slug</MudTd>
+                    <MudTd DataLabel='@T("Status", "Status")'>@context.Status</MudTd>
+                    <MudTd DataLabel='@T("Toegang", "Access")'>@context.AccessLevel</MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Typo="Typo.body2">@T("Geen stories gevind nie.", "No stories found.")</MudText>
+                </NoRecordsContent>
+            </MudTable>
+                </section>
+            </MudTabPanel>
+
+            <MudTabPanel Text='@T("Playlists", "Playlists")'>
+                <section class="admin-section">
+            <div class="admin-section-head">
+                <h2>@T("Playlists", "Playlists")</h2>
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           Class="admin-btn admin-btn-secondary admin-icon-btn"
+                           OnClick="StartNewPlaylist"
+                           aria-label='@T("Nuwe playlist", "New playlist")'
+                           title='@T("Nuwe playlist", "New playlist")'>
+                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                    <span class="sr-only">@T("Nuwe playlist", "New playlist")</span>
+                </MudButton>
+            </div>
+
+            <MudTable T="AdminPlaylistRecord"
+                      Class="admin-grid"
+                      Items="Playlists"
+                      Dense="true"
+                      Hover="true"
+                      Bordered="true"
+                      Elevation="0"
+                      Breakpoint="Breakpoint.Sm"
+                      RowClassFunc="GetPlaylistRowClass"
+                      OnRowClick="OnPlaylistRowClick">
+                <HeaderContent>
+                    <MudTh>@T("Titel", "Title")</MudTh>
+                    <MudTh>Slug</MudTh>
+                    <MudTh>@T("Aktief", "Active")</MudTh>
+                    <MudTh>@T("Aksies", "Actions")</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    @{
+                        var playlistIndex = GetPlaylistIndex(context.PlaylistId);
+                    }
+                    <MudTd DataLabel='@T("Titel", "Title")'>@context.Title</MudTd>
+                    <MudTd DataLabel="Slug">@context.Slug</MudTd>
+                    <MudTd DataLabel='@T("Aktief", "Active")'>
+                        <div class="admin-toggle-cell" @onclick:stopPropagation="true">
+                            <MudSwitch T="bool"
+                                       Value="@context.IsEnabled"
+                                       ValueChanged="@(value => TogglePlaylistEnabledAsync(context, value))"
+                                       Color="Color.Success"
+                                       Disabled="@(IsSavingPlaylistsOrder || IsSavingPlaylist || TogglingPlaylistIds.Contains(context.PlaylistId))" />
+                        </div>
+                    </MudTd>
+                    <MudTd DataLabel='@T("Aksies", "Actions")'>
+                        <div class="admin-playlist-actions">
+                            <button type="button"
+                                    class="admin-icon-btn"
+                                    @onclick="() => MovePlaylistAsync(context.PlaylistId, -1)"
+                                    @onclick:stopPropagation="true"
+                                    disabled="@(playlistIndex <= 0 || IsSavingPlaylistsOrder)"
+                                    aria-label='@T("Skuif playlist op", "Move playlist up")'
+                                    title='@T("Skuif playlist op", "Move playlist up")'>
+                                <i class="fa-solid fa-arrow-up" aria-hidden="true"></i>
+                                <span class="sr-only">@T("Skuif playlist op", "Move playlist up")</span>
+                            </button>
+                            <button type="button"
+                                    class="admin-icon-btn"
+                                    @onclick="() => MovePlaylistAsync(context.PlaylistId, 1)"
+                                    @onclick:stopPropagation="true"
+                                    disabled="@(playlistIndex < 0 || playlistIndex == Playlists.Count - 1 || IsSavingPlaylistsOrder)"
+                                    aria-label='@T("Skuif playlist af", "Move playlist down")'
+                                    title='@T("Skuif playlist af", "Move playlist down")'>
+                                <i class="fa-solid fa-arrow-down" aria-hidden="true"></i>
+                                <span class="sr-only">@T("Skuif playlist af", "Move playlist down")</span>
+                            </button>
+                        </div>
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudText Typo="Typo.body2">@T("Geen playlists gevind nie.", "No playlists found.")</MudText>
+                </NoRecordsContent>
+            </MudTable>
+
+                </section>
+            </MudTabPanel>
+        </MudTabs>
+
+        @if (SubscriberEditor is not null)
+        {
+            <MudDialog @bind-Visible="IsSubscriberDialogOpen"
+                       Options="EditorDialogOptions">
+                <TitleContent>
+                    <MudText Typo="Typo.h6">@T("Wysig intekenaar", "Edit subscriber")</MudText>
+                </TitleContent>
+                <DialogContent>
+                    <div class="admin-form-grid">
+                        <MudTextField T="string"
+                                      Label='@T("E-pos", "Email")'
+                                      Value="SubscriberEditor.Email"
+                                      Disabled="true"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense" />
+                        <MudTextField T="string"
+                                      Label='@T("Voornaam", "First name")'
+                                      @bind-Value="SubscriberEditor.FirstName"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense" />
+                        <MudTextField T="string"
+                                      Label='@T("Van", "Last name")'
+                                      @bind-Value="SubscriberEditor.LastName"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense" />
+                        <MudTextField T="string"
+                                      Label='@T("Vertoonnaam", "Display name")'
+                                      @bind-Value="SubscriberEditor.DisplayName"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense" />
+                        <MudTextField T="string"
+                                      Label='@T("Selfoon", "Mobile")'
+                                      @bind-Value="SubscriberEditor.MobileNumber"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense" />
+                    </div>
+                </DialogContent>
+                <DialogActions>
+                    <MudButton Variant="Variant.Text"
+                               Color="Color.Default"
+                               OnClick="CloseSubscriberDialog">
+                        @T("Sluit", "Close")
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Class="admin-btn"
+                               Disabled="@IsSavingSubscriber"
+                               OnClick="SaveSubscriberAsync">
+                        @(IsSavingSubscriber ? T("Stoor...", "Saving...") : T("Stoor intekenaar", "Save subscriber"))
+                    </MudButton>
+                </DialogActions>
+            </MudDialog>
+        }
+
+        @if (StoryEditor is not null)
+        {
+            var coverPreviewUrl = ResolvePreviewImageUrl(StoryEditor.CoverImagePath);
+            var thumbnailPreviewUrl = ResolvePreviewImageUrl(StoryEditor.ThumbnailImagePath);
+
+            <MudDialog @bind-Visible="IsStoryDialogOpen"
+                       Options="EditorDialogOptions">
+                <TitleContent>
+                    <MudText Typo="Typo.h6">@T("Wysig storie", "Edit story")</MudText>
+                </TitleContent>
+                <DialogContent>
+                    <div class="admin-form-grid">
+                        <MudTextField T="string"
+                                      Label='@T("Titel", "Title")'
+                                      @bind-Value="StoryEditor.Title"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense" />
+                        <MudTextField T="string"
+                                      Label="Slug"
+                                      @bind-Value="StoryEditor.Slug"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense" />
+                        <MudSelect T="string"
+                                   Label='@T("Toegang", "Access")'
+                                   @bind-Value="StoryEditor.AccessLevel"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense">
+                            <MudSelectItem Value="@("subscriber")">subscriber</MudSelectItem>
+                            <MudSelectItem Value="@("free")">free</MudSelectItem>
+                        </MudSelect>
+                        <MudSelect T="string"
+                                   Label='@T("Status", "Status")'
+                                   @bind-Value="StoryEditor.Status"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense">
+                            <MudSelectItem Value="@("draft")">draft</MudSelectItem>
+                            <MudSelectItem Value="@("published")">published</MudSelectItem>
+                            <MudSelectItem Value="@("archived")">archived</MudSelectItem>
+                        </MudSelect>
+                        <MudNumericField T="int"
+                                         Label='@T("Sort order", "Sort order")'
+                                         @bind-Value="StoryEditor.SortOrder"
+                                         Variant="Variant.Outlined"
+                                         Margin="Margin.Dense" />
+                        <MudNumericField T="int?"
+                                         Label='@T("Duur sekondes", "Duration seconds")'
+                                         @bind-Value="StoryEditor.DurationSeconds"
+                                         Variant="Variant.Outlined"
+                                         Margin="Margin.Dense" />
+                        <MudSelect T="string"
+                                   Label='@T("Audio provider", "Audio provider")'
+                                   @bind-Value="StoryEditor.AudioProvider"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense">
+                            <MudSelectItem Value="@("local")">local</MudSelectItem>
+                            <MudSelectItem Value="@("r2")">r2</MudSelectItem>
+                        </MudSelect>
+                        <MudTextField T="string"
+                                      Label='@T("Audio bucket", "Audio bucket")'
+                                      @bind-Value="StoryEditor.AudioBucket"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense" />
+                        <MudTextField T="string"
+                                      Label='@T("Audio key", "Audio key")'
+                                      @bind-Value="StoryEditor.AudioObjectKey"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense" />
+                        <MudTextField T="string"
+                                      Label='@T("Audio content type", "Audio content type")'
+                                      @bind-Value="StoryEditor.AudioContentType"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense" />
+                        <MudTextField T="string"
+                                      Label='@T("Cover image", "Cover image")'
+                                      @bind-Value="StoryEditor.CoverImagePath"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense" />
+                        <MudTextField T="string"
+                                      Label='@T("Thumbnail", "Thumbnail")'
+                                      @bind-Value="StoryEditor.ThumbnailImagePath"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense" />
+                        <div class="admin-image-preview-grid admin-span-2">
+                            <article class="admin-image-preview-card">
+                                <h4>@T("Cover voorskou", "Cover preview")</h4>
+                                @if (!string.IsNullOrWhiteSpace(coverPreviewUrl))
+                                {
+                                    <img src="@coverPreviewUrl"
+                                         alt='@T("Cover image voorskou", "Cover image preview")'
+                                         loading="lazy"
+                                         decoding="async" />
+                                }
+                                else
+                                {
+                                    <p>@T("Geen cover image om te wys nie.", "No cover image to preview.")</p>
+                                }
+                            </article>
+                            <article class="admin-image-preview-card">
+                                <h4>@T("Thumbnail voorskou", "Thumbnail preview")</h4>
+                                @if (!string.IsNullOrWhiteSpace(thumbnailPreviewUrl))
+                                {
+                                    <img src="@thumbnailPreviewUrl"
+                                         alt='@T("Thumbnail voorskou", "Thumbnail preview")'
+                                         loading="lazy"
+                                         decoding="async" />
+                                }
+                                else
+                                {
+                                    <p>@T("Geen thumbnail om te wys nie.", "No thumbnail to preview.")</p>
+                                }
+                            </article>
+                        </div>
+                        <MudTextField T="string"
+                                      Label='@T("Published at (local)", "Published at (local)")'
+                                      Placeholder="YYYY-MM-DDTHH:mm"
+                                      @bind-Value="StoryEditor.PublishedAtLocal"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense" />
+                        <MudCheckBox T="bool"
+                                     Label='@T("Gekenmerk", "Featured")'
+                                     @bind-Value="StoryEditor.IsFeatured" />
+                        <MudTextField T="string"
+                                      Class="admin-span-2"
+                                      Label='@T("Opsomming", "Summary")'
+                                      @bind-Value="StoryEditor.Summary"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense"
+                                      Lines="2" />
+                        <MudTextField T="string"
+                                      Class="admin-span-2"
+                                      Label='@T("Beskrywing", "Description")'
+                                      @bind-Value="StoryEditor.Description"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense"
+                                      Lines="4" />
+                    </div>
+                </DialogContent>
+                <DialogActions>
+                    <MudButton Variant="Variant.Text"
+                               Color="Color.Default"
+                               OnClick="CloseStoryDialog">
+                        @T("Sluit", "Close")
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Class="admin-btn"
+                               Disabled="@IsSavingStory"
+                               OnClick="SaveStoryAsync">
+                        @(IsSavingStory ? T("Stoor...", "Saving...") : T("Stoor storie", "Save story"))
+                    </MudButton>
+                </DialogActions>
+            </MudDialog>
+        }
+
+        @if (PlaylistEditor is not null)
+        {
+            <MudDialog @bind-Visible="IsPlaylistDialogOpen"
+                       Options="EditorDialogOptions">
+                <TitleContent>
+                    <MudText Typo="Typo.h6">@T("Wysig playlist", "Edit playlist")</MudText>
+                </TitleContent>
+                <DialogContent>
+                    <MudTabs Class="admin-tabs admin-dialog-tabs"
+                             Rounded="true">
+                        <MudTabPanel Text='@T("Playlist inligting", "Playlist info")'>
+                            <div class="admin-editor">
+                                <div class="admin-form-grid">
+                                    <MudTextField T="string"
+                                                  Label='@T("Titel", "Title")'
+                                                  @bind-Value="PlaylistEditor.Title"
+                                                  Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense" />
+                                    <MudTextField T="string"
+                                                  Label="Slug"
+                                                  @bind-Value="PlaylistEditor.Slug"
+                                                  Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense" />
+                                    <MudNumericField T="int?"
+                                                     Label='@T("Maks items", "Max items")'
+                                                     @bind-Value="PlaylistEditor.MaxItems"
+                                                     Variant="Variant.Outlined"
+                                                     Margin="Margin.Dense" />
+                                    <MudCheckBox T="bool"
+                                                 Label='@T("Aktief", "Active")'
+                                                 @bind-Value="PlaylistEditor.IsEnabled" />
+                                    <MudTextField T="string"
+                                                  Class="admin-span-2"
+                                                  Label='@T("Beskrywing", "Description")'
+                                                  @bind-Value="PlaylistEditor.Description"
+                                                  Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense"
+                                                  Lines="3" />
+                                </div>
+                                <MudButton Variant="Variant.Filled"
+                                           Color="Color.Primary"
+                                           Class="admin-btn"
+                                           Disabled="@IsSavingPlaylist"
+                                           OnClick="SavePlaylistAsync">
+                                    @(IsSavingPlaylist ? T("Stoor...", "Saving...") : T("Stoor playlist", "Save playlist"))
+                                </MudButton>
+                            </div>
+                        </MudTabPanel>
+
+                        <MudTabPanel Text='@T("Playlist items", "Playlist items")'>
+                            @if (PlaylistEditor.PlaylistId is Guid playlistId && playlistId != Guid.Empty)
+                            {
+                                <div class="admin-editor">
+                                    <h3>@T("Playlist stories", "Playlist stories")</h3>
+                                    <div class="admin-story-picker">
+                                        <MudSelect T="string"
+                                                   @bind-Value="StoryToAddIdString"
+                                                   Label='@T("Kies storie om by te voeg", "Choose a story to add")'
+                                                   Variant="Variant.Outlined"
+                                                   Margin="Margin.Dense">
+                                            <MudSelectItem Value="@string.Empty">@T("Kies storie om by te voeg", "Choose a story to add")</MudSelectItem>
+                                            @foreach (var story in AvailableStoriesForPlaylist)
+                                            {
+                                                <MudSelectItem Value="@story.StoryId.ToString("D")">@story.Title</MudSelectItem>
+                                            }
+                                        </MudSelect>
+                                        <MudButton Variant="Variant.Filled"
+                                                   Color="Color.Primary"
+                                                   Class="admin-icon-btn"
+                                                   OnClick="AddStoryToPlaylist"
+                                                   aria-label='@T("Voeg storie by", "Add story")'
+                                                   title='@T("Voeg storie by", "Add story")'>
+                                            <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                                            <span class="sr-only">@T("Voeg storie by", "Add story")</span>
+                                        </MudButton>
+                                    </div>
+
+                                    <MudTable T="EditablePlaylistStoryItem"
+                                              Class="admin-grid"
+                                              Items="PlaylistStoryEditor"
+                                              Dense="true"
+                                              Hover="true"
+                                              Bordered="true"
+                                              Elevation="0"
+                                              Breakpoint="Breakpoint.Sm">
+                                        <HeaderContent>
+                                            <MudTh>#</MudTh>
+                                            <MudTh>@T("Titel", "Title")</MudTh>
+                                            <MudTh>Slug</MudTh>
+                                            <MudTh>@T("Aksies", "Actions")</MudTh>
+                                        </HeaderContent>
+                                        <RowTemplate>
+                                            @{
+                                                var storyIndex = GetPlaylistStoryIndex(context.StoryId);
+                                            }
+                                            <MudTd DataLabel="#">@context.SortOrder</MudTd>
+                                            <MudTd DataLabel='@T("Titel", "Title")'>@context.StoryTitle</MudTd>
+                                            <MudTd DataLabel="Slug">@context.StorySlug</MudTd>
+                                            <MudTd DataLabel='@T("Aksies", "Actions")'>
+                                                <div class="admin-playlist-actions">
+                                                    <button type="button"
+                                                            class="admin-icon-btn"
+                                                            @onclick="() => MovePlaylistStory(storyIndex, -1)"
+                                                            @onclick:stopPropagation="true"
+                                                            disabled="@(storyIndex <= 0)"
+                                                            aria-label='@T("Skuif storie op", "Move story up")'
+                                                            title='@T("Skuif storie op", "Move story up")'>
+                                                        <i class="fa-solid fa-arrow-up" aria-hidden="true"></i>
+                                                        <span class="sr-only">@T("Skuif storie op", "Move story up")</span>
+                                                    </button>
+                                                    <button type="button"
+                                                            class="admin-icon-btn"
+                                                            @onclick="() => MovePlaylistStory(storyIndex, 1)"
+                                                            @onclick:stopPropagation="true"
+                                                            disabled="@(storyIndex < 0 || storyIndex == PlaylistStoryEditor.Count - 1)"
+                                                            aria-label='@T("Skuif storie af", "Move story down")'
+                                                            title='@T("Skuif storie af", "Move story down")'>
+                                                        <i class="fa-solid fa-arrow-down" aria-hidden="true"></i>
+                                                        <span class="sr-only">@T("Skuif storie af", "Move story down")</span>
+                                                    </button>
+                                                    <button type="button"
+                                                            class="admin-icon-btn is-danger"
+                                                            @onclick="() => RemovePlaylistStory(storyIndex)"
+                                                            @onclick:stopPropagation="true"
+                                                            disabled="@(storyIndex < 0)"
+                                                            aria-label='@T("Verwyder storie", "Remove story")'
+                                                            title='@T("Verwyder storie", "Remove story")'>
+                                                        <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                                                        <span class="sr-only">@T("Verwyder storie", "Remove story")</span>
+                                                    </button>
+                                                </div>
+                                            </MudTd>
+                                        </RowTemplate>
+                                        <NoRecordsContent>
+                                            <MudText Typo="Typo.body2">@T("Geen stories in hierdie playlist nie.", "No stories in this playlist.")</MudText>
+                                        </NoRecordsContent>
+                                    </MudTable>
+
+                                    <MudButton Variant="Variant.Filled"
+                                               Color="Color.Primary"
+                                               Class="admin-btn"
+                                               Disabled="@IsSavingPlaylistStories"
+                                               OnClick="SavePlaylistStoriesAsync">
+                                        @(IsSavingPlaylistStories ? T("Stoor...", "Saving...") : T("Stoor playlist stories", "Save playlist stories"))
+                                    </MudButton>
+                                </div>
+                            }
+                            else
+                            {
+                                <MudText Typo="Typo.body2">
+                                    @T("Stoor eers die playlist inligting om items te bestuur.", "Save the playlist info first to manage playlist items.")
+                                </MudText>
+                            }
+                        </MudTabPanel>
+                    </MudTabs>
+                </DialogContent>
+                <DialogActions>
+                    <MudButton Variant="Variant.Text"
+                               Color="Color.Default"
+                               OnClick="ClosePlaylistDialog">
+                        @T("Sluit", "Close")
+                    </MudButton>
+                </DialogActions>
+            </MudDialog>
+        }
+    }
+</section>
+
+@code {
+    private bool IsLoading { get; set; } = true;
+    private bool IsRedirectingToLogin { get; set; }
+    private bool IsAccessDenied { get; set; }
+    private string? CurrentAdminEmail { get; set; }
+    private string? ErrorMessage { get; set; }
+    private string? StatusMessage { get; set; }
+    private AdminLanguage CurrentLanguage { get; set; } = AdminLanguage.Afrikaans;
+
+    private const string AdminLanguageStorageKey = "shink.admin.language";
+
+    private bool IsSavingSubscriber { get; set; }
+    private bool IsSavingStory { get; set; }
+    private bool IsSavingPlaylist { get; set; }
+    private bool IsSavingPlaylistsOrder { get; set; }
+    private bool IsSavingPlaylistStories { get; set; }
+    private bool IsSubscriberDialogOpen { get; set; }
+    private bool IsStoryDialogOpen { get; set; }
+    private bool IsPlaylistDialogOpen { get; set; }
+    private HashSet<Guid> TogglingPlaylistIds { get; } = [];
+    private static readonly DialogOptions EditorDialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Large,
+        FullWidth = true,
+        CloseButton = true,
+        BackdropClick = false
+    };
+
+    private string SubscriberSearch { get; set; } = string.Empty;
+    private string StorySearch { get; set; } = string.Empty;
+    private string StoryToAddIdString { get; set; } = string.Empty;
+
+    private IReadOnlyList<AdminSubscriberRecord> Subscribers { get; set; } = Array.Empty<AdminSubscriberRecord>();
+    private IReadOnlyList<AdminStoryRecord> Stories { get; set; } = Array.Empty<AdminStoryRecord>();
+    private IReadOnlyList<AdminPlaylistRecord> Playlists { get; set; } = Array.Empty<AdminPlaylistRecord>();
+
+    private EditableSubscriber? SubscriberEditor { get; set; }
+    private EditableStory? StoryEditor { get; set; }
+    private EditablePlaylist? PlaylistEditor { get; set; }
+    private List<EditablePlaylistStoryItem> PlaylistStoryEditor { get; set; } = [];
+
+    private IReadOnlyList<AdminStoryRecord> AvailableStoriesForPlaylist =>
+        Stories
+            .Where(story => PlaylistStoryEditor.All(item => item.StoryId != story.StoryId))
+            .OrderBy(story => story.Title, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    private string CurrentLanguageCode => CurrentLanguage == AdminLanguage.English ? "en" : "af";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            if (authState.User.Identity?.IsAuthenticated != true)
+            {
+                IsRedirectingToLogin = true;
+                IsLoading = false;
+                var returnUrl = Uri.EscapeDataString("/admin");
+                NavigationManager.NavigateTo($"/teken-in?returnUrl={returnUrl}");
+                return;
+            }
+
+            CurrentAdminEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                               ?? authState.User.Identity?.Name;
+            var isAdmin = await AdminManagementService.IsAdminAsync(CurrentAdminEmail);
+            if (!isAdmin)
+            {
+                IsAccessDenied = true;
+                IsLoading = false;
+                return;
+            }
+
+            await LoadAllAsync();
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Admin page initialization failed.");
+            SetError(T(
+                "Kon nie die bestuursblad nou laai nie. Probeer asseblief weer.",
+                "Could not load the admin page right now. Please try again."));
+            IsLoading = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            var storedLanguageCode = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", AdminLanguageStorageKey);
+            var storedLanguage = ParseLanguage(storedLanguageCode);
+            if (storedLanguage == CurrentLanguage)
+            {
+                return;
+            }
+
+            CurrentLanguage = storedLanguage;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception exception)
+        {
+            // Ignore storage availability issues (private mode / blocked storage).
+            Logger.LogDebug(exception, "Admin language preference load skipped.");
+        }
+    }
+
+    private async Task OnLanguageChangedAsync(string? selectedLanguageCode)
+    {
+        var requestedLanguage = ParseLanguage(selectedLanguageCode);
+        if (requestedLanguage == CurrentLanguage)
+        {
+            return;
+        }
+
+        CurrentLanguage = requestedLanguage;
+        ErrorMessage = null;
+        StatusMessage = null;
+
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", AdminLanguageStorageKey, CurrentLanguageCode);
+        }
+        catch (Exception exception)
+        {
+            // Ignore storage availability issues (private mode / blocked storage).
+            Logger.LogDebug(exception, "Admin language preference save skipped.");
+        }
+    }
+
+    private AdminLanguage ParseLanguage(string? code)
+    {
+        return string.Equals(code, "en", StringComparison.OrdinalIgnoreCase)
+            ? AdminLanguage.English
+            : AdminLanguage.Afrikaans;
+    }
+
+    private async Task LoadAllAsync()
+    {
+        IsLoading = true;
+        var subscribersTask = RefreshSubscribersAsync();
+        var storiesTask = RefreshStoriesAsync();
+        var playlistsTask = RefreshPlaylistsAsync();
+        await Task.WhenAll(subscribersTask, storiesTask, playlistsTask);
+        IsLoading = false;
+    }
+
+    private async Task RefreshSubscribersAsync()
+    {
+        try
+        {
+            var selectedSubscriberId = SubscriberEditor?.SubscriberId;
+            Subscribers = await AdminManagementService.GetSubscribersAsync(CurrentAdminEmail, SubscriberSearch);
+            var selectedSubscriber = selectedSubscriberId is not null
+                ? Subscribers.FirstOrDefault(subscriber => subscriber.SubscriberId == selectedSubscriberId.Value)
+                : Subscribers.FirstOrDefault();
+            SubscriberEditor = selectedSubscriber is null ? null : EditableSubscriber.From(selectedSubscriber);
+            if (SubscriberEditor is null)
+            {
+                IsSubscriberDialogOpen = false;
+            }
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to refresh subscribers.");
+            Subscribers = Array.Empty<AdminSubscriberRecord>();
+            SubscriberEditor = null;
+            IsSubscriberDialogOpen = false;
+            SetError(T("Kon nie intekenaars nou laai nie.", "Could not load subscribers right now."));
+        }
+    }
+
+    private async Task RefreshStoriesAsync()
+    {
+        try
+        {
+            var selectedStoryId = StoryEditor?.StoryId;
+            Stories = await AdminManagementService.GetStoriesAsync(CurrentAdminEmail, StorySearch);
+            var selectedStory = selectedStoryId is not null
+                ? Stories.FirstOrDefault(story => story.StoryId == selectedStoryId.Value)
+                : Stories.FirstOrDefault();
+            StoryEditor = selectedStory is null ? null : EditableStory.From(selectedStory);
+            if (StoryEditor is null)
+            {
+                IsStoryDialogOpen = false;
+            }
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to refresh stories.");
+            Stories = Array.Empty<AdminStoryRecord>();
+            StoryEditor = null;
+            IsStoryDialogOpen = false;
+            SetError(T("Kon nie stories nou laai nie.", "Could not load stories right now."));
+        }
+    }
+
+    private async Task RefreshPlaylistsAsync(Guid? selectedPlaylistId = null)
+    {
+        try
+        {
+            var targetPlaylistId = selectedPlaylistId ?? PlaylistEditor?.PlaylistId;
+            Playlists = await AdminManagementService.GetPlaylistsAsync(CurrentAdminEmail);
+
+            var selectedPlaylist = targetPlaylistId is not null
+                ? Playlists.FirstOrDefault(playlist => playlist.PlaylistId == targetPlaylistId.Value)
+                : Playlists.FirstOrDefault();
+
+            if (selectedPlaylist is null)
+            {
+                PlaylistEditor = null;
+                PlaylistStoryEditor = [];
+                StoryToAddIdString = string.Empty;
+                IsPlaylistDialogOpen = false;
+                return;
+            }
+
+            PlaylistEditor = EditablePlaylist.From(selectedPlaylist);
+            PlaylistStoryEditor = selectedPlaylist.Stories
+                .OrderBy(story => story.SortOrder)
+                .Select(EditablePlaylistStoryItem.From)
+                .ToList();
+            ReindexPlaylistStories();
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to refresh playlists.");
+            Playlists = Array.Empty<AdminPlaylistRecord>();
+            PlaylistEditor = null;
+            PlaylistStoryEditor = [];
+            StoryToAddIdString = string.Empty;
+            IsPlaylistDialogOpen = false;
+            SetError(T("Kon nie playlists nou laai nie.", "Could not load playlists right now."));
+        }
+    }
+
+    private string GetSubscriberRowClass(AdminSubscriberRecord subscriber, int rowNumber)
+    {
+        _ = rowNumber;
+        return subscriber is not null &&
+               SubscriberEditor?.SubscriberId == subscriber.SubscriberId
+            ? "admin-grid-row-selected"
+            : string.Empty;
+    }
+
+    private string GetStoryRowClass(AdminStoryRecord story, int rowNumber)
+    {
+        _ = rowNumber;
+        return story is not null &&
+               StoryEditor?.StoryId == story.StoryId
+            ? "admin-grid-row-selected"
+            : string.Empty;
+    }
+
+    private string GetPlaylistRowClass(AdminPlaylistRecord playlist, int rowNumber)
+    {
+        _ = rowNumber;
+        return playlist is not null &&
+               PlaylistEditor?.PlaylistId == playlist.PlaylistId
+            ? "admin-grid-row-selected"
+            : string.Empty;
+    }
+
+    private Task OnSubscriberRowClick(TableRowClickEventArgs<AdminSubscriberRecord> args)
+    {
+        if (args.Item is not null)
+        {
+            SelectSubscriber(args.Item.SubscriberId);
+            IsSubscriberDialogOpen = SubscriberEditor is not null;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Task OnStoryRowClick(TableRowClickEventArgs<AdminStoryRecord> args)
+    {
+        if (args.Item is not null)
+        {
+            SelectStory(args.Item.StoryId);
+            IsStoryDialogOpen = StoryEditor is not null;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task OnPlaylistRowClick(TableRowClickEventArgs<AdminPlaylistRecord> args)
+    {
+        if (args.Item is null)
+        {
+            return;
+        }
+
+        await SelectPlaylist(args.Item.PlaylistId);
+        IsPlaylistDialogOpen = PlaylistEditor is not null;
+    }
+
+    private void SelectSubscriber(Guid subscriberId)
+    {
+        var selected = Subscribers.FirstOrDefault(subscriber => subscriber.SubscriberId == subscriberId);
+        if (selected is null)
+        {
+            return;
+        }
+
+        SubscriberEditor = EditableSubscriber.From(selected);
+    }
+
+    private void SelectStory(Guid storyId)
+    {
+        var selected = Stories.FirstOrDefault(story => story.StoryId == storyId);
+        if (selected is null)
+        {
+            return;
+        }
+
+        StoryEditor = EditableStory.From(selected);
+    }
+
+    private async Task SelectPlaylist(Guid playlistId)
+    {
+        await RefreshPlaylistsAsync(playlistId);
+    }
+
+    private void StartNewPlaylist()
+    {
+        PlaylistEditor = new EditablePlaylist();
+        PlaylistStoryEditor = [];
+        StoryToAddIdString = string.Empty;
+        IsPlaylistDialogOpen = true;
+    }
+
+    private void CloseSubscriberDialog()
+    {
+        IsSubscriberDialogOpen = false;
+    }
+
+    private void CloseStoryDialog()
+    {
+        IsStoryDialogOpen = false;
+    }
+
+    private void ClosePlaylistDialog()
+    {
+        IsPlaylistDialogOpen = false;
+    }
+
+    private async Task SaveSubscriberAsync()
+    {
+        if (SubscriberEditor is null)
+        {
+            return;
+        }
+
+        IsSavingSubscriber = true;
+        ClearFeedback();
+
+        try
+        {
+            var result = await AdminManagementService.UpdateSubscriberAsync(
+                CurrentAdminEmail,
+                new AdminSubscriberUpdateRequest(
+                    SubscriberEditor.SubscriberId,
+                    SubscriberEditor.FirstName,
+                    SubscriberEditor.LastName,
+                    SubscriberEditor.DisplayName,
+                    SubscriberEditor.MobileNumber));
+
+            if (!HandleOperationResult(result, T("Intekenaar is opgedateer.", "Subscriber updated.")))
+            {
+                return;
+            }
+
+            await RefreshSubscribersAsync();
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to save subscriber.");
+            SetError(T("Kon nie intekenaar nou stoor nie.", "Could not save subscriber right now."));
+        }
+        finally
+        {
+            IsSavingSubscriber = false;
+        }
+    }
+
+    private async Task SaveStoryAsync()
+    {
+        if (StoryEditor is null)
+        {
+            return;
+        }
+
+        IsSavingStory = true;
+        ClearFeedback();
+
+        try
+        {
+            var publishedAt = ParseOptionalLocalDateTime(StoryEditor.PublishedAtLocal);
+            var result = await AdminManagementService.UpdateStoryAsync(
+                CurrentAdminEmail,
+                new AdminStoryUpdateRequest(
+                    StoryEditor.StoryId,
+                    StoryEditor.Slug,
+                    StoryEditor.Title,
+                    StoryEditor.Summary,
+                    StoryEditor.Description,
+                    StoryEditor.CoverImagePath,
+                    StoryEditor.ThumbnailImagePath,
+                    StoryEditor.AudioProvider,
+                    StoryEditor.AudioBucket,
+                    StoryEditor.AudioObjectKey,
+                    StoryEditor.AudioContentType,
+                    StoryEditor.AccessLevel,
+                    StoryEditor.Status,
+                    StoryEditor.IsFeatured,
+                    StoryEditor.SortOrder,
+                    publishedAt,
+                    StoryEditor.DurationSeconds));
+
+            if (!HandleOperationResult(result, T("Storie is opgedateer.", "Story updated.")))
+            {
+                return;
+            }
+
+            await RefreshStoriesAsync();
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to save story.");
+            SetError(T("Kon nie storie nou stoor nie.", "Could not save story right now."));
+        }
+        finally
+        {
+            IsSavingStory = false;
+        }
+    }
+
+    private async Task SavePlaylistAsync()
+    {
+        if (PlaylistEditor is null)
+        {
+            return;
+        }
+
+        IsSavingPlaylist = true;
+        ClearFeedback();
+
+        try
+        {
+            var result = await AdminManagementService.SavePlaylistAsync(
+                CurrentAdminEmail,
+                new AdminPlaylistUpdateRequest(
+                    PlaylistEditor.PlaylistId,
+                    PlaylistEditor.Slug,
+                    PlaylistEditor.Title,
+                    PlaylistEditor.Description,
+                    PlaylistEditor.SortOrder,
+                    PlaylistEditor.MaxItems,
+                    PlaylistEditor.IsEnabled));
+
+            if (!HandleOperationResult(result, T("Playlist is gestoor.", "Playlist saved.")))
+            {
+                return;
+            }
+
+            var selectedPlaylistId = result.EntityId ?? PlaylistEditor.PlaylistId;
+            await RefreshPlaylistsAsync(selectedPlaylistId);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to save playlist.");
+            SetError(T("Kon nie playlist nou stoor nie.", "Could not save playlist right now."));
+        }
+        finally
+        {
+            IsSavingPlaylist = false;
+        }
+    }
+
+    private async Task TogglePlaylistEnabledAsync(AdminPlaylistRecord playlist, bool isEnabled)
+    {
+        if (playlist.PlaylistId == Guid.Empty || playlist.IsEnabled == isEnabled)
+        {
+            return;
+        }
+
+        if (!TogglingPlaylistIds.Add(playlist.PlaylistId))
+        {
+            return;
+        }
+
+        ClearFeedback();
+
+        try
+        {
+            var result = await AdminManagementService.SavePlaylistAsync(
+                CurrentAdminEmail,
+                new AdminPlaylistUpdateRequest(
+                    playlist.PlaylistId,
+                    playlist.Slug,
+                    playlist.Title,
+                    playlist.Description,
+                    playlist.SortOrder,
+                    playlist.MaxItems,
+                    isEnabled));
+
+            if (!HandleOperationResult(
+                    result,
+                    isEnabled
+                        ? T("Playlist is geaktiveer.", "Playlist activated.")
+                        : T("Playlist is gedeaktiveer.", "Playlist deactivated.")))
+            {
+                return;
+            }
+
+            await RefreshPlaylistsAsync(playlist.PlaylistId);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to toggle playlist status. playlist_id={PlaylistId}", playlist.PlaylistId);
+            SetError(T("Kon nie playlist status nou opdateer nie.", "Could not update playlist status right now."));
+        }
+        finally
+        {
+            TogglingPlaylistIds.Remove(playlist.PlaylistId);
+        }
+    }
+
+    private async Task MovePlaylistAsync(Guid playlistId, int direction)
+    {
+        if (direction is 0)
+        {
+            return;
+        }
+
+        var ordered = Playlists
+            .OrderBy(playlist => playlist.SortOrder)
+            .ThenBy(playlist => playlist.Title, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var currentIndex = ordered.FindIndex(playlist => playlist.PlaylistId == playlistId);
+        if (currentIndex < 0)
+        {
+            return;
+        }
+
+        var targetIndex = currentIndex + direction;
+        if (targetIndex < 0 || targetIndex >= ordered.Count)
+        {
+            return;
+        }
+
+        (ordered[currentIndex], ordered[targetIndex]) = (ordered[targetIndex], ordered[currentIndex]);
+
+        IsSavingPlaylistsOrder = true;
+        ClearFeedback();
+        try
+        {
+            var result = await AdminManagementService.SavePlaylistOrderAsync(
+                CurrentAdminEmail,
+                ordered.Select(playlist => playlist.PlaylistId).ToArray());
+
+            if (!HandleOperationResult(result, T("Playlist volgorde is gestoor.", "Playlist order saved.")))
+            {
+                return;
+            }
+
+            await RefreshPlaylistsAsync(playlistId);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to move playlist. playlist_id={PlaylistId}", playlistId);
+            SetError(T("Kon nie playlist volgorde nou stoor nie.", "Could not save playlist order right now."));
+        }
+        finally
+        {
+            IsSavingPlaylistsOrder = false;
+        }
+    }
+
+    private void AddStoryToPlaylist()
+    {
+        if (!Guid.TryParse(StoryToAddIdString, out var storyId))
+        {
+            return;
+        }
+
+        if (PlaylistStoryEditor.Any(item => item.StoryId == storyId))
+        {
+            return;
+        }
+
+        var story = Stories.FirstOrDefault(item => item.StoryId == storyId);
+        if (story is null)
+        {
+            return;
+        }
+
+        PlaylistStoryEditor.Add(new EditablePlaylistStoryItem
+        {
+            StoryId = story.StoryId,
+            StorySlug = story.Slug,
+            StoryTitle = story.Title
+        });
+        ReindexPlaylistStories();
+        StoryToAddIdString = string.Empty;
+    }
+
+    private void MovePlaylistStory(int index, int direction)
+    {
+        var targetIndex = index + direction;
+        if (index < 0 || index >= PlaylistStoryEditor.Count ||
+            targetIndex < 0 || targetIndex >= PlaylistStoryEditor.Count)
+        {
+            return;
+        }
+
+        (PlaylistStoryEditor[index], PlaylistStoryEditor[targetIndex]) = (PlaylistStoryEditor[targetIndex], PlaylistStoryEditor[index]);
+        ReindexPlaylistStories();
+    }
+
+    private void RemovePlaylistStory(int index)
+    {
+        if (index < 0 || index >= PlaylistStoryEditor.Count)
+        {
+            return;
+        }
+
+        PlaylistStoryEditor.RemoveAt(index);
+        ReindexPlaylistStories();
+    }
+
+    private async Task SavePlaylistStoriesAsync()
+    {
+        if (PlaylistEditor?.PlaylistId is not Guid playlistId || playlistId == Guid.Empty)
+        {
+            SetError(T("Stoor eers die playlist metadata voordat jy stories orden.", "Save the playlist metadata first before ordering stories."));
+            return;
+        }
+
+        IsSavingPlaylistStories = true;
+        ClearFeedback();
+
+        try
+        {
+            var storyIds = PlaylistStoryEditor.Select(item => item.StoryId).ToArray();
+            var result = await AdminManagementService.SavePlaylistStoriesAsync(CurrentAdminEmail, playlistId, storyIds);
+
+            if (!HandleOperationResult(result, T("Playlist stories is gestoor.", "Playlist stories saved.")))
+            {
+                return;
+            }
+
+            await RefreshPlaylistsAsync(playlistId);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to save playlist stories. playlist_id={PlaylistId}", playlistId);
+            SetError(T("Kon nie playlist stories nou stoor nie.", "Could not save playlist stories right now."));
+        }
+        finally
+        {
+            IsSavingPlaylistStories = false;
+        }
+    }
+
+    private int GetPlaylistIndex(Guid playlistId)
+    {
+        for (var index = 0; index < Playlists.Count; index++)
+        {
+            if (Playlists[index].PlaylistId == playlistId)
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private int GetPlaylistStoryIndex(Guid storyId)
+    {
+        for (var index = 0; index < PlaylistStoryEditor.Count; index++)
+        {
+            if (PlaylistStoryEditor[index].StoryId == storyId)
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
+
+    private void ReindexPlaylistStories()
+    {
+        for (var index = 0; index < PlaylistStoryEditor.Count; index++)
+        {
+            PlaylistStoryEditor[index].SortOrder = index + 1;
+        }
+    }
+
+    private bool HandleOperationResult(AdminOperationResult result, string successMessage)
+    {
+        if (!result.IsSuccess)
+        {
+            SetError(result.ErrorMessage ?? T("Die aksie kon nie nou voltooi word nie.", "The action could not be completed right now."));
+            return false;
+        }
+
+        SetStatus(successMessage);
+        return true;
+    }
+
+    private void ClearFeedback()
+    {
+        ErrorMessage = null;
+        StatusMessage = null;
+    }
+
+    private void SetError(string message)
+    {
+        ErrorMessage = LocalizeKnownServiceMessage(message);
+        StatusMessage = null;
+    }
+
+    private void SetStatus(string message)
+    {
+        StatusMessage = message;
+        ErrorMessage = null;
+    }
+
+    private string T(string afrikaans, string english)
+    {
+        return CurrentLanguage == AdminLanguage.English
+            ? english
+            : afrikaans;
+    }
+
+    private string LocalizeKnownServiceMessage(string message)
+    {
+        if (CurrentLanguage == AdminLanguage.Afrikaans)
+        {
+            return message;
+        }
+
+        return message switch
+        {
+            "Jy het nie admin toegang nie." => "You do not have admin access.",
+            "Kies asseblief 'n geldige intekenaar." => "Please select a valid subscriber.",
+            "Supabase URL is nog nie opgestel nie." => "Supabase URL is not configured yet.",
+            "Supabase ServiceRoleKey is nog nie opgestel nie." => "Supabase ServiceRoleKey is not configured yet.",
+            "Selfoonnommer moet 7 tot 20 syfers wees." => "Mobile number must contain 7 to 20 digits.",
+            "Kon nie intekenaar nou opdateer nie." => "Could not update subscriber right now.",
+            "Kies asseblief 'n geldige storie." => "Please select a valid story.",
+            "Die storie slug is ongeldig." => "The story slug is invalid.",
+            "Storie titel is verpligtend." => "Story title is required.",
+            "Audio provider moet 'local' of 'r2' wees." => "Audio provider must be 'local' or 'r2'.",
+            "Toegangsvlak moet 'free' of 'subscriber' wees." => "Access level must be 'free' or 'subscriber'.",
+            "Status moet 'draft', 'published' of 'archived' wees." => "Status must be 'draft', 'published', or 'archived'.",
+            "Gepubliseerde stories vereis 'n audio object key." => "Published stories require an audio object key.",
+            "R2 stories vereis beide bucket en object key." => "R2 stories require both bucket and object key.",
+            "Kon nie storie nou opdateer nie." => "Could not update story right now.",
+            "Playlist slug is ongeldig." => "Playlist slug is invalid.",
+            "Playlist titel is verpligtend." => "Playlist title is required.",
+            "Kon nie playlist skep nie." => "Could not create playlist.",
+            "Kon nie playlist nou opdateer nie." => "Could not update playlist right now.",
+            "Geen playlists is gekies vir ordening nie." => "No playlists were selected for ordering.",
+            "Geen geldige playlists is gekies vir ordening nie." => "No valid playlists were selected for ordering.",
+            "Kon nie playlist volgorde stoor nie." => "Could not save playlist order.",
+            "Kies asseblief 'n geldige playlist." => "Please select a valid playlist.",
+            "Kon nie bestaande playlist stories verwyder nie." => "Could not remove existing playlist stories.",
+            "Kon nie nuwe playlist stories stoor nie." => "Could not save new playlist stories.",
+            _ => message
+        };
+    }
+
+    private static string? ResolvePreviewImageUrl(string? imagePath)
+    {
+        if (string.IsNullOrWhiteSpace(imagePath))
+        {
+            return null;
+        }
+
+        var candidate = imagePath.Trim();
+        if (candidate.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+        {
+            return candidate;
+        }
+
+        if (Uri.TryCreate(candidate, UriKind.Absolute, out var absoluteUri))
+        {
+            if (string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                return absoluteUri.ToString();
+            }
+
+            return null;
+        }
+
+        if (candidate.StartsWith("//", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        if (candidate.StartsWith("~/", StringComparison.Ordinal))
+        {
+            candidate = $"/{candidate[2..]}";
+        }
+
+        return candidate.StartsWith("/", StringComparison.Ordinal)
+            ? candidate
+            : $"/{candidate.TrimStart('/')}";
+    }
+
+    private static DateTimeOffset? ParseOptionalLocalDateTime(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (!DateTime.TryParse(value, CultureInfo.CurrentCulture, DateTimeStyles.AssumeLocal, out var parsed))
+        {
+            return null;
+        }
+
+        return new DateTimeOffset(parsed);
+    }
+
+    private static string BuildSubscriberName(AdminSubscriberRecord? subscriber)
+    {
+        if (subscriber is null)
+        {
+            return "-";
+        }
+
+        var tokens = new[]
+        {
+            subscriber.FirstName?.Trim(),
+            subscriber.LastName?.Trim()
+        }
+        .Where(token => !string.IsNullOrWhiteSpace(token))
+        .ToArray();
+
+        if (tokens.Length > 0)
+        {
+            return string.Join(' ', tokens);
+        }
+
+        return string.IsNullOrWhiteSpace(subscriber.DisplayName)
+            ? "-"
+            : subscriber.DisplayName!;
+    }
+
+    private string BuildTierSummary(IReadOnlyList<string>? tiers) =>
+        tiers is null || tiers.Count == 0 ? T("Geen", "None") : string.Join(", ", tiers);
+
+    private enum AdminLanguage
+    {
+        Afrikaans,
+        English
+    }
+
+    private sealed class EditableSubscriber
+    {
+        public Guid SubscriberId { get; set; }
+        public string Email { get; set; } = string.Empty;
+        public string? FirstName { get; set; }
+        public string? LastName { get; set; }
+        public string? DisplayName { get; set; }
+        public string? MobileNumber { get; set; }
+
+        public static EditableSubscriber From(AdminSubscriberRecord subscriber) => new()
+        {
+            SubscriberId = subscriber.SubscriberId,
+            Email = subscriber.Email,
+            FirstName = subscriber.FirstName,
+            LastName = subscriber.LastName,
+            DisplayName = subscriber.DisplayName,
+            MobileNumber = subscriber.MobileNumber
+        };
+    }
+
+    private sealed class EditableStory
+    {
+        public Guid StoryId { get; set; }
+        public string Slug { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public string? Summary { get; set; }
+        public string? Description { get; set; }
+        public string? CoverImagePath { get; set; }
+        public string? ThumbnailImagePath { get; set; }
+        public string AudioProvider { get; set; } = "local";
+        public string? AudioBucket { get; set; }
+        public string? AudioObjectKey { get; set; }
+        public string? AudioContentType { get; set; }
+        public string AccessLevel { get; set; } = "subscriber";
+        public string Status { get; set; } = "draft";
+        public bool IsFeatured { get; set; }
+        public int SortOrder { get; set; }
+        public int? DurationSeconds { get; set; }
+        public string? PublishedAtLocal { get; set; }
+
+        public static EditableStory From(AdminStoryRecord story) => new()
+        {
+            StoryId = story.StoryId,
+            Slug = story.Slug,
+            Title = story.Title,
+            Summary = story.Summary,
+            Description = story.Description,
+            CoverImagePath = story.CoverImagePath,
+            ThumbnailImagePath = story.ThumbnailImagePath,
+            AudioProvider = story.AudioProvider,
+            AudioBucket = story.AudioBucket,
+            AudioObjectKey = story.AudioObjectKey,
+            AudioContentType = story.AudioContentType,
+            AccessLevel = story.AccessLevel,
+            Status = story.Status,
+            IsFeatured = story.IsFeatured,
+            SortOrder = story.SortOrder,
+            DurationSeconds = story.DurationSeconds,
+            PublishedAtLocal = story.PublishedAt?.LocalDateTime.ToString("yyyy-MM-ddTHH:mm")
+        };
+    }
+
+    private sealed class EditablePlaylist
+    {
+        public Guid? PlaylistId { get; set; }
+        public string Slug { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public int SortOrder { get; set; } = 100;
+        public int? MaxItems { get; set; }
+        public bool IsEnabled { get; set; } = true;
+
+        public static EditablePlaylist From(AdminPlaylistRecord playlist) => new()
+        {
+            PlaylistId = playlist.PlaylistId,
+            Slug = playlist.Slug,
+            Title = playlist.Title,
+            Description = playlist.Description,
+            SortOrder = playlist.SortOrder,
+            MaxItems = playlist.MaxItems,
+            IsEnabled = playlist.IsEnabled
+        };
+    }
+
+    private sealed class EditablePlaylistStoryItem
+    {
+        public Guid StoryId { get; set; }
+        public string StorySlug { get; set; } = string.Empty;
+        public string StoryTitle { get; set; } = string.Empty;
+        public int SortOrder { get; set; }
+
+        public static EditablePlaylistStoryItem From(AdminPlaylistStoryItem item) => new()
+        {
+            StoryId = item.StoryId,
+            StorySlug = item.StorySlug,
+            StoryTitle = item.StoryTitle,
+            SortOrder = item.SortOrder
+        };
+    }
+}

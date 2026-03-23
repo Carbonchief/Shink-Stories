@@ -318,6 +318,7 @@ public sealed class SupabaseStoryCatalogService(
 
             return rows
                 .Where(row => row.PlaylistId != Guid.Empty)
+                .Where(row => row.IsEnabled)
                 .Where(row => !string.IsNullOrWhiteSpace(row.Slug))
                 .Where(row => !string.IsNullOrWhiteSpace(row.Title))
                 .OrderBy(row => row.SortOrder)
@@ -537,7 +538,11 @@ public sealed class SupabaseStoryCatalogService(
             .GroupBy(row => row.StoryId)
             .ToDictionary(group => group.Key, group => group.First());
 
-        var playlistRowsById = playlistRows
+        var enabledPlaylistRows = playlistRows
+            .Where(row => row.IsEnabled)
+            .ToArray();
+
+        var playlistRowsById = enabledPlaylistRows
             .Where(row => row.PlaylistId != Guid.Empty)
             .GroupBy(row => row.PlaylistId)
             .ToDictionary(group => group.Key, group => group.First());
@@ -555,7 +560,7 @@ public sealed class SupabaseStoryCatalogService(
         var playlists = new List<StoryPlaylist>();
         StoryPlaylistRow? allStoriesConfig = null;
 
-        foreach (var playlistRow in playlistRows
+        foreach (var playlistRow in enabledPlaylistRows
                      .OrderBy(row => row.SortOrder)
                      .ThenBy(row => row.Title, StringComparer.OrdinalIgnoreCase))
         {

@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
+using MudBlazor.Services;
 using Shink.Components;
 using Shink.Components.Content;
 using Shink.Services;
@@ -16,6 +17,7 @@ using System.Threading.RateLimiting;
 using System.Xml.Linq;
 
 const string AuthSessionIdClaimType = "shink:session_id";
+const string AdminRoleName = "admin";
 
 var builder = WebApplication.CreateBuilder(args);
 var postHogHostUrl = builder.Configuration["PostHog:HostUrl"];
@@ -24,8 +26,12 @@ var authSessionLifetimeDays = NormalizeSessionLifetimeDays(authSessionBootstrapO
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+    .AddInteractiveServerComponents(options =>
+    {
+        options.DetailedErrors = builder.Environment.IsDevelopment();
+    });
 builder.Services.AddCascadingAuthenticationState();
+builder.Services.AddMudServices();
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
@@ -92,6 +98,7 @@ builder.Services.AddHttpClient<PayFastCheckoutService>();
 builder.Services.AddHttpClient<PaystackCheckoutService>();
 builder.Services.AddHttpClient<ISubscriptionLedgerService, SupabaseSubscriptionLedgerService>();
 builder.Services.AddHttpClient<IStoryTrackingService, SupabaseStoryTrackingService>();
+builder.Services.AddHttpClient<IAdminManagementService, SupabaseAdminManagementService>();
 builder.Services.AddSingleton<IContactFormProtectionService, ContactFormProtectionService>();
 builder.Services.AddRateLimiter(options =>
 {
@@ -155,6 +162,48 @@ app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages:
 app.UseHttpsRedirection();
 app.UseAuthentication();
 app.UseAuthorization();
+
+app.Use(async (httpContext, next) =>
+{
+    if (!IsAdminManagementPath(httpContext.Request.Path))
+    {
+        await next();
+        return;
+    }
+
+    if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
+    {
+        if (HttpMethods.IsGet(httpContext.Request.Method) ||
+            HttpMethods.IsHead(httpContext.Request.Method))
+        {
+            var requestedPath = $"{httpContext.Request.Path}{httpContext.Request.QueryString}";
+            var encodedReturnUrl = Uri.EscapeDataString(requestedPath);
+            httpContext.Response.Redirect($"/teken-in?returnUrl={encodedReturnUrl}");
+            return;
+        }
+
+        httpContext.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        return;
+    }
+
+    var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
+                       ?? httpContext.User.Identity?.Name;
+    var adminManagementService = httpContext.RequestServices.GetRequiredService<IAdminManagementService>();
+    var isAdmin = await adminManagementService.IsAdminAsync(signedInEmail, httpContext.RequestAborted);
+    if (isAdmin)
+    {
+        await next();
+        return;
+    }
+
+    if (httpContext.Request.Path.StartsWithSegments("/admin"))
+    {
+        httpContext.Response.Redirect("/");
+        return;
+    }
+
+    httpContext.Response.StatusCode = StatusCodes.Status403Forbidden;
+});
 
 app.Use(async (httpContext, next) =>
 {
@@ -527,6 +576,7 @@ app.MapPost("/api/auth/login", async (
     AuthSignInApiRequest request,
     ISupabaseAuthService supabaseAuthService,
     IAuthSessionService authSessionService,
+    IAdminManagementService adminManagementService,
     ISubscriptionLedgerService subscriptionLedgerService,
     HttpContext httpContext) =>
 {
@@ -552,7 +602,7 @@ app.MapPost("/api/auth/login", async (
     }
 
     var signedInEmail = signInResult.UserEmail ?? request.Email!;
-    var signInCookieResult = await SignInUserAsync(httpContext, signedInEmail, authSessionService);
+    var signInCookieResult = await SignInUserAsync(httpContext, signedInEmail, authSessionService, adminManagementService);
     if (!signInCookieResult.IsSuccess)
     {
         return Results.Json(
@@ -572,6 +622,7 @@ app.MapPost("/api/auth/signup", async (
     AuthSignUpApiRequest request,
     ISupabaseAuthService supabaseAuthService,
     IAuthSessionService authSessionService,
+    IAdminManagementService adminManagementService,
     ISubscriptionLedgerService subscriptionLedgerService,
     HttpContext httpContext) =>
 {
@@ -633,7 +684,7 @@ app.MapPost("/api/auth/signup", async (
         request.MobileNumber,
         httpContext.RequestAborted);
 
-    var signInCookieResult = await SignInUserAsync(httpContext, signedInEmail, authSessionService);
+    var signInCookieResult = await SignInUserAsync(httpContext, signedInEmail, authSessionService, adminManagementService);
     if (!signInCookieResult.IsSuccess)
     {
         return Results.Json(
@@ -1282,6 +1333,20 @@ static bool IsGratisPath(PathString path)
            value.StartsWith("/gratis/", StringComparison.OrdinalIgnoreCase);
 }
 
+static bool IsAdminManagementPath(PathString path)
+{
+    var value = path.Value;
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return false;
+    }
+
+    return string.Equals(value, "/admin", StringComparison.OrdinalIgnoreCase) ||
+           value.StartsWith("/admin/", StringComparison.OrdinalIgnoreCase) ||
+           string.Equals(value, "/api/admin", StringComparison.OrdinalIgnoreCase) ||
+           value.StartsWith("/api/admin/", StringComparison.OrdinalIgnoreCase);
+}
+
 static string ResolveGratisRedirectPath(PathString path, QueryString queryString)
 {
     var value = path.Value;
@@ -1634,7 +1699,11 @@ static string ResolveAudioMimeType(string? configuredContentType, string? audioO
     };
 }
 
-static async Task<AuthCookieSignInResult> SignInUserAsync(HttpContext httpContext, string email, IAuthSessionService authSessionService)
+static async Task<AuthCookieSignInResult> SignInUserAsync(
+    HttpContext httpContext,
+    string email,
+    IAuthSessionService authSessionService,
+    IAdminManagementService adminManagementService)
 {
     var sessionIssueResult = await authSessionService.IssueSessionAsync(
         email,
@@ -1655,6 +1724,12 @@ static async Task<AuthCookieSignInResult> SignInUserAsync(HttpContext httpContex
         new(ClaimTypes.Email, email),
         new(AuthSessionIdClaimType, sessionIssueResult.SessionId.ToString("D"))
     };
+
+    var isAdminUser = await adminManagementService.IsAdminAsync(email, httpContext.RequestAborted);
+    if (isAdminUser)
+    {
+        claims.Add(new Claim(ClaimTypes.Role, AdminRoleName));
+    }
 
     var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme));
     var authProperties = new AuthenticationProperties

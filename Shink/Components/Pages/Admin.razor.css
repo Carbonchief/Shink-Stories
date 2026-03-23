@@ -1,0 +1,397 @@
+.admin-page {
+    width: min(100%, 1120px);
+    margin-inline: auto;
+    display: grid;
+    gap: 1rem;
+}
+
+.admin-hero {
+    border: 1px solid color-mix(in srgb, var(--line) 82%, #bac5be);
+    border-radius: 16px;
+    padding: 1rem;
+    background: color-mix(in srgb, var(--surface) 92%, white);
+}
+
+.admin-hero-top {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 0.8rem;
+}
+
+.admin-hero h1 {
+    margin: 0;
+    font-size: clamp(1.55rem, 2.4vw, 2.2rem);
+}
+
+.admin-hero p {
+    margin: 0.38rem 0 0;
+    color: var(--muted);
+}
+
+.admin-language {
+    display: grid;
+    gap: 0.25rem;
+    min-width: 170px;
+}
+
+.admin-language ::deep .mud-input-control {
+    margin: 0;
+    min-width: 170px;
+}
+
+.admin-state {
+    border: 1px dashed color-mix(in srgb, var(--line) 74%, #b9c2bd);
+    border-radius: 14px;
+    padding: 1rem;
+    background: color-mix(in srgb, var(--surface) 88%, white);
+}
+
+.admin-state h2 {
+    margin: 0;
+    font-size: 1.2rem;
+}
+
+.admin-state p {
+    margin: 0.4rem 0 0;
+    color: var(--muted);
+}
+
+.admin-feedback {
+    margin: 0;
+    padding: 0.7rem 0.8rem;
+    border-radius: 10px;
+    font-weight: 600;
+}
+
+.admin-feedback.is-error {
+    background: #ffe8e8;
+    color: #8d1f1f;
+    border: 1px solid #f7b7b7;
+}
+
+.admin-feedback.is-success {
+    background: #e7f8ef;
+    color: #1b6a44;
+    border: 1px solid #b8e4ca;
+}
+
+.admin-tabs ::deep .mud-tabs-tabbar {
+    border: 1px solid color-mix(in srgb, var(--line) 86%, #bbc4bf);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--surface) 94%, white);
+    padding: 0.2rem;
+}
+
+.admin-tabs ::deep .mud-tab {
+    border-radius: 10px;
+    font-weight: 700;
+}
+
+.admin-tabs ::deep .mud-tabs-panels {
+    margin-top: 0.65rem;
+}
+
+.admin-section {
+    display: grid;
+    gap: 0.75rem;
+    border: 1px solid color-mix(in srgb, var(--line) 86%, #bbc4bf);
+    border-radius: 16px;
+    background: var(--surface);
+    padding: 0.8rem;
+}
+
+.admin-section-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.55rem;
+}
+
+.admin-section h2 {
+    margin: 0;
+    font-size: 1.25rem;
+}
+
+.admin-search {
+    display: flex;
+    gap: 0.4rem;
+    width: min(100%, 420px);
+}
+
+.admin-search ::deep .mud-input-control {
+    flex: 1;
+    margin: 0;
+}
+
+.admin-search button,
+.admin-btn,
+.admin-playlist-actions button,
+.admin-story-picker button {
+    min-height: 40px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    padding: 0.5rem 0.75rem;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    color: #1a1a1a;
+    background: var(--accent);
+}
+
+.admin-btn:disabled,
+.admin-playlist-actions button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.admin-btn.admin-btn-secondary {
+    border-color: color-mix(in srgb, var(--line) 82%, #b8c1bb);
+    background: color-mix(in srgb, var(--surface) 94%, white);
+}
+
+.admin-icon-btn {
+    width: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.admin-icon-btn i {
+    font-size: 0.95rem;
+    line-height: 1;
+}
+
+.admin-grid {
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.admin-grid ::deep .mud-table-root {
+    background: color-mix(in srgb, var(--surface) 94%, white);
+}
+
+.admin-grid ::deep .mud-table-cell {
+    padding: 0.58rem 0.5rem;
+    vertical-align: top;
+}
+
+.admin-grid ::deep tbody tr {
+    cursor: pointer;
+}
+
+.admin-grid ::deep tr.admin-grid-row-selected > .mud-table-cell {
+    background: color-mix(in srgb, var(--accent) 22%, white);
+}
+
+.admin-editor {
+    display: grid;
+    gap: 0.6rem;
+    border: 1px solid color-mix(in srgb, var(--line) 80%, #bac3be);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--surface) 92%, white);
+    padding: 0.75rem;
+}
+
+.admin-editor h3 {
+    margin: 0;
+    font-size: 1.05rem;
+}
+
+.admin-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.55rem;
+}
+
+.admin-form-grid label {
+    display: grid;
+    gap: 0.25rem;
+    font-size: 0.9rem;
+}
+
+.admin-form-grid ::deep .mud-input-control,
+.admin-story-picker ::deep .mud-input-control {
+    margin: 0;
+    width: 100%;
+}
+
+.admin-form-grid .admin-span-2 {
+    grid-column: span 2;
+}
+
+.admin-image-preview-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.55rem;
+}
+
+.admin-image-preview-card {
+    border: 1px solid color-mix(in srgb, var(--line) 82%, #bac3be);
+    border-radius: 10px;
+    padding: 0.55rem;
+    background: color-mix(in srgb, var(--surface) 92%, white);
+    display: grid;
+    gap: 0.4rem;
+}
+
+.admin-image-preview-card h4 {
+    margin: 0;
+    font-size: 0.9rem;
+}
+
+.admin-image-preview-card p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 0.85rem;
+}
+
+.admin-image-preview-card img {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    border-radius: 8px;
+    border: 1px solid color-mix(in srgb, var(--line) 78%, #bbc4bf);
+    background: color-mix(in srgb, var(--surface) 90%, #f0f2ef);
+}
+
+.admin-checkbox {
+    display: flex !important;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.admin-checkbox input[type="checkbox"] {
+    width: 17px;
+    height: 17px;
+    margin: 0;
+}
+
+.admin-playlist-list,
+.admin-playlist-story-list {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.admin-playlist-item,
+.admin-playlist-story-item {
+    border: 1px solid color-mix(in srgb, var(--line) 80%, #bbc4bf);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--surface) 92%, white);
+    padding: 0.45rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.admin-playlist-item.is-selected {
+    background: color-mix(in srgb, var(--accent) 18%, white);
+}
+
+.admin-playlist-select {
+    border: 0;
+    background: transparent;
+    text-align: left;
+    padding: 0;
+    color: inherit;
+    cursor: pointer;
+    display: grid;
+    gap: 0.12rem;
+}
+
+.admin-playlist-select span,
+.admin-playlist-story-item span {
+    font-size: 0.82rem;
+    color: var(--muted);
+}
+
+.admin-playlist-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    justify-content: flex-end;
+}
+
+.admin-playlist-actions button {
+    min-height: 34px;
+    padding: 0.4rem 0.55rem;
+}
+
+.admin-playlist-actions .admin-icon-btn {
+    width: 34px;
+    min-width: 34px;
+    min-height: 34px;
+    padding: 0;
+}
+
+.admin-toggle-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.admin-toggle-cell ::deep .mud-switch {
+    margin: 0;
+}
+
+.admin-playlist-actions .is-danger {
+    background: #f8d2d2;
+    color: #7a1c1c;
+}
+
+.admin-story-picker {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+}
+
+@media (max-width: 760px) {
+    .admin-language {
+        width: 100%;
+    }
+
+    .admin-tabs ::deep .mud-tabs-tabbar {
+        overflow-x: auto;
+    }
+
+    .admin-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-form-grid .admin-span-2 {
+        grid-column: span 1;
+    }
+
+    .admin-image-preview-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-search,
+    .admin-story-picker {
+        width: 100%;
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .admin-search .admin-icon-btn,
+    .admin-story-picker .admin-icon-btn {
+        width: 100%;
+        min-width: 0;
+    }
+
+    .admin-grid ::deep table {
+        min-width: 540px;
+    }
+
+    .admin-playlist-item,
+    .admin-playlist-story-item {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}

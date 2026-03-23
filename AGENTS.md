@@ -59,3 +59,8 @@ Project-specific rules for this repository.
 - Afrikaans-first copy and tone.
 - Mobile responsiveness is required for all page changes.
 - Preserve existing visual style unless explicitly asked to redesign.
+
+## 7) Admin Page Localization
+- The `/admin` page must support both Afrikaans and English.
+- Any new admin UI copy must be added in both languages (not one language only).
+- Keep the admin language toggle and persisted preference behavior working when making admin changes.
