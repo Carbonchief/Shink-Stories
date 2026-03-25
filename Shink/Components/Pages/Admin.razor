@@ -81,13 +81,14 @@
                                   Variant="Variant.Outlined"
                                   Margin="Margin.Dense"
                                   Immediate="true" />
-                    <MudButton Class="admin-icon-btn"
+                    <MudButton Class="admin-icon-btn admin-mobile-cta"
                                Variant="Variant.Filled"
                                Color="Color.Primary"
                                OnClick="RefreshSubscribersAsync"
                                aria-label='@T("Soek intekenaars", "Search subscribers")'
                                title='@T("Soek intekenaars", "Search subscribers")'>
                         <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                        <span class="admin-btn-text">@T("Soek", "Search")</span>
                         <span class="sr-only">@T("Soek intekenaars", "Search subscribers")</span>
                     </MudButton>
                 </div>
@@ -139,13 +140,14 @@
                                   Variant="Variant.Outlined"
                                   Margin="Margin.Dense"
                                   Immediate="true" />
-                    <MudButton Class="admin-icon-btn"
+                    <MudButton Class="admin-icon-btn admin-mobile-cta"
                                Variant="Variant.Filled"
                                Color="Color.Primary"
                                OnClick="RefreshStoriesAsync"
                                aria-label='@T("Soek stories", "Search stories")'
                                title='@T("Soek stories", "Search stories")'>
                         <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                        <span class="admin-btn-text">@T("Soek", "Search")</span>
                         <span class="sr-only">@T("Soek stories", "Search stories")</span>
                     </MudButton>
                 </div>
@@ -186,11 +188,12 @@
                 <h2>@T("Playlists", "Playlists")</h2>
                 <MudButton Variant="Variant.Outlined"
                            Color="Color.Primary"
-                           Class="admin-btn admin-btn-secondary admin-icon-btn"
+                           Class="admin-btn admin-btn-secondary admin-icon-btn admin-mobile-cta"
                            OnClick="StartNewPlaylist"
                            aria-label='@T("Nuwe playlist", "New playlist")'
                            title='@T("Nuwe playlist", "New playlist")'>
                     <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                    <span class="admin-btn-text">@T("Nuwe playlist", "New playlist")</span>
                     <span class="sr-only">@T("Nuwe playlist", "New playlist")</span>
                 </MudButton>
             </div>
@@ -298,18 +301,20 @@
                     </div>
                 </DialogContent>
                 <DialogActions>
-                    <MudButton Variant="Variant.Text"
-                               Color="Color.Default"
-                               OnClick="CloseSubscriberDialog">
-                        @T("Sluit", "Close")
-                    </MudButton>
-                    <MudButton Variant="Variant.Filled"
-                               Color="Color.Primary"
-                               Class="admin-btn"
-                               Disabled="@IsSavingSubscriber"
-                               OnClick="SaveSubscriberAsync">
-                        @(IsSavingSubscriber ? T("Stoor...", "Saving...") : T("Stoor intekenaar", "Save subscriber"))
-                    </MudButton>
+                    <div class="admin-dialog-actions-row">
+                        <MudButton Variant="Variant.Text"
+                                   Color="Color.Default"
+                                   OnClick="CloseSubscriberDialog">
+                            @T("Sluit", "Close")
+                        </MudButton>
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   Class="admin-btn"
+                                   Disabled="@IsSavingSubscriber"
+                                   OnClick="SaveSubscriberAsync">
+                            @(IsSavingSubscriber ? T("Stoor...", "Saving...") : T("Stoor intekenaar", "Save subscriber"))
+                        </MudButton>
+                    </div>
                 </DialogActions>
             </MudDialog>
         }
@@ -452,18 +457,20 @@
                     </div>
                 </DialogContent>
                 <DialogActions>
-                    <MudButton Variant="Variant.Text"
-                               Color="Color.Default"
-                               OnClick="CloseStoryDialog">
-                        @T("Sluit", "Close")
-                    </MudButton>
-                    <MudButton Variant="Variant.Filled"
-                               Color="Color.Primary"
-                               Class="admin-btn"
-                               Disabled="@IsSavingStory"
-                               OnClick="SaveStoryAsync">
-                        @(IsSavingStory ? T("Stoor...", "Saving...") : T("Stoor storie", "Save story"))
-                    </MudButton>
+                    <div class="admin-dialog-actions-row">
+                        <MudButton Variant="Variant.Text"
+                                   Color="Color.Default"
+                                   OnClick="CloseStoryDialog">
+                            @T("Sluit", "Close")
+                        </MudButton>
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   Class="admin-btn"
+                                   Disabled="@IsSavingStory"
+                                   OnClick="SaveStoryAsync">
+                            @(IsSavingStory ? T("Stoor...", "Saving...") : T("Stoor storie", "Save story"))
+                        </MudButton>
+                    </div>
                 </DialogActions>
             </MudDialog>
         }
@@ -536,11 +543,12 @@
                                         </MudSelect>
                                         <MudButton Variant="Variant.Filled"
                                                    Color="Color.Primary"
-                                                   Class="admin-icon-btn"
+                                                   Class="admin-icon-btn admin-mobile-cta"
                                                    OnClick="AddStoryToPlaylist"
                                                    aria-label='@T("Voeg storie by", "Add story")'
                                                    title='@T("Voeg storie by", "Add story")'>
                                             <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                                            <span class="admin-btn-text">@T("Voeg by", "Add")</span>
                                             <span class="sr-only">@T("Voeg storie by", "Add story")</span>
                                         </MudButton>
                                     </div>
@@ -625,11 +633,13 @@
                     </MudTabs>
                 </DialogContent>
                 <DialogActions>
-                    <MudButton Variant="Variant.Text"
-                               Color="Color.Default"
-                               OnClick="ClosePlaylistDialog">
-                        @T("Sluit", "Close")
-                    </MudButton>
+                    <div class="admin-dialog-actions-row">
+                        <MudButton Variant="Variant.Text"
+                                   Color="Color.Default"
+                                   OnClick="ClosePlaylistDialog">
+                            @T("Sluit", "Close")
+                        </MudButton>
+                    </div>
                 </DialogActions>
             </MudDialog>
         }
