@@ -189,6 +189,10 @@
     line-height: 1;
 }
 
+.admin-btn-text {
+    display: none;
+}
+
 .admin-grid {
     border: 1px solid var(--admin-border);
     border-radius: 12px;
@@ -211,6 +215,8 @@
     padding: 0.58rem 0.5rem;
     vertical-align: top;
     border-color: color-mix(in srgb, var(--admin-border) 84%, transparent);
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .admin-grid ::deep tbody tr {
@@ -237,6 +243,10 @@
 .admin-editor h3 {
     margin: 0;
     font-size: 1.05rem;
+}
+
+.admin-editor > .admin-btn {
+    justify-self: flex-start;
 }
 
 .admin-form-grid {
@@ -387,6 +397,14 @@
     align-items: center;
 }
 
+.admin-dialog-actions-row {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.6rem;
+}
+
 .admin-page ::deep .mud-input > input,
 .admin-page ::deep .mud-input-slot,
 .admin-page ::deep .mud-input-root,
@@ -419,12 +437,35 @@
 }
 
 @media (max-width: 760px) {
+    .admin-page {
+        gap: 0.8rem;
+    }
+
+    .admin-hero,
+    .admin-section,
+    .admin-state,
+    .admin-editor {
+        border-radius: 14px;
+        padding: 0.75rem;
+    }
+
+    .admin-hero-top,
+    .admin-section-head {
+        align-items: stretch;
+    }
+
     .admin-language {
         width: 100%;
     }
 
     .admin-tabs ::deep .mud-tabs-tabbar {
         overflow-x: auto;
+        scrollbar-width: thin;
+        overscroll-behavior-x: contain;
+    }
+
+    .admin-tabs ::deep .mud-tab {
+        min-width: max-content;
     }
 
     .admin-form-grid {
@@ -446,19 +487,44 @@
         align-items: stretch;
     }
 
-    .admin-search .admin-icon-btn,
-    .admin-story-picker .admin-icon-btn {
+    .admin-mobile-cta {
         width: 100%;
         min-width: 0;
+        justify-content: center;
+        gap: 0.55rem;
+        padding-inline: 0.95rem;
+    }
+
+    .admin-mobile-cta .admin-btn-text {
+        display: inline;
+    }
+
+    .admin-grid ::deep .mud-sm-table .mud-table-cell {
+        align-items: flex-start;
+        gap: 0.7rem;
+    }
+
+    .admin-grid ::deep .mud-sm-table .mud-table-cell::before {
+        padding-right: 0;
+        color: var(--admin-muted);
     }
 
     .admin-grid ::deep table {
-        min-width: 540px;
+        min-width: 0;
+    }
+
+    .admin-editor > .admin-btn,
+    .admin-dialog-actions-row > * {
+        width: 100%;
     }
 
     .admin-playlist-item,
     .admin-playlist-story-item {
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .admin-dialog-actions-row {
+        flex-direction: column-reverse;
     }
 }
