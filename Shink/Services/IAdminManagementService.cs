@@ -56,7 +56,12 @@ public sealed record AdminSubscriberRecord(
     string? MobileNumber,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    IReadOnlyList<string> ActiveTierCodes);
+    IReadOnlyList<string> ActiveTierCodes,
+    string? PaymentProvider,
+    string? SubscriptionStatus,
+    DateTimeOffset? SubscribedAt,
+    DateTimeOffset? NextPaymentDueAt,
+    DateTimeOffset? CancelledAt);
 
 public sealed record AdminSubscriberUpdateRequest(
     Guid SubscriberId,
