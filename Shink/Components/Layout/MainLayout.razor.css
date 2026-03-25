@@ -45,8 +45,8 @@
 
 .site-shell.story-route {
     background:
-        radial-gradient(120% 90% at 50% -12%, rgba(99, 157, 176, 0.18) 0%, rgba(99, 157, 176, 0) 48%),
-        linear-gradient(180deg, #0e2a36 0%, #154052 22%, #4b4b25 56%, #1c2022 86%, #17191b 100%);
+        radial-gradient(120% 90% at 50% -12%, rgba(141, 198, 111, 0.18) 0%, rgba(141, 198, 111, 0) 50%),
+        linear-gradient(180deg, #f6f3ee 0%, #ece8e2 100%);
 }
 
 .site-container {
@@ -407,9 +407,60 @@
 }
 
 .site-shell.story-route .site-header {
-    border-bottom-color: rgba(236, 242, 247, 0.24);
-    background: rgba(12, 18, 25, 0.82);
-    box-shadow: 0 10px 24px rgba(3, 8, 12, 0.46);
+    border-bottom-color: rgba(44, 47, 53, 0.08);
+    background: rgba(246, 243, 238, 0.9);
+    box-shadow: 0 10px 22px rgba(51, 47, 41, 0.08);
+}
+
+.story-header-wrap {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 72px;
+}
+
+.story-header-back {
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    color: #6a6660;
+    text-decoration: none;
+    transition: background 0.18s ease, color 0.18s ease;
+}
+
+.story-header-back i {
+    font-size: 1.15rem;
+    line-height: 1;
+}
+
+.story-header-back:hover {
+    background: rgba(34, 34, 34, 0.06);
+    color: #2f2c29;
+}
+
+.story-header-back:focus-visible {
+    outline: 3px solid color-mix(in srgb, #ffffff 30%, var(--accent));
+    outline-offset: 2px;
+}
+
+.story-header-title {
+    text-align: center;
+    font-size: clamp(1.05rem, 2.6vw, 1.45rem);
+    letter-spacing: 0.34em;
+    color: #6f6a65;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.story-header-spacer {
+    width: 44px;
+    height: 44px;
 }
 
 .site-shell.story-route .nav-menu-toggle {
@@ -465,16 +516,24 @@
 
 .site-shell.story-route .site-search-suggestions-list ::deep .site-search-suggestion-kind,
 .site-shell.story-route .site-search-suggestions-list ::deep .site-search-suggestion-empty {
-    color: rgba(236, 242, 247, 0.84);
+    color: #4f5b66;
 }
 
 .site-shell.story-route .is-search-active .site-search-form {
-    border-color: #f2f5f8;
+    border-color: #2f343b;
     background: #f9fafb;
 }
 
 .site-shell.story-route .is-search-active .site-search-toggle {
     color: #262a31;
+}
+
+.site-shell.story-route .site-main {
+    padding-block: 0.75rem 2.5rem;
+}
+
+.site-shell.story-route .site-main > .site-container {
+    width: min(760px, 100% - 1.35rem);
 }
 
 .site-shell.story-route .site-nav a:hover {
@@ -939,4 +998,3 @@
         align-items: center;
     }
 }
-

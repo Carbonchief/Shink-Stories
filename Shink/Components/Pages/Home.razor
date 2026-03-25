@@ -416,6 +416,7 @@
     private ElementReference KleuterStoriesCarouselRef;
     private ElementReference BibleStoriesCarouselRef;
     private IJSObjectReference? _homeModule;
+    private bool _homeModuleLoadFailed;
 
     private IReadOnlyList<StoryItem> FreeStories { get; set; } = Array.Empty<StoryItem>();
     private IReadOnlyList<StoryPreviewItem> NewestTop10Stories { get; set; } = Array.Empty<StoryPreviewItem>();
@@ -755,8 +756,13 @@
             return;
         }
 
-        _homeModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Pages/Home.razor.js");
-        await _homeModule.InvokeVoidAsync("scrollCarouselByPage", carouselRef, direction);
+        var module = await TryGetHomeModuleAsync();
+        if (module is null)
+        {
+            return;
+        }
+
+        await module.InvokeVoidAsync("scrollCarouselByPage", carouselRef, direction);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -766,8 +772,41 @@
             return;
         }
 
-        _homeModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Pages/Home.razor.js");
-        await _homeModule.InvokeVoidAsync("initializeHomeStoryLoading");
+        var module = await TryGetHomeModuleAsync();
+        if (module is null)
+        {
+            return;
+        }
+
+        await module.InvokeVoidAsync("initializeHomeStoryLoading");
+    }
+
+    private async Task<IJSObjectReference?> TryGetHomeModuleAsync()
+    {
+        if (_homeModuleLoadFailed)
+        {
+            return null;
+        }
+
+        if (_homeModule is not null)
+        {
+            return _homeModule;
+        }
+
+        try
+        {
+            _homeModule = await JS.InvokeAsync<IJSObjectReference>("import", "/Components/Pages/Home.razor.js");
+            return _homeModule;
+        }
+        catch (JSException)
+        {
+            _homeModuleLoadFailed = true;
+            return null;
+        }
+        catch (JSDisconnectedException)
+        {
+            return null;
+        }
     }
 
     public async ValueTask DisposeAsync()
@@ -985,4 +1024,3 @@
         public string Website { get; set; } = string.Empty;
     }
 }
-

@@ -1,3 +1,36 @@
+.luister-page-shell {
+    position: relative;
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    padding: 1rem max(0.9rem, calc((100vw - 1080px) / 2 + 0.9rem)) 2.4rem;
+    background:
+        linear-gradient(180deg, rgba(64, 141, 147, 0.18) 0%, rgba(79, 157, 179, 0.14) 18%, rgba(212, 207, 105, 0.2) 46%, rgba(239, 239, 239, 0.88) 78%, #efefef 100%);
+}
+
+.luister-page-shell::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(
+            to bottom,
+            rgba(64, 141, 147, 0.22) 0%,
+            rgba(64, 141, 147, 0.18) 24%,
+            rgba(79, 157, 179, 0.12) 38%,
+            rgba(212, 207, 105, 0.18) 58%,
+            rgba(239, 239, 239, 0) 82%
+        ),
+        url("/branding/Schink_Background.jpeg") center top / cover no-repeat;
+    opacity: 0.92;
+    pointer-events: none;
+}
+
+.luister-page-shell > * {
+    position: relative;
+    z-index: 1;
+}
+
 .gratis-hero {
     display: grid;
     grid-template-columns: 1fr;
@@ -57,7 +90,7 @@ h1 {
 
 .stories-carousel-section .section-intro {
     margin: 0.35rem 0 0;
-    color: var(--muted);
+    color: #3f5255;
 }
 
 .stories-carousel-shell {
@@ -276,6 +309,10 @@ h1 {
 }
 
 @media (max-width: 680px) {
+    .luister-page-shell {
+        padding: 0.8rem 0.85rem 2rem;
+    }
+
     .gratis-hero {
         margin-bottom: 1.1rem;
     }
@@ -319,6 +356,11 @@ h1 {
 }
 
 @media (max-width: 420px) {
+    .luister-page-shell {
+        padding-top: 0.7rem;
+        padding-bottom: 1.8rem;
+    }
+
     .gratis-hero {
         gap: 0.7rem;
     }

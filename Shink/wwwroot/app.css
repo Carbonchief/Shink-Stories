@@ -68,3 +68,152 @@ h1:focus {
 .form-floating > .form-control-plaintext:focus::placeholder, .form-floating > .form-control:focus::placeholder {
     text-align: start;
 }
+
+@media (prefers-color-scheme: dark) {
+    body .site-shell .site-main {
+        --grid-surface-dark: linear-gradient(180deg, rgba(42, 52, 58, 0.98) 0%, rgba(28, 36, 41, 0.99) 100%);
+        --grid-surface-soft-dark: rgba(33, 42, 47, 0.96);
+        --grid-border-dark: rgba(149, 174, 182, 0.28);
+        --grid-border-strong-dark: rgba(191, 211, 218, 0.34);
+        --grid-text-dark: #edf4f6;
+        --grid-muted-dark: #bcc9ce;
+        --grid-highlight-border-dark: rgba(243, 154, 50, 0.44);
+        --grid-shadow-dark: 0 16px 30px rgba(6, 10, 15, 0.24);
+    }
+
+    body .site-shell .site-main .opsies-testimonials,
+    body .site-shell .site-main .about-block,
+    body .site-shell .site-main .about-card,
+    body .site-shell .site-main .gratis-card,
+    body .site-shell .site-main .my-story-card,
+    body .site-shell .site-main .billing-plan-card,
+    body .site-shell .site-main .home-review-card,
+    body .site-shell .site-main .review-card,
+    body .site-shell .site-main .opsies-review-card,
+    body .site-shell .site-main .perfect-plan-card,
+    body .site-shell .site-main .opsie-card {
+        background: var(--grid-surface-dark);
+        border-color: var(--grid-border-dark);
+        color: var(--grid-text-dark);
+        box-shadow: var(--grid-shadow-dark);
+    }
+
+    body .site-shell .site-main .about-card.focus-card {
+        background: linear-gradient(180deg, rgba(48, 59, 65, 0.98) 0%, rgba(30, 39, 44, 0.99) 100%);
+        border-color: var(--grid-border-strong-dark);
+    }
+
+    body .site-shell .site-main .perfect-plan-card.is-featured,
+    body .site-shell .site-main .opsie-card.featured {
+        border-color: var(--grid-highlight-border-dark);
+        box-shadow: 0 18px 34px rgba(243, 154, 50, 0.16);
+    }
+
+    body .site-shell .site-main .perfect-plan-badge,
+    body .site-shell .site-main .opsie-badge {
+        background: rgba(164, 96, 16, 0.94);
+        border-color: rgba(255, 255, 255, 0.18);
+        color: #fff4e1;
+    }
+
+    body .site-shell .site-main .perfect-plan-option,
+    body .site-shell .site-main .perfect-plan-select,
+    body .site-shell .site-main .opsie-btn {
+        background: var(--grid-surface-soft-dark);
+        border-color: var(--grid-border-dark);
+        color: var(--grid-text-dark);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+
+    body .site-shell .site-main .perfect-plan-option:hover,
+    body .site-shell .site-main .perfect-plan-select:hover,
+    body .site-shell .site-main .opsie-btn:hover {
+        background: rgba(243, 154, 50, 0.14);
+        border-color: var(--grid-highlight-border-dark);
+    }
+
+    body .site-shell .site-main .perfect-plan-option.is-selected,
+    body .site-shell .site-main .perfect-plan-select.is-linked-selected {
+        background: rgba(243, 154, 50, 0.18);
+        border-color: var(--grid-highlight-border-dark);
+        box-shadow: 0 8px 18px rgba(243, 154, 50, 0.18);
+    }
+
+    body .site-shell .site-main .perfect-plan-option-indicator {
+        border-color: rgba(232, 239, 242, 0.3);
+        background: rgba(14, 20, 25, 0.88);
+    }
+
+    body .site-shell .site-main .perfect-plan-option.is-selected .perfect-plan-option-indicator {
+        background: rgba(255, 244, 229, 0.94);
+    }
+
+    body .site-shell .site-main .opsie-btn-disabled,
+    body .site-shell .site-main .opsie-btn-disabled:hover {
+        background: rgba(255, 255, 255, 0.06);
+        color: #81919a;
+        border-color: rgba(255, 255, 255, 0.1);
+        box-shadow: none;
+    }
+
+    body .site-shell .site-main .perfect-plan-list li::before,
+    body .site-shell .site-main .opsie-card li::before {
+        color: #f4cb76;
+    }
+
+    body .site-shell .site-main .perfect-plan-card h3,
+    body .site-shell .site-main .perfect-plan-option-price-line strong,
+    body .site-shell .site-main .opsie-card h2,
+    body .site-shell .site-main .opsie-price,
+    body .site-shell .site-main .billing-plan-card h3,
+    body .site-shell .site-main .billing-price,
+    body .site-shell .site-main .gratis-card-body h2,
+    body .site-shell .site-main .my-story-body h3,
+    body .site-shell .site-main .about-card h2,
+    body .site-shell .site-main .opsies-testimonials h2 {
+        color: var(--grid-text-dark);
+    }
+
+    body .site-shell .site-main .gratis-card-body p,
+    body .site-shell .site-main .my-story-description,
+    body .site-shell .site-main .my-story-meta,
+    body .site-shell .site-main .billing-description,
+    body .site-shell .site-main .billing-price span,
+    body .site-shell .site-main .opsie-price span,
+    body .site-shell .site-main .opsie-detail,
+    body .site-shell .site-main .opsie-note,
+    body .site-shell .site-main .perfect-plan-option-price-line span,
+    body .site-shell .site-main .perfect-plan-option-caption,
+    body .site-shell .site-main .about-block p,
+    body .site-shell .site-main .about-card p,
+    body .site-shell .site-main .about-card li,
+    body .site-shell .site-main .home-review-author,
+    body .site-shell .site-main .home-review-role,
+    body .site-shell .site-main .review-author,
+    body .site-shell .site-main .review-role,
+    body .site-shell .site-main .opsies-review-author {
+        color: var(--grid-muted-dark);
+    }
+
+    body .site-shell .site-main .home-review-card blockquote,
+    body .site-shell .site-main .review-card blockquote,
+    body .site-shell .site-main .opsies-review-card blockquote {
+        color: var(--grid-text-dark);
+    }
+
+    body .site-shell .site-main .my-story-source {
+        color: #a4d2de;
+    }
+
+    body .site-shell .site-main .my-story-progress-wrap {
+        background: rgba(255, 255, 255, 0.12);
+    }
+
+    body .site-shell .site-main .billing-save-badge,
+    body .site-shell .site-main .opsie-save-badge,
+    body .site-shell .site-main .perfect-plan-option-save-badge {
+        background: rgba(243, 154, 50, 0.16);
+        border-color: rgba(243, 154, 50, 0.42);
+        color: #ffdfa8;
+    }
+}
