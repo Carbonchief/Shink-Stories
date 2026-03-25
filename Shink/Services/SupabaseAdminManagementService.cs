@@ -62,10 +62,11 @@ public sealed partial class SupabaseAdminManagementService(
         }
 
         var subscribersTask = FetchSubscribersAsync(baseUri, apiKey, cancellationToken);
-        var subscriptionsTask = FetchActiveSubscriptionsAsync(baseUri, apiKey, cancellationToken);
+        var subscriptionsTask = FetchSubscriptionsAsync(baseUri, apiKey, cancellationToken);
         await Task.WhenAll(subscribersTask, subscriptionsTask);
 
         var activeTiersBySubscriber = BuildActiveTierMap(subscriptionsTask.Result);
+        var subscriptionSummaryBySubscriber = BuildSubscriptionSummaryMap(subscriptionsTask.Result);
         var normalizedSearch = NormalizeSearchTerm(search);
 
         return subscribersTask.Result
@@ -77,6 +78,9 @@ public sealed partial class SupabaseAdminManagementService(
                 var activeTierCodes = activeTiersBySubscriber.TryGetValue(row.SubscriberId, out var tierCodes)
                     ? tierCodes
                     : Array.Empty<string>();
+                var subscriptionSummary = subscriptionSummaryBySubscriber.TryGetValue(row.SubscriberId, out var summary)
+                    ? summary
+                    : null;
 
                 return new AdminSubscriberRecord(
                     SubscriberId: row.SubscriberId,
@@ -87,7 +91,12 @@ public sealed partial class SupabaseAdminManagementService(
                     MobileNumber: NormalizeOptionalText(row.MobileNumber, 32),
                     CreatedAt: row.CreatedAt,
                     UpdatedAt: row.UpdatedAt,
-                    ActiveTierCodes: activeTierCodes);
+                    ActiveTierCodes: activeTierCodes,
+                    PaymentProvider: subscriptionSummary?.PaymentProvider,
+                    SubscriptionStatus: subscriptionSummary?.Status,
+                    SubscribedAt: subscriptionSummary?.SubscribedAt,
+                    NextPaymentDueAt: subscriptionSummary?.NextRenewalAt,
+                    CancelledAt: subscriptionSummary?.CancelledAt);
             })
             .OrderByDescending(row => row.UpdatedAt)
             .ThenBy(row => row.Email, StringComparer.OrdinalIgnoreCase)
@@ -677,13 +686,12 @@ public sealed partial class SupabaseAdminManagementService(
         return await FetchRowsAsync<SubscriberRow>(uri, apiKey, cancellationToken);
     }
 
-    private async Task<IReadOnlyList<SubscriptionRow>> FetchActiveSubscriptionsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<SubscriptionRow>> FetchSubscriptionsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
     {
         var uri = new Uri(
             baseUri,
             "rest/v1/subscriptions" +
-            "?select=subscriber_id,tier_code,status,next_renewal_at,cancelled_at" +
-            "&status=eq.active" +
+            "?select=subscriber_id,tier_code,provider,status,subscribed_at,next_renewal_at,cancelled_at" +
             "&order=subscribed_at.desc" +
             "&limit=5000");
 
@@ -886,6 +894,51 @@ public sealed partial class SupabaseAdminManagementService(
                     .ToArray());
     }
 
+    private static Dictionary<Guid, SubscriptionSummary> BuildSubscriptionSummaryMap(IReadOnlyList<SubscriptionRow> subscriptions)
+    {
+        var nowUtc = DateTimeOffset.UtcNow;
+
+        return subscriptions
+            .Where(subscription => subscription.SubscriberId != Guid.Empty)
+            .GroupBy(subscription => subscription.SubscriberId)
+            .ToDictionary(
+                group => group.Key,
+                group =>
+                {
+                    var selected = group
+                        .OrderByDescending(subscription => GetSubscriptionPriority(subscription, nowUtc))
+                        .ThenByDescending(subscription => subscription.SubscribedAt ?? DateTimeOffset.MinValue)
+                        .First();
+
+                    return new SubscriptionSummary(
+                        NormalizeOptionalText(selected.Provider, 40),
+                        NormalizeOptionalText(selected.Status, 40),
+                        selected.SubscribedAt,
+                        selected.NextRenewalAt,
+                        selected.CancelledAt);
+                });
+    }
+
+    private static int GetSubscriptionPriority(SubscriptionRow subscription, DateTimeOffset nowUtc)
+    {
+        if (IsActiveSubscription(subscription, nowUtc))
+        {
+            return 3;
+        }
+
+        if (string.Equals(subscription.Status, "pending", StringComparison.OrdinalIgnoreCase))
+        {
+            return 2;
+        }
+
+        if (string.Equals(subscription.Status, "cancelled", StringComparison.OrdinalIgnoreCase))
+        {
+            return 1;
+        }
+
+        return 0;
+    }
+
     private static bool IsActiveSubscription(SubscriptionRow subscription, DateTimeOffset nowUtc)
     {
         if (!string.Equals(subscription.Status, "active", StringComparison.OrdinalIgnoreCase))
@@ -1079,8 +1132,14 @@ public sealed partial class SupabaseAdminManagementService(
         [JsonPropertyName("tier_code")]
         public string? TierCode { get; set; }
 
+        [JsonPropertyName("provider")]
+        public string? Provider { get; set; }
+
         [JsonPropertyName("status")]
         public string Status { get; set; } = string.Empty;
+
+        [JsonPropertyName("subscribed_at")]
+        public DateTimeOffset? SubscribedAt { get; set; }
 
         [JsonPropertyName("next_renewal_at")]
         public DateTimeOffset? NextRenewalAt { get; set; }
@@ -1088,6 +1147,13 @@ public sealed partial class SupabaseAdminManagementService(
         [JsonPropertyName("cancelled_at")]
         public DateTimeOffset? CancelledAt { get; set; }
     }
+
+    private sealed record SubscriptionSummary(
+        string? PaymentProvider,
+        string? Status,
+        DateTimeOffset? SubscribedAt,
+        DateTimeOffset? NextRenewalAt,
+        DateTimeOffset? CancelledAt);
 
     private sealed class StoryRow
     {

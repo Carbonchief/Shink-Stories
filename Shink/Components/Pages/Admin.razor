@@ -106,12 +106,20 @@
                 <HeaderContent>
                     <MudTh>@T("E-pos", "Email")</MudTh>
                     <MudTh>@T("Naam", "Name")</MudTh>
-                            <MudTh>@T("Vlakke", "Tiers")</MudTh>
+                    <MudTh>@T("Vlakke", "Tiers")</MudTh>
+                    <MudTh>@T("Betaalverskaffer", "Payment Provider")</MudTh>
+                    <MudTh>@T("Status", "Status")</MudTh>
+                    <MudTh>@T("Ingeteken op", "Subscribed On")</MudTh>
+                    <MudTh>@T("Volgende betaling", "Next Payment")</MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd DataLabel='@T("E-pos", "Email")'>@context.Email</MudTd>
                     <MudTd DataLabel='@T("Naam", "Name")'>@BuildSubscriberName(context)</MudTd>
-                            <MudTd DataLabel='@T("Vlakke", "Tiers")'>@BuildTierSummary(context.ActiveTierCodes)</MudTd>
+                    <MudTd DataLabel='@T("Vlakke", "Tiers")'>@BuildTierSummary(context.ActiveTierCodes)</MudTd>
+                    <MudTd DataLabel='@T("Betaalverskaffer", "Payment Provider")'>@BuildPaymentProviderLabel(context.PaymentProvider)</MudTd>
+                    <MudTd DataLabel='@T("Status", "Status")'>@BuildSubscriptionStatusLabel(context)</MudTd>
+                    <MudTd DataLabel='@T("Ingeteken op", "Subscribed On")'>@FormatAdminDate(context.SubscribedAt)</MudTd>
+                    <MudTd DataLabel='@T("Volgende betaling", "Next Payment")'>@FormatAdminDate(context.NextPaymentDueAt)</MudTd>
                 </RowTemplate>
                 <NoRecordsContent>
                     <MudText Typo="Typo.body2">@T("Geen intekenaars gevind nie.", "No subscribers found.")</MudText>
@@ -1488,6 +1496,48 @@
 
     private string BuildTierSummary(IReadOnlyList<string>? tiers) =>
         tiers is null || tiers.Count == 0 ? T("Geen", "None") : string.Join(", ", tiers);
+
+    private string FormatAdminDate(DateTimeOffset? value)
+    {
+        if (value is null)
+        {
+            return "-";
+        }
+
+        var culture = CurrentLanguage == AdminLanguage.English
+            ? CultureInfo.GetCultureInfo("en-ZA")
+            : CultureInfo.GetCultureInfo("af-ZA");
+
+        return value.Value.ToLocalTime().ToString("d MMM yyyy", culture);
+    }
+
+    private string BuildPaymentProviderLabel(string? provider) =>
+        provider?.Trim().ToLowerInvariant() switch
+        {
+            "payfast" => "PayFast",
+            "paystack" => "Paystack",
+            null or "" => "-",
+            _ => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(provider.Trim().ToLowerInvariant())
+        };
+
+    private string BuildSubscriptionStatusLabel(AdminSubscriberRecord subscriber)
+    {
+        if (!string.IsNullOrWhiteSpace(subscriber.SubscriptionStatus))
+        {
+            return subscriber.SubscriptionStatus.Trim().ToLowerInvariant() switch
+            {
+                "active" => T("Aktief", "Active"),
+                "pending" => T("Hangend", "Pending"),
+                "cancelled" => T("Gekanselleer", "Cancelled"),
+                "failed" => T("Misluk", "Failed"),
+                _ => subscriber.SubscriptionStatus
+            };
+        }
+
+        return subscriber.CancelledAt is not null
+            ? T("Gekanselleer", "Cancelled")
+            : T("Geen", "None");
+    }
 
     private enum AdminLanguage
     {
