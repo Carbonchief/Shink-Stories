@@ -49,13 +49,6 @@ else if (CurrentStory is null)
 else
 {
     <section class="story-player-page @(IsManualFullscreenFocus ? "manual-fullscreen-focus" : null)">
-        <a class="back-link" href="/luister" @onclick="HandleBackLinkAsync" @onclick:preventDefault="true">&lt;- Terug na luister stories</a>
-
-        <div class="story-description">
-            <h1>@CurrentStory.Title</h1>
-            <p>@CurrentStory.Description</p>
-        </div>
-
         <div class="story-player-content story-player-enhanced" oncontextmenu="return false;">
             <div class="story-cover-wrap">
                 <img src="@CurrentStory.ThumbnailPath"
@@ -80,6 +73,9 @@ else
                     <span class="sr-only">@(IsManualFullscreenFocus ? "Verlaat volskerm speler" : "Volskerm speler")</span>
                 </button>
             </div>
+
+            <h1 class="story-player-title">@CurrentStory.Title</h1>
+
             <audio controls controlslist="nodownload noplaybackrate"
                    disablepictureinpicture preload="metadata" class="story-audio story-audio-native"
                    playsinline webkit-playsinline="true"
@@ -182,6 +178,11 @@ else
             </div>
         </div>
 
+        <section class="story-summary-card">
+            <h2>Waaroor gaan die storie?</h2>
+            <p>@CurrentStory.Description</p>
+        </section>
+
         <section class="story-carousel-section" aria-label="Ander luister stories">
             <h2>Ander luister stories</h2>
             <div class="story-carousel" role="list">
@@ -228,6 +229,7 @@ else
     private string? AudioUrl { get; set; }
     private IJSObjectReference? _mediaSessionModule;
     private DotNetObjectReference<LuisterStory>? _dotNetRef;
+    private bool _mediaSessionModuleLoadFailed;
     private bool IsManualFullscreenFocus { get; set; }
     private IReadOnlyList<StoryItem> LuisterStories { get; set; } = Array.Empty<StoryItem>();
     private StoryItem? PreviousStory { get; set; }
@@ -382,22 +384,56 @@ else
             return;
         }
 
-        _mediaSessionModule ??= await JS.InvokeAsync<IJSObjectReference>("import", "/Components/Pages/GratisStory.razor.js");
+        var module = await TryGetStoryPlayerModuleAsync();
+        if (module is null)
+        {
+            return;
+        }
+
         _dotNetRef ??= DotNetObjectReference.Create(this);
-        await _mediaSessionModule.InvokeVoidAsync("initializeStoryMediaSession");
-        await _mediaSessionModule.InvokeVoidAsync("initializeStoryPlayerFullscreenExperience", _dotNetRef);
+        await module.InvokeVoidAsync("initializeStoryMediaSession");
+        await module.InvokeVoidAsync("initializeStoryPlayerFullscreenExperience", _dotNetRef);
     }
 
     private async Task ToggleFullscreenFocusAsync()
     {
         IsManualFullscreenFocus = !IsManualFullscreenFocus;
 
-        if (_mediaSessionModule is null)
+        var module = await TryGetStoryPlayerModuleAsync();
+        if (module is null)
         {
-            _mediaSessionModule = await JS.InvokeAsync<IJSObjectReference>("import", "/Components/Pages/GratisStory.razor.js");
+            return;
         }
 
-        await _mediaSessionModule.InvokeVoidAsync("setStoryPlayerFullscreenIntent", IsManualFullscreenFocus);
+        await module.InvokeVoidAsync("setStoryPlayerFullscreenIntent", IsManualFullscreenFocus);
+    }
+
+    private async Task<IJSObjectReference?> TryGetStoryPlayerModuleAsync()
+    {
+        if (_mediaSessionModuleLoadFailed)
+        {
+            return null;
+        }
+
+        if (_mediaSessionModule is not null)
+        {
+            return _mediaSessionModule;
+        }
+
+        try
+        {
+            _mediaSessionModule = await JS.InvokeAsync<IJSObjectReference>("import", "/Components/Pages/GratisStory.razor.js");
+            return _mediaSessionModule;
+        }
+        catch (JSException)
+        {
+            _mediaSessionModuleLoadFailed = true;
+            return null;
+        }
+        catch (JSDisconnectedException)
+        {
+            return null;
+        }
     }
 
     private async Task HandleBackLinkAsync()
