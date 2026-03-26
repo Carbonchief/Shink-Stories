@@ -117,6 +117,7 @@ public sealed record AdminPlaylistRecord(
     int SortOrder,
     int? MaxItems,
     bool IsEnabled,
+    bool ShowOnHome,
     DateTimeOffset? UpdatedAt,
     IReadOnlyList<AdminPlaylistStoryItem> Stories);
 
@@ -133,4 +134,5 @@ public sealed record AdminPlaylistUpdateRequest(
     string? Description,
     int SortOrder,
     int? MaxItems,
-    bool IsEnabled);
+    bool IsEnabled,
+    bool ShowOnHome);

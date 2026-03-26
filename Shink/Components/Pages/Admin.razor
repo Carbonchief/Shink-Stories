@@ -68,6 +68,7 @@
             <p class="admin-feedback is-success">@StatusMessage</p>
         }
 
+        <div class="admin-tabs-shell">
         <MudTabs Class="admin-tabs"
                  Rounded="true">
             <MudTabPanel Text='@T("Intekenaars", "Subscribers")'>
@@ -165,13 +166,11 @@
                       OnRowClick="OnStoryRowClick">
                 <HeaderContent>
                     <MudTh>@T("Titel", "Title")</MudTh>
-                    <MudTh>Slug</MudTh>
                     <MudTh>@T("Status", "Status")</MudTh>
                     <MudTh>@T("Toegang", "Access")</MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd DataLabel='@T("Titel", "Title")'>@context.Title</MudTd>
-                    <MudTd DataLabel="Slug">@context.Slug</MudTd>
                     <MudTd DataLabel='@T("Status", "Status")'>@context.Status</MudTd>
                     <MudTd DataLabel='@T("Toegang", "Access")'>@context.AccessLevel</MudTd>
                 </RowTemplate>
@@ -210,8 +209,8 @@
                       OnRowClick="OnPlaylistRowClick">
                 <HeaderContent>
                     <MudTh>@T("Titel", "Title")</MudTh>
-                    <MudTh>Slug</MudTh>
                     <MudTh>@T("Aktief", "Active")</MudTh>
+                    <MudTh>@T("Tuisblad", "Home")</MudTh>
                     <MudTh>@T("Aksies", "Actions")</MudTh>
                 </HeaderContent>
                 <RowTemplate>
@@ -219,12 +218,20 @@
                         var playlistIndex = GetPlaylistIndex(context.PlaylistId);
                     }
                     <MudTd DataLabel='@T("Titel", "Title")'>@context.Title</MudTd>
-                    <MudTd DataLabel="Slug">@context.Slug</MudTd>
                     <MudTd DataLabel='@T("Aktief", "Active")'>
                         <div class="admin-toggle-cell" @onclick:stopPropagation="true">
                             <MudSwitch T="bool"
                                        Value="@context.IsEnabled"
                                        ValueChanged="@(value => TogglePlaylistEnabledAsync(context, value))"
+                                       Color="Color.Success"
+                                       Disabled="@(IsSavingPlaylistsOrder || IsSavingPlaylist || TogglingPlaylistIds.Contains(context.PlaylistId))" />
+                        </div>
+                    </MudTd>
+                    <MudTd DataLabel='@T("Tuisblad", "Home")'>
+                        <div class="admin-toggle-cell" @onclick:stopPropagation="true">
+                            <MudSwitch T="bool"
+                                       Value="@context.ShowOnHome"
+                                       ValueChanged="@(value => TogglePlaylistHomeAsync(context, value))"
                                        Color="Color.Success"
                                        Disabled="@(IsSavingPlaylistsOrder || IsSavingPlaylist || TogglingPlaylistIds.Contains(context.PlaylistId))" />
                         </div>
@@ -262,6 +269,7 @@
                 </section>
             </MudTabPanel>
         </MudTabs>
+        </div>
 
         @if (SubscriberEditor is not null)
         {
@@ -339,6 +347,7 @@
                         <MudTextField T="string"
                                       Label="Slug"
                                       @bind-Value="StoryEditor.Slug"
+                                      ReadOnly="true"
                                       Variant="Variant.Outlined"
                                       Margin="Margin.Dense" />
                         <MudSelect T="string"
@@ -483,6 +492,7 @@
                     <MudText Typo="Typo.h6">@T("Wysig playlist", "Edit playlist")</MudText>
                 </TitleContent>
                 <DialogContent>
+                    <div class="admin-tabs-shell">
                     <MudTabs Class="admin-tabs admin-dialog-tabs"
                              Rounded="true">
                         <MudTabPanel Text='@T("Playlist inligting", "Playlist info")'>
@@ -493,11 +503,6 @@
                                                   @bind-Value="PlaylistEditor.Title"
                                                   Variant="Variant.Outlined"
                                                   Margin="Margin.Dense" />
-                                    <MudTextField T="string"
-                                                  Label="Slug"
-                                                  @bind-Value="PlaylistEditor.Slug"
-                                                  Variant="Variant.Outlined"
-                                                  Margin="Margin.Dense" />
                                     <MudNumericField T="int?"
                                                      Label='@T("Maks items", "Max items")'
                                                      @bind-Value="PlaylistEditor.MaxItems"
@@ -506,6 +511,9 @@
                                     <MudCheckBox T="bool"
                                                  Label='@T("Aktief", "Active")'
                                                  @bind-Value="PlaylistEditor.IsEnabled" />
+                                    <MudCheckBox T="bool"
+                                                 Label='@T("Wys op tuisblad", "Show on home")'
+                                                 @bind-Value="PlaylistEditor.ShowOnHome" />
                                     <MudTextField T="string"
                                                   Class="admin-span-2"
                                                   Label='@T("Beskrywing", "Description")'
@@ -631,6 +639,7 @@
                             }
                         </MudTabPanel>
                     </MudTabs>
+                    </div>
                 </DialogContent>
                 <DialogActions>
                     <div class="admin-dialog-actions-row">
@@ -1099,16 +1108,21 @@
 
         try
         {
+            var playlistSlug = string.IsNullOrWhiteSpace(PlaylistEditor.Slug)
+                ? CreatePlaylistSlug(PlaylistEditor.Title)
+                : PlaylistEditor.Slug.Trim();
+
             var result = await AdminManagementService.SavePlaylistAsync(
                 CurrentAdminEmail,
                 new AdminPlaylistUpdateRequest(
                     PlaylistEditor.PlaylistId,
-                    PlaylistEditor.Slug,
+                    playlistSlug,
                     PlaylistEditor.Title,
                     PlaylistEditor.Description,
                     PlaylistEditor.SortOrder,
                     PlaylistEditor.MaxItems,
-                    PlaylistEditor.IsEnabled));
+                    PlaylistEditor.IsEnabled,
+                    PlaylistEditor.ShowOnHome));
 
             if (!HandleOperationResult(result, T("Playlist is gestoor.", "Playlist saved.")))
             {
@@ -1154,7 +1168,8 @@
                     playlist.Description,
                     playlist.SortOrder,
                     playlist.MaxItems,
-                    isEnabled));
+                    isEnabled,
+                    playlist.ShowOnHome));
 
             if (!HandleOperationResult(
                     result,
@@ -1171,6 +1186,56 @@
         {
             Logger.LogError(exception, "Failed to toggle playlist status. playlist_id={PlaylistId}", playlist.PlaylistId);
             SetError(T("Kon nie playlist status nou opdateer nie.", "Could not update playlist status right now."));
+        }
+        finally
+        {
+            TogglingPlaylistIds.Remove(playlist.PlaylistId);
+        }
+    }
+
+    private async Task TogglePlaylistHomeAsync(AdminPlaylistRecord playlist, bool showOnHome)
+    {
+        if (playlist.PlaylistId == Guid.Empty || playlist.ShowOnHome == showOnHome)
+        {
+            return;
+        }
+
+        if (!TogglingPlaylistIds.Add(playlist.PlaylistId))
+        {
+            return;
+        }
+
+        ClearFeedback();
+
+        try
+        {
+            var result = await AdminManagementService.SavePlaylistAsync(
+                CurrentAdminEmail,
+                new AdminPlaylistUpdateRequest(
+                    playlist.PlaylistId,
+                    playlist.Slug,
+                    playlist.Title,
+                    playlist.Description,
+                    playlist.SortOrder,
+                    playlist.MaxItems,
+                    playlist.IsEnabled,
+                    showOnHome));
+
+            if (!HandleOperationResult(
+                    result,
+                    showOnHome
+                        ? T("Playlist wys nou op die tuisblad.", "Playlist now shows on the home page.")
+                        : T("Playlist is van die tuisblad verwyder.", "Playlist was removed from the home page.")))
+            {
+                return;
+            }
+
+            await RefreshPlaylistsAsync(playlist.PlaylistId);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to toggle playlist home visibility. playlist_id={PlaylistId}", playlist.PlaylistId);
+            SetError(T("Kon nie tuisblad status nou opdateer nie.", "Could not update home page status right now."));
         }
         finally
         {
@@ -1479,6 +1544,45 @@
         return new DateTimeOffset(parsed);
     }
 
+    private static string CreatePlaylistSlug(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var normalized = value.Normalize(System.Text.NormalizationForm.FormD);
+        var slugBuilder = new System.Text.StringBuilder();
+        var previousWasDash = false;
+
+        foreach (var ch in normalized)
+        {
+            var category = CharUnicodeInfo.GetUnicodeCategory(ch);
+            if (category == UnicodeCategory.NonSpacingMark)
+            {
+                continue;
+            }
+
+            var lower = char.ToLowerInvariant(ch);
+            if (char.IsLetterOrDigit(lower))
+            {
+                slugBuilder.Append(lower);
+                previousWasDash = false;
+                continue;
+            }
+
+            if (previousWasDash)
+            {
+                continue;
+            }
+
+            slugBuilder.Append('-');
+            previousWasDash = true;
+        }
+
+        return slugBuilder.ToString().Trim('-');
+    }
+
     private static string BuildSubscriberName(AdminSubscriberRecord? subscriber)
     {
         if (subscriber is null)
@@ -1626,6 +1730,7 @@
         public int SortOrder { get; set; } = 100;
         public int? MaxItems { get; set; }
         public bool IsEnabled { get; set; } = true;
+        public bool ShowOnHome { get; set; }
 
         public static EditablePlaylist From(AdminPlaylistRecord playlist) => new()
         {
@@ -1635,7 +1740,8 @@
             Description = playlist.Description,
             SortOrder = playlist.SortOrder,
             MaxItems = playlist.MaxItems,
-            IsEnabled = playlist.IsEnabled
+            IsEnabled = playlist.IsEnabled,
+            ShowOnHome = playlist.ShowOnHome
         };
     }
 

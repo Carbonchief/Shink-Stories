@@ -743,6 +743,10 @@
     padding: 1.4rem 0 2rem;
 }
 
+.site-shell.luister-route .site-main {
+    padding-bottom: 0;
+}
+
 .site-shell.home-route .site-main {
     padding-top: 0.5rem;
     padding-bottom: 0;

@@ -15,6 +15,97 @@ export function scrollCarouselByPage(carouselElement, direction) {
 let homeStoryLoadingWired = false;
 let homeRevealObserver = null;
 
+function wireCarouselDragScrolling() {
+    const carousels = document.querySelectorAll(".stories-carousel");
+    for (const carousel of carousels) {
+        if (!(carousel instanceof HTMLElement) || carousel.dataset.dragScrollWired === "true") {
+            continue;
+        }
+
+        carousel.dataset.dragScrollWired = "true";
+        carousel.style.cursor = "grab";
+
+        let activePointerId = null;
+        let startX = 0;
+        let startScrollLeft = 0;
+        let isDragging = false;
+        let suppressClick = false;
+
+        const releaseDragState = () => {
+            if (activePointerId !== null && carousel.hasPointerCapture(activePointerId)) {
+                carousel.releasePointerCapture(activePointerId);
+            }
+
+            activePointerId = null;
+            isDragging = false;
+            carousel.classList.remove("is-dragging");
+            carousel.style.cursor = "grab";
+            document.body.style.userSelect = "";
+        };
+
+        carousel.addEventListener("pointerdown", (event) => {
+            if (event.button !== 0 || event.pointerType === "touch") {
+                return;
+            }
+
+            activePointerId = event.pointerId;
+            startX = event.clientX;
+            startScrollLeft = carousel.scrollLeft;
+            isDragging = false;
+            suppressClick = false;
+            carousel.setPointerCapture(event.pointerId);
+        });
+
+        carousel.addEventListener("pointermove", (event) => {
+            if (activePointerId !== event.pointerId) {
+                return;
+            }
+
+            const deltaX = event.clientX - startX;
+            if (!isDragging && Math.abs(deltaX) < 6) {
+                return;
+            }
+
+            isDragging = true;
+            suppressClick = true;
+            carousel.classList.add("is-dragging");
+            carousel.style.cursor = "grabbing";
+            document.body.style.userSelect = "none";
+            carousel.scrollLeft = startScrollLeft - deltaX;
+            event.preventDefault();
+        });
+
+        carousel.addEventListener("pointerup", (event) => {
+            if (activePointerId !== event.pointerId) {
+                return;
+            }
+
+            releaseDragState();
+            if (suppressClick) {
+                window.setTimeout(() => {
+                    suppressClick = false;
+                }, 0);
+            }
+        });
+
+        carousel.addEventListener("pointercancel", releaseDragState);
+        carousel.addEventListener("lostpointercapture", releaseDragState);
+
+        carousel.addEventListener("click", (event) => {
+            if (!suppressClick) {
+                return;
+            }
+
+            event.preventDefault();
+            event.stopPropagation();
+        }, true);
+
+        carousel.addEventListener("dragstart", (event) => {
+            event.preventDefault();
+        });
+    }
+}
+
 function clearStoryNavigationLoadingState() {
     const activeCards = document.querySelectorAll(".story-carousel-item.is-navigating");
     for (let index = 0; index < activeCards.length; index += 1) {
@@ -23,6 +114,8 @@ function clearStoryNavigationLoadingState() {
 }
 
 export function initializeHomeStoryLoading() {
+    wireCarouselDragScrolling();
+
     if (homeStoryLoadingWired) {
         return;
     }

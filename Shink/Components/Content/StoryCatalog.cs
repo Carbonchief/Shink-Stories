@@ -13,7 +13,8 @@ public sealed record StoryItem(
     string? ThumbnailFileName = null,
     string AudioProvider = "local",
     string? AudioBucket = null,
-    string? AudioContentType = null)
+    string? AudioContentType = null,
+    string AccessLevel = "subscriber")
 {
     public string ImagePath => ResolveAssetPath(ImageFileName);
     public string ThumbnailPath => string.IsNullOrWhiteSpace(ThumbnailFileName)

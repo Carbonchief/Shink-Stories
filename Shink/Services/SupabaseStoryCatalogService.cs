@@ -284,7 +284,7 @@ public sealed class SupabaseStoryCatalogService(
         var requestUri = new Uri(
             baseUri,
             "rest/v1/story_playlists" +
-            "?select=playlist_id,slug,title,description,sort_order,max_items,is_enabled" +
+            "?select=playlist_id,slug,title,description,sort_order,max_items,is_enabled,show_on_home" +
             "&is_enabled=eq.true" +
             "&order=sort_order.asc" +
             "&order=title.asc");
@@ -517,7 +517,8 @@ public sealed class SupabaseStoryCatalogService(
             ThumbnailFileName: thumbnailFileName,
             AudioProvider: string.IsNullOrWhiteSpace(row.AudioProvider) ? "local" : row.AudioProvider.Trim(),
             AudioBucket: string.IsNullOrWhiteSpace(row.AudioBucket) ? null : row.AudioBucket.Trim(),
-            AudioContentType: string.IsNullOrWhiteSpace(row.AudioContentType) ? null : row.AudioContentType.Trim());
+            AudioContentType: string.IsNullOrWhiteSpace(row.AudioContentType) ? null : row.AudioContentType.Trim(),
+            AccessLevel: string.IsNullOrWhiteSpace(row.AccessLevel) ? "subscriber" : row.AccessLevel.Trim().ToLowerInvariant());
     }
 
     private static IReadOnlyList<StoryPlaylist> BuildLuisterPlaylistsFromConfiguredTables(
@@ -604,7 +605,8 @@ public sealed class SupabaseStoryCatalogService(
                 Title: playlistRow.Title.Trim(),
                 Description: NormalizeOptionalText(playlistRow.Description),
                 SortOrder: playlistRow.SortOrder,
-                Stories: limitedStories));
+                Stories: limitedStories,
+                ShowOnHome: playlistRow.ShowOnHome));
         }
 
         var unassignedStories = luisterRows
@@ -627,7 +629,8 @@ public sealed class SupabaseStoryCatalogService(
                 Title: string.IsNullOrWhiteSpace(allStoriesConfig?.Title) ? "Alle stories" : allStoriesConfig!.Title.Trim(),
                 Description: NormalizeOptionalText(allStoriesConfig?.Description) ?? "Stories wat nie in ander playlists is nie.",
                 SortOrder: allStoriesConfig?.SortOrder ?? int.MaxValue,
-                Stories: allStoriesItems));
+                Stories: allStoriesItems,
+                ShowOnHome: allStoriesConfig?.ShowOnHome ?? false));
         }
 
         return playlists
@@ -663,7 +666,8 @@ public sealed class SupabaseStoryCatalogService(
                 Title: "Gratis stories",
                 Description: "Dis op die huis!",
                 SortOrder: 10,
-                Stories: freeRows.Select(MapToStoryItem).ToArray()));
+                Stories: freeRows.Select(MapToStoryItem).ToArray(),
+                ShowOnHome: true));
 
             assignedStoryIds.UnionWith(freeRows.Select(row => row.StoryId));
         }
@@ -676,7 +680,8 @@ public sealed class SupabaseStoryCatalogService(
                 Title: "Top 10 nuutste stories",
                 Description: "Kry 'n voorsmakie van ons nuutste uitgawes.",
                 SortOrder: 20,
-                Stories: newestRows.Select(MapToStoryItem).ToArray()));
+                Stories: newestRows.Select(MapToStoryItem).ToArray(),
+                ShowOnHome: false));
 
             assignedStoryIds.UnionWith(newestRows.Select(row => row.StoryId));
         }
@@ -689,7 +694,8 @@ public sealed class SupabaseStoryCatalogService(
                 Title: "Stories vir Kleuters",
                 Description: "Verken stories spesiaal vir kleuters.",
                 SortOrder: 30,
-                Stories: kleuterRows.Select(MapToStoryItem).ToArray()));
+                Stories: kleuterRows.Select(MapToStoryItem).ToArray(),
+                ShowOnHome: false));
 
             assignedStoryIds.UnionWith(kleuterRows.Select(row => row.StoryId));
         }
@@ -710,7 +716,8 @@ public sealed class SupabaseStoryCatalogService(
                 Title: "Bybelstories",
                 Description: "Luister na ons Bybelstories vir kinders.",
                 SortOrder: 40,
-                Stories: bibleRows.Select(MapToStoryItem).ToArray()));
+                Stories: bibleRows.Select(MapToStoryItem).ToArray(),
+                ShowOnHome: false));
 
             assignedStoryIds.UnionWith(bibleRows.Select(row => row.StoryId));
         }
@@ -729,7 +736,8 @@ public sealed class SupabaseStoryCatalogService(
                 Title: "Alle stories",
                 Description: "Stories wat nie in ander playlists is nie.",
                 SortOrder: 50,
-                Stories: unassignedRows.Select(MapToStoryItem).ToArray()));
+                Stories: unassignedRows.Select(MapToStoryItem).ToArray(),
+                ShowOnHome: false));
         }
 
         return playlists
@@ -1066,6 +1074,9 @@ public sealed class SupabaseStoryCatalogService(
 
         [JsonPropertyName("is_enabled")]
         public bool IsEnabled { get; set; }
+
+        [JsonPropertyName("show_on_home")]
+        public bool ShowOnHome { get; set; }
     }
 
     private sealed class StoryPlaylistItemRow

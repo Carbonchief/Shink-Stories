@@ -437,6 +437,7 @@ public sealed partial class SupabaseAdminManagementService(
                     SortOrder: row.SortOrder,
                     MaxItems: row.MaxItems is > 0 ? row.MaxItems : null,
                     IsEnabled: row.IsEnabled,
+                    ShowOnHome: row.ShowOnHome,
                     UpdatedAt: row.UpdatedAt,
                     Stories: stories);
             })
@@ -485,7 +486,8 @@ public sealed partial class SupabaseAdminManagementService(
             ["description"] = NormalizeOptionalText(request.Description, 4000),
             ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
             ["max_items"] = request.MaxItems is > 0 ? request.MaxItems : null,
-            ["is_enabled"] = request.IsEnabled
+            ["is_enabled"] = request.IsEnabled,
+            ["show_on_home"] = request.ShowOnHome
         };
 
         if (request.PlaylistId is null || request.PlaylistId == Guid.Empty)
@@ -716,7 +718,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/story_playlists" +
-            "?select=playlist_id,slug,title,description,sort_order,max_items,is_enabled,updated_at" +
+            "?select=playlist_id,slug,title,description,sort_order,max_items,is_enabled,show_on_home,updated_at" +
             "&order=sort_order.asc" +
             "&order=title.asc" +
             "&limit=500");
@@ -1234,6 +1236,9 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("is_enabled")]
         public bool IsEnabled { get; set; }
+
+        [JsonPropertyName("show_on_home")]
+        public bool ShowOnHome { get; set; }
 
         [JsonPropertyName("updated_at")]
         public DateTimeOffset? UpdatedAt { get; set; }

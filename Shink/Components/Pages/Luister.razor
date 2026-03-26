@@ -42,11 +42,30 @@
              alt="Luister stories banner" loading="eager" fetchpriority="high" decoding="async" />
     </section>
 
+    <section class="luister-search-section" aria-labelledby="luister-soek-heading">
+        <h2 id="luister-soek-heading" class="sr-only">Soek stories</h2>
+        <form class="luister-search-form" role="search" @onsubmit:preventDefault="true">
+            <label class="sr-only" for="luister-search">Soek stories</label>
+            <span class="luister-search-icon" aria-hidden="true">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+            </span>
+            <input id="luister-search"
+                   class="luister-search-input"
+                   type="search"
+                   placeholder="Soek stories"
+                   autocomplete="off"
+                   value="@SearchQuery"
+                   @oninput="HandleSearchInput" />
+        </form>
+    </section>
+
 @code {
     private IReadOnlyList<StoryPlaylist> LuisterPlaylists { get; set; } = Array.Empty<StoryPlaylist>();
+    private IReadOnlyList<StoryPlaylist> FilteredLuisterPlaylists { get; set; } = Array.Empty<StoryPlaylist>();
     private ElementReference[] PlaylistCarouselRefs { get; set; } = Array.Empty<ElementReference>();
     private IJSObjectReference? _luisterModule;
     private bool _luisterModuleLoadFailed;
+    private string SearchQuery { get; set; } = string.Empty;
 
     private string LuisterCanonicalUrl => NavigationManager.ToAbsoluteUri("/luister").ToString();
 
@@ -78,10 +97,52 @@
             LuisterPlaylists = Array.Empty<StoryPlaylist>();
         }
 
-        PlaylistCarouselRefs = new ElementReference[LuisterPlaylists.Count];
+        UpdateFilteredPlaylists();
     }
 
     private static string GetStoryHref(string slug) => $"/luister/{Uri.EscapeDataString(slug)}";
+
+    private void HandleSearchInput(ChangeEventArgs args)
+    {
+        SearchQuery = args.Value?.ToString() ?? string.Empty;
+        UpdateFilteredPlaylists();
+    }
+
+    private void UpdateFilteredPlaylists()
+    {
+        var trimmedQuery = SearchQuery.Trim();
+        if (string.IsNullOrWhiteSpace(trimmedQuery))
+        {
+            FilteredLuisterPlaylists = LuisterPlaylists;
+            PlaylistCarouselRefs = new ElementReference[FilteredLuisterPlaylists.Count];
+            return;
+        }
+
+        FilteredLuisterPlaylists = LuisterPlaylists
+            .Select(playlist =>
+            {
+                var matchingStories = playlist.Stories
+                    .Where(story => story.Title.Contains(trimmedQuery, StringComparison.OrdinalIgnoreCase))
+                    .ToArray();
+
+                var playlistMatches =
+                    playlist.Title.Contains(trimmedQuery, StringComparison.OrdinalIgnoreCase) ||
+                    (!string.IsNullOrWhiteSpace(playlist.Description) &&
+                     playlist.Description.Contains(trimmedQuery, StringComparison.OrdinalIgnoreCase));
+
+                return playlistMatches || matchingStories.Length > 0
+                    ? playlist with
+                    {
+                        Stories = playlistMatches ? playlist.Stories : matchingStories
+                    }
+                    : null;
+            })
+            .Where(playlist => playlist is not null)
+            .Cast<StoryPlaylist>()
+            .ToArray();
+
+        PlaylistCarouselRefs = new ElementReference[FilteredLuisterPlaylists.Count];
+    }
 
     private async Task ScrollCarouselAsync(ElementReference carouselRef, int direction)
     {
@@ -167,11 +228,17 @@
             <p>Ons kon nie nou die playlists laai nie. Probeer asseblief oor 'n oomblik weer.</p>
         </section>
     }
+    else if (FilteredLuisterPlaylists.Count == 0)
+    {
+        <section class="luister-empty-state">
+            <p>Geen stories pas by jou soektog vir "@SearchQuery".</p>
+        </section>
+    }
     else
     {
-        @for (var index = 0; index < LuisterPlaylists.Count; index++)
+        @for (var index = 0; index < FilteredLuisterPlaylists.Count; index++)
         {
-            var playlist = LuisterPlaylists[index];
+            var playlist = FilteredLuisterPlaylists[index];
             var headingId = $"luister-playlist-{playlist.Slug}-heading";
             var carouselIndex = index;
             var hasDescription = !string.IsNullOrWhiteSpace(playlist.Description);
