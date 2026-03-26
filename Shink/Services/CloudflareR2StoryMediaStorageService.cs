@@ -113,7 +113,8 @@ public sealed class CloudflareR2StoryMediaStorageService(
                 BucketName = _options.BucketName.Trim(),
                 Key = objectKey,
                 FilePath = tempFilePath,
-                ContentType = contentType
+                ContentType = contentType,
+                UseChunkEncoding = false
             };
 
             await GetClient().PutObjectAsync(request, cancellationToken);
@@ -149,7 +150,10 @@ public sealed class CloudflareR2StoryMediaStorageService(
             {
                 ServiceURL = $"https://{_options.AccountId.Trim()}.r2.cloudflarestorage.com",
                 ForcePathStyle = true,
-                AuthenticationRegion = "auto"
+                AuthenticationRegion = "auto",
+                // R2 rejects AWS SDK v4's optional checksum trailer mode.
+                RequestChecksumCalculation = RequestChecksumCalculation.WHEN_REQUIRED,
+                ResponseChecksumValidation = ResponseChecksumValidation.WHEN_REQUIRED
             });
 
         return _client;
