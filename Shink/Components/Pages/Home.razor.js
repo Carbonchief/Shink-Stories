@@ -13,6 +13,7 @@ export function scrollCarouselByPage(carouselElement, direction) {
 }
 
 let homeStoryLoadingWired = false;
+let homeRevealObserver = null;
 
 function clearStoryNavigationLoadingState() {
     const activeCards = document.querySelectorAll(".story-carousel-item.is-navigating");
@@ -63,4 +64,84 @@ export function initializeHomeStoryLoading() {
     document.addEventListener("enhancedload", clearStoryNavigationLoadingState);
     window.addEventListener("pageshow", clearStoryNavigationLoadingState);
     homeStoryLoadingWired = true;
+}
+
+function disconnectHomeRevealObserver() {
+    if (homeRevealObserver instanceof IntersectionObserver) {
+        homeRevealObserver.disconnect();
+    }
+
+    homeRevealObserver = null;
+}
+
+function getHomeRevealElements() {
+    return Array.from(document.querySelectorAll(".home-scroll-reveal"))
+        .filter((element) => element instanceof HTMLElement);
+}
+
+function isNearViewport(element) {
+    const bounds = element.getBoundingClientRect();
+    return bounds.top <= window.innerHeight * 0.9 && bounds.bottom >= 0;
+}
+
+export function initializeHomeAnimations() {
+    disconnectHomeRevealObserver();
+
+    const revealElements = getHomeRevealElements();
+    if (revealElements.length === 0) {
+        return;
+    }
+
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        for (const element of revealElements) {
+            element.classList.remove("home-motion-ready");
+            element.classList.add("is-visible");
+        }
+
+        return;
+    }
+
+    const deferredElements = [];
+    for (const element of revealElements) {
+        if (isNearViewport(element)) {
+            element.classList.remove("home-motion-ready");
+            element.classList.add("is-visible");
+            continue;
+        }
+
+        element.classList.remove("is-visible");
+        element.classList.add("home-motion-ready");
+        deferredElements.push(element);
+    }
+
+    if (deferredElements.length === 0) {
+        return;
+    }
+
+    homeRevealObserver = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+            if (!entry.isIntersecting || !(entry.target instanceof HTMLElement)) {
+                continue;
+            }
+
+            entry.target.classList.add("is-visible");
+            homeRevealObserver?.unobserve(entry.target);
+        }
+    }, {
+        threshold: 0.18,
+        rootMargin: "0px 0px -10% 0px"
+    });
+
+    for (const element of deferredElements) {
+        homeRevealObserver.observe(element);
+    }
+}
+
+export function disposeHomeAnimations() {
+    disconnectHomeRevealObserver();
+
+    for (const element of getHomeRevealElements()) {
+        element.classList.remove("home-motion-ready");
+        element.classList.remove("is-visible");
+    }
 }
