@@ -2,6 +2,7 @@
 @rendermode InteractiveServer
 @using System.Text.Json
 @using System.Security.Claims
+@using Microsoft.AspNetCore.WebUtilities
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Authorization
 @inject IAudioAccessService AudioAccessService
@@ -153,7 +154,7 @@ else
                 @if (PreviousStory is not null)
                 {
                     <a class="story-nav-prev"
-                       href="@($"/luister/{PreviousStory.Slug}")"
+                       href="@BuildStoryHref(PreviousStory.Slug)"
                        @onclick="() => NavigateToStoryAsync(PreviousStory.Slug)"
                        @onclick:preventDefault="true"
                        tabindex="-1"
@@ -166,7 +167,7 @@ else
                 @if (NextStory is not null)
                 {
                     <a class="story-nav-next"
-                       href="@($"/luister/{NextStory.Slug}")"
+                       href="@BuildStoryHref(NextStory.Slug)"
                        @onclick="() => NavigateToStoryAsync(NextStory.Slug)"
                        @onclick:preventDefault="true"
                        tabindex="-1"
@@ -191,7 +192,7 @@ else
                     var isActiveStory = string.Equals(story.Slug, CurrentStory.Slug, StringComparison.OrdinalIgnoreCase);
                     <article class="story-carousel-item @(isActiveStory ? "is-active" : null)" role="listitem">
                         <a class="story-carousel-link"
-                           href="@($"/luister/{story.Slug}")"
+                           href="@BuildStoryHref(story.Slug)"
                            @onclick="() => NavigateToStoryAsync(story.Slug)"
                            @onclick:preventDefault="true"
                            aria-current="@(isActiveStory ? "page" : null)"
@@ -224,6 +225,12 @@ else
 @code {
     [Parameter]
     public string? Slug { get; set; }
+
+    [SupplyParameterFromQuery(Name = "playlist")]
+    public string? PlaylistContextSlug { get; set; }
+
+    [SupplyParameterFromQuery(Name = "playlistName")]
+    public string? PlaylistContextTitle { get; set; }
 
     private StoryItem? CurrentStory { get; set; }
     private string? AudioUrl { get; set; }
@@ -445,7 +452,7 @@ else
     private async Task NavigateToStoryAsync(string slug)
     {
         await PrepareForNavigationAsync();
-        NavigationManager.NavigateTo($"/luister/{Uri.EscapeDataString(slug)}");
+        NavigationManager.NavigateTo(BuildStoryHref(slug));
     }
 
     private async Task PrepareForNavigationAsync()
@@ -521,6 +528,22 @@ else
             ".jpeg" => "image/jpeg",
             _ => "image/jpeg"
         };
+    }
+
+    private string BuildStoryHref(string slug)
+    {
+        var path = $"/luister/{Uri.EscapeDataString(slug)}";
+
+        if (string.IsNullOrWhiteSpace(PlaylistContextSlug) || string.IsNullOrWhiteSpace(PlaylistContextTitle))
+        {
+            return path;
+        }
+
+        return QueryHelpers.AddQueryString(path, new Dictionary<string, string?>
+        {
+            ["playlist"] = PlaylistContextSlug.Trim(),
+            ["playlistName"] = PlaylistContextTitle.Trim()
+        });
     }
 
     private void ResolveAdjacentStories()

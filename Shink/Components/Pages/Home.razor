@@ -51,19 +51,64 @@
 
     <div class="hero-copy">
         <p class="eyebrow">Afrikaanse oudiostories</p>
-        <h1>Bou jou kind se karakter, een storie op 'n slag.</h1>
-        <p>
-            Schink Stories gee vir ouers en kinders stories wat opbou, vermaak en geloofsgesprekke maklik maak.
-            Begin vandag met drie gratis stories.
+        <h1>Stories wat kinders vorm.</h1>
+        <p class="hero-intro">
+            Egte Afrikaanse storietyd wat karakter bou -
+            <em>een storie op 'n slag.</em>
         </p>
         <div class="hero-actions">
-            <button type="button" class="cta cta-primary" @onclick="@(() => NavigationManager.NavigateTo("/gratis"))">Luister gratis</button>
-            <button type="button" class="cta cta-secondary" @onclick="@(() => NavigationManager.NavigateTo("/luister"))">Sien alle stories</button>
+            <button type="button" class="cta cta-primary" @onclick="@(() => NavigationManager.NavigateTo("/gratis"))">Probeer gratis</button>
+            <a class="cta cta-secondary" href="#perfekte-plan">Kies 'n plan</a>
         </div>
+        <p class="hero-pricing">R 79 per maand. Kanselleer enige tyd.</p>
     </div>
 </section>
 
-<section class="join-promo">
+@for (var index = 0; index < HomePlaylists.Count; index++)
+{
+    var playlist = HomePlaylists[index];
+    var headingId = $"home-playlist-{playlist.Slug}-heading";
+    var hasDescription = !string.IsNullOrWhiteSpace(playlist.Description);
+
+    <section class="section-block stories-carousel-section home-scroll-reveal" style="--home-reveal-delay: 0.08s;" aria-labelledby="@headingId">
+        <h2 id="@headingId">@playlist.Title</h2>
+        @if (hasDescription)
+        {
+            <p class="section-intro">@playlist.Description</p>
+        }
+
+        <div class="stories-carousel-shell">
+            <div class="@($"stories-carousel {(playlist.Stories.Count <= 3 ? "stories-carousel-free" : string.Empty)}")"
+                 role="list"
+                 aria-label="@playlist.Title">
+            @foreach (var story in playlist.Stories)
+            {
+                var storyPath = GetHomeStoryHref(story);
+                <article class="story-carousel-item" role="listitem">
+                    <a class="story-carousel-link"
+                       href="@storyPath"
+                       data-enhance-nav="false"
+                       aria-label="Luister @story.Title">
+                        <span class="story-carousel-cover">
+                            <img class="@(story.Slug == "die-kwaaibok-se-klip" ? "story-carousel-image kwaaibok-home-cover" : "story-carousel-image")"
+                                 src="@story.ThumbnailPath"
+                                 srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
+                                 sizes="(max-width: 620px) 56vw, (max-width: 900px) 35vw, 240px"
+                                 alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
+                            <span class="story-cover-play" aria-hidden="true">
+                                <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
+                            </span>
+                        </span>
+                        <h3>@story.Title</h3>
+                    </a>
+                </article>
+            }
+            </div>
+        </div>
+    </section>
+}
+
+<section class="join-promo home-scroll-reveal" style="--home-reveal-delay: 0.04s;">
     <div class="join-promo-media">
         <img src="/branding/Schink_Stories_Kom_Luister_Saam.webp"
              alt="Kom Luister Saam by Schink Stories" loading="lazy" decoding="async" />
@@ -84,176 +129,7 @@
     </div>
 </section>
 
-<section class="section-block stories-carousel-section" aria-labelledby="gratis-stories-heading">
-    <h2 id="gratis-stories-heading">Kom probeer 3 van ons lekkerste stories</h2>
-    <p class="section-intro">Dis op die huis!</p>
-
-    <div class="stories-carousel-shell">
-        <div class="carousel-controls" aria-label="Gratis stories navigasie">
-            <button type="button" class="carousel-nav-btn carousel-nav-btn-prev" aria-label="Vorige gratis stories"
-                    @onclick="() => ScrollCarouselAsync(FreeStoriesCarouselRef, -1)">
-                <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
-            </button>
-            <button type="button" class="carousel-nav-btn carousel-nav-btn-next" aria-label="Volgende gratis stories"
-                    @onclick="() => ScrollCarouselAsync(FreeStoriesCarouselRef, 1)">
-                <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-            </button>
-        </div>
-
-        <div class="stories-carousel stories-carousel-free" role="list" aria-label="Gratis stories" @ref="FreeStoriesCarouselRef">
-        @foreach (var story in FreeStories)
-        {
-            var storyPath = BuildStoryPath($"/gratis/{Uri.EscapeDataString(story.Slug)}");
-            <article class="story-carousel-item" role="listitem">
-                <a class="story-carousel-link"
-                   href="@storyPath"
-                   data-enhance-nav="false"
-                   aria-label="Luister @story.Title">
-                    <span class="story-carousel-cover">
-                        <img class="@(story.Slug == "die-kwaaibok-se-klip" ? "story-carousel-image kwaaibok-home-cover" : "story-carousel-image")"
-                             src="@story.ThumbnailPath"
-                             srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
-                             sizes="(max-width: 620px) 56vw, (max-width: 900px) 35vw, 240px"
-                             alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
-                        <span class="story-cover-play" aria-hidden="true">
-                            <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
-                        </span>
-                    </span>
-                    <h3>@story.Title</h3>
-                </a>
-            </article>
-        }
-        </div>
-    </div>
-</section>
-
-<section class="section-block stories-carousel-section newest-stories-section" aria-labelledby="nuutste-stories-heading">
-    <h2 id="nuutste-stories-heading">Top 10 nuutste stories</h2>
-    <p class="section-intro">Kry 'n voorsmakie van ons nuutste uitgawes.</p>
-
-    <div class="stories-carousel-shell">
-        <div class="carousel-controls" aria-label="Top 10 nuutste stories navigasie">
-            <button type="button" class="carousel-nav-btn carousel-nav-btn-prev" aria-label="Vorige nuutste stories"
-                    @onclick="() => ScrollCarouselAsync(NewestStoriesCarouselRef, -1)">
-                <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
-            </button>
-            <button type="button" class="carousel-nav-btn carousel-nav-btn-next" aria-label="Volgende nuutste stories"
-                    @onclick="() => ScrollCarouselAsync(NewestStoriesCarouselRef, 1)">
-                <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-            </button>
-        </div>
-
-        <div class="stories-carousel" role="list" aria-label="Top 10 nuutste stories" @ref="NewestStoriesCarouselRef">
-        @foreach (var story in NewestTop10Stories)
-        {
-            var storyPath = BuildStoryPath(story.LinkPath);
-            <article class="story-carousel-item" role="listitem">
-                <a class="story-carousel-link"
-                   href="@storyPath"
-                   data-enhance-nav="false"
-                   aria-label="Sien storie: @story.Title">
-                    <span class="story-carousel-cover">
-                        <img class="story-carousel-image"
-                             src="@story.CoverPath"
-                             alt="Voorblad van @story.Title" width="600" height="775" loading="lazy" decoding="async" />
-                        <span class="story-cover-play" aria-hidden="true">
-                            <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
-                        </span>
-                    </span>
-                    <h3>@story.Title</h3>
-                </a>
-            </article>
-        }
-        </div>
-    </div>
-</section>
-
-@if (KleuterStories.Count > 0)
-{
-    <section class="section-block stories-carousel-section kleuter-stories-section" aria-labelledby="kleuter-stories-heading">
-        <h2 id="kleuter-stories-heading">Stories vir Kleuters</h2>
-        <p class="section-intro">Verken stories spesiaal vir kleuters.</p>
-
-        <div class="stories-carousel-shell">
-            <div class="carousel-controls" aria-label="Stories vir kleuters navigasie">
-                <button type="button" class="carousel-nav-btn carousel-nav-btn-prev" aria-label="Vorige stories vir kleuters"
-                        @onclick="() => ScrollCarouselAsync(KleuterStoriesCarouselRef, -1)">
-                    <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
-                </button>
-                <button type="button" class="carousel-nav-btn carousel-nav-btn-next" aria-label="Volgende stories vir kleuters"
-                        @onclick="() => ScrollCarouselAsync(KleuterStoriesCarouselRef, 1)">
-                    <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-                </button>
-            </div>
-
-            <div class="stories-carousel" role="list" aria-label="Stories vir kleuters" @ref="KleuterStoriesCarouselRef">
-            @foreach (var story in KleuterStories)
-            {
-                var storyPath = BuildStoryPath(story.LinkPath);
-                <article class="story-carousel-item" role="listitem">
-                    <a class="story-carousel-link"
-                       href="@storyPath"
-                       data-enhance-nav="false"
-                       aria-label="Sien storie: @story.Title">
-                        <span class="story-carousel-cover">
-                            <img class="story-carousel-image"
-                                 src="@story.CoverPath"
-                                 alt="Voorblad van @story.Title" width="600" height="775" loading="lazy" decoding="async" />
-                            <span class="story-cover-play" aria-hidden="true">
-                                <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
-                            </span>
-                        </span>
-                        <h3>@story.Title</h3>
-                    </a>
-                </article>
-            }
-            </div>
-        </div>
-    </section>
-}
-
-<section class="section-block stories-carousel-section bible-stories-section" aria-labelledby="bybel-stories-heading">
-    <h2 id="bybel-stories-heading">Bybelstories</h2>
-    <p class="section-intro">Luister na ons Bybelstories vir kinders.</p>
-
-    <div class="stories-carousel-shell">
-        <div class="carousel-controls" aria-label="Bybelstories navigasie">
-            <button type="button" class="carousel-nav-btn carousel-nav-btn-prev" aria-label="Vorige Bybelstories"
-                    @onclick="() => ScrollCarouselAsync(BibleStoriesCarouselRef, -1)">
-                <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
-            </button>
-            <button type="button" class="carousel-nav-btn carousel-nav-btn-next" aria-label="Volgende Bybelstories"
-                    @onclick="() => ScrollCarouselAsync(BibleStoriesCarouselRef, 1)">
-                <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-            </button>
-        </div>
-
-        <div class="stories-carousel" role="list" aria-label="Bybelstories" @ref="BibleStoriesCarouselRef">
-        @foreach (var story in BibleStories)
-        {
-            var storyPath = BuildStoryPath(story.LinkPath);
-            <article class="story-carousel-item" role="listitem">
-                <a class="story-carousel-link"
-                   href="@storyPath"
-                   data-enhance-nav="false"
-                   aria-label="Sien storie: @story.Title">
-                    <span class="story-carousel-cover">
-                        <img class="story-carousel-image"
-                             src="@story.CoverPath"
-                             alt="Voorblad van @story.Title" width="600" height="775" loading="lazy" decoding="async" />
-                        <span class="story-cover-play" aria-hidden="true">
-                            <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
-                        </span>
-                    </span>
-                    <h3>@story.Title</h3>
-                </a>
-            </article>
-        }
-        </div>
-    </div>
-</section>
-
-<section class="home-testimonials section-block" aria-labelledby="home-ouers-se">
+<section class="home-testimonials section-block home-scroll-reveal" style="--home-reveal-delay: 0.08s;" aria-labelledby="home-ouers-se">
     <h2 id="home-ouers-se">Wat ouers se</h2>
     <div class="home-review-grid">
         <article class="home-review-card">
@@ -291,7 +167,7 @@
     </div>
 </section>
 
-<section class="perfect-plan-section" aria-labelledby="perfekte-plan">
+<section class="perfect-plan-section home-scroll-reveal" style="--home-reveal-delay: 0.08s;" aria-labelledby="perfekte-plan">
     <div class="perfect-plan-header">
         <h2 id="perfekte-plan">Vind jou perfekte plan</h2>
         <p>Vergelyk ons opsies en kies die intekening wat die beste by jou gesin pas.</p>
@@ -347,7 +223,7 @@
     </div>
 </section>
 
-<section class="contact-section" aria-labelledby="kontak-ons">
+<section class="contact-section home-scroll-reveal" style="--home-reveal-delay: 0.08s;" aria-labelledby="kontak-ons">
     <div class="contact-inner">
         <h2 id="kontak-ons" class="contact-title">Kontak Ons</h2>
 
@@ -411,17 +287,10 @@
 </section>
 
 @code {
-    private ElementReference FreeStoriesCarouselRef;
-    private ElementReference NewestStoriesCarouselRef;
-    private ElementReference KleuterStoriesCarouselRef;
-    private ElementReference BibleStoriesCarouselRef;
     private IJSObjectReference? _homeModule;
     private bool _homeModuleLoadFailed;
 
-    private IReadOnlyList<StoryItem> FreeStories { get; set; } = Array.Empty<StoryItem>();
-    private IReadOnlyList<StoryPreviewItem> NewestTop10Stories { get; set; } = Array.Empty<StoryPreviewItem>();
-    private IReadOnlyList<StoryPreviewItem> KleuterStories { get; set; } = Array.Empty<StoryPreviewItem>();
-    private IReadOnlyList<StoryPreviewItem> BibleStories { get; set; } = Array.Empty<StoryPreviewItem>();
+    private IReadOnlyList<StoryPlaylist> HomePlaylists { get; set; } = Array.Empty<StoryPlaylist>();
     private ContactFormModel ContactForm { get; set; } = new();
     private bool IsSubmitting { get; set; }
     private bool SubmitSucceeded { get; set; }
@@ -575,194 +444,21 @@
 
     private string HomeCanonicalUrl => NavigationManager.ToAbsoluteUri("/").ToString();
 
-    private static readonly string[] KleuterStoryTitlesInOrder =
-    [
-        "Tiekie Tik Tik Tok",
-        "Die Kwaaibok se Klip",
-        "Rammetjie Uitnek",
-        "Die Kwaai Grommel",
-        "Hailey Hasie se Groentetuin",
-        "Maniere wys jou spiere",
-        "Seekoei Sluit sy mond toe",
-        "Koalabeertjie Klou",
-        "Robot doen reg",
-        "Babbelbessie",
-        "Dankie en die mislike skree",
-        "Dankie en die lelike praat",
-        "Fantjie Leer Skryf"
-    ];
-
     protected override async Task OnInitializedAsync()
     {
         try
         {
-            var freeStoriesTask = StoryCatalogService.GetFreeStoriesAsync();
-            var luisterStoriesTask = StoryCatalogService.GetLuisterStoriesAsync();
-            var newestStoriesTask = StoryCatalogService.GetNewestTop10Async();
-            var bibleStoriesTask = StoryCatalogService.GetBibleStoriesAsync();
-            await Task.WhenAll(freeStoriesTask, luisterStoriesTask, newestStoriesTask, bibleStoriesTask);
-
-            FreeStories = freeStoriesTask.Result;
-            KleuterStories = BuildKleuterStories(freeStoriesTask.Result, luisterStoriesTask.Result);
-            NewestTop10Stories = newestStoriesTask.Result;
-            BibleStories = bibleStoriesTask.Result;
+            var luisterPlaylists = await StoryCatalogService.GetLuisterPlaylistsAsync();
+            HomePlaylists = luisterPlaylists
+                .Where(playlist => playlist.ShowOnHome)
+                .OrderBy(playlist => playlist.SortOrder)
+                .ThenBy(playlist => playlist.Title, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
         }
         catch
         {
-            FreeStories = Array.Empty<StoryItem>();
-            KleuterStories = Array.Empty<StoryPreviewItem>();
-            NewestTop10Stories = Array.Empty<StoryPreviewItem>();
-            BibleStories = Array.Empty<StoryPreviewItem>();
+            HomePlaylists = Array.Empty<StoryPlaylist>();
         }
-    }
-
-    private static IReadOnlyList<StoryPreviewItem> BuildKleuterStories(
-        IReadOnlyList<StoryItem> freeStories,
-        IReadOnlyList<StoryItem> luisterStories)
-    {
-        var bySlug = new Dictionary<string, StoryLinkCandidate>(StringComparer.OrdinalIgnoreCase);
-        foreach (var story in luisterStories)
-        {
-            bySlug[story.Slug] = new StoryLinkCandidate(
-                Slug: story.Slug,
-                Title: story.Title,
-                CoverPath: story.ImagePath,
-                LinkPath: $"/luister/{Uri.EscapeDataString(story.Slug)}");
-        }
-
-        foreach (var story in freeStories)
-        {
-            bySlug[story.Slug] = new StoryLinkCandidate(
-                Slug: story.Slug,
-                Title: story.Title,
-                CoverPath: story.ImagePath,
-                LinkPath: $"/gratis/{Uri.EscapeDataString(story.Slug)}");
-        }
-
-        var candidates = bySlug.Values.ToArray();
-        var selected = new List<StoryPreviewItem>();
-        var selectedSlugs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var preferredTitle in KleuterStoryTitlesInOrder)
-        {
-            var match = FindKleuterStoryCandidate(preferredTitle, candidates);
-            if (match is null || !selectedSlugs.Add(match.Slug))
-            {
-                continue;
-            }
-
-            selected.Add(new StoryPreviewItem(
-                Title: match.Title,
-                CoverPath: match.CoverPath,
-                LinkPath: match.LinkPath));
-        }
-
-        return selected;
-    }
-
-    private static StoryLinkCandidate? FindKleuterStoryCandidate(
-        string preferredTitle,
-        IReadOnlyList<StoryLinkCandidate> candidates)
-    {
-        var normalizedPreferred = NormalizeTitleKey(preferredTitle);
-        if (string.IsNullOrWhiteSpace(normalizedPreferred))
-        {
-            return null;
-        }
-
-        var exactMatch = candidates.FirstOrDefault(candidate =>
-            string.Equals(NormalizeTitleKey(candidate.Title), normalizedPreferred, StringComparison.OrdinalIgnoreCase));
-        if (exactMatch is not null)
-        {
-            return exactMatch;
-        }
-
-        var containsMatch = candidates.FirstOrDefault(candidate =>
-        {
-            var normalizedCandidate = NormalizeTitleKey(candidate.Title);
-            return normalizedCandidate.Contains(normalizedPreferred, StringComparison.OrdinalIgnoreCase) ||
-                   normalizedPreferred.Contains(normalizedCandidate, StringComparison.OrdinalIgnoreCase);
-        });
-        if (containsMatch is not null)
-        {
-            return containsMatch;
-        }
-
-        var preferredTokens = normalizedPreferred
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        if (preferredTokens.Length == 0)
-        {
-            return null;
-        }
-
-        var requiredSharedTokens = Math.Min(2, preferredTokens.Length);
-        return candidates
-            .Select(candidate =>
-            {
-                var normalizedCandidate = NormalizeTitleKey(candidate.Title);
-                var candidateTokens = normalizedCandidate
-                    .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-                var sharedTokenCount = preferredTokens.Count(token =>
-                    candidateTokens.Contains(token, StringComparer.OrdinalIgnoreCase));
-
-                return new
-                {
-                    Candidate = candidate,
-                    SharedTokenCount = sharedTokenCount,
-                    LengthDelta = Math.Abs(normalizedCandidate.Length - normalizedPreferred.Length)
-                };
-            })
-            .Where(match => match.SharedTokenCount >= requiredSharedTokens)
-            .OrderByDescending(match => match.SharedTokenCount)
-            .ThenBy(match => match.LengthDelta)
-            .Select(match => match.Candidate)
-            .FirstOrDefault();
-    }
-
-    private static string NormalizeTitleKey(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return string.Empty;
-        }
-
-        var builder = new System.Text.StringBuilder(value.Length);
-        var previousWasSpace = false;
-        foreach (var character in value.Trim())
-        {
-            if (char.IsLetterOrDigit(character))
-            {
-                builder.Append(char.ToLowerInvariant(character));
-                previousWasSpace = false;
-                continue;
-            }
-
-            if (previousWasSpace)
-            {
-                continue;
-            }
-
-            builder.Append(' ');
-            previousWasSpace = true;
-        }
-
-        return builder.ToString().Trim();
-    }
-
-    private async Task ScrollCarouselAsync(ElementReference carouselRef, int direction)
-    {
-        if (direction is 0)
-        {
-            return;
-        }
-
-        var module = await TryGetHomeModuleAsync();
-        if (module is null)
-        {
-            return;
-        }
-
-        await module.InvokeVoidAsync("scrollCarouselByPage", carouselRef, direction);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -779,6 +475,7 @@
         }
 
         await module.InvokeVoidAsync("initializeHomeStoryLoading");
+        await module.InvokeVoidAsync("initializeHomeAnimations");
     }
 
     private async Task<IJSObjectReference?> TryGetHomeModuleAsync()
@@ -818,6 +515,7 @@
 
         try
         {
+            await _homeModule.InvokeVoidAsync("disposeHomeAnimations");
             await _homeModule.DisposeAsync();
         }
         catch (JSDisconnectedException)
@@ -940,17 +638,12 @@
         return null;
     }
 
-    private static string BuildStoryPath(string? linkPath)
+    private static string GetHomeStoryHref(StoryItem story)
     {
-        if (string.IsNullOrWhiteSpace(linkPath))
-        {
-            return "/luister";
-        }
-
-        var trimmed = linkPath.Trim();
-        return trimmed.StartsWith("/", StringComparison.Ordinal)
-            ? trimmed
-            : $"/{trimmed}";
+        var routePrefix = string.Equals(story.AccessLevel, "free", StringComparison.OrdinalIgnoreCase)
+            ? "/gratis/"
+            : "/luister/";
+        return $"{routePrefix}{Uri.EscapeDataString(story.Slug)}";
     }
 
     private static string FormatAmount(decimal amount)
@@ -990,12 +683,6 @@
     private sealed record PerfectPlanOption(
         PaymentPlan Plan,
         string Caption);
-
-    private sealed record StoryLinkCandidate(
-        string Slug,
-        string Title,
-        string CoverPath,
-        string LinkPath);
 
     private sealed record PerfectPlanCardMeta(
         string Badge,

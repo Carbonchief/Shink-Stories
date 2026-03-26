@@ -77,6 +77,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     });
 builder.Services.AddAuthorization();
 builder.Services.AddSingleton<IAudioAccessService, AudioAccessService>();
+builder.Services.AddSingleton<IStoryMediaStorageService, CloudflareR2StoryMediaStorageService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpContextAccessor();
 builder.Services.Configure<ResendOptions>(builder.Configuration.GetSection(ResendOptions.SectionName));
@@ -926,10 +927,12 @@ app.MapGet("/sitemap.xml", async (HttpContext httpContext, IStoryCatalogService 
 
     var freeStoriesTask = storyCatalogService.GetFreeStoriesAsync(httpContext.RequestAborted);
     var luisterStoriesTask = storyCatalogService.GetLuisterStoriesAsync(httpContext.RequestAborted);
-    await Task.WhenAll(freeStoriesTask, luisterStoriesTask);
+    var luisterPlaylistsTask = storyCatalogService.GetLuisterPlaylistsAsync(httpContext.RequestAborted);
+    await Task.WhenAll(freeStoriesTask, luisterStoriesTask, luisterPlaylistsTask);
 
     paths.AddRange(freeStoriesTask.Result.Select(story => $"/gratis/{Uri.EscapeDataString(story.Slug)}"));
     paths.AddRange(luisterStoriesTask.Result.Select(story => $"/luister/{Uri.EscapeDataString(story.Slug)}"));
+    paths.AddRange(luisterPlaylistsTask.Result.Select(playlist => $"/luister/speellys/{Uri.EscapeDataString(playlist.Slug)}"));
 
     XNamespace ns = "http://www.sitemaps.org/schemas/sitemap/0.9";
     var document = new XDocument(

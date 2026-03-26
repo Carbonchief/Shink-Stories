@@ -13,7 +13,8 @@ public sealed record StoryItem(
     string? ThumbnailFileName = null,
     string AudioProvider = "local",
     string? AudioBucket = null,
-    string? AudioContentType = null)
+    string? AudioContentType = null,
+    string AccessLevel = "subscriber")
 {
     public string ImagePath => ResolveAssetPath(ImageFileName);
     public string ThumbnailPath => string.IsNullOrWhiteSpace(ThumbnailFileName)
@@ -25,6 +26,13 @@ public sealed record StoryItem(
         if (fileName.StartsWith("/", StringComparison.Ordinal))
         {
             return fileName;
+        }
+
+        if (Uri.TryCreate(fileName, UriKind.Absolute, out var absoluteUri) &&
+            (string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)))
+        {
+            return absoluteUri.ToString();
         }
 
         return ToAssetPath(fileName);
@@ -167,9 +175,9 @@ public static class StoryCatalog
             Slug: "georgie-se-radio",
             Title: "Georgie se Radio",
             Description: "Georgie se Radio bring pret, ritme en verrassings na storietyd.",
-            ImageFileName: "imported/2025/11/Schink_Nuwe_Stories_Georgie_se_Radio-600x600.png",
+            ImageFileName: "imported/2024/05/Storie_06_Georgie_se_Radio.jpg",
             AudioFileName: "imported/stories/2024/05/Schink-_Stories_06_Georgie_Se_Radio.mp3",
-            ThumbnailFileName: "imported/2025/11/Schink_Nuwe_Stories_Georgie_se_Radio-600x600.png"),
+            ThumbnailFileName: "imported/2024/05/Storie_06_Georgie_se_Radio-600x454.jpg"),
         new(
             Slug: "fantjie-leer-skryf",
             Title: "Fantjie Leer Skryf",

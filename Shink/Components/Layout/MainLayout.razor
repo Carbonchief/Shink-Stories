@@ -3,7 +3,7 @@
 @using System.Security.Claims
 @inject NavigationManager NavigationManager
 
-<div class="site-shell @(IsStoryRoute ? "story-route" : null) @(IsHomeRoute ? "home-route" : null)">
+<div class="site-shell @(IsStoryRoute ? "story-route" : null) @(IsHomeRoute ? "home-route" : null) @(IsLuisterRoute ? "luister-route" : null) @(IsMeerOorOnsRoute ? "about-route" : null)">
     <a class="skip-link" href="#main-content">Spring na inhoud</a>
     <header class="site-header">
         @if (IsStoryRoute)
@@ -13,7 +13,7 @@
                     <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
                     <span class="sr-only">@StoryHeaderBackLabel</span>
                 </a>
-                <div class="story-header-title">STORIEHOEKIE</div>
+                <div class="story-header-title">@StoryHeaderTitle</div>
                 <div class="story-header-spacer" aria-hidden="true"></div>
             </div>
         }
@@ -236,6 +236,24 @@
         }
     }
 
+    private bool IsLuisterRoute
+    {
+        get
+        {
+            var relativePath = GetCurrentRelativePathWithoutQuery();
+            return string.Equals(relativePath, "luister", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private bool IsMeerOorOnsRoute
+    {
+        get
+        {
+            var relativePath = GetCurrentRelativePathWithoutQuery();
+            return string.Equals(relativePath, "meer-oor-ons", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
     private string GetCurrentRelativePathWithoutQuery()
     {
         var relativePath = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
@@ -258,8 +276,19 @@
                 return "/gratis";
             }
 
+            if (relativePath.StartsWith("luister/speellys/", StringComparison.OrdinalIgnoreCase))
+            {
+                return "/luister";
+            }
+
             if (relativePath.StartsWith("luister/", StringComparison.OrdinalIgnoreCase))
             {
+                var playlistBackHref = BuildPlaylistContextBackHref(relativePath);
+                if (!string.IsNullOrWhiteSpace(playlistBackHref))
+                {
+                    return playlistBackHref;
+                }
+
                 return "/luister";
             }
 
@@ -277,13 +306,103 @@
                 return "Terug na gratis stories";
             }
 
+            if (relativePath.StartsWith("luister/speellys/", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Terug na luister";
+            }
+
             if (relativePath.StartsWith("luister/", StringComparison.OrdinalIgnoreCase))
             {
-                return "Terug na alle stories";
+                var playlistTitle = GetCurrentQueryValue("playlistName");
+                if (!string.IsNullOrWhiteSpace(playlistTitle))
+                {
+                    return $"Terug na {playlistTitle.Trim()}";
+                }
+
+                return "Terug na luister";
             }
 
             return "Terug";
         }
+    }
+
+    private string StoryHeaderTitle
+    {
+        get
+        {
+            var relativePath = GetCurrentRelativePathWithoutQuery();
+            if (relativePath.StartsWith("luister/speellys/", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Stories";
+            }
+
+            if (relativePath.StartsWith("luister/", StringComparison.OrdinalIgnoreCase))
+            {
+                var playlistTitle = GetCurrentQueryValue("playlistName");
+                if (!string.IsNullOrWhiteSpace(playlistTitle))
+                {
+                    return playlistTitle.Trim();
+                }
+
+                return "Storie";
+            }
+
+            return "STORIEHOEKIE";
+        }
+    }
+
+    private string? BuildPlaylistContextBackHref(string relativePath)
+    {
+        var playlistSlug = GetCurrentQueryValue("playlist");
+        if (string.IsNullOrWhiteSpace(playlistSlug))
+        {
+            return null;
+        }
+
+        var path = $"/luister/speellys/{Uri.EscapeDataString(playlistSlug.Trim())}";
+        var storySlug = GetLuisterStorySlug(relativePath);
+        if (string.IsNullOrWhiteSpace(storySlug))
+        {
+            return path;
+        }
+
+        return $"{path}?storie={Uri.EscapeDataString(storySlug.Trim())}";
+    }
+
+    private string? GetCurrentQueryValue(string key)
+    {
+        var currentUri = new Uri(NavigationManager.Uri);
+        var query = currentUri.Query.TrimStart('?');
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return null;
+        }
+
+        foreach (var segment in query.Split('&', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var parts = segment.Split('=', 2);
+            if (!string.Equals(parts[0], key, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var value = parts.Length > 1 ? parts[1] : string.Empty;
+            return Uri.UnescapeDataString(value.Replace('+', ' '));
+        }
+
+        return null;
+    }
+
+    private static string? GetLuisterStorySlug(string relativePath)
+    {
+        if (!relativePath.StartsWith("luister/", StringComparison.OrdinalIgnoreCase) ||
+            relativePath.StartsWith("luister/speellys/", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var segments = relativePath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        return segments.Length >= 2 ? Uri.UnescapeDataString(segments[1]) : null;
     }
 
     private static string? ResolveProfileImageUrl(ClaimsPrincipal user)
