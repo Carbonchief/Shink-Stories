@@ -24,6 +24,11 @@ public interface IAdminManagementService
         AdminStoryUpdateRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<AdminOperationResult> CreateStoryAsync(
+        string? adminEmail,
+        AdminStoryCreateRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<AdminPlaylistRecord>> GetPlaylistsAsync(
         string? adminEmail,
         CancellationToken cancellationToken = default);
@@ -101,6 +106,23 @@ public sealed record AdminStoryUpdateRequest(
     string AudioProvider,
     string? AudioBucket,
     string? AudioObjectKey,
+    string? AudioContentType,
+    string AccessLevel,
+    string Status,
+    bool IsFeatured,
+    int SortOrder,
+    DateTimeOffset? PublishedAt,
+    int? DurationSeconds);
+
+public sealed record AdminStoryCreateRequest(
+    string Slug,
+    string Title,
+    string? Summary,
+    string? Description,
+    string? CoverImagePath,
+    string? ThumbnailImagePath,
+    string AudioBucket,
+    string AudioObjectKey,
     string? AudioContentType,
     string AccessLevel,
     string Status,
