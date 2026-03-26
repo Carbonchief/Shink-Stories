@@ -1,17 +1,3 @@
-export function scrollCarouselByPage(carouselElement, direction) {
-    if (!(carouselElement instanceof HTMLElement)) {
-        return;
-    }
-
-    const normalizedDirection = direction >= 0 ? 1 : -1;
-    const scrollAmount = Math.max(220, Math.round(carouselElement.clientWidth * 0.85));
-
-    carouselElement.scrollBy({
-        left: normalizedDirection * scrollAmount,
-        behavior: "smooth"
-    });
-}
-
 let homeStoryLoadingWired = false;
 let homeRevealObserver = null;
 

@@ -408,58 +408,6 @@ h2 {
     margin: 0.65rem auto 0;
 }
 
-.carousel-controls {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    pointer-events: none;
-    z-index: 3;
-}
-
-.carousel-nav-btn {
-    width: 44px;
-    height: 44px;
-    border-radius: 999px;
-    border: 0;
-    background: transparent;
-    color: #132126;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    pointer-events: auto;
-    font: inherit;
-    line-height: 1;
-    padding: 0;
-    cursor: pointer;
-    box-shadow: 0 4px 10px rgba(15, 22, 27, 0.24);
-    transition: transform 0.18s ease, box-shadow 0.18s ease, color 0.18s ease;
-}
-
-.carousel-nav-btn i {
-    font-size: 1.18rem;
-}
-
-.carousel-nav-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 6px 14px rgba(15, 22, 27, 0.3);
-    color: #0c1519;
-}
-
-.carousel-nav-btn-prev {
-    margin-left: -3.2rem;
-}
-
-.carousel-nav-btn-next {
-    margin-right: -3.2rem;
-}
-
-.carousel-nav-btn:focus-visible {
-    outline: 3px solid color-mix(in srgb, #ffffff 58%, var(--accent));
-    outline-offset: 2px;
-}
-
 .stories-carousel {
     margin-top: 0;
     display: grid;
@@ -1173,10 +1121,6 @@ h2 {
 }
 
 @media (max-width: 620px) {
-    .carousel-controls {
-        display: none;
-    }
-
     .stories-carousel-shell {
         overflow-x: clip;
     }
@@ -1190,23 +1134,6 @@ h2 {
 
     .perfect-plan-option.has-save-badge .perfect-plan-option-text {
         padding-right: 5.25rem;
-    }
-
-    .carousel-nav-btn {
-        width: 36px;
-        height: 36px;
-    }
-
-    .carousel-nav-btn i {
-        font-size: 0.98rem;
-    }
-
-    .carousel-nav-btn-prev {
-        margin-left: -3.2rem;
-    }
-
-    .carousel-nav-btn-next {
-        margin-right: -3.2rem;
     }
 
     .join-promo {

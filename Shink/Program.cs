@@ -77,6 +77,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     });
 builder.Services.AddAuthorization();
 builder.Services.AddSingleton<IAudioAccessService, AudioAccessService>();
+builder.Services.AddSingleton<IStoryMediaStorageService, CloudflareR2StoryMediaStorageService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpContextAccessor();
 builder.Services.Configure<ResendOptions>(builder.Configuration.GetSection(ResendOptions.SectionName));

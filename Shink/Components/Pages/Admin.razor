@@ -5,6 +5,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IAdminManagementService AdminManagementService
+@inject IStoryMediaStorageService StoryMediaStorageService
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
 @inject ILogger<Admin> Logger
@@ -141,10 +142,20 @@
                                   Variant="Variant.Outlined"
                                   Margin="Margin.Dense"
                                   Immediate="true" />
+                    <MudButton Class="admin-btn admin-btn-secondary admin-icon-btn admin-mobile-cta"
+                               Variant="Variant.Outlined"
+                               Color="Color.Primary"
+                               OnClick="StartNewStory"
+                               aria-label='@T("Nuwe storie", "New story")'
+                               title='@T("Nuwe storie", "New story")'>
+                        <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                        <span class="admin-btn-text">@T("Nuwe storie", "New story")</span>
+                        <span class="sr-only">@T("Nuwe storie", "New story")</span>
+                    </MudButton>
                     <MudButton Class="admin-icon-btn admin-mobile-cta"
                                Variant="Variant.Filled"
                                Color="Color.Primary"
-                               OnClick="RefreshStoriesAsync"
+                               OnClick="@(() => RefreshStoriesAsync())"
                                aria-label='@T("Soek stories", "Search stories")'
                                title='@T("Soek stories", "Search stories")'>
                         <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
@@ -321,6 +332,120 @@
                                    Disabled="@IsSavingSubscriber"
                                    OnClick="SaveSubscriberAsync">
                             @(IsSavingSubscriber ? T("Stoor...", "Saving...") : T("Stoor intekenaar", "Save subscriber"))
+                        </MudButton>
+                    </div>
+                </DialogActions>
+            </MudDialog>
+        }
+
+        @if (NewStoryEditor is not null)
+        {
+            <MudDialog @bind-Visible="IsNewStoryDialogOpen"
+                       Options="EditorDialogOptions">
+                <TitleContent>
+                    <MudText Typo="Typo.h6">@T("Laai nuwe storie op", "Upload new story")</MudText>
+                </TitleContent>
+                <DialogContent>
+                    <div class="admin-editor" @key="NewStoryDialogInstanceKey">
+                        <p class="admin-form-note">
+                            @T(
+                                "Slug, sort order, R2-audio en die thumbnail-pad word outomaties ingevul waar moontlik. As jy nie 'n thumbnail kies nie, gebruik ons die cover image.",
+                                "Slug, sort order, R2 audio, and the thumbnail path are autofilled where possible. If you do not choose a thumbnail, we use the cover image.")
+                        </p>
+
+                        <div class="admin-form-grid">
+                            <MudTextField T="string"
+                                          Label='@T("Titel", "Title")'
+                                          @bind-Value="NewStoryEditor.Title"
+                                          Variant="Variant.Outlined"
+                                          Margin="Margin.Dense" />
+                            <MudSelect T="string"
+                                       Label='@T("Toegang", "Access")'
+                                       @bind-Value="NewStoryEditor.AccessLevel"
+                                       Variant="Variant.Outlined"
+                                       Margin="Margin.Dense">
+                                <MudSelectItem Value="@("subscriber")">subscriber</MudSelectItem>
+                                <MudSelectItem Value="@("free")">free</MudSelectItem>
+                            </MudSelect>
+                            <MudCheckBox T="bool"
+                                         Class="admin-span-2"
+                                         Label='@T("Publiseer onmiddellik", "Publish immediately")'
+                                         @bind-Value="NewStoryEditor.PublishNow" />
+                            <MudTextField T="string"
+                                          Class="admin-span-2"
+                                          Label='@T("Opsomming", "Summary")'
+                                          @bind-Value="NewStoryEditor.Summary"
+                                          Variant="Variant.Outlined"
+                                          Margin="Margin.Dense"
+                                          Lines="2" />
+                            <MudTextField T="string"
+                                          Class="admin-span-2"
+                                          Label='@T("Beskrywing", "Description")'
+                                          @bind-Value="NewStoryEditor.Description"
+                                          Variant="Variant.Outlined"
+                                          Margin="Margin.Dense"
+                                          Lines="4" />
+
+                            <div class="admin-upload-card">
+                                <div class="admin-upload-head">
+                                    <h4>@T("Cover image", "Cover image")</h4>
+                                    <p>@T("Verpligtend", "Required")</p>
+                                </div>
+                                <label class="admin-upload-btn" for="admin-new-story-cover">
+                                    @T("Kies image", "Choose image")
+                                </label>
+                                <InputFile id="admin-new-story-cover"
+                                           class="admin-file-input"
+                                           OnChange="OnNewStoryCoverSelected"
+                                           accept=".jpg,.jpeg,.png,.webp,image/*" />
+                                <p class="admin-upload-file-name">@GetSelectedFileLabel(NewStoryEditor.CoverFileName, T("Nog geen file gekies nie.", "No file selected yet."))</p>
+                            </div>
+
+                            <div class="admin-upload-card">
+                                <div class="admin-upload-head">
+                                    <h4>@T("Thumbnail image", "Thumbnail image")</h4>
+                                    <p>@T("Opsioneel", "Optional")</p>
+                                </div>
+                                <label class="admin-upload-btn" for="admin-new-story-thumbnail">
+                                    @T("Kies image", "Choose image")
+                                </label>
+                                <InputFile id="admin-new-story-thumbnail"
+                                           class="admin-file-input"
+                                           OnChange="OnNewStoryThumbnailSelected"
+                                           accept=".jpg,.jpeg,.png,.webp,image/*" />
+                                <p class="admin-upload-file-name">@GetSelectedFileLabel(NewStoryEditor.ThumbnailFileName, T("Gebruik cover image as jy dit leeg laat.", "Uses the cover image if left empty."))</p>
+                            </div>
+
+                            <div class="admin-upload-card admin-span-2">
+                                <div class="admin-upload-head">
+                                    <h4>@T("Audio file", "Audio file")</h4>
+                                    <p>@T("Laai op na Cloudflare R2", "Uploads to Cloudflare R2")</p>
+                                </div>
+                                <label class="admin-upload-btn" for="admin-new-story-audio">
+                                    @T("Kies audio", "Choose audio")
+                                </label>
+                                <InputFile id="admin-new-story-audio"
+                                           class="admin-file-input"
+                                           OnChange="OnNewStoryAudioSelected"
+                                           accept=".mp3,.mpeg,.m4a,.wav,.ogg,audio/*" />
+                                <p class="admin-upload-file-name">@GetSelectedFileLabel(NewStoryEditor.AudioFileName, T("Nog geen file gekies nie.", "No file selected yet."))</p>
+                            </div>
+                        </div>
+                    </div>
+                </DialogContent>
+                <DialogActions>
+                    <div class="admin-dialog-actions-row">
+                        <MudButton Variant="Variant.Text"
+                                   Color="Color.Default"
+                                   OnClick="CloseNewStoryDialog">
+                            @T("Sluit", "Close")
+                        </MudButton>
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   Class="admin-btn"
+                                   Disabled="@IsCreatingStory"
+                                   OnClick="SaveNewStoryAsync">
+                            @(IsCreatingStory ? T("Laai op...", "Uploading...") : T("Skep storie", "Create story"))
                         </MudButton>
                     </div>
                 </DialogActions>
@@ -668,13 +793,17 @@
 
     private bool IsSavingSubscriber { get; set; }
     private bool IsSavingStory { get; set; }
+    private bool IsCreatingStory { get; set; }
     private bool IsSavingPlaylist { get; set; }
     private bool IsSavingPlaylistsOrder { get; set; }
     private bool IsSavingPlaylistStories { get; set; }
     private bool IsSubscriberDialogOpen { get; set; }
     private bool IsStoryDialogOpen { get; set; }
+    private bool IsNewStoryDialogOpen { get; set; }
     private bool IsPlaylistDialogOpen { get; set; }
     private HashSet<Guid> TogglingPlaylistIds { get; } = [];
+    private const long MaxImageUploadBytes = 10 * 1024 * 1024;
+    private const long MaxAudioUploadBytes = 256L * 1024 * 1024;
     private static readonly DialogOptions EditorDialogOptions = new()
     {
         MaxWidth = MaxWidth.Large,
@@ -693,8 +822,10 @@
 
     private EditableSubscriber? SubscriberEditor { get; set; }
     private EditableStory? StoryEditor { get; set; }
+    private NewStoryDraft? NewStoryEditor { get; set; }
     private EditablePlaylist? PlaylistEditor { get; set; }
     private List<EditablePlaylistStoryItem> PlaylistStoryEditor { get; set; } = [];
+    private string NewStoryDialogInstanceKey { get; set; } = Guid.NewGuid().ToString("N");
 
     private IReadOnlyList<AdminStoryRecord> AvailableStoriesForPlaylist =>
         Stories
@@ -831,14 +962,14 @@
         }
     }
 
-    private async Task RefreshStoriesAsync()
+    private async Task RefreshStoriesAsync(Guid? selectedStoryId = null)
     {
         try
         {
-            var selectedStoryId = StoryEditor?.StoryId;
+            var targetStoryId = selectedStoryId ?? StoryEditor?.StoryId;
             Stories = await AdminManagementService.GetStoriesAsync(CurrentAdminEmail, StorySearch);
-            var selectedStory = selectedStoryId is not null
-                ? Stories.FirstOrDefault(story => story.StoryId == selectedStoryId.Value)
+            var selectedStory = targetStoryId is not null
+                ? Stories.FirstOrDefault(story => story.StoryId == targetStoryId.Value)
                 : Stories.FirstOrDefault();
             StoryEditor = selectedStory is null ? null : EditableStory.From(selectedStory);
             if (StoryEditor is null)
@@ -977,6 +1108,17 @@
         StoryEditor = EditableStory.From(selected);
     }
 
+    private void StartNewStory()
+    {
+        NewStoryEditor = new NewStoryDraft
+        {
+            AccessLevel = "subscriber",
+            PublishNow = true
+        };
+        NewStoryDialogInstanceKey = Guid.NewGuid().ToString("N");
+        IsNewStoryDialogOpen = true;
+    }
+
     private async Task SelectPlaylist(Guid playlistId)
     {
         await RefreshPlaylistsAsync(playlistId);
@@ -998,6 +1140,12 @@
     private void CloseStoryDialog()
     {
         IsStoryDialogOpen = false;
+    }
+
+    private void CloseNewStoryDialog()
+    {
+        IsNewStoryDialogOpen = false;
+        NewStoryEditor = null;
     }
 
     private void ClosePlaylistDialog()
@@ -1041,6 +1189,156 @@
         finally
         {
             IsSavingSubscriber = false;
+        }
+    }
+
+    private Task OnNewStoryCoverSelected(InputFileChangeEventArgs args)
+    {
+        if (NewStoryEditor is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var file = args.File;
+        NewStoryEditor.CoverFile = file;
+        NewStoryEditor.CoverFileName = file?.Name;
+        return Task.CompletedTask;
+    }
+
+    private Task OnNewStoryThumbnailSelected(InputFileChangeEventArgs args)
+    {
+        if (NewStoryEditor is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var file = args.File;
+        NewStoryEditor.ThumbnailFile = file;
+        NewStoryEditor.ThumbnailFileName = file?.Name;
+        return Task.CompletedTask;
+    }
+
+    private Task OnNewStoryAudioSelected(InputFileChangeEventArgs args)
+    {
+        if (NewStoryEditor is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var file = args.File;
+        NewStoryEditor.AudioFile = file;
+        NewStoryEditor.AudioFileName = file?.Name;
+        return Task.CompletedTask;
+    }
+
+    private async Task SaveNewStoryAsync()
+    {
+        if (NewStoryEditor is null)
+        {
+            return;
+        }
+
+        ClearFeedback();
+
+        var validationMessage = ValidateNewStoryDraft(NewStoryEditor);
+        if (!string.IsNullOrWhiteSpace(validationMessage))
+        {
+            SetError(validationMessage);
+            return;
+        }
+
+        IsCreatingStory = true;
+        var uploadedObjectKeys = new List<string>();
+
+        try
+        {
+            var allStories = await AdminManagementService.GetStoriesAsync(CurrentAdminEmail);
+            var generatedSlug = CreateUniqueStorySlug(NewStoryEditor.Title, allStories);
+            if (string.IsNullOrWhiteSpace(generatedSlug))
+            {
+                SetError(T("Gee asseblief 'n geldige titel vir die storie.", "Please enter a valid title for the story."));
+                return;
+            }
+
+            var coverFile = NewStoryEditor.CoverFile!;
+            var audioFile = NewStoryEditor.AudioFile!;
+            var summary = AutofillStorySummary(NewStoryEditor.Summary, NewStoryEditor.Description);
+            var description = AutofillStoryDescription(NewStoryEditor.Description, summary);
+
+            await using var coverStream = coverFile.OpenReadStream(MaxImageUploadBytes);
+            var coverUpload = await StoryMediaStorageService.UploadImageAsync(
+                generatedSlug,
+                StoryImageKind.Cover,
+                coverFile.Name,
+                NormalizeImageContentType(coverFile),
+                coverStream);
+            uploadedObjectKeys.Add(coverUpload.ObjectKey);
+
+            var thumbnailPath = coverUpload.PublicUrl;
+            if (NewStoryEditor.ThumbnailFile is not null)
+            {
+                await using var thumbnailStream = NewStoryEditor.ThumbnailFile.OpenReadStream(MaxImageUploadBytes);
+                var thumbnailUpload = await StoryMediaStorageService.UploadImageAsync(
+                    generatedSlug,
+                    StoryImageKind.Thumbnail,
+                    NewStoryEditor.ThumbnailFile.Name,
+                    NormalizeImageContentType(NewStoryEditor.ThumbnailFile),
+                    thumbnailStream);
+                uploadedObjectKeys.Add(thumbnailUpload.ObjectKey);
+                thumbnailPath = thumbnailUpload.PublicUrl;
+            }
+
+            await using var audioStream = audioFile.OpenReadStream(MaxAudioUploadBytes);
+            var audioUpload = await StoryMediaStorageService.UploadAudioAsync(
+                generatedSlug,
+                audioFile.Name,
+                NormalizeAudioContentType(audioFile),
+                audioStream);
+            uploadedObjectKeys.Add(audioUpload.ObjectKey);
+
+            var result = await AdminManagementService.CreateStoryAsync(
+                CurrentAdminEmail,
+                new AdminStoryCreateRequest(
+                    Slug: generatedSlug,
+                    Title: NewStoryEditor.Title,
+                    Summary: summary,
+                    Description: description,
+                    CoverImagePath: coverUpload.PublicUrl,
+                    ThumbnailImagePath: thumbnailPath,
+                    AudioBucket: audioUpload.Bucket,
+                    AudioObjectKey: audioUpload.ObjectKey,
+                    AudioContentType: audioUpload.ContentType,
+                    AccessLevel: NewStoryEditor.AccessLevel,
+                    Status: NewStoryEditor.PublishNow ? "published" : "draft",
+                    IsFeatured: false,
+                    SortOrder: BuildNextStorySortOrder(allStories),
+                    PublishedAt: NewStoryEditor.PublishNow ? DateTimeOffset.Now : null,
+                    DurationSeconds: null));
+
+            if (!result.IsSuccess)
+            {
+                await CleanupUploadedStoryObjectsAsync(uploadedObjectKeys);
+                SetError(result.ErrorMessage ?? T("Kon nie nuwe storie skep nie.", "Could not create the new story."));
+                return;
+            }
+
+            await RefreshStoriesAsync(result.EntityId);
+            NewStoryEditor = null;
+            IsNewStoryDialogOpen = false;
+            if (string.IsNullOrWhiteSpace(ErrorMessage))
+            {
+                SetStatus(T("Nuwe storie is geskep en opgelaai.", "New story was created and uploaded."));
+            }
+        }
+        catch (Exception exception)
+        {
+            await CleanupUploadedStoryObjectsAsync(uploadedObjectKeys);
+            Logger.LogError(exception, "Failed to create story from admin upload.");
+            SetError(LocalizeNewStoryException(exception));
+        }
+        finally
+        {
+            IsCreatingStory = false;
         }
     }
 
@@ -1415,6 +1713,52 @@
         }
     }
 
+    private string? ValidateNewStoryDraft(NewStoryDraft draft)
+    {
+        if (string.IsNullOrWhiteSpace(draft.Title))
+        {
+            return T("Gee asseblief 'n titel vir die storie.", "Please enter a title for the story.");
+        }
+
+        if (draft.CoverFile is null)
+        {
+            return T("Kies asseblief 'n cover image.", "Please choose a cover image.");
+        }
+
+        if (draft.CoverFile.Size <= 0 || draft.CoverFile.Size > MaxImageUploadBytes)
+        {
+            return T("Die cover image moet kleiner as 10 MB wees.", "The cover image must be smaller than 10 MB.");
+        }
+
+        if (draft.ThumbnailFile is not null &&
+            (draft.ThumbnailFile.Size <= 0 || draft.ThumbnailFile.Size > MaxImageUploadBytes))
+        {
+            return T("Die thumbnail image moet kleiner as 10 MB wees.", "The thumbnail image must be smaller than 10 MB.");
+        }
+
+        if (draft.AudioFile is null)
+        {
+            return T("Kies asseblief 'n audio file.", "Please choose an audio file.");
+        }
+
+        if (draft.AudioFile.Size <= 0 || draft.AudioFile.Size > MaxAudioUploadBytes)
+        {
+            return T("Die audio file moet kleiner as 256 MB wees.", "The audio file must be smaller than 256 MB.");
+        }
+
+        return null;
+    }
+
+    private async Task CleanupUploadedStoryObjectsAsync(IEnumerable<string> objectKeys)
+    {
+        foreach (var objectKey in objectKeys
+                     .Where(key => !string.IsNullOrWhiteSpace(key))
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            await StoryMediaStorageService.DeleteObjectIfExistsAsync(objectKey);
+        }
+    }
+
     private bool HandleOperationResult(AdminOperationResult result, string successMessage)
     {
         if (!result.IsSuccess)
@@ -1475,6 +1819,8 @@
             "Status moet 'draft', 'published' of 'archived' wees." => "Status must be 'draft', 'published', or 'archived'.",
             "Gepubliseerde stories vereis 'n audio object key." => "Published stories require an audio object key.",
             "R2 stories vereis beide bucket en object key." => "R2 stories require both bucket and object key.",
+            "Storie slug bestaan reeds." => "Story slug already exists.",
+            "Kon nie nuwe storie skep nie." => "Could not create a new story.",
             "Kon nie storie nou opdateer nie." => "Could not update story right now.",
             "Playlist slug is ongeldig." => "Playlist slug is invalid.",
             "Playlist titel is verpligtend." => "Playlist title is required.",
@@ -1487,6 +1833,23 @@
             "Kon nie bestaande playlist stories verwyder nie." => "Could not remove existing playlist stories.",
             "Kon nie nuwe playlist stories stoor nie." => "Could not save new playlist stories.",
             _ => message
+        };
+    }
+
+    private string LocalizeNewStoryException(Exception exception)
+    {
+        var message = exception.Message;
+        return message switch
+        {
+            "Cloudflare R2 is not fully configured for admin uploads." =>
+                T("Cloudflare R2 is nog nie volledig opgestel vir admin uploads nie.", "Cloudflare R2 is not fully configured for admin uploads."),
+            "Unsupported audio file type. Use MP3, M4A, WAV, or OGG." =>
+                T("Ondersteunde audio files is MP3, M4A, WAV of OGG.", "Supported audio files are MP3, M4A, WAV, or OGG."),
+            "Unsupported image file type. Use JPG, PNG, or WEBP." =>
+                T("Ondersteunde images is JPG, PNG of WEBP.", "Supported image types are JPG, PNG, or WEBP."),
+            "Story slug is required for media uploads." =>
+                T("Die storie het 'n geldige slug nodig voor upload.", "The story needs a valid slug before upload."),
+            _ => T("Kon nie die nuwe storie nou oplaai nie.", "Could not upload the new story right now.")
         };
     }
 
@@ -1543,6 +1906,115 @@
 
         return new DateTimeOffset(parsed);
     }
+
+    private static string NormalizeAudioContentType(IBrowserFile file) =>
+        file.ContentType?.Trim().ToLowerInvariant() switch
+        {
+            "audio/mpeg" or "audio/mp3" => "audio/mpeg",
+            "audio/mp4" or "audio/x-m4a" => "audio/mp4",
+            "audio/wav" or "audio/x-wav" or "audio/wave" => "audio/wav",
+            "audio/ogg" => "audio/ogg",
+            _ => Path.GetExtension(file.Name).Trim().ToLowerInvariant() switch
+            {
+                ".mp3" or ".mpeg" => "audio/mpeg",
+                ".m4a" => "audio/mp4",
+                ".wav" => "audio/wav",
+                ".ogg" => "audio/ogg",
+                _ => file.ContentType ?? string.Empty
+            }
+        };
+
+    private static string NormalizeImageContentType(IBrowserFile file) =>
+        file.ContentType?.Trim().ToLowerInvariant() switch
+        {
+            "image/jpeg" or "image/jpg" => "image/jpeg",
+            "image/png" => "image/png",
+            "image/webp" => "image/webp",
+            _ => Path.GetExtension(file.Name).Trim().ToLowerInvariant() switch
+            {
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".png" => "image/png",
+                ".webp" => "image/webp",
+                _ => file.ContentType ?? string.Empty
+            }
+        };
+
+    private static string CreateUniqueStorySlug(string? value, IReadOnlyList<AdminStoryRecord> existingStories)
+    {
+        var baseSlug = CreatePlaylistSlug(value);
+        if (string.IsNullOrWhiteSpace(baseSlug))
+        {
+            return string.Empty;
+        }
+
+        var existingSlugs = existingStories
+            .Select(story => story.Slug)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (!existingSlugs.Contains(baseSlug))
+        {
+            return baseSlug;
+        }
+
+        for (var suffix = 2; suffix < 10_000; suffix++)
+        {
+            var candidate = $"{baseSlug}-{suffix}";
+            if (!existingSlugs.Contains(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return $"{baseSlug}-{Guid.NewGuid():N}"[..Math.Min(baseSlug.Length + 7, 64)];
+    }
+
+    private static int BuildNextStorySortOrder(IReadOnlyList<AdminStoryRecord> existingStories)
+    {
+        if (existingStories.Count == 0)
+        {
+            return 10;
+        }
+
+        return existingStories.Max(story => story.SortOrder) + 10;
+    }
+
+    private static string? AutofillStorySummary(string? summary, string? description)
+    {
+        if (!string.IsNullOrWhiteSpace(summary))
+        {
+            return summary.Trim();
+        }
+
+        if (string.IsNullOrWhiteSpace(description))
+        {
+            return null;
+        }
+
+        var trimmed = description.Trim();
+        if (trimmed.Length <= 240)
+        {
+            return trimmed;
+        }
+
+        var candidate = trimmed[..240];
+        var lastSpace = candidate.LastIndexOf(' ');
+        return (lastSpace > 80 ? candidate[..lastSpace] : candidate).Trim();
+    }
+
+    private static string? AutofillStoryDescription(string? description, string? summary)
+    {
+        if (!string.IsNullOrWhiteSpace(description))
+        {
+            return description.Trim();
+        }
+
+        return string.IsNullOrWhiteSpace(summary)
+            ? null
+            : summary.Trim();
+    }
+
+    private static string GetSelectedFileLabel(string? fileName, string emptyStateLabel) =>
+        string.IsNullOrWhiteSpace(fileName) ? emptyStateLabel : fileName.Trim();
 
     private static string CreatePlaylistSlug(string? value)
     {
@@ -1719,6 +2191,21 @@
             DurationSeconds = story.DurationSeconds,
             PublishedAtLocal = story.PublishedAt?.LocalDateTime.ToString("yyyy-MM-ddTHH:mm")
         };
+    }
+
+    private sealed class NewStoryDraft
+    {
+        public string Title { get; set; } = string.Empty;
+        public string? Summary { get; set; }
+        public string? Description { get; set; }
+        public string AccessLevel { get; set; } = "subscriber";
+        public bool PublishNow { get; set; } = true;
+        public IBrowserFile? CoverFile { get; set; }
+        public string? CoverFileName { get; set; }
+        public IBrowserFile? ThumbnailFile { get; set; }
+        public string? ThumbnailFileName { get; set; }
+        public IBrowserFile? AudioFile { get; set; }
+        public string? AudioFileName { get; set; }
     }
 
     private sealed class EditablePlaylist

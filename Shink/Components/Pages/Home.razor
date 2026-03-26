@@ -68,7 +68,6 @@
 {
     var playlist = HomePlaylists[index];
     var headingId = $"home-playlist-{playlist.Slug}-heading";
-    var carouselIndex = index;
     var hasDescription = !string.IsNullOrWhiteSpace(playlist.Description);
 
     <section class="section-block stories-carousel-section home-scroll-reveal" style="--home-reveal-delay: 0.08s;" aria-labelledby="@headingId">
@@ -79,21 +78,9 @@
         }
 
         <div class="stories-carousel-shell">
-            <div class="carousel-controls" aria-label="@($"{playlist.Title} navigasie")">
-                <button type="button" class="carousel-nav-btn carousel-nav-btn-prev" aria-label="@($"Vorige stories in {playlist.Title}")"
-                        @onclick="() => ScrollCarouselAsync(HomePlaylistCarouselRefs[carouselIndex], -1)">
-                    <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
-                </button>
-                <button type="button" class="carousel-nav-btn carousel-nav-btn-next" aria-label="@($"Volgende stories in {playlist.Title}")"
-                        @onclick="() => ScrollCarouselAsync(HomePlaylistCarouselRefs[carouselIndex], 1)">
-                    <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-                </button>
-            </div>
-
             <div class="@($"stories-carousel {(playlist.Stories.Count <= 3 ? "stories-carousel-free" : string.Empty)}")"
                  role="list"
-                 aria-label="@playlist.Title"
-                 @ref="HomePlaylistCarouselRefs[carouselIndex]">
+                 aria-label="@playlist.Title">
             @foreach (var story in playlist.Stories)
             {
                 var storyPath = GetHomeStoryHref(story);
@@ -300,7 +287,6 @@
 </section>
 
 @code {
-    private ElementReference[] HomePlaylistCarouselRefs { get; set; } = Array.Empty<ElementReference>();
     private IJSObjectReference? _homeModule;
     private bool _homeModuleLoadFailed;
 
@@ -473,23 +459,6 @@
         {
             HomePlaylists = Array.Empty<StoryPlaylist>();
         }
-        HomePlaylistCarouselRefs = new ElementReference[HomePlaylists.Count];
-    }
-
-    private async Task ScrollCarouselAsync(ElementReference carouselRef, int direction)
-    {
-        if (direction is 0)
-        {
-            return;
-        }
-
-        var module = await TryGetHomeModuleAsync();
-        if (module is null)
-        {
-            return;
-        }
-
-        await module.InvokeVoidAsync("scrollCarouselByPage", carouselRef, direction);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
