@@ -49,6 +49,10 @@
         linear-gradient(180deg, #f6f3ee 0%, #ece8e2 100%);
 }
 
+.site-shell.about-route {
+    background: #ffffff;
+}
+
 .site-container {
     width: min(1080px, 100% - 2rem);
     margin-inline: auto;

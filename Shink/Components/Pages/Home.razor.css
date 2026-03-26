@@ -439,7 +439,15 @@ h2 {
     scroll-snap-type: x mandatory;
     scroll-padding-inline: 1.65rem;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior-inline: contain;
+    touch-action: pan-y;
     width: 100%;
+    cursor: grab;
+}
+
+.stories-carousel.is-dragging {
+    scroll-snap-type: none;
+    cursor: grabbing;
 }
 
 .stories-carousel-free {

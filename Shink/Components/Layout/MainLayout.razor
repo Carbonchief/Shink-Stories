@@ -3,7 +3,7 @@
 @using System.Security.Claims
 @inject NavigationManager NavigationManager
 
-<div class="site-shell @(IsStoryRoute ? "story-route" : null) @(IsHomeRoute ? "home-route" : null) @(IsLuisterRoute ? "luister-route" : null)">
+<div class="site-shell @(IsStoryRoute ? "story-route" : null) @(IsHomeRoute ? "home-route" : null) @(IsLuisterRoute ? "luister-route" : null) @(IsMeerOorOnsRoute ? "about-route" : null)">
     <a class="skip-link" href="#main-content">Spring na inhoud</a>
     <header class="site-header">
         @if (IsStoryRoute)
@@ -242,6 +242,15 @@
         {
             var relativePath = GetCurrentRelativePathWithoutQuery();
             return string.Equals(relativePath, "luister", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private bool IsMeerOorOnsRoute
+    {
+        get
+        {
+            var relativePath = GetCurrentRelativePathWithoutQuery();
+            return string.Equals(relativePath, "meer-oor-ons", StringComparison.OrdinalIgnoreCase);
         }
     }
 

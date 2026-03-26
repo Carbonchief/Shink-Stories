@@ -23,23 +23,44 @@ function wireCarouselDragScrolling() {
         }
 
         carousel.dataset.dragScrollWired = "true";
-        carousel.style.cursor = "grab";
-
         let activePointerId = null;
         let startX = 0;
         let startScrollLeft = 0;
+        let pendingScrollLeft = 0;
+        let animationFrameId = 0;
+        let pointerDown = false;
         let isDragging = false;
         let suppressClick = false;
 
+        const flushScrollPosition = () => {
+            animationFrameId = 0;
+            carousel.scrollLeft = pendingScrollLeft;
+        };
+
+        const queueScrollPosition = (nextScrollLeft) => {
+            pendingScrollLeft = nextScrollLeft;
+
+            if (animationFrameId !== 0) {
+                return;
+            }
+
+            animationFrameId = window.requestAnimationFrame(flushScrollPosition);
+        };
+
         const releaseDragState = () => {
+            if (animationFrameId !== 0) {
+                window.cancelAnimationFrame(animationFrameId);
+                animationFrameId = 0;
+            }
+
             if (activePointerId !== null && carousel.hasPointerCapture(activePointerId)) {
                 carousel.releasePointerCapture(activePointerId);
             }
 
             activePointerId = null;
+            pointerDown = false;
             isDragging = false;
             carousel.classList.remove("is-dragging");
-            carousel.style.cursor = "grab";
             document.body.style.userSelect = "";
         };
 
@@ -49,15 +70,16 @@ function wireCarouselDragScrolling() {
             }
 
             activePointerId = event.pointerId;
+            pointerDown = true;
             startX = event.clientX;
             startScrollLeft = carousel.scrollLeft;
+            pendingScrollLeft = startScrollLeft;
             isDragging = false;
             suppressClick = false;
-            carousel.setPointerCapture(event.pointerId);
         });
 
         carousel.addEventListener("pointermove", (event) => {
-            if (activePointerId !== event.pointerId) {
+            if (!pointerDown || activePointerId !== event.pointerId) {
                 return;
             }
 
@@ -66,22 +88,30 @@ function wireCarouselDragScrolling() {
                 return;
             }
 
-            isDragging = true;
-            suppressClick = true;
-            carousel.classList.add("is-dragging");
-            carousel.style.cursor = "grabbing";
-            document.body.style.userSelect = "none";
-            carousel.scrollLeft = startScrollLeft - deltaX;
+            if (!isDragging) {
+                isDragging = true;
+                suppressClick = true;
+                carousel.classList.add("is-dragging");
+                document.body.style.userSelect = "none";
+
+                if (!carousel.hasPointerCapture(event.pointerId)) {
+                    carousel.setPointerCapture(event.pointerId);
+                }
+            }
+
+            queueScrollPosition(startScrollLeft - deltaX);
             event.preventDefault();
         });
 
         carousel.addEventListener("pointerup", (event) => {
-            if (activePointerId !== event.pointerId) {
+            if (!pointerDown || activePointerId !== event.pointerId) {
                 return;
             }
 
+            const wasDragging = isDragging;
             releaseDragState();
-            if (suppressClick) {
+
+            if (wasDragging) {
                 window.setTimeout(() => {
                     suppressClick = false;
                 }, 0);
@@ -98,6 +128,7 @@ function wireCarouselDragScrolling() {
 
             event.preventDefault();
             event.stopPropagation();
+            suppressClick = false;
         }, true);
 
         carousel.addEventListener("dragstart", (event) => {
