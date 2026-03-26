@@ -63,7 +63,7 @@
     </div>
 </section>
 
-<section class="join-promo">
+<section class="join-promo home-scroll-reveal" style="--home-reveal-delay: 0.04s;">
     <div class="join-promo-media">
         <img src="/branding/Schink_Stories_Kom_Luister_Saam.webp"
              alt="Kom Luister Saam by Schink Stories" loading="lazy" decoding="async" />
@@ -84,7 +84,7 @@
     </div>
 </section>
 
-<section class="section-block stories-carousel-section" aria-labelledby="gratis-stories-heading">
+<section class="section-block stories-carousel-section home-scroll-reveal" style="--home-reveal-delay: 0.08s;" aria-labelledby="gratis-stories-heading">
     <h2 id="gratis-stories-heading">Kom probeer 3 van ons lekkerste stories</h2>
     <p class="section-intro">Dis op die huis!</p>
 
@@ -127,7 +127,7 @@
     </div>
 </section>
 
-<section class="section-block stories-carousel-section newest-stories-section" aria-labelledby="nuutste-stories-heading">
+<section class="section-block stories-carousel-section newest-stories-section home-scroll-reveal" style="--home-reveal-delay: 0.12s;" aria-labelledby="nuutste-stories-heading">
     <h2 id="nuutste-stories-heading">Top 10 nuutste stories</h2>
     <p class="section-intro">Kry 'n voorsmakie van ons nuutste uitgawes.</p>
 
@@ -170,7 +170,7 @@
 
 @if (KleuterStories.Count > 0)
 {
-    <section class="section-block stories-carousel-section kleuter-stories-section" aria-labelledby="kleuter-stories-heading">
+    <section class="section-block stories-carousel-section kleuter-stories-section home-scroll-reveal" style="--home-reveal-delay: 0.16s;" aria-labelledby="kleuter-stories-heading">
         <h2 id="kleuter-stories-heading">Stories vir Kleuters</h2>
         <p class="section-intro">Verken stories spesiaal vir kleuters.</p>
 
@@ -212,7 +212,7 @@
     </section>
 }
 
-<section class="section-block stories-carousel-section bible-stories-section" aria-labelledby="bybel-stories-heading">
+<section class="section-block stories-carousel-section bible-stories-section home-scroll-reveal" style="--home-reveal-delay: 0.2s;" aria-labelledby="bybel-stories-heading">
     <h2 id="bybel-stories-heading">Bybelstories</h2>
     <p class="section-intro">Luister na ons Bybelstories vir kinders.</p>
 
@@ -253,7 +253,7 @@
     </div>
 </section>
 
-<section class="home-testimonials section-block" aria-labelledby="home-ouers-se">
+<section class="home-testimonials section-block home-scroll-reveal" style="--home-reveal-delay: 0.08s;" aria-labelledby="home-ouers-se">
     <h2 id="home-ouers-se">Wat ouers se</h2>
     <div class="home-review-grid">
         <article class="home-review-card">
@@ -291,7 +291,7 @@
     </div>
 </section>
 
-<section class="perfect-plan-section" aria-labelledby="perfekte-plan">
+<section class="perfect-plan-section home-scroll-reveal" style="--home-reveal-delay: 0.08s;" aria-labelledby="perfekte-plan">
     <div class="perfect-plan-header">
         <h2 id="perfekte-plan">Vind jou perfekte plan</h2>
         <p>Vergelyk ons opsies en kies die intekening wat die beste by jou gesin pas.</p>
@@ -347,7 +347,7 @@
     </div>
 </section>
 
-<section class="contact-section" aria-labelledby="kontak-ons">
+<section class="contact-section home-scroll-reveal" style="--home-reveal-delay: 0.08s;" aria-labelledby="kontak-ons">
     <div class="contact-inner">
         <h2 id="kontak-ons" class="contact-title">Kontak Ons</h2>
 
@@ -779,6 +779,7 @@
         }
 
         await module.InvokeVoidAsync("initializeHomeStoryLoading");
+        await module.InvokeVoidAsync("initializeHomeAnimations");
     }
 
     private async Task<IJSObjectReference?> TryGetHomeModuleAsync()
@@ -818,6 +819,7 @@
 
         try
         {
+            await _homeModule.InvokeVoidAsync("disposeHomeAnimations");
             await _homeModule.DisposeAsync();
         }
         catch (JSDisconnectedException)
