@@ -429,6 +429,20 @@
     scroll-snap-type: x mandatory;
     scroll-padding-inline: 0.2rem;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y pinch-zoom;
+    overscroll-behavior-x: contain;
+    cursor: grab;
+}
+
+.story-carousel.is-dragging {
+    scroll-snap-type: none;
+    cursor: grabbing;
+}
+
+.story-carousel.is-dragging .story-carousel-link {
+    cursor: grabbing;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 .story-carousel-item {
