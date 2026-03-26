@@ -164,7 +164,20 @@ h1 {
     scroll-snap-type: x mandatory;
     scroll-padding-inline: 1.65rem;
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-y pinch-zoom;
+    overscroll-behavior-x: contain;
     width: 100%;
+}
+
+.stories-carousel.is-dragging {
+    cursor: grabbing;
+    scroll-snap-type: none;
+}
+
+.stories-carousel.is-dragging .story-carousel-link {
+    cursor: grabbing;
+    user-select: none;
+    -webkit-user-select: none;
 }
 
 .stories-carousel::-webkit-scrollbar {
