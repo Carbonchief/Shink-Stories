@@ -5,4 +5,5 @@ public sealed record StoryPlaylist(
     string Title,
     string? Description,
     int SortOrder,
-    IReadOnlyList<StoryItem> Stories);
+    IReadOnlyList<StoryItem> Stories,
+    bool ShowOnHome = false);

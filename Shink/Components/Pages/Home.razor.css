@@ -473,6 +473,8 @@ h2 {
     text-decoration: none;
     display: grid;
     gap: 0.56rem;
+    -webkit-user-drag: none;
+    user-select: none;
 }
 
 .story-carousel-cover {
@@ -515,6 +517,8 @@ h2 {
     aspect-ratio: 3 / 4;
     object-fit: cover;
     display: block;
+    -webkit-user-drag: none;
+    user-select: none;
     transition: transform 0.22s ease, filter 0.22s ease;
 }
 

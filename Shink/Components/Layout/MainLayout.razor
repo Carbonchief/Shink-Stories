@@ -3,7 +3,7 @@
 @using System.Security.Claims
 @inject NavigationManager NavigationManager
 
-<div class="site-shell @(IsStoryRoute ? "story-route" : null) @(IsHomeRoute ? "home-route" : null)">
+<div class="site-shell @(IsStoryRoute ? "story-route" : null) @(IsHomeRoute ? "home-route" : null) @(IsLuisterRoute ? "luister-route" : null)">
     <a class="skip-link" href="#main-content">Spring na inhoud</a>
     <header class="site-header">
         @if (IsStoryRoute)
@@ -233,6 +233,15 @@
         {
             var relativePath = GetCurrentRelativePathWithoutQuery();
             return string.IsNullOrWhiteSpace(relativePath);
+        }
+    }
+
+    private bool IsLuisterRoute
+    {
+        get
+        {
+            var relativePath = GetCurrentRelativePathWithoutQuery();
+            return string.Equals(relativePath, "luister", StringComparison.OrdinalIgnoreCase);
         }
     }
 

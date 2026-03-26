@@ -92,25 +92,88 @@
     border: 1px solid #2f7054;
 }
 
-.admin-tabs ::deep .mud-tabs-tabbar {
+.admin-tabs-shell {
+    display: grid;
+}
+
+.admin-tabs-shell ::deep .mud-tabs-tabbar {
     border: 1px solid var(--admin-border);
     border-radius: 14px;
     background: var(--admin-surface);
     padding: 0.2rem;
 }
 
-.admin-tabs ::deep .mud-tab {
+.admin-tabs-shell ::deep .mud-tabs-toolbar,
+.admin-tabs-shell ::deep .mud-tabs-tabbar-inner,
+.admin-tabs-shell ::deep .mud-tabs-scroll-wrapper,
+.admin-tabs-shell ::deep .mud-tabs-tabbar-content {
+    background: var(--admin-surface) !important;
+}
+
+.admin-tabs-shell ::deep .mud-tab {
     border-radius: 10px;
     font-weight: 700;
-    color: var(--admin-text);
+    color: var(--admin-text) !important;
+    -webkit-text-fill-color: var(--admin-text) !important;
+    opacity: 1 !important;
+    background: transparent !important;
 }
 
-.admin-tabs ::deep .mud-tab.mud-tab-active {
+.admin-tabs-shell ::deep .mud-tab .mud-tab-content,
+.admin-tabs-shell ::deep .mud-tab .mud-tab-content span,
+.admin-tabs-shell ::deep .mud-tab .mud-tab-content .mud-icon-root,
+.admin-tabs-shell ::deep .mud-tab .mud-button-label,
+.admin-tabs-shell ::deep .mud-tab .mud-button-label span,
+.admin-tabs-shell ::deep .mud-tab .mud-ripple {
+    color: var(--admin-text) !important;
+    -webkit-text-fill-color: var(--admin-text) !important;
+}
+
+.admin-tabs-shell ::deep .mud-tab:not(.mud-tab-active),
+.admin-tabs-shell ::deep .mud-tab[aria-selected="false"] {
+    color: var(--admin-text) !important;
+    -webkit-text-fill-color: var(--admin-text) !important;
+    opacity: 1 !important;
+    background: transparent !important;
+}
+
+.admin-tabs-shell ::deep .mud-tab:not(.mud-tab-active) .mud-tab-content,
+.admin-tabs-shell ::deep .mud-tab:not(.mud-tab-active) .mud-tab-content span,
+.admin-tabs-shell ::deep .mud-tab:not(.mud-tab-active) .mud-tab-content .mud-icon-root,
+.admin-tabs-shell ::deep .mud-tab:not(.mud-tab-active) .mud-button-label,
+.admin-tabs-shell ::deep .mud-tab:not(.mud-tab-active) .mud-button-label span,
+.admin-tabs-shell ::deep .mud-tab[aria-selected="false"] .mud-tab-content,
+.admin-tabs-shell ::deep .mud-tab[aria-selected="false"] .mud-tab-content span,
+.admin-tabs-shell ::deep .mud-tab[aria-selected="false"] .mud-tab-content .mud-icon-root,
+.admin-tabs-shell ::deep .mud-tab[aria-selected="false"] .mud-button-label,
+.admin-tabs-shell ::deep .mud-tab[aria-selected="false"] .mud-button-label span {
+    color: var(--admin-text) !important;
+    -webkit-text-fill-color: var(--admin-text) !important;
+    opacity: 1 !important;
+}
+
+.admin-tabs-shell ::deep .mud-tab.mud-tab-active {
     background: #2c4258;
     color: #ffffff;
+    -webkit-text-fill-color: #ffffff !important;
+    opacity: 1 !important;
 }
 
-.admin-tabs ::deep .mud-tabs-panels {
+.admin-tabs-shell ::deep .mud-tab.mud-tab-active .mud-tab-content,
+.admin-tabs-shell ::deep .mud-tab.mud-tab-active .mud-tab-content span,
+.admin-tabs-shell ::deep .mud-tab.mud-tab-active .mud-tab-content .mud-icon-root,
+.admin-tabs-shell ::deep .mud-tab.mud-tab-active .mud-button-label,
+.admin-tabs-shell ::deep .mud-tab.mud-tab-active .mud-button-label span,
+.admin-tabs-shell ::deep .mud-tab:hover .mud-tab-content,
+.admin-tabs-shell ::deep .mud-tab:hover .mud-tab-content span,
+.admin-tabs-shell ::deep .mud-tab:hover .mud-tab-content .mud-icon-root,
+.admin-tabs-shell ::deep .mud-tab:hover .mud-button-label,
+.admin-tabs-shell ::deep .mud-tab:hover .mud-button-label span {
+    color: #ffffff !important;
+    -webkit-text-fill-color: #ffffff !important;
+}
+
+.admin-tabs-shell ::deep .mud-tabs-panels {
     margin-top: 0.65rem;
 }
 
