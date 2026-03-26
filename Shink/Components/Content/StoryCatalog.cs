@@ -28,6 +28,13 @@ public sealed record StoryItem(
             return fileName;
         }
 
+        if (Uri.TryCreate(fileName, UriKind.Absolute, out var absoluteUri) &&
+            (string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)))
+        {
+            return absoluteUri.ToString();
+        }
+
         return ToAssetPath(fileName);
     }
 
