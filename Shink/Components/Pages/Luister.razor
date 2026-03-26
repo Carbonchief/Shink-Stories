@@ -101,6 +101,8 @@
 
     private static string GetStoryHref(string slug) => $"/luister/{Uri.EscapeDataString(slug)}";
 
+    private static string GetPlaylistHref(string slug) => $"/luister/speellys/{Uri.EscapeDataString(slug)}";
+
     private void HandleSearchInput(ChangeEventArgs args)
     {
         SearchQuery = args.Value?.ToString() ?? string.Empty;
@@ -223,7 +225,9 @@
             var hasDescription = !string.IsNullOrWhiteSpace(playlist.Description);
 
             <section class="section-block stories-carousel-section luister-stories-section" aria-labelledby="@headingId">
-                <h2 id="@headingId">@playlist.Title</h2>
+                <h2 id="@headingId">
+                    <a class="luister-playlist-link" href="@GetPlaylistHref(playlist.Slug)">@playlist.Title</a>
+                </h2>
                 @if (hasDescription)
                 {
                     <p class="section-intro">@playlist.Description</p>
