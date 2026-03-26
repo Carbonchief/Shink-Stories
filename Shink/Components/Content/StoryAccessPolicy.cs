@@ -78,7 +78,7 @@ public static class StoryAccessPolicy
 
         var trimmed = candidate.Trim('/');
         var segments = trimmed.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Length < 2)
+        if (segments.Length != 2)
         {
             return false;
         }

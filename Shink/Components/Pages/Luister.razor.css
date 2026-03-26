@@ -139,6 +139,35 @@ h1 {
     line-height: 1.15;
 }
 
+.luister-playlist-link {
+    color: inherit;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.luister-playlist-link::after {
+    content: "\f061";
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+    font-size: 0.82em;
+    color: color-mix(in srgb, var(--accent) 78%, #2e3238);
+    transform: translateY(0.03em);
+    transition: transform 0.18s ease;
+}
+
+.luister-playlist-link:hover::after,
+.luister-playlist-link:focus-visible::after {
+    transform: translate(0.18rem, 0.03em);
+}
+
+.luister-playlist-link:hover,
+.luister-playlist-link:focus-visible {
+    text-decoration: underline;
+    text-underline-offset: 0.12em;
+}
+
 .stories-carousel-section .section-intro {
     margin: 0.35rem 0 0;
     color: #3f5255;

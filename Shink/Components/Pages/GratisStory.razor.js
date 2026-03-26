@@ -34,6 +34,7 @@ const fullscreenBindings = new WeakMap();
 const playerCapabilityCache = new WeakMap();
 const storyTrackingStateCache = new WeakMap();
 const lastBoundAudioSource = new WeakMap();
+const trackActionDotNetRefs = new WeakMap();
 
 function setFontAwesomeIcon(iconElement, iconClass) {
     if (!(iconElement instanceof HTMLElement)) {
@@ -161,9 +162,61 @@ function updatePositionState(audioElement) {
     }
 }
 
+function persistAudioState(audioElement, eventType, useKeepalive) {
+    const trackingState = storyTrackingStateCache.get(audioElement);
+    if (trackingState) {
+        captureListenDelta(trackingState);
+        flushStoryListen(audioElement, trackingState, eventType, true, useKeepalive);
+        stopListenTimer(trackingState);
+    }
+
+    saveStoryProgress(audioElement);
+    saveVolumeState(audioElement);
+    audioElement.pause();
+}
+
+async function tryInvokeTrackAction(audioElement, methodName) {
+    const dotNetRef = trackActionDotNetRefs.get(audioElement);
+    if (!dotNetRef || typeof dotNetRef.invokeMethodAsync !== "function") {
+        return false;
+    }
+
+    try {
+        await dotNetRef.invokeMethodAsync(methodName);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 function bindActionHandlers(audioElement, resolveTrackNavigation) {
+    const requestPreviousTrack = async () => {
+        if (await tryInvokeTrackAction(audioElement, "HandleJsPreviousTrackRequest")) {
+            return;
+        }
+
+        const navigation = typeof resolveTrackNavigation === "function" ? resolveTrackNavigation() : null;
+        if (navigation?.previous instanceof HTMLAnchorElement) {
+            navigation.previous.click();
+        }
+    };
+
+    const requestNextTrack = async () => {
+        if (await tryInvokeTrackAction(audioElement, "HandleJsNextTrackRequest")) {
+            return;
+        }
+
+        const navigation = typeof resolveTrackNavigation === "function" ? resolveTrackNavigation() : null;
+        if (navigation?.next instanceof HTMLAnchorElement) {
+            navigation.next.click();
+        }
+    };
+
     if (!("mediaSession" in navigator)) {
-        return;
+        return {
+            requestPreviousTrack,
+            requestNextTrack
+        };
     }
 
     const setHandler = (action, handler) => {
@@ -199,19 +252,13 @@ function bindActionHandlers(audioElement, resolveTrackNavigation) {
         }
     });
 
-    setHandler("previoustrack", () => {
-        const navigation = typeof resolveTrackNavigation === "function" ? resolveTrackNavigation() : null;
-        if (navigation?.previous instanceof HTMLAnchorElement) {
-            navigation.previous.click();
-        }
-    });
+    setHandler("previoustrack", requestPreviousTrack);
+    setHandler("nexttrack", requestNextTrack);
 
-    setHandler("nexttrack", () => {
-        const navigation = typeof resolveTrackNavigation === "function" ? resolveTrackNavigation() : null;
-        if (navigation?.next instanceof HTMLAnchorElement) {
-            navigation.next.click();
-        }
-    });
+    return {
+        requestPreviousTrack,
+        requestNextTrack
+    };
 }
 
 function detectPlayerCapabilities(audioElement) {
@@ -430,6 +477,42 @@ async function copyTextToClipboard(text) {
     return copied;
 }
 
+function playAudioSafely(audioElement) {
+    try {
+        const playPromise = audioElement.play();
+        if (playPromise && typeof playPromise.catch === "function") {
+            playPromise.catch(() => {
+                // Ignore blocked autoplay/playback errors.
+            });
+        }
+    } catch {
+        // Ignore blocked autoplay/playback errors.
+    }
+}
+
+function shouldAutoplayOnSourceChange(audioElement) {
+    return audioElement.dataset.autoplayRequested === "true" || audioElement.autoplay;
+}
+
+function queueAutoplayAfterSourceChange(audioElement) {
+    audioElement.dataset.autoplayRequested = "false";
+
+    const handleCanPlay = () => {
+        playAudioSafely(audioElement);
+    };
+
+    audioElement.addEventListener("canplay", handleCanPlay, { once: true });
+}
+
+function shouldAutoplayNextTrack(audioElement) {
+    const container = audioElement.closest(".story-player-content");
+    if (!(container instanceof HTMLElement)) {
+        return false;
+    }
+
+    return container.dataset.autoplayEnabled === "true";
+}
+
 function showShareFeedback(shareToggle, message) {
     if (!(shareToggle instanceof HTMLButtonElement)) {
         return;
@@ -628,7 +711,7 @@ function stopListenTimer(trackingState) {
 
 async function shareStoryFromPlayer(audioElement, shareToggle) {
     const shareTitle = audioElement.dataset.storyTitle || "Schink Stories";
-    const shareUrl = window.location.href;
+    const shareUrl = audioElement.dataset.shareUrl || window.location.href;
 
     if (typeof navigator.share === "function") {
         try {
@@ -692,16 +775,7 @@ function updateRangeVisual(slider, percentage) {
 }
 
 function stopAndReleaseAudio(audioElement) {
-    const trackingState = storyTrackingStateCache.get(audioElement);
-    if (trackingState) {
-        captureListenDelta(trackingState);
-        flushStoryListen(audioElement, trackingState, "pagehide", true, true);
-        stopListenTimer(trackingState);
-    }
-
-    saveStoryProgress(audioElement);
-    saveVolumeState(audioElement);
-    audioElement.pause();
+    persistAudioState(audioElement, "pagehide", true);
 
     const sources = audioElement.querySelectorAll("source");
     sources.forEach((source) => {
@@ -713,13 +787,21 @@ function stopAndReleaseAudio(audioElement) {
     lastBoundAudioSource.set(audioElement, "");
 }
 
-function bindAudioEvents(audioElement) {
+function bindAudioEvents(audioElement, dotNetRef) {
     const declaredSource = (audioElement.getAttribute("src") || "").trim();
     const lastDeclaredSource = lastBoundAudioSource.get(audioElement) || "";
+
+    if (dotNetRef) {
+        trackActionDotNetRefs.set(audioElement, dotNetRef);
+    }
 
     if (boundAudios.has(audioElement)) {
         if (declaredSource && declaredSource !== lastDeclaredSource) {
             lastBoundAudioSource.set(audioElement, declaredSource);
+            const shouldAutoplay = shouldAutoplayOnSourceChange(audioElement);
+            if (shouldAutoplay) {
+                queueAutoplayAfterSourceChange(audioElement);
+            }
 
             try {
                 audioElement.load();
@@ -861,19 +943,18 @@ function bindAudioEvents(audioElement) {
         };
     };
 
-    bindActionHandlers(audioElement, resolveTrackNavigation);
+    const trackActions = bindActionHandlers(audioElement, resolveTrackNavigation);
     restoreVolumeState(audioElement);
+
+    if (declaredSource && shouldAutoplayOnSourceChange(audioElement)) {
+        queueAutoplayAfterSourceChange(audioElement);
+    }
 
     if (customPlayerElements) {
         if (customPlayerElements.playToggle instanceof HTMLButtonElement) {
             customPlayerElements.playToggle.addEventListener("click", async () => {
                 if (audioElement.paused) {
-                    try {
-                        await audioElement.play();
-                    } catch {
-                        // Ignore blocked autoplay/playback errors.
-                    }
-
+                    playAudioSafely(audioElement);
                     return;
                 }
 
@@ -882,19 +963,17 @@ function bindAudioEvents(audioElement) {
         }
 
         if (customPlayerElements.storyPrevButton instanceof HTMLButtonElement) {
-            customPlayerElements.storyPrevButton.addEventListener("click", () => {
-                const prevStoryLink = customPlayerElements.container.querySelector(STORY_NAV_PREV_SELECTOR);
-                if (prevStoryLink instanceof HTMLAnchorElement) {
-                    prevStoryLink.click();
+            customPlayerElements.storyPrevButton.addEventListener("click", async () => {
+                if (trackActions?.requestPreviousTrack) {
+                    await trackActions.requestPreviousTrack();
                 }
             });
         }
 
         if (customPlayerElements.storyNextButton instanceof HTMLButtonElement) {
-            customPlayerElements.storyNextButton.addEventListener("click", () => {
-                const nextStoryLink = customPlayerElements.container.querySelector(STORY_NAV_NEXT_SELECTOR);
-                if (nextStoryLink instanceof HTMLAnchorElement) {
-                    nextStoryLink.click();
+            customPlayerElements.storyNextButton.addEventListener("click", async () => {
+                if (trackActions?.requestNextTrack) {
+                    await trackActions.requestNextTrack();
                 }
             });
         }
@@ -961,12 +1040,7 @@ function bindAudioEvents(audioElement) {
 
         const togglePlayback = async () => {
             if (audioElement.paused) {
-                try {
-                    await audioElement.play();
-                } catch {
-                    // Ignore blocked autoplay/playback errors.
-                }
-
+                playAudioSafely(audioElement);
                 return;
             }
 
@@ -1059,6 +1133,10 @@ function bindAudioEvents(audioElement) {
 
         clearStoryProgress(audioElement);
         updateAll();
+
+        if (shouldAutoplayNextTrack(audioElement) && trackActions?.requestNextTrack) {
+            void trackActions.requestNextTrack();
+        }
     });
     audioElement.addEventListener("volumechange", () => {
         saveVolumeState(audioElement);
@@ -1097,13 +1175,13 @@ function bindAudioEvents(audioElement) {
     updateAll();
 }
 
-export function initializeStoryMediaSession() {
+export function initializeStoryMediaSession(dotNetRef) {
     const audioElement = document.querySelector(STORY_AUDIO_SELECTOR);
     if (!(audioElement instanceof HTMLAudioElement)) {
         return;
     }
 
-    bindAudioEvents(audioElement);
+    bindAudioEvents(audioElement, dotNetRef);
 }
 
 export function stopStoryAudioPlayback() {
@@ -1113,6 +1191,15 @@ export function stopStoryAudioPlayback() {
     }
 
     stopAndReleaseAudio(audioElement);
+}
+
+export function prepareStoryAudioForSourceSwap() {
+    const audioElement = document.querySelector(STORY_AUDIO_SELECTOR);
+    if (!(audioElement instanceof HTMLAudioElement)) {
+        return;
+    }
+
+    persistAudioState(audioElement, "pause", false);
 }
 
 function applyImmersiveChromeState(storyPage) {
