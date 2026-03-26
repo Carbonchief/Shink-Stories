@@ -352,6 +352,7 @@ public sealed partial class SupabaseAdminManagementService(
         using var updateResponse = await _httpClient.SendAsync(updateRequest, cancellationToken);
         if (updateResponse.IsSuccessStatusCode)
         {
+            InvalidateStoryCatalogCache();
             return new AdminOperationResult(true);
         }
 
@@ -362,6 +363,134 @@ public sealed partial class SupabaseAdminManagementService(
             (int)updateResponse.StatusCode,
             responseBody);
         return new AdminOperationResult(false, "Kon nie storie nou opdateer nie.");
+    }
+
+    public async Task<AdminOperationResult> CreateStoryAsync(
+        string? adminEmail,
+        AdminStoryCreateRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
+        {
+            return new AdminOperationResult(false, "Jy het nie admin toegang nie.");
+        }
+
+        var normalizedSlug = request.Slug?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (!StorySlugRegex().IsMatch(normalizedSlug))
+        {
+            return new AdminOperationResult(false, "Die storie slug is ongeldig.");
+        }
+
+        var normalizedTitle = request.Title?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalizedTitle))
+        {
+            return new AdminOperationResult(false, "Storie titel is verpligtend.");
+        }
+
+        var normalizedAccessLevel = request.AccessLevel?.Trim().ToLowerInvariant() switch
+        {
+            "free" => "free",
+            "subscriber" => "subscriber",
+            _ => string.Empty
+        };
+        if (string.IsNullOrWhiteSpace(normalizedAccessLevel))
+        {
+            return new AdminOperationResult(false, "Toegangsvlak moet 'free' of 'subscriber' wees.");
+        }
+
+        var normalizedStatus = request.Status?.Trim().ToLowerInvariant() switch
+        {
+            "draft" => "draft",
+            "published" => "published",
+            "archived" => "archived",
+            _ => string.Empty
+        };
+        if (string.IsNullOrWhiteSpace(normalizedStatus))
+        {
+            return new AdminOperationResult(false, "Status moet 'draft', 'published' of 'archived' wees.");
+        }
+
+        var normalizedSummary = NormalizeOptionalText(request.Summary, 512);
+        var normalizedDescription = NormalizeOptionalText(request.Description, 4000);
+        var normalizedCoverImagePath = NormalizeOptionalText(request.CoverImagePath, 1024);
+        var normalizedThumbnailPath = NormalizeOptionalText(request.ThumbnailImagePath, 1024);
+        var normalizedAudioBucket = NormalizeOptionalText(request.AudioBucket, 120);
+        var normalizedAudioObjectKey = NormalizeOptionalText(request.AudioObjectKey, 1024);
+        var normalizedAudioContentType = NormalizeOptionalText(request.AudioContentType, 100);
+        var normalizedSortOrder = Math.Clamp(request.SortOrder, -500_000, 500_000);
+        var normalizedDurationSeconds = request.DurationSeconds is > 0 ? request.DurationSeconds : null;
+
+        DateTimeOffset? normalizedPublishedAt = request.PublishedAt;
+        if (string.Equals(normalizedStatus, "published", StringComparison.OrdinalIgnoreCase))
+        {
+            normalizedPublishedAt ??= DateTimeOffset.UtcNow;
+            if (string.IsNullOrWhiteSpace(normalizedAudioObjectKey))
+            {
+                return new AdminOperationResult(false, "Gepubliseerde stories vereis 'n audio object key.");
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(normalizedAudioBucket) ||
+            string.IsNullOrWhiteSpace(normalizedAudioObjectKey))
+        {
+            return new AdminOperationResult(false, "R2 stories vereis beide bucket en object key.");
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return new AdminOperationResult(false, "Supabase URL is nog nie opgestel nie.");
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+        }
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["slug"] = normalizedSlug,
+            ["title"] = normalizedTitle,
+            ["summary"] = normalizedSummary,
+            ["description"] = normalizedDescription,
+            ["cover_image_path"] = normalizedCoverImagePath,
+            ["thumbnail_image_path"] = normalizedThumbnailPath,
+            ["audio_provider"] = "r2",
+            ["audio_bucket"] = normalizedAudioBucket,
+            ["audio_object_key"] = normalizedAudioObjectKey,
+            ["audio_content_type"] = normalizedAudioContentType,
+            ["access_level"] = normalizedAccessLevel,
+            ["status"] = normalizedStatus,
+            ["is_featured"] = request.IsFeatured,
+            ["sort_order"] = normalizedSortOrder,
+            ["published_at"] = normalizedPublishedAt?.UtcDateTime,
+            ["duration_seconds"] = normalizedDurationSeconds
+        };
+
+        var createUri = new Uri(baseUri, "rest/v1/stories?select=story_id");
+        using var createRequest = CreateJsonRequest(HttpMethod.Post, createUri, apiKey, payload, "return=representation");
+        using var createResponse = await _httpClient.SendAsync(createRequest, cancellationToken);
+        if (createResponse.IsSuccessStatusCode)
+        {
+            var responseBody = await createResponse.Content.ReadAsStringAsync(cancellationToken);
+            var createdStoryId = TryReadFirstGuidProperty(responseBody, "story_id");
+            InvalidateStoryCatalogCache();
+            return new AdminOperationResult(true, EntityId: createdStoryId);
+        }
+
+        var createBody = await createResponse.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Story create failed. slug={Slug} Status={StatusCode} Body={Body}",
+            normalizedSlug,
+            (int)createResponse.StatusCode,
+            createBody);
+
+        if (ContainsDuplicateSlugViolation(createBody))
+        {
+            return new AdminOperationResult(false, "Storie slug bestaan reeds.");
+        }
+
+        return new AdminOperationResult(false, "Kon nie nuwe storie skep nie.");
     }
 
     public async Task<IReadOnlyList<AdminPlaylistRecord>> GetPlaylistsAsync(
@@ -437,6 +566,7 @@ public sealed partial class SupabaseAdminManagementService(
                     SortOrder: row.SortOrder,
                     MaxItems: row.MaxItems is > 0 ? row.MaxItems : null,
                     IsEnabled: row.IsEnabled,
+                    ShowOnHome: row.ShowOnHome,
                     UpdatedAt: row.UpdatedAt,
                     Stories: stories);
             })
@@ -485,7 +615,8 @@ public sealed partial class SupabaseAdminManagementService(
             ["description"] = NormalizeOptionalText(request.Description, 4000),
             ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
             ["max_items"] = request.MaxItems is > 0 ? request.MaxItems : null,
-            ["is_enabled"] = request.IsEnabled
+            ["is_enabled"] = request.IsEnabled,
+            ["show_on_home"] = request.ShowOnHome
         };
 
         if (request.PlaylistId is null || request.PlaylistId == Guid.Empty)
@@ -716,7 +847,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/story_playlists" +
-            "?select=playlist_id,slug,title,description,sort_order,max_items,is_enabled,updated_at" +
+            "?select=playlist_id,slug,title,description,sort_order,max_items,is_enabled,show_on_home,updated_at" +
             "&order=sort_order.asc" +
             "&order=title.asc" +
             "&limit=500");
@@ -1085,6 +1216,10 @@ public sealed partial class SupabaseAdminManagementService(
         return null;
     }
 
+    private static bool ContainsDuplicateSlugViolation(string? responseBody) =>
+        !string.IsNullOrWhiteSpace(responseBody) &&
+        responseBody.Contains("stories_slug_key", StringComparison.OrdinalIgnoreCase);
+
     [GeneratedRegex("^[a-z0-9]+(?:-[a-z0-9]+)*$", RegexOptions.CultureInvariant)]
     private static partial Regex StorySlugRegex();
 
@@ -1234,6 +1369,9 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("is_enabled")]
         public bool IsEnabled { get; set; }
+
+        [JsonPropertyName("show_on_home")]
+        public bool ShowOnHome { get; set; }
 
         [JsonPropertyName("updated_at")]
         public DateTimeOffset? UpdatedAt { get; set; }
