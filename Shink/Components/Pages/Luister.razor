@@ -62,7 +62,6 @@
 @code {
     private IReadOnlyList<StoryPlaylist> LuisterPlaylists { get; set; } = Array.Empty<StoryPlaylist>();
     private IReadOnlyList<StoryPlaylist> FilteredLuisterPlaylists { get; set; } = Array.Empty<StoryPlaylist>();
-    private ElementReference[] PlaylistCarouselRefs { get; set; } = Array.Empty<ElementReference>();
     private IJSObjectReference? _luisterModule;
     private bool _luisterModuleLoadFailed;
     private string SearchQuery { get; set; } = string.Empty;
@@ -114,7 +113,6 @@
         if (string.IsNullOrWhiteSpace(trimmedQuery))
         {
             FilteredLuisterPlaylists = LuisterPlaylists;
-            PlaylistCarouselRefs = new ElementReference[FilteredLuisterPlaylists.Count];
             return;
         }
 
@@ -140,24 +138,6 @@
             .Where(playlist => playlist is not null)
             .Cast<StoryPlaylist>()
             .ToArray();
-
-        PlaylistCarouselRefs = new ElementReference[FilteredLuisterPlaylists.Count];
-    }
-
-    private async Task ScrollCarouselAsync(ElementReference carouselRef, int direction)
-    {
-        if (direction is 0)
-        {
-            return;
-        }
-
-        var module = await TryGetLuisterModuleAsync();
-        if (module is null)
-        {
-            return;
-        }
-
-        await module.InvokeVoidAsync("scrollCarouselByPage", carouselRef, direction);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -240,7 +220,6 @@
         {
             var playlist = FilteredLuisterPlaylists[index];
             var headingId = $"luister-playlist-{playlist.Slug}-heading";
-            var carouselIndex = index;
             var hasDescription = !string.IsNullOrWhiteSpace(playlist.Description);
 
             <section class="section-block stories-carousel-section luister-stories-section" aria-labelledby="@headingId">
@@ -251,18 +230,7 @@
                 }
 
                 <div class="stories-carousel-shell">
-                    <div class="carousel-controls" aria-label="@($"{playlist.Title} navigasie")">
-                        <button type="button" class="carousel-nav-btn carousel-nav-btn-prev" aria-label="@($"Vorige stories in {playlist.Title}")"
-                                @onclick="() => ScrollCarouselAsync(PlaylistCarouselRefs[carouselIndex], -1)">
-                            <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
-                        </button>
-                        <button type="button" class="carousel-nav-btn carousel-nav-btn-next" aria-label="@($"Volgende stories in {playlist.Title}")"
-                                @onclick="() => ScrollCarouselAsync(PlaylistCarouselRefs[carouselIndex], 1)">
-                            <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
-                        </button>
-                    </div>
-
-                    <div class="stories-carousel" role="list" aria-label="@playlist.Title" @ref="PlaylistCarouselRefs[carouselIndex]">
+                    <div class="stories-carousel" role="list" aria-label="@playlist.Title">
                         @foreach (var story in playlist.Stories)
                         {
                             <article class="story-carousel-item" role="listitem">
