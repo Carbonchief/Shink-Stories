@@ -402,6 +402,11 @@ h1 {
 }
 
 @media (hover: none) and (pointer: coarse) {
+    .stories-carousel {
+        touch-action: auto;
+        cursor: auto;
+    }
+
     .story-cover-play {
         opacity: 1;
         background: linear-gradient(to top, rgba(0, 0, 0, 0.33), rgba(0, 0, 0, 0.03));
