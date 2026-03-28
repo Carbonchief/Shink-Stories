@@ -150,6 +150,7 @@ h1 {
     font-size: 1.02rem;
     font-style: italic;
     color: rgba(255, 255, 255, 0.9);
+    white-space: nowrap;
 }
 
 .hero-media {
