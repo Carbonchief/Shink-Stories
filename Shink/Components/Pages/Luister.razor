@@ -55,7 +55,14 @@
                    placeholder="Soek stories"
                    autocomplete="off"
                    value="@SearchQuery"
-                   @oninput="HandleSearchInput" />
+                   @oninput="HandleSearchInputAsync" />
+            @if (IsSearching)
+            {
+                <span class="luister-search-loader" aria-live="polite">
+                    <span class="luister-search-spinner" aria-hidden="true"></span>
+                    <span class="luister-search-loader-text">Soek...</span>
+                </span>
+            }
         </form>
     </section>
 
@@ -64,7 +71,9 @@
     private IReadOnlyList<StoryPlaylist> FilteredLuisterPlaylists { get; set; } = Array.Empty<StoryPlaylist>();
     private IJSObjectReference? _luisterModule;
     private bool _luisterModuleLoadFailed;
+    private CancellationTokenSource? _searchDebounceCts;
     private string SearchQuery { get; set; } = string.Empty;
+    private bool IsSearching { get; set; }
 
     private string LuisterCanonicalUrl => NavigationManager.ToAbsoluteUri("/luister").ToString();
 
@@ -103,10 +112,49 @@
 
     private static string GetPlaylistHref(string slug) => $"/luister/speellys/{Uri.EscapeDataString(slug)}";
 
-    private void HandleSearchInput(ChangeEventArgs args)
+    private async Task HandleSearchInputAsync(ChangeEventArgs args)
     {
         SearchQuery = args.Value?.ToString() ?? string.Empty;
-        UpdateFilteredPlaylists();
+        _searchDebounceCts?.Cancel();
+        _searchDebounceCts?.Dispose();
+
+        var trimmedQuery = SearchQuery.Trim();
+        if (string.IsNullOrWhiteSpace(trimmedQuery))
+        {
+            IsSearching = false;
+            UpdateFilteredPlaylists();
+            return;
+        }
+
+        var debounceCts = new CancellationTokenSource();
+        _searchDebounceCts = debounceCts;
+        IsSearching = true;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            await Task.Delay(180, debounceCts.Token);
+            if (debounceCts.IsCancellationRequested)
+            {
+                return;
+            }
+
+            UpdateFilteredPlaylists();
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        finally
+        {
+            if (ReferenceEquals(_searchDebounceCts, debounceCts))
+            {
+                IsSearching = false;
+                _searchDebounceCts = null;
+                debounceCts.Dispose();
+                await InvokeAsync(StateHasChanged);
+            }
+        }
     }
 
     private void UpdateFilteredPlaylists()
@@ -188,6 +236,9 @@
 
     public async ValueTask DisposeAsync()
     {
+        _searchDebounceCts?.Cancel();
+        _searchDebounceCts?.Dispose();
+
         if (_luisterModule is null)
         {
             return;

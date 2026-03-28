@@ -3,6 +3,7 @@ const NAV_TOGGLE_LABEL_SELECTOR = "[data-nav-menu-toggle-label]";
 const SEARCH_FORM_SELECTOR = "[data-search-form]";
 const SEARCH_TOGGLE_SELECTOR = "[data-search-toggle]";
 const SEARCH_INPUT_SELECTOR = "[data-search-input]";
+const SEARCH_LOADER_SELECTOR = "[data-search-loader]";
 const SEARCH_SUGGESTIONS_SELECTOR = "[data-search-suggestions]";
 const SEARCH_SUGGESTIONS_LIST_SELECTOR = "[data-search-suggestions-list]";
 const ACCOUNT_MENU_ROOT_SELECTOR = "[data-account-menu-root]";
@@ -134,11 +135,13 @@ function wireHeaderSearch(searchForm) {
 
     const searchToggle = searchForm.querySelector(SEARCH_TOGGLE_SELECTOR);
     const searchInput = searchForm.querySelector(SEARCH_INPUT_SELECTOR);
+    const searchLoader = searchForm.querySelector(SEARCH_LOADER_SELECTOR);
     const suggestionsPanel = searchForm.querySelector(SEARCH_SUGGESTIONS_SELECTOR);
     const suggestionsList = searchForm.querySelector(SEARCH_SUGGESTIONS_LIST_SELECTOR);
     const controlsContainer = searchForm.closest(".nav-controls, .guest-controls");
     if (!(searchToggle instanceof HTMLButtonElement) ||
         !(searchInput instanceof HTMLInputElement) ||
+        !(searchLoader instanceof HTMLElement) ||
         !(suggestionsPanel instanceof HTMLElement) ||
         !(suggestionsList instanceof HTMLElement) ||
         !(controlsContainer instanceof HTMLElement)) {
@@ -150,6 +153,12 @@ function wireHeaderSearch(searchForm) {
     let activeAbortController = null;
 
     const isSearchActive = () => controlsContainer.classList.contains(SEARCH_ACTIVE_CLASS);
+
+    const setLoadingState = (isLoading) => {
+        searchForm.classList.toggle("is-search-loading", isLoading);
+        searchForm.setAttribute("aria-busy", isLoading ? "true" : "false");
+        searchLoader.hidden = !isLoading;
+    };
 
     const hideSuggestions = () => {
         suggestionsList.replaceChildren();
@@ -228,6 +237,8 @@ function wireHeaderSearch(searchForm) {
             activeAbortController.abort();
             activeAbortController = null;
         }
+
+        setLoadingState(false);
     };
 
     const fetchSuggestions = async (query) => {
@@ -282,6 +293,10 @@ function wireHeaderSearch(searchForm) {
             if (requestVersion === searchRequestVersion) {
                 hideSuggestions();
             }
+        } finally {
+            if (requestVersion === searchRequestVersion) {
+                setLoadingState(false);
+            }
         }
     };
 
@@ -294,6 +309,7 @@ function wireHeaderSearch(searchForm) {
             return;
         }
 
+        setLoadingState(true);
         searchDebounceHandle = window.setTimeout(() => {
             searchDebounceHandle = null;
             fetchSuggestions(trimmedQuery);
