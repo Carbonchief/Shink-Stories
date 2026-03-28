@@ -9,6 +9,7 @@
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
 @inject ILogger<Admin> Logger
+@inject ISnackbar Snackbar
 
 <PageTitle>@($"Schink Stories | {T("Bestuur", "Admin")}")</PageTitle>
 
@@ -99,6 +100,8 @@
             <MudTable T="AdminSubscriberRecord"
                       Class="admin-grid"
                       Items="Subscribers"
+                      SortLabel='@T("Sorteer volgens", "Sort by")'
+                      RowsPerPage="10"
                       Dense="true"
                       Hover="true"
                       Bordered="true"
@@ -107,13 +110,41 @@
                       RowClassFunc="GetSubscriberRowClass"
                       OnRowClick="OnSubscriberRowClick">
                 <HeaderContent>
-                    <MudTh>@T("E-pos", "Email")</MudTh>
-                    <MudTh>@T("Naam", "Name")</MudTh>
-                    <MudTh>@T("Vlakke", "Tiers")</MudTh>
-                    <MudTh>@T("Betaalverskaffer", "Payment Provider")</MudTh>
-                    <MudTh>@T("Status", "Status")</MudTh>
-                    <MudTh>@T("Ingeteken op", "Subscribed On")</MudTh>
-                    <MudTh>@T("Volgende betaling", "Next Payment")</MudTh>
+                    <MudTh>
+                        <MudTableSortLabel SortBy="new Func<AdminSubscriberRecord, object?>(subscriber => subscriber.Email)">
+                            @T("E-pos", "Email")
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel SortBy="new Func<AdminSubscriberRecord, object?>(subscriber => BuildSubscriberName(subscriber))">
+                            @T("Naam", "Name")
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel SortBy="new Func<AdminSubscriberRecord, object?>(subscriber => BuildTierSortKey(subscriber.ActiveTierCodes))">
+                            @T("Vlakke", "Tiers")
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel SortBy="new Func<AdminSubscriberRecord, object?>(subscriber => BuildPaymentProviderLabel(subscriber.PaymentProvider))">
+                            @T("Betaalverskaffer", "Payment Provider")
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel SortBy="new Func<AdminSubscriberRecord, object?>(subscriber => BuildSubscriptionStatusLabel(subscriber))">
+                            @T("Status", "Status")
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel SortBy="new Func<AdminSubscriberRecord, object?>(subscriber => subscriber.SubscribedAt ?? DateTimeOffset.MinValue)">
+                            @T("Ingeteken op", "Subscribed On")
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel SortBy="new Func<AdminSubscriberRecord, object?>(subscriber => subscriber.NextPaymentDueAt ?? DateTimeOffset.MinValue)">
+                            @T("Volgende betaling", "Next Payment")
+                        </MudTableSortLabel>
+                    </MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd DataLabel='@T("E-pos", "Email")'>@context.Email</MudTd>
@@ -127,6 +158,9 @@
                 <NoRecordsContent>
                     <MudText Typo="Typo.body2">@T("Geen intekenaars gevind nie.", "No subscribers found.")</MudText>
                 </NoRecordsContent>
+                <PagerContent>
+                    <MudTablePager />
+                </PagerContent>
             </MudTable>
                 </section>
             </MudTabPanel>
@@ -142,16 +176,6 @@
                                   Variant="Variant.Outlined"
                                   Margin="Margin.Dense"
                                   Immediate="true" />
-                    <MudButton Class="admin-btn admin-btn-secondary admin-icon-btn admin-mobile-cta"
-                               Variant="Variant.Outlined"
-                               Color="Color.Primary"
-                               OnClick="StartNewStory"
-                               aria-label='@T("Nuwe storie", "New story")'
-                               title='@T("Nuwe storie", "New story")'>
-                        <i class="fa-solid fa-plus" aria-hidden="true"></i>
-                        <span class="admin-btn-text">@T("Nuwe storie", "New story")</span>
-                        <span class="sr-only">@T("Nuwe storie", "New story")</span>
-                    </MudButton>
                     <MudButton Class="admin-icon-btn admin-mobile-cta"
                                Variant="Variant.Filled"
                                Color="Color.Primary"
@@ -162,12 +186,24 @@
                         <span class="admin-btn-text">@T("Soek", "Search")</span>
                         <span class="sr-only">@T("Soek stories", "Search stories")</span>
                     </MudButton>
+                    <MudButton Class="admin-btn admin-btn-secondary admin-icon-btn admin-mobile-cta"
+                               Variant="Variant.Outlined"
+                               Color="Color.Primary"
+                               OnClick="StartNewStory"
+                               aria-label='@T("Nuwe storie", "New story")'
+                               title='@T("Nuwe storie", "New story")'>
+                        <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                        <span class="admin-btn-text">@T("Nuwe storie", "New story")</span>
+                        <span class="sr-only">@T("Nuwe storie", "New story")</span>
+                    </MudButton>
                 </div>
             </div>
 
             <MudTable T="AdminStoryRecord"
                       Class="admin-grid"
                       Items="Stories"
+                      SortLabel='@T("Sorteer volgens", "Sort by")'
+                      RowsPerPage="10"
                       Dense="true"
                       Hover="true"
                       Bordered="true"
@@ -176,9 +212,21 @@
                       RowClassFunc="GetStoryRowClass"
                       OnRowClick="OnStoryRowClick">
                 <HeaderContent>
-                    <MudTh>@T("Titel", "Title")</MudTh>
-                    <MudTh>@T("Status", "Status")</MudTh>
-                    <MudTh>@T("Toegang", "Access")</MudTh>
+                    <MudTh>
+                        <MudTableSortLabel SortBy="new Func<AdminStoryRecord, object?>(story => story.Title)">
+                            @T("Titel", "Title")
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel SortBy="new Func<AdminStoryRecord, object?>(story => story.Status)">
+                            @T("Status", "Status")
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel SortBy="new Func<AdminStoryRecord, object?>(story => story.AccessLevel)">
+                            @T("Toegang", "Access")
+                        </MudTableSortLabel>
+                    </MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     <MudTd DataLabel='@T("Titel", "Title")'>@context.Title</MudTd>
@@ -188,6 +236,9 @@
                 <NoRecordsContent>
                     <MudText Typo="Typo.body2">@T("Geen stories gevind nie.", "No stories found.")</MudText>
                 </NoRecordsContent>
+                <PagerContent>
+                    <MudTablePager />
+                </PagerContent>
             </MudTable>
                 </section>
             </MudTabPanel>
@@ -209,8 +260,9 @@
             </div>
 
             <MudTable T="AdminPlaylistRecord"
-                      Class="admin-grid"
+                      Class="admin-grid admin-playlist-grid"
                       Items="Playlists"
+                      RowsPerPage="10"
                       Dense="true"
                       Hover="true"
                       Bordered="true"
@@ -222,7 +274,7 @@
                     <MudTh>@T("Titel", "Title")</MudTh>
                     <MudTh>@T("Aktief", "Active")</MudTh>
                     <MudTh>@T("Tuisblad", "Home")</MudTh>
-                    <MudTh>@T("Aksies", "Actions")</MudTh>
+                    <MudTh Class="admin-col-center">@T("Aksies", "Actions")</MudTh>
                 </HeaderContent>
                 <RowTemplate>
                     @{
@@ -247,7 +299,7 @@
                                        Disabled="@(IsSavingPlaylistsOrder || IsSavingPlaylist || TogglingPlaylistIds.Contains(context.PlaylistId))" />
                         </div>
                     </MudTd>
-                    <MudTd DataLabel='@T("Aksies", "Actions")'>
+                    <MudTd Class="admin-col-center" DataLabel='@T("Aksies", "Actions")'>
                         <div class="admin-playlist-actions">
                             <button type="button"
                                     class="admin-icon-btn"
@@ -275,6 +327,9 @@
                 <NoRecordsContent>
                     <MudText Typo="Typo.body2">@T("Geen playlists gevind nie.", "No playlists found.")</MudText>
                 </NoRecordsContent>
+                <PagerContent>
+                    <MudTablePager />
+                </PagerContent>
             </MudTable>
 
                 </section>
@@ -456,6 +511,8 @@
         {
             var coverPreviewUrl = ResolvePreviewImageUrl(StoryEditor.CoverImagePath);
             var thumbnailPreviewUrl = ResolvePreviewImageUrl(StoryEditor.ThumbnailImagePath);
+            var carouselPreviewUrl = !string.IsNullOrWhiteSpace(thumbnailPreviewUrl) ? thumbnailPreviewUrl : coverPreviewUrl;
+            var playerPreviewUrl = !string.IsNullOrWhiteSpace(thumbnailPreviewUrl) ? thumbnailPreviewUrl : coverPreviewUrl;
 
             <MudDialog @bind-Visible="IsStoryDialogOpen"
                        Options="EditorDialogOptions">
@@ -535,33 +592,88 @@
                                       @bind-Value="StoryEditor.ThumbnailImagePath"
                                       Variant="Variant.Outlined"
                                       Margin="Margin.Dense" />
+                        <div class="admin-upload-card">
+                            <div class="admin-upload-head">
+                                <h4>@T("Vervang cover image", "Replace cover image")</h4>
+                                <p>@T("Opsioneel", "Optional")</p>
+                            </div>
+                            <label class="admin-upload-btn" for="admin-edit-story-cover">
+                                @T("Kies image", "Choose image")
+                            </label>
+                            <InputFile id="admin-edit-story-cover"
+                                       class="admin-file-input"
+                                       OnChange="OnStoryCoverSelected"
+                                       accept=".jpg,.jpeg,.png,.webp,image/*" />
+                            <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.CoverFileName, T("Hou huidige cover as jy niks kies nie.", "Keeps the current cover if you do not choose a file."))</p>
+                        </div>
+                        <div class="admin-upload-card">
+                            <div class="admin-upload-head">
+                                <h4>@T("Vervang thumbnail", "Replace thumbnail")</h4>
+                                <p>@T("Opsioneel", "Optional")</p>
+                            </div>
+                            <label class="admin-upload-btn" for="admin-edit-story-thumbnail">
+                                @T("Kies image", "Choose image")
+                            </label>
+                            <InputFile id="admin-edit-story-thumbnail"
+                                       class="admin-file-input"
+                                       OnChange="OnStoryThumbnailSelected"
+                                       accept=".jpg,.jpeg,.png,.webp,image/*" />
+                            <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.ThumbnailFileName, T("Hou huidige thumbnail as jy niks kies nie.", "Keeps the current thumbnail if you do not choose a file."))</p>
+                        </div>
                         <div class="admin-image-preview-grid admin-span-2">
-                            <article class="admin-image-preview-card">
-                                <h4>@T("Cover voorskou", "Cover preview")</h4>
-                                @if (!string.IsNullOrWhiteSpace(coverPreviewUrl))
+                            <article class="admin-image-preview-card admin-luister-preview-card">
+                                <h4>@T("Carousel voorskou", "Carousel preview")</h4>
+                                @if (!string.IsNullOrWhiteSpace(carouselPreviewUrl))
                                 {
-                                    <img src="@coverPreviewUrl"
-                                         alt='@T("Cover image voorskou", "Cover image preview")'
-                                         loading="lazy"
-                                         decoding="async" />
+                                    <div class="admin-luister-carousel">
+                                        <article class="admin-luister-carousel-item">
+                                            <div class="admin-luister-carousel-link" aria-hidden="true">
+                                                <span class="admin-luister-carousel-cover">
+                                                    <img src="@carouselPreviewUrl"
+                                                         class="admin-luister-carousel-image"
+                                                         alt='@T("Carousel voorskou beeld", "Carousel preview image")'
+                                                         loading="lazy"
+                                                         decoding="async" />
+                                                    <span class="admin-luister-cover-play" aria-hidden="true">
+                                                        <i class="admin-luister-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
+                                                    </span>
+                                                </span>
+                                                <h5>@StoryEditor.Title</h5>
+                                            </div>
+                                        </article>
+                                    </div>
                                 }
                                 else
                                 {
-                                    <p>@T("Geen cover image om te wys nie.", "No cover image to preview.")</p>
+                                    <p>@T("Geen image beskikbaar vir carousel voorskou nie.", "No image available for carousel preview.")</p>
                                 }
                             </article>
-                            <article class="admin-image-preview-card">
-                                <h4>@T("Thumbnail voorskou", "Thumbnail preview")</h4>
-                                @if (!string.IsNullOrWhiteSpace(thumbnailPreviewUrl))
+                            <article class="admin-image-preview-card admin-luister-preview-card">
+                                <h4>@T("Speler voorskou", "Player preview")</h4>
+                                @if (!string.IsNullOrWhiteSpace(playerPreviewUrl))
                                 {
-                                    <img src="@thumbnailPreviewUrl"
-                                         alt='@T("Thumbnail voorskou", "Thumbnail preview")'
-                                         loading="lazy"
-                                         decoding="async" />
+                                    <div class="admin-luister-player" aria-hidden="true">
+                                        <div class="admin-luister-player-cover-wrap">
+                                            <img src="@playerPreviewUrl"
+                                                 class="admin-luister-player-cover"
+                                                 alt='@T("Speler voorskou beeld", "Player preview image")'
+                                                 loading="lazy"
+                                                 decoding="async" />
+                                            <span class="admin-luister-cover-play" aria-hidden="true">
+                                                <i class="admin-luister-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
+                                            </span>
+                                        </div>
+                                        <h5 class="admin-luister-player-title">@StoryEditor.Title</h5>
+                                        <div class="admin-luister-player-controls">
+                                            <span class="admin-luister-control-dot"></span>
+                                            <span class="admin-luister-control-main"></span>
+                                            <span class="admin-luister-control-dot"></span>
+                                        </div>
+                                    </div>
                                 }
                                 else
                                 {
-                                    <p>@T("Geen thumbnail om te wys nie.", "No thumbnail to preview.")</p>
+                                    <p>@T("Geen image beskikbaar vir speler voorskou nie.", "No image available for player preview.")</p>
                                 }
                             </article>
                         </div>
@@ -1231,6 +1343,32 @@
         return Task.CompletedTask;
     }
 
+    private Task OnStoryCoverSelected(InputFileChangeEventArgs args)
+    {
+        if (StoryEditor is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var file = args.File;
+        StoryEditor.CoverFile = file;
+        StoryEditor.CoverFileName = file?.Name;
+        return Task.CompletedTask;
+    }
+
+    private Task OnStoryThumbnailSelected(InputFileChangeEventArgs args)
+    {
+        if (StoryEditor is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var file = args.File;
+        StoryEditor.ThumbnailFile = file;
+        StoryEditor.ThumbnailFileName = file?.Name;
+        return Task.CompletedTask;
+    }
+
     private async Task SaveNewStoryAsync()
     {
         if (NewStoryEditor is null)
@@ -1351,9 +1489,43 @@
 
         IsSavingStory = true;
         ClearFeedback();
+        var uploadedObjectKeys = new List<string>();
 
         try
         {
+            if ((StoryEditor.CoverFile is not null || StoryEditor.ThumbnailFile is not null) &&
+                string.IsNullOrWhiteSpace(StoryEditor.Slug))
+            {
+                SetError(T("Storie slug ontbreek. Verfris asseblief en probeer weer.", "Story slug is missing. Please refresh and try again."));
+                return;
+            }
+
+            if (StoryEditor.CoverFile is not null)
+            {
+                await using var coverStream = StoryEditor.CoverFile.OpenReadStream(MaxImageUploadBytes);
+                var coverUpload = await StoryMediaStorageService.UploadImageAsync(
+                    StoryEditor.Slug,
+                    StoryImageKind.Cover,
+                    StoryEditor.CoverFile.Name,
+                    NormalizeImageContentType(StoryEditor.CoverFile),
+                    coverStream);
+                uploadedObjectKeys.Add(coverUpload.ObjectKey);
+                StoryEditor.CoverImagePath = coverUpload.PublicUrl;
+            }
+
+            if (StoryEditor.ThumbnailFile is not null)
+            {
+                await using var thumbnailStream = StoryEditor.ThumbnailFile.OpenReadStream(MaxImageUploadBytes);
+                var thumbnailUpload = await StoryMediaStorageService.UploadImageAsync(
+                    StoryEditor.Slug,
+                    StoryImageKind.Thumbnail,
+                    StoryEditor.ThumbnailFile.Name,
+                    NormalizeImageContentType(StoryEditor.ThumbnailFile),
+                    thumbnailStream);
+                uploadedObjectKeys.Add(thumbnailUpload.ObjectKey);
+                StoryEditor.ThumbnailImagePath = thumbnailUpload.PublicUrl;
+            }
+
             var publishedAt = ParseOptionalLocalDateTime(StoryEditor.PublishedAtLocal);
             var result = await AdminManagementService.UpdateStoryAsync(
                 CurrentAdminEmail,
@@ -1378,15 +1550,22 @@
 
             if (!HandleOperationResult(result, T("Storie is opgedateer.", "Story updated.")))
             {
+                await CleanupUploadedStoryObjectsAsync(uploadedObjectKeys);
                 return;
             }
 
-            await RefreshStoriesAsync();
+            StoryEditor.CoverFile = null;
+            StoryEditor.CoverFileName = null;
+            StoryEditor.ThumbnailFile = null;
+            StoryEditor.ThumbnailFileName = null;
+
+            await RefreshStoriesAsync(StoryEditor.StoryId);
         }
         catch (Exception exception)
         {
+            await CleanupUploadedStoryObjectsAsync(uploadedObjectKeys);
             Logger.LogError(exception, "Failed to save story.");
-            SetError(T("Kon nie storie nou stoor nie.", "Could not save story right now."));
+            SetError(LocalizeStoryEditException(exception));
         }
         finally
         {
@@ -1781,12 +1960,25 @@
     {
         ErrorMessage = LocalizeKnownServiceMessage(message);
         StatusMessage = null;
+        ShowToast(ErrorMessage, Severity.Error);
     }
 
     private void SetStatus(string message)
     {
         StatusMessage = message;
         ErrorMessage = null;
+        ShowToast(StatusMessage, Severity.Success);
+    }
+
+    private void ShowToast(string? message, Severity severity)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        Snackbar.Clear();
+        Snackbar.Add(message, severity);
     }
 
     private string T(string afrikaans, string english)
@@ -1850,6 +2042,21 @@
             "Story slug is required for media uploads." =>
                 T("Die storie het 'n geldige slug nodig voor upload.", "The story needs a valid slug before upload."),
             _ => T("Kon nie die nuwe storie nou oplaai nie.", "Could not upload the new story right now.")
+        };
+    }
+
+    private string LocalizeStoryEditException(Exception exception)
+    {
+        var message = exception.Message;
+        return message switch
+        {
+            "Cloudflare R2 is not fully configured for admin uploads." =>
+                T("Cloudflare R2 is nog nie volledig opgestel vir admin uploads nie.", "Cloudflare R2 is not fully configured for admin uploads."),
+            "Unsupported image file type. Use JPG, PNG, or WEBP." =>
+                T("Ondersteunde images is JPG, PNG of WEBP.", "Supported image types are JPG, PNG, or WEBP."),
+            "Story slug is required for media uploads." =>
+                T("Die storie het 'n geldige slug nodig voor upload.", "The story needs a valid slug before upload."),
+            _ => T("Kon nie storie nou stoor nie.", "Could not save story right now.")
         };
     }
 
@@ -2083,6 +2290,9 @@
     private string BuildTierSummary(IReadOnlyList<string>? tiers) =>
         tiers is null || tiers.Count == 0 ? T("Geen", "None") : string.Join(", ", tiers);
 
+    private static string BuildTierSortKey(IReadOnlyList<string>? tiers) =>
+        tiers is null || tiers.Count == 0 ? string.Empty : string.Join(", ", tiers);
+
     private string FormatAdminDate(DateTimeOffset? value)
     {
         if (value is null)
@@ -2160,6 +2370,10 @@
         public string? Description { get; set; }
         public string? CoverImagePath { get; set; }
         public string? ThumbnailImagePath { get; set; }
+        public IBrowserFile? CoverFile { get; set; }
+        public string? CoverFileName { get; set; }
+        public IBrowserFile? ThumbnailFile { get; set; }
+        public string? ThumbnailFileName { get; set; }
         public string AudioProvider { get; set; } = "local";
         public string? AudioBucket { get; set; }
         public string? AudioObjectKey { get; set; }
