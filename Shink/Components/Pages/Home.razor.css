@@ -150,7 +150,6 @@ h1 {
     font-size: 1.02rem;
     font-style: italic;
     color: rgba(255, 255, 255, 0.9);
-    white-space: nowrap;
 }
 
 .hero-media {
@@ -578,13 +577,6 @@ h2 {
     outline: 3px solid color-mix(in srgb, #ffffff 40%, var(--accent));
     outline-offset: 4px;
     border-radius: 16px;
-}
-
-@media (hover: none) and (pointer: coarse) {
-    .stories-carousel {
-        touch-action: auto;
-        cursor: auto;
-    }
 }
 
 @keyframes home-story-card-spin {
