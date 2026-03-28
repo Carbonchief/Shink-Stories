@@ -157,6 +157,18 @@ function wireStoryCarouselDrag(carouselElement) {
         suppressClickUntil: 0
     };
 
+    const tryCapturePointer = (pointerId) => {
+        if (pointerId === null || carouselElement.hasPointerCapture(pointerId)) {
+            return;
+        }
+
+        try {
+            carouselElement.setPointerCapture(pointerId);
+        } catch {
+            // Ignore pointer capture failures on browsers that reject touch capture here.
+        }
+    };
+
     const resetDragState = () => {
         if (dragState.pointerId !== null && carouselElement.hasPointerCapture(dragState.pointerId)) {
             try {
@@ -173,7 +185,9 @@ function wireStoryCarouselDrag(carouselElement) {
     };
 
     carouselElement.addEventListener("pointerdown", (event) => {
-        if (!event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) {
+        if (!event.isPrimary ||
+            event.pointerType === "touch" ||
+            (event.pointerType === "mouse" && event.button !== 0)) {
             return;
         }
 
@@ -183,10 +197,6 @@ function wireStoryCarouselDrag(carouselElement) {
         dragState.startScrollLeft = carouselElement.scrollLeft;
         dragState.isPointerDown = true;
         dragState.isDragging = false;
-
-        if (event.pointerType === "mouse") {
-            carouselElement.setPointerCapture(event.pointerId);
-        }
     }, { passive: true });
 
     carouselElement.addEventListener("pointermove", (event) => {
@@ -210,6 +220,7 @@ function wireStoryCarouselDrag(carouselElement) {
 
             dragState.isDragging = true;
             carouselElement.classList.add(STORY_CAROUSEL_DRAGGING_CLASS);
+            tryCapturePointer(event.pointerId);
         }
 
         event.preventDefault();
