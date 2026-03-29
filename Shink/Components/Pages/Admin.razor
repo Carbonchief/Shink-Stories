@@ -1,5 +1,6 @@
 @page "/admin"
 @rendermode InteractiveServer
+@implements IAsyncDisposable
 @using System.Globalization
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
@@ -446,10 +447,10 @@
                                     <h4>@T("Cover image", "Cover image")</h4>
                                     <p>@T("Verpligtend", "Required")</p>
                                 </div>
-                                <label class="admin-upload-btn" for="admin-new-story-cover">
+                                <label class="admin-upload-btn" for="@NewStoryCoverInputId">
                                     @T("Kies image", "Choose image")
                                 </label>
-                                <InputFile id="admin-new-story-cover"
+                                <InputFile id="@NewStoryCoverInputId"
                                            class="admin-file-input"
                                            OnChange="OnNewStoryCoverSelected"
                                            accept=".jpg,.jpeg,.png,.webp,image/*" />
@@ -461,10 +462,10 @@
                                     <h4>@T("Thumbnail image", "Thumbnail image")</h4>
                                     <p>@T("Opsioneel", "Optional")</p>
                                 </div>
-                                <label class="admin-upload-btn" for="admin-new-story-thumbnail">
+                                <label class="admin-upload-btn" for="@NewStoryThumbnailInputId">
                                     @T("Kies image", "Choose image")
                                 </label>
-                                <InputFile id="admin-new-story-thumbnail"
+                                <InputFile id="@NewStoryThumbnailInputId"
                                            class="admin-file-input"
                                            OnChange="OnNewStoryThumbnailSelected"
                                            accept=".jpg,.jpeg,.png,.webp,image/*" />
@@ -476,10 +477,10 @@
                                     <h4>@T("Audio file", "Audio file")</h4>
                                     <p>@T("Laai op na Cloudflare R2", "Uploads to Cloudflare R2")</p>
                                 </div>
-                                <label class="admin-upload-btn" for="admin-new-story-audio">
+                                <label class="admin-upload-btn" for="@NewStoryAudioInputId">
                                     @T("Kies audio", "Choose audio")
                                 </label>
-                                <InputFile id="admin-new-story-audio"
+                                <InputFile id="@NewStoryAudioInputId"
                                            class="admin-file-input"
                                            OnChange="OnNewStoryAudioSelected"
                                            accept=".mp3,.mpeg,.m4a,.wav,.ogg,audio/*" />
@@ -597,10 +598,10 @@
                                 <h4>@T("Vervang cover image", "Replace cover image")</h4>
                                 <p>@T("Opsioneel", "Optional")</p>
                             </div>
-                            <label class="admin-upload-btn" for="admin-edit-story-cover">
+                            <label class="admin-upload-btn" for="@EditStoryCoverInputId">
                                 @T("Kies image", "Choose image")
                             </label>
-                            <InputFile id="admin-edit-story-cover"
+                            <InputFile id="@EditStoryCoverInputId"
                                        class="admin-file-input"
                                        OnChange="OnStoryCoverSelected"
                                        accept=".jpg,.jpeg,.png,.webp,image/*" />
@@ -611,14 +612,28 @@
                                 <h4>@T("Vervang thumbnail", "Replace thumbnail")</h4>
                                 <p>@T("Opsioneel", "Optional")</p>
                             </div>
-                            <label class="admin-upload-btn" for="admin-edit-story-thumbnail">
+                            <label class="admin-upload-btn" for="@EditStoryThumbnailInputId">
                                 @T("Kies image", "Choose image")
                             </label>
-                            <InputFile id="admin-edit-story-thumbnail"
+                            <InputFile id="@EditStoryThumbnailInputId"
                                        class="admin-file-input"
                                        OnChange="OnStoryThumbnailSelected"
                                        accept=".jpg,.jpeg,.png,.webp,image/*" />
                             <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.ThumbnailFileName, T("Hou huidige thumbnail as jy niks kies nie.", "Keeps the current thumbnail if you do not choose a file."))</p>
+                        </div>
+                        <div class="admin-upload-card admin-span-2">
+                            <div class="admin-upload-head">
+                                <h4>@T("Vervang audio file", "Replace audio file")</h4>
+                                <p>@T("Laai op na Cloudflare R2", "Uploads to Cloudflare R2")</p>
+                            </div>
+                            <label class="admin-upload-btn" for="@EditStoryAudioInputId">
+                                @T("Kies audio", "Choose audio")
+                            </label>
+                            <InputFile id="@EditStoryAudioInputId"
+                                       class="admin-file-input"
+                                       OnChange="OnStoryAudioSelected"
+                                       accept=".mp3,.mpeg,.m4a,.wav,.ogg,audio/*" />
+                            <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.AudioFileName, T("Hou huidige audio as jy niks kies nie.", "Keeps the current audio if you do not choose a file."))</p>
                         </div>
                         <div class="admin-image-preview-grid admin-span-2">
                             <article class="admin-image-preview-card admin-luister-preview-card">
@@ -902,6 +917,12 @@
     private AdminLanguage CurrentLanguage { get; set; } = AdminLanguage.Afrikaans;
 
     private const string AdminLanguageStorageKey = "shink.admin.language";
+    private const string NewStoryCoverInputId = "admin-new-story-cover";
+    private const string NewStoryThumbnailInputId = "admin-new-story-thumbnail";
+    private const string NewStoryAudioInputId = "admin-new-story-audio";
+    private const string EditStoryCoverInputId = "admin-edit-story-cover";
+    private const string EditStoryThumbnailInputId = "admin-edit-story-thumbnail";
+    private const string EditStoryAudioInputId = "admin-edit-story-audio";
 
     private bool IsSavingSubscriber { get; set; }
     private bool IsSavingStory { get; set; }
@@ -938,6 +959,7 @@
     private EditablePlaylist? PlaylistEditor { get; set; }
     private List<EditablePlaylistStoryItem> PlaylistStoryEditor { get; set; } = [];
     private string NewStoryDialogInstanceKey { get; set; } = Guid.NewGuid().ToString("N");
+    private IJSObjectReference? AdminUploadModule { get; set; }
 
     private IReadOnlyList<AdminStoryRecord> AvailableStoriesForPlaylist =>
         Stories
@@ -1006,6 +1028,32 @@
         {
             // Ignore storage availability issues (private mode / blocked storage).
             Logger.LogDebug(exception, "Admin language preference load skipped.");
+        }
+
+        try
+        {
+            AdminUploadModule = await GetAdminUploadModuleAsync();
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(exception, "Admin direct-upload module could not be loaded during first render.");
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (AdminUploadModule is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await AdminUploadModule.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // Ignore disconnects during teardown.
         }
     }
 
@@ -1369,6 +1417,19 @@
         return Task.CompletedTask;
     }
 
+    private Task OnStoryAudioSelected(InputFileChangeEventArgs args)
+    {
+        if (StoryEditor is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var file = args.File;
+        StoryEditor.AudioFile = file;
+        StoryEditor.AudioFileName = file?.Name;
+        return Task.CompletedTask;
+    }
+
     private async Task SaveNewStoryAsync()
     {
         if (NewStoryEditor is null)
@@ -1403,35 +1464,32 @@
             var summary = AutofillStorySummary(NewStoryEditor.Summary, NewStoryEditor.Description);
             var description = AutofillStoryDescription(NewStoryEditor.Description, summary);
 
-            await using var coverStream = coverFile.OpenReadStream(MaxImageUploadBytes);
-            var coverUpload = await StoryMediaStorageService.UploadImageAsync(
+            var coverUpload = await StoryMediaStorageService.CreateImageDirectUploadAsync(
                 generatedSlug,
                 StoryImageKind.Cover,
                 coverFile.Name,
-                NormalizeImageContentType(coverFile),
-                coverStream);
+                NormalizeImageContentType(coverFile));
+            await UploadSelectedFileToR2Async(NewStoryCoverInputId, coverUpload);
             uploadedObjectKeys.Add(coverUpload.ObjectKey);
 
-            var thumbnailPath = coverUpload.PublicUrl;
+            var thumbnailPath = coverUpload.PublicUrl!;
             if (NewStoryEditor.ThumbnailFile is not null)
             {
-                await using var thumbnailStream = NewStoryEditor.ThumbnailFile.OpenReadStream(MaxImageUploadBytes);
-                var thumbnailUpload = await StoryMediaStorageService.UploadImageAsync(
+                var thumbnailUpload = await StoryMediaStorageService.CreateImageDirectUploadAsync(
                     generatedSlug,
                     StoryImageKind.Thumbnail,
                     NewStoryEditor.ThumbnailFile.Name,
-                    NormalizeImageContentType(NewStoryEditor.ThumbnailFile),
-                    thumbnailStream);
+                    NormalizeImageContentType(NewStoryEditor.ThumbnailFile));
+                await UploadSelectedFileToR2Async(NewStoryThumbnailInputId, thumbnailUpload);
                 uploadedObjectKeys.Add(thumbnailUpload.ObjectKey);
-                thumbnailPath = thumbnailUpload.PublicUrl;
+                thumbnailPath = thumbnailUpload.PublicUrl!;
             }
 
-            await using var audioStream = audioFile.OpenReadStream(MaxAudioUploadBytes);
-            var audioUpload = await StoryMediaStorageService.UploadAudioAsync(
+            var audioUpload = await StoryMediaStorageService.CreateAudioDirectUploadAsync(
                 generatedSlug,
                 audioFile.Name,
-                NormalizeAudioContentType(audioFile),
-                audioStream);
+                NormalizeAudioContentType(audioFile));
+            await UploadSelectedFileToR2Async(NewStoryAudioInputId, audioUpload);
             uploadedObjectKeys.Add(audioUpload.ObjectKey);
 
             var result = await AdminManagementService.CreateStoryAsync(
@@ -1500,30 +1558,49 @@
                 return;
             }
 
+            var validationMessage = ValidateStoryMediaDraft(StoryEditor);
+            if (!string.IsNullOrWhiteSpace(validationMessage))
+            {
+                SetError(validationMessage);
+                return;
+            }
+
             if (StoryEditor.CoverFile is not null)
             {
-                await using var coverStream = StoryEditor.CoverFile.OpenReadStream(MaxImageUploadBytes);
-                var coverUpload = await StoryMediaStorageService.UploadImageAsync(
+                var coverUpload = await StoryMediaStorageService.CreateImageDirectUploadAsync(
                     StoryEditor.Slug,
                     StoryImageKind.Cover,
                     StoryEditor.CoverFile.Name,
-                    NormalizeImageContentType(StoryEditor.CoverFile),
-                    coverStream);
+                    NormalizeImageContentType(StoryEditor.CoverFile));
+                await UploadSelectedFileToR2Async(EditStoryCoverInputId, coverUpload);
                 uploadedObjectKeys.Add(coverUpload.ObjectKey);
                 StoryEditor.CoverImagePath = coverUpload.PublicUrl;
             }
 
             if (StoryEditor.ThumbnailFile is not null)
             {
-                await using var thumbnailStream = StoryEditor.ThumbnailFile.OpenReadStream(MaxImageUploadBytes);
-                var thumbnailUpload = await StoryMediaStorageService.UploadImageAsync(
+                var thumbnailUpload = await StoryMediaStorageService.CreateImageDirectUploadAsync(
                     StoryEditor.Slug,
                     StoryImageKind.Thumbnail,
                     StoryEditor.ThumbnailFile.Name,
-                    NormalizeImageContentType(StoryEditor.ThumbnailFile),
-                    thumbnailStream);
+                    NormalizeImageContentType(StoryEditor.ThumbnailFile));
+                await UploadSelectedFileToR2Async(EditStoryThumbnailInputId, thumbnailUpload);
                 uploadedObjectKeys.Add(thumbnailUpload.ObjectKey);
                 StoryEditor.ThumbnailImagePath = thumbnailUpload.PublicUrl;
+            }
+
+            if (StoryEditor.AudioFile is not null)
+            {
+                var audioUpload = await StoryMediaStorageService.CreateAudioDirectUploadAsync(
+                    StoryEditor.Slug,
+                    StoryEditor.AudioFile.Name,
+                    NormalizeAudioContentType(StoryEditor.AudioFile));
+                await UploadSelectedFileToR2Async(EditStoryAudioInputId, audioUpload);
+                uploadedObjectKeys.Add(audioUpload.ObjectKey);
+                StoryEditor.AudioProvider = "r2";
+                StoryEditor.AudioBucket = audioUpload.Bucket;
+                StoryEditor.AudioObjectKey = audioUpload.ObjectKey;
+                StoryEditor.AudioContentType = audioUpload.ContentType;
             }
 
             var publishedAt = ParseOptionalLocalDateTime(StoryEditor.PublishedAtLocal);
@@ -1558,6 +1635,8 @@
             StoryEditor.CoverFileName = null;
             StoryEditor.ThumbnailFile = null;
             StoryEditor.ThumbnailFileName = null;
+            StoryEditor.AudioFile = null;
+            StoryEditor.AudioFileName = null;
 
             await RefreshStoriesAsync(StoryEditor.StoryId);
         }
@@ -1928,6 +2007,50 @@
         return null;
     }
 
+    private string? ValidateStoryMediaDraft(EditableStory draft)
+    {
+        if (draft.CoverFile is not null &&
+            (draft.CoverFile.Size <= 0 || draft.CoverFile.Size > MaxImageUploadBytes))
+        {
+            return T("Die cover image moet kleiner as 10 MB wees.", "The cover image must be smaller than 10 MB.");
+        }
+
+        if (draft.ThumbnailFile is not null &&
+            (draft.ThumbnailFile.Size <= 0 || draft.ThumbnailFile.Size > MaxImageUploadBytes))
+        {
+            return T("Die thumbnail image moet kleiner as 10 MB wees.", "The thumbnail image must be smaller than 10 MB.");
+        }
+
+        if (draft.AudioFile is not null &&
+            (draft.AudioFile.Size <= 0 || draft.AudioFile.Size > MaxAudioUploadBytes))
+        {
+            return T("Die audio file moet kleiner as 256 MB wees.", "The audio file must be smaller than 256 MB.");
+        }
+
+        return null;
+    }
+
+    private async Task UploadSelectedFileToR2Async(string inputId, DirectStoryMediaUpload upload)
+    {
+        var module = await GetAdminUploadModuleAsync();
+        await module.InvokeVoidAsync(
+            "uploadSelectedFileToR2",
+            inputId,
+            upload.UploadUrl,
+            upload.ContentType);
+    }
+
+    private async Task<IJSObjectReference> GetAdminUploadModuleAsync()
+    {
+        if (AdminUploadModule is not null)
+        {
+            return AdminUploadModule;
+        }
+
+        AdminUploadModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "/js/admin-r2-upload.js");
+        return AdminUploadModule;
+    }
+
     private async Task CleanupUploadedStoryObjectsAsync(IEnumerable<string> objectKeys)
     {
         foreach (var objectKey in objectKeys
@@ -2031,10 +2154,17 @@
     private string LocalizeNewStoryException(Exception exception)
     {
         var message = exception.Message;
+        if (message.StartsWith("Direct upload failed", StringComparison.Ordinal))
+        {
+            return T("Die direkte upload na Cloudflare R2 het misluk. Probeer asseblief weer.", "The direct upload to Cloudflare R2 failed. Please try again.");
+        }
+
         return message switch
         {
             "Cloudflare R2 is not fully configured for admin uploads." =>
                 T("Cloudflare R2 is nog nie volledig opgestel vir admin uploads nie.", "Cloudflare R2 is not fully configured for admin uploads."),
+            "No file selected for upload." =>
+                T("Kies asseblief eers 'n file om op te laai.", "Please choose a file to upload first."),
             "Unsupported audio file type. Use MP3, M4A, WAV, or OGG." =>
                 T("Ondersteunde audio files is MP3, M4A, WAV of OGG.", "Supported audio files are MP3, M4A, WAV, or OGG."),
             "Unsupported image file type. Use JPG, PNG, or WEBP." =>
@@ -2048,10 +2178,19 @@
     private string LocalizeStoryEditException(Exception exception)
     {
         var message = exception.Message;
+        if (message.StartsWith("Direct upload failed", StringComparison.Ordinal))
+        {
+            return T("Die direkte upload na Cloudflare R2 het misluk. Probeer asseblief weer.", "The direct upload to Cloudflare R2 failed. Please try again.");
+        }
+
         return message switch
         {
             "Cloudflare R2 is not fully configured for admin uploads." =>
                 T("Cloudflare R2 is nog nie volledig opgestel vir admin uploads nie.", "Cloudflare R2 is not fully configured for admin uploads."),
+            "No file selected for upload." =>
+                T("Kies asseblief eers 'n file om op te laai.", "Please choose a file to upload first."),
+            "Unsupported audio file type. Use MP3, M4A, WAV, or OGG." =>
+                T("Ondersteunde audio files is MP3, M4A, WAV of OGG.", "Supported audio files are MP3, M4A, WAV, or OGG."),
             "Unsupported image file type. Use JPG, PNG, or WEBP." =>
                 T("Ondersteunde images is JPG, PNG of WEBP.", "Supported image types are JPG, PNG, or WEBP."),
             "Story slug is required for media uploads." =>
@@ -2374,6 +2513,8 @@
         public string? CoverFileName { get; set; }
         public IBrowserFile? ThumbnailFile { get; set; }
         public string? ThumbnailFileName { get; set; }
+        public IBrowserFile? AudioFile { get; set; }
+        public string? AudioFileName { get; set; }
         public string AudioProvider { get; set; } = "local";
         public string? AudioBucket { get; set; }
         public string? AudioObjectKey { get; set; }
