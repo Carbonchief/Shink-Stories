@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage
+    x:Class="Shink.Mobile.MainPage"
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    BackgroundColor="{StaticResource Surface}">
+    <ScrollView>
+        <VerticalStackLayout
+            Padding="24,48"
+            Spacing="20">
+            <Image
+                Aspect="AspectFit"
+                HeightRequest="180"
+                HorizontalOptions="Center"
+                Source="stories-hero.svg" />
+
+            <Label
+                FontAttributes="Bold"
+                FontSize="32"
+                HorizontalTextAlignment="Center"
+                Text="Shink Stories"
+                TextColor="{StaticResource PrimaryText}" />
+
+            <Label
+                FontSize="18"
+                HorizontalTextAlignment="Center"
+                LineBreakMode="WordWrap"
+                Text="Die MAUI-program is nou gereed as 'n mobiele beginpunt vir iOS en Android."
+                TextColor="{StaticResource MutedText}" />
+
+            <Border
+                BackgroundColor="White"
+                StrokeShape="RoundRectangle 20"
+                StrokeThickness="0">
+                <VerticalStackLayout Padding="20" Spacing="12">
+                    <Label
+                        FontAttributes="Bold"
+                        FontSize="20"
+                        Text="Volgende stap"
+                        TextColor="{StaticResource PrimaryText}" />
+                    <Label
+                        FontSize="16"
+                        LineBreakMode="WordWrap"
+                        Text="Koppel die mobiele UI aan gedeelde inhoud, API-oproepe en die bestaande Shink Stories dienste wanneer julle gereed is."
+                        TextColor="{StaticResource MutedText}" />
+                </VerticalStackLayout>
+            </Border>
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>
