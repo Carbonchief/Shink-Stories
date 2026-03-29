@@ -151,6 +151,7 @@ builder.Services.AddRateLimiter(options =>
 });
 
 var app = builder.Build();
+LogCloudflareR2Configuration(app);
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
@@ -1681,6 +1682,35 @@ static bool TryBuildR2AudioUri(string? publicBaseUrl, string? audioObjectKey, ou
     var encodedPath = string.Join('/', segments.Select(Uri.EscapeDataString));
     sourceUri = new Uri(baseUri, encodedPath);
     return true;
+}
+
+static void LogCloudflareR2Configuration(WebApplication app)
+{
+    var options = app.Services.GetRequiredService<IOptions<CloudflareR2Options>>().Value;
+    var logger = app.Logger;
+
+    var hasUploadCredentials =
+        !string.IsNullOrWhiteSpace(options.AccountId) &&
+        !string.IsNullOrWhiteSpace(options.BucketName) &&
+        !string.IsNullOrWhiteSpace(options.AccessKeyId) &&
+        !string.IsNullOrWhiteSpace(options.SecretAccessKey);
+
+    if (!hasUploadCredentials)
+    {
+        logger.LogWarning("Cloudflare R2 upload credentials are incomplete. Admin media uploads to R2 will fail until AccountId, BucketName, AccessKeyId, and SecretAccessKey are configured.");
+    }
+
+    if (!Uri.TryCreate(options.PublicBaseUrl, UriKind.Absolute, out var publicBaseUri) ||
+        !string.Equals(publicBaseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+    {
+        logger.LogWarning("Cloudflare R2 PublicBaseUrl is missing or invalid. Public story media playback and image delivery may fail.");
+        return;
+    }
+
+    if (publicBaseUri.Host.EndsWith(".r2.dev", StringComparison.OrdinalIgnoreCase))
+    {
+        logger.LogWarning("Cloudflare R2 PublicBaseUrl is using the managed r2.dev domain ({PublicBaseUrl}). Cloudflare documents r2.dev as a testing endpoint with variable throttling; switch to a custom domain for production media delivery.", options.PublicBaseUrl);
+    }
 }
 
 static string ResolveAudioMimeType(string? configuredContentType, string? audioObjectKey)

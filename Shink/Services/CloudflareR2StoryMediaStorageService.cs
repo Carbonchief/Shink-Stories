@@ -13,6 +13,48 @@ public sealed class CloudflareR2StoryMediaStorageService(
     private readonly ILogger<CloudflareR2StoryMediaStorageService> _logger = logger;
     private IAmazonS3? _client;
 
+    public Task<DirectStoryMediaUpload> CreateAudioDirectUploadAsync(
+        string slug,
+        string fileName,
+        string? contentType,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var normalizedSlug = NormalizeSlug(slug);
+        var normalizedContentType = ResolveAudioContentType(contentType, fileName);
+        var objectKey = BuildObjectKey(
+            "uploaded/stories/audio",
+            normalizedSlug,
+            "audio",
+            fileName,
+            normalizedContentType);
+
+        return Task.FromResult(BuildDirectUpload(objectKey, normalizedContentType, includePublicUrl: false));
+    }
+
+    public Task<DirectStoryMediaUpload> CreateImageDirectUploadAsync(
+        string slug,
+        StoryImageKind kind,
+        string fileName,
+        string? contentType,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var normalizedSlug = NormalizeSlug(slug);
+        var normalizedContentType = ResolveImageContentType(contentType, fileName);
+        var suffix = kind == StoryImageKind.Thumbnail ? "thumbnail" : "cover";
+        var objectKey = BuildObjectKey(
+            "uploaded/stories/images",
+            normalizedSlug,
+            suffix,
+            fileName,
+            normalizedContentType);
+
+        return Task.FromResult(BuildDirectUpload(objectKey, normalizedContentType, includePublicUrl: true));
+    }
+
     public async Task<UploadedStoryAudio> UploadAudioAsync(
         string slug,
         string fileName,
@@ -65,7 +107,7 @@ public sealed class CloudflareR2StoryMediaStorageService(
 
     public async Task DeleteObjectIfExistsAsync(string objectKey, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(objectKey) || !IsConfigured())
+        if (string.IsNullOrWhiteSpace(objectKey) || !IsUploadConfigured())
         {
             return;
         }
@@ -97,7 +139,7 @@ public sealed class CloudflareR2StoryMediaStorageService(
         Stream content,
         CancellationToken cancellationToken)
     {
-        EnsureConfigured();
+        EnsureUploadConfigured();
 
         var tempFilePath = Path.Combine(Path.GetTempPath(), $"shink-upload-{Guid.NewGuid():N}.tmp");
 
@@ -114,6 +156,8 @@ public sealed class CloudflareR2StoryMediaStorageService(
                 Key = objectKey,
                 FilePath = tempFilePath,
                 ContentType = contentType,
+                DisablePayloadSigning = true,
+                DisableDefaultChecksumValidation = true,
                 UseChunkEncoding = false
             };
 
@@ -142,7 +186,7 @@ public sealed class CloudflareR2StoryMediaStorageService(
 
     private IAmazonS3 GetClient()
     {
-        EnsureConfigured();
+        EnsureUploadConfigured();
 
         _client ??= new AmazonS3Client(
             new BasicAWSCredentials(_options.AccessKeyId.Trim(), _options.SecretAccessKey.Trim()),
@@ -159,9 +203,9 @@ public sealed class CloudflareR2StoryMediaStorageService(
         return _client;
     }
 
-    private void EnsureConfigured()
+    private void EnsureUploadConfigured()
     {
-        if (IsConfigured())
+        if (IsUploadConfigured())
         {
             return;
         }
@@ -169,16 +213,47 @@ public sealed class CloudflareR2StoryMediaStorageService(
         throw new InvalidOperationException("Cloudflare R2 is not fully configured for admin uploads.");
     }
 
-    private bool IsConfigured() =>
-        !string.IsNullOrWhiteSpace(_options.PublicBaseUrl) &&
+    private bool IsUploadConfigured() =>
         !string.IsNullOrWhiteSpace(_options.AccountId) &&
         !string.IsNullOrWhiteSpace(_options.BucketName) &&
         !string.IsNullOrWhiteSpace(_options.AccessKeyId) &&
         !string.IsNullOrWhiteSpace(_options.SecretAccessKey);
 
+    private DirectStoryMediaUpload BuildDirectUpload(
+        string objectKey,
+        string contentType,
+        bool includePublicUrl)
+    {
+        EnsureUploadConfigured();
+
+        var request = new GetPreSignedUrlRequest
+        {
+            BucketName = _options.BucketName.Trim(),
+            Key = objectKey,
+            Verb = HttpVerb.PUT,
+            Protocol = Protocol.HTTPS,
+            ContentType = contentType,
+            Expires = DateTime.UtcNow.AddMinutes(10)
+        };
+
+        var uploadUrl = GetClient().GetPreSignedURL(request);
+        return new DirectStoryMediaUpload(
+            Bucket: _options.BucketName.Trim(),
+            ObjectKey: objectKey,
+            ContentType: contentType,
+            PublicUrl: includePublicUrl ? BuildPublicObjectUrl(objectKey) : null,
+            UploadUrl: uploadUrl,
+            Method: "PUT");
+    }
+
     private string BuildPublicObjectUrl(string objectKey)
     {
         var baseUrl = _options.PublicBaseUrl.Trim().TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(baseUrl))
+        {
+            throw new InvalidOperationException("Cloudflare R2 is not fully configured for admin uploads.");
+        }
+
         var escapedSegments = objectKey
             .Split('/', StringSplitOptions.RemoveEmptyEntries)
             .Select(Uri.EscapeDataString);
@@ -195,7 +270,7 @@ public sealed class CloudflareR2StoryMediaStorageService(
     {
         var extension = ResolveExtension(fileName, contentType);
         var timestamp = DateTimeOffset.UtcNow;
-        return $"{prefix}/{timestamp:yyyy}/{timestamp:MM}/{slug}-{suffix}-{timestamp:yyyyMMddHHmmss}{extension}";
+        return $"{prefix}/{timestamp:yyyy}/{timestamp:MM}/{slug}-{suffix}-{timestamp:yyyyMMddHHmmss}-{Guid.NewGuid():N}{extension}";
     }
 
     private static string ResolveAudioContentType(string? contentType, string fileName)
