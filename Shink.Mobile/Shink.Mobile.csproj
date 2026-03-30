@@ -8,6 +8,7 @@
     <SingleProject>true</SingleProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <MauiXamlInflator>SourceGen</MauiXamlInflator>
 
     <ApplicationTitle>Shink Stories</ApplicationTitle>
     <ApplicationId>com.schink.stories.mobile</ApplicationId>
@@ -22,6 +23,11 @@
     <MauiIcon Include="Resources/AppIcon/appicon.svg" />
     <MauiSplashScreen Include="Resources/Splash/splash.svg" Color="#222222" BaseSize="128,128" />
     <MauiImage Include="Resources/Images/*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
   </ItemGroup>
 
 </Project>
