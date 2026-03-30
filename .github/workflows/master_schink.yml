@@ -24,7 +24,7 @@ jobs:
           dotnet-version: '10.x'
 
       - name: Build with dotnet
-        run: dotnet build Shink-Stories.sln --configuration Release
+        run: dotnet build Shink/Shink.csproj --configuration Release
 
       - name: dotnet publish
         run: dotnet publish Shink/Shink.csproj -c Release -o ${{env.DOTNET_ROOT}}/myapp
