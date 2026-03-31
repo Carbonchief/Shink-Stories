@@ -103,7 +103,7 @@
 
     private static string GetStoryHref(string slug) => $"/luister/{Uri.EscapeDataString(slug)}";
 
-    private static string GetPlaylistHref(string slug) => $"/luister/speellys/{Uri.EscapeDataString(slug)}";
+    private static string GetPlaylistHref(string slug) => $"/luister/speellys/{Uri.EscapeDataString(slug)}/stories";
 
     private async Task HandleSearchInputAsync(ChangeEventArgs args)
     {

@@ -1,0 +1,246 @@
+@page "/luister/speellys/{PlaylistSlug}/stories"
+@using System.Text.Json
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.WebUtilities
+@inject IStoryCatalogService StoryCatalogService
+@inject NavigationManager NavigationManager
+
+<PageTitle>@PageTitleText</PageTitle>
+<HeadContent>
+    <link rel="canonical" href="@ShowcaseCanonicalUrl" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="@ShareTitle" />
+    <meta property="og:description" content="@ShareDescription" />
+    <meta property="og:url" content="@ShowcaseCanonicalUrl" />
+    <meta property="og:image" content="@ShareImageUrl" />
+    <meta property="og:image:type" content="@ShareImageMimeType" />
+    <meta property="og:image:alt" content="@ShareImageAlt" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="@ShareTitle" />
+    <meta name="twitter:description" content="@ShareDescription" />
+    <meta name="twitter:image" content="@ShareImageUrl" />
+    <meta name="twitter:image:alt" content="@ShareImageAlt" />
+    <script type="application/ld+json">@ShowcaseJsonLd</script>
+</HeadContent>
+
+@if (CurrentPlaylist is null)
+{
+    <section class="playlist-showcase-empty-state">
+        <h1>Ons kon nie daardie speellys kry nie.</h1>
+        <p>Gaan terug na Luister om 'n ander speellys te kies.</p>
+        <a href="/luister">Terug na luister</a>
+    </section>
+}
+else if (CurrentPlaylistStories.Count == 0)
+{
+    <section class="playlist-showcase-empty-state">
+        <h1>Hierdie speellys is nie nou beskikbaar nie.</h1>
+        <p>Probeer asseblief later weer of kies 'n ander speellys.</p>
+        <a href="/luister">Terug na luister</a>
+    </section>
+}
+else
+{
+    <section class="playlist-showcase-page">
+        <header class="playlist-showcase-hero">
+            <img class="playlist-showcase-hero-image"
+                 src="@HeroImagePath"
+                 srcset="@($"{HeroImagePath} 640w, {HeroImagePath} 1024w")"
+                 sizes="(max-width: 900px) 100vw, 1120px"
+                 alt="@HeroImageAlt"
+                 width="1024"
+                 height="768"
+                 loading="eager"
+                 fetchpriority="high"
+                 decoding="async" />
+            <div class="playlist-showcase-hero-overlay">
+                <h1>@CurrentPlaylist.Title</h1>
+                @if (!string.IsNullOrWhiteSpace(CurrentPlaylist.Description))
+                {
+                    <p>@CurrentPlaylist.Description</p>
+                }
+                <a class="playlist-showcase-playlist-link" href="@GetPlaylistPlayerHref(CurrentPlaylist.Slug)">
+                    Speel hele speellys
+                </a>
+            </div>
+        </header>
+
+        <section class="playlist-showcase-stories" aria-labelledby="playlist-showcase-stories-heading">
+            <h2 id="playlist-showcase-stories-heading">Stories in hierdie speellys</h2>
+            <div class="playlist-showcase-grid" role="list">
+                @foreach (var story in CurrentPlaylistStories)
+                {
+                    var isHighlighted = string.Equals(story.Slug, HighlightStorySlug, StringComparison.OrdinalIgnoreCase);
+
+                    <article class="playlist-showcase-card @(isHighlighted ? "is-highlighted" : null)" role="listitem">
+                        <a class="playlist-showcase-card-link"
+                           href="@BuildStoryHref(story)"
+                           data-enhance-nav="false"
+                           aria-label="Luister na @story.Title">
+                            <span class="playlist-showcase-card-cover">
+                                <img class="playlist-showcase-card-image"
+                                     src="@story.ThumbnailPath"
+                                     srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
+                                     sizes="(max-width: 560px) 88vw, (max-width: 980px) 42vw, (max-width: 1200px) 30vw, 240px"
+                                     alt="Voorblad van @story.Title"
+                                     width="640"
+                                     height="485"
+                                     loading="lazy"
+                                     decoding="async" />
+                                <span class="playlist-showcase-card-play" aria-hidden="true">
+                                    <i class="playlist-showcase-card-play-icon fa-solid fa-play" aria-hidden="true"></i>
+                                </span>
+                            </span>
+                            <span class="playlist-showcase-card-copy">
+                                <span class="playlist-showcase-card-title">@story.Title</span>
+                                <span class="playlist-showcase-card-action">@(isHighlighted ? "Jy het hier geluister" : "Maak storie oop")</span>
+                            </span>
+                        </a>
+                    </article>
+                }
+            </div>
+        </section>
+    </section>
+}
+
+@code {
+    [Parameter]
+    public string? PlaylistSlug { get; set; }
+
+    [SupplyParameterFromQuery(Name = "storie")]
+    public string? HighlightStorySlug { get; set; }
+
+    private StoryPlaylist? CurrentPlaylist { get; set; }
+    private IReadOnlyList<StoryItem> CurrentPlaylistStories { get; set; } = Array.Empty<StoryItem>();
+
+    private string PageTitleText =>
+        CurrentPlaylist is null
+            ? "Speellys nie gevind nie"
+            : $"{CurrentPlaylist.Title} stories | Schink Stories";
+
+    private string ShowcaseCanonicalUrl =>
+        NavigationManager.ToAbsoluteUri(GetShowcasePath(CurrentPlaylist?.Slug ?? PlaylistSlug)).ToString();
+
+    private string ShareTitle =>
+        CurrentPlaylist is null
+            ? "Schink Stories | Speellys"
+            : $"{CurrentPlaylist.Title} stories | Schink Stories";
+
+    private string ShareDescription =>
+        !string.IsNullOrWhiteSpace(CurrentPlaylist?.Description)
+            ? CurrentPlaylist.Description!
+            : "Verken stories in hierdie Schink speellys.";
+
+    private string ShareImageUrl => NavigationManager.ToAbsoluteUri(HeroImagePath).ToString();
+
+    private string ShareImageMimeType => GetImageMimeType(HeroImagePath);
+
+    private string ShareImageAlt =>
+        CurrentPlaylistStories.Count == 0
+            ? "Schink Stories speellys"
+            : $"Voorblad van {CurrentPlaylistStories[0].Title}";
+
+    private string HeroImagePath =>
+        CurrentPlaylistStories.Count == 0
+            ? "/branding/DIS_STORIETYD.png"
+            : CurrentPlaylistStories[0].ImagePath;
+
+    private string HeroImageAlt =>
+        CurrentPlaylistStories.Count == 0
+            ? "Schink Stories speellys"
+            : $"Speellys voorblad vir {CurrentPlaylistStories[0].Title}";
+
+    private MarkupString ShowcaseJsonLd => new(JsonSerializer.Serialize(new
+    {
+        @context = "https://schema.org",
+        @type = "CollectionPage",
+        headline = ShareTitle,
+        description = ShareDescription,
+        url = ShowcaseCanonicalUrl,
+        inLanguage = "af-ZA",
+        image = new[] { ShareImageUrl },
+        isPartOf = new
+        {
+            @type = "WebSite",
+            name = "Schink Stories",
+            url = NavigationManager.ToAbsoluteUri("/").ToString()
+        },
+        mainEntity = CurrentPlaylist is null
+            ? null
+            : new
+            {
+                @type = "ItemList",
+                name = CurrentPlaylist.Title,
+                numberOfItems = CurrentPlaylistStories.Count,
+                itemListElement = CurrentPlaylistStories.Select((story, index) => new
+                {
+                    @type = "ListItem",
+                    position = index + 1,
+                    name = story.Title,
+                    url = NavigationManager.ToAbsoluteUri($"/luister/{story.Slug}").ToString()
+                }).ToArray()
+            }
+    }));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        CurrentPlaylist = null;
+        CurrentPlaylistStories = Array.Empty<StoryItem>();
+
+        if (string.IsNullOrWhiteSpace(PlaylistSlug))
+        {
+            return;
+        }
+
+        try
+        {
+            var playlists = await StoryCatalogService.GetLuisterPlaylistsAsync();
+            CurrentPlaylist = playlists.FirstOrDefault(playlist =>
+                string.Equals(playlist.Slug, PlaylistSlug, StringComparison.OrdinalIgnoreCase));
+
+            CurrentPlaylistStories = CurrentPlaylist?.Stories ?? Array.Empty<StoryItem>();
+        }
+        catch
+        {
+            CurrentPlaylist = null;
+            CurrentPlaylistStories = Array.Empty<StoryItem>();
+        }
+    }
+
+    private static string GetShowcasePath(string? playlistSlug) =>
+        string.IsNullOrWhiteSpace(playlistSlug)
+            ? "/luister"
+            : $"/luister/speellys/{Uri.EscapeDataString(playlistSlug.Trim())}/stories";
+
+    private static string GetPlaylistPlayerHref(string playlistSlug) =>
+        $"/luister/speellys/{Uri.EscapeDataString(playlistSlug.Trim())}";
+
+    private string BuildStoryHref(StoryItem story)
+    {
+        var path = $"/luister/{Uri.EscapeDataString(story.Slug)}";
+        if (CurrentPlaylist is null)
+        {
+            return path;
+        }
+
+        return QueryHelpers.AddQueryString(path, new Dictionary<string, string?>
+        {
+            ["playlist"] = CurrentPlaylist.Slug,
+            ["playlistName"] = CurrentPlaylist.Title,
+            ["playlistView"] = "showcase"
+        });
+    }
+
+    private static string GetImageMimeType(string fileName)
+    {
+        var extension = Path.GetExtension(fileName).ToLowerInvariant();
+        return extension switch
+        {
+            ".png" => "image/png",
+            ".webp" => "image/webp",
+            ".jpg" => "image/jpeg",
+            ".jpeg" => "image/jpeg",
+            _ => "image/jpeg"
+        };
+    }
+}

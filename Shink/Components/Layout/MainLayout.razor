@@ -339,23 +339,10 @@
         get
         {
             var relativePath = GetCurrentRelativePathWithoutQuery();
-            if (relativePath.StartsWith("luister/speellys/", StringComparison.OrdinalIgnoreCase))
-            {
-                return "Schink Stories";
-            }
 
-            if (relativePath.StartsWith("luister/", StringComparison.OrdinalIgnoreCase))
-            {
-                var playlistTitle = GetCurrentQueryValue("playlistName");
-                if (!string.IsNullOrWhiteSpace(playlistTitle))
-                {
-                    return playlistTitle.Trim();
-                }
-
-                return "Storie";
-            }
-
-            return "STORIEHOEKIE";
+            if (!relativePath.StartsWith("luister/", StringComparison.OrdinalIgnoreCase)) return "Schink Stories";
+            var playlistTitle = GetCurrentQueryValue("playlistName");
+            return !string.IsNullOrWhiteSpace(playlistTitle) ? playlistTitle.Trim() : "Schink Stories";
         }
     }
 
@@ -367,7 +354,10 @@
             return null;
         }
 
-        var path = $"/luister/speellys/{Uri.EscapeDataString(playlistSlug.Trim())}";
+        var playlistView = GetCurrentQueryValue("playlistView");
+        var path = string.Equals(playlistView, "showcase", StringComparison.OrdinalIgnoreCase)
+            ? $"/luister/speellys/{Uri.EscapeDataString(playlistSlug.Trim())}/stories"
+            : $"/luister/speellys/{Uri.EscapeDataString(playlistSlug.Trim())}";
         var storySlug = GetLuisterStorySlug(relativePath);
         if (string.IsNullOrWhiteSpace(storySlug))
         {
