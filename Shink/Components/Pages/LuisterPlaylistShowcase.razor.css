@@ -1,0 +1,273 @@
+.playlist-showcase-page {
+    width: min(100%, 1200px);
+    margin: 0 auto;
+    padding-inline: clamp(0.9rem, 4vw, 2rem);
+    display: grid;
+    gap: 1.25rem;
+    box-sizing: border-box;
+}
+
+.playlist-showcase-hero {
+    position: relative;
+    border-radius: 24px;
+    overflow: hidden;
+    background: #1b1f23;
+    box-shadow: 0 16px 34px rgba(9, 11, 14, 0.26);
+}
+
+.playlist-showcase-hero-image {
+    width: 100%;
+    display: block;
+    aspect-ratio: 16 / 7;
+    object-fit: cover;
+}
+
+.playlist-showcase-hero-overlay {
+    position: absolute;
+    inset: 0;
+    padding: clamp(1rem, 3.8vw, 1.8rem);
+    background:
+        linear-gradient(
+            to top,
+            rgba(10, 12, 16, 0.86) 10%,
+            rgba(10, 12, 16, 0.35) 52%,
+            rgba(10, 12, 16, 0.08) 100%
+        );
+    display: grid;
+    align-content: end;
+    gap: 0.58rem;
+    color: #ffffff;
+}
+
+.playlist-showcase-hero-overlay h1 {
+    margin: 0;
+    font-size: clamp(1.9rem, 4.3vw, 3.05rem);
+    line-height: 1.04;
+}
+
+.playlist-showcase-hero-overlay p {
+    margin: 0;
+    max-width: 62ch;
+    color: rgba(250, 248, 244, 0.9);
+    line-height: 1.45;
+}
+
+.playlist-showcase-playlist-link {
+    width: fit-content;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-height: 42px;
+    margin-top: 0.14rem;
+    padding: 0.48rem 0.86rem;
+    border-radius: 999px;
+    text-decoration: none;
+    font-weight: 700;
+    color: #151515;
+    background: color-mix(in srgb, var(--accent) 86%, #ffffff);
+}
+
+.playlist-showcase-playlist-link:hover,
+.playlist-showcase-playlist-link:focus-visible {
+    background: color-mix(in srgb, var(--accent-deep) 82%, #ffffff);
+}
+
+.playlist-showcase-playlist-link::before {
+    content: "\f144";
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+    font-size: 0.94rem;
+}
+
+.playlist-showcase-stories h2 {
+    margin: 0 0 0.75rem;
+    font-size: clamp(1.3rem, 2.3vw, 1.95rem);
+    text-align: center;
+}
+
+.playlist-showcase-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.9rem;
+}
+
+.playlist-showcase-card {
+    min-width: 0;
+}
+
+.playlist-showcase-card-link {
+    display: grid;
+    gap: 0.55rem;
+    text-decoration: none;
+    color: inherit;
+    border-radius: 16px;
+}
+
+.playlist-showcase-card-cover {
+    position: relative;
+    border-radius: 16px;
+    overflow: hidden;
+    background: #0f1116;
+    box-shadow: 0 10px 22px rgba(11, 15, 18, 0.24);
+}
+
+.playlist-showcase-card-image {
+    width: 100%;
+    aspect-ratio: 3 / 4;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.2s ease, filter 0.2s ease;
+}
+
+.playlist-showcase-card-play {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    background: linear-gradient(to top, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.1));
+    transition: opacity 0.2s ease;
+}
+
+.playlist-showcase-card-play-icon {
+    width: 54px;
+    height: 54px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    color: #1a1a1a;
+    background: color-mix(in srgb, var(--accent) 90%, white);
+    box-shadow: 0 7px 22px rgba(0, 0, 0, 0.32);
+    padding-left: 0.16rem;
+}
+
+.playlist-showcase-card-link:hover .playlist-showcase-card-image,
+.playlist-showcase-card-link:focus-visible .playlist-showcase-card-image {
+    transform: scale(1.03);
+    filter: brightness(0.82);
+}
+
+.playlist-showcase-card-link:hover .playlist-showcase-card-play,
+.playlist-showcase-card-link:focus-visible .playlist-showcase-card-play {
+    opacity: 1;
+}
+
+.playlist-showcase-card-copy {
+    display: grid;
+    gap: 0.24rem;
+    text-align: center;
+}
+
+.playlist-showcase-card-title {
+    margin: 0;
+    color: #212529;
+    font-size: 1rem;
+    line-height: 1.35;
+    min-height: 2.5em;
+}
+
+.playlist-showcase-card-action {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #445056;
+}
+
+.playlist-showcase-card.is-highlighted .playlist-showcase-card-cover {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 78%, #ffffff), 0 12px 22px rgba(11, 15, 18, 0.28);
+}
+
+.playlist-showcase-card.is-highlighted .playlist-showcase-card-action {
+    color: color-mix(in srgb, var(--accent-deep) 82%, #2d3338);
+}
+
+.playlist-showcase-card-link:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--accent) 68%, #ffffff);
+    outline-offset: 3px;
+}
+
+.playlist-showcase-empty-state {
+    width: min(100%, 720px);
+    margin: 0 auto;
+    padding: 1.1rem 1.2rem;
+    border-radius: 20px;
+    background: #222222;
+    color: #f6f1ea;
+}
+
+.playlist-showcase-empty-state h1 {
+    margin-top: 0;
+    color: #ffffff;
+}
+
+.playlist-showcase-empty-state a {
+    color: #ffffff;
+    font-weight: 700;
+}
+
+@media (max-width: 1100px) {
+    .playlist-showcase-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 780px) {
+    .playlist-showcase-page {
+        gap: 1rem;
+    }
+
+    .playlist-showcase-hero {
+        border-radius: 18px;
+    }
+
+    .playlist-showcase-hero-image {
+        aspect-ratio: 16 / 9;
+    }
+
+    .playlist-showcase-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.72rem;
+    }
+}
+
+@media (max-width: 560px) {
+    .playlist-showcase-grid {
+        grid-template-columns: 1fr;
+        gap: 0.76rem;
+    }
+
+    .playlist-showcase-card-link {
+        grid-template-columns: 120px minmax(0, 1fr);
+        gap: 0.72rem;
+        align-items: center;
+        padding: 0.38rem;
+        border: 1px solid color-mix(in srgb, var(--line) 88%, #b9b7ae);
+        background: var(--surface);
+    }
+
+    .playlist-showcase-card-cover {
+        border-radius: 14px;
+    }
+
+    .playlist-showcase-card-image {
+        aspect-ratio: 3 / 4;
+    }
+
+    .playlist-showcase-card-copy {
+        text-align: left;
+        align-content: center;
+    }
+
+    .playlist-showcase-card-title {
+        min-height: 0;
+    }
+}
+
+@media (hover: none) and (pointer: coarse) {
+    .playlist-showcase-card-play {
+        background: linear-gradient(to top, rgba(0, 0, 0, 0.34), rgba(0, 0, 0, 0.03));
+    }
+}

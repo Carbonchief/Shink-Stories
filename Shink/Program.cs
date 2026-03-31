@@ -934,6 +934,7 @@ app.MapGet("/sitemap.xml", async (HttpContext httpContext, IStoryCatalogService 
     paths.AddRange(freeStoriesTask.Result.Select(story => $"/gratis/{Uri.EscapeDataString(story.Slug)}"));
     paths.AddRange(luisterStoriesTask.Result.Select(story => $"/luister/{Uri.EscapeDataString(story.Slug)}"));
     paths.AddRange(luisterPlaylistsTask.Result.Select(playlist => $"/luister/speellys/{Uri.EscapeDataString(playlist.Slug)}"));
+    paths.AddRange(luisterPlaylistsTask.Result.Select(playlist => $"/luister/speellys/{Uri.EscapeDataString(playlist.Slug)}/stories"));
 
     XNamespace ns = "http://www.sitemaps.org/schemas/sitemap/0.9";
     var document = new XDocument(

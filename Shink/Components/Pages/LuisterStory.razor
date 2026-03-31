@@ -232,6 +232,9 @@ else
     [SupplyParameterFromQuery(Name = "playlistName")]
     public string? PlaylistContextTitle { get; set; }
 
+    [SupplyParameterFromQuery(Name = "playlistView")]
+    public string? PlaylistContextView { get; set; }
+
     private StoryItem? CurrentStory { get; set; }
     private string? AudioUrl { get; set; }
     private IJSObjectReference? _mediaSessionModule;
@@ -539,11 +542,18 @@ else
             return path;
         }
 
-        return QueryHelpers.AddQueryString(path, new Dictionary<string, string?>
+        var queryParams = new Dictionary<string, string?>
         {
             ["playlist"] = PlaylistContextSlug.Trim(),
             ["playlistName"] = PlaylistContextTitle.Trim()
-        });
+        };
+
+        if (!string.IsNullOrWhiteSpace(PlaylistContextView))
+        {
+            queryParams["playlistView"] = PlaylistContextView.Trim();
+        }
+
+        return QueryHelpers.AddQueryString(path, queryParams);
     }
 
     private void ResolveAdjacentStories()
