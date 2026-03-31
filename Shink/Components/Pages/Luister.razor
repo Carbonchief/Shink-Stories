@@ -31,13 +31,6 @@
 
 <div class="luister-page-shell">
     <section class="gratis-hero">
-        <div class="gratis-hero-copy">
-            <h1>Alle beskikbare stories vir jou gesin</h1>
-            <p>
-                Kies enige storie hieronder. Tik om dit oop te maak en
-                direk te luister.
-            </p>
-        </div>
         <img class="gratis-banner" src="/branding/DIS_STORIETYD.png"
              alt="Luister stories banner" loading="eager" fetchpriority="high" decoding="async" />
     </section>
@@ -255,61 +248,61 @@
     }
 }
 
-    @if (LuisterPlaylists.Count == 0)
+@if (LuisterPlaylists.Count == 0)
+{
+    <section class="luister-empty-state">
+        <p>Ons kon nie nou die playlists laai nie. Probeer asseblief oor 'n oomblik weer.</p>
+    </section>
+}
+else if (FilteredLuisterPlaylists.Count == 0)
+{
+    <section class="luister-empty-state">
+        <p>Geen stories pas by jou soektog vir "@SearchQuery".</p>
+    </section>
+}
+else
+{
+    @for (var index = 0; index < FilteredLuisterPlaylists.Count; index++)
     {
-        <section class="luister-empty-state">
-            <p>Ons kon nie nou die playlists laai nie. Probeer asseblief oor 'n oomblik weer.</p>
-        </section>
-    }
-    else if (FilteredLuisterPlaylists.Count == 0)
-    {
-        <section class="luister-empty-state">
-            <p>Geen stories pas by jou soektog vir "@SearchQuery".</p>
-        </section>
-    }
-    else
-    {
-        @for (var index = 0; index < FilteredLuisterPlaylists.Count; index++)
-        {
-            var playlist = FilteredLuisterPlaylists[index];
-            var headingId = $"luister-playlist-{playlist.Slug}-heading";
-            var hasDescription = !string.IsNullOrWhiteSpace(playlist.Description);
+        var playlist = FilteredLuisterPlaylists[index];
+        var headingId = $"luister-playlist-{playlist.Slug}-heading";
+        var hasDescription = !string.IsNullOrWhiteSpace(playlist.Description);
 
-            <section class="section-block stories-carousel-section luister-stories-section" aria-labelledby="@headingId">
-                <h2 id="@headingId">
-                    <a class="luister-playlist-link" href="@GetPlaylistHref(playlist.Slug)">@playlist.Title</a>
-                </h2>
-                @if (hasDescription)
-                {
-                    <p class="section-intro">@playlist.Description</p>
-                }
+        <section class="section-block stories-carousel-section luister-stories-section" aria-labelledby="@headingId">
+            <h2 id="@headingId">
+                <a class="luister-playlist-link" href="@GetPlaylistHref(playlist.Slug)">@playlist.Title</a>
+            </h2>
+            @if (hasDescription)
+            {
+                <p class="section-intro">@playlist.Description</p>
+            }
 
-                <div class="stories-carousel-shell">
-                    <div class="stories-carousel" role="list" aria-label="@playlist.Title">
-                        @foreach (var story in playlist.Stories)
-                        {
-                            <article class="story-carousel-item" role="listitem">
-                                <a class="story-carousel-link"
+            <div class="stories-carousel-shell">
+                <div class="stories-carousel" role="list" aria-label="@playlist.Title">
+                    @foreach (var story in playlist.Stories)
+                    {
+                        <article class="story-carousel-item" role="listitem">
+                            <a class="story-carousel-link"
                                    href="@GetStoryHref(story.Slug)"
                                    data-enhance-nav="false"
                                    aria-label="Luister na @story.Title">
-                                    <span class="story-carousel-cover">
-                                        <img class="story-carousel-image"
-                                             src="@story.ThumbnailPath"
-                                             srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
-                                             sizes="(max-width: 620px) 68vw, (max-width: 980px) 42vw, 320px"
-                                             alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
-                                        <span class="story-cover-play" aria-hidden="true">
-                                            <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
-                                        </span>
+                                <span class="story-carousel-cover">
+                                    <img class="story-carousel-image"
+                                         src="@story.ThumbnailPath"
+                                         srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
+                                         sizes="(max-width: 620px) 68vw, (max-width: 980px) 42vw, 320px"
+                                         alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
+                                    <span class="story-cover-play" aria-hidden="true">
+                                        <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
                                     </span>
-                                    <h3>@story.Title</h3>
-                                </a>
-                            </article>
-                        }
-                    </div>
+                                </span>
+                                <h3>@story.Title</h3>
+                            </a>
+                        </article>
+                    }
                 </div>
-            </section>
-        }
+            </div>
+        </section>
     }
+}
 </div>
