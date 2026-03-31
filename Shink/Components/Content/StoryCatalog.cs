@@ -98,19 +98,22 @@ public static class StoryCatalog
             Title: "Suurlemoentjie",
             Description: "Wanneer suur woorde sag word, groei ware vriendskap.",
             ImageFileName: "Suurlemoentjie.jpeg",
-            AudioFileName: "Suurlemoentjie.mpeg"),
+            AudioFileName: "Suurlemoentjie.mpeg",
+            ThumbnailFileName: "Suurlemoentjie.jpeg"),
         new(
             Slug: "die-kwaaibok-se-klip",
             Title: "Die Kwaaibok se Klip",
             Description: "Die kwaaibok se dag verander wanneer 'n klip en 'n groot les sy pad kruis.",
             ImageFileName: "Die Kwaaibok se Klip.jpeg",
-            AudioFileName: "Die Kwaaibok se Klip.mpeg"),
+            AudioFileName: "Die Kwaaibok se Klip.mpeg",
+            ThumbnailFileName: "Die Kwaaibok se Klip.jpeg"),
         new(
             Slug: "seekoei-sluit-sy-mond-toe",
             Title: "Seekoei Sluit sy mond toe",
             Description: "Seekoei leer op 'n snaakse manier wanneer om te praat en wanneer om stil te bly.",
             ImageFileName: "Seekoei Sluit sy mond toe.jpeg",
-            AudioFileName: "Seekoei Sluit sy mond toe.mpeg")
+            AudioFileName: "Seekoei Sluit sy mond toe.mpeg",
+            ThumbnailFileName: "Seekoei Sluit sy mond toe.jpeg")
     ];
 
     private static IReadOnlyList<StoryItem> NewestTop10Stories { get; } =
@@ -119,72 +122,72 @@ public static class StoryCatalog
             Slug: "dankie-en-wilnie-deelnie",
             Title: "Dankie & Wilnie Deelnie",
             Description: "Luister na Dankie en Wilnie se nuutste avontuur op Schink Stories.",
-            ImageFileName: "imported/2026/03/Schink_Stories_website_Cover_Dankie_en_Wilnie_Deelnie-600x775.jpg",
+            ImageFileName: "Schink_Stories_website_Cover_Dankie_en_Wilnie_Deelnie-600x775.jpg",
             AudioFileName: "imported/stories/2026/03/Storie_Hoekie_04_04_Dankie_en_Wilnie_Deelnie.mp3",
-            ThumbnailFileName: "imported/2026/03/Schink_Stories_website_Cover_Dankie_en_Wilnie_Deelnie-600x775.jpg"),
+            ThumbnailFileName: "Schink_Stories_website_Cover_Dankie_en_Wilnie_Deelnie-600x775.jpg"),
         new(
             Slug: "rudi-renoster-speel-rof",
             Title: "Rudi Renoster speel rof",
             Description: "Rudi leer hoe om sterk te wees sonder om ander seer te maak.",
-            ImageFileName: "imported/2026/02/Schink_Stories_website_Cover_Rudi_Renoster_deur_Martin_Schwella-600x775.jpg",
+            ImageFileName: "Schink_Stories_website_Cover_Rudi_Renoster_deur_Martin_Schwella-600x775.jpg",
             AudioFileName: "imported/stories/2026/02/Storie_Hoekie_04_03_Rudi_Renoster_Speel_Rof.mp3",
-            ThumbnailFileName: "imported/2026/02/Schink_Stories_website_Cover_Rudi_Renoster_deur_Martin_Schwella-600x775.jpg"),
+            ThumbnailFileName: "Schink_Stories_website_Cover_Rudi_Renoster_deur_Martin_Schwella-600x775.jpg"),
         new(
             Slug: "josef-die-dromer",
             Title: "Josef die dromer",
             Description: "Ontdek Josef se geloofsverhaal in hierdie Bybelstorie vir kinders.",
-            ImageFileName: "imported/2026/02/13_Josef_die_Dromer_Schink-Stories-600x775.jpg",
+            ImageFileName: "13_Josef_die_Dromer_Schink-Stories-600x775.jpg",
             AudioFileName: "imported/stories/2026/02/Schink-_Bybel_Stories_13_Josef_die_Dromer.mp3",
-            ThumbnailFileName: "imported/2026/02/13_Josef_die_Dromer_Schink-Stories-600x775.jpg"),
+            ThumbnailFileName: "13_Josef_die_Dromer_Schink-Stories-600x775.jpg"),
         new(
             Slug: "die-fluistervarke-en-die-hoed-wat-groet",
             Title: "Die Fluistervarke en die hoed wat groet",
             Description: "Fluistervarke wys hoe klein keuses groot verskil kan maak.",
-            ImageFileName: "imported/2026/02/Schink_Stories_website_Die_Fluistervarke_Die_Hoed_wat_groet_deur_Martin_Schwella-600x775.jpg",
+            ImageFileName: "Schink_Stories_website_Die_Fluistervarke_Die_Hoed_wat_groet_deur_Martin_Schwella-600x775.jpg",
             AudioFileName: "imported/stories/2026/02/Storie_Hoekie_04_02_Die_Fluistervarke_Die_Hoed_wat_groet.mp3",
-            ThumbnailFileName: "imported/2026/02/Schink_Stories_website_Die_Fluistervarke_Die_Hoed_wat_groet_deur_Martin_Schwella-600x775.jpg"),
+            ThumbnailFileName: "Schink_Stories_website_Die_Fluistervarke_Die_Hoed_wat_groet_deur_Martin_Schwella-600x775.jpg"),
         new(
             Slug: "dankie-en-die-huil-oor-alles",
             Title: "Dankie en die Huil-oor-alles",
             Description: "Dankie ontdek nuwe moed wanneer emosies oorborrel.",
-            ImageFileName: "imported/2026/01/Schink_Stories_website_Dankie_en_die_huil_oor_alles_Schink-Stories-600x775.jpg",
+            ImageFileName: "Schink_Stories_website_Dankie_en_die_huil_oor_alles_Schink-Stories-600x775.jpg",
             AudioFileName: "imported/stories/2026/01/Storie_Hoekie_04_01_Dankie_en_die_Huil_oor_alles.mp3",
-            ThumbnailFileName: "imported/2026/01/Schink_Stories_website_Dankie_en_die_huil_oor_alles_Schink-Stories-600x775.jpg"),
+            ThumbnailFileName: "Schink_Stories_website_Dankie_en_die_huil_oor_alles_Schink-Stories-600x775.jpg"),
         new(
             Slug: "slappie-en-sloep",
             Title: "Slappie en Sloep",
             Description: "Kom luister na Slappie en Sloep se prettige storie vol karakterlesse.",
-            ImageFileName: "imported/2026/01/Storie_Hoekie_Slappie_en_Sloep_Schink-600x775.jpg",
+            ImageFileName: "Storie_Hoekie_Slappie_en_Sloep_Schink-600x775.jpg",
             AudioFileName: "imported/stories/2026/01/Schink-_Stories_28_Slappie_En_Sloep.mp3",
-            ThumbnailFileName: "imported/2026/01/Storie_Hoekie_Slappie_en_Sloep_Schink-600x775.jpg"),
+            ThumbnailFileName: "Storie_Hoekie_Slappie_en_Sloep_Schink-600x775.jpg"),
         new(
             Slug: "maatjie-die-akker-saadjie",
             Title: "Maatjie die Akker-saadjie",
             Description: "Maatjie se reis wys dat groei tyd en geduld vra.",
-            ImageFileName: "imported/2026/01/Storie_Hoekie_Maatjie_Die_Akker-saadjie-600x775.jpg",
+            ImageFileName: "Storie_Hoekie_Maatjie_Die_Akker-saadjie-600x775.jpg",
             AudioFileName: "imported/stories/2026/01/Schink-_Stories_27_Maatjie_Die_Akker_saadjie.mp3",
-            ThumbnailFileName: "imported/2026/01/Storie_Hoekie_Maatjie_Die_Akker-saadjie-600x775.jpg"),
+            ThumbnailFileName: "Storie_Hoekie_Maatjie_Die_Akker-saadjie-600x775.jpg"),
         new(
             Slug: "jan-die-brandweerman",
             Title: "Jan die Brandweerman",
             Description: "Jan leer kinders oor moed, kalmte en verantwoordelikheid.",
-            ImageFileName: "imported/2025/11/Storie_Hoekie_Jan_die_Brandweerman-600x775.jpg",
+            ImageFileName: "Storie_Hoekie_Jan_die_Brandweerman-600x775.jpg",
             AudioFileName: "imported/stories/2025/11/Schink-_Stories_26_Jan_Die_Brandweerman.mp3",
-            ThumbnailFileName: "imported/2025/11/Storie_Hoekie_Jan_die_Brandweerman-600x775.jpg"),
+            ThumbnailFileName: "Storie_Hoekie_Jan_die_Brandweerman-600x775.jpg"),
         new(
             Slug: "georgie-se-radio",
             Title: "Georgie se Radio",
             Description: "Georgie se Radio bring pret, ritme en verrassings na storietyd.",
-            ImageFileName: "imported/2024/05/Storie_06_Georgie_se_Radio.jpg",
+            ImageFileName: "Storie_06_Georgie_se_Radio.jpg",
             AudioFileName: "imported/stories/2024/05/Schink-_Stories_06_Georgie_Se_Radio.mp3",
-            ThumbnailFileName: "imported/2024/05/Storie_06_Georgie_se_Radio-600x454.jpg"),
+            ThumbnailFileName: "Storie_06_Georgie_se_Radio-600x454.jpg"),
         new(
             Slug: "fantjie-leer-skryf",
             Title: "Fantjie Leer Skryf",
             Description: "Fantjie ontdek hoe oefening en aanhou uiteindelik vrugte dra.",
-            ImageFileName: "imported/2025/10/Storie_Hoekie_Fantjie_Leer_Skryf-600x775.jpg",
+            ImageFileName: "Storie_Hoekie_Fantjie_Leer_Skryf-600x775.jpg",
             AudioFileName: "imported/stories/2025/10/Schink-_Stories_24_Fantjie_leer_skryf.mp3",
-            ThumbnailFileName: "imported/2025/10/Storie_Hoekie_Fantjie_Leer_Skryf-600x775.jpg")
+            ThumbnailFileName: "Storie_Hoekie_Fantjie_Leer_Skryf-600x775.jpg")
     ];
 
     private static IReadOnlyList<ImportedImageCandidate> ImportedImageCandidates { get; } = LoadImportedImageCandidates();
