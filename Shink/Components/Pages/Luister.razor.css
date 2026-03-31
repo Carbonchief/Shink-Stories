@@ -1,4 +1,5 @@
 .luister-page-shell {
+    --luister-first-screen-reserve: clamp(17.5rem, 45svh, 20rem);
     position: relative;
     width: 100vw;
     margin-left: calc(50% - 50vw);
@@ -34,9 +35,14 @@
     display: grid;
     grid-template-columns: 1fr;
     gap: 0.9rem;
-    margin-bottom: 1.5rem;
+    margin-bottom: 0.85rem;
     width: min(100%, 980px);
     margin-inline: auto;
+    align-items: center;
+    justify-items: center;
+    height: auto;
+    max-height: min(520px, calc(100svh - var(--luister-first-screen-reserve)));
+    padding-block: clamp(0.25rem, 1.2vh, 0.6rem);
 }
 
 .gratis-hero-copy {
@@ -46,8 +52,10 @@
 }
 
 .gratis-banner {
-    width: 100%;
-    max-width: 760px;
+    width: auto;
+    max-height: min(500px, calc(100svh - var(--luister-first-screen-reserve)));
+    max-width: 100%;
+    height: auto;
     margin: 0 auto;
     display: block;
     border-radius: 16px;
@@ -56,6 +64,8 @@
 .luister-search-section {
     width: min(100%, 980px);
     margin: 0 auto 1.15rem;
+    padding: clamp(0.85rem, 2vw, 1.25rem) clamp(1rem, 4vw, 2.25rem);
+    box-sizing: border-box;
 }
 
 .luister-search-form {
@@ -358,6 +368,7 @@ h1 {
 
 @media (max-width: 680px) {
     .luister-page-shell {
+        --luister-first-screen-reserve: clamp(16.5rem, 46svh, 19rem);
         padding: 0.8rem 0.85rem 0;
     }
 
@@ -379,6 +390,7 @@ h1 {
 
     .luister-search-section {
         margin-bottom: 1rem;
+        padding-inline: 0.8rem;
     }
 
     .luister-search-form {
