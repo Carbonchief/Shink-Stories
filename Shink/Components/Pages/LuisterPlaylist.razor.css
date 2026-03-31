@@ -629,7 +629,7 @@
 
 @media (hover: none) and (pointer: coarse) {
     .story-cover-play {
-        opacity: 1;
+      /*  opacity: 1;*/
         background: linear-gradient(to top, rgba(0, 0, 0, 0.26), rgba(0, 0, 0, 0.03));
     }
 }
