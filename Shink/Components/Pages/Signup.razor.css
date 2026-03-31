@@ -19,7 +19,7 @@
 .signup-logo {
     width: min(175px, 100%);
     height: auto;
-    display: block;
+    /*display: block;*/
 }
 
 .signup-page-kicker {
