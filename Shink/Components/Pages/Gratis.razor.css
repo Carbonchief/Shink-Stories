@@ -1,10 +1,20 @@
+.gratis-page-shell {
+    width: min(100%, 1200px);
+    margin: 0 auto;
+    padding-inline: clamp(1rem, 4vw, 2.5rem);
+    display: flex;
+    flex-direction: column;
+    gap: clamp(1.5rem, 3vw, 2.5rem);
+    box-sizing: border-box;
+}
+
 .gratis-hero {
     display: grid;
     grid-template-columns: 1fr;
     gap: 0.9rem;
-    margin-bottom: 1.5rem;
-    width: min(100%, 980px);
-    margin-inline: auto;
+    width: 100%;
+    max-width: 980px;
+    margin: 0 auto;
 }
 
 .gratis-hero-copy {
@@ -30,9 +40,10 @@ h1 {
 .gratis-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-    gap: 1rem;
-    width: min(100%, 1500px);
-    margin-inline: auto;
+    gap: clamp(0.9rem, 2vw, 1.2rem);
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
 }
 
 .gratis-card {
@@ -159,8 +170,9 @@ h1 {
 }
 
 .gratis-what-you-get {
-    width: min(100%, 860px);
-    margin: 2.2rem auto 0;
+    width: 100%;
+    max-width: 960px;
+    margin: 0 auto;
     padding: 0.4rem 0 0.2rem;
     text-align: center;
 }

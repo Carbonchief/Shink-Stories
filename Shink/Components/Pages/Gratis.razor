@@ -25,17 +25,77 @@
     <script type="application/ld+json">@GratisJsonLd</script>
 </HeadContent>
 
-<section class="gratis-hero">
-    <div class="gratis-hero-copy">
-        <h1>3 gratis stories vir jou gesin</h1>
-        <p>
-            Kom probeer drie van ons lekker stories gratis. Tik op enige storie om dit oop te maak en
-            direk te luister.
-        </p>
-    </div>
-    <img class="gratis-banner" src="/stories/Schink_Stories_Gratis_Blad_Banner.webp"
-         alt="Gratis stories banner" loading="eager" fetchpriority="high" decoding="async" />
-</section>
+<div class="gratis-page-shell">
+    <section class="gratis-hero p-3">
+       
+        <img class="gratis-banner" src="/stories/Schink_Stories_Gratis_Blad_Banner.webp"
+             alt="Gratis stories banner" loading="eager" fetchpriority="high" decoding="async" />
+        <div class="gratis-hero-copy">
+            <h1>3 gratis stories vir jou gesin</h1>
+            <p>
+                Kom probeer drie van ons lekker stories gratis. Tik op enige storie om dit oop te maak en
+                direk te luister.
+            </p>
+        </div>
+    </section>
+
+    <section>
+        <div class="gratis-grid">
+            @foreach (var story in FreeStories)
+            {
+                <article class="gratis-card">
+                    <a class="gratis-cover-link" href="@($"/gratis/{story.Slug}")" aria-label="Luister na @story.Title">
+                        <img src="@story.ThumbnailPath"
+                             srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
+                             sizes="(max-width: 760px) 100vw, (max-width: 1120px) 50vw, 33vw"
+                             alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
+                        <span class="gratis-cover-play" aria-hidden="true">
+                            <i class="gratis-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
+                        </span>
+                    </a>
+                    <div class="gratis-card-body">
+                        <h2>@story.Title</h2>
+                        <p>@story.Description</p>
+                        <a class="play-btn" href="@($"/gratis/{story.Slug}")">Luister na hierdie storie</a>
+                    </div>
+                </article>
+            }
+        </div>
+    </section>
+
+    <section class="gratis-what-you-get" aria-labelledby="gratis-what-you-get-title">
+        <img class="gratis-what-you-get-image"
+             src="/branding/imported/2025/06/Schink_Grouping_03_600x600.png"
+             alt="Kinders lees en speel saam"
+             loading="lazy"
+             decoding="async" />
+
+        <h2 id="gratis-what-you-get-title">Wat jy kry as jy gratis aansluit</h2>
+
+        <div class="gratis-what-you-get-content">
+            <p class="gratis-what-you-get-intro">3 oudiostories om te begin:</p>
+            <ul class="gratis-what-you-get-list gratis-what-you-get-list-stories">
+                <li>Suurlemoentjie</li>
+                <li>Die Kwaai Bok se Klip</li>
+                <li>Hailey Hasie se groentetuin</li>
+            </ul>
+
+            <p class="gratis-what-you-get-intro">En verder ontvang jy per e-pos:</p>
+            <ul class="gratis-what-you-get-list gratis-what-you-get-list-email">
+                <li>Aktiwiteite of inkleurpret elke tweede week</li>
+                <li>Storiekaarte met gesels-idees en waardes</li>
+                <li>Nuus oor nuwe stories en reekse wat beskikbaar is</li>
+            </ul>
+
+            <ul class="gratis-what-you-get-checks">
+                <li>Alles in Afrikaans</li>
+                <li>Geen betaling nodig</li>
+                <li>Ontwikkel vir kinders tussen 4 en 8 jaar oud</li>
+                <li>Jy kan enige tyd opgradeer - of net gratis luister</li>
+            </ul>
+        </div>
+    </section>
+</div>
 
 @code {
     private IReadOnlyList<StoryItem> FreeStories { get; set; } = Array.Empty<StoryItem>();
@@ -71,60 +131,3 @@
         }
     }
 }
-
-<section>
-    <div class="gratis-grid">
-        @foreach (var story in FreeStories)
-        {
-            <article class="gratis-card">
-                <a class="gratis-cover-link" href="@($"/gratis/{story.Slug}")" aria-label="Luister na @story.Title">
-                    <img src="@story.ThumbnailPath"
-                         srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
-                         sizes="(max-width: 760px) 100vw, (max-width: 1120px) 50vw, 33vw"
-                         alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
-                    <span class="gratis-cover-play" aria-hidden="true">
-                        <i class="gratis-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
-                    </span>
-                </a>
-                <div class="gratis-card-body">
-                    <h2>@story.Title</h2>
-                    <p>@story.Description</p>
-                    <a class="play-btn" href="@($"/gratis/{story.Slug}")">Luister na hierdie storie</a>
-                </div>
-            </article>
-        }
-    </div>
-</section>
-
-<section class="gratis-what-you-get" aria-labelledby="gratis-what-you-get-title">
-    <img class="gratis-what-you-get-image"
-         src="/branding/imported/2025/06/Schink_Grouping_03_600x600.png"
-         alt="Kinders lees en speel saam"
-         loading="lazy"
-         decoding="async" />
-
-    <h2 id="gratis-what-you-get-title">Wat jy kry as jy gratis aansluit</h2>
-
-    <div class="gratis-what-you-get-content">
-        <p class="gratis-what-you-get-intro">3 oudiostories om te begin:</p>
-        <ul class="gratis-what-you-get-list gratis-what-you-get-list-stories">
-            <li>Suurlemoentjie</li>
-            <li>Die Kwaai Bok se Klip</li>
-            <li>Hailey Hasie se groentetuin</li>
-        </ul>
-
-        <p class="gratis-what-you-get-intro">En verder ontvang jy per e-pos:</p>
-        <ul class="gratis-what-you-get-list gratis-what-you-get-list-email">
-            <li>Aktiwiteite of inkleurpret elke tweede week</li>
-            <li>Storiekaarte met gesels-idees en waardes</li>
-            <li>Nuus oor nuwe stories en reekse wat beskikbaar is</li>
-        </ul>
-
-        <ul class="gratis-what-you-get-checks">
-            <li>Alles in Afrikaans</li>
-            <li>Geen betaling nodig</li>
-            <li>Ontwikkel vir kinders tussen 4 en 8 jaar oud</li>
-            <li>Jy kan enige tyd opgradeer - of net gratis luister</li>
-        </ul>
-    </div>
-</section>

@@ -129,7 +129,7 @@
     </div>
 </section>
 
-<section class="home-testimonials section-block home-scroll-reveal" style="--home-reveal-delay: 0.08s;" aria-labelledby="home-ouers-se">
+<section class="home-testimonials section-block home-scroll-reveal p-3" style="--home-reveal-delay: 0.08s;" aria-labelledby="home-ouers-se">
     <h2 id="home-ouers-se">Wat ouers se</h2>
     <div class="home-review-grid">
         <article class="home-review-card">
@@ -269,7 +269,7 @@
                     <ValidationMessage For="@(() => ContactForm.Message)" />
                 </div>
 
-                <button type="submit" class="btn btn-primary btn-lg d-block mx-auto contact-submit" disabled="@IsSubmitting">
+                <button type="submit" class="join-promo-cta" disabled="@IsSubmitting">
                     @(IsSubmitting ? "Besig om te stuur..." : "Stuur boodskap")
                 </button>
 
