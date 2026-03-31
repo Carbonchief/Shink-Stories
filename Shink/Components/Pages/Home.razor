@@ -90,7 +90,7 @@
                        data-enhance-nav="false"
                        aria-label="Luister @story.Title">
                         <span class="story-carousel-cover">
-                            <img class="@(story.Slug == "die-kwaaibok-se-klip" ? "story-carousel-image kwaaibok-home-cover" : "story-carousel-image")"
+                            <img class="story-carousel-image"
                                  src="@story.ThumbnailPath"
                                  srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
                                  sizes="(max-width: 620px) 56vw, (max-width: 900px) 35vw, 240px"

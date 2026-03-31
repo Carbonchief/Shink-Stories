@@ -16,32 +16,40 @@
     background:
         linear-gradient(180deg, #408D93 0%, #4f9db3 22%, #d4cf69 56%, #efefef 86%, #efefef 100%);
 }
-
+/*
 .site-shell.home-route {
     position: relative;
     isolation: isolate;
     background: linear-gradient(180deg, #408D93 0%, #4f9db3 22%, #d4cf69 56%, #efefef 86%, #efefef 100%);
 }
 
-.site-shell.home-route::before {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100vh;
-    z-index: -1;
-    background:
-        linear-gradient(
-            to bottom,
-            rgba(64, 141, 147, 0.22) 0%,
-            rgba(64, 141, 147, 0.24) 66%,
-            rgba(64, 141, 147, 0.45) 80%,
-            rgba(64, 141, 147, 0.78) 92%,
-            #408D93 100%
-        ),
-        url("/branding/Schink_Background.jpeg") center top / cover no-repeat;
-}
+    .site-shell.home-route::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        height: 100vh;
+        z-index: -1;
+        pointer-events: none;
+        background: linear-gradient( to bottom, rgba(64, 141, 147, 0.08) 0%, rgba(64, 141, 147, 0.14) 45%, rgba(79, 157, 179, 0.20) 65%, rgba(79, 157, 179, 0.10) 82%, rgba(79, 157, 179, 0.00) 100% ), url("/branding/Schink_Background.jpeg") center top / cover no-repeat;
+    }*/
+
+    .site-shell.home-route {
+        position: relative;
+        isolation: isolate;
+        background: linear-gradient(180deg, #408D93 0%, #4f9db3 22%, #d4cf69 56%, #efefef 86%, #efefef 100%);
+    }
+
+        .site-shell.home-route::before {
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 100vh;
+            z-index: -1;
+            pointer-events: none;
+            background: linear-gradient( to bottom, rgba(64, 141, 147, 0.05) 0%, rgba(64, 141, 147, 0.08) 45%, rgba(79, 157, 179, 0.12) 68%, rgba(79, 157, 179, 0.06) 82%, rgba(79, 157, 179, 0.00) 100% ), url("/branding/Schink_Background.jpeg") center top / cover no-repeat;
+        }
 
 .site-shell.story-route {
     background:
