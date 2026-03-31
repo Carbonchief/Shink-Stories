@@ -189,6 +189,13 @@ h1 {
     margin: 0.65rem auto 0;
 }
 
+.luister-stories-section .stories-carousel-shell {
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    padding-inline: 0;
+}
+
 .stories-carousel {
     margin-top: 0;
     display: grid;
@@ -207,6 +214,13 @@ h1 {
     overscroll-behavior-x: contain;
     width: 100%;
     cursor: grab;
+}
+
+.luister-stories-section .stories-carousel {
+    --luister-carousel-edge-space: 15px;
+    justify-content: safe center;
+    padding-inline: var(--luister-carousel-edge-space);
+    scroll-padding-inline: var(--luister-carousel-edge-space);
 }
 
 .stories-carousel.is-dragging {
@@ -410,6 +424,11 @@ h1 {
         padding-inline: 0.8rem;
         padding-bottom: 0.25rem;
         scroll-padding-inline: 0.8rem;
+    }
+
+    .luister-stories-section .stories-carousel {
+        padding-inline: var(--luister-carousel-edge-space);
+        scroll-padding-inline: var(--luister-carousel-edge-space);
     }
 }
 
