@@ -1,10 +1,10 @@
 .story-player-page {
     display: grid;
     gap: 1.25rem;
-    width: min(100%, 720px);
+    width: min(100%, 960px);
     min-width: 0;
     margin-inline: auto;
-    padding-inline: 0;
+    padding-inline: clamp(0.75rem, 4vw, 1.5rem);
 }
 
 .story-player-page > * {
@@ -33,7 +33,8 @@
 .story-cover {
     width: 100%;
     max-width: 100%;
-    aspect-ratio: 1 / 1;
+    aspect-ratio: 16 / 9;
+    max-height: clamp(260px, 58vh, 560px);
     object-fit: cover;
     display: block;
     border-radius: 22px;
