@@ -1,6 +1,6 @@
 .playlist-page {
     display: grid;
-    gap: 1rem;
+    gap: 0;
     width: min(100%, 1140px);
     min-width: 0;
     margin-inline: auto;
@@ -12,7 +12,6 @@
     min-width: 0;
 }
 
-.playlist-header,
 .playlist-empty-state {
     border-radius: 28px;
     background: #222222;
@@ -22,42 +21,22 @@
 .playlist-content-stack {
     display: grid;
     gap: 0;
-    border-radius: 28px;
+    border-radius: 0 0 28px 28px;
     overflow: hidden;
     background: #222222;
     box-shadow: 0 20px 42px rgba(19, 22, 24, 0.18);
 }
 
 .playlist-header {
+    border-radius: 28px 28px 0 0;
     padding: 1.3rem 1.35rem 1.2rem;
     background:
         radial-gradient(circle at top right, rgba(84, 173, 180, 0.28), transparent 34%),
         linear-gradient(145deg, rgba(34, 34, 34, 0.98), rgba(29, 35, 39, 0.98));
-}
-
-.playlist-back-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    color: #dff8f7;
-    text-decoration: none;
-    font-weight: 700;
-}
-
-.playlist-back-link:hover,
-.playlist-back-link:focus-visible,
-.playlist-banner-link:hover,
-.playlist-banner-link:focus-visible {
-    text-decoration: underline;
-}
-
-.playlist-kicker {
-    margin: 0.75rem 0 0;
-    font-size: 0.83rem;
-    font-weight: 800;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: #7ed6d8;
+    text-align: center;
+    display: grid;
+    justify-items: center;
+    box-shadow: 0 20px 42px rgba(19, 22, 24, 0.18);
 }
 
 .playlist-header h1 {
@@ -79,6 +58,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.55rem;
+    justify-content: center;
 }
 
 .playlist-meta span {
@@ -104,48 +84,38 @@
     display: grid;
     gap: 1rem;
     color: #f7f2ea;
-}
-
-.playlist-player-banner {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    border-radius: 18px;
-    padding: 0.8rem 0.9rem;
-    background: rgba(255, 255, 255, 0.06);
-}
-
-.playlist-banner-label {
-    font-size: 0.95rem;
-    font-weight: 700;
-    color: #ffffff;
-}
-
-.playlist-banner-link {
-    color: #9be6ea;
-    font-weight: 700;
-    text-decoration: none;
+    align-content: start;
 }
 
 .playlist-player-grid {
     display: grid;
-    grid-template-columns: minmax(280px, 340px) minmax(0, 1fr);
-    gap: 1rem;
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
     align-items: start;
+    justify-items: center;
 }
 
 .story-cover-wrap {
     position: relative;
-    width: 100%;
-    max-width: 100%;
+    width: min(100%, 820px);
+}
+
+.story-cover-title {
+    position: absolute;
+    top: 1rem;
+    left: 50%;
+    transform: translateX(-50%);
+    width: calc(100% - 2rem);
+    text-align: center;
+    pointer-events: none;
+    z-index: 1;
 }
 
 .story-cover {
     width: 100%;
-    max-width: 100%;
-    aspect-ratio: 1 / 1;
+    height: auto;
+    aspect-ratio: 16 / 9;
+    max-height: clamp(260px, 58vh, 540px);
     object-fit: cover;
     display: block;
     border-radius: 24px;
@@ -245,6 +215,19 @@
     display: grid;
     gap: 0.95rem;
     min-width: 0;
+    width: min(100%, 560px);
+    margin-inline: auto;
+}
+
+@media (min-width: 720px) {
+    .story-cover-wrap {
+        width: min(100%, 900px);
+    }
+
+    .story-cover {
+        object-fit: contain;
+        max-height: clamp(320px, 62vh, 640px);
+    }
 }
 
 .playlist-current-label {
@@ -254,10 +237,13 @@
     font-weight: 800;
     letter-spacing: 0.04em;
     text-transform: uppercase;
+    text-align: center;
+    width: 100%;
 }
 
 .story-player-title {
     margin: 0;
+    text-shadow: 0 6px 22px rgba(0, 0, 0, 0.32);
     color: #ffffff;
     font-size: clamp(1.9rem, 3vw, 2.8rem);
     line-height: 1.06;
@@ -433,10 +419,14 @@
     line-height: 1;
 }
 
-.story-speed-label,
-.story-autoplay-label {
+.story-speed-label {
     font-size: 0.83rem;
     letter-spacing: 0.02em;
+}
+
+.story-autoplay-icon {
+    font-size: 1.25rem;
+    line-height: 1;
 }
 
 .playlist-story-summary {
@@ -605,10 +595,6 @@
     align-content: start;
 }
 
-.playlist-page.manual-fullscreen-focus .playlist-player-banner {
-    display: none;
-}
-
 .playlist-page.manual-fullscreen-focus .playlist-player-grid {
     grid-template-columns: 1fr;
     justify-items: center;
@@ -652,6 +638,10 @@
         border-radius: 24px;
     }
 
+    .playlist-header {
+        display: none;
+    }
+
     .playlist-player-card,
     .playlist-tracklist-card {
         padding: 0.9rem;
@@ -683,10 +673,6 @@
 @media (max-width: 560px) {
     .playlist-header {
         padding: 1.1rem 1rem;
-    }
-
-    .playlist-player-banner {
-        padding: 0.75rem 0.8rem;
     }
 
     .story-play-toggle {
@@ -729,10 +715,6 @@
 @media (max-width: 420px) {
     .playlist-header h1 {
         font-size: clamp(1.7rem, 8vw, 2.15rem);
-    }
-
-    .playlist-player-banner {
-        align-items: flex-start;
     }
 
     .story-secondary-controls {
