@@ -59,17 +59,11 @@ else
 {
     <section class="playlist-page @(IsManualFullscreenFocus ? "manual-fullscreen-focus" : null)">
         <header class="playlist-header">
-            <a class="playlist-back-link" href="/luister">Terug na luister</a>
-            <p class="playlist-kicker">Speellys</p>
             <h1>@CurrentPlaylist.Title</h1>
             @if (!string.IsNullOrWhiteSpace(CurrentPlaylist.Description))
             {
                 <p class="playlist-description">@CurrentPlaylist.Description</p>
-            }
-            <div class="playlist-meta">
-                <span>@StoryCountLabel</span>
-                <span>Autospeel @(AutoplayEnabled ? "aan" : "af")</span>
-            </div>
+            }           
         </header>
 
         <div class="playlist-content-stack">
@@ -77,13 +71,11 @@ else
                 <div class="story-player-content"
                      data-autoplay-enabled="@(AutoplayEnabled ? "true" : "false")"
                      oncontextmenu="return false;">
-                    <div class="playlist-player-banner">
-                        <span class="playlist-banner-label">Nou in hierdie speellys</span>
-                        <a class="playlist-banner-link" href="@GetStoryHref(CurrentPlaylist.Slug, CurrentPlaylist.Title, CurrentStory.Slug)">Maak storie oop</a>
-                    </div>
-
                     <div class="playlist-player-grid">
                         <div class="story-cover-wrap">
+                            <div class="story-cover-title">
+                                <h2 class="story-player-title">@CurrentStory.Title</h2>
+                            </div>
                             <img src="@CurrentStory.ThumbnailPath"
                                  srcset="@($"{CurrentStory.ThumbnailPath} 640w, {CurrentStory.ImagePath} 1024w")"
                                  sizes="(max-width: 640px) 100vw, 360px"
@@ -115,8 +107,7 @@ else
                         </div>
 
                         <div class="playlist-player-main">
-                            <p class="playlist-current-label">Storie @CurrentTrackNumber van @AccessibleStories.Count</p>
-                            <h2 class="story-player-title">@CurrentStory.Title</h2>
+                            <p class="playlist-current-label text-center">Storie @CurrentTrackNumber van @AccessibleStories.Count</p>
 
                             <audio controls
                                    controlslist="nodownload noplaybackrate"
@@ -195,9 +186,10 @@ else
                                             class="story-mini-btn story-autoplay-toggle"
                                             @onclick="ToggleAutoplay"
                                             aria-pressed="@AutoplayEnabled"
-                                            aria-label="@(AutoplayEnabled ? "Skakel autospeel af" : "Skakel autospeel aan")"
+                                            aria-label="@(AutoplayEnabled ? "Autospeel aan" : "Autospeel af")"
                                             title="@(AutoplayEnabled ? "Skakel autospeel af" : "Skakel autospeel aan")">
-                                        <span class="story-autoplay-label">Autospeel @(AutoplayEnabled ? "aan" : "af")</span>
+                                        <i class="story-autoplay-icon fa-solid @(AutoplayEnabled ? "fa-toggle-on" : "fa-toggle-off")" aria-hidden="true"></i>
+                                        <span class="sr-only">@(AutoplayEnabled ? "Autospeel aan" : "Autospeel af")</span>
                                     </button>
                                     <button type="button" class="story-mini-btn story-share-toggle" aria-label="Deel speellys" title="Deel speellys">
                                         <i class="fa-solid fa-share-nodes" aria-hidden="true"></i>
