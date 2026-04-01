@@ -198,12 +198,17 @@ else
                            @onclick:preventDefault="true"
                            aria-current="@(isActiveStory ? "page" : null)"
                            aria-label="@(isActiveStory ? $"Huidige storie: {story.Title}" : $"Gaan na {story.Title}")">
-                            <img src="@story.ThumbnailPath"
-                                 srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
-                                 sizes="220px"
-                                 class="story-carousel-image"
-                                 alt="Voorblad van @story.Title"
-                                 width="640" height="485" loading="lazy" decoding="async" />
+                            <span class="story-carousel-cover">
+                                <img src="@story.ThumbnailPath"
+                                     srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
+                                     sizes="(max-width: 620px) 68vw, (max-width: 980px) 42vw, 220px"
+                                     class="story-carousel-image"
+                                     alt="Voorblad van @story.Title"
+                                     width="640" height="485" loading="lazy" decoding="async" />
+                                <span class="story-cover-play" aria-hidden="true">
+                                    <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
+                                </span>
+                            </span>
                             <div class="story-carousel-copy">
                                 <h3>@story.Title</h3>
                                 @if (isActiveStory)
@@ -510,6 +515,10 @@ else
         catch (TimeoutException)
         {
             // Ignore slow JS module disposal so route transitions stay responsive.
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignore cancellation during route transitions and disposal races.
         }
         catch (JSDisconnectedException)
         {

@@ -12,7 +12,7 @@
                 Aspect="AspectFit"
                 HeightRequest="180"
                 HorizontalOptions="Center"
-                Source="stories-hero.svg" />
+                Source="stories_hero.svg" />
 
             <Label
                 FontAttributes="Bold"

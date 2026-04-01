@@ -346,8 +346,8 @@
 }
 
 .story-play-toggle {
-    width: 96px;
-    height: 96px;
+    width: 50px;
+    height: 50px;
     border-radius: 50%;
     background: linear-gradient(135deg, #ff3b82, #ff135b);
     color: #ffffff;
@@ -355,14 +355,14 @@
 }
 
 .story-play-icon {
-    font-size: 2rem;
+    font-size: 1rem;
     line-height: 1;
-    margin-left: 0.2rem;
+    margin-left: 0;
 }
 
 .story-play-toggle.is-playing .story-play-icon {
     margin-left: 0;
-    font-size: 1.72rem;
+    font-size: 1rem;
 }
 
 .story-story-prev,
@@ -676,12 +676,12 @@
     }
 
     .story-play-toggle {
-        width: 84px;
-        height: 84px;
+        width: 50px;
+        height: 50px;
     }
 
     .story-play-icon {
-        font-size: 1.7rem;
+        font-size: 1rem;
     }
 
     .story-story-prev,
@@ -727,11 +727,11 @@
     }
 
     .story-play-toggle {
-        width: 68px;
-        height: 68px;
+        width: 50px;
+        height: 50px;
     }
 
     .story-play-icon {
-        font-size: 1.45rem;
+        font-size: 1rem;
     }
 }
