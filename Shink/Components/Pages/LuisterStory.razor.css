@@ -193,7 +193,7 @@
     margin: 0;
     margin-top: 0.5rem;
     text-align: center;
-    color: #202020;
+    color: white;
     font-size: clamp(2rem, 4.2vw, 2.7rem);
     line-height: 1.05;
 }
@@ -571,6 +571,28 @@
 
 .story-player-page.manual-fullscreen-focus .story-custom-player {
     width: min(92vw, 620px);
+}
+
+@media (min-width: 641px) {
+    .story-player-content {
+        min-height: calc(100dvh - 5.5rem);
+        --story-player-viewport-reserve: 15.5rem;
+    }
+
+    .story-cover {
+        height: auto;
+        aspect-ratio: auto;
+        object-fit: contain;
+    }
+
+    .story-player-title {
+        order: 1;
+    }
+
+    .story-custom-player {
+        order: 2;
+        margin-top: auto;
+    }
 }
 
 @media (max-width: 640px) {
