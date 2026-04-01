@@ -6,10 +6,12 @@
 @using System.Text.Json
 @using Shink.Components.Content
 @using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.JSInterop
 @inject IHttpClientFactory HttpClientFactory
 @inject NavigationManager NavigationManager
 @inject IStoryCatalogService StoryCatalogService
+@inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
@@ -57,8 +59,15 @@
             <em>een storie op 'n slag.</em>
         </p>
         <div class="hero-actions">
-            <button type="button" class="cta cta-primary" @onclick="@(() => NavigationManager.NavigateTo("/gratis"))">Probeer gratis</button>
-            <a class="cta cta-secondary" href="#perfekte-plan">Kies 'n plan</a>
+            @if (IsSignedIn)
+            {
+                <a class="cta cta-primary" href="/luister">Luister Stories</a>
+            }
+            else
+            {
+                <button type="button" class="cta cta-primary" @onclick="@(() => NavigationManager.NavigateTo("/gratis"))">Probeer gratis</button>
+                <a class="cta cta-secondary" href="#perfekte-plan">Kies 'n plan</a>
+            }
         </div>
         <p class="hero-pricing">R 79 per maand. Kanselleer enige tyd.</p>
     </div>
@@ -289,6 +298,7 @@
 @code {
     private IJSObjectReference? _homeModule;
     private bool _homeModuleLoadFailed;
+    private bool IsSignedIn { get; set; }
 
     private IReadOnlyList<StoryPlaylist> HomePlaylists { get; set; } = Array.Empty<StoryPlaylist>();
     private ContactFormModel ContactForm { get; set; } = new();
@@ -448,6 +458,9 @@
     {
         try
         {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            IsSignedIn = authState.User.Identity?.IsAuthenticated == true;
+
             var luisterPlaylists = await StoryCatalogService.GetLuisterPlaylistsAsync();
             HomePlaylists = luisterPlaylists
                 .Where(playlist => playlist.ShowOnHome)
