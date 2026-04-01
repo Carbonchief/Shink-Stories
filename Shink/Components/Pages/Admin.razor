@@ -447,13 +447,13 @@
                                     <h4>@T("Cover image", "Cover image")</h4>
                                     <p>@T("Verpligtend", "Required")</p>
                                 </div>
-                                <label class="admin-upload-btn" for="@NewStoryCoverInputId">
+                                <label class="admin-upload-btn">
                                     @T("Kies image", "Choose image")
+                                    <InputFile id="@NewStoryCoverInputId"
+                                               class="admin-file-input"
+                                               OnChange="OnNewStoryCoverSelected"
+                                               accept=".jpg,.jpeg,.png,.webp,image/*" />
                                 </label>
-                                <InputFile id="@NewStoryCoverInputId"
-                                           class="admin-file-input"
-                                           OnChange="OnNewStoryCoverSelected"
-                                           accept=".jpg,.jpeg,.png,.webp,image/*" />
                                 <p class="admin-upload-file-name">@GetSelectedFileLabel(NewStoryEditor.CoverFileName, T("Nog geen file gekies nie.", "No file selected yet."))</p>
                             </div>
 
@@ -462,13 +462,13 @@
                                     <h4>@T("Thumbnail image", "Thumbnail image")</h4>
                                     <p>@T("Opsioneel", "Optional")</p>
                                 </div>
-                                <label class="admin-upload-btn" for="@NewStoryThumbnailInputId">
+                                <label class="admin-upload-btn">
                                     @T("Kies image", "Choose image")
+                                    <InputFile id="@NewStoryThumbnailInputId"
+                                               class="admin-file-input"
+                                               OnChange="OnNewStoryThumbnailSelected"
+                                               accept=".jpg,.jpeg,.png,.webp,image/*" />
                                 </label>
-                                <InputFile id="@NewStoryThumbnailInputId"
-                                           class="admin-file-input"
-                                           OnChange="OnNewStoryThumbnailSelected"
-                                           accept=".jpg,.jpeg,.png,.webp,image/*" />
                                 <p class="admin-upload-file-name">@GetSelectedFileLabel(NewStoryEditor.ThumbnailFileName, T("Gebruik cover image as jy dit leeg laat.", "Uses the cover image if left empty."))</p>
                             </div>
 
@@ -477,13 +477,13 @@
                                     <h4>@T("Audio file", "Audio file")</h4>
                                     <p>@T("Laai op na Cloudflare R2", "Uploads to Cloudflare R2")</p>
                                 </div>
-                                <label class="admin-upload-btn" for="@NewStoryAudioInputId">
+                                <label class="admin-upload-btn">
                                     @T("Kies audio", "Choose audio")
+                                    <InputFile id="@NewStoryAudioInputId"
+                                               class="admin-file-input"
+                                               OnChange="OnNewStoryAudioSelected"
+                                               accept=".mp3,.mpeg,.m4a,.wav,.ogg,audio/*" />
                                 </label>
-                                <InputFile id="@NewStoryAudioInputId"
-                                           class="admin-file-input"
-                                           OnChange="OnNewStoryAudioSelected"
-                                           accept=".mp3,.mpeg,.m4a,.wav,.ogg,audio/*" />
                                 <p class="admin-upload-file-name">@GetSelectedFileLabel(NewStoryEditor.AudioFileName, T("Nog geen file gekies nie.", "No file selected yet."))</p>
                             </div>
                         </div>
@@ -527,12 +527,6 @@
                                       @bind-Value="StoryEditor.Title"
                                       Variant="Variant.Outlined"
                                       Margin="Margin.Dense" />
-                        <MudTextField T="string"
-                                      Label="Slug"
-                                      @bind-Value="StoryEditor.Slug"
-                                      ReadOnly="true"
-                                      Variant="Variant.Outlined"
-                                      Margin="Margin.Dense" />
                         <MudSelect T="string"
                                    Label='@T("Toegang", "Access")'
                                    @bind-Value="StoryEditor.AccessLevel"
@@ -560,51 +554,18 @@
                                          @bind-Value="StoryEditor.DurationSeconds"
                                          Variant="Variant.Outlined"
                                          Margin="Margin.Dense" />
-                        <MudSelect T="string"
-                                   Label='@T("Audio provider", "Audio provider")'
-                                   @bind-Value="StoryEditor.AudioProvider"
-                                   Variant="Variant.Outlined"
-                                   Margin="Margin.Dense">
-                            <MudSelectItem Value="@("local")">local</MudSelectItem>
-                            <MudSelectItem Value="@("r2")">r2</MudSelectItem>
-                        </MudSelect>
-                        <MudTextField T="string"
-                                      Label='@T("Audio bucket", "Audio bucket")'
-                                      @bind-Value="StoryEditor.AudioBucket"
-                                      Variant="Variant.Outlined"
-                                      Margin="Margin.Dense" />
-                        <MudTextField T="string"
-                                      Label='@T("Audio key", "Audio key")'
-                                      @bind-Value="StoryEditor.AudioObjectKey"
-                                      Variant="Variant.Outlined"
-                                      Margin="Margin.Dense" />
-                        <MudTextField T="string"
-                                      Label='@T("Audio content type", "Audio content type")'
-                                      @bind-Value="StoryEditor.AudioContentType"
-                                      Variant="Variant.Outlined"
-                                      Margin="Margin.Dense" />
-                        <MudTextField T="string"
-                                      Label='@T("Cover image", "Cover image")'
-                                      @bind-Value="StoryEditor.CoverImagePath"
-                                      Variant="Variant.Outlined"
-                                      Margin="Margin.Dense" />
-                        <MudTextField T="string"
-                                      Label='@T("Thumbnail", "Thumbnail")'
-                                      @bind-Value="StoryEditor.ThumbnailImagePath"
-                                      Variant="Variant.Outlined"
-                                      Margin="Margin.Dense" />
                         <div class="admin-upload-card">
                             <div class="admin-upload-head">
                                 <h4>@T("Vervang cover image", "Replace cover image")</h4>
                                 <p>@T("Opsioneel", "Optional")</p>
                             </div>
-                            <label class="admin-upload-btn" for="@EditStoryCoverInputId">
+                            <label class="admin-upload-btn">
                                 @T("Kies image", "Choose image")
+                                <InputFile id="@EditStoryCoverInputId"
+                                           class="admin-file-input"
+                                           OnChange="OnStoryCoverSelected"
+                                           accept=".jpg,.jpeg,.png,.webp,image/*" />
                             </label>
-                            <InputFile id="@EditStoryCoverInputId"
-                                       class="admin-file-input"
-                                       OnChange="OnStoryCoverSelected"
-                                       accept=".jpg,.jpeg,.png,.webp,image/*" />
                             <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.CoverFileName, T("Hou huidige cover as jy niks kies nie.", "Keeps the current cover if you do not choose a file."))</p>
                         </div>
                         <div class="admin-upload-card">
@@ -612,13 +573,13 @@
                                 <h4>@T("Vervang thumbnail", "Replace thumbnail")</h4>
                                 <p>@T("Opsioneel", "Optional")</p>
                             </div>
-                            <label class="admin-upload-btn" for="@EditStoryThumbnailInputId">
+                            <label class="admin-upload-btn">
                                 @T("Kies image", "Choose image")
+                                <InputFile id="@EditStoryThumbnailInputId"
+                                           class="admin-file-input"
+                                           OnChange="OnStoryThumbnailSelected"
+                                           accept=".jpg,.jpeg,.png,.webp,image/*" />
                             </label>
-                            <InputFile id="@EditStoryThumbnailInputId"
-                                       class="admin-file-input"
-                                       OnChange="OnStoryThumbnailSelected"
-                                       accept=".jpg,.jpeg,.png,.webp,image/*" />
                             <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.ThumbnailFileName, T("Hou huidige thumbnail as jy niks kies nie.", "Keeps the current thumbnail if you do not choose a file."))</p>
                         </div>
                         <div class="admin-upload-card admin-span-2">
@@ -626,13 +587,13 @@
                                 <h4>@T("Vervang audio file", "Replace audio file")</h4>
                                 <p>@T("Laai op na Cloudflare R2", "Uploads to Cloudflare R2")</p>
                             </div>
-                            <label class="admin-upload-btn" for="@EditStoryAudioInputId">
+                            <label class="admin-upload-btn">
                                 @T("Kies audio", "Choose audio")
+                                <InputFile id="@EditStoryAudioInputId"
+                                           class="admin-file-input"
+                                           OnChange="OnStoryAudioSelected"
+                                           accept=".mp3,.mpeg,.m4a,.wav,.ogg,audio/*" />
                             </label>
-                            <InputFile id="@EditStoryAudioInputId"
-                                       class="admin-file-input"
-                                       OnChange="OnStoryAudioSelected"
-                                       accept=".mp3,.mpeg,.m4a,.wav,.ogg,audio/*" />
                             <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.AudioFileName, T("Hou huidige audio as jy niks kies nie.", "Keeps the current audio if you do not choose a file."))</p>
                         </div>
                         <div class="admin-image-preview-grid admin-span-2">
@@ -1464,32 +1425,29 @@
             var summary = AutofillStorySummary(NewStoryEditor.Summary, NewStoryEditor.Description);
             var description = AutofillStoryDescription(NewStoryEditor.Description, summary);
 
-            var coverUpload = await StoryMediaStorageService.CreateImageDirectUploadAsync(
+            var coverUpload = await UploadImageWithFallbackAsync(
                 generatedSlug,
                 StoryImageKind.Cover,
-                coverFile.Name,
-                NormalizeImageContentType(coverFile));
-            await UploadSelectedFileToR2Async(NewStoryCoverInputId, coverUpload);
+                coverFile,
+                NewStoryCoverInputId);
             uploadedObjectKeys.Add(coverUpload.ObjectKey);
 
-            var thumbnailPath = coverUpload.PublicUrl!;
+            var thumbnailPath = coverUpload.PublicUrl;
             if (NewStoryEditor.ThumbnailFile is not null)
             {
-                var thumbnailUpload = await StoryMediaStorageService.CreateImageDirectUploadAsync(
+                var thumbnailUpload = await UploadImageWithFallbackAsync(
                     generatedSlug,
                     StoryImageKind.Thumbnail,
-                    NewStoryEditor.ThumbnailFile.Name,
-                    NormalizeImageContentType(NewStoryEditor.ThumbnailFile));
-                await UploadSelectedFileToR2Async(NewStoryThumbnailInputId, thumbnailUpload);
+                    NewStoryEditor.ThumbnailFile,
+                    NewStoryThumbnailInputId);
                 uploadedObjectKeys.Add(thumbnailUpload.ObjectKey);
-                thumbnailPath = thumbnailUpload.PublicUrl!;
+                thumbnailPath = thumbnailUpload.PublicUrl;
             }
 
-            var audioUpload = await StoryMediaStorageService.CreateAudioDirectUploadAsync(
+            var audioUpload = await UploadAudioWithFallbackAsync(
                 generatedSlug,
-                audioFile.Name,
-                NormalizeAudioContentType(audioFile));
-            await UploadSelectedFileToR2Async(NewStoryAudioInputId, audioUpload);
+                audioFile,
+                NewStoryAudioInputId);
             uploadedObjectKeys.Add(audioUpload.ObjectKey);
 
             var result = await AdminManagementService.CreateStoryAsync(
@@ -1567,35 +1525,32 @@
 
             if (StoryEditor.CoverFile is not null)
             {
-                var coverUpload = await StoryMediaStorageService.CreateImageDirectUploadAsync(
+                var coverUpload = await UploadImageWithFallbackAsync(
                     StoryEditor.Slug,
                     StoryImageKind.Cover,
-                    StoryEditor.CoverFile.Name,
-                    NormalizeImageContentType(StoryEditor.CoverFile));
-                await UploadSelectedFileToR2Async(EditStoryCoverInputId, coverUpload);
+                    StoryEditor.CoverFile,
+                    EditStoryCoverInputId);
                 uploadedObjectKeys.Add(coverUpload.ObjectKey);
                 StoryEditor.CoverImagePath = coverUpload.PublicUrl;
             }
 
             if (StoryEditor.ThumbnailFile is not null)
             {
-                var thumbnailUpload = await StoryMediaStorageService.CreateImageDirectUploadAsync(
+                var thumbnailUpload = await UploadImageWithFallbackAsync(
                     StoryEditor.Slug,
                     StoryImageKind.Thumbnail,
-                    StoryEditor.ThumbnailFile.Name,
-                    NormalizeImageContentType(StoryEditor.ThumbnailFile));
-                await UploadSelectedFileToR2Async(EditStoryThumbnailInputId, thumbnailUpload);
+                    StoryEditor.ThumbnailFile,
+                    EditStoryThumbnailInputId);
                 uploadedObjectKeys.Add(thumbnailUpload.ObjectKey);
                 StoryEditor.ThumbnailImagePath = thumbnailUpload.PublicUrl;
             }
 
             if (StoryEditor.AudioFile is not null)
             {
-                var audioUpload = await StoryMediaStorageService.CreateAudioDirectUploadAsync(
+                var audioUpload = await UploadAudioWithFallbackAsync(
                     StoryEditor.Slug,
-                    StoryEditor.AudioFile.Name,
-                    NormalizeAudioContentType(StoryEditor.AudioFile));
-                await UploadSelectedFileToR2Async(EditStoryAudioInputId, audioUpload);
+                    StoryEditor.AudioFile,
+                    EditStoryAudioInputId);
                 uploadedObjectKeys.Add(audioUpload.ObjectKey);
                 StoryEditor.AudioProvider = "r2";
                 StoryEditor.AudioBucket = audioUpload.Bucket;
@@ -2038,6 +1993,79 @@
             inputId,
             upload.UploadUrl,
             upload.ContentType);
+    }
+
+    private async Task<UploadedStoryImage> UploadImageWithFallbackAsync(
+        string slug,
+        StoryImageKind kind,
+        IBrowserFile file,
+        string inputId)
+    {
+        var normalizedContentType = NormalizeImageContentType(file);
+        var directUpload = await StoryMediaStorageService.CreateImageDirectUploadAsync(
+            slug,
+            kind,
+            file.Name,
+            normalizedContentType);
+
+        try
+        {
+            await UploadSelectedFileToR2Async(inputId, directUpload);
+            return new UploadedStoryImage(
+                directUpload.ObjectKey,
+                directUpload.PublicUrl ?? throw new InvalidOperationException("Direct image upload did not provide a public URL."),
+                directUpload.ContentType);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(
+                exception,
+                "Direct image upload failed for story {StorySlug}. Falling back to server-side upload.",
+                slug);
+
+            await using var stream = file.OpenReadStream(MaxImageUploadBytes);
+            return await StoryMediaStorageService.UploadImageAsync(
+                slug,
+                kind,
+                file.Name,
+                normalizedContentType,
+                stream);
+        }
+    }
+
+    private async Task<UploadedStoryAudio> UploadAudioWithFallbackAsync(
+        string slug,
+        IBrowserFile file,
+        string inputId)
+    {
+        var normalizedContentType = NormalizeAudioContentType(file);
+        var directUpload = await StoryMediaStorageService.CreateAudioDirectUploadAsync(
+            slug,
+            file.Name,
+            normalizedContentType);
+
+        try
+        {
+            await UploadSelectedFileToR2Async(inputId, directUpload);
+            return new UploadedStoryAudio(
+                directUpload.Bucket,
+                directUpload.ObjectKey,
+                directUpload.ContentType);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(
+                exception,
+                "Direct audio upload failed for story {StorySlug}. Falling back to server-side upload.",
+                slug);
+
+            await using var stream = file.OpenReadStream(MaxAudioUploadBytes);
+            return await StoryMediaStorageService.UploadAudioAsync(
+                slug,
+                file.Name,
+                normalizedContentType,
+                stream);
+        }
     }
 
     private async Task<IJSObjectReference> GetAdminUploadModuleAsync()
