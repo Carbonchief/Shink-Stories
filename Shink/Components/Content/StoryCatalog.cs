@@ -25,7 +25,7 @@ public sealed record StoryItem(
     {
         if (fileName.StartsWith("/", StringComparison.Ordinal))
         {
-            return fileName;
+            return EncodeLocalPath(fileName);
         }
 
         if (Uri.TryCreate(fileName, UriKind.Absolute, out var absoluteUri) &&
@@ -36,6 +36,27 @@ public sealed record StoryItem(
         }
 
         return ToAssetPath(fileName);
+    }
+
+    private static string EncodeLocalPath(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return value;
+        }
+
+        var normalized = value.Replace('\\', '/');
+        var suffixStart = normalized.IndexOfAny(['?', '#']);
+        var pathPart = suffixStart >= 0 ? normalized[..suffixStart] : normalized;
+        var suffixPart = suffixStart >= 0 ? normalized[suffixStart..] : string.Empty;
+
+        var encodedPath = "/" + string.Join(
+            '/',
+            pathPart
+                .Split('/', StringSplitOptions.RemoveEmptyEntries)
+                .Select(Uri.EscapeDataString));
+
+        return encodedPath + suffixPart;
     }
 
     private static string ToAssetPath(string fileName)
