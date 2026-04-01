@@ -67,6 +67,11 @@ else
 
         <section class="playlist-showcase-stories" aria-labelledby="playlist-showcase-stories-heading">
             <h2 id="playlist-showcase-stories-heading">Stories in hierdie speellys</h2>
+            <div class="playlist-showcase-actions">
+                <a class="playlist-showcase-playlist-link" href="@GetPlaylistPlayerHref(CurrentPlaylist.Slug)">
+                    Play Playlist
+                </a>
+            </div>
             <div class="playlist-showcase-grid" role="list">
                 @foreach (var story in CurrentPlaylistStories)
                 {

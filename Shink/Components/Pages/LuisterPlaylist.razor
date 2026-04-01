@@ -598,6 +598,10 @@ else
         {
             // Ignore slow JS module disposal so route transitions stay responsive.
         }
+        catch (OperationCanceledException)
+        {
+            // Ignore cancellation during route transitions and disposal races.
+        }
         catch (JSDisconnectedException)
         {
             // Ignore disposal errors when the browser connection is already closed.
