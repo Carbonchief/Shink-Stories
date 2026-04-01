@@ -148,7 +148,7 @@ else
                 </div>
             </div>
 
-            <h1 class="story-player-title">@CurrentStory.Title</h1>
+            
 
             <div class="story-nav-proxies" hidden aria-hidden="true">
                 @if (PreviousStory is not null)
@@ -180,7 +180,8 @@ else
         </div>
 
         <section class="story-summary-card">
-            <h2>Waaroor gaan die storie?</h2>
+            <h1 class="story-player-title">@CurrentStory.Title</h1>
+            <br />
             <p>@CurrentStory.Description</p>
         </section>
 
