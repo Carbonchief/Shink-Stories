@@ -1,6 +1,8 @@
 .auth-shell {
     width: min(980px, 100%);
     margin: 1.2rem auto 0;
+    padding-inline: clamp(0.9rem, 2vw, 1.5rem);
+    box-sizing: border-box;
 }
 
 .auth-frame {
@@ -233,6 +235,7 @@
 
     .auth-aside h1 {
         margin: 0;
+        text-align: center;
         font-size: clamp(1.7rem, 8vw, 2.1rem);
     }
 
@@ -247,5 +250,10 @@
 
     .login-actions {
         grid-template-columns: 1fr;
+    }
+
+    .login-link {
+        margin-inline: auto;
+        text-align: center;
     }
 }
