@@ -54,7 +54,7 @@ else
             <div class="story-cover-wrap">
                 <img src="@CurrentStory.ThumbnailPath"
                      srcset="@($"{CurrentStory.ThumbnailPath} 640w, {CurrentStory.ImagePath} 1024w")"
-                     sizes="(max-width: 640px) 100vw, 420px"
+                     sizes="(max-width: 640px) 100vw, (max-width: 1200px) 94vw, 1180px"
                      alt="Voorblad van @CurrentStory.Title" class="story-cover"
                      role="button"
                      tabindex="0"
@@ -74,8 +74,6 @@ else
                     <span class="sr-only">@(IsManualFullscreenFocus ? "Verlaat volskerm speler" : "Volskerm speler")</span>
                 </button>
             </div>
-
-            <h1 class="story-player-title">@CurrentStory.Title</h1>
 
             <audio controls controlslist="nodownload noplaybackrate"
                    disablepictureinpicture preload="auto" class="story-audio story-audio-native"
@@ -149,6 +147,8 @@ else
                     </button>
                 </div>
             </div>
+
+            <h1 class="story-player-title">@CurrentStory.Title</h1>
 
             <div class="story-nav-proxies" hidden aria-hidden="true">
                 @if (PreviousStory is not null)

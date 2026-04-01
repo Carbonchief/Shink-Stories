@@ -395,17 +395,20 @@
     background: #24384c;
     cursor: pointer;
     width: fit-content;
+    position: relative;
+    overflow: hidden;
 }
 
-.admin-file-input {
+.admin-upload-btn .admin-file-input {
     position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    margin: 0;
     padding: 0;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
     border: 0;
+    cursor: pointer;
 }
 
 .admin-upload-file-name {
