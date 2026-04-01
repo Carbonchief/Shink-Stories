@@ -1,4 +1,5 @@
-﻿@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.WebUtilities
 @inherits LayoutComponentBase
 @using System.Security.Claims
 @inject NavigationManager NavigationManager
@@ -190,7 +191,7 @@
                     <i class="fa-brands fa-instagram" aria-hidden="true"></i>
                 </a>
             </nav>
-            <p>© 2023 Schink</p>
+            <p>� 2023 Schink</p>
         </div>
     </footer>
 </div>
@@ -286,6 +287,12 @@
 
             if (relativePath.StartsWith("luister/speellys/", StringComparison.OrdinalIgnoreCase))
             {
+                var showcaseBackHref = BuildShowcaseBackHrefForPlaylistRoute(relativePath);
+                if (!string.IsNullOrWhiteSpace(showcaseBackHref))
+                {
+                    return showcaseBackHref;
+                }
+
                 return "/luister";
             }
 
@@ -316,6 +323,12 @@
 
             if (relativePath.StartsWith("luister/speellys/", StringComparison.OrdinalIgnoreCase))
             {
+                var showcaseBackHref = BuildShowcaseBackHrefForPlaylistRoute(relativePath);
+                if (!string.IsNullOrWhiteSpace(showcaseBackHref))
+                {
+                    return "Terug na speellys stories";
+                }
+
                 return "Terug na luister";
             }
 
@@ -401,6 +414,43 @@
 
         var segments = relativePath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         return segments.Length >= 2 ? Uri.UnescapeDataString(segments[1]) : null;
+    }
+
+    private string? BuildShowcaseBackHrefForPlaylistRoute(string relativePath)
+    {
+        var playlistView = GetCurrentQueryValue("playlistView");
+        if (!string.Equals(playlistView, "showcase", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var playlistSlug = GetPlaylistSlugFromRoute(relativePath);
+        if (string.IsNullOrWhiteSpace(playlistSlug))
+        {
+            return null;
+        }
+
+        var showcasePath = $"/luister/speellys/{Uri.EscapeDataString(playlistSlug.Trim())}/stories";
+        var currentStorySlug = GetCurrentQueryValue("storie");
+        if (string.IsNullOrWhiteSpace(currentStorySlug))
+        {
+            return showcasePath;
+        }
+
+        return QueryHelpers.AddQueryString(showcasePath, "storie", currentStorySlug.Trim());
+    }
+
+    private static string? GetPlaylistSlugFromRoute(string relativePath)
+    {
+        var segments = relativePath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (segments.Length < 3 ||
+            !string.Equals(segments[0], "luister", StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(segments[1], "speellys", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return Uri.UnescapeDataString(segments[2]);
     }
 
     private static string? ResolveProfileImageUrl(ClaimsPrincipal user)
