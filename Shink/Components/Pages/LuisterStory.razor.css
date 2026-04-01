@@ -579,10 +579,23 @@
         --story-player-viewport-reserve: 15.5rem;
     }
 
+    .story-cover-wrap {
+        width: fit-content;
+        max-width: 100%;
+        max-height: calc(100svh - var(--story-player-viewport-reserve));
+        margin-inline: auto;
+        border-radius: 22px;
+        overflow: hidden;
+    }
+
     .story-cover {
+        width: auto;
         height: auto;
+        max-width: 100%;
+        max-height: calc(100svh - var(--story-player-viewport-reserve));
         aspect-ratio: auto;
         object-fit: contain;
+        border-radius: 0;
     }
 
     .story-player-title {
@@ -592,6 +605,16 @@
     .story-custom-player {
         order: 2;
         margin-top: auto;
+    }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+    .story-player-content {
+        min-height: auto;
+    }
+
+    .story-custom-player {
+        margin-top: 0;
     }
 }
 
