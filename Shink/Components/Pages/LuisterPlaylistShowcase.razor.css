@@ -87,16 +87,22 @@
 
 .playlist-showcase-grid {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    justify-content: center;
+    grid-template-columns: repeat(auto-fit, minmax(clamp(210px, 28vw, 250px), 1fr));
     gap: 0.9rem;
+    grid-auto-rows: auto;
 }
 
 .playlist-showcase-card {
     min-width: 0;
+    width: 100%;
+    max-width: 260px;
+    margin-inline: auto;
 }
 
 .playlist-showcase-card-link {
-    display: grid;
+    display: flex;
+    flex-direction: column;
     gap: 0.55rem;
     text-decoration: none;
     color: inherit;
@@ -113,7 +119,7 @@
 
 .playlist-showcase-card-image {
     width: 100%;
-    aspect-ratio: 3 / 4;
+    aspect-ratio: 4 / 3;
     object-fit: cover;
     display: block;
     transition: transform 0.2s ease, filter 0.2s ease;
@@ -208,12 +214,6 @@
     font-weight: 700;
 }
 
-@media (max-width: 1100px) {
-    .playlist-showcase-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-}
-
 @media (max-width: 780px) {
     .playlist-showcase-page {
         gap: 1rem;
@@ -228,41 +228,40 @@
     }
 
     .playlist-showcase-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 0.72rem;
     }
 }
 
 @media (max-width: 560px) {
     .playlist-showcase-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 0.76rem;
     }
 
-    .playlist-showcase-card-link {
-        grid-template-columns: 120px minmax(0, 1fr);
-        gap: 0.72rem;
-        align-items: center;
-        padding: 0.38rem;
-        border: 1px solid color-mix(in srgb, var(--line) 88%, #b9b7ae);
-        background: var(--surface);
+    .playlist-showcase-page {
+        gap: 0.9rem;
+    }
+
+    .playlist-showcase-hero {
+        border-radius: 16px;
+    }
+
+    .playlist-showcase-hero-image {
+        aspect-ratio: 16 / 9;
+    }
+}
+
+@media (max-width: 640px) {
+    .playlist-showcase-card {
+        max-width: min(76vw, 230px);
     }
 
     .playlist-showcase-card-cover {
-        border-radius: 14px;
+        border-radius: 18px;
     }
 
     .playlist-showcase-card-image {
-        aspect-ratio: 3 / 4;
-    }
-
-    .playlist-showcase-card-copy {
-        text-align: left;
-        align-content: center;
-    }
-
-    .playlist-showcase-card-title {
-        min-height: 0;
+        aspect-ratio: 4 / 3;
     }
 }
 
