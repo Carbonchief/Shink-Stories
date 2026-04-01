@@ -96,7 +96,7 @@
 .playlist-showcase-card {
     min-width: 0;
     width: 100%;
-    max-width: 260px;
+   /* max-width: 260px;*/
     margin-inline: auto;
 }
 
@@ -217,6 +217,7 @@
 @media (max-width: 780px) {
     .playlist-showcase-page {
         gap: 1rem;
+        padding-inline: 0.8rem;
     }
 
     .playlist-showcase-hero {
@@ -228,16 +229,25 @@
     }
 
     .playlist-showcase-grid {
+        grid-template-columns: repeat(2, minmax(146px, 44vw));
+        justify-content: center;
         gap: 0.72rem;
+    }
+
+    .playlist-showcase-card {
+        max-width: none;
+    }
+
+    .playlist-showcase-card-cover {
+        border-radius: 14px;
+    }
+
+    .playlist-showcase-card-image {
+        aspect-ratio: 3 / 4;
     }
 }
 
-@media (max-width: 560px) {
-    .playlist-showcase-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 0.76rem;
-    }
-
+@media (max-width: 620px) {
     .playlist-showcase-page {
         gap: 0.9rem;
     }
@@ -249,19 +259,16 @@
     .playlist-showcase-hero-image {
         aspect-ratio: 16 / 9;
     }
+
+    .playlist-showcase-grid {
+        gap: 0.72rem;
+    }
 }
 
-@media (max-width: 640px) {
-    .playlist-showcase-card {
-        max-width: min(76vw, 230px);
-    }
-
-    .playlist-showcase-card-cover {
-        border-radius: 18px;
-    }
-
+@media (max-width: 425px) {
+    .playlist-showcase-card-cover,
     .playlist-showcase-card-image {
-        aspect-ratio: 4 / 3;
+        max-height: 300px;
     }
 }
 
