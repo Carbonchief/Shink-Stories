@@ -59,20 +59,23 @@ else
                 {
                     <p>@CurrentPlaylist.Description</p>
                 }
-                <a class="playlist-showcase-playlist-link" href="@GetPlaylistPlayerHref(CurrentPlaylist.Slug)">
-                    Speel hele speellys
-                </a>
             </div>
         </header>
 
+        <div class="playlist-showcase-action-bar" aria-label="Speellys aksies">
+            <a class="playlist-showcase-playlist-link" href="@GetPlaylistPlayerHref(CurrentPlaylist.Slug)">
+                Speel Speellys
+            </a>
+            <a class="playlist-showcase-secondary-link"
+               href="@StoriesAnchorHref"
+               data-enhance-nav="false">
+                Kies 'n Storie
+            </a>
+        </div>
+
         <section class="playlist-showcase-stories" aria-labelledby="playlist-showcase-stories-heading">
             <h2 id="playlist-showcase-stories-heading">Stories in hierdie speellys</h2>
-            <div class="playlist-showcase-actions">
-                <a class="playlist-showcase-playlist-link" href="@GetPlaylistPlayerHref(CurrentPlaylist.Slug)">
-                    Play Playlist
-                </a>
-            </div>
-            <div class="playlist-showcase-grid" role="list">
+            <div id="playlist-showcase-grid" class="playlist-showcase-grid" role="list">
                 @foreach (var story in CurrentPlaylistStories)
                 {
                     var isHighlighted = string.Equals(story.Slug, HighlightStorySlug, StringComparison.OrdinalIgnoreCase);
@@ -125,6 +128,8 @@ else
 
     private string ShowcaseCanonicalUrl =>
         NavigationManager.ToAbsoluteUri(GetShowcasePath(CurrentPlaylist?.Slug ?? PlaylistSlug)).ToString();
+    private string StoriesAnchorHref =>
+        $"{NavigationManager.ToAbsoluteUri(GetShowcasePath(CurrentPlaylist?.Slug ?? PlaylistSlug)).ToString()}#playlist-showcase-grid";
 
     private string ShareTitle =>
         CurrentPlaylist is null
@@ -218,7 +223,10 @@ else
             : $"/luister/speellys/{Uri.EscapeDataString(playlistSlug.Trim())}/stories";
 
     private static string GetPlaylistPlayerHref(string playlistSlug) =>
-        $"/luister/speellys/{Uri.EscapeDataString(playlistSlug.Trim())}";
+        QueryHelpers.AddQueryString(
+            $"/luister/speellys/{Uri.EscapeDataString(playlistSlug.Trim())}",
+            "playlistView",
+            "showcase");
 
     private string BuildStoryHref(StoryItem story)
     {
