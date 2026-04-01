@@ -13,7 +13,7 @@ with normalized as (
 update public.stories as stories
 set
     audio_provider = 'r2',
-    audio_bucket = 'pub-0696529d5a7d426882c0dcb881a7d08d.r2.dev',
+    audio_bucket = 'media.prioritybit.co.za',
     audio_object_key = normalized.normalized_file_name,
     audio_content_type = coalesce(
         nullif(stories.audio_content_type, ''),
