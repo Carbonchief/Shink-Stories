@@ -173,6 +173,8 @@ app.Use(async (httpContext, next) =>
         return;
     }
 
+    httpContext.Response.Headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet";
+
     if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
     {
         if (HttpMethods.IsGet(httpContext.Request.Method) ||
@@ -252,10 +254,17 @@ app.Use(async (httpContext, next) =>
         TryResolveStoryPathTarget(httpContext.Request.Path, out var source, out var slug))
     {
         var requestedPath = $"{httpContext.Request.Path}{httpContext.Request.QueryString}";
+        var isSocialPreviewRequest = SocialPreviewRequestDetector.IsSocialPreviewRequest(httpContext);
 
         if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
         {
-            httpContext.Response.Redirect(BuildOpsiesStoryRedirectPath(requestedPath));
+            if (!isSocialPreviewRequest)
+            {
+                httpContext.Response.Redirect(BuildOpsiesStoryRedirectPath(requestedPath));
+                return;
+            }
+
+            await next();
             return;
         }
 
@@ -917,13 +926,9 @@ app.MapGet("/sitemap.xml", async (HttpContext httpContext, IStoryCatalogService 
         "/",
         "/gratis",
         "/luister",
-        "/intekening-en-betaling",
-        "/my-stories",
         "/opsies",
         "/meer-oor-ons",
-        "/soek",
-        "/teken-in",
-        "/teken-op"
+        "/soek"
     };
 
     var freeStoriesTask = storyCatalogService.GetFreeStoriesAsync(httpContext.RequestAborted);

@@ -1,5 +1,5 @@
 @page "/luister/speellys/{PlaylistSlug}"
-@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@rendermode InteractiveServer
 @using System.Security.Claims
 @using System.Text.Json
 @using Microsoft.AspNetCore.WebUtilities
@@ -11,6 +11,7 @@
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ISubscriptionLedgerService SubscriptionLedgerService
+@inject IHttpContextAccessor HttpContextAccessor
 @implements IAsyncDisposable
 
 <PageTitle>@PageTitleText</PageTitle>
@@ -19,7 +20,7 @@
     <meta property="og:type" content="website" />
     <meta property="og:title" content="@ShareTitle" />
     <meta property="og:description" content="@ShareDescription" />
-    <meta property="og:url" content="@PlaylistCanonicalUrl" />
+    <meta property="og:url" content="@CurrentShareUrl" />
     <meta property="og:image" content="@ShareImageUrl" />
     <meta property="og:image:type" content="@ShareImageMimeType" />
     <meta property="og:image:alt" content="@ShareImageAlt" />
@@ -386,10 +387,39 @@ else
 
         try
         {
+            var isSocialPreviewRequest = SocialPreviewRequestDetector.IsSocialPreviewRequest(HttpContextAccessor.HttpContext);
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             if (authState.User.Identity?.IsAuthenticated != true)
             {
-                RedirectToOpsies();
+                if (!isSocialPreviewRequest)
+                {
+                    RedirectToOpsies();
+                    return;
+                }
+
+                IsRedirectingToOpsies = true;
+                PendingTrackAutoplay = false;
+
+                var previewPlaylists = await StoryCatalogService.GetLuisterPlaylistsAsync();
+                CurrentPlaylist = previewPlaylists.FirstOrDefault(playlist =>
+                    string.Equals(playlist.Slug, PlaylistSlug, StringComparison.OrdinalIgnoreCase));
+
+                if (CurrentPlaylist is null)
+                {
+                    AccessibleStories = Array.Empty<StoryItem>();
+                    CurrentStory = null;
+                    AudioUrl = null;
+                    PreviousStory = null;
+                    NextStory = null;
+                    return;
+                }
+
+                AccessibleStories = CurrentPlaylist.Stories;
+                var requestedPreviewStory = AccessibleStories.FirstOrDefault(story =>
+                    string.Equals(story.Slug, StorySlug, StringComparison.OrdinalIgnoreCase));
+                CurrentStory = requestedPreviewStory ?? AccessibleStories.FirstOrDefault();
+                AudioUrl = null;
+                ResolveAdjacentStories();
                 return;
             }
 
@@ -452,7 +482,7 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (CurrentStory is null)
+        if (CurrentStory is null || IsRedirectingToOpsies)
         {
             return;
         }
