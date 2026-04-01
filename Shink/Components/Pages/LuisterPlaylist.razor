@@ -1,5 +1,5 @@
 @page "/luister/speellys/{PlaylistSlug}"
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using System.Security.Claims
 @using System.Text.Json
 @using Microsoft.AspNetCore.WebUtilities
@@ -37,6 +37,11 @@
         <h1>Neem jou nou na opsies...</h1>
         <p>Kies asseblief 'n opsie wat by hierdie speellys pas.</p>
         <a href="/opsies">Gaan na opsies</a>
+    </section>
+}
+else if (IsLoadingPlaylist && CurrentPlaylist is null)
+{
+    <section class="playlist-loading-state" aria-live="polite" aria-busy="true">
     </section>
 }
 else if (CurrentPlaylist is null)
@@ -292,6 +297,7 @@ else
     private bool _mediaSessionModuleLoadFailed;
     private bool IsManualFullscreenFocus { get; set; }
     private bool IsRedirectingToOpsies { get; set; }
+    private bool IsLoadingPlaylist { get; set; } = true;
     private bool AutoplayEnabled { get; set; } = true;
     private bool PendingTrackAutoplay { get; set; }
 
@@ -376,65 +382,72 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        if (authState.User.Identity?.IsAuthenticated != true)
+        IsLoadingPlaylist = true;
+
+        try
         {
-            RedirectToOpsies();
-            return;
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            if (authState.User.Identity?.IsAuthenticated != true)
+            {
+                RedirectToOpsies();
+                return;
+            }
+
+            IsRedirectingToOpsies = false;
+            PendingTrackAutoplay = false;
+
+            var playlists = await StoryCatalogService.GetLuisterPlaylistsAsync();
+            CurrentPlaylist = playlists.FirstOrDefault(playlist =>
+                string.Equals(playlist.Slug, PlaylistSlug, StringComparison.OrdinalIgnoreCase));
+
+            if (CurrentPlaylist is null)
+            {
+                AccessibleStories = Array.Empty<StoryItem>();
+                CurrentStory = null;
+                AudioUrl = null;
+                PreviousStory = null;
+                NextStory = null;
+                return;
+            }
+
+            var accessProfile = await ResolveLuisterAccessProfileAsync(authState.User);
+            AccessibleStories = CurrentPlaylist.Stories
+                .Where(story => HasAccessToStory(story, accessProfile))
+                .ToArray();
+
+            if (AccessibleStories.Count == 0)
+            {
+                RedirectToOpsies();
+                return;
+            }
+
+            var requestedStory = CurrentPlaylist.Stories.FirstOrDefault(story =>
+                string.Equals(story.Slug, StorySlug, StringComparison.OrdinalIgnoreCase));
+
+            if (requestedStory is not null &&
+                !AccessibleStories.Any(story => string.Equals(story.Slug, requestedStory.Slug, StringComparison.OrdinalIgnoreCase)))
+            {
+                RedirectToOpsies();
+                return;
+            }
+
+            CurrentStory = requestedStory is not null
+                ? AccessibleStories.FirstOrDefault(story =>
+                    string.Equals(story.Slug, requestedStory.Slug, StringComparison.OrdinalIgnoreCase))
+                : AccessibleStories[0];
+
+            if (CurrentStory is null)
+            {
+                CurrentStory = AccessibleStories[0];
+            }
+
+            AudioUrl = AudioAccessService.CreateSignedAudioUrl(CurrentStory.Slug);
+            ResolveAdjacentStories();
         }
-
-        IsRedirectingToOpsies = false;
-        CurrentPlaylist = null;
-        AccessibleStories = Array.Empty<StoryItem>();
-        CurrentStory = null;
-        AudioUrl = null;
-        PreviousStory = null;
-        NextStory = null;
-        IsManualFullscreenFocus = false;
-        PendingTrackAutoplay = false;
-
-        var playlists = await StoryCatalogService.GetLuisterPlaylistsAsync();
-        CurrentPlaylist = playlists.FirstOrDefault(playlist =>
-            string.Equals(playlist.Slug, PlaylistSlug, StringComparison.OrdinalIgnoreCase));
-
-        if (CurrentPlaylist is null)
+        finally
         {
-            return;
+            IsLoadingPlaylist = false;
         }
-
-        var accessProfile = await ResolveLuisterAccessProfileAsync(authState.User);
-        AccessibleStories = CurrentPlaylist.Stories
-            .Where(story => HasAccessToStory(story, accessProfile))
-            .ToArray();
-
-        if (AccessibleStories.Count == 0)
-        {
-            RedirectToOpsies();
-            return;
-        }
-
-        var requestedStory = CurrentPlaylist.Stories.FirstOrDefault(story =>
-            string.Equals(story.Slug, StorySlug, StringComparison.OrdinalIgnoreCase));
-
-        if (requestedStory is not null &&
-            !AccessibleStories.Any(story => string.Equals(story.Slug, requestedStory.Slug, StringComparison.OrdinalIgnoreCase)))
-        {
-            RedirectToOpsies();
-            return;
-        }
-
-        CurrentStory = requestedStory is not null
-            ? AccessibleStories.FirstOrDefault(story =>
-                string.Equals(story.Slug, requestedStory.Slug, StringComparison.OrdinalIgnoreCase))
-            : AccessibleStories[0];
-
-        if (CurrentStory is null)
-        {
-            CurrentStory = AccessibleStories[0];
-        }
-
-        AudioUrl = AudioAccessService.CreateSignedAudioUrl(CurrentStory.Slug);
-        ResolveAdjacentStories();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
