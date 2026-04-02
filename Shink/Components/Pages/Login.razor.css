@@ -164,6 +164,41 @@
     box-shadow: 0 14px 24px rgba(18, 88, 112, 0.3);
 }
 
+.login-submit-google {
+    margin-top: 0.7rem;
+    min-height: 44px;
+    background: #ffffff;
+    color: #3c4043;
+    border: 1px solid #dadce0;
+    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.65rem;
+}
+
+.login-submit-google:hover:not(:disabled) {
+    transform: none;
+    background: #f8f9fa;
+    box-shadow: 0 2px 3px rgba(60, 64, 67, 0.3), 0 3px 6px 2px rgba(60, 64, 67, 0.15);
+}
+
+.login-submit-google:active:not(:disabled) {
+    background: #f1f3f4;
+    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+}
+
+.google-brand-icon {
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+}
+
 .login-submit:disabled {
     cursor: not-allowed;
     opacity: 0.7;
