@@ -525,10 +525,47 @@ function initializeHeaderInteractions() {
     initializeAccountMenus();
 }
 
+let headerInitFrameHandle = null;
+let headerObserverStarted = false;
+
+function scheduleHeaderInteractionsInitialization() {
+    if (headerInitFrameHandle !== null) {
+        return;
+    }
+
+    headerInitFrameHandle = window.requestAnimationFrame(() => {
+        headerInitFrameHandle = null;
+        initializeHeaderInteractions();
+    });
+}
+
+function startHeaderObserver() {
+    if (headerObserverStarted || !(document.body instanceof HTMLElement) || typeof MutationObserver === "undefined") {
+        return;
+    }
+
+    const observer = new MutationObserver(() => {
+        scheduleHeaderInteractionsInitialization();
+    });
+
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+
+    headerObserverStarted = true;
+}
+
 if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", initializeHeaderInteractions, { once: true });
+    document.addEventListener("DOMContentLoaded", () => {
+        initializeHeaderInteractions();
+        startHeaderObserver();
+    }, { once: true });
 } else {
     initializeHeaderInteractions();
+    startHeaderObserver();
 }
 
 document.addEventListener("enhancedload", initializeHeaderInteractions);
+window.addEventListener("pageshow", scheduleHeaderInteractionsInitialization);
+window.addEventListener("popstate", scheduleHeaderInteractionsInitialization);

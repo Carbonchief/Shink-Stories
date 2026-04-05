@@ -8,6 +8,7 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IAdminManagementService AdminManagementService
 @inject IStoryMediaStorageService StoryMediaStorageService
+@inject IWebHostEnvironment WebHostEnvironment
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JSRuntime
 @inject ILogger<Admin> Logger
@@ -532,8 +533,12 @@
 
         @if (StoryEditor is not null)
         {
-            var coverPreviewUrl = ResolvePreviewImageUrl(StoryEditor.CoverImagePath);
-            var thumbnailPreviewUrl = ResolvePreviewImageUrl(StoryEditor.ThumbnailImagePath);
+            var coverPreviewUrl = !string.IsNullOrWhiteSpace(StoryEditor.CoverPreviewDataUrl)
+                ? StoryEditor.CoverPreviewDataUrl
+                : ResolvePreviewImageUrl(StoryEditor.CoverImagePath);
+            var thumbnailPreviewUrl = !string.IsNullOrWhiteSpace(StoryEditor.ThumbnailPreviewDataUrl)
+                ? StoryEditor.ThumbnailPreviewDataUrl
+                : ResolvePreviewImageUrl(StoryEditor.ThumbnailImagePath);
             var carouselPreviewUrl = !string.IsNullOrWhiteSpace(thumbnailPreviewUrl) ? thumbnailPreviewUrl : coverPreviewUrl;
             var playerPreviewUrl = !string.IsNullOrWhiteSpace(thumbnailPreviewUrl) ? thumbnailPreviewUrl : coverPreviewUrl;
 
@@ -576,47 +581,49 @@
                                          @bind-Value="StoryEditor.DurationSeconds"
                                          Variant="Variant.Outlined"
                                          Margin="Margin.Dense" />
-                        <div class="admin-upload-card">
-                            <div class="admin-upload-head">
-                                <h4>@T("Vervang cover image", "Replace cover image")</h4>
-                                <p>@T("Opsioneel", "Optional")</p>
+                        <div class="admin-upload-group admin-upload-group-3 admin-span-2">
+                            <div class="admin-upload-card">
+                                <div class="admin-upload-head">
+                                    <h4>@T("Vervang cover image", "Replace cover image")</h4>
+                                    <p>@T("Opsioneel", "Optional")</p>
+                                </div>
+                                <label class="admin-upload-btn">
+                                    @T("Kies image", "Choose image")
+                                    <InputFile id="@EditStoryCoverInputId"
+                                               class="admin-file-input"
+                                               OnChange="OnStoryCoverSelected"
+                                               accept=".jpg,.jpeg,.png,.webp,image/*" />
+                                </label>
+                                <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.CoverFileName, T("Hou huidige cover as jy niks kies nie.", "Keeps the current cover if you do not choose a file."))</p>
                             </div>
-                            <label class="admin-upload-btn">
-                                @T("Kies image", "Choose image")
-                                <InputFile id="@EditStoryCoverInputId"
-                                           class="admin-file-input"
-                                           OnChange="OnStoryCoverSelected"
-                                           accept=".jpg,.jpeg,.png,.webp,image/*" />
-                            </label>
-                            <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.CoverFileName, T("Hou huidige cover as jy niks kies nie.", "Keeps the current cover if you do not choose a file."))</p>
-                        </div>
-                        <div class="admin-upload-card">
-                            <div class="admin-upload-head">
-                                <h4>@T("Vervang thumbnail", "Replace thumbnail")</h4>
-                                <p>@T("Opsioneel", "Optional")</p>
+                            <div class="admin-upload-card">
+                                <div class="admin-upload-head">
+                                    <h4>@T("Vervang thumbnail", "Replace thumbnail")</h4>
+                                    <p>@T("Opsioneel", "Optional")</p>
+                                </div>
+                                <label class="admin-upload-btn">
+                                    @T("Kies image", "Choose image")
+                                    <InputFile id="@EditStoryThumbnailInputId"
+                                               class="admin-file-input"
+                                               OnChange="OnStoryThumbnailSelected"
+                                               accept=".jpg,.jpeg,.png,.webp,image/*" />
+                                </label>
+                                <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.ThumbnailFileName, T("Hou huidige thumbnail as jy niks kies nie.", "Keeps the current thumbnail if you do not choose a file."))</p>
                             </div>
-                            <label class="admin-upload-btn">
-                                @T("Kies image", "Choose image")
-                                <InputFile id="@EditStoryThumbnailInputId"
-                                           class="admin-file-input"
-                                           OnChange="OnStoryThumbnailSelected"
-                                           accept=".jpg,.jpeg,.png,.webp,image/*" />
-                            </label>
-                            <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.ThumbnailFileName, T("Hou huidige thumbnail as jy niks kies nie.", "Keeps the current thumbnail if you do not choose a file."))</p>
-                        </div>
-                        <div class="admin-upload-card admin-span-2">
-                            <div class="admin-upload-head">
-                                <h4>@T("Vervang audio file", "Replace audio file")</h4>
-                                <p>@T("Laai op na Cloudflare R2", "Uploads to Cloudflare R2")</p>
+                            <div class="admin-upload-card">
+                                <div class="admin-upload-head">
+                                    <h4>@T("Vervang audio file", "Replace audio file")</h4>
+                                    <p>@T("Laai op na Cloudflare R2", "Uploads to Cloudflare R2")</p>
+                                </div>
+                                <label class="admin-upload-btn">
+                                    @T("Kies audio", "Choose audio")
+                                    <InputFile id="@EditStoryAudioInputId"
+                                               class="admin-file-input"
+                                               OnChange="OnStoryAudioSelected"
+                                               accept=".mp3,.mpeg,.m4a,.wav,.ogg,audio/*" />
+                                </label>
+                                <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.AudioFileName, T("Hou huidige audio as jy niks kies nie.", "Keeps the current audio if you do not choose a file."))</p>
                             </div>
-                            <label class="admin-upload-btn">
-                                @T("Kies audio", "Choose audio")
-                                <InputFile id="@EditStoryAudioInputId"
-                                           class="admin-file-input"
-                                           OnChange="OnStoryAudioSelected"
-                                           accept=".mp3,.mpeg,.m4a,.wav,.ogg,audio/*" />
-                            </label>
-                            <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.AudioFileName, T("Hou huidige audio as jy niks kies nie.", "Keeps the current audio if you do not choose a file."))</p>
                         </div>
                         <div class="admin-image-preview-grid admin-span-2">
                             <article class="admin-image-preview-card admin-luister-preview-card">
@@ -630,7 +637,7 @@
                                                     <img src="@carouselPreviewUrl"
                                                          class="admin-luister-carousel-image"
                                                          alt='@T("Carousel voorskou beeld", "Carousel preview image")'
-                                                         loading="lazy"
+                                                         loading="eager"
                                                          decoding="async" />
                                                     <span class="admin-luister-cover-play" aria-hidden="true">
                                                         <i class="admin-luister-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
@@ -655,7 +662,7 @@
                                             <img src="@playerPreviewUrl"
                                                  class="admin-luister-player-cover"
                                                  alt='@T("Speler voorskou beeld", "Player preview image")'
-                                                 loading="lazy"
+                                                 loading="eager"
                                                  decoding="async" />
                                             <span class="admin-luister-cover-play" aria-hidden="true">
                                                 <i class="admin-luister-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
@@ -756,41 +763,41 @@
                                                   Variant="Variant.Outlined"
                                                   Margin="Margin.Dense"
                                                   Lines="3" />
-                                    <div class="admin-upload-card">
-                                        <div class="admin-upload-head">
-                                            <h4>@T("Laai logo op", "Upload logo")</h4>
-                                            <p>@T("Opsioneel", "Optional")</p>
+                                    <div class="admin-upload-group admin-span-2">
+                                        <div class="admin-upload-card">
+                                            <div class="admin-upload-head">
+                                                <h4>@T("Laai logo op", "Upload logo")</h4>
+                                                <p>@T("Opsioneel", "Optional")</p>
+                                            </div>
+                                            <label class="admin-upload-btn">
+                                                @T("Kies image", "Choose image")
+                                                <InputFile id="@EditPlaylistLogoInputId"
+                                                           class="admin-file-input"
+                                                           OnChange="OnPlaylistLogoSelected"
+                                                           accept=".jpg,.jpeg,.png,.webp" />
+                                            </label>
+                                            <p class="admin-upload-file-name">@GetSelectedFileLabel(PlaylistEditor.LogoFileName, T("Hou huidige logo as jy niks kies nie.", "Keeps the current logo if you do not choose a file."))</p>
                                         </div>
-                                        <label class="admin-upload-btn">
-                                            @T("Kies image", "Choose image")
-                                            <InputFile id="@EditPlaylistLogoInputId"
-                                                       class="admin-file-input"
-                                                       OnChange="OnPlaylistLogoSelected"
-                                                       accept=".jpg,.jpeg,.png,.webp"
-                                                       disabled="@(!IsR2UploadConfigured)" />
-                                        </label>
-                                        <p class="admin-upload-file-name">@GetSelectedFileLabel(PlaylistEditor.LogoFileName, T("Hou huidige logo as jy niks kies nie.", "Keeps the current logo if you do not choose a file."))</p>
-                                    </div>
-                                    <div class="admin-upload-card">
-                                        <div class="admin-upload-head">
-                                            <h4>@T("Laai agtergrond op", "Upload backdrop")</h4>
-                                            <p>@T("Opsioneel", "Optional")</p>
+                                        <div class="admin-upload-card">
+                                            <div class="admin-upload-head">
+                                                <h4>@T("Laai agtergrond op", "Upload backdrop")</h4>
+                                                <p>@T("Opsioneel", "Optional")</p>
+                                            </div>
+                                            <label class="admin-upload-btn">
+                                                @T("Kies image", "Choose image")
+                                                <InputFile id="@EditPlaylistBackdropInputId"
+                                                           class="admin-file-input"
+                                                           OnChange="OnPlaylistBackdropSelected"
+                                                           accept=".jpg,.jpeg,.png,.webp" />
+                                            </label>
+                                            <p class="admin-upload-file-name">@GetSelectedFileLabel(PlaylistEditor.BackdropFileName, T("Hou huidige agtergrond as jy niks kies nie.", "Keeps the current backdrop if you do not choose a file."))</p>
                                         </div>
-                                        <label class="admin-upload-btn">
-                                            @T("Kies image", "Choose image")
-                                            <InputFile id="@EditPlaylistBackdropInputId"
-                                                       class="admin-file-input"
-                                                       OnChange="OnPlaylistBackdropSelected"
-                                                       accept=".jpg,.jpeg,.png,.webp"
-                                                       disabled="@(!IsR2UploadConfigured)" />
-                                        </label>
-                                        <p class="admin-upload-file-name">@GetSelectedFileLabel(PlaylistEditor.BackdropFileName, T("Hou huidige agtergrond as jy niks kies nie.", "Keeps the current backdrop if you do not choose a file."))</p>
                                     </div>
                                     @if (!IsR2UploadConfigured)
                                     {
                                         <p class="admin-form-note admin-span-2">
-                                            @T("Cloudflare R2 uploads is tans nie opgestel nie. Vul logo/agtergrond pad handmatig in of stel R2 credentials op.",
-                                                "Cloudflare R2 uploads are not configured yet. Enter logo/backdrop paths manually or configure R2 credentials.")
+                                            @T("Cloudflare R2 uploads is tans nie opgestel nie. Playlist images word plaaslik op die bediener gestoor.",
+                                                "Cloudflare R2 uploads are not configured yet. Playlist images will be stored locally on the server.")
                                         </p>
                                     }
                                     <MudTextField T="string"
@@ -1450,30 +1457,36 @@
         return Task.CompletedTask;
     }
 
-    private Task OnStoryCoverSelected(InputFileChangeEventArgs args)
+    private async Task OnStoryCoverSelected(InputFileChangeEventArgs args)
     {
         if (StoryEditor is null)
         {
-            return Task.CompletedTask;
+            return;
         }
 
         var file = args.File;
         StoryEditor.CoverFile = file;
         StoryEditor.CoverFileName = file?.Name;
-        return Task.CompletedTask;
+        StoryEditor.CoverPreviewDataUrl = file is null
+            ? null
+            : await ReadImageFileAsDataUrlAsync(file);
+        return;
     }
 
-    private Task OnStoryThumbnailSelected(InputFileChangeEventArgs args)
+    private async Task OnStoryThumbnailSelected(InputFileChangeEventArgs args)
     {
         if (StoryEditor is null)
         {
-            return Task.CompletedTask;
+            return;
         }
 
         var file = args.File;
         StoryEditor.ThumbnailFile = file;
         StoryEditor.ThumbnailFileName = file?.Name;
-        return Task.CompletedTask;
+        StoryEditor.ThumbnailPreviewDataUrl = file is null
+            ? null
+            : await ReadImageFileAsDataUrlAsync(file);
+        return;
     }
 
     private Task OnStoryAudioSelected(InputFileChangeEventArgs args)
@@ -1712,8 +1725,10 @@
 
             StoryEditor.CoverFile = null;
             StoryEditor.CoverFileName = null;
+            StoryEditor.CoverPreviewDataUrl = null;
             StoryEditor.ThumbnailFile = null;
             StoryEditor.ThumbnailFileName = null;
+            StoryEditor.ThumbnailPreviewDataUrl = null;
             StoryEditor.AudioFile = null;
             StoryEditor.AudioFileName = null;
 
@@ -1741,6 +1756,7 @@
         IsSavingPlaylist = true;
         ClearFeedback();
         var uploadedObjectKeys = new List<string>();
+        var uploadedLocalFilePaths = new List<string>();
 
         try
         {
@@ -1753,15 +1769,6 @@
                 return;
             }
 
-            if (!IsR2UploadConfigured &&
-                (PlaylistEditor.LogoFile is not null || PlaylistEditor.BackdropFile is not null))
-            {
-                SetError(T(
-                    "Cloudflare R2 uploads is nie opgestel nie. Verwyder die gekose files of stel R2 credentials op.",
-                    "Cloudflare R2 uploads are not configured. Remove selected files or configure R2 credentials."));
-                return;
-            }
-
             var validationMessage = ValidatePlaylistMediaDraft(PlaylistEditor);
             if (!string.IsNullOrWhiteSpace(validationMessage))
             {
@@ -1771,24 +1778,42 @@
 
             if (PlaylistEditor.LogoFile is not null)
             {
-                var logoUpload = await UploadImageWithFallbackAsync(
+                var logoUpload = await UploadPlaylistImageAsync(
                     playlistSlug,
-                    StoryImageKind.Thumbnail,
+                    PlaylistImageAssetKind.Logo,
                     PlaylistEditor.LogoFile,
                     EditPlaylistLogoInputId);
-                uploadedObjectKeys.Add(logoUpload.ObjectKey);
-                PlaylistEditor.LogoImagePath = logoUpload.PublicUrl;
+                if (!string.IsNullOrWhiteSpace(logoUpload.R2ObjectKey))
+                {
+                    uploadedObjectKeys.Add(logoUpload.R2ObjectKey);
+                }
+
+                if (!string.IsNullOrWhiteSpace(logoUpload.LocalFilePath))
+                {
+                    uploadedLocalFilePaths.Add(logoUpload.LocalFilePath);
+                }
+
+                PlaylistEditor.LogoImagePath = logoUpload.PublicPath;
             }
 
             if (PlaylistEditor.BackdropFile is not null)
             {
-                var backdropUpload = await UploadImageWithFallbackAsync(
+                var backdropUpload = await UploadPlaylistImageAsync(
                     playlistSlug,
-                    StoryImageKind.Cover,
+                    PlaylistImageAssetKind.Backdrop,
                     PlaylistEditor.BackdropFile,
                     EditPlaylistBackdropInputId);
-                uploadedObjectKeys.Add(backdropUpload.ObjectKey);
-                PlaylistEditor.BackdropImagePath = backdropUpload.PublicUrl;
+                if (!string.IsNullOrWhiteSpace(backdropUpload.R2ObjectKey))
+                {
+                    uploadedObjectKeys.Add(backdropUpload.R2ObjectKey);
+                }
+
+                if (!string.IsNullOrWhiteSpace(backdropUpload.LocalFilePath))
+                {
+                    uploadedLocalFilePaths.Add(backdropUpload.LocalFilePath);
+                }
+
+                PlaylistEditor.BackdropImagePath = backdropUpload.PublicPath;
             }
 
             var result = await AdminManagementService.SavePlaylistAsync(
@@ -1808,6 +1833,7 @@
             if (!HandleOperationResult(result, T("Playlist is gestoor.", "Playlist saved.")))
             {
                 await CleanupUploadedStoryObjectsAsync(uploadedObjectKeys);
+                await CleanupUploadedLocalFilesAsync(uploadedLocalFilePaths);
                 return;
             }
 
@@ -1822,6 +1848,7 @@
         catch (Exception exception)
         {
             await CleanupUploadedStoryObjectsAsync(uploadedObjectKeys);
+            await CleanupUploadedLocalFilesAsync(uploadedLocalFilePaths);
             Logger.LogError(exception, "Failed to save playlist.");
             SetError(LocalizePlaylistEditException(exception));
         }
@@ -2241,6 +2268,74 @@
         }
     }
 
+    private async Task<PlaylistImageUploadResult> UploadPlaylistImageAsync(
+        string playlistSlug,
+        PlaylistImageAssetKind kind,
+        IBrowserFile file,
+        string inputId)
+    {
+        if (IsR2UploadConfigured)
+        {
+            var uploaded = await UploadImageWithFallbackAsync(
+                playlistSlug,
+                kind == PlaylistImageAssetKind.Logo ? StoryImageKind.Thumbnail : StoryImageKind.Cover,
+                file,
+                inputId);
+
+            return new PlaylistImageUploadResult(
+                PublicPath: uploaded.PublicUrl,
+                R2ObjectKey: uploaded.ObjectKey);
+        }
+
+        var localUpload = await UploadPlaylistImageToLocalAsync(playlistSlug, kind, file);
+        return new PlaylistImageUploadResult(
+            PublicPath: localUpload.PublicPath,
+            LocalFilePath: localUpload.PhysicalPath);
+    }
+
+    private async Task<(string PublicPath, string PhysicalPath)> UploadPlaylistImageToLocalAsync(
+        string playlistSlug,
+        PlaylistImageAssetKind kind,
+        IBrowserFile file)
+    {
+        var normalizedSlug = CreatePlaylistSlug(playlistSlug);
+        if (string.IsNullOrWhiteSpace(normalizedSlug))
+        {
+            normalizedSlug = "playlist";
+        }
+
+        var normalizedContentType = NormalizeImageContentType(file);
+        var extension = normalizedContentType switch
+        {
+            "image/jpeg" => ".jpg",
+            "image/png" => ".png",
+            "image/webp" => ".webp",
+            _ => Path.GetExtension(file.Name).Trim().ToLowerInvariant()
+        };
+
+        var timestamp = DateTimeOffset.UtcNow;
+        var year = timestamp.ToString("yyyy");
+        var month = timestamp.ToString("MM");
+        var suffix = kind == PlaylistImageAssetKind.Logo ? "logo" : "backdrop";
+        var fileName = $"{normalizedSlug}-{suffix}-{timestamp:yyyyMMddHHmmss}-{Guid.NewGuid():N}{extension}";
+
+        var rootPath = string.IsNullOrWhiteSpace(WebHostEnvironment.WebRootPath)
+            ? Path.Combine(Directory.GetCurrentDirectory(), "wwwroot")
+            : WebHostEnvironment.WebRootPath;
+        var directoryPath = Path.Combine(rootPath, "branding", "uploaded", "playlists", year, month);
+        Directory.CreateDirectory(directoryPath);
+
+        var physicalPath = Path.Combine(directoryPath, fileName);
+        await using (var sourceStream = file.OpenReadStream(MaxImageUploadBytes))
+        await using (var destinationStream = File.Create(physicalPath))
+        {
+            await sourceStream.CopyToAsync(destinationStream);
+        }
+
+        var publicPath = $"/branding/uploaded/playlists/{year}/{month}/{fileName}";
+        return (publicPath, physicalPath);
+    }
+
     private async Task<UploadedStoryAudio> UploadAudioWithFallbackAsync(
         string slug,
         IBrowserFile file,
@@ -2295,6 +2390,28 @@
         {
             await StoryMediaStorageService.DeleteObjectIfExistsAsync(objectKey);
         }
+    }
+
+    private Task CleanupUploadedLocalFilesAsync(IEnumerable<string> localFilePaths)
+    {
+        foreach (var filePath in localFilePaths
+                     .Where(path => !string.IsNullOrWhiteSpace(path))
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            try
+            {
+                if (File.Exists(filePath))
+                {
+                    File.Delete(filePath);
+                }
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+            {
+                Logger.LogWarning(exception, "Failed to delete local playlist upload {FilePath}.", filePath);
+            }
+        }
+
+        return Task.CompletedTask;
     }
 
     private bool HandleOperationResult(AdminOperationResult result, string successMessage)
@@ -2543,6 +2660,29 @@
             }
         };
 
+    private async Task<string?> ReadImageFileAsDataUrlAsync(IBrowserFile file)
+    {
+        try
+        {
+            var normalizedContentType = NormalizeImageContentType(file);
+            if (normalizedContentType is not "image/jpeg" and not "image/png" and not "image/webp")
+            {
+                return null;
+            }
+
+            await using var stream = file.OpenReadStream(MaxImageUploadBytes);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            var base64 = Convert.ToBase64String(buffer.ToArray());
+            return $"data:{normalizedContentType};base64,{base64}";
+        }
+        catch (Exception exception) when (exception is IOException or InvalidOperationException)
+        {
+            Logger.LogDebug(exception, "Inline image preview generation skipped.");
+            return null;
+        }
+    }
+
     private static bool IsSupportedImageFile(IBrowserFile file)
     {
         var normalizedContentType = NormalizeImageContentType(file);
@@ -2738,6 +2878,17 @@
             : T("Geen", "None");
     }
 
+    private sealed record PlaylistImageUploadResult(
+        string PublicPath,
+        string? R2ObjectKey = null,
+        string? LocalFilePath = null);
+
+    private enum PlaylistImageAssetKind
+    {
+        Logo,
+        Backdrop
+    }
+
     private enum AdminLanguage
     {
         Afrikaans,
@@ -2775,8 +2926,10 @@
         public string? ThumbnailImagePath { get; set; }
         public IBrowserFile? CoverFile { get; set; }
         public string? CoverFileName { get; set; }
+        public string? CoverPreviewDataUrl { get; set; }
         public IBrowserFile? ThumbnailFile { get; set; }
         public string? ThumbnailFileName { get; set; }
+        public string? ThumbnailPreviewDataUrl { get; set; }
         public IBrowserFile? AudioFile { get; set; }
         public string? AudioFileName { get; set; }
         public string AudioProvider { get; set; } = "local";

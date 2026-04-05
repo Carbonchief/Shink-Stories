@@ -18,7 +18,6 @@
     position: relative;
     min-height: 100dvh;
     overflow: hidden;
-    background: #4ba1d6;
     isolation: isolate;
 }
 

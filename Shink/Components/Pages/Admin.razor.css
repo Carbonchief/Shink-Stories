@@ -153,7 +153,14 @@
 }
 
 .admin-tabs-shell ::deep .mud-tab.mud-tab-active {
-    background: #2c4258;
+    background: color-mix(in srgb, #ffffff 12%, transparent);
+    color: #ffffff;
+    -webkit-text-fill-color: #ffffff !important;
+    opacity: 1 !important;
+}
+
+.admin-tabs-shell ::deep .mud-tab[aria-selected="true"] {
+    background: color-mix(in srgb, #ffffff 12%, transparent);
     color: #ffffff;
     -webkit-text-fill-color: #ffffff !important;
     opacity: 1 !important;
@@ -164,13 +171,18 @@
 .admin-tabs-shell ::deep .mud-tab.mud-tab-active .mud-tab-content .mud-icon-root,
 .admin-tabs-shell ::deep .mud-tab.mud-tab-active .mud-button-label,
 .admin-tabs-shell ::deep .mud-tab.mud-tab-active .mud-button-label span,
+.admin-tabs-shell ::deep .mud-tab[aria-selected="true"] .mud-tab-content,
+.admin-tabs-shell ::deep .mud-tab[aria-selected="true"] .mud-tab-content span,
+.admin-tabs-shell ::deep .mud-tab[aria-selected="true"] .mud-tab-content .mud-icon-root,
+.admin-tabs-shell ::deep .mud-tab[aria-selected="true"] .mud-button-label,
+.admin-tabs-shell ::deep .mud-tab[aria-selected="true"] .mud-button-label span,
 .admin-tabs-shell ::deep .mud-tab:hover .mud-tab-content,
 .admin-tabs-shell ::deep .mud-tab:hover .mud-tab-content span,
 .admin-tabs-shell ::deep .mud-tab:hover .mud-tab-content .mud-icon-root,
 .admin-tabs-shell ::deep .mud-tab:hover .mud-button-label,
 .admin-tabs-shell ::deep .mud-tab:hover .mud-button-label span {
-    color: #ffffff !important;
-    -webkit-text-fill-color: #ffffff !important;
+    color: var(--admin-text) !important;
+    -webkit-text-fill-color: var(--admin-text) !important;
 }
 
 .admin-tabs-shell ::deep .mud-tabs-panels {
@@ -363,6 +375,17 @@
     background: var(--admin-surface-soft);
     display: grid;
     gap: 0.55rem;
+}
+
+.admin-upload-group {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.55rem;
+    align-items: start;
+}
+
+.admin-upload-group.admin-upload-group-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .admin-upload-head {
@@ -748,6 +771,10 @@
 
     .admin-form-grid .admin-span-2 {
         grid-column: span 1;
+    }
+
+    .admin-upload-group {
+        grid-template-columns: 1fr;
     }
 
     .admin-image-preview-grid {
