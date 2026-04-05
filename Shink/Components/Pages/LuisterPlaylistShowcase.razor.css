@@ -1,55 +1,86 @@
 .playlist-showcase-page {
-    width: min(100%, 1200px);
-    margin: 0 auto;
-    padding-inline: clamp(0.9rem, 4vw, 2rem);
+    width: 100%;
     display: grid;
     gap: 1.25rem;
     box-sizing: border-box;
 }
 
-.playlist-showcase-hero {
-    position: relative;
-    border-radius: 24px;
-    overflow: hidden;
-    background: #1b1f23;
-    box-shadow: 0 16px 34px rgba(9, 11, 14, 0.26);
+.playlist-showcase-body {
+    width: min(100%, 1200px);
+    margin: 0 auto;
+    padding-inline: clamp(0.9rem, 4vw, 2rem);
+    display: grid;
+    gap: 1rem;
+    box-sizing: border-box;
 }
 
-.playlist-showcase-hero-image {
+.playlist-showcase-splash {
+    position: relative;
+    min-height: 100dvh;
+    overflow: hidden;
+    background: #4ba1d6;
+    isolation: isolate;
+}
+
+.playlist-showcase-splash-backdrop {
+    position: absolute;
+    inset: 0;
     width: 100%;
-    display: block;
-    aspect-ratio: 16 / 7;
+    height: 100%;
     object-fit: cover;
 }
 
-.playlist-showcase-hero-overlay {
+.playlist-showcase-splash::after {
+    content: "";
     position: absolute;
     inset: 0;
-    padding: clamp(1rem, 3.8vw, 1.8rem);
-    background:
-        linear-gradient(
-            to top,
-            rgba(10, 12, 16, 0.86) 10%,
-            rgba(10, 12, 16, 0.35) 52%,
-            rgba(10, 12, 16, 0.08) 100%
-        );
+    background: linear-gradient(to bottom, rgba(7, 25, 38, 0.08), rgba(7, 25, 38, 0.25));
+    z-index: 0;
+}
+
+.playlist-showcase-splash-logo {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: min(94vw, 980px);
+    max-height: min(82dvh, 920px);
+    object-fit: contain;
+    filter: drop-shadow(0 16px 34px rgba(8, 16, 30, 0.36));
+    z-index: 1;
+    animation: playlist-showcase-logo-float 4.8s ease-in-out infinite;
+}
+
+.playlist-showcase-intro {
+    width: min(100%, 900px);
+    margin: 0 auto;
     display: grid;
-    align-content: end;
-    gap: 0.58rem;
-    color: #ffffff;
+    gap: 0.56rem;
+    text-align: center;
 }
 
-.playlist-showcase-hero-overlay h1 {
+.playlist-showcase-intro h2 {
     margin: 0;
-    font-size: clamp(1.9rem, 4.3vw, 3.05rem);
+    font-size: clamp(1.8rem, 4.2vw, 2.8rem);
     line-height: 1.04;
+    color: #18232b;
 }
 
-.playlist-showcase-hero-overlay p {
+.playlist-showcase-intro p {
     margin: 0;
-    max-width: 62ch;
-    color: rgba(250, 248, 244, 0.9);
+    color: #33424b;
     line-height: 1.45;
+}
+
+@keyframes playlist-showcase-logo-float {
+    0%,
+    100% {
+        transform: translate(-50%, -50%);
+    }
+
+    50% {
+        transform: translate(-50%, calc(-50% - 16px));
+    }
 }
 
 .playlist-showcase-playlist-link {
@@ -80,12 +111,13 @@
 }
 
 .playlist-showcase-action-bar {
-    position: sticky;
-    bottom: max(0.55rem, env(safe-area-inset-bottom));
+    position: absolute;
+    left: 50%;
+    bottom: max(0.8rem, calc(env(safe-area-inset-bottom) + 0.35rem));
+    transform: translateX(-50%);
     z-index: 6;
     width: fit-content;
     max-width: calc(100% - 1rem);
-    margin: 0 auto;
     padding: 0.4rem;
     border-radius: 999px;
     background: rgba(255, 255, 255, 0.92);
@@ -274,6 +306,9 @@
 @media (max-width: 780px) {
     .playlist-showcase-page {
         gap: 1rem;
+    }
+
+    .playlist-showcase-body {
         padding-inline: 0.8rem;
     }
 
@@ -284,12 +319,9 @@
         gap: 0.38rem;
     }
 
-    .playlist-showcase-hero {
-        border-radius: 18px;
-    }
-
-    .playlist-showcase-hero-image {
-        aspect-ratio: 16 / 9;
+    .playlist-showcase-splash-logo {
+        width: min(95vw, 820px);
+        max-height: min(72dvh, 680px);
     }
 
     .playlist-showcase-card-cover {
@@ -298,16 +330,9 @@
 }
 
 @media (max-width: 620px) {
-    .playlist-showcase-page {
-        gap: 0.9rem;
-    }
-
-    .playlist-showcase-hero {
-        border-radius: 16px;
-    }
-
-    .playlist-showcase-hero-image {
-        aspect-ratio: 16 / 9;
+    .playlist-showcase-splash-logo {
+        width: min(95vw, 640px);
+        max-height: min(68dvh, 520px);
     }
 
     .playlist-showcase-grid {
@@ -338,5 +363,11 @@
 @media (hover: none) and (pointer: coarse) {
     .playlist-showcase-card-play {
         background: linear-gradient(to top, rgba(0, 0, 0, 0.34), rgba(0, 0, 0, 0.03));
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .playlist-showcase-splash-logo {
+        animation: none;
     }
 }
