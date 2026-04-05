@@ -3,8 +3,28 @@
 @using System.Text
 @using Microsoft.AspNetCore.Components
 @inject IStoryCatalogService StoryCatalogService
+@inject NavigationManager NavigationManager
 
 <PageTitle>Schink Stories | Soek</PageTitle>
+<HeadContent>
+    <meta name="description" content="Soek vinnig deur Schink Stories se Afrikaanse stories, bladsye en inhoud." />
+    <link rel="canonical" href="@SearchCanonicalUrl" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Schink Stories | Soek" />
+    <meta property="og:description" content="Soek vinnig deur Schink Stories se Afrikaanse stories, bladsye en inhoud." />
+    <meta property="og:url" content="@SearchCanonicalUrl" />
+    <meta property="og:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
+    <meta property="og:image:secure_url" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta property="og:image:alt" content="Schink Stories logo" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Schink Stories | Soek" />
+    <meta name="twitter:description" content="Soek vinnig deur Schink Stories se Afrikaanse stories, bladsye en inhoud." />
+    <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
+    <meta name="twitter:image:alt" content="Schink Stories logo" />
+</HeadContent>
 
 <section class="search-page">
     <header class="search-hero">
@@ -79,6 +99,7 @@
     private string LastSearchQuery { get; set; } = string.Empty;
     private IReadOnlyList<SearchResultItem> SearchResults { get; set; } = Array.Empty<SearchResultItem>();
     private bool HasSearchQuery => !string.IsNullOrWhiteSpace(LastSearchQuery);
+    private string SearchCanonicalUrl => NavigationManager.ToAbsoluteUri("/soek").ToString();
 
     private string ResultsSummaryText =>
         SearchResults.Count switch

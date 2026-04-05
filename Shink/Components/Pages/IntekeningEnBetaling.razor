@@ -9,6 +9,26 @@
 @inject NavigationManager NavigationManager
 
 <PageTitle>Schink Stories | Intekening en betaling</PageTitle>
+<HeadContent>
+    <meta name="description" content="Bestuur jou intekening, betalings en rekeningbesonderhede op Schink Stories." />
+    <meta name="robots" content="noindex, follow, noarchive, nosnippet" />
+    <link rel="canonical" href="@BillingCanonicalUrl" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Schink Stories | Intekening en betaling" />
+    <meta property="og:description" content="Bestuur jou intekening, betalings en rekeningbesonderhede op Schink Stories." />
+    <meta property="og:url" content="@BillingCanonicalUrl" />
+    <meta property="og:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
+    <meta property="og:image:secure_url" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta property="og:image:alt" content="Schink Stories logo" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Schink Stories | Intekening en betaling" />
+    <meta name="twitter:description" content="Bestuur jou intekening, betalings en rekeningbesonderhede op Schink Stories." />
+    <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
+    <meta name="twitter:image:alt" content="Schink Stories logo" />
+</HeadContent>
 
 <section class="billing-page">
     <header class="billing-hero">
@@ -130,6 +150,7 @@
 </section>
 
 @code {
+    private string BillingCanonicalUrl => NavigationManager.ToAbsoluteUri("/intekening-en-betaling").ToString();
     private bool IsLoading { get; set; } = true;
     private bool IsRedirectingToLogin { get; set; }
     private bool HasActivePaidSubscription { get; set; }

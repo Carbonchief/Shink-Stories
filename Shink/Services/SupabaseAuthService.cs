@@ -2,6 +2,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
+using Supabase.Gotrue;
 
 namespace Shink.Services;
 
@@ -80,6 +81,84 @@ public sealed class SupabaseAuthService(
         }
 
         return SupabaseSignInResult.Success(signupResult.UserEmail ?? email);
+    }
+
+    public async Task<SupabaseOAuthStartResult> StartGoogleSignInAsync(
+        string redirectTo,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(redirectTo))
+        {
+            return SupabaseOAuthStartResult.Failure("Kon nie Google-aanmelding begin nie. Probeer asseblief weer.");
+        }
+
+        var supabaseClient = await CreateSupabaseClientAsync(cancellationToken);
+        if (supabaseClient is null)
+        {
+            return SupabaseOAuthStartResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en anon key op.");
+        }
+
+        try
+        {
+            var providerState = await supabaseClient.Auth.SignIn(
+                Constants.Provider.Google,
+                new SignInOptions
+                {
+                    RedirectTo = redirectTo,
+                    FlowType = Constants.OAuthFlowType.PKCE
+                });
+
+            if (providerState?.Uri is null)
+            {
+                return SupabaseOAuthStartResult.Failure("Kon nie Google-aanmelding begin nie. Probeer asseblief weer.");
+            }
+
+            return SupabaseOAuthStartResult.Success(providerState.Uri, providerState.PKCEVerifier);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Supabase Google OAuth start failed.");
+            return SupabaseOAuthStartResult.Failure("Kon nie nou met Google koppel nie. Probeer asseblief weer.");
+        }
+    }
+
+    public async Task<SupabaseOAuthExchangeResult> ExchangeGoogleAuthCodeAsync(
+        string authCode,
+        string codeVerifier,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(authCode) || string.IsNullOrWhiteSpace(codeVerifier))
+        {
+            return SupabaseOAuthExchangeResult.Failure("Google-aanmelding kon nie bevestig word nie. Probeer asseblief weer.");
+        }
+
+        var supabaseClient = await CreateSupabaseClientAsync(cancellationToken);
+        if (supabaseClient is null)
+        {
+            return SupabaseOAuthExchangeResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en anon key op.");
+        }
+
+        try
+        {
+            var session = await supabaseClient.Auth.ExchangeCodeForSession(codeVerifier, authCode);
+            var email = session?.User?.Email;
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                return SupabaseOAuthExchangeResult.Failure("Kon nie jou Google-profiel lees nie. Probeer asseblief weer.");
+            }
+
+            var userMetadata = session?.User?.UserMetadata;
+            var firstName = ReadMetadataString(userMetadata, "first_name", "given_name");
+            var lastName = ReadMetadataString(userMetadata, "last_name", "family_name");
+            var displayName = ReadMetadataString(userMetadata, "display_name", "name", "full_name");
+
+            return SupabaseOAuthExchangeResult.Success(email, firstName, lastName, displayName);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Supabase Google OAuth code exchange failed.");
+            return SupabaseOAuthExchangeResult.Failure("Google-aanmelding het misluk. Probeer asseblief weer.");
+        }
     }
 
     private async Task<SupabaseSignInResult> ExecuteAuthRequestAsync(
@@ -230,6 +309,65 @@ public sealed class SupabaseAuthService(
         }
 
         return message;
+    }
+
+    private async Task<global::Supabase.Client?> CreateSupabaseClientAsync(CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.AnonKey))
+        {
+            return null;
+        }
+
+        if (!Uri.TryCreate(_options.Url, UriKind.Absolute, out _))
+        {
+            _logger.LogWarning("Supabase URL is invalid: {SupabaseUrl}", _options.Url);
+            return null;
+        }
+
+        var client = new global::Supabase.Client(
+            _options.Url,
+            _options.AnonKey,
+            new global::Supabase.SupabaseOptions
+            {
+                AutoConnectRealtime = false,
+                AutoRefreshToken = false
+            });
+
+        await client.InitializeAsync();
+        cancellationToken.ThrowIfCancellationRequested();
+        return client;
+    }
+
+    private static string? ReadMetadataString(
+        IDictionary<string, object>? metadata,
+        params string[] keys)
+    {
+        if (metadata is null || keys.Length == 0)
+        {
+            return null;
+        }
+
+        foreach (var key in keys)
+        {
+            if (!metadata.TryGetValue(key, out var value) || value is null)
+            {
+                continue;
+            }
+
+            var candidate = value switch
+            {
+                string stringValue => stringValue,
+                JsonElement { ValueKind: JsonValueKind.String } jsonElement => jsonElement.GetString(),
+                _ => value.ToString()
+            };
+
+            if (!string.IsNullOrWhiteSpace(candidate))
+            {
+                return candidate.Trim();
+            }
+        }
+
+        return null;
     }
 
     private sealed record SupabasePasswordSignInRequest(string Email, string Password);

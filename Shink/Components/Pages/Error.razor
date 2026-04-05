@@ -1,9 +1,13 @@
-﻿@page "/Error"
+@page "/Error"
+@page "/error"
 @using System.Diagnostics
 @inject NavigationManager NavigationManager
 
-<PageTitle>Error</PageTitle>
+<PageTitle>Fout | Schink Stories</PageTitle>
 <HeadContent>
+    <meta name="description" content="Daar was 'n probleem met die versoek op Schink Stories." />
+    <meta name="robots" content="noindex, nofollow, noarchive, nosnippet" />
+    <link rel="canonical" href="@NavigationManager.ToAbsoluteUri("/error").ToString()" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Fout | Schink Stories" />
     <meta property="og:description" content="Daar was 'n probleem met die versoek op Schink Stories." />

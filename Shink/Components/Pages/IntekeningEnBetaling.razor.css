@@ -1,6 +1,8 @@
 .billing-page {
     width: min(100%, 980px);
     margin-inline: auto;
+    padding-inline: clamp(0.9rem, 2vw, 1.5rem);
+    box-sizing: border-box;
     display: grid;
     gap: 1.15rem;
 }

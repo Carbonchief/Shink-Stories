@@ -1,6 +1,8 @@
 .signup-shell {
     width: min(1080px, 100%);
     margin: 1.1rem auto 0;
+    padding-inline: clamp(0.9rem, 2vw, 1.5rem);
+    box-sizing: border-box;
     display: grid;
     gap: 1rem;
 }
@@ -303,21 +305,16 @@
         gap: 0.86rem;
     }
 
-    .signup-page-header,
     .signup-card-form,
     .signup-card-membership {
         padding: 0.92rem;
     }
 
-    .signup-logo {
-        margin-inline: auto;
-    }
-
     .signup-page-header {
-        text-align: center;
+        display: none;
     }
 
-    .signup-page-header > p:last-child {
+    .signup-logo {
         margin-inline: auto;
     }
 
