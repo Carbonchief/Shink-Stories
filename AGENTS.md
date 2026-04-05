@@ -64,3 +64,20 @@ Project-specific rules for this repository.
 - The `/admin` page must support both Afrikaans and English.
 - Any new admin UI copy must be added in both languages (not one language only).
 - Keep the admin language toggle and persisted preference behavior working when making admin changes.
+
+## 8) Supabase MCP Setup
+- This project uses the Supabase MCP server for project ref `btpsoyiyhtfbeznonygn`.
+- Add the server to Codex with:
+  - `codex mcp add supabase --url 'https://mcp.supabase.com/mcp?project_ref=btpsoyiyhtfbeznonygn'`
+- Ensure remote MCP client support is enabled in `~/.codex/config.toml`:
+  - `[mcp]`
+  - `remote_mcp_client_enabled = true`
+- Authenticate the server with:
+  - `codex mcp login supabase`
+- Verify the connection with:
+  - `codex mcp list`
+  - `codex mcp get supabase`
+- Optional: install the Supabase agent skill for Postgres best practices with:
+  - `npx skills add supabase/agent-skills`
+- Current installed skill path on this machine:
+  - `~/.agents/skills/supabase-postgres-best-practices`
