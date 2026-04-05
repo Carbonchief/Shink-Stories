@@ -497,6 +497,41 @@
     height: 44px;
 }
 
+.showcase-floating-back {
+    position: fixed;
+    top: max(0.75rem, calc(env(safe-area-inset-top) + 0.45rem));
+    left: max(0.75rem, calc(env(safe-area-inset-left) + 0.45rem));
+    z-index: 34;
+    width: 46px;
+    height: 46px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    color: #ffffff;
+    background: rgba(12, 25, 36, 0.42);
+    border: 1px solid rgba(255, 255, 255, 0.42);
+    backdrop-filter: blur(8px);
+    box-shadow: 0 10px 24px rgba(7, 16, 28, 0.28);
+    transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+}
+
+.showcase-floating-back:hover {
+    transform: translateY(-1px);
+    background: rgba(12, 25, 36, 0.58);
+    border-color: rgba(255, 255, 255, 0.68);
+}
+
+.showcase-floating-back:focus-visible {
+    outline: 3px solid color-mix(in srgb, #ffffff 70%, var(--accent));
+    outline-offset: 2px;
+}
+
+.site-shell.playlist-showcase-route .site-main {
+    padding-top: 0;
+}
+
 .site-shell.story-route .nav-menu-toggle {
     border-color: rgba(236, 242, 247, 0.28);
     background: rgba(236, 242, 247, 0.12);
@@ -570,6 +605,10 @@
 
 .site-shell.story-route .site-main {
     padding-block: 0.75rem 2.5rem;
+}
+
+.site-shell.story-route.playlist-showcase-route .site-main {
+    padding-block: 0 2.5rem;
 }
 
 .site-shell.story-route .site-main > .site-container {

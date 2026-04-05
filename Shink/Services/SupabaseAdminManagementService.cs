@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
+using Shink.Components.Content;
 
 namespace Shink.Services;
 
@@ -563,6 +564,8 @@ public sealed partial class SupabaseAdminManagementService(
                     Slug: row.Slug.Trim(),
                     Title: row.Title.Trim(),
                     Description: NormalizeOptionalText(row.Description, 4000),
+                    LogoImagePath: NormalizePlaylistImagePath(row.LogoImagePath, StoryPlaylist.DefaultLogoImagePath),
+                    BackdropImagePath: NormalizePlaylistImagePath(row.BackdropImagePath, StoryPlaylist.DefaultBackdropImagePath),
                     SortOrder: row.SortOrder,
                     MaxItems: row.MaxItems is > 0 ? row.MaxItems : null,
                     IsEnabled: row.IsEnabled,
@@ -613,6 +616,8 @@ public sealed partial class SupabaseAdminManagementService(
             ["slug"] = normalizedSlug,
             ["title"] = normalizedTitle,
             ["description"] = NormalizeOptionalText(request.Description, 4000),
+            ["logo_image_path"] = NormalizePlaylistImagePath(request.LogoImagePath, StoryPlaylist.DefaultLogoImagePath),
+            ["backdrop_image_path"] = NormalizePlaylistImagePath(request.BackdropImagePath, StoryPlaylist.DefaultBackdropImagePath),
             ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
             ["max_items"] = request.MaxItems is > 0 ? request.MaxItems : null,
             ["is_enabled"] = request.IsEnabled,
@@ -847,7 +852,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/story_playlists" +
-            "?select=playlist_id,slug,title,description,sort_order,max_items,is_enabled,show_on_home,updated_at" +
+            "?select=playlist_id,slug,title,description,logo_image_path,backdrop_image_path,sort_order,max_items,is_enabled,show_on_home,updated_at" +
             "&order=sort_order.asc" +
             "&order=title.asc" +
             "&limit=500");
@@ -1101,6 +1106,12 @@ public sealed partial class SupabaseAdminManagementService(
         return normalized.Length <= maxLength
             ? normalized
             : normalized[..maxLength];
+    }
+
+    private static string NormalizePlaylistImagePath(string? value, string fallbackPath)
+    {
+        var normalized = NormalizeOptionalText(value, 1024);
+        return string.IsNullOrWhiteSpace(normalized) ? fallbackPath : normalized;
     }
 
     private static string? NormalizeMobileNumber(string? value)
@@ -1360,6 +1371,12 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("description")]
         public string? Description { get; set; }
+
+        [JsonPropertyName("logo_image_path")]
+        public string? LogoImagePath { get; set; }
+
+        [JsonPropertyName("backdrop_image_path")]
+        public string? BackdropImagePath { get; set; }
 
         [JsonPropertyName("sort_order")]
         public int SortOrder { get; set; }

@@ -42,72 +42,85 @@ else if (CurrentPlaylistStories.Count == 0)
 else
 {
     <section class="playlist-showcase-page">
-        <header class="playlist-showcase-hero">
-            <img class="playlist-showcase-hero-image"
-                 src="@HeroImagePath"
-                 srcset="@($"{HeroImagePath} 640w, {HeroImagePath} 1024w")"
-                 sizes="(max-width: 900px) 100vw, 1120px"
-                 alt="@HeroImageAlt"
-                 width="1024"
-                 height="768"
+        <header class="playlist-showcase-splash">
+            <img class="playlist-showcase-splash-backdrop"
+                 src="@BackdropImagePath"
+                 srcset="@($"{BackdropImagePath} 640w, {BackdropImagePath} 1200w, {BackdropImagePath} 1920w")"
+                 sizes="100vw"
+                 alt="@BackdropImageAlt"
+                 width="1920"
+                 height="1080"
                  loading="eager"
                  fetchpriority="high"
                  decoding="async" />
-            <div class="playlist-showcase-hero-overlay">
-                <h1>@CurrentPlaylist.Title</h1>
+            <img class="playlist-showcase-splash-logo"
+                 src="@LogoImagePath"
+                 srcset="@($"{LogoImagePath} 512w, {LogoImagePath} 1024w")"
+                 sizes="(max-width: 1024px) 92vw, 920px"
+                 alt="@LogoImageAlt"
+                 width="1024"
+                 height="1024"
+                 loading="eager"
+                 fetchpriority="high"
+                 decoding="async" />
+            <h1 class="sr-only">@CurrentPlaylist.Title</h1>
+            <div class="playlist-showcase-action-bar" aria-label="Speellys aksies">
+                <a class="playlist-showcase-playlist-link" href="@GetPlaylistPlayerHref(CurrentPlaylist.Slug)">
+                    Speel Speellys
+                </a>
+                <a class="playlist-showcase-secondary-link"
+                   href="@StoriesAnchorHref"
+                   data-enhance-nav="false">
+                    Kies 'n Storie
+                </a>
+            </div>
+        </header>
+
+        <div class="playlist-showcase-body">
+            <section class="playlist-showcase-intro" aria-label="Speellys oorsig">
+                <h2>@CurrentPlaylist.Title</h2>
                 @if (!string.IsNullOrWhiteSpace(CurrentPlaylist.Description))
                 {
                     <p>@CurrentPlaylist.Description</p>
                 }
-            </div>
-        </header>
+            </section>
 
-        <div class="playlist-showcase-action-bar" aria-label="Speellys aksies">
-            <a class="playlist-showcase-playlist-link" href="@GetPlaylistPlayerHref(CurrentPlaylist.Slug)">
-                Speel Speellys
-            </a>
-            <a class="playlist-showcase-secondary-link"
-               href="@StoriesAnchorHref"
-               data-enhance-nav="false">
-                Kies 'n Storie
-            </a>
-        </div>
+            <section class="playlist-showcase-stories" aria-labelledby="playlist-showcase-stories-heading">
+                <h2 id="playlist-showcase-stories-heading">Stories in hierdie speellys</h2>
+                <div id="playlist-showcase-grid" class="playlist-showcase-grid" role="list">
+                    @foreach (var story in CurrentPlaylistStories)
+                    {
+                        var isHighlighted = string.Equals(story.Slug, HighlightStorySlug, StringComparison.OrdinalIgnoreCase);
 
-        <section class="playlist-showcase-stories" aria-labelledby="playlist-showcase-stories-heading">
-            <h2 id="playlist-showcase-stories-heading">Stories in hierdie speellys</h2>
-            <div id="playlist-showcase-grid" class="playlist-showcase-grid" role="list">
-                @foreach (var story in CurrentPlaylistStories)
-                {
-                    var isHighlighted = string.Equals(story.Slug, HighlightStorySlug, StringComparison.OrdinalIgnoreCase);
-
-                    <article class="playlist-showcase-card @(isHighlighted ? "is-highlighted" : null)" role="listitem">
-                        <a class="playlist-showcase-card-link"
-                           href="@BuildStoryHref(story)"
-                           data-enhance-nav="false"
-                           aria-label="Luister na @story.Title">
-                            <span class="playlist-showcase-card-cover">
-                                <img class="playlist-showcase-card-image"
-                                     src="@story.ThumbnailPath"
-                                     srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
-                                     sizes="(max-width: 560px) 88vw, (max-width: 980px) 42vw, (max-width: 1200px) 30vw, 240px"
-                                     alt="Voorblad van @story.Title"
-                                     width="640"
-                                     height="485"
-                                     loading="lazy"
-                                     decoding="async" />
-                                <span class="playlist-showcase-card-play" aria-hidden="true">
-                                    <i class="playlist-showcase-card-play-icon fa-solid fa-play" aria-hidden="true"></i>
+                        <article class="playlist-showcase-card @(isHighlighted ? "is-highlighted" : null)" role="listitem">
+                            <a class="playlist-showcase-card-link"
+                               href="@BuildStoryHref(story)"
+                               data-enhance-nav="false"
+                               aria-label="Luister na @story.Title">
+                                <span class="playlist-showcase-card-cover">
+                                    <img class="playlist-showcase-card-image"
+                                         src="@story.ThumbnailPath"
+                                         srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
+                                         sizes="(max-width: 560px) 88vw, (max-width: 980px) 42vw, (max-width: 1200px) 30vw, 240px"
+                                         alt="Voorblad van @story.Title"
+                                         width="640"
+                                         height="485"
+                                         loading="lazy"
+                                         decoding="async" />
+                                    <span class="playlist-showcase-card-play" aria-hidden="true">
+                                        <i class="playlist-showcase-card-play-icon fa-solid fa-play" aria-hidden="true"></i>
+                                    </span>
                                 </span>
-                            </span>
-                            <span class="playlist-showcase-card-copy">
-                                <span class="playlist-showcase-card-title">@story.Title</span>
-                                <span class="playlist-showcase-card-action">@(isHighlighted ? "Jy het hier geluister" : "Maak storie oop")</span>
-                            </span>
-                        </a>
-                    </article>
-                }
-            </div>
-        </section>
+                                <span class="playlist-showcase-card-copy">
+                                    <span class="playlist-showcase-card-title">@story.Title</span>
+                                    <span class="playlist-showcase-card-action">@(isHighlighted ? "Jy het hier geluister" : "Maak storie oop")</span>
+                                </span>
+                            </a>
+                        </article>
+                    }
+                </div>
+            </section>
+        </div>
     </section>
 }
 
@@ -141,24 +154,30 @@ else
             ? CurrentPlaylist.Description!
             : "Verken stories in hierdie Schink speellys.";
 
-    private string ShareImageUrl => NavigationManager.ToAbsoluteUri(HeroImagePath).ToString();
+    private string ShareImageUrl => NavigationManager.ToAbsoluteUri(BackdropImagePath).ToString();
 
-    private string ShareImageMimeType => GetImageMimeType(HeroImagePath);
+    private string ShareImageMimeType => GetImageMimeType(BackdropImagePath);
 
     private string ShareImageAlt =>
-        CurrentPlaylistStories.Count == 0
+        CurrentPlaylist is null
             ? "Schink Stories speellys"
-            : $"Voorblad van {CurrentPlaylistStories[0].Title}";
+            : $"Agtergrond vir {CurrentPlaylist.Title}";
 
-    private string HeroImagePath =>
-        CurrentPlaylistStories.Count == 0
-            ? "/branding/DIS_STORIETYD.png"
-            : CurrentPlaylistStories[0].ImagePath;
+    private string BackdropImagePath =>
+        CurrentPlaylist?.ResolvedBackdropImagePath ?? StoryPlaylist.DefaultBackdropImagePath;
 
-    private string HeroImageAlt =>
-        CurrentPlaylistStories.Count == 0
-            ? "Schink Stories speellys"
-            : $"Speellys voorblad vir {CurrentPlaylistStories[0].Title}";
+    private string BackdropImageAlt =>
+        CurrentPlaylist is null
+            ? "Schink Stories speellys agtergrond"
+            : $"{CurrentPlaylist.Title} speellys agtergrond";
+
+    private string LogoImagePath =>
+        CurrentPlaylist?.ResolvedLogoImagePath ?? StoryPlaylist.DefaultLogoImagePath;
+
+    private string LogoImageAlt =>
+        CurrentPlaylist is null
+            ? "Schink Stories logo"
+            : $"{CurrentPlaylist.Title} logo";
 
     private MarkupString ShowcaseJsonLd => new(JsonSerializer.Serialize(new
     {

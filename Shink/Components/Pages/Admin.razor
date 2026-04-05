@@ -3,6 +3,7 @@
 @implements IAsyncDisposable
 @using System.Globalization
 @using System.Security.Claims
+@using Microsoft.Extensions.Options
 @using Microsoft.AspNetCore.Components.Authorization
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IAdminManagementService AdminManagementService
@@ -11,6 +12,7 @@
 @inject IJSRuntime JSRuntime
 @inject ILogger<Admin> Logger
 @inject ISnackbar Snackbar
+@inject IOptions<CloudflareR2Options> CloudflareR2OptionsAccessor
 
 <PageTitle>@AdminMetaTitle</PageTitle>
 <HeadContent>
@@ -754,6 +756,57 @@
                                                   Variant="Variant.Outlined"
                                                   Margin="Margin.Dense"
                                                   Lines="3" />
+                                    <div class="admin-upload-card">
+                                        <div class="admin-upload-head">
+                                            <h4>@T("Laai logo op", "Upload logo")</h4>
+                                            <p>@T("Opsioneel", "Optional")</p>
+                                        </div>
+                                        <label class="admin-upload-btn">
+                                            @T("Kies image", "Choose image")
+                                            <InputFile id="@EditPlaylistLogoInputId"
+                                                       class="admin-file-input"
+                                                       OnChange="OnPlaylistLogoSelected"
+                                                       accept=".jpg,.jpeg,.png,.webp"
+                                                       disabled="@(!IsR2UploadConfigured)" />
+                                        </label>
+                                        <p class="admin-upload-file-name">@GetSelectedFileLabel(PlaylistEditor.LogoFileName, T("Hou huidige logo as jy niks kies nie.", "Keeps the current logo if you do not choose a file."))</p>
+                                    </div>
+                                    <div class="admin-upload-card">
+                                        <div class="admin-upload-head">
+                                            <h4>@T("Laai agtergrond op", "Upload backdrop")</h4>
+                                            <p>@T("Opsioneel", "Optional")</p>
+                                        </div>
+                                        <label class="admin-upload-btn">
+                                            @T("Kies image", "Choose image")
+                                            <InputFile id="@EditPlaylistBackdropInputId"
+                                                       class="admin-file-input"
+                                                       OnChange="OnPlaylistBackdropSelected"
+                                                       accept=".jpg,.jpeg,.png,.webp"
+                                                       disabled="@(!IsR2UploadConfigured)" />
+                                        </label>
+                                        <p class="admin-upload-file-name">@GetSelectedFileLabel(PlaylistEditor.BackdropFileName, T("Hou huidige agtergrond as jy niks kies nie.", "Keeps the current backdrop if you do not choose a file."))</p>
+                                    </div>
+                                    @if (!IsR2UploadConfigured)
+                                    {
+                                        <p class="admin-form-note admin-span-2">
+                                            @T("Cloudflare R2 uploads is tans nie opgestel nie. Vul logo/agtergrond pad handmatig in of stel R2 credentials op.",
+                                                "Cloudflare R2 uploads are not configured yet. Enter logo/backdrop paths manually or configure R2 credentials.")
+                                        </p>
+                                    }
+                                    <MudTextField T="string"
+                                                  Class="admin-span-2"
+                                                  Label='@T("Logo pad", "Logo path")'
+                                                  Placeholder="@StoryPlaylist.DefaultLogoImagePath"
+                                          @bind-Value="PlaylistEditor.LogoImagePath"
+                                                  Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense" />
+                                    <MudTextField T="string"
+                                                  Class="admin-span-2"
+                                                  Label='@T("Agtergrond pad", "Backdrop path")'
+                                                  Placeholder="@StoryPlaylist.DefaultBackdropImagePath"
+                                                  @bind-Value="PlaylistEditor.BackdropImagePath"
+                                                  Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense" />
                                 </div>
                                 <MudButton Variant="Variant.Filled"
                                            Color="Color.Primary"
@@ -904,6 +957,8 @@
     private const string EditStoryCoverInputId = "admin-edit-story-cover";
     private const string EditStoryThumbnailInputId = "admin-edit-story-thumbnail";
     private const string EditStoryAudioInputId = "admin-edit-story-audio";
+    private const string EditPlaylistLogoInputId = "admin-edit-playlist-logo";
+    private const string EditPlaylistBackdropInputId = "admin-edit-playlist-backdrop";
 
     private bool IsSavingSubscriber { get; set; }
     private bool IsSavingStory { get; set; }
@@ -949,6 +1004,24 @@
             .ToArray();
 
     private string CurrentLanguageCode => CurrentLanguage == AdminLanguage.English ? "en" : "af";
+    private bool IsR2UploadConfigured
+    {
+        get
+        {
+            var options = CloudflareR2OptionsAccessor.Value;
+            if (string.IsNullOrWhiteSpace(options.AccountId) ||
+                string.IsNullOrWhiteSpace(options.BucketName) ||
+                string.IsNullOrWhiteSpace(options.AccessKeyId) ||
+                string.IsNullOrWhiteSpace(options.SecretAccessKey))
+            {
+                return false;
+            }
+
+            return Uri.TryCreate(options.PublicBaseUrl, UriKind.Absolute, out var publicBaseUri) &&
+                   (string.Equals(publicBaseUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(publicBaseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase));
+        }
+    }
     private string AdminMetaTitle => $"Schink Stories | {T("Bestuur", "Admin")}";
     private string AdminMetaDescription => T(
         "Bestuur intekenaars, stories en speellyste op een plek.",
@@ -1416,6 +1489,32 @@
         return Task.CompletedTask;
     }
 
+    private Task OnPlaylistLogoSelected(InputFileChangeEventArgs args)
+    {
+        if (PlaylistEditor is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var file = args.File;
+        PlaylistEditor.LogoFile = file;
+        PlaylistEditor.LogoFileName = file?.Name;
+        return Task.CompletedTask;
+    }
+
+    private Task OnPlaylistBackdropSelected(InputFileChangeEventArgs args)
+    {
+        if (PlaylistEditor is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var file = args.File;
+        PlaylistEditor.BackdropFile = file;
+        PlaylistEditor.BackdropFileName = file?.Name;
+        return Task.CompletedTask;
+    }
+
     private async Task SaveNewStoryAsync()
     {
         if (NewStoryEditor is null)
@@ -1641,12 +1740,56 @@
 
         IsSavingPlaylist = true;
         ClearFeedback();
+        var uploadedObjectKeys = new List<string>();
 
         try
         {
             var playlistSlug = string.IsNullOrWhiteSpace(PlaylistEditor.Slug)
                 ? CreatePlaylistSlug(PlaylistEditor.Title)
                 : PlaylistEditor.Slug.Trim();
+            if (string.IsNullOrWhiteSpace(playlistSlug))
+            {
+                SetError(T("Gee asseblief 'n geldige titel vir die playlist.", "Please enter a valid title for the playlist."));
+                return;
+            }
+
+            if (!IsR2UploadConfigured &&
+                (PlaylistEditor.LogoFile is not null || PlaylistEditor.BackdropFile is not null))
+            {
+                SetError(T(
+                    "Cloudflare R2 uploads is nie opgestel nie. Verwyder die gekose files of stel R2 credentials op.",
+                    "Cloudflare R2 uploads are not configured. Remove selected files or configure R2 credentials."));
+                return;
+            }
+
+            var validationMessage = ValidatePlaylistMediaDraft(PlaylistEditor);
+            if (!string.IsNullOrWhiteSpace(validationMessage))
+            {
+                SetError(validationMessage);
+                return;
+            }
+
+            if (PlaylistEditor.LogoFile is not null)
+            {
+                var logoUpload = await UploadImageWithFallbackAsync(
+                    playlistSlug,
+                    StoryImageKind.Thumbnail,
+                    PlaylistEditor.LogoFile,
+                    EditPlaylistLogoInputId);
+                uploadedObjectKeys.Add(logoUpload.ObjectKey);
+                PlaylistEditor.LogoImagePath = logoUpload.PublicUrl;
+            }
+
+            if (PlaylistEditor.BackdropFile is not null)
+            {
+                var backdropUpload = await UploadImageWithFallbackAsync(
+                    playlistSlug,
+                    StoryImageKind.Cover,
+                    PlaylistEditor.BackdropFile,
+                    EditPlaylistBackdropInputId);
+                uploadedObjectKeys.Add(backdropUpload.ObjectKey);
+                PlaylistEditor.BackdropImagePath = backdropUpload.PublicUrl;
+            }
 
             var result = await AdminManagementService.SavePlaylistAsync(
                 CurrentAdminEmail,
@@ -1655,6 +1798,8 @@
                     playlistSlug,
                     PlaylistEditor.Title,
                     PlaylistEditor.Description,
+                    PlaylistEditor.LogoImagePath,
+                    PlaylistEditor.BackdropImagePath,
                     PlaylistEditor.SortOrder,
                     PlaylistEditor.MaxItems,
                     PlaylistEditor.IsEnabled,
@@ -1662,16 +1807,23 @@
 
             if (!HandleOperationResult(result, T("Playlist is gestoor.", "Playlist saved.")))
             {
+                await CleanupUploadedStoryObjectsAsync(uploadedObjectKeys);
                 return;
             }
+
+            PlaylistEditor.LogoFile = null;
+            PlaylistEditor.LogoFileName = null;
+            PlaylistEditor.BackdropFile = null;
+            PlaylistEditor.BackdropFileName = null;
 
             var selectedPlaylistId = result.EntityId ?? PlaylistEditor.PlaylistId;
             await RefreshPlaylistsAsync(selectedPlaylistId);
         }
         catch (Exception exception)
         {
+            await CleanupUploadedStoryObjectsAsync(uploadedObjectKeys);
             Logger.LogError(exception, "Failed to save playlist.");
-            SetError(T("Kon nie playlist nou stoor nie.", "Could not save playlist right now."));
+            SetError(LocalizePlaylistEditException(exception));
         }
         finally
         {
@@ -1702,6 +1854,8 @@
                     playlist.Slug,
                     playlist.Title,
                     playlist.Description,
+                    playlist.LogoImagePath,
+                    playlist.BackdropImagePath,
                     playlist.SortOrder,
                     playlist.MaxItems,
                     isEnabled,
@@ -1752,6 +1906,8 @@
                     playlist.Slug,
                     playlist.Title,
                     playlist.Description,
+                    playlist.LogoImagePath,
+                    playlist.BackdropImagePath,
                     playlist.SortOrder,
                     playlist.MaxItems,
                     playlist.IsEnabled,
@@ -2010,6 +2166,33 @@
         return null;
     }
 
+    private string? ValidatePlaylistMediaDraft(EditablePlaylist draft)
+    {
+        if (draft.LogoFile is not null &&
+            (draft.LogoFile.Size <= 0 || draft.LogoFile.Size > MaxImageUploadBytes))
+        {
+            return T("Die logo image moet kleiner as 10 MB wees.", "The logo image must be smaller than 10 MB.");
+        }
+
+        if (draft.LogoFile is not null && !IsSupportedImageFile(draft.LogoFile))
+        {
+            return T("Ondersteunde logo images is JPG, PNG of WEBP.", "Supported logo image types are JPG, PNG, or WEBP.");
+        }
+
+        if (draft.BackdropFile is not null &&
+            (draft.BackdropFile.Size <= 0 || draft.BackdropFile.Size > MaxImageUploadBytes))
+        {
+            return T("Die agtergrond image moet kleiner as 10 MB wees.", "The backdrop image must be smaller than 10 MB.");
+        }
+
+        if (draft.BackdropFile is not null && !IsSupportedImageFile(draft.BackdropFile))
+        {
+            return T("Ondersteunde agtergrond images is JPG, PNG of WEBP.", "Supported backdrop image types are JPG, PNG, or WEBP.");
+        }
+
+        return null;
+    }
+
     private async Task UploadSelectedFileToR2Async(string inputId, DirectStoryMediaUpload upload)
     {
         var module = await GetAdminUploadModuleAsync();
@@ -2252,6 +2435,28 @@
         };
     }
 
+    private string LocalizePlaylistEditException(Exception exception)
+    {
+        var message = exception.Message;
+        if (message.StartsWith("Direct upload failed", StringComparison.Ordinal))
+        {
+            return T("Die direkte upload na Cloudflare R2 het misluk. Probeer asseblief weer.", "The direct upload to Cloudflare R2 failed. Please try again.");
+        }
+
+        return message switch
+        {
+            "Cloudflare R2 is not fully configured for admin uploads." =>
+                T("Cloudflare R2 is nog nie volledig opgestel vir admin uploads nie.", "Cloudflare R2 is not fully configured for admin uploads."),
+            "No file selected for upload." =>
+                T("Kies asseblief eers 'n file om op te laai.", "Please choose a file to upload first."),
+            "Unsupported image file type. Use JPG, PNG, or WEBP." =>
+                T("Ondersteunde images is JPG, PNG of WEBP.", "Supported image types are JPG, PNG, or WEBP."),
+            "Story slug is required for media uploads." =>
+                T("Die playlist het 'n geldige slug nodig voor upload.", "The playlist needs a valid slug before upload."),
+            _ => T("Kon nie playlist nou stoor nie.", "Could not save playlist right now.")
+        };
+    }
+
     private static string? ResolvePreviewImageUrl(string? imagePath)
     {
         if (string.IsNullOrWhiteSpace(imagePath))
@@ -2337,6 +2542,12 @@
                 _ => file.ContentType ?? string.Empty
             }
         };
+
+    private static bool IsSupportedImageFile(IBrowserFile file)
+    {
+        var normalizedContentType = NormalizeImageContentType(file);
+        return normalizedContentType is "image/jpeg" or "image/png" or "image/webp";
+    }
 
     private static string CreateUniqueStorySlug(string? value, IReadOnlyList<AdminStoryRecord> existingStories)
     {
@@ -2622,6 +2833,12 @@
         public string Slug { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
         public string? Description { get; set; }
+        public string? LogoImagePath { get; set; } = StoryPlaylist.DefaultLogoImagePath;
+        public string? BackdropImagePath { get; set; } = StoryPlaylist.DefaultBackdropImagePath;
+        public IBrowserFile? LogoFile { get; set; }
+        public string? LogoFileName { get; set; }
+        public IBrowserFile? BackdropFile { get; set; }
+        public string? BackdropFileName { get; set; }
         public int SortOrder { get; set; } = 100;
         public int? MaxItems { get; set; }
         public bool IsEnabled { get; set; } = true;
@@ -2633,6 +2850,12 @@
             Slug = playlist.Slug,
             Title = playlist.Title,
             Description = playlist.Description,
+            LogoImagePath = string.IsNullOrWhiteSpace(playlist.LogoImagePath)
+                ? StoryPlaylist.DefaultLogoImagePath
+                : playlist.LogoImagePath,
+            BackdropImagePath = string.IsNullOrWhiteSpace(playlist.BackdropImagePath)
+                ? StoryPlaylist.DefaultBackdropImagePath
+                : playlist.BackdropImagePath,
             SortOrder = playlist.SortOrder,
             MaxItems = playlist.MaxItems,
             IsEnabled = playlist.IsEnabled,

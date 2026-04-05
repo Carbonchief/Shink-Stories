@@ -4,8 +4,10 @@
 @using System.Security.Claims
 @inject NavigationManager NavigationManager
 
-<div class="site-shell @(IsStoryRoute ? "story-route" : null) @(IsHomeRoute ? "home-route" : null) @(IsLuisterRoute ? "luister-route" : null) @(IsMeerOorOnsRoute ? "about-route" : null)">
+<div class="site-shell @(IsStoryRoute ? "story-route" : null) @(IsHomeRoute ? "home-route" : null) @(IsLuisterRoute ? "luister-route" : null) @(IsMeerOorOnsRoute ? "about-route" : null) @(IsLuisterPlaylistShowcaseRoute ? "playlist-showcase-route" : null)">
     <a class="skip-link" href="#main-content">Spring na inhoud</a>
+    @if (!IsLuisterPlaylistShowcaseRoute)
+    {
     <header class="site-header">
         @if (IsStoryRoute)
         {
@@ -169,6 +171,18 @@
             </div>
         }
     </header>
+    }
+
+    @if (IsLuisterPlaylistShowcaseRoute)
+    {
+        <a class="showcase-floating-back"
+           href="@StoryHeaderBackHref"
+           aria-label="@StoryHeaderBackLabel"
+           title="@StoryHeaderBackLabel">
+            <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+            <span class="sr-only">@StoryHeaderBackLabel</span>
+        </a>
+    }
 
     <main id="main-content" class="site-main" tabindex="-1">
         <div class="">
@@ -191,7 +205,7 @@
                     <i class="fa-brands fa-instagram" aria-hidden="true"></i>
                 </a>
             </nav>
-            <p>© 2023 Schink</p>
+            <p>Â© 2023 Schink</p>
         </div>
     </footer>
 </div>
@@ -260,6 +274,19 @@
         {
             var relativePath = GetCurrentRelativePathWithoutQuery();
             return string.Equals(relativePath, "meer-oor-ons", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private bool IsLuisterPlaylistShowcaseRoute
+    {
+        get
+        {
+            var relativePath = GetCurrentRelativePathWithoutQuery();
+            var segments = relativePath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            return segments.Length == 4 &&
+                   string.Equals(segments[0], "luister", StringComparison.OrdinalIgnoreCase) &&
+                   string.Equals(segments[1], "speellys", StringComparison.OrdinalIgnoreCase) &&
+                   string.Equals(segments[3], "stories", StringComparison.OrdinalIgnoreCase);
         }
     }
 

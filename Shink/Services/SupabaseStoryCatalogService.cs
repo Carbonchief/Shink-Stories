@@ -284,7 +284,7 @@ public sealed class SupabaseStoryCatalogService(
         var requestUri = new Uri(
             baseUri,
             "rest/v1/story_playlists" +
-            "?select=playlist_id,slug,title,description,sort_order,max_items,is_enabled,show_on_home" +
+            "?select=playlist_id,slug,title,description,sort_order,max_items,is_enabled,show_on_home,logo_image_path,backdrop_image_path" +
             "&is_enabled=eq.true" +
             "&order=sort_order.asc" +
             "&order=title.asc");
@@ -606,7 +606,9 @@ public sealed class SupabaseStoryCatalogService(
                 Description: NormalizeOptionalText(playlistRow.Description),
                 SortOrder: playlistRow.SortOrder,
                 Stories: limitedStories,
-                ShowOnHome: playlistRow.ShowOnHome));
+                ShowOnHome: playlistRow.ShowOnHome,
+                LogoImagePath: NormalizeOptionalText(playlistRow.LogoImagePath),
+                BackdropImagePath: NormalizeOptionalText(playlistRow.BackdropImagePath)));
         }
 
         var unassignedStories = luisterRows
@@ -630,7 +632,9 @@ public sealed class SupabaseStoryCatalogService(
                 Description: NormalizeOptionalText(allStoriesConfig?.Description) ?? "Stories wat nie in ander playlists is nie.",
                 SortOrder: allStoriesConfig?.SortOrder ?? int.MaxValue,
                 Stories: allStoriesItems,
-                ShowOnHome: allStoriesConfig?.ShowOnHome ?? false));
+                ShowOnHome: allStoriesConfig?.ShowOnHome ?? false,
+                LogoImagePath: NormalizeOptionalText(allStoriesConfig?.LogoImagePath),
+                BackdropImagePath: NormalizeOptionalText(allStoriesConfig?.BackdropImagePath)));
         }
 
         return playlists
@@ -1077,6 +1081,12 @@ public sealed class SupabaseStoryCatalogService(
 
         [JsonPropertyName("show_on_home")]
         public bool ShowOnHome { get; set; }
+
+        [JsonPropertyName("logo_image_path")]
+        public string? LogoImagePath { get; set; }
+
+        [JsonPropertyName("backdrop_image_path")]
+        public string? BackdropImagePath { get; set; }
     }
 
     private sealed class StoryPlaylistItemRow
