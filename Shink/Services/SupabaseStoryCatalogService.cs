@@ -17,7 +17,7 @@ public sealed class SupabaseStoryCatalogService(
     ILogger<SupabaseStoryCatalogService> logger) : IStoryCatalogService
 {
     private const string CacheKey = "stories:catalog:v2";
-    private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan CacheDuration = TimeSpan.FromHours(1);
     private const int SoundbiteMaxDurationSeconds = 60;
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -168,7 +168,7 @@ public sealed class SupabaseStoryCatalogService(
             return cachedSnapshot;
         }
 
-        await _refreshLock.WaitAsync(cancellationToken);
+        await _refreshLock.WaitAsync(CancellationToken.None);
         try
         {
             if (_memoryCache.TryGetValue(CacheKey, out cachedSnapshot) &&
@@ -177,7 +177,7 @@ public sealed class SupabaseStoryCatalogService(
                 return cachedSnapshot;
             }
 
-            var snapshot = await FetchCatalogSnapshotAsync(cancellationToken);
+            var snapshot = await FetchCatalogSnapshotAsync(CancellationToken.None);
             _memoryCache.Set(CacheKey, snapshot, CacheDuration);
             return snapshot;
         }

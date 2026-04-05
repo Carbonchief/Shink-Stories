@@ -11,6 +11,7 @@
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ISubscriptionLedgerService SubscriptionLedgerService
+@inject IStoryFavoriteService StoryFavoriteService
 @inject IHttpContextAccessor HttpContextAccessor
 @implements IAsyncDisposable
 
@@ -109,6 +110,16 @@ else
                                     title="@(IsManualFullscreenFocus ? "Verlaat volskerm speler" : "Volskerm speler")">
                                 <i class="fa-solid fa-expand" aria-hidden="true"></i>
                                 <span class="sr-only">@(IsManualFullscreenFocus ? "Verlaat volskerm speler" : "Volskerm speler")</span>
+                            </button>
+
+                            <button type="button"
+                                    class="story-favorite-toggle @(IsStoryFavorite(CurrentStory.Slug) ? "is-favorite" : null)"
+                                    @onclick="() => ToggleStoryFavoriteAsync(CurrentStory)"
+                                    aria-label="@(IsStoryFavorite(CurrentStory.Slug) ? $"Verwyder {CurrentStory.Title} uit jou gunstelinge" : $"Voeg {CurrentStory.Title} by jou gunstelinge")"
+                                    title="@(IsStoryFavorite(CurrentStory.Slug) ? "Verwyder uit gunstelinge" : "Voeg by gunstelinge")"
+                                    aria-pressed="@IsStoryFavorite(CurrentStory.Slug)"
+                                    disabled="@IsFavoriteBusy(CurrentStory.Slug)">
+                                <i class="fa-@(IsStoryFavorite(CurrentStory.Slug) ? "solid" : "regular") fa-heart" aria-hidden="true"></i>
                             </button>
                         </div>
 
@@ -249,29 +260,40 @@ else
                         var isActive = string.Equals(story.Slug, CurrentStory.Slug, StringComparison.OrdinalIgnoreCase);
 
                         <li class="playlist-track-item @(isActive ? "is-active" : null)">
-                            <button type="button"
-                                    class="playlist-track-button"
-                                    @onclick="() => SelectTrackAsync(story.Slug, true)"
-                                    aria-pressed="@(isActive ? "true" : "false")"
-                                    aria-current="@(isActive ? "true" : null)">
-                                <span class="playlist-track-index">@(index + 1)</span>
-                                <img class="playlist-track-image"
-                                     src="@story.ThumbnailPath"
-                                     srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
-                                     sizes="64px"
-                                     alt=""
-                                     width="64"
-                                     height="64"
-                                     loading="lazy"
-                                     decoding="async" />
-                                <span class="playlist-track-copy">
-                                    <span class="playlist-track-title">@story.Title</span>
-                                    <span class="playlist-track-status">@(isActive ? "Speel nou" : "Speel in speellys")</span>
-                                </span>
+                            <div class="playlist-track-button">
+                                <button type="button"
+                                        class="playlist-track-main"
+                                        @onclick="() => SelectTrackAsync(story.Slug, true)"
+                                        aria-pressed="@(isActive ? "true" : "false")"
+                                        aria-current="@(isActive ? "true" : null)">
+                                    <span class="playlist-track-index">@(index + 1)</span>
+                                    <img class="playlist-track-image"
+                                         src="@story.ThumbnailPath"
+                                         srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
+                                         sizes="64px"
+                                         alt=""
+                                         width="64"
+                                         height="64"
+                                         loading="lazy"
+                                         decoding="async" />
+                                    <span class="playlist-track-copy">
+                                        <span class="playlist-track-title">@story.Title</span>
+                                        <span class="playlist-track-status">@(isActive ? "Speel nou" : "Speel in speellys")</span>
+                                    </span>
+                                </button>
+                                <button type="button"
+                                        class="playlist-track-favorite-toggle @(IsStoryFavorite(story.Slug) ? "is-favorite" : null)"
+                                        @onclick="() => ToggleStoryFavoriteAsync(story)"
+                                        aria-label="@(IsStoryFavorite(story.Slug) ? $"Verwyder {story.Title} uit jou gunstelinge" : $"Voeg {story.Title} by jou gunstelinge")"
+                                        title="@(IsStoryFavorite(story.Slug) ? "Verwyder uit gunstelinge" : "Voeg by gunstelinge")"
+                                        aria-pressed="@IsStoryFavorite(story.Slug)"
+                                        disabled="@IsFavoriteBusy(story.Slug)">
+                                    <i class="fa-@(IsStoryFavorite(story.Slug) ? "solid" : "regular") fa-heart" aria-hidden="true"></i>
+                                </button>
                                 <span class="playlist-track-action" aria-hidden="true">
                                     <i class="fa-solid @(isActive ? "fa-volume-high" : "fa-play")"></i>
                                 </span>
-                            </button>
+                            </div>
                         </li>
                     }
                 </ol>
@@ -301,6 +323,9 @@ else
     private bool IsLoadingPlaylist { get; set; } = true;
     private bool AutoplayEnabled { get; set; } = true;
     private bool PendingTrackAutoplay { get; set; }
+    private HashSet<string> FavoriteStorySlugs { get; } = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> FavoriteStoryBusySlugs { get; } = new(StringComparer.OrdinalIgnoreCase);
+    private string? SignedInEmail { get; set; }
 
     private string PageTitleText =>
         CurrentPlaylist is null ? "Speellys nie gevind nie" : $"{CurrentPlaylist.Title} | Schink Stories";
@@ -389,8 +414,13 @@ else
         {
             var isSocialPreviewRequest = SocialPreviewRequestDetector.IsSocialPreviewRequest(HttpContextAccessor.HttpContext);
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            SignedInEmail = authState.User.Identity?.IsAuthenticated == true
+                ? authState.User.FindFirst(ClaimTypes.Email)?.Value ?? authState.User.Identity?.Name
+                : null;
+
             if (authState.User.Identity?.IsAuthenticated != true)
             {
+                ClearFavoriteState();
                 if (!isSocialPreviewRequest)
                 {
                     RedirectToOpsies();
@@ -437,6 +467,7 @@ else
                 AudioUrl = null;
                 PreviousStory = null;
                 NextStory = null;
+                ClearFavoriteState();
                 return;
             }
 
@@ -447,6 +478,7 @@ else
 
             if (AccessibleStories.Count == 0)
             {
+                ClearFavoriteState();
                 RedirectToOpsies();
                 return;
             }
@@ -457,6 +489,7 @@ else
             if (requestedStory is not null &&
                 !AccessibleStories.Any(story => string.Equals(story.Slug, requestedStory.Slug, StringComparison.OrdinalIgnoreCase)))
             {
+                ClearFavoriteState();
                 RedirectToOpsies();
                 return;
             }
@@ -471,6 +504,7 @@ else
                 CurrentStory = AccessibleStories[0];
             }
 
+            _ = LoadFavoriteStorySlugsInBackgroundAsync();
             AudioUrl = AudioAccessService.CreateSignedAudioUrl(CurrentStory.Slug);
             ResolveAdjacentStories();
         }
@@ -540,6 +574,60 @@ else
     private void ToggleAutoplay()
     {
         AutoplayEnabled = !AutoplayEnabled;
+    }
+
+    private bool IsStoryFavorite(string slug) => FavoriteStorySlugs.Contains(slug);
+
+    private bool IsFavoriteBusy(string slug) => FavoriteStoryBusySlugs.Contains(slug);
+
+    private async Task ToggleStoryFavoriteAsync(StoryItem story)
+    {
+        if (string.IsNullOrWhiteSpace(story.Slug))
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(SignedInEmail))
+        {
+            var returnUrl = Uri.EscapeDataString(GetCurrentPathAndQuery());
+            NavigationManager.NavigateTo($"/opsies?returnUrl={returnUrl}");
+            return;
+        }
+
+        var normalizedSlug = story.Slug.Trim();
+        if (!FavoriteStoryBusySlugs.Add(normalizedSlug))
+        {
+            return;
+        }
+
+        var isCurrentlyFavorite = FavoriteStorySlugs.Contains(normalizedSlug);
+        try
+        {
+            var updated = await StoryFavoriteService.SetStoryFavoriteAsync(
+                SignedInEmail,
+                new StoryFavoriteMutationRequest(
+                    StorySlug: normalizedSlug,
+                    StoryPath: $"/luister/{Uri.EscapeDataString(normalizedSlug)}",
+                    Source: "luister",
+                    IsFavorite: !isCurrentlyFavorite,
+                    PlaylistSlug: CurrentPlaylist?.Slug));
+
+            if (updated)
+            {
+                if (isCurrentlyFavorite)
+                {
+                    FavoriteStorySlugs.Remove(normalizedSlug);
+                }
+                else
+                {
+                    FavoriteStorySlugs.Add(normalizedSlug);
+                }
+            }
+        }
+        finally
+        {
+            FavoriteStoryBusySlugs.Remove(normalizedSlug);
+        }
     }
 
     private async Task ToggleFullscreenFocusAsync()
@@ -729,6 +817,7 @@ else
         PreviousStory = null;
         NextStory = null;
         IsManualFullscreenFocus = false;
+        ClearFavoriteState();
 
         var returnUrl = Uri.EscapeDataString(GetCurrentPathAndQuery());
         NavigationManager.NavigateTo($"/opsies?returnUrl={returnUrl}");
@@ -739,6 +828,42 @@ else
         var currentUri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
         var pathAndQuery = $"{currentUri.AbsolutePath}{currentUri.Query}";
         return string.IsNullOrWhiteSpace(pathAndQuery) ? "/luister" : pathAndQuery;
+    }
+
+    private async Task LoadFavoriteStorySlugsAsync()
+    {
+        FavoriteStorySlugs.Clear();
+        FavoriteStoryBusySlugs.Clear();
+
+        if (string.IsNullOrWhiteSpace(SignedInEmail))
+        {
+            return;
+        }
+
+        var favoriteSlugs = await StoryFavoriteService.GetFavoriteStorySlugsAsync(SignedInEmail, "luister");
+        foreach (var favoriteSlug in favoriteSlugs)
+        {
+            FavoriteStorySlugs.Add(favoriteSlug);
+        }
+    }
+
+    private async Task LoadFavoriteStorySlugsInBackgroundAsync()
+    {
+        try
+        {
+            await LoadFavoriteStorySlugsAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // Keep the page responsive if favorites fail to load.
+        }
+    }
+
+    private void ClearFavoriteState()
+    {
+        FavoriteStorySlugs.Clear();
+        FavoriteStoryBusySlugs.Clear();
     }
 
     private static string GetImageMimeType(string fileName)
