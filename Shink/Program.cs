@@ -102,6 +102,7 @@ builder.Services.AddHttpClient<PayFastCheckoutService>();
 builder.Services.AddHttpClient<PaystackCheckoutService>();
 builder.Services.AddHttpClient<ISubscriptionLedgerService, SupabaseSubscriptionLedgerService>();
 builder.Services.AddHttpClient<IStoryTrackingService, SupabaseStoryTrackingService>();
+builder.Services.AddHttpClient<IStoryFavoriteService, SupabaseStoryFavoriteService>();
 builder.Services.AddHttpClient<IAdminManagementService, SupabaseAdminManagementService>();
 builder.Services.AddSingleton<IContactFormProtectionService, ContactFormProtectionService>();
 builder.Services.AddRateLimiter(options =>
