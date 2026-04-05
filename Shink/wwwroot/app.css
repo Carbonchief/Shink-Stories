@@ -74,6 +74,10 @@ a {
     color: inherit;
 }
 
+.mud-icon-root.mud-svg-icon {
+    fill: initial;
+}
+
 h1:focus {
     outline: none;
 }

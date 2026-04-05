@@ -5,6 +5,20 @@
     box-sizing: border-box;
 }
 
+@media (prefers-reduced-motion: no-preference) {
+    :global(html:has(.playlist-showcase-route)),
+    :global(body:has(.playlist-showcase-route)) {
+        scroll-behavior: smooth;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :global(html:has(.playlist-showcase-route)),
+    :global(body:has(.playlist-showcase-route)) {
+        scroll-behavior: auto;
+    }
+}
+
 .playlist-showcase-body {
     width: min(100%, 1200px);
     margin: 0 auto;
