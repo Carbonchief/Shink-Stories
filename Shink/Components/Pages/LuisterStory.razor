@@ -11,6 +11,7 @@
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ISubscriptionLedgerService SubscriptionLedgerService
+@inject IHttpContextAccessor HttpContextAccessor
 @implements IAsyncDisposable
 
 <PageTitle>@(CurrentStory is null ? "Storie nie gevind nie" : $"{CurrentStory.Title} | Schink Stories")</PageTitle>
@@ -267,7 +268,7 @@ else
     private string ShareUrl =>
         CurrentStory is null
             ? NavigationManager.ToAbsoluteUri("/luister").ToString()
-            : NavigationManager.ToAbsoluteUri($"/luister/{CurrentStory.Slug}").ToString();
+            : NavigationManager.ToAbsoluteUri($"/luister/{Uri.EscapeDataString(CurrentStory.Slug)}").ToString();
 
     private string ShareCanonicalUrl => ShareUrl;
 
@@ -316,21 +317,26 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
+        var isSocialPreviewRequest = SocialPreviewRequestDetector.IsSocialPreviewRequest(HttpContextAccessor.HttpContext);
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         if (authState.User.Identity?.IsAuthenticated != true)
         {
             IsRedirectingToOpsies = true;
-            CurrentStory = null;
+            CurrentStory = await StoryCatalogService.FindLuisterBySlugAsync(Slug);
             AudioUrl = null;
             LuisterStories = Array.Empty<StoryItem>();
             ResolveAdjacentStories();
             IsManualFullscreenFocus = false;
 
-            var requestedPath = string.IsNullOrWhiteSpace(Slug)
-                ? "/luister"
-                : $"/luister/{Uri.EscapeDataString(Slug)}";
-            var returnUrl = Uri.EscapeDataString(requestedPath);
-            NavigationManager.NavigateTo($"/opsies?returnUrl={returnUrl}");
+            if (!isSocialPreviewRequest)
+            {
+                var requestedPath = string.IsNullOrWhiteSpace(Slug)
+                    ? "/luister"
+                    : $"/luister/{Uri.EscapeDataString(Slug)}";
+                var returnUrl = Uri.EscapeDataString(requestedPath);
+                NavigationManager.NavigateTo($"/opsies?returnUrl={returnUrl}");
+            }
+
             return;
         }
 
@@ -395,7 +401,7 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (CurrentStory is null)
+        if (CurrentStory is null || IsRedirectingToOpsies)
         {
             return;
         }

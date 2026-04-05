@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 using MudBlazor.Services;
@@ -18,6 +19,8 @@ using System.Xml.Linq;
 
 const string AuthSessionIdClaimType = "shink:session_id";
 const string AdminRoleName = "admin";
+const string GooglePkceCookieName = "shink.auth.google.pkce";
+const string GooglePkceProtectorPurpose = "Shink.Auth.GooglePkce.v1";
 
 var builder = WebApplication.CreateBuilder(args);
 var postHogHostUrl = builder.Configuration["PostHog:HostUrl"];
@@ -173,6 +176,8 @@ app.Use(async (httpContext, next) =>
         return;
     }
 
+    httpContext.Response.Headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet";
+
     if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
     {
         if (HttpMethods.IsGet(httpContext.Request.Method) ||
@@ -252,10 +257,17 @@ app.Use(async (httpContext, next) =>
         TryResolveStoryPathTarget(httpContext.Request.Path, out var source, out var slug))
     {
         var requestedPath = $"{httpContext.Request.Path}{httpContext.Request.QueryString}";
+        var isSocialPreviewRequest = SocialPreviewRequestDetector.IsSocialPreviewRequest(httpContext);
 
         if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
         {
-            httpContext.Response.Redirect(BuildOpsiesStoryRedirectPath(requestedPath));
+            if (!isSocialPreviewRequest)
+            {
+                httpContext.Response.Redirect(BuildOpsiesStoryRedirectPath(requestedPath));
+                return;
+            }
+
+            await next();
             return;
         }
 
@@ -573,6 +585,137 @@ app.MapPost("/api/paystack/webhook", async (HttpContext httpContext, PaystackChe
     // Return 200 to avoid repeated retries; process failed validations via logs/monitoring.
     return Results.Ok();
 }).DisableAntiforgery();
+
+app.MapGet("/api/auth/google/start", async (
+    string? returnUrl,
+    ISupabaseAuthService supabaseAuthService,
+    IDataProtectionProvider dataProtectionProvider,
+    HttpContext httpContext) =>
+{
+    var safeReturnUrl = GetSafeAuthReturnUrl(returnUrl);
+    var callbackUri = BuildAbsoluteUrl(httpContext.Request, "/auth/callback");
+
+    var startResult = await supabaseAuthService.StartGoogleSignInAsync(
+        callbackUri,
+        httpContext.RequestAborted);
+    if (!startResult.IsSuccess || startResult.RedirectUri is null || string.IsNullOrWhiteSpace(startResult.CodeVerifier))
+    {
+        var errorPath = BuildGoogleAuthErrorRedirectPath("Kon nie Google-aanmelding begin nie. Probeer asseblief weer.");
+        return Results.Redirect(errorPath);
+    }
+
+    var protector = dataProtectionProvider.CreateProtector(GooglePkceProtectorPurpose);
+    var protectedState = protector.Protect(System.Text.Json.JsonSerializer.Serialize(new GooglePkceStateCookiePayload(
+        ExpiresAtUtc: DateTimeOffset.UtcNow.AddMinutes(10),
+        CodeVerifier: startResult.CodeVerifier,
+        ReturnUrl: safeReturnUrl)));
+
+    httpContext.Response.Cookies.Append(
+        GooglePkceCookieName,
+        protectedState,
+        new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = httpContext.Request.IsHttps,
+            SameSite = SameSiteMode.Lax,
+            IsEssential = true,
+            MaxAge = TimeSpan.FromMinutes(10),
+            Path = "/auth/callback"
+        });
+
+    return Results.Redirect(startResult.RedirectUri.ToString());
+});
+
+app.MapGet("/auth/callback", async (
+    string? code,
+    string? error,
+    string? error_description,
+    ISupabaseAuthService supabaseAuthService,
+    IAuthSessionService authSessionService,
+    IAdminManagementService adminManagementService,
+    ISubscriptionLedgerService subscriptionLedgerService,
+    IDataProtectionProvider dataProtectionProvider,
+    HttpContext httpContext) =>
+{
+    ClearGooglePkceCookie(httpContext);
+
+    if (!string.IsNullOrWhiteSpace(error))
+    {
+        return Results.Redirect(BuildGoogleAuthErrorRedirectPath(error_description));
+    }
+
+    if (string.IsNullOrWhiteSpace(code))
+    {
+        return Results.Redirect(BuildGoogleAuthErrorRedirectPath("Google-aanmelding kon nie bevestig word nie. Probeer asseblief weer."));
+    }
+
+    if (!httpContext.Request.Cookies.TryGetValue(GooglePkceCookieName, out var protectedCookie) ||
+        string.IsNullOrWhiteSpace(protectedCookie))
+    {
+        return Results.Redirect(BuildGoogleAuthErrorRedirectPath("Jou Google-aanmeldsessie het verval. Probeer asseblief weer."));
+    }
+
+    GooglePkceStateCookiePayload? payload;
+    try
+    {
+        var protector = dataProtectionProvider.CreateProtector(GooglePkceProtectorPurpose);
+        payload = System.Text.Json.JsonSerializer.Deserialize<GooglePkceStateCookiePayload>(protector.Unprotect(protectedCookie));
+    }
+    catch
+    {
+        return Results.Redirect(BuildGoogleAuthErrorRedirectPath("Kon nie jou Google-aanmeldsessie verifieer nie. Probeer asseblief weer."));
+    }
+
+    if (payload is null ||
+        payload.ExpiresAtUtc <= DateTimeOffset.UtcNow ||
+        string.IsNullOrWhiteSpace(payload.CodeVerifier))
+    {
+        return Results.Redirect(BuildGoogleAuthErrorRedirectPath("Jou Google-aanmeldsessie het verval. Probeer asseblief weer."));
+    }
+
+    var exchangeResult = await supabaseAuthService.ExchangeGoogleAuthCodeAsync(
+        code,
+        payload.CodeVerifier,
+        httpContext.RequestAborted);
+    if (!exchangeResult.IsSuccess || string.IsNullOrWhiteSpace(exchangeResult.UserEmail))
+    {
+        return Results.Redirect(BuildGoogleAuthErrorRedirectPath(exchangeResult.ErrorMessage));
+    }
+
+    var signedInEmail = exchangeResult.UserEmail;
+    var profileStored = await subscriptionLedgerService.UpsertSubscriberProfileAsync(
+        signedInEmail,
+        exchangeResult.FirstName,
+        exchangeResult.LastName,
+        exchangeResult.DisplayName,
+        null,
+        httpContext.RequestAborted);
+    var gratisProvisioned = await subscriptionLedgerService.EnsureGratisAccessAsync(
+        signedInEmail,
+        exchangeResult.FirstName,
+        exchangeResult.LastName,
+        exchangeResult.DisplayName,
+        null,
+        httpContext.RequestAborted);
+
+    if (!profileStored || !gratisProvisioned)
+    {
+        return Results.Redirect(BuildGoogleAuthErrorRedirectPath(
+            "Kon nie jou gratis toegang nou aktiveer nie. Probeer asseblief weer."));
+    }
+
+    var signInCookieResult = await SignInUserAsync(httpContext, signedInEmail, authSessionService, adminManagementService);
+    if (!signInCookieResult.IsSuccess)
+    {
+        return Results.Redirect(BuildGoogleAuthErrorRedirectPath(signInCookieResult.ErrorMessage));
+    }
+
+    var redirectPath =
+        GetSafeAuthReturnUrl(payload.ReturnUrl) ??
+        await ResolvePostAuthRedirectPathAsync(subscriptionLedgerService, signedInEmail, httpContext.RequestAborted);
+
+    return Results.Redirect(redirectPath);
+});
 
 app.MapPost("/api/auth/login", async (
     AuthSignInApiRequest request,
@@ -917,13 +1060,9 @@ app.MapGet("/sitemap.xml", async (HttpContext httpContext, IStoryCatalogService 
         "/",
         "/gratis",
         "/luister",
-        "/intekening-en-betaling",
-        "/my-stories",
         "/opsies",
         "/meer-oor-ons",
-        "/soek",
-        "/teken-in",
-        "/teken-op"
+        "/soek"
     };
 
     var freeStoriesTask = storyCatalogService.GetFreeStoriesAsync(httpContext.RequestAborted);
@@ -1810,6 +1949,91 @@ static async Task<string> ResolvePostAuthRedirectPathAsync(
     return hasPaidSubscription ? "/luister" : "/gratis";
 }
 
+static string BuildAbsoluteUrl(HttpRequest request, string path)
+{
+    var normalizedPath = path.StartsWith("/", StringComparison.Ordinal) ? path : $"/{path}";
+    return $"{request.Scheme}://{request.Host}{request.PathBase}{normalizedPath}";
+}
+
+static string BuildGoogleAuthErrorRedirectPath(string? message)
+{
+    var safeMessage = string.IsNullOrWhiteSpace(message)
+        ? "Google-aanmelding het misluk. Probeer asseblief weer."
+        : message.Trim();
+
+    return QueryHelpers.AddQueryString("/teken-in", "oauthError", safeMessage);
+}
+
+static void ClearGooglePkceCookie(HttpContext httpContext)
+{
+    httpContext.Response.Cookies.Delete(
+        GooglePkceCookieName,
+        new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = httpContext.Request.IsHttps,
+            SameSite = SameSiteMode.Lax,
+            IsEssential = true,
+            Path = "/auth/callback"
+        });
+}
+
+static string? GetSafeAuthReturnUrl(string? returnUrl)
+{
+    var normalizedReturnUrl = NormalizeAuthReturnUrl(returnUrl);
+    if (string.IsNullOrWhiteSpace(normalizedReturnUrl))
+    {
+        return null;
+    }
+
+    if (!normalizedReturnUrl.StartsWith("/", StringComparison.Ordinal) ||
+        normalizedReturnUrl.StartsWith("//", StringComparison.Ordinal) ||
+        normalizedReturnUrl.StartsWith("/auth/", StringComparison.OrdinalIgnoreCase) ||
+        IsAuthEntryPath(normalizedReturnUrl))
+    {
+        return null;
+    }
+
+    return normalizedReturnUrl;
+}
+
+static bool IsAuthEntryPath(string path) =>
+    path.StartsWith("/teken-in", StringComparison.OrdinalIgnoreCase) ||
+    path.StartsWith("/teken-op", StringComparison.OrdinalIgnoreCase);
+
+static string? NormalizeAuthReturnUrl(string? value)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return null;
+    }
+
+    var candidate = value.Trim();
+    for (var index = 0; index < 2; index++)
+    {
+        if (candidate.StartsWith("/", StringComparison.Ordinal))
+        {
+            break;
+        }
+
+        if (!candidate.Contains('%', StringComparison.Ordinal))
+        {
+            break;
+        }
+
+        try
+        {
+            candidate = Uri.UnescapeDataString(candidate);
+        }
+        catch
+        {
+            break;
+        }
+    }
+
+    return candidate;
+}
+
 static string? ValidateSignInRequest(string? email, string? password)
 {
     if (string.IsNullOrWhiteSpace(email) || email.Length > 254 || !IsValidEmail(email))
@@ -2104,3 +2328,7 @@ sealed record SearchSiteResult(
     string ThumbnailPath,
     int Score);
 sealed record AuthCookieSignInResult(bool IsSuccess, string? ErrorMessage = null);
+sealed record GooglePkceStateCookiePayload(
+    DateTimeOffset ExpiresAtUtc,
+    string CodeVerifier,
+    string? ReturnUrl);

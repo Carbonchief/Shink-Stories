@@ -18,6 +18,10 @@
     box-shadow: 0 20px 42px rgba(19, 22, 24, 0.18);
 }
 
+.playlist-loading-state {
+    min-height: 42vh;
+}
+
 .playlist-content-stack {
     display: grid;
     gap: 0;
