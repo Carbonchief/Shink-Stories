@@ -563,6 +563,8 @@ public sealed partial class SupabaseAdminManagementService(
                     PlaylistId: row.PlaylistId,
                     Slug: row.Slug.Trim(),
                     Title: row.Title.Trim(),
+                    IsSystemPlaylist: IsSystemPlaylistType(row.PlaylistType),
+                    SystemKey: NormalizeSystemKey(row.SystemKey),
                     Description: NormalizeOptionalText(row.Description, 4000),
                     LogoImagePath: NormalizePlaylistImagePath(row.LogoImagePath, StoryPlaylist.DefaultLogoImagePath),
                     BackdropImagePath: NormalizePlaylistImagePath(row.BackdropImagePath, StoryPlaylist.DefaultBackdropImagePath),
@@ -611,23 +613,25 @@ public sealed partial class SupabaseAdminManagementService(
             return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
         }
 
-        var payload = new Dictionary<string, object?>
-        {
-            ["slug"] = normalizedSlug,
-            ["title"] = normalizedTitle,
-            ["description"] = NormalizeOptionalText(request.Description, 4000),
-            ["logo_image_path"] = NormalizePlaylistImagePath(request.LogoImagePath, StoryPlaylist.DefaultLogoImagePath),
-            ["backdrop_image_path"] = NormalizePlaylistImagePath(request.BackdropImagePath, StoryPlaylist.DefaultBackdropImagePath),
-            ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
-            ["max_items"] = request.MaxItems is > 0 ? request.MaxItems : null,
-            ["is_enabled"] = request.IsEnabled,
-            ["show_on_home"] = request.ShowOnHome
-        };
-
         if (request.PlaylistId is null || request.PlaylistId == Guid.Empty)
         {
+            var createPayload = new Dictionary<string, object?>
+            {
+                ["slug"] = normalizedSlug,
+                ["title"] = normalizedTitle,
+                ["description"] = NormalizeOptionalText(request.Description, 4000),
+                ["logo_image_path"] = NormalizePlaylistImagePath(request.LogoImagePath, StoryPlaylist.DefaultLogoImagePath),
+                ["backdrop_image_path"] = NormalizePlaylistImagePath(request.BackdropImagePath, StoryPlaylist.DefaultBackdropImagePath),
+                ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
+                ["max_items"] = request.MaxItems is > 0 ? request.MaxItems : null,
+                ["is_enabled"] = request.IsEnabled,
+                ["show_on_home"] = request.ShowOnHome,
+                ["playlist_type"] = "manual",
+                ["system_key"] = null
+            };
+
             var createUri = new Uri(baseUri, "rest/v1/story_playlists?select=playlist_id");
-            using var createRequest = CreateJsonRequest(HttpMethod.Post, createUri, apiKey, payload, "return=representation");
+            using var createRequest = CreateJsonRequest(HttpMethod.Post, createUri, apiKey, createPayload, "return=representation");
             using var createResponse = await _httpClient.SendAsync(createRequest, cancellationToken);
             if (!createResponse.IsSuccessStatusCode)
             {
@@ -645,6 +649,33 @@ public sealed partial class SupabaseAdminManagementService(
             InvalidateStoryCatalogCache();
             return new AdminOperationResult(true, EntityId: createdPlaylistId);
         }
+
+        var existingPlaylist = await FetchPlaylistByIdAsync(baseUri, apiKey, request.PlaylistId.Value, cancellationToken);
+        if (existingPlaylist is null)
+        {
+            return new AdminOperationResult(false, "Kies asseblief 'n geldige playlist.");
+        }
+
+        var isSystemPlaylist = IsSystemPlaylistType(existingPlaylist.PlaylistType);
+        var payload = isSystemPlaylist
+            ? new Dictionary<string, object?>
+            {
+                ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
+                ["is_enabled"] = request.IsEnabled,
+                ["show_on_home"] = request.ShowOnHome
+            }
+            : new Dictionary<string, object?>
+            {
+                ["slug"] = normalizedSlug,
+                ["title"] = normalizedTitle,
+                ["description"] = NormalizeOptionalText(request.Description, 4000),
+                ["logo_image_path"] = NormalizePlaylistImagePath(request.LogoImagePath, StoryPlaylist.DefaultLogoImagePath),
+                ["backdrop_image_path"] = NormalizePlaylistImagePath(request.BackdropImagePath, StoryPlaylist.DefaultBackdropImagePath),
+                ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
+                ["max_items"] = request.MaxItems is > 0 ? request.MaxItems : null,
+                ["is_enabled"] = request.IsEnabled,
+                ["show_on_home"] = request.ShowOnHome
+            };
 
         var escapedPlaylistId = Uri.EscapeDataString(request.PlaylistId.Value.ToString("D"));
         var updateUri = new Uri(baseUri, $"rest/v1/story_playlists?playlist_id=eq.{escapedPlaylistId}");
@@ -757,6 +788,17 @@ public sealed partial class SupabaseAdminManagementService(
             return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
         }
 
+        var existingPlaylist = await FetchPlaylistByIdAsync(baseUri, apiKey, playlistId, cancellationToken);
+        if (existingPlaylist is null)
+        {
+            return new AdminOperationResult(false, "Kies asseblief 'n geldige playlist.");
+        }
+
+        if (IsSystemPlaylistType(existingPlaylist.PlaylistType))
+        {
+            return new AdminOperationResult(false, "Sisteem playlists kan nie stories handmatig wysig nie.");
+        }
+
         var escapedPlaylistId = Uri.EscapeDataString(playlistId.ToString("D"));
         var deleteUri = new Uri(baseUri, $"rest/v1/story_playlist_items?playlist_id=eq.{escapedPlaylistId}");
         using (var deleteRequest = CreateRequest(HttpMethod.Delete, deleteUri, apiKey))
@@ -852,7 +894,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/story_playlists" +
-            "?select=playlist_id,slug,title,description,logo_image_path,backdrop_image_path,sort_order,max_items,is_enabled,show_on_home,updated_at" +
+            "?select=playlist_id,slug,title,playlist_type,system_key,description,logo_image_path,backdrop_image_path,sort_order,max_items,is_enabled,show_on_home,updated_at" +
             "&order=sort_order.asc" +
             "&order=title.asc" +
             "&limit=500");
@@ -882,6 +924,31 @@ public sealed partial class SupabaseAdminManagementService(
             "&limit=5000");
 
         return await FetchRowsAsync<StoryLookupRow>(uri, apiKey, cancellationToken);
+    }
+
+    private async Task<PlaylistRow?> FetchPlaylistByIdAsync(
+        Uri baseUri,
+        string apiKey,
+        Guid playlistId,
+        CancellationToken cancellationToken)
+    {
+        if (playlistId == Guid.Empty)
+        {
+            return null;
+        }
+
+        var escapedPlaylistId = Uri.EscapeDataString(playlistId.ToString("D"));
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/story_playlists" +
+            "?select=playlist_id,slug,title,playlist_type,system_key,description,logo_image_path,backdrop_image_path,sort_order,max_items,is_enabled,show_on_home,updated_at" +
+            $"&playlist_id=eq.{escapedPlaylistId}" +
+            "&limit=1");
+
+        var rows = await FetchRowsAsync<PlaylistRow>(uri, apiKey, cancellationToken);
+        return rows
+            .Where(row => row.PlaylistId != Guid.Empty)
+            .FirstOrDefault();
     }
 
     private async Task<IReadOnlyList<T>> FetchRowsAsync<T>(Uri uri, string apiKey, CancellationToken cancellationToken)
@@ -1112,6 +1179,17 @@ public sealed partial class SupabaseAdminManagementService(
     {
         var normalized = NormalizeOptionalText(value, 1024);
         return string.IsNullOrWhiteSpace(normalized) ? fallbackPath : normalized;
+    }
+
+    private static bool IsSystemPlaylistType(string? playlistType) =>
+        string.Equals(playlistType?.Trim(), "system", StringComparison.OrdinalIgnoreCase);
+
+    private static string? NormalizeSystemKey(string? systemKey)
+    {
+        var normalized = NormalizeOptionalText(systemKey, 80);
+        return string.IsNullOrWhiteSpace(normalized)
+            ? null
+            : normalized.ToLowerInvariant();
     }
 
     private static string? NormalizeMobileNumber(string? value)
@@ -1368,6 +1446,12 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("title")]
         public string Title { get; set; } = string.Empty;
+
+        [JsonPropertyName("playlist_type")]
+        public string? PlaylistType { get; set; }
+
+        [JsonPropertyName("system_key")]
+        public string? SystemKey { get; set; }
 
         [JsonPropertyName("description")]
         public string? Description { get; set; }

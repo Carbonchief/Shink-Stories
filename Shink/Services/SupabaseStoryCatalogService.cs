@@ -18,7 +18,9 @@ public sealed class SupabaseStoryCatalogService(
 {
     private const string CacheKey = "stories:catalog:v2";
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan FavouritesCacheDuration = TimeSpan.FromSeconds(30);
     private const int SoundbiteMaxDurationSeconds = 60;
+    private const string FavouritesSystemKey = "favourites";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private static readonly string[] KleuterStoryTitlesInOrder =
@@ -67,10 +69,16 @@ public sealed class SupabaseStoryCatalogService(
             .ToArray();
     }
 
-    public async Task<IReadOnlyList<StoryPlaylist>> GetLuisterPlaylistsAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<StoryPlaylist>> GetLuisterPlaylistsAsync(string? userEmail = null, CancellationToken cancellationToken = default)
     {
         var snapshot = await GetCatalogSnapshotAsync(cancellationToken);
-        return snapshot.LuisterPlaylists;
+        var normalizedEmail = NormalizeUserEmail(userEmail);
+        if (string.IsNullOrWhiteSpace(normalizedEmail))
+        {
+            return snapshot.LuisterPlaylists;
+        }
+
+        return await BuildPersonalizedPlaylistsAsync(snapshot, normalizedEmail, cancellationToken);
     }
 
     public async Task<IReadOnlyList<StoryPreviewItem>> GetNewestTop10Async(CancellationToken cancellationToken = default)
@@ -194,8 +202,10 @@ public sealed class SupabaseStoryCatalogService(
             _logger.LogWarning("Supabase stories lookup skipped: URL is not configured.");
             var fallbackRows = BuildLegacyFallbackRows();
             return new StoryCatalogSnapshot(
-                fallbackRows,
-                BuildDefaultLuisterPlaylists(fallbackRows));
+                StoryRows: fallbackRows,
+                PlaylistRows: Array.Empty<StoryPlaylistRow>(),
+                PlaylistItemRows: Array.Empty<StoryPlaylistItemRow>(),
+                LuisterPlaylists: BuildDefaultLuisterPlaylists(fallbackRows));
         }
 
         var apiKey = ResolveReadApiKey();
@@ -204,18 +214,26 @@ public sealed class SupabaseStoryCatalogService(
             _logger.LogWarning("Supabase stories lookup skipped: AnonKey is not configured.");
             var fallbackRows = BuildLegacyFallbackRows();
             return new StoryCatalogSnapshot(
-                fallbackRows,
-                BuildDefaultLuisterPlaylists(fallbackRows));
+                StoryRows: fallbackRows,
+                PlaylistRows: Array.Empty<StoryPlaylistRow>(),
+                PlaylistItemRows: Array.Empty<StoryPlaylistItemRow>(),
+                LuisterPlaylists: BuildDefaultLuisterPlaylists(fallbackRows));
         }
 
         var rows = await FetchPublishedRowsAsync(baseUri, apiKey, cancellationToken);
-        var playlists = await FetchLuisterPlaylistsAsync(baseUri, apiKey, rows, cancellationToken);
+        var playlistRows = await FetchStoryPlaylistRowsAsync(baseUri, apiKey, cancellationToken);
+        var playlistItemRows = await FetchStoryPlaylistItemRowsAsync(baseUri, apiKey, cancellationToken);
+        var playlists = BuildLuisterPlaylistsFromConfiguredTables(rows, playlistRows, playlistItemRows);
         if (playlists.Count == 0)
         {
             playlists = BuildDefaultLuisterPlaylists(rows);
         }
 
-        return new StoryCatalogSnapshot(rows, playlists);
+        return new StoryCatalogSnapshot(
+            StoryRows: rows,
+            PlaylistRows: playlistRows,
+            PlaylistItemRows: playlistItemRows,
+            LuisterPlaylists: playlists);
     }
 
     private async Task<IReadOnlyList<StoryCatalogRow>> FetchPublishedRowsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
@@ -263,28 +281,12 @@ public sealed class SupabaseStoryCatalogService(
         }
     }
 
-    private async Task<IReadOnlyList<StoryPlaylist>> FetchLuisterPlaylistsAsync(
-        Uri baseUri,
-        string apiKey,
-        IReadOnlyList<StoryCatalogRow> storyRows,
-        CancellationToken cancellationToken)
-    {
-        var playlistRows = await FetchStoryPlaylistRowsAsync(baseUri, apiKey, cancellationToken);
-        if (playlistRows.Count == 0)
-        {
-            return Array.Empty<StoryPlaylist>();
-        }
-
-        var playlistItemRows = await FetchStoryPlaylistItemRowsAsync(baseUri, apiKey, cancellationToken);
-        return BuildLuisterPlaylistsFromConfiguredTables(storyRows, playlistRows, playlistItemRows);
-    }
-
     private async Task<IReadOnlyList<StoryPlaylistRow>> FetchStoryPlaylistRowsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
     {
         var requestUri = new Uri(
             baseUri,
             "rest/v1/story_playlists" +
-            "?select=playlist_id,slug,title,description,sort_order,max_items,is_enabled,show_on_home,logo_image_path,backdrop_image_path" +
+            "?select=playlist_id,slug,title,playlist_type,system_key,description,sort_order,max_items,is_enabled,show_on_home,logo_image_path,backdrop_image_path" +
             "&is_enabled=eq.true" +
             "&order=sort_order.asc" +
             "&order=title.asc");
@@ -380,6 +382,190 @@ public sealed class SupabaseStoryCatalogService(
         }
     }
 
+    private async Task<IReadOnlyList<StoryPlaylist>> BuildPersonalizedPlaylistsAsync(
+        StoryCatalogSnapshot snapshot,
+        string normalizedEmail,
+        CancellationToken cancellationToken)
+    {
+        var favouritesConfig = snapshot.PlaylistRows
+            .FirstOrDefault(IsFavouritesSystemPlaylist);
+        if (favouritesConfig is null)
+        {
+            return snapshot.LuisterPlaylists;
+        }
+
+        var favouriteStorySlugs = await FetchUserFavouriteStorySlugsAsync(normalizedEmail, cancellationToken);
+        var luisterStoriesBySlug = snapshot.StoryRows
+            .Where(IsLuisterStoryRow)
+            .Where(row => !string.IsNullOrWhiteSpace(row.Slug))
+            .GroupBy(row => row.Slug.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+
+        var favouriteStories = favouriteStorySlugs
+            .Where(slug => !string.IsNullOrWhiteSpace(slug))
+            .Select(slug => slug.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(slug => luisterStoriesBySlug.TryGetValue(slug, out var row) ? MapToStoryItem(row) : null)
+            .Where(story => story is not null)
+            .Cast<StoryItem>();
+
+        var limitedStories = favouritesConfig.MaxItems is > 0
+            ? favouriteStories.Take(favouritesConfig.MaxItems.Value).ToArray()
+            : favouriteStories.ToArray();
+
+        var favouritesPlaylist = new StoryPlaylist(
+            Slug: favouritesConfig.Slug.Trim(),
+            Title: favouritesConfig.Title.Trim(),
+            Description: NormalizeOptionalText(favouritesConfig.Description),
+            SortOrder: favouritesConfig.SortOrder,
+            Stories: limitedStories,
+            ShowOnHome: favouritesConfig.ShowOnHome,
+            LogoImagePath: NormalizeOptionalText(favouritesConfig.LogoImagePath),
+            BackdropImagePath: NormalizeOptionalText(favouritesConfig.BackdropImagePath),
+            IsSystemPlaylist: true,
+            SystemKey: NormalizeSystemKey(favouritesConfig.SystemKey));
+
+        return snapshot.LuisterPlaylists
+            .Where(playlist => !(playlist.IsSystemPlaylist &&
+                                 string.Equals(NormalizeSystemKey(playlist.SystemKey), FavouritesSystemKey, StringComparison.Ordinal)))
+            .Append(favouritesPlaylist)
+            .OrderBy(playlist => playlist.SortOrder)
+            .ThenBy(playlist => playlist.Title, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private async Task<IReadOnlyList<string>> FetchUserFavouriteStorySlugsAsync(string normalizedEmail, CancellationToken cancellationToken)
+    {
+        var cacheKey = $"{CacheKey}:favourites:{normalizedEmail}";
+        if (_memoryCache.TryGetValue(cacheKey, out IReadOnlyList<string>? cachedSlugs) &&
+            cachedSlugs is not null)
+        {
+            return cachedSlugs;
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return Array.Empty<string>();
+        }
+
+        var apiKey = ResolveServiceRoleKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return Array.Empty<string>();
+        }
+
+        var subscriberId = await ResolveSubscriberIdAsync(baseUri, apiKey, normalizedEmail, cancellationToken);
+        if (subscriberId is null)
+        {
+            var noSubscriber = Array.Empty<string>();
+            _memoryCache.Set(cacheKey, noSubscriber, FavouritesCacheDuration);
+            return noSubscriber;
+        }
+
+        var favouriteRows = await FetchFavouriteRowsAsync(baseUri, apiKey, subscriberId.Value, cancellationToken);
+        var favouriteSlugs = favouriteRows
+            .Where(row => !string.IsNullOrWhiteSpace(row.StorySlug))
+            .OrderByDescending(row => row.CreatedAt ?? DateTimeOffset.MinValue)
+            .Select(row => row.StorySlug.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        _memoryCache.Set(cacheKey, favouriteSlugs, FavouritesCacheDuration);
+        return favouriteSlugs;
+    }
+
+    private async Task<Guid?> ResolveSubscriberIdAsync(
+        Uri baseUri,
+        string apiKey,
+        string normalizedEmail,
+        CancellationToken cancellationToken)
+    {
+        var escapedEmail = Uri.EscapeDataString(normalizedEmail);
+        var requestUri = new Uri(
+            baseUri,
+            "rest/v1/subscribers" +
+            "?select=subscriber_id" +
+            $"&email=eq.{escapedEmail}" +
+            "&limit=1");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
+        request.Headers.TryAddWithoutValidation("apikey", apiKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+
+        try
+        {
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var rows = await JsonSerializer.DeserializeAsync<List<SubscriberLookupRow>>(stream, JsonOptions, cancellationToken)
+                ?? [];
+
+            return rows
+                .Select(row => row.SubscriberId)
+                .FirstOrDefault(id => id != Guid.Empty);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(exception, "Supabase subscriber lookup for favourites failed unexpectedly.");
+            return null;
+        }
+    }
+
+    private async Task<IReadOnlyList<StoryFavouriteRow>> FetchFavouriteRowsAsync(
+        Uri baseUri,
+        string apiKey,
+        Guid subscriberId,
+        CancellationToken cancellationToken)
+    {
+        var escapedSubscriberId = Uri.EscapeDataString(subscriberId.ToString("D"));
+        var requestUri = new Uri(
+            baseUri,
+            "rest/v1/story_favourites" +
+            "?select=story_slug,created_at" +
+            $"&subscriber_id=eq.{escapedSubscriberId}" +
+            "&order=created_at.desc" +
+            "&limit=5000");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
+        request.Headers.TryAddWithoutValidation("apikey", apiKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+
+        try
+        {
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (response.StatusCode == HttpStatusCode.NotFound)
+            {
+                _logger.LogInformation("Supabase favourites lookup skipped: table story_favourites is not available yet.");
+                return Array.Empty<StoryFavouriteRow>();
+            }
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning(
+                    "Supabase favourites lookup failed. Status={StatusCode} Body={Body}",
+                    (int)response.StatusCode,
+                    body);
+                return Array.Empty<StoryFavouriteRow>();
+            }
+
+            await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var rows = await JsonSerializer.DeserializeAsync<List<StoryFavouriteRow>>(responseStream, JsonOptions, cancellationToken)
+                ?? [];
+
+            return rows;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(exception, "Supabase favourites lookup failed unexpectedly.");
+            return Array.Empty<StoryFavouriteRow>();
+        }
+    }
+
     private bool TryBuildSupabaseBaseUri(out Uri baseUri)
     {
         baseUri = default!;
@@ -399,6 +585,33 @@ public sealed class SupabaseStoryCatalogService(
     }
 
     private string ResolveReadApiKey() => _options.AnonKey;
+
+    private string ResolveServiceRoleKey() => _options.ServiceRoleKey;
+
+    private static string? NormalizeUserEmail(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return value.Trim().ToLowerInvariant();
+    }
+
+    private static bool IsFavouritesSystemPlaylist(StoryPlaylistRow row) =>
+        row.IsEnabled &&
+        row.IsSystemPlaylist &&
+        string.Equals(NormalizeSystemKey(row.SystemKey), FavouritesSystemKey, StringComparison.Ordinal);
+
+    private static string? NormalizeSystemKey(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return value.Trim().ToLowerInvariant();
+    }
 
     private static bool IsPublishedAndUsable(StoryCatalogRow row) =>
         row.StoryId != Guid.Empty &&
@@ -565,6 +778,11 @@ public sealed class SupabaseStoryCatalogService(
                      .OrderBy(row => row.SortOrder)
                      .ThenBy(row => row.Title, StringComparer.OrdinalIgnoreCase))
         {
+            if (IsFavouritesSystemPlaylist(playlistRow))
+            {
+                continue;
+            }
+
             if (string.Equals(playlistRow.Slug, "all-stories", StringComparison.OrdinalIgnoreCase))
             {
                 allStoriesConfig = playlistRow;
@@ -608,7 +826,9 @@ public sealed class SupabaseStoryCatalogService(
                 Stories: limitedStories,
                 ShowOnHome: playlistRow.ShowOnHome,
                 LogoImagePath: NormalizeOptionalText(playlistRow.LogoImagePath),
-                BackdropImagePath: NormalizeOptionalText(playlistRow.BackdropImagePath)));
+                BackdropImagePath: NormalizeOptionalText(playlistRow.BackdropImagePath),
+                IsSystemPlaylist: playlistRow.IsSystemPlaylist,
+                SystemKey: NormalizeSystemKey(playlistRow.SystemKey)));
         }
 
         var unassignedStories = luisterRows
@@ -634,7 +854,9 @@ public sealed class SupabaseStoryCatalogService(
                 Stories: allStoriesItems,
                 ShowOnHome: allStoriesConfig?.ShowOnHome ?? false,
                 LogoImagePath: NormalizeOptionalText(allStoriesConfig?.LogoImagePath),
-                BackdropImagePath: NormalizeOptionalText(allStoriesConfig?.BackdropImagePath)));
+                BackdropImagePath: NormalizeOptionalText(allStoriesConfig?.BackdropImagePath),
+                IsSystemPlaylist: allStoriesConfig?.IsSystemPlaylist ?? false,
+                SystemKey: NormalizeSystemKey(allStoriesConfig?.SystemKey)));
         }
 
         return playlists
@@ -994,6 +1216,8 @@ public sealed class SupabaseStoryCatalogService(
 
     private sealed record StoryCatalogSnapshot(
         IReadOnlyList<StoryCatalogRow> StoryRows,
+        IReadOnlyList<StoryPlaylistRow> PlaylistRows,
+        IReadOnlyList<StoryPlaylistItemRow> PlaylistItemRows,
         IReadOnlyList<StoryPlaylist> LuisterPlaylists);
 
     private sealed class StoryCatalogRow
@@ -1067,6 +1291,12 @@ public sealed class SupabaseStoryCatalogService(
         [JsonPropertyName("title")]
         public string Title { get; set; } = string.Empty;
 
+        [JsonPropertyName("playlist_type")]
+        public string? PlaylistType { get; set; }
+
+        [JsonPropertyName("system_key")]
+        public string? SystemKey { get; set; }
+
         [JsonPropertyName("description")]
         public string? Description { get; set; }
 
@@ -1087,6 +1317,10 @@ public sealed class SupabaseStoryCatalogService(
 
         [JsonPropertyName("backdrop_image_path")]
         public string? BackdropImagePath { get; set; }
+
+        [JsonIgnore]
+        public bool IsSystemPlaylist =>
+            string.Equals(PlaylistType, "system", StringComparison.OrdinalIgnoreCase);
     }
 
     private sealed class StoryPlaylistItemRow
@@ -1099,5 +1333,20 @@ public sealed class SupabaseStoryCatalogService(
 
         [JsonPropertyName("sort_order")]
         public int SortOrder { get; set; }
+    }
+
+    private sealed class SubscriberLookupRow
+    {
+        [JsonPropertyName("subscriber_id")]
+        public Guid SubscriberId { get; set; }
+    }
+
+    private sealed class StoryFavouriteRow
+    {
+        [JsonPropertyName("story_slug")]
+        public string StorySlug { get; set; } = string.Empty;
+
+        [JsonPropertyName("created_at")]
+        public DateTimeOffset? CreatedAt { get; set; }
     }
 }

@@ -3,6 +3,7 @@
 @using System.ComponentModel.DataAnnotations
 @using System.Globalization
 @using System.Net.Http.Json
+@using System.Security.Claims
 @using System.Text.Json
 @using Shink.Components.Content
 @using Microsoft.AspNetCore.Components
@@ -460,8 +461,11 @@
         {
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             IsSignedIn = authState.User.Identity?.IsAuthenticated == true;
+            var signedInEmail = IsSignedIn
+                ? authState.User.FindFirst(ClaimTypes.Email)?.Value ?? authState.User.Identity?.Name
+                : null;
 
-            var luisterPlaylists = await StoryCatalogService.GetLuisterPlaylistsAsync();
+            var luisterPlaylists = await StoryCatalogService.GetLuisterPlaylistsAsync(signedInEmail);
             HomePlaylists = luisterPlaylists
                 .Where(playlist => playlist.ShowOnHome)
                 .OrderBy(playlist => playlist.SortOrder)

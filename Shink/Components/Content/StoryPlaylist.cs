@@ -8,7 +8,9 @@ public sealed record StoryPlaylist(
     IReadOnlyList<StoryItem> Stories,
     bool ShowOnHome = false,
     string? LogoImagePath = null,
-    string? BackdropImagePath = null)
+    string? BackdropImagePath = null,
+    bool IsSystemPlaylist = false,
+    string? SystemKey = null)
 {
     public const string DefaultLogoImagePath = "/branding/Storie_Hoekie_Logo_Banner.png";
     public const string DefaultBackdropImagePath = "/branding/Storie_Hoekie_Logo_Banner_Backdrop.png";

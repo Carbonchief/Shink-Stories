@@ -304,7 +304,11 @@
                     @{
                         var playlistIndex = GetPlaylistIndex(context.PlaylistId);
                     }
-                    <MudTd DataLabel='@T("Titel", "Title")'>@context.Title</MudTd>
+                    <MudTd DataLabel='@T("Titel", "Title")'>
+                        @(context.IsSystemPlaylist
+                            ? $"{context.Title} ({T("Sisteem", "System")})"
+                            : context.Title)
+                    </MudTd>
                     <MudTd DataLabel='@T("Aktief", "Active")'>
                         <div class="admin-toggle-cell" @onclick:stopPropagation="true">
                             <MudSwitch T="bool"
@@ -728,6 +732,8 @@
 
         @if (PlaylistEditor is not null)
         {
+            var isSystemPlaylist = PlaylistEditor.IsSystemPlaylist;
+
             <MudDialog @bind-Visible="IsPlaylistDialogOpen"
                        Options="EditorDialogOptions">
                 <TitleContent>
@@ -740,26 +746,39 @@
                         <MudTabPanel Text='@T("Playlist inligting", "Playlist info")'>
                             <div class="admin-editor">
                                 <div class="admin-form-grid">
+                                    @if (isSystemPlaylist)
+                                    {
+                                        <p class="admin-form-note admin-span-2">
+                                            @T(
+                                                "Hierdie is 'n sisteem playlist. Gebruik die skakelaars en skuif-knoppies in die tabel om aktief/tuisblad/volgorde te beheer.",
+                                                "This is a system playlist. Use the table switches and move buttons to control active/home/order.")
+                                        </p>
+                                    }
                                     <MudTextField T="string"
                                                   Label='@T("Titel", "Title")'
                                                   @bind-Value="PlaylistEditor.Title"
+                                                  Disabled="@isSystemPlaylist"
                                                   Variant="Variant.Outlined"
                                                   Margin="Margin.Dense" />
                                     <MudNumericField T="int?"
                                                      Label='@T("Maks items", "Max items")'
                                                      @bind-Value="PlaylistEditor.MaxItems"
+                                                     Disabled="@isSystemPlaylist"
                                                      Variant="Variant.Outlined"
                                                      Margin="Margin.Dense" />
                                     <MudCheckBox T="bool"
                                                  Label='@T("Aktief", "Active")'
+                                                 Disabled="@isSystemPlaylist"
                                                  @bind-Value="PlaylistEditor.IsEnabled" />
                                     <MudCheckBox T="bool"
                                                  Label='@T("Wys op tuisblad", "Show on home")'
+                                                 Disabled="@isSystemPlaylist"
                                                  @bind-Value="PlaylistEditor.ShowOnHome" />
                                     <MudTextField T="string"
                                                   Class="admin-span-2"
                                                   Label='@T("Beskrywing", "Description")'
                                                   @bind-Value="PlaylistEditor.Description"
+                                                  Disabled="@isSystemPlaylist"
                                                   Variant="Variant.Outlined"
                                                   Margin="Margin.Dense"
                                                   Lines="3" />
@@ -774,6 +793,7 @@
                                                 <InputFile id="@EditPlaylistLogoInputId"
                                                            class="admin-file-input"
                                                            OnChange="OnPlaylistLogoSelected"
+                                                           disabled="@isSystemPlaylist"
                                                            accept=".jpg,.jpeg,.png,.webp" />
                                             </label>
                                             <p class="admin-upload-file-name">@GetSelectedFileLabel(PlaylistEditor.LogoFileName, T("Hou huidige logo as jy niks kies nie.", "Keeps the current logo if you do not choose a file."))</p>
@@ -788,6 +808,7 @@
                                                 <InputFile id="@EditPlaylistBackdropInputId"
                                                            class="admin-file-input"
                                                            OnChange="OnPlaylistBackdropSelected"
+                                                           disabled="@isSystemPlaylist"
                                                            accept=".jpg,.jpeg,.png,.webp" />
                                             </label>
                                             <p class="admin-upload-file-name">@GetSelectedFileLabel(PlaylistEditor.BackdropFileName, T("Hou huidige agtergrond as jy niks kies nie.", "Keeps the current backdrop if you do not choose a file."))</p>
@@ -804,7 +825,8 @@
                                                   Class="admin-span-2"
                                                   Label='@T("Logo pad", "Logo path")'
                                                   Placeholder="@StoryPlaylist.DefaultLogoImagePath"
-                                          @bind-Value="PlaylistEditor.LogoImagePath"
+                                                  @bind-Value="PlaylistEditor.LogoImagePath"
+                                                  Disabled="@isSystemPlaylist"
                                                   Variant="Variant.Outlined"
                                                   Margin="Margin.Dense" />
                                     <MudTextField T="string"
@@ -812,13 +834,14 @@
                                                   Label='@T("Agtergrond pad", "Backdrop path")'
                                                   Placeholder="@StoryPlaylist.DefaultBackdropImagePath"
                                                   @bind-Value="PlaylistEditor.BackdropImagePath"
+                                                  Disabled="@isSystemPlaylist"
                                                   Variant="Variant.Outlined"
                                                   Margin="Margin.Dense" />
                                 </div>
                                 <MudButton Variant="Variant.Filled"
                                            Color="Color.Primary"
                                            Class="admin-btn"
-                                           Disabled="@IsSavingPlaylist"
+                                           Disabled="@(IsSavingPlaylist || isSystemPlaylist)"
                                            OnClick="SavePlaylistAsync">
                                     @(IsSavingPlaylist ? T("Stoor...", "Saving...") : T("Stoor playlist", "Save playlist"))
                                 </MudButton>
@@ -826,7 +849,15 @@
                         </MudTabPanel>
 
                         <MudTabPanel Text='@T("Playlist items", "Playlist items")'>
-                            @if (PlaylistEditor.PlaylistId is Guid playlistId && playlistId != Guid.Empty)
+                            @if (isSystemPlaylist)
+                            {
+                                <MudText Typo="Typo.body2">
+                                    @T(
+                                        "Sisteem playlists word outomaties gevul en kan nie handmatig gewysig word nie.",
+                                        "System playlists are auto-populated and cannot be edited manually.")
+                                </MudText>
+                            }
+                            else if (PlaylistEditor.PlaylistId is Guid playlistId && playlistId != Guid.Empty)
                             {
                                 <div class="admin-editor">
                                     <h3>@T("Playlist stories", "Playlist stories")</h3>
@@ -1504,7 +1535,7 @@
 
     private Task OnPlaylistLogoSelected(InputFileChangeEventArgs args)
     {
-        if (PlaylistEditor is null)
+        if (PlaylistEditor is null || PlaylistEditor.IsSystemPlaylist)
         {
             return Task.CompletedTask;
         }
@@ -1517,7 +1548,7 @@
 
     private Task OnPlaylistBackdropSelected(InputFileChangeEventArgs args)
     {
-        if (PlaylistEditor is null)
+        if (PlaylistEditor is null || PlaylistEditor.IsSystemPlaylist)
         {
             return Task.CompletedTask;
         }
@@ -1750,6 +1781,14 @@
     {
         if (PlaylistEditor is null)
         {
+            return;
+        }
+
+        if (PlaylistEditor.IsSystemPlaylist)
+        {
+            SetError(T(
+                "Sisteem playlists kan nie direk gewysig word nie.",
+                "System playlists cannot be edited directly."));
             return;
         }
 
@@ -2016,6 +2055,14 @@
 
     private void AddStoryToPlaylist()
     {
+        if (PlaylistEditor?.IsSystemPlaylist == true)
+        {
+            SetError(T(
+                "Sisteem playlists word outomaties gevul en kan nie handmatig gewysig word nie.",
+                "System playlists are auto-populated and cannot be edited manually."));
+            return;
+        }
+
         if (!Guid.TryParse(StoryToAddIdString, out var storyId))
         {
             return;
@@ -2044,6 +2091,11 @@
 
     private void MovePlaylistStory(int index, int direction)
     {
+        if (PlaylistEditor?.IsSystemPlaylist == true)
+        {
+            return;
+        }
+
         var targetIndex = index + direction;
         if (index < 0 || index >= PlaylistStoryEditor.Count ||
             targetIndex < 0 || targetIndex >= PlaylistStoryEditor.Count)
@@ -2057,6 +2109,11 @@
 
     private void RemovePlaylistStory(int index)
     {
+        if (PlaylistEditor?.IsSystemPlaylist == true)
+        {
+            return;
+        }
+
         if (index < 0 || index >= PlaylistStoryEditor.Count)
         {
             return;
@@ -2068,6 +2125,14 @@
 
     private async Task SavePlaylistStoriesAsync()
     {
+        if (PlaylistEditor?.IsSystemPlaylist == true)
+        {
+            SetError(T(
+                "Sisteem playlists word outomaties gevul en kan nie handmatig gewysig word nie.",
+                "System playlists are auto-populated and cannot be edited manually."));
+            return;
+        }
+
         if (PlaylistEditor?.PlaylistId is not Guid playlistId || playlistId == Guid.Empty)
         {
             SetError(T("Stoor eers die playlist metadata voordat jy stories orden.", "Save the playlist metadata first before ordering stories."));
@@ -2500,6 +2565,7 @@
             "Kies asseblief 'n geldige playlist." => "Please select a valid playlist.",
             "Kon nie bestaande playlist stories verwyder nie." => "Could not remove existing playlist stories.",
             "Kon nie nuwe playlist stories stoor nie." => "Could not save new playlist stories.",
+            "Sisteem playlists kan nie stories handmatig wysig nie." => "System playlists cannot be edited manually.",
             _ => message
         };
     }
@@ -2985,6 +3051,8 @@
         public Guid? PlaylistId { get; set; }
         public string Slug { get; set; } = string.Empty;
         public string Title { get; set; } = string.Empty;
+        public bool IsSystemPlaylist { get; set; }
+        public string? SystemKey { get; set; }
         public string? Description { get; set; }
         public string? LogoImagePath { get; set; } = StoryPlaylist.DefaultLogoImagePath;
         public string? BackdropImagePath { get; set; } = StoryPlaylist.DefaultBackdropImagePath;
@@ -3002,6 +3070,8 @@
             PlaylistId = playlist.PlaylistId,
             Slug = playlist.Slug,
             Title = playlist.Title,
+            IsSystemPlaylist = playlist.IsSystemPlaylist,
+            SystemKey = playlist.SystemKey,
             Description = playlist.Description,
             LogoImagePath = string.IsNullOrWhiteSpace(playlist.LogoImagePath)
                 ? StoryPlaylist.DefaultLogoImagePath
