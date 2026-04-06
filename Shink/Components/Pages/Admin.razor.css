@@ -73,6 +73,42 @@
     color: var(--admin-muted);
 }
 
+.admin-modal-loading {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: grid;
+    place-items: center;
+    background: color-mix(in srgb, #05090d 68%, transparent);
+}
+
+.admin-modal-loading-card {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.9rem 1.05rem;
+    border-radius: 12px;
+    border: 1px solid var(--admin-border-strong);
+    background: var(--admin-surface);
+    color: var(--admin-text);
+    font-weight: 700;
+}
+
+.admin-modal-spinner {
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    border: 2px solid color-mix(in srgb, var(--admin-text) 28%, transparent);
+    border-top-color: #f3a13f;
+    animation: admin-modal-spin 0.8s linear infinite;
+}
+
+@keyframes admin-modal-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 .admin-feedback {
     margin: 0;
     padding: 0.7rem 0.8rem;

@@ -45,6 +45,16 @@
 <MudSnackbarProvider />
 
 <section class="admin-page">
+    @if (IsEditModalOpening)
+    {
+        <div class="admin-modal-loading" role="status" aria-live="polite" aria-label='@T("Maak redigeerder oop...", "Opening editor...")'>
+            <div class="admin-modal-loading-card">
+                <span class="admin-modal-spinner" aria-hidden="true"></span>
+                <span>@T("Maak redigeerder oop...", "Opening editor...")</span>
+            </div>
+        </div>
+    }
+
     <header class="admin-hero">
         <div class="admin-hero-top">
             <div>
@@ -752,8 +762,8 @@
                                     {
                                         <p class="admin-form-note admin-span-2">
                                             @T(
-                                                "Hierdie is 'n sisteem playlist. Gebruik die skakelaars en skuif-knoppies in die tabel om aktief/tuisblad/volgorde te beheer.",
-                                                "This is a system playlist. Use the table switches and move buttons to control active/home/order.")
+                                                "Hierdie is 'n sisteem playlist. Titel, maksimum items en tuisblad/volgorde bly beperk, maar jy kan aktief-status, beskrywing en beelde hier wysig.",
+                                                "This is a system playlist. Title, max items, and home/order remain restricted, but you can edit active status, description, and images here.")
                                         </p>
                                     }
                                     <MudTextField T="string"
@@ -770,7 +780,6 @@
                                                      Margin="Margin.Dense" />
                                     <MudCheckBox T="bool"
                                                  Label='@T("Aktief", "Active")'
-                                                 Disabled="@isSystemPlaylist"
                                                  @bind-Value="PlaylistEditor.IsEnabled" />
                                     <MudCheckBox T="bool"
                                                  Label='@T("Wys op tuisblad", "Show on home")'
@@ -780,7 +789,6 @@
                                                   Class="admin-span-2"
                                                   Label='@T("Beskrywing", "Description")'
                                                   @bind-Value="PlaylistEditor.Description"
-                                                  Disabled="@isSystemPlaylist"
                                                   Variant="Variant.Outlined"
                                                   Margin="Margin.Dense"
                                                   Lines="3" />
@@ -795,7 +803,6 @@
                                                 <InputFile id="@EditPlaylistLogoInputId"
                                                            class="admin-file-input"
                                                            OnChange="OnPlaylistLogoSelected"
-                                                           disabled="@isSystemPlaylist"
                                                            accept=".jpg,.jpeg,.png,.webp" />
                                             </label>
                                             <p class="admin-upload-file-name">@GetSelectedFileLabel(PlaylistEditor.LogoFileName, T("Hou huidige logo as jy niks kies nie.", "Keeps the current logo if you do not choose a file."))</p>
@@ -810,7 +817,6 @@
                                                 <InputFile id="@EditPlaylistBackdropInputId"
                                                            class="admin-file-input"
                                                            OnChange="OnPlaylistBackdropSelected"
-                                                           disabled="@isSystemPlaylist"
                                                            accept=".jpg,.jpeg,.png,.webp" />
                                             </label>
                                             <p class="admin-upload-file-name">@GetSelectedFileLabel(PlaylistEditor.BackdropFileName, T("Hou huidige agtergrond as jy niks kies nie.", "Keeps the current backdrop if you do not choose a file."))</p>
@@ -843,7 +849,7 @@
                                 <MudButton Variant="Variant.Filled"
                                            Color="Color.Primary"
                                            Class="admin-btn"
-                                           Disabled="@(IsSavingPlaylist || isSystemPlaylist)"
+                                           Disabled="@IsSavingPlaylist"
                                            OnClick="SavePlaylistAsync">
                                     @(IsSavingPlaylist ? T("Stoor...", "Saving...") : T("Stoor playlist", "Save playlist"))
                                 </MudButton>
@@ -1010,6 +1016,8 @@
     private bool IsStoryDialogOpen { get; set; }
     private bool IsNewStoryDialogOpen { get; set; }
     private bool IsPlaylistDialogOpen { get; set; }
+    private bool IsEditModalOpening { get; set; }
+    private bool ClearModalLoadingOnNextRender { get; set; }
     private HashSet<Guid> TogglingPlaylistIds { get; } = [];
     private const long MaxImageUploadBytes = 10 * 1024 * 1024;
     private const long MaxAudioUploadBytes = 256L * 1024 * 1024;
@@ -1110,6 +1118,14 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (ClearModalLoadingOnNextRender &&
+            (IsSubscriberDialogOpen || IsStoryDialogOpen || IsNewStoryDialogOpen || IsPlaylistDialogOpen))
+        {
+            ClearModalLoadingOnNextRender = false;
+            IsEditModalOpening = false;
+            await InvokeAsync(StateHasChanged);
+        }
+
         if (!firstRender)
         {
             return;
@@ -1316,26 +1332,32 @@
             : string.Empty;
     }
 
-    private Task OnSubscriberRowClick(TableRowClickEventArgs<AdminSubscriberRecord> args)
+    private async Task OnSubscriberRowClick(TableRowClickEventArgs<AdminSubscriberRecord> args)
     {
         if (args.Item is not null)
         {
+            BeginEditModalOpen();
+            await InvokeAsync(StateHasChanged);
             SelectSubscriber(args.Item.SubscriberId);
             IsSubscriberDialogOpen = SubscriberEditor is not null;
+            CompleteEditModalOpenRequest(IsSubscriberDialogOpen);
         }
 
-        return Task.CompletedTask;
+        return;
     }
 
-    private Task OnStoryRowClick(TableRowClickEventArgs<AdminStoryRecord> args)
+    private async Task OnStoryRowClick(TableRowClickEventArgs<AdminStoryRecord> args)
     {
         if (args.Item is not null)
         {
+            BeginEditModalOpen();
+            await InvokeAsync(StateHasChanged);
             SelectStory(args.Item.StoryId);
             IsStoryDialogOpen = StoryEditor is not null;
+            CompleteEditModalOpenRequest(IsStoryDialogOpen);
         }
 
-        return Task.CompletedTask;
+        return;
     }
 
     private async Task OnPlaylistRowClick(TableRowClickEventArgs<AdminPlaylistRecord> args)
@@ -1345,8 +1367,11 @@
             return;
         }
 
+        BeginEditModalOpen();
+        await InvokeAsync(StateHasChanged);
         await SelectPlaylist(args.Item.PlaylistId);
         IsPlaylistDialogOpen = PlaylistEditor is not null;
+        CompleteEditModalOpenRequest(IsPlaylistDialogOpen);
     }
 
     private void SelectSubscriber(Guid subscriberId)
@@ -1373,6 +1398,7 @@
 
     private void StartNewStory()
     {
+        BeginEditModalOpen();
         NewStoryEditor = new NewStoryDraft
         {
             AccessLevel = "subscriber",
@@ -1380,6 +1406,7 @@
         };
         NewStoryDialogInstanceKey = Guid.NewGuid().ToString("N");
         IsNewStoryDialogOpen = true;
+        CompleteEditModalOpenRequest(IsNewStoryDialogOpen);
     }
 
     private async Task SelectPlaylist(Guid playlistId)
@@ -1389,31 +1416,59 @@
 
     private void StartNewPlaylist()
     {
+        BeginEditModalOpen();
         PlaylistEditor = new EditablePlaylist();
         PlaylistStoryEditor = [];
         StoryToAddIdString = string.Empty;
         IsPlaylistDialogOpen = true;
+        CompleteEditModalOpenRequest(IsPlaylistDialogOpen);
     }
 
     private void CloseSubscriberDialog()
     {
         IsSubscriberDialogOpen = false;
+        IsEditModalOpening = false;
+        ClearModalLoadingOnNextRender = false;
     }
 
     private void CloseStoryDialog()
     {
         IsStoryDialogOpen = false;
+        IsEditModalOpening = false;
+        ClearModalLoadingOnNextRender = false;
     }
 
     private void CloseNewStoryDialog()
     {
         IsNewStoryDialogOpen = false;
         NewStoryEditor = null;
+        IsEditModalOpening = false;
+        ClearModalLoadingOnNextRender = false;
     }
 
     private void ClosePlaylistDialog()
     {
         IsPlaylistDialogOpen = false;
+        IsEditModalOpening = false;
+        ClearModalLoadingOnNextRender = false;
+    }
+
+    private void BeginEditModalOpen()
+    {
+        IsEditModalOpening = true;
+        ClearModalLoadingOnNextRender = false;
+    }
+
+    private void CompleteEditModalOpenRequest(bool opened)
+    {
+        if (opened)
+        {
+            ClearModalLoadingOnNextRender = true;
+            return;
+        }
+
+        IsEditModalOpening = false;
+        ClearModalLoadingOnNextRender = false;
     }
 
     private async Task SaveSubscriberAsync()
@@ -1541,7 +1596,7 @@
 
     private Task OnPlaylistLogoSelected(InputFileChangeEventArgs args)
     {
-        if (PlaylistEditor is null || PlaylistEditor.IsSystemPlaylist)
+        if (PlaylistEditor is null)
         {
             return Task.CompletedTask;
         }
@@ -1554,7 +1609,7 @@
 
     private Task OnPlaylistBackdropSelected(InputFileChangeEventArgs args)
     {
-        if (PlaylistEditor is null || PlaylistEditor.IsSystemPlaylist)
+        if (PlaylistEditor is null)
         {
             return Task.CompletedTask;
         }
@@ -1787,14 +1842,6 @@
     {
         if (PlaylistEditor is null)
         {
-            return;
-        }
-
-        if (PlaylistEditor.IsSystemPlaylist)
-        {
-            SetError(T(
-                "Sisteem playlists kan nie direk gewysig word nie.",
-                "System playlists cannot be edited directly."));
             return;
         }
 

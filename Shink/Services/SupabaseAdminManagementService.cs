@@ -660,6 +660,9 @@ public sealed partial class SupabaseAdminManagementService(
         var payload = isSystemPlaylist
             ? new Dictionary<string, object?>
             {
+                ["description"] = NormalizeOptionalText(request.Description, 4000),
+                ["logo_image_path"] = NormalizePlaylistImagePath(request.LogoImagePath, StoryPlaylist.DefaultLogoImagePath),
+                ["backdrop_image_path"] = NormalizePlaylistImagePath(request.BackdropImagePath, StoryPlaylist.DefaultBackdropImagePath),
                 ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
                 ["is_enabled"] = request.IsEnabled,
                 ["show_on_home"] = request.ShowOnHome
