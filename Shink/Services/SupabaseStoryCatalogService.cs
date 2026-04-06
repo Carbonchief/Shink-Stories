@@ -176,7 +176,7 @@ public sealed class SupabaseStoryCatalogService(
             return cachedSnapshot;
         }
 
-        await _refreshLock.WaitAsync(cancellationToken);
+        await _refreshLock.WaitAsync(CancellationToken.None);
         try
         {
             if (_memoryCache.TryGetValue(CacheKey, out cachedSnapshot) &&
@@ -185,7 +185,7 @@ public sealed class SupabaseStoryCatalogService(
                 return cachedSnapshot;
             }
 
-            var snapshot = await FetchCatalogSnapshotAsync(cancellationToken);
+            var snapshot = await FetchCatalogSnapshotAsync(CancellationToken.None);
             _memoryCache.Set(CacheKey, snapshot, CacheDuration);
             return snapshot;
         }

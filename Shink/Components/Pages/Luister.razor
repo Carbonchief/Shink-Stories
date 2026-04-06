@@ -8,6 +8,7 @@
 @inject NavigationManager NavigationManager
 @inject IStoryCatalogService StoryCatalogService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IStoryFavoriteService StoryFavoriteService
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
@@ -65,9 +66,12 @@
 @code {
     private IReadOnlyList<StoryPlaylist> LuisterPlaylists { get; set; } = Array.Empty<StoryPlaylist>();
     private IReadOnlyList<StoryPlaylist> FilteredLuisterPlaylists { get; set; } = Array.Empty<StoryPlaylist>();
+    private HashSet<string> FavoriteStorySlugs { get; } = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<string> FavoriteStoryBusySlugs { get; } = new(StringComparer.OrdinalIgnoreCase);
     private IJSObjectReference? _luisterModule;
     private bool _luisterModuleLoadFailed;
     private CancellationTokenSource? _searchDebounceCts;
+    private string? SignedInEmail { get; set; }
     private string SearchQuery { get; set; } = string.Empty;
     private bool IsSearching { get; set; }
 
@@ -92,6 +96,8 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await ResolveSignedInEmailAsync();
+
         try
         {
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
@@ -107,11 +113,119 @@
         }
 
         UpdateFilteredPlaylists();
+        _ = LoadFavoriteStorySlugsInBackgroundAsync();
     }
 
     private static string GetStoryHref(string slug) => $"/luister/{Uri.EscapeDataString(slug)}";
 
     private static string GetPlaylistHref(string slug) => $"/luister/speellys/{Uri.EscapeDataString(slug)}/stories";
+
+    private bool IsStoryFavorite(string slug) => FavoriteStorySlugs.Contains(slug);
+
+    private bool IsFavoriteBusy(string slug) => FavoriteStoryBusySlugs.Contains(slug);
+
+    private async Task ToggleStoryFavoriteAsync(StoryItem story)
+    {
+        if (string.IsNullOrWhiteSpace(story.Slug))
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(SignedInEmail))
+        {
+            RedirectToOpsies();
+            return;
+        }
+
+        var normalizedSlug = story.Slug.Trim();
+        if (!FavoriteStoryBusySlugs.Add(normalizedSlug))
+        {
+            return;
+        }
+
+        var isCurrentlyFavorite = FavoriteStorySlugs.Contains(normalizedSlug);
+        try
+        {
+            var updated = await StoryFavoriteService.SetStoryFavoriteAsync(
+                SignedInEmail,
+                new StoryFavoriteMutationRequest(
+                    StorySlug: normalizedSlug,
+                    StoryPath: GetStoryHref(normalizedSlug),
+                    Source: "luister",
+                    IsFavorite: !isCurrentlyFavorite,
+                    PlaylistSlug: null));
+
+            if (updated)
+            {
+                if (isCurrentlyFavorite)
+                {
+                    FavoriteStorySlugs.Remove(normalizedSlug);
+                }
+                else
+                {
+                    FavoriteStorySlugs.Add(normalizedSlug);
+                }
+            }
+        }
+        finally
+        {
+            FavoriteStoryBusySlugs.Remove(normalizedSlug);
+        }
+    }
+
+    private async Task ResolveSignedInEmailAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated != true)
+        {
+            SignedInEmail = null;
+            return;
+        }
+
+        SignedInEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
+            ?? authState.User.Identity?.Name;
+    }
+
+    private async Task LoadFavoriteStorySlugsAsync()
+    {
+        FavoriteStorySlugs.Clear();
+        FavoriteStoryBusySlugs.Clear();
+
+        if (string.IsNullOrWhiteSpace(SignedInEmail))
+        {
+            return;
+        }
+
+        var favoriteSlugs = await StoryFavoriteService.GetFavoriteStorySlugsAsync(SignedInEmail, "luister");
+        foreach (var favoriteSlug in favoriteSlugs)
+        {
+            FavoriteStorySlugs.Add(favoriteSlug);
+        }
+    }
+
+    private async Task LoadFavoriteStorySlugsInBackgroundAsync()
+    {
+        try
+        {
+            await LoadFavoriteStorySlugsAsync();
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            // Keep the page responsive if favorites fail to load.
+        }
+    }
+
+    private void RedirectToOpsies()
+    {
+        var currentUri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        var currentPathAndQuery = $"{currentUri.AbsolutePath}{currentUri.Query}";
+        var returnPath = string.IsNullOrWhiteSpace(currentPathAndQuery)
+            ? "/luister"
+            : currentPathAndQuery;
+        var returnUrl = Uri.EscapeDataString(returnPath);
+        NavigationManager.NavigateTo($"/opsies?returnUrl={returnUrl}");
+    }
 
     private async Task HandleSearchInputAsync(ChangeEventArgs args)
     {
@@ -290,22 +404,32 @@ else
                     @foreach (var story in playlist.Stories)
                     {
                         <article class="story-carousel-item" role="listitem">
-                            <a class="story-carousel-link"
-                                   href="@GetStoryHref(story.Slug)"
-                                   data-enhance-nav="false"
-                                   aria-label="Luister na @story.Title">
-                                <span class="story-carousel-cover">
-                                    <img class="story-carousel-image"
-                                         src="@story.ThumbnailPath"
-                                         srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
-                                         sizes="(max-width: 620px) 68vw, (max-width: 980px) 42vw, 320px"
-                                         alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
-                                    <span class="story-cover-play" aria-hidden="true">
-                                        <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
+                            <div class="story-carousel-card-shell">
+                                <a class="story-carousel-link"
+                                       href="@GetStoryHref(story.Slug)"
+                                       aria-label="Luister na @story.Title">
+                                    <span class="story-carousel-cover">
+                                        <img class="story-carousel-image"
+                                             src="@story.ThumbnailPath"
+                                             srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
+                                             sizes="(max-width: 620px) 68vw, (max-width: 980px) 42vw, 320px"
+                                             alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
+                                        <span class="story-cover-play" aria-hidden="true">
+                                            <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
+                                        </span>
                                     </span>
-                                </span>
-                                <h3>@story.Title</h3>
-                            </a>
+                                    <h3>@story.Title</h3>
+                                </a>
+                                <button type="button"
+                                        class="story-favorite-toggle @(IsStoryFavorite(story.Slug) ? "is-favorite" : null)"
+                                        @onclick="() => ToggleStoryFavoriteAsync(story)"
+                                        aria-label="@(IsStoryFavorite(story.Slug) ? $"Verwyder {story.Title} uit jou gunstelinge" : $"Voeg {story.Title} by jou gunstelinge")"
+                                        title="@(IsStoryFavorite(story.Slug) ? "Verwyder uit gunstelinge" : "Voeg by gunstelinge")"
+                                        aria-pressed="@IsStoryFavorite(story.Slug)"
+                                        disabled="@IsFavoriteBusy(story.Slug)">
+                                    <i class="fa-@(IsStoryFavorite(story.Slug) ? "solid" : "regular") fa-heart" aria-hidden="true"></i>
+                                </button>
+                            </div>
                         </article>
                     }
                 </div>
