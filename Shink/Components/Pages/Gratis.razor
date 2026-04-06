@@ -102,21 +102,21 @@
 
     private string GratisCanonicalUrl => NavigationManager.ToAbsoluteUri("/gratis").ToString();
 
-    private MarkupString GratisJsonLd => new(JsonSerializer.Serialize(new
+    private MarkupString GratisJsonLd => new(JsonSerializer.Serialize(new Dictionary<string, object?>
     {
-        @context = "https://schema.org",
-        @type = "CollectionPage",
-        name = "Schink Stories | Gratis Stories",
-        description = "Luister gratis na drie Afrikaanse stories op Schink Stories.",
-        url = GratisCanonicalUrl,
-        inLanguage = "af-ZA",
-        isPartOf = new
+        ["@context"] = "https://schema.org",
+        ["@type"] = "CollectionPage",
+        ["name"] = "Schink Stories | Gratis Stories",
+        ["description"] = "Luister gratis na drie Afrikaanse stories op Schink Stories.",
+        ["url"] = GratisCanonicalUrl,
+        ["inLanguage"] = "af-ZA",
+        ["isPartOf"] = new Dictionary<string, object?>
         {
-            @type = "WebSite",
-            name = "Schink Stories",
-            url = NavigationManager.ToAbsoluteUri("/").ToString()
+            ["@type"] = "WebSite",
+            ["name"] = "Schink Stories",
+            ["url"] = NavigationManager.ToAbsoluteUri("/").ToString()
         },
-        primaryImageOfPage = NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()
+        ["primaryImageOfPage"] = NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()
     }));
 
     protected override async Task OnInitializedAsync()

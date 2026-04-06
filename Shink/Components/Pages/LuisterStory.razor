@@ -308,35 +308,35 @@ else
     private string ShareImageAlt =>
         CurrentStory is null ? "Schink Stories luister stories" : $"Voorblad van {CurrentStory.Title}";
 
-    private MarkupString StoryPageJsonLd => new(JsonSerializer.Serialize(new
+    private MarkupString StoryPageJsonLd => new(JsonSerializer.Serialize(new Dictionary<string, object?>
     {
-        @context = "https://schema.org",
-        @type = "Article",
-        headline = ShareTitle,
-        description = ShareDescription,
-        url = ShareCanonicalUrl,
-        inLanguage = "af-ZA",
-        image = new[] { ShareImageUrl },
-        author = new
+        ["@context"] = "https://schema.org",
+        ["@type"] = "Article",
+        ["headline"] = ShareTitle,
+        ["description"] = ShareDescription,
+        ["url"] = ShareCanonicalUrl,
+        ["inLanguage"] = "af-ZA",
+        ["image"] = new[] { ShareImageUrl },
+        ["author"] = new Dictionary<string, object?>
         {
-            @type = "Organization",
-            name = "Schink Stories"
+            ["@type"] = "Organization",
+            ["name"] = "Schink Stories"
         },
-        publisher = new
+        ["publisher"] = new Dictionary<string, object?>
         {
-            @type = "Organization",
-            name = "Schink Stories",
-            logo = new
+            ["@type"] = "Organization",
+            ["name"] = "Schink Stories",
+            ["logo"] = new Dictionary<string, object?>
             {
-                @type = "ImageObject",
-                url = NavigationManager.ToAbsoluteUri("/branding/schink-logo-text.png").ToString()
+                ["@type"] = "ImageObject",
+                ["url"] = NavigationManager.ToAbsoluteUri("/branding/schink-logo-text.png").ToString()
             }
         },
-        isPartOf = new
+        ["isPartOf"] = new Dictionary<string, object?>
         {
-            @type = "WebSite",
-            name = "Schink Stories",
-            url = NavigationManager.ToAbsoluteUri("/").ToString()
+            ["@type"] = "WebSite",
+            ["name"] = "Schink Stories",
+            ["url"] = NavigationManager.ToAbsoluteUri("/").ToString()
         }
     }));
 

@@ -21,6 +21,7 @@ public sealed class SupabaseStoryCatalogService(
     private static readonly TimeSpan FavouritesCacheDuration = TimeSpan.FromSeconds(30);
     private const int SoundbiteMaxDurationSeconds = 60;
     private const string FavouritesSystemKey = "favourites";
+    private static readonly string[] FavouriteTableNames = ["story_favorites", "story_favourites"];
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private static readonly string[] KleuterStoryTitlesInOrder =
@@ -522,48 +523,65 @@ public sealed class SupabaseStoryCatalogService(
         CancellationToken cancellationToken)
     {
         var escapedSubscriberId = Uri.EscapeDataString(subscriberId.ToString("D"));
-        var requestUri = new Uri(
-            baseUri,
-            "rest/v1/story_favourites" +
-            "?select=story_slug,created_at" +
-            $"&subscriber_id=eq.{escapedSubscriberId}" +
-            "&order=created_at.desc" +
-            "&limit=5000");
+        var combinedRows = new List<StoryFavouriteRow>();
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
-        request.Headers.TryAddWithoutValidation("apikey", apiKey);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
-
-        try
+        foreach (var tableName in FavouriteTableNames)
         {
-            using var response = await _httpClient.SendAsync(request, cancellationToken);
-            if (response.StatusCode == HttpStatusCode.NotFound)
-            {
-                _logger.LogInformation("Supabase favourites lookup skipped: table story_favourites is not available yet.");
-                return Array.Empty<StoryFavouriteRow>();
-            }
+            var requestUri = new Uri(
+                baseUri,
+                $"rest/v1/{tableName}" +
+                "?select=story_slug,created_at" +
+                $"&subscriber_id=eq.{escapedSubscriberId}" +
+                "&order=created_at.desc" +
+                "&limit=5000");
 
-            if (!response.IsSuccessStatusCode)
+            using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
+            request.Headers.TryAddWithoutValidation("apikey", apiKey);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+
+            try
             {
-                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                using var response = await _httpClient.SendAsync(request, cancellationToken);
+                if (response.StatusCode == HttpStatusCode.NotFound)
+                {
+                    _logger.LogInformation(
+                        "Supabase favourites lookup skipped: table {TableName} is not available yet.",
+                        tableName);
+                    continue;
+                }
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                    _logger.LogWarning(
+                        "Supabase favourites lookup failed for {TableName}. Status={StatusCode} Body={Body}",
+                        tableName,
+                        (int)response.StatusCode,
+                        body);
+                    continue;
+                }
+
+                await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                var rows = await JsonSerializer.DeserializeAsync<List<StoryFavouriteRow>>(responseStream, JsonOptions, cancellationToken)
+                    ?? [];
+
+                if (rows.Count > 0)
+                {
+                    combinedRows.AddRange(rows);
+                }
+            }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+            {
                 _logger.LogWarning(
-                    "Supabase favourites lookup failed. Status={StatusCode} Body={Body}",
-                    (int)response.StatusCode,
-                    body);
-                return Array.Empty<StoryFavouriteRow>();
+                    exception,
+                    "Supabase favourites lookup failed unexpectedly for {TableName}.",
+                    tableName);
             }
-
-            await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            var rows = await JsonSerializer.DeserializeAsync<List<StoryFavouriteRow>>(responseStream, JsonOptions, cancellationToken)
-                ?? [];
-
-            return rows;
         }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
-        {
-            _logger.LogWarning(exception, "Supabase favourites lookup failed unexpectedly.");
-            return Array.Empty<StoryFavouriteRow>();
-        }
+
+        return combinedRows
+            .OrderByDescending(row => row.CreatedAt ?? DateTimeOffset.MinValue)
+            .ToArray();
     }
 
     private bool TryBuildSupabaseBaseUri(out Uri baseUri)

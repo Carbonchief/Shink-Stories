@@ -374,34 +374,34 @@ else
             ? "Schink Stories luister speellys"
             : $"Voorblad van {CurrentStory.Title}";
 
-    private MarkupString PlaylistJsonLd => new(JsonSerializer.Serialize(new
+    private MarkupString PlaylistJsonLd => new(JsonSerializer.Serialize(new Dictionary<string, object?>
     {
-        @context = "https://schema.org",
-        @type = "CollectionPage",
-        headline = ShareTitle,
-        description = ShareDescription,
-        url = PlaylistCanonicalUrl,
-        inLanguage = "af-ZA",
-        image = new[] { ShareImageUrl },
-        isPartOf = new
+        ["@context"] = "https://schema.org",
+        ["@type"] = "CollectionPage",
+        ["headline"] = ShareTitle,
+        ["description"] = ShareDescription,
+        ["url"] = PlaylistCanonicalUrl,
+        ["inLanguage"] = "af-ZA",
+        ["image"] = new[] { ShareImageUrl },
+        ["isPartOf"] = new Dictionary<string, object?>
         {
-            @type = "WebSite",
-            name = "Schink Stories",
-            url = NavigationManager.ToAbsoluteUri("/").ToString()
+            ["@type"] = "WebSite",
+            ["name"] = "Schink Stories",
+            ["url"] = NavigationManager.ToAbsoluteUri("/").ToString()
         },
-        mainEntity = CurrentPlaylist is null
+        ["mainEntity"] = CurrentPlaylist is null
             ? null
-            : new
+            : new Dictionary<string, object?>
             {
-                @type = "ItemList",
-                name = CurrentPlaylist.Title,
-                numberOfItems = AccessibleStories.Count,
-                itemListElement = AccessibleStories.Select((story, index) => new
+                ["@type"] = "ItemList",
+                ["name"] = CurrentPlaylist.Title,
+                ["numberOfItems"] = AccessibleStories.Count,
+                ["itemListElement"] = AccessibleStories.Select((story, index) => new Dictionary<string, object?>
                 {
-                    @type = "ListItem",
-                    position = index + 1,
-                    name = story.Title,
-                    url = NavigationManager.ToAbsoluteUri($"/luister/{story.Slug}").ToString()
+                    ["@type"] = "ListItem",
+                    ["position"] = index + 1,
+                    ["name"] = story.Title,
+                    ["url"] = NavigationManager.ToAbsoluteUri($"/luister/{story.Slug}").ToString()
                 }).ToArray()
             }
     }));

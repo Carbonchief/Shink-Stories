@@ -541,27 +541,27 @@
         }
     }
 
-    private MarkupString HomeOrganizationJsonLd => new(JsonSerializer.Serialize(new
+    private MarkupString HomeOrganizationJsonLd => new(JsonSerializer.Serialize(new Dictionary<string, object?>
     {
-        @context = "https://schema.org",
-        @type = "Organization",
-        name = "Schink Stories",
-        url = HomeCanonicalUrl,
-        logo = NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString(),
-        sameAs = new[]
+        ["@context"] = "https://schema.org",
+        ["@type"] = "Organization",
+        ["name"] = "Schink Stories",
+        ["url"] = HomeCanonicalUrl,
+        ["logo"] = NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString(),
+        ["sameAs"] = new[]
         {
             "https://www.facebook.com/schinkstories",
             "https://www.instagram.com/schinkstories/"
         }
     }));
 
-    private MarkupString HomeWebSiteJsonLd => new(JsonSerializer.Serialize(new
+    private MarkupString HomeWebSiteJsonLd => new(JsonSerializer.Serialize(new Dictionary<string, object?>
     {
-        @context = "https://schema.org",
-        @type = "WebSite",
-        name = "Schink Stories",
-        url = HomeCanonicalUrl,
-        inLanguage = "af-ZA"
+        ["@context"] = "https://schema.org",
+        ["@type"] = "WebSite",
+        ["name"] = "Schink Stories",
+        ["url"] = HomeCanonicalUrl,
+        ["inLanguage"] = "af-ZA"
     }));
 
     private async Task HandleContactSubmitAsync()

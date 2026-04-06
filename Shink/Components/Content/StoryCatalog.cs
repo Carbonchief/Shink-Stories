@@ -32,10 +32,20 @@ public sealed record StoryItem(
             (string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
              string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)))
         {
-            return absoluteUri.ToString();
+            return RewriteAbsoluteAssetUri(absoluteUri);
         }
 
         return ToAssetPath(fileName);
+    }
+
+    private static string RewriteAbsoluteAssetUri(Uri absoluteUri)
+    {
+        if (string.Equals(absoluteUri.Host, "media.prioritybit.co.za", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"/media/image?src={Uri.EscapeDataString(absoluteUri.ToString())}";
+        }
+
+        return absoluteUri.ToString();
     }
 
     private static string EncodeLocalPath(string value)
