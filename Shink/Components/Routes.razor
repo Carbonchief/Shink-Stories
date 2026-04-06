@@ -1,6 +1,20 @@
-﻿<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
     <Found Context="routeData">
         <RouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
-        <FocusOnNavigate RouteData="routeData" Selector="h1" />
+        @if (ShouldFocusOnNavigate(routeData))
+        {
+            <FocusOnNavigate RouteData="routeData" Selector="h1" />
+        }
     </Found>
 </Router>
+
+@code {
+    private static bool ShouldFocusOnNavigate(RouteData routeData)
+    {
+        var pageType = routeData.PageType;
+        return pageType != typeof(Pages.Luister) &&
+               pageType != typeof(Pages.LuisterStory) &&
+               pageType != typeof(Pages.LuisterPlaylist) &&
+               pageType != typeof(Pages.LuisterPlaylistShowcase);
+    }
+}

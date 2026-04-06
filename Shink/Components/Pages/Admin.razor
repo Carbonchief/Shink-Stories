@@ -1,8 +1,10 @@
 @page "/admin"
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @implements IAsyncDisposable
 @using System.Globalization
 @using System.Security.Claims
+@using System.Text
+@using System.Text.Encodings.Web
 @using Microsoft.Extensions.Options
 @using Microsoft.AspNetCore.Components.Authorization
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -123,7 +125,7 @@
 
             <MudTable T="AdminSubscriberRecord"
                       Class="admin-grid"
-                      Items="Subscribers"
+                      Items="FilteredSubscribers"
                       SortLabel='@T("Sorteer volgens", "Sort by")'
                       RowsPerPage="10"
                       Dense="true"
@@ -171,8 +173,8 @@
                     </MudTh>
                 </HeaderContent>
                 <RowTemplate>
-                    <MudTd DataLabel='@T("E-pos", "Email")'>@context.Email</MudTd>
-                    <MudTd DataLabel='@T("Naam", "Name")'>@BuildSubscriberName(context)</MudTd>
+                    <MudTd DataLabel='@T("E-pos", "Email")'>@HighlightSearchMatch(context.Email, SubscriberSearch)</MudTd>
+                    <MudTd DataLabel='@T("Naam", "Name")'>@HighlightSearchMatch(BuildSubscriberName(context), SubscriberSearch)</MudTd>
                     <MudTd DataLabel='@T("Vlakke", "Tiers")'>@BuildTierSummary(context.ActiveTierCodes)</MudTd>
                     <MudTd DataLabel='@T("Betaalverskaffer", "Payment Provider")'>@BuildPaymentProviderLabel(context.PaymentProvider)</MudTd>
                     <MudTd DataLabel='@T("Status", "Status")'>@BuildSubscriptionStatusLabel(context)</MudTd>
@@ -225,7 +227,7 @@
 
             <MudTable T="AdminStoryRecord"
                       Class="admin-grid"
-                      Items="Stories"
+                      Items="FilteredStories"
                       SortLabel='@T("Sorteer volgens", "Sort by")'
                       RowsPerPage="10"
                       Dense="true"
@@ -253,7 +255,7 @@
                     </MudTh>
                 </HeaderContent>
                 <RowTemplate>
-                    <MudTd DataLabel='@T("Titel", "Title")'>@context.Title</MudTd>
+                    <MudTd DataLabel='@T("Titel", "Title")'>@HighlightSearchMatch(context.Title, StorySearch)</MudTd>
                     <MudTd DataLabel='@T("Status", "Status")'>@context.Status</MudTd>
                     <MudTd DataLabel='@T("Toegang", "Access")'>@context.AccessLevel</MudTd>
                 </RowTemplate>
@@ -1026,6 +1028,10 @@
     private IReadOnlyList<AdminSubscriberRecord> Subscribers { get; set; } = Array.Empty<AdminSubscriberRecord>();
     private IReadOnlyList<AdminStoryRecord> Stories { get; set; } = Array.Empty<AdminStoryRecord>();
     private IReadOnlyList<AdminPlaylistRecord> Playlists { get; set; } = Array.Empty<AdminPlaylistRecord>();
+    private IReadOnlyList<AdminSubscriberRecord> FilteredSubscribers =>
+        FilterSubscribers(Subscribers, SubscriberSearch);
+    private IReadOnlyList<AdminStoryRecord> FilteredStories =>
+        FilterStories(Stories, StorySearch);
 
     private EditableSubscriber? SubscriberEditor { get; set; }
     private EditableStory? StoryEditor { get; set; }
@@ -2901,6 +2907,91 @@
 
     private static string BuildTierSortKey(IReadOnlyList<string>? tiers) =>
         tiers is null || tiers.Count == 0 ? string.Empty : string.Join(", ", tiers);
+
+    private static IReadOnlyList<AdminSubscriberRecord> FilterSubscribers(
+        IReadOnlyList<AdminSubscriberRecord> source,
+        string? searchTerm)
+    {
+        if (source.Count == 0)
+        {
+            return source;
+        }
+
+        var normalizedSearch = searchTerm?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedSearch))
+        {
+            return source;
+        }
+
+        return source.Where(subscriber =>
+                subscriber.Email.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase) ||
+                BuildSubscriberName(subscriber).Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase) ||
+                (subscriber.MobileNumber?.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase) ?? false))
+            .ToArray();
+    }
+
+    private static IReadOnlyList<AdminStoryRecord> FilterStories(
+        IReadOnlyList<AdminStoryRecord> source,
+        string? searchTerm)
+    {
+        if (source.Count == 0)
+        {
+            return source;
+        }
+
+        var normalizedSearch = searchTerm?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedSearch))
+        {
+            return source;
+        }
+
+        return source.Where(story =>
+                story.Title.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase) ||
+                story.Slug.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+    }
+
+    private static MarkupString HighlightSearchMatch(string? value, string? searchTerm)
+    {
+        var text = value ?? string.Empty;
+        var normalizedSearch = searchTerm?.Trim();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return new MarkupString(string.Empty);
+        }
+
+        if (string.IsNullOrWhiteSpace(normalizedSearch))
+        {
+            return new MarkupString(HtmlEncoder.Default.Encode(text));
+        }
+
+        var builder = new StringBuilder();
+        var currentIndex = 0;
+
+        while (currentIndex < text.Length)
+        {
+            var matchIndex = text.IndexOf(normalizedSearch, currentIndex, StringComparison.OrdinalIgnoreCase);
+            if (matchIndex < 0)
+            {
+                builder.Append(HtmlEncoder.Default.Encode(text[currentIndex..]));
+                break;
+            }
+
+            if (matchIndex > currentIndex)
+            {
+                builder.Append(HtmlEncoder.Default.Encode(text[currentIndex..matchIndex]));
+            }
+
+            var matchLength = normalizedSearch.Length;
+            builder.Append("<mark class=\"admin-search-highlight\">");
+            builder.Append(HtmlEncoder.Default.Encode(text.Substring(matchIndex, matchLength)));
+            builder.Append("</mark>");
+
+            currentIndex = matchIndex + matchLength;
+        }
+
+        return new MarkupString(builder.ToString());
+    }
 
     private string FormatAdminDate(DateTimeOffset? value)
     {
