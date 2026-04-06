@@ -335,6 +335,25 @@ app.Use(async (httpContext, next) =>
 // Fallback serving from physical wwwroot to avoid manifest drift issues during publish.
 app.UseStaticFiles();
 
+app.MapGet("/media/image", async (
+    string? src,
+    IHttpClientFactory httpClientFactory,
+    HttpContext httpContext) =>
+{
+    if (string.IsNullOrWhiteSpace(src) ||
+        !Uri.TryCreate(src, UriKind.Absolute, out var sourceUri))
+    {
+        return Results.BadRequest();
+    }
+
+    if (!IsAllowedImageProxySource(sourceUri))
+    {
+        return Results.Forbid();
+    }
+
+    return await ProxyImageFromOriginAsync(httpContext, httpClientFactory, sourceUri);
+});
+
 app.MapGet("/media/audio/{slug}", async (
     string slug,
     string? token,
@@ -1275,6 +1294,74 @@ static void ApplyAudioResponseSecurityHeaders(HttpContext httpContext)
     httpContext.Response.Headers["Content-Disposition"] = "inline";
 }
 
+static bool IsAllowedImageProxySource(Uri sourceUri)
+{
+    if (!string.Equals(sourceUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(sourceUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
+    {
+        return false;
+    }
+
+    return string.Equals(sourceUri.Host, "media.prioritybit.co.za", StringComparison.OrdinalIgnoreCase);
+}
+
+static async Task<IResult> ProxyImageFromOriginAsync(
+    HttpContext httpContext,
+    IHttpClientFactory httpClientFactory,
+    Uri sourceUri)
+{
+    try
+    {
+        using var upstreamRequest = new HttpRequestMessage(HttpMethod.Get, sourceUri);
+        upstreamRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("image/*"));
+
+        using var upstreamResponse = await httpClientFactory.CreateClient("audio-origin")
+            .SendAsync(upstreamRequest, HttpCompletionOption.ResponseHeadersRead, httpContext.RequestAborted);
+
+        if (upstreamResponse.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized)
+        {
+            return Results.NotFound();
+        }
+
+        if (!upstreamResponse.IsSuccessStatusCode)
+        {
+            return Results.StatusCode(StatusCodes.Status502BadGateway);
+        }
+
+        httpContext.Response.StatusCode = (int)upstreamResponse.StatusCode;
+        if (upstreamResponse.Content.Headers.ContentLength.HasValue)
+        {
+            httpContext.Response.ContentLength = upstreamResponse.Content.Headers.ContentLength.Value;
+        }
+
+        httpContext.Response.ContentType = upstreamResponse.Content.Headers.ContentType?.ToString()
+            ?? ResolveImageMimeType(sourceUri.AbsolutePath);
+        httpContext.Response.Headers.CacheControl = "public, max-age=3600";
+        httpContext.Response.Headers["X-Content-Type-Options"] = "nosniff";
+        httpContext.Response.Headers["Cross-Origin-Resource-Policy"] = "same-site";
+
+        await using var upstreamStream = await upstreamResponse.Content.ReadAsStreamAsync(httpContext.RequestAborted);
+        await upstreamStream.CopyToAsync(httpContext.Response.Body, httpContext.RequestAborted);
+        return Results.Empty;
+    }
+    catch (OperationCanceledException) when (httpContext.RequestAborted.IsCancellationRequested)
+    {
+        return Results.Empty;
+    }
+    catch (IOException) when (httpContext.RequestAborted.IsCancellationRequested)
+    {
+        return Results.Empty;
+    }
+    catch (OperationCanceledException)
+    {
+        return Results.StatusCode(StatusCodes.Status504GatewayTimeout);
+    }
+    catch (HttpRequestException)
+    {
+        return Results.StatusCode(StatusCodes.Status502BadGateway);
+    }
+}
+
 static async Task<IResult> ProxyAudioFromOriginAsync(
     HttpContext httpContext,
     IHttpClientFactory httpClientFactory,
@@ -1870,6 +1957,20 @@ static string ResolveAudioMimeType(string? configuredContentType, string? audioO
         ".wav" => "audio/wav",
         ".ogg" => "audio/ogg",
         _ => "audio/mpeg"
+    };
+}
+
+static string ResolveImageMimeType(string? sourcePath)
+{
+    var extension = Path.GetExtension(sourcePath ?? string.Empty).ToLowerInvariant();
+    return extension switch
+    {
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".png" => "image/png",
+        ".webp" => "image/webp",
+        ".gif" => "image/gif",
+        ".avif" => "image/avif",
+        _ => "image/jpeg"
     };
 }
 

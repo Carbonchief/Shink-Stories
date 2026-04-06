@@ -180,20 +180,20 @@
 @code {
     private string MeerOorOnsCanonicalUrl => NavigationManager.ToAbsoluteUri("/meer-oor-ons").ToString();
 
-    private MarkupString MeerOorOnsJsonLd => new(JsonSerializer.Serialize(new
+    private MarkupString MeerOorOnsJsonLd => new(JsonSerializer.Serialize(new Dictionary<string, object?>
     {
-        @context = "https://schema.org",
-        @type = "AboutPage",
-        name = "Schink Stories | Meer oor Ons",
-        description = "Leer meer oor Schink Stories se missie, visie en waardes vir veilige Afrikaanse kinderstories.",
-        url = MeerOorOnsCanonicalUrl,
-        inLanguage = "af-ZA",
-        isPartOf = new
+        ["@context"] = "https://schema.org",
+        ["@type"] = "AboutPage",
+        ["name"] = "Schink Stories | Meer oor Ons",
+        ["description"] = "Leer meer oor Schink Stories se missie, visie en waardes vir veilige Afrikaanse kinderstories.",
+        ["url"] = MeerOorOnsCanonicalUrl,
+        ["inLanguage"] = "af-ZA",
+        ["isPartOf"] = new Dictionary<string, object?>
         {
-            @type = "WebSite",
-            name = "Schink Stories",
-            url = NavigationManager.ToAbsoluteUri("/").ToString()
+            ["@type"] = "WebSite",
+            ["name"] = "Schink Stories",
+            ["url"] = NavigationManager.ToAbsoluteUri("/").ToString()
         },
-        primaryImageOfPage = NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()
+        ["primaryImageOfPage"] = NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()
     }));
 }

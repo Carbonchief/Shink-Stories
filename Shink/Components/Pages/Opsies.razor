@@ -198,21 +198,21 @@
 
     private string OpsiesCanonicalUrl => NavigationManager.ToAbsoluteUri("/opsies").ToString();
 
-    private MarkupString OpsiesJsonLd => new(JsonSerializer.Serialize(new
+    private MarkupString OpsiesJsonLd => new(JsonSerializer.Serialize(new Dictionary<string, object?>
     {
-        @context = "https://schema.org",
-        @type = "WebPage",
-        name = "Schink Stories | Opsies",
-        description = "Kies jou Schink Stories opsie en begin luister na veilige Afrikaanse stories.",
-        url = OpsiesCanonicalUrl,
-        inLanguage = "af-ZA",
-        isPartOf = new
+        ["@context"] = "https://schema.org",
+        ["@type"] = "WebPage",
+        ["name"] = "Schink Stories | Opsies",
+        ["description"] = "Kies jou Schink Stories opsie en begin luister na veilige Afrikaanse stories.",
+        ["url"] = OpsiesCanonicalUrl,
+        ["inLanguage"] = "af-ZA",
+        ["isPartOf"] = new Dictionary<string, object?>
         {
-            @type = "WebSite",
-            name = "Schink Stories",
-            url = NavigationManager.ToAbsoluteUri("/").ToString()
+            ["@type"] = "WebSite",
+            ["name"] = "Schink Stories",
+            ["url"] = NavigationManager.ToAbsoluteUri("/").ToString()
         },
-        primaryImageOfPage = NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()
+        ["primaryImageOfPage"] = NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()
     }));
 
     protected override async Task OnParametersSetAsync()

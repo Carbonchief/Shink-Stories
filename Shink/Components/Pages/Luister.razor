@@ -77,21 +77,21 @@
 
     private string LuisterCanonicalUrl => NavigationManager.ToAbsoluteUri("/luister").ToString();
 
-    private MarkupString LuisterJsonLd => new(JsonSerializer.Serialize(new
+    private MarkupString LuisterJsonLd => new(JsonSerializer.Serialize(new Dictionary<string, object?>
     {
-        @context = "https://schema.org",
-        @type = "CollectionPage",
-        name = "Schink Stories | Luister",
-        description = "Luister na ons nuutste stories op Schink Stories.",
-        url = LuisterCanonicalUrl,
-        inLanguage = "af-ZA",
-        isPartOf = new
+        ["@context"] = "https://schema.org",
+        ["@type"] = "CollectionPage",
+        ["name"] = "Schink Stories | Luister",
+        ["description"] = "Luister na ons nuutste stories op Schink Stories.",
+        ["url"] = LuisterCanonicalUrl,
+        ["inLanguage"] = "af-ZA",
+        ["isPartOf"] = new Dictionary<string, object?>
         {
-            @type = "WebSite",
-            name = "Schink Stories",
-            url = NavigationManager.ToAbsoluteUri("/").ToString()
+            ["@type"] = "WebSite",
+            ["name"] = "Schink Stories",
+            ["url"] = NavigationManager.ToAbsoluteUri("/").ToString()
         },
-        primaryImageOfPage = NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()
+        ["primaryImageOfPage"] = NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()
     }));
 
     protected override async Task OnInitializedAsync()
@@ -318,7 +318,18 @@
             return;
         }
 
-        await module.InvokeVoidAsync("initializeHomeStoryLoading");
+        try
+        {
+            await module.InvokeVoidAsync("initializeHomeStoryLoading");
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignore cancellations when navigation interrupts JS interop.
+        }
+        catch (JSDisconnectedException)
+        {
+            // Ignore circuit disconnects during teardown/navigation.
+        }
     }
 
     private async Task<IJSObjectReference?> TryGetLuisterModuleAsync()
@@ -337,6 +348,10 @@
         {
             _luisterModule = await JS.InvokeAsync<IJSObjectReference>("import", "/Components/Pages/Home.razor.js");
             return _luisterModule;
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
         }
         catch (JSException)
         {
@@ -362,6 +377,10 @@
         try
         {
             await _luisterModule.DisposeAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignore cancellations during component disposal.
         }
         catch (JSDisconnectedException)
         {
