@@ -425,8 +425,10 @@ else
 
             IsRedirectingToOpsies = false;
             PendingTrackAutoplay = false;
+            var signedInEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                               ?? authState.User.Identity?.Name;
 
-            var playlists = await StoryCatalogService.GetLuisterPlaylistsAsync();
+            var playlists = await StoryCatalogService.GetLuisterPlaylistsAsync(signedInEmail);
             CurrentPlaylist = playlists.FirstOrDefault(playlist =>
                 string.Equals(playlist.Slug, PlaylistSlug, StringComparison.OrdinalIgnoreCase));
 

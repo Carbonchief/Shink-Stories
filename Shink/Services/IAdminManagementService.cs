@@ -135,6 +135,8 @@ public sealed record AdminPlaylistRecord(
     Guid PlaylistId,
     string Slug,
     string Title,
+    bool IsSystemPlaylist,
+    string? SystemKey,
     string? Description,
     string? LogoImagePath,
     string? BackdropImagePath,

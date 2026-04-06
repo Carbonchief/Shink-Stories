@@ -1067,7 +1067,7 @@ app.MapGet("/sitemap.xml", async (HttpContext httpContext, IStoryCatalogService 
 
     var freeStoriesTask = storyCatalogService.GetFreeStoriesAsync(httpContext.RequestAborted);
     var luisterStoriesTask = storyCatalogService.GetLuisterStoriesAsync(httpContext.RequestAborted);
-    var luisterPlaylistsTask = storyCatalogService.GetLuisterPlaylistsAsync(httpContext.RequestAborted);
+    var luisterPlaylistsTask = storyCatalogService.GetLuisterPlaylistsAsync(cancellationToken: httpContext.RequestAborted);
     await Task.WhenAll(freeStoriesTask, luisterStoriesTask, luisterPlaylistsTask);
 
     paths.AddRange(freeStoriesTask.Result.Select(story => $"/gratis/{Uri.EscapeDataString(story.Slug)}"));

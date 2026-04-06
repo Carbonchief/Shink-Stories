@@ -1,10 +1,13 @@
 @page "/luister"
 @rendermode InteractiveServer
+@using System.Security.Claims
 @using System.Text.Json
 @using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.JSInterop
 @inject NavigationManager NavigationManager
 @inject IStoryCatalogService StoryCatalogService
+@inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
@@ -91,7 +94,12 @@
     {
         try
         {
-            LuisterPlaylists = await StoryCatalogService.GetLuisterPlaylistsAsync();
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var signedInEmail = authState.User.Identity?.IsAuthenticated == true
+                ? authState.User.FindFirst(ClaimTypes.Email)?.Value ?? authState.User.Identity?.Name
+                : null;
+
+            LuisterPlaylists = await StoryCatalogService.GetLuisterPlaylistsAsync(signedInEmail);
         }
         catch
         {

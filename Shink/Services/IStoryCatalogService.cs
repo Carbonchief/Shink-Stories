@@ -6,7 +6,7 @@ public interface IStoryCatalogService
 {
     Task<IReadOnlyList<StoryItem>> GetFreeStoriesAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<StoryItem>> GetLuisterStoriesAsync(CancellationToken cancellationToken = default);
-    Task<IReadOnlyList<StoryPlaylist>> GetLuisterPlaylistsAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<StoryPlaylist>> GetLuisterPlaylistsAsync(string? userEmail = null, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<StoryPreviewItem>> GetNewestTop10Async(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<StoryPreviewItem>> GetBibleStoriesAsync(CancellationToken cancellationToken = default);
     Task<StoryItem?> FindFreeBySlugAsync(string? slug, CancellationToken cancellationToken = default);
