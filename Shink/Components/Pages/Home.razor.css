@@ -872,6 +872,8 @@ h2 {
 
 .perfect-plan-section {
     --perfect-plan-highlight: #d67f12;
+    --perfect-plan-surface: #f2d8a4;
+    --perfect-plan-surface-soft: #fff7e8;
     margin: 2.4rem auto 0;
     width: 100%;
     border-radius: 0;
@@ -913,8 +915,8 @@ h2 {
     position: relative;
     width: min(100%, 350px);
     border-radius: 28px;
-    border: 1px solid rgba(255, 255, 255, 0.52);
-    background: #ececec;
+    border: 1px solid rgba(195, 154, 97, 0.42);
+    background: linear-gradient(180deg, #fffdf8 0%, #f8ecd0 100%);
     color: #0d1421;
     padding: 2.15rem 1rem 1rem;
     display: flex;
@@ -925,7 +927,7 @@ h2 {
 
 .perfect-plan-card.is-featured {
     border-color: var(--perfect-plan-highlight);
-    box-shadow: 0 16px 30px rgba(243, 154, 50, 0.2);
+    box-shadow: 0 16px 30px rgba(214, 127, 18, 0.18);
 }
 
 .perfect-plan-card:hover {
@@ -944,9 +946,9 @@ h2 {
     font-weight: 800;
     letter-spacing: 0.03em;
     color: #ffffff;
-    background: rgba(138, 79, 0, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.35);
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.22);
+    background: rgba(138, 79, 0, 0.98);
+    border: 1px solid rgba(255, 255, 255, 0.42);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.18);
 }
 
 .perfect-plan-card h3 {
@@ -977,7 +979,7 @@ h2 {
     left: 0;
     top: 0.02rem;
     font-size: 1rem;
-    color: #151515;
+    color: var(--perfect-plan-highlight);
 }
 
 .perfect-plan-options {
@@ -992,9 +994,9 @@ h2 {
     align-items: center;
     gap: 0.62rem;
     position: relative;
-    border: 1px solid #c3c3c3;
+    border: 1px solid rgba(195, 154, 97, 0.36);
     border-radius: 14px;
-    background: #f2f2f2;
+    background: #fffaf0;
     padding: 0.72rem 0.8rem;
     cursor: pointer;
     transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
@@ -1005,8 +1007,9 @@ h2 {
 }
 
 .perfect-plan-option.is-selected {
-    border-color: rgba(243, 154, 50, 0.72);
-    box-shadow: 0 8px 18px rgba(243, 154, 50, 0.2);
+    border-color: rgba(214, 127, 18, 0.7);
+    background: linear-gradient(180deg, #fff3d9 0%, #f8e1b8 100%);
+    box-shadow: 0 8px 18px rgba(214, 127, 18, 0.16);
 }
 
 .perfect-plan-option input {
@@ -1025,7 +1028,7 @@ h2 {
     width: 18px;
     height: 18px;
     border-radius: 999px;
-    border: 1px solid #b8b8b8;
+    border: 1px solid rgba(195, 154, 97, 0.56);
     background: #ffffff;
     position: relative;
     transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease;
@@ -1066,13 +1069,13 @@ h2 {
 .perfect-plan-option-price-line span {
     font-size: 0.88rem;
     font-weight: 600;
-    color: #2e3742;
+    color: #4a5764;
     text-transform: uppercase;
     letter-spacing: 0.02em;
 }
 
 .perfect-plan-option-caption {
-    color: #39414b;
+    color: #4a5764;
     font-size: 0.86rem;
     line-height: 1.25;
 }
@@ -1110,22 +1113,24 @@ h2 {
     font-weight: 800;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: #0f1722;
-    background: #cbcbcb;
-    border: 1px solid transparent;
-    transition: transform 0.18s ease, filter 0.18s ease, box-shadow 0.18s ease;
+    color: #394750;
+    background: var(--perfect-plan-surface);
+    border: 1px solid rgba(195, 154, 97, 0.48);
+    box-shadow: 0 10px 20px rgba(18, 35, 40, 0.14);
+    transition: transform 0.18s ease, filter 0.18s ease, box-shadow 0.18s ease, background 0.18s ease, color 0.18s ease;
 }
 
 .perfect-plan-select.is-linked-selected {
-    background: #f2f2f2;
-    border-color: rgba(243, 154, 50, 0.72);
-    box-shadow: 0 8px 18px rgba(243, 154, 50, 0.2);
+    background: var(--perfect-plan-surface);
+    border-color: rgba(214, 127, 18, 0.7);
+    box-shadow: 0 10px 20px rgba(214, 127, 18, 0.16);
 }
 
 .perfect-plan-select:hover,
 .perfect-plan-select:focus-visible {
     transform: translateY(-1px);
-    filter: brightness(1.04);
+    background: var(--accent-deep);
+    color: #111111;
 }
 
 .perfect-plan-select:focus-visible {

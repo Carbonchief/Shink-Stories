@@ -153,19 +153,39 @@ h1:focus {
 
     body .site-shell .site-main .perfect-plan-card.is-featured,
     body .site-shell .site-main .opsie-card.featured {
-        border-color: var(--grid-highlight-border-dark);
-        box-shadow: 0 18px 34px rgba(179, 33, 33, 0.12);
+        border-color: rgba(214, 127, 18, 0.35);
+        box-shadow: 0 18px 34px rgba(214, 127, 18, 0.12);
     }
 
     body .site-shell .site-main .perfect-plan-badge,
     body .site-shell .site-main .opsie-badge {
-        background: rgba(179, 33, 33, 0.12);
-        border-color: rgba(179, 33, 33, 0.35);
-        color: #8a1d1d;
+        background: rgba(138, 79, 0, 0.98);
+        border-color: rgba(255, 255, 255, 0.42);
+        color: #ffffff;
     }
 
     body .site-shell .site-main .perfect-plan-option,
-    body .site-shell .site-main .perfect-plan-select,
+    body .site-shell .site-main .perfect-plan-select {
+        background: #fffaf0;
+        border-color: rgba(195, 154, 97, 0.36);
+        color: #394750;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+
+    body .site-shell .site-main .perfect-plan-option:hover,
+    body .site-shell .site-main .perfect-plan-select:hover {
+        background: var(--accent-deep);
+        border-color: rgba(214, 127, 18, 0.7);
+        color: #111111;
+    }
+
+    body .site-shell .site-main .perfect-plan-option.is-selected,
+    body .site-shell .site-main .perfect-plan-select.is-linked-selected {
+        background: #f2d8a4;
+        border-color: rgba(214, 127, 18, 0.7);
+        box-shadow: 0 8px 18px rgba(214, 127, 18, 0.16);
+    }
+
     body .site-shell .site-main .opsie-btn {
         background: var(--grid-surface-soft-dark);
         border-color: var(--grid-border-dark);
@@ -173,27 +193,19 @@ h1:focus {
         box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
     }
 
-    body .site-shell .site-main .perfect-plan-option:hover,
-    body .site-shell .site-main .perfect-plan-select:hover,
     body .site-shell .site-main .opsie-btn:hover {
         background: rgba(179, 33, 33, 0.08);
         border-color: var(--grid-highlight-border-dark);
-    }
-
-    body .site-shell .site-main .perfect-plan-option.is-selected,
-    body .site-shell .site-main .perfect-plan-select.is-linked-selected {
-        background: rgba(179, 33, 33, 0.12);
-        border-color: var(--grid-highlight-border-dark);
-        box-shadow: 0 8px 18px rgba(179, 33, 33, 0.16);
+        color: var(--grid-text-dark);
     }
 
     body .site-shell .site-main .perfect-plan-option-indicator {
-        border-color: rgba(0, 0, 0, 0.2);
+        border-color: rgba(195, 154, 97, 0.56);
         background: #ffffff;
     }
 
     body .site-shell .site-main .perfect-plan-option.is-selected .perfect-plan-option-indicator {
-        background: #111111;
+        background: #ffffff;
     }
 
     body .site-shell .site-main .opsie-btn-disabled,
@@ -206,7 +218,7 @@ h1:focus {
 
     body .site-shell .site-main .perfect-plan-list li::before,
     body .site-shell .site-main .opsie-card li::before {
-        color: #b32121;
+        color: var(--accent-deep);
     }
 
     body .site-shell .site-main .perfect-plan-card h3,
