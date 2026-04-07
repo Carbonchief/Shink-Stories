@@ -479,6 +479,17 @@ h2 {
     user-select: none;
 }
 
+.story-carousel-link-button {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    width: 100%;
+}
+
 .story-carousel-cover {
     position: relative;
     display: block;

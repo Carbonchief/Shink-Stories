@@ -157,6 +157,16 @@ h1 {
     gap: 0.45rem;
 }
 
+.luister-playlist-link-button {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
 .luister-playlist-link::after {
     content: "\f061";
     font-family: "Font Awesome 6 Free";
@@ -266,6 +276,17 @@ h1 {
     text-decoration: none;
     display: grid;
     gap: 0.56rem;
+}
+
+.story-carousel-link-button {
+    border: 0;
+    background: transparent;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    width: 100%;
 }
 
 .story-carousel-card-shell {

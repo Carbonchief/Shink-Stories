@@ -1,0 +1,122 @@
+.story-access-popup-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem 1rem;
+    background: rgba(7, 55, 66, 0.52);
+    backdrop-filter: blur(7px);
+}
+
+.story-access-popup-card {
+    position: relative;
+    width: min(92vw, 360px);
+    background: #ffffff;
+    border-radius: 28px;
+    padding: 1.5rem 1.25rem 1.25rem;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.story-access-popup-close {
+    position: absolute;
+    top: 0.85rem;
+    right: 0.85rem;
+    width: 2rem;
+    height: 2rem;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: #c1c1c1;
+    font-size: 1.2rem;
+    line-height: 1;
+    display: grid;
+    place-items: center;
+}
+
+.story-access-popup-close:hover,
+.story-access-popup-close:focus-visible {
+    color: #8e8e8e;
+}
+
+.story-access-popup-image {
+    width: clamp(130px, 46vw, 190px);
+    height: auto;
+    display: block;
+    margin: 0.25rem auto 0.5rem;
+}
+
+.story-access-popup-card h2 {
+    margin: 0;
+    color: #1f1f1f;
+    font-size: clamp(1.75rem, 4.4vw, 2rem);
+    line-height: 1.03;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+}
+
+.story-access-popup-card p {
+    margin: 0.5rem auto 0;
+    max-width: 300px;
+    color: #505050;
+    font-size: 1.05rem;
+    line-height: 1.2;
+    font-weight: 500;
+}
+
+.story-access-popup-actions {
+    margin-top: 1rem;
+    display: grid;
+    gap: 0.65rem;
+}
+
+.story-access-popup-button {
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    width: 100%;
+    min-height: 48px;
+    border-radius: 12px;
+    text-decoration: none;
+    font-size: 1.35rem;
+    font-weight: 700;
+    line-height: 1.1;
+    color: #ffffff;
+    transition: transform 120ms ease, filter 120ms ease;
+}
+
+.story-access-popup-button:hover,
+.story-access-popup-button:focus-visible {
+    transform: translateY(-1px);
+    filter: saturate(1.08);
+}
+
+.story-access-popup-button:active {
+    transform: translateY(0);
+}
+
+.story-access-popup-button-primary {
+    background: linear-gradient(180deg, #03b75a 0%, #01a851 100%);
+}
+
+.story-access-popup-button-secondary {
+    background: linear-gradient(180deg, #44bad1 0%, #2ca8c4 100%);
+}
+
+@media (min-width: 768px) {
+    .story-access-popup-card {
+        width: min(90vw, 395px);
+        padding: 1.75rem 1.5rem 1.4rem;
+    }
+
+    .story-access-popup-card p {
+        font-size: 1.1rem;
+    }
+
+    .story-access-popup-button {
+        min-height: 52px;
+        font-size: 1.45rem;
+    }
+}

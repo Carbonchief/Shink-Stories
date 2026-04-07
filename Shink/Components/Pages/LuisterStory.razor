@@ -36,9 +36,9 @@
 @if (IsRedirectingToOpsies)
 {
     <section class="story-player-empty">
-        <h1>Neem jou nou na opsies...</h1>
-        <p>Kies asseblief 'n opsie wat by hierdie storie pas.</p>
-        <a href="/opsies">Gaan na opsies</a>
+        <h1>Hierdie storie is nog gesluit.</h1>
+        <p>Teken in of kies 'n plan om hierdie storie te luister.</p>
+        <a href="@StoryAccessPopupPrimaryHref">Gaan voort</a>
     </section>
 }
 else if (CurrentStory is null)
@@ -251,6 +251,11 @@ else
     </section>
 }
 
+<StoryAccessPopup IsOpen="@ShowStoryAccessPopup"
+                  PrimaryActionHref="@StoryAccessPopupPrimaryHref"
+                  PlanActionHref="@StoryAccessPopupPlanHref"
+                  OnClose="CloseStoryAccessPopupAsync" />
+
 @code {
     [Parameter]
     public string? Slug { get; set; }
@@ -277,6 +282,8 @@ else
     private StoryItem? NextStory { get; set; }
     private bool IsRedirectingToOpsies { get; set; }
     private string? SignedInEmail { get; set; }
+    private bool ShowStoryAccessPopup { get; set; }
+    private string PendingLockedStoryPath { get; set; } = "/luister";
 
     private string? StoryArtworkUrl =>
         CurrentStory is null ? null : NavigationManager.ToAbsoluteUri(CurrentStory.ImagePath).ToString();
@@ -296,6 +303,12 @@ else
             : NavigationManager.ToAbsoluteUri($"/luister/{Uri.EscapeDataString(CurrentStory.Slug)}").ToString();
 
     private string ShareCanonicalUrl => ShareUrl;
+    private bool IsSignedIn => !string.IsNullOrWhiteSpace(SignedInEmail);
+    private string StoryAccessPopupPrimaryHref =>
+        IsSignedIn
+            ? BuildOpsiesHref(PendingLockedStoryPath)
+            : $"/teken-in?returnUrl={Uri.EscapeDataString(PendingLockedStoryPath)}";
+    private string StoryAccessPopupPlanHref => BuildOpsiesHref(PendingLockedStoryPath);
 
     private string ShareImageUrl =>
         CurrentStory is null
@@ -343,6 +356,7 @@ else
     protected override async Task OnParametersSetAsync()
     {
         var isSocialPreviewRequest = SocialPreviewRequestDetector.IsSocialPreviewRequest(HttpContextAccessor.HttpContext);
+        ShowStoryAccessPopup = false;
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         SignedInEmail = authState.User.Identity?.IsAuthenticated == true
             ? authState.User.FindFirst(ClaimTypes.Email)?.Value ?? authState.User.Identity?.Name
@@ -359,14 +373,8 @@ else
             ResolveAdjacentStories();
             IsManualFullscreenFocus = false;
 
-            if (!isSocialPreviewRequest)
-            {
-                var requestedPath = string.IsNullOrWhiteSpace(Slug)
-                    ? "/luister"
-                    : $"/luister/{Uri.EscapeDataString(Slug)}";
-                var returnUrl = Uri.EscapeDataString(requestedPath);
-                NavigationManager.NavigateTo($"/opsies?returnUrl={returnUrl}");
-            }
+            PendingLockedStoryPath = GetCurrentPathAndQuery();
+            ShowStoryAccessPopup = !isSocialPreviewRequest;
 
             return;
         }
@@ -389,12 +397,8 @@ else
             FavoriteStoryBusySlugs.Clear();
             ResolveAdjacentStories();
             IsManualFullscreenFocus = false;
-
-            var requestedPath = string.IsNullOrWhiteSpace(Slug)
-                ? "/luister"
-                : $"/luister/{Uri.EscapeDataString(Slug)}";
-            var returnUrl = Uri.EscapeDataString(requestedPath);
-            NavigationManager.NavigateTo($"/opsies?returnUrl={returnUrl}");
+            PendingLockedStoryPath = GetCurrentPathAndQuery();
+            ShowStoryAccessPopup = true;
             return;
         }
 
@@ -402,6 +406,7 @@ else
         AudioUrl = CurrentStory is null ? null : AudioAccessService.CreateSignedAudioUrl(CurrentStory.Slug);
         ResolveAdjacentStories();
         IsManualFullscreenFocus = false;
+        ShowStoryAccessPopup = false;
     }
 
     private bool IsStoryFavorite(string slug) => FavoriteStorySlugs.Contains(slug);
@@ -417,11 +422,8 @@ else
 
         if (string.IsNullOrWhiteSpace(SignedInEmail))
         {
-            var requestedPath = string.IsNullOrWhiteSpace(Slug)
-                ? "/luister"
-                : $"/luister/{Uri.EscapeDataString(Slug)}";
-            var returnUrl = Uri.EscapeDataString(requestedPath);
-            NavigationManager.NavigateTo($"/opsies?returnUrl={returnUrl}");
+            PendingLockedStoryPath = GetCurrentPathAndQuery();
+            ShowStoryAccessPopup = true;
             return;
         }
 
@@ -459,6 +461,12 @@ else
         {
             FavoriteStoryBusySlugs.Remove(normalizedSlug);
         }
+    }
+
+    private Task CloseStoryAccessPopupAsync()
+    {
+        ShowStoryAccessPopup = false;
+        return Task.CompletedTask;
     }
 
     private async Task LoadFavoriteStorySlugsAsync()
@@ -718,5 +726,18 @@ else
 
         PreviousStory = stories[previousIndex];
         NextStory = stories[nextIndex];
+    }
+
+    private string GetCurrentPathAndQuery()
+    {
+        var currentUri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        var pathAndQuery = $"{currentUri.AbsolutePath}{currentUri.Query}";
+        return string.IsNullOrWhiteSpace(pathAndQuery) ? "/luister" : pathAndQuery;
+    }
+
+    private static string BuildOpsiesHref(string returnPath)
+    {
+        var safePath = string.IsNullOrWhiteSpace(returnPath) ? "/luister" : returnPath;
+        return $"/opsies?returnUrl={Uri.EscapeDataString(safePath)}";
     }
 }
