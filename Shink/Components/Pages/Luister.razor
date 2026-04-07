@@ -8,6 +8,7 @@
 @inject NavigationManager NavigationManager
 @inject IStoryCatalogService StoryCatalogService
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ISubscriptionLedgerService SubscriptionLedgerService
 @inject IStoryFavoriteService StoryFavoriteService
 @inject IJSRuntime JS
 @implements IAsyncDisposable
@@ -74,8 +75,17 @@
     private string? SignedInEmail { get; set; }
     private string SearchQuery { get; set; } = string.Empty;
     private bool IsSearching { get; set; }
+    private LuisterAccessProfile AccessProfile { get; set; } = new(false, false);
+    private bool ShowStoryAccessPopup { get; set; }
+    private string PendingLockedStoryPath { get; set; } = "/luister";
 
     private string LuisterCanonicalUrl => NavigationManager.ToAbsoluteUri("/luister").ToString();
+    private bool IsSignedIn => !string.IsNullOrWhiteSpace(SignedInEmail);
+    private string StoryAccessPopupPrimaryHref =>
+        IsSignedIn
+            ? BuildOpsiesHref(PendingLockedStoryPath)
+            : $"/teken-in?returnUrl={Uri.EscapeDataString(PendingLockedStoryPath)}";
+    private string StoryAccessPopupPlanHref => BuildOpsiesHref(PendingLockedStoryPath);
 
     private MarkupString LuisterJsonLd => new(JsonSerializer.Serialize(new Dictionary<string, object?>
     {
@@ -96,16 +106,15 @@
 
     protected override async Task OnInitializedAsync()
     {
-        await ResolveSignedInEmailAsync();
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        SignedInEmail = authState.User.Identity?.IsAuthenticated == true
+            ? authState.User.FindFirst(ClaimTypes.Email)?.Value ?? authState.User.Identity?.Name
+            : null;
+        AccessProfile = await ResolveLuisterAccessProfileAsync(authState.User);
 
         try
         {
-            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            var signedInEmail = authState.User.Identity?.IsAuthenticated == true
-                ? authState.User.FindFirst(ClaimTypes.Email)?.Value ?? authState.User.Identity?.Name
-                : null;
-
-            LuisterPlaylists = await StoryCatalogService.GetLuisterPlaylistsAsync(signedInEmail);
+            LuisterPlaylists = await StoryCatalogService.GetLuisterPlaylistsAsync(SignedInEmail);
         }
         catch
         {
@@ -133,7 +142,7 @@
 
         if (string.IsNullOrWhiteSpace(SignedInEmail))
         {
-            RedirectToOpsies();
+            ShowAccessPopupForPath(GetStoryHref(story.Slug));
             return;
         }
 
@@ -173,19 +182,6 @@
         }
     }
 
-    private async Task ResolveSignedInEmailAsync()
-    {
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        if (authState.User.Identity?.IsAuthenticated != true)
-        {
-            SignedInEmail = null;
-            return;
-        }
-
-        SignedInEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
-            ?? authState.User.Identity?.Name;
-    }
-
     private async Task LoadFavoriteStorySlugsAsync()
     {
         FavoriteStorySlugs.Clear();
@@ -216,15 +212,84 @@
         }
     }
 
-    private void RedirectToOpsies()
+    private Task HandleStoryCardClickAsync(StoryItem story)
     {
-        var currentUri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
-        var currentPathAndQuery = $"{currentUri.AbsolutePath}{currentUri.Query}";
-        var returnPath = string.IsNullOrWhiteSpace(currentPathAndQuery)
-            ? "/luister"
-            : currentPathAndQuery;
-        var returnUrl = Uri.EscapeDataString(returnPath);
-        NavigationManager.NavigateTo($"/opsies?returnUrl={returnUrl}");
+        var storyPath = GetStoryHref(story.Slug);
+        if (HasAccessToStory(story))
+        {
+            NavigationManager.NavigateTo(storyPath);
+            return Task.CompletedTask;
+        }
+
+        ShowAccessPopupForPath(storyPath);
+        return Task.CompletedTask;
+    }
+
+    private Task HandlePlaylistClickAsync(StoryPlaylist playlist)
+    {
+        var playlistPath = GetPlaylistHref(playlist.Slug);
+        if (CanOpenPlaylist(playlist))
+        {
+            NavigationManager.NavigateTo(playlistPath);
+            return Task.CompletedTask;
+        }
+
+        ShowAccessPopupForPath(playlistPath);
+        return Task.CompletedTask;
+    }
+
+    private Task CloseStoryAccessPopupAsync()
+    {
+        ShowStoryAccessPopup = false;
+        return Task.CompletedTask;
+    }
+
+    private bool HasAccessToStory(StoryItem story)
+    {
+        var requirement = StoryAccessPolicy.ResolveRequirement("luister", story);
+        return requirement switch
+        {
+            StoryAccessRequirement.Free => true,
+            StoryAccessRequirement.StoryCornerOrAllStories => AccessProfile.HasStoryCornerOrAll,
+            StoryAccessRequirement.AllStoriesOnly => AccessProfile.HasAllStories,
+            _ => false
+        };
+    }
+
+    private bool CanOpenPlaylist(StoryPlaylist playlist) =>
+        playlist.Stories.Any(HasAccessToStory);
+
+    private void ShowAccessPopupForPath(string path)
+    {
+        PendingLockedStoryPath = string.IsNullOrWhiteSpace(path) ? "/luister" : path;
+        ShowStoryAccessPopup = true;
+    }
+
+    private async Task<LuisterAccessProfile> ResolveLuisterAccessProfileAsync(ClaimsPrincipal user)
+    {
+        var email = user.FindFirst(ClaimTypes.Email)?.Value
+                    ?? user.Identity?.Name;
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return new LuisterAccessProfile(false, false);
+        }
+
+        var storyCornerTask = SubscriptionLedgerService.HasActiveSubscriptionForTierAsync(email, StoryAccessPolicy.StoryCornerMonthlyTierCode);
+        var allStoriesMonthlyTask = SubscriptionLedgerService.HasActiveSubscriptionForTierAsync(email, StoryAccessPolicy.AllStoriesMonthlyTierCode);
+        var allStoriesYearlyTask = SubscriptionLedgerService.HasActiveSubscriptionForTierAsync(email, StoryAccessPolicy.AllStoriesYearlyTierCode);
+
+        await Task.WhenAll(storyCornerTask, allStoriesMonthlyTask, allStoriesYearlyTask);
+
+        var hasAllStories = allStoriesMonthlyTask.Result || allStoriesYearlyTask.Result;
+        return new LuisterAccessProfile(
+            HasStoryCornerOrAll: storyCornerTask.Result || hasAllStories,
+            HasAllStories: hasAllStories);
+    }
+
+    private static string BuildOpsiesHref(string returnPath)
+    {
+        var safePath = string.IsNullOrWhiteSpace(returnPath) ? "/luister" : returnPath;
+        return $"/opsies?returnUrl={Uri.EscapeDataString(safePath)}";
     }
 
     private async Task HandleSearchInputAsync(ChangeEventArgs args)
@@ -387,6 +452,8 @@
             // Ignore JS disconnects during teardown.
         }
     }
+
+    private sealed record LuisterAccessProfile(bool HasStoryCornerOrAll, bool HasAllStories);
 }
 
 @if (LuisterPlaylists.Count == 0)
@@ -408,10 +475,20 @@ else
         var playlist = FilteredLuisterPlaylists[index];
         var headingId = $"luister-playlist-{playlist.Slug}-heading";
         var hasDescription = !string.IsNullOrWhiteSpace(playlist.Description);
+        var canOpenPlaylist = CanOpenPlaylist(playlist);
 
         <section class="section-block stories-carousel-section luister-stories-section" aria-labelledby="@headingId">
             <h2 id="@headingId">
-                <a class="luister-playlist-link" href="@GetPlaylistHref(playlist.Slug)">@playlist.Title</a>
+                @if (canOpenPlaylist)
+                {
+                    <a class="luister-playlist-link" href="@GetPlaylistHref(playlist.Slug)">@playlist.Title</a>
+                }
+                else
+                {
+                    <button type="button"
+                            class="luister-playlist-link luister-playlist-link-button"
+                            @onclick="() => HandlePlaylistClickAsync(playlist)">@playlist.Title</button>
+                }
             </h2>
             @if (hasDescription)
             {
@@ -422,23 +499,46 @@ else
                 <div class="stories-carousel" role="list" aria-label="@playlist.Title">
                     @foreach (var story in playlist.Stories)
                     {
+                        var canAccessStory = HasAccessToStory(story);
                         <article class="story-carousel-item" role="listitem">
                             <div class="story-carousel-card-shell">
-                                <a class="story-carousel-link"
+                                @if (canAccessStory)
+                                {
+                                    <a class="story-carousel-link"
                                        href="@GetStoryHref(story.Slug)"
                                        aria-label="Luister na @story.Title">
-                                    <span class="story-carousel-cover">
-                                        <img class="story-carousel-image"
-                                             src="@story.ThumbnailPath"
-                                             srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
-                                             sizes="(max-width: 620px) 68vw, (max-width: 980px) 42vw, 320px"
-                                             alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
-                                        <span class="story-cover-play" aria-hidden="true">
-                                            <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
+                                        <span class="story-carousel-cover">
+                                            <img class="story-carousel-image"
+                                                 src="@story.ThumbnailPath"
+                                                 srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
+                                                 sizes="(max-width: 620px) 68vw, (max-width: 980px) 42vw, 320px"
+                                                 alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
+                                            <span class="story-cover-play" aria-hidden="true">
+                                                <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
+                                            </span>
                                         </span>
-                                    </span>
-                                    <h3>@story.Title</h3>
-                                </a>
+                                        <h3>@story.Title</h3>
+                                    </a>
+                                }
+                                else
+                                {
+                                    <button type="button"
+                                            class="story-carousel-link story-carousel-link-button"
+                                            @onclick="() => HandleStoryCardClickAsync(story)"
+                                            aria-label="Luister na @story.Title">
+                                        <span class="story-carousel-cover">
+                                            <img class="story-carousel-image"
+                                                 src="@story.ThumbnailPath"
+                                                 srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
+                                                 sizes="(max-width: 620px) 68vw, (max-width: 980px) 42vw, 320px"
+                                                 alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
+                                            <span class="story-cover-play" aria-hidden="true">
+                                                <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
+                                            </span>
+                                        </span>
+                                        <h3>@story.Title</h3>
+                                    </button>
+                                }
                                 <button type="button"
                                         class="story-favorite-toggle @(IsStoryFavorite(story.Slug) ? "is-favorite" : null)"
                                         @onclick="() => ToggleStoryFavoriteAsync(story)"
@@ -456,4 +556,9 @@ else
         </section>
     }
 }
+
+<StoryAccessPopup IsOpen="@ShowStoryAccessPopup"
+                  PrimaryActionHref="@StoryAccessPopupPrimaryHref"
+                  PlanActionHref="@StoryAccessPopupPlanHref"
+                  OnClose="CloseStoryAccessPopupAsync" />
 </div>

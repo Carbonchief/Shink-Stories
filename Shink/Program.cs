@@ -257,17 +257,9 @@ app.Use(async (httpContext, next) =>
     if (HttpMethods.IsGet(httpContext.Request.Method) &&
         TryResolveStoryPathTarget(httpContext.Request.Path, out var source, out var slug))
     {
-        var requestedPath = $"{httpContext.Request.Path}{httpContext.Request.QueryString}";
-        var isSocialPreviewRequest = SocialPreviewRequestDetector.IsSocialPreviewRequest(httpContext);
-
         if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
         {
-            if (!isSocialPreviewRequest)
-            {
-                httpContext.Response.Redirect(BuildOpsiesStoryRedirectPath(requestedPath));
-                return;
-            }
-
+            // Story pages now handle access gating in UI so users can see the lock popup.
             await next();
             return;
         }
@@ -291,7 +283,8 @@ app.Use(async (httpContext, next) =>
 
             if (!hasAccess)
             {
-                httpContext.Response.Redirect(BuildOpsiesStoryRedirectPath(requestedPath));
+                // Story pages now handle access gating in UI so users can see the lock popup.
+                await next();
                 return;
             }
         }
@@ -1489,16 +1482,6 @@ static async Task<bool> HasRequiredStoryAccessAsync(
 
     var results = await Task.WhenAll(checks);
     return results.Any(result => result);
-}
-
-static string BuildOpsiesStoryRedirectPath(string requestedPath)
-{
-    var query = new Dictionary<string, string?>
-    {
-        ["returnUrl"] = requestedPath
-    };
-
-    return QueryHelpers.AddQueryString("/opsies", query);
 }
 
 static string? GetSafeStoryReturnUrl(string? returnUrl)
