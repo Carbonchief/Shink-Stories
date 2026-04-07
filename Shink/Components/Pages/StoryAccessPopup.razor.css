@@ -46,6 +46,50 @@
     height: auto;
     display: block;
     margin: 0.25rem auto 0.5rem;
+    transform-origin: center bottom;
+    animation: story-access-popup-image-pop 420ms cubic-bezier(0.2, 0.9, 0.25, 1.2) both,
+        story-access-popup-image-wiggle 5s ease-in-out 520ms infinite;
+}
+
+@keyframes story-access-popup-image-pop {
+    0% {
+        opacity: 0;
+        transform: scale(0.72);
+    }
+
+    65% {
+        opacity: 1;
+        transform: scale(1.06);
+    }
+
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@keyframes story-access-popup-image-wiggle {
+    0%,
+    84%,
+    100% {
+        transform: scale(1) rotate(0deg);
+    }
+
+    88% {
+        transform: scale(1) rotate(-2deg);
+    }
+
+    92% {
+        transform: scale(1) rotate(2.2deg);
+    }
+
+    96% {
+        transform: scale(1) rotate(-1.6deg);
+    }
+
+    98% {
+        transform: scale(1) rotate(1deg);
+    }
 }
 
 .story-access-popup-card h2 {
@@ -118,5 +162,13 @@
     .story-access-popup-button {
         min-height: 52px;
         font-size: 1.45rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .story-access-popup-image {
+        animation: none;
+        opacity: 1;
+        transform: none;
     }
 }
