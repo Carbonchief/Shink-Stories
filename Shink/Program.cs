@@ -23,7 +23,8 @@ const string GooglePkceCookieName = "shink.auth.google.pkce";
 const string GooglePkceProtectorPurpose = "Shink.Auth.GooglePkce.v1";
 
 var builder = WebApplication.CreateBuilder(args);
-var postHogHostUrl = builder.Configuration["PostHog:HostUrl"];
+var postHogSettings = PostHogSettings.FromConfiguration(builder.Configuration);
+var postHogHostUrl = postHogSettings.HostUrl;
 var authSessionBootstrapOptions = builder.Configuration.GetSection(AuthSessionOptions.SectionName).Get<AuthSessionOptions>() ?? new AuthSessionOptions();
 var authSessionLifetimeDays = NormalizeSessionLifetimeDays(authSessionBootstrapOptions.SessionLifetimeDays);
 
@@ -156,6 +157,7 @@ builder.Services.AddRateLimiter(options =>
 
 var app = builder.Build();
 LogCloudflareR2Configuration(app);
+LogPostHogConfiguration(app, postHogSettings);
 
 // Configure the HTTP request pipeline.
 if (!app.Environment.IsDevelopment())
@@ -1922,6 +1924,28 @@ static void LogCloudflareR2Configuration(WebApplication app)
     {
         logger.LogWarning("Cloudflare R2 PublicBaseUrl is using the managed r2.dev domain ({PublicBaseUrl}). Cloudflare documents r2.dev as a testing endpoint with variable throttling; switch to a custom domain for production media delivery.", options.PublicBaseUrl);
     }
+}
+
+static void LogPostHogConfiguration(WebApplication app, PostHogSettings settings)
+{
+    var logger = app.Logger;
+
+    if (settings.IsConfigured)
+    {
+        logger.LogInformation("PostHog analytics is configured with host {PostHogHostUrl}.", settings.HostUrl);
+        return;
+    }
+
+    if (settings.HasAnyValue)
+    {
+        logger.LogWarning(
+            "PostHog analytics configuration is incomplete. Host configured={HasHost}, api key configured={HasApiKey}.",
+            !string.IsNullOrWhiteSpace(settings.HostUrl),
+            !string.IsNullOrWhiteSpace(settings.ProjectApiKey));
+        return;
+    }
+
+    logger.LogInformation("PostHog analytics is not configured.");
 }
 
 static string ResolveAudioMimeType(string? configuredContentType, string? audioObjectKey)

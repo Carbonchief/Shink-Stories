@@ -664,7 +664,7 @@
     max-width: none;
     max-height: none;
     aspect-ratio: auto;
-    object-fit: contain;
+    object-fit: cover;
     border-radius: 0;
     box-shadow: none;
     transform: none;
