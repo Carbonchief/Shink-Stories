@@ -1,4 +1,5 @@
 @using Microsoft.AspNetCore.Components.Authorization
+@using Shink.Services
 @inject IConfiguration Configuration
 <!DOCTYPE html>
 <html lang="en">
@@ -74,9 +75,12 @@
 </html>
 
 @code {
-    private string? PostHogProjectApiKey => Configuration["PostHog:ProjectApiKey"];
-    private string? PostHogHostUrl => Configuration["PostHog:HostUrl"];
-    private bool IsPostHogConfigured =>
-        !string.IsNullOrWhiteSpace(PostHogProjectApiKey) &&
-        !string.IsNullOrWhiteSpace(PostHogHostUrl);
+    private PostHogSettings? _postHogSettings;
+
+    private PostHogSettings PostHogSettings =>
+        _postHogSettings ??= PostHogSettings.FromConfiguration(Configuration);
+
+    private string? PostHogProjectApiKey => PostHogSettings.ProjectApiKey;
+    private string? PostHogHostUrl => PostHogSettings.HostUrl;
+    private bool IsPostHogConfigured => PostHogSettings.IsConfigured;
 }

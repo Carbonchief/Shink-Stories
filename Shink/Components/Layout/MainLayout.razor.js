@@ -17,6 +17,59 @@ const SEARCH_DEBOUNCE_MS = 160;
 const SEARCH_MAX_RESULTS = 8;
 const OPEN_LABEL = "Maak navigasie toe";
 const CLOSED_LABEL = "Maak navigasie oop";
+let accountMenuDelegatesStarted = false;
+
+function findAccountMenuParts(from) {
+    const accountRoot = from instanceof Element
+        ? from.closest(ACCOUNT_MENU_ROOT_SELECTOR)
+        : null;
+    const accountToggle = accountRoot?.querySelector(ACCOUNT_TOGGLE_SELECTOR);
+    const accountDropdown = accountRoot?.querySelector(ACCOUNT_DROPDOWN_SELECTOR);
+    const navControls = accountRoot?.closest(".nav-controls");
+
+    if (!(accountRoot instanceof HTMLElement) ||
+        !(accountToggle instanceof HTMLButtonElement) ||
+        !(accountDropdown instanceof HTMLElement)) {
+        return null;
+    }
+
+    return {
+        accountRoot,
+        accountToggle,
+        accountDropdown,
+        navControls: navControls instanceof HTMLElement ? navControls : null
+    };
+}
+
+function setAccountMenuState(accountRoot, open, options = {}) {
+    const parts = findAccountMenuParts(accountRoot);
+    if (!parts) {
+        return;
+    }
+
+    const { focusToggle = false } = options;
+    parts.accountRoot.classList.toggle(OPEN_CLASS, open);
+    parts.accountToggle.setAttribute("aria-expanded", open ? "true" : "false");
+
+    if (open && parts.navControls instanceof HTMLElement) {
+        closeNavMenuInContainer(parts.navControls);
+        parts.navControls.classList.remove(SEARCH_ACTIVE_CLASS);
+    }
+
+    if (!open && focusToggle) {
+        window.requestAnimationFrame(() => {
+            parts.accountToggle.focus();
+        });
+    }
+}
+
+function closeAllAccountMenus(options = {}) {
+    document.querySelectorAll(ACCOUNT_MENU_ROOT_SELECTOR).forEach((accountRoot) => {
+        if (accountRoot instanceof HTMLElement && accountRoot.classList.contains(OPEN_CLASS)) {
+            setAccountMenuState(accountRoot, false, options);
+        }
+    });
+}
 
 function closeNavMenuInContainer(container) {
     if (!(container instanceof Element)) {
@@ -433,72 +486,71 @@ function wireAccountMenu(accountToggle) {
         return;
     }
 
-    const accountRoot = accountToggle.closest(ACCOUNT_MENU_ROOT_SELECTOR);
-    const accountDropdown = accountRoot?.querySelector(ACCOUNT_DROPDOWN_SELECTOR);
-    const navControls = accountRoot?.closest(".nav-controls");
-    if (!(accountRoot instanceof HTMLElement) || !(accountDropdown instanceof HTMLElement)) {
+    const parts = findAccountMenuParts(accountToggle);
+    if (!parts) {
         return;
     }
 
-    const isOpen = () => accountRoot.classList.contains(OPEN_CLASS);
+    setAccountMenuState(parts.accountRoot, false);
+    accountToggle.dataset.accountMenuWired = "true";
+}
 
-    const setMenuState = (open, options = {}) => {
-        const { focusToggle = false } = options;
-        accountRoot.classList.toggle(OPEN_CLASS, open);
-        accountToggle.setAttribute("aria-expanded", open ? "true" : "false");
-
-        if (open && navControls instanceof HTMLElement) {
-            closeNavMenuInContainer(navControls);
-            navControls.classList.remove(SEARCH_ACTIVE_CLASS);
-        }
-
-        if (!open && focusToggle) {
-            window.requestAnimationFrame(() => {
-                accountToggle.focus();
-            });
-        }
-    };
-
-    setMenuState(false);
-
-    accountToggle.addEventListener("click", (event) => {
-        event.preventDefault();
-        setMenuState(!isOpen());
-    });
-
-    accountDropdown.querySelectorAll("a").forEach((link) => {
-        link.addEventListener("click", () => {
-            setMenuState(false);
-        });
-    });
+function startAccountMenuDelegates() {
+    if (accountMenuDelegatesStarted) {
+        return;
+    }
 
     document.addEventListener("click", (event) => {
-        if (!isOpen()) {
-            return;
-        }
-
         const target = event.target;
-        if (target instanceof Node && accountRoot.contains(target)) {
+        if (!(target instanceof Element)) {
             return;
         }
 
-        setMenuState(false);
+        const toggle = target.closest(ACCOUNT_TOGGLE_SELECTOR);
+        if (toggle instanceof HTMLButtonElement) {
+            event.preventDefault();
+            const parts = findAccountMenuParts(toggle);
+            if (!parts) {
+                return;
+            }
+
+            const shouldOpen = !parts.accountRoot.classList.contains(OPEN_CLASS);
+            closeAllAccountMenus();
+            setAccountMenuState(parts.accountRoot, shouldOpen);
+            return;
+        }
+
+        const clickedInsideMenu = target.closest(ACCOUNT_MENU_ROOT_SELECTOR);
+        if (clickedInsideMenu instanceof HTMLElement) {
+            const clickedLink = target.closest(`${ACCOUNT_DROPDOWN_SELECTOR} a`);
+            if (clickedLink instanceof HTMLAnchorElement) {
+                setAccountMenuState(clickedInsideMenu, false);
+            }
+            return;
+        }
+
+        closeAllAccountMenus();
     });
 
     document.addEventListener("keydown", (event) => {
-        if (event.key !== "Escape" || !isOpen()) {
+        if (event.key !== "Escape") {
+            return;
+        }
+
+        const openRoot = document.querySelector(`${ACCOUNT_MENU_ROOT_SELECTOR}.${OPEN_CLASS}`);
+        if (!(openRoot instanceof HTMLElement)) {
             return;
         }
 
         event.preventDefault();
-        setMenuState(false, { focusToggle: true });
+        setAccountMenuState(openRoot, false, { focusToggle: true });
     });
 
     document.addEventListener("enhancedload", () => {
-        setMenuState(false);
+        closeAllAccountMenus();
     });
 
-    accountToggle.dataset.accountMenuWired = "true";
+    accountMenuDelegatesStarted = true;
 }
 
 function initializeNavMenus() {
@@ -523,6 +575,7 @@ function initializeHeaderInteractions() {
     initializeNavMenus();
     initializeHeaderSearch();
     initializeAccountMenus();
+    startAccountMenuDelegates();
 }
 
 let headerInitFrameHandle = null;

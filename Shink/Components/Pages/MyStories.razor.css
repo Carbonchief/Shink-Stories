@@ -98,6 +98,10 @@
     background: var(--surface);
 }
 
+.my-story-card-favorite {
+    min-height: 100%;
+}
+
 .my-story-image-link {
     display: block;
     height: 100%;

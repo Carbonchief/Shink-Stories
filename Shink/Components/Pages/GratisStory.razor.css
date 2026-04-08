@@ -554,6 +554,7 @@
 .story-player-page.manual-fullscreen-focus .story-cover {
     width: min(92vw, 620px);
     max-height: min(58vh, 620px);
+    object-fit: cover;
     border-radius: 18px;
     box-shadow: 0 18px 34px rgba(63, 56, 45, 0.2);
 }
