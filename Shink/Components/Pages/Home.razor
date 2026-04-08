@@ -75,6 +75,7 @@
     </div>
 </section>
 
+<div class="home-content-gradient">
 @for (var index = 0; index < HomePlaylists.Count; index++)
 {
     var playlist = HomePlaylists[index];
@@ -172,8 +173,14 @@
 </section>
 
 <section class="home-testimonials section-block home-scroll-reveal p-3" style="--home-reveal-delay: 0.08s;" aria-labelledby="home-ouers-se">
-    <h2 id="home-ouers-se">Wat ouers se</h2>
-    <div class="home-review-grid">
+    <div class="home-testimonials-header">
+        <h2 id="home-ouers-se">Wat ouers se</h2>
+    </div>
+    <div class="home-review-carousel-shell">
+        <button type="button" class="home-review-control home-review-control-prev" data-review-carousel-prev aria-label="Vorige resensie">
+            <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+        </button>
+        <div class="home-review-grid" data-review-carousel>
         <article class="home-review-card">
             <p class="home-review-stars" aria-hidden="true">
                 <i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i>
@@ -206,6 +213,10 @@
             </blockquote>
             <p class="home-review-author">- Elmarette</p>
         </article>
+        </div>
+        <button type="button" class="home-review-control home-review-control-next" data-review-carousel-next aria-label="Volgende resensie">
+            <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+        </button>
     </div>
 </section>
 
@@ -327,6 +338,8 @@
         </div>
     </div>
 </section>
+
+</div>
 
 @code {
     private IJSObjectReference? _homeModule;

@@ -143,7 +143,7 @@
                 }
             </div>
 
-            <article class="membership-plan membership-plan-gratis">
+            <article class="@GetGratisMembershipClass()">
                 <p class="membership-plan-label">GRATIS</p>
                 <h3>Gratis stories is onmiddellik aktief</h3>
                 <p>As betaling misluk of gekanselleer word, behou jy steeds toegang tot die gratis stories.</p>
@@ -301,12 +301,18 @@
 
     private void SelectPlan(PaymentPlan plan)
     {
+        if (IsSelectedPlan(plan))
+        {
+            SelectedPlan = null;
+            return;
+        }
+
         SelectedPlan = plan;
     }
 
     private async Task<string> GetRedirectTargetForAuthenticatedUserAsync(AuthenticationState authState)
     {
-        var safeReturnUrl = GetSafeReturnUrl(ReturnUrl);
+        var safeReturnUrl = GetSafeNonCheckoutReturnUrl();
         if (safeReturnUrl is not null)
         {
             return safeReturnUrl;
@@ -327,7 +333,7 @@
 
     private string GetRedirectTarget(string? apiRedirectPath = null) =>
         GetSelectedPlanCheckoutPath()
-        ?? GetSafeReturnUrl(ReturnUrl)
+        ?? GetSafeNonCheckoutReturnUrl()
         ?? GetSafePostAuthPath(apiRedirectPath)
         ?? "/gratis";
 
@@ -405,6 +411,19 @@
         }
 
         return normalizedPath;
+    }
+
+    private string? GetSafeNonCheckoutReturnUrl()
+    {
+        var safeReturnUrl = GetSafeReturnUrl(ReturnUrl);
+        if (string.IsNullOrWhiteSpace(safeReturnUrl))
+        {
+            return null;
+        }
+
+        return safeReturnUrl.StartsWith("/betaal/", StringComparison.OrdinalIgnoreCase)
+            ? null
+            : safeReturnUrl;
     }
 
     private static string? NormalizeReturnUrl(string? value)
@@ -611,6 +630,17 @@
         if (IsSelectedPlan(plan))
         {
             classNames.Add("membership-plan-option-selected");
+        }
+
+        return string.Join(" ", classNames);
+    }
+
+    private string GetGratisMembershipClass()
+    {
+        var classNames = new List<string> { "membership-plan", "membership-plan-gratis" };
+        if (SelectedPlan is null)
+        {
+            classNames.Add("membership-plan-gratis-selected");
         }
 
         return string.Join(" ", classNames);
