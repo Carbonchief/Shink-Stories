@@ -209,7 +209,7 @@ else
                                         <i class="fa-solid fa-shuffle" aria-hidden="true"></i>
                                         <span class="sr-only">@(ShuffleEnabled ? "Skommel speel aan" : "Skommel speel af")</span>
                                     </button>
-                                    <div class="story-autoplay-control">
+                                    <div class="story-autoplay-split-control">
                                         <button type="button"
                                                 class="story-mini-btn story-autoplay-toggle"
                                                 @onclick="ToggleAutoplay"
@@ -219,16 +219,18 @@ else
                                             <i class="story-autoplay-icon fa-solid @(AutoplayEnabled ? "fa-toggle-on" : "fa-toggle-off")" aria-hidden="true"></i>
                                             <span class="sr-only">@(AutoplayEnabled ? "Autospeel aan" : "Autospeel af")</span>
                                         </button>
-                                        <label class="sr-only" for="playlist-autoplay-limit">Kies 'n autospeel limiet</label>
-                                        <select id="playlist-autoplay-limit"
-                                                class="story-autoplay-limit-select"
-                                                value="@AutoplayLimitValue"
-                                                @onchange="HandleAutoplayLimitChanged"
-                                                aria-label="Kies 'n autospeel limiet">
-                                            <option value="">Geen limiet</option>
-                                            <option value="3">Stop na 3 stories</option>
-                                            <option value="5">Stop na 5 stories</option>
-                                        </select>
+                                        <label class="story-autoplay-control" for="playlist-autoplay-mode">
+                                            <span class="sr-only">Kies 'n autospeel limiet</span>
+                                            <select id="playlist-autoplay-mode"
+                                                    class="story-autoplay-mode-select"
+                                                    value="@AutoplayCapValue"
+                                                    @onchange="HandleAutoplayModeChanged"
+                                                    aria-label="Kies 'n autospeel limiet">
+                                                <option value="none">Geen limiet</option>
+                                                <option value="3">Stop na 3 stories</option>
+                                                <option value="5">Stop na 5 stories</option>
+                                            </select>
+                                        </label>
                                     </div>
                                     <button type="button" class="story-mini-btn story-share-toggle" aria-label="Deel speellys" title="Deel speellys">
                                         <i class="fa-solid fa-share-nodes" aria-hidden="true"></i>
@@ -372,7 +374,7 @@ else
     private string StoryCountLabel =>
         AccessibleStories.Count == 1 ? "1 storie beskikbaar" : $"{AccessibleStories.Count} stories beskikbaar";
 
-    private string AutoplayLimitValue => AutoplayLimitStories?.ToString() ?? string.Empty;
+    private string AutoplayCapValue => AutoplayLimitStories?.ToString() ?? "none";
 
     private int CurrentTrackNumber =>
         CurrentStory is null
@@ -659,16 +661,20 @@ else
         ResolveAdjacentStories();
     }
 
-    private void HandleAutoplayLimitChanged(ChangeEventArgs args)
+    private void HandleAutoplayModeChanged(ChangeEventArgs args)
     {
         var selectedValue = args.Value?.ToString();
-        if (int.TryParse(selectedValue, out var parsedLimit) && (parsedLimit == 3 || parsedLimit == 5))
+        switch (selectedValue)
         {
-            AutoplayLimitStories = parsedLimit;
-        }
-        else
-        {
-            AutoplayLimitStories = null;
+            case "3":
+                AutoplayLimitStories = 3;
+                break;
+            case "5":
+                AutoplayLimitStories = 5;
+                break;
+            default:
+                AutoplayLimitStories = null;
+                break;
         }
 
         ResetAutoplayProgress();
