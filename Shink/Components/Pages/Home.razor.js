@@ -19,6 +19,7 @@ export function scrollCarouselByPage(carouselElement, direction) {
 
 let homeStoryLoadingWired = false;
 let homeRevealObserver = null;
+let homeReviewCarouselWired = false;
 
 function wireCarouselDragScrolling() {
     const carousels = document.querySelectorAll(".stories-carousel");
@@ -280,6 +281,7 @@ function clearStoryNavigationLoadingState() {
 
 export function initializeHomeStoryLoading() {
     wireStoryCarousels();
+    wireReviewCarousel();
 
     if (homeStoryLoadingWired) {
         return;
@@ -322,13 +324,89 @@ export function initializeHomeStoryLoading() {
     document.addEventListener("enhancedload", () => {
         clearStoryNavigationLoadingState();
         wireStoryCarousels();
+        wireReviewCarousel();
     });
 
     window.addEventListener("pageshow", () => {
         clearStoryNavigationLoadingState();
         wireStoryCarousels();
+        wireReviewCarousel();
     });
     homeStoryLoadingWired = true;
+}
+
+function scrollReviewCarousel(direction) {
+    const carousel = document.querySelector("[data-review-carousel]");
+    if (!(carousel instanceof HTMLElement)) {
+        return;
+    }
+
+    const firstCard = carousel.querySelector(".home-review-card");
+    const cardWidth = firstCard instanceof HTMLElement ? firstCard.getBoundingClientRect().width : carousel.clientWidth;
+    const styles = window.getComputedStyle(carousel);
+    const gap = Number.parseFloat(styles.columnGap || styles.gap || "0") || 0;
+    const scrollAmount = Math.max(240, Math.round(cardWidth + gap));
+
+    carousel.scrollBy({
+        left: direction * scrollAmount,
+        behavior: "smooth"
+    });
+}
+
+function updateReviewCarouselControls() {
+    const carousel = document.querySelector("[data-review-carousel]");
+    const prevButton = document.querySelector("[data-review-carousel-prev]");
+    const nextButton = document.querySelector("[data-review-carousel-next]");
+
+    if (!(carousel instanceof HTMLElement) ||
+        !(prevButton instanceof HTMLButtonElement) ||
+        !(nextButton instanceof HTMLButtonElement)) {
+        return;
+    }
+
+    const maxScrollLeft = Math.max(0, carousel.scrollWidth - carousel.clientWidth);
+    const hasOverflow = maxScrollLeft > 4;
+
+    prevButton.disabled = !hasOverflow || carousel.scrollLeft <= 4;
+    nextButton.disabled = !hasOverflow || carousel.scrollLeft >= maxScrollLeft - 4;
+}
+
+function wireReviewCarousel() {
+    const carousel = document.querySelector("[data-review-carousel]");
+    if (!(carousel instanceof HTMLElement)) {
+        return;
+    }
+
+    if (!homeReviewCarouselWired) {
+        document.addEventListener("click", (event) => {
+            const target = event.target;
+            if (!(target instanceof Element)) {
+                return;
+            }
+
+            if (target.closest("[data-review-carousel-prev]")) {
+                scrollReviewCarousel(-1);
+            }
+
+            if (target.closest("[data-review-carousel-next]")) {
+                scrollReviewCarousel(1);
+            }
+        });
+
+        homeReviewCarouselWired = true;
+    }
+
+    wireStoryCarouselDrag(carousel);
+    updateReviewCarouselControls();
+
+    if (carousel.dataset.reviewCarouselStateWired === "true") {
+        return;
+    }
+
+    const syncControls = () => updateReviewCarouselControls();
+    carousel.addEventListener("scroll", syncControls, { passive: true });
+    window.addEventListener("resize", syncControls);
+    carousel.dataset.reviewCarouselStateWired = "true";
 }
 
 function disconnectHomeRevealObserver() {

@@ -365,7 +365,6 @@
     grid-template-columns: auto minmax(0, 1fr);
     align-items: center;
     gap: 0.8rem;
-    min-height: 9.75rem;
     text-align: left;
     border: 1px solid rgba(232, 244, 252, 0.2);
     border-radius: 14px;
@@ -523,6 +522,14 @@
 .membership-plan-gratis {
     border-color: rgba(106, 201, 124, 0.44);
     background: rgba(19, 72, 51, 0.34);
+}
+
+.membership-plan-gratis-selected {
+    border-color: rgba(154, 230, 175, 0.92);
+    background: linear-gradient(180deg, rgba(23, 88, 61, 0.62) 0%, rgba(19, 72, 51, 0.44) 100%);
+    box-shadow: 0 14px 28px rgba(7, 17, 25, 0.22);
+    outline: 2px solid rgba(154, 230, 175, 0.4);
+    outline-offset: 1px;
 }
 
 .membership-plan-gratis .membership-plan-label {
