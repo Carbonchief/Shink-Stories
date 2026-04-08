@@ -200,14 +200,36 @@ else
                                         <span class="story-speed-label">1.0x</span>
                                     </button>
                                     <button type="button"
-                                            class="story-mini-btn story-autoplay-toggle"
-                                            @onclick="ToggleAutoplay"
-                                            aria-pressed="@AutoplayEnabled"
-                                            aria-label="@(AutoplayEnabled ? "Autospeel aan" : "Autospeel af")"
-                                            title="@(AutoplayEnabled ? "Skakel autospeel af" : "Skakel autospeel aan")">
-                                        <i class="story-autoplay-icon fa-solid @(AutoplayEnabled ? "fa-toggle-on" : "fa-toggle-off")" aria-hidden="true"></i>
-                                        <span class="sr-only">@(AutoplayEnabled ? "Autospeel aan" : "Autospeel af")</span>
+                                            class="story-mini-btn story-shuffle-toggle @(ShuffleEnabled ? "is-active" : null)"
+                                            @onclick="ToggleShuffle"
+                                            aria-pressed="@ShuffleEnabled"
+                                            aria-label="@(ShuffleEnabled ? "Skommel speel aan" : "Skommel speel af")"
+                                            title="@(ShuffleEnabled ? "Skakel skommel speel af" : "Skakel skommel speel aan")"
+                                            disabled="@(AccessibleStories.Count < 2)">
+                                        <i class="fa-solid fa-shuffle" aria-hidden="true"></i>
+                                        <span class="sr-only">@(ShuffleEnabled ? "Skommel speel aan" : "Skommel speel af")</span>
                                     </button>
+                                    <div class="story-autoplay-control">
+                                        <button type="button"
+                                                class="story-mini-btn story-autoplay-toggle"
+                                                @onclick="ToggleAutoplay"
+                                                aria-pressed="@AutoplayEnabled"
+                                                aria-label="@(AutoplayEnabled ? "Autospeel aan" : "Autospeel af")"
+                                                title="@(AutoplayEnabled ? "Skakel autospeel af" : "Skakel autospeel aan")">
+                                            <i class="story-autoplay-icon fa-solid @(AutoplayEnabled ? "fa-toggle-on" : "fa-toggle-off")" aria-hidden="true"></i>
+                                            <span class="sr-only">@(AutoplayEnabled ? "Autospeel aan" : "Autospeel af")</span>
+                                        </button>
+                                        <label class="sr-only" for="playlist-autoplay-limit">Kies 'n autospeel limiet</label>
+                                        <select id="playlist-autoplay-limit"
+                                                class="story-autoplay-limit-select"
+                                                value="@AutoplayLimitValue"
+                                                @onchange="HandleAutoplayLimitChanged"
+                                                aria-label="Kies 'n autospeel limiet">
+                                            <option value="">Geen limiet</option>
+                                            <option value="3">Stop na 3 stories</option>
+                                            <option value="5">Stop na 5 stories</option>
+                                        </select>
+                                    </div>
                                     <button type="button" class="story-mini-btn story-share-toggle" aria-label="Deel speellys" title="Deel speellys">
                                         <i class="fa-solid fa-share-nodes" aria-hidden="true"></i>
                                         <span class="sr-only">Deel speellys</span>
@@ -327,7 +349,11 @@ else
     private bool IsRedirectingToOpsies { get; set; }
     private bool IsLoadingPlaylist { get; set; } = true;
     private bool AutoplayEnabled { get; set; } = true;
+    private bool ShuffleEnabled { get; set; }
     private bool PendingTrackAutoplay { get; set; }
+    private int? AutoplayLimitStories { get; set; }
+    private int AutoplayStoriesPlayedInRun { get; set; }
+    private List<string> ShuffledPlaybackOrder { get; } = [];
     private HashSet<string> FavoriteStorySlugs { get; } = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> FavoriteStoryBusySlugs { get; } = new(StringComparer.OrdinalIgnoreCase);
     private string? SignedInEmail { get; set; }
@@ -346,10 +372,12 @@ else
     private string StoryCountLabel =>
         AccessibleStories.Count == 1 ? "1 storie beskikbaar" : $"{AccessibleStories.Count} stories beskikbaar";
 
+    private string AutoplayLimitValue => AutoplayLimitStories?.ToString() ?? string.Empty;
+
     private int CurrentTrackNumber =>
         CurrentStory is null
             ? 0
-            : AccessibleStories
+            : GetPlaybackStories()
                 .Select((story, index) => new { story.Slug, Index = index + 1 })
                 .FirstOrDefault(entry => string.Equals(entry.Slug, CurrentStory.Slug, StringComparison.OrdinalIgnoreCase))
                 ?.Index ?? 0;
@@ -423,6 +451,7 @@ else
     {
         IsLoadingPlaylist = true;
         ShowStoryAccessPopup = false;
+        ResetPlaybackOrder();
 
         try
         {
@@ -564,6 +593,9 @@ else
     }
 
     private async Task SelectTrackAsync(string slug, bool shouldAutoplay)
+        => await SelectTrackAsync(slug, shouldAutoplay, isAutoplayAdvance: false);
+
+    private async Task SelectTrackAsync(string slug, bool shouldAutoplay, bool isAutoplayAdvance)
     {
         var nextStory = AccessibleStories.FirstOrDefault(story =>
             string.Equals(story.Slug, slug, StringComparison.OrdinalIgnoreCase));
@@ -583,6 +615,7 @@ else
         CurrentStory = nextStory;
         AudioUrl = AudioAccessService.CreateSignedAudioUrl(nextStory.Slug);
         PendingTrackAutoplay = shouldAutoplay;
+        UpdateAutoplayProgressForTrackChange(isAutoplayAdvance);
         ResolveAdjacentStories();
         await InvokeAsync(StateHasChanged);
     }
@@ -600,6 +633,45 @@ else
     private void ToggleAutoplay()
     {
         AutoplayEnabled = !AutoplayEnabled;
+        ResetAutoplayProgress();
+    }
+
+    private void ToggleShuffle()
+    {
+        if (AccessibleStories.Count < 2)
+        {
+            ShuffleEnabled = false;
+            ShuffledPlaybackOrder.Clear();
+            ResolveAdjacentStories();
+            return;
+        }
+
+        ShuffleEnabled = !ShuffleEnabled;
+        if (ShuffleEnabled)
+        {
+            CreateShuffledPlaybackOrder(CurrentStory?.Slug);
+        }
+        else
+        {
+            ShuffledPlaybackOrder.Clear();
+        }
+
+        ResolveAdjacentStories();
+    }
+
+    private void HandleAutoplayLimitChanged(ChangeEventArgs args)
+    {
+        var selectedValue = args.Value?.ToString();
+        if (int.TryParse(selectedValue, out var parsedLimit) && (parsedLimit == 3 || parsedLimit == 5))
+        {
+            AutoplayLimitStories = parsedLimit;
+        }
+        else
+        {
+            AutoplayLimitStories = null;
+        }
+
+        ResetAutoplayProgress();
     }
 
     private bool IsStoryFavorite(string slug) => FavoriteStorySlugs.Contains(slug);
@@ -755,6 +827,23 @@ else
     [JSInvokable]
     public Task HandleJsNextTrackRequest() => SelectNextTrackAsync();
 
+    [JSInvokable]
+    public Task HandleJsAutoplayNextTrackRequest()
+    {
+        if (!AutoplayEnabled || NextStory is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        if (AutoplayLimitStories.HasValue &&
+            AutoplayStoriesPlayedInRun >= AutoplayLimitStories.Value)
+        {
+            return Task.CompletedTask;
+        }
+
+        return SelectTrackAsync(NextStory.Slug, true, isAutoplayAdvance: true);
+    }
+
     public async ValueTask DisposeAsync()
     {
         try
@@ -829,12 +918,13 @@ else
         PreviousStory = null;
         NextStory = null;
 
-        if (CurrentStory is null || AccessibleStories.Count < 2)
+        var playbackStories = GetPlaybackStories();
+        if (CurrentStory is null || playbackStories.Count < 2)
         {
             return;
         }
 
-        var index = AccessibleStories
+        var index = playbackStories
             .Select((story, idx) => new { story.Slug, idx })
             .FirstOrDefault(x => string.Equals(x.Slug, CurrentStory.Slug, StringComparison.OrdinalIgnoreCase))
             ?.idx ?? -1;
@@ -846,13 +936,135 @@ else
 
         if (index > 0)
         {
-            PreviousStory = AccessibleStories[index - 1];
+            PreviousStory = playbackStories[index - 1];
         }
 
-        if (index < AccessibleStories.Count - 1)
+        if (index < playbackStories.Count - 1)
         {
-            NextStory = AccessibleStories[index + 1];
+            NextStory = playbackStories[index + 1];
         }
+    }
+
+    private IReadOnlyList<StoryItem> GetPlaybackStories()
+    {
+        if (!ShuffleEnabled || AccessibleStories.Count < 2)
+        {
+            return AccessibleStories;
+        }
+
+        EnsureShuffledPlaybackOrder();
+        if (ShuffledPlaybackOrder.Count == 0)
+        {
+            return AccessibleStories;
+        }
+
+        var storiesBySlug = AccessibleStories.ToDictionary(story => story.Slug, StringComparer.OrdinalIgnoreCase);
+        var orderedStories = new List<StoryItem>(AccessibleStories.Count);
+        var includedSlugs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var slug in ShuffledPlaybackOrder)
+        {
+            if (!storiesBySlug.TryGetValue(slug, out var story) || !includedSlugs.Add(slug))
+            {
+                continue;
+            }
+
+            orderedStories.Add(story);
+        }
+
+        foreach (var story in AccessibleStories)
+        {
+            if (includedSlugs.Add(story.Slug))
+            {
+                orderedStories.Add(story);
+            }
+        }
+
+        return orderedStories;
+    }
+
+    private void EnsureShuffledPlaybackOrder()
+    {
+        if (!ShuffleEnabled || AccessibleStories.Count < 2)
+        {
+            return;
+        }
+
+        var accessibleSlugs = new HashSet<string>(
+            AccessibleStories.Select(story => story.Slug),
+            StringComparer.OrdinalIgnoreCase);
+
+        if (ShuffledPlaybackOrder.Count == AccessibleStories.Count &&
+            ShuffledPlaybackOrder.All(accessibleSlugs.Contains))
+        {
+            return;
+        }
+
+        CreateShuffledPlaybackOrder(CurrentStory?.Slug);
+    }
+
+    private void CreateShuffledPlaybackOrder(string? anchorSlug)
+    {
+        ShuffledPlaybackOrder.Clear();
+
+        if (AccessibleStories.Count == 0)
+        {
+            return;
+        }
+
+        var normalizedAnchorSlug = string.IsNullOrWhiteSpace(anchorSlug) ? null : anchorSlug.Trim();
+        var remainingSlugs = AccessibleStories
+            .Where(story => !string.Equals(story.Slug, normalizedAnchorSlug, StringComparison.OrdinalIgnoreCase))
+            .Select(story => story.Slug)
+            .ToList();
+
+        for (var index = remainingSlugs.Count - 1; index > 0; index--)
+        {
+            var swapIndex = Random.Shared.Next(index + 1);
+            (remainingSlugs[index], remainingSlugs[swapIndex]) = (remainingSlugs[swapIndex], remainingSlugs[index]);
+        }
+
+        if (!string.IsNullOrWhiteSpace(normalizedAnchorSlug) &&
+            AccessibleStories.Any(story => string.Equals(story.Slug, normalizedAnchorSlug, StringComparison.OrdinalIgnoreCase)))
+        {
+            ShuffledPlaybackOrder.Add(normalizedAnchorSlug);
+        }
+
+        ShuffledPlaybackOrder.AddRange(remainingSlugs);
+    }
+
+    private void ResetPlaybackOrder()
+    {
+        ShuffleEnabled = false;
+        ShuffledPlaybackOrder.Clear();
+    }
+
+    private void ResetAutoplayProgress()
+    {
+        if (!AutoplayEnabled || !AutoplayLimitStories.HasValue || CurrentStory is null)
+        {
+            AutoplayStoriesPlayedInRun = 0;
+            return;
+        }
+
+        AutoplayStoriesPlayedInRun = 1;
+    }
+
+    private void UpdateAutoplayProgressForTrackChange(bool isAutoplayAdvance)
+    {
+        if (!AutoplayEnabled || !AutoplayLimitStories.HasValue || CurrentStory is null)
+        {
+            AutoplayStoriesPlayedInRun = 0;
+            return;
+        }
+
+        if (!isAutoplayAdvance)
+        {
+            AutoplayStoriesPlayedInRun = 1;
+            return;
+        }
+
+        AutoplayStoriesPlayedInRun = Math.Max(1, AutoplayStoriesPlayedInRun + 1);
     }
 
     private string GetCurrentPathAndQuery()
