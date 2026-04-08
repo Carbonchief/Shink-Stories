@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
 using Supabase.Gotrue;
 
@@ -77,6 +78,20 @@ public sealed class SupabaseAuthService(
 
         if (!signupResult.IsSuccess)
         {
+            if (ShouldFallbackToAdminCreateUser(signupResult.ErrorMessage))
+            {
+                var adminCreateResult = await TryCreateConfirmedUserWithAdminApiAsync(
+                    email,
+                    password,
+                    signUpMetadata,
+                    cancellationToken);
+
+                if (adminCreateResult.IsSuccess)
+                {
+                    return adminCreateResult;
+                }
+            }
+
             return signupResult;
         }
 
@@ -238,6 +253,84 @@ public sealed class SupabaseAuthService(
         return true;
     }
 
+    private bool TryBuildAdminUsersEndpoint(out Uri adminUsersEndpoint)
+    {
+        adminUsersEndpoint = default!;
+        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.ServiceRoleKey))
+        {
+            return false;
+        }
+
+        if (!Uri.TryCreate(_options.Url, UriKind.Absolute, out var supabaseUri))
+        {
+            _logger.LogWarning("Supabase URL is invalid: {SupabaseUrl}", _options.Url);
+            return false;
+        }
+
+        adminUsersEndpoint = new Uri(supabaseUri, "auth/v1/admin/users");
+        return true;
+    }
+
+    private async Task<SupabaseSignInResult> TryCreateConfirmedUserWithAdminApiAsync(
+        string email,
+        string password,
+        SupabasePasswordSignUpMetadata? metadata,
+        CancellationToken cancellationToken)
+    {
+        if (!TryBuildAdminUsersEndpoint(out var adminUsersEndpoint))
+        {
+            _logger.LogWarning(
+                "Supabase admin signup fallback skipped because ServiceRoleKey or URL is not configured.");
+            return SupabaseSignInResult.Failure(
+                "Registrasie kon nie voltooi nie omdat bevestigings-e-pos tans nie beskikbaar is nie.");
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, adminUsersEndpoint)
+        {
+            Content = JsonContent.Create(new SupabaseAdminCreateUserRequest(
+                Email: email,
+                Password: password,
+                EmailConfirm: true,
+                UserMetadata: metadata))
+        };
+        request.Headers.TryAddWithoutValidation("apikey", _options.ServiceRoleKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ServiceRoleKey);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(request, cancellationToken);
+        }
+        catch (HttpRequestException exception)
+        {
+            _logger.LogWarning(exception, "Supabase admin create user fallback failed.");
+            return SupabaseSignInResult.Failure(
+                "Registrasie kon nie voltooi nie omdat bevestigings-e-pos tans nie beskikbaar is nie.");
+        }
+
+        using (response)
+        {
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+
+            if (response.IsSuccessStatusCode)
+            {
+                var responseEmail = ReadUserEmail(responseBody);
+                _logger.LogInformation(
+                    "Supabase admin create user fallback succeeded after confirmation email failure for {Email}.",
+                    email);
+                return SupabaseSignInResult.Success(responseEmail ?? email);
+            }
+
+            var errorMessage = ReadErrorMessage(responseBody)
+                ?? "Registrasie kon nie voltooi word nie. Probeer asseblief weer.";
+            _logger.LogWarning(
+                "Supabase admin create user fallback rejected: {StatusCode} {Message}",
+                (int)response.StatusCode,
+                errorMessage);
+            return SupabaseSignInResult.Failure(errorMessage);
+        }
+    }
+
     private static string? ReadUserEmail(string responseBody)
     {
         if (string.IsNullOrWhiteSpace(responseBody))
@@ -308,8 +401,17 @@ public sealed class SupabaseAuthService(
             return "Hierdie e-posadres is reeds geregistreer. Teken asseblief in.";
         }
 
+        if (message.Contains("Error sending confirmation email", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Kon nie bevestigings-e-pos stuur nie. Probeer asseblief weer.";
+        }
+
         return message;
     }
+
+    private static bool ShouldFallbackToAdminCreateUser(string? message) =>
+        !string.IsNullOrWhiteSpace(message) &&
+        message.Contains("bevestigings-e-pos", StringComparison.OrdinalIgnoreCase);
 
     private async Task<global::Supabase.Client?> CreateSupabaseClientAsync(CancellationToken cancellationToken)
     {
@@ -372,6 +474,11 @@ public sealed class SupabaseAuthService(
 
     private sealed record SupabasePasswordSignInRequest(string Email, string Password);
     private sealed record SupabasePasswordSignUpRequest(string Email, string Password, SupabasePasswordSignUpMetadata? Data = null);
+    private sealed record SupabaseAdminCreateUserRequest(
+        string Email,
+        string Password,
+        [property: JsonPropertyName("email_confirm")] bool EmailConfirm,
+        [property: JsonPropertyName("user_metadata")] SupabasePasswordSignUpMetadata? UserMetadata);
     private sealed record SupabasePasswordSignUpMetadata(
         string? FirstName,
         string? LastName,
