@@ -416,6 +416,17 @@ else
         {
             await module.InvokeVoidAsync("initializeStoryMediaSession");
             await module.InvokeVoidAsync("initializeStoryPlayerFullscreenExperience", _dotNetRef);
+
+            if (!IsManualFullscreenFocus)
+            {
+                var shouldResumeFullscreen = await module.InvokeAsync<bool>("consumePendingStoryPlayerFullscreenIntent");
+                if (shouldResumeFullscreen)
+                {
+                    IsManualFullscreenFocus = true;
+                    await module.InvokeVoidAsync("setStoryPlayerFullscreenIntent", true);
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
         }
         catch (JSException)
         {

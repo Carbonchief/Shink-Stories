@@ -99,6 +99,17 @@
     padding-left: 0;
 }
 
+@keyframes story-fullscreen-cover-breathe {
+    0%,
+    100% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.07);
+    }
+}
+
 .sr-only {
     position: absolute;
     width: 1px;
@@ -684,6 +695,8 @@
     transform: none;
     filter: none;
     background: #000000;
+    transform-origin: center center;
+    animation: story-fullscreen-cover-breathe 34s ease-in-out infinite;
 }
 
 .story-player-page.manual-fullscreen-focus .story-cover-play {
@@ -986,5 +999,11 @@
     .story-summary-card {
         padding: 1.1rem 1rem;
         border-radius: 20px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .story-player-page.manual-fullscreen-focus .story-cover {
+        animation: none;
     }
 }
