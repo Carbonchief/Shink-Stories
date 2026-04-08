@@ -1138,8 +1138,16 @@ function bindAudioEvents(audioElement, dotNetRef) {
         clearStoryProgress(audioElement);
         updateAll();
 
-        if (shouldAutoplayNextTrack(audioElement) && trackActions?.requestNextTrack) {
-            void trackActions.requestNextTrack();
+        if (shouldAutoplayNextTrack(audioElement)) {
+            void (async () => {
+                if (await tryInvokeTrackAction(audioElement, "HandleJsAutoplayNextTrackRequest")) {
+                    return;
+                }
+
+                if (trackActions?.requestNextTrack) {
+                    await trackActions.requestNextTrack();
+                }
+            })();
         }
     });
     audioElement.addEventListener("volumechange", () => {

@@ -444,7 +444,7 @@
 
 .story-secondary-controls {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto auto auto;
+    grid-template-columns: auto minmax(0, 1fr) auto auto auto auto;
     align-items: center;
     gap: 0.65rem;
     width: 100%;
@@ -463,8 +463,50 @@
     -webkit-tap-highlight-color: transparent;
 }
 
+.story-autoplay-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    min-width: 0;
+}
+
+.story-mini-btn.is-active,
+.story-mini-btn[aria-pressed="true"] {
+    background: rgba(126, 214, 216, 0.18);
+    color: #ffffff;
+    box-shadow: inset 0 0 0 1px rgba(143, 229, 232, 0.3);
+}
+
+.story-autoplay-limit-select {
+    min-height: 2.2rem;
+    min-width: 0;
+    border: 0;
+    border-radius: 999px;
+    padding: 0.38rem 2rem 0.38rem 0.78rem;
+    background: rgba(255, 255, 255, 0.08);
+    color: #f4f0e9;
+    font-weight: 700;
+    font-size: 0.83rem;
+    line-height: 1.2;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image:
+        linear-gradient(45deg, transparent 50%, rgba(244, 240, 233, 0.88) 50%),
+        linear-gradient(135deg, rgba(244, 240, 233, 0.88) 50%, transparent 50%);
+    background-position:
+        calc(100% - 0.95rem) calc(50% - 0.12rem),
+        calc(100% - 0.68rem) calc(50% - 0.12rem);
+    background-size: 0.34rem 0.34rem, 0.34rem 0.34rem;
+    background-repeat: no-repeat;
+    cursor: pointer;
+}
+
+.story-autoplay-limit-select option {
+    color: #222222;
+}
+
 .story-custom-player.volume-unsupported .story-secondary-controls {
-    grid-template-columns: auto auto auto auto;
+    grid-template-columns: auto auto auto auto auto;
     justify-content: space-between;
 }
 
@@ -489,6 +531,11 @@
 .story-autoplay-icon {
     font-size: 1.25rem;
     line-height: 1;
+}
+
+.story-shuffle-toggle:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 
 .playlist-story-summary {
@@ -837,6 +884,16 @@
 
     .story-mini-btn {
         justify-content: center;
+    }
+
+    .story-autoplay-control {
+        width: 100%;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    .story-autoplay-limit-select {
+        width: 100%;
     }
 
     .story-play-toggle {
