@@ -391,6 +391,10 @@
         {
             // Ignore cancellations when navigation interrupts JS interop.
         }
+        catch (JSException)
+        {
+            _luisterModuleLoadFailed = true;
+        }
         catch (JSDisconnectedException)
         {
             // Ignore circuit disconnects during teardown/navigation.

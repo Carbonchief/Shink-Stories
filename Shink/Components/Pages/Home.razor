@@ -597,8 +597,15 @@
             return;
         }
 
-        await module.InvokeVoidAsync("initializeHomeStoryLoading");
-        await module.InvokeVoidAsync("initializeHomeAnimations");
+        try
+        {
+            await module.InvokeVoidAsync("initializeHomeStoryLoading");
+            await module.InvokeVoidAsync("initializeHomeAnimations");
+        }
+        catch (JSException)
+        {
+            _homeModuleLoadFailed = true;
+        }
     }
 
     private async Task<IJSObjectReference?> TryGetHomeModuleAsync()
@@ -640,6 +647,10 @@
         {
             await _homeModule.InvokeVoidAsync("disposeHomeAnimations");
             await _homeModule.DisposeAsync();
+        }
+        catch (JSException)
+        {
+            // Ignore browser-specific teardown failures on older engines.
         }
         catch (JSDisconnectedException)
         {

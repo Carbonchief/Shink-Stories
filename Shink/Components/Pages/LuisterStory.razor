@@ -544,8 +544,15 @@ else
         }
 
         _dotNetRef ??= DotNetObjectReference.Create(this);
-        await module.InvokeVoidAsync("initializeStoryMediaSession");
-        await module.InvokeVoidAsync("initializeStoryPlayerFullscreenExperience", _dotNetRef);
+        try
+        {
+            await module.InvokeVoidAsync("initializeStoryMediaSession");
+            await module.InvokeVoidAsync("initializeStoryPlayerFullscreenExperience", _dotNetRef);
+        }
+        catch (JSException)
+        {
+            _mediaSessionModuleLoadFailed = true;
+        }
     }
 
     private async Task ToggleFullscreenFocusAsync()
@@ -558,7 +565,15 @@ else
             return;
         }
 
-        await module.InvokeVoidAsync("setStoryPlayerFullscreenIntent", IsManualFullscreenFocus);
+        try
+        {
+            await module.InvokeVoidAsync("setStoryPlayerFullscreenIntent", IsManualFullscreenFocus);
+        }
+        catch (JSException)
+        {
+            _mediaSessionModuleLoadFailed = true;
+            IsManualFullscreenFocus = false;
+        }
     }
 
     private async Task<IJSObjectReference?> TryGetStoryPlayerModuleAsync()
@@ -617,6 +632,10 @@ else
         {
             // Do not block navigation when cleanup takes too long.
         }
+        catch (JSException)
+        {
+            // Ignore browser-specific cleanup failures.
+        }
         catch (JSDisconnectedException)
         {
             // Ignore cleanup when browser connection is gone.
@@ -656,6 +675,10 @@ else
         catch (OperationCanceledException)
         {
             // Ignore cancellation during route transitions and disposal races.
+        }
+        catch (JSException)
+        {
+            // Ignore browser-specific disposal failures on older Safari/WebKit.
         }
         catch (JSDisconnectedException)
         {
