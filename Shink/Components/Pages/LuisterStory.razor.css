@@ -205,7 +205,7 @@
 .story-favorite-toggle i {
     font-size: 1.32rem;
     line-height: 1;
-    text-shadow: 0 2px 8px rgba(9, 13, 18, 0.26);
+    text-shadow: rgb(0 0 0 / 95%) 0px 2px 8px;
     transition: transform 0.18s ease, text-shadow 0.18s ease, color 0.18s ease, opacity 0.18s ease;
 }
 
@@ -217,7 +217,7 @@
 .story-favorite-toggle:hover i,
 .story-favorite-toggle:focus-visible i {
     transform: scale(1.06);
-    text-shadow: 0 3px 10px rgba(9, 13, 18, 0.32);
+    text-shadow: rgb(0 0 0 / 95%) 0px 2px 8px;
 }
 
 .story-favorite-toggle:focus-visible {
@@ -228,6 +228,12 @@
 .story-favorite-toggle.is-favorite {
     color: #ffe6ef;
     opacity: 1;
+}
+
+.story-favorite-toggle.is-favorite i,
+.story-favorite-toggle.is-favorite:hover i,
+.story-favorite-toggle.is-favorite:focus-visible i {
+    text-shadow: rgb(0 0 0 / 28%) 0px 1px 2px;
 }
 
 .story-favorite-toggle:disabled {
@@ -522,6 +528,8 @@
     text-decoration: none;
     display: grid;
     gap: 0.56rem;
+    -webkit-user-drag: none;
+    user-select: none;
 }
 
 .story-carousel-card-shell {
@@ -544,6 +552,8 @@
     aspect-ratio: 3 / 4;
     object-fit: cover;
     display: block;
+    -webkit-user-drag: none;
+    user-select: none;
     transition: transform 0.22s ease, filter 0.22s ease;
 }
 
@@ -718,7 +728,13 @@
 }
 
 .story-player-page.manual-fullscreen-focus .story-favorite-toggle i {
-    text-shadow: 0 3px 12px rgba(0, 0, 0, 0.38);
+    text-shadow: rgb(0 0 0 / 95%) 0px 2px 8px;
+}
+
+.story-player-page.manual-fullscreen-focus .story-favorite-toggle.is-favorite i,
+.story-player-page.manual-fullscreen-focus .story-favorite-toggle.is-favorite:hover i,
+.story-player-page.manual-fullscreen-focus .story-favorite-toggle.is-favorite:focus-visible i {
+    text-shadow: rgb(0 0 0 / 28%) 0px 1px 2px;
 }
 
 .story-player-page.manual-fullscreen-focus .story-custom-player {

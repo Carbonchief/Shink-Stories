@@ -23,9 +23,15 @@ function findAccountMenuParts(from) {
     const accountRoot = from instanceof Element
         ? from.closest(ACCOUNT_MENU_ROOT_SELECTOR)
         : null;
-    const accountToggle = accountRoot?.querySelector(ACCOUNT_TOGGLE_SELECTOR);
-    const accountDropdown = accountRoot?.querySelector(ACCOUNT_DROPDOWN_SELECTOR);
-    const navControls = accountRoot?.closest(".nav-controls");
+    const accountToggle = accountRoot instanceof Element
+        ? accountRoot.querySelector(ACCOUNT_TOGGLE_SELECTOR)
+        : null;
+    const accountDropdown = accountRoot instanceof Element
+        ? accountRoot.querySelector(ACCOUNT_DROPDOWN_SELECTOR)
+        : null;
+    const navControls = accountRoot instanceof Element
+        ? accountRoot.closest(".nav-controls")
+        : null;
 
     if (!(accountRoot instanceof HTMLElement) ||
         !(accountToggle instanceof HTMLButtonElement) ||
@@ -99,7 +105,9 @@ function closeAccountMenuInContainer(container) {
     }
 
     const accountRoot = container.querySelector(ACCOUNT_MENU_ROOT_SELECTOR);
-    const accountToggle = accountRoot?.querySelector(ACCOUNT_TOGGLE_SELECTOR);
+    const accountToggle = accountRoot instanceof Element
+        ? accountRoot.querySelector(ACCOUNT_TOGGLE_SELECTOR)
+        : null;
     if (!(accountRoot instanceof HTMLElement) || !(accountToggle instanceof HTMLElement)) {
         return;
     }
@@ -213,8 +221,18 @@ function wireHeaderSearch(searchForm) {
         searchLoader.hidden = !isLoading;
     };
 
+    const replaceChildrenCompat = (parent, child) => {
+        while (parent.firstChild) {
+            parent.removeChild(parent.firstChild);
+        }
+
+        if (child instanceof Node) {
+            parent.appendChild(child);
+        }
+    };
+
     const hideSuggestions = () => {
-        suggestionsList.replaceChildren();
+        replaceChildrenCompat(suggestionsList);
         suggestionsPanel.hidden = true;
     };
 
@@ -222,7 +240,7 @@ function wireHeaderSearch(searchForm) {
         const empty = document.createElement("p");
         empty.className = "site-search-suggestion-empty";
         empty.textContent = message;
-        suggestionsList.replaceChildren(empty);
+        replaceChildrenCompat(suggestionsList, empty);
         suggestionsPanel.hidden = false;
     };
 
@@ -276,7 +294,7 @@ function wireHeaderSearch(searchForm) {
             return;
         }
 
-        suggestionsList.replaceChildren(fragment);
+        replaceChildrenCompat(suggestionsList, fragment);
         suggestionsPanel.hidden = false;
     };
 
@@ -336,7 +354,7 @@ function wireHeaderSearch(searchForm) {
                 return;
             }
 
-            const results = Array.isArray(payload?.results) ? payload.results : [];
+            const results = payload && Array.isArray(payload.results) ? payload.results : [];
             renderSuggestions(results);
         } catch (error) {
             if (error instanceof DOMException && error.name === "AbortError") {

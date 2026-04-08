@@ -74,6 +74,7 @@ function wireCarouselDragScrolling() {
                 return;
             }
 
+            event.preventDefault();
             activePointerId = event.pointerId;
             pointerDown = true;
             startX = event.clientX;
@@ -191,13 +192,14 @@ function wireStoryCarouselDrag(carouselElement) {
             return;
         }
 
+        event.preventDefault();
         dragState.pointerId = event.pointerId;
         dragState.startX = event.clientX;
         dragState.startY = event.clientY;
         dragState.startScrollLeft = carouselElement.scrollLeft;
         dragState.isPointerDown = true;
         dragState.isDragging = false;
-    }, { passive: true });
+    });
 
     carouselElement.addEventListener("pointermove", (event) => {
         if (!dragState.isPointerDown || event.pointerId !== dragState.pointerId) {
@@ -388,7 +390,9 @@ export function initializeHomeAnimations() {
             }
 
             entry.target.classList.add("is-visible");
-            homeRevealObserver?.unobserve(entry.target);
+            if (homeRevealObserver instanceof IntersectionObserver) {
+                homeRevealObserver.unobserve(entry.target);
+            }
         }
     }, {
         threshold: 0.18,

@@ -48,9 +48,9 @@
     position: relative;
     overflow: hidden;
     display: grid;
-    grid-template-columns: minmax(0, 1.1fr) minmax(290px, 0.9fr);
-    gap: clamp(1.1rem, 3vw, 2.6rem);
-    align-items: center;
+    grid-template-columns: 1fr;
+    gap: clamp(1rem, 2.6vw, 1.8rem);
+    align-items: start;
     padding: clamp(1.3rem, 3vw, 2.5rem);
     border-radius: 32px;
     border: 1px solid color-mix(in srgb, var(--line) 72%, #dfe6e3);
@@ -75,6 +75,9 @@
     display: grid;
     gap: 1rem;
     color: #12222b;
+    max-width: 52rem;
+    margin-inline: auto;
+    text-align: center;
 }
 
 .opsies-eyebrow,
@@ -92,12 +95,14 @@
     color: #132a34;
     font-size: clamp(2rem, 4vw, 3.3rem);
     line-height: 1.04;
-    max-width: 11ch;
+    max-width: 14ch;
+    margin-inline: auto;
 }
 
 .opsies-hero-lead {
     margin: 0;
     max-width: 58ch;
+    margin-inline: auto;
     color: #51616a;
     font-size: 1rem;
     line-height: 1.65;
@@ -184,7 +189,7 @@
 
 .opsies-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 1rem;
     align-items: stretch;
 }
@@ -513,10 +518,6 @@
 @media (max-width: 980px) {
     .opsies-page {
         gap: 1rem;
-    }
-
-    .opsies-hero {
-        grid-template-columns: 1fr;
     }
 
     .opsies-hero-copy h1 {

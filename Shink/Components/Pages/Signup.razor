@@ -126,44 +126,22 @@
                             class="@GetMembershipPlanOptionClass(plan)"
                             @onclick="() => SelectPlan(plan)"
                             aria-pressed="@IsSelectedPlan(plan)">
-                        <span class="membership-plan-option-badge">@GetPlanBadge(plan)</span>
-                        <span class="membership-plan-option-name">@plan.Name</span>
-                        <span class="membership-plan-option-price">
-                            <strong>@FormatPlanAmount(plan)</strong>
-                            <span>@GetPlanBillingLabel(plan)</span>
+                        <span class="membership-plan-option-checkbox" aria-hidden="true"></span>
+                        <span class="membership-plan-option-content">
+                            <span class="membership-plan-option-badge">@GetPlanBadge(plan)</span>
+                            <span class="membership-plan-option-name">@plan.Name</span>
+                            <span class="membership-plan-option-price">
+                                <strong>@FormatPlanAmount(plan)</strong>
+                                <span>@GetPlanBillingLabel(plan)</span>
+                            </span>
+                            @if (IsYearlyAllStoriesPlan(plan))
+                            {
+                                <span class="membership-save-badge membership-save-badge-inline">Save 2 months</span>
+                            }
                         </span>
-                        <span class="membership-plan-option-copy">@GetPlanDescription(plan)</span>
-                        @if (IsYearlyAllStoriesPlan(plan))
-                        {
-                            <span class="membership-save-badge membership-save-badge-inline">Save 2 months</span>
-                        }
                     </button>
                 }
             </div>
-
-            @if (SelectedPlan is not null)
-            {
-                <article class="membership-plan">
-                    <p class="membership-plan-label">@GetPlanBadge(SelectedPlan)</p>
-                    <h3>@SelectedPlan.Name</h3>
-                    <p class="membership-plan-price">
-                        <strong>@FormatPlanAmount(SelectedPlan)</strong>
-                        <span>@GetPlanBillingLabel(SelectedPlan)</span>
-                    </p>
-                    @if (IsYearlyAllStoriesPlan(SelectedPlan))
-                    {
-                        <p class="membership-save-badge">Save 2 months</p>
-                    }
-                    <p class="membership-plan-copy">@GetPlanDescription(SelectedPlan)</p>
-                </article>
-            }
-            else
-            {
-                <article class="membership-plan membership-plan-placeholder">
-                    <h3>Nog geen plan gekies nie</h3>
-                    <p>Kies een van die planne hier bo as jy na registrasie direk na betaling wil gaan.</p>
-                </article>
-            }
 
             <article class="membership-plan membership-plan-gratis">
                 <p class="membership-plan-label">GRATIS</p>

@@ -209,6 +209,7 @@ else
                                href="@BuildStoryHref(story.Slug)"
                                @onclick="() => NavigateToStoryAsync(story.Slug)"
                                @onclick:preventDefault="true"
+                               draggable="false"
                                aria-current="@(isActiveStory ? "page" : null)"
                                aria-label="@(isActiveStory ? $"Huidige storie: {story.Title}" : $"Gaan na {story.Title}")">
                                 <span class="story-carousel-cover">
@@ -216,6 +217,7 @@ else
                                          srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
                                          sizes="(max-width: 620px) 68vw, (max-width: 980px) 42vw, 220px"
                                          class="story-carousel-image"
+                                         draggable="false"
                                          alt="Voorblad van @story.Title"
                                          width="640" height="485" loading="lazy" decoding="async" />
                                     <span class="story-cover-play" aria-hidden="true">
