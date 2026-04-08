@@ -56,7 +56,7 @@
     object-fit: contain;
     filter: drop-shadow(0 16px 34px rgba(8, 16, 30, 0.36));
     z-index: 1;
-    animation: playlist-showcase-logo-float 4.8s ease-in-out infinite;
+    animation: playlist-showcase-logo-float 11s ease-in-out infinite;
 }
 
 .playlist-showcase-intro {
@@ -87,7 +87,7 @@
     }
 
     50% {
-        transform: translate(-50%, calc(-50% - 16px));
+        transform: translate(-50%, calc(-50% - 6px));
     }
 }
 
