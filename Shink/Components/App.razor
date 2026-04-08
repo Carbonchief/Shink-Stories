@@ -184,12 +184,29 @@
             var fallbackDetail = document.getElementById("unsupported-browser-detail");
             var appShellRoot = document.getElementById("app-shell-root");
             var browserSupport = window.shinkBrowserSupport;
-            var supportResult = browserSupport && typeof browserSupport.checkSupport === "function"
-                ? browserSupport.checkSupport()
-                : { supported: true };
 
             function finishSupportCheck() {
                 documentElement.className = documentElement.className.replace(/\bbrowser-support-pending\b/g, "").replace(/\s{2,}/g, " ").trim();
+            }
+
+            function showUnsupportedFallback(detailMessage) {
+                if (documentElement.className.indexOf("unsupported-browser") === -1) {
+                    documentElement.className += (documentElement.className ? " " : "") + "unsupported-browser";
+                }
+
+                if (appShellRoot) {
+                    appShellRoot.setAttribute("hidden", "hidden");
+                }
+
+                if (fallbackDetail && detailMessage) {
+                    fallbackDetail.textContent = detailMessage;
+                }
+
+                if (fallback) {
+                    fallback.hidden = false;
+                }
+
+                finishSupportCheck();
             }
 
             function loadScript(source) {
@@ -198,28 +215,35 @@
                 document.body.appendChild(script);
             }
 
-            if (!supportResult.supported) {
-                documentElement.className += (documentElement.className ? " " : "") + "unsupported-browser";
+            try {
+                var supportResult;
 
-                if (appShellRoot) {
-                    appShellRoot.setAttribute("hidden", "hidden");
+                try {
+                    supportResult = browserSupport && typeof browserSupport.checkSupport === "function"
+                        ? browserSupport.checkSupport()
+                        : { supported: true };
+                } catch (supportError) {
+                    console.error("Browser support check failed.", supportError);
+                    showUnsupportedFallback("Ons kon nie jou blaaier se ondersteuning veilig bevestig nie. Gebruik asseblief die nuutste Safari, Chrome, Edge of Firefox.");
+                    return;
                 }
 
-                if (fallback && fallbackDetail) {
-                    if (browserSupport && typeof browserSupport.buildFallbackDetail === "function") {
-                        fallbackDetail.textContent = browserSupport.buildFallbackDetail(supportResult);
-                    }
+                if (!supportResult.supported) {
+                    var detailMessage = browserSupport && typeof browserSupport.buildFallbackDetail === "function"
+                        ? browserSupport.buildFallbackDetail(supportResult)
+                        : "Werk asseblief jou blaaier op en probeer weer.";
 
-                    fallback.hidden = false;
+                    showUnsupportedFallback(detailMessage);
+                    return;
                 }
 
+                loadScript("_content/MudBlazor/MudBlazor.min.js");
+                loadScript("@Assets["_framework/blazor.web.js"]");
                 finishSupportCheck();
-                return;
+            } catch (bootstrapError) {
+                console.error("Browser bootstrap failed.", bootstrapError);
+                showUnsupportedFallback("Hierdie bladsy kon nie veilig begin laai nie. Werk asseblief jou blaaier op en probeer weer.");
             }
-
-            loadScript("_content/MudBlazor/MudBlazor.min.js");
-            loadScript("@Assets["_framework/blazor.web.js"]");
-            finishSupportCheck();
         })();
     </script>
 </body>

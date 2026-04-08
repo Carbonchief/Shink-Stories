@@ -64,6 +64,126 @@
         </form>
     </section>
 
+@if (!string.IsNullOrWhiteSpace(PageLoadErrorMessage))
+{
+    <section class="luister-empty-state" role="status" aria-live="polite">
+        <p>@PageLoadErrorMessage</p>
+        <p><a href="/luister">Probeer weer</a> of <a href="/gratis">gaan na Gratis stories</a>.</p>
+    </section>
+}
+else if (LuisterPlaylists.Count == 0)
+{
+    <section class="luister-empty-state">
+        <p>Ons kon nie nou die playlists laai nie. Probeer asseblief oor 'n oomblik weer.</p>
+    </section>
+}
+else if (FilteredLuisterPlaylists.Count == 0)
+{
+    <section class="luister-empty-state">
+        <p>Geen stories pas by jou soektog vir "@SearchQuery".</p>
+    </section>
+}
+else
+{
+    @for (var index = 0; index < FilteredLuisterPlaylists.Count; index++)
+    {
+        var playlist = FilteredLuisterPlaylists[index];
+        var playlistSlug = GetPlaylistSlug(playlist);
+        var playlistTitle = GetPlaylistTitle(playlist);
+        var playlistStories = GetPlaylistStories(playlist);
+        var headingId = $"luister-playlist-{playlistSlug}-heading";
+        var hasDescription = !string.IsNullOrWhiteSpace(playlist.Description);
+        var canOpenPlaylist = CanOpenPlaylist(playlist);
+
+        <section class="section-block stories-carousel-section luister-stories-section" aria-labelledby="@headingId">
+            <h2 id="@headingId">
+                @if (canOpenPlaylist)
+                {
+                    <a class="luister-playlist-link" href="@GetPlaylistHref(playlistSlug)">@playlistTitle</a>
+                }
+                else
+                {
+                    <button type="button"
+                            class="luister-playlist-link luister-playlist-link-button"
+                            @onclick="() => HandlePlaylistClickAsync(playlist)">@playlistTitle</button>
+                }
+            </h2>
+            @if (hasDescription)
+            {
+                <p class="section-intro">@playlist.Description</p>
+            }
+
+            <div class="stories-carousel-shell">
+                <div class="stories-carousel" role="list" aria-label="@playlistTitle">
+                    @foreach (var story in playlistStories)
+                    {
+                        var canAccessStory = HasAccessToStory(story);
+                        var storyTitle = string.IsNullOrWhiteSpace(story.Title) ? "hierdie storie" : story.Title.Trim();
+                        <article class="story-carousel-item" role="listitem">
+                            <div class="story-carousel-card-shell">
+                                @if (canAccessStory)
+                                {
+                                    <a class="story-carousel-link"
+                                       href="@GetStoryHref(story.Slug)"
+                                       draggable="false"
+                                       aria-label="Luister na @storyTitle">
+                                        <span class="story-carousel-cover">
+                                            <img class="story-carousel-image"
+                                                 src="@story.ThumbnailPath"
+                                                 srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
+                                                 sizes="(max-width: 620px) 68vw, (max-width: 980px) 42vw, 320px"
+                                                 draggable="false"
+                                                 alt="Voorblad van @storyTitle" width="640" height="485" loading="lazy" decoding="async" />
+                                            <span class="story-cover-play" aria-hidden="true">
+                                                <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
+                                            </span>
+                                        </span>
+                                        <h3>@storyTitle</h3>
+                                    </a>
+                                }
+                                else
+                                {
+                                    <button type="button"
+                                            class="story-carousel-link story-carousel-link-button"
+                                            @onclick="() => HandleStoryCardClickAsync(story)"
+                                            aria-label="Luister na @storyTitle">
+                                        <span class="story-carousel-cover">
+                                            <img class="story-carousel-image"
+                                                 src="@story.ThumbnailPath"
+                                                 srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
+                                                 sizes="(max-width: 620px) 68vw, (max-width: 980px) 42vw, 320px"
+                                                 draggable="false"
+                                                 alt="Voorblad van @storyTitle" width="640" height="485" loading="lazy" decoding="async" />
+                                            <span class="story-cover-play" aria-hidden="true">
+                                                <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
+                                            </span>
+                                        </span>
+                                        <h3>@storyTitle</h3>
+                                    </button>
+                                }
+                                <button type="button"
+                                        class="story-favorite-toggle @(IsStoryFavorite(story.Slug) ? "is-favorite" : null)"
+                                        @onclick="() => ToggleStoryFavoriteAsync(story)"
+                                        aria-label="@(IsStoryFavorite(story.Slug) ? $"Verwyder {storyTitle} uit jou gunstelinge" : $"Voeg {storyTitle} by jou gunstelinge")"
+                                        title="@(IsStoryFavorite(story.Slug) ? "Verwyder uit gunstelinge" : "Voeg by gunstelinge")"
+                                        aria-pressed="@IsStoryFavorite(story.Slug)"
+                                        disabled="@IsFavoriteBusy(story.Slug)">
+                                    <i class="fa-@(IsStoryFavorite(story.Slug) ? "solid" : "regular") fa-heart" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        </article>
+                    }
+                </div>
+            </div>
+        </section>
+    }
+}
+
+<StoryAccessPopup IsOpen="@ShowStoryAccessPopup"
+                  PrimaryActionHref="@StoryAccessPopupPrimaryHref"
+                  PlanActionHref="@StoryAccessPopupPlanHref"
+                  OnClose="CloseStoryAccessPopupAsync" />
+
 @code {
     private IReadOnlyList<StoryPlaylist> LuisterPlaylists { get; set; } = Array.Empty<StoryPlaylist>();
     private IReadOnlyList<StoryPlaylist> FilteredLuisterPlaylists { get; set; } = Array.Empty<StoryPlaylist>();
@@ -76,6 +196,7 @@
     private string SearchQuery { get; set; } = string.Empty;
     private bool IsSearching { get; set; }
     private LuisterAccessProfile AccessProfile { get; set; } = new(false, false);
+    private string? PageLoadErrorMessage { get; set; }
     private bool ShowStoryAccessPopup { get; set; }
     private string PendingLockedStoryPath { get; set; } = "/luister";
 
@@ -106,28 +227,61 @@
 
     protected override async Task OnInitializedAsync()
     {
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        SignedInEmail = authState.User.Identity?.IsAuthenticated == true
-            ? authState.User.FindFirst(ClaimTypes.Email)?.Value ?? authState.User.Identity?.Name
-            : null;
-        AccessProfile = await ResolveLuisterAccessProfileAsync(authState.User);
-
         try
         {
-            LuisterPlaylists = await StoryCatalogService.GetLuisterPlaylistsAsync(SignedInEmail);
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            SignedInEmail = authState.User.Identity?.IsAuthenticated == true
+                ? authState.User.FindFirst(ClaimTypes.Email)?.Value ?? authState.User.Identity?.Name
+                : null;
+
+            try
+            {
+                AccessProfile = await ResolveLuisterAccessProfileAsync(authState.User);
+            }
+            catch
+            {
+                AccessProfile = new LuisterAccessProfile(false, false);
+            }
+
+            try
+            {
+                LuisterPlaylists = await StoryCatalogService.GetLuisterPlaylistsAsync(SignedInEmail);
+            }
+            catch
+            {
+                LuisterPlaylists = Array.Empty<StoryPlaylist>();
+            }
+
+            UpdateFilteredPlaylists();
+            _ = LoadFavoriteStorySlugsInBackgroundAsync();
         }
         catch
         {
+            PageLoadErrorMessage = "Ons kon nie nou jou luisterblad oopmaak nie. Herlaai asseblief die bladsy of probeer weer vanaf Gratis stories.";
             LuisterPlaylists = Array.Empty<StoryPlaylist>();
+            FilteredLuisterPlaylists = Array.Empty<StoryPlaylist>();
+            AccessProfile = new LuisterAccessProfile(false, false);
         }
-
-        UpdateFilteredPlaylists();
-        _ = LoadFavoriteStorySlugsInBackgroundAsync();
     }
 
-    private static string GetStoryHref(string slug) => $"/luister/{Uri.EscapeDataString(slug)}";
+    private static string GetStoryHref(string? slug) =>
+        string.IsNullOrWhiteSpace(slug)
+            ? "/luister"
+            : $"/luister/{Uri.EscapeDataString(slug.Trim())}";
 
-    private static string GetPlaylistHref(string slug) => $"/luister/speellys/{Uri.EscapeDataString(slug)}/stories";
+    private static string GetPlaylistHref(string? slug) =>
+        string.IsNullOrWhiteSpace(slug)
+            ? "/luister"
+            : $"/luister/speellys/{Uri.EscapeDataString(slug.Trim())}/stories";
+
+    private static string GetPlaylistSlug(StoryPlaylist playlist) =>
+        string.IsNullOrWhiteSpace(playlist.Slug) ? "stories" : playlist.Slug.Trim();
+
+    private static string GetPlaylistTitle(StoryPlaylist playlist) =>
+        string.IsNullOrWhiteSpace(playlist.Title) ? "Stories" : playlist.Title.Trim();
+
+    private static IReadOnlyList<StoryItem> GetPlaylistStories(StoryPlaylist playlist) =>
+        playlist.Stories ?? Array.Empty<StoryItem>();
 
     private bool IsStoryFavorite(string slug) => FavoriteStorySlugs.Contains(slug);
 
@@ -227,7 +381,7 @@
 
     private Task HandlePlaylistClickAsync(StoryPlaylist playlist)
     {
-        var playlistPath = GetPlaylistHref(playlist.Slug);
+        var playlistPath = GetPlaylistHref(GetPlaylistSlug(playlist));
         if (CanOpenPlaylist(playlist))
         {
             NavigationManager.NavigateTo(playlistPath);
@@ -257,7 +411,7 @@
     }
 
     private bool CanOpenPlaylist(StoryPlaylist playlist) =>
-        playlist.Stories.Any(HasAccessToStory);
+        GetPlaylistStories(playlist).Any(HasAccessToStory);
 
     private void ShowAccessPopupForPath(string path)
     {
@@ -460,112 +614,4 @@
     private sealed record LuisterAccessProfile(bool HasStoryCornerOrAll, bool HasAllStories);
 }
 
-@if (LuisterPlaylists.Count == 0)
-{
-    <section class="luister-empty-state">
-        <p>Ons kon nie nou die playlists laai nie. Probeer asseblief oor 'n oomblik weer.</p>
-    </section>
-}
-else if (FilteredLuisterPlaylists.Count == 0)
-{
-    <section class="luister-empty-state">
-        <p>Geen stories pas by jou soektog vir "@SearchQuery".</p>
-    </section>
-}
-else
-{
-    @for (var index = 0; index < FilteredLuisterPlaylists.Count; index++)
-    {
-        var playlist = FilteredLuisterPlaylists[index];
-        var headingId = $"luister-playlist-{playlist.Slug}-heading";
-        var hasDescription = !string.IsNullOrWhiteSpace(playlist.Description);
-        var canOpenPlaylist = CanOpenPlaylist(playlist);
-
-        <section class="section-block stories-carousel-section luister-stories-section" aria-labelledby="@headingId">
-            <h2 id="@headingId">
-                @if (canOpenPlaylist)
-                {
-                    <a class="luister-playlist-link" href="@GetPlaylistHref(playlist.Slug)">@playlist.Title</a>
-                }
-                else
-                {
-                    <button type="button"
-                            class="luister-playlist-link luister-playlist-link-button"
-                            @onclick="() => HandlePlaylistClickAsync(playlist)">@playlist.Title</button>
-                }
-            </h2>
-            @if (hasDescription)
-            {
-                <p class="section-intro">@playlist.Description</p>
-            }
-
-            <div class="stories-carousel-shell">
-                <div class="stories-carousel" role="list" aria-label="@playlist.Title">
-                    @foreach (var story in playlist.Stories)
-                    {
-                        var canAccessStory = HasAccessToStory(story);
-                        <article class="story-carousel-item" role="listitem">
-                            <div class="story-carousel-card-shell">
-                                @if (canAccessStory)
-                                {
-                                    <a class="story-carousel-link"
-                                       href="@GetStoryHref(story.Slug)"
-                                       draggable="false"
-                                       aria-label="Luister na @story.Title">
-                                        <span class="story-carousel-cover">
-                                            <img class="story-carousel-image"
-                                                 src="@story.ThumbnailPath"
-                                                 srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
-                                                 sizes="(max-width: 620px) 68vw, (max-width: 980px) 42vw, 320px"
-                                                 draggable="false"
-                                                 alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
-                                            <span class="story-cover-play" aria-hidden="true">
-                                                <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
-                                            </span>
-                                        </span>
-                                        <h3>@story.Title</h3>
-                                    </a>
-                                }
-                                else
-                                {
-                                    <button type="button"
-                                            class="story-carousel-link story-carousel-link-button"
-                                            @onclick="() => HandleStoryCardClickAsync(story)"
-                                            aria-label="Luister na @story.Title">
-                                        <span class="story-carousel-cover">
-                                            <img class="story-carousel-image"
-                                                 src="@story.ThumbnailPath"
-                                                 srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
-                                                 sizes="(max-width: 620px) 68vw, (max-width: 980px) 42vw, 320px"
-                                                 draggable="false"
-                                                 alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
-                                            <span class="story-cover-play" aria-hidden="true">
-                                                <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
-                                            </span>
-                                        </span>
-                                        <h3>@story.Title</h3>
-                                    </button>
-                                }
-                                <button type="button"
-                                        class="story-favorite-toggle @(IsStoryFavorite(story.Slug) ? "is-favorite" : null)"
-                                        @onclick="() => ToggleStoryFavoriteAsync(story)"
-                                        aria-label="@(IsStoryFavorite(story.Slug) ? $"Verwyder {story.Title} uit jou gunstelinge" : $"Voeg {story.Title} by jou gunstelinge")"
-                                        title="@(IsStoryFavorite(story.Slug) ? "Verwyder uit gunstelinge" : "Voeg by gunstelinge")"
-                                        aria-pressed="@IsStoryFavorite(story.Slug)"
-                                        disabled="@IsFavoriteBusy(story.Slug)">
-                                    <i class="fa-@(IsStoryFavorite(story.Slug) ? "solid" : "regular") fa-heart" aria-hidden="true"></i>
-                                </button>
-                            </div>
-                        </article>
-                    }
-                </div>
-            </div>
-        </section>
-    }
-}
-
-<StoryAccessPopup IsOpen="@ShowStoryAccessPopup"
-                  PrimaryActionHref="@StoryAccessPopupPrimaryHref"
-                  PlanActionHref="@StoryAccessPopupPlanHref"
-                  OnClose="CloseStoryAccessPopupAsync" />
 </div>
