@@ -100,6 +100,7 @@ public sealed class SupabaseAuthService(
 
     public async Task<SupabaseOAuthStartResult> StartGoogleSignInAsync(
         string redirectTo,
+        bool useImplicitFlow,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(redirectTo))
@@ -120,7 +121,9 @@ public sealed class SupabaseAuthService(
                 new SignInOptions
                 {
                     RedirectTo = redirectTo,
-                    FlowType = Constants.OAuthFlowType.PKCE
+                    FlowType = useImplicitFlow
+                        ? Constants.OAuthFlowType.Implicit
+                        : Constants.OAuthFlowType.PKCE
                 });
 
             if (providerState?.Uri is null)
@@ -156,22 +159,38 @@ public sealed class SupabaseAuthService(
         try
         {
             var session = await supabaseClient.Auth.ExchangeCodeForSession(codeVerifier, authCode);
-            var email = session?.User?.Email;
-            if (string.IsNullOrWhiteSpace(email))
-            {
-                return SupabaseOAuthExchangeResult.Failure("Kon nie jou Google-profiel lees nie. Probeer asseblief weer.");
-            }
-
-            var userMetadata = session?.User?.UserMetadata;
-            var firstName = ReadMetadataString(userMetadata, "first_name", "given_name");
-            var lastName = ReadMetadataString(userMetadata, "last_name", "family_name");
-            var displayName = ReadMetadataString(userMetadata, "display_name", "name", "full_name");
-
-            return SupabaseOAuthExchangeResult.Success(email, firstName, lastName, displayName);
+            return CreateGoogleOAuthExchangeResult(session);
         }
         catch (Exception exception)
         {
             _logger.LogWarning(exception, "Supabase Google OAuth code exchange failed.");
+            return SupabaseOAuthExchangeResult.Failure("Google-aanmelding het misluk. Probeer asseblief weer.");
+        }
+    }
+
+    public async Task<SupabaseOAuthExchangeResult> ExchangeGoogleImplicitSessionAsync(
+        Uri callbackUri,
+        CancellationToken cancellationToken = default)
+    {
+        if (callbackUri is null)
+        {
+            return SupabaseOAuthExchangeResult.Failure("Google-aanmelding kon nie bevestig word nie. Probeer asseblief weer.");
+        }
+
+        var supabaseClient = await CreateSupabaseClientAsync(cancellationToken);
+        if (supabaseClient is null)
+        {
+            return SupabaseOAuthExchangeResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en anon key op.");
+        }
+
+        try
+        {
+            var session = await supabaseClient.Auth.GetSessionFromUrl(callbackUri, false);
+            return CreateGoogleOAuthExchangeResult(session);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(exception, "Supabase Google implicit OAuth session parse failed.");
             return SupabaseOAuthExchangeResult.Failure("Google-aanmelding het misluk. Probeer asseblief weer.");
         }
     }
@@ -412,6 +431,22 @@ public sealed class SupabaseAuthService(
     private static bool ShouldFallbackToAdminCreateUser(string? message) =>
         !string.IsNullOrWhiteSpace(message) &&
         message.Contains("bevestigings-e-pos", StringComparison.OrdinalIgnoreCase);
+
+    private static SupabaseOAuthExchangeResult CreateGoogleOAuthExchangeResult(Session? session)
+    {
+        var email = session?.User?.Email;
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return SupabaseOAuthExchangeResult.Failure("Kon nie jou Google-profiel lees nie. Probeer asseblief weer.");
+        }
+
+        var userMetadata = session?.User?.UserMetadata;
+        var firstName = ReadMetadataString(userMetadata, "first_name", "given_name");
+        var lastName = ReadMetadataString(userMetadata, "last_name", "family_name");
+        var displayName = ReadMetadataString(userMetadata, "display_name", "name", "full_name");
+
+        return SupabaseOAuthExchangeResult.Success(email, firstName, lastName, displayName);
+    }
 
     private async Task<global::Supabase.Client?> CreateSupabaseClientAsync(CancellationToken cancellationToken)
     {

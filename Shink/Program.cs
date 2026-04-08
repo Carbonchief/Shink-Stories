@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 using MudBlazor.Services;
@@ -603,17 +604,22 @@ app.MapPost("/api/paystack/webhook", async (HttpContext httpContext, PaystackChe
 
 app.MapGet("/api/auth/google/start", async (
     string? returnUrl,
+    string? flowType,
     ISupabaseAuthService supabaseAuthService,
     IDataProtectionProvider dataProtectionProvider,
     HttpContext httpContext) =>
 {
     var safeReturnUrl = GetSafeAuthReturnUrl(returnUrl);
     var callbackUri = BuildAbsoluteUrl(httpContext.Request, "/auth/callback");
+    var useImplicitFlow = ShouldUseImplicitGoogleAuthFlow(flowType, httpContext.Request.Headers.UserAgent.ToString());
 
     var startResult = await supabaseAuthService.StartGoogleSignInAsync(
         callbackUri,
+        useImplicitFlow,
         httpContext.RequestAborted);
-    if (!startResult.IsSuccess || startResult.RedirectUri is null || string.IsNullOrWhiteSpace(startResult.CodeVerifier))
+    if (!startResult.IsSuccess ||
+        startResult.RedirectUri is null ||
+        (!useImplicitFlow && string.IsNullOrWhiteSpace(startResult.CodeVerifier)))
     {
         var errorPath = BuildGoogleAuthErrorRedirectPath("Kon nie Google-aanmelding begin nie. Probeer asseblief weer.");
         return Results.Redirect(errorPath);
@@ -622,7 +628,7 @@ app.MapGet("/api/auth/google/start", async (
     var protector = dataProtectionProvider.CreateProtector(GooglePkceProtectorPurpose);
     var protectedState = protector.Protect(System.Text.Json.JsonSerializer.Serialize(new GooglePkceStateCookiePayload(
         ExpiresAtUtc: DateTimeOffset.UtcNow.AddMinutes(10),
-        CodeVerifier: startResult.CodeVerifier,
+        CodeVerifier: startResult.CodeVerifier ?? string.Empty,
         ReturnUrl: safeReturnUrl)));
 
     httpContext.Response.Cookies.Append(
@@ -659,39 +665,51 @@ app.MapGet("/auth/callback", async (
         return Results.Redirect(BuildGoogleAuthErrorRedirectPath(error_description));
     }
 
-    if (string.IsNullOrWhiteSpace(code))
+    GooglePkceStateCookiePayload? payload = null;
+    if (httpContext.Request.Cookies.TryGetValue(GooglePkceCookieName, out var protectedCookie) &&
+        !string.IsNullOrWhiteSpace(protectedCookie))
+    {
+        try
+        {
+            var callbackProtector = dataProtectionProvider.CreateProtector(GooglePkceProtectorPurpose);
+            payload = System.Text.Json.JsonSerializer.Deserialize<GooglePkceStateCookiePayload>(callbackProtector.Unprotect(protectedCookie));
+        }
+        catch
+        {
+            return Results.Redirect(BuildGoogleAuthErrorRedirectPath("Kon nie jou Google-aanmeldsessie verifieer nie. Probeer asseblief weer."));
+        }
+    }
+
+    SupabaseOAuthExchangeResult exchangeResult;
+    string? requestedReturnUrl = null;
+
+    if (!string.IsNullOrWhiteSpace(code))
+    {
+        if (payload is null ||
+            payload.ExpiresAtUtc <= DateTimeOffset.UtcNow ||
+            string.IsNullOrWhiteSpace(payload.CodeVerifier))
+        {
+            return Results.Redirect(BuildGoogleAuthErrorRedirectPath("Jou Google-aanmeldsessie het verval. Probeer asseblief weer."));
+        }
+
+        requestedReturnUrl = payload.ReturnUrl;
+        exchangeResult = await supabaseAuthService.ExchangeGoogleAuthCodeAsync(
+            code,
+            payload.CodeVerifier,
+            httpContext.RequestAborted);
+    }
+    else if (HasImplicitGoogleAuthSession(httpContext.Request))
+    {
+        requestedReturnUrl = payload?.ReturnUrl;
+        exchangeResult = await supabaseAuthService.ExchangeGoogleImplicitSessionAsync(
+            BuildAbsoluteRequestUri(httpContext.Request),
+            httpContext.RequestAborted);
+    }
+    else
     {
         return Results.Redirect(BuildGoogleAuthErrorRedirectPath("Google-aanmelding kon nie bevestig word nie. Probeer asseblief weer."));
     }
 
-    if (!httpContext.Request.Cookies.TryGetValue(GooglePkceCookieName, out var protectedCookie) ||
-        string.IsNullOrWhiteSpace(protectedCookie))
-    {
-        return Results.Redirect(BuildGoogleAuthErrorRedirectPath("Jou Google-aanmeldsessie het verval. Probeer asseblief weer."));
-    }
-
-    GooglePkceStateCookiePayload? payload;
-    try
-    {
-        var protector = dataProtectionProvider.CreateProtector(GooglePkceProtectorPurpose);
-        payload = System.Text.Json.JsonSerializer.Deserialize<GooglePkceStateCookiePayload>(protector.Unprotect(protectedCookie));
-    }
-    catch
-    {
-        return Results.Redirect(BuildGoogleAuthErrorRedirectPath("Kon nie jou Google-aanmeldsessie verifieer nie. Probeer asseblief weer."));
-    }
-
-    if (payload is null ||
-        payload.ExpiresAtUtc <= DateTimeOffset.UtcNow ||
-        string.IsNullOrWhiteSpace(payload.CodeVerifier))
-    {
-        return Results.Redirect(BuildGoogleAuthErrorRedirectPath("Jou Google-aanmeldsessie het verval. Probeer asseblief weer."));
-    }
-
-    var exchangeResult = await supabaseAuthService.ExchangeGoogleAuthCodeAsync(
-        code,
-        payload.CodeVerifier,
-        httpContext.RequestAborted);
     if (!exchangeResult.IsSuccess || string.IsNullOrWhiteSpace(exchangeResult.UserEmail))
     {
         return Results.Redirect(BuildGoogleAuthErrorRedirectPath(exchangeResult.ErrorMessage));
@@ -726,7 +744,7 @@ app.MapGet("/auth/callback", async (
     }
 
     var redirectPath =
-        GetSafeAuthReturnUrl(payload.ReturnUrl) ??
+        GetSafeAuthReturnUrl(requestedReturnUrl) ??
         await ResolvePostAuthRedirectPathAsync(subscriptionLedgerService, signedInEmail, httpContext.RequestAborted);
 
     return Results.Redirect(redirectPath);
@@ -2064,6 +2082,17 @@ static string BuildAbsoluteUrl(HttpRequest request, string path)
     return $"{request.Scheme}://{request.Host}{request.PathBase}{normalizedPath}";
 }
 
+static Uri BuildAbsoluteRequestUri(HttpRequest request)
+{
+    var absoluteUrl = UriHelper.BuildAbsolute(
+        request.Scheme,
+        request.Host,
+        request.PathBase,
+        request.Path,
+        request.QueryString);
+    return new Uri(absoluteUrl, UriKind.Absolute);
+}
+
 static string BuildGoogleAuthErrorRedirectPath(string? message)
 {
     var safeMessage = string.IsNullOrWhiteSpace(message)
@@ -2071,6 +2100,54 @@ static string BuildGoogleAuthErrorRedirectPath(string? message)
         : message.Trim();
 
     return QueryHelpers.AddQueryString("/teken-in", "oauthError", safeMessage);
+}
+
+static bool ShouldUseImplicitGoogleAuthFlow(string? flowType, string? userAgent) =>
+    string.Equals(flowType, "implicit", StringComparison.OrdinalIgnoreCase) ||
+    IsOldSafariUserAgent(userAgent);
+
+static bool HasImplicitGoogleAuthSession(HttpRequest request) =>
+    request.Query.TryGetValue("access_token", out var accessToken) &&
+    !string.IsNullOrWhiteSpace(accessToken.ToString());
+
+static bool IsOldSafariUserAgent(string? userAgent)
+{
+    var safariVersion = GetSafariMajorVersion(userAgent);
+    return safariVersion is not null && safariVersion.Value < 15;
+}
+
+static int? GetSafariMajorVersion(string? userAgent)
+{
+    if (!IsSafariUserAgent(userAgent))
+    {
+        return null;
+    }
+
+    var match = Regex.Match(userAgent!, @"Version/(?<major>\d+)(?:\.\d+)?", RegexOptions.IgnoreCase);
+    if (!match.Success)
+    {
+        return null;
+    }
+
+    return int.TryParse(match.Groups["major"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var majorVersion)
+        ? majorVersion
+        : null;
+}
+
+static bool IsSafariUserAgent(string? userAgent)
+{
+    if (string.IsNullOrWhiteSpace(userAgent))
+    {
+        return false;
+    }
+
+    return userAgent.Contains("Safari", StringComparison.OrdinalIgnoreCase) &&
+           !userAgent.Contains("Chrome", StringComparison.OrdinalIgnoreCase) &&
+           !userAgent.Contains("Chromium", StringComparison.OrdinalIgnoreCase) &&
+           !userAgent.Contains("CriOS", StringComparison.OrdinalIgnoreCase) &&
+           !userAgent.Contains("Edg", StringComparison.OrdinalIgnoreCase) &&
+           !userAgent.Contains("OPR", StringComparison.OrdinalIgnoreCase) &&
+           !userAgent.Contains("Android", StringComparison.OrdinalIgnoreCase);
 }
 
 static void ClearGooglePkceCookie(HttpContext httpContext)

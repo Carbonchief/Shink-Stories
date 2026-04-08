@@ -10,10 +10,14 @@ public interface ISupabaseAuthService
         CancellationToken cancellationToken = default);
     Task<SupabaseOAuthStartResult> StartGoogleSignInAsync(
         string redirectTo,
+        bool useImplicitFlow,
         CancellationToken cancellationToken = default);
     Task<SupabaseOAuthExchangeResult> ExchangeGoogleAuthCodeAsync(
         string authCode,
         string codeVerifier,
+        CancellationToken cancellationToken = default);
+    Task<SupabaseOAuthExchangeResult> ExchangeGoogleImplicitSessionAsync(
+        Uri callbackUri,
         CancellationToken cancellationToken = default);
 }
 

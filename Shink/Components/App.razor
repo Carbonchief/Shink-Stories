@@ -17,15 +17,123 @@
     <link rel="stylesheet" href="_content/MudBlazor/MudBlazor.min.css" />
     <link rel="stylesheet" href="@Assets["app.css"]" />
     <link rel="stylesheet" href="@Assets["Shink.styles.css"]" />
+    <script>
+        document.documentElement.className += (document.documentElement.className ? " " : "") + "browser-support-pending";
+    </script>
+    <style>
+        html.browser-support-pending #app-shell-root {
+            visibility: hidden;
+        }
+
+        html.unsupported-browser #app-shell-root {
+            display: none !important;
+        }
+
+        .unsupported-browser-fallback[hidden] {
+            display: none !important;
+        }
+
+        .unsupported-browser-fallback {
+            min-height: 100vh;
+            padding: 2rem 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background:
+                linear-gradient(180deg, #408D93 0%, #4f9db3 22%, #d4cf69 56%, #efefef 86%, #efefef 100%);
+        }
+
+        .unsupported-browser-card {
+            width: min(34rem, 100%);
+            padding: 2rem 1.5rem;
+            border-radius: 28px;
+            background: rgba(255, 254, 250, 0.96);
+            border: 1px solid rgba(14, 73, 93, 0.12);
+            box-shadow: 0 28px 60px rgba(14, 73, 93, 0.18);
+            text-align: center;
+            color: #232b2b;
+        }
+
+        .unsupported-browser-logo {
+            width: min(12rem, 62vw);
+            height: auto;
+            margin-bottom: 1.5rem;
+        }
+
+        .unsupported-browser-card h1 {
+            margin: 0 0 1rem;
+            font-size: clamp(1.8rem, 4vw, 2.4rem);
+            line-height: 1.15;
+            color: #0e495d;
+        }
+
+        .unsupported-browser-card p {
+            margin: 0;
+            font-size: 1rem;
+            line-height: 1.65;
+        }
+
+        .unsupported-browser-detail {
+            margin-top: 1rem !important;
+            color: #0e495d;
+            font-weight: 600;
+        }
+
+        .unsupported-browser-steps {
+            margin: 1.5rem 0 0;
+            padding: 0;
+            list-style: none;
+            text-align: left;
+            display: grid;
+            gap: 0.75rem;
+        }
+
+        .unsupported-browser-step {
+            padding: 0.85rem 1rem;
+            border-radius: 16px;
+            background: #f7f4ea;
+            border: 1px solid rgba(14, 73, 93, 0.1);
+        }
+
+        .unsupported-browser-english {
+            margin-top: 1.25rem !important;
+            color: #58605f;
+            font-size: 0.95rem !important;
+        }
+    </style>
     <ImportMap />
     <HeadOutlet />
 </head>
 
 <body>
-    <CascadingAuthenticationState>
-        <Routes />
-    </CascadingAuthenticationState>
-    <ReconnectModal />
+    <section id="unsupported-browser-fallback" class="unsupported-browser-fallback" hidden aria-live="polite">
+        <div class="unsupported-browser-card">
+            <img class="unsupported-browser-logo" src="/branding/schink-logo-text.png" alt="Schink Stories" />
+            <h1>Hierdie blaaier word nie meer volledig ondersteun nie.</h1>
+            <p>
+                Schink Stories gebruik moderne webfunksies vir veilige aanmelding, klankafspeel en bladsy-interaksies.
+                Jou huidige blaaier kan dit nie betroubaar doen nie.
+            </p>
+            <p id="unsupported-browser-detail" class="unsupported-browser-detail">
+                Werk asseblief jou blaaier op en probeer weer.
+            </p>
+            <div class="unsupported-browser-steps" aria-label="Volgende stappe">
+                <div class="unsupported-browser-step">Werk Safari op na weergawe 15 of nuwer as jy op iPhone, iPad of Mac is.</div>
+                <div class="unsupported-browser-step">Of gebruik die nuutste weergawe van Chrome, Edge of Firefox.</div>
+                <div class="unsupported-browser-step">As jou toestel te oud is om op te dateer, probeer asseblief op 'n nuwer toestel.</div>
+            </div>
+            <p class="unsupported-browser-english">
+                This browser is too old for secure sign-in and audio playback. Please update your browser and try again.
+            </p>
+        </div>
+    </section>
+
+    <div id="app-shell-root">
+        <CascadingAuthenticationState>
+            <Routes />
+        </CascadingAuthenticationState>
+        <ReconnectModal />
+    </div>
 
     @if (IsPostHogConfigured)
     {
@@ -68,8 +176,52 @@
         </script>
     }
 
-    <script src="_content/MudBlazor/MudBlazor.min.js"></script>
-    <script src="@Assets["_framework/blazor.web.js"]"></script>
+    <script src="@Assets["js/browser-support.js"]"></script>
+    <script>
+        (function () {
+            var documentElement = document.documentElement;
+            var fallback = document.getElementById("unsupported-browser-fallback");
+            var fallbackDetail = document.getElementById("unsupported-browser-detail");
+            var appShellRoot = document.getElementById("app-shell-root");
+            var browserSupport = window.shinkBrowserSupport;
+            var supportResult = browserSupport && typeof browserSupport.checkSupport === "function"
+                ? browserSupport.checkSupport()
+                : { supported: true };
+
+            function finishSupportCheck() {
+                documentElement.className = documentElement.className.replace(/\bbrowser-support-pending\b/g, "").replace(/\s{2,}/g, " ").trim();
+            }
+
+            function loadScript(source) {
+                var script = document.createElement("script");
+                script.src = source;
+                document.body.appendChild(script);
+            }
+
+            if (!supportResult.supported) {
+                documentElement.className += (documentElement.className ? " " : "") + "unsupported-browser";
+
+                if (appShellRoot) {
+                    appShellRoot.setAttribute("hidden", "hidden");
+                }
+
+                if (fallback && fallbackDetail) {
+                    if (browserSupport && typeof browserSupport.buildFallbackDetail === "function") {
+                        fallbackDetail.textContent = browserSupport.buildFallbackDetail(supportResult);
+                    }
+
+                    fallback.hidden = false;
+                }
+
+                finishSupportCheck();
+                return;
+            }
+
+            loadScript("_content/MudBlazor/MudBlazor.min.js");
+            loadScript("@Assets["_framework/blazor.web.js"]");
+            finishSupportCheck();
+        })();
+    </script>
 </body>
 
 </html>

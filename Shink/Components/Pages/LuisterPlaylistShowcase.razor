@@ -449,7 +449,14 @@ else
             return;
         }
 
-        await module.InvokeVoidAsync("initializePlaylistShowcaseScroll");
+        try
+        {
+            await module.InvokeVoidAsync("initializePlaylistShowcaseScroll");
+        }
+        catch (JSException)
+        {
+            _showcaseModuleLoadFailed = true;
+        }
     }
 
     private async Task<IJSObjectReference?> TryGetShowcaseModuleAsync()
@@ -491,6 +498,10 @@ else
         {
             await _showcaseModule.InvokeVoidAsync("disposePlaylistShowcaseScroll");
             await _showcaseModule.DisposeAsync();
+        }
+        catch (JSException)
+        {
+            // Ignore browser-specific teardown failures on older engines.
         }
         catch (JSDisconnectedException)
         {

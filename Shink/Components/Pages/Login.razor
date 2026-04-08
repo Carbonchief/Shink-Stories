@@ -79,7 +79,7 @@
                     </a>
                 </div>
 
-                <a class="login-submit login-submit-google" href="@GoogleSignInHref" aria-label="Teken in met Google">
+                <a class="login-submit login-submit-google" href="@GoogleSignInHref" @ref="_googleSignInLink" aria-label="Teken in met Google">
                     <span class="google-brand-icon" aria-hidden="true">
                         <svg viewBox="0 0 24 24" width="18" height="18" role="img">
                             <path fill="#4285F4" d="M23.49 12.27c0-.79-.07-1.55-.2-2.27H12v4.3h6.45a5.53 5.53 0 0 1-2.4 3.63v3h3.88c2.27-2.09 3.56-5.16 3.56-8.66Z" />
@@ -110,6 +110,8 @@
     private SignInFormModel SignInForm { get; set; } = new();
     private EditContext FormEditContext { get; set; } = default!;
     private IJSObjectReference? _authModule;
+    private ElementReference _googleSignInLink;
+    private string? _configuredGoogleSignInHref;
     [SupplyParameterFromQuery(Name = "returnUrl")]
     public string? ReturnUrl { get; set; }
     [SupplyParameterFromQuery(Name = "oauthError")]
@@ -145,6 +147,26 @@
         {
             SignInSucceeded = false;
             StatusMessage = OAuthError.Trim();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var desiredGoogleSignInHref = GoogleSignInHref;
+        if (string.Equals(_configuredGoogleSignInHref, desiredGoogleSignInHref, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        try
+        {
+            var authModule = await EnsureAuthModuleAsync();
+            await authModule.InvokeVoidAsync("configureGoogleSignInLink", _googleSignInLink, desiredGoogleSignInHref);
+            _configuredGoogleSignInHref = desiredGoogleSignInHref;
+        }
+        catch
+        {
+            // Keep the server-rendered PKCE link if JS bootstrapping fails.
         }
     }
 
