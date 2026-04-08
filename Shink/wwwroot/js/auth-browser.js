@@ -78,6 +78,15 @@ export function configureGoogleSignInLink(linkElement, signInUrl) {
     return resolvedUrl;
 }
 
+export function redirectTo(url) {
+    if (typeof url !== "string" || url.trim() === "") {
+        return false;
+    }
+
+    window.location.assign(url);
+    return true;
+}
+
 async function readJsonPayload(response) {
     try {
         const payload = await response.json();

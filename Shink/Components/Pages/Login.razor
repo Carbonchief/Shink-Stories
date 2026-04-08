@@ -138,7 +138,7 @@
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         if (authState.User.Identity?.IsAuthenticated == true)
         {
-            NavigationManager.NavigateTo(await GetRedirectTargetForAuthenticatedUserAsync(authState), forceLoad: true);
+            await RedirectToTargetAsync(await GetRedirectTargetForAuthenticatedUserAsync(authState));
             return;
         }
 
@@ -207,7 +207,7 @@
                 SignInSucceeded = true;
                 StatusMessage = apiMessage ?? "Suksesvol ingeteken.";
                 ResetForm();
-                NavigationManager.NavigateTo(GetRedirectTarget(response.RedirectPath), forceLoad: true);
+                await RedirectToTargetAsync(GetRedirectTarget(response.RedirectPath));
                 return;
             }
 
@@ -244,6 +244,21 @@
         GetSafeReturnUrl(ReturnUrl)
         ?? GetSafePostAuthPath(apiRedirectPath)
         ?? "/gratis";
+
+    private async Task RedirectToTargetAsync(string target)
+    {
+        var safeTarget = string.IsNullOrWhiteSpace(target) ? "/gratis" : target;
+
+        try
+        {
+            var authModule = await EnsureAuthModuleAsync();
+            await authModule.InvokeVoidAsync("redirectTo", safeTarget);
+        }
+        catch
+        {
+            NavigationManager.NavigateTo(safeTarget, forceLoad: true);
+        }
+    }
 
     private async Task<IJSObjectReference> EnsureAuthModuleAsync()
     {
