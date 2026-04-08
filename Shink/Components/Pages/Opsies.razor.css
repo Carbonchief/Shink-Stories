@@ -1,18 +1,29 @@
 .opsies-page {
-    width: min(1080px, 100%);
+    position: relative;
+    isolation: isolate;
+    width: min(1160px, 100%);
     margin-inline: auto;
-    padding-inline: clamp(0.9rem, 2vw, 1.5rem);
+    padding: clamp(0.85rem, 1.9vw, 1.35rem) clamp(0.9rem, 2.6vw, 1.6rem) clamp(2.2rem, 4vw, 3.2rem);
     box-sizing: border-box;
     display: grid;
-    gap: 1.3rem;
+    gap: clamp(1.2rem, 2.4vw, 1.9rem);
+}
+
+.opsies-page::before {
+    content: "";
+    position: absolute;
+    inset: -1.5rem -100vw -3rem;
+    background: #ffffff;
+    z-index: -1;
 }
 
 .opsies-payment-status {
     margin: 0;
-    border-radius: 12px;
-    padding: 0.72rem 0.9rem;
+    border-radius: 16px;
+    padding: 0.9rem 1rem;
     border: 1px solid transparent;
     font-weight: 700;
+    box-shadow: 0 10px 22px rgba(18, 28, 38, 0.06);
 }
 
 .opsies-payment-success {
@@ -34,107 +45,265 @@
 }
 
 .opsies-hero {
-    border-radius: 22px;
-    background:
-        radial-gradient(80% 120% at 50% 0%, rgba(255, 255, 255, 0.32) 0%, rgba(255, 255, 255, 0) 54%),
-        linear-gradient(180deg, #2d7f98 0%, #306f84 100%);
-    box-shadow: 0 18px 36px rgba(12, 60, 78, 0.24);
-    padding: 1.05rem 1.05rem 1.2rem;
+    position: relative;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(290px, 0.9fr);
+    gap: clamp(1.1rem, 3vw, 2.6rem);
+    align-items: center;
+    padding: clamp(1.3rem, 3vw, 2.5rem);
+    border-radius: 32px;
+    border: 1px solid color-mix(in srgb, var(--line) 72%, #dfe6e3);
+    background: linear-gradient(180deg, #ffffff 0%, #fcfaf5 100%);
+    box-shadow: 0 24px 48px rgba(18, 32, 39, 0.08);
+}
+
+.opsies-hero::before {
+    content: "";
+    position: absolute;
+    inset: auto auto -30% -10%;
+    width: 320px;
+    height: 320px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(64, 141, 147, 0.12) 0%, rgba(64, 141, 147, 0) 72%);
+    pointer-events: none;
+}
+
+.opsies-hero-copy {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    gap: 1rem;
+    color: #12222b;
+}
+
+.opsies-eyebrow,
+.opsies-section-kicker {
+    margin: 0;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    font-weight: 800;
+    font-size: 0.76rem;
+    color: #a56d17;
+}
+
+.opsies-hero-copy h1 {
+    margin: 0;
+    color: #132a34;
+    font-size: clamp(2rem, 4vw, 3.3rem);
+    line-height: 1.04;
+    max-width: 11ch;
+}
+
+.opsies-hero-lead {
+    margin: 0;
+    max-width: 58ch;
+    color: #51616a;
+    font-size: 1rem;
+    line-height: 1.65;
+}
+
+.opsies-hero-points {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.85rem;
+}
+
+.opsies-hero-point {
+    display: grid;
+    gap: 0.38rem;
+    padding: 0.95rem 1rem;
+    border-radius: 20px;
+    border: 1px solid #e4ebe8;
+    background: #ffffff;
+    box-shadow: 0 12px 22px rgba(17, 31, 38, 0.05);
+}
+
+.opsies-hero-point strong {
+    color: #17313c;
+    font-size: 0.96rem;
+}
+
+.opsies-hero-point span {
+    color: #586771;
+    font-size: 0.9rem;
+    line-height: 1.55;
+}
+
+.opsies-hero-media {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100%;
+    padding: clamp(1rem, 2.5vw, 1.7rem);
+    border-radius: 28px;
+    background: linear-gradient(180deg, #f7fbfc 0%, #eef5f5 100%);
+    border: 1px solid #dbe6e4;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .opsies-hero-image {
     display: block;
-    width: min(100%, 460px);
+    width: min(100%, 440px);
     height: auto;
-    margin: 0 auto;
-    filter: drop-shadow(0 10px 28px rgba(16, 52, 66, 0.32));
+    filter: drop-shadow(0 16px 26px rgba(27, 55, 65, 0.14));
 }
 
-.opsies-hero-copy {
-    margin-top: 0.55rem;
+.opsies-plan-shell {
+    display: grid;
+    gap: 1rem;
+    scroll-margin-top: 6rem;
+}
+
+.opsies-section-heading {
+    display: grid;
+    gap: 0.42rem;
+    max-width: 44rem;
+}
+
+.opsies-section-heading-centered {
+    justify-items: center;
     text-align: center;
-    color: #ffffff;
-}
-
-.opsies-eyebrow {
-    margin: 0;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    font-weight: 700;
-    font-size: 0.78rem;
-    color: #e2f4f9;
-}
-
-.opsies-hero-copy h1 {
-    margin: 0.4rem 0 0.6rem;
-    color: #ffffff;
-    font-size: clamp(1.7rem, 2.6vw, 2.7rem);
-    line-height: 1.12;
-}
-
-.opsies-hero-copy p {
-    margin: 0;
-    max-width: 64ch;
     margin-inline: auto;
-    color: #eaf6fa;
+}
+
+.opsies-section-heading h2 {
+    margin: 0;
+    color: #162a34;
+    font-size: clamp(1.55rem, 2.8vw, 2.3rem);
+    line-height: 1.1;
+}
+
+.opsies-section-heading p:last-child {
+    margin: 0;
+    color: #5b6971;
+    line-height: 1.65;
 }
 
 .opsies-grid {
-    --opsie-highlight: #d67f12;
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 350px));
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
     gap: 1rem;
     align-items: stretch;
-    justify-content: center;
-    justify-items: center;
 }
 
 .opsie-card {
+    --opsie-accent: #123d4d;
+    --opsie-accent-soft: rgba(18, 61, 77, 0.08);
     position: relative;
-    width: min(100%, 350px);
+    overflow: hidden;
     border-radius: 28px;
-    border: 1px solid rgba(255, 255, 255, 0.52);
-    background: #ececec;
+    border: 1px solid #e6e1d8;
+    background: #ffffff;
     color: #0d1421;
-    padding: 2.15rem 1rem 1rem;
+    padding: 1.4rem;
     display: flex;
     flex-direction: column;
+    gap: 1rem;
     min-height: 100%;
+    box-shadow: 0 18px 34px rgba(19, 31, 37, 0.06);
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.opsie-card::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto;
+    height: 4px;
+    background: linear-gradient(90deg, var(--opsie-accent) 0%, color-mix(in srgb, var(--opsie-accent) 58%, white) 100%);
+}
+
+.opsie-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 24px 42px rgba(19, 31, 37, 0.1);
+}
+
+.opsie-free {
+    --opsie-accent: #7a8a47;
+}
+
+.opsie-monthly {
+    --opsie-accent: #d67f12;
+    --opsie-accent-soft: rgba(214, 127, 18, 0.12);
+}
+
+.opsie-all {
+    --opsie-accent: #215f68;
+}
+
+.opsie-yearly {
+    --opsie-accent: #ab5d15;
+    --opsie-accent-soft: rgba(171, 93, 21, 0.1);
 }
 
 .opsie-card.featured {
-    border-color: var(--opsie-highlight);
-    box-shadow: 0 16px 30px rgba(243, 154, 50, 0.2);
+    border-color: rgba(214, 127, 18, 0.35);
+    box-shadow: 0 26px 46px rgba(214, 127, 18, 0.16);
 }
 
-.opsie-badge {
-    position: absolute;
-    top: -0.75rem;
-    left: 1rem;
-    margin: 0;
-    padding: 0.3rem 0.74rem;
-    border-radius: 999px;
-    font-size: 0.74rem;
-    font-weight: 800;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    color: #ffffff;
-    background: rgba(138, 79, 0, 0.9);
-    border: 1px solid rgba(255, 255, 255, 0.35);
-    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.22);
+.opsie-card-selected {
+    border-color: color-mix(in srgb, var(--opsie-accent) 42%, #d7d9dd);
+    box-shadow: 0 24px 42px rgba(15, 77, 97, 0.16);
 }
 
 .opsie-head {
     display: grid;
     gap: 0.72rem;
-    margin-bottom: 0.55rem;
+}
+
+.opsie-badge,
+.opsie-pill,
+.opsie-save-badge,
+.opsie-selected-indicator {
+    display: inline-flex;
+    align-items: center;
+    width: fit-content;
+    border-radius: 999px;
+    font-size: 0.74rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.opsie-badge {
+    position: static;
+    margin: 0;
+    padding: 0.34rem 0.72rem;
+    color: var(--opsie-accent);
+    background: var(--opsie-accent-soft);
+    border: 1px solid color-mix(in srgb, var(--opsie-accent) 22%, #ece6da);
+    box-shadow: none;
+}
+
+.opsie-pill {
+    margin: -0.08rem 0 0;
+    padding: 0.26rem 0.64rem;
+    color: #8a4f00;
+    background: rgba(243, 154, 50, 0.12);
+    border: 1px solid rgba(214, 127, 18, 0.26);
+}
+
+.opsie-pill-value {
+    color: #8a3d00;
+    background: rgba(171, 93, 21, 0.1);
+    border-color: rgba(171, 93, 21, 0.22);
+}
+
+.opsie-summary {
+    margin: 0;
+    color: #62707a;
+    font-size: 0.92rem;
+    font-weight: 600;
+    line-height: 1.5;
 }
 
 .opsie-card h2 {
     margin: 0;
-    font-size: clamp(1.42rem, 2.5vw, 2.12rem);
-    line-height: 1.14;
-    color: inherit;
+    font-size: clamp(1.42rem, 2vw, 1.9rem);
+    line-height: 1.12;
+    color: #132630;
 }
 
 .opsie-price {
@@ -143,64 +312,61 @@
     align-items: baseline;
     gap: 0.38rem;
     flex-wrap: wrap;
-    white-space: nowrap;
-    font-size: clamp(1.76rem, 2.3vw, 2.05rem);
+    font-size: clamp(1.9rem, 2.8vw, 2.3rem);
     line-height: 1;
-    color: inherit;
+    color: #14242e;
     font-weight: 800;
 }
 
 .opsie-price span {
-    font-size: 0.88rem;
-    font-weight: 600;
-    color: #2e3742;
-    letter-spacing: 0.02em;
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: #67747d;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
 }
 
 .opsie-save-badge {
     margin: 0;
-    display: inline-flex;
-    align-items: center;
-    width: fit-content;
-    border-radius: 999px;
-    border: 1px solid rgba(243, 154, 50, 0.75);
-    background: rgba(243, 154, 50, 0.16);
+    padding: 0.26rem 0.64rem;
+    border: 1px solid rgba(214, 127, 18, 0.28);
+    background: rgba(243, 154, 50, 0.14);
     color: #8a4f00;
-    font-size: 0.72rem;
-    font-weight: 800;
-    letter-spacing: 0.03em;
-    text-transform: uppercase;
-    padding: 0.16rem 0.5rem;
 }
 
 .opsie-detail {
-    margin: 0 0 0.75rem;
-    color: #39414b;
-    font-size: 0.91rem;
-    line-height: 1.35;
+    margin: 0;
+    color: #495861;
+    font-size: 0.95rem;
+    line-height: 1.65;
+}
+
+.opsie-detail strong {
+    color: #152c36;
+}
+
+.opsie-selected-indicator {
+    margin: -0.2rem 0 0;
+    padding: 0.26rem 0.64rem;
+    color: #0f4d61;
+    background: rgba(15, 77, 97, 0.1);
+    border: 1px solid rgba(15, 77, 97, 0.18);
 }
 
 .opsie-card ul {
     list-style: none;
-    margin: 0 0 1rem;
+    margin: 0;
     padding: 0;
     display: grid;
-    gap: 0.58rem;
-    color: #0d1421;
-}
-
-.opsie-note {
-    margin: 0 0 0.95rem;
-    color: #39414b;
-    font-size: 0.86rem;
-    line-height: 1.25;
+    gap: 0.62rem;
+    color: #1a2630;
 }
 
 .opsie-card li {
     position: relative;
     padding-left: 1.55rem;
-    line-height: 1.38;
+    line-height: 1.45;
+    color: #28343d;
 }
 
 .opsie-card li::before {
@@ -209,40 +375,65 @@
     font-weight: 900;
     position: absolute;
     left: 0;
-    top: 0.02rem;
-    font-size: 1rem;
-    color: #151515;
+    top: 0.04rem;
+    font-size: 0.94rem;
+    color: var(--opsie-accent);
+}
+
+.opsie-note {
+    margin: 0;
+    padding: 0.85rem 0.9rem;
+    border-radius: 16px;
+    background: #f8f7f3;
+    border: 1px solid #ece7dc;
+    color: #59666f;
+    font-size: 0.88rem;
+    line-height: 1.55;
 }
 
 .opsie-btn {
     margin-top: auto;
     width: 100%;
-    min-height: 46px;
+    min-height: 48px;
     display: flex;
     align-items: center;
     justify-content: center;
     text-decoration: none;
     border-radius: 999px;
-    padding: 0.72rem 1rem;
+    padding: 0.76rem 1rem;
     font-weight: 800;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-    border: 1px solid transparent;
-    background: #cbcbcb;
-    color: #0f1722;
+    border: 1px solid color-mix(in srgb, var(--opsie-accent) 78%, #24343f);
+    background: var(--opsie-accent);
+    color: #ffffff;
+    box-shadow: 0 12px 24px color-mix(in srgb, var(--opsie-accent) 26%, transparent);
     transition: transform 0.18s ease, filter 0.18s ease, box-shadow 0.18s ease;
 }
 
 .opsie-btn:hover {
     transform: translateY(-1px);
     filter: brightness(1.04);
+    box-shadow: 0 16px 28px color-mix(in srgb, var(--opsie-accent) 32%, transparent);
+}
+
+.opsie-free .opsie-btn {
+    background: #ffffff;
+    color: #214954;
+    border-color: #cbd7db;
+    box-shadow: none;
+}
+
+.opsie-free .opsie-btn:hover {
+    background: #f5f8f9;
+    box-shadow: none;
 }
 
 .opsie-btn-disabled,
 .opsie-btn-disabled:hover {
-    background: #cbcbcb;
-    color: #7a7a7a;
-    border-color: #bdbdbd;
+    background: #eef0f2;
+    color: #7a848b;
+    border-color: #d9dce0;
     box-shadow: none;
     cursor: not-allowed;
     pointer-events: none;
@@ -251,31 +442,35 @@
 }
 
 .opsies-testimonials {
-    border: 1px solid var(--line);
-    border-radius: 16px;
-    background: var(--surface);
-    padding: 1rem;
-}
-
-.opsies-testimonials h2 {
-    margin-top: 0;
-    margin-bottom: 0.6rem;
-    text-align: center;
+    display: grid;
+    gap: 1rem;
+    padding: clamp(1.15rem, 2.4vw, 1.5rem);
+    border: 1px solid #ece7dc;
+    border-radius: 28px;
+    background: linear-gradient(180deg, #fcfaf5 0%, #ffffff 100%);
+    box-shadow: 0 16px 30px rgba(17, 31, 38, 0.05);
 }
 
 .opsies-review-grid {
     display: grid;
-    gap: 0.8rem;
+    gap: 0.95rem;
     grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .opsies-review-card {
-    background: #f8f6ef;
-    border: 1px solid #e4decf;
-    border-radius: 12px;
-    padding: 0.9rem;
+    background: #ffffff;
+    border: 1px solid #ebe4d8;
+    border-radius: 22px;
+    padding: 1.05rem;
     display: grid;
-    gap: 0.45rem;
+    gap: 0.7rem;
+    box-shadow: 0 14px 24px rgba(18, 29, 36, 0.04);
+    transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.opsies-review-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 18px 30px rgba(18, 29, 36, 0.08);
 }
 
 .opsies-review-stars {
@@ -293,30 +488,69 @@
 
 .opsies-review-card blockquote {
     margin: 0;
-    line-height: 1.45;
+    line-height: 1.6;
     color: #2b3131;
+}
+
+.opsies-review-person {
+    display: grid;
+    gap: 0.12rem;
 }
 
 .opsies-review-author {
     margin: 0;
-    color: #5f6565;
-    font-weight: 650;
-    font-size: 0.88rem;
+    color: #18303a;
+    font-weight: 700;
+    font-size: 0.95rem;
+}
+
+.opsies-review-role {
+    margin: 0;
+    color: #66727a;
+    font-size: 0.84rem;
 }
 
 @media (max-width: 980px) {
-    .opsies-grid {
-        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-        justify-items: stretch;
+    .opsies-page {
+        gap: 1rem;
     }
 
-    .opsie-card {
-        width: 100%;
-        border-radius: 22px;
-        padding: 1.95rem 0.84rem 0.9rem;
+    .opsies-hero {
+        grid-template-columns: 1fr;
+    }
+
+    .opsies-hero-copy h1 {
+        max-width: none;
+    }
+
+    .opsies-hero-points {
+        grid-template-columns: 1fr;
+    }
+
+    .opsie-card,
+    .opsie-card.featured,
+    .opsie-card-selected,
+    .opsie-card:hover {
+        transform: none;
     }
 
     .opsies-review-grid {
         grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 720px) {
+    .opsies-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .opsies-hero,
+    .opsies-testimonials,
+    .opsie-card {
+        border-radius: 24px;
+    }
+
+    .opsie-card {
+        padding: 1.2rem;
     }
 }
