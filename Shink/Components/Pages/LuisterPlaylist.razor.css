@@ -265,6 +265,7 @@
 .story-fullscreen-toggle:focus-visible,
 .story-control-btn:focus-visible,
 .story-mini-btn:focus-visible,
+.story-autoplay-control:focus-within,
 .story-progress-slider:focus-visible,
 .story-volume-slider:focus-visible,
 .playlist-track-main:focus-visible,
@@ -463,11 +464,28 @@
     -webkit-tap-highlight-color: transparent;
 }
 
+.story-autoplay-split-control {
+    display: inline-flex;
+    align-items: stretch;
+    min-width: 0;
+}
+
+.story-autoplay-split-control .story-autoplay-toggle {
+    border-radius: 999px 0 0 999px;
+}
+
 .story-autoplay-control {
     display: inline-flex;
     align-items: center;
-    gap: 0.45rem;
     min-width: 0;
+    min-height: 2.2rem;
+    padding: 0.38rem 0.72rem 0.38rem 0.78rem;
+    border-radius: 0 999px 999px 0;
+    background: rgba(255, 255, 255, 0.08);
+    color: #f4f0e9;
+    cursor: pointer;
+    position: relative;
+    border-left: 1px solid rgba(255, 255, 255, 0.14);
 }
 
 .story-mini-btn.is-active,
@@ -477,31 +495,38 @@
     box-shadow: inset 0 0 0 1px rgba(143, 229, 232, 0.3);
 }
 
-.story-autoplay-limit-select {
-    min-height: 2.2rem;
+.story-autoplay-mode-select {
     min-width: 0;
     border: 0;
-    border-radius: 999px;
-    padding: 0.38rem 2rem 0.38rem 0.78rem;
-    background: rgba(255, 255, 255, 0.08);
-    color: #f4f0e9;
+    padding: 0 1.2rem 0 0;
+    background: transparent;
+    color: inherit;
     font-weight: 700;
     font-size: 0.83rem;
     line-height: 1.2;
     appearance: none;
     -webkit-appearance: none;
-    background-image:
-        linear-gradient(45deg, transparent 50%, rgba(244, 240, 233, 0.88) 50%),
-        linear-gradient(135deg, rgba(244, 240, 233, 0.88) 50%, transparent 50%);
-    background-position:
-        calc(100% - 0.95rem) calc(50% - 0.12rem),
-        calc(100% - 0.68rem) calc(50% - 0.12rem);
-    background-size: 0.34rem 0.34rem, 0.34rem 0.34rem;
-    background-repeat: no-repeat;
     cursor: pointer;
+    flex: 1 1 auto;
 }
 
-.story-autoplay-limit-select option {
+.story-autoplay-mode-select:focus {
+    outline: none;
+}
+
+.story-autoplay-control::after {
+    content: "";
+    width: 0.34rem;
+    height: 0.34rem;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(45deg);
+    opacity: 0.82;
+    margin-top: -0.16rem;
+    flex: 0 0 auto;
+}
+
+.story-autoplay-mode-select option {
     color: #222222;
 }
 
@@ -886,13 +911,15 @@
         justify-content: center;
     }
 
-    .story-autoplay-control {
+    .story-autoplay-split-control {
         width: 100%;
-        justify-content: center;
-        flex-wrap: wrap;
     }
 
-    .story-autoplay-limit-select {
+    .story-autoplay-control {
+        width: 100%;
+    }
+
+    .story-autoplay-mode-select {
         width: 100%;
     }
 
