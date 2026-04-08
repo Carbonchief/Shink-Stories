@@ -57,6 +57,11 @@
         linear-gradient(180deg, #f6f3ee 0%, #ece8e2 100%);
 }
 
+.site-shell.playlist-showcase-route,
+.site-shell.story-route.playlist-showcase-route {
+    background: #ffffff;
+}
+
 .site-shell.about-route {
     background: #ffffff;
 }
@@ -530,6 +535,7 @@
 
 .site-shell.playlist-showcase-route .site-main {
     padding-top: 0;
+    background: #ffffff;
 }
 
 .site-shell.story-route .nav-menu-toggle {

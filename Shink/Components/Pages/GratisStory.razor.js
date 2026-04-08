@@ -1226,13 +1226,16 @@ function wireStoryCarouselDrag(carouselElement) {
             return;
         }
 
+        if (event.pointerType === "mouse") {
+            event.preventDefault();
+        }
         dragState.pointerId = event.pointerId;
         dragState.startX = event.clientX;
         dragState.startY = event.clientY;
         dragState.startScrollLeft = carouselElement.scrollLeft;
         dragState.isPointerDown = true;
         dragState.isDragging = false;
-    }, { passive: true });
+    });
 
     carouselElement.addEventListener("pointermove", (event) => {
         if (!dragState.isPointerDown || event.pointerId !== dragState.pointerId) {

@@ -506,12 +506,14 @@ else
                                 {
                                     <a class="story-carousel-link"
                                        href="@GetStoryHref(story.Slug)"
+                                       draggable="false"
                                        aria-label="Luister na @story.Title">
                                         <span class="story-carousel-cover">
                                             <img class="story-carousel-image"
                                                  src="@story.ThumbnailPath"
                                                  srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
                                                  sizes="(max-width: 620px) 68vw, (max-width: 980px) 42vw, 320px"
+                                                 draggable="false"
                                                  alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
                                             <span class="story-cover-play" aria-hidden="true">
                                                 <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
@@ -531,6 +533,7 @@ else
                                                  src="@story.ThumbnailPath"
                                                  srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
                                                  sizes="(max-width: 620px) 68vw, (max-width: 980px) 42vw, 320px"
+                                                 draggable="false"
                                                  alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
                                             <span class="story-cover-play" aria-hidden="true">
                                                 <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>

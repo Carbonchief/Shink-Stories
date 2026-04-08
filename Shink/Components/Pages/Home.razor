@@ -102,12 +102,14 @@
                         <a class="story-carousel-link"
                            href="@storyPath"
                            data-enhance-nav="false"
+                           draggable="false"
                            aria-label="Luister @story.Title">
                             <span class="story-carousel-cover">
                                 <img class="story-carousel-image"
                                      src="@story.ThumbnailPath"
                                      srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
                                      sizes="(max-width: 620px) 56vw, (max-width: 900px) 35vw, 240px"
+                                     draggable="false"
                                      alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
                                 <span class="story-cover-play" aria-hidden="true">
                                     <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
@@ -127,6 +129,7 @@
                                      src="@story.ThumbnailPath"
                                      srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
                                      sizes="(max-width: 620px) 56vw, (max-width: 900px) 35vw, 240px"
+                                     draggable="false"
                                      alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
                                 <span class="story-cover-play" aria-hidden="true">
                                     <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
