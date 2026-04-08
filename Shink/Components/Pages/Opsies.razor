@@ -52,95 +52,155 @@
     }
 
     <section class="opsies-hero">
-        <img src="/branding/Schink_Stories_Home_Banner_White.png"
-             alt="Schink Stories Opsies" class="opsies-hero-image" loading="eager" decoding="async" />
         <div class="opsies-hero-copy">
             <p class="opsies-eyebrow">Kies 'n opsie</p>
-            <h1>Kies jou plan en begin vandag luister!</h1>
-            <p>
-                Sluit vandag aan en gee vir jou kind toegang tot veilige, opbouende Afrikaanse stories.
-                Geen advertensies of donker temas nie.
+            <h1>Kies die plan wat die beste by julle storietyd pas.</h1>
+            <p class="opsies-hero-lead">
+                Begin gratis of kies volle toegang tot ons veilige, opbouende Afrikaanse stories.
+                Alles is eenvoudig, advertensievry en ontwerp vir gesinne.
             </p>
+            <div class="opsies-hero-points" aria-label="Waarom ouers Schink kies">
+                <div class="opsies-hero-point">
+                    <strong>Veilige luisterervaring</strong>
+                    <span>Geen advertensies of donker temas nie. Net storietyd wat rustig en geskik vir kinders voel.</span>
+                </div>
+                <div class="opsies-hero-point">
+                    <strong>Buigsame planne</strong>
+                    <span>Kies gratis, maandeliks of jaarliks en skuif maklik na die opsie wat by julle pas.</span>
+                </div>
+            </div>
+        </div>
+        <div class="opsies-hero-media">
+            <img src="/branding/Schink_Stories_Home_Banner_White.png"
+                 alt="Schink Stories Opsies" class="opsies-hero-image" loading="eager" decoding="async" />
         </div>
     </section>
 
-    <section class="opsies-grid" aria-label="Plan opsies">
-        @if (ShouldShowFreePlanOption)
-        {
-            <article class="opsie-card opsie-free">
-                <div class="opsie-head">
-                    <p class="opsie-badge">GRATIS</p>
-                    <h2>Schink Stories Gratis</h2>
-                    <p class="opsie-price">Gratis.</p>
-                </div>
-                <p class="opsie-detail">Kom geniet <strong>drie</strong> van ons gunsteling Afrikaanse oudiostories - perfek vir slaaptyd en saamluister.</p>
-                <ul>
-                    <li>Toegang tot 3 stories</li>
-                    <li>Hulpbronne deur e-pos</li>
-                </ul>
-                @if (HasActivePaidSubscription)
-                {
-                    <p class="opsie-note">Jy is reeds ingeteken op 'n betaalde plan. Die gratis opsie is nie meer beskikbaar nie.</p>
-                    <span class="opsie-btn opsie-btn-disabled" aria-disabled="true">Nie beskikbaar</span>
-                }
-                else
-                {
-                    <p class="opsie-note">Geen kaart nodig. Net storietyd, gratis.</p>
-                    <a href="@BuildFreeJoinHref()" class="opsie-btn">Sluit aan</a>
-                }
-            </article>
-        }
+    <section class="opsies-plan-shell" id="plan-opsies">
+        <div class="opsies-section-heading">
+            <p class="opsies-section-kicker">Plan vergelyking</p>
+            <h2>Kies die opsie wat vir jou werk</h2>
+            <p>
+                Elke plan gee jou 'n skoon, veilige luisterervaring. Die verskil is net hoeveel toegang jy wil hê.
+            </p>
+        </div>
 
-        @if (ShouldShowStoryCornerPlanOption)
-        {
-            <article class="opsie-card featured opsie-monthly">
-                <div class="opsie-head">
-                    <p class="opsie-badge">MAANDELIKS</p>
-                    <h2>Storie Hoekie</h2>
-                    <p class="opsie-price">R 55.00 <span>per maand.</span></p>
-                </div>
-                <p class="opsie-detail">Geniet toegang tot stories uit die gewilde Storie Hoekie reeks!</p>
-                <a href='@BuildPlanSignUpHref("storie-hoekie-maandeliks", SafeStoryReturnPath)' class="opsie-btn">Sluit aan</a>
-            </article>
-        }
+        <div class="opsies-grid" aria-label="Plan opsies">
+            @if (ShouldShowFreePlanOption)
+            {
+                <article class="opsie-card opsie-free">
+                    <div class="opsie-head">
+                        <p class="opsie-badge">GRATIS</p>
+                        <p class="opsie-summary">Vir nuwe luisteraars</p>
+                        <h2>Schink Stories Gratis</h2>
+                        <p class="opsie-price">Gratis.</p>
+                    </div>
+                    <p class="opsie-detail">
+                        Kom geniet <strong>drie</strong> van ons gunsteling Afrikaanse oudiostories - perfek vir slaaptyd en saamluister.
+                    </p>
+                    <ul>
+                        <li>Toegang tot 3 stories</li>
+                        <li>Maklik om onmiddellik te begin luister</li>
+                        <li>Hulpbronne deur e-pos</li>
+                    </ul>
+                    @if (HasActivePaidSubscription)
+                    {
+                        <p class="opsie-note">Jy is reeds ingeteken op 'n betaalde plan. Die gratis opsie is nie meer beskikbaar nie.</p>
+                        <span class="opsie-btn opsie-btn-disabled" aria-disabled="true">Nie beskikbaar</span>
+                    }
+                    else
+                    {
+                        <p class="opsie-note">Geen kaart nodig nie. Net storietyd, gratis.</p>
+                        <a href="@BuildFreeJoinHref()" class="opsie-btn">Kry gratis toegang</a>
+                    }
+                </article>
+            }
 
-        @if (ShouldShowAllStoriesPlanOptions)
-        {
-            <article class="opsie-card opsie-all">
-                <div class="opsie-head">
-                    <p class="opsie-badge">MAANDELIKS</p>
-                    <h2>Schink Stories</h2>
-                    <p class="opsie-price">R 79.00 <span>per maand.</span></p>
-                </div>
-                <p class="opsie-detail"><strong>Geniet toegang tot ALLES!</strong></p>
-                <ul>
-                    <li>Onbeperkte toegang tot alle stories en reekse</li>
-                    <li>Opbouende stories - veilig vir kinders</li>
-                    <li>Geen advertensies</li>
-                    <li>Nuwe stories elke maand</li>
-                    <li>Toegang tot hulpbronne</li>
-                </ul>
-                <a href='@BuildPlanSignUpHref("schink-stories-maandeliks", SafeStoryReturnPath)' class="opsie-btn">Sluit aan</a>
-            </article>
+            @if (ShouldShowStoryCornerPlanOption)
+            {
+                <article class="@GetPlanCardClass("opsie-card featured opsie-monthly", "storie-hoekie-maandeliks")">
+                    <div class="opsie-head">
+                        <p class="opsie-badge">MAANDELIKS</p>
+                        <p class="opsie-pill">Gewildste keuse</p>
+                        <p class="opsie-summary">Vir gesinne wat met een geliefde reeks wil begin</p>
+                        <h2>Storie Hoekie</h2>
+                        <p class="opsie-price">R 55.00 <span>per maand.</span></p>
+                    </div>
+                    @if (IsSelectedPlan("storie-hoekie-maandeliks"))
+                    {
+                        <p class="opsie-selected-indicator">Gekose plan</p>
+                    }
+                    <p class="opsie-detail">Geniet toegang tot stories uit die gewilde Storie Hoekie reeks.</p>
+                    <ul>
+                        <li>Toegang tot die volledige Storie Hoekie reeks</li>
+                        <li>Maklike maand-tot-maand intekening</li>
+                        <li>Ideaal as jy met een reeks wil begin</li>
+                    </ul>
+                    <p class="opsie-note">'n Netjiese beginpunt vir ouers wat 'n kleiner maandopsie soek.</p>
+                    <a href='@BuildPlanSignUpHref("storie-hoekie-maandeliks", SafeStoryReturnPath)' class="opsie-btn">@(IsSelectedPlan("storie-hoekie-maandeliks") ? "Gaan voort" : "Kies hierdie plan")</a>
+                </article>
+            }
 
-            <article class="opsie-card opsie-yearly">
-                <div class="opsie-head">
-                    <p class="opsie-badge">JAARLIKS</p>
-                    <h2>Schink Stories JAAR</h2>
-                    <p class="opsie-price">R 790.00 <span>nou.</span></p>
-                    <p class="opsie-save-badge">Spaar 2 Maande</p>
-                </div>
-                <p class="opsie-detail">
-                    Dieselfde onbeperkte toegang tot al ons oudiostories - teen 'n afslagprys vir ouers wat vooruit dink.
-                    Spaar meer, luister langer!
-                </p>
-                <a href='@BuildPlanSignUpHref("schink-stories-jaarliks", SafeStoryReturnPath)' class="opsie-btn">Sluit aan</a>
-            </article>
-        }
+            @if (ShouldShowAllStoriesPlanOptions)
+            {
+                <article class="@GetPlanCardClass("opsie-card opsie-all", "schink-stories-maandeliks")">
+                    <div class="opsie-head">
+                        <p class="opsie-badge">MAANDELIKS</p>
+                        <p class="opsie-summary">Vir volle toegang tot alles</p>
+                        <h2>Schink Stories</h2>
+                        <p class="opsie-price">R 79.00 <span>per maand.</span></p>
+                    </div>
+                    @if (IsSelectedPlan("schink-stories-maandeliks"))
+                    {
+                        <p class="opsie-selected-indicator">Gekose plan</p>
+                    }
+                    <p class="opsie-detail"><strong>Geniet toegang tot ALLES!</strong></p>
+                    <ul>
+                        <li>Onbeperkte toegang tot alle stories en reekse</li>
+                        <li>Opbouende stories wat veilig is vir kinders</li>
+                        <li>Geen advertensies</li>
+                        <li>Nuwe stories elke maand</li>
+                        <li>Toegang tot hulpbronne</li>
+                    </ul>
+                    <p class="opsie-note">Die beste maandelikse plan as jy die volle Schink-biblioteek wil oopmaak.</p>
+                    <a href='@BuildPlanSignUpHref("schink-stories-maandeliks", SafeStoryReturnPath)' class="opsie-btn">@(IsSelectedPlan("schink-stories-maandeliks") ? "Gaan voort" : "Kies hierdie plan")</a>
+                </article>
+
+                <article class="@GetPlanCardClass("opsie-card opsie-yearly", "schink-stories-jaarliks")">
+                    <div class="opsie-head">
+                        <p class="opsie-badge">JAARLIKS</p>
+                        <p class="opsie-pill opsie-pill-value">Beste waarde</p>
+                        <p class="opsie-summary">Vir ouers wat vooruit beplan en meer wil spaar</p>
+                        <h2>Schink Stories Jaar</h2>
+                        <p class="opsie-price">R 790.00 <span>nou.</span></p>
+                        <p class="opsie-save-badge">Spaar 2 maande</p>
+                    </div>
+                    @if (IsSelectedPlan("schink-stories-jaarliks"))
+                    {
+                        <p class="opsie-selected-indicator">Gekose plan</p>
+                    }
+                    <p class="opsie-detail">
+                        Dieselfde onbeperkte toegang tot al ons oudiostories - teen 'n afslagprys vir ouers wat vooruit dink.
+                    </p>
+                    <ul>
+                        <li>Volle toegang tot alle stories en reekse</li>
+                        <li>Een betaling vir die hele jaar</li>
+                        <li>Spaar 2 maande teenoor die maandelikse plan</li>
+                        <li>Rustige langtermyn opsie vir die gesin</li>
+                    </ul>
+                    <p class="opsie-note">Ideaal as Schink reeds deel van julle roetine is en jy die beste waarde wil kry.</p>
+                    <a href='@BuildPlanSignUpHref("schink-stories-jaarliks", SafeStoryReturnPath)' class="opsie-btn">@(IsSelectedPlan("schink-stories-jaarliks") ? "Gaan voort" : "Kies hierdie plan")</a>
+                </article>
+            }
+        </div>
     </section>
 
     <section class="opsies-testimonials">
-        <h2>Wat ouers se</h2>
+        <div class="opsies-section-heading opsies-section-heading-centered">
+            <p class="opsies-section-kicker">Ouers vertel</p>
+            <h2>Wat ouers se</h2>
+            <p>Regte terugvoer van gesinne wat Schink Stories deel van hulle roetine gemaak het.</p>
+        </div>
         <div class="opsies-review-grid">
             <article class="opsies-review-card">
                 <p class="opsies-review-stars" aria-hidden="true">
@@ -149,7 +209,10 @@
                 <blockquote>
                     Ek love al Schink se stories. Dit is in goeie taal en daar is 'n goeie lessie in elke storie.
                 </blockquote>
-                <p class="opsies-review-author">- Renske</p>
+                <div class="opsies-review-person">
+                    <p class="opsies-review-author">Renske</p>
+                    <p class="opsies-review-role">Arbeidsterapeut</p>
+                </div>
             </article>
 
             <article class="opsies-review-card">
@@ -159,7 +222,9 @@
                 <blockquote>
                     Ons drie oudste kids se gunsteling. Schink Stories maak bedtyd iets waarna hulle uitsien.
                 </blockquote>
-                <p class="opsies-review-author">- Sivonne</p>
+                <div class="opsies-review-person">
+                    <p class="opsies-review-author">Sivonne</p>
+                </div>
             </article>
 
             <article class="opsies-review-card">
@@ -169,7 +234,9 @@
                 <blockquote>
                     Schink Stories help regtig kinders. Dit is opbouend en veilig vir die hele gesin.
                 </blockquote>
-                <p class="opsies-review-author">- Elmarette</p>
+                <div class="opsies-review-person">
+                    <p class="opsies-review-author">Elmarette</p>
+                </div>
             </article>
         </div>
     </section>
@@ -182,11 +249,15 @@
     [SupplyParameterFromQuery(Name = "returnUrl")]
     public string? ReturnUrl { get; set; }
 
+    [SupplyParameterFromQuery(Name = "plan")]
+    public string? Plan { get; set; }
+
     private bool HasActivePaidSubscription { get; set; }
     private bool IsUserAuthenticated { get; set; }
     private string? SafeStoryReturnPath { get; set; }
     private StoryItem? RequestedStory { get; set; }
     private StoryAccessRequirement RequiredAccess { get; set; } = StoryAccessRequirement.Unknown;
+    private string? SelectedPlanSlug { get; set; }
 
     private bool ShouldShowFreePlanOption =>
         RequiredAccess is StoryAccessRequirement.Unknown or StoryAccessRequirement.Free;
@@ -220,6 +291,7 @@
         SafeStoryReturnPath = GetSafeReturnUrl(ReturnUrl);
         RequestedStory = await ResolveRequestedStoryAsync(SafeStoryReturnPath);
         RequiredAccess = ResolveRequiredAccess(SafeStoryReturnPath, RequestedStory);
+        SelectedPlanSlug = ResolveSelectedPlanSlug();
 
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         IsUserAuthenticated = authState.User.Identity?.IsAuthenticated == true;
@@ -249,6 +321,22 @@
         {
             NavigationManager.NavigateTo(SafeStoryReturnPath, forceLoad: true);
         }
+    }
+
+    private string? ResolveSelectedPlanSlug()
+    {
+        var selectedPlan = PaymentPlanCatalog.FindBySlug(NormalizePlanSlug(Plan));
+        if (selectedPlan is not null)
+        {
+            return selectedPlan.Slug;
+        }
+
+        return RequiredAccess switch
+        {
+            StoryAccessRequirement.StoryCornerOrAllStories => "storie-hoekie-maandeliks",
+            StoryAccessRequirement.AllStoriesOnly => "schink-stories-maandeliks",
+            _ => "schink-stories-maandeliks"
+        };
     }
 
     private async Task<StoryItem?> ResolveRequestedStoryAsync(string? safeStoryReturnPath)
@@ -357,6 +445,31 @@
         };
 
         return QueryHelpers.AddQueryString("/teken-op", signUpQuery);
+    }
+
+    private static string? NormalizePlanSlug(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var trimmed = value.Trim();
+        return trimmed.Length == 0 ? null : trimmed;
+    }
+
+    private bool IsSelectedPlan(string planSlug) =>
+        !string.IsNullOrWhiteSpace(SelectedPlanSlug) &&
+        string.Equals(SelectedPlanSlug, planSlug, StringComparison.OrdinalIgnoreCase);
+
+    private string GetPlanCardClass(string baseClass, string planSlug)
+    {
+        if (!IsSelectedPlan(planSlug))
+        {
+            return baseClass;
+        }
+
+        return $"{baseClass} opsie-card-selected";
     }
 
     private static string? GetSafeReturnUrl(string? returnUrl)

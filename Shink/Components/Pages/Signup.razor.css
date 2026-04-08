@@ -353,6 +353,74 @@
     background: rgba(14, 33, 44, 0.35);
 }
 
+.membership-plan-selector {
+    display: grid;
+    gap: 0.72rem;
+    margin-bottom: 0.72rem;
+}
+
+.membership-plan-option {
+    width: 100%;
+    display: grid;
+    gap: 0.34rem;
+    text-align: left;
+    border: 1px solid rgba(232, 244, 252, 0.2);
+    border-radius: 14px;
+    padding: 0.82rem;
+    background: rgba(14, 33, 44, 0.28);
+    color: #f0f6fa;
+    transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+}
+
+.membership-plan-option:hover,
+.membership-plan-option:focus-visible {
+    transform: translateY(-1px);
+    border-color: rgba(255, 211, 141, 0.5);
+    background: rgba(18, 44, 58, 0.4);
+    box-shadow: 0 12px 24px rgba(7, 17, 25, 0.22);
+}
+
+.membership-plan-option-selected {
+    border-color: rgba(255, 211, 141, 0.85);
+    background: rgba(33, 79, 98, 0.44);
+    box-shadow: 0 14px 28px rgba(7, 17, 25, 0.26);
+}
+
+.membership-plan-option-badge {
+    font-size: 0.72rem;
+    letter-spacing: 0.11em;
+    font-weight: 800;
+    color: #ffd38d;
+}
+
+.membership-plan-option-name {
+    color: #ffffff;
+    font-size: 1.02rem;
+    font-weight: 700;
+}
+
+.membership-plan-option-price {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.45rem;
+}
+
+.membership-plan-option-price strong {
+    font-size: 1.16rem;
+    color: #ffffff;
+}
+
+.membership-plan-option-price span {
+    font-size: 0.82rem;
+    color: rgba(240, 246, 250, 0.9);
+}
+
+.membership-plan-option-copy {
+    color: rgba(240, 246, 250, 0.92);
+    font-size: 0.88rem;
+    line-height: 1.35;
+}
+
 .membership-plan + .membership-plan {
     margin-top: 0.72rem;
 }
@@ -402,6 +470,10 @@
     letter-spacing: 0.03em;
     text-transform: uppercase;
     padding: 0.16rem 0.5rem;
+}
+
+.membership-save-badge-inline {
+    margin-top: 0.1rem;
 }
 
 .membership-plan-copy,

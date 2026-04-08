@@ -3,6 +3,7 @@
 @using System.ComponentModel.DataAnnotations
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.WebUtilities
 @using Microsoft.JSInterop
 @using Shink.Components.Content
 @implements IAsyncDisposable
@@ -118,6 +119,28 @@
         <aside class="signup-card signup-card-membership" aria-label="Jou lidmaatskap">
             <h2>Jou lidmaatskap</h2>
 
+            <div class="membership-plan-selector" role="list" aria-label="Kies jou plan">
+                @foreach (var plan in AvailablePlans)
+                {
+                    <button type="button"
+                            class="@GetMembershipPlanOptionClass(plan)"
+                            @onclick="() => SelectPlan(plan)"
+                            aria-pressed="@IsSelectedPlan(plan)">
+                        <span class="membership-plan-option-badge">@GetPlanBadge(plan)</span>
+                        <span class="membership-plan-option-name">@plan.Name</span>
+                        <span class="membership-plan-option-price">
+                            <strong>@FormatPlanAmount(plan)</strong>
+                            <span>@GetPlanBillingLabel(plan)</span>
+                        </span>
+                        <span class="membership-plan-option-copy">@GetPlanDescription(plan)</span>
+                        @if (IsYearlyAllStoriesPlan(plan))
+                        {
+                            <span class="membership-save-badge membership-save-badge-inline">Save 2 months</span>
+                        }
+                    </button>
+                }
+            </div>
+
             @if (SelectedPlan is not null)
             {
                 <article class="membership-plan">
@@ -138,7 +161,7 @@
             {
                 <article class="membership-plan membership-plan-placeholder">
                     <h3>Nog geen plan gekies nie</h3>
-                    <p>Kies 'n plan op die tuisblad of opsies-blad om na registrasie direk na betaling te gaan.</p>
+                    <p>Kies een van die planne hier bo as jy na registrasie direk na betaling wil gaan.</p>
                 </article>
             }
 
@@ -215,7 +238,8 @@
     private bool ShowAccountCreatedPopup { get; set; }
     private string? StatusMessage { get; set; }
     private PaymentPlan? SelectedPlan { get; set; }
-    private string SignInHref => BuildSignInHref(GetSafeReturnUrl(ReturnUrl), SelectedPlan?.Slug);
+    private string SignInHref => BuildSignInHref(GetSafeReturnUrl(ReturnUrl), GetSelectedPlanCheckoutPath());
+    private IReadOnlyList<PaymentPlan> AvailablePlans => PaymentPlanCatalog.All;
 
     protected override void OnInitialized()
     {
@@ -297,6 +321,11 @@
         ShowAccountCreatedPopup = false;
     }
 
+    private void SelectPlan(PaymentPlan plan)
+    {
+        SelectedPlan = plan;
+    }
+
     private async Task<string> GetRedirectTargetForAuthenticatedUserAsync(AuthenticationState authState)
     {
         var safeReturnUrl = GetSafeReturnUrl(ReturnUrl);
@@ -319,8 +348,8 @@
     }
 
     private string GetRedirectTarget(string? apiRedirectPath = null) =>
-        GetSafeReturnUrl(ReturnUrl)
-        ?? GetSelectedPlanCheckoutPath()
+        GetSelectedPlanCheckoutPath()
+        ?? GetSafeReturnUrl(ReturnUrl)
         ?? GetSafePostAuthPath(apiRedirectPath)
         ?? "/gratis";
 
@@ -337,10 +366,19 @@
         return PaymentPlanCatalog.FindBySlug(extractedPlanSlug);
     }
 
-    private string? GetSelectedPlanCheckoutPath() =>
-        SelectedPlan is null
-            ? null
-            : $"/betaal/{Uri.EscapeDataString(SelectedPlan.Slug)}";
+    private string? GetSelectedPlanCheckoutPath()
+    {
+        if (SelectedPlan is null)
+        {
+            return null;
+        }
+
+        var checkoutPath = $"/betaal/{Uri.EscapeDataString(SelectedPlan.Slug)}";
+        var requestedReturnPath = ResolveRequestedReturnPath();
+        return string.IsNullOrWhiteSpace(requestedReturnPath)
+            ? checkoutPath
+            : QueryHelpers.AddQueryString(checkoutPath, "returnUrl", requestedReturnPath);
+    }
 
     private async Task<IJSObjectReference> EnsureAuthModuleAsync()
     {
@@ -424,10 +462,53 @@
         return candidate;
     }
 
-    private static string BuildSignInHref(string? safeReturnUrl, string? selectedPlanSlug)
+    private string? ResolveRequestedReturnPath()
+    {
+        var safeReturnUrl = GetSafeReturnUrl(ReturnUrl);
+        if (string.IsNullOrWhiteSpace(safeReturnUrl))
+        {
+            return null;
+        }
+
+        if (TryExtractNestedReturnUrl(safeReturnUrl, out var nestedReturnUrl))
+        {
+            return nestedReturnUrl;
+        }
+
+        return safeReturnUrl.StartsWith("/betaal/", StringComparison.OrdinalIgnoreCase)
+            ? null
+            : safeReturnUrl;
+    }
+
+    private static bool TryExtractNestedReturnUrl(string safeReturnUrl, out string? nestedReturnUrl)
+    {
+        nestedReturnUrl = null;
+        if (string.IsNullOrWhiteSpace(safeReturnUrl) ||
+            !safeReturnUrl.StartsWith("/betaal/", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var queryIndex = safeReturnUrl.IndexOf('?');
+        if (queryIndex < 0 || queryIndex == safeReturnUrl.Length - 1)
+        {
+            return false;
+        }
+
+        var queryValues = QueryHelpers.ParseQuery(safeReturnUrl[(queryIndex + 1)..]);
+        if (!queryValues.TryGetValue("returnUrl", out var returnUrlValues))
+        {
+            return false;
+        }
+
+        nestedReturnUrl = GetSafeReturnUrl(returnUrlValues.LastOrDefault());
+        return !string.IsNullOrWhiteSpace(nestedReturnUrl);
+    }
+
+    private static string BuildSignInHref(string? safeReturnUrl, string? selectedPlanCheckoutPath)
     {
         var queryValues = new List<string>();
-        var signInReturnUrl = ResolveSignInReturnUrl(safeReturnUrl, selectedPlanSlug);
+        var signInReturnUrl = ResolveSignInReturnUrl(safeReturnUrl, selectedPlanCheckoutPath);
         if (!string.IsNullOrWhiteSpace(signInReturnUrl))
         {
             queryValues.Add($"returnUrl={Uri.EscapeDataString(signInReturnUrl)}");
@@ -438,11 +519,11 @@
             : $"/teken-in?{string.Join("&", queryValues)}";
     }
 
-    private static string? ResolveSignInReturnUrl(string? safeReturnUrl, string? selectedPlanSlug)
+    private static string? ResolveSignInReturnUrl(string? safeReturnUrl, string? selectedPlanCheckoutPath)
     {
-        if (!string.IsNullOrWhiteSpace(selectedPlanSlug))
+        if (!string.IsNullOrWhiteSpace(selectedPlanCheckoutPath))
         {
-            return $"/betaal/{Uri.EscapeDataString(selectedPlanSlug.Trim())}";
+            return selectedPlanCheckoutPath;
         }
 
         if (string.IsNullOrWhiteSpace(safeReturnUrl))
@@ -541,6 +622,21 @@
             "all_stories_yearly" => "Volledige jaarlikse toegang tot alle Schink Stories teen afslag.",
             _ => "Volledige toegang volgens jou gekose plan."
         };
+
+    private bool IsSelectedPlan(PaymentPlan plan) =>
+        SelectedPlan is not null &&
+        string.Equals(SelectedPlan.Slug, plan.Slug, StringComparison.OrdinalIgnoreCase);
+
+    private string GetMembershipPlanOptionClass(PaymentPlan plan)
+    {
+        var classNames = new List<string> { "membership-plan-option" };
+        if (IsSelectedPlan(plan))
+        {
+            classNames.Add("membership-plan-option-selected");
+        }
+
+        return string.Join(" ", classNames);
+    }
 
     public async ValueTask DisposeAsync()
     {
