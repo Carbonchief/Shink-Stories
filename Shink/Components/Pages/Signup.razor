@@ -157,7 +157,49 @@
     </div>
 </section>
 
+@if (ShowAccountCreatedPopup)
+{
+    <div class="signup-created-popup-backdrop" role="presentation" @onclick="CloseAccountCreatedPopup">
+        <section class="signup-created-popup-card"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="signup-created-popup-title"
+                 @onclick:stopPropagation="true">
+            <button type="button"
+                    class="signup-created-popup-close"
+                    @onclick="CloseAccountCreatedPopup"
+                    aria-label="Maak toe">
+                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+            </button>
+
+            <img class="signup-created-popup-image"
+                 src="/media/imported/misc/2024/09/404_Rammetjie.png"
+                 alt="Rammetjie"
+                 width="220"
+                 height="220"
+                 loading="lazy"
+                 decoding="async" />
+
+            <h2 id="signup-created-popup-title">
+                Jou rekening is geskep.
+            </h2>
+
+            <p>
+                Bevestig asseblief jou e-posadres en teken daarna in.
+            </p>
+
+            <div class="signup-created-popup-actions">
+                <a class="signup-created-popup-button signup-created-popup-button-primary"
+                   href="@SignInHref">
+                    Teken in
+                </a>
+            </div>
+        </section>
+    </div>
+}
+
 @code {
+    private const string AccountCreatedConfirmationMessage = "Jou rekening is geskep. Bevestig asseblief jou e-posadres en teken daarna in.";
     private SignUpFormModel SignUpForm { get; set; } = new();
     private EditContext FormEditContext { get; set; } = default!;
     private IJSObjectReference? _authModule;
@@ -170,6 +212,7 @@
 
     private bool IsSubmitting { get; set; }
     private bool SignUpSucceeded { get; set; }
+    private bool ShowAccountCreatedPopup { get; set; }
     private string? StatusMessage { get; set; }
     private PaymentPlan? SelectedPlan { get; set; }
     private string SignInHref => BuildSignInHref(GetSafeReturnUrl(ReturnUrl), SelectedPlan?.Slug);
@@ -204,6 +247,7 @@
 
         IsSubmitting = true;
         SignUpSucceeded = false;
+        ShowAccountCreatedPopup = false;
         StatusMessage = null;
 
         try
@@ -228,6 +272,7 @@
             }
 
             SignUpSucceeded = false;
+            ShowAccountCreatedPopup = string.Equals(response.Message, AccountCreatedConfirmationMessage, StringComparison.Ordinal);
             StatusMessage = response.Message ?? "Kon nie nou registreer nie. Probeer asseblief weer.";
         }
         catch
@@ -245,6 +290,11 @@
     {
         SignUpForm = new SignUpFormModel();
         FormEditContext = new EditContext(SignUpForm);
+    }
+
+    private void CloseAccountCreatedPopup()
+    {
+        ShowAccountCreatedPopup = false;
     }
 
     private async Task<string> GetRedirectTargetForAuthenticatedUserAsync(AuthenticationState authState)
