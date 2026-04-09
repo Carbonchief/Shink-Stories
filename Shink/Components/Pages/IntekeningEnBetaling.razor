@@ -58,7 +58,7 @@
             <h2>Jou profiel</h2>
             <p>Werk jou besonderhede op sodat ons jou rekeninginligting korrek hou.</p>
 
-            <EditForm class="billing-profile-form" Model="ProfileForm" OnValidSubmit="SaveProfileAsync" aria-busy="@IsSavingProfile">
+            <EditForm FormName="billing-profile-form" class="billing-profile-form" Model="ProfileForm" OnValidSubmit="SaveProfileAsync" aria-busy="@IsSavingProfile">
                 <DataAnnotationsValidator />
 
                 <div class="billing-profile-grid">

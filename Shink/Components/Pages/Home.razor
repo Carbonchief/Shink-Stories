@@ -288,7 +288,7 @@
         </div>
 
         <div class="contact-form-shell">
-            <EditForm class="contact-form" Model="ContactForm" OnValidSubmit="HandleContactSubmitAsync" aria-busy="@IsSubmitting">
+            <EditForm FormName="contact-form" class="contact-form" Model="ContactForm" OnValidSubmit="HandleContactSubmitAsync" aria-busy="@IsSubmitting">
                 <DataAnnotationsValidator />
 
                 <div class="contact-honeypot" aria-hidden="true">

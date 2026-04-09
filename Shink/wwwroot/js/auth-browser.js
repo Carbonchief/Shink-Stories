@@ -87,6 +87,28 @@ export function redirectTo(url) {
     return true;
 }
 
+export function readInputValues(inputIds) {
+    const values = {};
+    if (!Array.isArray(inputIds)) {
+        return values;
+    }
+
+    for (const inputId of inputIds) {
+        if (typeof inputId !== "string" || inputId.trim() === "") {
+            continue;
+        }
+
+        const element = document.getElementById(inputId);
+        if (element instanceof HTMLInputElement ||
+            element instanceof HTMLTextAreaElement ||
+            element instanceof HTMLSelectElement) {
+            values[inputId] = element.value ?? "";
+        }
+    }
+
+    return values;
+}
+
 async function readJsonPayload(response) {
     try {
         const payload = await response.json();

@@ -49,7 +49,7 @@
                 <p class="signup-required-note"><span class="required-indicator" aria-hidden="true">*</span> dui verpligte velde aan.</p>
             </header>
 
-            <EditForm class="signup-form" EditContext="FormEditContext" OnValidSubmit="HandleSignUpAsync" aria-busy="@IsSubmitting">
+            <EditForm FormName="signup-form" class="signup-form" EditContext="FormEditContext" OnSubmit="HandleSignUpSubmitAsync" aria-busy="@IsSubmitting">
                 <DataAnnotationsValidator />
 
                 <div class="signup-grid">
@@ -235,14 +235,16 @@
         }
     }
 
-    private async Task HandleSignUpAsync()
+    private async Task HandleSignUpSubmitAsync(EditContext editContext)
     {
         if (IsSubmitting)
         {
             return;
         }
 
-        if (!FormEditContext.Validate())
+        await SyncSignUpInputsFromDomAsync();
+
+        if (!editContext.Validate())
         {
             return;
         }
@@ -285,6 +287,65 @@
         finally
         {
             IsSubmitting = false;
+        }
+    }
+
+    private async Task SyncSignUpInputsFromDomAsync()
+    {
+        try
+        {
+            var authModule = await EnsureAuthModuleAsync();
+            var values = await authModule.InvokeAsync<Dictionary<string, string>>(
+                "readInputValues",
+                new[]
+                {
+                    "signup-first-name",
+                    "signup-last-name",
+                    "signup-display-name",
+                    "signup-email",
+                    "signup-mobile-number",
+                    "signup-password",
+                    "signup-password-confirm"
+                });
+
+            if (values.TryGetValue("signup-first-name", out var firstNameValue))
+            {
+                SignUpForm.FirstName = firstNameValue?.Trim() ?? string.Empty;
+            }
+
+            if (values.TryGetValue("signup-last-name", out var lastNameValue))
+            {
+                SignUpForm.LastName = lastNameValue?.Trim() ?? string.Empty;
+            }
+
+            if (values.TryGetValue("signup-display-name", out var displayNameValue))
+            {
+                SignUpForm.DisplayName = displayNameValue?.Trim() ?? string.Empty;
+            }
+
+            if (values.TryGetValue("signup-email", out var emailValue))
+            {
+                SignUpForm.Email = emailValue?.Trim() ?? string.Empty;
+            }
+
+            if (values.TryGetValue("signup-mobile-number", out var mobileValue))
+            {
+                SignUpForm.MobileNumber = mobileValue?.Trim() ?? string.Empty;
+            }
+
+            if (values.TryGetValue("signup-password", out var passwordValue))
+            {
+                SignUpForm.Password = passwordValue ?? string.Empty;
+            }
+
+            if (values.TryGetValue("signup-password-confirm", out var confirmPasswordValue))
+            {
+                SignUpForm.ConfirmPassword = confirmPasswordValue ?? string.Empty;
+            }
+        }
+        catch
+        {
+            // Keep existing bound values if DOM reads fail.
         }
     }
 

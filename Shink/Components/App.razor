@@ -210,9 +210,15 @@
             }
 
             function loadScript(source) {
-                var script = document.createElement("script");
-                script.src = source;
-                document.body.appendChild(script);
+                return new Promise(function (resolve, reject) {
+                    var script = document.createElement("script");
+                    script.src = source;
+                    script.type = "text/javascript";
+                    script.async = false;
+                    script.onload = function () { resolve(); };
+                    script.onerror = function () { reject(new Error("Failed to load script: " + source)); };
+                    document.body.appendChild(script);
+                });
             }
 
             try {
@@ -237,9 +243,17 @@
                     return;
                 }
 
-                loadScript("_content/MudBlazor/MudBlazor.min.js");
-                loadScript("@Assets["_framework/blazor.web.js"]");
-                finishSupportCheck();
+                loadScript("_content/MudBlazor/MudBlazor.min.js")
+                    .then(function () {
+                        return loadScript("/_framework/bit.blazor.web.es2019.js?v=20260409-1");
+                    })
+                    .then(function () {
+                        finishSupportCheck();
+                    })
+                    .catch(function (scriptError) {
+                        console.error("Browser runtime load failed.", scriptError);
+                        showUnsupportedFallback("Hierdie bladsy se kernlêers het nie reg gelaai nie. Maak die bladsy heeltemal toe, maak dit weer oop en probeer weer.");
+                    });
             } catch (bootstrapError) {
                 console.error("Browser bootstrap failed.", bootstrapError);
                 showUnsupportedFallback("Hierdie bladsy kon nie veilig begin laai nie. Werk asseblief jou blaaier op en probeer weer.");
