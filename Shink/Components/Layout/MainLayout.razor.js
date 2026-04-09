@@ -131,13 +131,13 @@ function wireNavToggle(toggleButton) {
         return;
     }
 
-    const navControls = toggleButton.closest(".nav-controls");
+    const controlsContainer = toggleButton.closest(".nav-controls, .guest-controls");
     const srLabel = toggleButton.querySelector(NAV_TOGGLE_LABEL_SELECTOR);
 
     const setMenuState = (isOpen) => {
         navMenu.classList.toggle(OPEN_CLASS, isOpen);
         toggleButton.setAttribute("aria-expanded", isOpen ? "true" : "false");
-        closeAccountMenuInContainer(navControls);
+        closeAccountMenuInContainer(controlsContainer);
 
         const label = isOpen ? OPEN_LABEL : CLOSED_LABEL;
         toggleButton.setAttribute("aria-label", label);
@@ -169,7 +169,7 @@ function wireNavToggle(toggleButton) {
         }
 
         const target = event.target;
-        if (target instanceof Node && navControls instanceof HTMLElement && navControls.contains(target)) {
+        if (target instanceof Node && controlsContainer instanceof HTMLElement && controlsContainer.contains(target)) {
             return;
         }
 
