@@ -134,6 +134,10 @@ h1 {
     color: var(--muted);
 }
 
+.luister-loading-state {
+    min-height: 42vh;
+}
+
 .luister-stories-section + .luister-stories-section {
     margin-top: 1.1rem;
 }

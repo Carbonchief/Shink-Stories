@@ -71,6 +71,11 @@
         <p><a href="/luister">Probeer weer</a> of <a href="/gratis">gaan na Gratis stories</a>.</p>
     </section>
 }
+else if (IsLoadingPage)
+{
+    <section class="luister-loading-state" aria-live="polite" aria-busy="true">
+    </section>
+}
 else if (LuisterPlaylists.Count == 0)
 {
     <section class="luister-empty-state">
@@ -201,6 +206,7 @@ else
     private LuisterAccessProfile AccessProfile { get; set; } = new(false, false);
     private string? PageLoadErrorMessage { get; set; }
     private bool ShowStoryAccessPopup { get; set; }
+    private bool IsLoadingPage { get; set; } = true;
     private string PendingLockedStoryPath { get; set; } = "/luister";
 
     private string LuisterCanonicalUrl => NavigationManager.ToAbsoluteUri("/luister").ToString();
@@ -264,6 +270,10 @@ else
             LuisterPlaylists = Array.Empty<StoryPlaylist>();
             FilteredLuisterPlaylists = Array.Empty<StoryPlaylist>();
             AccessProfile = new LuisterAccessProfile(false, false);
+        }
+        finally
+        {
+            IsLoadingPage = false;
         }
     }
 

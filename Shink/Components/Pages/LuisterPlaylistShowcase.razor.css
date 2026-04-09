@@ -6,6 +6,10 @@
     background: #ffffff;
 }
 
+.playlist-showcase-loading-state {
+    min-height: 42vh;
+}
+
 @media (prefers-reduced-motion: no-preference) {
     :global(html:has(.playlist-showcase-route)),
     :global(body:has(.playlist-showcase-route)) {
