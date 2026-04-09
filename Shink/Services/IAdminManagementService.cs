@@ -46,7 +46,7 @@ public interface IAdminManagementService
     Task<AdminOperationResult> SavePlaylistStoriesAsync(
         string? adminEmail,
         Guid playlistId,
-        IReadOnlyList<Guid> orderedStoryIds,
+        IReadOnlyList<AdminPlaylistStorySaveItem> orderedStories,
         CancellationToken cancellationToken = default);
 }
 
@@ -151,7 +151,12 @@ public sealed record AdminPlaylistStoryItem(
     Guid StoryId,
     string StorySlug,
     string StoryTitle,
-    int SortOrder);
+    int SortOrder,
+    bool IsShowcase);
+
+public sealed record AdminPlaylistStorySaveItem(
+    Guid StoryId,
+    bool IsShowcase);
 
 public sealed record AdminPlaylistUpdateRequest(
     Guid? PlaylistId,

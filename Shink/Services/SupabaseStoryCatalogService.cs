@@ -340,7 +340,7 @@ public sealed class SupabaseStoryCatalogService(
         var requestUri = new Uri(
             baseUri,
             "rest/v1/story_playlist_items" +
-            "?select=playlist_id,story_id,sort_order" +
+            "?select=playlist_id,story_id,sort_order,is_showcase" +
             "&order=sort_order.asc");
 
         using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
@@ -424,7 +424,8 @@ public sealed class SupabaseStoryCatalogService(
             LogoImagePath: NormalizeOptionalText(favouritesConfig.LogoImagePath),
             BackdropImagePath: NormalizeOptionalText(favouritesConfig.BackdropImagePath),
             IsSystemPlaylist: true,
-            SystemKey: NormalizeSystemKey(favouritesConfig.SystemKey));
+            SystemKey: NormalizeSystemKey(favouritesConfig.SystemKey),
+            ShowcaseStorySlug: null);
 
         return snapshot.LuisterPlaylists
             .Where(playlist => !(playlist.IsSystemPlaylist &&
@@ -836,6 +837,14 @@ public sealed class SupabaseStoryCatalogService(
                 ? mappedStories.Take(playlistRow.MaxItems.Value).ToArray()
                 : mappedStories.ToArray();
 
+            string? showcaseStorySlug = null;
+            var showcaseItem = items.FirstOrDefault(item => item.IsShowcase);
+            if (showcaseItem is not null &&
+                storiesById.TryGetValue(showcaseItem.StoryId, out var showcaseStoryRow) &&
+                !string.IsNullOrWhiteSpace(showcaseStoryRow.Slug))
+            {
+                showcaseStorySlug = showcaseStoryRow.Slug.Trim();
+            }
             playlists.Add(new StoryPlaylist(
                 Slug: playlistRow.Slug.Trim(),
                 Title: playlistRow.Title.Trim(),
@@ -846,7 +855,8 @@ public sealed class SupabaseStoryCatalogService(
                 LogoImagePath: NormalizeOptionalText(playlistRow.LogoImagePath),
                 BackdropImagePath: NormalizeOptionalText(playlistRow.BackdropImagePath),
                 IsSystemPlaylist: playlistRow.IsSystemPlaylist,
-                SystemKey: NormalizeSystemKey(playlistRow.SystemKey)));
+                SystemKey: NormalizeSystemKey(playlistRow.SystemKey),
+                ShowcaseStorySlug: showcaseStorySlug));
         }
 
         var unassignedStories = luisterRows
@@ -874,7 +884,8 @@ public sealed class SupabaseStoryCatalogService(
                 LogoImagePath: NormalizeOptionalText(allStoriesConfig?.LogoImagePath),
                 BackdropImagePath: NormalizeOptionalText(allStoriesConfig?.BackdropImagePath),
                 IsSystemPlaylist: allStoriesConfig?.IsSystemPlaylist ?? false,
-                SystemKey: NormalizeSystemKey(allStoriesConfig?.SystemKey)));
+                SystemKey: NormalizeSystemKey(allStoriesConfig?.SystemKey),
+                ShowcaseStorySlug: null));
         }
 
         return playlists
@@ -911,7 +922,8 @@ public sealed class SupabaseStoryCatalogService(
                 Description: "Dis op die huis!",
                 SortOrder: 10,
                 Stories: freeRows.Select(MapToStoryItem).ToArray(),
-                ShowOnHome: true));
+                ShowOnHome: true,
+                ShowcaseStorySlug: freeRows.Select(row => row.Slug.Trim()).FirstOrDefault()));
 
             assignedStoryIds.UnionWith(freeRows.Select(row => row.StoryId));
         }
@@ -925,7 +937,8 @@ public sealed class SupabaseStoryCatalogService(
                 Description: "Kry 'n voorsmakie van ons nuutste uitgawes.",
                 SortOrder: 20,
                 Stories: newestRows.Select(MapToStoryItem).ToArray(),
-                ShowOnHome: false));
+                ShowOnHome: false,
+                ShowcaseStorySlug: newestRows.Select(row => row.Slug.Trim()).FirstOrDefault()));
 
             assignedStoryIds.UnionWith(newestRows.Select(row => row.StoryId));
         }
@@ -939,7 +952,8 @@ public sealed class SupabaseStoryCatalogService(
                 Description: "Verken stories spesiaal vir kleuters.",
                 SortOrder: 30,
                 Stories: kleuterRows.Select(MapToStoryItem).ToArray(),
-                ShowOnHome: false));
+                ShowOnHome: false,
+                ShowcaseStorySlug: kleuterRows.Select(row => row.Slug.Trim()).FirstOrDefault()));
 
             assignedStoryIds.UnionWith(kleuterRows.Select(row => row.StoryId));
         }
@@ -961,7 +975,8 @@ public sealed class SupabaseStoryCatalogService(
                 Description: "Luister na ons Bybelstories vir kinders.",
                 SortOrder: 40,
                 Stories: bibleRows.Select(MapToStoryItem).ToArray(),
-                ShowOnHome: false));
+                ShowOnHome: false,
+                ShowcaseStorySlug: bibleRows.Select(row => row.Slug.Trim()).FirstOrDefault()));
 
             assignedStoryIds.UnionWith(bibleRows.Select(row => row.StoryId));
         }
@@ -981,7 +996,8 @@ public sealed class SupabaseStoryCatalogService(
                 Description: "Stories wat nie in ander playlists is nie.",
                 SortOrder: 50,
                 Stories: unassignedRows.Select(MapToStoryItem).ToArray(),
-                ShowOnHome: false));
+                ShowOnHome: false,
+                ShowcaseStorySlug: unassignedRows.Select(row => row.Slug.Trim()).FirstOrDefault()));
         }
 
         return playlists
@@ -1351,6 +1367,9 @@ public sealed class SupabaseStoryCatalogService(
 
         [JsonPropertyName("sort_order")]
         public int SortOrder { get; set; }
+
+        [JsonPropertyName("is_showcase")]
+        public bool IsShowcase { get; set; }
     }
 
     private sealed class SubscriberLookupRow

@@ -538,14 +538,16 @@ public sealed partial class SupabaseAdminManagementService(
                                 StoryId: item.StoryId,
                                 StorySlug: string.Empty,
                                 StoryTitle: $"Onbekende storie ({item.StoryId:D})",
-                                SortOrder: item.SortOrder);
+                                SortOrder: item.SortOrder,
+                                IsShowcase: item.IsShowcase);
                         }
 
                         return new AdminPlaylistStoryItem(
                             StoryId: story.StoryId,
                             StorySlug: story.Slug?.Trim() ?? string.Empty,
                             StoryTitle: story.Title?.Trim() ?? story.Slug?.Trim() ?? $"Storie {story.StoryId:D}",
-                            SortOrder: item.SortOrder);
+                            SortOrder: item.SortOrder,
+                            IsShowcase: item.IsShowcase);
                     })
                     .ToArray());
 
@@ -767,7 +769,7 @@ public sealed partial class SupabaseAdminManagementService(
     public async Task<AdminOperationResult> SavePlaylistStoriesAsync(
         string? adminEmail,
         Guid playlistId,
-        IReadOnlyList<Guid> orderedStoryIds,
+        IReadOnlyList<AdminPlaylistStorySaveItem> orderedStories,
         CancellationToken cancellationToken = default)
     {
         if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
@@ -802,6 +804,23 @@ public sealed partial class SupabaseAdminManagementService(
             return new AdminOperationResult(false, "Sisteem playlists kan nie stories handmatig wysig nie.");
         }
 
+        var normalizedStories = orderedStories
+            .Where(item => item.StoryId != Guid.Empty)
+            .GroupBy(item => item.StoryId)
+            .Select(group => group.First())
+            .ToArray();
+        if (normalizedStories.Length == 0)
+        {
+            InvalidateStoryCatalogCache();
+            return new AdminOperationResult(true);
+        }
+
+        var showcaseCount = normalizedStories.Count(item => item.IsShowcase);
+        if (showcaseCount > 1)
+        {
+            return new AdminOperationResult(false, "Playlists kan net een showcase storie he.");
+        }
+
         var escapedPlaylistId = Uri.EscapeDataString(playlistId.ToString("D"));
         var deleteUri = new Uri(baseUri, $"rest/v1/story_playlist_items?playlist_id=eq.{escapedPlaylistId}");
         using (var deleteRequest = CreateRequest(HttpMethod.Delete, deleteUri, apiKey))
@@ -819,22 +838,13 @@ public sealed partial class SupabaseAdminManagementService(
             }
         }
 
-        var normalizedStoryIds = orderedStoryIds
-            .Where(id => id != Guid.Empty)
-            .Distinct()
-            .ToArray();
-        if (normalizedStoryIds.Length == 0)
-        {
-            InvalidateStoryCatalogCache();
-            return new AdminOperationResult(true);
-        }
-
-        var payload = normalizedStoryIds
-            .Select((storyId, index) => new Dictionary<string, object?>
+        var payload = normalizedStories
+            .Select((story, index) => new Dictionary<string, object?>
             {
                 ["playlist_id"] = playlistId,
-                ["story_id"] = storyId,
-                ["sort_order"] = index + 1
+                ["story_id"] = story.StoryId,
+                ["sort_order"] = index + 1,
+                ["is_showcase"] = story.IsShowcase
             })
             .ToArray();
 
@@ -910,7 +920,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/story_playlist_items" +
-            "?select=playlist_id,story_id,sort_order" +
+            "?select=playlist_id,story_id,sort_order,is_showcase" +
             "&order=sort_order.asc" +
             "&limit=5000");
 
@@ -1491,6 +1501,9 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("sort_order")]
         public int SortOrder { get; set; }
+
+        [JsonPropertyName("is_showcase")]
+        public bool IsShowcase { get; set; }
     }
 
     private sealed class StoryLookupRow

@@ -501,7 +501,7 @@ else
                 AccessibleStories = CurrentPlaylist.Stories;
                 var requestedPreviewStory = AccessibleStories.FirstOrDefault(story =>
                     string.Equals(story.Slug, StorySlug, StringComparison.OrdinalIgnoreCase));
-                CurrentStory = requestedPreviewStory ?? AccessibleStories.FirstOrDefault();
+                CurrentStory = requestedPreviewStory ?? GetPreferredPlaylistStory(AccessibleStories);
                 AudioUrl = null;
                 ResolveAdjacentStories();
                 return;
@@ -557,11 +557,16 @@ else
             CurrentStory = requestedStory is not null
                 ? AccessibleStories.FirstOrDefault(story =>
                     string.Equals(story.Slug, requestedStory.Slug, StringComparison.OrdinalIgnoreCase))
-                : AccessibleStories[0];
+                : GetPreferredPlaylistStory(AccessibleStories);
 
             if (CurrentStory is null)
             {
-                CurrentStory = AccessibleStories[0];
+                CurrentStory = GetPreferredPlaylistStory(AccessibleStories);
+            }
+
+            if (CurrentStory is null)
+            {
+                return;
             }
 
             _ = LoadFavoriteStorySlugsInBackgroundAsync();
@@ -598,6 +603,27 @@ else
         catch (OperationCanceledException)
         {
         }
+    }
+
+    private StoryItem? GetPreferredPlaylistStory(IReadOnlyList<StoryItem> stories)
+    {
+        if (stories.Count == 0)
+        {
+            return null;
+        }
+
+        var showcaseSlug = CurrentPlaylist?.ShowcaseStorySlug;
+        if (!string.IsNullOrWhiteSpace(showcaseSlug))
+        {
+            var showcaseStory = stories.FirstOrDefault(story =>
+                string.Equals(story.Slug, showcaseSlug, StringComparison.OrdinalIgnoreCase));
+            if (showcaseStory is not null)
+            {
+                return showcaseStory;
+            }
+        }
+
+        return stories[0];
     }
 
     private void CancelEmptyStateDelay()
