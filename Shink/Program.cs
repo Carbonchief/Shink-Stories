@@ -331,6 +331,16 @@ app.Use(async (httpContext, next) =>
 // Fallback serving from physical wwwroot to avoid manifest drift issues during publish.
 app.UseStaticFiles();
 
+app.Use(async (httpContext, next) =>
+{
+    if (await TryServeBundledBlazorRuntimeScriptAsync(httpContext))
+    {
+        return;
+    }
+
+    await next();
+});
+
 app.MapGet("/media/image", async (
     string? src,
     IHttpClientFactory httpClientFactory,
@@ -1143,6 +1153,31 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.Run();
+
+static async Task<bool> TryServeBundledBlazorRuntimeScriptAsync(HttpContext httpContext)
+{
+    var fileName = httpContext.Request.Path.Value switch
+    {
+        "/_framework/bit.blazor.web.es2019.js" => "bit.blazor.web.es2019.js",
+        "/_framework/bit.blazor.server.es2019.js" => "bit.blazor.server.es2019.js",
+        _ => null
+    };
+
+    if (string.IsNullOrWhiteSpace(fileName))
+    {
+        return false;
+    }
+
+    var physicalPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", "_framework", fileName);
+    if (!File.Exists(physicalPath))
+    {
+        return false;
+    }
+
+    httpContext.Response.ContentType = "text/javascript; charset=utf-8";
+    await httpContext.Response.SendFileAsync(physicalPath, httpContext.RequestAborted);
+    return true;
+}
 
 static string BuildContentSecurityPolicy(bool isDevelopment, string? postHogHostUrl)
 {

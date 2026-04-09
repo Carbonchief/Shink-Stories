@@ -55,7 +55,7 @@
                 Gebruik jou e-pos en wagwoord om voort te gaan.
             </p>
 
-            <EditForm class="login-form" EditContext="FormEditContext" OnValidSubmit="HandleSignInAsync" aria-busy="@IsSubmitting">
+            <EditForm FormName="login-form" class="login-form" EditContext="FormEditContext" OnSubmit="HandleSignInSubmitAsync" aria-busy="@IsSubmitting">
                 <DataAnnotationsValidator />
 
                 <div class="login-field">
@@ -170,9 +170,41 @@
         }
     }
 
-    private async Task HandleSignInAsync()
+    private async Task HandleSignInSubmitAsync(EditContext editContext)
     {
+        await SyncSignInInputsFromDomAsync();
+
+        if (!editContext.Validate())
+        {
+            return;
+        }
+
         await SubmitAuthAsync("/api/auth/login", "Kon nie teken in nie. Probeer asseblief weer.");
+    }
+
+    private async Task SyncSignInInputsFromDomAsync()
+    {
+        try
+        {
+            var authModule = await EnsureAuthModuleAsync();
+            var values = await authModule.InvokeAsync<Dictionary<string, string>>(
+                "readInputValues",
+                new[] { "signin-email", "signin-password" });
+
+            if (values.TryGetValue("signin-email", out var emailValue))
+            {
+                SignInForm.Email = emailValue?.Trim() ?? string.Empty;
+            }
+
+            if (values.TryGetValue("signin-password", out var passwordValue))
+            {
+                SignInForm.Password = passwordValue ?? string.Empty;
+            }
+        }
+        catch
+        {
+            // Keep existing bound values if DOM reads fail.
+        }
     }
 
     private void ResetForm()
