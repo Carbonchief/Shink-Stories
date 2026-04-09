@@ -1270,7 +1270,7 @@ function wireStoryCarouselDrag(carouselElement) {
     };
 
     carouselElement.addEventListener("pointerdown", (event) => {
-        if (event.pointerType === "mouse") {
+        if (event.pointerType === "touch" || event.pointerType === "mouse") {
             return;
         }
 
