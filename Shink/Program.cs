@@ -106,6 +106,8 @@ builder.Services.AddHttpClient<ISubscriptionLedgerService, SupabaseSubscriptionL
 builder.Services.AddHttpClient<IStoryTrackingService, SupabaseStoryTrackingService>();
 builder.Services.AddHttpClient<IStoryFavoriteService, SupabaseStoryFavoriteService>();
 builder.Services.AddHttpClient<IAdminManagementService, SupabaseAdminManagementService>();
+builder.Services.AddHttpClient<ICharacterCatalogService, SupabaseCharacterService>();
+builder.Services.AddHttpClient<ICharacterAdminService, SupabaseCharacterService>();
 builder.Services.AddSingleton<IContactFormProtectionService, ContactFormProtectionService>();
 builder.Services.AddRateLimiter(options =>
 {
@@ -2336,6 +2338,14 @@ static IReadOnlyList<SearchSiteCandidate> BuildSearchStaticCandidates() =>
         Kind: "Bladsy",
         Keywords: "wie ons is missie visie waardes belofte ouers",
         ThumbnailPath: "/branding/Schink_Die_Ware_Wenner_Schink_Stories_600x600.png",
+        IsSitePage: true),
+    new(
+        Title: "Karakters",
+        Description: "Ontsluit Schink Stories karakters deur na hul stories te luister.",
+        Url: "/karakters",
+        Kind: "Bladsy",
+        Keywords: "karakters ontsluit misterie luister profiel",
+        ThumbnailPath: "/branding/schink-logo-green.png",
         IsSitePage: true),
     new(
         Title: "Intekening en betaling",

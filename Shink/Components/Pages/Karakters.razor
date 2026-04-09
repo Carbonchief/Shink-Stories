@@ -1,0 +1,389 @@
+@page "/karakters"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ICharacterCatalogService CharacterCatalogService
+@inject IStoryTrackingService StoryTrackingService
+@inject IStoryCatalogService StoryCatalogService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Schink Stories | Karakters</PageTitle>
+<HeadContent>
+    <meta name="description" content="Ontsluit julle gunsteling Schink Stories karakters deur na hul stories te luister." />
+    <link rel="canonical" href="@KaraktersCanonicalUrl" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Schink Stories | Karakters" />
+    <meta property="og:description" content="Ontsluit julle gunsteling Schink Stories karakters deur na hul stories te luister." />
+    <meta property="og:url" content="@KaraktersCanonicalUrl" />
+    <meta property="og:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Schink Stories | Karakters" />
+    <meta name="twitter:description" content="Ontsluit julle gunsteling Schink Stories karakters deur na hul stories te luister." />
+    <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
+</HeadContent>
+
+<section class="characters-page">
+    <header class="characters-hero">
+        <div class="characters-hero-copy">
+            <p class="characters-eyebrow">Schink Stories Karakters</p>
+            <h1>Kyk wie wag agter die misteriekaartjies</h1>
+            <p class="characters-intro">
+                Elke karakter begin as 'n geheim. Sodra jy genoeg na die relevante storie geluister het,
+                ontsluit die ware karakterprent en sy profiel.
+            </p>
+            @if (IsSignedIn)
+            {
+                <div class="characters-summary-card">
+                    <strong>@UnlockedCharacterCount van @CharacterCards.Count</strong>
+                    <span>karakters is reeds ontsluit op hierdie profiel.</span>
+                </div>
+            }
+            else
+            {
+                <div class="characters-summary-card">
+                    <strong>Teken in om julle ontsluitings te sien.</strong>
+                    <a href="@LoginForCharactersHref">Teken in</a>
+                </div>
+            }
+        </div>
+    </header>
+
+    @if (IsLoading)
+    {
+        <section class="characters-state" aria-live="polite">
+            <h2>Laai karakters...</h2>
+        </section>
+    }
+    else if (!string.IsNullOrWhiteSpace(LoadErrorMessage))
+    {
+        <section class="characters-state characters-state-error" aria-live="polite">
+            <h2>Ons kon nie nou die karakterblad laai nie.</h2>
+            <p>@LoadErrorMessage</p>
+        </section>
+    }
+    else if (CharacterCards.Count == 0)
+    {
+        <section class="characters-state" aria-live="polite">
+            <h2>Geen karakters is nog beskikbaar nie.</h2>
+            <p>Kom kyk weer binnekort.</p>
+        </section>
+    }
+    else
+    {
+        <section class="characters-grid" aria-label="Schink Stories karakters">
+            @foreach (var card in CharacterCards)
+            {
+                <article class="character-card @(card.IsUnlocked ? "is-unlocked" : "is-locked")">
+                    <div class="character-card-media">
+                        <img src="@card.DisplayImagePath"
+                             alt="@card.ImageAlt"
+                             class="character-card-image"
+                             loading="lazy"
+                             decoding="async"
+                             onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                        <span class="character-card-badge">
+                            @(card.IsUnlocked ? "Ontsluit" : "Nog gesluit")
+                        </span>
+                    </div>
+
+                    <div class="character-card-body">
+                        <h2>@card.Heading</h2>
+                        <p class="character-card-summary">@card.SummaryText</p>
+
+                        @if (card.IsUnlocked)
+                        {
+                            <button type="button"
+                                    class="character-card-profile-btn"
+                                    @onclick="() => OpenCharacterProfile(card)">
+                                Lees karakterprofiel
+                            </button>
+                        }
+
+                        @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
+                        {
+                            <a class="character-card-cta" href="@card.CallToActionHref">@card.CallToActionLabel</a>
+                        }
+                    </div>
+                </article>
+            }
+        </section>
+    }
+</section>
+
+@if (ActiveProfileCard is not null)
+{
+    <div class="character-profile-popup-backdrop" role="presentation" @onclick="CloseCharacterProfile">
+        <section class="character-profile-popup-card"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="character-profile-popup-title"
+                 @onclick:stopPropagation="true">
+            <button type="button"
+                    class="character-profile-popup-close"
+                    @onclick="CloseCharacterProfile"
+                    aria-label="Maak toe">
+                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+            </button>
+
+            <img class="character-profile-popup-image"
+                 src="@ResolveCharacterImagePath(ActiveProfileCard.Character.ImagePath)"
+                 alt="Illustrasie van @ActiveProfileCard.Character.DisplayName"
+                 loading="lazy"
+                 decoding="async"
+                 onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+
+            <h2 id="character-profile-popup-title">@ActiveProfileCard.Character.DisplayName</h2>
+
+            @if (!string.IsNullOrWhiteSpace(ActiveProfileCard.Character.Tagline))
+            {
+                <p class="character-profile-popup-summary">@ActiveProfileCard.Character.Tagline</p>
+            }
+
+            <div class="character-profile-popup-content">
+                <dl class="character-profile-popup-details">
+                    @CharacterField("Tipe", ActiveProfileCard.Character.Species)
+                    @CharacterField("Blyplek", ActiveProfileCard.Character.Habitat)
+                    @CharacterField("Sê-ding", ActiveProfileCard.Character.Catchphrase)
+                    @CharacterField("Gunsteling-ding", ActiveProfileCard.Character.FavoriteThing)
+                    @CharacterField("Kenmerk", ActiveProfileCard.Character.CharacterTrait)
+                    @CharacterField("Goue Les", ActiveProfileCard.Character.GoldenLesson)
+                    @CharacterField("Kernwaarde", ActiveProfileCard.Character.CoreValue)
+                    @CharacterField("Eerste verskyning", ActiveProfileCard.Character.FirstAppearance)
+                    @CharacterField("Maats", ActiveProfileCard.Character.Friends)
+                    @CharacterField("Vragie", ActiveProfileCard.Character.ReflectionQuestion)
+                    @CharacterField("Uitdaging vir jou", ActiveProfileCard.Character.ChallengeText)
+                </dl>
+
+                @if (ActiveProfileCard.RelatedStories.Count > 0)
+                {
+                    <div class="character-related-stories character-profile-popup-related-stories">
+                        <p>Stories met hierdie karakter:</p>
+                        <div class="character-story-links">
+                            @foreach (var story in ActiveProfileCard.RelatedStories)
+                            {
+                                <a href="@story.Path">@story.Title</a>
+                            }
+                        </div>
+                    </div>
+                }
+            </div>
+        </section>
+    </div>
+}
+
+@code {
+    private bool IsLoading { get; set; } = true;
+    private bool IsSignedIn { get; set; }
+    private string? LoadErrorMessage { get; set; }
+    private IReadOnlyList<CharacterCardViewModel> CharacterCards { get; set; } = Array.Empty<CharacterCardViewModel>();
+    private CharacterCardViewModel? ActiveProfileCard { get; set; }
+    private int UnlockedCharacterCount => CharacterCards.Count(card => card.IsUnlocked);
+    private string KaraktersCanonicalUrl => NavigationManager.ToAbsoluteUri("/karakters").ToString();
+    private string LoginForCharactersHref => $"/teken-in?returnUrl={Uri.EscapeDataString("/karakters")}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var signedInEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                               ?? authState.User.Identity?.Name;
+            IsSignedIn = authState.User.Identity?.IsAuthenticated == true && !string.IsNullOrWhiteSpace(signedInEmail);
+
+            var charactersTask = CharacterCatalogService.GetPublishedCharactersAsync();
+            var freeStoriesTask = StoryCatalogService.GetFreeStoriesAsync();
+            var luisterStoriesTask = StoryCatalogService.GetLuisterStoriesAsync();
+            Task<IReadOnlyList<UserStoryProgressItem>> progressTask = Task.FromResult<IReadOnlyList<UserStoryProgressItem>>(Array.Empty<UserStoryProgressItem>());
+
+            if (IsSignedIn)
+            {
+                progressTask = StoryTrackingService.GetUserStoryProgressAsync(signedInEmail);
+            }
+
+            await Task.WhenAll(charactersTask, freeStoriesTask, luisterStoriesTask, progressTask);
+
+            var storyLookup = BuildStoryLookup(freeStoriesTask.Result, luisterStoriesTask.Result);
+            var progressLookup = progressTask.Result
+                .GroupBy(progress => progress.StorySlug, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.OrderByDescending(item => item.LastListenedAtUtc).First(),
+                    StringComparer.OrdinalIgnoreCase);
+
+            CharacterCards = charactersTask.Result
+                .OrderBy(character => character.SortOrder)
+                .ThenBy(character => character.DisplayName, StringComparer.OrdinalIgnoreCase)
+                .Select((character, index) => BuildCharacterCard(character, storyLookup, progressLookup, index + 1))
+                .ToArray();
+        }
+        catch
+        {
+            LoadErrorMessage = "Herlaai asseblief die bladsy of probeer weer oor 'n rukkie.";
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private RenderFragment CharacterField(string label, string? value) => builder =>
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "character-detail-row");
+        builder.OpenElement(2, "dt");
+        builder.AddContent(3, label);
+        builder.CloseElement();
+        builder.OpenElement(4, "dd");
+        builder.AddContent(5, value);
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    private void OpenCharacterProfile(CharacterCardViewModel card)
+    {
+        ActiveProfileCard = card;
+    }
+
+    private void CloseCharacterProfile()
+    {
+        ActiveProfileCard = null;
+    }
+
+    private CharacterCardViewModel BuildCharacterCard(
+        StoryCharacterItem character,
+        IReadOnlyDictionary<string, StoryLinkInfo> storyLookup,
+        IReadOnlyDictionary<string, UserStoryProgressItem> progressLookup,
+        int displayOrder)
+    {
+        var relatedSlugs = BuildUnlockStorySlugs(character);
+        var unlocked = relatedSlugs.Any(slug => IsCharacterUnlocked(character, slug, progressLookup));
+        var relatedStories = relatedSlugs
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(slug => storyLookup.TryGetValue(slug, out var story) ? story : null)
+            .Where(static story => story is not null)
+            .Cast<StoryLinkInfo>()
+            .ToArray();
+        var primaryStory = ResolvePrimaryStory(character, relatedStories);
+        var ctaHref = ResolveCallToActionHref(primaryStory);
+        var ctaLabel = unlocked
+            ? "Luister weer na storie"
+            : primaryStory is null
+                ? string.Empty
+                : "Luister om te ontsluit";
+        var summaryText = unlocked
+            ? character.Tagline ?? "Hierdie karakter se profiel is nou oop."
+            : primaryStory is null
+                ? "Hierdie karakter wag nog vir 'n storie-koppeling."
+                : $"Luister na {primaryStory.Title} om hierdie karakter te ontsluit.";
+        return new CharacterCardViewModel(
+            Character: character,
+            IsUnlocked: unlocked,
+            Heading: unlocked ? character.DisplayName : $"Geheime karakter {displayOrder:00}",
+            SummaryText: summaryText,
+            DisplayImagePath: unlocked
+                ? ResolveCharacterImagePath(character.ImagePath)
+                : ResolveCharacterImagePath(character.MysteryImagePath),
+            ImageAlt: unlocked
+                ? $"Illustrasie van {character.DisplayName}"
+                : $"Mysterie illustrasie vir {character.DisplayName}",
+            RelatedStories: relatedStories,
+            CallToActionHref: ctaHref,
+            CallToActionLabel: ctaLabel);
+    }
+
+    private bool IsCharacterUnlocked(
+        StoryCharacterItem character,
+        string slug,
+        IReadOnlyDictionary<string, UserStoryProgressItem> progressLookup)
+    {
+        if (!progressLookup.TryGetValue(slug, out var progress))
+        {
+            return false;
+        }
+
+        return progress.IsCompleted || progress.TotalListenedSeconds >= character.UnlockThresholdSeconds;
+    }
+
+    private string[] BuildUnlockStorySlugs(StoryCharacterItem character)
+    {
+        var slugs = new List<string>();
+        if (!string.IsNullOrWhiteSpace(character.UnlockStorySlug))
+        {
+            slugs.Add(character.UnlockStorySlug);
+        }
+
+        slugs.AddRange(character.RelatedStorySlugs.Where(slug => !string.IsNullOrWhiteSpace(slug)));
+        return slugs
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static IReadOnlyDictionary<string, StoryLinkInfo> BuildStoryLookup(
+        IReadOnlyList<StoryItem> freeStories,
+        IReadOnlyList<StoryItem> luisterStories)
+    {
+        return freeStories
+            .Select(story => new StoryLinkInfo(story.Slug, story.Title, $"/gratis/{Uri.EscapeDataString(story.Slug)}", "free"))
+            .Concat(luisterStories.Select(story => new StoryLinkInfo(story.Slug, story.Title, $"/luister/{Uri.EscapeDataString(story.Slug)}", story.AccessLevel)))
+            .GroupBy(story => story.Slug, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+    }
+
+    private StoryLinkInfo? ResolvePrimaryStory(StoryCharacterItem character, IReadOnlyList<StoryLinkInfo> relatedStories)
+    {
+        if (!string.IsNullOrWhiteSpace(character.UnlockStorySlug))
+        {
+            var unlockStory = relatedStories.FirstOrDefault(story =>
+                string.Equals(story.Slug, character.UnlockStorySlug, StringComparison.OrdinalIgnoreCase));
+            if (unlockStory is not null)
+            {
+                return unlockStory;
+            }
+        }
+
+        return relatedStories.FirstOrDefault();
+    }
+
+    private string? ResolveCallToActionHref(StoryLinkInfo? primaryStory)
+    {
+        if (primaryStory is null)
+        {
+            return null;
+        }
+
+        if (!IsSignedIn && !string.Equals(primaryStory.AccessLevel, "free", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"/teken-in?returnUrl={Uri.EscapeDataString(primaryStory.Path)}";
+        }
+
+        return primaryStory.Path;
+    }
+
+    private static string ResolveCharacterImagePath(string? path) =>
+        string.IsNullOrWhiteSpace(path)
+            ? "/branding/schink-logo-green.png"
+            : path;
+
+    private sealed record StoryLinkInfo(
+        string Slug,
+        string Title,
+        string Path,
+        string AccessLevel);
+
+    private sealed record CharacterCardViewModel(
+        StoryCharacterItem Character,
+        bool IsUnlocked,
+        string Heading,
+        string SummaryText,
+        string DisplayImagePath,
+        string ImageAlt,
+        IReadOnlyList<StoryLinkInfo> RelatedStories,
+        string? CallToActionHref,
+        string CallToActionLabel);
+}
