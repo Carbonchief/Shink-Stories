@@ -32,7 +32,12 @@
     <script type="application/ld+json">@ShowcaseJsonLd</script>
 </HeadContent>
 
-@if (CurrentPlaylist is null)
+@if (IsLoadingShowcase && CurrentPlaylist is null)
+{
+    <section class="playlist-showcase-loading-state" aria-live="polite" aria-busy="true">
+    </section>
+}
+else if (CurrentPlaylist is null)
 {
     <section class="playlist-showcase-empty-state">
         <h1>Ons kon nie daardie speellys kry nie.</h1>
@@ -167,6 +172,7 @@ else
     private string? SignedInEmail { get; set; }
     private LuisterAccessProfile AccessProfile { get; set; } = new(false, false);
     private bool ShowStoryAccessPopup { get; set; }
+    private bool IsLoadingShowcase { get; set; } = true;
     private string PendingLockedStoryPath { get; set; } = "/luister";
 
     private string PageTitleText =>
@@ -254,6 +260,8 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
+        IsLoadingShowcase = true;
+
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         SignedInEmail = authState.User.Identity?.IsAuthenticated == true
             ? authState.User.FindFirst(ClaimTypes.Email)?.Value ?? authState.User.Identity?.Name
@@ -265,24 +273,32 @@ else
 
         if (string.IsNullOrWhiteSpace(PlaylistSlug))
         {
+            IsLoadingShowcase = false;
             return;
         }
 
         try
         {
-            var playlists = await StoryCatalogService.GetLuisterPlaylistsAsync(SignedInEmail);
-            CurrentPlaylist = playlists.FirstOrDefault(playlist =>
-                string.Equals(playlist.Slug, PlaylistSlug, StringComparison.OrdinalIgnoreCase));
+            try
+            {
+                var playlists = await StoryCatalogService.GetLuisterPlaylistsAsync(SignedInEmail);
+                CurrentPlaylist = playlists.FirstOrDefault(playlist =>
+                    string.Equals(playlist.Slug, PlaylistSlug, StringComparison.OrdinalIgnoreCase));
 
-            CurrentPlaylistStories = CurrentPlaylist?.Stories ?? Array.Empty<StoryItem>();
+                CurrentPlaylistStories = CurrentPlaylist?.Stories ?? Array.Empty<StoryItem>();
+            }
+            catch
+            {
+                CurrentPlaylist = null;
+                CurrentPlaylistStories = Array.Empty<StoryItem>();
+            }
+
+            await LoadFavoriteStorySlugsAsync();
         }
-        catch
+        finally
         {
-            CurrentPlaylist = null;
-            CurrentPlaylistStories = Array.Empty<StoryItem>();
+            IsLoadingShowcase = false;
         }
-
-        await LoadFavoriteStorySlugsAsync();
     }
 
     private static string GetShowcasePath(string? playlistSlug) =>

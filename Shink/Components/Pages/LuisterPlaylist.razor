@@ -379,10 +379,7 @@ else
     private int CurrentTrackNumber =>
         CurrentStory is null
             ? 0
-            : GetPlaybackStories()
-                .Select((story, index) => new { story.Slug, Index = index + 1 })
-                .FirstOrDefault(entry => string.Equals(entry.Slug, CurrentStory.Slug, StringComparison.OrdinalIgnoreCase))
-                ?.Index ?? 0;
+            : GetPlaylistTrackNumber(CurrentStory.Slug);
 
     private string PlaylistCanonicalUrl =>
         NavigationManager.ToAbsoluteUri(GetPlaylistPath(CurrentPlaylist?.Slug ?? PlaylistSlug)).ToString();
@@ -453,7 +450,14 @@ else
     {
         IsLoadingPlaylist = true;
         ShowStoryAccessPopup = false;
+        IsRedirectingToOpsies = false;
         ResetPlaybackOrder();
+        CurrentPlaylist = null;
+        AccessibleStories = Array.Empty<StoryItem>();
+        CurrentStory = null;
+        AudioUrl = null;
+        PreviousStory = null;
+        NextStory = null;
 
         try
         {
@@ -949,6 +953,24 @@ else
         {
             NextStory = playbackStories[index + 1];
         }
+    }
+
+    private int GetPlaylistTrackNumber(string? storySlug)
+    {
+        if (string.IsNullOrWhiteSpace(storySlug))
+        {
+            return 0;
+        }
+
+        for (var index = 0; index < AccessibleStories.Count; index++)
+        {
+            if (string.Equals(AccessibleStories[index].Slug, storySlug, StringComparison.OrdinalIgnoreCase))
+            {
+                return index + 1;
+            }
+        }
+
+        return 0;
     }
 
     private IReadOnlyList<StoryItem> GetPlaybackStories()
