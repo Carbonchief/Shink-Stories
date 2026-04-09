@@ -7,6 +7,9 @@
 @using System.Text.Encodings.Web
 @using Microsoft.Extensions.Options
 @using Microsoft.AspNetCore.Components.Authorization
+@using SixLabors.ImageSharp.Formats.Jpeg
+@using SixLabors.ImageSharp.Formats.Webp
+@using SixLabors.ImageSharp.Processing
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IAdminManagementService AdminManagementService
 @inject IStoryMediaStorageService StoryMediaStorageService
@@ -444,8 +447,8 @@
                     <div class="admin-editor" @key="NewStoryDialogInstanceKey">
                         <p class="admin-form-note">
                             @T(
-                                "Slug, sort order, R2-audio en die thumbnail-pad word outomaties ingevul waar moontlik. As jy nie 'n thumbnail kies nie, gebruik ons die cover image.",
-                                "Slug, sort order, R2 audio, and the thumbnail path are autofilled where possible. If you do not choose a thumbnail, we use the cover image.")
+                                "Slug, sort order, R2-audio en die thumbnail-pad word outomaties ingevul waar moontlik. As jy nie 'n thumbnail kies nie, skep ons outomaties een vanaf die cover image.",
+                                "Slug, sort order, R2 audio, and the thumbnail path are autofilled where possible. If you do not choose a thumbnail, we automatically create one from the cover image.")
                         </p>
 
                         <div class="admin-form-grid">
@@ -508,7 +511,7 @@
                                                OnChange="OnNewStoryThumbnailSelected"
                                                accept=".jpg,.jpeg,.png,.webp,image/*" />
                                 </label>
-                                <p class="admin-upload-file-name">@GetSelectedFileLabel(NewStoryEditor.ThumbnailFileName, T("Gebruik cover image as jy dit leeg laat.", "Uses the cover image if left empty."))</p>
+                                <p class="admin-upload-file-name">@GetSelectedFileLabel(NewStoryEditor.ThumbnailFileName, T("As jy dit leeg laat, skep ons outomaties 'n kleiner thumbnail vanaf die cover.", "If left empty, we automatically create a smaller thumbnail from the cover."))</p>
                             </div>
 
                             <div class="admin-upload-card admin-span-2">
@@ -556,7 +559,6 @@
                 ? StoryEditor.ThumbnailPreviewDataUrl
                 : ResolvePreviewImageUrl(StoryEditor.ThumbnailImagePath);
             var carouselPreviewUrl = !string.IsNullOrWhiteSpace(thumbnailPreviewUrl) ? thumbnailPreviewUrl : coverPreviewUrl;
-            var playerPreviewUrl = !string.IsNullOrWhiteSpace(thumbnailPreviewUrl) ? thumbnailPreviewUrl : coverPreviewUrl;
 
             <MudDialog @bind-Visible="IsStoryDialogOpen"
                        Options="EditorDialogOptions">
@@ -624,7 +626,7 @@
                                                OnChange="OnStoryThumbnailSelected"
                                                accept=".jpg,.jpeg,.png,.webp,image/*" />
                                 </label>
-                                <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.ThumbnailFileName, T("Hou huidige thumbnail as jy niks kies nie.", "Keeps the current thumbnail if you do not choose a file."))</p>
+                                <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.ThumbnailFileName, T("As jy niks kies nie, skep ons 'n nuwe thumbnail van die cover wanneer die cover verander; anders hou ons die huidige thumbnail.", "If you do not choose a file, we create a new thumbnail from the cover when the cover changes; otherwise we keep the current thumbnail."))</p>
                             </div>
                             <div class="admin-upload-card">
                                 <div class="admin-upload-head">
@@ -641,7 +643,7 @@
                                 <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.AudioFileName, T("Hou huidige audio as jy niks kies nie.", "Keeps the current audio if you do not choose a file."))</p>
                             </div>
                         </div>
-                        <div class="admin-image-preview-grid admin-span-2">
+                        <div class="admin-story-edit-detail-grid admin-span-2">
                             <article class="admin-image-preview-card admin-luister-preview-card">
                                 <h4>@T("Carousel voorskou", "Carousel preview")</h4>
                                 @if (!string.IsNullOrWhiteSpace(carouselPreviewUrl))
@@ -669,58 +671,30 @@
                                     <p>@T("Geen image beskikbaar vir carousel voorskou nie.", "No image available for carousel preview.")</p>
                                 }
                             </article>
-                            <article class="admin-image-preview-card admin-luister-preview-card">
-                                <h4>@T("Speler voorskou", "Player preview")</h4>
-                                @if (!string.IsNullOrWhiteSpace(playerPreviewUrl))
-                                {
-                                    <div class="admin-luister-player" aria-hidden="true">
-                                        <div class="admin-luister-player-cover-wrap">
-                                            <img src="@playerPreviewUrl"
-                                                 class="admin-luister-player-cover"
-                                                 alt='@T("Speler voorskou beeld", "Player preview image")'
-                                                 loading="eager"
-                                                 decoding="async" />
-                                            <span class="admin-luister-cover-play" aria-hidden="true">
-                                                <i class="admin-luister-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
-                                            </span>
-                                        </div>
-                                        <h5 class="admin-luister-player-title">@StoryEditor.Title</h5>
-                                        <div class="admin-luister-player-controls">
-                                            <span class="admin-luister-control-dot"></span>
-                                            <span class="admin-luister-control-main"></span>
-                                            <span class="admin-luister-control-dot"></span>
-                                        </div>
-                                    </div>
-                                }
-                                else
-                                {
-                                    <p>@T("Geen image beskikbaar vir speler voorskou nie.", "No image available for player preview.")</p>
-                                }
-                            </article>
+                            <div class="admin-story-edit-input-stack">
+                                <MudTextField T="string"
+                                              Label='@T("Published at (local)", "Published at (local)")'
+                                              Placeholder="YYYY-MM-DDTHH:mm"
+                                              @bind-Value="StoryEditor.PublishedAtLocal"
+                                              Variant="Variant.Outlined"
+                                              Margin="Margin.Dense" />
+                                <MudCheckBox T="bool"
+                                             Label='@T("Gekenmerk", "Featured")'
+                                             @bind-Value="StoryEditor.IsFeatured" />
+                                <MudTextField T="string"
+                                              Label='@T("Opsomming", "Summary")'
+                                              @bind-Value="StoryEditor.Summary"
+                                              Variant="Variant.Outlined"
+                                              Margin="Margin.Dense"
+                                              Lines="2" />
+                                <MudTextField T="string"
+                                              Label='@T("Beskrywing", "Description")'
+                                              @bind-Value="StoryEditor.Description"
+                                              Variant="Variant.Outlined"
+                                              Margin="Margin.Dense"
+                                              Lines="4" />
+                            </div>
                         </div>
-                        <MudTextField T="string"
-                                      Label='@T("Published at (local)", "Published at (local)")'
-                                      Placeholder="YYYY-MM-DDTHH:mm"
-                                      @bind-Value="StoryEditor.PublishedAtLocal"
-                                      Variant="Variant.Outlined"
-                                      Margin="Margin.Dense" />
-                        <MudCheckBox T="bool"
-                                     Label='@T("Gekenmerk", "Featured")'
-                                     @bind-Value="StoryEditor.IsFeatured" />
-                        <MudTextField T="string"
-                                      Class="admin-span-2"
-                                      Label='@T("Opsomming", "Summary")'
-                                      @bind-Value="StoryEditor.Summary"
-                                      Variant="Variant.Outlined"
-                                      Margin="Margin.Dense"
-                                      Lines="2" />
-                        <MudTextField T="string"
-                                      Class="admin-span-2"
-                                      Label='@T("Beskrywing", "Description")'
-                                      @bind-Value="StoryEditor.Description"
-                                      Variant="Variant.Outlined"
-                                      Margin="Margin.Dense"
-                                      Lines="4" />
                     </div>
                 </DialogContent>
                 <DialogActions>
@@ -1021,6 +995,8 @@
     private HashSet<Guid> TogglingPlaylistIds { get; } = [];
     private const long MaxImageUploadBytes = 10 * 1024 * 1024;
     private const long MaxAudioUploadBytes = 256L * 1024 * 1024;
+    private const int GeneratedThumbnailMaxDimension = 640;
+    private const int GeneratedThumbnailQuality = 78;
     private static readonly DialogOptions EditorDialogOptions = new()
     {
         MaxWidth = MaxWidth.Large,
@@ -1672,6 +1648,12 @@
                 uploadedObjectKeys.Add(thumbnailUpload.ObjectKey);
                 thumbnailPath = thumbnailUpload.PublicUrl;
             }
+            else
+            {
+                var thumbnailUpload = await UploadGeneratedThumbnailAsync(generatedSlug, coverFile);
+                uploadedObjectKeys.Add(thumbnailUpload.ObjectKey);
+                thumbnailPath = thumbnailUpload.PublicUrl;
+            }
 
             var audioUpload = await UploadAudioWithFallbackAsync(
                 generatedSlug,
@@ -1770,6 +1752,12 @@
                     StoryImageKind.Thumbnail,
                     StoryEditor.ThumbnailFile,
                     EditStoryThumbnailInputId);
+                uploadedObjectKeys.Add(thumbnailUpload.ObjectKey);
+                StoryEditor.ThumbnailImagePath = thumbnailUpload.PublicUrl;
+            }
+            else if (StoryEditor.CoverFile is not null)
+            {
+                var thumbnailUpload = await UploadGeneratedThumbnailAsync(StoryEditor.Slug, StoryEditor.CoverFile);
                 uploadedObjectKeys.Add(thumbnailUpload.ObjectKey);
                 StoryEditor.ThumbnailImagePath = thumbnailUpload.PublicUrl;
             }
@@ -2386,6 +2374,77 @@
         }
     }
 
+    private async Task<UploadedStoryImage> UploadGeneratedThumbnailAsync(string slug, IBrowserFile coverFile)
+    {
+        await using var generatedThumbnail = await CreateGeneratedThumbnailAsync(coverFile);
+        generatedThumbnail.Content.Position = 0;
+
+        return await StoryMediaStorageService.UploadImageAsync(
+            slug,
+            StoryImageKind.Thumbnail,
+            generatedThumbnail.FileName,
+            generatedThumbnail.ContentType,
+            generatedThumbnail.Content);
+    }
+
+    private async Task<GeneratedThumbnailUpload> CreateGeneratedThumbnailAsync(IBrowserFile coverFile)
+    {
+        var normalizedContentType = NormalizeImageContentType(coverFile);
+        if (!IsSupportedImageContentType(normalizedContentType))
+        {
+            throw new InvalidOperationException("Unsupported cover image format for thumbnail generation.");
+        }
+
+        await using var sourceStream = coverFile.OpenReadStream(MaxImageUploadBytes);
+        using var image = await SixLabors.ImageSharp.Image.LoadAsync(sourceStream);
+        image.Mutate(operation =>
+        {
+            operation.AutoOrient();
+            operation.Resize(new ResizeOptions
+            {
+                Mode = SixLabors.ImageSharp.Processing.ResizeMode.Max,
+                Size = new SixLabors.ImageSharp.Size(GeneratedThumbnailMaxDimension, GeneratedThumbnailMaxDimension),
+                Sampler = KnownResamplers.Lanczos3
+            });
+        });
+
+        image.Metadata.ExifProfile = null;
+        image.Metadata.IccProfile = null;
+        image.Metadata.XmpProfile = null;
+
+        var output = new MemoryStream();
+        var baseFileName = Path.GetFileNameWithoutExtension(coverFile.Name);
+        if (string.IsNullOrWhiteSpace(baseFileName))
+        {
+            baseFileName = "story-thumbnail";
+        }
+
+        string fileName;
+        string contentType;
+
+        if (normalizedContentType is "image/png" or "image/webp")
+        {
+            fileName = $"{baseFileName}-thumb.webp";
+            contentType = "image/webp";
+            await image.SaveAsync(output, new WebpEncoder
+            {
+                Quality = GeneratedThumbnailQuality
+            });
+        }
+        else
+        {
+            fileName = $"{baseFileName}-thumb.jpg";
+            contentType = "image/jpeg";
+            await image.SaveAsync(output, new JpegEncoder
+            {
+                Quality = GeneratedThumbnailQuality
+            });
+        }
+
+        output.Position = 0;
+        return new GeneratedThumbnailUpload(fileName, contentType, output);
+    }
+
     private async Task<PlaylistImageUploadResult> UploadPlaylistImageAsync(
         string playlistSlug,
         PlaylistImageAssetKind kind,
@@ -2784,7 +2843,7 @@
         try
         {
             var normalizedContentType = NormalizeImageContentType(file);
-            if (normalizedContentType is not "image/jpeg" and not "image/png" and not "image/webp")
+            if (!IsSupportedImageContentType(normalizedContentType))
             {
                 return null;
             }
@@ -2805,8 +2864,11 @@
     private static bool IsSupportedImageFile(IBrowserFile file)
     {
         var normalizedContentType = NormalizeImageContentType(file);
-        return normalizedContentType is "image/jpeg" or "image/png" or "image/webp";
+        return IsSupportedImageContentType(normalizedContentType);
     }
+
+    private static bool IsSupportedImageContentType(string normalizedContentType) =>
+        normalizedContentType is "image/jpeg" or "image/png" or "image/webp";
 
     private static string CreateUniqueStorySlug(string? value, IReadOnlyList<AdminStoryRecord> existingStories)
     {
@@ -3086,6 +3148,14 @@
         string PublicPath,
         string? R2ObjectKey = null,
         string? LocalFilePath = null);
+
+    private sealed record GeneratedThumbnailUpload(
+        string FileName,
+        string ContentType,
+        MemoryStream Content) : IAsyncDisposable
+    {
+        public ValueTask DisposeAsync() => Content.DisposeAsync();
+    }
 
     private enum PlaylistImageAssetKind
     {
