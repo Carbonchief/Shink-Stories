@@ -983,6 +983,15 @@
         --story-player-viewport-reserve: 20.25rem;
     }
 
+    .story-cover-wrap {
+        overflow: hidden;
+    }
+
+    .story-cover {
+        aspect-ratio: 40 / 27;
+        object-position: center bottom;
+    }
+
     .story-audio {
         width: 100%;
     }
@@ -1010,7 +1019,18 @@
     }
 
     .story-player-controls {
+        display: grid;
+        grid-template-columns: repeat(3, auto);
+        justify-content: center;
+        align-items: center;
         gap: 0.6rem;
+    }
+
+    .story-time-row {
+        grid-column: 1 / -1;
+        order: -1;
+        justify-content: center;
+        margin-bottom: 0.15rem;
     }
 
     .story-story-prev,
@@ -1058,10 +1078,6 @@
 
     .story-nav-next {
         right: 0.45rem;
-    }
-
-    .story-fullscreen-toggle {
-        display: none;
     }
 
     .story-player-page.manual-fullscreen-focus .story-player-content {
