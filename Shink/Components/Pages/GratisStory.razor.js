@@ -1,6 +1,7 @@
 const STORY_AUDIO_SELECTOR = ".story-audio";
 const STORY_COVER_SELECTOR = ".story-cover";
 const STORY_PAGE_SELECTOR = ".story-player-page";
+const STORY_PLAYER_CONTENT_SELECTOR = ".story-player-content";
 const DEFAULT_IMAGE_PATH = "/branding/schink-logo-text.png";
 const ARTWORK_SIZES = ["96x96", "128x128", "192x192", "256x256", "384x384", "512x512"];
 const STORY_PROGRESS_PREFIX = "schink:story-progress:";
@@ -34,6 +35,8 @@ const STORY_CAROUSEL_DRAG_THRESHOLD_PX = 8;
 const STORY_CAROUSEL_CLICK_SUPPRESSION_MS = 350;
 const STORY_CAROUSEL_MOUSE_POINTER_ID = -1;
 const PENDING_FULLSCREEN_INTENT_KEY = "schink:pending-story-fullscreen-intent";
+const FULLSCREEN_CHROME_HIDDEN_CLASS = "fullscreen-controls-hidden";
+const FULLSCREEN_IDLE_TIMEOUT_MS = 2200;
 
 const boundAudios = new WeakSet();
 const fullscreenBindings = new WeakMap();
@@ -1445,6 +1448,85 @@ function applyImmersiveChromeState(storyPage) {
     const shouldUseImmersiveMode = storyPage.classList.contains("manual-fullscreen-focus");
 
     document.body.classList.toggle("story-immersive-mode", shouldUseImmersiveMode);
+
+    if (!shouldUseImmersiveMode) {
+        storyPage.classList.remove(FULLSCREEN_CHROME_HIDDEN_CLASS);
+    }
+}
+
+function clearFullscreenChromeHideTimer(binding) {
+    if (!binding || !binding.hideChromeTimeoutId) {
+        return;
+    }
+
+    window.clearTimeout(binding.hideChromeTimeoutId);
+    binding.hideChromeTimeoutId = 0;
+}
+
+function setFullscreenChromeHidden(storyPage, isHidden) {
+    if (!(storyPage instanceof HTMLElement)) {
+        return;
+    }
+
+    if (!storyPage.classList.contains("manual-fullscreen-focus")) {
+        storyPage.classList.remove(FULLSCREEN_CHROME_HIDDEN_CLASS);
+        return;
+    }
+
+    storyPage.classList.toggle(FULLSCREEN_CHROME_HIDDEN_CLASS, Boolean(isHidden));
+}
+
+function shouldKeepFullscreenChromeVisible(storyPage) {
+    if (!(storyPage instanceof HTMLElement) || !storyPage.classList.contains("manual-fullscreen-focus")) {
+        return true;
+    }
+
+    const binding = fullscreenBindings.get(storyPage);
+    if (!binding?.lastInputWasKeyboard) {
+        return false;
+    }
+
+    const activeElement = document.activeElement;
+    if (!(activeElement instanceof HTMLElement)) {
+        return false;
+    }
+
+    const fullscreenToggle = storyPage.querySelector(".story-fullscreen-toggle");
+    const favoriteToggle = storyPage.querySelector(".story-favorite-toggle");
+    const customPlayer = storyPage.querySelector(CUSTOM_PLAYER_SELECTOR);
+
+    return (fullscreenToggle instanceof HTMLElement && fullscreenToggle.contains(activeElement))
+        || (favoriteToggle instanceof HTMLElement && favoriteToggle.contains(activeElement))
+        || (customPlayer instanceof HTMLElement && customPlayer.contains(activeElement));
+}
+
+function revealFullscreenChrome(storyPage, binding, scheduleHide = true) {
+    if (!(storyPage instanceof HTMLElement) || !binding) {
+        return;
+    }
+
+    clearFullscreenChromeHideTimer(binding);
+    setFullscreenChromeHidden(storyPage, false);
+
+    if (!scheduleHide || !storyPage.classList.contains("manual-fullscreen-focus")) {
+        return;
+    }
+
+    binding.hideChromeTimeoutId = window.setTimeout(() => {
+        binding.hideChromeTimeoutId = 0;
+
+        if (!storyPage.classList.contains("manual-fullscreen-focus")) {
+            setFullscreenChromeHidden(storyPage, false);
+            return;
+        }
+
+        if (shouldKeepFullscreenChromeVisible(storyPage)) {
+            revealFullscreenChrome(storyPage, binding, true);
+            return;
+        }
+
+        setFullscreenChromeHidden(storyPage, true);
+    }, FULLSCREEN_IDLE_TIMEOUT_MS);
 }
 
 export async function setStoryPlayerFullscreenIntent(isEnabled) {
@@ -1456,6 +1538,16 @@ export async function setStoryPlayerFullscreenIntent(isEnabled) {
     const content = storyPage.querySelector(".story-player-content");
     storyPage.classList.toggle("manual-fullscreen-focus", Boolean(isEnabled));
     applyImmersiveChromeState(storyPage);
+
+    const binding = fullscreenBindings.get(storyPage);
+    if (binding) {
+        if (isEnabled) {
+            revealFullscreenChrome(storyPage, binding, true);
+        } else {
+            clearFullscreenChromeHideTimer(binding);
+            setFullscreenChromeHidden(storyPage, false);
+        }
+    }
 
     if (isEnabled) {
         if (content instanceof HTMLElement) {
@@ -1506,11 +1598,76 @@ export function initializeStoryPlayerFullscreenExperience(dotNetRef) {
         return;
     }
 
+    const content = storyPage.querySelector(STORY_PLAYER_CONTENT_SELECTOR);
+    if (!(content instanceof HTMLElement)) {
+        return;
+    }
+
     if (fullscreenBindings.has(storyPage)) {
         return;
     }
 
+    const handleUserActivity = () => {
+        const binding = fullscreenBindings.get(storyPage);
+        if (!binding) {
+            return;
+        }
+
+        binding.lastInputWasKeyboard = false;
+
+        if (!storyPage.classList.contains("manual-fullscreen-focus")) {
+            clearFullscreenChromeHideTimer(binding);
+            setFullscreenChromeHidden(storyPage, false);
+            return;
+        }
+
+        revealFullscreenChrome(storyPage, binding, true);
+    };
+
+    const handleKeyboardActivity = () => {
+        const binding = fullscreenBindings.get(storyPage);
+        if (!binding) {
+            return;
+        }
+
+        binding.lastInputWasKeyboard = true;
+
+        if (!storyPage.classList.contains("manual-fullscreen-focus")) {
+            clearFullscreenChromeHideTimer(binding);
+            setFullscreenChromeHidden(storyPage, false);
+            return;
+        }
+
+        revealFullscreenChrome(storyPage, binding, false);
+    };
+
+    const handleFocusIn = () => {
+        const binding = fullscreenBindings.get(storyPage);
+        if (!binding || !storyPage.classList.contains("manual-fullscreen-focus")) {
+            return;
+        }
+
+        revealFullscreenChrome(storyPage, binding, binding.lastInputWasKeyboard ? false : true);
+    };
+
+    const handleFocusOut = () => {
+        const binding = fullscreenBindings.get(storyPage);
+        if (!binding || !storyPage.classList.contains("manual-fullscreen-focus")) {
+            return;
+        }
+
+        window.setTimeout(() => {
+            if (!fullscreenBindings.has(storyPage) || shouldKeepFullscreenChromeVisible(storyPage)) {
+                return;
+            }
+
+            revealFullscreenChrome(storyPage, binding, true);
+        }, 0);
+    };
+
     const handleFullscreenChange = () => {
+        const binding = fullscreenBindings.get(storyPage);
+
         if (!document.fullscreenElement && storyPage.classList.contains("manual-fullscreen-focus")) {
             if (suppressFullscreenExitCallbacks > 0 || hasPendingStoryPlayerFullscreenIntent()) {
                 return;
@@ -1518,18 +1675,39 @@ export function initializeStoryPlayerFullscreenExperience(dotNetRef) {
 
             storyPage.classList.remove("manual-fullscreen-focus");
             applyImmersiveChromeState(storyPage);
+            clearFullscreenChromeHideTimer(binding);
+            setFullscreenChromeHidden(storyPage, false);
 
             if (dotNetRef && typeof dotNetRef.invokeMethodAsync === "function") {
                 dotNetRef.invokeMethodAsync("HandleFullscreenExitedFromBrowser").catch(() => {
                     // Ignore callback failures after navigation/disconnect.
                 });
             }
+        } else if (document.fullscreenElement && storyPage.classList.contains("manual-fullscreen-focus") && binding) {
+            revealFullscreenChrome(storyPage, binding, true);
         }
     };
 
+    content.addEventListener("pointermove", handleUserActivity);
+    content.addEventListener("pointerdown", handleUserActivity);
+    content.addEventListener("touchstart", handleUserActivity, { passive: true });
+    content.addEventListener("mousemove", handleUserActivity);
+    document.addEventListener("keydown", handleKeyboardActivity, true);
+    storyPage.addEventListener("focusin", handleFocusIn);
+    storyPage.addEventListener("focusout", handleFocusOut);
     document.addEventListener("fullscreenchange", handleFullscreenChange);
-    fullscreenBindings.set(storyPage, { handleFullscreenChange });
+    fullscreenBindings.set(storyPage, {
+        content,
+        handleUserActivity,
+        handleKeyboardActivity,
+        handleFocusIn,
+        handleFocusOut,
+        handleFullscreenChange,
+        hideChromeTimeoutId: 0,
+        lastInputWasKeyboard: false
+    });
     applyImmersiveChromeState(storyPage);
+    revealFullscreenChrome(storyPage, fullscreenBindings.get(storyPage), storyPage.classList.contains("manual-fullscreen-focus"));
 }
 
 export function disposeStoryPlayerFullscreenExperience() {
@@ -1537,11 +1715,23 @@ export function disposeStoryPlayerFullscreenExperience() {
     if (storyPage instanceof HTMLElement) {
         const binding = fullscreenBindings.get(storyPage);
         if (binding) {
+            if (binding.content instanceof HTMLElement) {
+                binding.content.removeEventListener("pointermove", binding.handleUserActivity);
+                binding.content.removeEventListener("pointerdown", binding.handleUserActivity);
+                binding.content.removeEventListener("touchstart", binding.handleUserActivity);
+                binding.content.removeEventListener("mousemove", binding.handleUserActivity);
+            }
+
+            document.removeEventListener("keydown", binding.handleKeyboardActivity, true);
+            storyPage.removeEventListener("focusin", binding.handleFocusIn);
+            storyPage.removeEventListener("focusout", binding.handleFocusOut);
             document.removeEventListener("fullscreenchange", binding.handleFullscreenChange);
+            clearFullscreenChromeHideTimer(binding);
             fullscreenBindings.delete(storyPage);
         }
 
         storyPage.classList.remove("manual-fullscreen-focus");
+        storyPage.classList.remove(FULLSCREEN_CHROME_HIDDEN_CLASS);
     }
 
     document.body.classList.remove("story-immersive-mode");

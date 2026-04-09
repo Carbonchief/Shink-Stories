@@ -109,54 +109,56 @@ else
                            step="0.1"
                            value="0"
                            aria-label="Storie vordering" />
-                    <div class="story-time-row">
-                        <span class="story-time-current">0:00</span>
-                        <span class="story-time-total">0:00</span>
+                </div>
+
+                <div class="story-control-bar">
+                    <div class="story-player-controls">
+                        <button type="button"
+                                class="story-control-btn story-story-prev"
+                                aria-label="@(PreviousStory is null ? "Geen vorige storie beskikbaar" : $"Vorige storie: {PreviousStory.Title}")"
+                                title="@(PreviousStory is null ? "Geen vorige storie beskikbaar" : "Vorige storie")"
+                                disabled="@(PreviousStory is null)">
+                            <i class="fa-solid fa-backward-step" aria-hidden="true"></i>
+                            <span class="sr-only">Vorige storie</span>
+                        </button>
+                        <button type="button" class="story-control-btn story-play-toggle" aria-label="Speel storie" title="Speel/Pouse">
+                            <i class="story-play-icon fa-solid fa-play" aria-hidden="true"></i>
+                            <span class="sr-only">Speel storie</span>
+                        </button>
+                        <button type="button"
+                                class="story-control-btn story-story-next"
+                                aria-label="@(NextStory is null ? "Geen volgende storie beskikbaar" : $"Volgende storie: {NextStory.Title}")"
+                                title="@(NextStory is null ? "Geen volgende storie beskikbaar" : "Volgende storie")"
+                                disabled="@(NextStory is null)">
+                            <i class="fa-solid fa-forward-step" aria-hidden="true"></i>
+                            <span class="sr-only">Volgende storie</span>
+                        </button>
+                        <div class="story-time-row">
+                            <span class="story-time-current">0:00</span>
+                            <span class="story-time-total">0:00</span>
+                        </div>
                     </div>
-                </div>
 
-                <div class="story-player-controls">
-                    <button type="button"
-                            class="story-control-btn story-story-prev"
-                            aria-label="@(PreviousStory is null ? "Geen vorige storie beskikbaar" : $"Vorige storie: {PreviousStory.Title}")"
-                            title="@(PreviousStory is null ? "Geen vorige storie beskikbaar" : "Vorige storie")"
-                            disabled="@(PreviousStory is null)">
-                        <i class="fa-solid fa-backward-step" aria-hidden="true"></i>
-                        <span class="sr-only">Vorige storie</span>
-                    </button>
-                    <button type="button" class="story-control-btn story-play-toggle" aria-label="Speel storie" title="Speel/Pouse">
-                        <i class="story-play-icon fa-solid fa-play" aria-hidden="true"></i>
-                        <span class="sr-only">Speel storie</span>
-                    </button>
-                    <button type="button"
-                            class="story-control-btn story-story-next"
-                            aria-label="@(NextStory is null ? "Geen volgende storie beskikbaar" : $"Volgende storie: {NextStory.Title}")"
-                            title="@(NextStory is null ? "Geen volgende storie beskikbaar" : "Volgende storie")"
-                            disabled="@(NextStory is null)">
-                        <i class="fa-solid fa-forward-step" aria-hidden="true"></i>
-                        <span class="sr-only">Volgende storie</span>
-                    </button>
-                </div>
-
-                <div class="story-secondary-controls">
-                    <button type="button" class="story-mini-btn story-mute-toggle" aria-label="Demp klank" title="Demp/ontdemp">
-                        <i class="story-mute-icon fa-solid fa-volume-high" aria-hidden="true"></i>
-                        <span class="sr-only">Demp klank</span>
-                    </button>
-                    <input class="story-volume-slider"
-                           type="range"
-                           min="0"
-                           max="1"
-                           step="0.01"
-                           value="1"
-                           aria-label="Volume" />
-                    <button type="button" class="story-mini-btn story-speed-toggle" aria-label="Verander spoed" title="Spoed">
-                        <span class="story-speed-label">1.0x</span>
-                    </button>
-                    <button type="button" class="story-mini-btn story-share-toggle" aria-label="Deel storie" title="Deel storie">
-                        <i class="fa-solid fa-share-nodes" aria-hidden="true"></i>
-                        <span class="sr-only">Deel storie</span>
-                    </button>
+                    <div class="story-secondary-controls">
+                        <button type="button" class="story-mini-btn story-mute-toggle" aria-label="Demp klank" title="Demp/ontdemp">
+                            <i class="story-mute-icon fa-solid fa-volume-high" aria-hidden="true"></i>
+                            <span class="sr-only">Demp klank</span>
+                        </button>
+                        <input class="story-volume-slider"
+                               type="range"
+                               min="0"
+                               max="1"
+                               step="0.01"
+                               value="1"
+                               aria-label="Volume" />
+                        <button type="button" class="story-mini-btn story-speed-toggle" aria-label="Verander spoed" title="Spoed">
+                            <span class="story-speed-label">1.0x</span>
+                        </button>
+                        <button type="button" class="story-mini-btn story-share-toggle" aria-label="Deel storie" title="Deel storie">
+                            <i class="fa-solid fa-share-nodes" aria-hidden="true"></i>
+                            <span class="sr-only">Deel storie</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
