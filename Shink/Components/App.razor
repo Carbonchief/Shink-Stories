@@ -243,9 +243,13 @@
                     return;
                 }
 
+                var blazorRuntimeSource = supportResult && supportResult.useLegacyBlazorRuntime
+                    ? "/_framework/bit.blazor.web.es2019.js?v=20260409-2"
+                    : "/_framework/blazor.web.js?v=20260409-2";
+
                 loadScript("_content/MudBlazor/MudBlazor.min.js")
                     .then(function () {
-                        return loadScript("/_framework/bit.blazor.web.es2019.js?v=20260409-1");
+                        return loadScript(blazorRuntimeSource);
                     })
                     .then(function () {
                         finishSupportCheck();
