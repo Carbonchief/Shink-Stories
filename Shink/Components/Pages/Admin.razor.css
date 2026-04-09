@@ -225,6 +225,13 @@
     margin-top: 0.65rem;
 }
 
+.admin-dialog-tabs ::deep .mud-tab.mud-tab-active,
+.admin-dialog-tabs ::deep .mud-tab[aria-selected="true"] {
+    background: transparent !important;
+    color: var(--admin-text) !important;
+    -webkit-text-fill-color: var(--admin-text) !important;
+}
+
 .admin-section {
     display: grid;
     gap: 0.75rem;
@@ -488,6 +495,13 @@
     gap: 0.55rem;
 }
 
+.admin-story-edit-detail-grid {
+    display: grid;
+    grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+    gap: 0.75rem;
+    align-items: start;
+}
+
 .admin-image-preview-card {
     border: 1px solid var(--admin-border);
     border-radius: 10px;
@@ -586,56 +600,9 @@
     padding-left: 0.16rem;
 }
 
-.admin-luister-player {
-    width: min(100%, 420px);
+.admin-story-edit-input-stack {
     display: grid;
-    gap: 0.7rem;
-}
-
-.admin-luister-player-cover-wrap {
-    position: relative;
-    width: 100%;
-}
-
-.admin-luister-player-cover {
-    width: 100%;
-    aspect-ratio: 1 / 1;
-    object-fit: cover;
-    display: block;
-    border-radius: 22px;
-    box-shadow: 0 16px 32px rgba(63, 56, 45, 0.16);
-}
-
-.admin-luister-player-title {
-    margin: 0;
-    text-align: center;
-    color: #eaf1f8;
-    font-size: clamp(1.2rem, 2.4vw, 1.6rem);
-    line-height: 1.1;
-}
-
-.admin-luister-player-controls {
-    width: min(100%, 260px);
-    margin-inline: auto;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.8rem;
-}
-
-.admin-luister-control-dot {
-    width: 42px;
-    height: 42px;
-    border-radius: 50%;
-    background: rgba(234, 241, 248, 0.14);
-}
-
-.admin-luister-control-main {
-    width: 64px;
-    height: 64px;
-    border-radius: 50%;
-    background: #1f1f1f;
-    box-shadow: 0 12px 22px rgba(31, 31, 31, 0.2);
+    gap: 0.55rem;
 }
 
 .admin-checkbox {
@@ -836,8 +803,11 @@
         grid-template-columns: 1fr;
     }
 
-    .admin-luister-carousel-item,
-    .admin-luister-player {
+    .admin-story-edit-detail-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-luister-carousel-item {
         width: 100%;
     }
 
