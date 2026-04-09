@@ -408,6 +408,34 @@
         width: min(100% - 1rem, 100%);
     }
 
+    .characters-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.8rem;
+    }
+
+    .character-card-body {
+        gap: 0.6rem;
+        padding: 0.85rem;
+        align-items: center;
+        text-align: center;
+    }
+
+    .character-card-body h2 {
+        font-size: 1.05rem;
+    }
+
+    .character-card-summary {
+        font-size: 0.9rem;
+        line-height: 1.45;
+    }
+
+    .character-card-profile-btn,
+    .character-card-cta {
+        width: 100%;
+        padding-inline: 0.8rem;
+        font-size: 0.92rem;
+    }
+
     .characters-summary-card {
         border-radius: 18px;
     }
