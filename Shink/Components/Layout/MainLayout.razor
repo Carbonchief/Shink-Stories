@@ -69,21 +69,6 @@
                                     <div class="site-search-suggestions-list" data-search-suggestions-list></div>
                                 </section>
                             </form>
-                            <button type="button" class="nav-menu-toggle" data-nav-menu-toggle
-                                    aria-controls="main-site-nav" aria-expanded="false"
-                                    aria-label="Maak navigasie oop"
-                                    title="Maak navigasie oop">
-                                <i class="fa-solid fa-bars" aria-hidden="true"></i>
-                                <span class="sr-only" data-nav-menu-toggle-label>Maak navigasie oop</span>
-                            </button>
-                            <nav id="main-site-nav"
-                                 class="site-nav"
-                                 aria-label="Hoofnavigasie">
-                                <NavLink href="/meer-oor-ons">Meer oor Ons</NavLink>
-                                <NavLink href="/gratis">Gratis stories</NavLink>
-                                <NavLink href="/luister">Alle stories</NavLink>
-                                <NavLink href="/opsies">Opsies</NavLink>
-                            </nav>
                             <div class="account-menu" data-account-menu-root>
                                 @{
                                     var profileImageUrl = ResolveProfileImageUrl(authState.User);
@@ -131,6 +116,19 @@
                                     </a>
                                 </section>
                             </div>
+                            <button type="button" class="nav-menu-toggle" data-nav-menu-toggle
+                                    aria-controls="main-site-nav" aria-expanded="false"
+                                    aria-label="Maak navigasie oop"
+                                    title="Maak navigasie oop">
+                                <i class="fa-solid fa-bars" aria-hidden="true"></i>
+                                <span class="sr-only" data-nav-menu-toggle-label>Maak navigasie oop</span>
+                            </button>
+                            <nav id="main-site-nav"
+                                 class="site-nav"
+                                 aria-label="Hoofnavigasie">
+                                <NavLink href="/meer-oor-ons">Meer oor Ons</NavLink>
+                                <NavLink href="/luister">Alle stories</NavLink>
+                            </nav>
                         </div>
                     </Authorized>
                     <NotAuthorized>
@@ -165,6 +163,21 @@
                                 </section>
                             </form>
                             <a class="header-signin-btn" href="@LoginHref">Teken in</a>
+                            <button type="button" class="nav-menu-toggle" data-nav-menu-toggle
+                                    aria-controls="main-site-nav" aria-expanded="false"
+                                    aria-label="Maak navigasie oop"
+                                    title="Maak navigasie oop">
+                                <i class="fa-solid fa-bars" aria-hidden="true"></i>
+                                <span class="sr-only" data-nav-menu-toggle-label>Maak navigasie oop</span>
+                            </button>
+                            <nav id="main-site-nav"
+                                 class="site-nav"
+                                 aria-label="Hoofnavigasie">
+                                <NavLink href="/meer-oor-ons">Meer oor Ons</NavLink>
+                                <NavLink href="/gratis">Gratis stories</NavLink>
+                                <NavLink href="/luister">Alle stories</NavLink>
+                                <NavLink href="/opsies">Opsies</NavLink>
+                            </nav>
                         </div>
                     </NotAuthorized>
                 </AuthorizeView>
