@@ -99,7 +99,9 @@ else
             <h2 id="@headingId">
                 @if (canOpenPlaylist)
                 {
-                    <a class="luister-playlist-link" href="@GetPlaylistHref(playlistSlug)">@playlistTitle</a>
+                    <a class="luister-playlist-link"
+                       href="@GetPlaylistHref(playlistSlug)"
+                       data-enhance-nav="false">@playlistTitle</a>
                 }
                 else
                 {
@@ -125,6 +127,7 @@ else
                                 {
                                     <a class="story-carousel-link"
                                        href="@GetStoryHref(story.Slug)"
+                                       data-enhance-nav="false"
                                        draggable="false"
                                        aria-label="Luister na @storyTitle">
                                         <span class="story-carousel-cover">
@@ -524,13 +527,8 @@ else
             .ToArray();
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override async Task OnAfterRenderAsync(bool _)
     {
-        if (!firstRender)
-        {
-            return;
-        }
-
         var module = await TryGetLuisterModuleAsync();
         if (module is null)
         {

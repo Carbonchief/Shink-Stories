@@ -32,6 +32,7 @@ const STORY_CAROUSEL_SELECTOR = ".story-carousel";
 const STORY_CAROUSEL_DRAGGING_CLASS = "is-dragging";
 const STORY_CAROUSEL_DRAG_THRESHOLD_PX = 8;
 const STORY_CAROUSEL_CLICK_SUPPRESSION_MS = 350;
+const STORY_CAROUSEL_MOUSE_POINTER_ID = -1;
 const PENDING_FULLSCREEN_INTENT_KEY = "schink:pending-story-fullscreen-intent";
 
 const boundAudios = new WeakSet();
@@ -1266,13 +1267,11 @@ function wireStoryCarouselDrag(carouselElement) {
     };
 
     carouselElement.addEventListener("pointerdown", (event) => {
-        if (!event.isPrimary || (event.pointerType === "mouse" && event.button !== 0)) {
+        if (event.pointerType === "mouse") {
             return;
         }
 
-        if (event.pointerType === "mouse") {
-            event.preventDefault();
-        }
+        event.preventDefault();
         dragState.pointerId = event.pointerId;
         dragState.startX = event.clientX;
         dragState.startY = event.clientY;
@@ -1309,13 +1308,13 @@ function wireStoryCarouselDrag(carouselElement) {
         carouselElement.scrollLeft = dragState.startScrollLeft - deltaX;
     }, { passive: false });
 
-    const finishDrag = (event) => {
-        if (!dragState.isPointerDown || event.pointerId !== dragState.pointerId) {
+    const finishDrag = (clientX) => {
+        if (!dragState.isPointerDown) {
             return;
         }
 
         const draggedFarEnough = dragState.isDragging &&
-            Math.abs(event.clientX - dragState.startX) >= STORY_CAROUSEL_DRAG_THRESHOLD_PX;
+            Math.abs(clientX - dragState.startX) >= STORY_CAROUSEL_DRAG_THRESHOLD_PX;
 
         resetDragState();
 
@@ -1324,9 +1323,71 @@ function wireStoryCarouselDrag(carouselElement) {
         }
     };
 
-    carouselElement.addEventListener("pointerup", finishDrag);
-    carouselElement.addEventListener("pointercancel", finishDrag);
+    carouselElement.addEventListener("pointerup", (event) => {
+        if (event.pointerId !== dragState.pointerId) {
+            return;
+        }
+
+        finishDrag(event.clientX);
+    });
+    carouselElement.addEventListener("pointercancel", (event) => {
+        if (event.pointerId !== dragState.pointerId) {
+            return;
+        }
+
+        finishDrag(event.clientX);
+    });
     carouselElement.addEventListener("lostpointercapture", resetDragState);
+
+    carouselElement.addEventListener("mousedown", (event) => {
+        if (event.button !== 0) {
+            return;
+        }
+
+        event.preventDefault();
+        dragState.pointerId = STORY_CAROUSEL_MOUSE_POINTER_ID;
+        dragState.startX = event.clientX;
+        dragState.startY = event.clientY;
+        dragState.startScrollLeft = carouselElement.scrollLeft;
+        dragState.isPointerDown = true;
+        dragState.isDragging = false;
+    });
+
+    window.addEventListener("mousemove", (event) => {
+        if (!dragState.isPointerDown || dragState.pointerId !== STORY_CAROUSEL_MOUSE_POINTER_ID) {
+            return;
+        }
+
+        const deltaX = event.clientX - dragState.startX;
+        const deltaY = event.clientY - dragState.startY;
+
+        if (!dragState.isDragging) {
+            if (Math.abs(deltaX) < STORY_CAROUSEL_DRAG_THRESHOLD_PX &&
+                Math.abs(deltaY) < STORY_CAROUSEL_DRAG_THRESHOLD_PX) {
+                return;
+            }
+
+            if (Math.abs(deltaY) > Math.abs(deltaX)) {
+                resetDragState();
+                return;
+            }
+
+            dragState.isDragging = true;
+            carouselElement.classList.add(STORY_CAROUSEL_DRAGGING_CLASS);
+        }
+
+        event.preventDefault();
+        carouselElement.scrollLeft = dragState.startScrollLeft - deltaX;
+    });
+
+    window.addEventListener("mouseup", (event) => {
+        if (!dragState.isPointerDown || dragState.pointerId !== STORY_CAROUSEL_MOUSE_POINTER_ID || event.button !== 0) {
+            return;
+        }
+
+        finishDrag(event.clientX);
+    });
+    window.addEventListener("blur", resetDragState);
 
     carouselElement.addEventListener("click", (event) => {
         if (Date.now() > dragState.suppressClickUntil) {
