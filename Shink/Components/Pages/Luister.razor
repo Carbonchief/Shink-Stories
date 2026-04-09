@@ -1,5 +1,5 @@
 @page "/luister"
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using System.Security.Claims
 @using System.Text.Json
 @using Microsoft.AspNetCore.Components
@@ -72,6 +72,11 @@
     </section>
 }
 else if (IsLoadingPage)
+{
+    <section class="luister-loading-state" aria-live="polite" aria-busy="true">
+    </section>
+}
+else if (!AllowEmptyState && (LuisterPlaylists.Count == 0 || FilteredLuisterPlaylists.Count == 0))
 {
     <section class="luister-loading-state" aria-live="polite" aria-busy="true">
     </section>
@@ -207,7 +212,9 @@ else
     private string? PageLoadErrorMessage { get; set; }
     private bool ShowStoryAccessPopup { get; set; }
     private bool IsLoadingPage { get; set; } = true;
+    private bool AllowEmptyState { get; set; }
     private string PendingLockedStoryPath { get; set; } = "/luister";
+    private CancellationTokenSource? _emptyStateDelayCts;
 
     private string LuisterCanonicalUrl => NavigationManager.ToAbsoluteUri("/luister").ToString();
     private bool IsSignedIn => !string.IsNullOrWhiteSpace(SignedInEmail);
@@ -274,7 +281,40 @@ else
         finally
         {
             IsLoadingPage = false;
+            await UpdateEmptyStateVisibilityAsync();
         }
+    }
+
+    private async Task UpdateEmptyStateVisibilityAsync()
+    {
+        CancelEmptyStateDelay();
+        AllowEmptyState = false;
+
+        if (!string.IsNullOrWhiteSpace(PageLoadErrorMessage) ||
+            (LuisterPlaylists.Count > 0 && FilteredLuisterPlaylists.Count > 0))
+        {
+            return;
+        }
+
+        var delayCts = new CancellationTokenSource();
+        _emptyStateDelayCts = delayCts;
+
+        try
+        {
+            await Task.Delay(450, delayCts.Token);
+            AllowEmptyState = true;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private void CancelEmptyStateDelay()
+    {
+        _emptyStateDelayCts?.Cancel();
+        _emptyStateDelayCts?.Dispose();
+        _emptyStateDelayCts = null;
     }
 
     private static string GetStoryHref(string? slug) =>
@@ -597,6 +637,7 @@ else
 
     public async ValueTask DisposeAsync()
     {
+        CancelEmptyStateDelay();
         _searchDebounceCts?.Cancel();
         _searchDebounceCts?.Dispose();
 

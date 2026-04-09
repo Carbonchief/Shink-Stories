@@ -1,5 +1,5 @@
 @page "/luister/speellys/{PlaylistSlug}"
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using System.Security.Claims
 @using System.Text.Json
 @using Microsoft.AspNetCore.WebUtilities
@@ -42,6 +42,11 @@
     </section>
 }
 else if (IsLoadingPlaylist && CurrentPlaylist is null)
+{
+    <section class="playlist-loading-state" aria-live="polite" aria-busy="true">
+    </section>
+}
+else if (!AllowEmptyState && (CurrentPlaylist is null || CurrentStory is null || AccessibleStories.Count == 0))
 {
     <section class="playlist-loading-state" aria-live="polite" aria-busy="true">
     </section>
@@ -350,6 +355,7 @@ else
     private bool IsManualFullscreenFocus { get; set; }
     private bool IsRedirectingToOpsies { get; set; }
     private bool IsLoadingPlaylist { get; set; } = true;
+    private bool AllowEmptyState { get; set; }
     private bool AutoplayEnabled { get; set; } = true;
     private bool ShuffleEnabled { get; set; }
     private bool PendingTrackAutoplay { get; set; }
@@ -361,6 +367,7 @@ else
     private string? SignedInEmail { get; set; }
     private bool ShowStoryAccessPopup { get; set; }
     private string PendingLockedStoryPath { get; set; } = "/luister";
+    private CancellationTokenSource? _emptyStateDelayCts;
 
     private string PageTitleText =>
         CurrentPlaylist is null ? "Speellys nie gevind nie" : $"{CurrentPlaylist.Title} | Schink Stories";
@@ -449,6 +456,8 @@ else
     protected override async Task OnParametersSetAsync()
     {
         IsLoadingPlaylist = true;
+        CancelEmptyStateDelay();
+        AllowEmptyState = false;
         ShowStoryAccessPopup = false;
         IsRedirectingToOpsies = false;
         ResetPlaybackOrder();
@@ -563,7 +572,39 @@ else
         finally
         {
             IsLoadingPlaylist = false;
+            await UpdateEmptyStateVisibilityAsync();
         }
+    }
+
+    private async Task UpdateEmptyStateVisibilityAsync()
+    {
+        CancelEmptyStateDelay();
+        AllowEmptyState = false;
+
+        if (IsRedirectingToOpsies || (CurrentPlaylist is not null && CurrentStory is not null && AccessibleStories.Count > 0))
+        {
+            return;
+        }
+
+        var delayCts = new CancellationTokenSource();
+        _emptyStateDelayCts = delayCts;
+
+        try
+        {
+            await Task.Delay(450, delayCts.Token);
+            AllowEmptyState = true;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private void CancelEmptyStateDelay()
+    {
+        _emptyStateDelayCts?.Cancel();
+        _emptyStateDelayCts?.Dispose();
+        _emptyStateDelayCts = null;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -856,6 +897,8 @@ else
 
     public async ValueTask DisposeAsync()
     {
+        CancelEmptyStateDelay();
+
         try
         {
             if (_mediaSessionModule is not null)

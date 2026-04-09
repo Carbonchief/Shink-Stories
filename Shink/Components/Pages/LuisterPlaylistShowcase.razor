@@ -1,5 +1,5 @@
 @page "/luister/speellys/{PlaylistSlug}/stories"
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using System.Security.Claims
 @using System.Text.Json
 @using Microsoft.AspNetCore.Components
@@ -33,6 +33,11 @@
 </HeadContent>
 
 @if (IsLoadingShowcase && CurrentPlaylist is null)
+{
+    <section class="playlist-showcase-loading-state" aria-live="polite" aria-busy="true">
+    </section>
+}
+else if (!AllowEmptyState && (CurrentPlaylist is null || CurrentPlaylistStories.Count == 0))
 {
     <section class="playlist-showcase-loading-state" aria-live="polite" aria-busy="true">
     </section>
@@ -173,7 +178,9 @@ else
     private LuisterAccessProfile AccessProfile { get; set; } = new(false, false);
     private bool ShowStoryAccessPopup { get; set; }
     private bool IsLoadingShowcase { get; set; } = true;
+    private bool AllowEmptyState { get; set; }
     private string PendingLockedStoryPath { get; set; } = "/luister";
+    private CancellationTokenSource? _emptyStateDelayCts;
 
     private string PageTitleText =>
         CurrentPlaylist is null
@@ -261,6 +268,8 @@ else
     protected override async Task OnParametersSetAsync()
     {
         IsLoadingShowcase = true;
+        CancelEmptyStateDelay();
+        AllowEmptyState = false;
 
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         SignedInEmail = authState.User.Identity?.IsAuthenticated == true
@@ -298,7 +307,39 @@ else
         finally
         {
             IsLoadingShowcase = false;
+            await UpdateEmptyStateVisibilityAsync();
         }
+    }
+
+    private async Task UpdateEmptyStateVisibilityAsync()
+    {
+        CancelEmptyStateDelay();
+        AllowEmptyState = false;
+
+        if (CurrentPlaylist is not null && CurrentPlaylistStories.Count > 0)
+        {
+            return;
+        }
+
+        var delayCts = new CancellationTokenSource();
+        _emptyStateDelayCts = delayCts;
+
+        try
+        {
+            await Task.Delay(450, delayCts.Token);
+            AllowEmptyState = true;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private void CancelEmptyStateDelay()
+    {
+        _emptyStateDelayCts?.Cancel();
+        _emptyStateDelayCts?.Dispose();
+        _emptyStateDelayCts = null;
     }
 
     private static string GetShowcasePath(string? playlistSlug) =>
@@ -505,6 +546,8 @@ else
 
     public async ValueTask DisposeAsync()
     {
+        CancelEmptyStateDelay();
+
         if (_showcaseModule is null)
         {
             return;
