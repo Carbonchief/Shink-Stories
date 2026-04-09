@@ -97,19 +97,62 @@ else
 
         <div class="playlist-showcase-body">
             <section class="playlist-showcase-intro" aria-label="Speellys oorsig">
-                <h2>@CurrentPlaylist.Title</h2>
+                <p class="playlist-showcase-intro-count">@StoryCountLabel</p>
                 @if (!string.IsNullOrWhiteSpace(CurrentPlaylist.Description))
                 {
-                    <p>@CurrentPlaylist.Description</p>
+                    <p class="playlist-showcase-intro-description">@CurrentPlaylist.Description</p>
                 }
             </section>
+
+            @if (ShowcaseStory is not null)
+            {
+                <section class="playlist-showcase-feature" aria-label="Showcase storie">
+                    <article class="playlist-showcase-feature-card">
+                        <div class="playlist-showcase-feature-shell">
+                            <a class="playlist-showcase-feature-link"
+                               href="@BuildStoryHref(ShowcaseStory)"
+                               @onclick="() => HandleStoryCardClickAsync(ShowcaseStory)"
+                               @onclick:preventDefault="true"
+                               aria-label="Luister na @ShowcaseStory.Title">
+                                <span class="playlist-showcase-feature-cover">
+                                    <img class="playlist-showcase-feature-image"
+                                         src="@ShowcaseStory.ThumbnailPath"
+                                         srcset="@($"{ShowcaseStory.ThumbnailPath} 640w, {ShowcaseStory.ImagePath} 1024w")"
+                                         sizes="(max-width: 720px) 88vw, 420px"
+                                         alt="Voorblad van @ShowcaseStory.Title"
+                                         width="640"
+                                         height="485"
+                                         loading="eager"
+                                         decoding="async" />
+                                    <span class="playlist-showcase-feature-play" aria-hidden="true">
+                                        <i class="playlist-showcase-feature-play-icon fa-solid fa-play" aria-hidden="true"></i>
+                                    </span>
+                                </span>
+                                <span class="playlist-showcase-feature-copy">
+                                    <span class="playlist-showcase-feature-title">@ShowcaseStory.Title</span>
+                                    <span class="playlist-showcase-feature-description">@ShowcaseStory.Description</span>
+                                </span>
+                            </a>
+                            <button type="button"
+                                    class="story-favorite-toggle @(IsStoryFavorite(ShowcaseStory.Slug) ? "is-favorite" : null)"
+                                    @onclick="() => ToggleStoryFavoriteAsync(ShowcaseStory)"
+                                    aria-label="@(IsStoryFavorite(ShowcaseStory.Slug) ? $"Verwyder {ShowcaseStory.Title} uit jou gunstelinge" : $"Voeg {ShowcaseStory.Title} by jou gunstelinge")"
+                                    title="@(IsStoryFavorite(ShowcaseStory.Slug) ? "Verwyder uit gunstelinge" : "Voeg by gunstelinge")"
+                                    aria-pressed="@IsStoryFavorite(ShowcaseStory.Slug)"
+                                    disabled="@IsFavoriteBusy(ShowcaseStory.Slug)">
+                                <i class="fa-@(IsStoryFavorite(ShowcaseStory.Slug) ? "solid" : "regular") fa-heart" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                    </article>
+                </section>
+            }
 
             <section class="playlist-showcase-stories" aria-labelledby="playlist-showcase-stories-heading">
                 <h2 id="playlist-showcase-stories-heading">Stories in hierdie speellys</h2>
                 <div id="playlist-showcase-grid" class="playlist-showcase-grid" role="list">
                     @foreach (var story in CurrentPlaylistStories)
                     {
-                        var isHighlighted = string.Equals(story.Slug, HighlightStorySlug, StringComparison.OrdinalIgnoreCase);
+                        var isHighlighted = string.Equals(story.Slug, EffectiveHighlightStorySlug, StringComparison.OrdinalIgnoreCase);
 
                         <article class="playlist-showcase-card @(isHighlighted ? "is-highlighted" : null)" role="listitem">
                             <div class="playlist-showcase-card-shell">
@@ -186,11 +229,20 @@ else
         CurrentPlaylist is null
             ? "Speellys nie gevind nie"
             : $"{CurrentPlaylist.Title} stories | Schink Stories";
+    private string StoryCountLabel =>
+        CurrentPlaylistStories.Count == 1
+            ? "1 Storie om te Luister"
+            : $"{CurrentPlaylistStories.Count} Stories om te Luister";
 
     private string ShowcaseCanonicalUrl =>
         NavigationManager.ToAbsoluteUri(GetShowcasePath(CurrentPlaylist?.Slug ?? PlaylistSlug)).ToString();
     private string StoriesAnchorHref =>
         $"{NavigationManager.ToAbsoluteUri(GetShowcasePath(CurrentPlaylist?.Slug ?? PlaylistSlug)).ToString()}#playlist-showcase-grid";
+    private string? EffectiveHighlightStorySlug =>
+        !string.IsNullOrWhiteSpace(HighlightStorySlug)
+            ? HighlightStorySlug
+            : CurrentPlaylist?.ShowcaseStorySlug;
+    private StoryItem? ShowcaseStory => CurrentPlaylist?.ShowcaseStory;
     private bool IsSignedIn => !string.IsNullOrWhiteSpace(SignedInEmail);
     private string StoryAccessPopupPrimaryHref =>
         IsSignedIn

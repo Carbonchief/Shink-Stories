@@ -879,6 +879,7 @@
                                             <MudTh>#</MudTh>
                                             <MudTh>@T("Titel", "Title")</MudTh>
                                             <MudTh>Slug</MudTh>
+                                            <MudTh Class="admin-col-center">@T("Showcase", "Showcase")</MudTh>
                                             <MudTh>@T("Aksies", "Actions")</MudTh>
                                         </HeaderContent>
                                         <RowTemplate>
@@ -888,6 +889,13 @@
                                             <MudTd DataLabel="#">@context.SortOrder</MudTd>
                                             <MudTd DataLabel='@T("Titel", "Title")'>@context.StoryTitle</MudTd>
                                             <MudTd DataLabel="Slug">@context.StorySlug</MudTd>
+                                            <MudTd Class="admin-col-center" DataLabel='@T("Showcase", "Showcase")'>
+                                                <div class="admin-toggle-cell" @onclick:stopPropagation="true">
+                                                    <MudCheckBox T="bool"
+                                                                 Value="@context.IsShowcase"
+                                                                 ValueChanged="@(value => TogglePlaylistStoryShowcase(context.StoryId, value))" />
+                                                </div>
+                                            </MudTd>
                                             <MudTd DataLabel='@T("Aksies", "Actions")'>
                                                 <div class="admin-playlist-actions">
                                                     <button type="button"
@@ -1267,6 +1275,7 @@
                 .OrderBy(story => story.SortOrder)
                 .Select(EditablePlaylistStoryItem.From)
                 .ToList();
+            EnsurePlaylistShowcaseSelection();
             ReindexPlaylistStories();
         }
         catch (Exception exception)
@@ -2124,8 +2133,10 @@
         {
             StoryId = story.StoryId,
             StorySlug = story.Slug,
-            StoryTitle = story.Title
+            StoryTitle = story.Title,
+            IsShowcase = false
         });
+        EnsurePlaylistShowcaseSelection();
         ReindexPlaylistStories();
         StoryToAddIdString = string.Empty;
     }
@@ -2161,6 +2172,7 @@
         }
 
         PlaylistStoryEditor.RemoveAt(index);
+        EnsurePlaylistShowcaseSelection();
         ReindexPlaylistStories();
     }
 
@@ -2185,8 +2197,11 @@
 
         try
         {
-            var storyIds = PlaylistStoryEditor.Select(item => item.StoryId).ToArray();
-            var result = await AdminManagementService.SavePlaylistStoriesAsync(CurrentAdminEmail, playlistId, storyIds);
+            EnsurePlaylistShowcaseSelection();
+            var storyItems = PlaylistStoryEditor
+                .Select(item => new AdminPlaylistStorySaveItem(item.StoryId, item.IsShowcase))
+                .ToArray();
+            var result = await AdminManagementService.SavePlaylistStoriesAsync(CurrentAdminEmail, playlistId, storyItems);
 
             if (!HandleOperationResult(result, T("Playlist stories is gestoor.", "Playlist stories saved.")))
             {
@@ -2237,6 +2252,55 @@
         for (var index = 0; index < PlaylistStoryEditor.Count; index++)
         {
             PlaylistStoryEditor[index].SortOrder = index + 1;
+        }
+    }
+
+    private void EnsurePlaylistShowcaseSelection()
+    {
+        if (PlaylistEditor?.IsSystemPlaylist == true || PlaylistStoryEditor.Count == 0)
+        {
+            foreach (var story in PlaylistStoryEditor)
+            {
+                story.IsShowcase = false;
+            }
+
+            return;
+        }
+
+        var selectedStory = PlaylistStoryEditor.FirstOrDefault(story => story.IsShowcase);
+        if (selectedStory is null)
+        {
+            return;
+        }
+
+        foreach (var story in PlaylistStoryEditor)
+        {
+            story.IsShowcase = story.StoryId == selectedStory.StoryId;
+        }
+    }
+
+    private void TogglePlaylistStoryShowcase(Guid storyId, bool isShowcase)
+    {
+        if (PlaylistEditor?.IsSystemPlaylist == true)
+        {
+            return;
+        }
+
+        var selectedStory = PlaylistStoryEditor.FirstOrDefault(item => item.StoryId == storyId);
+        if (selectedStory is null)
+        {
+            return;
+        }
+
+        if (!isShowcase)
+        {
+            selectedStory.IsShowcase = false;
+            return;
+        }
+
+        foreach (var story in PlaylistStoryEditor)
+        {
+            story.IsShowcase = story.StoryId == storyId;
         }
     }
 
@@ -2677,6 +2741,7 @@
             "Kies asseblief 'n geldige playlist." => "Please select a valid playlist.",
             "Kon nie bestaande playlist stories verwyder nie." => "Could not remove existing playlist stories.",
             "Kon nie nuwe playlist stories stoor nie." => "Could not save new playlist stories.",
+            "Playlists kan net een showcase storie he." => "Playlists can only have one showcase story.",
             "Sisteem playlists kan nie stories handmatig wysig nie." => "System playlists cannot be edited manually.",
             _ => message
         };
@@ -3300,13 +3365,15 @@
         public string StorySlug { get; set; } = string.Empty;
         public string StoryTitle { get; set; } = string.Empty;
         public int SortOrder { get; set; }
+        public bool IsShowcase { get; set; }
 
         public static EditablePlaylistStoryItem From(AdminPlaylistStoryItem item) => new()
         {
             StoryId = item.StoryId,
             StorySlug = item.StorySlug,
             StoryTitle = item.StoryTitle,
-            SortOrder = item.SortOrder
+            SortOrder = item.SortOrder,
+            IsShowcase = item.IsShowcase
         };
     }
 }
