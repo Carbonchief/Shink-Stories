@@ -2,6 +2,7 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Web
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ICharacterCatalogService CharacterCatalogService
 @inject IStoryTrackingService StoryTrackingService
@@ -74,38 +75,87 @@
         <section class="characters-grid" aria-label="Schink Stories karakters">
             @foreach (var card in CharacterCards)
             {
-                <article class="character-card @(card.IsUnlocked ? "is-unlocked" : "is-locked")">
-                    <div class="character-card-media">
-                        <img src="@card.DisplayImagePath"
-                             alt="@card.ImageAlt"
-                             class="character-card-image"
-                             loading="lazy"
-                             decoding="async"
-                             onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
-                        <span class="character-card-badge">
-                            @(card.IsUnlocked ? "Ontsluit" : "Nog gesluit")
-                        </span>
-                    </div>
+                if (card.IsUnlocked)
+                {
+                    <article class="character-card is-unlocked character-card-clickable"
+                             @onclick="() => OpenCharacterProfile(card)"
+                             @onkeydown="args => HandleCharacterCardKeyDown(args, card)"
+                             tabindex="0"
+                             role="button"
+                             aria-label="Wys profiel vir @card.Character.DisplayName">
+                        <div class="character-card-media">
+                            <img src="@card.DisplayImagePath"
+                                 alt="@card.ImageAlt"
+                                 class="character-card-image"
+                                 loading="lazy"
+                                 decoding="async"
+                                 onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                        </div>
 
-                    <div class="character-card-body">
-                        <h2>@card.Heading</h2>
-                        <p class="character-card-summary">@card.SummaryText</p>
+                        <div class="character-card-body">
+                            <h2>@card.Heading</h2>
+                            <p class="character-card-summary">@card.SummaryText</p>
 
-                        @if (card.IsUnlocked)
-                        {
-                            <button type="button"
-                                    class="character-card-profile-btn"
-                                    @onclick="() => OpenCharacterProfile(card)">
-                                Lees karakterprofiel
-                            </button>
-                        }
+                            @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
+                            {
+                                <button type="button"
+                                        class="character-card-cta"
+                                        @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
+                                        @onclick:stopPropagation="true"
+                                        disabled="@IsCallToActionLoading(card.CallToActionHref)">
+                                    @if (IsCallToActionLoading(card.CallToActionHref))
+                                    {
+                                        <span class="character-card-cta-spinner" aria-hidden="true"></span>
+                                        <span>Loading</span>
+                                    }
+                                    else
+                                    {
+                                        <span>@card.CallToActionLabel</span>
+                                    }
+                                </button>
+                            }
+                        </div>
+                    </article>
+                }
+                else
+                {
+                    <article class="character-card is-locked">
+                        <div class="character-card-media">
+                            <img src="@card.DisplayImagePath"
+                                 alt="@card.ImageAlt"
+                                 class="character-card-image"
+                                 loading="lazy"
+                                 decoding="async"
+                                 onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                            <span class="character-card-badge" aria-label="Nog gesluit" title="Nog gesluit">
+                                <i class="fa-solid fa-lock" aria-hidden="true"></i>
+                            </span>
+                        </div>
 
-                        @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
-                        {
-                            <a class="character-card-cta" href="@card.CallToActionHref">@card.CallToActionLabel</a>
-                        }
-                    </div>
-                </article>
+                        <div class="character-card-body">
+                            <h2>@card.Heading</h2>
+                            <p class="character-card-summary">@card.SummaryText</p>
+
+                            @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
+                            {
+                                <button type="button"
+                                        class="character-card-cta"
+                                        @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
+                                        disabled="@IsCallToActionLoading(card.CallToActionHref)">
+                                    @if (IsCallToActionLoading(card.CallToActionHref))
+                                    {
+                                        <span class="character-card-cta-spinner" aria-hidden="true"></span>
+                                        <span>Loading</span>
+                                    }
+                                    else
+                                    {
+                                        <span>@card.CallToActionLabel</span>
+                                    }
+                                </button>
+                            }
+                        </div>
+                    </article>
+                }
             }
         </section>
     }
@@ -178,6 +228,7 @@
     private string? LoadErrorMessage { get; set; }
     private IReadOnlyList<CharacterCardViewModel> CharacterCards { get; set; } = Array.Empty<CharacterCardViewModel>();
     private CharacterCardViewModel? ActiveProfileCard { get; set; }
+    private string? LoadingCallToActionHref { get; set; }
     private int UnlockedCharacterCount => CharacterCards.Count(card => card.IsUnlocked);
     private string KaraktersCanonicalUrl => NavigationManager.ToAbsoluteUri("/karakters").ToString();
     private string LoginForCharactersHref => $"/teken-in?returnUrl={Uri.EscapeDataString("/karakters")}";
@@ -255,6 +306,31 @@
         ActiveProfileCard = null;
     }
 
+    private void HandleCharacterCardKeyDown(KeyboardEventArgs args, CharacterCardViewModel card)
+    {
+        if (args.Key is "Enter" or " ")
+        {
+            OpenCharacterProfile(card);
+        }
+    }
+
+    private bool IsCallToActionLoading(string? href) =>
+        !string.IsNullOrWhiteSpace(href) &&
+        string.Equals(LoadingCallToActionHref, href, StringComparison.Ordinal);
+
+    private async Task HandleCallToActionAsync(string href)
+    {
+        if (string.IsNullOrWhiteSpace(href) || IsCallToActionLoading(href))
+        {
+            return;
+        }
+
+        LoadingCallToActionHref = href;
+        StateHasChanged();
+        await Task.Yield();
+        NavigationManager.NavigateTo(href);
+    }
+
     private CharacterCardViewModel BuildCharacterCard(
         StoryCharacterItem character,
         IReadOnlyDictionary<string, StoryLinkInfo> storyLookup,
@@ -275,16 +351,14 @@
             ? "Luister weer na storie"
             : primaryStory is null
                 ? string.Empty
-                : "Luister om te ontsluit";
+                : "Lusiter om oop te sluit";
         var summaryText = unlocked
             ? character.Tagline ?? "Hierdie karakter se profiel is nou oop."
-            : primaryStory is null
-                ? "Hierdie karakter wag nog vir 'n storie-koppeling."
-                : $"Luister na {primaryStory.Title} om hierdie karakter te ontsluit.";
+            : "Luister hierdie storie om oop te sluit.";
         return new CharacterCardViewModel(
             Character: character,
             IsUnlocked: unlocked,
-            Heading: unlocked ? character.DisplayName : $"Geheime karakter {displayOrder:00}",
+            Heading: unlocked ? character.DisplayName : "?????",
             SummaryText: summaryText,
             DisplayImagePath: unlocked
                 ? ResolveCharacterImagePath(character.ImagePath)
