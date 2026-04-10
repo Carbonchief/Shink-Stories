@@ -1051,6 +1051,213 @@ app.MapGet("/api/search/suggest", async (string? q, int? limit, IStoryCatalogSer
     return Results.Ok(new { query, results });
 }).DisableAntiforgery();
 
+app.MapGet("/api/mobile/session", async (
+    HttpContext httpContext,
+    ISubscriptionLedgerService subscriptionLedgerService,
+    IStoryFavoriteService storyFavoriteService) =>
+{
+    var signedInEmail = GetSignedInEmail(httpContext.User);
+    var isSignedIn = !string.IsNullOrWhiteSpace(signedInEmail);
+    var hasPaidSubscription = isSignedIn &&
+        await subscriptionLedgerService.HasActivePaidSubscriptionAsync(signedInEmail, httpContext.RequestAborted);
+    var favoriteStorySlugs = isSignedIn
+        ? await storyFavoriteService.GetFavoriteStorySlugsAsync(signedInEmail, cancellationToken: httpContext.RequestAborted)
+        : Array.Empty<string>();
+
+    return Results.Ok(new MobileSessionResponse(
+        IsSignedIn: isSignedIn,
+        Email: signedInEmail,
+        HasPaidSubscription: hasPaidSubscription,
+        FavoriteStorySlugs: favoriteStorySlugs,
+        LoginUrl: ToAbsoluteUri(httpContext, "/teken-in"),
+        SignupUrl: ToAbsoluteUri(httpContext, "/teken-op"),
+        PlansUrl: ToAbsoluteUri(httpContext, "/opsies")));
+}).DisableAntiforgery();
+
+app.MapGet("/api/mobile/home", async (
+    HttpContext httpContext,
+    IStoryCatalogService storyCatalogService) =>
+{
+    var newestStoriesTask = storyCatalogService.GetNewestTop10Async(httpContext.RequestAborted);
+    var bibleStoriesTask = storyCatalogService.GetBibleStoriesAsync(httpContext.RequestAborted);
+    var freeStoriesTask = storyCatalogService.GetFreeStoriesAsync(httpContext.RequestAborted);
+    await Task.WhenAll(newestStoriesTask, bibleStoriesTask, freeStoriesTask);
+
+    return Results.Ok(new MobileHomeResponse(
+        HeroTitle: "Afrikaanse stories vir klein harte",
+        HeroSubtitle: "Luister saam na veilige, opbouende stories wat kinders en ouers versterk.",
+        HeroImageUrl: ToAbsoluteUri(httpContext, "/branding/Schink_Stories_01.png"),
+        LogoImageUrl: ToAbsoluteUri(httpContext, "/branding/schink-stories-logo-white.png"),
+        NewestStories: newestStoriesTask.Result
+            .Select(item => new MobileStoryPreview(
+                item.Title,
+                ToAbsoluteUri(httpContext, item.CoverPath),
+                ToAbsoluteUri(httpContext, item.LinkPath)))
+            .ToArray(),
+        BibleStories: bibleStoriesTask.Result
+            .Select(item => new MobileStoryPreview(
+                item.Title,
+                ToAbsoluteUri(httpContext, item.CoverPath),
+                ToAbsoluteUri(httpContext, item.LinkPath)))
+            .ToArray(),
+        FreeStories: freeStoriesTask.Result
+            .Select(story => BuildMobileStorySummary(httpContext, story, source: "gratis", isLocked: false, isFavorite: false))
+            .ToArray()));
+}).DisableAntiforgery();
+
+app.MapGet("/api/mobile/gratis", async (
+    HttpContext httpContext,
+    IStoryCatalogService storyCatalogService) =>
+{
+    var freeStories = await storyCatalogService.GetFreeStoriesAsync(httpContext.RequestAborted);
+    return Results.Ok(new MobileStoryCollectionResponse(
+        Title: "Gratis stories",
+        Description: "Drie gratis stories vir jou gesin.",
+        Stories: freeStories
+            .Select(story => BuildMobileStorySummary(httpContext, story, source: "gratis", isLocked: false, isFavorite: false))
+            .ToArray()));
+}).DisableAntiforgery();
+
+app.MapGet("/api/mobile/luister", async (
+    HttpContext httpContext,
+    IStoryCatalogService storyCatalogService,
+    ISubscriptionLedgerService subscriptionLedgerService,
+    IStoryFavoriteService storyFavoriteService) =>
+{
+    var signedInEmail = GetSignedInEmail(httpContext.User);
+    var hasPaidSubscription = !string.IsNullOrWhiteSpace(signedInEmail) &&
+        await subscriptionLedgerService.HasActivePaidSubscriptionAsync(signedInEmail, httpContext.RequestAborted);
+    var favoriteSlugs = !string.IsNullOrWhiteSpace(signedInEmail)
+        ? await storyFavoriteService.GetFavoriteStorySlugsAsync(signedInEmail, cancellationToken: httpContext.RequestAborted)
+        : Array.Empty<string>();
+    var favoriteSet = favoriteSlugs.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    var playlists = await storyCatalogService.GetLuisterPlaylistsAsync(signedInEmail, httpContext.RequestAborted);
+    var response = playlists
+        .Select(playlist => new MobilePlaylistResponse(
+            Slug: playlist.Slug,
+            Title: playlist.Title,
+            Description: playlist.Description,
+            ArtworkUrl: ToAbsoluteUri(httpContext, playlist.LogoImagePath ?? playlist.BackdropImagePath ?? "/branding/schink-logo-text.png"),
+            BackdropUrl: ToAbsoluteUri(httpContext, playlist.BackdropImagePath ?? playlist.LogoImagePath ?? "/branding/Schink_Stories_01.png"),
+            Stories: playlist.Stories
+                .Select(story => BuildMobileStorySummary(
+                    httpContext,
+                    story,
+                    source: "luister",
+                    isLocked: !CanAccessStory(story, hasPaidSubscription),
+                    isFavorite: favoriteSet.Contains(story.Slug)))
+                .ToArray()))
+        .ToArray();
+
+    return Results.Ok(new MobileLuisterResponse(
+        HasPaidSubscription: hasPaidSubscription,
+        Playlists: response));
+}).DisableAntiforgery();
+
+app.MapGet("/api/mobile/stories/{slug}", async (
+    string slug,
+    string? source,
+    HttpContext httpContext,
+    IStoryCatalogService storyCatalogService,
+    ISubscriptionLedgerService subscriptionLedgerService,
+    IStoryFavoriteService storyFavoriteService,
+    IAudioAccessService audioAccessService) =>
+{
+    var normalizedSource = string.Equals(source, "gratis", StringComparison.OrdinalIgnoreCase)
+        ? "gratis"
+        : "luister";
+    var story = normalizedSource == "gratis"
+        ? await storyCatalogService.FindFreeBySlugAsync(slug, httpContext.RequestAborted)
+        : await storyCatalogService.FindAnyBySlugAsync(slug, httpContext.RequestAborted);
+
+    if (story is null)
+    {
+        return Results.NotFound(new { message = "Storie nie gevind nie." });
+    }
+
+    var signedInEmail = GetSignedInEmail(httpContext.User);
+    var hasPaidSubscription = !string.IsNullOrWhiteSpace(signedInEmail) &&
+        await subscriptionLedgerService.HasActivePaidSubscriptionAsync(signedInEmail, httpContext.RequestAborted);
+    var isLocked = !CanAccessStory(story, hasPaidSubscription);
+    var favoriteSlugs = !string.IsNullOrWhiteSpace(signedInEmail)
+        ? await storyFavoriteService.GetFavoriteStorySlugsAsync(signedInEmail, cancellationToken: httpContext.RequestAborted)
+        : Array.Empty<string>();
+    var isFavorite = favoriteSlugs.Contains(story.Slug, StringComparer.OrdinalIgnoreCase);
+
+    var relatedStories = normalizedSource == "gratis"
+        ? await storyCatalogService.GetFreeStoriesAsync(httpContext.RequestAborted)
+        : await storyCatalogService.GetLuisterStoriesAsync(httpContext.RequestAborted);
+    var orderedStories = relatedStories.ToArray();
+    var currentIndex = Array.FindIndex(orderedStories, item => string.Equals(item.Slug, story.Slug, StringComparison.OrdinalIgnoreCase));
+    var previousStory = currentIndex > 0 ? orderedStories[currentIndex - 1] : null;
+    var nextStory = currentIndex >= 0 && currentIndex < orderedStories.Length - 1 ? orderedStories[currentIndex + 1] : null;
+
+    return Results.Ok(new MobileStoryDetailResponse(
+        Story: BuildMobileStorySummary(httpContext, story, normalizedSource, isLocked, isFavorite),
+        AudioUrl: isLocked ? null : ToAbsoluteUri(httpContext, audioAccessService.CreateSignedAudioUrl(story.Slug)),
+        ShareUrl: ToAbsoluteUri(httpContext, normalizedSource == "gratis" ? $"/gratis/{Uri.EscapeDataString(story.Slug)}" : $"/luister/{Uri.EscapeDataString(story.Slug)}"),
+        RequiresSubscription: isLocked,
+        PreviousStory: previousStory is null ? null : BuildMobileStorySummary(httpContext, previousStory, normalizedSource, !CanAccessStory(previousStory, hasPaidSubscription), favoriteSlugs.Contains(previousStory.Slug, StringComparer.OrdinalIgnoreCase)),
+        NextStory: nextStory is null ? null : BuildMobileStorySummary(httpContext, nextStory, normalizedSource, !CanAccessStory(nextStory, hasPaidSubscription), favoriteSlugs.Contains(nextStory.Slug, StringComparer.OrdinalIgnoreCase)),
+        RelatedStories: orderedStories
+            .Where(item => !string.Equals(item.Slug, story.Slug, StringComparison.OrdinalIgnoreCase))
+            .Take(12)
+            .Select(item => BuildMobileStorySummary(httpContext, item, normalizedSource, !CanAccessStory(item, hasPaidSubscription), favoriteSlugs.Contains(item.Slug, StringComparer.OrdinalIgnoreCase)))
+            .ToArray(),
+        LoginUrl: ToAbsoluteUri(httpContext, $"/teken-in?returnUrl={Uri.EscapeDataString($"/luister/{story.Slug}")}"),
+        PlansUrl: ToAbsoluteUri(httpContext, $"/opsies?returnUrl={Uri.EscapeDataString($"/luister/{story.Slug}")}")));
+}).DisableAntiforgery();
+
+app.MapGet("/api/mobile/meer-oor-ons", (HttpContext httpContext) =>
+{
+    var blocks = new[]
+    {
+        new MobileContentBlockResponse("hero", "Bou karakter - een storie op 'n slag.", "Ons hoop om vir gesinne 'n veilige plek te bied waar hulle stories kan ontdek wat kinders en ouers versterk.", ToAbsoluteUri(httpContext, "/branding/Schink_Die_Ware_Wenner_Schink_Stories_600x600.png")),
+        new MobileContentBlockResponse("founder", "Martin Schwella", "Stigter, Schink", ToAbsoluteUri(httpContext, "/branding/Matin-Profile-Photo.webp")),
+        new MobileContentBlockResponse("promise", "Ons Belofte aan Ouer & Kind", "Schink Stories is veilig, opbouend en geskik vir enige ouderdom.", ToAbsoluteUri(httpContext, "/branding/Panda.webp")),
+        new MobileContentBlockResponse("who-we-are", "Wie ons is", "Ons is Martin & Simone en ons glo in stories wat motiveer, leer en inspireer.", ToAbsoluteUri(httpContext, "/branding/Schwella.webp"))
+    };
+
+    return Results.Ok(new MobileAboutResponse(blocks));
+}).DisableAntiforgery();
+
+app.MapPost("/api/mobile/stories/{slug}/favorite", async (
+    string slug,
+    MobileFavoriteMutationRequest request,
+    HttpContext httpContext,
+    IStoryFavoriteService storyFavoriteService) =>
+{
+    var signedInEmail = GetSignedInEmail(httpContext.User);
+    if (string.IsNullOrWhiteSpace(signedInEmail))
+    {
+        return Results.Unauthorized();
+    }
+
+    if (!TryNormalizeStorySlug(slug, out var normalizedStorySlug))
+    {
+        return Results.BadRequest(new { message = "Ongeldige storie-identifiseerder." });
+    }
+
+    var normalizedSource = string.Equals(request.Source, "gratis", StringComparison.OrdinalIgnoreCase)
+        ? "gratis"
+        : "luister";
+    var storyPath = normalizedSource == "gratis"
+        ? $"/gratis/{Uri.EscapeDataString(normalizedStorySlug)}"
+        : $"/luister/{Uri.EscapeDataString(normalizedStorySlug)}";
+    var isFavorite = await storyFavoriteService.SetStoryFavoriteAsync(
+        signedInEmail,
+        new StoryFavoriteMutationRequest(
+            StorySlug: normalizedStorySlug,
+            StoryPath: storyPath,
+            Source: normalizedSource,
+            IsFavorite: request.IsFavorite,
+            PlaylistSlug: request.PlaylistSlug),
+        httpContext.RequestAborted);
+
+    return Results.Ok(new { isFavorite });
+}).DisableAntiforgery();
+
 app.MapPost("/api/contact", async (ContactApiRequest request, IContactEmailService contactEmailService, IContactFormProtectionService protectionService, HttpContext httpContext) =>
 {
     request = request with
@@ -2524,6 +2731,50 @@ static bool IsValidMobileNumber(string value)
     return Regex.IsMatch(sanitized, @"^\+?[0-9]{7,20}$", RegexOptions.CultureInvariant);
 }
 
+static string? GetSignedInEmail(ClaimsPrincipal user) =>
+    user.Identity?.IsAuthenticated == true
+        ? user.FindFirst(ClaimTypes.Email)?.Value ?? user.Identity?.Name
+        : null;
+
+static bool CanAccessStory(StoryItem story, bool hasPaidSubscription) =>
+    string.Equals(story.AccessLevel, "free", StringComparison.OrdinalIgnoreCase) || hasPaidSubscription;
+
+static string ToAbsoluteUri(HttpContext httpContext, string? pathOrUrl)
+{
+    if (string.IsNullOrWhiteSpace(pathOrUrl))
+    {
+        return string.Empty;
+    }
+
+    if (Uri.TryCreate(pathOrUrl, UriKind.Absolute, out var absoluteUri))
+    {
+        return absoluteUri.ToString();
+    }
+
+    return UriHelper.BuildAbsolute(httpContext.Request.Scheme, httpContext.Request.Host, pathOrUrl);
+}
+
+static MobileStorySummaryResponse BuildMobileStorySummary(
+    HttpContext httpContext,
+    StoryItem story,
+    string source,
+    bool isLocked,
+    bool isFavorite) =>
+    new(
+        Slug: story.Slug,
+        Title: story.Title,
+        Description: story.Description,
+        ImageUrl: ToAbsoluteUri(httpContext, story.ImagePath),
+        ThumbnailUrl: ToAbsoluteUri(httpContext, story.ThumbnailPath),
+        Source: source,
+        IsLocked: isLocked,
+        IsFavorite: isFavorite,
+        DetailUrl: ToAbsoluteUri(
+            httpContext,
+            string.Equals(source, "gratis", StringComparison.OrdinalIgnoreCase)
+                ? $"/gratis/{Uri.EscapeDataString(story.Slug)}"
+                : $"/luister/{Uri.EscapeDataString(story.Slug)}"));
+
 sealed record ContactApiRequest(string? Name, string? Email, string? Subject, string? Message, string? Website);
 sealed record AuthSignInApiRequest(string? Email, string? Password);
 sealed record AuthSignUpApiRequest(
@@ -2558,6 +2809,60 @@ sealed record SearchSiteResult(
     string Kind,
     string ThumbnailPath,
     int Score);
+sealed record MobileFavoriteMutationRequest(bool IsFavorite, string? Source, string? PlaylistSlug);
+sealed record MobileSessionResponse(
+    bool IsSignedIn,
+    string? Email,
+    bool HasPaidSubscription,
+    IReadOnlyList<string> FavoriteStorySlugs,
+    string LoginUrl,
+    string SignupUrl,
+    string PlansUrl);
+sealed record MobileStoryPreview(string Title, string ImageUrl, string DetailUrl);
+sealed record MobileStorySummaryResponse(
+    string Slug,
+    string Title,
+    string Description,
+    string ImageUrl,
+    string ThumbnailUrl,
+    string Source,
+    bool IsLocked,
+    bool IsFavorite,
+    string DetailUrl);
+sealed record MobileHomeResponse(
+    string HeroTitle,
+    string HeroSubtitle,
+    string HeroImageUrl,
+    string LogoImageUrl,
+    IReadOnlyList<MobileStoryPreview> NewestStories,
+    IReadOnlyList<MobileStoryPreview> BibleStories,
+    IReadOnlyList<MobileStorySummaryResponse> FreeStories);
+sealed record MobileStoryCollectionResponse(
+    string Title,
+    string Description,
+    IReadOnlyList<MobileStorySummaryResponse> Stories);
+sealed record MobilePlaylistResponse(
+    string Slug,
+    string Title,
+    string? Description,
+    string ArtworkUrl,
+    string BackdropUrl,
+    IReadOnlyList<MobileStorySummaryResponse> Stories);
+sealed record MobileLuisterResponse(
+    bool HasPaidSubscription,
+    IReadOnlyList<MobilePlaylistResponse> Playlists);
+sealed record MobileStoryDetailResponse(
+    MobileStorySummaryResponse Story,
+    string? AudioUrl,
+    string ShareUrl,
+    bool RequiresSubscription,
+    MobileStorySummaryResponse? PreviousStory,
+    MobileStorySummaryResponse? NextStory,
+    IReadOnlyList<MobileStorySummaryResponse> RelatedStories,
+    string LoginUrl,
+    string PlansUrl);
+sealed record MobileContentBlockResponse(string Key, string Title, string Body, string ImageUrl);
+sealed record MobileAboutResponse(IReadOnlyList<MobileContentBlockResponse> Blocks);
 sealed record AuthCookieSignInResult(bool IsSuccess, string? ErrorMessage = null);
 sealed record GooglePkceStateCookiePayload(
     DateTimeOffset ExpiresAtUtc,
