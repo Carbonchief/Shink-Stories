@@ -17,7 +17,76 @@ const SEARCH_DEBOUNCE_MS = 160;
 const SEARCH_MAX_RESULTS = 8;
 const OPEN_LABEL = "Maak navigasie toe";
 const CLOSED_LABEL = "Maak navigasie oop";
+let navMenuDelegatesStarted = false;
 let accountMenuDelegatesStarted = false;
+
+function findNavMenuParts(from) {
+    const controlsContainer = from instanceof Element
+        ? from.closest(".nav-controls, .guest-controls")
+        : null;
+    const navToggle = controlsContainer instanceof Element
+        ? controlsContainer.querySelector(NAV_TOGGLE_SELECTOR)
+        : null;
+    const navId = navToggle instanceof HTMLElement
+        ? navToggle.getAttribute("aria-controls")
+        : null;
+    let navMenu = null;
+
+    if (controlsContainer instanceof Element && typeof navId === "string" && navId.length > 0) {
+        if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+            navMenu = controlsContainer.querySelector(`#${CSS.escape(navId)}`);
+        } else {
+            navMenu = controlsContainer.querySelector(`[id="${navId}"]`);
+        }
+    }
+
+    if (!(navMenu instanceof HTMLElement) && typeof navId === "string" && navId.length > 0) {
+        navMenu = document.getElementById(navId);
+    }
+
+    if (!(controlsContainer instanceof HTMLElement) ||
+        !(navToggle instanceof HTMLButtonElement) ||
+        !(navMenu instanceof HTMLElement)) {
+        return null;
+    }
+
+    return {
+        controlsContainer,
+        navToggle,
+        navMenu,
+        srLabel: navToggle.querySelector(NAV_TOGGLE_LABEL_SELECTOR)
+    };
+}
+
+function setNavMenuState(from, open) {
+    const parts = findNavMenuParts(from);
+    if (!parts) {
+        return;
+    }
+
+    parts.navMenu.classList.toggle(OPEN_CLASS, open);
+    parts.navToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    const label = open ? OPEN_LABEL : CLOSED_LABEL;
+    parts.navToggle.setAttribute("aria-label", label);
+    parts.navToggle.setAttribute("title", label);
+
+    if (parts.srLabel instanceof HTMLElement) {
+        parts.srLabel.textContent = label;
+    }
+
+    if (open) {
+        closeAccountMenuInContainer(parts.controlsContainer);
+        parts.controlsContainer.classList.remove(SEARCH_ACTIVE_CLASS);
+    }
+}
+
+function closeAllNavMenus() {
+    document.querySelectorAll(".nav-controls, .guest-controls").forEach((container) => {
+        if (container instanceof HTMLElement) {
+            setNavMenuState(container, false);
+        }
+    });
+}
 
 function findAccountMenuParts(from) {
     const accountRoot = from instanceof Element
@@ -78,25 +147,7 @@ function closeAllAccountMenus(options = {}) {
 }
 
 function closeNavMenuInContainer(container) {
-    if (!(container instanceof Element)) {
-        return;
-    }
-
-    const navMenu = container.querySelector(".site-nav");
-    const navToggle = container.querySelector(NAV_TOGGLE_SELECTOR);
-    if (!(navMenu instanceof HTMLElement) || !(navToggle instanceof HTMLElement)) {
-        return;
-    }
-
-    navMenu.classList.remove(OPEN_CLASS);
-    navToggle.setAttribute("aria-expanded", "false");
-    navToggle.setAttribute("aria-label", CLOSED_LABEL);
-    navToggle.setAttribute("title", CLOSED_LABEL);
-
-    const srLabel = navToggle.querySelector(NAV_TOGGLE_LABEL_SELECTOR);
-    if (srLabel instanceof HTMLElement) {
-        srLabel.textContent = CLOSED_LABEL;
-    }
+    setNavMenuState(container, false);
 }
 
 function closeAccountMenuInContainer(container) {
@@ -116,87 +167,74 @@ function closeAccountMenuInContainer(container) {
     accountToggle.setAttribute("aria-expanded", "false");
 }
 
-function wireNavToggle(toggleButton) {
-    if (!(toggleButton instanceof HTMLElement) || toggleButton.dataset.navMenuWired === "true") {
+function initializeNavMenu(toggleButton) {
+    if (!(toggleButton instanceof HTMLElement)) {
         return;
     }
 
-    const controlsContainer = toggleButton.closest(".nav-controls, .guest-controls");
-    const navId = toggleButton.getAttribute("aria-controls");
-    if (!navId || !(controlsContainer instanceof HTMLElement)) {
+    const parts = findNavMenuParts(toggleButton);
+    if (!parts) {
         return;
     }
 
-    let navMenu = null;
-    if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
-        navMenu = controlsContainer.querySelector(`#${CSS.escape(navId)}`);
-    } else {
-        navMenu = controlsContainer.querySelector(`[id="${navId}"]`);
-    }
+    setNavMenuState(parts.controlsContainer, false);
+}
 
-    if (!(navMenu instanceof HTMLElement)) {
-        navMenu = document.getElementById(navId);
-    }
-
-    if (!(navMenu instanceof HTMLElement)) {
+function startNavMenuDelegates() {
+    if (navMenuDelegatesStarted) {
         return;
     }
-
-    const srLabel = toggleButton.querySelector(NAV_TOGGLE_LABEL_SELECTOR);
-
-    const setMenuState = (isOpen) => {
-        navMenu.classList.toggle(OPEN_CLASS, isOpen);
-        toggleButton.setAttribute("aria-expanded", isOpen ? "true" : "false");
-        closeAccountMenuInContainer(controlsContainer);
-
-        const label = isOpen ? OPEN_LABEL : CLOSED_LABEL;
-        toggleButton.setAttribute("aria-label", label);
-        toggleButton.setAttribute("title", label);
-
-        if (srLabel instanceof HTMLElement) {
-            srLabel.textContent = label;
-        }
-    };
-
-    const isOpen = () => navMenu.classList.contains(OPEN_CLASS);
-
-    setMenuState(false);
-
-    toggleButton.addEventListener("click", (event) => {
-        event.preventDefault();
-        setMenuState(!isOpen());
-    });
-
-    navMenu.querySelectorAll("a").forEach((link) => {
-        link.addEventListener("click", () => {
-            setMenuState(false);
-        });
-    });
 
     document.addEventListener("click", (event) => {
-        if (!isOpen()) {
-            return;
-        }
-
         const target = event.target;
-        if (target instanceof Node && controlsContainer instanceof HTMLElement && controlsContainer.contains(target)) {
+        if (!(target instanceof Element)) {
             return;
         }
 
-        setMenuState(false);
+        const toggle = target.closest(NAV_TOGGLE_SELECTOR);
+        if (toggle instanceof HTMLButtonElement) {
+            event.preventDefault();
+            const parts = findNavMenuParts(toggle);
+            if (!parts) {
+                return;
+            }
+
+            const shouldOpen = !parts.navMenu.classList.contains(OPEN_CLASS);
+            closeAllNavMenus();
+            setNavMenuState(parts.controlsContainer, shouldOpen);
+            return;
+        }
+
+        const navLink = target.closest(".site-nav a");
+        if (navLink instanceof HTMLAnchorElement) {
+            const parts = findNavMenuParts(navLink);
+            if (parts) {
+                setNavMenuState(parts.controlsContainer, false);
+            }
+            return;
+        }
+
+        const clickedInsideControls = target.closest(".nav-controls, .guest-controls");
+        if (clickedInsideControls instanceof HTMLElement) {
+            return;
+        }
+
+        closeAllNavMenus();
     });
 
     document.addEventListener("keydown", (event) => {
-        if (event.key === "Escape") {
-            setMenuState(false);
+        if (event.key !== "Escape") {
+            return;
         }
+
+        closeAllNavMenus();
     });
 
     document.addEventListener("enhancedload", () => {
-        setMenuState(false);
+        closeAllNavMenus();
     });
 
-    toggleButton.dataset.navMenuWired = "true";
+    navMenuDelegatesStarted = true;
 }
 
 function wireHeaderSearch(searchForm) {
@@ -583,7 +621,7 @@ function startAccountMenuDelegates() {
 
 function initializeNavMenus() {
     document.querySelectorAll(NAV_TOGGLE_SELECTOR).forEach((toggleButton) => {
-        wireNavToggle(toggleButton);
+        initializeNavMenu(toggleButton);
     });
 }
 
@@ -603,6 +641,7 @@ function initializeHeaderInteractions() {
     initializeNavMenus();
     initializeHeaderSearch();
     initializeAccountMenus();
+    startNavMenuDelegates();
     startAccountMenuDelegates();
 }
 
