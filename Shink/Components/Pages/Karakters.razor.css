@@ -392,6 +392,10 @@
     .character-profile-popup-card {
         width: min(88vw, 640px);
     }
+
+    .character-profile-popup-image {
+        width: min(100%, 320px);
+    }
 }
 
 @keyframes character-card-cta-spin {
