@@ -173,10 +173,11 @@
 .character-card-body {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
+    align-items: center;
     gap: 0.75rem;
     padding: 1.1rem 0.35rem 0.35rem;
     flex: 1 1 auto;
+    text-align: center;
 }
 
 .character-card-body h2 {
@@ -385,6 +386,12 @@
 .character-profile-popup-related-stories {
     border-top: 1px solid rgba(16, 57, 69, 0.1);
     padding-top: 0.9rem;
+}
+
+@media (min-width: 1024px) {
+    .character-profile-popup-card {
+        width: min(88vw, 640px);
+    }
 }
 
 @keyframes character-card-cta-spin {

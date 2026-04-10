@@ -28,16 +28,15 @@
     <header class="characters-hero">
         <div class="characters-hero-copy">
             <p class="characters-eyebrow">Schink Stories Karakters</p>
-            <h1>Kyk wie wag agter die misteriekaartjies</h1>
+            <h1>Ontmoet die karakters</h1>
             <p class="characters-intro">
-                Elke karakter begin as 'n geheim. Sodra jy genoeg na die relevante storie geluister het,
-                ontsluit die ware karakterprent en sy profiel.
+                Op hierdie blad kan jy die Schink Stories-karakters sien, verken en hoor. Luister na stories om elke karakter se profiel op te sluit.
+                Of luister meer as een keer na spesifieke stories en ontdek bonuskarakters.
             </p>
             @if (IsSignedIn)
             {
                 <div class="characters-summary-card">
-                    <strong>@UnlockedCharacterCount van @CharacterCards.Count</strong>
-                    <span>karakters is reeds ontsluit op hierdie profiel.</span>
+                    <strong>@UnlockedCharacterCount van @CharacterCards.Count karakters is oop</strong>
                 </div>
             }
             else
