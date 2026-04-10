@@ -121,17 +121,27 @@ function wireNavToggle(toggleButton) {
         return;
     }
 
+    const controlsContainer = toggleButton.closest(".nav-controls, .guest-controls");
     const navId = toggleButton.getAttribute("aria-controls");
-    if (!navId) {
+    if (!navId || !(controlsContainer instanceof HTMLElement)) {
         return;
     }
 
-    const navMenu = document.getElementById(navId);
+    let navMenu = null;
+    if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+        navMenu = controlsContainer.querySelector(`#${CSS.escape(navId)}`);
+    } else {
+        navMenu = controlsContainer.querySelector(`[id="${navId}"]`);
+    }
+
+    if (!(navMenu instanceof HTMLElement)) {
+        navMenu = document.getElementById(navId);
+    }
+
     if (!(navMenu instanceof HTMLElement)) {
         return;
     }
 
-    const controlsContainer = toggleButton.closest(".nav-controls, .guest-controls");
     const srLabel = toggleButton.querySelector(NAV_TOGGLE_LABEL_SELECTOR);
 
     const setMenuState = (isOpen) => {
