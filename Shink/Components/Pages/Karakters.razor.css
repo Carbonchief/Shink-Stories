@@ -25,6 +25,13 @@
     text-align: center;
 }
 
+.characters-hero-lineup {
+    width: min(100%, 320px);
+    height: auto;
+    display: block;
+    margin: 0 auto 0.25rem;
+}
+
 .characters-eyebrow {
     margin: 0;
     font-size: 0.84rem;
@@ -448,6 +455,10 @@
 @media (max-width: 640px) {
     .characters-page {
         width: min(100% - 1rem, 100%);
+    }
+
+    .characters-hero-lineup {
+        width: min(100%, 240px);
     }
 
     .characters-grid {

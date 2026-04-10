@@ -88,6 +88,8 @@
     width: 100%;
     display: grid;
     gap: 0.22rem;
+    justify-items: start;
+    align-items: start;
     text-align: left;
     padding: 0.8rem;
     border-radius: 14px;
