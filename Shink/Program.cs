@@ -367,6 +367,7 @@ app.MapGet("/media/audio/{slug}", async (
     string? token,
     IAudioAccessService audioAccessService,
     IStoryCatalogService storyCatalogService,
+    ICharacterCatalogService characterCatalogService,
     IWebHostEnvironment environment,
     IOptions<CloudflareR2Options> cloudflareR2Options,
     IHttpClientFactory httpClientFactory,
@@ -383,18 +384,60 @@ app.MapGet("/media/audio/{slug}", async (
     }
 
     var story = await storyCatalogService.FindAnyBySlugAsync(slug, httpContext.RequestAborted);
-    if (story is null)
+    if (story is not null)
+    {
+        ApplyAudioResponseSecurityHeaders(httpContext);
+
+        if (string.Equals(story.AudioProvider, "r2", StringComparison.OrdinalIgnoreCase))
+        {
+            if (!TryBuildR2AudioUri(
+                    cloudflareR2Options.Value.PublicBaseUrl,
+                    story.AudioFileName,
+                    out var sourceUri))
+            {
+                return Results.NotFound();
+            }
+
+            return await ProxyAudioFromOriginAsync(
+                httpContext,
+                httpClientFactory,
+                sourceUri,
+                story.AudioContentType,
+                story.AudioFileName);
+        }
+
+        if (!string.Equals(story.AudioProvider, "local", StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.NotFound();
+        }
+
+        if (!TryResolveLocalAudioPath(environment.ContentRootPath, story.AudioFileName, out var audioFilePath))
+        {
+            return Results.Forbid();
+        }
+
+        if (!File.Exists(audioFilePath))
+        {
+            return Results.NotFound();
+        }
+
+        var audioMimeType = ResolveAudioMimeType(story.AudioContentType, story.AudioFileName);
+        return Results.File(audioFilePath, audioMimeType, enableRangeProcessing: true);
+    }
+
+    var characterClip = await characterCatalogService.FindPublishedAudioClipByStreamSlugAsync(slug, httpContext.RequestAborted);
+    if (characterClip is null)
     {
         return Results.NotFound();
     }
 
     ApplyAudioResponseSecurityHeaders(httpContext);
 
-    if (string.Equals(story.AudioProvider, "r2", StringComparison.OrdinalIgnoreCase))
+    if (string.Equals(characterClip.AudioProvider, "r2", StringComparison.OrdinalIgnoreCase))
     {
         if (!TryBuildR2AudioUri(
                 cloudflareR2Options.Value.PublicBaseUrl,
-                story.AudioFileName,
+                characterClip.AudioObjectKey,
                 out var sourceUri))
         {
             return Results.NotFound();
@@ -404,27 +447,27 @@ app.MapGet("/media/audio/{slug}", async (
             httpContext,
             httpClientFactory,
             sourceUri,
-            story.AudioContentType,
-            story.AudioFileName);
+            characterClip.AudioContentType,
+            characterClip.AudioObjectKey);
     }
 
-    if (!string.Equals(story.AudioProvider, "local", StringComparison.OrdinalIgnoreCase))
+    if (!string.Equals(characterClip.AudioProvider, "local", StringComparison.OrdinalIgnoreCase))
     {
         return Results.NotFound();
     }
 
-    if (!TryResolveLocalAudioPath(environment.ContentRootPath, story.AudioFileName, out var audioFilePath))
+    if (!TryResolveLocalAudioPath(environment.ContentRootPath, characterClip.AudioObjectKey, out var characterAudioFilePath))
     {
         return Results.Forbid();
     }
 
-    if (!File.Exists(audioFilePath))
+    if (!File.Exists(characterAudioFilePath))
     {
         return Results.NotFound();
     }
 
-    var audioMimeType = ResolveAudioMimeType(story.AudioContentType, story.AudioFileName);
-    return Results.File(audioFilePath, audioMimeType, enableRangeProcessing: true);
+    var characterAudioMimeType = ResolveAudioMimeType(characterClip.AudioContentType, characterClip.AudioObjectKey);
+    return Results.File(characterAudioFilePath, characterAudioMimeType, enableRangeProcessing: true);
 }).RequireRateLimiting("audio-stream");
 
 app.MapGet("/betaal/payfast/{planSlug}", (string planSlug) =>

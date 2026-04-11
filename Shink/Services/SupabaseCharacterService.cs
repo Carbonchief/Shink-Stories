@@ -50,7 +50,7 @@ public sealed partial class SupabaseCharacterService(
             var requestUri = new Uri(
                 baseUri,
                 "rest/v1/story_characters" +
-                "?select=character_id,slug,display_name,tagline,species,habitat,catchphrase,favorite_thing,character_trait,golden_lesson,core_value,first_appearance,friends,reflection_question,challenge_text,image_path,mystery_image_path,unlock_story_slug,related_story_slugs,unlock_threshold_seconds,sort_order,status" +
+                "?select=character_id,slug,display_name,tagline,species,habitat,catchphrase,favorite_thing,character_trait,golden_lesson,core_value,first_appearance,friends,reflection_question,challenge_text,image_path,mystery_image_path,unlock_story_slug,related_story_slugs,audio_clips,unlock_threshold_seconds,sort_order,status" +
                 "&status=eq.published" +
                 "&order=sort_order.asc" +
                 "&order=display_name.asc");
@@ -99,6 +99,30 @@ public sealed partial class SupabaseCharacterService(
         }
     }
 
+    public async Task<CharacterAudioClipItem?> FindPublishedAudioClipByStreamSlugAsync(
+        string? streamSlug,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedStreamSlug = NormalizeOptionalSlug(streamSlug);
+        if (string.IsNullOrWhiteSpace(normalizedStreamSlug))
+        {
+            return null;
+        }
+
+        var publishedCharacters = await GetPublishedCharactersAsync(cancellationToken);
+        foreach (var character in publishedCharacters)
+        {
+            var clip = character.AudioClips.FirstOrDefault(candidate =>
+                string.Equals(candidate.StreamSlug, normalizedStreamSlug, StringComparison.OrdinalIgnoreCase));
+            if (clip is not null)
+            {
+                return clip;
+            }
+        }
+
+        return null;
+    }
+
     public async Task<IReadOnlyList<AdminCharacterRecord>> GetCharactersAsync(
         string? adminEmail,
         CancellationToken cancellationToken = default)
@@ -124,7 +148,7 @@ public sealed partial class SupabaseCharacterService(
             var requestUri = new Uri(
                 baseUri,
                 "rest/v1/story_characters" +
-                "?select=character_id,slug,display_name,tagline,species,habitat,catchphrase,favorite_thing,character_trait,golden_lesson,core_value,first_appearance,friends,reflection_question,challenge_text,image_path,mystery_image_path,image_drive_file_id,mystery_image_drive_file_id,unlock_story_slug,related_story_slugs,unlock_threshold_seconds,sort_order,status,updated_at" +
+                "?select=character_id,slug,display_name,tagline,species,habitat,catchphrase,favorite_thing,character_trait,golden_lesson,core_value,first_appearance,friends,reflection_question,challenge_text,image_path,mystery_image_path,image_drive_file_id,mystery_image_drive_file_id,unlock_story_slug,related_story_slugs,audio_clips,unlock_threshold_seconds,sort_order,status,updated_at" +
                 "&order=sort_order.asc" +
                 "&order=display_name.asc");
 
@@ -218,6 +242,8 @@ public sealed partial class SupabaseCharacterService(
             normalizedRelatedStorySlugs = [normalizedUnlockStorySlug, .. normalizedRelatedStorySlugs];
         }
 
+        var normalizedAudioClips = NormalizeAudioClipList(request.AudioClips);
+
         var payload = new Dictionary<string, object?>
         {
             ["slug"] = normalizedSlug,
@@ -240,6 +266,15 @@ public sealed partial class SupabaseCharacterService(
             ["mystery_image_drive_file_id"] = NormalizeOptionalText(request.MysteryImageDriveFileId, 128),
             ["unlock_story_slug"] = normalizedUnlockStorySlug,
             ["related_story_slugs"] = normalizedRelatedStorySlugs,
+            ["audio_clips"] = normalizedAudioClips.Select(clip => new Dictionary<string, object?>
+            {
+                ["stream_slug"] = clip.StreamSlug,
+                ["title"] = clip.Title,
+                ["audio_provider"] = clip.AudioProvider,
+                ["audio_object_key"] = clip.AudioObjectKey,
+                ["audio_content_type"] = clip.AudioContentType,
+                ["sort_order"] = clip.SortOrder
+            }).ToArray(),
             ["unlock_threshold_seconds"] = Math.Clamp(request.UnlockThresholdSeconds, 1, 3600),
             ["status"] = normalizedStatus,
             ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000)
@@ -296,6 +331,7 @@ public sealed partial class SupabaseCharacterService(
     private StoryCharacterItem MapToPublicCharacter(StoryCharacterRow row)
     {
         var relatedStorySlugs = NormalizeSlugList(row.RelatedStorySlugs);
+        var audioClips = NormalizeAudioClipList(row.AudioClips);
 
         return new StoryCharacterItem(
             CharacterId: row.CharacterId,
@@ -317,12 +353,15 @@ public sealed partial class SupabaseCharacterService(
             MysteryImagePath: NormalizeOptionalText(row.MysteryImagePath, 2048),
             UnlockStorySlug: NormalizeOptionalSlug(row.UnlockStorySlug),
             RelatedStorySlugs: relatedStorySlugs,
+            AudioClips: audioClips,
             UnlockThresholdSeconds: Math.Clamp(row.UnlockThresholdSeconds ?? 30, 1, 3600),
             SortOrder: row.SortOrder);
     }
 
     private AdminCharacterRecord MapToAdminCharacter(StoryCharacterRow row)
     {
+        var audioClips = NormalizeAudioClipList(row.AudioClips);
+
         return new AdminCharacterRecord(
             CharacterId: row.CharacterId,
             Slug: row.Slug.Trim(),
@@ -345,6 +384,7 @@ public sealed partial class SupabaseCharacterService(
             MysteryImageDriveFileId: NormalizeOptionalText(row.MysteryImageDriveFileId, 128),
             UnlockStorySlug: NormalizeOptionalSlug(row.UnlockStorySlug),
             RelatedStorySlugs: NormalizeSlugList(row.RelatedStorySlugs),
+            AudioClips: audioClips,
             UnlockThresholdSeconds: Math.Clamp(row.UnlockThresholdSeconds ?? 30, 1, 3600),
             Status: string.IsNullOrWhiteSpace(row.Status) ? "draft" : row.Status.Trim().ToLowerInvariant(),
             SortOrder: row.SortOrder,
@@ -486,6 +526,159 @@ public sealed partial class SupabaseCharacterService(
             .ToArray();
     }
 
+    private static CharacterAudioClipItem[] NormalizeAudioClipList(IEnumerable<CharacterAudioClipItem>? values)
+    {
+        return (values ?? Array.Empty<CharacterAudioClipItem>())
+            .Select(NormalizeAudioClip)
+            .Where(static clip => clip is not null)
+            .Cast<CharacterAudioClipItem>()
+            .OrderBy(clip => clip.SortOrder)
+            .ThenBy(clip => clip.Title, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static CharacterAudioClipItem[] NormalizeAudioClipList(JsonElement? value)
+    {
+        if (value is null || value.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return Array.Empty<CharacterAudioClipItem>();
+        }
+
+        if (value.Value.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<CharacterAudioClipItem>();
+        }
+
+        var clips = new List<CharacterAudioClipItem>();
+        foreach (var item in value.Value.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var clip = NormalizeAudioClip(new CharacterAudioClipItem(
+                StreamSlug: ReadJsonString(item, "stream_slug") ?? string.Empty,
+                Title: ReadJsonString(item, "title") ?? string.Empty,
+                AudioProvider: ReadJsonString(item, "audio_provider") ?? string.Empty,
+                AudioObjectKey: ReadJsonString(item, "audio_object_key") ?? string.Empty,
+                AudioContentType: ReadJsonString(item, "audio_content_type"),
+                SortOrder: ReadJsonInt(item, "sort_order")));
+
+            if (clip is not null)
+            {
+                clips.Add(clip);
+            }
+        }
+
+        return clips
+            .OrderBy(clip => clip.SortOrder)
+            .ThenBy(clip => clip.Title, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static CharacterAudioClipItem? NormalizeAudioClip(CharacterAudioClipItem clip)
+    {
+        var streamSlug = NormalizeOptionalSlug(clip.StreamSlug);
+        var title = NormalizeOptionalText(clip.Title, 160);
+        var audioObjectKey = NormalizeOptionalText(clip.AudioObjectKey, 2048);
+        var audioProvider = NormalizeAudioProvider(clip.AudioProvider);
+
+        if (string.IsNullOrWhiteSpace(streamSlug) ||
+            string.IsNullOrWhiteSpace(title) ||
+            string.IsNullOrWhiteSpace(audioObjectKey) ||
+            string.IsNullOrWhiteSpace(audioProvider))
+        {
+            return null;
+        }
+
+        return new CharacterAudioClipItem(
+            StreamSlug: streamSlug,
+            Title: title,
+            AudioProvider: audioProvider,
+            AudioObjectKey: audioObjectKey,
+            AudioContentType: NormalizeAudioContentType(clip.AudioContentType, audioObjectKey),
+            SortOrder: Math.Clamp(clip.SortOrder, -500_000, 500_000));
+    }
+
+    private static string? NormalizeAudioProvider(string? value)
+    {
+        return value?.Trim().ToLowerInvariant() switch
+        {
+            "local" => "local",
+            "r2" => "r2",
+            _ => null
+        };
+    }
+
+    private static string? NormalizeAudioContentType(string? configuredContentType, string? audioObjectKey)
+    {
+        var normalizedContentType = configuredContentType?.Trim().ToLowerInvariant();
+        if (normalizedContentType is "audio/mpeg" or "audio/mp3")
+        {
+            return "audio/mpeg";
+        }
+
+        if (normalizedContentType is "audio/mp4" or "audio/x-m4a")
+        {
+            return "audio/mp4";
+        }
+
+        if (normalizedContentType is "audio/wav" or "audio/x-wav" or "audio/wave")
+        {
+            return "audio/wav";
+        }
+
+        if (normalizedContentType is "audio/ogg")
+        {
+            return "audio/ogg";
+        }
+
+        var extension = Path.GetExtension(audioObjectKey ?? string.Empty).ToLowerInvariant();
+        return extension switch
+        {
+            ".mp3" or ".mpeg" => "audio/mpeg",
+            ".m4a" => "audio/mp4",
+            ".wav" => "audio/wav",
+            ".ogg" => "audio/ogg",
+            _ => null
+        };
+    }
+
+    private static string? ReadJsonString(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var property) ||
+            property.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return null;
+        }
+
+        return property.ValueKind == JsonValueKind.String
+            ? property.GetString()
+            : property.ToString();
+    }
+
+    private static int ReadJsonInt(JsonElement element, string propertyName)
+    {
+        if (!element.TryGetProperty(propertyName, out var property))
+        {
+            return 0;
+        }
+
+        if (property.ValueKind == JsonValueKind.Number && property.TryGetInt32(out var value))
+        {
+            return value;
+        }
+
+        if (property.ValueKind == JsonValueKind.String &&
+            int.TryParse(property.GetString(), out value))
+        {
+            return value;
+        }
+
+        return 0;
+    }
+
     private static Guid? ReadFirstGuidProperty(string json, string propertyName)
     {
         if (string.IsNullOrWhiteSpace(json) || string.IsNullOrWhiteSpace(propertyName))
@@ -589,6 +782,9 @@ public sealed partial class SupabaseCharacterService(
 
         [JsonPropertyName("related_story_slugs")]
         public string[]? RelatedStorySlugs { get; set; }
+
+        [JsonPropertyName("audio_clips")]
+        public JsonElement? AudioClips { get; set; }
 
         [JsonPropertyName("unlock_threshold_seconds")]
         public int? UnlockThresholdSeconds { get; set; }

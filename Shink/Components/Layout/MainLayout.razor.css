@@ -105,7 +105,7 @@
 .site-header {
     position: sticky;
     top: 0;
-    z-index: 20;
+    z-index: 200;
     border-bottom: 1px solid color-mix(in srgb, var(--line) 82%, #bcc2b8);
     background: color-mix(in srgb, var(--surface) 97%, white);
     backdrop-filter: blur(12px) saturate(145%);
@@ -144,7 +144,7 @@
     position: absolute;
     right: 0;
     top: calc(100% + 0.4rem);
-    z-index: 55;
+    z-index: 64;
 }
 
 .nav-controls {
@@ -152,6 +152,7 @@
     align-items: center;
     gap: 0.4rem;
     position: relative;
+    z-index: 63;
 }
 
 .guest-controls {
@@ -159,6 +160,7 @@
     align-items: center;
     gap: 0.55rem;
     position: relative;
+    z-index: 63;
 }
 
 .site-search-form {
@@ -395,6 +397,7 @@
 
 .nav-menu-toggle {
     display: inline-flex;
+    position: relative;
     width: 32px;
     height: 32px;
     border: 1px solid var(--line);
@@ -408,6 +411,7 @@
     appearance: none;
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
+    z-index: 61;
 }
 
 .nav-menu-toggle i {
@@ -742,6 +746,7 @@
 
 .account-menu {
     position: relative;
+    z-index: 59;
     background: transparent;
 }
 
@@ -1039,7 +1044,7 @@
     }
 
     .nav-menu-toggle {
-        z-index: 60;
+        z-index: 61;
     }
 
     .site-nav.is-open a:hover {

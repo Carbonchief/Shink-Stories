@@ -3,11 +3,15 @@
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IAudioAccessService AudioAccessService
 @inject ICharacterCatalogService CharacterCatalogService
+@inject IJSRuntime JS
 @inject IStoryTrackingService StoryTrackingService
 @inject IStoryCatalogService StoryCatalogService
 @inject NavigationManager NavigationManager
+@implements IAsyncDisposable
 
 <PageTitle>Schink Stories | Karakters</PageTitle>
 <HeadContent>
@@ -94,6 +98,15 @@
                                  loading="lazy"
                                  decoding="async"
                                  onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                            <button type="button"
+                                    class="character-card-badge character-card-audio-trigger"
+                                    @onclick="() => PlayCharacterAudioAsync(card)"
+                                    @onclick:stopPropagation="true"
+                                    disabled="@(!card.HasAudio)"
+                                    aria-label="@(card.HasAudio ? $"Speel {card.Character.DisplayName} se stem" : $"{card.Character.DisplayName} het nog geen klankgreep nie")"
+                                    title="@(card.HasAudio ? "Speel karakterklank" : "Geen karakterklank beskikbaar")">
+                                <i class="fa-solid fa-volume-high" aria-hidden="true"></i>
+                            </button>
                         </div>
 
                         <div class="character-card-body">
@@ -233,6 +246,7 @@
     private IReadOnlyList<CharacterCardViewModel> CharacterCards { get; set; } = Array.Empty<CharacterCardViewModel>();
     private CharacterCardViewModel? ActiveProfileCard { get; set; }
     private string? LoadingCallToActionHref { get; set; }
+    private IJSObjectReference? _charactersModule;
     private int UnlockedCharacterCount => CharacterCards.Count(card => card.IsUnlocked);
     private string KaraktersCanonicalUrl => NavigationManager.ToAbsoluteUri("/karakters").ToString();
     private string LoginForCharactersHref => $"/teken-in?returnUrl={Uri.EscapeDataString("/karakters")}";
@@ -318,6 +332,23 @@
         }
     }
 
+    private async Task PlayCharacterAudioAsync(CharacterCardViewModel card)
+    {
+        if (!card.IsUnlocked || !card.HasAudio)
+        {
+            return;
+        }
+
+        var clip = card.Character.AudioClips[Random.Shared.Next(card.Character.AudioClips.Count)];
+        var module = await TryGetCharactersModuleAsync();
+        if (module is null)
+        {
+            return;
+        }
+
+        await module.InvokeVoidAsync("playCharacterAudio", AudioAccessService.CreateSignedAudioUrl(clip.StreamSlug));
+    }
+
     private bool IsCallToActionLoading(string? href) =>
         !string.IsNullOrWhiteSpace(href) &&
         string.Equals(LoadingCallToActionHref, href, StringComparison.Ordinal);
@@ -362,6 +393,7 @@
         return new CharacterCardViewModel(
             Character: character,
             IsUnlocked: unlocked,
+            HasAudio: character.AudioClips.Count > 0,
             Heading: unlocked ? character.DisplayName : "?????",
             SummaryText: summaryText,
             DisplayImagePath: unlocked
@@ -448,6 +480,51 @@
             ? "/branding/schink-logo-green.png"
             : path;
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await TryGetCharactersModuleAsync();
+    }
+
+    private async Task<IJSObjectReference?> TryGetCharactersModuleAsync()
+    {
+        if (_charactersModule is not null)
+        {
+            return _charactersModule;
+        }
+
+        try
+        {
+            _charactersModule = await JS.InvokeAsync<IJSObjectReference>("import", "/Components/Pages/Karakters.razor.js");
+        }
+        catch
+        {
+            _charactersModule = null;
+        }
+
+        return _charactersModule;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_charactersModule is not null)
+        {
+            try
+            {
+                await _charactersModule.InvokeVoidAsync("stopCharacterAudio");
+                await _charactersModule.DisposeAsync();
+            }
+            catch
+            {
+                // Ignore disconnects during disposal.
+            }
+        }
+    }
+
     private sealed record StoryLinkInfo(
         string Slug,
         string Title,
@@ -457,6 +534,7 @@
     private sealed record CharacterCardViewModel(
         StoryCharacterItem Character,
         bool IsUnlocked,
+        bool HasAudio,
         string Heading,
         string SummaryText,
         string DisplayImagePath,
