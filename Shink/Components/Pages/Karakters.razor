@@ -132,6 +132,19 @@
                                 </button>
                             }
                         </div>
+
+                        @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
+                        {
+                            <button type="button"
+                                    class="character-card-mobile-play"
+                                    @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
+                                    @onclick:stopPropagation="true"
+                                    disabled="@IsCallToActionLoading(card.CallToActionHref)"
+                                    aria-label="@card.CallToActionLabel"
+                                    title="@card.CallToActionLabel">
+                                <i class="fa-solid fa-play" aria-hidden="true"></i>
+                            </button>
+                        }
                     </article>
                 }
                 else
@@ -171,6 +184,18 @@
                                 </button>
                             }
                         </div>
+
+                        @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
+                        {
+                            <button type="button"
+                                    class="character-card-mobile-play"
+                                    @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
+                                    disabled="@IsCallToActionLoading(card.CallToActionHref)"
+                                    aria-label="@card.CallToActionLabel"
+                                    title="@card.CallToActionLabel">
+                                <i class="fa-solid fa-play" aria-hidden="true"></i>
+                            </button>
+                        }
                     </article>
                 }
             }
@@ -193,12 +218,17 @@
                 <i class="fa-solid fa-xmark" aria-hidden="true"></i>
             </button>
 
-            <img class="character-profile-popup-image"
-                 src="@ResolveCharacterImagePath(ActiveProfileCard.Character.ImagePath)"
-                 alt="Illustrasie van @ActiveProfileCard.Character.DisplayName"
-                 loading="lazy"
-                 decoding="async"
-                 onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+            <button type="button"
+                    class="character-profile-popup-image-button"
+                    @onclick="CelebrateProfileImageAsync"
+                    aria-label="Druk vir 'n verrassing">
+                <img class="@($"character-profile-popup-image{(IsProfileImageCelebrating ? " is-celebrating" : string.Empty)}")"
+                     src="@ResolveCharacterImagePath(ActiveProfileCard.Character.ImagePath)"
+                     alt="Illustrasie van @ActiveProfileCard.Character.DisplayName"
+                     loading="lazy"
+                     decoding="async"
+                     onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+            </button>
 
             <h2 id="character-profile-popup-title">@ActiveProfileCard.Character.DisplayName</h2>
 
@@ -214,6 +244,7 @@
                         @CharacterField("Blyplek", ActiveProfileCard.Character.Habitat)
                         @CharacterField("Sê-ding", ActiveProfileCard.Character.Catchphrase)
                         @CharacterField("Gunsteling-ding", ActiveProfileCard.Character.FavoriteThing)
+                        @CharacterField("Eerste verskyning", ActiveProfileCard.Character.FirstAppearance)
                     </div>
 
                     <div class="character-profile-popup-panel character-profile-popup-panel-highlight">
@@ -222,10 +253,11 @@
                         @CharacterField("Kernwaarde", ActiveProfileCard.Character.CoreValue)
                     </div>
 
-                    @CharacterField("Eerste verskyning", ActiveProfileCard.Character.FirstAppearance)
-                    @FriendField("Maats", ActiveProfileCard.Character.Friends)
-                    @CharacterField("Vragie", ActiveProfileCard.Character.ReflectionQuestion)
-                    @CharacterField("Uitdaging vir jou", ActiveProfileCard.Character.ChallengeText)
+                    <div class="character-profile-popup-panel">
+                        @CharacterField("Vragie", ActiveProfileCard.Character.ReflectionQuestion)
+                        @CharacterField("Uitdaging vir jou", ActiveProfileCard.Character.ChallengeText)
+                        @FriendField("Maats", ActiveProfileCard.Character.Friends)
+                    </div>
                 </dl>
 
                 @if (ActiveProfileCard.RelatedStories.Count > 0)
@@ -235,7 +267,15 @@
                         <div class="character-story-links">
                             @foreach (var story in ActiveProfileCard.RelatedStories)
                             {
-                                <a href="@story.Path">@story.Title</a>
+                                <a href="@story.Path" class="character-profile-story-link">
+                                    <img src="@story.CoverPath"
+                                         alt="Voorblad van @story.Title"
+                                         class="character-profile-story-cover"
+                                         loading="lazy"
+                                         decoding="async"
+                                         onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                                    <span>@story.Title</span>
+                                </a>
                             }
                         </div>
                     </div>
@@ -252,6 +292,8 @@
     private IReadOnlyList<CharacterCardViewModel> CharacterCards { get; set; } = Array.Empty<CharacterCardViewModel>();
     private CharacterCardViewModel? ActiveProfileCard { get; set; }
     private string? LoadingCallToActionHref { get; set; }
+    private bool IsProfileImageCelebrating { get; set; }
+    private Guid? AnimatedFriendCharacterId { get; set; }
     private IJSObjectReference? _charactersModule;
     private int UnlockedCharacterCount => CharacterCards.Count(card => card.IsUnlocked);
     private string KaraktersCanonicalUrl => NavigationManager.ToAbsoluteUri("/karakters").ToString();
@@ -340,7 +382,7 @@
         builder.CloseElement();
         builder.OpenElement(5, "dd");
         builder.AddAttribute(6, "class", "character-friend-list");
-        builder.AddAttribute(7, "style", "display:flex;flex-wrap:wrap;gap:0.75rem;margin:0;");
+        builder.AddAttribute(7, "style", "display:flex;flex-wrap:wrap;justify-content:center;gap:0.75rem;margin:0;");
 
         var sequence = 8;
 
@@ -349,13 +391,14 @@
             builder.OpenElement(sequence++, "button");
             builder.AddAttribute(sequence++, "type", "button");
             builder.AddAttribute(sequence++, "class", "character-friend-item character-friend-button");
-            builder.AddAttribute(sequence++, "style", "display:flex;flex-direction:column;align-items:center;gap:0.35rem;width:104px;text-align:center;flex:0 0 auto;padding:0;border:none;background:transparent;cursor:pointer;");
+            builder.AddAttribute(sequence++, "data-maat-tile", "true");
+            builder.AddAttribute(sequence++, "style", "display:flex;flex-direction:column;align-items:center;gap:0.35rem;width:calc((100% - 1.5rem) / 3);max-width:88px;text-align:center;flex:0 0 calc((100% - 1.5rem) / 3);padding:0;border:none;background:transparent;cursor:pointer;");
             builder.AddAttribute(sequence++, "aria-label", $"Maak {friend.DisplayName} se profiel oop");
             builder.AddAttribute(sequence++, "onclick", EventCallback.Factory.Create(this, () => OpenCharacterProfile(friend.CharacterId)));
 
             builder.OpenElement(sequence++, "img");
             builder.AddAttribute(sequence++, "class", "character-friend-image");
-            builder.AddAttribute(sequence++, "style", "width:80px;max-width:80px;height:auto;display:block;object-fit:contain;flex:0 0 auto;");
+            builder.AddAttribute(sequence++, "style", "width:64px;max-width:64px;height:auto;display:block;object-fit:contain;flex:0 0 auto;");
             builder.AddAttribute(sequence++, "src", ResolveCharacterImagePath(friend.ImagePath));
             builder.AddAttribute(sequence++, "alt", $"Illustrasie van {friend.DisplayName}");
             builder.AddAttribute(sequence++, "loading", "lazy");
@@ -376,7 +419,8 @@
         {
             builder.OpenElement(sequence++, "div");
             builder.AddAttribute(sequence++, "class", "character-friend-item");
-            builder.AddAttribute(sequence++, "style", "display:flex;flex-direction:column;align-items:center;gap:0.35rem;width:104px;text-align:center;flex:0 0 auto;");
+            builder.AddAttribute(sequence++, "data-maat-tile", "true");
+            builder.AddAttribute(sequence++, "style", "display:flex;flex-direction:column;align-items:center;gap:0.35rem;width:calc((100% - 1.5rem) / 3);max-width:88px;text-align:center;flex:0 0 calc((100% - 1.5rem) / 3);");
 
             builder.OpenElement(sequence++, "span");
             builder.AddAttribute(sequence++, "class", "character-friend-name");
@@ -394,6 +438,7 @@
     private void OpenCharacterProfile(CharacterCardViewModel card)
     {
         ActiveProfileCard = card;
+        IsProfileImageCelebrating = false;
     }
 
     private void OpenCharacterProfile(Guid characterId)
@@ -402,6 +447,7 @@
         if (card is not null)
         {
             ActiveProfileCard = card;
+            IsProfileImageCelebrating = false;
         }
     }
 
@@ -480,6 +526,43 @@
     private void CloseCharacterProfile()
     {
         ActiveProfileCard = null;
+        IsProfileImageCelebrating = false;
+    }
+
+    private async Task CelebrateProfileImageAsync()
+    {
+        if (ActiveProfileCard is null)
+        {
+            return;
+        }
+
+        IsProfileImageCelebrating = false;
+        StateHasChanged();
+        await Task.Yield();
+
+        IsProfileImageCelebrating = true;
+        StateHasChanged();
+
+        var module = await TryGetCharactersModuleAsync();
+        if (module is not null)
+        {
+            try
+            {
+                await module.InvokeVoidAsync("triggerCharacterHaptics");
+            }
+            catch
+            {
+                // Ignore haptic failures on unsupported browsers/devices.
+            }
+        }
+
+        await Task.Delay(900);
+
+        if (ActiveProfileCard is not null)
+        {
+            IsProfileImageCelebrating = false;
+            StateHasChanged();
+        }
     }
 
     private void HandleCharacterCardKeyDown(KeyboardEventArgs args, CharacterCardViewModel card)
@@ -597,8 +680,8 @@
         IReadOnlyList<StoryItem> luisterStories)
     {
         return freeStories
-            .Select(story => new StoryLinkInfo(story.Slug, story.Title, $"/gratis/{Uri.EscapeDataString(story.Slug)}", "free"))
-            .Concat(luisterStories.Select(story => new StoryLinkInfo(story.Slug, story.Title, $"/luister/{Uri.EscapeDataString(story.Slug)}", story.AccessLevel)))
+            .Select(story => new StoryLinkInfo(story.Slug, story.Title, $"/gratis/{Uri.EscapeDataString(story.Slug)}", "free", story.ImagePath))
+            .Concat(luisterStories.Select(story => new StoryLinkInfo(story.Slug, story.Title, $"/luister/{Uri.EscapeDataString(story.Slug)}", story.AccessLevel, story.ImagePath)))
             .GroupBy(story => story.Slug, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
     }
@@ -640,12 +723,50 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender)
+        if (firstRender)
+        {
+            await TryGetCharactersModuleAsync();
+        }
+
+        var module = await TryGetCharactersModuleAsync();
+        if (module is null)
         {
             return;
         }
 
-        await TryGetCharactersModuleAsync();
+        if (ActiveProfileCard is null)
+        {
+            if (AnimatedFriendCharacterId is not null)
+            {
+                try
+                {
+                    await module.InvokeVoidAsync("stopMaatAnimation");
+                }
+                catch
+                {
+                    // Ignore disconnects while stopping popup-only effects.
+                }
+
+                AnimatedFriendCharacterId = null;
+            }
+
+            return;
+        }
+
+        if (AnimatedFriendCharacterId == ActiveProfileCard.Character.CharacterId)
+        {
+            return;
+        }
+
+        try
+        {
+            await module.InvokeVoidAsync("startMaatAnimation");
+            AnimatedFriendCharacterId = ActiveProfileCard.Character.CharacterId;
+        }
+        catch
+        {
+            AnimatedFriendCharacterId = null;
+        }
     }
 
     private async Task<IJSObjectReference?> TryGetCharactersModuleAsync()
@@ -673,6 +794,7 @@
         {
             try
             {
+                await _charactersModule.InvokeVoidAsync("stopMaatAnimation");
                 await _charactersModule.InvokeVoidAsync("stopCharacterAudio");
                 await _charactersModule.DisposeAsync();
             }
@@ -687,7 +809,8 @@
         string Slug,
         string Title,
         string Path,
-        string AccessLevel);
+        string AccessLevel,
+        string CoverPath);
 
     private sealed record CharacterCardViewModel(
         StoryCharacterItem Character,
