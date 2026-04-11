@@ -740,8 +740,8 @@
         position: absolute;
         right: 0.7rem;
         bottom: 0.7rem;
-        width: 2.2rem;
-        height: 2.2rem;
+        width: 1.9rem;
+        height: 1.9rem;
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -749,6 +749,7 @@
         border-radius: 999px;
         background: #f39a32;
         color: #1d1306;
+        font-size: 0.76rem;
         box-shadow: 0 10px 18px rgba(243, 154, 50, 0.28);
         cursor: pointer;
         z-index: 2;

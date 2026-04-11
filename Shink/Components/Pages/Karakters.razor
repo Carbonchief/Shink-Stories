@@ -107,6 +107,19 @@
                                     title="@(card.HasAudio ? "Speel karakterklank" : "Geen karakterklank beskikbaar")">
                                 <i class="fa-solid fa-volume-high" aria-hidden="true"></i>
                             </button>
+
+                            @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
+                            {
+                                <button type="button"
+                                        class="character-card-mobile-play"
+                                        @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
+                                        @onclick:stopPropagation="true"
+                                        disabled="@IsCallToActionLoading(card.CallToActionHref)"
+                                        aria-label="@card.CallToActionLabel"
+                                        title="@card.CallToActionLabel">
+                                    <i class="fa-solid fa-play" aria-hidden="true"></i>
+                                </button>
+                            }
                         </div>
 
                         <div class="character-card-body">
@@ -133,18 +146,6 @@
                             }
                         </div>
 
-                        @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
-                        {
-                            <button type="button"
-                                    class="character-card-mobile-play"
-                                    @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
-                                    @onclick:stopPropagation="true"
-                                    disabled="@IsCallToActionLoading(card.CallToActionHref)"
-                                    aria-label="@card.CallToActionLabel"
-                                    title="@card.CallToActionLabel">
-                                <i class="fa-solid fa-play" aria-hidden="true"></i>
-                            </button>
-                        }
                     </article>
                 }
                 else
@@ -160,6 +161,19 @@
                             <span class="character-card-badge" aria-label="Nog gesluit" title="Nog gesluit">
                                 <i class="fa-solid fa-lock" aria-hidden="true"></i>
                             </span>
+
+                            @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
+                            {
+                                <button type="button"
+                                        class="character-card-mobile-play"
+                                        @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
+                                        @onclick:stopPropagation="true"
+                                        disabled="@IsCallToActionLoading(card.CallToActionHref)"
+                                        aria-label="@card.CallToActionLabel"
+                                        title="@card.CallToActionLabel">
+                                    <i class="fa-solid fa-play" aria-hidden="true"></i>
+                                </button>
+                            }
                         </div>
 
                         <div class="character-card-body">
@@ -185,17 +199,6 @@
                             }
                         </div>
 
-                        @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
-                        {
-                            <button type="button"
-                                    class="character-card-mobile-play"
-                                    @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
-                                    disabled="@IsCallToActionLoading(card.CallToActionHref)"
-                                    aria-label="@card.CallToActionLabel"
-                                    title="@card.CallToActionLabel">
-                                <i class="fa-solid fa-play" aria-hidden="true"></i>
-                            </button>
-                        }
                     </article>
                 }
             }
