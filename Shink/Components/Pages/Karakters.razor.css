@@ -105,6 +105,7 @@
 }
 
 .character-card {
+    position: relative;
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -114,6 +115,10 @@
     background: rgba(255, 255, 255, 0.88);
     border: 1px solid rgba(16, 57, 69, 0.1);
     box-shadow: 0 18px 40px rgba(16, 44, 53, 0.12);
+}
+
+.character-card-mobile-play {
+    display: none;
 }
 
 .character-card-clickable {
@@ -363,25 +368,45 @@
 }
 
 .character-profile-popup-close {
-    position: absolute;
+    position: sticky;
     top: 0.85rem;
+    margin-left: auto;
     right: 0.85rem;
     width: 2rem;
     height: 2rem;
     border: none;
     border-radius: 999px;
-    background: transparent;
-    color: #c1c1c1;
+    background: rgba(255, 255, 255, 0.94);
+    color: #c63b36;
     font-size: 1.2rem;
     line-height: 1;
     display: grid;
     place-items: center;
     cursor: pointer;
+    z-index: 3;
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12);
 }
 
 .character-profile-popup-close:hover,
 .character-profile-popup-close:focus-visible {
-    color: #8e8e8e;
+    color: #a92c28;
+}
+
+.character-profile-popup-image-button {
+    border: none;
+    background: transparent;
+    padding: 0;
+    margin: 0.25rem auto 0.8rem;
+    width: fit-content;
+    display: flex;
+    justify-content: center;
+    border-radius: 28px;
+    cursor: pointer;
+}
+
+.character-profile-popup-image-button:focus-visible {
+    outline: 3px solid rgba(243, 154, 50, 0.45);
+    outline-offset: 4px;
 }
 
 .character-profile-popup-image {
@@ -390,10 +415,22 @@
     object-fit: cover;
     border-radius: 28px;
     display: block;
-    margin: 0.25rem auto 0.8rem;
     transform-origin: center bottom;
     animation: story-access-popup-image-pop 420ms cubic-bezier(0.2, 0.9, 0.25, 1.2) both,
         story-access-popup-image-wiggle 5s ease-in-out 520ms infinite;
+    filter: drop-shadow(0 16px 26px rgba(16, 44, 53, 0.14));
+    transition: transform 0.18s ease, filter 0.18s ease;
+}
+
+.character-profile-popup-image-button:hover .character-profile-popup-image {
+    transform: scale(1.03);
+    filter: drop-shadow(0 18px 30px rgba(16, 44, 53, 0.18));
+}
+
+.character-profile-popup-image.is-celebrating {
+    animation:
+        character-profile-popup-image-celebrate 820ms cubic-bezier(0.22, 0.88, 0.34, 1.18),
+        character-profile-popup-image-glow 820ms ease-out;
 }
 
 .character-profile-popup-card h2 {
@@ -490,6 +527,10 @@
     object-fit: contain;
 }
 
+.character-friend-item.is-shuffling {
+    animation: character-friend-image-bop 900ms cubic-bezier(0.22, 0.88, 0.34, 1.12);
+}
+
 .character-friend-name {
     font-size: 0.76rem;
     line-height: 1.2;
@@ -499,6 +540,46 @@
 .character-profile-popup-related-stories {
     border-top: 1px solid rgba(16, 57, 69, 0.1);
     padding-top: 0.9rem;
+    text-align: center;
+}
+
+.character-profile-popup-related-stories .character-story-links {
+    justify-content: center;
+}
+
+.character-profile-popup-related-stories .character-story-links a.character-profile-story-link {
+    width: min(100%, 160px);
+    max-width: 200px;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.45rem;
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
+    text-align: center;
+    box-shadow: none;
+}
+
+.character-profile-popup-related-stories .character-story-links a.character-profile-story-link:hover {
+    transform: translateY(-2px);
+    box-shadow: none;
+}
+
+.character-profile-popup-related-stories .character-story-links a.character-profile-story-link span {
+    font-size: 0.8rem;
+    line-height: 1.25;
+}
+
+.character-profile-story-cover {
+    width: 100%;
+    max-width: 200px;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    object-position: center bottom;
+    display: block;
+    border-radius: 16px;
+    box-shadow: 0 10px 22px rgba(16, 44, 53, 0.12);
 }
 
 @media (min-width: 1024px) {
@@ -558,6 +639,68 @@
     }
 }
 
+@keyframes character-profile-popup-image-celebrate {
+    0% {
+        transform: translateY(0) scale(1) rotate(0deg);
+    }
+
+    18% {
+        transform: translateY(-8px) scale(1.06) rotate(-6deg);
+    }
+
+    38% {
+        transform: translateY(-14px) scale(1.12) rotate(7deg);
+    }
+
+    56% {
+        transform: translateY(-5px) scale(1.08) rotate(-5deg);
+    }
+
+    78% {
+        transform: translateY(0) scale(1.03) rotate(3deg);
+    }
+
+    100% {
+        transform: translateY(0) scale(1) rotate(0deg);
+    }
+}
+
+@keyframes character-profile-popup-image-glow {
+    0% {
+        filter: drop-shadow(0 16px 26px rgba(16, 44, 53, 0.14));
+    }
+
+    32% {
+        filter: drop-shadow(0 0 0 rgba(243, 154, 50, 0.15)) drop-shadow(0 0 24px rgba(243, 154, 50, 0.5));
+    }
+
+    100% {
+        filter: drop-shadow(0 16px 26px rgba(16, 44, 53, 0.14));
+    }
+}
+
+@keyframes character-friend-image-bop {
+    0% {
+        transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+    }
+
+    20% {
+        transform: translate3d(-6px, -3px, 0) rotate(-7deg) scale(1.07);
+    }
+
+    45% {
+        transform: translate3d(7px, -10px, 0) rotate(8deg) scale(1.14);
+    }
+
+    68% {
+        transform: translate3d(-5px, -4px, 0) rotate(-5deg) scale(1.06);
+    }
+
+    100% {
+        transform: translate3d(0, 0, 0) rotate(0deg) scale(1);
+    }
+}
+
 @media (max-width: 640px) {
     .characters-page {
         width: min(100% - 1rem, 100%);
@@ -591,6 +734,40 @@
     .character-card-summary,
     .character-card-cta {
         display: none;
+    }
+
+    .character-card-mobile-play {
+        position: absolute;
+        right: 0.7rem;
+        bottom: 0.7rem;
+        width: 2.2rem;
+        height: 2.2rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        border-radius: 999px;
+        background: #f39a32;
+        color: #1d1306;
+        box-shadow: 0 10px 18px rgba(243, 154, 50, 0.28);
+        cursor: pointer;
+        z-index: 2;
+    }
+
+    .character-card.is-locked .character-card-mobile-play {
+        background: #8dc66f;
+        color: #113420;
+        box-shadow: 0 10px 18px rgba(141, 198, 111, 0.26);
+    }
+
+    .character-card-mobile-play:disabled {
+        cursor: wait;
+        opacity: 0.72;
+    }
+
+    .character-card-mobile-play:focus-visible {
+        outline: 3px solid rgba(243, 154, 50, 0.45);
+        outline-offset: 2px;
     }
 
     .character-card-badge {

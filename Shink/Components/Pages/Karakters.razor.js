@@ -1,4 +1,6 @@
 let audioPlayer;
+let maatAnimationLoop;
+let maatAnimationTimeout;
 
 function ensureAudioPlayer() {
   if (audioPlayer) {
@@ -44,4 +46,61 @@ export function stopCharacterAudio() {
   audioPlayer.pause();
   audioPlayer.removeAttribute("src");
   audioPlayer.load();
+}
+
+export function triggerCharacterHaptics() {
+  if (typeof navigator === "undefined" || typeof navigator.vibrate !== "function") {
+    return;
+  }
+
+  navigator.vibrate([24, 18, 40]);
+}
+
+function animateRandomMaat() {
+  const maatTiles = Array.from(document.querySelectorAll(".character-profile-popup-card [data-maat-tile]"));
+  if (!maatTiles.length) {
+    return;
+  }
+
+  const randomTile = maatTiles[Math.floor(Math.random() * maatTiles.length)];
+  randomTile.classList.remove("is-shuffling");
+  void randomTile.offsetWidth;
+  randomTile.classList.add("is-shuffling");
+
+  if (maatAnimationTimeout) {
+    window.clearTimeout(maatAnimationTimeout);
+  }
+
+  maatAnimationTimeout = window.setTimeout(() => {
+    randomTile.classList.remove("is-shuffling");
+  }, 900);
+}
+
+function queueNextMaatAnimation() {
+  maatAnimationLoop = window.setTimeout(() => {
+    animateRandomMaat();
+    queueNextMaatAnimation();
+  }, 3000);
+}
+
+export function startMaatAnimation() {
+  stopMaatAnimation();
+  animateRandomMaat();
+  queueNextMaatAnimation();
+}
+
+export function stopMaatAnimation() {
+  if (maatAnimationLoop) {
+    window.clearTimeout(maatAnimationLoop);
+    maatAnimationLoop = undefined;
+  }
+
+  if (maatAnimationTimeout) {
+    window.clearTimeout(maatAnimationTimeout);
+    maatAnimationTimeout = undefined;
+  }
+
+  document
+    .querySelectorAll(".character-profile-popup-card [data-maat-tile].is-shuffling")
+    .forEach((element) => element.classList.remove("is-shuffling"));
 }
