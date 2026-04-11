@@ -139,8 +139,11 @@
 
 .character-card-media {
     position: relative;
+    display: grid;
+    place-items: center;
     aspect-ratio: 1 / 1;
     padding: 0.65rem;
+    overflow: hidden;
     border-radius: 22px;
     background: linear-gradient(180deg, rgba(43, 94, 112, 0.12), rgba(19, 31, 35, 0.08));
 }
@@ -152,7 +155,11 @@
 .character-card-image {
     width: 100%;
     height: 100%;
-    object-fit: cover;
+    max-width: 100%;
+    max-height: 100%;
+    padding: 0.2rem;
+    object-fit: contain;
+    object-position: center;
     display: block;
     border-radius: 18px;
 }
@@ -409,6 +416,69 @@
     margin: 0;
     display: grid;
     gap: 0.8rem;
+}
+
+.character-profile-popup-panel {
+    display: grid;
+    gap: 0.75rem;
+    padding: 0.95rem 1rem;
+    border-radius: 18px;
+    background: #f8f6ef;
+    border: 1px solid #e4decf;
+    box-shadow: 0 8px 18px rgba(33, 42, 47, 0.06);
+}
+
+.character-profile-popup-panel-highlight {
+    background: linear-gradient(180deg, rgba(99, 176, 194, 0.16) 0%, rgba(242, 216, 164, 0.22) 100%);
+    border-color: rgba(64, 141, 147, 0.22);
+}
+
+.character-profile-popup-panel .character-detail-row:not(:last-child) {
+    padding-bottom: 0.72rem;
+    border-bottom: 1px solid rgba(29, 53, 64, 0.08);
+}
+
+.character-profile-popup-details .character-detail-row dt {
+    font-size: 0.98rem;
+    font-weight: 800;
+    letter-spacing: 0.01em;
+    text-transform: none;
+    color: #183d49;
+}
+
+.character-profile-popup-details .character-detail-row dd {
+    font-size: 0.98rem;
+    line-height: 1.55;
+}
+
+.character-friend-row dd.character-friend-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin: 0;
+}
+
+.character-friend-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    width: 64px;
+    text-align: center;
+}
+
+.character-friend-image {
+    width: min(100%, 40px);
+    max-width: 40px;
+    height: auto;
+    display: block;
+    object-fit: contain;
+}
+
+.character-friend-name {
+    font-size: 0.76rem;
+    line-height: 1.2;
+    color: #26373e;
 }
 
 .character-profile-popup-related-stories {

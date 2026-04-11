@@ -209,15 +209,21 @@
 
             <div class="character-profile-popup-content">
                 <dl class="character-profile-popup-details">
-                    @CharacterField("Tipe", ActiveProfileCard.Character.Species)
-                    @CharacterField("Blyplek", ActiveProfileCard.Character.Habitat)
-                    @CharacterField("Sê-ding", ActiveProfileCard.Character.Catchphrase)
-                    @CharacterField("Gunsteling-ding", ActiveProfileCard.Character.FavoriteThing)
-                    @CharacterField("Kenmerk", ActiveProfileCard.Character.CharacterTrait)
-                    @CharacterField("Goue Les", ActiveProfileCard.Character.GoldenLesson)
-                    @CharacterField("Kernwaarde", ActiveProfileCard.Character.CoreValue)
+                    <div class="character-profile-popup-panel">
+                        @CharacterField("Tipe", ActiveProfileCard.Character.Species)
+                        @CharacterField("Blyplek", ActiveProfileCard.Character.Habitat)
+                        @CharacterField("Sê-ding", ActiveProfileCard.Character.Catchphrase)
+                        @CharacterField("Gunsteling-ding", ActiveProfileCard.Character.FavoriteThing)
+                    </div>
+
+                    <div class="character-profile-popup-panel character-profile-popup-panel-highlight">
+                        @CharacterField("Kenmerk", ActiveProfileCard.Character.CharacterTrait)
+                        @CharacterField("Goue Les", ActiveProfileCard.Character.GoldenLesson)
+                        @CharacterField("Kernwaarde", ActiveProfileCard.Character.CoreValue)
+                    </div>
+
                     @CharacterField("Eerste verskyning", ActiveProfileCard.Character.FirstAppearance)
-                    @CharacterField("Maats", ActiveProfileCard.Character.Friends)
+                    @FriendField("Maats", ActiveProfileCard.Character.Friends)
                     @CharacterField("Vragie", ActiveProfileCard.Character.ReflectionQuestion)
                     @CharacterField("Uitdaging vir jou", ActiveProfileCard.Character.ChallengeText)
                 </dl>
@@ -306,10 +312,78 @@
         builder.OpenElement(0, "div");
         builder.AddAttribute(1, "class", "character-detail-row");
         builder.OpenElement(2, "dt");
-        builder.AddContent(3, label);
+        builder.AddAttribute(3, "style", "font-size:0.98rem;font-weight:700;letter-spacing:0.01em;text-transform:none;color:#183d49;");
+        builder.AddContent(4, label);
         builder.CloseElement();
-        builder.OpenElement(4, "dd");
-        builder.AddContent(5, value);
+        builder.OpenElement(5, "dd");
+        builder.AddAttribute(6, "style", "font-size:0.98rem;line-height:1.55;color:#26373e;");
+        builder.AddContent(7, value);
+        builder.CloseElement();
+        builder.CloseElement();
+    };
+
+    private RenderFragment FriendField(string label, string? value) => builder =>
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        var friends = ResolveFriendCharacters(value);
+        var unmatchedFriends = ResolveUnmatchedFriendNames(value, friends);
+
+        builder.OpenElement(0, "div");
+        builder.AddAttribute(1, "class", "character-detail-row character-friend-row");
+        builder.OpenElement(2, "dt");
+        builder.AddAttribute(3, "style", "font-size:0.98rem;font-weight:700;letter-spacing:0.01em;text-transform:none;color:#183d49;");
+        builder.AddContent(4, label);
+        builder.CloseElement();
+        builder.OpenElement(5, "dd");
+        builder.AddAttribute(6, "class", "character-friend-list");
+        builder.AddAttribute(7, "style", "display:flex;flex-wrap:wrap;gap:0.75rem;margin:0;");
+
+        var sequence = 8;
+
+        foreach (var friend in friends)
+        {
+            builder.OpenElement(sequence++, "div");
+            builder.AddAttribute(sequence++, "class", "character-friend-item");
+            builder.AddAttribute(sequence++, "style", "display:flex;flex-direction:column;align-items:center;gap:0.35rem;width:104px;text-align:center;flex:0 0 auto;");
+
+            builder.OpenElement(sequence++, "img");
+            builder.AddAttribute(sequence++, "class", "character-friend-image");
+            builder.AddAttribute(sequence++, "style", "width:80px;max-width:80px;height:auto;display:block;object-fit:contain;flex:0 0 auto;");
+            builder.AddAttribute(sequence++, "src", ResolveCharacterImagePath(friend.ImagePath));
+            builder.AddAttribute(sequence++, "alt", $"Illustrasie van {friend.DisplayName}");
+            builder.AddAttribute(sequence++, "loading", "lazy");
+            builder.AddAttribute(sequence++, "decoding", "async");
+            builder.AddAttribute(sequence++, "onerror", "this.onerror=null;this.src='/branding/schink-logo-green.png';");
+            builder.CloseElement();
+
+            builder.OpenElement(sequence++, "span");
+            builder.AddAttribute(sequence++, "class", "character-friend-name");
+            builder.AddAttribute(sequence++, "style", "font-size:0.76rem;line-height:1.2;color:#26373e;");
+            builder.AddContent(sequence++, friend.DisplayName);
+            builder.CloseElement();
+
+            builder.CloseElement();
+        }
+
+        foreach (var unmatchedFriend in unmatchedFriends)
+        {
+            builder.OpenElement(sequence++, "div");
+            builder.AddAttribute(sequence++, "class", "character-friend-item");
+            builder.AddAttribute(sequence++, "style", "display:flex;flex-direction:column;align-items:center;gap:0.35rem;width:104px;text-align:center;flex:0 0 auto;");
+
+            builder.OpenElement(sequence++, "span");
+            builder.AddAttribute(sequence++, "class", "character-friend-name");
+            builder.AddAttribute(sequence++, "style", "font-size:0.76rem;line-height:1.2;color:#26373e;");
+            builder.AddContent(sequence++, unmatchedFriend);
+            builder.CloseElement();
+
+            builder.CloseElement();
+        }
+
         builder.CloseElement();
         builder.CloseElement();
     };
@@ -317,6 +391,78 @@
     private void OpenCharacterProfile(CharacterCardViewModel card)
     {
         ActiveProfileCard = card;
+    }
+
+    private IReadOnlyList<StoryCharacterItem> ResolveFriendCharacters(string? friends)
+    {
+        var friendNames = SplitFriendNames(friends);
+        if (friendNames.Count == 0 || CharacterCards.Count == 0)
+        {
+            return Array.Empty<StoryCharacterItem>();
+        }
+
+        var characters = CharacterCards
+            .Select(card => card.Character)
+            .GroupBy(character => character.CharacterId)
+            .Select(group => group.First())
+            .ToArray();
+
+        var matched = new List<StoryCharacterItem>();
+        foreach (var friendName in friendNames)
+        {
+            var normalizedFriendName = NormalizeFriendToken(friendName);
+            var match = characters.FirstOrDefault(character =>
+                string.Equals(NormalizeFriendToken(character.DisplayName), normalizedFriendName, StringComparison.Ordinal) ||
+                string.Equals(NormalizeFriendToken(character.Slug.Replace("-", " ")), normalizedFriendName, StringComparison.Ordinal));
+
+            if (match is not null && matched.All(existing => existing.CharacterId != match.CharacterId))
+            {
+                matched.Add(match);
+            }
+        }
+
+        return matched;
+    }
+
+    private IReadOnlyList<string> ResolveUnmatchedFriendNames(string? friends, IReadOnlyList<StoryCharacterItem> matchedFriends)
+    {
+        var matchedNames = matchedFriends
+            .Select(friend => NormalizeFriendToken(friend.DisplayName))
+            .ToHashSet(StringComparer.Ordinal);
+
+        return SplitFriendNames(friends)
+            .Where(friendName => !matchedNames.Contains(NormalizeFriendToken(friendName)))
+            .ToArray();
+    }
+
+    private static IReadOnlyList<string> SplitFriendNames(string? friends)
+    {
+        if (string.IsNullOrWhiteSpace(friends))
+        {
+            return Array.Empty<string>();
+        }
+
+        return friends
+            .Replace(" en ", ",", StringComparison.OrdinalIgnoreCase)
+            .Replace("&", ",", StringComparison.OrdinalIgnoreCase)
+            .Replace("/", ",", StringComparison.OrdinalIgnoreCase)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .ToArray();
+    }
+
+    private static string NormalizeFriendToken(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        return new string(value
+            .Trim()
+            .ToLowerInvariant()
+            .Where(char.IsLetterOrDigit)
+            .ToArray());
     }
 
     private void CloseCharacterProfile()

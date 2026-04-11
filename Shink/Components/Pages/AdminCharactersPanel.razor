@@ -192,8 +192,30 @@
                             </label>
 
                             <label class="characters-admin-field">
-                                <span>@T("Maats", "Friends")</span>
-                                <textarea rows="2" @bind="Editor.Friends"></textarea>
+                                <span>@T("Soek karakters vir maats", "Search characters for friends")</span>
+                                <input type="search"
+                                       @bind="FriendSearch"
+                                       @bind:event="oninput"
+                                       placeholder="@T("Soek naam of slug", "Search name or slug")" />
+                            </label>
+
+                            <div class="characters-admin-story-picker">
+                                @foreach (var friend in FilteredFriendOptions)
+                                {
+                                    var isSelected = Editor.FriendSlugs.Contains(friend.Slug);
+                                    <label class="characters-admin-story-option @(isSelected ? "is-selected" : null)">
+                                        <input type="checkbox"
+                                               checked="@isSelected"
+                                               @onchange="args => ToggleFriend(friend.Slug, args)" />
+                                        <span>@friend.DisplayName</span>
+                                        <small>@friend.Slug</small>
+                                    </label>
+                                }
+                            </div>
+
+                            <label class="characters-admin-field">
+                                <span>@T("Ander maats (opsioneel)", "Other friends (optional)")</span>
+                                <textarea rows="2" @bind="Editor.ManualFriends"></textarea>
                             </label>
 
                             <label class="characters-admin-field">
@@ -355,6 +377,7 @@
     private bool IsSaving { get; set; }
     private string CharacterSearch { get; set; } = string.Empty;
     private string RelatedStorySearch { get; set; } = string.Empty;
+    private string FriendSearch { get; set; } = string.Empty;
     private string? SignedInEmail { get; set; }
     private string? ErrorMessage { get; set; }
     private string? StatusMessage { get; set; }
@@ -385,6 +408,20 @@
                 .Where(story =>
                     story.Title.Contains(RelatedStorySearch, StringComparison.OrdinalIgnoreCase) ||
                     story.Slug.Contains(RelatedStorySearch, StringComparison.OrdinalIgnoreCase))
+                .Take(24)
+                .ToArray();
+
+    private IReadOnlyList<AdminCharacterRecord> FilteredFriendOptions =>
+        Editor is null
+            ? Array.Empty<AdminCharacterRecord>()
+            : (string.IsNullOrWhiteSpace(FriendSearch)
+                    ? Characters
+                    : Characters
+                        .Where(character =>
+                            character.DisplayName.Contains(FriendSearch, StringComparison.OrdinalIgnoreCase) ||
+                            character.Slug.Contains(FriendSearch, StringComparison.OrdinalIgnoreCase))
+                        .ToArray())
+                .Where(character => character.CharacterId != Editor.CharacterId)
                 .Take(24)
                 .ToArray();
 
@@ -420,7 +457,7 @@
                 var refreshed = Characters.FirstOrDefault(character => character.CharacterId == selectedCharacterId);
                 if (refreshed is not null)
                 {
-                    Editor = CharacterEditorModel.FromRecord(refreshed);
+                    Editor = CharacterEditorModel.FromRecord(refreshed, Characters);
                 }
             }
             else if (Editor is not null && !string.IsNullOrWhiteSpace(Editor.Slug))
@@ -429,7 +466,7 @@
                     string.Equals(character.Slug, Editor.Slug, StringComparison.OrdinalIgnoreCase));
                 if (refreshed is not null)
                 {
-                    Editor = CharacterEditorModel.FromRecord(refreshed);
+                    Editor = CharacterEditorModel.FromRecord(refreshed, Characters);
                 }
             }
         }
@@ -449,6 +486,7 @@
         ErrorMessage = null;
         StatusMessage = null;
         RelatedStorySearch = string.Empty;
+        FriendSearch = string.Empty;
         Editor = CharacterEditorModel.CreateEmpty();
     }
 
@@ -457,7 +495,8 @@
         ErrorMessage = null;
         StatusMessage = null;
         RelatedStorySearch = string.Empty;
-        Editor = CharacterEditorModel.FromRecord(character);
+        FriendSearch = string.Empty;
+        Editor = CharacterEditorModel.FromRecord(character, Characters);
     }
 
     private async Task OnMainImageSelectedAsync(InputFileChangeEventArgs args)
@@ -554,6 +593,30 @@
         }
     }
 
+    private void ToggleFriend(string slug, ChangeEventArgs args)
+    {
+        if (Editor is null)
+        {
+            return;
+        }
+
+        var isChecked = args.Value switch
+        {
+            bool boolValue => boolValue,
+            string stringValue when bool.TryParse(stringValue, out var parsed) => parsed,
+            _ => false
+        };
+
+        if (isChecked)
+        {
+            Editor.FriendSlugs.Add(slug);
+        }
+        else
+        {
+            Editor.FriendSlugs.RemoveWhere(value => string.Equals(value, slug, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
     private void RemoveAudioClip(CharacterAudioClipEditorItem clip)
     {
         if (Editor is null)
@@ -611,7 +674,7 @@
                 GoldenLesson: Editor.GoldenLesson,
                 CoreValue: Editor.CoreValue,
                 FirstAppearance: Editor.FirstAppearance,
-                Friends: Editor.Friends,
+                Friends: BuildFriendsValue(Editor, Characters),
                 ReflectionQuestion: Editor.ReflectionQuestion,
                 ChallengeText: Editor.ChallengeText,
                 ImagePath: imagePath,
@@ -641,7 +704,7 @@
                 var savedCharacter = Characters.FirstOrDefault(character => character.CharacterId == entityId);
                 if (savedCharacter is not null)
                 {
-                    Editor = CharacterEditorModel.FromRecord(savedCharacter);
+                    Editor = CharacterEditorModel.FromRecord(savedCharacter, Characters);
                 }
             }
         }
@@ -930,6 +993,63 @@
                 ? character.MysteryImagePath
                 : "/branding/schink-logo-green.png";
 
+    private static string? BuildFriendsValue(CharacterEditorModel editor, IReadOnlyList<AdminCharacterRecord> characters)
+    {
+        var selectedFriends = characters
+            .Where(character => character.CharacterId != editor.CharacterId)
+            .Where(character => editor.FriendSlugs.Contains(character.Slug))
+            .OrderBy(character => character.DisplayName, StringComparer.OrdinalIgnoreCase)
+            .Select(character => character.DisplayName.Trim());
+
+        var manualFriends = SplitFriendTokens(editor.ManualFriends);
+        var combined = selectedFriends
+            .Concat(manualFriends)
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return combined.Length == 0 ? null : string.Join(", ", combined);
+    }
+
+    private static (HashSet<string> FriendSlugs, string ManualFriends) ParseFriendSelection(
+        string? friends,
+        IReadOnlyList<AdminCharacterRecord> characters,
+        Guid? currentCharacterId)
+    {
+        var selectedFriendSlugs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var manualFriends = new List<string>();
+
+        foreach (var friend in SplitFriendTokens(friends))
+        {
+            var match = characters.FirstOrDefault(character =>
+                character.CharacterId != currentCharacterId &&
+                (string.Equals(character.DisplayName, friend, StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(character.Slug, friend, StringComparison.OrdinalIgnoreCase)));
+
+            if (match is not null)
+            {
+                selectedFriendSlugs.Add(match.Slug);
+                continue;
+            }
+
+            if (!manualFriends.Contains(friend, StringComparer.OrdinalIgnoreCase))
+            {
+                manualFriends.Add(friend);
+            }
+        }
+
+        return (selectedFriendSlugs, string.Join(", ", manualFriends));
+    }
+
+    private static IReadOnlyList<string> SplitFriendTokens(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? Array.Empty<string>()
+            : value
+                .Split([',', ';', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(token => !string.IsNullOrWhiteSpace(token))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
     private static string BuildEffectiveSlug(string? slug, string? displayName)
     {
         var source = string.IsNullOrWhiteSpace(slug) ? displayName : slug;
@@ -961,7 +1081,8 @@
         public string? GoldenLesson { get; set; }
         public string? CoreValue { get; set; }
         public string? FirstAppearance { get; set; }
-        public string? Friends { get; set; }
+        public HashSet<string> FriendSlugs { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public string ManualFriends { get; set; } = string.Empty;
         public string? ReflectionQuestion { get; set; }
         public string? ChallengeText { get; set; }
         public string? ImagePath { get; set; }
@@ -985,8 +1106,11 @@
                 SortOrder = 0
             };
 
-        public static CharacterEditorModel FromRecord(AdminCharacterRecord record) =>
-            new()
+        public static CharacterEditorModel FromRecord(AdminCharacterRecord record, IReadOnlyList<AdminCharacterRecord> characters)
+        {
+            var (friendSlugs, manualFriends) = ParseFriendSelection(record.Friends, characters, record.CharacterId);
+
+            return new CharacterEditorModel
             {
                 CharacterId = record.CharacterId,
                 DisplayName = record.DisplayName,
@@ -1003,7 +1127,8 @@
                 GoldenLesson = record.GoldenLesson,
                 CoreValue = record.CoreValue,
                 FirstAppearance = record.FirstAppearance,
-                Friends = record.Friends,
+                FriendSlugs = friendSlugs,
+                ManualFriends = manualFriends,
                 ReflectionQuestion = record.ReflectionQuestion,
                 ChallengeText = record.ChallengeText,
                 ImagePath = record.ImagePath,
@@ -1029,6 +1154,7 @@
                 MainImagePreviewPath = string.IsNullOrWhiteSpace(record.ImagePath) ? "/branding/schink-logo-green.png" : record.ImagePath,
                 MysteryImagePreviewPath = string.IsNullOrWhiteSpace(record.MysteryImagePath) ? "/branding/schink-logo-green.png" : record.MysteryImagePath
             };
+        }
     }
 
     private sealed class CharacterAudioClipEditorItem
