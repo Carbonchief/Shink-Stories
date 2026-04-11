@@ -97,11 +97,11 @@ else
 
         <div class="playlist-showcase-body">
             <section class="playlist-showcase-intro" aria-label="Speellys oorsig">
-                <p class="playlist-showcase-intro-count">@StoryCountLabel</p>
                 @if (!string.IsNullOrWhiteSpace(CurrentPlaylist.Description))
                 {
                     <p class="playlist-showcase-intro-description">@CurrentPlaylist.Description</p>
                 }
+                <p class="playlist-showcase-intro-count">@StoryCountLabel</p>
             </section>
 
             @if (ShowcaseStory is not null)

@@ -73,10 +73,12 @@
 
 .playlist-showcase-intro-count {
     margin: 0;
-    font-size: clamp(1.8rem, 4.2vw, 2.8rem);
-    font-weight: 700;
-    line-height: 1.04;
-    color: #18232b;
+    color: #8fe5e8;
+    font-size: 0.95rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    line-height: 1.2;
+    text-transform: uppercase;
 }
 
 .playlist-showcase-intro-description {
@@ -93,7 +95,7 @@
 }
 
 .playlist-showcase-feature-card {
-    width: min(100%, 420px);
+    width: min(100%, 680px);
     margin: 0 auto;
 }
 
@@ -115,7 +117,7 @@
     display: block;
     border-radius: 20px;
     overflow: hidden;
-    aspect-ratio: 3 / 4;
+    aspect-ratio: 16 / 9;
     background: #0f1116;
     box-shadow: 0 18px 34px rgba(11, 15, 18, 0.22);
 }
@@ -506,7 +508,7 @@
     }
 
     .playlist-showcase-feature-card {
-        width: min(100%, 360px);
+        width: min(100%, 520px);
     }
 
     .playlist-showcase-feature-cover {

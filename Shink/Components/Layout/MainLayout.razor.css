@@ -600,7 +600,7 @@
 .showcase-floating-back {
     position: fixed;
     top: max(0.75rem, calc(env(safe-area-inset-top) + 0.45rem));
-    left: max(0.75rem, calc(env(safe-area-inset-left) + 0.45rem));
+    left: max(0.9rem, calc(env(safe-area-inset-left) + 0.45rem), calc((100vw - 1200px) / 2 + 2rem));
     z-index: 34;
     width: 46px;
     height: 46px;
@@ -631,7 +631,7 @@
 .showcase-floating-menu {
     position: fixed;
     top: max(0.75rem, calc(env(safe-area-inset-top) + 0.45rem));
-    right: max(0.75rem, calc(env(safe-area-inset-right) + 0.45rem));
+    right: max(0.9rem, calc(env(safe-area-inset-right) + 0.45rem), calc((100vw - 1200px) / 2 + 2rem));
     z-index: 34;
     display: inline-flex;
     align-items: center;
