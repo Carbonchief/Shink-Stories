@@ -346,9 +346,12 @@
 
         foreach (var friend in friends)
         {
-            builder.OpenElement(sequence++, "div");
-            builder.AddAttribute(sequence++, "class", "character-friend-item");
-            builder.AddAttribute(sequence++, "style", "display:flex;flex-direction:column;align-items:center;gap:0.35rem;width:104px;text-align:center;flex:0 0 auto;");
+            builder.OpenElement(sequence++, "button");
+            builder.AddAttribute(sequence++, "type", "button");
+            builder.AddAttribute(sequence++, "class", "character-friend-item character-friend-button");
+            builder.AddAttribute(sequence++, "style", "display:flex;flex-direction:column;align-items:center;gap:0.35rem;width:104px;text-align:center;flex:0 0 auto;padding:0;border:none;background:transparent;cursor:pointer;");
+            builder.AddAttribute(sequence++, "aria-label", $"Maak {friend.DisplayName} se profiel oop");
+            builder.AddAttribute(sequence++, "onclick", EventCallback.Factory.Create(this, () => OpenCharacterProfile(friend.CharacterId)));
 
             builder.OpenElement(sequence++, "img");
             builder.AddAttribute(sequence++, "class", "character-friend-image");
@@ -391,6 +394,15 @@
     private void OpenCharacterProfile(CharacterCardViewModel card)
     {
         ActiveProfileCard = card;
+    }
+
+    private void OpenCharacterProfile(Guid characterId)
+    {
+        var card = CharacterCards.FirstOrDefault(candidate => candidate.Character.CharacterId == characterId);
+        if (card is not null)
+        {
+            ActiveProfileCard = card;
+        }
     }
 
     private IReadOnlyList<StoryCharacterItem> ResolveFriendCharacters(string? friends)

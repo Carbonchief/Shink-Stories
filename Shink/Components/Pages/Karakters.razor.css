@@ -228,6 +228,15 @@
     line-height: 1.58;
 }
 
+.character-card-summary {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .character-card.is-locked .character-card-summary,
 .character-card.is-locked .character-card-unlock-hint {
     color: rgba(244, 248, 249, 0.84);
@@ -467,6 +476,12 @@
     text-align: center;
 }
 
+.character-friend-button:focus-visible {
+    outline: 3px solid rgba(243, 154, 50, 0.45);
+    outline-offset: 4px;
+    border-radius: 16px;
+}
+
 .character-friend-image {
     width: min(100%, 40px);
     max-width: 40px;
@@ -571,6 +586,19 @@
     .character-card-summary {
         font-size: 0.9rem;
         line-height: 1.45;
+    }
+
+    .character-card-summary,
+    .character-card-cta {
+        display: none;
+    }
+
+    .character-card-badge {
+        top: 0.7rem;
+        right: 0.7rem;
+        width: 1.9rem;
+        height: 1.9rem;
+        font-size: 0.76rem;
     }
 
     .character-card-cta {
