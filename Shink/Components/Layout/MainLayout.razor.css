@@ -117,6 +117,10 @@
     border-bottom-color: color-mix(in srgb, var(--line) 66%, rgba(255, 255, 255, 0.45));
 }
 
+.site-shell.admin-route .site-header {
+    z-index: 1800;
+}
+
 .nav-wrap {
     display: flex;
     align-items: center;
@@ -155,12 +159,20 @@
     z-index: 63;
 }
 
+.site-shell.admin-route .nav-controls {
+    z-index: 1803;
+}
+
 .guest-controls {
     display: inline-flex;
     align-items: center;
     gap: 0.55rem;
     position: relative;
     z-index: 63;
+}
+
+.site-shell.admin-route .guest-controls {
+    z-index: 1803;
 }
 
 .site-search-form {
@@ -414,6 +426,10 @@
     z-index: 61;
 }
 
+.site-shell.admin-route .nav-menu-toggle {
+    z-index: 1804;
+}
+
 .nav-menu-toggle i {
     width: 17px;
     height: 17px;
@@ -440,6 +456,16 @@
     pointer-events: auto;
 }
 
+#main-site-nav.is-open {
+    background: #ffffff;
+    border-color: color-mix(in srgb, #d9e0e5 88%, #bcc6cd);
+    box-shadow: 0 12px 24px rgba(14, 33, 37, 0.14);
+}
+
+.site-shell.admin-route .site-nav {
+    z-index: 1805;
+}
+
 .site-nav a {
     width: 100%;
     min-height: 44px;
@@ -456,8 +482,19 @@
     border-radius: 10px;
 }
 
+#main-site-nav a {
+    color: #173847;
+    background: #ffffff;
+    border-color: #d6dde2;
+}
+
 .site-nav.is-open a {
     box-shadow: none;
+}
+
+#main-site-nav.is-open a:hover {
+    background: #f2f6f8;
+    border-color: #c5d0d7;
 }
 
 .site-nav a:hover {
@@ -748,6 +785,10 @@
     position: relative;
     z-index: 59;
     background: transparent;
+}
+
+.site-shell.admin-route .account-menu {
+    z-index: 1802;
 }
 
 .account-toggle {
