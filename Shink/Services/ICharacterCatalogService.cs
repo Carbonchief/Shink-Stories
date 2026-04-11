@@ -3,6 +3,10 @@ namespace Shink.Services;
 public interface ICharacterCatalogService
 {
     Task<IReadOnlyList<StoryCharacterItem>> GetPublishedCharactersAsync(CancellationToken cancellationToken = default);
+
+    Task<CharacterAudioClipItem?> FindPublishedAudioClipByStreamSlugAsync(
+        string? streamSlug,
+        CancellationToken cancellationToken = default);
 }
 
 public interface ICharacterAdminService
@@ -37,6 +41,7 @@ public sealed record StoryCharacterItem(
     string? MysteryImagePath,
     string? UnlockStorySlug,
     IReadOnlyList<string> RelatedStorySlugs,
+    IReadOnlyList<CharacterAudioClipItem> AudioClips,
     int UnlockThresholdSeconds,
     int SortOrder);
 
@@ -62,6 +67,7 @@ public sealed record AdminCharacterRecord(
     string? MysteryImageDriveFileId,
     string? UnlockStorySlug,
     IReadOnlyList<string> RelatedStorySlugs,
+    IReadOnlyList<CharacterAudioClipItem> AudioClips,
     int UnlockThresholdSeconds,
     string Status,
     int SortOrder,
@@ -89,6 +95,15 @@ public sealed record AdminCharacterSaveRequest(
     string? MysteryImageDriveFileId,
     string? UnlockStorySlug,
     IReadOnlyList<string>? RelatedStorySlugs,
+    IReadOnlyList<CharacterAudioClipItem>? AudioClips,
     int UnlockThresholdSeconds,
     string Status,
+    int SortOrder);
+
+public sealed record CharacterAudioClipItem(
+    string StreamSlug,
+    string Title,
+    string AudioProvider,
+    string AudioObjectKey,
+    string? AudioContentType,
     int SortOrder);

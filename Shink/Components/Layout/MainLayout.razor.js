@@ -21,14 +21,21 @@ let navMenuDelegatesStarted = false;
 let accountMenuDelegatesStarted = false;
 
 function findNavMenuParts(from) {
-    const controlsContainer = from instanceof Element
-        ? from.closest(".nav-controls, .guest-controls")
+    const navToggle = from instanceof Element && from.matches(NAV_TOGGLE_SELECTOR)
+        ? from
         : null;
-    const navToggle = controlsContainer instanceof Element
-        ? controlsContainer.querySelector(NAV_TOGGLE_SELECTOR)
-        : null;
-    const navId = navToggle instanceof HTMLElement
-        ? navToggle.getAttribute("aria-controls")
+    const controlsContainer = navToggle instanceof Element
+        ? navToggle.closest(".nav-controls, .guest-controls")
+        : from instanceof Element
+            ? from.closest(".nav-controls, .guest-controls")
+            : null;
+    const resolvedNavToggle = navToggle instanceof HTMLButtonElement
+        ? navToggle
+        : controlsContainer instanceof Element
+            ? controlsContainer.querySelector(NAV_TOGGLE_SELECTOR)
+            : null;
+    const navId = resolvedNavToggle instanceof HTMLElement
+        ? resolvedNavToggle.getAttribute("aria-controls")
         : null;
     let navMenu = null;
 
@@ -45,16 +52,16 @@ function findNavMenuParts(from) {
     }
 
     if (!(controlsContainer instanceof HTMLElement) ||
-        !(navToggle instanceof HTMLButtonElement) ||
+        !(resolvedNavToggle instanceof HTMLButtonElement) ||
         !(navMenu instanceof HTMLElement)) {
         return null;
     }
 
     return {
         controlsContainer,
-        navToggle,
+        navToggle: resolvedNavToggle,
         navMenu,
-        srLabel: navToggle.querySelector(NAV_TOGGLE_LABEL_SELECTOR)
+        srLabel: resolvedNavToggle.querySelector(NAV_TOGGLE_LABEL_SELECTOR)
     };
 }
 
@@ -87,6 +94,23 @@ function closeAllNavMenus() {
         }
     });
 }
+
+window.toggleSchinkNavMenu = (toggleButton) => {
+    if (!(toggleButton instanceof HTMLButtonElement)) {
+        return false;
+    }
+
+    const parts = findNavMenuParts(toggleButton);
+    if (!parts) {
+        return false;
+    }
+
+    const shouldOpen = !parts.navMenu.classList.contains(OPEN_CLASS);
+    closeAllNavMenus();
+    closeAllAccountMenus();
+    setNavMenuState(parts.controlsContainer, shouldOpen);
+    return false;
+};
 
 function findAccountMenuParts(from) {
     const accountRoot = from instanceof Element
@@ -168,7 +192,11 @@ function closeAccountMenuInContainer(container) {
 }
 
 function initializeNavMenu(toggleButton) {
-    if (!(toggleButton instanceof HTMLElement)) {
+    if (!(toggleButton instanceof HTMLButtonElement)) {
+        return;
+    }
+
+    if (toggleButton.dataset.navMenuWired === "true") {
         return;
     }
 
@@ -178,6 +206,8 @@ function initializeNavMenu(toggleButton) {
     }
 
     setNavMenuState(parts.controlsContainer, false);
+
+    toggleButton.dataset.navMenuWired = "true";
 }
 
 function startNavMenuDelegates() {
@@ -191,17 +221,8 @@ function startNavMenuDelegates() {
             return;
         }
 
-        const toggle = target.closest(NAV_TOGGLE_SELECTOR);
-        if (toggle instanceof HTMLButtonElement) {
-            event.preventDefault();
-            const parts = findNavMenuParts(toggle);
-            if (!parts) {
-                return;
-            }
-
-            const shouldOpen = !parts.navMenu.classList.contains(OPEN_CLASS);
-            closeAllNavMenus();
-            setNavMenuState(parts.controlsContainer, shouldOpen);
+        const clickedToggle = target.closest(NAV_TOGGLE_SELECTOR);
+        if (clickedToggle instanceof HTMLButtonElement) {
             return;
         }
 

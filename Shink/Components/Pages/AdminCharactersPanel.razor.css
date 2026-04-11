@@ -231,6 +231,10 @@
     gap: 0.75rem;
 }
 
+.characters-admin-field-row-audio {
+    grid-template-columns: minmax(0, 1fr) 140px;
+}
+
 .characters-admin-search {
     min-width: 200px;
 }
@@ -279,6 +283,27 @@
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 1rem;
+}
+
+.characters-admin-audio-list {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.characters-admin-audio-item {
+    display: grid;
+    gap: 0.75rem;
+    padding: 0.85rem;
+    border-radius: 14px;
+    border: 1px solid var(--admin-border);
+    background: #12202d;
+}
+
+.characters-admin-audio-meta {
+    margin: 0;
+    color: var(--admin-muted);
+    font-size: 0.92rem;
+    word-break: break-word;
 }
 
 .characters-admin-image-panel {

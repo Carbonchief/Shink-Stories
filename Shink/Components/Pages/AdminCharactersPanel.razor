@@ -245,6 +245,58 @@
                         </section>
 
                         <section class="characters-admin-card">
+                            <h4>@T("Karakterklanke", "Character audio")</h4>
+
+                            <label class="characters-admin-file-picker">
+                                <span>@T("Laai karakterklanke op", "Upload character audio")</span>
+                                <InputFile OnChange="OnAudioFilesSelectedAsync" multiple accept=".mp3,.mpeg,.m4a,.wav,.ogg,audio/*" />
+                            </label>
+
+                            @if (Editor.AudioClips.Count == 0)
+                            {
+                                <p class="characters-admin-empty">@T("Nog geen karakterklanke opgelaai nie.", "No character audio uploaded yet.")</p>
+                            }
+                            else
+                            {
+                                <div class="characters-admin-audio-list">
+                                    @foreach (var clip in Editor.AudioClips.OrderBy(item => item.SortOrder).ThenBy(item => item.Title, StringComparer.OrdinalIgnoreCase))
+                                    {
+                                        <article class="characters-admin-audio-item">
+                                            <div class="characters-admin-field-row characters-admin-field-row-audio">
+                                                <label class="characters-admin-field">
+                                                    <span>@T("Titel", "Title")</span>
+                                                    <input type="text" @bind="clip.Title" />
+                                                </label>
+
+                                                <label class="characters-admin-field">
+                                                    <span>@T("Sorteer", "Sort order")</span>
+                                                    <input type="number" @bind="clip.SortOrder" />
+                                                </label>
+                                            </div>
+
+                                            <label class="characters-admin-field">
+                                                <span>@T("Stream slug", "Stream slug")</span>
+                                                <input type="text" value="@clip.StreamSlugPreview" readonly />
+                                            </label>
+
+                                            <p class="characters-admin-audio-meta">
+                                                @(clip.IsPendingUpload
+                                                    ? T($"Wag om op te laai: {clip.FileName}", $"Waiting to upload: {clip.FileName}")
+                                                    : T($"Gestoorde pad: {clip.AudioObjectKey}", $"Stored path: {clip.AudioObjectKey}"))
+                                            </p>
+
+                                            <button type="button"
+                                                    class="characters-admin-btn characters-admin-btn-secondary"
+                                                    @onclick="() => RemoveAudioClip(clip)">
+                                                @T("Verwyder klank", "Remove audio")
+                                            </button>
+                                        </article>
+                                    }
+                                </div>
+                            }
+                        </section>
+
+                        <section class="characters-admin-card">
                             <h4>@T("Prente", "Images")</h4>
 
                             <div class="characters-admin-image-grid">
@@ -294,6 +346,7 @@
 
 @code {
     private const long MaxImageUploadBytes = 10 * 1024 * 1024;
+    private const long MaxAudioUploadBytes = 256 * 1024 * 1024;
 
     [Parameter]
     public string CurrentLanguageCode { get; set; } = "af";
@@ -443,6 +496,40 @@
         Editor.MysteryImagePreviewPath = await BuildPreviewDataUrlAsync(file);
     }
 
+    private Task OnAudioFilesSelectedAsync(InputFileChangeEventArgs args)
+    {
+        if (Editor is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        foreach (var file in args.GetMultipleFiles())
+        {
+            if (file.Size <= 0 || file.Size > MaxAudioUploadBytes)
+            {
+                ErrorMessage = T(
+                    $"Die klanklêer {file.Name} is te groot of leeg.",
+                    $"The audio file {file.Name} is too large or empty.");
+                continue;
+            }
+
+            var nextSortOrder = Editor.AudioClips.Count == 0
+                ? 0
+                : Editor.AudioClips.Max(item => item.SortOrder) + 10;
+
+            Editor.AudioClips.Add(new CharacterAudioClipEditorItem
+            {
+                Title = BuildAudioTitleFromFileName(file.Name),
+                SortOrder = nextSortOrder,
+                File = file,
+                FileName = file.Name,
+                AudioContentType = NormalizeAudioContentType(file)
+            });
+        }
+
+        return Task.CompletedTask;
+    }
+
     private void ToggleRelatedStory(string slug, ChangeEventArgs args)
     {
         if (Editor is null)
@@ -467,6 +554,16 @@
         }
     }
 
+    private void RemoveAudioClip(CharacterAudioClipEditorItem clip)
+    {
+        if (Editor is null)
+        {
+            return;
+        }
+
+        Editor.AudioClips.Remove(clip);
+    }
+
     private async Task SaveCharacterAsync()
     {
         if (Editor is null || IsSaving)
@@ -489,6 +586,7 @@
 
             var imagePath = Editor.ImagePath;
             var mysteryImagePath = Editor.MysteryImagePath;
+            var effectiveAudioClips = await SaveCharacterAudioClipsAsync(effectiveSlug, Editor.AudioClips);
 
             if (Editor.MainImageFile is not null)
             {
@@ -522,6 +620,7 @@
                 MysteryImageDriveFileId: Editor.MysteryImageDriveFileId,
                 UnlockStorySlug: Editor.UnlockStorySlug,
                 RelatedStorySlugs: Editor.RelatedStorySlugs.ToArray(),
+                AudioClips: effectiveAudioClips,
                 UnlockThresholdSeconds: Editor.UnlockThresholdSeconds,
                 Status: Editor.Status,
                 SortOrder: Editor.SortOrder);
@@ -603,6 +702,118 @@
         return (publicPath, physicalPath);
     }
 
+    private async Task<IReadOnlyList<CharacterAudioClipItem>> SaveCharacterAudioClipsAsync(
+        string characterSlug,
+        IList<CharacterAudioClipEditorItem> clips)
+    {
+        var savedClips = new List<CharacterAudioClipItem>();
+        var usedStreamSlugs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var orderedClips = clips
+            .OrderBy(item => item.SortOrder)
+            .ThenBy(item => item.Title, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        for (var index = 0; index < orderedClips.Length; index++)
+        {
+            var clip = orderedClips[index];
+            var title = string.IsNullOrWhiteSpace(clip.Title)
+                ? BuildAudioTitleFromFileName(clip.FileName)
+                : clip.Title.Trim();
+            var streamSlug = BuildUniqueAudioStreamSlug(
+                characterSlug,
+                clip.StreamSlug,
+                title,
+                index + 1,
+                usedStreamSlugs);
+
+            var audioProvider = clip.AudioProvider;
+            var audioObjectKey = clip.AudioObjectKey;
+            var audioContentType = clip.AudioContentType;
+
+            if (clip.File is not null)
+            {
+                var upload = await SaveCharacterAudioAsync(characterSlug, streamSlug, clip.File);
+                audioProvider = upload.AudioProvider;
+                audioObjectKey = upload.AudioObjectKey;
+                audioContentType = upload.AudioContentType;
+            }
+
+            if (string.IsNullOrWhiteSpace(audioProvider) || string.IsNullOrWhiteSpace(audioObjectKey))
+            {
+                continue;
+            }
+
+            clip.Title = title;
+            clip.StreamSlug = streamSlug;
+            clip.AudioProvider = audioProvider;
+            clip.AudioObjectKey = audioObjectKey;
+            clip.AudioContentType = audioContentType;
+            clip.File = null;
+
+            savedClips.Add(new CharacterAudioClipItem(
+                StreamSlug: streamSlug,
+                Title: title,
+                AudioProvider: audioProvider,
+                AudioObjectKey: audioObjectKey,
+                AudioContentType: audioContentType,
+                SortOrder: clip.SortOrder));
+        }
+
+        return savedClips;
+    }
+
+    private async Task<CharacterAudioUploadResult> SaveCharacterAudioAsync(
+        string characterSlug,
+        string streamSlug,
+        IBrowserFile file)
+    {
+        var normalizedContentType = NormalizeAudioContentType(file);
+
+        if (IsR2UploadConfigured)
+        {
+            await using var stream = file.OpenReadStream(MaxAudioUploadBytes);
+            var uploaded = await StoryMediaStorageService.UploadAudioAsync(
+                $"character-{characterSlug}-{streamSlug}",
+                file.Name,
+                normalizedContentType,
+                stream);
+
+            return new CharacterAudioUploadResult(
+                AudioProvider: "r2",
+                AudioObjectKey: uploaded.ObjectKey,
+                AudioContentType: uploaded.ContentType);
+        }
+
+        var localUpload = await SaveCharacterAudioToLocalAsync(streamSlug, file, normalizedContentType);
+        return new CharacterAudioUploadResult(
+            AudioProvider: "local",
+            AudioObjectKey: localUpload.ObjectKey,
+            AudioContentType: localUpload.ContentType);
+    }
+
+    private async Task<(string ObjectKey, string ContentType)> SaveCharacterAudioToLocalAsync(
+        string streamSlug,
+        IBrowserFile file,
+        string normalizedContentType)
+    {
+        var extension = ResolveSafeAudioExtension(file.Name, normalizedContentType);
+        var year = DateTime.UtcNow.ToString("yyyy", CultureInfo.InvariantCulture);
+        var month = DateTime.UtcNow.ToString("MM", CultureInfo.InvariantCulture);
+        var fileSuffix = Guid.NewGuid().ToString("N")[..10];
+        var fileName = $"{streamSlug}-{DateTime.UtcNow:yyyyMMddHHmmss}-{fileSuffix}{extension}";
+        var relativeDirectory = Path.Combine("characters", year, month);
+        var physicalDirectory = Path.Combine(WebHostEnvironment.ContentRootPath, "Stories", relativeDirectory);
+        Directory.CreateDirectory(physicalDirectory);
+
+        var physicalPath = Path.Combine(physicalDirectory, fileName);
+        await using var sourceStream = file.OpenReadStream(MaxAudioUploadBytes);
+        await using var destinationStream = File.Create(physicalPath);
+        await sourceStream.CopyToAsync(destinationStream);
+
+        var objectKey = $"characters/{year}/{month}/{fileName}";
+        return (objectKey, normalizedContentType);
+    }
+
     private static string ResolveSafeImageExtension(string fileName)
     {
         var extension = Path.GetExtension(fileName)?.Trim().ToLowerInvariant();
@@ -613,6 +824,82 @@
             ".webp" => ".webp",
             _ => ".png"
         };
+    }
+
+    private static string ResolveSafeAudioExtension(string fileName, string contentType)
+    {
+        var extension = Path.GetExtension(fileName)?.Trim().ToLowerInvariant();
+        if (extension is ".mp3" or ".mpeg" or ".m4a" or ".wav" or ".ogg")
+        {
+            return extension == ".mpeg" ? ".mp3" : extension;
+        }
+
+        return contentType switch
+        {
+            "audio/mpeg" => ".mp3",
+            "audio/mp4" => ".m4a",
+            "audio/wav" => ".wav",
+            "audio/ogg" => ".ogg",
+            _ => ".mp3"
+        };
+    }
+
+    private static string NormalizeAudioContentType(IBrowserFile file) =>
+        file.ContentType?.Trim().ToLowerInvariant() switch
+        {
+            "audio/mpeg" or "audio/mp3" => "audio/mpeg",
+            "audio/mp4" or "audio/x-m4a" => "audio/mp4",
+            "audio/wav" or "audio/x-wav" or "audio/wave" => "audio/wav",
+            "audio/ogg" => "audio/ogg",
+            _ => Path.GetExtension(file.Name).Trim().ToLowerInvariant() switch
+            {
+                ".mp3" or ".mpeg" => "audio/mpeg",
+                ".m4a" => "audio/mp4",
+                ".wav" => "audio/wav",
+                ".ogg" => "audio/ogg",
+                _ => file.ContentType ?? "audio/mpeg"
+            }
+        };
+
+    private static string BuildAudioTitleFromFileName(string? fileName)
+    {
+        var title = Path.GetFileNameWithoutExtension(fileName ?? string.Empty)
+            .Replace("-", " ", StringComparison.Ordinal)
+            .Replace("_", " ", StringComparison.Ordinal)
+            .Trim();
+
+        return string.IsNullOrWhiteSpace(title) ? "Klankgreep" : title;
+    }
+
+    private static string BuildUniqueAudioStreamSlug(
+        string characterSlug,
+        string? currentStreamSlug,
+        string title,
+        int fallbackIndex,
+        ISet<string> usedStreamSlugs)
+    {
+        var preferredSlug = BuildEffectiveSlug(currentStreamSlug, currentStreamSlug);
+        if (!string.IsNullOrWhiteSpace(preferredSlug) && usedStreamSlugs.Add(preferredSlug))
+        {
+            return preferredSlug;
+        }
+
+        var baseSlug = BuildEffectiveSlug(null, title);
+        if (string.IsNullOrWhiteSpace(baseSlug))
+        {
+            baseSlug = $"klank-{fallbackIndex}";
+        }
+
+        var candidate = BuildEffectiveSlug(null, $"karakter-{characterSlug}-{baseSlug}");
+        var uniqueSlug = candidate;
+        var suffix = 2;
+
+        while (!usedStreamSlugs.Add(uniqueSlug))
+        {
+            uniqueSlug = $"{candidate}-{suffix++}";
+        }
+
+        return uniqueSlug;
     }
 
     private static async Task<string> BuildPreviewDataUrlAsync(IBrowserFile file)
@@ -683,6 +970,7 @@
         public string? MysteryImageDriveFileId { get; set; }
         public string? UnlockStorySlug { get; set; }
         public HashSet<string> RelatedStorySlugs { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public List<CharacterAudioClipEditorItem> AudioClips { get; set; } = [];
         public IBrowserFile? MainImageFile { get; set; }
         public IBrowserFile? MysteryImageFile { get; set; }
         public string MainImagePreviewPath { get; set; } = "/branding/schink-logo-green.png";
@@ -724,8 +1012,41 @@
                 MysteryImageDriveFileId = record.MysteryImageDriveFileId,
                 UnlockStorySlug = record.UnlockStorySlug,
                 RelatedStorySlugs = new HashSet<string>(record.RelatedStorySlugs, StringComparer.OrdinalIgnoreCase),
+                AudioClips = record.AudioClips
+                    .OrderBy(item => item.SortOrder)
+                    .ThenBy(item => item.Title, StringComparer.OrdinalIgnoreCase)
+                    .Select(item => new CharacterAudioClipEditorItem
+                    {
+                        StreamSlug = item.StreamSlug,
+                        Title = item.Title,
+                        AudioProvider = item.AudioProvider,
+                        AudioObjectKey = item.AudioObjectKey,
+                        AudioContentType = item.AudioContentType,
+                        SortOrder = item.SortOrder,
+                        FileName = Path.GetFileName(item.AudioObjectKey)
+                    })
+                    .ToList(),
                 MainImagePreviewPath = string.IsNullOrWhiteSpace(record.ImagePath) ? "/branding/schink-logo-green.png" : record.ImagePath,
                 MysteryImagePreviewPath = string.IsNullOrWhiteSpace(record.MysteryImagePath) ? "/branding/schink-logo-green.png" : record.MysteryImagePath
             };
     }
+
+    private sealed class CharacterAudioClipEditorItem
+    {
+        public string StreamSlug { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public string AudioProvider { get; set; } = "r2";
+        public string AudioObjectKey { get; set; } = string.Empty;
+        public string? AudioContentType { get; set; }
+        public int SortOrder { get; set; }
+        public IBrowserFile? File { get; set; }
+        public string FileName { get; set; } = string.Empty;
+        public bool IsPendingUpload => File is not null;
+        public string StreamSlugPreview => string.IsNullOrWhiteSpace(StreamSlug) ? BuildEffectiveSlug(null, Title) : StreamSlug;
+    }
+
+    private sealed record CharacterAudioUploadResult(
+        string AudioProvider,
+        string AudioObjectKey,
+        string? AudioContentType);
 }
