@@ -108,6 +108,7 @@ builder.Services.AddHttpClient<IStoryFavoriteService, SupabaseStoryFavoriteServi
 builder.Services.AddHttpClient<IAdminManagementService, SupabaseAdminManagementService>();
 builder.Services.AddHttpClient<ICharacterCatalogService, SupabaseCharacterService>();
 builder.Services.AddHttpClient<ICharacterAdminService, SupabaseCharacterService>();
+builder.Services.AddHttpClient<IUserNotificationService, SupabaseUserNotificationService>();
 builder.Services.AddSingleton<IContactFormProtectionService, ContactFormProtectionService>();
 builder.Services.AddRateLimiter(options =>
 {
@@ -997,6 +998,7 @@ app.MapPost("/api/stories/{slug}/listen", async (
     string slug,
     StoryListenTrackApiRequest request,
     IStoryTrackingService storyTrackingService,
+    IUserNotificationService userNotificationService,
     HttpContext httpContext) =>
 {
     if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
@@ -1045,8 +1047,105 @@ app.MapPost("/api/stories/{slug}/listen", async (
             IsCompleted: request.IsCompleted ?? false),
         httpContext.RequestAborted);
 
-    return Results.Ok(new { tracked });
+    var notificationSyncResult = tracked
+        ? await userNotificationService.SyncCharacterUnlockNotificationsAsync(
+            signedInEmail,
+            normalizedStorySlug,
+            httpContext.RequestAborted)
+        : new NotificationSyncResult(0);
+
+    return Results.Ok(new
+    {
+        tracked,
+        newNotificationsCreated = notificationSyncResult.CreatedCount
+    });
 }).RequireRateLimiting("story-tracking").DisableAntiforgery();
+
+app.MapGet("/api/notifications", async (
+    IUserNotificationService userNotificationService,
+    HttpContext httpContext) =>
+{
+    if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
+    {
+        return Results.Unauthorized();
+    }
+
+    var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
+                       ?? httpContext.User.Identity?.Name;
+    var notifications = await userNotificationService.GetNotificationsAsync(
+        signedInEmail,
+        httpContext.RequestAborted);
+
+    return Results.Ok(new
+    {
+        count = notifications.Count,
+        unreadCount = notifications.Count(notification => !notification.IsRead),
+        notifications = notifications.Select(notification => new
+        {
+            id = notification.NotificationId,
+            type = notification.NotificationType,
+            title = notification.Title,
+            body = notification.Body,
+            imagePath = notification.ImagePath,
+            imageAlt = notification.ImageAlt,
+            href = notification.Href,
+            createdAt = notification.CreatedAtUtc,
+            isRead = notification.IsRead
+        })
+    });
+});
+
+app.MapPost("/api/notifications/read-all", async (
+    IUserNotificationService userNotificationService,
+    HttpContext httpContext) =>
+{
+    if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
+    {
+        return Results.Unauthorized();
+    }
+
+    if (!IsLikelySameSiteRequest(httpContext))
+    {
+        return Results.Forbid();
+    }
+
+    var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
+                       ?? httpContext.User.Identity?.Name;
+    var markedCount = await userNotificationService.MarkAllNotificationsReadAsync(
+        signedInEmail,
+        httpContext.RequestAborted);
+
+    return Results.Ok(new
+    {
+        markedCount
+    });
+}).RequireRateLimiting("auth-submit").DisableAntiforgery();
+
+app.MapPost("/api/notifications/clear", async (
+    IUserNotificationService userNotificationService,
+    HttpContext httpContext) =>
+{
+    if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
+    {
+        return Results.Unauthorized();
+    }
+
+    if (!IsLikelySameSiteRequest(httpContext))
+    {
+        return Results.Forbid();
+    }
+
+    var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
+                       ?? httpContext.User.Identity?.Name;
+    var clearedCount = await userNotificationService.ClearNotificationsAsync(
+        signedInEmail,
+        httpContext.RequestAborted);
+
+    return Results.Ok(new
+    {
+        clearedCount
+    });
+}).RequireRateLimiting("auth-submit").DisableAntiforgery();
 
 app.MapGet("/api/search/suggest", async (string? q, int? limit, IStoryCatalogService storyCatalogService, HttpContext httpContext) =>
 {

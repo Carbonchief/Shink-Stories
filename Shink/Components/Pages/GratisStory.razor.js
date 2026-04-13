@@ -25,6 +25,7 @@ const SPEED_LABEL_SELECTOR = ".story-speed-label";
 const SHARE_TOGGLE_SELECTOR = ".story-share-toggle";
 const SPEED_STEPS = [1, 1.25, 1.5, 0.8];
 const STORY_TRACKING_ENDPOINT_PREFIX = "/api/stories/";
+const NOTIFICATION_REFRESH_EVENT = "schink:notifications-refresh";
 const LISTEN_FLUSH_THRESHOLD_SECONDS = 12;
 const LISTEN_MAX_DELTA_SECONDS = 30;
 const LISTEN_MAX_EVENT_SECONDS = 600;
@@ -657,7 +658,7 @@ function buildStoryTrackingState(audioElement) {
 
 async function postStoryTracking(slug, endpointSuffix, payload, useKeepalive) {
     try {
-        await fetch(`${STORY_TRACKING_ENDPOINT_PREFIX}${encodeURIComponent(slug)}/${endpointSuffix}`, {
+        const response = await fetch(`${STORY_TRACKING_ENDPOINT_PREFIX}${encodeURIComponent(slug)}/${endpointSuffix}`, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
@@ -666,8 +667,20 @@ async function postStoryTracking(slug, endpointSuffix, payload, useKeepalive) {
             keepalive: Boolean(useKeepalive),
             body: JSON.stringify(payload)
         });
+
+        if (!response.ok) {
+            return null;
+        }
+
+        const responseContentType = response.headers.get("content-type") || "";
+        if (!responseContentType.toLowerCase().includes("application/json")) {
+            return null;
+        }
+
+        return await response.json();
     } catch {
         // Ignore network errors to avoid breaking playback controls.
+        return null;
     }
 }
 
@@ -732,6 +745,18 @@ function flushStoryListen(audioElement, trackingState, eventType, force, useKeep
     };
 
     void postStoryTracking(trackingState.slug, "listen", payload, useKeepalive)
+        .then((result) => {
+            if (!result || !Number.isFinite(result.newNotificationsCreated) || result.newNotificationsCreated <= 0) {
+                return;
+            }
+
+            window.dispatchEvent(new CustomEvent(NOTIFICATION_REFRESH_EVENT, {
+                detail: {
+                    source: "story-listen",
+                    count: result.newNotificationsCreated
+                }
+            }));
+        })
         .finally(() => {
             trackingState.sendInFlight = false;
         });

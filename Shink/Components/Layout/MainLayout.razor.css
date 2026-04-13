@@ -289,6 +289,7 @@
 
 .nav-controls.is-search-active .site-nav,
 .nav-controls.is-search-active .nav-menu-toggle,
+.nav-controls.is-search-active .notification-center,
 .nav-controls.is-search-active .account-menu,
 .guest-controls.is-search-active .header-signin-btn {
     display: none !important;
@@ -781,6 +782,320 @@
     color: #f4f8fb;
 }
 
+.notification-center {
+    position: relative;
+    z-index: 59;
+    background: transparent;
+}
+
+.notification-toggle {
+    min-height: 34px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: #113d4d;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.3rem 0.38rem;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    transition: background 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.notification-toggle:hover {
+    background: color-mix(in srgb, #1b4453 8%, transparent);
+    border-color: color-mix(in srgb, #1b4453 18%, transparent);
+}
+
+.notification-center.is-open .notification-toggle {
+    background: color-mix(in srgb, #1b4453 11%, transparent);
+    border-color: color-mix(in srgb, #1b4453 22%, transparent);
+}
+
+.notification-toggle:focus-visible {
+    outline: 3px solid color-mix(in srgb, #ffffff 30%, var(--accent));
+    outline-offset: 2px;
+}
+
+.notification-toggle-icon {
+    position: relative;
+    width: 18px;
+    height: 18px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.notification-toggle i {
+    width: 18px;
+    height: 18px;
+    font-size: 18px;
+    line-height: 1;
+}
+
+.notification-badge[hidden] {
+    display: none !important;
+}
+
+.notification-badge {
+    position: absolute;
+    top: -7px;
+    right: -9px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 0.28rem;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #f26d44 0%, #d94a24 100%);
+    color: #ffffff;
+    font-size: 0.64rem;
+    font-weight: 800;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 7px 16px rgba(163, 52, 26, 0.28);
+}
+
+.notification-panel[hidden] {
+    display: none !important;
+}
+
+.notification-panel {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 0.45rem);
+    z-index: 58;
+    width: min(92vw, 360px);
+    border-radius: 16px;
+    border: 1px solid rgba(28, 36, 48, 0.2);
+    background: #f2f3f5;
+    box-shadow: 0 18px 34px rgba(15, 22, 33, 0.24);
+    overflow: hidden;
+}
+
+.notification-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.8rem 0.9rem 0.65rem;
+    border-bottom: 1px solid rgba(18, 24, 34, 0.12);
+    background: #f7f8fa;
+    color: #183847;
+}
+
+.notification-panel-header-copy {
+    min-width: 0;
+    display: grid;
+    gap: 0.12rem;
+}
+
+.notification-panel-count {
+    font-size: 0.76rem;
+    font-weight: 700;
+    color: #55606e;
+}
+
+.notification-panel-clear {
+    border: 0;
+    background: transparent;
+    color: #0e647c;
+    font-size: 0.82rem;
+    font-weight: 800;
+    line-height: 1;
+    padding: 0.2rem 0;
+    cursor: pointer;
+    transition: color 160ms ease, opacity 160ms ease;
+}
+
+.notification-panel-clear:hover {
+    color: #0a5164;
+}
+
+.notification-panel-clear:focus-visible {
+    outline: 3px solid color-mix(in srgb, #ffffff 36%, var(--accent));
+    outline-offset: 4px;
+    border-radius: 8px;
+}
+
+.notification-panel-clear[disabled] {
+    opacity: 0.55;
+    cursor: default;
+}
+
+.notification-panel-status {
+    margin: 0;
+    padding: 0.8rem 0.9rem;
+    font-size: 0.9rem;
+    color: #42505d;
+}
+
+.notification-list {
+    max-height: min(56vh, 420px);
+    overflow-y: auto;
+}
+
+.notification-list ::deep .notification-item {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 48px minmax(0, 1fr);
+    align-items: center;
+    gap: 0.72rem;
+    padding: 0.72rem 0.86rem;
+    border-bottom: 1px solid rgba(18, 24, 34, 0.12);
+    text-decoration: none;
+    color: #1e2430;
+    background: transparent;
+}
+
+.notification-list ::deep .notification-item.is-character {
+    border-left: 3px solid rgba(60, 135, 111, 0.48);
+}
+
+.notification-list ::deep .notification-item.is-story {
+    border-left: 3px solid rgba(31, 108, 143, 0.42);
+}
+
+.notification-list ::deep .notification-item:last-child {
+    border-bottom: 0;
+}
+
+.notification-list ::deep .notification-item:hover {
+    background: rgba(255, 255, 255, 0.58);
+}
+
+.notification-list ::deep .notification-item.is-unread {
+    background: linear-gradient(180deg, rgba(237, 247, 252, 0.96) 0%, rgba(242, 244, 246, 0.96) 100%);
+}
+
+.notification-list ::deep .notification-item.is-unread .notification-item-title {
+    color: #0e495d;
+}
+
+.notification-list ::deep .notification-item:focus-visible {
+    outline: 3px solid color-mix(in srgb, #ffffff 46%, var(--accent));
+    outline-offset: -3px;
+}
+
+.notification-list ::deep .notification-item-image {
+    width: 48px;
+    height: 48px;
+    display: block;
+    border-radius: 12px;
+    object-fit: cover;
+    object-position: center;
+    background: #d5d9df;
+    overflow: hidden;
+}
+
+.notification-list ::deep .notification-item-image-wrap {
+    position: relative;
+    width: 48px;
+    height: 48px;
+    display: block;
+}
+
+.notification-list ::deep .notification-item-image-badge {
+    position: absolute;
+    right: -5px;
+    bottom: -5px;
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    border: 2px solid #f2f3f5;
+    box-shadow: 0 5px 12px rgba(14, 31, 40, 0.22);
+    font-size: 0.58rem;
+}
+
+.notification-list ::deep .notification-item-image-badge.is-character {
+    background: linear-gradient(180deg, #3b8f75 0%, #2f715d 100%);
+}
+
+.notification-list ::deep .notification-item-image-badge.is-story {
+    background: linear-gradient(180deg, #2d7ba0 0%, #215c78 100%);
+}
+
+.notification-list ::deep .notification-item-image-badge.is-general {
+    background: linear-gradient(180deg, #6c7682 0%, #535b65 100%);
+}
+
+.notification-list ::deep .notification-item-copy {
+    min-width: 0;
+    display: grid;
+    gap: 0.18rem;
+}
+
+.notification-list ::deep .notification-item-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.55rem;
+}
+
+.notification-list ::deep .notification-item-type {
+    display: inline-flex;
+    align-items: center;
+    max-width: fit-content;
+    padding: 0.18rem 0.46rem;
+    border-radius: 999px;
+    font-size: 0.66rem;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    text-transform: uppercase;
+}
+
+.notification-list ::deep .notification-item-type.is-character {
+    color: #235343;
+    background: rgba(59, 143, 117, 0.16);
+}
+
+.notification-list ::deep .notification-item-type.is-story {
+    color: #184963;
+    background: rgba(45, 123, 160, 0.16);
+}
+
+.notification-list ::deep .notification-item-type.is-general {
+    color: #4a5561;
+    background: rgba(108, 118, 130, 0.16);
+}
+
+.notification-list ::deep .notification-item-title {
+    margin: 0;
+    color: #183847;
+    font-size: 0.98rem;
+    line-height: 1.25;
+    font-weight: 700;
+}
+
+.notification-list ::deep .notification-item-body {
+    margin: 0;
+    color: #55606e;
+    font-size: 0.84rem;
+    line-height: 1.38;
+}
+
+.notification-list ::deep .notification-item-date {
+    margin: 0;
+    color: #6b7682;
+    font-size: 0.74rem;
+    line-height: 1.2;
+    white-space: nowrap;
+}
+
+.notification-list ::deep .notification-item-empty {
+    margin: 0;
+    padding: 0.88rem 0.9rem;
+    color: #42505d;
+    font-size: 0.9rem;
+}
+
 .account-menu {
     position: relative;
     z-index: 59;
@@ -1106,6 +1421,16 @@
     .account-toggle {
         min-height: 32px;
         padding: 0.22rem 0.46rem 0.22rem 0.24rem;
+    }
+
+    .notification-toggle {
+        min-height: 32px;
+        padding: 0.28rem 0.34rem;
+    }
+
+    .notification-panel {
+        right: -0.2rem;
+        width: min(96vw, 340px);
     }
 
     .account-avatar {
