@@ -13,6 +13,7 @@ public sealed partial class SupabaseAdminManagementService(
     HttpClient httpClient,
     IOptions<SupabaseOptions> supabaseOptions,
     IMemoryCache memoryCache,
+    IUserNotificationService userNotificationService,
     ILogger<SupabaseAdminManagementService> logger) : IAdminManagementService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -21,6 +22,7 @@ public sealed partial class SupabaseAdminManagementService(
     private readonly HttpClient _httpClient = httpClient;
     private readonly SupabaseOptions _options = supabaseOptions.Value;
     private readonly IMemoryCache _memoryCache = memoryCache;
+    private readonly IUserNotificationService _userNotificationService = userNotificationService;
     private readonly ILogger<SupabaseAdminManagementService> _logger = logger;
 
     public async Task<bool> IsAdminAsync(string? email, CancellationToken cancellationToken = default)
@@ -354,6 +356,20 @@ public sealed partial class SupabaseAdminManagementService(
         if (updateResponse.IsSuccessStatusCode)
         {
             InvalidateStoryCatalogCache();
+            if (string.Equals(normalizedStatus, "published", StringComparison.OrdinalIgnoreCase))
+            {
+                await _userNotificationService.CreatePublishedStoryNotificationsAsync(
+                    new PublishedStoryNotificationRequest(
+                        request.StoryId,
+                        normalizedSlug,
+                        normalizedTitle,
+                        normalizedAccessLevel,
+                        normalizedSummary,
+                        normalizedThumbnailPath,
+                        normalizedCoverImagePath),
+                    cancellationToken);
+            }
+
             return new AdminOperationResult(true);
         }
 
@@ -476,6 +492,22 @@ public sealed partial class SupabaseAdminManagementService(
             var responseBody = await createResponse.Content.ReadAsStringAsync(cancellationToken);
             var createdStoryId = TryReadFirstGuidProperty(responseBody, "story_id");
             InvalidateStoryCatalogCache();
+
+            if (createdStoryId.HasValue &&
+                string.Equals(normalizedStatus, "published", StringComparison.OrdinalIgnoreCase))
+            {
+                await _userNotificationService.CreatePublishedStoryNotificationsAsync(
+                    new PublishedStoryNotificationRequest(
+                        createdStoryId.Value,
+                        normalizedSlug,
+                        normalizedTitle,
+                        normalizedAccessLevel,
+                        normalizedSummary,
+                        normalizedThumbnailPath,
+                        normalizedCoverImagePath),
+                    cancellationToken);
+            }
+
             return new AdminOperationResult(true, EntityId: createdStoryId);
         }
 

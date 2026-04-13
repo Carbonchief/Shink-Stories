@@ -6,19 +6,46 @@ const SEARCH_INPUT_SELECTOR = "[data-search-input]";
 const SEARCH_LOADER_SELECTOR = "[data-search-loader]";
 const SEARCH_SUGGESTIONS_SELECTOR = "[data-search-suggestions]";
 const SEARCH_SUGGESTIONS_LIST_SELECTOR = "[data-search-suggestions-list]";
+const NOTIFICATION_CENTER_ROOT_SELECTOR = "[data-notification-center-root]";
+const NOTIFICATION_TOGGLE_SELECTOR = "[data-notification-toggle]";
+const NOTIFICATION_PANEL_SELECTOR = "[data-notification-panel]";
+const NOTIFICATION_LIST_SELECTOR = "[data-notification-list]";
+const NOTIFICATION_LOADING_SELECTOR = "[data-notification-loading]";
+const NOTIFICATION_COUNT_SELECTOR = "[data-notification-count]";
+const NOTIFICATION_PANEL_COUNT_SELECTOR = "[data-notification-panel-count]";
+const NOTIFICATION_CLEAR_SELECTOR = "[data-notification-clear]";
 const ACCOUNT_MENU_ROOT_SELECTOR = "[data-account-menu-root]";
 const ACCOUNT_TOGGLE_SELECTOR = "[data-account-toggle]";
 const ACCOUNT_DROPDOWN_SELECTOR = "[data-account-dropdown]";
 const OPEN_CLASS = "is-open";
 const SEARCH_ACTIVE_CLASS = "is-search-active";
 const SEARCH_SUGGEST_ENDPOINT = "/api/search/suggest";
+const NOTIFICATION_ENDPOINT = "/api/notifications";
+const NOTIFICATION_READ_ALL_ENDPOINT = "/api/notifications/read-all";
+const NOTIFICATION_CLEAR_ENDPOINT = "/api/notifications/clear";
+const NOTIFICATION_REFRESH_EVENT = "schink:notifications-refresh";
 const SEARCH_MIN_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS = 160;
 const SEARCH_MAX_RESULTS = 8;
 const OPEN_LABEL = "Maak navigasie toe";
 const CLOSED_LABEL = "Maak navigasie oop";
 let navMenuDelegatesStarted = false;
+let notificationCenterDelegatesStarted = false;
 let accountMenuDelegatesStarted = false;
+const notificationCenterState = new WeakMap();
+const notificationDateFormatter = typeof Intl !== "undefined"
+    ? new Intl.DateTimeFormat("af-ZA", { day: "numeric", month: "short" })
+    : null;
+
+function replaceNodeChildren(parent, child) {
+    while (parent.firstChild) {
+        parent.removeChild(parent.firstChild);
+    }
+
+    if (child instanceof Node) {
+        parent.appendChild(child);
+    }
+}
 
 function findNavMenuParts(from) {
     const navToggle = from instanceof Element && from.matches(NAV_TOGGLE_SELECTOR)
@@ -83,6 +110,7 @@ function setNavMenuState(from, open) {
 
     if (open) {
         closeAccountMenuInContainer(parts.controlsContainer);
+        closeNotificationCenterInContainer(parts.controlsContainer);
         parts.controlsContainer.classList.remove(SEARCH_ACTIVE_CLASS);
     }
 }
@@ -107,10 +135,470 @@ window.toggleSchinkNavMenu = (toggleButton) => {
 
     const shouldOpen = !parts.navMenu.classList.contains(OPEN_CLASS);
     closeAllNavMenus();
+    closeAllNotificationCenters();
     closeAllAccountMenus();
     setNavMenuState(parts.controlsContainer, shouldOpen);
     return false;
 };
+
+function getNotificationCenterState(centerRoot) {
+    let state = notificationCenterState.get(centerRoot);
+    if (!state) {
+        state = {
+            isLoaded: false,
+            isLoading: false,
+            isMarkingRead: false,
+            isClearing: false,
+            notifications: [],
+            unreadCount: 0
+        };
+        notificationCenterState.set(centerRoot, state);
+    }
+
+    return state;
+}
+
+function findNotificationCenterParts(from) {
+    const centerRoot = from instanceof Element
+        ? from.closest(NOTIFICATION_CENTER_ROOT_SELECTOR)
+        : null;
+    const notificationToggle = centerRoot instanceof Element
+        ? centerRoot.querySelector(NOTIFICATION_TOGGLE_SELECTOR)
+        : null;
+    const notificationPanel = centerRoot instanceof Element
+        ? centerRoot.querySelector(NOTIFICATION_PANEL_SELECTOR)
+        : null;
+    const notificationList = centerRoot instanceof Element
+        ? centerRoot.querySelector(NOTIFICATION_LIST_SELECTOR)
+        : null;
+    const notificationLoading = centerRoot instanceof Element
+        ? centerRoot.querySelector(NOTIFICATION_LOADING_SELECTOR)
+        : null;
+    const notificationCount = centerRoot instanceof Element
+        ? centerRoot.querySelector(NOTIFICATION_COUNT_SELECTOR)
+        : null;
+    const notificationPanelCount = centerRoot instanceof Element
+        ? centerRoot.querySelector(NOTIFICATION_PANEL_COUNT_SELECTOR)
+        : null;
+    const notificationClear = centerRoot instanceof Element
+        ? centerRoot.querySelector(NOTIFICATION_CLEAR_SELECTOR)
+        : null;
+    const navControls = centerRoot instanceof Element
+        ? centerRoot.closest(".nav-controls")
+        : null;
+
+    if (!(centerRoot instanceof HTMLElement) ||
+        !(notificationToggle instanceof HTMLButtonElement) ||
+        !(notificationPanel instanceof HTMLElement) ||
+        !(notificationList instanceof HTMLElement) ||
+        !(notificationLoading instanceof HTMLElement)) {
+        return null;
+    }
+
+    return {
+        centerRoot,
+        notificationToggle,
+        notificationPanel,
+        notificationList,
+        notificationLoading,
+        notificationCount: notificationCount instanceof HTMLElement ? notificationCount : null,
+        notificationPanelCount: notificationPanelCount instanceof HTMLElement ? notificationPanelCount : null,
+        notificationClear: notificationClear instanceof HTMLButtonElement ? notificationClear : null,
+        navControls: navControls instanceof HTMLElement ? navControls : null
+    };
+}
+
+function formatNotificationCount(count) {
+    if (!Number.isFinite(count) || count <= 0) {
+        return "";
+    }
+
+    return count > 99 ? "99+" : String(count);
+}
+
+function setNotificationCount(parts, count) {
+    const formattedCount = formatNotificationCount(count);
+    const hasCount = formattedCount.length > 0;
+
+    if (parts.notificationCount instanceof HTMLElement) {
+        parts.notificationCount.hidden = !hasCount;
+        parts.notificationCount.textContent = formattedCount;
+    }
+
+    if (parts.notificationPanelCount instanceof HTMLElement) {
+        parts.notificationPanelCount.hidden = !hasCount;
+        parts.notificationPanelCount.textContent = hasCount
+            ? `${count} ${count === 1 ? "ongelees" : "ongelees"}`
+            : "";
+    }
+
+    const label = hasCount
+        ? `Kennisgewings (${count} ongelees)`
+        : "Kennisgewings";
+    parts.notificationToggle.setAttribute("aria-label", label);
+    parts.notificationToggle.setAttribute("title", label);
+}
+
+function syncNotificationClearButton(parts, state) {
+    if (!(parts.notificationClear instanceof HTMLButtonElement)) {
+        return;
+    }
+
+    const hasNotifications = Array.isArray(state.notifications) && state.notifications.length > 0;
+    parts.notificationClear.hidden = !hasNotifications;
+    parts.notificationClear.disabled = state.isClearing || state.isLoading || !hasNotifications;
+    parts.notificationClear.textContent = state.isClearing ? "Maak skoon..." : "Maak skoon";
+}
+
+function formatNotificationDate(createdAt) {
+    if (typeof createdAt !== "string" || createdAt.length === 0) {
+        return "";
+    }
+
+    const parsedDate = new Date(createdAt);
+    if (!Number.isFinite(parsedDate.getTime())) {
+        return "";
+    }
+
+    if (notificationDateFormatter) {
+        return notificationDateFormatter.format(parsedDate);
+    }
+
+    return parsedDate.toLocaleDateString();
+}
+
+function normalizeNotificationType(notificationType) {
+    return typeof notificationType === "string" && notificationType.length > 0
+        ? notificationType.trim().toLowerCase()
+        : "";
+}
+
+function buildNotificationTypeMeta(notificationType) {
+    switch (normalizeNotificationType(notificationType)) {
+    case "character_unlock":
+        return {
+            label: "Karakter",
+            badgeClass: "is-character",
+            icon: "fa-user-astronaut"
+        };
+    case "story_published":
+        return {
+            label: "Nuwe storie",
+            badgeClass: "is-story",
+            icon: "fa-book-open"
+        };
+    default:
+        return {
+            label: "Kennisgewing",
+            badgeClass: "is-general",
+            icon: "fa-bell"
+        };
+    }
+}
+
+function renderNotificationItems(parts, notifications, fallbackMessage) {
+    const safeNotifications = Array.isArray(notifications) ? notifications : [];
+    if (safeNotifications.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "notification-item-empty";
+        empty.textContent = fallbackMessage || "Geen kennisgewings nog nie.";
+        replaceNodeChildren(parts.notificationList, empty);
+        return;
+    }
+
+    const fragment = document.createDocumentFragment();
+    safeNotifications.forEach((notification) => {
+        const href = notification && typeof notification.href === "string" && notification.href.length > 0
+            ? notification.href
+            : null;
+        const item = document.createElement(href ? "a" : "div");
+        const isRead = Boolean(notification && notification.isRead);
+        const typeMeta = buildNotificationTypeMeta(notification && notification.type);
+        item.className = `notification-item ${typeMeta.badgeClass}${isRead ? "" : " is-unread"}`;
+        if (href && item instanceof HTMLAnchorElement) {
+            item.href = href;
+        }
+
+        const imageWrap = document.createElement("span");
+        imageWrap.className = "notification-item-image-wrap";
+
+        const image = document.createElement("img");
+        image.className = "notification-item-image";
+        image.alt = notification && typeof notification.imageAlt === "string" && notification.imageAlt.length > 0
+            ? notification.imageAlt
+            : "";
+        image.loading = "lazy";
+        image.decoding = "async";
+        image.src = notification && typeof notification.imagePath === "string" && notification.imagePath.length > 0
+            ? notification.imagePath
+            : "/branding/schink-logo-green.png";
+        imageWrap.append(image);
+
+        const imageBadge = document.createElement("span");
+        imageBadge.className = `notification-item-image-badge ${typeMeta.badgeClass}`;
+        imageBadge.setAttribute("aria-hidden", "true");
+        imageBadge.innerHTML = `<i class="fa-solid ${typeMeta.icon}" aria-hidden="true"></i>`;
+        imageWrap.append(imageBadge);
+        item.append(imageWrap);
+
+        const copy = document.createElement("span");
+        copy.className = "notification-item-copy";
+
+        const metaRow = document.createElement("span");
+        metaRow.className = "notification-item-meta";
+
+        const typeBadge = document.createElement("span");
+        typeBadge.className = `notification-item-type ${typeMeta.badgeClass}`;
+        typeBadge.textContent = typeMeta.label;
+        metaRow.append(typeBadge);
+
+        const dateText = formatNotificationDate(notification && notification.createdAt);
+        if (dateText.length > 0) {
+            const date = document.createElement("p");
+            date.className = "notification-item-date";
+            date.textContent = dateText;
+            metaRow.append(date);
+        }
+
+        copy.append(metaRow);
+
+        const title = document.createElement("p");
+        title.className = "notification-item-title";
+        title.textContent = notification && typeof notification.title === "string" && notification.title.length > 0
+            ? notification.title
+            : "Kennisgewing";
+        copy.append(title);
+
+        if (notification && typeof notification.body === "string" && notification.body.length > 0) {
+            const body = document.createElement("p");
+            body.className = "notification-item-body";
+            body.textContent = notification.body;
+            copy.append(body);
+        }
+
+        item.append(copy);
+        fragment.append(item);
+    });
+
+    replaceNodeChildren(parts.notificationList, fragment);
+}
+
+async function loadNotificationCenter(centerRoot, options = {}) {
+    const parts = findNotificationCenterParts(centerRoot);
+    if (!parts) {
+        return;
+    }
+
+    const { force = false } = options;
+    const state = getNotificationCenterState(parts.centerRoot);
+    if (state.isLoading || (state.isLoaded && !force)) {
+        return;
+    }
+
+    state.isLoading = true;
+    parts.notificationLoading.hidden = false;
+    syncNotificationClearButton(parts, state);
+
+    try {
+        const response = await fetch(NOTIFICATION_ENDPOINT, {
+            method: "GET",
+            credentials: "same-origin",
+            headers: {
+                Accept: "application/json"
+            }
+        });
+
+        if (!response.ok) {
+            setNotificationCount(parts, 0);
+            renderNotificationItems(
+                parts,
+                [],
+                response.status === 401
+                    ? "Teken in om kennisgewings te sien."
+                    : "Ons kon nie nou die kennisgewings laai nie.");
+            state.isLoaded = false;
+            syncNotificationClearButton(parts, state);
+            return;
+        }
+
+        const payload = await response.json();
+        const notifications = payload && Array.isArray(payload.notifications)
+            ? payload.notifications
+            : [];
+        const unreadCount = payload && Number.isFinite(payload.unreadCount)
+            ? payload.unreadCount
+            : notifications.filter((notification) => !notification.isRead).length;
+
+        state.notifications = notifications;
+        state.unreadCount = unreadCount;
+        setNotificationCount(parts, unreadCount);
+        renderNotificationItems(parts, notifications);
+        state.isLoaded = true;
+        syncNotificationClearButton(parts, state);
+
+        if (parts.centerRoot.classList.contains(OPEN_CLASS) && unreadCount > 0) {
+            void markNotificationCenterRead(parts.centerRoot);
+        }
+    } catch {
+        state.notifications = [];
+        state.unreadCount = 0;
+        setNotificationCount(parts, 0);
+        renderNotificationItems(parts, [], "Ons kon nie nou die kennisgewings laai nie.");
+        state.isLoaded = false;
+    } finally {
+        state.isLoading = false;
+        parts.notificationLoading.hidden = true;
+        syncNotificationClearButton(parts, state);
+    }
+}
+
+async function markNotificationCenterRead(centerRoot) {
+    const parts = findNotificationCenterParts(centerRoot);
+    if (!parts) {
+        return;
+    }
+
+    const state = getNotificationCenterState(parts.centerRoot);
+    if (state.isMarkingRead || state.unreadCount <= 0) {
+        return;
+    }
+
+    state.isMarkingRead = true;
+    syncNotificationClearButton(parts, state);
+
+    try {
+        const response = await fetch(NOTIFICATION_READ_ALL_ENDPOINT, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json"
+            },
+            body: JSON.stringify({})
+        });
+
+        if (!response.ok) {
+            return;
+        }
+
+        state.notifications = Array.isArray(state.notifications)
+            ? state.notifications.map((notification) => ({
+                ...notification,
+                isRead: true
+            }))
+            : [];
+        state.unreadCount = 0;
+        setNotificationCount(parts, 0);
+        renderNotificationItems(parts, state.notifications);
+        syncNotificationClearButton(parts, state);
+    } catch {
+        // Ignore mark-read failures to keep the panel usable.
+    } finally {
+        state.isMarkingRead = false;
+        syncNotificationClearButton(parts, state);
+    }
+}
+
+async function clearNotificationCenter(centerRoot) {
+    const parts = findNotificationCenterParts(centerRoot);
+    if (!parts) {
+        return;
+    }
+
+    const state = getNotificationCenterState(parts.centerRoot);
+    if (state.isClearing || !Array.isArray(state.notifications) || state.notifications.length === 0) {
+        return;
+    }
+
+    state.isClearing = true;
+    syncNotificationClearButton(parts, state);
+
+    try {
+        const response = await fetch(NOTIFICATION_CLEAR_ENDPOINT, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json"
+            },
+            body: JSON.stringify({})
+        });
+
+        if (!response.ok) {
+            return;
+        }
+
+        state.notifications = [];
+        state.unreadCount = 0;
+        setNotificationCount(parts, 0);
+        renderNotificationItems(parts, [], "Geen kennisgewings nog nie.");
+        syncNotificationClearButton(parts, state);
+    } catch {
+        // Ignore clear failures to keep the panel usable.
+    } finally {
+        state.isClearing = false;
+        syncNotificationClearButton(parts, state);
+    }
+}
+
+function setNotificationCenterState(centerRoot, open, options = {}) {
+    const parts = findNotificationCenterParts(centerRoot);
+    if (!parts) {
+        return;
+    }
+
+    const { focusToggle = false } = options;
+    parts.centerRoot.classList.toggle(OPEN_CLASS, open);
+    parts.notificationToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    parts.notificationPanel.hidden = !open;
+
+    if (open) {
+        if (parts.navControls instanceof HTMLElement) {
+            closeNavMenuInContainer(parts.navControls);
+            parts.navControls.classList.remove(SEARCH_ACTIVE_CLASS);
+            closeAccountMenuInContainer(parts.navControls);
+        }
+
+        const state = getNotificationCenterState(parts.centerRoot);
+        if (state.isLoaded) {
+            renderNotificationItems(parts, state.notifications);
+            setNotificationCount(parts, state.unreadCount);
+            syncNotificationClearButton(parts, state);
+            if (state.unreadCount > 0) {
+                void markNotificationCenterRead(parts.centerRoot);
+            }
+        } else {
+            void loadNotificationCenter(parts.centerRoot);
+        }
+    }
+
+    if (!open && focusToggle) {
+        window.requestAnimationFrame(() => {
+            parts.notificationToggle.focus();
+        });
+    }
+}
+
+function closeAllNotificationCenters(options = {}) {
+    document.querySelectorAll(NOTIFICATION_CENTER_ROOT_SELECTOR).forEach((centerRoot) => {
+        if (centerRoot instanceof HTMLElement && centerRoot.classList.contains(OPEN_CLASS)) {
+            setNotificationCenterState(centerRoot, false, options);
+        }
+    });
+}
+
+function closeNotificationCenterInContainer(container) {
+    if (!(container instanceof Element)) {
+        return;
+    }
+
+    const centerRoot = container.querySelector(NOTIFICATION_CENTER_ROOT_SELECTOR);
+    if (!(centerRoot instanceof HTMLElement)) {
+        return;
+    }
+
+    setNotificationCenterState(centerRoot, false);
+}
 
 function findAccountMenuParts(from) {
     const accountRoot = from instanceof Element
@@ -153,6 +641,7 @@ function setAccountMenuState(accountRoot, open, options = {}) {
     if (open && parts.navControls instanceof HTMLElement) {
         closeNavMenuInContainer(parts.navControls);
         parts.navControls.classList.remove(SEARCH_ACTIVE_CLASS);
+        closeNotificationCenterInContainer(parts.navControls);
     }
 
     if (!open && focusToggle) {
@@ -464,6 +953,7 @@ function wireHeaderSearch(searchForm) {
         if (isActive) {
             closeNavMenuInContainer(controlsContainer);
             closeAccountMenuInContainer(controlsContainer);
+            closeNotificationCenterInContainer(controlsContainer);
             if (focusInput) {
                 window.requestAnimationFrame(() => {
                     searchInput.focus();
@@ -582,6 +1072,22 @@ function wireAccountMenu(accountToggle) {
     accountToggle.dataset.accountMenuWired = "true";
 }
 
+function wireNotificationCenter(notificationToggle) {
+    if (!(notificationToggle instanceof HTMLButtonElement) ||
+        notificationToggle.dataset.notificationCenterWired === "true") {
+        return;
+    }
+
+    const parts = findNotificationCenterParts(notificationToggle);
+    if (!parts) {
+        return;
+    }
+
+    setNotificationCenterState(parts.centerRoot, false);
+    notificationToggle.dataset.notificationCenterWired = "true";
+    void loadNotificationCenter(parts.centerRoot, { force: true });
+}
+
 function startAccountMenuDelegates() {
     if (accountMenuDelegatesStarted) {
         return;
@@ -640,6 +1146,96 @@ function startAccountMenuDelegates() {
     accountMenuDelegatesStarted = true;
 }
 
+function startNotificationCenterDelegates() {
+    if (notificationCenterDelegatesStarted) {
+        return;
+    }
+
+    document.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const toggle = target.closest(NOTIFICATION_TOGGLE_SELECTOR);
+        if (toggle instanceof HTMLButtonElement) {
+            event.preventDefault();
+            const parts = findNotificationCenterParts(toggle);
+            if (!parts) {
+                return;
+            }
+
+            const shouldOpen = !parts.centerRoot.classList.contains(OPEN_CLASS);
+            closeAllNavMenus();
+            closeAllAccountMenus();
+            closeAllNotificationCenters();
+            setNotificationCenterState(parts.centerRoot, shouldOpen);
+            return;
+        }
+
+        const clickedInsideCenter = target.closest(NOTIFICATION_CENTER_ROOT_SELECTOR);
+        if (clickedInsideCenter instanceof HTMLElement) {
+            const clearButton = target.closest(NOTIFICATION_CLEAR_SELECTOR);
+            if (clearButton instanceof HTMLButtonElement) {
+                event.preventDefault();
+                void clearNotificationCenter(clickedInsideCenter);
+                return;
+            }
+
+            const clickedLink = target.closest(`${NOTIFICATION_PANEL_SELECTOR} a`);
+            if (clickedLink instanceof HTMLAnchorElement) {
+                setNotificationCenterState(clickedInsideCenter, false);
+            }
+            return;
+        }
+
+        closeAllNotificationCenters();
+    });
+
+    document.addEventListener("keydown", (event) => {
+        if (event.key !== "Escape") {
+            return;
+        }
+
+        const openRoot = document.querySelector(`${NOTIFICATION_CENTER_ROOT_SELECTOR}.${OPEN_CLASS}`);
+        if (!(openRoot instanceof HTMLElement)) {
+            return;
+        }
+
+        event.preventDefault();
+        setNotificationCenterState(openRoot, false, { focusToggle: true });
+    });
+
+    document.addEventListener("enhancedload", () => {
+        closeAllNotificationCenters();
+        document.querySelectorAll(NOTIFICATION_CENTER_ROOT_SELECTOR).forEach((centerRoot) => {
+            if (centerRoot instanceof HTMLElement) {
+                const state = getNotificationCenterState(centerRoot);
+                state.isLoaded = false;
+                state.notifications = [];
+                state.unreadCount = 0;
+                state.isClearing = false;
+                void loadNotificationCenter(centerRoot, { force: true });
+            }
+        });
+    });
+
+    window.addEventListener(NOTIFICATION_REFRESH_EVENT, () => {
+        document.querySelectorAll(NOTIFICATION_CENTER_ROOT_SELECTOR).forEach((centerRoot) => {
+            if (centerRoot instanceof HTMLElement) {
+                const state = getNotificationCenterState(centerRoot);
+                state.isLoaded = false;
+                state.notifications = [];
+                state.unreadCount = 0;
+                state.isClearing = false;
+                void loadNotificationCenter(centerRoot, { force: true });
+            }
+        });
+    });
+
+    notificationCenterDelegatesStarted = true;
+}
+
 function initializeNavMenus() {
     document.querySelectorAll(NAV_TOGGLE_SELECTOR).forEach((toggleButton) => {
         initializeNavMenu(toggleButton);
@@ -658,11 +1254,19 @@ function initializeAccountMenus() {
     });
 }
 
+function initializeNotificationCenters() {
+    document.querySelectorAll(NOTIFICATION_TOGGLE_SELECTOR).forEach((notificationToggle) => {
+        wireNotificationCenter(notificationToggle);
+    });
+}
+
 function initializeHeaderInteractions() {
     initializeNavMenus();
     initializeHeaderSearch();
+    initializeNotificationCenters();
     initializeAccountMenus();
     startNavMenuDelegates();
+    startNotificationCenterDelegates();
     startAccountMenuDelegates();
 }
 

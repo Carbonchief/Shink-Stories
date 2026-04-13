@@ -126,6 +126,41 @@
                                     <div class="site-search-suggestions-list" data-search-suggestions-list></div>
                                 </section>
                             </form>
+                            <div class="notification-center" data-notification-center-root>
+                                <button type="button"
+                                        class="notification-toggle"
+                                        data-notification-toggle
+                                        aria-expanded="false"
+                                        aria-controls="header-notification-panel"
+                                        aria-label="Kennisgewings"
+                                        title="Kennisgewings">
+                                    <span class="notification-toggle-icon" aria-hidden="true">
+                                        <i class="fa-solid fa-bell" aria-hidden="true"></i>
+                                        <span class="notification-badge" data-notification-count hidden>0</span>
+                                    </span>
+                                    <span class="sr-only">Maak kennisgewings oop</span>
+                                </button>
+                                <section id="header-notification-panel"
+                                         class="notification-panel"
+                                         data-notification-panel
+                                         aria-label="Kennisgewings"
+                                         hidden>
+                                    <div class="notification-panel-header">
+                                        <div class="notification-panel-header-copy">
+                                            <strong>Kennisgewings</strong>
+                                            <span class="notification-panel-count" data-notification-panel-count hidden></span>
+                                        </div>
+                                        <button type="button"
+                                                class="notification-panel-clear"
+                                                data-notification-clear
+                                                hidden>
+                                            Maak skoon
+                                        </button>
+                                    </div>
+                                    <p class="notification-panel-status" data-notification-loading hidden>Laai kennisgewings...</p>
+                                    <div class="notification-list" data-notification-list></div>
+                                </section>
+                            </div>
                             <div class="account-menu" data-account-menu-root>
                                 @{
                                     var profileImageUrl = ResolveProfileImageUrl(authState.User);

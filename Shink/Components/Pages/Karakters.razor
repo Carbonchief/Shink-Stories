@@ -289,6 +289,9 @@
 }
 
 @code {
+    [SupplyParameterFromQuery(Name = "karakter")]
+    private string? SelectedCharacterSlug { get; set; }
+
     private bool IsLoading { get; set; } = true;
     private bool IsSignedIn { get; set; }
     private string? LoadErrorMessage { get; set; }
@@ -336,6 +339,8 @@
                 .ThenBy(character => character.DisplayName, StringComparer.OrdinalIgnoreCase)
                 .Select((character, index) => BuildCharacterCard(character, storyLookup, progressLookup, index + 1))
                 .ToArray();
+
+            TryOpenCharacterFromQuery();
         }
         catch
         {
@@ -345,6 +350,11 @@
         {
             IsLoading = false;
         }
+    }
+
+    protected override void OnParametersSet()
+    {
+        TryOpenCharacterFromQuery();
     }
 
     private RenderFragment CharacterField(string label, string? value) => builder =>
@@ -608,6 +618,23 @@
         StateHasChanged();
         await Task.Yield();
         NavigationManager.NavigateTo(href);
+    }
+
+    private void TryOpenCharacterFromQuery()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedCharacterSlug) || CharacterCards.Count == 0)
+        {
+            return;
+        }
+
+        var selectedCard = CharacterCards.FirstOrDefault(card =>
+            card.IsUnlocked &&
+            string.Equals(card.Character.Slug, SelectedCharacterSlug.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (selectedCard is not null &&
+            ActiveProfileCard?.Character.CharacterId != selectedCard.Character.CharacterId)
+        {
+            OpenCharacterProfile(selectedCard);
+        }
     }
 
     private CharacterCardViewModel BuildCharacterCard(
