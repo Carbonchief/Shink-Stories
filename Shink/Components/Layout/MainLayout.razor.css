@@ -609,18 +609,17 @@
     align-items: center;
     justify-content: center;
     text-decoration: none;
-    color: #ffffff;
-    background: rgba(12, 25, 36, 0.42);
-    border: 1px solid rgba(255, 255, 255, 0.42);
-    backdrop-filter: blur(8px);
-    box-shadow: 0 10px 24px rgba(7, 16, 28, 0.28);
-    transition: transform 0.18s ease, background 0.18s ease, border-color 0.18s ease;
+    color: #1b232a;
+    background: transparent;
+    border: 0;
+    backdrop-filter: none;
+    box-shadow: none;
+    transition: transform 0.18s ease, color 0.18s ease;
 }
 
 .showcase-floating-back:hover {
     transform: translateY(-1px);
-    background: rgba(12, 25, 36, 0.58);
-    border-color: rgba(255, 255, 255, 0.68);
+    color: #0f1418;
 }
 
 .showcase-floating-back:focus-visible {
@@ -641,17 +640,16 @@
 .showcase-floating-menu .nav-menu-toggle {
     width: 46px;
     height: 46px;
-    border-radius: 999px;
-    color: #ffffff;
-    background: rgba(12, 25, 36, 0.42);
-    border: 1px solid rgba(255, 255, 255, 0.42);
-    backdrop-filter: blur(8px);
-    box-shadow: 0 10px 24px rgba(7, 16, 28, 0.28);
+    border-radius: 0;
+    color: #1b232a;
+    background: transparent;
+    border: 0;
+    backdrop-filter: none;
+    box-shadow: none;
 }
 
 .showcase-floating-menu .nav-menu-toggle:hover {
-    background: rgba(12, 25, 36, 0.58);
-    border-color: rgba(255, 255, 255, 0.68);
+    color: #0f1418;
 }
 
 .showcase-floating-menu .site-nav {
