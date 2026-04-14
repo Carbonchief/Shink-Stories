@@ -226,7 +226,7 @@
                     @onclick="CelebrateProfileImageAsync"
                     aria-label="Druk vir 'n verrassing">
                 <img class="@($"character-profile-popup-image{(IsProfileImageCelebrating ? " is-celebrating" : string.Empty)}")"
-                     src="@ResolveCharacterImagePath(ActiveProfileCard.Character.ImagePath)"
+                     src="@ResolveCharacterImagePath(ActiveProfileCard.Character.ImagePath, ActiveProfileCard.Character.UpdatedAt)"
                      alt="Illustrasie van @ActiveProfileCard.Character.DisplayName"
                      loading="lazy"
                      decoding="async"
@@ -412,7 +412,7 @@
             builder.OpenElement(sequence++, "img");
             builder.AddAttribute(sequence++, "class", "character-friend-image");
             builder.AddAttribute(sequence++, "style", "width:64px;max-width:64px;height:auto;display:block;object-fit:contain;flex:0 0 auto;");
-            builder.AddAttribute(sequence++, "src", ResolveCharacterImagePath(friend.ImagePath));
+            builder.AddAttribute(sequence++, "src", ResolveCharacterImagePath(friend.ImagePath, friend.UpdatedAt));
             builder.AddAttribute(sequence++, "alt", $"Illustrasie van {friend.DisplayName}");
             builder.AddAttribute(sequence++, "loading", "lazy");
             builder.AddAttribute(sequence++, "decoding", "async");
@@ -668,8 +668,8 @@
             Heading: unlocked ? character.DisplayName : "?????",
             SummaryText: summaryText,
             DisplayImagePath: unlocked
-                ? ResolveCharacterImagePath(character.ImagePath)
-                : ResolveCharacterImagePath(character.MysteryImagePath),
+                ? ResolveCharacterImagePath(character.ImagePath, character.UpdatedAt)
+                : ResolveCharacterImagePath(character.MysteryImagePath, character.UpdatedAt),
             ImageAlt: unlocked
                 ? $"Illustrasie van {character.DisplayName}"
                 : $"Mysterie illustrasie vir {character.DisplayName}",
@@ -746,10 +746,20 @@
         return primaryStory.Path;
     }
 
-    private static string ResolveCharacterImagePath(string? path) =>
-        string.IsNullOrWhiteSpace(path)
+    private static string ResolveCharacterImagePath(string? path, DateTimeOffset? updatedAt = null)
+    {
+        var resolvedPath = string.IsNullOrWhiteSpace(path)
             ? "/branding/schink-logo-green.png"
             : path;
+
+        if (updatedAt is null)
+        {
+            return resolvedPath;
+        }
+
+        var separator = resolvedPath.Contains('?', StringComparison.Ordinal) ? '&' : '?';
+        return $"{resolvedPath}{separator}v={updatedAt.Value.ToUnixTimeSeconds()}";
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

@@ -43,7 +43,8 @@ public sealed record StoryCharacterItem(
     IReadOnlyList<string> RelatedStorySlugs,
     IReadOnlyList<CharacterAudioClipItem> AudioClips,
     int UnlockThresholdSeconds,
-    int SortOrder);
+    int SortOrder,
+    DateTimeOffset? UpdatedAt);
 
 public sealed record AdminCharacterRecord(
     Guid CharacterId,

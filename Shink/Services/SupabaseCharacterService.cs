@@ -355,7 +355,8 @@ public sealed partial class SupabaseCharacterService(
             RelatedStorySlugs: relatedStorySlugs,
             AudioClips: audioClips,
             UnlockThresholdSeconds: Math.Clamp(row.UnlockThresholdSeconds ?? 30, 1, 3600),
-            SortOrder: row.SortOrder);
+            SortOrder: row.SortOrder,
+            UpdatedAt: row.UpdatedAt);
     }
 
     private AdminCharacterRecord MapToAdminCharacter(StoryCharacterRow row)
