@@ -9,7 +9,9 @@
 @inject ICharacterCatalogService CharacterCatalogService
 @inject IJSRuntime JS
 @inject IStoryTrackingService StoryTrackingService
+@inject ICharacterTrackingService CharacterTrackingService
 @inject IStoryCatalogService StoryCatalogService
+@inject IUserNotificationService UserNotificationService
 @inject NavigationManager NavigationManager
 @implements IAsyncDisposable
 
@@ -298,6 +300,7 @@
 
     private bool IsLoading { get; set; } = true;
     private bool IsSignedIn { get; set; }
+    private string? SignedInEmail { get; set; }
     private string? LoadErrorMessage { get; set; }
     private IReadOnlyList<CharacterCardViewModel> CharacterCards { get; set; } = Array.Empty<CharacterCardViewModel>();
     private CharacterCardViewModel? ActiveProfileCard { get; set; }
@@ -317,19 +320,22 @@
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
             var signedInEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
                                ?? authState.User.Identity?.Name;
+            SignedInEmail = signedInEmail;
             IsSignedIn = authState.User.Identity?.IsAuthenticated == true && !string.IsNullOrWhiteSpace(signedInEmail);
 
             var charactersTask = CharacterCatalogService.GetPublishedCharactersAsync();
             var freeStoriesTask = StoryCatalogService.GetFreeStoriesAsync();
             var luisterStoriesTask = StoryCatalogService.GetLuisterStoriesAsync();
             Task<IReadOnlyList<UserStoryProgressItem>> progressTask = Task.FromResult<IReadOnlyList<UserStoryProgressItem>>(Array.Empty<UserStoryProgressItem>());
+            Task<IReadOnlyList<UserCharacterProfileListenItem>> profileListenTask = Task.FromResult<IReadOnlyList<UserCharacterProfileListenItem>>(Array.Empty<UserCharacterProfileListenItem>());
 
             if (IsSignedIn)
             {
                 progressTask = StoryTrackingService.GetUserStoryProgressAsync(signedInEmail);
+                profileListenTask = CharacterTrackingService.GetUserProfileListenStatsAsync(signedInEmail);
             }
 
-            await Task.WhenAll(charactersTask, freeStoriesTask, luisterStoriesTask, progressTask);
+            await Task.WhenAll(charactersTask, freeStoriesTask, luisterStoriesTask, progressTask, profileListenTask);
 
             var storyLookup = BuildStoryLookup(freeStoriesTask.Result, luisterStoriesTask.Result);
             var progressLookup = progressTask.Result
@@ -338,11 +344,21 @@
                     group => group.Key,
                     group => group.OrderByDescending(item => item.LastListenedAtUtc).First(),
                     StringComparer.OrdinalIgnoreCase);
+            var profileListenLookup = profileListenTask.Result
+                .GroupBy(item => item.CharacterSlug, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Sum(item => item.ListenCount),
+                    StringComparer.OrdinalIgnoreCase);
+            var unlockStateLookup = CharacterUnlockEvaluator.EvaluateUnlockStates(
+                charactersTask.Result,
+                progressLookup,
+                profileListenLookup);
 
             CharacterCards = charactersTask.Result
                 .OrderBy(character => character.SortOrder)
                 .ThenBy(character => character.DisplayName, StringComparer.OrdinalIgnoreCase)
-                .Select((character, index) => BuildCharacterCard(character, storyLookup, progressLookup, index + 1))
+                .Select((character, index) => BuildCharacterCard(character, storyLookup, unlockStateLookup, index + 1))
                 .ToArray();
 
             TryOpenCharacterFromQuery();
@@ -624,6 +640,23 @@
         }
 
         await module.InvokeVoidAsync("playCharacterAudio", AudioAccessService.CreateSignedAudioUrl(clip.StreamSlug));
+
+        if (!IsSignedIn || string.IsNullOrWhiteSpace(SignedInEmail))
+        {
+            return;
+        }
+
+        var tracked = await CharacterTrackingService.RecordProfileListenAsync(
+            SignedInEmail,
+            new CharacterProfileListenTrackingRequest(
+                CharacterId: card.Character.CharacterId,
+                CharacterSlug: card.Character.Slug,
+                StreamSlug: clip.StreamSlug,
+                Source: "profile"));
+        if (tracked)
+        {
+            await UserNotificationService.SyncCharacterUnlockNotificationsAsync(SignedInEmail);
+        }
     }
 
     private bool IsCallToActionLoading(string? href) =>
@@ -663,27 +696,32 @@
     private CharacterCardViewModel BuildCharacterCard(
         StoryCharacterItem character,
         IReadOnlyDictionary<string, StoryLinkInfo> storyLookup,
-        IReadOnlyDictionary<string, UserStoryProgressItem> progressLookup,
+        IReadOnlyDictionary<Guid, bool> unlockStateLookup,
         int displayOrder)
     {
-        var relatedSlugs = BuildUnlockStorySlugs(character);
-        var unlocked = relatedSlugs.Any(slug => IsCharacterUnlocked(character, slug, progressLookup));
+        var relatedSlugs = CharacterUnlockEvaluator.GetRelevantStorySlugs(character);
+        var unlocked = unlockStateLookup.TryGetValue(character.CharacterId, out var isUnlocked) && isUnlocked;
         var relatedStories = relatedSlugs
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Select(slug => storyLookup.TryGetValue(slug, out var story) ? story : null)
             .Where(static story => story is not null)
             .Cast<StoryLinkInfo>()
             .ToArray();
+        var hasStoryDrivenUnlockRule = CharacterUnlockEvaluator.HasStoryDrivenUnlockRule(character);
         var primaryStory = ResolvePrimaryStory(character, relatedStories);
         var ctaHref = ResolveCallToActionHref(primaryStory);
         var ctaLabel = unlocked
             ? "Luister weer na storie"
             : primaryStory is null
                 ? string.Empty
-                : "Luister en sluit oop";
+                : hasStoryDrivenUnlockRule
+                    ? "Luister en sluit oop"
+                    : "Luister storie";
         var summaryText = unlocked
             ? character.Tagline ?? "Hierdie karakter se profiel is nou oop."
-            : "Luister na die storie om oop te sluit.";
+            : hasStoryDrivenUnlockRule
+                ? "Luister volgens die reël om oop te sluit."
+                : "Hou aan luister en verken om oop te sluit.";
         return new CharacterCardViewModel(
             Character: character,
             IsUnlocked: unlocked,
@@ -699,33 +737,6 @@
             RelatedStories: relatedStories,
             CallToActionHref: ctaHref,
             CallToActionLabel: ctaLabel);
-    }
-
-    private bool IsCharacterUnlocked(
-        StoryCharacterItem character,
-        string slug,
-        IReadOnlyDictionary<string, UserStoryProgressItem> progressLookup)
-    {
-        if (!progressLookup.TryGetValue(slug, out var progress))
-        {
-            return false;
-        }
-
-        return progress.IsCompleted || progress.TotalListenedSeconds >= character.UnlockThresholdSeconds;
-    }
-
-    private string[] BuildUnlockStorySlugs(StoryCharacterItem character)
-    {
-        var slugs = new List<string>();
-        if (!string.IsNullOrWhiteSpace(character.UnlockStorySlug))
-        {
-            slugs.Add(character.UnlockStorySlug);
-        }
-
-        slugs.AddRange(character.RelatedStorySlugs.Where(slug => !string.IsNullOrWhiteSpace(slug)));
-        return slugs
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
     }
 
     private static IReadOnlyDictionary<string, StoryLinkInfo> BuildStoryLookup(

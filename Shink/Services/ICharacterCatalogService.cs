@@ -9,6 +9,18 @@ public interface ICharacterCatalogService
         CancellationToken cancellationToken = default);
 }
 
+public interface ICharacterTrackingService
+{
+    Task<bool> RecordProfileListenAsync(
+        string? email,
+        CharacterProfileListenTrackingRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<UserCharacterProfileListenItem>> GetUserProfileListenStatsAsync(
+        string? email,
+        CancellationToken cancellationToken = default);
+}
+
 public interface ICharacterAdminService
 {
     Task<IReadOnlyList<AdminCharacterRecord>> GetCharactersAsync(
@@ -25,6 +37,8 @@ public sealed record StoryCharacterItem(
     Guid CharacterId,
     string Slug,
     string DisplayName,
+    string CharacterCategory,
+    IReadOnlyList<CharacterUnlockRuleItem> UnlockRules,
     string? Tagline,
     string? Species,
     string? Habitat,
@@ -50,6 +64,8 @@ public sealed record AdminCharacterRecord(
     Guid CharacterId,
     string Slug,
     string DisplayName,
+    string CharacterCategory,
+    IReadOnlyList<CharacterUnlockRuleItem> UnlockRules,
     string? Tagline,
     string? Species,
     string? Habitat,
@@ -78,6 +94,8 @@ public sealed record AdminCharacterSaveRequest(
     Guid? CharacterId,
     string? Slug,
     string DisplayName,
+    string CharacterCategory,
+    IReadOnlyList<CharacterUnlockRuleItem>? UnlockRules,
     string? Tagline,
     string? Species,
     string? Habitat,
@@ -108,3 +126,22 @@ public sealed record CharacterAudioClipItem(
     string AudioObjectKey,
     string? AudioContentType,
     int SortOrder);
+
+public sealed record CharacterUnlockRuleItem(
+    string RuleType,
+    IReadOnlyList<string> TargetSlugs,
+    string TargetMatchMode,
+    int MinimumCount,
+    int MinimumSeconds);
+
+public sealed record CharacterProfileListenTrackingRequest(
+    Guid CharacterId,
+    string CharacterSlug,
+    string StreamSlug,
+    string Source);
+
+public sealed record UserCharacterProfileListenItem(
+    Guid CharacterId,
+    string CharacterSlug,
+    int ListenCount,
+    DateTimeOffset LastListenedAtUtc);

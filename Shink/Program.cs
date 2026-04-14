@@ -109,6 +109,7 @@ builder.Services.AddHttpClient<IResourceCatalogService, SupabaseResourceCatalogS
 builder.Services.AddHttpClient<IAdminManagementService, SupabaseAdminManagementService>();
 builder.Services.AddHttpClient<ICharacterCatalogService, SupabaseCharacterService>();
 builder.Services.AddHttpClient<ICharacterAdminService, SupabaseCharacterService>();
+builder.Services.AddHttpClient<ICharacterTrackingService, SupabaseCharacterService>();
 builder.Services.AddSingleton<IBlogContentRenderer, BlogContentRenderer>();
 builder.Services.AddHttpClient<IBlogCatalogService, SupabaseBlogService>();
 builder.Services.AddHttpClient<IBlogAdminService, SupabaseBlogService>();

@@ -3,29 +3,61 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.Extensions.Options
+@using Microsoft.JSInterop
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ICharacterAdminService CharacterAdminService
 @inject IAdminManagementService AdminManagementService
 @inject IStoryMediaStorageService StoryMediaStorageService
 @inject IWebHostEnvironment WebHostEnvironment
+@inject IJSRuntime JSRuntime
 @inject ILogger<AdminCharactersPanel> Logger
 @inject IOptions<CloudflareR2Options> CloudflareR2OptionsAccessor
 
 <section class="admin-section">
     <div class="admin-section-head">
-        <h2>@T("Karakters", "Characters")</h2>
         <div class="admin-search">
             <input class="characters-admin-search"
                    type="search"
                    @bind="CharacterSearch"
                    @bind:event="oninput"
                    placeholder="@T("Soek naam of slug", "Search name or slug")" />
-            <button type="button" class="characters-admin-btn" @onclick="BeginCreateCharacter">
-                @T("Nuwe karakter", "New character")
-            </button>
-            <button type="button" class="characters-admin-btn characters-admin-btn-secondary" @onclick="ReloadAsync">
-                @T("Herlaai", "Refresh")
-            </button>
+            <div class="characters-admin-view-toggle" role="group" aria-label="@T("Karakteraansig", "Character view")">
+                <button type="button"
+                        class="characters-admin-btn characters-admin-btn-secondary @(ViewMode == CharacterDisplayMode.List ? "is-active" : null)"
+                        aria-pressed="@(ViewMode == CharacterDisplayMode.List)"
+                        aria-label='@T("Lys", "List")'
+                        title='@T("Lys", "List")'
+                        @onclick="() => SetViewMode(CharacterDisplayMode.List)">
+                    <i class="fa-solid fa-list" aria-hidden="true"></i>
+                    <span class="sr-only">@T("Lys", "List")</span>
+                </button>
+                <button type="button"
+                        class="characters-admin-btn characters-admin-btn-secondary @(ViewMode == CharacterDisplayMode.Grid ? "is-active" : null)"
+                        aria-pressed="@(ViewMode == CharacterDisplayMode.Grid)"
+                        aria-label='@T("Beeldraster", "Image grid")'
+                        title='@T("Beeldraster", "Image grid")'
+                        @onclick="() => SetViewMode(CharacterDisplayMode.Grid)">
+                    <i class="fa-solid fa-table-cells-large" aria-hidden="true"></i>
+                    <span class="sr-only">@T("Beeldraster", "Image grid")</span>
+                </button>
+            </div>
+            <MudButton Class="characters-admin-new-action-btn"
+                       Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       OnClick="BeginCreateCharacter"
+                       aria-label='@T("Nuwe karakter", "New character")'
+                       title='@T("Nuwe karakter", "New character")'>
+                <i class="fa-solid fa-plus" aria-hidden="true"></i>
+            </MudButton>
+            <MudButton Class="admin-btn admin-btn-secondary admin-icon-btn"
+                       Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       OnClick="ReloadAsync"
+                       aria-label='@T("Herlaai", "Refresh")'
+                       title='@T("Herlaai", "Refresh")'>
+                <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
+                <span class="sr-only">@T("Herlaai", "Refresh")</span>
+            </MudButton>
         </div>
     </div>
 
@@ -56,6 +88,33 @@
                 {
                     <p class="characters-admin-empty">@T("Geen karakters pas by jou soektog nie.", "No characters match your search.")</p>
                 }
+                else if (ViewMode == CharacterDisplayMode.Grid)
+                {
+                    <div class="characters-admin-grid">
+                        @foreach (var character in FilteredCharacters)
+                        {
+                            var isSelected = Editor?.CharacterId == character.CharacterId;
+                            <button type="button"
+                                    class="characters-admin-grid-item @(isSelected ? "is-selected" : null)"
+                                    @onclick="() => SelectCharacter(character)">
+                                <span class="characters-admin-grid-thumb-wrap">
+                                    <img class="characters-admin-grid-thumb"
+                                         src="@ResolveCharacterListPreviewPath(character)"
+                                         alt=""
+                                         loading="lazy"
+                                         decoding="async"
+                                         onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                                    <span class="characters-admin-grid-badge">@BuildStatusLabel(character.Status)</span>
+                                </span>
+
+                                <span class="characters-admin-grid-copy">
+                                    <span class="characters-admin-grid-title">@character.DisplayName</span>
+                                    <span class="characters-admin-grid-meta">@character.Slug · @BuildCharacterCategoryLabel(character.CharacterCategory)</span>
+                                </span>
+                            </button>
+                        }
+                    </div>
+                }
                 else
                 {
                     @foreach (var character in FilteredCharacters)
@@ -66,7 +125,7 @@
                                 @onclick="() => SelectCharacter(character)">
                             <span class="characters-admin-list-copy">
                                 <span class="characters-admin-list-title">@character.DisplayName</span>
-                                <span class="characters-admin-list-meta">@character.Slug</span>
+                                <span class="characters-admin-list-meta">@character.Slug · @BuildCharacterCategoryLabel(character.CharacterCategory)</span>
                                 <span class="characters-admin-list-status">@BuildStatusLabel(character.Status)</span>
                             </span>
                             <img class="characters-admin-list-preview"
@@ -79,33 +138,49 @@
                     }
                 }
             </aside>
+        </div>
+    }
 
-            <section class="characters-admin-editor">
-                @if (Editor is null)
-                {
-                    <div class="characters-admin-empty-state">
-                        <h3>@T("Kies 'n karakter", "Choose a character")</h3>
-                        <p>@T("Maak links 'n bestaande karakter oop of skep 'n nuwe een.", "Open an existing character on the left or create a new one.")</p>
-                    </div>
-                }
-                else
-                {
-                    <div class="characters-admin-editor-head">
-                        <div>
-                            <h3>@(IsNewCharacter ? T("Nuwe karakter", "New character") : Editor.DisplayName)</h3>
-                            <p>@Editor.SlugPreview</p>
+    @if (Editor is not null)
+    {
+        <MudDialog @bind-Visible="IsCharacterDialogOpen"
+                   Class="characters-admin-dialog"
+                   ContentClass="characters-admin-dialog-content"
+                   Gutters="false"
+                   Options="CharacterDialogOptions">
+            <DialogContent>
+                <div class="characters-admin-dialog-surface">
+                    <section class="characters-admin-editor" @key="Editor.CharacterId ?? Guid.Empty">
+                        <div class="characters-admin-editor-head">
+                            <div>
+                                <h3>@(IsNewCharacter ? T("Nuwe karakter", "New character") : Editor.DisplayName)</h3>
+                                <p>@Editor.SlugPreview</p>
+                            </div>
+                            <div class="characters-admin-editor-actions">
+                                <button type="button"
+                                        class="characters-admin-btn characters-admin-save-btn"
+                                        @onclick="SaveCharacterAsync"
+                                        disabled="@IsSaving"
+                                        aria-label='@(IsSaving ? T("Stoor...", "Saving...") : T("Stoor karakter", "Save character"))'
+                                        title='@(IsSaving ? T("Stoor...", "Saving...") : T("Stoor karakter", "Save character"))'>
+                                    <i class="fa-solid @(IsSaving ? "fa-spinner fa-spin" : "fa-floppy-disk")" aria-hidden="true"></i>
+                                    <span class="sr-only">@(IsSaving ? T("Stoor...", "Saving...") : T("Stoor karakter", "Save character"))</span>
+                                </button>
+
+                                <button type="button"
+                                        class="characters-admin-btn characters-admin-btn-secondary characters-admin-close-btn"
+                                        @onclick="CloseCharacterDialog"
+                                        aria-label='@T("Sluit", "Close")'
+                                        title='@T("Sluit", "Close")'>
+                                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                                    <span class="sr-only">@T("Sluit", "Close")</span>
+                                </button>
+                            </div>
                         </div>
-                        <button type="button"
-                                class="characters-admin-btn"
-                                @onclick="SaveCharacterAsync"
-                                disabled="@IsSaving">
-                            @(IsSaving ? T("Stoor...", "Saving...") : T("Stoor karakter", "Save character"))
-                        </button>
-                    </div>
 
-                    <div class="characters-admin-form-grid">
-                        <section class="characters-admin-card">
-                            <h4>@T("Basies", "Basics")</h4>
+                        <div class="characters-admin-form-grid">
+                            <section class="characters-admin-card">
+                                <h4>@T("Basies", "Basics")</h4>
 
                             <label class="characters-admin-field">
                                 <span>@T("Naam", "Name")</span>
@@ -123,6 +198,16 @@
                             </label>
 
                             <div class="characters-admin-field-row">
+                                <label class="characters-admin-field">
+                                    <span>@T("Kategorie", "Category")</span>
+                                    <select @bind="Editor.CharacterCategory">
+                                        <option value="hoofkarakter">@T("Hoofkarakter", "Main character")</option>
+                                        <option value="ander">@T("Ander", "Other")</option>
+                                        <option value="bonus">@T("Bonus", "Bonus")</option>
+                                        <option value="bonus-2">@T("Bonus 2", "Bonus 2")</option>
+                                    </select>
+                                </label>
+
                                 <label class="characters-admin-field">
                                     <span>@T("Status", "Status")</span>
                                     <select @bind="Editor.Status">
@@ -142,10 +227,10 @@
                                     <input type="number" min="1" max="3600" @bind="Editor.UnlockThresholdSeconds" />
                                 </label>
                             </div>
-                        </section>
+                            </section>
 
-                        <section class="characters-admin-card">
-                            <h4>@T("Profiel", "Profile")</h4>
+                            <section class="characters-admin-card">
+                                <h4>@T("Profiel", "Profile")</h4>
 
                             <div class="characters-admin-field-row">
                                 <label class="characters-admin-field">
@@ -208,7 +293,6 @@
                                                checked="@isSelected"
                                                @onchange="args => ToggleFriend(friend.Slug, args)" />
                                         <span>@friend.DisplayName</span>
-                                        <small>@friend.Slug</small>
                                     </label>
                                 }
                             </div>
@@ -227,10 +311,10 @@
                                 <span>@T("Uitdaging vir jou", "Challenge")</span>
                                 <textarea rows="3" @bind="Editor.ChallengeText"></textarea>
                             </label>
-                        </section>
+                            </section>
 
-                        <section class="characters-admin-card">
-                            <h4>@T("Ontsluit stories", "Unlock stories")</h4>
+                            <section class="characters-admin-card">
+                                <h4>@T("Ontsluit stories", "Unlock stories")</h4>
 
                             <label class="characters-admin-field">
                                 <span>@T("Hoofstory vir ontsluit", "Primary unlock story")</span>
@@ -260,14 +344,100 @@
                                                checked="@isSelected"
                                                @onchange="args => ToggleRelatedStory(story.Slug, args)" />
                                         <span>@story.Title</span>
-                                        <small>@story.Slug</small>
                                     </label>
                                 }
                             </div>
-                        </section>
 
-                        <section class="characters-admin-card">
-                            <h4>@T("Karakterklanke", "Character audio")</h4>
+                            <div class="characters-admin-rule-section">
+                                <div class="characters-admin-rule-header">
+                                    <h5>@T("Ontsluit reëls", "Unlock rules")</h5>
+                                    <button type="button"
+                                            class="characters-admin-btn characters-admin-btn-secondary"
+                                            @onclick="AddUnlockRule">
+                                        @T("Voeg reël by", "Add rule")
+                                    </button>
+                                </div>
+
+                                <p class="characters-admin-rule-help">
+                                    @T("As geen reëls hieronder gestel is nie, gebruik die karakter steeds die hoofstorie en sekondes hierbo.", "If no rules are configured below, the character still uses the primary story and seconds above.")
+                                </p>
+
+                                @if (Editor.UnlockRules.Count == 0)
+                                {
+                                    <p class="characters-admin-empty">@T("Nog geen ekstra ontsluit reëls nie.", "No extra unlock rules yet.")</p>
+                                }
+                                else
+                                {
+                                    <div class="characters-admin-rule-list">
+                                        @foreach (var rule in Editor.UnlockRules)
+                                        {
+                                            <article class="characters-admin-rule-item">
+                                                <div class="characters-admin-field-row">
+                                                    <label class="characters-admin-field">
+                                                        <span>@T("Reëltipe", "Rule type")</span>
+                                                        <select @bind="rule.RuleType">
+                                                            <option value="@CharacterUnlockEvaluator.RuleTypeStoryListenSeconds">@T("Luistertyd op storie", "Story listen time")</option>
+                                                            <option value="@CharacterUnlockEvaluator.RuleTypeStoryRepeatCount">@T("Herhalings van storie", "Story repeat count")</option>
+                                                            <option value="@CharacterUnlockEvaluator.RuleTypeStoryCount">@T("Hoeveel stories geluister", "Number of stories listened")</option>
+                                                            <option value="@CharacterUnlockEvaluator.RuleTypeUnlockedCharacterCount">@T("Hoeveel karakters oop", "Number of unlocked characters")</option>
+                                                            <option value="@CharacterUnlockEvaluator.RuleTypeProfileListenCount">@T("Hoeveel profiel-luisters", "Number of profile listens")</option>
+                                                        </select>
+                                                    </label>
+
+                                                    @if (UnlockRuleUsesTargets(rule.RuleType))
+                                                    {
+                                                        <label class="characters-admin-field">
+                                                            <span>@T("Teiken modus", "Target mode")</span>
+                                                            <select @bind="rule.TargetMatchMode">
+                                                                <option value="@CharacterUnlockEvaluator.MatchModeAny">@T("Enige een", "Any one")</option>
+                                                                <option value="@CharacterUnlockEvaluator.MatchModeAll">@T("Almal", "All")</option>
+                                                            </select>
+                                                        </label>
+                                                    }
+
+                                                    @if (UnlockRuleUsesCount(rule.RuleType))
+                                                    {
+                                                        <label class="characters-admin-field">
+                                                            <span>@T("Minimum telling", "Minimum count")</span>
+                                                            <input type="number" min="1" @bind="rule.MinimumCount" />
+                                                        </label>
+                                                    }
+
+                                                    @if (UnlockRuleUsesSeconds(rule.RuleType))
+                                                    {
+                                                        <label class="characters-admin-field">
+                                                            <span>@T("Minimum sekondes", "Minimum seconds")</span>
+                                                            <input type="number" min="1" @bind="rule.MinimumSeconds" />
+                                                        </label>
+                                                    }
+                                                </div>
+
+                                                @if (UnlockRuleUsesTargets(rule.RuleType))
+                                                {
+                                                    <label class="characters-admin-field">
+                                                        <span>@BuildUnlockRuleTargetsLabel(rule.RuleType)</span>
+                                                        <textarea rows="2"
+                                                                  @bind="rule.TargetSlugsText"
+                                                                  placeholder="@BuildUnlockRuleTargetsPlaceholder(rule.RuleType)"></textarea>
+                                                    </label>
+                                                }
+
+                                                <p class="characters-admin-rule-help">@BuildUnlockRuleHelpText(rule.RuleType)</p>
+
+                                                <button type="button"
+                                                        class="characters-admin-btn characters-admin-btn-secondary"
+                                                        @onclick="() => RemoveUnlockRule(rule)">
+                                                    @T("Verwyder reël", "Remove rule")
+                                                </button>
+                                            </article>
+                                        }
+                                    </div>
+                                }
+                            </div>
+                            </section>
+
+                            <section class="characters-admin-card">
+                                <h4>@T("Karakterklanke", "Character audio")</h4>
 
                             <label class="characters-admin-file-picker">
                                 <span>@T("Laai karakterklanke op", "Upload character audio")</span>
@@ -316,24 +486,16 @@
                                     }
                                 </div>
                             }
-                        </section>
+                            </section>
 
-                        <section class="characters-admin-card">
-                            <h4>@T("Prente", "Images")</h4>
+                            <section class="characters-admin-card">
+                                <h4>@T("Prente", "Images")</h4>
 
                             <div class="characters-admin-image-grid">
                                 <div class="characters-admin-image-panel">
                                     <img src="@Editor.MainImagePreviewPath"
                                          alt="@T("Hoofprent voorskou", "Main image preview")"
                                          onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
-                                    <label class="characters-admin-field">
-                                        <span>@T("Hoofprent URL of pad", "Main image URL or path")</span>
-                                        <input type="text" @bind="Editor.ImagePath" />
-                                    </label>
-                                    <label class="characters-admin-field">
-                                        <span>@T("Hoofprent Google Drive ID", "Main image Google Drive ID")</span>
-                                        <input type="text" @bind="Editor.ImageDriveFileId" />
-                                    </label>
                                     <label class="characters-admin-file-picker">
                                         <span>@T("Laai nuwe hoofprent op", "Upload new main image")</span>
                                         <InputFile OnChange="OnMainImageSelectedAsync" accept="image/png,image/jpeg,image/webp" />
@@ -344,40 +506,36 @@
                                     <img src="@Editor.MysteryImagePreviewPath"
                                          alt="@T("Mysterieprent voorskou", "Mystery image preview")"
                                          onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
-                                    <label class="characters-admin-field">
-                                        <span>@T("Mysterieprent URL of pad", "Mystery image URL or path")</span>
-                                        <input type="text" @bind="Editor.MysteryImagePath" />
-                                    </label>
-                                    <label class="characters-admin-field">
-                                        <span>@T("Mysterieprent Google Drive ID", "Mystery image Google Drive ID")</span>
-                                        <input type="text" @bind="Editor.MysteryImageDriveFileId" />
-                                    </label>
                                     <label class="characters-admin-file-picker">
                                         <span>@T("Laai nuwe mysterieprent op", "Upload new mystery image")</span>
                                         <InputFile OnChange="OnMysteryImageSelectedAsync" accept="image/png,image/jpeg,image/webp" />
                                     </label>
                                 </div>
                             </div>
-                        </section>
-                    </div>
-                }
-            </section>
-        </div>
+                            </section>
+                        </div>
+                    </section>
+                </div>
+            </DialogContent>
+        </MudDialog>
     }
 </section>
 
 @code {
     private const long MaxImageUploadBytes = 10 * 1024 * 1024;
     private const long MaxAudioUploadBytes = 256 * 1024 * 1024;
+    private const string ViewModeStorageKey = "shink.admin.characters.view-mode";
 
     [Parameter]
     public string CurrentLanguageCode { get; set; } = "af";
 
     private bool IsLoading { get; set; } = true;
     private bool IsSaving { get; set; }
+    private bool IsCharacterDialogOpen { get; set; }
     private string CharacterSearch { get; set; } = string.Empty;
     private string RelatedStorySearch { get; set; } = string.Empty;
     private string FriendSearch { get; set; } = string.Empty;
+    private CharacterDisplayMode ViewMode { get; set; } = CharacterDisplayMode.List;
     private string? SignedInEmail { get; set; }
     private string? ErrorMessage { get; set; }
     private string? StatusMessage { get; set; }
@@ -385,6 +543,16 @@
     private IReadOnlyList<AdminStoryRecord> StoryOptions { get; set; } = Array.Empty<AdminStoryRecord>();
     private CharacterEditorModel? Editor { get; set; }
     private bool IsNewCharacter => Editor?.CharacterId is null;
+    private static readonly DialogOptions CharacterDialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Large,
+        FullWidth = true,
+        NoHeader = true,
+        CloseButton = false,
+        BackdropClick = false,
+        Position = DialogPosition.TopCenter,
+        BackgroundClass = "characters-admin-dialog-background"
+    };
     private bool IsR2UploadConfigured =>
         !string.IsNullOrWhiteSpace(CloudflareR2OptionsAccessor.Value.AccountId) &&
         !string.IsNullOrWhiteSpace(CloudflareR2OptionsAccessor.Value.BucketName) &&
@@ -428,6 +596,28 @@
     protected override async Task OnInitializedAsync()
     {
         await ReloadAsync();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            var storedViewMode = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", ViewModeStorageKey);
+            if (Enum.TryParse<CharacterDisplayMode>(storedViewMode, ignoreCase: true, out var parsedViewMode))
+            {
+                ViewMode = parsedViewMode;
+                StateHasChanged();
+            }
+        }
+        catch (Exception exception)
+        {
+            Logger.LogDebug(exception, "Unable to restore the admin character view mode from localStorage.");
+        }
     }
 
     private async Task ReloadAsync()
@@ -488,6 +678,7 @@
         RelatedStorySearch = string.Empty;
         FriendSearch = string.Empty;
         Editor = CharacterEditorModel.CreateEmpty();
+        IsCharacterDialogOpen = true;
     }
 
     private void SelectCharacter(AdminCharacterRecord character)
@@ -497,6 +688,30 @@
         RelatedStorySearch = string.Empty;
         FriendSearch = string.Empty;
         Editor = CharacterEditorModel.FromRecord(character, Characters);
+        IsCharacterDialogOpen = true;
+    }
+
+    private void CloseCharacterDialog()
+    {
+        IsCharacterDialogOpen = false;
+    }
+
+    private void SetViewMode(CharacterDisplayMode viewMode)
+    {
+        ViewMode = viewMode;
+        _ = SaveViewModeAsync(viewMode);
+    }
+
+    private async Task SaveViewModeAsync(CharacterDisplayMode viewMode)
+    {
+        try
+        {
+            await JSRuntime.InvokeVoidAsync("localStorage.setItem", ViewModeStorageKey, viewMode.ToString());
+        }
+        catch (Exception exception)
+        {
+            Logger.LogDebug(exception, "Unable to persist the admin character view mode to localStorage.");
+        }
     }
 
     private async Task OnMainImageSelectedAsync(InputFileChangeEventArgs args)
@@ -665,6 +880,8 @@
                 CharacterId: Editor.CharacterId,
                 Slug: effectiveSlug,
                 DisplayName: Editor.DisplayName,
+                CharacterCategory: Editor.CharacterCategory,
+                UnlockRules: Editor.UnlockRules.Select(rule => rule.ToRecord()).ToArray(),
                 Tagline: Editor.Tagline,
                 Species: Editor.Species,
                 Habitat: Editor.Habitat,
@@ -707,6 +924,8 @@
                     Editor = CharacterEditorModel.FromRecord(savedCharacter, Characters);
                 }
             }
+
+            IsCharacterDialogOpen = true;
         }
         catch (Exception exception)
         {
@@ -986,6 +1205,76 @@
             _ => T("Konsep", "Draft")
         };
 
+    private string BuildCharacterCategoryLabel(string category) =>
+        category switch
+        {
+            "hoofkarakter" => T("Hoofkarakter", "Main character"),
+            "bonus" => T("Bonus", "Bonus"),
+            "bonus-2" => T("Bonus 2", "Bonus 2"),
+            _ => T("Ander", "Other")
+        };
+
+    private void AddUnlockRule()
+    {
+        if (Editor is null)
+        {
+            return;
+        }
+
+        Editor.UnlockRules.Add(new UnlockRuleEditorItem());
+    }
+
+    private void RemoveUnlockRule(UnlockRuleEditorItem rule)
+    {
+        if (Editor is null)
+        {
+            return;
+        }
+
+        Editor.UnlockRules.Remove(rule);
+    }
+
+    private bool UnlockRuleUsesTargets(string? ruleType) =>
+        ruleType is CharacterUnlockEvaluator.RuleTypeStoryListenSeconds or
+            CharacterUnlockEvaluator.RuleTypeStoryRepeatCount or
+            CharacterUnlockEvaluator.RuleTypeProfileListenCount;
+
+    private bool UnlockRuleUsesCount(string? ruleType) =>
+        ruleType is CharacterUnlockEvaluator.RuleTypeStoryRepeatCount or
+            CharacterUnlockEvaluator.RuleTypeStoryCount or
+            CharacterUnlockEvaluator.RuleTypeUnlockedCharacterCount or
+            CharacterUnlockEvaluator.RuleTypeProfileListenCount;
+
+    private bool UnlockRuleUsesSeconds(string? ruleType) =>
+        ruleType is CharacterUnlockEvaluator.RuleTypeStoryListenSeconds;
+
+    private string BuildUnlockRuleTargetsLabel(string? ruleType) =>
+        ruleType == CharacterUnlockEvaluator.RuleTypeProfileListenCount
+            ? T("Karakter slugs", "Character slugs")
+            : T("Storie slugs", "Story slugs");
+
+    private string BuildUnlockRuleTargetsPlaceholder(string? ruleType) =>
+        ruleType == CharacterUnlockEvaluator.RuleTypeProfileListenCount
+            ? "suurlemoentjie, aarbeitjie"
+            : "suurlemoentjie, vrugte-eiland";
+
+    private string BuildUnlockRuleHelpText(string? ruleType) =>
+        ruleType switch
+        {
+            CharacterUnlockEvaluator.RuleTypeStoryListenSeconds => T("Gebruik storie slugs en minimum sekondes, bv. 240 vir 4 minute.", "Use story slugs and minimum seconds, for example 240 for 4 minutes."),
+            CharacterUnlockEvaluator.RuleTypeStoryRepeatCount => T("Gebruik storie slugs en 'minimum telling' vir hoeveel aparte luisters nodig is. Kies 'Almal' vir 'n kombinasie van stories'.", "Use story slugs and 'minimum count' for how many separate listens are needed. Choose 'All' for a story combination."),
+            CharacterUnlockEvaluator.RuleTypeStoryCount => T("Maak oop wanneer die gebruiker minstens soveel unieke stories geluister het.", "Unlock when the user has listened to at least this many unique stories."),
+            CharacterUnlockEvaluator.RuleTypeUnlockedCharacterCount => T("Maak oop wanneer die gebruiker reeds soveel ander karakters oopgesluit het.", "Unlock when the user has already unlocked at least this many other characters."),
+            CharacterUnlockEvaluator.RuleTypeProfileListenCount => T("Gebruik karakter slugs en 'minimum telling' vir hoeveel profiel-luisters nodig is.", "Use character slugs and 'minimum count' for how many profile listens are required."),
+            _ => T("Kies 'n reëltipe om die ontsluitvoorwaarde te stel.", "Choose a rule type to configure the unlock condition.")
+        };
+
+    private enum CharacterDisplayMode
+    {
+        List,
+        Grid
+    }
+
     private static string ResolveCharacterListPreviewPath(AdminCharacterRecord character) =>
         !string.IsNullOrWhiteSpace(character.ImagePath)
             ? character.ImagePath
@@ -1069,6 +1358,7 @@
         public Guid? CharacterId { get; set; }
         public string DisplayName { get; set; } = string.Empty;
         public string Slug { get; set; } = string.Empty;
+        public string CharacterCategory { get; set; } = "ander";
         public string Status { get; set; } = "draft";
         public int SortOrder { get; set; }
         public int UnlockThresholdSeconds { get; set; } = 30;
@@ -1091,6 +1381,7 @@
         public string? MysteryImageDriveFileId { get; set; }
         public string? UnlockStorySlug { get; set; }
         public HashSet<string> RelatedStorySlugs { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public List<UnlockRuleEditorItem> UnlockRules { get; set; } = [];
         public List<CharacterAudioClipEditorItem> AudioClips { get; set; } = [];
         public IBrowserFile? MainImageFile { get; set; }
         public IBrowserFile? MysteryImageFile { get; set; }
@@ -1101,6 +1392,7 @@
         public static CharacterEditorModel CreateEmpty() =>
             new()
             {
+                CharacterCategory = "ander",
                 Status = "draft",
                 UnlockThresholdSeconds = 30,
                 SortOrder = 0
@@ -1115,6 +1407,7 @@
                 CharacterId = record.CharacterId,
                 DisplayName = record.DisplayName,
                 Slug = record.Slug,
+                CharacterCategory = string.IsNullOrWhiteSpace(record.CharacterCategory) ? "ander" : record.CharacterCategory,
                 Status = string.IsNullOrWhiteSpace(record.Status) ? "draft" : record.Status,
                 SortOrder = record.SortOrder,
                 UnlockThresholdSeconds = record.UnlockThresholdSeconds,
@@ -1137,6 +1430,9 @@
                 MysteryImageDriveFileId = record.MysteryImageDriveFileId,
                 UnlockStorySlug = record.UnlockStorySlug,
                 RelatedStorySlugs = new HashSet<string>(record.RelatedStorySlugs, StringComparer.OrdinalIgnoreCase),
+                UnlockRules = record.UnlockRules
+                    .Select(UnlockRuleEditorItem.FromRecord)
+                    .ToList(),
                 AudioClips = record.AudioClips
                     .OrderBy(item => item.SortOrder)
                     .ThenBy(item => item.Title, StringComparer.OrdinalIgnoreCase)
@@ -1155,6 +1451,43 @@
                 MysteryImagePreviewPath = string.IsNullOrWhiteSpace(record.MysteryImagePath) ? "/branding/schink-logo-green.png" : record.MysteryImagePath
             };
         }
+    }
+
+    private sealed class UnlockRuleEditorItem
+    {
+        public string RuleType { get; set; } = CharacterUnlockEvaluator.RuleTypeStoryListenSeconds;
+        public string TargetMatchMode { get; set; } = CharacterUnlockEvaluator.MatchModeAny;
+        public string TargetSlugsText { get; set; } = string.Empty;
+        public int MinimumCount { get; set; }
+        public int MinimumSeconds { get; set; } = 30;
+
+        public CharacterUnlockRuleItem ToRecord()
+        {
+            var targetSlugs = string.IsNullOrWhiteSpace(TargetSlugsText)
+                ? Array.Empty<string>()
+                : TargetSlugsText
+                    .Split([',', ';', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Where(value => !string.IsNullOrWhiteSpace(value))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+
+            return new CharacterUnlockRuleItem(
+                RuleType: RuleType,
+                TargetSlugs: targetSlugs,
+                TargetMatchMode: TargetMatchMode,
+                MinimumCount: MinimumCount,
+                MinimumSeconds: MinimumSeconds);
+        }
+
+        public static UnlockRuleEditorItem FromRecord(CharacterUnlockRuleItem rule) =>
+            new()
+            {
+                RuleType = rule.RuleType,
+                TargetMatchMode = rule.TargetMatchMode,
+                TargetSlugsText = string.Join(", ", rule.TargetSlugs),
+                MinimumCount = rule.MinimumCount,
+                MinimumSeconds = rule.MinimumSeconds
+            };
     }
 
     private sealed class CharacterAudioClipEditorItem

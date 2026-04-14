@@ -62,7 +62,6 @@
         <div class="admin-hero-top">
             <div>
                 <h1>@T("Bestuursportaal", "Admin Portal")</h1>
-                <p>@T("Bestuur intekenaars, stories, hulpbronne en playlists op een plek.", "Manage subscribers, stories, resources, and playlists in one place.")</p>
             </div>
             <div class="admin-language">
                 <MudSelect T="string"
@@ -115,24 +114,27 @@
             <MudTabPanel Text='@T("Intekenaars", "Subscribers")'>
                 <section class="admin-section">
             <div class="admin-section-head">
-                <h2>@T("Intekenaars", "Subscribers")</h2>
                 <div class="admin-search">
-                    <MudTextField T="string"
-                                  @bind-Value="SubscriberSearch"
-                                  Placeholder='@T("Soek e-pos of naam", "Search email or name")'
-                                  Variant="Variant.Outlined"
-                                  Margin="Margin.Dense"
-                                  Immediate="true" />
-                    <MudButton Class="admin-icon-btn admin-mobile-cta"
-                               Variant="Variant.Filled"
-                               Color="Color.Primary"
-                               OnClick="RefreshSubscribersAsync"
-                               aria-label='@T("Soek intekenaars", "Search subscribers")'
-                               title='@T("Soek intekenaars", "Search subscribers")'>
-                        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                        <span class="admin-btn-text">@T("Soek", "Search")</span>
-                        <span class="sr-only">@T("Soek intekenaars", "Search subscribers")</span>
-                    </MudButton>
+                    <div class="admin-search-field">
+                        <MudTextField T="string"
+                                      @bind-Value="SubscriberSearch"
+                                      Placeholder='@T("Soek e-pos of naam", "Search email or name")'
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense"
+                                      Immediate="true" />
+                    </div>
+                    <div class="admin-search-actions">
+                        <MudButton Class="admin-icon-btn admin-mobile-cta"
+                                   Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   OnClick="RefreshSubscribersAsync"
+                                   aria-label='@T("Soek intekenaars", "Search subscribers")'
+                                   title='@T("Soek intekenaars", "Search subscribers")'>
+                            <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                            <span class="admin-btn-text">@T("Soek", "Search")</span>
+                            <span class="sr-only">@T("Soek intekenaars", "Search subscribers")</span>
+                        </MudButton>
+                    </div>
                 </div>
             </div>
 
@@ -140,7 +142,7 @@
                       Class="admin-grid"
                       Items="FilteredSubscribers"
                       SortLabel='@T("Sorteer volgens", "Sort by")'
-                      RowsPerPage="10"
+                      RowsPerPage="100"
                       Dense="true"
                       Hover="true"
                       Bordered="true"
@@ -207,34 +209,24 @@
             <MudTabPanel Text='@T("Stories", "Stories")'>
                 <section class="admin-section">
             <div class="admin-section-head">
-                <h2>@T("Stories", "Stories")</h2>
                 <div class="admin-search">
-                    <MudTextField T="string"
-                                  @bind-Value="StorySearch"
-                                  Placeholder='@T("Soek titel of slug", "Search title or slug")'
-                                  Variant="Variant.Outlined"
-                                  Margin="Margin.Dense"
-                                  Immediate="true" />
-                    <MudButton Class="admin-icon-btn admin-mobile-cta"
-                               Variant="Variant.Filled"
-                               Color="Color.Primary"
-                               OnClick="@(() => RefreshStoriesAsync())"
-                               aria-label='@T("Soek stories", "Search stories")'
-                               title='@T("Soek stories", "Search stories")'>
-                        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                        <span class="admin-btn-text">@T("Soek", "Search")</span>
-                        <span class="sr-only">@T("Soek stories", "Search stories")</span>
-                    </MudButton>
-                    <MudButton Class="admin-btn admin-btn-secondary admin-icon-btn admin-mobile-cta"
-                               Variant="Variant.Outlined"
-                               Color="Color.Primary"
-                               OnClick="StartNewStory"
-                               aria-label='@T("Nuwe storie", "New story")'
-                               title='@T("Nuwe storie", "New story")'>
-                        <i class="fa-solid fa-plus" aria-hidden="true"></i>
-                        <span class="admin-btn-text">@T("Nuwe storie", "New story")</span>
-                        <span class="sr-only">@T("Nuwe storie", "New story")</span>
-                    </MudButton>
+                    <div class="admin-search-field">
+                        <input class="admin-story-search"
+                               type="search"
+                               @bind="StorySearch"
+                               @bind:event="oninput"
+                               placeholder='@T("Soek titel of slug", "Search title or slug")' />
+                    </div>
+                    <div class="admin-search-actions">
+                        <MudButton Class="admin-new-action-btn"
+                                   Variant="Variant.Outlined"
+                                   Color="Color.Primary"
+                                   OnClick="StartNewStory"
+                                   aria-label='@T("Nuwe storie", "New story")'
+                                   title='@T("Nuwe storie", "New story")'>
+                            <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                        </MudButton>
+                    </div>
                 </div>
             </div>
 
@@ -242,7 +234,7 @@
                       Class="admin-grid"
                       Items="FilteredStories"
                       SortLabel='@T("Sorteer volgens", "Sort by")'
-                      RowsPerPage="10"
+                      RowsPerPage="100"
                       Dense="true"
                       Hover="true"
                       Bordered="true"
@@ -285,23 +277,31 @@
             <MudTabPanel Text='@T("Playlists", "Playlists")'>
                 <section class="admin-section">
             <div class="admin-section-head">
-                <h2>@T("Playlists", "Playlists")</h2>
-                <MudButton Variant="Variant.Outlined"
-                           Color="Color.Primary"
-                           Class="admin-btn admin-btn-secondary admin-icon-btn admin-mobile-cta"
-                           OnClick="StartNewPlaylist"
-                           aria-label='@T("Nuwe playlist", "New playlist")'
-                           title='@T("Nuwe playlist", "New playlist")'>
-                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
-                    <span class="admin-btn-text">@T("Nuwe playlist", "New playlist")</span>
-                    <span class="sr-only">@T("Nuwe playlist", "New playlist")</span>
-                </MudButton>
+                <div class="admin-search">
+                    <div class="admin-search-field">
+                        <input class="admin-playlist-search"
+                               type="search"
+                               @bind="PlaylistSearch"
+                               @bind:event="oninput"
+                               placeholder='@T("Soek titel of slug", "Search title or slug")' />
+                    </div>
+                    <div class="admin-search-actions">
+                        <MudButton Variant="Variant.Outlined"
+                                   Color="Color.Primary"
+                                   Class="admin-new-action-btn"
+                                   OnClick="StartNewPlaylist"
+                                   aria-label='@T("Nuwe playlist", "New playlist")'
+                                   title='@T("Nuwe playlist", "New playlist")'>
+                            <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                        </MudButton>
+                    </div>
+                </div>
             </div>
 
             <MudTable T="AdminPlaylistRecord"
                       Class="admin-grid admin-playlist-grid"
-                      Items="Playlists"
-                      RowsPerPage="10"
+                      Items="FilteredPlaylists"
+                      RowsPerPage="100"
                       Dense="true"
                       Hover="true"
                       Bordered="true"
@@ -320,9 +320,11 @@
                         var playlistIndex = GetPlaylistIndex(context.PlaylistId);
                     }
                     <MudTd DataLabel='@T("Titel", "Title")'>
-                        @(context.IsSystemPlaylist
-                            ? $"{context.Title} ({T("Sisteem", "System")})"
-                            : context.Title)
+                        @HighlightSearchMatch(
+                            context.IsSystemPlaylist
+                                ? $"{context.Title} ({T("Sisteem", "System")})"
+                                : context.Title,
+                            PlaylistSearch)
                     </MudTd>
                     <MudTd DataLabel='@T("Aktief", "Active")'>
                         <div class="admin-toggle-cell" @onclick:stopPropagation="true">
@@ -368,7 +370,11 @@
                     </MudTd>
                 </RowTemplate>
                 <NoRecordsContent>
-                    <MudText Typo="Typo.body2">@T("Geen playlists gevind nie.", "No playlists found.")</MudText>
+                    <MudText Typo="Typo.body2">
+                        @(string.IsNullOrWhiteSpace(PlaylistSearch)
+                            ? T("Geen playlists gevind nie.", "No playlists found.")
+                            : T("Geen playlists pas by jou soektog nie.", "No playlists match your search."))
+                    </MudText>
                 </NoRecordsContent>
                 <PagerContent>
                     <MudTablePager />
@@ -1027,6 +1033,7 @@
 
     private string SubscriberSearch { get; set; } = string.Empty;
     private string StorySearch { get; set; } = string.Empty;
+    private string PlaylistSearch { get; set; } = string.Empty;
     private string StoryToAddIdString { get; set; } = string.Empty;
 
     private IReadOnlyList<AdminSubscriberRecord> Subscribers { get; set; } = Array.Empty<AdminSubscriberRecord>();
@@ -1036,6 +1043,8 @@
         FilterSubscribers(Subscribers, SubscriberSearch);
     private IReadOnlyList<AdminStoryRecord> FilteredStories =>
         FilterStories(Stories, StorySearch);
+    private IReadOnlyList<AdminPlaylistRecord> FilteredPlaylists =>
+        FilterPlaylists(Playlists, PlaylistSearch);
 
     private EditableSubscriber? SubscriberEditor { get; set; }
     private EditableStory? StoryEditor { get; set; }
@@ -1072,8 +1081,8 @@
     }
     private string AdminMetaTitle => $"Schink Stories | {T("Bestuur", "Admin")}";
     private string AdminMetaDescription => T(
-        "Bestuur intekenaars, stories, hulpbronne en speellyste op een plek.",
-        "Manage subscribers, stories, resources, and playlists in one place.");
+        "Schink bestuursportaal.",
+        "Schink admin portal.");
     private string AdminCanonicalUrl => NavigationManager.ToAbsoluteUri("/admin").ToString();
 
     protected override async Task OnInitializedAsync()
@@ -3134,6 +3143,27 @@
         return source.Where(story =>
                 story.Title.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase) ||
                 story.Slug.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+    }
+
+    private static IReadOnlyList<AdminPlaylistRecord> FilterPlaylists(
+        IReadOnlyList<AdminPlaylistRecord> source,
+        string? searchTerm)
+    {
+        if (source.Count == 0)
+        {
+            return source;
+        }
+
+        var normalizedSearch = searchTerm?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedSearch))
+        {
+            return source;
+        }
+
+        return source.Where(playlist =>
+                playlist.Title.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase) ||
+                playlist.Slug.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase))
             .ToArray();
     }
 

@@ -161,7 +161,7 @@ public sealed class SupabaseStoryTrackingService(
             var requestUri = new Uri(
                 baseUri,
                 "rest/v1/story_listen_events" +
-                "?select=story_slug,story_path,event_type,listened_seconds,position_seconds,duration_seconds,occurred_at,metadata" +
+                "?select=story_slug,story_path,session_id,event_type,listened_seconds,position_seconds,duration_seconds,occurred_at,metadata" +
                 $"&subscriber_id=eq.{escapedSubscriberId}" +
                 "&order=occurred_at.desc" +
                 "&limit=2500");
@@ -399,6 +399,18 @@ public sealed class SupabaseStoryTrackingService(
                     3,
                     MidpointRounding.AwayFromZero);
 
+                var sessions = group
+                    .GroupBy(row => row.SessionId ?? Guid.Empty)
+                    .ToArray();
+
+                var listenCount = sessions.Count(sessionGroup =>
+                    sessionGroup.Key != Guid.Empty &&
+                    sessionGroup.Any(row => row.ListenedSeconds > 0m));
+
+                var completedListenCount = sessions.Count(sessionGroup =>
+                    sessionGroup.Key != Guid.Empty &&
+                    IsSessionCompleted(sessionGroup));
+
                 var latestPositionSeconds = latest.PositionSeconds;
                 var latestDurationSeconds = latest.DurationSeconds;
                 if (latestDurationSeconds is null || latestDurationSeconds <= 0m)
@@ -427,6 +439,8 @@ public sealed class SupabaseStoryTrackingService(
                     Source: source,
                     LastListenedAtUtc: latest.OccurredAt,
                     TotalListenedSeconds: totalListenedSeconds,
+                    ListenCount: listenCount,
+                    CompletedListenCount: completedListenCount,
                     LastPositionSeconds: NormalizeOptionalMetric(latestPositionSeconds),
                     DurationSeconds: NormalizeOptionalMetric(latestDurationSeconds),
                     IsCompleted: completedFromEvent || completedFromPosition);
@@ -454,6 +468,32 @@ public sealed class SupabaseStoryTrackingService(
         }
 
         return null;
+    }
+
+    private static bool IsSessionCompleted(IGrouping<Guid, StoryListenEventRow> sessionGroup)
+    {
+        var latestRow = sessionGroup
+            .OrderByDescending(row => row.OccurredAt)
+            .First();
+
+        var latestDurationSeconds = latestRow.DurationSeconds;
+        if (latestDurationSeconds is null || latestDurationSeconds <= 0m)
+        {
+            latestDurationSeconds = sessionGroup
+                .Where(row => row.DurationSeconds is > 0m)
+                .OrderByDescending(row => row.OccurredAt)
+                .Select(row => row.DurationSeconds)
+                .FirstOrDefault();
+        }
+
+        var completedFromEvent = sessionGroup.Any(row =>
+            string.Equals(row.EventType, "ended", StringComparison.OrdinalIgnoreCase) ||
+            ReadMetadataCompletedFlag(row.Metadata));
+        var completedFromPosition = latestRow.PositionSeconds is > 0m &&
+                                    latestDurationSeconds is > 0m &&
+                                    latestRow.PositionSeconds >= (latestDurationSeconds * 0.95m);
+
+        return completedFromEvent || completedFromPosition;
     }
 
     private static string NormalizeStoryPath(string? storyPath, string? storySlug, string source)
@@ -538,6 +578,9 @@ public sealed class SupabaseStoryTrackingService(
 
         [JsonPropertyName("story_path")]
         public string? StoryPath { get; set; }
+
+        [JsonPropertyName("session_id")]
+        public Guid? SessionId { get; set; }
 
         [JsonPropertyName("event_type")]
         public string? EventType { get; set; }

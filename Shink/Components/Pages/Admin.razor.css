@@ -247,6 +247,7 @@
     align-items: center;
     justify-content: space-between;
     gap: 0.55rem;
+    width: 100%;
 }
 
 .admin-section h2 {
@@ -256,13 +257,71 @@
 
 .admin-search {
     display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
     gap: 0.4rem;
-    width: min(100%, 420px);
+    width: min(100%, 620px);
+    margin-inline-start: auto;
 }
 
-.admin-search ::deep .mud-input-control {
+.admin-search-field {
     flex: 1;
+    min-width: 220px;
+}
+
+.admin-search-field ::deep .mud-input-control {
+    width: 100%;
     margin: 0;
+}
+
+.admin-story-search,
+.admin-playlist-search {
+    width: 100%;
+    min-height: 40px;
+    padding: 0.7rem 0.8rem;
+    border: 1px solid var(--admin-input-border);
+    border-radius: 12px;
+    background: var(--admin-input-bg);
+    color: var(--admin-text);
+    font: inherit;
+}
+
+.admin-search-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    justify-content: flex-end;
+}
+
+.admin-new-action-btn {
+    width: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    border: 0;
+    border-radius: 999px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+    color: #eaf2fa;
+    background: #24384c;
+    transition: transform 0.16s ease, filter 0.16s ease;
+    overflow: hidden;
+}
+
+.admin-new-action-btn:hover,
+.admin-new-action-btn:focus-visible {
+    transform: translateY(-1px);
+    filter: brightness(1.02);
+}
+
+.admin-new-action-btn i {
+    font-size: 1rem;
+    line-height: 1;
 }
 
 .admin-search button,
@@ -280,16 +339,16 @@
     background: #f3a13f;
 }
 
-.admin-btn:disabled,
-.admin-playlist-actions button:disabled {
-    cursor: not-allowed;
-    opacity: 0.6;
-}
-
 .admin-btn.admin-btn-secondary {
     border-color: var(--admin-border-strong);
     background: #24384c;
     color: #eaf2fa;
+}
+
+.admin-btn:disabled,
+.admin-playlist-actions button:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
 }
 
 .admin-icon-btn {
@@ -816,6 +875,15 @@
         width: 100%;
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .admin-search-field,
+    .admin-search-actions {
+        width: 100%;
+    }
+
+    .admin-search-actions {
+        justify-content: flex-start;
     }
 
     .admin-upload-btn {

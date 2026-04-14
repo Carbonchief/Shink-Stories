@@ -38,6 +38,8 @@
 
 :root {
     --mud-typography-default-family: "Poppins", "Trebuchet MS", "Segoe UI", sans-serif;
+    --mud-zindex-dialog: 2100;
+    --characters-admin-dialog-top-offset: clamp(5rem, 7vw, 6rem);
 }
 
 html,
@@ -58,6 +60,50 @@ select {
 body {
     color: #232b2b;
     line-height: 1.5;
+}
+
+.mud-overlay.mud-overlay-dialog {
+    z-index: calc(var(--mud-zindex-dialog) + 1) !important;
+}
+
+.mud-dialog-container.characters-admin-dialog-background {
+    z-index: var(--mud-zindex-dialog) !important;
+    align-items: flex-start !important;
+    justify-content: center !important;
+    padding-top: var(--characters-admin-dialog-top-offset) !important;
+    padding-bottom: 0 !important;
+    box-sizing: border-box;
+}
+
+.mud-dialog.characters-admin-dialog {
+    z-index: calc(var(--mud-zindex-dialog) + 2) !important;
+    margin-top: 0 !important;
+    max-height: calc(100dvh - var(--characters-admin-dialog-top-offset)) !important;
+    border-radius: 16px !important;
+    background: transparent !important;
+    border: 0 !important;
+    overflow: hidden !important;
+}
+
+.mud-dialog.characters-admin-dialog .mud-dialog-content,
+.mud-dialog.characters-admin-dialog .characters-admin-dialog-content {
+    padding: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+}
+
+.mud-dialog.characters-admin-dialog .characters-admin-dialog-surface {
+    height: auto !important;
+    max-height: none !important;
+    border-radius: inherit !important;
+    background: #16212d !important;
+    overflow: hidden !important;
+}
+
+.mud-dialog.characters-admin-dialog .characters-admin-editor {
+    min-height: 0;
+    height: auto !important;
+    overflow: visible !important;
 }
 
 body.story-immersive-mode .site-shell.story-route .site-header,
