@@ -62,7 +62,7 @@
         <div class="admin-hero-top">
             <div>
                 <h1>@T("Bestuursportaal", "Admin Portal")</h1>
-                <p>@T("Bestuur intekenaars, stories en playlists op een plek.", "Manage subscribers, stories, and playlists in one place.")</p>
+                <p>@T("Bestuur intekenaars, stories, hulpbronne en playlists op een plek.", "Manage subscribers, stories, resources, and playlists in one place.")</p>
             </div>
             <div class="admin-language">
                 <MudSelect T="string"
@@ -376,6 +376,10 @@
             </MudTable>
 
                 </section>
+            </MudTabPanel>
+
+            <MudTabPanel Text='@T("Hulpbronne", "Resources")'>
+                <AdminResourceTypesPanel CurrentLanguageCode="@CurrentLanguageCode" />
             </MudTabPanel>
 
             <MudTabPanel Text='@T("Karakters", "Characters")'>
@@ -1064,8 +1068,8 @@
     }
     private string AdminMetaTitle => $"Schink Stories | {T("Bestuur", "Admin")}";
     private string AdminMetaDescription => T(
-        "Bestuur intekenaars, stories en speellyste op een plek.",
-        "Manage subscribers, stories, and playlists in one place.");
+        "Bestuur intekenaars, stories, hulpbronne en speellyste op een plek.",
+        "Manage subscribers, stories, resources, and playlists in one place.");
     private string AdminCanonicalUrl => NavigationManager.ToAbsoluteUri("/admin").ToString();
 
     protected override async Task OnInitializedAsync()

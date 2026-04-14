@@ -14,6 +14,7 @@ public sealed partial class SupabaseAdminManagementService(
     IOptions<SupabaseOptions> supabaseOptions,
     IMemoryCache memoryCache,
     IUserNotificationService userNotificationService,
+    IWebHostEnvironment webHostEnvironment,
     ILogger<SupabaseAdminManagementService> logger) : IAdminManagementService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -23,6 +24,7 @@ public sealed partial class SupabaseAdminManagementService(
     private readonly SupabaseOptions _options = supabaseOptions.Value;
     private readonly IMemoryCache _memoryCache = memoryCache;
     private readonly IUserNotificationService _userNotificationService = userNotificationService;
+    private readonly IWebHostEnvironment _webHostEnvironment = webHostEnvironment;
     private readonly ILogger<SupabaseAdminManagementService> _logger = logger;
 
     public async Task<bool> IsAdminAsync(string? email, CancellationToken cancellationToken = default)
@@ -898,6 +900,192 @@ public sealed partial class SupabaseAdminManagementService(
         return new AdminOperationResult(false, "Kon nie nuwe playlist stories stoor nie.");
     }
 
+    public async Task<IReadOnlyList<AdminResourceTypeRecord>> GetResourceTypesAsync(
+        string? adminEmail,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
+        {
+            return Array.Empty<AdminResourceTypeRecord>();
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return Array.Empty<AdminResourceTypeRecord>();
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return Array.Empty<AdminResourceTypeRecord>();
+        }
+
+        var rows = await FetchResourceTypesAsync(baseUri, apiKey, cancellationToken);
+        return rows
+            .Where(row => row.ResourceTypeId != Guid.Empty)
+            .Where(row => !string.IsNullOrWhiteSpace(row.Slug))
+            .Where(row => !string.IsNullOrWhiteSpace(row.Name))
+            .Select(row => new AdminResourceTypeRecord(
+                ResourceTypeId: row.ResourceTypeId,
+                Slug: row.Slug.Trim(),
+                Name: row.Name.Trim(),
+                Description: NormalizeOptionalText(row.Description, 4000),
+                SourceDirectory: NormalizeOptionalText(row.SourceDirectory, 2048) ?? string.Empty,
+                SortOrder: row.SortOrder,
+                IsEnabled: row.IsEnabled,
+                DocumentCount: CountResourceDocuments(row.SourceDirectory),
+                UpdatedAt: row.UpdatedAt))
+            .OrderBy(type => type.SortOrder)
+            .ThenBy(type => type.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    public async Task<AdminOperationResult> SaveResourceTypeAsync(
+        string? adminEmail,
+        AdminResourceTypeUpdateRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
+        {
+            return new AdminOperationResult(false, "Jy het nie admin toegang nie.");
+        }
+
+        var normalizedSlug = request.Slug?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (!StorySlugRegex().IsMatch(normalizedSlug))
+        {
+            return new AdminOperationResult(false, "Resource type slug is ongeldig.");
+        }
+
+        var normalizedName = request.Name?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalizedName))
+        {
+            return new AdminOperationResult(false, "Resource type naam is verpligtend.");
+        }
+
+        var normalizedSourceDirectory = NormalizeOptionalText(request.SourceDirectory, 2048);
+        if (string.IsNullOrWhiteSpace(normalizedSourceDirectory))
+        {
+            return new AdminOperationResult(false, "Source directory is verpligtend.");
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return new AdminOperationResult(false, "Supabase URL is nog nie opgestel nie.");
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+        }
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["slug"] = normalizedSlug,
+            ["name"] = normalizedName,
+            ["description"] = NormalizeOptionalText(request.Description, 4000),
+            ["source_directory"] = normalizedSourceDirectory,
+            ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
+            ["is_enabled"] = request.IsEnabled
+        };
+
+        if (request.ResourceTypeId is null || request.ResourceTypeId == Guid.Empty)
+        {
+            var createUri = new Uri(baseUri, "rest/v1/resource_types?select=resource_type_id");
+            using var createRequest = CreateJsonRequest(HttpMethod.Post, createUri, apiKey, payload, "return=representation");
+            using var createResponse = await _httpClient.SendAsync(createRequest, cancellationToken);
+            if (!createResponse.IsSuccessStatusCode)
+            {
+                var createBody = await createResponse.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning(
+                    "Resource type create failed. slug={Slug} Status={StatusCode} Body={Body}",
+                    normalizedSlug,
+                    (int)createResponse.StatusCode,
+                    createBody);
+
+                if (ContainsDuplicateResourceTypeSlugViolation(createBody))
+                {
+                    return new AdminOperationResult(false, "Resource type slug bestaan reeds.");
+                }
+
+                return new AdminOperationResult(false, "Kon nie resource type skep nie.");
+            }
+
+            var body = await createResponse.Content.ReadAsStringAsync(cancellationToken);
+            InvalidateResourceCatalogCache();
+            return new AdminOperationResult(true, EntityId: TryReadFirstGuidProperty(body, "resource_type_id"));
+        }
+
+        var escapedResourceTypeId = Uri.EscapeDataString(request.ResourceTypeId.Value.ToString("D"));
+        var updateUri = new Uri(baseUri, $"rest/v1/resource_types?resource_type_id=eq.{escapedResourceTypeId}");
+        using var updateRequest = CreateJsonRequest(new HttpMethod("PATCH"), updateUri, apiKey, payload, "return=minimal");
+        using var updateResponse = await _httpClient.SendAsync(updateRequest, cancellationToken);
+        if (updateResponse.IsSuccessStatusCode)
+        {
+            InvalidateResourceCatalogCache();
+            return new AdminOperationResult(true, EntityId: request.ResourceTypeId);
+        }
+
+        var updateBody = await updateResponse.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Resource type update failed. resource_type_id={ResourceTypeId} Status={StatusCode} Body={Body}",
+            request.ResourceTypeId,
+            (int)updateResponse.StatusCode,
+            updateBody);
+
+        if (ContainsDuplicateResourceTypeSlugViolation(updateBody))
+        {
+            return new AdminOperationResult(false, "Resource type slug bestaan reeds.");
+        }
+
+        return new AdminOperationResult(false, "Kon nie resource type nou opdateer nie.");
+    }
+
+    public async Task<AdminOperationResult> DeleteResourceTypeAsync(
+        string? adminEmail,
+        Guid resourceTypeId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
+        {
+            return new AdminOperationResult(false, "Jy het nie admin toegang nie.");
+        }
+
+        if (resourceTypeId == Guid.Empty)
+        {
+            return new AdminOperationResult(false, "Kies asseblief 'n geldige resource type.");
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return new AdminOperationResult(false, "Supabase URL is nog nie opgestel nie.");
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+        }
+
+        var escapedResourceTypeId = Uri.EscapeDataString(resourceTypeId.ToString("D"));
+        var deleteUri = new Uri(baseUri, $"rest/v1/resource_types?resource_type_id=eq.{escapedResourceTypeId}");
+        using var deleteRequest = CreateRequest(HttpMethod.Delete, deleteUri, apiKey);
+        using var deleteResponse = await _httpClient.SendAsync(deleteRequest, cancellationToken);
+        if (deleteResponse.IsSuccessStatusCode)
+        {
+            InvalidateResourceCatalogCache();
+            return new AdminOperationResult(true);
+        }
+
+        var deleteBody = await deleteResponse.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Resource type delete failed. resource_type_id={ResourceTypeId} Status={StatusCode} Body={Body}",
+            resourceTypeId,
+            (int)deleteResponse.StatusCode,
+            deleteBody);
+        return new AdminOperationResult(false, "Kon nie resource type nou verwyder nie.");
+    }
+
     private async Task<IReadOnlyList<SubscriberRow>> FetchSubscribersAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
     {
         var uri = new Uri(
@@ -969,6 +1157,19 @@ public sealed partial class SupabaseAdminManagementService(
             "&limit=5000");
 
         return await FetchRowsAsync<StoryLookupRow>(uri, apiKey, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<ResourceTypeRow>> FetchResourceTypesAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    {
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/resource_types" +
+            "?select=resource_type_id,slug,name,description,source_directory,sort_order,is_enabled,updated_at" +
+            "&order=sort_order.asc" +
+            "&order=name.asc" +
+            "&limit=500");
+
+        return await FetchRowsAsync<ResourceTypeRow>(uri, apiKey, cancellationToken);
     }
 
     private async Task<PlaylistRow?> FetchPlaylistByIdAsync(
@@ -1103,6 +1304,11 @@ public sealed partial class SupabaseAdminManagementService(
     private void InvalidateStoryCatalogCache()
     {
         _memoryCache.Remove(StoryCatalogSnapshotCacheKey);
+    }
+
+    private void InvalidateResourceCatalogCache()
+    {
+        _memoryCache.Remove(ResourceCatalogCacheKeys.Catalog);
     }
 
     private HttpRequestMessage CreateRequest(HttpMethod method, Uri uri, string apiKey)
@@ -1354,6 +1560,16 @@ public sealed partial class SupabaseAdminManagementService(
         !string.IsNullOrWhiteSpace(responseBody) &&
         responseBody.Contains("stories_slug_key", StringComparison.OrdinalIgnoreCase);
 
+    private static bool ContainsDuplicateResourceTypeSlugViolation(string? responseBody) =>
+        !string.IsNullOrWhiteSpace(responseBody) &&
+        responseBody.Contains("resource_types_slug_key", StringComparison.OrdinalIgnoreCase);
+
+    private int CountResourceDocuments(string? sourceDirectory) =>
+        ResourceFileSystemHelper.GetPdfFiles(
+            sourceDirectory,
+            _webHostEnvironment.ContentRootPath,
+            _webHostEnvironment.WebRootPath).Count;
+
     [GeneratedRegex("^[a-z0-9]+(?:-[a-z0-9]+)*$", RegexOptions.CultureInvariant)]
     private static partial Regex StorySlugRegex();
 
@@ -1548,5 +1764,32 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("title")]
         public string? Title { get; set; }
+    }
+
+    private sealed class ResourceTypeRow
+    {
+        [JsonPropertyName("resource_type_id")]
+        public Guid ResourceTypeId { get; set; }
+
+        [JsonPropertyName("slug")]
+        public string Slug { get; set; } = string.Empty;
+
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonPropertyName("description")]
+        public string? Description { get; set; }
+
+        [JsonPropertyName("source_directory")]
+        public string? SourceDirectory { get; set; }
+
+        [JsonPropertyName("sort_order")]
+        public int SortOrder { get; set; }
+
+        [JsonPropertyName("is_enabled")]
+        public bool IsEnabled { get; set; }
+
+        [JsonPropertyName("updated_at")]
+        public DateTimeOffset? UpdatedAt { get; set; }
     }
 }

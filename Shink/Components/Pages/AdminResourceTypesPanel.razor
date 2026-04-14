@@ -1,0 +1,417 @@
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IAdminManagementService AdminManagementService
+@inject ILogger<AdminResourceTypesPanel> Logger
+
+<section class="admin-section">
+    <div class="admin-section-head">
+        <h2>@T("Hulpbron tipes", "Resource types")</h2>
+        <div class="admin-search">
+            <input class="resource-types-admin-search"
+                   type="search"
+                   @bind="ResourceTypeSearch"
+                   @bind:event="oninput"
+                   placeholder="@T("Soek naam of slug", "Search name or slug")" />
+            <button type="button" class="resource-types-admin-btn" @onclick="BeginCreateResourceType">
+                @T("Nuwe tipe", "New type")
+            </button>
+            <button type="button" class="resource-types-admin-btn resource-types-admin-btn-secondary" @onclick="@(() => ReloadAsync())">
+                @T("Herlaai", "Refresh")
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <p class="admin-feedback is-error">@ErrorMessage</p>
+    }
+    else if (!string.IsNullOrWhiteSpace(StatusMessage))
+    {
+        <p class="admin-feedback is-success">@StatusMessage</p>
+    }
+
+    @if (IsLoading)
+    {
+        <section class="admin-state">
+            <h2>@T("Laai hulpbron tipes...", "Loading resource types...")</h2>
+        </section>
+    }
+    else
+    {
+        <div class="resource-types-admin-layout">
+            <aside class="resource-types-admin-list">
+                <div class="resource-types-admin-list-header">
+                    <span>@FilteredResourceTypes.Count @T("tipes", "types")</span>
+                </div>
+
+                @if (FilteredResourceTypes.Count == 0)
+                {
+                    <p class="resource-types-admin-empty">@T("Geen hulpbron tipes pas by jou soektog nie.", "No resource types match your search.")</p>
+                }
+                else
+                {
+                    @foreach (var resourceType in FilteredResourceTypes)
+                    {
+                        var isSelected = Editor?.ResourceTypeId == resourceType.ResourceTypeId;
+                        <button type="button"
+                                class="resource-types-admin-list-item @(isSelected ? "is-selected" : null)"
+                                @onclick="() => SelectResourceType(resourceType)">
+                            <span class="resource-types-admin-list-copy">
+                                <span class="resource-types-admin-list-title">@resourceType.Name</span>
+                                <span class="resource-types-admin-list-meta">@resourceType.Slug</span>
+                                <span class="resource-types-admin-list-status">
+                                    @(resourceType.IsEnabled
+                                        ? T("Aktief", "Enabled")
+                                        : T("Af", "Disabled"))
+                                    ·
+                                    @(resourceType.DocumentCount == 1
+                                        ? T("1 dokument", "1 document")
+                                        : T($"{resourceType.DocumentCount} dokumente", $"{resourceType.DocumentCount} documents"))
+                                </span>
+                            </span>
+                        </button>
+                    }
+                }
+            </aside>
+
+            <section class="resource-types-admin-editor">
+                @if (Editor is null)
+                {
+                    <div class="resource-types-admin-empty-state">
+                        <h3>@T("Kies 'n tipe", "Choose a type")</h3>
+                        <p>@T("Maak links 'n bestaande tipe oop of skep 'n nuwe een.", "Open an existing type on the left or create a new one.")</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="resource-types-admin-editor-head">
+                        <div>
+                            <h3>@(IsNewResourceType ? T("Nuwe hulpbron tipe", "New resource type") : Editor.Name)</h3>
+                            <p>@Editor.SlugPreview</p>
+                        </div>
+                        <div class="resource-types-admin-editor-actions">
+                            @if (!IsNewResourceType)
+                            {
+                                <button type="button"
+                                        class="resource-types-admin-btn resource-types-admin-btn-danger"
+                                        @onclick="DeleteResourceTypeAsync"
+                                        disabled="@IsDeleting">
+                                    @(IsDeleting ? T("Verwyder...", "Deleting...") : T("Verwyder", "Delete"))
+                                </button>
+                            }
+                            <button type="button"
+                                    class="resource-types-admin-btn"
+                                    @onclick="SaveResourceTypeAsync"
+                                    disabled="@IsSaving">
+                                @(IsSaving ? T("Stoor...", "Saving...") : T("Stoor tipe", "Save type"))
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="resource-types-admin-form-grid">
+                        <section class="resource-types-admin-card">
+                            <h4>@T("Basies", "Basics")</h4>
+
+                            <label class="resource-types-admin-field">
+                                <span>@T("Naam", "Name")</span>
+                                <input type="text" @bind="Editor.Name" />
+                            </label>
+
+                            <label class="resource-types-admin-field">
+                                <span>@T("Slug", "Slug")</span>
+                                <input type="text" @bind="Editor.Slug" />
+                            </label>
+
+                            <label class="resource-types-admin-field">
+                                <span>@T("Beskrywing", "Description")</span>
+                                <textarea rows="3" @bind="Editor.Description"></textarea>
+                            </label>
+
+                            <div class="resource-types-admin-field-row">
+                                <label class="resource-types-admin-field">
+                                    <span>@T("Sorteer", "Sort order")</span>
+                                    <input type="number" @bind="Editor.SortOrder" />
+                                </label>
+
+                                <label class="resource-types-admin-checkbox">
+                                    <input type="checkbox" @bind="Editor.IsEnabled" />
+                                    <span>@T("Wys op hulpbronne blad", "Show on resources page")</span>
+                                </label>
+                            </div>
+                        </section>
+
+                        <section class="resource-types-admin-card">
+                            <h4>@T("Bron gids", "Source directory")</h4>
+
+                            <label class="resource-types-admin-field">
+                                <span>@T("Gids pad", "Directory path")</span>
+                                <input type="text" @bind="Editor.SourceDirectory" />
+                            </label>
+
+                            <p class="resource-types-admin-hint">
+                                @T(
+                                    "Gebruik 'n absolute pad of 'n pad relatief tot die webwerf. Alle PDF's in hierdie gids word op die hulpbronne blad gewys.",
+                                    "Use an absolute path or a path relative to the website. Every PDF in this directory is shown on the resources page.")
+                            </p>
+
+                            <dl class="resource-types-admin-summary">
+                                <div>
+                                    <dt>@T("Dokumente", "Documents")</dt>
+                                    <dd>@(Editor.DocumentCount == 1 ? T("1 dokument", "1 document") : T($"{Editor.DocumentCount} dokumente", $"{Editor.DocumentCount} documents"))</dd>
+                                </div>
+                                <div>
+                                    <dt>@T("Blad skakel", "Page link")</dt>
+                                    <dd>/resources?tipe=@Editor.SlugPreview</dd>
+                                </div>
+                            </dl>
+                        </section>
+                    </div>
+                }
+            </section>
+        </div>
+    }
+</section>
+
+@code {
+    [Parameter]
+    public string CurrentLanguageCode { get; set; } = "af";
+
+    private IReadOnlyList<AdminResourceTypeRecord> ResourceTypes { get; set; } = Array.Empty<AdminResourceTypeRecord>();
+    private EditableResourceType? Editor { get; set; }
+    private string? SignedInEmail { get; set; }
+    private string? ResourceTypeSearch { get; set; }
+    private string? ErrorMessage { get; set; }
+    private string? StatusMessage { get; set; }
+    private bool IsLoading { get; set; } = true;
+    private bool IsSaving { get; set; }
+    private bool IsDeleting { get; set; }
+
+    private bool IsNewResourceType => Editor?.ResourceTypeId is not Guid resourceTypeId || resourceTypeId == Guid.Empty;
+
+    private IReadOnlyList<AdminResourceTypeRecord> FilteredResourceTypes =>
+        string.IsNullOrWhiteSpace(ResourceTypeSearch)
+            ? ResourceTypes
+            : ResourceTypes
+                .Where(type =>
+                    type.Name.Contains(ResourceTypeSearch.Trim(), StringComparison.OrdinalIgnoreCase) ||
+                    type.Slug.Contains(ResourceTypeSearch.Trim(), StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        SignedInEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                        ?? authState.User.Identity?.Name;
+
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync(Guid? selectResourceTypeId = null)
+    {
+        IsLoading = true;
+        ErrorMessage = null;
+
+        try
+        {
+            ResourceTypes = await AdminManagementService.GetResourceTypesAsync(SignedInEmail);
+            var selected = selectResourceTypeId is Guid targetId && targetId != Guid.Empty
+                ? ResourceTypes.FirstOrDefault(type => type.ResourceTypeId == targetId)
+                : Editor?.ResourceTypeId is Guid currentId && currentId != Guid.Empty
+                    ? ResourceTypes.FirstOrDefault(type => type.ResourceTypeId == currentId)
+                    : ResourceTypes.FirstOrDefault();
+
+            Editor = selected is null ? null : EditableResourceType.From(selected);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to load resource types.");
+            ResourceTypes = Array.Empty<AdminResourceTypeRecord>();
+            Editor = null;
+            ErrorMessage = T("Kon nie hulpbron tipes nou laai nie.", "Could not load resource types right now.");
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private void BeginCreateResourceType()
+    {
+        ErrorMessage = null;
+        StatusMessage = null;
+
+        var nextSortOrder = ResourceTypes.Count == 0
+            ? 10
+            : ResourceTypes.Max(type => type.SortOrder) + 10;
+
+        Editor = EditableResourceType.CreateEmpty(nextSortOrder);
+    }
+
+    private void SelectResourceType(AdminResourceTypeRecord resourceType)
+    {
+        ErrorMessage = null;
+        StatusMessage = null;
+        Editor = EditableResourceType.From(resourceType);
+    }
+
+    private async Task SaveResourceTypeAsync()
+    {
+        if (Editor is null || IsSaving)
+        {
+            return;
+        }
+
+        IsSaving = true;
+        ErrorMessage = null;
+        StatusMessage = null;
+
+        try
+        {
+            var effectiveSlug = BuildEffectiveSlug(Editor.Slug, Editor.Name);
+            if (string.IsNullOrWhiteSpace(effectiveSlug))
+            {
+                ErrorMessage = T("Voeg asseblief eers 'n naam by.", "Please add a name first.");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(Editor.SourceDirectory))
+            {
+                ErrorMessage = T("Voeg asseblief 'n gids pad by.", "Please add a directory path.");
+                return;
+            }
+
+            var request = new AdminResourceTypeUpdateRequest(
+                ResourceTypeId: Editor.ResourceTypeId,
+                Slug: effectiveSlug,
+                Name: Editor.Name,
+                Description: Editor.Description,
+                SourceDirectory: Editor.SourceDirectory,
+                SortOrder: Editor.SortOrder,
+                IsEnabled: Editor.IsEnabled);
+
+            var result = await AdminManagementService.SaveResourceTypeAsync(SignedInEmail, request);
+            if (!result.IsSuccess)
+            {
+                ErrorMessage = TranslateServiceMessage(result.ErrorMessage) ??
+                               T("Kon nie hulpbron tipe nou stoor nie.", "Could not save the resource type right now.");
+                return;
+            }
+
+            await ReloadAsync(result.EntityId);
+            StatusMessage = T("Hulpbron tipe suksesvol gestoor.", "Resource type saved successfully.");
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to save resource type.");
+            ErrorMessage = T("Kon nie hulpbron tipe nou stoor nie.", "Could not save the resource type right now.");
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+
+    private async Task DeleteResourceTypeAsync()
+    {
+        if (Editor?.ResourceTypeId is not Guid resourceTypeId || resourceTypeId == Guid.Empty || IsDeleting)
+        {
+            return;
+        }
+
+        IsDeleting = true;
+        ErrorMessage = null;
+        StatusMessage = null;
+
+        try
+        {
+            var result = await AdminManagementService.DeleteResourceTypeAsync(SignedInEmail, resourceTypeId);
+            if (!result.IsSuccess)
+            {
+                ErrorMessage = TranslateServiceMessage(result.ErrorMessage) ??
+                               T("Kon nie hulpbron tipe nou verwyder nie.", "Could not delete the resource type right now.");
+                return;
+            }
+
+            Editor = null;
+            await ReloadAsync();
+            StatusMessage = T("Hulpbron tipe verwyder.", "Resource type deleted.");
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to delete resource type.");
+            ErrorMessage = T("Kon nie hulpbron tipe nou verwyder nie.", "Could not delete the resource type right now.");
+        }
+        finally
+        {
+            IsDeleting = false;
+        }
+    }
+
+    private string? TranslateServiceMessage(string? message) =>
+        message switch
+        {
+            "Jy het nie admin toegang nie." => T("Jy het nie admin toegang nie.", "You do not have admin access."),
+            "Resource type slug is ongeldig." => T("Die hulpbron tipe slug is ongeldig.", "The resource type slug is invalid."),
+            "Resource type naam is verpligtend." => T("Die hulpbron tipe naam is verpligtend.", "The resource type name is required."),
+            "Source directory is verpligtend." => T("Die bron gids is verpligtend.", "The source directory is required."),
+            "Supabase URL is nog nie opgestel nie." => T("Supabase URL is nog nie opgestel nie.", "Supabase URL is not configured yet."),
+            "Supabase ServiceRoleKey is nog nie opgestel nie." => T("Supabase ServiceRoleKey is nog nie opgestel nie.", "Supabase ServiceRoleKey is not configured yet."),
+            "Resource type slug bestaan reeds." => T("Die hulpbron tipe slug bestaan reeds.", "The resource type slug already exists."),
+            "Kon nie resource type skep nie." => T("Kon nie hulpbron tipe skep nie.", "Could not create the resource type."),
+            "Kon nie resource type nou opdateer nie." => T("Kon nie hulpbron tipe nou opdateer nie.", "Could not update the resource type right now."),
+            "Kies asseblief 'n geldige resource type." => T("Kies asseblief 'n geldige hulpbron tipe.", "Please choose a valid resource type."),
+            "Kon nie resource type nou verwyder nie." => T("Kon nie hulpbron tipe nou verwyder nie.", "Could not delete the resource type right now."),
+            _ => null
+        };
+
+    private string T(string afrikaans, string english) =>
+        string.Equals(CurrentLanguageCode, "en", StringComparison.OrdinalIgnoreCase) ? english : afrikaans;
+
+    private static string BuildEffectiveSlug(string? slug, string? name)
+    {
+        var source = string.IsNullOrWhiteSpace(slug) ? name : slug;
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            return string.Empty;
+        }
+
+        var normalized = source.Trim().ToLowerInvariant();
+        normalized = System.Text.RegularExpressions.Regex.Replace(normalized, "[^a-z0-9]+", "-");
+        normalized = System.Text.RegularExpressions.Regex.Replace(normalized, "-{2,}", "-");
+        return normalized.Trim('-');
+    }
+
+    private sealed class EditableResourceType
+    {
+        public Guid? ResourceTypeId { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Slug { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public string SourceDirectory { get; set; } = string.Empty;
+        public int SortOrder { get; set; }
+        public bool IsEnabled { get; set; } = true;
+        public int DocumentCount { get; set; }
+        public string SlugPreview => string.IsNullOrWhiteSpace(Slug) ? BuildEffectiveSlug(null, Name) : Slug;
+
+        public static EditableResourceType CreateEmpty(int sortOrder) =>
+            new()
+            {
+                SortOrder = sortOrder,
+                IsEnabled = true
+            };
+
+        public static EditableResourceType From(AdminResourceTypeRecord record) =>
+            new()
+            {
+                ResourceTypeId = record.ResourceTypeId,
+                Name = record.Name,
+                Slug = record.Slug,
+                Description = record.Description,
+                SourceDirectory = record.SourceDirectory,
+                SortOrder = record.SortOrder,
+                IsEnabled = record.IsEnabled,
+                DocumentCount = record.DocumentCount
+            };
+    }
+}

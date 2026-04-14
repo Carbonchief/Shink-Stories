@@ -2,8 +2,11 @@ namespace Shink.Services;
 
 public interface IUserNotificationService
 {
-    Task<IReadOnlyList<UserAppNotificationItem>> GetNotificationsAsync(
+    Task<UserNotificationPageResult> GetNotificationsAsync(
         string? email,
+        int take = 10,
+        DateTimeOffset? before = null,
+        bool history = false,
         CancellationToken cancellationToken = default);
 
     Task<NotificationSyncResult> SyncCharacterUnlockNotificationsAsync(
@@ -31,6 +34,12 @@ public interface IUserNotificationService
 
 public sealed record NotificationSyncResult(int CreatedCount);
 
+public sealed record UserNotificationPageResult(
+    IReadOnlyList<UserAppNotificationItem> Notifications,
+    int UnreadCount,
+    bool HasMore,
+    bool HasHistory);
+
 public sealed record UserAppNotificationItem(
     Guid NotificationId,
     string NotificationType,
@@ -40,7 +49,8 @@ public sealed record UserAppNotificationItem(
     string? ImageAlt,
     string? Href,
     DateTimeOffset CreatedAtUtc,
-    bool IsRead);
+    bool IsRead,
+    bool IsCleared);
 
 public sealed record PublishedStoryNotificationRequest(
     Guid StoryId,

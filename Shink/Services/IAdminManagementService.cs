@@ -48,6 +48,20 @@ public interface IAdminManagementService
         Guid playlistId,
         IReadOnlyList<AdminPlaylistStorySaveItem> orderedStories,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<AdminResourceTypeRecord>> GetResourceTypesAsync(
+        string? adminEmail,
+        CancellationToken cancellationToken = default);
+
+    Task<AdminOperationResult> SaveResourceTypeAsync(
+        string? adminEmail,
+        AdminResourceTypeUpdateRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<AdminOperationResult> DeleteResourceTypeAsync(
+        string? adminEmail,
+        Guid resourceTypeId,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record AdminOperationResult(bool IsSuccess, string? ErrorMessage = null, Guid? EntityId = null);
@@ -169,3 +183,23 @@ public sealed record AdminPlaylistUpdateRequest(
     int? MaxItems,
     bool IsEnabled,
     bool ShowOnHome);
+
+public sealed record AdminResourceTypeRecord(
+    Guid ResourceTypeId,
+    string Slug,
+    string Name,
+    string? Description,
+    string SourceDirectory,
+    int SortOrder,
+    bool IsEnabled,
+    int DocumentCount,
+    DateTimeOffset? UpdatedAt);
+
+public sealed record AdminResourceTypeUpdateRequest(
+    Guid? ResourceTypeId,
+    string Slug,
+    string Name,
+    string? Description,
+    string SourceDirectory,
+    int SortOrder,
+    bool IsEnabled);
