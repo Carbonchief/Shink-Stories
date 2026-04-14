@@ -26,27 +26,32 @@ public sealed class SupabaseUserNotificationService(
     private readonly ICharacterCatalogService _characterCatalogService = characterCatalogService;
     private readonly IStoryTrackingService _storyTrackingService = storyTrackingService;
     private readonly ILogger<SupabaseUserNotificationService> _logger = logger;
+    private const int DefaultNotificationPageSize = 10;
+    private const int MaxNotificationPageSize = 25;
 
-    public async Task<IReadOnlyList<UserAppNotificationItem>> GetNotificationsAsync(
+    public async Task<UserNotificationPageResult> GetNotificationsAsync(
         string? email,
+        int take = DefaultNotificationPageSize,
+        DateTimeOffset? before = null,
+        bool history = false,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(email))
         {
-            return Array.Empty<UserAppNotificationItem>();
+            return EmptyNotificationPageResult;
         }
 
         if (!TryBuildSupabaseBaseUri(out var baseUri))
         {
             _logger.LogWarning("Supabase notifications lookup skipped: URL is not configured.");
-            return Array.Empty<UserAppNotificationItem>();
+            return EmptyNotificationPageResult;
         }
 
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             _logger.LogWarning("Supabase notifications lookup skipped: ServiceRoleKey is not configured.");
-            return Array.Empty<UserAppNotificationItem>();
+            return EmptyNotificationPageResult;
         }
 
         try
@@ -54,19 +59,32 @@ public sealed class SupabaseUserNotificationService(
             var subscriberId = await ResolveOrCreateSubscriberIdAsync(baseUri, apiKey, email, cancellationToken);
             if (string.IsNullOrWhiteSpace(subscriberId))
             {
-                return Array.Empty<UserAppNotificationItem>();
+                return EmptyNotificationPageResult;
             }
 
             await SyncCharacterUnlockNotificationsAsync(email, cancellationToken: cancellationToken);
 
             var escapedSubscriberId = Uri.EscapeDataString(subscriberId);
+            var pageSize = Math.Clamp(take, 1, MaxNotificationPageSize);
+            var unreadCount = await GetNotificationCountAsync(
+                baseUri,
+                apiKey,
+                escapedSubscriberId,
+                unreadOnly: true,
+                includeCleared: false,
+                before: null,
+                cancellationToken);
             var requestUri = new Uri(
                 baseUri,
                 "rest/v1/subscriber_notifications" +
-                "?select=notification_id,notification_type,title,body,image_path,image_alt,href,created_at,read_at" +
+                "?select=notification_id,notification_type,title,body,image_path,image_alt,href,created_at,read_at,cleared_at" +
                 $"&subscriber_id=eq.{escapedSubscriberId}" +
-                "&cleared_at=is.null" +
-                "&order=created_at.desc");
+                (history ? string.Empty : "&cleared_at=is.null") +
+                (before is DateTimeOffset beforeValue
+                    ? $"&created_at=lt.{Uri.EscapeDataString(beforeValue.UtcDateTime.ToString("O"))}"
+                    : string.Empty) +
+                "&order=created_at.desc" +
+                $"&limit={pageSize + 1}");
 
             using var request = CreateRequest(HttpMethod.Get, requestUri, apiKey);
             using var response = await _httpClient.SendAsync(request, cancellationToken);
@@ -77,22 +95,41 @@ public sealed class SupabaseUserNotificationService(
                     "Supabase notifications lookup failed. Status={StatusCode} Body={Body}",
                     (int)response.StatusCode,
                     body);
-                return Array.Empty<UserAppNotificationItem>();
+                return EmptyNotificationPageResult with { UnreadCount = unreadCount };
             }
 
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             var rows = await JsonSerializer.DeserializeAsync<List<NotificationRow>>(stream, JsonOptions, cancellationToken)
                 ?? [];
 
-            return rows
+            var hasMore = rows.Count > pageSize;
+            var notifications = rows
+                .Take(pageSize)
                 .Where(row => row.NotificationId != Guid.Empty)
                 .Select(MapNotification)
                 .ToArray();
+            var oldestLoadedNotificationCreatedAt = notifications.LastOrDefault()?.CreatedAtUtc;
+            var hasHistory = await GetNotificationCountAsync(
+                baseUri,
+                apiKey,
+                escapedSubscriberId,
+                unreadOnly: false,
+                includeCleared: true,
+                before: history
+                    ? oldestLoadedNotificationCreatedAt
+                    : notifications.Length == 0 ? null : oldestLoadedNotificationCreatedAt,
+                cancellationToken) > 0;
+
+            return new UserNotificationPageResult(
+                notifications,
+                unreadCount,
+                hasMore,
+                hasHistory);
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
         {
             _logger.LogWarning(exception, "Supabase notifications lookup failed unexpectedly.");
-            return Array.Empty<UserAppNotificationItem>();
+            return EmptyNotificationPageResult;
         }
     }
 
@@ -592,6 +629,45 @@ public sealed class SupabaseUserNotificationService(
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
+    private async Task<int> GetNotificationCountAsync(
+        Uri baseUri,
+        string apiKey,
+        string escapedSubscriberId,
+        bool unreadOnly,
+        bool includeCleared,
+        DateTimeOffset? before,
+        CancellationToken cancellationToken)
+    {
+        var requestUri = new Uri(
+            baseUri,
+            "rest/v1/subscriber_notifications" +
+            "?select=notification_id" +
+            $"&subscriber_id=eq.{escapedSubscriberId}" +
+            (includeCleared ? string.Empty : "&cleared_at=is.null") +
+            (unreadOnly ? "&read_at=is.null" : string.Empty) +
+            (before is DateTimeOffset beforeValue
+                ? $"&created_at=lt.{Uri.EscapeDataString(beforeValue.UtcDateTime.ToString("O"))}"
+                : string.Empty) +
+            "&limit=1");
+
+        using var request = CreateRequest(HttpMethod.Get, requestUri, apiKey);
+        request.Headers.TryAddWithoutValidation("Prefer", "count=exact");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Supabase notification count lookup failed. Status={StatusCode} Body={Body}",
+                (int)response.StatusCode,
+                body);
+            return 0;
+        }
+
+        return TryParseContentRangeCount(response, out var count)
+            ? count
+            : 0;
+    }
+
     private async Task<IReadOnlyList<string>> GetAllSubscriberIdsAsync(
         Uri baseUri,
         string apiKey,
@@ -874,7 +950,35 @@ public sealed class SupabaseUserNotificationService(
             row.ImageAlt,
             row.Href,
             row.CreatedAtUtc ?? DateTimeOffset.UtcNow,
-            row.ReadAtUtc is not null);
+            row.ReadAtUtc is not null,
+            row.ClearedAtUtc is not null);
+
+    private static bool TryParseContentRangeCount(HttpResponseMessage response, out int count)
+    {
+        count = 0;
+        if (!response.Headers.TryGetValues("Content-Range", out var values) &&
+            !response.Content.Headers.TryGetValues("Content-Range", out values))
+        {
+            return false;
+        }
+
+        var contentRange = values.FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(contentRange))
+        {
+            return false;
+        }
+
+        var slashIndex = contentRange.LastIndexOf('/');
+        if (slashIndex < 0 || slashIndex >= contentRange.Length - 1)
+        {
+            return false;
+        }
+
+        return int.TryParse(contentRange[(slashIndex + 1)..], out count);
+    }
+
+    private static readonly UserNotificationPageResult EmptyNotificationPageResult =
+        new([], 0, false, false);
 
     private sealed class SubscriberLookupRow
     {
@@ -916,6 +1020,9 @@ public sealed class SupabaseUserNotificationService(
 
         [JsonPropertyName("read_at")]
         public DateTimeOffset? ReadAtUtc { get; init; }
+
+        [JsonPropertyName("cleared_at")]
+        public DateTimeOffset? ClearedAtUtc { get; init; }
     }
 
     private sealed class InsertedNotificationRow

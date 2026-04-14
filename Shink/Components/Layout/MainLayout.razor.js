@@ -15,6 +15,8 @@ const NOTIFICATION_COUNT_SELECTOR = "[data-notification-count]";
 const NOTIFICATION_PANEL_COUNT_SELECTOR = "[data-notification-panel-count]";
 const NOTIFICATION_CLEAR_SELECTOR = "[data-notification-clear]";
 const NOTIFICATION_ITEM_CLEAR_SELECTOR = "[data-notification-item-clear]";
+const NOTIFICATION_FOOTER_SELECTOR = "[data-notification-footer]";
+const NOTIFICATION_LOAD_MORE_SELECTOR = "[data-notification-load-more]";
 const ACCOUNT_MENU_ROOT_SELECTOR = "[data-account-menu-root]";
 const ACCOUNT_TOGGLE_SELECTOR = "[data-account-toggle]";
 const ACCOUNT_DROPDOWN_SELECTOR = "[data-account-dropdown]";
@@ -26,6 +28,7 @@ const NOTIFICATION_READ_ALL_ENDPOINT = "/api/notifications/read-all";
 const NOTIFICATION_CLEAR_ENDPOINT = "/api/notifications/clear";
 const NOTIFICATION_REFRESH_EVENT = "schink:notifications-refresh";
 const NOTIFICATION_REMOVE_ANIMATION_MS = 180;
+const NOTIFICATION_PAGE_SIZE = 10;
 const SEARCH_MIN_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS = 160;
 const SEARCH_MAX_RESULTS = 8;
@@ -165,10 +168,15 @@ function getNotificationCenterState(centerRoot) {
             isLoading: false,
             isMarkingRead: false,
             isClearing: false,
+            isLoadingMore: false,
             clearingNotificationIds: new Set(),
             removingNotificationIds: new Set(),
             notifications: [],
-            unreadCount: 0
+            unreadCount: 0,
+            hasMore: false,
+            hasHistory: false,
+            nextBefore: null,
+            isShowingHistory: false
         };
         notificationCenterState.set(centerRoot, state);
     }
@@ -201,6 +209,12 @@ function findNotificationCenterParts(from) {
     const notificationClear = centerRoot instanceof Element
         ? centerRoot.querySelector(NOTIFICATION_CLEAR_SELECTOR)
         : null;
+    const notificationFooter = centerRoot instanceof Element
+        ? centerRoot.querySelector(NOTIFICATION_FOOTER_SELECTOR)
+        : null;
+    const notificationLoadMore = centerRoot instanceof Element
+        ? centerRoot.querySelector(NOTIFICATION_LOAD_MORE_SELECTOR)
+        : null;
     const navControls = centerRoot instanceof Element
         ? centerRoot.closest(".nav-controls")
         : null;
@@ -222,6 +236,8 @@ function findNotificationCenterParts(from) {
         notificationCount: notificationCount instanceof HTMLElement ? notificationCount : null,
         notificationPanelCount: notificationPanelCount instanceof HTMLElement ? notificationPanelCount : null,
         notificationClear: notificationClear instanceof HTMLButtonElement ? notificationClear : null,
+        notificationFooter: notificationFooter instanceof HTMLElement ? notificationFooter : null,
+        notificationLoadMore: notificationLoadMore instanceof HTMLButtonElement ? notificationLoadMore : null,
         navControls: navControls instanceof HTMLElement ? navControls : null
     };
 }
@@ -266,8 +282,23 @@ function syncNotificationClearButton(parts, state) {
     const hasItemClearInFlight = state.clearingNotificationIds instanceof Set && state.clearingNotificationIds.size > 0;
     const hasItemRemovalInFlight = state.removingNotificationIds instanceof Set && state.removingNotificationIds.size > 0;
     parts.notificationClear.hidden = !hasNotifications;
-    parts.notificationClear.disabled = state.isClearing || hasItemClearInFlight || hasItemRemovalInFlight || state.isLoading || !hasNotifications;
+    parts.notificationClear.disabled = state.isClearing || state.isLoading || state.isLoadingMore || hasItemClearInFlight || hasItemRemovalInFlight || !hasNotifications;
     parts.notificationClear.textContent = state.isClearing ? "Maak skoon..." : "Maak skoon";
+}
+
+function syncNotificationLoadMoreButton(parts, state) {
+    if (!(parts.notificationFooter instanceof HTMLElement) ||
+        !(parts.notificationLoadMore instanceof HTMLButtonElement)) {
+        return;
+    }
+
+    const shouldShow = state.hasMore || state.hasHistory;
+    parts.notificationFooter.hidden = !shouldShow;
+    parts.notificationLoadMore.hidden = !shouldShow;
+    parts.notificationLoadMore.disabled = state.isLoading || state.isLoadingMore || state.isClearing;
+    parts.notificationLoadMore.textContent = state.isLoadingMore
+        ? "Laai vorige kennisgewings..."
+        : "Wys vorige kennisgewings";
 }
 
 function formatNotificationDate(createdAt) {
@@ -419,7 +450,7 @@ function renderNotificationItems(parts, notifications, fallbackMessage) {
         clearButton.className = "notification-item-clear";
         clearButton.dataset.notificationItemClear = "true";
         clearButton.dataset.notificationId = notificationId;
-        clearButton.disabled = state.isClearing || state.isLoading || isClearingItem || isRemovingItem || notificationId.length === 0;
+        clearButton.disabled = state.isClearing || state.isLoading || state.isLoadingMore || isClearingItem || isRemovingItem || notificationId.length === 0;
         clearButton.setAttribute("aria-label", `Verwyder kennisgewing: ${titleText}`);
         clearButton.title = "Verwyder kennisgewing";
         clearButton.innerHTML = `<i class="fa-solid fa-xmark" aria-hidden="true"></i>`;
@@ -430,6 +461,33 @@ function renderNotificationItems(parts, notifications, fallbackMessage) {
     });
 
     replaceNodeChildren(parts.notificationList, fragment);
+}
+
+function buildNotificationRequestUrl(options = {}) {
+    const { limit = NOTIFICATION_PAGE_SIZE, before = null, history = false } = options;
+    const url = new URL(NOTIFICATION_ENDPOINT, window.location.origin);
+    url.searchParams.set("limit", String(limit));
+
+    if (typeof before === "string" && before.length > 0) {
+        url.searchParams.set("before", before);
+    }
+
+    if (history) {
+        url.searchParams.set("history", "true");
+    }
+
+    return `${url.pathname}${url.search}`;
+}
+
+function getOldestNotificationCreatedAt(notifications) {
+    if (!Array.isArray(notifications) || notifications.length === 0) {
+        return null;
+    }
+
+    const oldestNotification = notifications[notifications.length - 1];
+    return oldestNotification && typeof oldestNotification.createdAt === "string" && oldestNotification.createdAt.length > 0
+        ? oldestNotification.createdAt
+        : null;
 }
 
 async function loadNotificationCenter(centerRoot, options = {}) {
@@ -449,7 +507,7 @@ async function loadNotificationCenter(centerRoot, options = {}) {
     syncNotificationClearButton(parts, state);
 
     try {
-        const response = await fetch(NOTIFICATION_ENDPOINT, {
+        const response = await fetch(buildNotificationRequestUrl(), {
             method: "GET",
             credentials: "same-origin",
             headers: {
@@ -458,6 +516,8 @@ async function loadNotificationCenter(centerRoot, options = {}) {
         });
 
         if (!response.ok) {
+            state.hasMore = false;
+            state.nextBefore = null;
             setNotificationCount(parts, 0);
             renderNotificationItems(
                 parts,
@@ -467,6 +527,7 @@ async function loadNotificationCenter(centerRoot, options = {}) {
                     : "Ons kon nie nou die kennisgewings laai nie.");
             state.isLoaded = false;
             syncNotificationClearButton(parts, state);
+            syncNotificationLoadMoreButton(parts, state);
             return;
         }
 
@@ -480,12 +541,17 @@ async function loadNotificationCenter(centerRoot, options = {}) {
 
         state.notifications = notifications;
         state.unreadCount = unreadCount;
+        state.hasMore = Boolean(payload && payload.hasMore);
+        state.hasHistory = Boolean(payload && payload.hasHistory);
+        state.nextBefore = getOldestNotificationCreatedAt(notifications);
+        state.isShowingHistory = false;
         state.clearingNotificationIds = new Set();
         state.removingNotificationIds = new Set();
         setNotificationCount(parts, unreadCount);
         renderNotificationItems(parts, notifications);
         state.isLoaded = true;
         syncNotificationClearButton(parts, state);
+        syncNotificationLoadMoreButton(parts, state);
 
         if (parts.centerRoot.classList.contains(OPEN_CLASS) && unreadCount > 0) {
             void markNotificationCenterRead(parts.centerRoot);
@@ -493,6 +559,10 @@ async function loadNotificationCenter(centerRoot, options = {}) {
     } catch {
         state.notifications = [];
         state.unreadCount = 0;
+        state.hasMore = false;
+        state.hasHistory = false;
+        state.nextBefore = null;
+        state.isShowingHistory = false;
         state.clearingNotificationIds = new Set();
         state.removingNotificationIds = new Set();
         setNotificationCount(parts, 0);
@@ -502,6 +572,77 @@ async function loadNotificationCenter(centerRoot, options = {}) {
         state.isLoading = false;
         parts.notificationLoading.hidden = true;
         syncNotificationClearButton(parts, state);
+        syncNotificationLoadMoreButton(parts, state);
+    }
+}
+
+async function loadMoreNotifications(centerRoot) {
+    const parts = findNotificationCenterParts(centerRoot);
+    if (!parts) {
+        return;
+    }
+
+    const state = getNotificationCenterState(parts.centerRoot);
+    const openHistoryFromEmpty = (!Array.isArray(state.notifications) || state.notifications.length === 0) && state.hasHistory;
+    if (state.isLoading || state.isLoadingMore || state.isClearing || !state.isLoaded || (!state.hasMore && !state.hasHistory)) {
+        return;
+    }
+
+    const shouldLoadHistory = state.isShowingHistory || (!state.hasMore && state.hasHistory);
+    const before = typeof state.nextBefore === "string" && state.nextBefore.length > 0
+        ? state.nextBefore
+        : getOldestNotificationCreatedAt(state.notifications);
+    if (!shouldLoadHistory && (typeof before !== "string" || before.length === 0)) {
+        state.hasMore = false;
+        syncNotificationLoadMoreButton(parts, state);
+        return;
+    }
+
+    state.isLoadingMore = true;
+    syncNotificationClearButton(parts, state);
+    syncNotificationLoadMoreButton(parts, state);
+
+    try {
+        const response = await fetch(buildNotificationRequestUrl({
+            before,
+            history: shouldLoadHistory
+        }), {
+            method: "GET",
+            credentials: "same-origin",
+            headers: {
+                Accept: "application/json"
+            }
+        });
+
+        if (!response.ok) {
+            return;
+        }
+
+        const payload = await response.json();
+        const notifications = payload && Array.isArray(payload.notifications)
+            ? payload.notifications
+            : [];
+
+        if (notifications.length === 0) {
+            state.hasMore = false;
+            state.hasHistory = false;
+            return;
+        }
+
+        state.notifications = openHistoryFromEmpty
+            ? notifications
+            : [...state.notifications, ...notifications];
+        state.hasMore = Boolean(payload && payload.hasMore);
+        state.hasHistory = Boolean(payload && payload.hasHistory);
+        state.nextBefore = getOldestNotificationCreatedAt(notifications) || state.nextBefore;
+        state.isShowingHistory = shouldLoadHistory;
+        renderNotificationItems(parts, state.notifications);
+    } catch {
+        // Ignore pagination failures to keep the current list usable.
+    } finally {
+        state.isLoadingMore = false;
+        syncNotificationClearButton(parts, state);
+        syncNotificationLoadMoreButton(parts, state);
     }
 }
 
@@ -544,11 +685,13 @@ async function markNotificationCenterRead(centerRoot) {
         setNotificationCount(parts, 0);
         renderNotificationItems(parts, state.notifications);
         syncNotificationClearButton(parts, state);
+        syncNotificationLoadMoreButton(parts, state);
     } catch {
         // Ignore mark-read failures to keep the panel usable.
     } finally {
         state.isMarkingRead = false;
         syncNotificationClearButton(parts, state);
+        syncNotificationLoadMoreButton(parts, state);
     }
 }
 
@@ -597,10 +740,15 @@ async function clearNotificationCenter(centerRoot) {
         await delay(NOTIFICATION_REMOVE_ANIMATION_MS);
 
         state.notifications = [];
+        state.hasMore = false;
+        state.hasHistory = false;
+        state.nextBefore = null;
+        state.isShowingHistory = false;
         state.clearingNotificationIds = new Set();
         state.removingNotificationIds = new Set();
         renderNotificationItems(parts, [], "Geen kennisgewings nog nie.");
         syncNotificationClearButton(parts, state);
+        syncNotificationLoadMoreButton(parts, state);
     } catch {
         // Ignore clear failures to keep the panel usable.
     } finally {
@@ -612,6 +760,7 @@ async function clearNotificationCenter(centerRoot) {
             state.notifications,
             state.notifications.length === 0 ? "Geen kennisgewings nog nie." : undefined);
         syncNotificationClearButton(parts, state);
+        syncNotificationLoadMoreButton(parts, state);
     }
 }
 
@@ -640,23 +789,28 @@ async function clearSingleNotification(centerRoot, notificationId) {
         return;
     }
 
+    const notificationToClear = state.notifications.find((notification) => notification && notification.id === notificationId);
+    const isAlreadyCleared = Boolean(notificationToClear && notificationToClear.isCleared);
+
     state.clearingNotificationIds.add(notificationId);
     renderNotificationItems(parts, state.notifications);
     syncNotificationClearButton(parts, state);
 
     try {
-        const response = await fetch(endpoint, {
-            method: "POST",
-            credentials: "same-origin",
-            headers: {
-                "Content-Type": "application/json",
-                Accept: "application/json"
-            },
-            body: JSON.stringify({})
-        });
+        if (!isAlreadyCleared) {
+            const response = await fetch(endpoint, {
+                method: "POST",
+                credentials: "same-origin",
+                headers: {
+                    "Content-Type": "application/json",
+                    Accept: "application/json"
+                },
+                body: JSON.stringify({})
+            });
 
-        if (!response.ok) {
-            return;
+            if (!response.ok) {
+                return;
+            }
         }
 
         state.removingNotificationIds.add(notificationId);
@@ -672,6 +826,7 @@ async function clearSingleNotification(centerRoot, notificationId) {
             state.notifications,
             state.notifications.length === 0 ? "Geen kennisgewings nog nie." : undefined);
         syncNotificationClearButton(parts, state);
+        syncNotificationLoadMoreButton(parts, state);
     } catch {
         // Ignore single-clear failures to keep the panel usable.
     } finally {
@@ -682,6 +837,7 @@ async function clearSingleNotification(centerRoot, notificationId) {
             state.notifications,
             state.notifications.length === 0 ? "Geen kennisgewings nog nie." : undefined);
         syncNotificationClearButton(parts, state);
+        syncNotificationLoadMoreButton(parts, state);
     }
 }
 
@@ -708,6 +864,7 @@ function setNotificationCenterState(centerRoot, open, options = {}) {
             renderNotificationItems(parts, state.notifications);
             setNotificationCount(parts, state.unreadCount);
             syncNotificationClearButton(parts, state);
+            syncNotificationLoadMoreButton(parts, state);
             if (state.unreadCount > 0) {
                 void markNotificationCenterRead(parts.centerRoot);
             }
@@ -1228,6 +1385,31 @@ function wireNotificationCenter(notificationToggle) {
     }
 
     setNotificationCenterState(parts.centerRoot, false);
+
+    if (parts.notificationPanel.dataset.notificationWheelLockWired !== "true") {
+        parts.notificationPanel.addEventListener("wheel", (event) => {
+            if (!(event.currentTarget instanceof HTMLElement) ||
+                !(event.target instanceof Node) ||
+                !event.currentTarget.contains(event.target)) {
+                return;
+            }
+
+            if (event.deltaY === 0) {
+                return;
+            }
+
+            event.preventDefault();
+
+            if (!(parts.notificationList instanceof HTMLElement)) {
+                return;
+            }
+
+            parts.notificationList.scrollTop += event.deltaY;
+        }, { passive: false });
+
+        parts.notificationPanel.dataset.notificationWheelLockWired = "true";
+    }
+
     notificationToggle.dataset.notificationCenterWired = "true";
     void loadNotificationCenter(parts.centerRoot, { force: true });
 }
@@ -1335,6 +1517,13 @@ function startNotificationCenterDelegates() {
                 return;
             }
 
+            const loadMoreButton = target.closest(NOTIFICATION_LOAD_MORE_SELECTOR);
+            if (loadMoreButton instanceof HTMLButtonElement) {
+                event.preventDefault();
+                void loadMoreNotifications(clickedInsideCenter);
+                return;
+            }
+
             const clickedLink = target.closest(`${NOTIFICATION_PANEL_SELECTOR} a`);
             if (clickedLink instanceof HTMLAnchorElement) {
                 setNotificationCenterState(clickedInsideCenter, false);
@@ -1368,6 +1557,11 @@ function startNotificationCenterDelegates() {
                 state.notifications = [];
                 state.unreadCount = 0;
                 state.isClearing = false;
+                state.isLoadingMore = false;
+                state.hasMore = false;
+                state.hasHistory = false;
+                state.nextBefore = null;
+                state.isShowingHistory = false;
                 state.clearingNotificationIds = new Set();
                 state.removingNotificationIds = new Set();
                 void loadNotificationCenter(centerRoot, { force: true });
@@ -1383,6 +1577,11 @@ function startNotificationCenterDelegates() {
                 state.notifications = [];
                 state.unreadCount = 0;
                 state.isClearing = false;
+                state.isLoadingMore = false;
+                state.hasMore = false;
+                state.hasHistory = false;
+                state.nextBefore = null;
+                state.isShowingHistory = false;
                 state.clearingNotificationIds = new Set();
                 state.removingNotificationIds = new Set();
                 void loadNotificationCenter(centerRoot, { force: true });

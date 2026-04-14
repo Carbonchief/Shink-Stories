@@ -1,0 +1,224 @@
+.resource-types-admin-layout {
+    display: grid;
+    grid-template-columns: minmax(240px, 320px) minmax(0, 1fr);
+    gap: 1.25rem;
+}
+
+.resource-types-admin-list,
+.resource-types-admin-editor {
+    background: white;
+    border-radius: 20px;
+    border: 1px solid rgba(18, 64, 74, 0.12);
+    box-shadow: 0 18px 40px rgba(15, 47, 52, 0.06);
+}
+
+.resource-types-admin-list {
+    padding: 1rem;
+    display: grid;
+    gap: 0.75rem;
+    align-content: start;
+}
+
+.resource-types-admin-list-header,
+.resource-types-admin-list-meta,
+.resource-types-admin-list-status,
+.resource-types-admin-editor-head p,
+.resource-types-admin-hint,
+.resource-types-admin-empty,
+.resource-types-admin-empty-state p,
+.resource-types-admin-summary dt {
+    color: #6a737b;
+}
+
+.resource-types-admin-list-item {
+    border: 1px solid rgba(18, 64, 74, 0.1);
+    background: #fcfcfb;
+    border-radius: 16px;
+    padding: 0.9rem 1rem;
+    text-align: left;
+    transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.resource-types-admin-list-item:hover,
+.resource-types-admin-list-item:focus-visible {
+    border-color: rgba(62, 143, 150, 0.45);
+    transform: translateY(-1px);
+    box-shadow: 0 12px 26px rgba(15, 47, 52, 0.08);
+}
+
+.resource-types-admin-list-item.is-selected {
+    border-color: rgba(64, 141, 147, 0.65);
+    background: rgba(64, 141, 147, 0.08);
+}
+
+.resource-types-admin-list-copy {
+    display: grid;
+    gap: 0.15rem;
+}
+
+.resource-types-admin-list-title {
+    font-weight: 700;
+    color: #15363b;
+}
+
+.resource-types-admin-editor {
+    padding: 1.1rem;
+    display: grid;
+    gap: 1rem;
+}
+
+.resource-types-admin-editor-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: flex-start;
+}
+
+.resource-types-admin-editor-head h3,
+.resource-types-admin-empty-state h3,
+.resource-types-admin-card h4 {
+    margin: 0;
+    color: #15363b;
+}
+
+.resource-types-admin-editor-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.65rem;
+    justify-content: flex-end;
+}
+
+.resource-types-admin-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.resource-types-admin-card {
+    padding: 1rem;
+    border-radius: 18px;
+    background: #f9f7f1;
+    border: 1px solid rgba(18, 64, 74, 0.08);
+    display: grid;
+    gap: 0.85rem;
+    align-content: start;
+}
+
+.resource-types-admin-field,
+.resource-types-admin-checkbox {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.resource-types-admin-field span,
+.resource-types-admin-checkbox span {
+    font-weight: 600;
+    color: #20474d;
+}
+
+.resource-types-admin-field input,
+.resource-types-admin-field textarea {
+    width: 100%;
+    border: 1px solid rgba(18, 64, 74, 0.15);
+    border-radius: 12px;
+    padding: 0.75rem 0.9rem;
+    background: white;
+    color: #173238;
+}
+
+.resource-types-admin-field textarea {
+    resize: vertical;
+    min-height: 110px;
+}
+
+.resource-types-admin-field-row {
+    display: grid;
+    grid-template-columns: minmax(0, 180px) minmax(0, 1fr);
+    gap: 1rem;
+    align-items: end;
+}
+
+.resource-types-admin-checkbox {
+    align-self: center;
+}
+
+.resource-types-admin-checkbox input {
+    width: 1.05rem;
+    height: 1.05rem;
+}
+
+.resource-types-admin-summary {
+    margin: 0;
+    display: grid;
+    gap: 0.8rem;
+}
+
+.resource-types-admin-summary div {
+    display: grid;
+    gap: 0.15rem;
+}
+
+.resource-types-admin-summary dd {
+    margin: 0;
+    font-weight: 700;
+    color: #15363b;
+}
+
+.resource-types-admin-btn {
+    border: 0;
+    border-radius: 999px;
+    padding: 0.72rem 1rem;
+    min-height: 44px;
+    background: #408d93;
+    color: white;
+    font-weight: 700;
+}
+
+.resource-types-admin-btn:hover,
+.resource-types-admin-btn:focus-visible {
+    background: #2f7479;
+}
+
+.resource-types-admin-btn-secondary {
+    background: #e8eef0;
+    color: #18363a;
+}
+
+.resource-types-admin-btn-secondary:hover,
+.resource-types-admin-btn-secondary:focus-visible {
+    background: #dce6e8;
+}
+
+.resource-types-admin-btn-danger {
+    background: #a94442;
+}
+
+.resource-types-admin-btn-danger:hover,
+.resource-types-admin-btn-danger:focus-visible {
+    background: #8f3634;
+}
+
+.resource-types-admin-search {
+    min-width: min(100%, 280px);
+    border: 1px solid rgba(18, 64, 74, 0.15);
+    border-radius: 999px;
+    padding: 0.72rem 1rem;
+    background: white;
+}
+
+@media (max-width: 980px) {
+    .resource-types-admin-layout,
+    .resource-types-admin-form-grid,
+    .resource-types-admin-field-row {
+        grid-template-columns: 1fr;
+    }
+
+    .resource-types-admin-editor-head {
+        flex-direction: column;
+    }
+
+    .resource-types-admin-editor-actions {
+        width: 100%;
+        justify-content: flex-start;
+    }
+}

@@ -1,0 +1,234 @@
+@page "/resources"
+@page "/hulpbronne"
+@using System.Globalization
+@using System.Text.Json
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.WebUtilities
+@inject IResourceCatalogService ResourceCatalogService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Schink Stories | Hulpbronne</PageTitle>
+<HeadContent>
+    <link rel="canonical" href="@ResourcesCanonicalUrl" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Schink Stories | Hulpbronne" />
+    <meta property="og:description" content="Laai Schink Stories aktiwiteite en storiekaarte af vir meer pret ná storietyd." />
+    <meta property="og:url" content="@ResourcesCanonicalUrl" />
+    <meta property="og:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
+    <meta property="og:image:secure_url" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="512" />
+    <meta property="og:image:height" content="512" />
+    <meta property="og:image:alt" content="Schink Stories logo" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Schink Stories | Hulpbronne" />
+    <meta name="twitter:description" content="Laai Schink Stories aktiwiteite en storiekaarte af vir meer pret ná storietyd." />
+    <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
+    <meta name="twitter:image:alt" content="Schink Stories logo" />
+    <script type="application/ld+json">@ResourcesJsonLd</script>
+</HeadContent>
+
+<div class="resources-page-shell">
+    <section class="resources-hero">
+        <div class="resources-hero-copy">
+            <p class="resources-eyebrow">Hulpbronne vir ouer en kind</p>
+            <h1>Druk, speel en gesels verder</h1>
+            <p class="resources-lead">
+                Hier kry jy al ons aflaaibare aktiwiteite en storiekaarte op een plek.
+                Kies 'n tipe hieronder en maak die PDF oop wanneer dit vir julle pas.
+            </p>
+        </div>
+    </section>
+
+    @if (IsLoading)
+    {
+        <section class="resources-state" aria-live="polite">
+            <h2>Laai hulpbronne...</h2>
+        </section>
+    }
+    else if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <section class="resources-state resources-state-error" aria-live="polite">
+            <h2>Ons kon nie die hulpbronne nou laai nie.</h2>
+            <p>@ErrorMessage</p>
+        </section>
+    }
+    else if (ResourceTypes.Count == 0)
+    {
+        <section class="resources-state">
+            <h2>Nog geen hulpbronne beskikbaar nie</h2>
+            <p>Kom kyk weer binnekort vir nuwe aktiwiteite en storiekaarte.</p>
+        </section>
+    }
+    else if (ActiveResourceType is not null)
+    {
+        <nav class="resources-tabs" aria-label="Hulpbron tipes">
+            @foreach (var type in ResourceTypes)
+            {
+                var isActive = string.Equals(type.Slug, ActiveResourceType.Slug, StringComparison.OrdinalIgnoreCase);
+                <a class="resources-tab @(isActive ? "is-active" : null)"
+                   href="@BuildTabHref(type.Slug)"
+                   aria-current="@(isActive ? "page" : null)">
+                    <span>@type.Name</span>
+                    <span class="resources-tab-count">@type.Documents.Count</span>
+                </a>
+            }
+        </nav>
+
+        <section class="resources-panel" aria-labelledby="resources-panel-title">
+            <div class="resources-panel-head">
+                <div>
+                    <h2 id="resources-panel-title">@ActiveResourceType.Name</h2>
+                    @if (!string.IsNullOrWhiteSpace(ActiveResourceType.Description))
+                    {
+                        <p>@ActiveResourceType.Description</p>
+                    }
+                    else
+                    {
+                        <p>Maak die PDF oop in 'n nuwe blad of laai dit af om later saam deur te werk.</p>
+                    }
+                </div>
+                <p class="resources-panel-count">
+                    @(ActiveResourceType.Documents.Count == 1
+                        ? "1 dokument beskikbaar"
+                        : $"{ActiveResourceType.Documents.Count} dokumente beskikbaar")
+                </p>
+            </div>
+
+            @if (ActiveResourceType.Documents.Count == 0)
+            {
+                <div class="resources-empty">
+                    <h3>Hierdie tipe is nog leeg</h3>
+                    <p>Daar is nog nie PDF's in hierdie afdeling beskikbaar nie.</p>
+                </div>
+            }
+            else
+            {
+                <div class="resources-grid">
+                    @foreach (var document in ActiveResourceType.Documents)
+                    {
+                        <article class="resources-card">
+                            <div class="resources-card-icon" aria-hidden="true">
+                                <i class="fa-solid fa-file-pdf"></i>
+                            </div>
+                            <div class="resources-card-body">
+                                <h3>@document.Title</h3>
+                                <p>@BuildDocumentMeta(document)</p>
+                            </div>
+                            <div class="resources-card-actions">
+                                <a class="resources-open-link"
+                                   href="@document.Url"
+                                   target="_blank"
+                                   rel="noopener noreferrer">
+                                    Maak oop
+                                </a>
+                                <a class="resources-download-link"
+                                   href="@document.Url"
+                                   download="@document.FileName">
+                                    Laai af
+                                </a>
+                            </div>
+                        </article>
+                    }
+                </div>
+            }
+        </section>
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "tipe")]
+    public string? TypeSlug { get; set; }
+
+    private IReadOnlyList<ResourceTypeCatalog> ResourceTypes { get; set; } = Array.Empty<ResourceTypeCatalog>();
+    private ResourceTypeCatalog? ActiveResourceType { get; set; }
+    private bool IsLoading { get; set; } = true;
+    private string? ErrorMessage { get; set; }
+
+    private string ResourcesCanonicalUrl => NavigationManager.ToAbsoluteUri("/resources").ToString();
+
+    private MarkupString ResourcesJsonLd => new(JsonSerializer.Serialize(new Dictionary<string, object?>
+    {
+        ["@context"] = "https://schema.org",
+        ["@type"] = "CollectionPage",
+        ["name"] = "Schink Stories | Hulpbronne",
+        ["description"] = "Laai Schink Stories aktiwiteite en storiekaarte af vir meer pret ná storietyd.",
+        ["url"] = ResourcesCanonicalUrl,
+        ["inLanguage"] = "af-ZA",
+        ["isPartOf"] = new Dictionary<string, object?>
+        {
+            ["@type"] = "WebSite",
+            ["name"] = "Schink Stories",
+            ["url"] = NavigationManager.ToAbsoluteUri("/").ToString()
+        }
+    }));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        IsLoading = true;
+        ErrorMessage = null;
+
+        try
+        {
+            ResourceTypes = await ResourceCatalogService.GetResourceTypesAsync();
+            ActiveResourceType = ResolveActiveType(ResourceTypes, TypeSlug);
+        }
+        catch (Exception)
+        {
+            ResourceTypes = Array.Empty<ResourceTypeCatalog>();
+            ActiveResourceType = null;
+            ErrorMessage = "Probeer asseblief weer oor 'n oomblik.";
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private static ResourceTypeCatalog? ResolveActiveType(IReadOnlyList<ResourceTypeCatalog> resourceTypes, string? typeSlug)
+    {
+        if (resourceTypes.Count == 0)
+        {
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(typeSlug))
+        {
+            var selected = resourceTypes.FirstOrDefault(type =>
+                string.Equals(type.Slug, typeSlug.Trim(), StringComparison.OrdinalIgnoreCase));
+            if (selected is not null)
+            {
+                return selected;
+            }
+        }
+
+        return resourceTypes[0];
+    }
+
+    private static string BuildDocumentMeta(ResourceDocumentItem document)
+    {
+        var size = FormatFileSize(document.SizeBytes);
+        var date = document.LastModified.ToLocalTime().ToString("dd MMM yyyy", CultureInfo.GetCultureInfo("af-ZA"));
+        return $"{size} · opgedateer {date}";
+    }
+
+    private static string FormatFileSize(long sizeBytes)
+    {
+        var units = new[] { "B", "KB", "MB", "GB" };
+        var size = Convert.ToDouble(sizeBytes);
+        var unitIndex = 0;
+
+        while (size >= 1024 && unitIndex < units.Length - 1)
+        {
+            size /= 1024;
+            unitIndex++;
+        }
+
+        return unitIndex == 0
+            ? $"{sizeBytes} {units[unitIndex]}"
+            : $"{size:0.#} {units[unitIndex]}";
+    }
+
+    private string BuildTabHref(string slug) =>
+        QueryHelpers.AddQueryString("/resources", "tipe", slug);
+}

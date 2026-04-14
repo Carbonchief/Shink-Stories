@@ -105,6 +105,7 @@ builder.Services.AddHttpClient<PaystackCheckoutService>();
 builder.Services.AddHttpClient<ISubscriptionLedgerService, SupabaseSubscriptionLedgerService>();
 builder.Services.AddHttpClient<IStoryTrackingService, SupabaseStoryTrackingService>();
 builder.Services.AddHttpClient<IStoryFavoriteService, SupabaseStoryFavoriteService>();
+builder.Services.AddHttpClient<IResourceCatalogService, SupabaseResourceCatalogService>();
 builder.Services.AddHttpClient<IAdminManagementService, SupabaseAdminManagementService>();
 builder.Services.AddHttpClient<ICharacterCatalogService, SupabaseCharacterService>();
 builder.Services.AddHttpClient<ICharacterAdminService, SupabaseCharacterService>();
@@ -470,6 +471,26 @@ app.MapGet("/media/audio/{slug}", async (
     var characterAudioMimeType = ResolveAudioMimeType(characterClip.AudioContentType, characterClip.AudioObjectKey);
     return Results.File(characterAudioFilePath, characterAudioMimeType, enableRangeProcessing: true);
 }).RequireRateLimiting("audio-stream");
+
+app.MapGet("/media/resources/{typeSlug}/{fileName}", async (
+    string typeSlug,
+    string fileName,
+    IResourceCatalogService resourceCatalogService,
+    HttpContext httpContext) =>
+{
+    var document = await resourceCatalogService.GetDocumentDownloadAsync(typeSlug, fileName, httpContext.RequestAborted);
+    if (document is null || !File.Exists(document.PhysicalPath))
+    {
+        return Results.NotFound();
+    }
+
+    httpContext.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
+    httpContext.Response.Headers.Pragma = "no-cache";
+    httpContext.Response.Headers.Expires = "0";
+    httpContext.Response.Headers["X-Robots-Tag"] = "noindex, nofollow";
+
+    return Results.File(document.PhysicalPath, document.ContentType, enableRangeProcessing: true);
+});
 
 app.MapGet("/betaal/payfast/{planSlug}", (string planSlug) =>
     Results.Redirect($"/betaal/{Uri.EscapeDataString(planSlug)}?provider=payfast"));
@@ -1063,6 +1084,9 @@ app.MapPost("/api/stories/{slug}/listen", async (
 
 app.MapGet("/api/notifications", async (
     IUserNotificationService userNotificationService,
+    int? limit,
+    DateTimeOffset? before,
+    bool? history,
     HttpContext httpContext) =>
 {
     if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
@@ -1072,15 +1096,20 @@ app.MapGet("/api/notifications", async (
 
     var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
                        ?? httpContext.User.Identity?.Name;
-    var notifications = await userNotificationService.GetNotificationsAsync(
+    var notificationPage = await userNotificationService.GetNotificationsAsync(
         signedInEmail,
+        limit ?? 10,
+        before,
+        history ?? false,
         httpContext.RequestAborted);
 
     return Results.Ok(new
     {
-        count = notifications.Count,
-        unreadCount = notifications.Count(notification => !notification.IsRead),
-        notifications = notifications.Select(notification => new
+        count = notificationPage.Notifications.Count,
+        unreadCount = notificationPage.UnreadCount,
+        hasMore = notificationPage.HasMore,
+        hasHistory = notificationPage.HasHistory,
+        notifications = notificationPage.Notifications.Select(notification => new
         {
             id = notification.NotificationId,
             type = notification.NotificationType,
@@ -1090,7 +1119,8 @@ app.MapGet("/api/notifications", async (
             imageAlt = notification.ImageAlt,
             href = notification.Href,
             createdAt = notification.CreatedAtUtc,
-            isRead = notification.IsRead
+            isRead = notification.IsRead,
+            isCleared = notification.IsCleared
         })
     });
 });
@@ -1481,6 +1511,7 @@ app.MapGet("/sitemap.xml", async (HttpContext httpContext, IStoryCatalogService 
     {
         "/",
         "/gratis",
+        "/resources",
         "/luister",
         "/opsies",
         "/meer-oor-ons",
@@ -2691,6 +2722,14 @@ static IReadOnlyList<SearchSiteCandidate> BuildSearchStaticCandidates() =>
         Kind: "Bladsy",
         Keywords: "gratis luister probeer stories",
         ThumbnailPath: "/stories/Schink_Stories_Gratis_Blad_Banner.webp",
+        IsSitePage: true),
+    new(
+        Title: "Hulpbronne",
+        Description: "Laai Schink Stories aktiwiteite en storiekaarte af.",
+        Url: "/resources",
+        Kind: "Bladsy",
+        Keywords: "hulpbronne aktiwiteite storiekaarte pdf aflaai",
+        ThumbnailPath: "/branding/schink-logo-green.png",
         IsSitePage: true),
     new(
         Title: "Alle stories",
