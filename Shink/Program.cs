@@ -1147,6 +1147,34 @@ app.MapPost("/api/notifications/clear", async (
     });
 }).RequireRateLimiting("auth-submit").DisableAntiforgery();
 
+app.MapPost("/api/notifications/{notificationId:guid}/clear", async (
+    Guid notificationId,
+    IUserNotificationService userNotificationService,
+    HttpContext httpContext) =>
+{
+    if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
+    {
+        return Results.Unauthorized();
+    }
+
+    if (!IsLikelySameSiteRequest(httpContext))
+    {
+        return Results.Forbid();
+    }
+
+    var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
+                       ?? httpContext.User.Identity?.Name;
+    var cleared = await userNotificationService.ClearNotificationAsync(
+        signedInEmail,
+        notificationId,
+        httpContext.RequestAborted);
+
+    return Results.Ok(new
+    {
+        cleared
+    });
+}).RequireRateLimiting("auth-submit").DisableAntiforgery();
+
 app.MapGet("/api/search/suggest", async (string? q, int? limit, IStoryCatalogService storyCatalogService, HttpContext httpContext) =>
 {
     var query = (q ?? string.Empty).Trim();

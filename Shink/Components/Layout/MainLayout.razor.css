@@ -935,13 +935,27 @@
     overflow-y: auto;
 }
 
+.notification-list ::deep .notification-item-shell {
+    position: relative;
+    transition: opacity 180ms ease, transform 180ms ease, max-height 180ms ease, margin 180ms ease;
+    transform-origin: top center;
+    max-height: 160px;
+    opacity: 1;
+}
+
+.notification-list ::deep .notification-item-shell.is-removing {
+    opacity: 0;
+    transform: translateX(14px) scale(0.98);
+    max-height: 0;
+}
+
 .notification-list ::deep .notification-item {
     width: 100%;
     display: grid;
     grid-template-columns: 48px minmax(0, 1fr);
     align-items: center;
     gap: 0.72rem;
-    padding: 0.72rem 0.86rem;
+    padding: 0.72rem 2.75rem 0.72rem 0.86rem;
     border-bottom: 1px solid rgba(18, 24, 34, 0.12);
     text-decoration: none;
     color: #1e2430;
@@ -956,7 +970,7 @@
     border-left: 3px solid rgba(31, 108, 143, 0.42);
 }
 
-.notification-list ::deep .notification-item:last-child {
+.notification-list ::deep .notification-item-shell:last-child .notification-item {
     border-bottom: 0;
 }
 
@@ -975,6 +989,39 @@
 .notification-list ::deep .notification-item:focus-visible {
     outline: 3px solid color-mix(in srgb, #ffffff 46%, var(--accent));
     outline-offset: -3px;
+}
+
+.notification-list ::deep .notification-item-clear {
+    position: absolute;
+    top: 0.6rem;
+    right: 0.62rem;
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(14, 73, 93, 0.08);
+    color: #4f5d68;
+    cursor: pointer;
+    transition: background 160ms ease, color 160ms ease, opacity 160ms ease;
+    z-index: 1;
+}
+
+.notification-list ::deep .notification-item-clear:hover {
+    background: rgba(14, 73, 93, 0.14);
+    color: #183847;
+}
+
+.notification-list ::deep .notification-item-clear:focus-visible {
+    outline: 3px solid color-mix(in srgb, #ffffff 42%, var(--accent));
+    outline-offset: 2px;
+}
+
+.notification-list ::deep .notification-item-clear[disabled] {
+    opacity: 0.55;
+    cursor: default;
 }
 
 .notification-list ::deep .notification-item-image {

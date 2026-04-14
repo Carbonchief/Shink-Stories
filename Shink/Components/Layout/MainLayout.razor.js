@@ -14,6 +14,7 @@ const NOTIFICATION_LOADING_SELECTOR = "[data-notification-loading]";
 const NOTIFICATION_COUNT_SELECTOR = "[data-notification-count]";
 const NOTIFICATION_PANEL_COUNT_SELECTOR = "[data-notification-panel-count]";
 const NOTIFICATION_CLEAR_SELECTOR = "[data-notification-clear]";
+const NOTIFICATION_ITEM_CLEAR_SELECTOR = "[data-notification-item-clear]";
 const ACCOUNT_MENU_ROOT_SELECTOR = "[data-account-menu-root]";
 const ACCOUNT_TOGGLE_SELECTOR = "[data-account-toggle]";
 const ACCOUNT_DROPDOWN_SELECTOR = "[data-account-dropdown]";
@@ -24,6 +25,7 @@ const NOTIFICATION_ENDPOINT = "/api/notifications";
 const NOTIFICATION_READ_ALL_ENDPOINT = "/api/notifications/read-all";
 const NOTIFICATION_CLEAR_ENDPOINT = "/api/notifications/clear";
 const NOTIFICATION_REFRESH_EVENT = "schink:notifications-refresh";
+const NOTIFICATION_REMOVE_ANIMATION_MS = 180;
 const SEARCH_MIN_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS = 160;
 const SEARCH_MAX_RESULTS = 8;
@@ -37,6 +39,14 @@ const notificationDateFormatter = typeof Intl !== "undefined"
     ? new Intl.DateTimeFormat("af-ZA", { day: "numeric", month: "short" })
     : null;
 
+function buildNotificationClearItemEndpoint(notificationId) {
+    if (typeof notificationId !== "string" || notificationId.length === 0) {
+        return null;
+    }
+
+    return `/api/notifications/${encodeURIComponent(notificationId)}/clear`;
+}
+
 function replaceNodeChildren(parent, child) {
     while (parent.firstChild) {
         parent.removeChild(parent.firstChild);
@@ -45,6 +55,12 @@ function replaceNodeChildren(parent, child) {
     if (child instanceof Node) {
         parent.appendChild(child);
     }
+}
+
+function delay(milliseconds) {
+    return new Promise((resolve) => {
+        window.setTimeout(resolve, milliseconds);
+    });
 }
 
 function findNavMenuParts(from) {
@@ -149,6 +165,8 @@ function getNotificationCenterState(centerRoot) {
             isLoading: false,
             isMarkingRead: false,
             isClearing: false,
+            clearingNotificationIds: new Set(),
+            removingNotificationIds: new Set(),
             notifications: [],
             unreadCount: 0
         };
@@ -245,8 +263,10 @@ function syncNotificationClearButton(parts, state) {
     }
 
     const hasNotifications = Array.isArray(state.notifications) && state.notifications.length > 0;
+    const hasItemClearInFlight = state.clearingNotificationIds instanceof Set && state.clearingNotificationIds.size > 0;
+    const hasItemRemovalInFlight = state.removingNotificationIds instanceof Set && state.removingNotificationIds.size > 0;
     parts.notificationClear.hidden = !hasNotifications;
-    parts.notificationClear.disabled = state.isClearing || state.isLoading || !hasNotifications;
+    parts.notificationClear.disabled = state.isClearing || hasItemClearInFlight || hasItemRemovalInFlight || state.isLoading || !hasNotifications;
     parts.notificationClear.textContent = state.isClearing ? "Maak skoon..." : "Maak skoon";
 }
 
@@ -298,6 +318,7 @@ function buildNotificationTypeMeta(notificationType) {
 
 function renderNotificationItems(parts, notifications, fallbackMessage) {
     const safeNotifications = Array.isArray(notifications) ? notifications : [];
+    const state = getNotificationCenterState(parts.centerRoot);
     if (safeNotifications.length === 0) {
         const empty = document.createElement("p");
         empty.className = "notification-item-empty";
@@ -308,9 +329,18 @@ function renderNotificationItems(parts, notifications, fallbackMessage) {
 
     const fragment = document.createDocumentFragment();
     safeNotifications.forEach((notification) => {
+        const notificationId = notification && typeof notification.id === "string"
+            ? notification.id
+            : "";
         const href = notification && typeof notification.href === "string" && notification.href.length > 0
             ? notification.href
             : null;
+        const shell = document.createElement("div");
+        const isRemovingItem = state.removingNotificationIds instanceof Set
+            ? state.removingNotificationIds.has(notificationId)
+            : false;
+        shell.className = `notification-item-shell${isRemovingItem ? " is-removing" : ""}`;
+
         const item = document.createElement(href ? "a" : "div");
         const isRead = Boolean(notification && notification.isRead);
         const typeMeta = buildNotificationTypeMeta(notification && notification.type);
@@ -377,7 +407,26 @@ function renderNotificationItems(parts, notifications, fallbackMessage) {
         }
 
         item.append(copy);
-        fragment.append(item);
+
+        const titleText = notification && typeof notification.title === "string" && notification.title.length > 0
+            ? notification.title
+            : "Kennisgewing";
+        const clearButton = document.createElement("button");
+        const isClearingItem = state.clearingNotificationIds instanceof Set
+            ? state.clearingNotificationIds.has(notificationId)
+            : false;
+        clearButton.type = "button";
+        clearButton.className = "notification-item-clear";
+        clearButton.dataset.notificationItemClear = "true";
+        clearButton.dataset.notificationId = notificationId;
+        clearButton.disabled = state.isClearing || state.isLoading || isClearingItem || isRemovingItem || notificationId.length === 0;
+        clearButton.setAttribute("aria-label", `Verwyder kennisgewing: ${titleText}`);
+        clearButton.title = "Verwyder kennisgewing";
+        clearButton.innerHTML = `<i class="fa-solid fa-xmark" aria-hidden="true"></i>`;
+
+        shell.append(item);
+        shell.append(clearButton);
+        fragment.append(shell);
     });
 
     replaceNodeChildren(parts.notificationList, fragment);
@@ -431,6 +480,8 @@ async function loadNotificationCenter(centerRoot, options = {}) {
 
         state.notifications = notifications;
         state.unreadCount = unreadCount;
+        state.clearingNotificationIds = new Set();
+        state.removingNotificationIds = new Set();
         setNotificationCount(parts, unreadCount);
         renderNotificationItems(parts, notifications);
         state.isLoaded = true;
@@ -442,6 +493,8 @@ async function loadNotificationCenter(centerRoot, options = {}) {
     } catch {
         state.notifications = [];
         state.unreadCount = 0;
+        state.clearingNotificationIds = new Set();
+        state.removingNotificationIds = new Set();
         setNotificationCount(parts, 0);
         renderNotificationItems(parts, [], "Ons kon nie nou die kennisgewings laai nie.");
         state.isLoaded = false;
@@ -506,11 +559,16 @@ async function clearNotificationCenter(centerRoot) {
     }
 
     const state = getNotificationCenterState(parts.centerRoot);
-    if (state.isClearing || !Array.isArray(state.notifications) || state.notifications.length === 0) {
+    if (state.isClearing ||
+        (state.clearingNotificationIds instanceof Set && state.clearingNotificationIds.size > 0) ||
+        (state.removingNotificationIds instanceof Set && state.removingNotificationIds.size > 0) ||
+        !Array.isArray(state.notifications) ||
+        state.notifications.length === 0) {
         return;
     }
 
     state.isClearing = true;
+    renderNotificationItems(parts, state.notifications);
     syncNotificationClearButton(parts, state);
 
     try {
@@ -530,6 +588,8 @@ async function clearNotificationCenter(centerRoot) {
 
         state.notifications = [];
         state.unreadCount = 0;
+        state.clearingNotificationIds = new Set();
+        state.removingNotificationIds = new Set();
         setNotificationCount(parts, 0);
         renderNotificationItems(parts, [], "Geen kennisgewings nog nie.");
         syncNotificationClearButton(parts, state);
@@ -537,6 +597,82 @@ async function clearNotificationCenter(centerRoot) {
         // Ignore clear failures to keep the panel usable.
     } finally {
         state.isClearing = false;
+        state.clearingNotificationIds = new Set();
+        state.removingNotificationIds = new Set();
+        renderNotificationItems(
+            parts,
+            state.notifications,
+            state.notifications.length === 0 ? "Geen kennisgewings nog nie." : undefined);
+        syncNotificationClearButton(parts, state);
+    }
+}
+
+async function clearSingleNotification(centerRoot, notificationId) {
+    if (typeof notificationId !== "string" || notificationId.length === 0) {
+        return;
+    }
+
+    const parts = findNotificationCenterParts(centerRoot);
+    if (!parts) {
+        return;
+    }
+
+    const state = getNotificationCenterState(parts.centerRoot);
+    if (state.isClearing ||
+        !(state.clearingNotificationIds instanceof Set) ||
+        state.clearingNotificationIds.has(notificationId) ||
+        (state.removingNotificationIds instanceof Set && state.removingNotificationIds.has(notificationId)) ||
+        !Array.isArray(state.notifications) ||
+        !state.notifications.some((notification) => notification && notification.id === notificationId)) {
+        return;
+    }
+
+    const endpoint = buildNotificationClearItemEndpoint(notificationId);
+    if (!endpoint) {
+        return;
+    }
+
+    state.clearingNotificationIds.add(notificationId);
+    renderNotificationItems(parts, state.notifications);
+    syncNotificationClearButton(parts, state);
+
+    try {
+        const response = await fetch(endpoint, {
+            method: "POST",
+            credentials: "same-origin",
+            headers: {
+                "Content-Type": "application/json",
+                Accept: "application/json"
+            },
+            body: JSON.stringify({})
+        });
+
+        if (!response.ok) {
+            return;
+        }
+
+        state.removingNotificationIds.add(notificationId);
+        renderNotificationItems(parts, state.notifications);
+        syncNotificationClearButton(parts, state);
+        await delay(NOTIFICATION_REMOVE_ANIMATION_MS);
+
+        state.notifications = state.notifications.filter((notification) => notification && notification.id !== notificationId);
+        state.unreadCount = state.notifications.filter((notification) => notification && !notification.isRead).length;
+        setNotificationCount(parts, state.unreadCount);
+        renderNotificationItems(
+            parts,
+            state.notifications,
+            state.notifications.length === 0 ? "Geen kennisgewings nog nie." : undefined);
+        syncNotificationClearButton(parts, state);
+    } catch {
+        // Ignore single-clear failures to keep the panel usable.
+    } finally {
+        state.clearingNotificationIds.delete(notificationId);
+        state.removingNotificationIds.delete(notificationId);
+        renderNotificationItems(
+            parts,
+            state.notifications,
+            state.notifications.length === 0 ? "Geen kennisgewings nog nie." : undefined);
         syncNotificationClearButton(parts, state);
     }
 }
@@ -1175,6 +1311,15 @@ function startNotificationCenterDelegates() {
 
         const clickedInsideCenter = target.closest(NOTIFICATION_CENTER_ROOT_SELECTOR);
         if (clickedInsideCenter instanceof HTMLElement) {
+            const clearItemButton = target.closest(NOTIFICATION_ITEM_CLEAR_SELECTOR);
+            if (clearItemButton instanceof HTMLButtonElement) {
+                event.preventDefault();
+                event.stopPropagation();
+                const notificationId = clearItemButton.dataset.notificationId;
+                void clearSingleNotification(clickedInsideCenter, notificationId);
+                return;
+            }
+
             const clearButton = target.closest(NOTIFICATION_CLEAR_SELECTOR);
             if (clearButton instanceof HTMLButtonElement) {
                 event.preventDefault();
@@ -1215,6 +1360,8 @@ function startNotificationCenterDelegates() {
                 state.notifications = [];
                 state.unreadCount = 0;
                 state.isClearing = false;
+                state.clearingNotificationIds = new Set();
+                state.removingNotificationIds = new Set();
                 void loadNotificationCenter(centerRoot, { force: true });
             }
         });
@@ -1228,6 +1375,8 @@ function startNotificationCenterDelegates() {
                 state.notifications = [];
                 state.unreadCount = 0;
                 state.isClearing = false;
+                state.clearingNotificationIds = new Set();
+                state.removingNotificationIds = new Set();
                 void loadNotificationCenter(centerRoot, { force: true });
             }
         });
