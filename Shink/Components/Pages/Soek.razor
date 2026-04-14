@@ -3,6 +3,7 @@
 @using System.Text
 @using Microsoft.AspNetCore.Components
 @inject IStoryCatalogService StoryCatalogService
+@inject IBlogCatalogService BlogCatalogService
 @inject NavigationManager NavigationManager
 
 <PageTitle>Schink Stories | Soek</PageTitle>
@@ -130,7 +131,8 @@
         {
             var freeStoriesTask = StoryCatalogService.GetFreeStoriesAsync();
             var luisterStoriesTask = StoryCatalogService.GetLuisterStoriesAsync();
-            await Task.WhenAll(freeStoriesTask, luisterStoriesTask);
+            var blogPostsTask = BlogCatalogService.GetPublishedPostsAsync();
+            await Task.WhenAll(freeStoriesTask, luisterStoriesTask, blogPostsTask);
 
             var allCandidates = BuildStaticCandidates()
                 .Concat(freeStoriesTask.Result.Select(story => new SearchCandidate(
@@ -146,6 +148,13 @@
                     Url: $"/luister/{Uri.EscapeDataString(story.Slug)}",
                     Kind: "Alle stories",
                     Keywords: "luister stories intekening afrikaans oudiostorie",
+                    IsSitePage: false)))
+                .Concat(blogPostsTask.Result.Select(post => new SearchCandidate(
+                    Title: post.Title,
+                    Description: post.Summary,
+                    Url: $"/blog/{Uri.EscapeDataString(post.Slug)}",
+                    Kind: "Blog",
+                    Keywords: BuildBlogKeywords(post),
                     IsSitePage: false)));
 
             SearchResults = SearchCandidates(allCandidates, LastSearchQuery);
@@ -168,6 +177,13 @@
             Url: "/",
             Kind: "Bladsy",
             Keywords: "tuis huis kontak planne afrikaans oudiostories",
+            IsSitePage: true),
+        new(
+            Title: "Blog",
+            Description: "Lees die jongste blog plasings, wenke en nuus van Schink Stories.",
+            Url: "/blog",
+            Kind: "Bladsy",
+            Keywords: "blog artikels nuus wenke afrikaans",
             IsSitePage: true),
         new(
             Title: "Gratis stories",
@@ -212,6 +228,19 @@
             Keywords: "login rekening registreer",
             IsSitePage: true)
     ];
+
+    private static string BuildBlogKeywords(BlogPostListItem post)
+    {
+        var tags = post.Tags.Count == 0
+            ? string.Empty
+            : string.Join(' ', post.Tags.Select(tag => tag.Name));
+
+        var plainText = post.PlainTextContent.Length <= 1200
+            ? post.PlainTextContent
+            : post.PlainTextContent[..1200];
+
+        return $"{post.Summary} {post.Category?.Name} {tags} blog artikel {plainText}".Trim();
+    }
 
     private static IReadOnlyList<SearchResultItem> SearchCandidates(IEnumerable<SearchCandidate> candidates, string query)
     {

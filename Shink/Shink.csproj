@@ -16,6 +16,8 @@
   <ItemGroup>
     <PackageReference Include="AWSSDK.S3" Version="4.0.19.2" />
     <PackageReference Include="Bit.BlazorES2019" Version="10.4.3" />
+    <PackageReference Include="HtmlSanitizer" Version="9.0.892" />
+    <PackageReference Include="Markdig" Version="1.1.2" />
     <PackageReference Include="MudBlazor" Version="9.2.0" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
     <PackageReference Include="Supabase" Version="1.1.1" />
