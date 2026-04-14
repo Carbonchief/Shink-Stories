@@ -6,19 +6,29 @@
 
 <section class="admin-section">
     <div class="admin-section-head">
-        <h2>@T("Hulpbron tipes", "Resource types")</h2>
         <div class="admin-search">
             <input class="resource-types-admin-search"
                    type="search"
                    @bind="ResourceTypeSearch"
                    @bind:event="oninput"
                    placeholder="@T("Soek naam of slug", "Search name or slug")" />
-            <button type="button" class="resource-types-admin-btn" @onclick="BeginCreateResourceType">
-                @T("Nuwe tipe", "New type")
-            </button>
-            <button type="button" class="resource-types-admin-btn resource-types-admin-btn-secondary" @onclick="@(() => ReloadAsync())">
-                @T("Herlaai", "Refresh")
-            </button>
+            <MudButton Class="resource-types-admin-new-action-btn"
+                       Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       OnClick="BeginCreateResourceType"
+                       aria-label='@T("Nuwe tipe", "New type")'
+                       title='@T("Nuwe tipe", "New type")'>
+                <i class="fa-solid fa-plus" aria-hidden="true"></i>
+            </MudButton>
+            <MudButton Class="admin-btn admin-btn-secondary admin-icon-btn"
+                       Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       OnClick="@(() => ReloadAsync())"
+                       aria-label='@T("Herlaai", "Refresh")'
+                       title='@T("Herlaai", "Refresh")'>
+                <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
+                <span class="sr-only">@T("Herlaai", "Refresh")</span>
+            </MudButton>
         </div>
     </div>
 

@@ -13,10 +13,12 @@ public sealed partial class SupabaseCharacterService(
     HttpClient httpClient,
     IOptions<SupabaseOptions> supabaseOptions,
     IMemoryCache memoryCache,
-    ILogger<SupabaseCharacterService> logger) : ICharacterCatalogService, ICharacterAdminService
+    ILogger<SupabaseCharacterService> logger) : ICharacterCatalogService, ICharacterAdminService, ICharacterTrackingService
 {
     private const string PublishedCharactersCacheKey = "story-characters:published:v1";
+    private const string SubscriberCachePrefix = "character-tracking:subscriber:";
     private static readonly TimeSpan PublishedCharactersCacheDuration = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan SubscriberCacheDuration = TimeSpan.FromMinutes(10);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly HttpClient _httpClient = httpClient;
@@ -50,7 +52,7 @@ public sealed partial class SupabaseCharacterService(
             var requestUri = new Uri(
                 baseUri,
                 "rest/v1/story_characters" +
-                "?select=character_id,slug,display_name,tagline,species,habitat,catchphrase,favorite_thing,character_trait,golden_lesson,core_value,first_appearance,friends,reflection_question,challenge_text,image_path,mystery_image_path,unlock_story_slug,related_story_slugs,audio_clips,unlock_threshold_seconds,sort_order,status" +
+                "?select=character_id,slug,display_name,character_category,unlock_rules,tagline,species,habitat,catchphrase,favorite_thing,character_trait,golden_lesson,core_value,first_appearance,friends,reflection_question,challenge_text,image_path,mystery_image_path,unlock_story_slug,related_story_slugs,audio_clips,unlock_threshold_seconds,sort_order,status" +
                 "&status=eq.published" +
                 "&order=sort_order.asc" +
                 "&order=display_name.asc");
@@ -148,7 +150,7 @@ public sealed partial class SupabaseCharacterService(
             var requestUri = new Uri(
                 baseUri,
                 "rest/v1/story_characters" +
-                "?select=character_id,slug,display_name,tagline,species,habitat,catchphrase,favorite_thing,character_trait,golden_lesson,core_value,first_appearance,friends,reflection_question,challenge_text,image_path,mystery_image_path,image_drive_file_id,mystery_image_drive_file_id,unlock_story_slug,related_story_slugs,audio_clips,unlock_threshold_seconds,sort_order,status,updated_at" +
+                "?select=character_id,slug,display_name,character_category,unlock_rules,tagline,species,habitat,catchphrase,favorite_thing,character_trait,golden_lesson,core_value,first_appearance,friends,reflection_question,challenge_text,image_path,mystery_image_path,image_drive_file_id,mystery_image_drive_file_id,unlock_story_slug,related_story_slugs,audio_clips,unlock_threshold_seconds,sort_order,status,updated_at" +
                 "&order=sort_order.asc" +
                 "&order=display_name.asc");
 
@@ -186,6 +188,157 @@ public sealed partial class SupabaseCharacterService(
         {
             _logger.LogWarning(exception, "Admin characters lookup failed unexpectedly.");
             return Array.Empty<AdminCharacterRecord>();
+        }
+    }
+
+    public async Task<bool> RecordProfileListenAsync(
+        string? email,
+        CharacterProfileListenTrackingRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(email) ||
+            request.CharacterId == Guid.Empty ||
+            string.IsNullOrWhiteSpace(request.CharacterSlug) ||
+            string.IsNullOrWhiteSpace(request.StreamSlug))
+        {
+            return false;
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            _logger.LogWarning("Character profile listen tracking skipped: URL is not configured.");
+            return false;
+        }
+
+        var apiKey = ResolveServiceRoleKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            _logger.LogWarning("Character profile listen tracking skipped: ServiceRoleKey is not configured.");
+            return false;
+        }
+
+        try
+        {
+            var subscriberId = await ResolveOrCreateSubscriberIdAsync(baseUri, apiKey, email, cancellationToken);
+            if (string.IsNullOrWhiteSpace(subscriberId))
+            {
+                return false;
+            }
+
+            var payload = new
+            {
+                subscriber_id = subscriberId,
+                character_id = request.CharacterId,
+                character_slug = NormalizeOptionalSlug(request.CharacterSlug),
+                stream_slug = NormalizeOptionalSlug(request.StreamSlug),
+                metadata = new
+                {
+                    source = NormalizeOptionalText(request.Source, 40)
+                }
+            };
+
+            using var insertRequest = CreateJsonRequest(
+                HttpMethod.Post,
+                new Uri(baseUri, "rest/v1/character_audio_plays"),
+                apiKey,
+                payload,
+                "return=minimal");
+            using var insertResponse = await _httpClient.SendAsync(insertRequest, cancellationToken);
+            if (!insertResponse.IsSuccessStatusCode)
+            {
+                var body = await insertResponse.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning(
+                    "Character profile listen tracking failed. character_id={CharacterId} Status={StatusCode} Body={Body}",
+                    request.CharacterId,
+                    (int)insertResponse.StatusCode,
+                    body);
+                return false;
+            }
+
+            return true;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(exception, "Character profile listen tracking failed unexpectedly.");
+            return false;
+        }
+    }
+
+    public async Task<IReadOnlyList<UserCharacterProfileListenItem>> GetUserProfileListenStatsAsync(
+        string? email,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return Array.Empty<UserCharacterProfileListenItem>();
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            _logger.LogWarning("Character profile listen lookup skipped: URL is not configured.");
+            return Array.Empty<UserCharacterProfileListenItem>();
+        }
+
+        var apiKey = ResolveServiceRoleKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            _logger.LogWarning("Character profile listen lookup skipped: ServiceRoleKey is not configured.");
+            return Array.Empty<UserCharacterProfileListenItem>();
+        }
+
+        try
+        {
+            var subscriberId = await ResolveOrCreateSubscriberIdAsync(baseUri, apiKey, email, cancellationToken);
+            if (string.IsNullOrWhiteSpace(subscriberId))
+            {
+                return Array.Empty<UserCharacterProfileListenItem>();
+            }
+
+            var escapedSubscriberId = Uri.EscapeDataString(subscriberId);
+            var requestUri = new Uri(
+                baseUri,
+                "rest/v1/character_audio_plays" +
+                "?select=character_id,character_slug,occurred_at" +
+                $"&subscriber_id=eq.{escapedSubscriberId}" +
+                "&order=occurred_at.desc" +
+                "&limit=2500");
+
+            using var request = CreateRequest(HttpMethod.Get, requestUri, apiKey);
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning(
+                    "Character profile listen lookup failed. Status={StatusCode} Body={Body}",
+                    (int)response.StatusCode,
+                    body);
+                return Array.Empty<UserCharacterProfileListenItem>();
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var rows = await JsonSerializer.DeserializeAsync<List<CharacterAudioPlayRow>>(stream, JsonOptions, cancellationToken)
+                ?? [];
+
+            return rows
+                .Where(row => row.CharacterId != Guid.Empty)
+                .Where(row => !string.IsNullOrWhiteSpace(row.CharacterSlug))
+                .GroupBy(row => new
+                {
+                    row.CharacterId,
+                    CharacterSlug = row.CharacterSlug.Trim().ToLowerInvariant()
+                })
+                .Select(group => new UserCharacterProfileListenItem(
+                    CharacterId: group.Key.CharacterId,
+                    CharacterSlug: group.Key.CharacterSlug,
+                    ListenCount: group.Count(),
+                    LastListenedAtUtc: group.Max(item => item.OccurredAt)))
+                .OrderByDescending(item => item.LastListenedAtUtc)
+                .ToArray();
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(exception, "Character profile listen lookup failed unexpectedly.");
+            return Array.Empty<UserCharacterProfileListenItem>();
         }
     }
 
@@ -234,6 +387,12 @@ public sealed partial class SupabaseCharacterService(
             return new AdminOperationResult(false, "Status moet 'draft', 'published' of 'archived' wees.");
         }
 
+        var normalizedCharacterCategory = NormalizeCharacterCategory(request.CharacterCategory);
+        if (string.IsNullOrWhiteSpace(normalizedCharacterCategory))
+        {
+            return new AdminOperationResult(false, "Karakter kategorie moet 'hoofkarakter', 'ander', 'bonus' of 'bonus-2' wees.");
+        }
+
         var normalizedUnlockStorySlug = NormalizeOptionalSlug(request.UnlockStorySlug);
         var normalizedRelatedStorySlugs = NormalizeSlugList(request.RelatedStorySlugs);
         if (!string.IsNullOrWhiteSpace(normalizedUnlockStorySlug) &&
@@ -243,11 +402,21 @@ public sealed partial class SupabaseCharacterService(
         }
 
         var normalizedAudioClips = NormalizeAudioClipList(request.AudioClips);
+        var normalizedUnlockRules = NormalizeUnlockRuleList(request.UnlockRules);
 
         var payload = new Dictionary<string, object?>
         {
             ["slug"] = normalizedSlug,
             ["display_name"] = normalizedDisplayName,
+            ["character_category"] = normalizedCharacterCategory,
+            ["unlock_rules"] = normalizedUnlockRules.Select(rule => new Dictionary<string, object?>
+            {
+                ["rule_type"] = rule.RuleType,
+                ["target_slugs"] = rule.TargetSlugs,
+                ["target_match_mode"] = rule.TargetMatchMode,
+                ["minimum_count"] = rule.MinimumCount,
+                ["minimum_seconds"] = rule.MinimumSeconds
+            }).ToArray(),
             ["tagline"] = NormalizeOptionalText(request.Tagline, 320),
             ["species"] = NormalizeOptionalText(request.Species, 120),
             ["habitat"] = NormalizeOptionalText(request.Habitat, 180),
@@ -337,6 +506,8 @@ public sealed partial class SupabaseCharacterService(
             CharacterId: row.CharacterId,
             Slug: row.Slug.Trim(),
             DisplayName: row.DisplayName.Trim(),
+            CharacterCategory: NormalizeCharacterCategory(row.CharacterCategory) ?? "ander",
+            UnlockRules: NormalizeUnlockRuleList(row.UnlockRules),
             Tagline: NormalizeOptionalText(row.Tagline, 320),
             Species: NormalizeOptionalText(row.Species, 120),
             Habitat: NormalizeOptionalText(row.Habitat, 180),
@@ -367,6 +538,8 @@ public sealed partial class SupabaseCharacterService(
             CharacterId: row.CharacterId,
             Slug: row.Slug.Trim(),
             DisplayName: row.DisplayName.Trim(),
+            CharacterCategory: NormalizeCharacterCategory(row.CharacterCategory) ?? "ander",
+            UnlockRules: NormalizeUnlockRuleList(row.UnlockRules),
             Tagline: NormalizeOptionalText(row.Tagline, 320),
             Species: NormalizeOptionalText(row.Species, 120),
             Habitat: NormalizeOptionalText(row.Habitat, 180),
@@ -505,6 +678,99 @@ public sealed partial class SupabaseCharacterService(
         return CharacterSlugRegex().IsMatch(trimmed) ? trimmed : null;
     }
 
+    private static string? NormalizeCharacterCategory(string? value)
+    {
+        return value?.Trim().ToLowerInvariant() switch
+        {
+            "hoofkarakter" => "hoofkarakter",
+            "ander" => "ander",
+            "bonus" => "bonus",
+            "bonus-2" or "bonus 2" => "bonus-2",
+            _ => null
+        };
+    }
+
+    private static CharacterUnlockRuleItem[] NormalizeUnlockRuleList(IReadOnlyList<CharacterUnlockRuleItem>? values)
+    {
+        return (values ?? Array.Empty<CharacterUnlockRuleItem>())
+            .Select(NormalizeUnlockRule)
+            .Where(static rule => rule is not null)
+            .Cast<CharacterUnlockRuleItem>()
+            .ToArray();
+    }
+
+    private static CharacterUnlockRuleItem[] NormalizeUnlockRuleList(JsonElement? value)
+    {
+        if (value is null || value.Value.ValueKind is JsonValueKind.Null or JsonValueKind.Undefined)
+        {
+            return Array.Empty<CharacterUnlockRuleItem>();
+        }
+
+        if (value.Value.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<CharacterUnlockRuleItem>();
+        }
+
+        var rules = new List<CharacterUnlockRuleItem>();
+        foreach (var item in value.Value.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var targetSlugs = item.TryGetProperty("target_slugs", out var targetSlugsNode) &&
+                              targetSlugsNode.ValueKind == JsonValueKind.Array
+                ? targetSlugsNode
+                    .EnumerateArray()
+                    .Where(entry => entry.ValueKind == JsonValueKind.String)
+                    .Select(entry => entry.GetString() ?? string.Empty)
+                    .ToArray()
+                : Array.Empty<string>();
+
+            var rule = NormalizeUnlockRule(new CharacterUnlockRuleItem(
+                RuleType: ReadJsonString(item, "rule_type") ?? string.Empty,
+                TargetSlugs: targetSlugs,
+                TargetMatchMode: ReadJsonString(item, "target_match_mode") ?? CharacterUnlockEvaluator.MatchModeAny,
+                MinimumCount: ReadJsonInt(item, "minimum_count"),
+                MinimumSeconds: ReadJsonInt(item, "minimum_seconds")));
+
+            if (rule is not null)
+            {
+                rules.Add(rule);
+            }
+        }
+
+        return rules.ToArray();
+    }
+
+    private static CharacterUnlockRuleItem? NormalizeUnlockRule(CharacterUnlockRuleItem rule)
+    {
+        var normalizedRuleType = rule.RuleType?.Trim().ToLowerInvariant() switch
+        {
+            CharacterUnlockEvaluator.RuleTypeStoryListenSeconds => CharacterUnlockEvaluator.RuleTypeStoryListenSeconds,
+            CharacterUnlockEvaluator.RuleTypeStoryRepeatCount => CharacterUnlockEvaluator.RuleTypeStoryRepeatCount,
+            CharacterUnlockEvaluator.RuleTypeStoryCount => CharacterUnlockEvaluator.RuleTypeStoryCount,
+            CharacterUnlockEvaluator.RuleTypeUnlockedCharacterCount => CharacterUnlockEvaluator.RuleTypeUnlockedCharacterCount,
+            CharacterUnlockEvaluator.RuleTypeProfileListenCount => CharacterUnlockEvaluator.RuleTypeProfileListenCount,
+            _ => null
+        };
+
+        if (string.IsNullOrWhiteSpace(normalizedRuleType))
+        {
+            return null;
+        }
+
+        return new CharacterUnlockRuleItem(
+            RuleType: normalizedRuleType,
+            TargetSlugs: NormalizeSlugList(rule.TargetSlugs),
+            TargetMatchMode: string.Equals(rule.TargetMatchMode, CharacterUnlockEvaluator.MatchModeAll, StringComparison.OrdinalIgnoreCase)
+                ? CharacterUnlockEvaluator.MatchModeAll
+                : CharacterUnlockEvaluator.MatchModeAny,
+            MinimumCount: Math.Max(0, rule.MinimumCount),
+            MinimumSeconds: Math.Max(0, rule.MinimumSeconds));
+    }
+
     private static string NormalizeSlugCandidate(string? slug, string fallbackDisplayName)
     {
         var candidate = string.IsNullOrWhiteSpace(slug)
@@ -515,6 +781,79 @@ public sealed partial class SupabaseCharacterService(
         lowerInvariant = Regex.Replace(lowerInvariant, "[^a-z0-9]+", "-");
         lowerInvariant = Regex.Replace(lowerInvariant, "-{2,}", "-");
         return lowerInvariant.Trim('-');
+    }
+
+    private async Task<string?> ResolveOrCreateSubscriberIdAsync(
+        Uri baseUri,
+        string apiKey,
+        string email,
+        CancellationToken cancellationToken)
+    {
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(normalizedEmail))
+        {
+            return null;
+        }
+
+        var cacheKey = $"{SubscriberCachePrefix}{normalizedEmail}";
+        if (_memoryCache.TryGetValue(cacheKey, out string? cachedSubscriberId) &&
+            !string.IsNullOrWhiteSpace(cachedSubscriberId))
+        {
+            return cachedSubscriberId;
+        }
+
+        var escapedEmail = Uri.EscapeDataString(normalizedEmail);
+        var lookupUri = new Uri(baseUri, $"rest/v1/subscribers?select=subscriber_id&email=eq.{escapedEmail}&limit=1");
+
+        using (var lookupRequest = CreateRequest(HttpMethod.Get, lookupUri, apiKey))
+        using (var lookupResponse = await _httpClient.SendAsync(lookupRequest, cancellationToken))
+        {
+            if (lookupResponse.IsSuccessStatusCode)
+            {
+                var body = await lookupResponse.Content.ReadAsStringAsync(cancellationToken);
+                var subscriberId = ReadFirstStringProperty(body, "subscriber_id");
+                if (!string.IsNullOrWhiteSpace(subscriberId))
+                {
+                    _memoryCache.Set(cacheKey, subscriberId, SubscriberCacheDuration);
+                    return subscriberId;
+                }
+            }
+            else
+            {
+                var body = await lookupResponse.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning(
+                    "Character subscriber lookup failed. Status={StatusCode} Body={Body}",
+                    (int)lookupResponse.StatusCode,
+                    body);
+            }
+        }
+
+        var upsertUri = new Uri(baseUri, "rest/v1/subscribers?on_conflict=email&select=subscriber_id");
+        using var upsertRequest = CreateJsonRequest(
+            HttpMethod.Post,
+            upsertUri,
+            apiKey,
+            new { email = normalizedEmail },
+            "resolution=merge-duplicates,return=representation");
+        using var upsertResponse = await _httpClient.SendAsync(upsertRequest, cancellationToken);
+        if (!upsertResponse.IsSuccessStatusCode)
+        {
+            var body = await upsertResponse.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Character subscriber upsert failed. Status={StatusCode} Body={Body}",
+                (int)upsertResponse.StatusCode,
+                body);
+            return null;
+        }
+
+        var upsertResponseBody = await upsertResponse.Content.ReadAsStringAsync(cancellationToken);
+        var createdSubscriberId = ReadFirstStringProperty(upsertResponseBody, "subscriber_id");
+        if (!string.IsNullOrWhiteSpace(createdSubscriberId))
+        {
+            _memoryCache.Set(cacheKey, createdSubscriberId, SubscriberCacheDuration);
+        }
+
+        return createdSubscriberId;
     }
 
     private static string[] NormalizeSlugList(IEnumerable<string>? values)
@@ -680,6 +1019,38 @@ public sealed partial class SupabaseCharacterService(
         return 0;
     }
 
+    private static string? ReadFirstStringProperty(string json, string propertyName)
+    {
+        if (string.IsNullOrWhiteSpace(json) || string.IsNullOrWhiteSpace(propertyName))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Array || root.GetArrayLength() == 0)
+            {
+                return null;
+            }
+
+            var first = root[0];
+            if (!first.TryGetProperty(propertyName, out var property))
+            {
+                return null;
+            }
+
+            return property.ValueKind == JsonValueKind.String
+                ? property.GetString()
+                : property.ToString();
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     private static Guid? ReadFirstGuidProperty(string json, string propertyName)
     {
         if (string.IsNullOrWhiteSpace(json) || string.IsNullOrWhiteSpace(propertyName))
@@ -730,8 +1101,14 @@ public sealed partial class SupabaseCharacterService(
         [JsonPropertyName("display_name")]
         public string DisplayName { get; set; } = string.Empty;
 
+        [JsonPropertyName("unlock_rules")]
+        public JsonElement? UnlockRules { get; set; }
+
         [JsonPropertyName("tagline")]
         public string? Tagline { get; set; }
+
+        [JsonPropertyName("character_category")]
+        public string? CharacterCategory { get; set; }
 
         [JsonPropertyName("species")]
         public string? Species { get; set; }
@@ -798,5 +1175,17 @@ public sealed partial class SupabaseCharacterService(
 
         [JsonPropertyName("updated_at")]
         public DateTimeOffset? UpdatedAt { get; set; }
+    }
+
+    private sealed class CharacterAudioPlayRow
+    {
+        [JsonPropertyName("character_id")]
+        public Guid CharacterId { get; set; }
+
+        [JsonPropertyName("character_slug")]
+        public string CharacterSlug { get; set; } = string.Empty;
+
+        [JsonPropertyName("occurred_at")]
+        public DateTimeOffset OccurredAt { get; set; }
     }
 }

@@ -30,6 +30,8 @@ public sealed record UserStoryProgressItem(
     string Source,
     DateTimeOffset LastListenedAtUtc,
     decimal TotalListenedSeconds,
+    int ListenCount,
+    int CompletedListenCount,
     decimal? LastPositionSeconds,
     decimal? DurationSeconds,
     bool IsCompleted);

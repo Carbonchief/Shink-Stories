@@ -118,7 +118,7 @@
 }
 
 .site-shell.admin-route .site-header {
-    z-index: 1800;
+    z-index: 220;
 }
 
 .nav-wrap {
@@ -160,7 +160,7 @@
 }
 
 .site-shell.admin-route .nav-controls {
-    z-index: 1803;
+    z-index: 223;
 }
 
 .guest-controls {
@@ -172,7 +172,7 @@
 }
 
 .site-shell.admin-route .guest-controls {
-    z-index: 1803;
+    z-index: 223;
 }
 
 .site-search-form {
@@ -428,7 +428,7 @@
 }
 
 .site-shell.admin-route .nav-menu-toggle {
-    z-index: 1804;
+    z-index: 224;
 }
 
 .nav-menu-toggle i {
@@ -467,7 +467,7 @@
 }
 
 .site-shell.admin-route .site-nav {
-    z-index: 1805;
+    z-index: 225;
 }
 
 .site-nav a {
@@ -1222,7 +1222,7 @@
 }
 
 .site-shell.admin-route .account-menu {
-    z-index: 1802;
+    z-index: 222;
 }
 
 .account-toggle {

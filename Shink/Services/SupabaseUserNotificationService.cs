@@ -13,6 +13,7 @@ public sealed class SupabaseUserNotificationService(
     IOptions<SupabaseOptions> supabaseOptions,
     IMemoryCache memoryCache,
     ICharacterCatalogService characterCatalogService,
+    ICharacterTrackingService characterTrackingService,
     IStoryTrackingService storyTrackingService,
     ILogger<SupabaseUserNotificationService> logger) : IUserNotificationService
 {
@@ -24,6 +25,7 @@ public sealed class SupabaseUserNotificationService(
     private readonly SupabaseOptions _options = supabaseOptions.Value;
     private readonly IMemoryCache _memoryCache = memoryCache;
     private readonly ICharacterCatalogService _characterCatalogService = characterCatalogService;
+    private readonly ICharacterTrackingService _characterTrackingService = characterTrackingService;
     private readonly IStoryTrackingService _storyTrackingService = storyTrackingService;
     private readonly ILogger<SupabaseUserNotificationService> _logger = logger;
     private const int DefaultNotificationPageSize = 10;
@@ -454,40 +456,33 @@ public sealed class SupabaseUserNotificationService(
                 return new NotificationSyncResult(0);
             }
 
-            var normalizedStorySlug = NormalizeOptionalSlug(storySlug);
             var characters = await _characterCatalogService.GetPublishedCharactersAsync(cancellationToken);
             if (characters.Count == 0)
             {
                 return new NotificationSyncResult(0);
             }
 
-            var candidateCharacters = string.IsNullOrWhiteSpace(normalizedStorySlug)
-                ? characters
-                : characters
-                    .Where(character => BuildUnlockStorySlugs(character)
-                        .Contains(normalizedStorySlug, StringComparer.OrdinalIgnoreCase))
-                    .ToArray();
-            if (candidateCharacters.Count == 0)
-            {
-                return new NotificationSyncResult(0);
-            }
-
             var progressItems = await _storyTrackingService.GetUserStoryProgressAsync(email, cancellationToken);
-            if (progressItems.Count == 0)
-            {
-                return new NotificationSyncResult(0);
-            }
-
             var progressLookup = progressItems
                 .GroupBy(progress => progress.StorySlug, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(
                     group => group.Key,
                     group => group.OrderByDescending(item => item.LastListenedAtUtc).First(),
                     StringComparer.OrdinalIgnoreCase);
+            var profileListenItems = await _characterTrackingService.GetUserProfileListenStatsAsync(email, cancellationToken);
+            var profileListenLookup = profileListenItems
+                .GroupBy(item => item.CharacterSlug, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Sum(item => item.ListenCount),
+                    StringComparer.OrdinalIgnoreCase);
+            var unlockStateLookup = CharacterUnlockEvaluator.EvaluateUnlockStates(
+                characters,
+                progressLookup,
+                profileListenLookup);
 
-            var unlockedCharacters = candidateCharacters
-                .Where(character => BuildUnlockStorySlugs(character)
-                    .Any(slug => IsCharacterUnlocked(character, slug, progressLookup)))
+            var unlockedCharacters = characters
+                .Where(character => unlockStateLookup.TryGetValue(character.CharacterId, out var isUnlocked) && isUnlocked)
                 .ToArray();
             if (unlockedCharacters.Length == 0)
             {
@@ -856,33 +851,6 @@ public sealed class SupabaseUserNotificationService(
         string.IsNullOrWhiteSpace(value)
             ? string.Empty
             : value.Trim().ToLowerInvariant();
-
-    private static bool IsCharacterUnlocked(
-        StoryCharacterItem character,
-        string storySlug,
-        IReadOnlyDictionary<string, UserStoryProgressItem> progressLookup)
-    {
-        if (!progressLookup.TryGetValue(storySlug, out var progress))
-        {
-            return false;
-        }
-
-        return progress.IsCompleted || progress.TotalListenedSeconds >= character.UnlockThresholdSeconds;
-    }
-
-    private static IReadOnlyList<string> BuildUnlockStorySlugs(StoryCharacterItem character)
-    {
-        var slugs = new List<string>();
-        if (!string.IsNullOrWhiteSpace(character.UnlockStorySlug))
-        {
-            slugs.Add(character.UnlockStorySlug.Trim());
-        }
-
-        slugs.AddRange(character.RelatedStorySlugs.Where(slug => !string.IsNullOrWhiteSpace(slug)).Select(slug => slug.Trim()));
-        return slugs
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-    }
 
     private static string BuildCharacterUnlockSourceKey(StoryCharacterItem character) =>
         $"character-unlocked-{character.CharacterId:N}";

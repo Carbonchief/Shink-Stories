@@ -2,7 +2,9 @@
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
 @using Microsoft.Extensions.Options
+@implements IAsyncDisposable
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IBlogAdminService BlogAdminService
 @inject IBlogContentRenderer BlogContentRenderer
@@ -14,7 +16,6 @@
 
 <section class="admin-section">
     <div class="admin-section-head">
-        <h2>@T("Blog", "Blog")</h2>
         <div class="admin-search">
             <input class="blog-admin-search"
                    type="search"
@@ -29,13 +30,24 @@
                 <option value="scheduled">@T("Geskeduleer", "Scheduled")</option>
             </select>
 
-            <button type="button" class="blog-admin-btn" @onclick="BeginCreatePost">
-                @T("Nuwe blog", "New post")
-            </button>
+            <MudButton Class="blog-admin-new-action-btn"
+                       Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       OnClick="BeginCreatePost"
+                       aria-label='@T("Nuwe blog", "New post")'
+                       title='@T("Nuwe blog", "New post")'>
+                <i class="fa-solid fa-plus" aria-hidden="true"></i>
+            </MudButton>
 
-            <button type="button" class="blog-admin-btn blog-admin-btn-secondary" @onclick="() => ReloadAsync()">
-                @T("Herlaai", "Refresh")
-            </button>
+            <MudButton Class="admin-btn admin-btn-secondary admin-icon-btn"
+                       Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       OnClick="() => ReloadAsync()"
+                       aria-label='@T("Herlaai", "Refresh")'
+                       title='@T("Herlaai", "Refresh")'>
+                <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
+                <span class="sr-only">@T("Herlaai", "Refresh")</span>
+            </MudButton>
         </div>
     </div>
 
@@ -260,16 +272,77 @@
                             <div class="blog-admin-card-head">
                                 <div>
                                     <h4>@T("Inhoud", "Content")</h4>
-                                    <p>@T("Markdown word veilig na HTML gerender vir die publieke blog.", "Markdown is safely rendered to HTML for the public blog.")</p>
+                                    <p>@T("Gebruik die nutsbalk om ryk teks te formateer. Die inhoud word veilig vir die publieke blog gerender.", "Use the toolbar to format rich text. The content is safely rendered for the public blog.")</p>
                                 </div>
                             </div>
 
-                            <label class="blog-admin-field">
-                                <span>@T("Markdown", "Markdown")</span>
-                                <textarea class="blog-admin-markdown-editor"
-                                          rows="18"
-                                          @bind="Editor.ContentMarkdown"></textarea>
-                            </label>
+                            <div class="blog-admin-rich-editor-shell" @ref="_richTextEditorShell">
+                                <div class="blog-admin-rich-toolbar" role="toolbar" aria-label="@T("Rykteks nutsbalk", "Rich text toolbar")">
+                                    <button type="button"
+                                            class="blog-admin-rich-btn"
+                                            data-rich-text-command="bold"
+                                            title="@T("Vet", "Bold")"
+                                            aria-label="@T("Vet", "Bold")">
+                                        <strong>B</strong>
+                                    </button>
+                                    <button type="button"
+                                            class="blog-admin-rich-btn"
+                                            data-rich-text-command="italic"
+                                            title="@T("Kursief", "Italic")"
+                                            aria-label="@T("Kursief", "Italic")">
+                                        <em>I</em>
+                                    </button>
+                                    <button type="button"
+                                            class="blog-admin-rich-btn"
+                                            data-rich-text-command="underline"
+                                            title="@T("Onderstreep", "Underline")"
+                                            aria-label="@T("Onderstreep", "Underline")">
+                                        <span>U</span>
+                                    </button>
+                                    <button type="button"
+                                            class="blog-admin-rich-btn"
+                                            data-rich-text-command="heading2"
+                                            title="@T("Opskrif 2", "Heading 2")"
+                                            aria-label="@T("Opskrif 2", "Heading 2")">
+                                        H2
+                                    </button>
+                                    <button type="button"
+                                            class="blog-admin-rich-btn"
+                                            data-rich-text-command="heading3"
+                                            title="@T("Opskrif 3", "Heading 3")"
+                                            aria-label="@T("Opskrif 3", "Heading 3")">
+                                        H3
+                                    </button>
+                                    <button type="button"
+                                            class="blog-admin-rich-btn"
+                                            data-rich-text-command="unorderedList"
+                                            title="@T("Kolpunte lys", "Bullet list")"
+                                            aria-label="@T("Kolpunte lys", "Bullet list")">
+                                        &bull;
+                                    </button>
+                                    <button type="button"
+                                            class="blog-admin-rich-btn"
+                                            data-rich-text-command="orderedList"
+                                            title="@T("Genommerde lys", "Numbered list")"
+                                            aria-label="@T("Genommerde lys", "Numbered list")">
+                                        1.
+                                    </button>
+                                    <button type="button"
+                                            class="blog-admin-rich-btn"
+                                            data-rich-text-command="clearFormatting"
+                                            title="@T("Wis formatering", "Clear formatting")"
+                                            aria-label="@T("Wis formatering", "Clear formatting")">
+                                        ⌫
+                                    </button>
+                                </div>
+
+                                <div class="blog-admin-markdown-editor"
+                                     contenteditable="true"
+                                     spellcheck="true"
+                                     role="textbox"
+                                     aria-multiline="true"
+                                     data-placeholder="@T("Tik of plak jou blog inhoud hier.", "Type or paste your blog content here.")"></div>
+                            </div>
                         </section>
 
                         <section class="blog-admin-card blog-admin-card-preview">
@@ -313,6 +386,10 @@
     private bool IsDeleting { get; set; }
     private string? ErrorMessage { get; set; }
     private string? StatusMessage { get; set; }
+    private ElementReference _richTextEditorShell;
+    private IJSObjectReference? _richTextEditorModule;
+    private DotNetObjectReference<AdminBlogPanel>? _dotNetReference;
+    private bool _richTextEditorSyncPending = true;
 
     private bool IsNewPost => Editor?.PostId is not Guid postId || postId == Guid.Empty;
 
@@ -347,6 +424,40 @@
         await ReloadAsync();
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Editor is null || !_richTextEditorSyncPending)
+        {
+            return;
+        }
+
+        _richTextEditorModule ??= await JSRuntime.InvokeAsync<IJSObjectReference>(
+            "import",
+            "/Components/Pages/AdminBlogPanel.razor.js");
+
+        _dotNetReference ??= DotNetObjectReference.Create(this);
+        var renderedHtml = BlogContentRenderer.RenderHtml(Editor.ContentMarkdown);
+        await _richTextEditorModule.InvokeVoidAsync(
+            "syncRichTextEditor",
+            _richTextEditorShell,
+            _dotNetReference,
+            renderedHtml);
+
+        _richTextEditorSyncPending = false;
+    }
+
+    [JSInvokable]
+    public async Task OnRichTextEditorInput(string html)
+    {
+        if (Editor is null)
+        {
+            return;
+        }
+
+        Editor.ContentMarkdown = html ?? string.Empty;
+        await InvokeAsync(StateHasChanged);
+    }
+
     private async Task ReloadAsync(Guid? selectPostId = null)
     {
         IsLoading = true;
@@ -365,6 +476,7 @@
                     : Posts.FirstOrDefault();
 
             Editor = selected is null ? null : EditableBlogPost.From(selected);
+            MarkRichTextEditorDirty();
         }
         catch (Exception exception)
         {
@@ -385,6 +497,7 @@
         ErrorMessage = null;
         StatusMessage = null;
         Editor = EditableBlogPost.CreateEmpty();
+        MarkRichTextEditorDirty();
     }
 
     private void SelectPost(AdminBlogPostRecord post)
@@ -392,6 +505,7 @@
         ErrorMessage = null;
         StatusMessage = null;
         Editor = EditableBlogPost.From(post);
+        MarkRichTextEditorDirty();
     }
 
     private void OnTitleChanged(ChangeEventArgs args)
@@ -694,6 +808,11 @@
     private string T(string afrikaans, string english) =>
         string.Equals(CurrentLanguageCode, "en", StringComparison.OrdinalIgnoreCase) ? english : afrikaans;
 
+    private void MarkRichTextEditorDirty()
+    {
+        _richTextEditorSyncPending = true;
+    }
+
     private string BuildStatusLabel(bool isPublished, DateTimeOffset? publishedAt) =>
         !isPublished
             ? T("Konsep", "Draft")
@@ -751,6 +870,24 @@
         normalized = System.Text.RegularExpressions.Regex.Replace(normalized, "[^a-z0-9]+", "-");
         normalized = System.Text.RegularExpressions.Regex.Replace(normalized, "-{2,}", "-");
         return normalized.Trim('-');
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_richTextEditorModule is not null)
+        {
+            try
+            {
+                await _richTextEditorModule.InvokeVoidAsync("disposeRichTextEditor", _richTextEditorShell);
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+
+            await _richTextEditorModule.DisposeAsync();
+        }
+
+        _dotNetReference?.Dispose();
     }
 
     private static string NormalizeImageContentType(IBrowserFile file) =>
