@@ -586,11 +586,19 @@ async function clearNotificationCenter(centerRoot) {
             return;
         }
 
-        state.notifications = [];
+        state.removingNotificationIds = new Set(
+            state.notifications
+                .map((notification) => notification && typeof notification.id === "string" ? notification.id : "")
+                .filter((notificationId) => notificationId.length > 0));
         state.unreadCount = 0;
+        setNotificationCount(parts, 0);
+        renderNotificationItems(parts, state.notifications);
+        syncNotificationClearButton(parts, state);
+        await delay(NOTIFICATION_REMOVE_ANIMATION_MS);
+
+        state.notifications = [];
         state.clearingNotificationIds = new Set();
         state.removingNotificationIds = new Set();
-        setNotificationCount(parts, 0);
         renderNotificationItems(parts, [], "Geen kennisgewings nog nie.");
         syncNotificationClearButton(parts, state);
     } catch {
