@@ -140,6 +140,11 @@
     background:
         linear-gradient(180deg, rgba(28, 55, 64, 0.88) 0%, rgba(31, 71, 82, 0.84) 100%);
     color: #f4f8f9;
+    cursor: pointer;
+}
+
+.character-card.is-locked.is-shaking {
+    animation: character-card-locked-shake 520ms ease-in-out;
 }
 
 .character-card-media {
@@ -208,6 +213,11 @@
 .character-card.is-locked .character-card-badge {
     background: rgba(243, 154, 50, 0.92);
     color: #1b1207;
+}
+
+.character-card-badge.is-slamming {
+    animation: character-card-lock-slam 360ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+    transform-origin: center center;
 }
 
 .character-card-body {
@@ -598,6 +608,47 @@
     }
 }
 
+@keyframes character-card-locked-shake {
+    0%,
+    100% {
+        transform: translateX(0);
+    }
+
+    20% {
+        transform: translateX(-5px) rotate(-1deg);
+    }
+
+    40% {
+        transform: translateX(5px) rotate(1deg);
+    }
+
+    60% {
+        transform: translateX(-4px) rotate(-0.7deg);
+    }
+
+    80% {
+        transform: translateX(4px) rotate(0.7deg);
+    }
+}
+
+@keyframes character-card-lock-slam {
+    0% {
+        transform: translateY(-10px) scale(1.12);
+    }
+
+    55% {
+        transform: translateY(0) scale(0.88);
+    }
+
+    75% {
+        transform: translateY(-2px) scale(1.02);
+    }
+
+    100% {
+        transform: translateY(0) scale(1);
+    }
+}
+
 @keyframes story-access-popup-image-pop {
     0% {
         opacity: 0;
@@ -800,6 +851,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+    .character-card-badge.is-slamming,
+    .character-card.is-locked.is-shaking,
     .character-profile-popup-image {
         animation: none;
         opacity: 1;

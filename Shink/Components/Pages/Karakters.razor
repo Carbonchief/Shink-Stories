@@ -150,7 +150,8 @@
                 }
                 else
                 {
-                    <article class="character-card is-locked">
+                    <article class="@($"character-card is-locked{(ShakingLockedCharacterId == card.Character.CharacterId ? " is-shaking" : string.Empty)}")"
+                             @onclick="() => TriggerLockedCardShakeAsync(card)">
                         <div class="character-card-media">
                             <img src="@card.DisplayImagePath"
                                  alt="@card.ImageAlt"
@@ -158,7 +159,9 @@
                                  loading="lazy"
                                  decoding="async"
                                  onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
-                            <span class="character-card-badge" aria-label="Nog gesluit" title="Nog gesluit">
+                            <span class="@($"character-card-badge{(ShakingLockedCharacterId == card.Character.CharacterId ? " is-slamming" : string.Empty)}")"
+                                  aria-label="Nog gesluit"
+                                  title="Nog gesluit">
                                 <i class="fa-solid fa-lock" aria-hidden="true"></i>
                             </span>
 
@@ -185,6 +188,7 @@
                                 <button type="button"
                                         class="character-card-cta"
                                         @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
+                                        @onclick:stopPropagation="true"
                                         disabled="@IsCallToActionLoading(card.CallToActionHref)">
                                     @if (IsCallToActionLoading(card.CallToActionHref))
                                     {
@@ -300,6 +304,7 @@
     private string? LoadingCallToActionHref { get; set; }
     private bool IsProfileImageCelebrating { get; set; }
     private Guid? AnimatedFriendCharacterId { get; set; }
+    private Guid? ShakingLockedCharacterId { get; set; }
     private IJSObjectReference? _charactersModule;
     private int UnlockedCharacterCount => CharacterCards.Count(card => card.IsUnlocked);
     private string KaraktersCanonicalUrl => NavigationManager.ToAbsoluteUri("/karakters").ToString();
@@ -583,6 +588,24 @@
         if (args.Key is "Enter" or " ")
         {
             OpenCharacterProfile(card);
+        }
+    }
+
+    private async Task TriggerLockedCardShakeAsync(CharacterCardViewModel card)
+    {
+        if (card.IsUnlocked)
+        {
+            return;
+        }
+
+        ShakingLockedCharacterId = card.Character.CharacterId;
+        StateHasChanged();
+        await Task.Delay(520);
+
+        if (ShakingLockedCharacterId == card.Character.CharacterId)
+        {
+            ShakingLockedCharacterId = null;
+            StateHasChanged();
         }
     }
 
