@@ -239,6 +239,81 @@ public sealed class SupabaseUserNotificationService(
         }
     }
 
+    public async Task<bool> ClearNotificationAsync(
+        string? email,
+        Guid notificationId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(email) || notificationId == Guid.Empty)
+        {
+            return false;
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            _logger.LogWarning("Supabase notification clear skipped: URL is not configured.");
+            return false;
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            _logger.LogWarning("Supabase notification clear skipped: ServiceRoleKey is not configured.");
+            return false;
+        }
+
+        try
+        {
+            var subscriberId = await ResolveOrCreateSubscriberIdAsync(baseUri, apiKey, email, cancellationToken);
+            if (string.IsNullOrWhiteSpace(subscriberId))
+            {
+                return false;
+            }
+
+            var escapedSubscriberId = Uri.EscapeDataString(subscriberId);
+            var escapedNotificationId = Uri.EscapeDataString(notificationId.ToString());
+            var requestUri = new Uri(
+                baseUri,
+                "rest/v1/subscriber_notifications" +
+                "?select=notification_id" +
+                $"&subscriber_id=eq.{escapedSubscriberId}" +
+                $"&notification_id=eq.{escapedNotificationId}" +
+                "&cleared_at=is.null");
+
+            using var request = CreateJsonRequest(
+                HttpMethod.Patch,
+                requestUri,
+                apiKey,
+                new
+                {
+                    cleared_at = DateTimeOffset.UtcNow,
+                    read_at = DateTimeOffset.UtcNow
+                },
+                "return=representation");
+
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning(
+                    "Supabase notification clear failed. Status={StatusCode} Body={Body}",
+                    (int)response.StatusCode,
+                    body);
+                return false;
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var rows = await JsonSerializer.DeserializeAsync<List<InsertedNotificationRow>>(stream, JsonOptions, cancellationToken)
+                ?? [];
+            return rows.Any(row => row.NotificationId == notificationId);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(exception, "Supabase notification clear failed unexpectedly.");
+            return false;
+        }
+    }
+
     public async Task<int> CreatePublishedStoryNotificationsAsync(
         PublishedStoryNotificationRequest request,
         CancellationToken cancellationToken = default)

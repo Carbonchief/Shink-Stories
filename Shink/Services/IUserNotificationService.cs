@@ -19,6 +19,11 @@ public interface IUserNotificationService
         string? email,
         CancellationToken cancellationToken = default);
 
+    Task<bool> ClearNotificationAsync(
+        string? email,
+        Guid notificationId,
+        CancellationToken cancellationToken = default);
+
     Task<int> CreatePublishedStoryNotificationsAsync(
         PublishedStoryNotificationRequest request,
         CancellationToken cancellationToken = default);
