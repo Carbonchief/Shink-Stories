@@ -458,9 +458,12 @@
 }
 
 #main-site-nav.is-open {
-    background: #ffffff;
-    border-color: color-mix(in srgb, #d9e0e5 88%, #bcc6cd);
-    box-shadow: 0 12px 24px rgba(14, 33, 37, 0.14);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 14px;
+    background: rgba(8, 10, 13, 0.96);
+    box-shadow: 0 18px 34px rgba(0, 0, 0, 0.45);
+    padding: 0.5rem;
+    backdrop-filter: none;
 }
 
 .site-shell.admin-route .site-nav {
@@ -484,9 +487,22 @@
 }
 
 #main-site-nav a {
-    color: #173847;
-    background: #ffffff;
-    border-color: #d6dde2;
+    gap: 0.65rem;
+    padding: 0.55rem 0.62rem;
+    border-radius: 10px;
+    color: #f1f4f8;
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    font-weight: 650;
+}
+
+#main-site-nav a i {
+    width: 16px;
+    height: 16px;
+    font-size: 16px;
+    line-height: 1;
+    color: rgba(241, 244, 248, 0.88);
 }
 
 .site-nav.is-open a {
@@ -494,8 +510,8 @@
 }
 
 #main-site-nav.is-open a:hover {
-    background: #f2f6f8;
-    border-color: #c5d0d7;
+    background: rgba(255, 255, 255, 0.12);
+    border-color: transparent;
 }
 
 .site-nav a:hover {
@@ -513,6 +529,10 @@
     color: #1e1e1e;
     border-color: color-mix(in srgb, var(--accent-deep) 65%, #b27f2e);
     box-shadow: 0 2px 10px rgba(169, 106, 18, 0.2);
+}
+
+#main-site-nav a.active i {
+    color: #1e1e1e;
 }
 
 .site-shell.story-route .site-header {
