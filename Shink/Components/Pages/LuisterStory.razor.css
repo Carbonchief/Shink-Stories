@@ -102,11 +102,11 @@
 @keyframes story-fullscreen-cover-breathe {
     0%,
     100% {
-        transform: scale(1);
+        transform: translate3d(0, 0, 0) scale(1);
     }
 
     50% {
-        transform: scale(1.07);
+        transform: translate3d(0, 0, 0) scale(1.035);
     }
 }
 
@@ -678,6 +678,7 @@
     align-items: stretch;
     overflow: hidden;
     background: #000000;
+    isolation: isolate;
 }
 
 .story-player-page.manual-fullscreen-focus .story-cover-wrap {
@@ -688,6 +689,8 @@
     margin: 0;
     border-radius: 0;
     overflow: hidden;
+    contain: paint;
+    isolation: isolate;
 }
 
 .story-player-page.manual-fullscreen-focus .story-cover {
@@ -699,10 +702,13 @@
     object-fit: cover;
     border-radius: 0;
     box-shadow: none;
-    transform: none;
     filter: none;
     background: #000000;
     transform-origin: center center;
+    will-change: transform;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    transform: translate3d(0, 0, 0);
     animation: story-fullscreen-cover-breathe 34s ease-in-out infinite;
 }
 
@@ -884,6 +890,8 @@
     opacity: 0;
     transform: translateY(1.1rem);
     pointer-events: none;
+    background: transparent;
+    backdrop-filter: none;
 }
 
 .story-player-page.manual-fullscreen-focus.fullscreen-controls-hidden .story-fullscreen-toggle,
@@ -1137,5 +1145,12 @@
 @media (prefers-reduced-motion: reduce) {
     .story-player-page.manual-fullscreen-focus .story-cover {
         animation: none;
+    }
+}
+
+@media (hover: none) and (pointer: coarse) and (orientation: landscape) {
+    .story-player-page.manual-fullscreen-focus .story-cover {
+        animation: none;
+        transform: translate3d(0, 0, 0) scale(1);
     }
 }
