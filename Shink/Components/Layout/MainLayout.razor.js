@@ -38,6 +38,7 @@ let navMenuDelegatesStarted = false;
 let notificationCenterDelegatesStarted = false;
 let accountMenuDelegatesStarted = false;
 const notificationCenterState = new WeakMap();
+const headerSearchState = new WeakMap();
 const notificationDateFormatter = typeof Intl !== "undefined"
     ? new Intl.DateTimeFormat("af-ZA", { day: "numeric", month: "short" })
     : null;
@@ -64,6 +65,26 @@ function delay(milliseconds) {
     return new Promise((resolve) => {
         window.setTimeout(resolve, milliseconds);
     });
+}
+
+function closeHeaderSearchInContainer(container, options = {}) {
+    if (!(container instanceof Element)) {
+        return;
+    }
+
+    const searchForm = container.querySelector(SEARCH_FORM_SELECTOR);
+    if (!(searchForm instanceof HTMLFormElement)) {
+        container.classList.remove(SEARCH_ACTIVE_CLASS);
+        return;
+    }
+
+    const controller = headerSearchState.get(searchForm);
+    if (!controller || typeof controller.setSearchState !== "function") {
+        container.classList.remove(SEARCH_ACTIVE_CLASS);
+        return;
+    }
+
+    controller.setSearchState(false, options);
 }
 
 function findNavMenuParts(from) {
@@ -130,7 +151,7 @@ function setNavMenuState(from, open) {
     if (open) {
         closeAccountMenuInContainer(parts.controlsContainer);
         closeNotificationCenterInContainer(parts.controlsContainer);
-        parts.controlsContainer.classList.remove(SEARCH_ACTIVE_CLASS);
+        closeHeaderSearchInContainer(parts.controlsContainer);
     }
 }
 
@@ -841,6 +862,21 @@ async function clearSingleNotification(centerRoot, notificationId) {
     }
 }
 
+function syncNotificationPanelViewportPosition(centerRoot) {
+    const parts = findNotificationCenterParts(centerRoot);
+    if (!parts) {
+        return;
+    }
+
+    const toggleRect = parts.notificationToggle.getBoundingClientRect();
+    const viewportHeight = window.visualViewport?.height ?? window.innerHeight ?? document.documentElement.clientHeight;
+    const topOffset = Math.max(12, Math.round(toggleRect.bottom + 8));
+    const maxHeight = Math.max(220, Math.floor(viewportHeight - topOffset - 8));
+
+    parts.notificationPanel.style.setProperty("--notification-panel-top", `${topOffset}px`);
+    parts.notificationPanel.style.setProperty("--notification-panel-max-height", `${maxHeight}px`);
+}
+
 function setNotificationCenterState(centerRoot, open, options = {}) {
     const parts = findNotificationCenterParts(centerRoot);
     if (!parts) {
@@ -853,9 +889,11 @@ function setNotificationCenterState(centerRoot, open, options = {}) {
     parts.notificationPanel.hidden = !open;
 
     if (open) {
+        syncNotificationPanelViewportPosition(parts.centerRoot);
+
         if (parts.navControls instanceof HTMLElement) {
             closeNavMenuInContainer(parts.navControls);
-            parts.navControls.classList.remove(SEARCH_ACTIVE_CLASS);
+            closeHeaderSearchInContainer(parts.navControls);
             closeAccountMenuInContainer(parts.navControls);
         }
 
@@ -871,6 +909,9 @@ function setNotificationCenterState(centerRoot, open, options = {}) {
         } else {
             void loadNotificationCenter(parts.centerRoot);
         }
+    } else {
+        parts.notificationPanel.style.removeProperty("--notification-panel-top");
+        parts.notificationPanel.style.removeProperty("--notification-panel-max-height");
     }
 
     if (!open && focusToggle) {
@@ -899,6 +940,27 @@ function closeNotificationCenterInContainer(container) {
     }
 
     setNotificationCenterState(centerRoot, false);
+}
+
+let notificationPanelSyncFrameHandle = null;
+
+function syncOpenNotificationCenterPositions() {
+    document.querySelectorAll(`${NOTIFICATION_CENTER_ROOT_SELECTOR}.${OPEN_CLASS}`).forEach((centerRoot) => {
+        if (centerRoot instanceof HTMLElement) {
+            syncNotificationPanelViewportPosition(centerRoot);
+        }
+    });
+}
+
+function scheduleNotificationPanelPositionSync() {
+    if (notificationPanelSyncFrameHandle !== null) {
+        return;
+    }
+
+    notificationPanelSyncFrameHandle = window.requestAnimationFrame(() => {
+        notificationPanelSyncFrameHandle = null;
+        syncOpenNotificationCenterPositions();
+    });
 }
 
 function findAccountMenuParts(from) {
@@ -941,7 +1003,7 @@ function setAccountMenuState(accountRoot, open, options = {}) {
 
     if (open && parts.navControls instanceof HTMLElement) {
         closeNavMenuInContainer(parts.navControls);
-        parts.navControls.classList.remove(SEARCH_ACTIVE_CLASS);
+        closeHeaderSearchInContainer(parts.navControls);
         closeNotificationCenterInContainer(parts.navControls);
     }
 
@@ -1277,6 +1339,8 @@ function wireHeaderSearch(searchForm) {
             });
         }
     };
+
+    headerSearchState.set(searchForm, { setSearchState });
 
     setSearchState(false);
 
@@ -1670,3 +1734,9 @@ if (document.readyState === "loading") {
 document.addEventListener("enhancedload", initializeHeaderInteractions);
 window.addEventListener("pageshow", scheduleHeaderInteractionsInitialization);
 window.addEventListener("popstate", scheduleHeaderInteractionsInitialization);
+window.addEventListener("resize", scheduleNotificationPanelPositionSync);
+
+if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", scheduleNotificationPanelPositionSync);
+    window.visualViewport.addEventListener("scroll", scheduleNotificationPanelPositionSync);
+}

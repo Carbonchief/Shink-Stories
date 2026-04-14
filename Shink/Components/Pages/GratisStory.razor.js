@@ -79,6 +79,22 @@ function shouldCarryFullscreenIntentForward() {
     return storyPage instanceof HTMLElement && storyPage.classList.contains("manual-fullscreen-focus");
 }
 
+function shouldUseNativeStoryPlayerFullscreen() {
+    if (!document.fullscreenEnabled) {
+        return false;
+    }
+
+    const userAgent = navigator.userAgent || "";
+    const platform = navigator.platform || "";
+    const maxTouchPoints = navigator.maxTouchPoints || 0;
+    const isAppleTouchDevice = /iPad|iPhone|iPod/i.test(userAgent)
+        || (/Mac/i.test(platform) && maxTouchPoints > 1);
+
+    // iPad/iPhone fullscreen composition is prone to visible image seams here,
+    // so keep the player in the app's immersive layout instead.
+    return !isAppleTouchDevice;
+}
+
 function setFontAwesomeIcon(iconElement, iconClass) {
     if (!(iconElement instanceof HTMLElement)) {
         return;
@@ -1561,6 +1577,7 @@ export async function setStoryPlayerFullscreenIntent(isEnabled) {
     }
 
     const content = storyPage.querySelector(".story-player-content");
+    const shouldUseNativeFullscreen = shouldUseNativeStoryPlayerFullscreen();
     storyPage.classList.toggle("manual-fullscreen-focus", Boolean(isEnabled));
     applyImmersiveChromeState(storyPage);
 
@@ -1579,7 +1596,7 @@ export async function setStoryPlayerFullscreenIntent(isEnabled) {
             content.scrollIntoView({ behavior: "smooth", block: "center" });
         }
 
-        if (content instanceof HTMLElement && document.fullscreenEnabled) {
+        if (content instanceof HTMLElement && shouldUseNativeFullscreen) {
             try {
                 if (document.fullscreenElement && document.fullscreenElement !== content) {
                     suppressFullscreenExitCallbacks += 1;
@@ -1598,7 +1615,7 @@ export async function setStoryPlayerFullscreenIntent(isEnabled) {
                 }
             }
         }
-    } else if (document.fullscreenElement) {
+    } else if (shouldUseNativeFullscreen && document.fullscreenElement) {
         try {
             await document.exitFullscreen();
         } catch {
