@@ -1,0 +1,303 @@
+@page "/blog/{Slug}"
+@using System.Globalization
+@using System.Text.Json
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.WebUtilities
+@inject IBlogCatalogService BlogCatalogService
+@inject IBlogContentRenderer BlogContentRenderer
+@inject IHttpContextAccessor HttpContextAccessor
+@inject NavigationManager NavigationManager
+
+<PageTitle>@PageTitleText</PageTitle>
+<HeadContent>
+    <meta name="description" content="@MetaDescription" />
+    <link rel="canonical" href="@CanonicalUrl" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="@MetaTitle" />
+    <meta property="og:description" content="@MetaDescription" />
+    <meta property="og:url" content="@CanonicalUrl" />
+    <meta property="og:image" content="@ShareImageUrl" />
+    <meta property="og:image:secure_url" content="@ShareImageUrl" />
+    <meta property="og:image:type" content="@ShareImageMimeType" />
+    <meta property="og:image:alt" content="@ShareImageAlt" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="@MetaTitle" />
+    <meta name="twitter:description" content="@MetaDescription" />
+    <meta name="twitter:image" content="@ShareImageUrl" />
+    <meta name="twitter:image:alt" content="@ShareImageAlt" />
+    <script type="application/ld+json">@PostJsonLd</script>
+</HeadContent>
+
+@if (CurrentPost is null)
+{
+    <section class="blog-post-state">
+        <h1>Blog plasing nie gevind nie</h1>
+        <p>Hierdie blog plasing bestaan nie of is nog nie gepubliseer nie.</p>
+        <a class="blog-post-back" href="/blog">Terug na die blog</a>
+    </section>
+}
+else
+{
+    <article class="blog-post-page">
+        <header class="blog-post-hero">
+            <a class="blog-post-back" href="/blog">
+                <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                <span>Terug na die blog</span>
+            </a>
+
+            <div class="blog-post-meta">
+                <time datetime="@CurrentPost.PublishedAt.ToString("O")">@FormatBlogDate(CurrentPost.PublishedAt)</time>
+                <span>@ReadingTimeLabel</span>
+                @if (!string.IsNullOrWhiteSpace(CurrentPost.AuthorName))
+                {
+                    <span>@CurrentPost.AuthorName</span>
+                }
+            </div>
+
+            <h1>@CurrentPost.Title</h1>
+            <p class="blog-post-summary">@CurrentPost.Summary</p>
+
+            <div class="blog-post-taxonomy">
+                @if (CurrentPost.Category is not null)
+                {
+                    <a class="blog-post-chip" href="@BuildBlogUrl(CurrentPost.Category.Slug, null)">
+                        @CurrentPost.Category.Name
+                    </a>
+                }
+
+                @foreach (var tag in CurrentPost.Tags)
+                {
+                    <a class="blog-post-chip blog-post-chip-secondary" href="@BuildBlogUrl(null, tag.Slug)">
+                        @tag.Name
+                    </a>
+                }
+            </div>
+        </header>
+
+        @if (!string.IsNullOrWhiteSpace(CurrentPost.FeaturedImageUrl))
+        {
+            <figure class="blog-post-featured">
+                <img src="@CurrentPost.FeaturedImageUrl"
+                     alt="Voorblad vir @CurrentPost.Title"
+                     loading="eager"
+                     decoding="async" />
+            </figure>
+        }
+
+        <div class="blog-post-content-shell">
+            <div class="blog-post-content">
+                <div class="blog-post-body">@((MarkupString)CurrentPost.ContentHtml)</div>
+            </div>
+        </div>
+
+        @if (RelatedPosts.Count > 0)
+        {
+            <aside class="blog-post-related" aria-labelledby="related-posts-title">
+                <div class="blog-post-related-head">
+                    <h2 id="related-posts-title">Lees ook</h2>
+                    <a href="/blog">Sien alle plasings</a>
+                </div>
+
+                <div class="blog-post-related-grid">
+                    @foreach (var relatedPost in RelatedPosts)
+                    {
+                        <article class="blog-post-related-card">
+                            @if (!string.IsNullOrWhiteSpace(relatedPost.FeaturedImageUrl))
+                            {
+                                <a class="blog-post-related-image-link" href="@BuildPostUrl(relatedPost)">
+                                    <img src="@relatedPost.FeaturedImageUrl"
+                                         alt="Voorblad vir @relatedPost.Title"
+                                         loading="lazy"
+                                         decoding="async" />
+                                </a>
+                            }
+
+                            <div class="blog-post-related-body">
+                                <time datetime="@relatedPost.PublishedAt.ToString("O")">@FormatBlogDate(relatedPost.PublishedAt)</time>
+                                <h3><a href="@BuildPostUrl(relatedPost)">@relatedPost.Title</a></h3>
+                                <p>@relatedPost.Summary</p>
+                            </div>
+                        </article>
+                    }
+                </div>
+            </aside>
+        }
+    </article>
+}
+
+@code {
+    [Parameter]
+    public string? Slug { get; set; }
+
+    private BlogPostDetail? CurrentPost { get; set; }
+    private IReadOnlyList<BlogPostListItem> RelatedPosts { get; set; } = Array.Empty<BlogPostListItem>();
+    private int ReadingTimeMinutes { get; set; } = 1;
+    private string CanonicalUrl =>
+        CurrentPost is null
+            ? NavigationManager.ToAbsoluteUri("/blog").ToString()
+            : NavigationManager.ToAbsoluteUri($"/blog/{Uri.EscapeDataString(CurrentPost.Slug)}").ToString();
+
+    private string PageTitleText =>
+        CurrentPost is null
+            ? "Blog plasing nie gevind nie | Schink Stories"
+            : $"{CurrentPost.Title} | Schink Stories";
+
+    private string MetaTitle => CurrentPost?.SeoTitle ?? PageTitleText;
+
+    private string MetaDescription =>
+        CurrentPost?.SeoDescription
+        ?? CurrentPost?.Summary
+        ?? "Lees die nuutste blog plasings van Schink Stories.";
+
+    private string ShareImageUrl =>
+        NavigationManager.ToAbsoluteUri(CurrentPost?.FeaturedImageUrl ?? "/branding/schink-logo-green.png").ToString();
+
+    private string ShareImageMimeType => GetImageMimeType(CurrentPost?.FeaturedImageUrl);
+
+    private string ShareImageAlt =>
+        CurrentPost is null ? "Schink Stories blog" : $"Voorblad vir {CurrentPost.Title}";
+
+    private string ReadingTimeLabel =>
+        ReadingTimeMinutes == 1 ? "1 min lees" : $"{ReadingTimeMinutes} min lees";
+
+    private MarkupString PostJsonLd => new(JsonSerializer.Serialize(
+        CurrentPost is null
+            ? new Dictionary<string, object?>
+            {
+                ["@context"] = "https://schema.org",
+                ["@type"] = "WebPage",
+                ["name"] = "Blog plasing nie gevind nie",
+                ["url"] = CanonicalUrl
+            }
+            : new Dictionary<string, object?>
+            {
+                ["@context"] = "https://schema.org",
+                ["@type"] = "BlogPosting",
+                ["headline"] = CurrentPost.Title,
+                ["description"] = MetaDescription,
+                ["datePublished"] = CurrentPost.PublishedAt.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
+                ["dateModified"] = CurrentPost.UpdatedAt.UtcDateTime.ToString("O", CultureInfo.InvariantCulture),
+                ["url"] = CanonicalUrl,
+                ["inLanguage"] = "af-ZA",
+                ["image"] = new[] { ShareImageUrl },
+                ["keywords"] = CurrentPost.Tags.Select(tag => tag.Name).ToArray(),
+                ["articleSection"] = CurrentPost.Category?.Name,
+                ["author"] = new Dictionary<string, object?>
+                {
+                    ["@type"] = string.IsNullOrWhiteSpace(CurrentPost.AuthorName) ? "Organization" : "Person",
+                    ["name"] = string.IsNullOrWhiteSpace(CurrentPost.AuthorName) ? "Schink Stories" : CurrentPost.AuthorName
+                },
+                ["publisher"] = new Dictionary<string, object?>
+                {
+                    ["@type"] = "Organization",
+                    ["name"] = "Schink Stories",
+                    ["logo"] = new Dictionary<string, object?>
+                    {
+                        ["@type"] = "ImageObject",
+                        ["url"] = NavigationManager.ToAbsoluteUri("/branding/schink-logo-text.png").ToString()
+                    }
+                }
+            }));
+
+    protected override async Task OnParametersSetAsync()
+    {
+        RelatedPosts = Array.Empty<BlogPostListItem>();
+        CurrentPost = null;
+
+        if (string.IsNullOrWhiteSpace(Slug))
+        {
+            HttpContextAccessor.HttpContext?.Response.StatusCode = 404;
+            return;
+        }
+
+        var postTask = BlogCatalogService.FindPublishedPostBySlugAsync(Slug);
+        var postsTask = BlogCatalogService.GetPublishedPostsAsync();
+        await Task.WhenAll(postTask, postsTask);
+
+        CurrentPost = postTask.Result;
+        if (CurrentPost is null)
+        {
+            HttpContextAccessor.HttpContext?.Response.StatusCode = 404;
+            return;
+        }
+
+        ReadingTimeMinutes = BlogContentRenderer.EstimateReadingTimeMinutes(CurrentPost.ContentMarkdown);
+        RelatedPosts = BuildRelatedPosts(CurrentPost, postsTask.Result);
+    }
+
+    private static IReadOnlyList<BlogPostListItem> BuildRelatedPosts(
+        BlogPostDetail currentPost,
+        IReadOnlyList<BlogPostListItem> posts)
+    {
+        var currentTagIds = currentPost.Tags.Select(tag => tag.TagId).ToHashSet();
+
+        var rankedMatches = posts
+            .Where(post => post.PostId != currentPost.PostId)
+            .Select(post => new
+            {
+                Post = post,
+                Score =
+                    (currentPost.Category is not null &&
+                     currentPost.Category.CategoryId == post.Category?.CategoryId
+                        ? 3
+                        : 0) +
+                    post.Tags.Count(tag => currentTagIds.Contains(tag.TagId)) * 2
+            })
+            .Where(item => item.Score > 0)
+            .OrderByDescending(item => item.Score)
+            .ThenByDescending(item => item.Post.PublishedAt)
+            .Take(3)
+            .Select(item => item.Post)
+            .ToList();
+
+        if (rankedMatches.Count >= 3)
+        {
+            return rankedMatches;
+        }
+
+        var fallback = posts
+            .Where(post => post.PostId != currentPost.PostId)
+            .Where(post => rankedMatches.All(existing => existing.PostId != post.PostId))
+            .OrderByDescending(post => post.PublishedAt)
+            .Take(3 - rankedMatches.Count);
+
+        rankedMatches.AddRange(fallback);
+        return rankedMatches.ToArray();
+    }
+
+    private string BuildPostUrl(BlogPostListItem post) => $"/blog/{Uri.EscapeDataString(post.Slug)}";
+
+    private static string FormatBlogDate(DateTimeOffset value) =>
+        value.ToLocalTime().ToString("d MMMM yyyy", CultureInfo.GetCultureInfo("af-ZA"));
+
+    private static string GetImageMimeType(string? pathOrUrl)
+    {
+        var extension = Path.GetExtension(pathOrUrl ?? string.Empty).ToLowerInvariant();
+        return extension switch
+        {
+            ".png" => "image/png",
+            ".webp" => "image/webp",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            _ => "image/png"
+        };
+    }
+
+    private static string BuildBlogUrl(string? categorySlug, string? tagSlug)
+    {
+        var parameters = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(categorySlug))
+        {
+            parameters["category"] = categorySlug.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(tagSlug))
+        {
+            parameters["tag"] = tagSlug.Trim();
+        }
+
+        return parameters.Count == 0
+            ? "/blog"
+            : QueryHelpers.AddQueryString("/blog", parameters);
+    }
+}

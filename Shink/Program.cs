@@ -109,6 +109,9 @@ builder.Services.AddHttpClient<IResourceCatalogService, SupabaseResourceCatalogS
 builder.Services.AddHttpClient<IAdminManagementService, SupabaseAdminManagementService>();
 builder.Services.AddHttpClient<ICharacterCatalogService, SupabaseCharacterService>();
 builder.Services.AddHttpClient<ICharacterAdminService, SupabaseCharacterService>();
+builder.Services.AddSingleton<IBlogContentRenderer, BlogContentRenderer>();
+builder.Services.AddHttpClient<IBlogCatalogService, SupabaseBlogService>();
+builder.Services.AddHttpClient<IBlogAdminService, SupabaseBlogService>();
 builder.Services.AddHttpClient<IUserNotificationService, SupabaseUserNotificationService>();
 builder.Services.AddSingleton<IContactFormProtectionService, ContactFormProtectionService>();
 builder.Services.AddRateLimiter(options =>
@@ -1205,7 +1208,12 @@ app.MapPost("/api/notifications/{notificationId:guid}/clear", async (
     });
 }).RequireRateLimiting("auth-submit").DisableAntiforgery();
 
-app.MapGet("/api/search/suggest", async (string? q, int? limit, IStoryCatalogService storyCatalogService, HttpContext httpContext) =>
+app.MapGet("/api/search/suggest", async (
+    string? q,
+    int? limit,
+    IStoryCatalogService storyCatalogService,
+    IBlogCatalogService blogCatalogService,
+    HttpContext httpContext) =>
 {
     var query = (q ?? string.Empty).Trim();
     if (query.Length < 2)
@@ -1217,7 +1225,8 @@ app.MapGet("/api/search/suggest", async (string? q, int? limit, IStoryCatalogSer
 
     var freeStoriesTask = storyCatalogService.GetFreeStoriesAsync(httpContext.RequestAborted);
     var luisterStoriesTask = storyCatalogService.GetLuisterStoriesAsync(httpContext.RequestAborted);
-    await Task.WhenAll(freeStoriesTask, luisterStoriesTask);
+    var blogPostsTask = blogCatalogService.GetPublishedPostsAsync(httpContext.RequestAborted);
+    await Task.WhenAll(freeStoriesTask, luisterStoriesTask, blogPostsTask);
 
     var candidates = BuildSearchStaticCandidates()
         .Concat(freeStoriesTask.Result.Select(story => new SearchSiteCandidate(
@@ -1235,6 +1244,14 @@ app.MapGet("/api/search/suggest", async (string? q, int? limit, IStoryCatalogSer
             Kind: "Alle stories",
             Keywords: "luister stories intekening afrikaans oudiostorie",
             ThumbnailPath: story.ThumbnailPath,
+            IsSitePage: false)))
+        .Concat(blogPostsTask.Result.Select(post => new SearchSiteCandidate(
+            Title: post.Title,
+            Description: post.Summary,
+            Url: $"/blog/{Uri.EscapeDataString(post.Slug)}",
+            Kind: "Blog",
+            Keywords: BuildBlogSearchKeywords(post),
+            ThumbnailPath: post.FeaturedImageUrl ?? "/branding/schink-logo-green.png",
             IsSitePage: false)));
 
     var results = SearchSiteCandidates(candidates, query)
@@ -1250,6 +1267,13 @@ app.MapGet("/api/search/suggest", async (string? q, int? limit, IStoryCatalogSer
 
     return Results.Ok(new { query, results });
 }).DisableAntiforgery();
+
+app.MapGet("/blog/rss.xml", async (IBlogCatalogService blogCatalogService, HttpContext httpContext) =>
+{
+    var posts = await blogCatalogService.GetPublishedPostsAsync(httpContext.RequestAborted);
+    var feedDocument = BuildBlogRssDocument(httpContext.Request, posts);
+    return Results.Content(feedDocument, "application/rss+xml; charset=utf-8", Encoding.UTF8);
+});
 
 app.MapGet("/api/mobile/session", async (
     HttpContext httpContext,
@@ -2716,6 +2740,14 @@ static IReadOnlyList<SearchSiteCandidate> BuildSearchStaticCandidates() =>
         ThumbnailPath: "/branding/schink-logo-green.png",
         IsSitePage: true),
     new(
+        Title: "Blog",
+        Description: "Lees die jongste blog plasings, wenke en nuus van Schink Stories.",
+        Url: "/blog",
+        Kind: "Bladsy",
+        Keywords: "blog artikels nuus wenke afrikaans",
+        ThumbnailPath: "/branding/schink-logo-green.png",
+        IsSitePage: true),
+    new(
         Title: "Gratis stories",
         Description: "Drie gratis Afrikaanse stories vir jou gesin.",
         Url: "/gratis",
@@ -2867,6 +2899,73 @@ static IReadOnlyList<SearchSiteResult> SearchSiteCandidates(IEnumerable<SearchSi
         .OrderByDescending(result => result.Score)
         .ThenBy(result => result.Title, StringComparer.OrdinalIgnoreCase)
         .ToArray();
+}
+
+static string BuildBlogSearchKeywords(BlogPostListItem post)
+{
+    var tags = post.Tags.Count == 0
+        ? string.Empty
+        : string.Join(' ', post.Tags.Select(tag => tag.Name));
+
+    var content = post.PlainTextContent.Length <= 1200
+        ? post.PlainTextContent
+        : post.PlainTextContent[..1200];
+
+    return $"{post.Summary} {post.Category?.Name} {tags} blog artikel {content}".Trim();
+}
+
+static string BuildBlogRssDocument(HttpRequest request, IReadOnlyList<BlogPostListItem> posts)
+{
+    var blogUrl = BuildAbsoluteUrl(request, "/blog");
+    var items = posts
+        .OrderByDescending(post => post.PublishedAt)
+        .Take(50)
+        .Select(post =>
+        {
+            var postUrl = BuildAbsoluteUrl(request, $"/blog/{Uri.EscapeDataString(post.Slug)}");
+            var item = new XElement("item",
+                new XElement("title", post.Title),
+                new XElement("link", postUrl),
+                new XElement("guid", postUrl),
+                new XElement("description", post.Summary),
+                new XElement("pubDate", post.PublishedAt.UtcDateTime.ToString("r", CultureInfo.InvariantCulture)));
+
+            if (!string.IsNullOrWhiteSpace(post.AuthorName))
+            {
+                item.Add(new XElement("author", post.AuthorName));
+            }
+
+            if (post.Category is not null)
+            {
+                item.Add(new XElement("category", post.Category.Name));
+            }
+
+            foreach (var tag in post.Tags)
+            {
+                item.Add(new XElement("category", tag.Name));
+            }
+
+            return item;
+        })
+        .ToArray();
+
+    var lastBuildDate = posts.Count == 0
+        ? DateTimeOffset.UtcNow
+        : posts.Max(post => post.UpdatedAt > post.PublishedAt ? post.UpdatedAt : post.PublishedAt);
+
+    var document = new XDocument(
+        new XDeclaration("1.0", "utf-8", "yes"),
+        new XElement("rss",
+            new XAttribute("version", "2.0"),
+            new XElement("channel",
+                new XElement("title", "Schink Stories Blog"),
+                new XElement("link", blogUrl),
+                new XElement("description", "Afrikaanse stories, wenke en nuus van Schink Stories."),
+                new XElement("language", "af-ZA"),
+                new XElement("lastBuildDate", lastBuildDate.UtcDateTime.ToString("r", CultureInfo.InvariantCulture)),
+                items)));
+
+    return document.ToString(SaveOptions.DisableFormatting);
 }
 
 static string NormalizeForSearch(string value)

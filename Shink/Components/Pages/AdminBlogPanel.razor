@@ -1,0 +1,869 @@
+@using System.Globalization
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.Extensions.Options
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IBlogAdminService BlogAdminService
+@inject IBlogContentRenderer BlogContentRenderer
+@inject IStoryMediaStorageService StoryMediaStorageService
+@inject IWebHostEnvironment WebHostEnvironment
+@inject IJSRuntime JSRuntime
+@inject ILogger<AdminBlogPanel> Logger
+@inject IOptions<CloudflareR2Options> CloudflareR2OptionsAccessor
+
+<section class="admin-section">
+    <div class="admin-section-head">
+        <h2>@T("Blog", "Blog")</h2>
+        <div class="admin-search">
+            <input class="blog-admin-search"
+                   type="search"
+                   @bind="PostSearch"
+                   @bind:event="oninput"
+                   placeholder="@T("Soek titel of slug", "Search title or slug")" />
+
+            <select class="blog-admin-filter" @bind="StatusFilter">
+                <option value="all">@T("Alle statusse", "All statuses")</option>
+                <option value="draft">@T("Konsepte", "Drafts")</option>
+                <option value="published">@T("Gepubliseer", "Published")</option>
+                <option value="scheduled">@T("Geskeduleer", "Scheduled")</option>
+            </select>
+
+            <button type="button" class="blog-admin-btn" @onclick="BeginCreatePost">
+                @T("Nuwe blog", "New post")
+            </button>
+
+            <button type="button" class="blog-admin-btn blog-admin-btn-secondary" @onclick="() => ReloadAsync()">
+                @T("Herlaai", "Refresh")
+            </button>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <p class="admin-feedback is-error">@ErrorMessage</p>
+    }
+    else if (!string.IsNullOrWhiteSpace(StatusMessage))
+    {
+        <p class="admin-feedback is-success">@StatusMessage</p>
+    }
+
+    @if (IsLoading)
+    {
+        <section class="admin-state">
+            <h2>@T("Laai blog plasings...", "Loading blog posts...")</h2>
+        </section>
+    }
+    else
+    {
+        <div class="blog-admin-layout">
+            <aside class="blog-admin-list">
+                <div class="blog-admin-list-header">
+                    <span>@FilteredPosts.Count @T("plasings", "posts")</span>
+                </div>
+
+                @if (FilteredPosts.Count == 0)
+                {
+                    <p class="blog-admin-empty">@T("Geen blog plasings pas by jou soektog nie.", "No blog posts match your search.")</p>
+                }
+                else
+                {
+                    @foreach (var post in FilteredPosts)
+                    {
+                        var isSelected = Editor?.PostId == post.PostId;
+                        <button type="button"
+                                class="blog-admin-list-item @(isSelected ? "is-selected" : null)"
+                                @onclick="() => SelectPost(post)">
+                            <span class="blog-admin-list-copy">
+                                <span class="blog-admin-list-title">@post.Title</span>
+                                <span class="blog-admin-list-meta">@post.Slug</span>
+                                <span class="blog-admin-list-status">@BuildStatusLabel(post.IsPublished, post.PublishedAt)</span>
+                            </span>
+
+                            <span class="blog-admin-list-date">@FormatAdminDate(post.UpdatedAt)</span>
+                        </button>
+                    }
+                }
+            </aside>
+
+            <section class="blog-admin-editor">
+                @if (Editor is null)
+                {
+                    <div class="blog-admin-empty-state">
+                        <h3>@T("Kies 'n blog plasing", "Choose a blog post")</h3>
+                        <p>@T("Maak links 'n bestaande plasing oop of skep 'n nuwe een.", "Open an existing post on the left or create a new one.")</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="blog-admin-editor-head">
+                        <div>
+                            <h3>@(IsNewPost ? T("Nuwe blog plasing", "New blog post") : Editor.Title)</h3>
+                            <p>@Editor.SlugPreview</p>
+                        </div>
+
+                        <div class="blog-admin-editor-actions">
+                            @if (!IsNewPost)
+                            {
+                                <button type="button"
+                                        class="blog-admin-btn blog-admin-btn-secondary"
+                                        @onclick="TogglePublishedStateAsync"
+                                        disabled="@IsSaving">
+                                    @(Editor.IsPublished
+                                        ? T("Ontpubliseer", "Unpublish")
+                                        : T("Publiseer nou", "Publish now"))
+                                </button>
+
+                                <button type="button"
+                                        class="blog-admin-btn blog-admin-btn-danger"
+                                        @onclick="DeletePostAsync"
+                                        disabled="@IsDeleting">
+                                    @(IsDeleting ? T("Verwyder...", "Deleting...") : T("Verwyder", "Delete"))
+                                </button>
+                            }
+
+                            <button type="button"
+                                    class="blog-admin-btn"
+                                    @onclick="SavePostAsync"
+                                    disabled="@IsSaving">
+                                @(IsSaving ? T("Stoor...", "Saving...") : T("Stoor blog", "Save post"))
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="blog-admin-form-grid">
+                        <section class="blog-admin-card">
+                            <h4>@T("Basies", "Basics")</h4>
+
+                            <label class="blog-admin-field">
+                                <span>@T("Titel", "Title")</span>
+                                <input type="text" value="@Editor.Title" @oninput="OnTitleChanged" />
+                            </label>
+
+                            <label class="blog-admin-field">
+                                <span>@T("Slug", "Slug")</span>
+                                <input type="text" value="@Editor.Slug" @oninput="OnSlugChanged" />
+                            </label>
+
+                            <label class="blog-admin-field">
+                                <span>@T("Opsomming", "Summary")</span>
+                                <textarea rows="4" @bind="Editor.Summary"></textarea>
+                            </label>
+
+                            <div class="blog-admin-field-row">
+                                <label class="blog-admin-field">
+                                    <span>@T("Skrywer", "Author")</span>
+                                    <input type="text" @bind="Editor.AuthorName" />
+                                </label>
+
+                                <label class="blog-admin-field">
+                                    <span>@T("Kategorie", "Category")</span>
+                                    <input type="text" @bind="Editor.CategoryName" list="blog-admin-category-options" />
+                                    <datalist id="blog-admin-category-options">
+                                        @foreach (var category in Categories)
+                                        {
+                                            <option value="@category.Name"></option>
+                                        }
+                                    </datalist>
+                                </label>
+                            </div>
+
+                            <label class="blog-admin-field">
+                                <span>@T("Etikette", "Tags")</span>
+                                <input type="text"
+                                       @bind="Editor.TagsText"
+                                       placeholder="@T("Byvoorbeeld: ouerskap, luister, stories", "For example: parenting, listening, stories")" />
+                            </label>
+
+                            @if (ParsedTags.Count > 0)
+                            {
+                                <div class="blog-admin-tag-preview">
+                                    @foreach (var tag in ParsedTags)
+                                    {
+                                        <span class="blog-admin-tag">@tag</span>
+                                    }
+                                </div>
+                            }
+                        </section>
+
+                        <section class="blog-admin-card">
+                            <h4>@T("Publisering en SEO", "Publishing and SEO")</h4>
+
+                            <label class="blog-admin-checkbox">
+                                <input type="checkbox" @bind="Editor.IsPublished" />
+                                <span>@T("Gepubliseer", "Published")</span>
+                            </label>
+
+                            <label class="blog-admin-field">
+                                <span>@T("Publiseer op", "Publish on")</span>
+                                <input type="datetime-local" value="@Editor.PublishedAtLocal" @onchange="OnPublishedAtChanged" />
+                            </label>
+
+                            <p class="blog-admin-hint">
+                                @T(
+                                    "Laat die datum leeg om onmiddellik te publiseer wanneer die plasing as gepubliseer gemerk is.",
+                                    "Leave the date empty to publish immediately when the post is marked as published.")
+                            </p>
+
+                            <label class="blog-admin-field">
+                                <span>@T("SEO titel", "SEO title")</span>
+                                <input type="text" @bind="Editor.SeoTitle" />
+                            </label>
+
+                            <label class="blog-admin-field">
+                                <span>@T("SEO beskrywing", "SEO description")</span>
+                                <textarea rows="3" @bind="Editor.SeoDescription"></textarea>
+                            </label>
+
+                            <dl class="blog-admin-summary">
+                                <div>
+                                    <dt>@T("Geskep", "Created")</dt>
+                                    <dd>@(Editor.CreatedAt is null ? "-" : FormatAdminDate(Editor.CreatedAt.Value))</dd>
+                                </div>
+                                <div>
+                                    <dt>@T("Laas gewysig", "Last updated")</dt>
+                                    <dd>@(Editor.UpdatedAt is null ? "-" : FormatAdminDate(Editor.UpdatedAt.Value))</dd>
+                                </div>
+                            </dl>
+                        </section>
+
+                        <section class="blog-admin-card">
+                            <h4>@T("Hoofprent", "Featured image")</h4>
+
+                            @if (!string.IsNullOrWhiteSpace(Editor.FeaturedImagePreviewUrl))
+                            {
+                                <img class="blog-admin-image-preview"
+                                     src="@Editor.FeaturedImagePreviewUrl"
+                                     alt="@T("Blog prent voorskou", "Blog image preview")"
+                                     onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                            }
+
+                            <label class="blog-admin-field">
+                                <span>@T("Hoofprent URL of pad", "Featured image URL or path")</span>
+                                <input type="text" @bind="Editor.FeaturedImageUrl" />
+                            </label>
+
+                            <label class="blog-admin-file-picker">
+                                <span>@T("Laai nuwe prent op", "Upload new image")</span>
+                                <InputFile OnChange="OnFeaturedImageSelectedAsync" accept="image/png,image/jpeg,image/webp" />
+                            </label>
+
+                            @if (!string.IsNullOrWhiteSpace(Editor.FeaturedImageFileName))
+                            {
+                                <p class="blog-admin-hint">
+                                    @T($"Geselekteerde lêer: {Editor.FeaturedImageFileName}", $"Selected file: {Editor.FeaturedImageFileName}")
+                                </p>
+                            }
+                        </section>
+
+                        <section class="blog-admin-card blog-admin-card-content">
+                            <div class="blog-admin-card-head">
+                                <div>
+                                    <h4>@T("Inhoud", "Content")</h4>
+                                    <p>@T("Markdown word veilig na HTML gerender vir die publieke blog.", "Markdown is safely rendered to HTML for the public blog.")</p>
+                                </div>
+                            </div>
+
+                            <label class="blog-admin-field">
+                                <span>@T("Markdown", "Markdown")</span>
+                                <textarea class="blog-admin-markdown-editor"
+                                          rows="18"
+                                          @bind="Editor.ContentMarkdown"></textarea>
+                            </label>
+                        </section>
+
+                        <section class="blog-admin-card blog-admin-card-preview">
+                            <div class="blog-admin-card-head">
+                                <div>
+                                    <h4>@T("Voorskou", "Preview")</h4>
+                                    <p>@T("Die voorskou wys die gesanitiseerde HTML wat op die werf sal verskyn.", "The preview shows the sanitized HTML that will appear on the site.")</p>
+                                </div>
+                            </div>
+
+                            <div class="blog-admin-preview">
+                                <h2>@(string.IsNullOrWhiteSpace(Editor.Title) ? T("Jou blog titel", "Your blog title") : Editor.Title)</h2>
+                                @if (!string.IsNullOrWhiteSpace(Editor.Summary))
+                                {
+                                    <p class="blog-admin-preview-summary">@Editor.Summary</p>
+                                }
+                                <div class="blog-admin-preview-body">@PreviewMarkup</div>
+                            </div>
+                        </section>
+                    </div>
+                }
+            </section>
+        </div>
+    }
+</section>
+
+@code {
+    private const long MaxImageUploadBytes = 10 * 1024 * 1024;
+
+    [Parameter]
+    public string CurrentLanguageCode { get; set; } = "af";
+
+    private IReadOnlyList<AdminBlogPostRecord> Posts { get; set; } = Array.Empty<AdminBlogPostRecord>();
+    private IReadOnlyList<BlogCategoryItem> Categories { get; set; } = Array.Empty<BlogCategoryItem>();
+    private EditableBlogPost? Editor { get; set; }
+    private string? SignedInEmail { get; set; }
+    private string? PostSearch { get; set; }
+    private string StatusFilter { get; set; } = "all";
+    private bool IsLoading { get; set; } = true;
+    private bool IsSaving { get; set; }
+    private bool IsDeleting { get; set; }
+    private string? ErrorMessage { get; set; }
+    private string? StatusMessage { get; set; }
+
+    private bool IsNewPost => Editor?.PostId is not Guid postId || postId == Guid.Empty;
+
+    private bool IsR2UploadConfigured =>
+        !string.IsNullOrWhiteSpace(CloudflareR2OptionsAccessor.Value.AccountId) &&
+        !string.IsNullOrWhiteSpace(CloudflareR2OptionsAccessor.Value.BucketName) &&
+        !string.IsNullOrWhiteSpace(CloudflareR2OptionsAccessor.Value.AccessKeyId) &&
+        !string.IsNullOrWhiteSpace(CloudflareR2OptionsAccessor.Value.SecretAccessKey) &&
+        !string.IsNullOrWhiteSpace(CloudflareR2OptionsAccessor.Value.PublicBaseUrl);
+
+    private IReadOnlyList<string> ParsedTags =>
+        Editor is null ? Array.Empty<string>() : ParseTags(Editor.TagsText);
+
+    private MarkupString PreviewMarkup =>
+        new(BlogContentRenderer.RenderHtml(Editor?.ContentMarkdown));
+
+    private IReadOnlyList<AdminBlogPostRecord> FilteredPosts =>
+        Posts
+            .Where(MatchesStatusFilter)
+            .Where(MatchesSearch)
+            .OrderByDescending(post => post.UpdatedAt)
+            .ThenByDescending(post => post.PublishedAt ?? DateTimeOffset.MinValue)
+            .ThenBy(post => post.Title, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        SignedInEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                        ?? authState.User.Identity?.Name;
+
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync(Guid? selectPostId = null)
+    {
+        IsLoading = true;
+        ErrorMessage = null;
+
+        try
+        {
+            var dashboard = await BlogAdminService.GetDashboardAsync(SignedInEmail);
+            Posts = dashboard.Posts;
+            Categories = dashboard.Categories;
+
+            var selected = selectPostId is Guid targetId && targetId != Guid.Empty
+                ? Posts.FirstOrDefault(post => post.PostId == targetId)
+                : Editor?.PostId is Guid currentId && currentId != Guid.Empty
+                    ? Posts.FirstOrDefault(post => post.PostId == currentId)
+                    : Posts.FirstOrDefault();
+
+            Editor = selected is null ? null : EditableBlogPost.From(selected);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to load blog admin dashboard.");
+            Posts = Array.Empty<AdminBlogPostRecord>();
+            Categories = Array.Empty<BlogCategoryItem>();
+            Editor = null;
+            ErrorMessage = T("Kon nie blog plasings nou laai nie.", "Could not load blog posts right now.");
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private void BeginCreatePost()
+    {
+        ErrorMessage = null;
+        StatusMessage = null;
+        Editor = EditableBlogPost.CreateEmpty();
+    }
+
+    private void SelectPost(AdminBlogPostRecord post)
+    {
+        ErrorMessage = null;
+        StatusMessage = null;
+        Editor = EditableBlogPost.From(post);
+    }
+
+    private void OnTitleChanged(ChangeEventArgs args)
+    {
+        if (Editor is null)
+        {
+            return;
+        }
+
+        Editor.Title = args.Value?.ToString() ?? string.Empty;
+        if (!Editor.HasManualSlug || string.IsNullOrWhiteSpace(Editor.Slug))
+        {
+            Editor.Slug = BuildEffectiveSlug(null, Editor.Title);
+            Editor.HasManualSlug = false;
+        }
+    }
+
+    private void OnSlugChanged(ChangeEventArgs args)
+    {
+        if (Editor is null)
+        {
+            return;
+        }
+
+        var value = args.Value?.ToString() ?? string.Empty;
+        Editor.Slug = BuildEffectiveSlug(value, value);
+        Editor.HasManualSlug = !string.IsNullOrWhiteSpace(Editor.Slug);
+    }
+
+    private void OnPublishedAtChanged(ChangeEventArgs args)
+    {
+        if (Editor is null)
+        {
+            return;
+        }
+
+        Editor.PublishedAtLocal = args.Value?.ToString();
+    }
+
+    private async Task OnFeaturedImageSelectedAsync(InputFileChangeEventArgs args)
+    {
+        if (Editor is null)
+        {
+            return;
+        }
+
+        ErrorMessage = null;
+        var file = args.File;
+        if (file is null || file.Size <= 0 || file.Size > MaxImageUploadBytes)
+        {
+            ErrorMessage = T("Kies asseblief 'n geldige prent tot 10 MB.", "Please choose a valid image up to 10 MB.");
+            return;
+        }
+
+        var normalizedContentType = NormalizeImageContentType(file);
+        if (!IsSupportedImageContentType(normalizedContentType))
+        {
+            ErrorMessage = T("Gebruik asseblief JPG, PNG of WEBP vir die blog prent.", "Please use JPG, PNG, or WEBP for the blog image.");
+            return;
+        }
+
+        Editor.FeaturedImageFile = file;
+        Editor.FeaturedImageFileName = file.Name;
+        Editor.FeaturedImagePreviewUrl = await ReadImageFileAsDataUrlAsync(file)
+            ?? ResolvePreviewImageUrl(Editor.FeaturedImageUrl);
+    }
+
+    private async Task SavePostAsync()
+    {
+        if (Editor is null || IsSaving)
+        {
+            return;
+        }
+
+        IsSaving = true;
+        ErrorMessage = null;
+        StatusMessage = null;
+
+        try
+        {
+            var effectiveSlug = BuildEffectiveSlug(Editor.Slug, Editor.Title);
+            if (string.IsNullOrWhiteSpace(effectiveSlug))
+            {
+                ErrorMessage = T("Voeg asseblief eers 'n titel by.", "Please add a title first.");
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(Editor.ContentMarkdown))
+            {
+                ErrorMessage = T("Voeg asseblief blog inhoud by.", "Please add blog content.");
+                return;
+            }
+
+            if (Editor.FeaturedImageFile is not null)
+            {
+                Editor.FeaturedImageUrl = await UploadFeaturedImageAsync(effectiveSlug, Editor.FeaturedImageFile);
+                Editor.FeaturedImageFile = null;
+                Editor.FeaturedImageFileName = null;
+                Editor.FeaturedImagePreviewUrl = ResolvePreviewImageUrl(Editor.FeaturedImageUrl);
+            }
+
+            var request = new AdminBlogPostSaveRequest(
+                PostId: Editor.PostId,
+                Title: Editor.Title,
+                Slug: effectiveSlug,
+                Summary: Editor.Summary,
+                ContentMarkdown: Editor.ContentMarkdown,
+                FeaturedImageUrl: Editor.FeaturedImageUrl,
+                AuthorName: Editor.AuthorName,
+                CategoryName: Editor.CategoryName,
+                TagNames: ParseTags(Editor.TagsText),
+                IsPublished: Editor.IsPublished,
+                PublishedAt: ParseOptionalLocalDateTime(Editor.PublishedAtLocal),
+                SeoTitle: Editor.SeoTitle,
+                SeoDescription: Editor.SeoDescription);
+
+            var result = await BlogAdminService.SavePostAsync(SignedInEmail, request);
+            if (!result.IsSuccess)
+            {
+                ErrorMessage = TranslateServiceMessage(result.ErrorMessage)
+                               ?? T("Kon nie blog nou stoor nie.", "Could not save the blog post right now.");
+                return;
+            }
+
+            await ReloadAsync(result.EntityId);
+            StatusMessage = T("Blog plasing suksesvol gestoor.", "Blog post saved successfully.");
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to save blog post.");
+            ErrorMessage = T("Kon nie blog nou stoor nie.", "Could not save the blog post right now.");
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+
+    private async Task TogglePublishedStateAsync()
+    {
+        if (Editor is null)
+        {
+            return;
+        }
+
+        Editor.IsPublished = !Editor.IsPublished;
+        if (Editor.IsPublished && string.IsNullOrWhiteSpace(Editor.PublishedAtLocal))
+        {
+            Editor.PublishedAtLocal = DateTime.Now.ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture);
+        }
+
+        await SavePostAsync();
+    }
+
+    private async Task DeletePostAsync()
+    {
+        if (Editor?.PostId is not Guid postId || postId == Guid.Empty || IsDeleting)
+        {
+            return;
+        }
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>(
+            "confirm",
+            T("Is jy seker jy wil hierdie blog plasing verwyder?", "Are you sure you want to delete this blog post?"));
+        if (!confirmed)
+        {
+            return;
+        }
+
+        IsDeleting = true;
+        ErrorMessage = null;
+        StatusMessage = null;
+
+        try
+        {
+            var result = await BlogAdminService.DeletePostAsync(SignedInEmail, postId);
+            if (!result.IsSuccess)
+            {
+                ErrorMessage = TranslateServiceMessage(result.ErrorMessage)
+                               ?? T("Kon nie blog nou verwyder nie.", "Could not delete the blog post right now.");
+                return;
+            }
+
+            Editor = null;
+            await ReloadAsync();
+            StatusMessage = T("Blog plasing verwyder.", "Blog post deleted.");
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to delete blog post.");
+            ErrorMessage = T("Kon nie blog nou verwyder nie.", "Could not delete the blog post right now.");
+        }
+        finally
+        {
+            IsDeleting = false;
+        }
+    }
+
+    private bool MatchesStatusFilter(AdminBlogPostRecord post) =>
+        StatusFilter switch
+        {
+            "draft" => !post.IsPublished,
+            "published" => post.IsPublished && post.PublishedAt <= DateTimeOffset.UtcNow,
+            "scheduled" => post.IsPublished && post.PublishedAt > DateTimeOffset.UtcNow,
+            _ => true
+        };
+
+    private bool MatchesSearch(AdminBlogPostRecord post)
+    {
+        if (string.IsNullOrWhiteSpace(PostSearch))
+        {
+            return true;
+        }
+
+        var search = PostSearch.Trim();
+        return post.Title.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+               post.Slug.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+               (post.Summary?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false);
+    }
+
+    private async Task<string> UploadFeaturedImageAsync(string slug, IBrowserFile file)
+    {
+        var normalizedContentType = NormalizeImageContentType(file);
+
+        if (IsR2UploadConfigured)
+        {
+            await using var stream = file.OpenReadStream(MaxImageUploadBytes);
+            var uploaded = await StoryMediaStorageService.UploadImageAsync(
+                $"blog-{slug}",
+                StoryImageKind.Cover,
+                file.Name,
+                normalizedContentType,
+                stream);
+
+            return uploaded.PublicUrl;
+        }
+
+        var localUpload = await SaveFeaturedImageToLocalAsync(slug, file);
+        return localUpload.PublicPath;
+    }
+
+    private async Task<(string PublicPath, string PhysicalPath)> SaveFeaturedImageToLocalAsync(string slug, IBrowserFile file)
+    {
+        var extension = ResolveSafeImageExtension(file.Name);
+        var safeSlug = BuildEffectiveSlug(slug, slug);
+        var year = DateTime.UtcNow.ToString("yyyy", CultureInfo.InvariantCulture);
+        var month = DateTime.UtcNow.ToString("MM", CultureInfo.InvariantCulture);
+        var fileSuffix = Guid.NewGuid().ToString("N")[..10];
+        var fileName = $"{safeSlug}-blog-{DateTime.UtcNow:yyyyMMddHHmmss}-{fileSuffix}{extension}";
+        var relativeDirectory = Path.Combine("branding", "uploaded", "blog", year, month);
+        var physicalDirectory = Path.Combine(WebHostEnvironment.WebRootPath, relativeDirectory);
+        Directory.CreateDirectory(physicalDirectory);
+
+        var physicalPath = Path.Combine(physicalDirectory, fileName);
+        await using var sourceStream = file.OpenReadStream(MaxImageUploadBytes);
+        await using var destinationStream = File.Create(physicalPath);
+        await sourceStream.CopyToAsync(destinationStream);
+
+        var publicPath = $"/branding/uploaded/blog/{year}/{month}/{fileName}";
+        return (publicPath, physicalPath);
+    }
+
+    private async Task<string?> ReadImageFileAsDataUrlAsync(IBrowserFile file)
+    {
+        try
+        {
+            var normalizedContentType = NormalizeImageContentType(file);
+            await using var stream = file.OpenReadStream(MaxImageUploadBytes);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            var base64 = Convert.ToBase64String(buffer.ToArray());
+            return $"data:{normalizedContentType};base64,{base64}";
+        }
+        catch (Exception exception) when (exception is IOException or InvalidOperationException)
+        {
+            Logger.LogDebug(exception, "Inline blog image preview generation skipped.");
+            return null;
+        }
+    }
+
+    private string? TranslateServiceMessage(string? message) =>
+        message switch
+        {
+            "Jy het nie admin toegang nie." => T("Jy het nie admin toegang nie.", "You do not have admin access."),
+            "Supabase URL is nog nie opgestel nie." => T("Supabase URL is nog nie opgestel nie.", "Supabase URL is not configured yet."),
+            "Supabase ServiceRoleKey is nog nie opgestel nie." => T("Supabase ServiceRoleKey is nog nie opgestel nie.", "Supabase ServiceRoleKey is not configured yet."),
+            "Blog titel is verpligtend." => T("Die blog titel is verpligtend.", "The blog title is required."),
+            "Die blog slug is ongeldig." => T("Die blog slug is ongeldig.", "The blog slug is invalid."),
+            "Blog inhoud is verpligtend." => T("Die blog inhoud is verpligtend.", "The blog content is required."),
+            "Die blog slug bestaan reeds." => T("Die blog slug bestaan reeds.", "The blog slug already exists."),
+            "Kon nie blog pos nou opdateer nie." => T("Kon nie blog plasing nou opdateer nie.", "Could not update the blog post right now."),
+            "Kon nie blog pos nou skep nie." => T("Kon nie blog plasing nou skep nie.", "Could not create the blog post right now."),
+            "Kon nie blog etikette nou stoor nie." => T("Kon nie blog etikette nou stoor nie.", "Could not save the blog tags right now."),
+            "Kon nie blog pos nou stoor nie." => T("Kon nie blog plasing nou stoor nie.", "Could not save the blog post right now."),
+            "Kies asseblief 'n geldige blog pos." => T("Kies asseblief 'n geldige blog plasing.", "Please choose a valid blog post."),
+            "Kon nie blog pos nou verwyder nie." => T("Kon nie blog plasing nou verwyder nie.", "Could not delete the blog post right now."),
+            _ => null
+        };
+
+    private string T(string afrikaans, string english) =>
+        string.Equals(CurrentLanguageCode, "en", StringComparison.OrdinalIgnoreCase) ? english : afrikaans;
+
+    private string BuildStatusLabel(bool isPublished, DateTimeOffset? publishedAt) =>
+        !isPublished
+            ? T("Konsep", "Draft")
+            : publishedAt > DateTimeOffset.UtcNow
+                ? T("Geskeduleer", "Scheduled")
+                : T("Gepubliseer", "Published");
+
+    private string FormatAdminDate(DateTimeOffset value)
+    {
+        var culture = string.Equals(CurrentLanguageCode, "en", StringComparison.OrdinalIgnoreCase)
+            ? CultureInfo.GetCultureInfo("en-ZA")
+            : CultureInfo.GetCultureInfo("af-ZA");
+
+        return value.ToLocalTime().ToString("d MMM yyyy", culture);
+    }
+
+    private static IReadOnlyList<string> ParseTags(string? value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? Array.Empty<string>()
+            : value
+                .Split([',', ';', '\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(tag => !string.IsNullOrWhiteSpace(tag))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+    private static DateTimeOffset? ParseOptionalLocalDateTime(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (!DateTime.TryParseExact(
+                value,
+                "yyyy-MM-ddTHH:mm",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeLocal,
+                out var parsed))
+        {
+            return null;
+        }
+
+        return new DateTimeOffset(parsed);
+    }
+
+    private static string BuildEffectiveSlug(string? slug, string? title)
+    {
+        var source = string.IsNullOrWhiteSpace(slug) ? title : slug;
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            return string.Empty;
+        }
+
+        var normalized = source.Trim().ToLowerInvariant();
+        normalized = System.Text.RegularExpressions.Regex.Replace(normalized, "[^a-z0-9]+", "-");
+        normalized = System.Text.RegularExpressions.Regex.Replace(normalized, "-{2,}", "-");
+        return normalized.Trim('-');
+    }
+
+    private static string NormalizeImageContentType(IBrowserFile file) =>
+        file.ContentType?.Trim().ToLowerInvariant() switch
+        {
+            "image/jpeg" or "image/jpg" => "image/jpeg",
+            "image/png" => "image/png",
+            "image/webp" => "image/webp",
+            _ => Path.GetExtension(file.Name).Trim().ToLowerInvariant() switch
+            {
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".png" => "image/png",
+                ".webp" => "image/webp",
+                _ => file.ContentType ?? string.Empty
+            }
+        };
+
+    private static bool IsSupportedImageContentType(string normalizedContentType) =>
+        normalizedContentType is "image/jpeg" or "image/png" or "image/webp";
+
+    private static string ResolveSafeImageExtension(string fileName)
+    {
+        var extension = Path.GetExtension(fileName)?.Trim().ToLowerInvariant();
+        return extension switch
+        {
+            ".jpg" or ".jpeg" => extension,
+            ".png" => ".png",
+            ".webp" => ".webp",
+            _ => ".png"
+        };
+    }
+
+    private static string? ResolvePreviewImageUrl(string? imagePath)
+    {
+        if (string.IsNullOrWhiteSpace(imagePath))
+        {
+            return null;
+        }
+
+        var candidate = imagePath.Trim();
+        if (candidate.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+        {
+            return candidate;
+        }
+
+        if (Uri.TryCreate(candidate, UriKind.Absolute, out var absoluteUri))
+        {
+            return string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+                ? absoluteUri.ToString()
+                : null;
+        }
+
+        if (candidate.StartsWith("~/", StringComparison.Ordinal))
+        {
+            candidate = $"/{candidate[2..]}";
+        }
+
+        return candidate.StartsWith("/", StringComparison.Ordinal)
+            ? candidate
+            : $"/{candidate.TrimStart('/')}";
+    }
+
+    private sealed class EditableBlogPost
+    {
+        public Guid? PostId { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public string Slug { get; set; } = string.Empty;
+        public bool HasManualSlug { get; set; }
+        public string? Summary { get; set; }
+        public string ContentMarkdown { get; set; } = string.Empty;
+        public string? FeaturedImageUrl { get; set; }
+        public string? FeaturedImagePreviewUrl { get; set; }
+        public IBrowserFile? FeaturedImageFile { get; set; }
+        public string? FeaturedImageFileName { get; set; }
+        public string? AuthorName { get; set; }
+        public string? CategoryName { get; set; }
+        public string TagsText { get; set; } = string.Empty;
+        public bool IsPublished { get; set; }
+        public string? PublishedAtLocal { get; set; }
+        public DateTimeOffset? CreatedAt { get; set; }
+        public DateTimeOffset? UpdatedAt { get; set; }
+        public string? SeoTitle { get; set; }
+        public string? SeoDescription { get; set; }
+
+        public string SlugPreview => string.IsNullOrWhiteSpace(Slug) ? BuildEffectiveSlug(null, Title) : Slug;
+
+        public static EditableBlogPost CreateEmpty() =>
+            new()
+            {
+                IsPublished = false
+            };
+
+        public static EditableBlogPost From(AdminBlogPostRecord post) =>
+            new()
+            {
+                PostId = post.PostId,
+                Title = post.Title,
+                Slug = post.Slug,
+                HasManualSlug = true,
+                Summary = post.Summary,
+                ContentMarkdown = post.ContentMarkdown,
+                FeaturedImageUrl = post.FeaturedImageUrl,
+                FeaturedImagePreviewUrl = ResolvePreviewImageUrl(post.FeaturedImageUrl),
+                AuthorName = post.AuthorName,
+                CategoryName = post.CategoryName,
+                TagsText = string.Join(", ", post.Tags.Select(tag => tag.Name)),
+                IsPublished = post.IsPublished,
+                PublishedAtLocal = post.PublishedAt?.ToLocalTime().ToString("yyyy-MM-ddTHH:mm", CultureInfo.InvariantCulture),
+                CreatedAt = post.CreatedAt,
+                UpdatedAt = post.UpdatedAt,
+                SeoTitle = post.SeoTitle,
+                SeoDescription = post.SeoDescription
+            };
+    }
+}
