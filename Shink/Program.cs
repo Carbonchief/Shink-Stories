@@ -83,6 +83,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 builder.Services.AddAuthorization();
 builder.Services.AddSingleton<IAudioAccessService, AudioAccessService>();
 builder.Services.AddSingleton<IStoryMediaStorageService, CloudflareR2StoryMediaStorageService>();
+builder.Services.AddSingleton<IResourceDocumentStorageService, CloudflareR2ResourceDocumentStorageService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpContextAccessor();
 builder.Services.Configure<ResendOptions>(builder.Configuration.GetSection(ResendOptions.SectionName));
@@ -476,14 +477,23 @@ app.MapGet("/media/audio/{slug}", async (
     return Results.File(characterAudioFilePath, characterAudioMimeType, enableRangeProcessing: true);
 }).RequireRateLimiting("audio-stream");
 
-app.MapGet("/media/resources/{typeSlug}/{fileName}", async (
-    string typeSlug,
-    string fileName,
+app.MapGet("/media/resources/{resourceDocumentId:guid}", async (
+    Guid resourceDocumentId,
     IResourceCatalogService resourceCatalogService,
+    IResourceDocumentStorageService resourceDocumentStorageService,
     HttpContext httpContext) =>
 {
-    var document = await resourceCatalogService.GetDocumentDownloadAsync(typeSlug, fileName, httpContext.RequestAborted);
-    if (document is null || !File.Exists(document.PhysicalPath))
+    var document = await resourceCatalogService.GetDocumentDownloadAsync(resourceDocumentId, httpContext.RequestAborted);
+    if (document is null)
+    {
+        return Results.NotFound();
+    }
+
+    var resourceStream = await resourceDocumentStorageService.OpenReadAsync(
+        document.StorageBucket,
+        document.StorageObjectKey,
+        httpContext.RequestAborted);
+    if (resourceStream is null)
     {
         return Results.NotFound();
     }
@@ -492,8 +502,9 @@ app.MapGet("/media/resources/{typeSlug}/{fileName}", async (
     httpContext.Response.Headers.Pragma = "no-cache";
     httpContext.Response.Headers.Expires = "0";
     httpContext.Response.Headers["X-Robots-Tag"] = "noindex, nofollow";
+    httpContext.Response.Headers.ContentDisposition = $"inline; filename*=UTF-8''{Uri.EscapeDataString(document.DownloadFileName)}";
 
-    return Results.File(document.PhysicalPath, document.ContentType, enableRangeProcessing: true);
+    return Results.File(resourceStream.Content, resourceStream.ContentType, lastModified: resourceStream.LastModified ?? document.LastModified);
 });
 
 app.MapGet("/betaal/payfast/{planSlug}", (string planSlug) =>

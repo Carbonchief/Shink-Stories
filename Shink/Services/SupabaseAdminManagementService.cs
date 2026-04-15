@@ -14,7 +14,6 @@ public sealed partial class SupabaseAdminManagementService(
     IOptions<SupabaseOptions> supabaseOptions,
     IMemoryCache memoryCache,
     IUserNotificationService userNotificationService,
-    IWebHostEnvironment webHostEnvironment,
     ILogger<SupabaseAdminManagementService> logger) : IAdminManagementService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -24,7 +23,6 @@ public sealed partial class SupabaseAdminManagementService(
     private readonly SupabaseOptions _options = supabaseOptions.Value;
     private readonly IMemoryCache _memoryCache = memoryCache;
     private readonly IUserNotificationService _userNotificationService = userNotificationService;
-    private readonly IWebHostEnvironment _webHostEnvironment = webHostEnvironment;
     private readonly ILogger<SupabaseAdminManagementService> _logger = logger;
 
     public async Task<bool> IsAdminAsync(string? email, CancellationToken cancellationToken = default)
@@ -920,8 +918,16 @@ public sealed partial class SupabaseAdminManagementService(
             return Array.Empty<AdminResourceTypeRecord>();
         }
 
-        var rows = await FetchResourceTypesAsync(baseUri, apiKey, cancellationToken);
-        return rows
+        var resourceTypesTask = FetchResourceTypesAsync(baseUri, apiKey, cancellationToken);
+        var resourceDocumentsTask = FetchResourceDocumentsAsync(baseUri, apiKey, null, cancellationToken);
+        await Task.WhenAll(resourceTypesTask, resourceDocumentsTask);
+
+        var documentCounts = resourceDocumentsTask.Result
+            .Where(row => row.ResourceTypeId != Guid.Empty)
+            .GroupBy(row => row.ResourceTypeId)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        return resourceTypesTask.Result
             .Where(row => row.ResourceTypeId != Guid.Empty)
             .Where(row => !string.IsNullOrWhiteSpace(row.Slug))
             .Where(row => !string.IsNullOrWhiteSpace(row.Name))
@@ -930,10 +936,9 @@ public sealed partial class SupabaseAdminManagementService(
                 Slug: row.Slug.Trim(),
                 Name: row.Name.Trim(),
                 Description: NormalizeOptionalText(row.Description, 4000),
-                SourceDirectory: NormalizeOptionalText(row.SourceDirectory, 2048) ?? string.Empty,
                 SortOrder: row.SortOrder,
                 IsEnabled: row.IsEnabled,
-                DocumentCount: CountResourceDocuments(row.SourceDirectory),
+                DocumentCount: documentCounts.TryGetValue(row.ResourceTypeId, out var count) ? count : 0,
                 UpdatedAt: row.UpdatedAt))
             .OrderBy(type => type.SortOrder)
             .ThenBy(type => type.Name, StringComparer.OrdinalIgnoreCase)
@@ -962,12 +967,6 @@ public sealed partial class SupabaseAdminManagementService(
             return new AdminOperationResult(false, "Resource type naam is verpligtend.");
         }
 
-        var normalizedSourceDirectory = NormalizeOptionalText(request.SourceDirectory, 2048);
-        if (string.IsNullOrWhiteSpace(normalizedSourceDirectory))
-        {
-            return new AdminOperationResult(false, "Source directory is verpligtend.");
-        }
-
         if (!TryBuildSupabaseBaseUri(out var baseUri))
         {
             return new AdminOperationResult(false, "Supabase URL is nog nie opgestel nie.");
@@ -984,7 +983,6 @@ public sealed partial class SupabaseAdminManagementService(
             ["slug"] = normalizedSlug,
             ["name"] = normalizedName,
             ["description"] = NormalizeOptionalText(request.Description, 4000),
-            ["source_directory"] = normalizedSourceDirectory,
             ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
             ["is_enabled"] = request.IsEnabled
         };
@@ -1086,6 +1084,213 @@ public sealed partial class SupabaseAdminManagementService(
         return new AdminOperationResult(false, "Kon nie resource type nou verwyder nie.");
     }
 
+    public async Task<IReadOnlyList<AdminResourceDocumentRecord>> GetResourceDocumentsAsync(
+        string? adminEmail,
+        Guid resourceTypeId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
+        {
+            return Array.Empty<AdminResourceDocumentRecord>();
+        }
+
+        if (resourceTypeId == Guid.Empty)
+        {
+            return Array.Empty<AdminResourceDocumentRecord>();
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return Array.Empty<AdminResourceDocumentRecord>();
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return Array.Empty<AdminResourceDocumentRecord>();
+        }
+
+        var rows = await FetchResourceDocumentsAsync(baseUri, apiKey, resourceTypeId, cancellationToken);
+        return rows
+            .Where(row => row.ResourceTypeId != Guid.Empty)
+            .Where(row => !string.IsNullOrWhiteSpace(row.Slug))
+            .Where(row => !string.IsNullOrWhiteSpace(row.Title))
+            .Where(row => !string.IsNullOrWhiteSpace(row.FileName))
+            .Where(row => !string.IsNullOrWhiteSpace(row.StorageBucket))
+            .Where(row => !string.IsNullOrWhiteSpace(row.StorageObjectKey))
+            .Select(row => new AdminResourceDocumentRecord(
+                ResourceDocumentId: row.ResourceDocumentId,
+                ResourceTypeId: row.ResourceTypeId,
+                Slug: row.Slug!.Trim(),
+                Title: row.Title!.Trim(),
+                Description: NormalizeOptionalText(row.Description, 4000),
+                FileName: Path.GetFileName(row.FileName!.Trim()),
+                ContentType: NormalizeOptionalText(row.ContentType, 120) ?? "application/pdf",
+                SizeBytes: Math.Max(0, row.SizeBytes),
+                StorageProvider: NormalizeOptionalText(row.StorageProvider, 32) ?? "r2",
+                StorageBucket: row.StorageBucket!.Trim(),
+                StorageObjectKey: row.StorageObjectKey!.Trim(),
+                SortOrder: row.SortOrder,
+                IsEnabled: row.IsEnabled,
+                CreatedAt: row.CreatedAt,
+                UpdatedAt: row.UpdatedAt))
+            .OrderBy(document => document.SortOrder)
+            .ThenBy(document => document.Title, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    public async Task<AdminOperationResult> CreateResourceDocumentAsync(
+        string? adminEmail,
+        AdminResourceDocumentCreateRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
+        {
+            return new AdminOperationResult(false, "Jy het nie admin toegang nie.");
+        }
+
+        if (request.ResourceTypeId == Guid.Empty)
+        {
+            return new AdminOperationResult(false, "Kies asseblief 'n geldige hulpbron tipe.");
+        }
+
+        var normalizedSlug = request.Slug?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (!StorySlugRegex().IsMatch(normalizedSlug))
+        {
+            return new AdminOperationResult(false, "Resource document slug is ongeldig.");
+        }
+
+        var normalizedTitle = request.Title?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalizedTitle))
+        {
+            return new AdminOperationResult(false, "Resource document titel is verpligtend.");
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return new AdminOperationResult(false, "Supabase URL is nog nie opgestel nie.");
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+        }
+
+        var normalizedFileName = Path.GetFileName(request.FileName?.Trim());
+        if (string.IsNullOrWhiteSpace(normalizedFileName) ||
+            !normalizedFileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            return new AdminOperationResult(false, "Resource document file moet 'n PDF wees.");
+        }
+
+        var normalizedContentType = NormalizeOptionalText(request.ContentType, 120) ?? "application/pdf";
+        if (!string.Equals(normalizedContentType, "application/pdf", StringComparison.OrdinalIgnoreCase))
+        {
+            return new AdminOperationResult(false, "Resource document file moet 'n PDF wees.");
+        }
+
+        var normalizedStorageProvider = request.StorageProvider?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (!string.Equals(normalizedStorageProvider, "r2", StringComparison.OrdinalIgnoreCase))
+        {
+            return new AdminOperationResult(false, "Resource document storage provider moet 'r2' wees.");
+        }
+
+        var normalizedStorageBucket = NormalizeOptionalText(request.StorageBucket, 120);
+        var normalizedStorageObjectKey = NormalizeOptionalText(request.StorageObjectKey, 1024);
+        if (string.IsNullOrWhiteSpace(normalizedStorageBucket) ||
+            string.IsNullOrWhiteSpace(normalizedStorageObjectKey))
+        {
+            return new AdminOperationResult(false, "Resource document storage metadata ontbreek.");
+        }
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["resource_type_id"] = request.ResourceTypeId,
+            ["slug"] = normalizedSlug,
+            ["title"] = normalizedTitle,
+            ["description"] = NormalizeOptionalText(request.Description, 4000),
+            ["file_name"] = normalizedFileName,
+            ["content_type"] = normalizedContentType,
+            ["size_bytes"] = Math.Max(0, request.SizeBytes),
+            ["storage_provider"] = "r2",
+            ["storage_bucket"] = normalizedStorageBucket,
+            ["storage_object_key"] = normalizedStorageObjectKey,
+            ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
+            ["is_enabled"] = request.IsEnabled
+        };
+
+        var createUri = new Uri(baseUri, "rest/v1/resource_documents?select=resource_document_id");
+        using var createRequest = CreateJsonRequest(HttpMethod.Post, createUri, apiKey, payload, "return=representation");
+        using var createResponse = await _httpClient.SendAsync(createRequest, cancellationToken);
+        if (createResponse.IsSuccessStatusCode)
+        {
+            var body = await createResponse.Content.ReadAsStringAsync(cancellationToken);
+            InvalidateResourceCatalogCache();
+            return new AdminOperationResult(true, EntityId: TryReadFirstGuidProperty(body, "resource_document_id"));
+        }
+
+        var createBody = await createResponse.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Resource document create failed. resource_type_id={ResourceTypeId} slug={Slug} Status={StatusCode} Body={Body}",
+            request.ResourceTypeId,
+            normalizedSlug,
+            (int)createResponse.StatusCode,
+            createBody);
+
+        if (ContainsDuplicateResourceDocumentSlugViolation(createBody))
+        {
+            return new AdminOperationResult(false, "Resource document slug bestaan reeds.");
+        }
+
+        return new AdminOperationResult(false, "Kon nie resource document skep nie.");
+    }
+
+    public async Task<AdminOperationResult> DeleteResourceDocumentAsync(
+        string? adminEmail,
+        Guid resourceDocumentId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
+        {
+            return new AdminOperationResult(false, "Jy het nie admin toegang nie.");
+        }
+
+        if (resourceDocumentId == Guid.Empty)
+        {
+            return new AdminOperationResult(false, "Kies asseblief 'n geldige resource document.");
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return new AdminOperationResult(false, "Supabase URL is nog nie opgestel nie.");
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+        }
+
+        var escapedResourceDocumentId = Uri.EscapeDataString(resourceDocumentId.ToString("D"));
+        var deleteUri = new Uri(baseUri, $"rest/v1/resource_documents?resource_document_id=eq.{escapedResourceDocumentId}");
+        using var deleteRequest = CreateRequest(HttpMethod.Delete, deleteUri, apiKey);
+        using var deleteResponse = await _httpClient.SendAsync(deleteRequest, cancellationToken);
+        if (deleteResponse.IsSuccessStatusCode)
+        {
+            InvalidateResourceCatalogCache();
+            return new AdminOperationResult(true);
+        }
+
+        var deleteBody = await deleteResponse.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Resource document delete failed. resource_document_id={ResourceDocumentId} Status={StatusCode} Body={Body}",
+            resourceDocumentId,
+            (int)deleteResponse.StatusCode,
+            deleteBody);
+        return new AdminOperationResult(false, "Kon nie resource document nou verwyder nie.");
+    }
+
     private async Task<IReadOnlyList<SubscriberRow>> FetchSubscribersAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
     {
         var uri = new Uri(
@@ -1164,12 +1369,35 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/resource_types" +
-            "?select=resource_type_id,slug,name,description,source_directory,sort_order,is_enabled,updated_at" +
+            "?select=resource_type_id,slug,name,description,sort_order,is_enabled,updated_at" +
             "&order=sort_order.asc" +
             "&order=name.asc" +
             "&limit=500");
 
         return await FetchRowsAsync<ResourceTypeRow>(uri, apiKey, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<ResourceDocumentRow>> FetchResourceDocumentsAsync(
+        Uri baseUri,
+        string apiKey,
+        Guid? resourceTypeId,
+        CancellationToken cancellationToken)
+    {
+        var queryBuilder = new StringBuilder(
+            "rest/v1/resource_documents" +
+            "?select=resource_document_id,resource_type_id,slug,title,description,file_name,content_type,size_bytes,storage_provider,storage_bucket,storage_object_key,sort_order,is_enabled,created_at,updated_at" +
+            "&order=sort_order.asc" +
+            "&order=title.asc" +
+            "&limit=5000");
+
+        if (resourceTypeId is Guid targetId && targetId != Guid.Empty)
+        {
+            queryBuilder.Append("&resource_type_id=eq.");
+            queryBuilder.Append(Uri.EscapeDataString(targetId.ToString("D")));
+        }
+
+        var uri = new Uri(baseUri, queryBuilder.ToString());
+        return await FetchRowsAsync<ResourceDocumentRow>(uri, apiKey, cancellationToken);
     }
 
     private async Task<PlaylistRow?> FetchPlaylistByIdAsync(
@@ -1564,11 +1792,9 @@ public sealed partial class SupabaseAdminManagementService(
         !string.IsNullOrWhiteSpace(responseBody) &&
         responseBody.Contains("resource_types_slug_key", StringComparison.OrdinalIgnoreCase);
 
-    private int CountResourceDocuments(string? sourceDirectory) =>
-        ResourceFileSystemHelper.GetPdfFiles(
-            sourceDirectory,
-            _webHostEnvironment.ContentRootPath,
-            _webHostEnvironment.WebRootPath).Count;
+    private static bool ContainsDuplicateResourceDocumentSlugViolation(string? responseBody) =>
+        !string.IsNullOrWhiteSpace(responseBody) &&
+        responseBody.Contains("resource_documents_resource_type_id_slug_key", StringComparison.OrdinalIgnoreCase);
 
     [GeneratedRegex("^[a-z0-9]+(?:-[a-z0-9]+)*$", RegexOptions.CultureInvariant)]
     private static partial Regex StorySlugRegex();
@@ -1780,14 +2006,59 @@ public sealed partial class SupabaseAdminManagementService(
         [JsonPropertyName("description")]
         public string? Description { get; set; }
 
-        [JsonPropertyName("source_directory")]
-        public string? SourceDirectory { get; set; }
+        [JsonPropertyName("sort_order")]
+        public int SortOrder { get; set; }
+
+        [JsonPropertyName("is_enabled")]
+        public bool IsEnabled { get; set; }
+
+        [JsonPropertyName("updated_at")]
+        public DateTimeOffset? UpdatedAt { get; set; }
+    }
+
+    private sealed class ResourceDocumentRow
+    {
+        [JsonPropertyName("resource_document_id")]
+        public Guid ResourceDocumentId { get; set; }
+
+        [JsonPropertyName("resource_type_id")]
+        public Guid ResourceTypeId { get; set; }
+
+        [JsonPropertyName("slug")]
+        public string? Slug { get; set; }
+
+        [JsonPropertyName("title")]
+        public string? Title { get; set; }
+
+        [JsonPropertyName("description")]
+        public string? Description { get; set; }
+
+        [JsonPropertyName("file_name")]
+        public string? FileName { get; set; }
+
+        [JsonPropertyName("content_type")]
+        public string? ContentType { get; set; }
+
+        [JsonPropertyName("size_bytes")]
+        public long SizeBytes { get; set; }
+
+        [JsonPropertyName("storage_provider")]
+        public string? StorageProvider { get; set; }
+
+        [JsonPropertyName("storage_bucket")]
+        public string? StorageBucket { get; set; }
+
+        [JsonPropertyName("storage_object_key")]
+        public string? StorageObjectKey { get; set; }
 
         [JsonPropertyName("sort_order")]
         public int SortOrder { get; set; }
 
         [JsonPropertyName("is_enabled")]
         public bool IsEnabled { get; set; }
+
+        [JsonPropertyName("created_at")]
+        public DateTimeOffset CreatedAt { get; set; }
 
         [JsonPropertyName("updated_at")]
         public DateTimeOffset? UpdatedAt { get; set; }

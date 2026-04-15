@@ -38,14 +38,11 @@
 }
 
 .resource-types-admin-new-action-btn:hover,
-.resource-types-admin-new-action-btn:focus-visible {
+.resource-types-admin-new-action-btn:focus-visible,
+.resource-types-admin-btn:hover,
+.resource-types-admin-btn:focus-visible {
     transform: translateY(-1px);
     filter: brightness(1.02);
-}
-
-.resource-types-admin-new-action-btn i {
-    font-size: 1rem;
-    line-height: 1;
 }
 
 .resource-types-admin-layout {
@@ -75,7 +72,10 @@
 .resource-types-admin-hint,
 .resource-types-admin-empty,
 .resource-types-admin-empty-state p,
-.resource-types-admin-summary dt {
+.resource-types-admin-summary dt,
+.resource-types-admin-upload-hint,
+.resource-types-admin-document-copy p,
+.resource-types-admin-document-copy span {
     color: var(--admin-muted);
 }
 
@@ -106,9 +106,11 @@
     gap: 0.15rem;
 }
 
-.resource-types-admin-list-title {
+.resource-types-admin-list-title,
+.resource-types-admin-document-copy h5 {
     font-weight: 800;
     color: var(--admin-text);
+    margin: 0;
 }
 
 .resource-types-admin-editor {
@@ -117,7 +119,8 @@
     gap: 1rem;
 }
 
-.resource-types-admin-editor-head {
+.resource-types-admin-editor-head,
+.resource-types-admin-card-head {
     display: flex;
     justify-content: space-between;
     gap: 1rem;
@@ -131,7 +134,9 @@
     color: var(--admin-text);
 }
 
-.resource-types-admin-editor-actions {
+.resource-types-admin-editor-actions,
+.resource-types-admin-upload-actions,
+.resource-types-admin-document-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 0.65rem;
@@ -154,6 +159,10 @@
     align-content: start;
 }
 
+.resource-types-admin-card-full {
+    grid-column: 1 / -1;
+}
+
 .resource-types-admin-field,
 .resource-types-admin-checkbox {
     display: grid;
@@ -167,7 +176,9 @@
 }
 
 .resource-types-admin-field input,
-.resource-types-admin-field textarea {
+.resource-types-admin-field textarea,
+.resource-types-admin-search,
+.resource-types-admin-document-search {
     width: 100%;
     border: 1px solid var(--admin-input-border);
     border-radius: 12px;
@@ -231,12 +242,6 @@
     transition: transform 0.16s ease, filter 0.16s ease;
 }
 
-.resource-types-admin-btn:hover,
-.resource-types-admin-btn:focus-visible {
-    transform: translateY(-1px);
-    filter: brightness(1.02);
-}
-
 .resource-types-admin-btn-secondary {
     background: #2f4f68;
     color: #f4f8fb;
@@ -249,50 +254,114 @@
 
 .resource-types-admin-search {
     min-width: min(100%, 280px);
-    border: 1px solid var(--admin-input-border);
-    border-radius: 12px;
-    padding: 0.7rem 0.8rem;
-    background: var(--admin-input-bg);
-    color: var(--admin-text);
     width: auto;
     flex: 1 1 260px;
 }
 
-.resource-types-admin-btn {
-    flex: 0 0 auto;
+.resource-types-admin-upload-btn {
+    position: relative;
+    display: inline-flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 48px;
+    padding: 0.85rem 1rem;
+    border-radius: 14px;
+    border: 1px dashed var(--admin-border-strong);
+    background: color-mix(in srgb, #ffffff 5%, transparent);
+    color: var(--admin-text);
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.resource-types-admin-file-input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.resource-types-admin-file-list,
+.resource-types-admin-documents {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.resource-types-admin-file-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.resource-types-admin-file-list li,
+.resource-types-admin-document-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+    padding: 0.85rem 0.95rem;
+    border-radius: 14px;
+    border: 1px solid var(--admin-border);
+    background: #12202d;
+}
+
+.resource-types-admin-file-list li span {
+    color: var(--admin-muted);
+}
+
+.resource-types-admin-document-copy {
+    display: grid;
+    gap: 0.25rem;
+}
+
+.resource-types-admin-status-tag {
+    border-radius: 999px;
+    padding: 0.35rem 0.65rem;
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+
+.resource-types-admin-status-tag.is-enabled {
+    background: #143526;
+    color: #d0ffe8;
+}
+
+.resource-types-admin-status-tag.is-disabled {
+    background: #3d1d23;
+    color: #ffd7db;
+}
+
+.resource-types-admin-inline-empty {
+    border: 1px dashed var(--admin-border);
+    border-radius: 14px;
+    padding: 1rem;
+    background: #12202d;
 }
 
 @media (max-width: 980px) {
-    .admin-search {
-        flex-wrap: wrap;
+    .admin-search,
+    .resource-types-admin-editor-head,
+    .resource-types-admin-card-head,
+    .resource-types-admin-upload-actions,
+    .resource-types-admin-document-actions,
+    .resource-types-admin-file-list li,
+    .resource-types-admin-document-item {
+        flex-direction: column;
+        align-items: stretch;
     }
 
     .resource-types-admin-search,
     .resource-types-admin-new-action-btn,
-    .admin-mobile-cta {
+    .admin-mobile-cta,
+    .resource-types-admin-document-search,
+    .resource-types-admin-btn {
         width: 100%;
         flex: 1 1 100%;
-    }
-
-    .admin-mobile-cta {
-        min-width: 0;
-        justify-content: center;
-        gap: 0.55rem;
-        padding-inline: 0.95rem;
     }
 
     .resource-types-admin-layout,
     .resource-types-admin-form-grid,
     .resource-types-admin-field-row {
         grid-template-columns: 1fr;
-    }
-
-    .resource-types-admin-editor-head {
-        flex-direction: column;
-    }
-
-    .resource-types-admin-editor-actions {
-        width: 100%;
-        justify-content: flex-start;
     }
 }
