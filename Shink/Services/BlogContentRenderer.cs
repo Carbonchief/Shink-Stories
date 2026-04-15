@@ -15,12 +15,16 @@ public sealed partial class BlogContentRenderer : IBlogContentRenderer
 
     public string RenderHtml(string? markdown)
     {
-        if (string.IsNullOrWhiteSpace(markdown))
+        var normalizedContent = NormalizeContent(markdown);
+        if (string.IsNullOrWhiteSpace(normalizedContent))
         {
             return string.Empty;
         }
 
-        var rendered = Markdown.ToHtml(NormalizeMarkdown(markdown), MarkdownPipeline);
+        var rendered = LooksLikeHtml(normalizedContent)
+            ? normalizedContent
+            : Markdown.ToHtml(normalizedContent, MarkdownPipeline);
+
         return _sanitizer.Sanitize(rendered);
     }
 
@@ -81,7 +85,7 @@ public sealed partial class BlogContentRenderer : IBlogContentRenderer
         sanitizer.AllowedSchemes.Add("mailto");
         sanitizer.AllowedSchemes.Add("tel");
 
-        foreach (var tag in new[] { "figure", "figcaption" })
+        foreach (var tag in new[] { "figure", "figcaption", "u", "s" })
         {
             sanitizer.AllowedTags.Add(tag);
         }
@@ -89,13 +93,20 @@ public sealed partial class BlogContentRenderer : IBlogContentRenderer
         return sanitizer;
     }
 
-    private static string NormalizeMarkdown(string markdown) =>
-        markdown
+    private static bool LooksLikeHtml(string content) =>
+        HtmlContentRegex().IsMatch(content);
+
+    private static string NormalizeContent(string? content) =>
+        content?
             .Replace("\r\n", "\n", StringComparison.Ordinal)
-            .Trim();
+            .Trim()
+        ?? string.Empty;
 
     private static string CollapseWhitespace(string value) =>
         WhitespaceRegex().Replace(value, " ").Trim();
+
+    [GeneratedRegex(@"<\s*(p|div|h[1-6]|ul|ol|li|blockquote|pre|code|strong|em|u|s|a|br|figure|figcaption|img)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex HtmlContentRegex();
 
     [GeneratedRegex("<[^>]+>", RegexOptions.CultureInvariant)]
     private static partial Regex HtmlTagRegex();
