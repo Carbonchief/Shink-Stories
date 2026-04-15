@@ -118,7 +118,6 @@ public sealed record AdminStoryRecord(
     string? AudioContentType,
     string AccessLevel,
     string Status,
-    bool IsFeatured,
     int SortOrder,
     DateTimeOffset? PublishedAt,
     int? DurationSeconds,
@@ -138,7 +137,6 @@ public sealed record AdminStoryUpdateRequest(
     string? AudioContentType,
     string AccessLevel,
     string Status,
-    bool IsFeatured,
     int SortOrder,
     DateTimeOffset? PublishedAt,
     int? DurationSeconds);
@@ -155,7 +153,6 @@ public sealed record AdminStoryCreateRequest(
     string? AudioContentType,
     string AccessLevel,
     string Status,
-    bool IsFeatured,
     int SortOrder,
     DateTimeOffset? PublishedAt,
     int? DurationSeconds);
@@ -173,6 +170,7 @@ public sealed record AdminPlaylistRecord(
     int? MaxItems,
     bool IsEnabled,
     bool ShowOnHome,
+    bool ShowShowcaseImageOnLuisterPage,
     DateTimeOffset? UpdatedAt,
     IReadOnlyList<AdminPlaylistStoryItem> Stories);
 
@@ -197,7 +195,8 @@ public sealed record AdminPlaylistUpdateRequest(
     int SortOrder,
     int? MaxItems,
     bool IsEnabled,
-    bool ShowOnHome);
+    bool ShowOnHome,
+    bool ShowShowcaseImageOnLuisterPage);
 
 public sealed record AdminResourceTypeRecord(
     Guid ResourceTypeId,

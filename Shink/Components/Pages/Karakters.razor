@@ -100,15 +100,17 @@
                                  loading="lazy"
                                  decoding="async"
                                  onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
-                            <button type="button"
-                                    class="character-card-badge character-card-audio-trigger"
-                                    @onclick="() => PlayCharacterAudioAsync(card)"
-                                    @onclick:stopPropagation="true"
-                                    disabled="@(!card.HasAudio)"
-                                    aria-label="@(card.HasAudio ? $"Speel {card.Character.DisplayName} se stem" : $"{card.Character.DisplayName} het nog geen klankgreep nie")"
-                                    title="@(card.HasAudio ? "Speel karakterklank" : "Geen karakterklank beskikbaar")">
-                                <i class="fa-solid fa-volume-high" aria-hidden="true"></i>
-                            </button>
+                            @if (card.HasAudio)
+                            {
+                                <button type="button"
+                                        class="character-card-badge character-card-audio-trigger"
+                                        @onclick="() => PlayCharacterAudioAsync(card)"
+                                        @onclick:stopPropagation="true"
+                                        aria-label=$"Speel {card.Character.DisplayName} se stem"
+                                        title="Speel karakterklank">
+                                    <i class="fa-solid fa-volume-high" aria-hidden="true"></i>
+                                </button>
+                            }
 
                             @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
                             {
