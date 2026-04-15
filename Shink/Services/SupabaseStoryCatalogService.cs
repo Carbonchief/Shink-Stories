@@ -242,7 +242,7 @@ public sealed class SupabaseStoryCatalogService(
         var requestUri = new Uri(
             baseUri,
             "rest/v1/stories" +
-            "?select=story_id,slug,title,summary,description,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,access_level,status,is_featured,sort_order,published_at,duration_seconds,tags,metadata" +
+            "?select=story_id,slug,title,summary,description,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,access_level,status,sort_order,published_at,duration_seconds,tags,metadata" +
             "&status=eq.published" +
             "&order=published_at.desc.nullslast" +
             "&order=sort_order.asc");
@@ -287,7 +287,7 @@ public sealed class SupabaseStoryCatalogService(
         var requestUri = new Uri(
             baseUri,
             "rest/v1/story_playlists" +
-            "?select=playlist_id,slug,title,playlist_type,system_key,description,sort_order,max_items,is_enabled,show_on_home,logo_image_path,backdrop_image_path" +
+            "?select=playlist_id,slug,title,playlist_type,system_key,description,sort_order,max_items,is_enabled,show_on_home,show_showcase_image_on_luister_page,logo_image_path,backdrop_image_path" +
             "&is_enabled=eq.true" +
             "&order=sort_order.asc" +
             "&order=title.asc");
@@ -421,6 +421,7 @@ public sealed class SupabaseStoryCatalogService(
             SortOrder: favouritesConfig.SortOrder,
             Stories: limitedStories,
             ShowOnHome: favouritesConfig.ShowOnHome,
+            ShowShowcaseImageOnLuisterPage: favouritesConfig.ShowShowcaseImageOnLuisterPage,
             LogoImagePath: NormalizeOptionalText(favouritesConfig.LogoImagePath),
             BackdropImagePath: NormalizeOptionalText(favouritesConfig.BackdropImagePath),
             IsSystemPlaylist: true,
@@ -852,6 +853,7 @@ public sealed class SupabaseStoryCatalogService(
                 SortOrder: playlistRow.SortOrder,
                 Stories: limitedStories,
                 ShowOnHome: playlistRow.ShowOnHome,
+                ShowShowcaseImageOnLuisterPage: playlistRow.ShowShowcaseImageOnLuisterPage,
                 LogoImagePath: NormalizeOptionalText(playlistRow.LogoImagePath),
                 BackdropImagePath: NormalizeOptionalText(playlistRow.BackdropImagePath),
                 IsSystemPlaylist: playlistRow.IsSystemPlaylist,
@@ -881,6 +883,7 @@ public sealed class SupabaseStoryCatalogService(
                 SortOrder: allStoriesConfig?.SortOrder ?? int.MaxValue,
                 Stories: allStoriesItems,
                 ShowOnHome: allStoriesConfig?.ShowOnHome ?? false,
+                ShowShowcaseImageOnLuisterPage: allStoriesConfig?.ShowShowcaseImageOnLuisterPage ?? false,
                 LogoImagePath: NormalizeOptionalText(allStoriesConfig?.LogoImagePath),
                 BackdropImagePath: NormalizeOptionalText(allStoriesConfig?.BackdropImagePath),
                 IsSystemPlaylist: allStoriesConfig?.IsSystemPlaylist ?? false,
@@ -1008,41 +1011,11 @@ public sealed class SupabaseStoryCatalogService(
 
     private static IReadOnlyList<StoryCatalogRow> BuildNewestTopRows(IReadOnlyList<StoryCatalogRow> rows, int maxCount)
     {
-        var luisterRows = rows
+        return rows
             .Where(IsSubscriberStoryRow)
-            .ToArray();
-
-        var featuredRows = luisterRows
-            .Where(row => row.IsFeatured)
-            .OrderBy(row => row.SortOrder)
-            .ThenByDescending(row => row.PublishedAt)
+            .OrderByDescending(row => row.PublishedAt)
+            .ThenBy(row => row.SortOrder)
             .ThenBy(row => row.Title, StringComparer.OrdinalIgnoreCase)
-            .ToList();
-
-        if (featuredRows.Count < maxCount)
-        {
-            var featuredIds = featuredRows
-                .Select(row => row.StoryId)
-                .ToHashSet();
-
-            var remainder = luisterRows
-                .Where(row => !featuredIds.Contains(row.StoryId))
-                .OrderByDescending(row => row.PublishedAt)
-                .ThenBy(row => row.SortOrder)
-                .ThenBy(row => row.Title, StringComparer.OrdinalIgnoreCase);
-
-            foreach (var row in remainder)
-            {
-                if (featuredRows.Count >= maxCount)
-                {
-                    break;
-                }
-
-                featuredRows.Add(row);
-            }
-        }
-
-        return featuredRows
             .Take(maxCount)
             .ToArray();
     }
@@ -1165,7 +1138,7 @@ public sealed class SupabaseStoryCatalogService(
 
     private static IReadOnlyList<StoryCatalogRow> BuildLegacyFallbackRows()
     {
-        var featuredOrderBySlug = StoryCatalog.NewestTop10
+        var previewOrderBySlug = StoryCatalog.NewestTop10
             .Select((preview, index) => new
             {
                 Slug = TryParseSlugFromLinkPath(preview.LinkPath),
@@ -1189,11 +1162,11 @@ public sealed class SupabaseStoryCatalogService(
         foreach (var story in StoryCatalog.LuisterStories)
         {
             var isFree = freeOrderBySlug.ContainsKey(story.Slug);
-            var isFeatured = featuredOrderBySlug.TryGetValue(story.Slug, out var featuredSortOrder);
+            var isTop10PreviewStory = previewOrderBySlug.TryGetValue(story.Slug, out var previewSortOrder);
             var sortOrder = isFree
                 ? freeOrderBySlug[story.Slug]
-                : isFeatured
-                    ? featuredSortOrder
+                : isTop10PreviewStory
+                    ? previewSortOrder
                     : 1_000;
 
             rows.Add(new StoryCatalogRow
@@ -1211,7 +1184,6 @@ public sealed class SupabaseStoryCatalogService(
                 AudioContentType = story.AudioContentType,
                 AccessLevel = isFree ? "free" : "subscriber",
                 Status = "published",
-                IsFeatured = isFeatured,
                 SortOrder = sortOrder,
                 PublishedAt = null,
                 Tags = isFree ? ["free"] : ["subscriber"],
@@ -1295,9 +1267,6 @@ public sealed class SupabaseStoryCatalogService(
         [JsonPropertyName("status")]
         public string Status { get; set; } = "published";
 
-        [JsonPropertyName("is_featured")]
-        public bool IsFeatured { get; set; }
-
         [JsonPropertyName("sort_order")]
         public int SortOrder { get; set; }
 
@@ -1345,6 +1314,9 @@ public sealed class SupabaseStoryCatalogService(
 
         [JsonPropertyName("show_on_home")]
         public bool ShowOnHome { get; set; }
+
+        [JsonPropertyName("show_showcase_image_on_luister_page")]
+        public bool ShowShowcaseImageOnLuisterPage { get; set; }
 
         [JsonPropertyName("logo_image_path")]
         public string? LogoImagePath { get; set; }

@@ -313,6 +313,7 @@
                     <MudTh>@T("Titel", "Title")</MudTh>
                     <MudTh>@T("Aktief", "Active")</MudTh>
                     <MudTh>@T("Tuisblad", "Home")</MudTh>
+                    <MudTh>@T("Showcase op Luister", "Showcase on Luister")</MudTh>
                     <MudTh Class="admin-col-center">@T("Aksies", "Actions")</MudTh>
                 </HeaderContent>
                 <RowTemplate>
@@ -340,6 +341,15 @@
                             <MudSwitch T="bool"
                                        Value="@context.ShowOnHome"
                                        ValueChanged="@(value => TogglePlaylistHomeAsync(context, value))"
+                                       Color="Color.Success"
+                                       Disabled="@(IsSavingPlaylistsOrder || IsSavingPlaylist || TogglingPlaylistIds.Contains(context.PlaylistId))" />
+                        </div>
+                    </MudTd>
+                    <MudTd DataLabel='@T("Showcase op Luister", "Showcase on Luister")'>
+                        <div class="admin-toggle-cell" @onclick:stopPropagation="true">
+                            <MudSwitch T="bool"
+                                       Value="@context.ShowShowcaseImageOnLuisterPage"
+                                       ValueChanged="@(value => TogglePlaylistShowcaseOnLuisterAsync(context, value))"
                                        Color="Color.Success"
                                        Disabled="@(IsSavingPlaylistsOrder || IsSavingPlaylist || TogglingPlaylistIds.Contains(context.PlaylistId))" />
                         </div>
@@ -696,9 +706,6 @@
                                               @bind-Value="StoryEditor.PublishedAtLocal"
                                               Variant="Variant.Outlined"
                                               Margin="Margin.Dense" />
-                                <MudCheckBox T="bool"
-                                             Label='@T("Gekenmerk", "Featured")'
-                                             @bind-Value="StoryEditor.IsFeatured" />
                                 <MudTextField T="string"
                                               Label='@T("Opsomming", "Summary")'
                                               @bind-Value="StoryEditor.Summary"
@@ -754,8 +761,8 @@
                                     {
                                         <p class="admin-form-note admin-span-2">
                                             @T(
-                                                "Hierdie is 'n sisteem playlist. Titel, maksimum items en tuisblad/volgorde bly beperk, maar jy kan aktief-status, beskrywing en beelde hier wysig.",
-                                                "This is a system playlist. Title, max items, and home/order remain restricted, but you can edit active status, description, and images here.")
+                                                "Hierdie is 'n sisteem playlist. Titel, maksimum items en tuisblad/volgorde bly beperk, maar jy kan aktief-status, beskrywing, beelde en die Luister showcase hier wysig.",
+                                                "This is a system playlist. Title, max items, and home/order remain restricted, but you can edit active status, description, images, and the Luister showcase here.")
                                         </p>
                                     }
                                     <MudTextField T="string"
@@ -777,6 +784,9 @@
                                                  Label='@T("Wys op tuisblad", "Show on home")'
                                                  Disabled="@isSystemPlaylist"
                                                  @bind-Value="PlaylistEditor.ShowOnHome" />
+                                    <MudCheckBox T="bool"
+                                                 Label='@T("Wys showcase image op Luister", "Show showcase image on Luister")'
+                                                 @bind-Value="PlaylistEditor.ShowShowcaseImageOnLuisterPage" />
                                     <MudTextField T="string"
                                                   Class="admin-span-2"
                                                   Label='@T("Beskrywing", "Description")'
@@ -1705,7 +1715,6 @@
                     AudioContentType: audioUpload.ContentType,
                     AccessLevel: NewStoryEditor.AccessLevel,
                     Status: NewStoryEditor.PublishNow ? "published" : "draft",
-                    IsFeatured: false,
                     SortOrder: BuildNextStorySortOrder(allStories),
                     PublishedAt: NewStoryEditor.PublishNow ? DateTimeOffset.Now : null,
                     DurationSeconds: null));
@@ -1822,7 +1831,6 @@
                     StoryEditor.AudioContentType,
                     StoryEditor.AccessLevel,
                     StoryEditor.Status,
-                    StoryEditor.IsFeatured,
                     StoryEditor.SortOrder,
                     publishedAt,
                     StoryEditor.DurationSeconds));
@@ -1938,7 +1946,8 @@
                     PlaylistEditor.SortOrder,
                     PlaylistEditor.MaxItems,
                     PlaylistEditor.IsEnabled,
-                    PlaylistEditor.ShowOnHome));
+                    PlaylistEditor.ShowOnHome,
+                    PlaylistEditor.ShowShowcaseImageOnLuisterPage));
 
             if (!HandleOperationResult(result, T("Playlist is gestoor.", "Playlist saved.")))
             {
@@ -1996,7 +2005,8 @@
                     playlist.SortOrder,
                     playlist.MaxItems,
                     isEnabled,
-                    playlist.ShowOnHome));
+                    playlist.ShowOnHome,
+                    playlist.ShowShowcaseImageOnLuisterPage));
 
             if (!HandleOperationResult(
                     result,
@@ -2048,7 +2058,8 @@
                     playlist.SortOrder,
                     playlist.MaxItems,
                     playlist.IsEnabled,
-                    showOnHome));
+                    showOnHome,
+                    playlist.ShowShowcaseImageOnLuisterPage));
 
             if (!HandleOperationResult(
                     result,
@@ -2065,6 +2076,59 @@
         {
             Logger.LogError(exception, "Failed to toggle playlist home visibility. playlist_id={PlaylistId}", playlist.PlaylistId);
             SetError(T("Kon nie tuisblad status nou opdateer nie.", "Could not update home page status right now."));
+        }
+        finally
+        {
+            TogglingPlaylistIds.Remove(playlist.PlaylistId);
+        }
+    }
+
+    private async Task TogglePlaylistShowcaseOnLuisterAsync(AdminPlaylistRecord playlist, bool showOnLuister)
+    {
+        if (playlist.PlaylistId == Guid.Empty || playlist.ShowShowcaseImageOnLuisterPage == showOnLuister)
+        {
+            return;
+        }
+
+        if (!TogglingPlaylistIds.Add(playlist.PlaylistId))
+        {
+            return;
+        }
+
+        ClearFeedback();
+
+        try
+        {
+            var result = await AdminManagementService.SavePlaylistAsync(
+                CurrentAdminEmail,
+                new AdminPlaylistUpdateRequest(
+                    playlist.PlaylistId,
+                    playlist.Slug,
+                    playlist.Title,
+                    playlist.Description,
+                    playlist.LogoImagePath,
+                    playlist.BackdropImagePath,
+                    playlist.SortOrder,
+                    playlist.MaxItems,
+                    playlist.IsEnabled,
+                    playlist.ShowOnHome,
+                    showOnLuister));
+
+            if (!HandleOperationResult(
+                    result,
+                    showOnLuister
+                        ? T("Playlist wys nou sy showcase image op Luister.", "Playlist now shows its showcase image on Luister.")
+                        : T("Playlist se showcase image is van Luister verwyder.", "Playlist showcase image was removed from Luister.")))
+            {
+                return;
+            }
+
+            await RefreshPlaylistsAsync(playlist.PlaylistId);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to toggle playlist showcase visibility. playlist_id={PlaylistId}", playlist.PlaylistId);
+            SetError(T("Kon nie showcase status nou opdateer nie.", "Could not update showcase status right now."));
         }
         finally
         {
@@ -3319,7 +3383,6 @@
         public string? AudioContentType { get; set; }
         public string AccessLevel { get; set; } = "subscriber";
         public string Status { get; set; } = "draft";
-        public bool IsFeatured { get; set; }
         public int SortOrder { get; set; }
         public int? DurationSeconds { get; set; }
         public string? PublishedAtLocal { get; set; }
@@ -3339,7 +3402,6 @@
             AudioContentType = story.AudioContentType,
             AccessLevel = story.AccessLevel,
             Status = story.Status,
-            IsFeatured = story.IsFeatured,
             SortOrder = story.SortOrder,
             DurationSeconds = story.DurationSeconds,
             PublishedAtLocal = story.PublishedAt?.LocalDateTime.ToString("yyyy-MM-ddTHH:mm")
@@ -3379,6 +3441,7 @@
         public int? MaxItems { get; set; }
         public bool IsEnabled { get; set; } = true;
         public bool ShowOnHome { get; set; }
+        public bool ShowShowcaseImageOnLuisterPage { get; set; }
 
         public static EditablePlaylist From(AdminPlaylistRecord playlist) => new()
         {
@@ -3397,7 +3460,8 @@
             SortOrder = playlist.SortOrder,
             MaxItems = playlist.MaxItems,
             IsEnabled = playlist.IsEnabled,
-            ShowOnHome = playlist.ShowOnHome
+            ShowOnHome = playlist.ShowOnHome,
+            ShowShowcaseImageOnLuisterPage = playlist.ShowShowcaseImageOnLuisterPage
         };
     }
 

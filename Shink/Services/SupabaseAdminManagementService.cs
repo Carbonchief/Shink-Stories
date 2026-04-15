@@ -212,7 +212,6 @@ public sealed partial class SupabaseAdminManagementService(
                 AudioContentType: NormalizeOptionalText(row.AudioContentType, 100),
                 AccessLevel: string.IsNullOrWhiteSpace(row.AccessLevel) ? "subscriber" : row.AccessLevel.Trim().ToLowerInvariant(),
                 Status: string.IsNullOrWhiteSpace(row.Status) ? "draft" : row.Status.Trim().ToLowerInvariant(),
-                IsFeatured: row.IsFeatured,
                 SortOrder: row.SortOrder,
                 PublishedAt: row.PublishedAt,
                 DurationSeconds: row.DurationSeconds,
@@ -347,7 +346,6 @@ public sealed partial class SupabaseAdminManagementService(
             ["audio_content_type"] = normalizedAudioContentType,
             ["access_level"] = normalizedAccessLevel,
             ["status"] = normalizedStatus,
-            ["is_featured"] = request.IsFeatured,
             ["sort_order"] = normalizedSortOrder,
             ["published_at"] = normalizedPublishedAt?.UtcDateTime,
             ["duration_seconds"] = normalizedDurationSeconds
@@ -483,7 +481,6 @@ public sealed partial class SupabaseAdminManagementService(
             ["audio_content_type"] = normalizedAudioContentType,
             ["access_level"] = normalizedAccessLevel,
             ["status"] = normalizedStatus,
-            ["is_featured"] = request.IsFeatured,
             ["sort_order"] = normalizedSortOrder,
             ["published_at"] = normalizedPublishedAt?.UtcDateTime,
             ["duration_seconds"] = normalizedDurationSeconds
@@ -611,6 +608,7 @@ public sealed partial class SupabaseAdminManagementService(
                     MaxItems: row.MaxItems is > 0 ? row.MaxItems : null,
                     IsEnabled: row.IsEnabled,
                     ShowOnHome: row.ShowOnHome,
+                    ShowShowcaseImageOnLuisterPage: row.ShowShowcaseImageOnLuisterPage,
                     UpdatedAt: row.UpdatedAt,
                     Stories: stories);
             })
@@ -665,6 +663,7 @@ public sealed partial class SupabaseAdminManagementService(
                 ["max_items"] = request.MaxItems is > 0 ? request.MaxItems : null,
                 ["is_enabled"] = request.IsEnabled,
                 ["show_on_home"] = request.ShowOnHome,
+                ["show_showcase_image_on_luister_page"] = request.ShowShowcaseImageOnLuisterPage,
                 ["playlist_type"] = "manual",
                 ["system_key"] = null
             };
@@ -704,7 +703,8 @@ public sealed partial class SupabaseAdminManagementService(
                 ["backdrop_image_path"] = NormalizePlaylistImagePath(request.BackdropImagePath, StoryPlaylist.DefaultBackdropImagePath),
                 ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
                 ["is_enabled"] = request.IsEnabled,
-                ["show_on_home"] = request.ShowOnHome
+                ["show_on_home"] = request.ShowOnHome,
+                ["show_showcase_image_on_luister_page"] = request.ShowShowcaseImageOnLuisterPage
             }
             : new Dictionary<string, object?>
             {
@@ -716,7 +716,8 @@ public sealed partial class SupabaseAdminManagementService(
                 ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
                 ["max_items"] = request.MaxItems is > 0 ? request.MaxItems : null,
                 ["is_enabled"] = request.IsEnabled,
-                ["show_on_home"] = request.ShowOnHome
+                ["show_on_home"] = request.ShowOnHome,
+                ["show_showcase_image_on_luister_page"] = request.ShowShowcaseImageOnLuisterPage
             };
 
         var escapedPlaylistId = Uri.EscapeDataString(request.PlaylistId.Value.ToString("D"));
@@ -1347,7 +1348,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/stories" +
-            "?select=story_id,slug,title,summary,description,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,access_level,status,is_featured,sort_order,published_at,duration_seconds,updated_at" +
+            "?select=story_id,slug,title,summary,description,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,access_level,status,sort_order,published_at,duration_seconds,updated_at" +
             "&order=updated_at.desc.nullslast" +
             "&order=sort_order.asc" +
             "&limit=2000");
@@ -1385,7 +1386,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/story_playlists" +
-            "?select=playlist_id,slug,title,playlist_type,system_key,description,logo_image_path,backdrop_image_path,sort_order,max_items,is_enabled,show_on_home,updated_at" +
+            "?select=playlist_id,slug,title,playlist_type,system_key,description,logo_image_path,backdrop_image_path,sort_order,max_items,is_enabled,show_on_home,show_showcase_image_on_luister_page,updated_at" +
             "&order=sort_order.asc" +
             "&order=title.asc" +
             "&limit=500");
@@ -1468,7 +1469,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/story_playlists" +
-            "?select=playlist_id,slug,title,playlist_type,system_key,description,logo_image_path,backdrop_image_path,sort_order,max_items,is_enabled,show_on_home,updated_at" +
+            "?select=playlist_id,slug,title,playlist_type,system_key,description,logo_image_path,backdrop_image_path,sort_order,max_items,is_enabled,show_on_home,show_showcase_image_on_luister_page,updated_at" +
             $"&playlist_id=eq.{escapedPlaylistId}" +
             "&limit=1");
 
@@ -1965,9 +1966,6 @@ public sealed partial class SupabaseAdminManagementService(
         [JsonPropertyName("status")]
         public string? Status { get; set; }
 
-        [JsonPropertyName("is_featured")]
-        public bool IsFeatured { get; set; }
-
         [JsonPropertyName("sort_order")]
         public int SortOrder { get; set; }
 
@@ -2018,6 +2016,9 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("show_on_home")]
         public bool ShowOnHome { get; set; }
+
+        [JsonPropertyName("show_showcase_image_on_luister_page")]
+        public bool ShowShowcaseImageOnLuisterPage { get; set; }
 
         [JsonPropertyName("updated_at")]
         public DateTimeOffset? UpdatedAt { get; set; }

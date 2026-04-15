@@ -11,7 +11,8 @@ public sealed record StoryPlaylist(
     string? BackdropImagePath = null,
     bool IsSystemPlaylist = false,
     string? SystemKey = null,
-    string? ShowcaseStorySlug = null)
+    string? ShowcaseStorySlug = null,
+    bool ShowShowcaseImageOnLuisterPage = false)
 {
     public const string DefaultLogoImagePath = "/branding/Storie_Hoekie_Logo_Banner.png";
     public const string DefaultBackdropImagePath = "/branding/Storie_Hoekie_Logo_Banner_Backdrop.png";
