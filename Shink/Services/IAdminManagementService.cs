@@ -62,6 +62,21 @@ public interface IAdminManagementService
         string? adminEmail,
         Guid resourceTypeId,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<AdminResourceDocumentRecord>> GetResourceDocumentsAsync(
+        string? adminEmail,
+        Guid resourceTypeId,
+        CancellationToken cancellationToken = default);
+
+    Task<AdminOperationResult> CreateResourceDocumentAsync(
+        string? adminEmail,
+        AdminResourceDocumentCreateRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<AdminOperationResult> DeleteResourceDocumentAsync(
+        string? adminEmail,
+        Guid resourceDocumentId,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record AdminOperationResult(bool IsSuccess, string? ErrorMessage = null, Guid? EntityId = null);
@@ -189,7 +204,6 @@ public sealed record AdminResourceTypeRecord(
     string Slug,
     string Name,
     string? Description,
-    string SourceDirectory,
     int SortOrder,
     bool IsEnabled,
     int DocumentCount,
@@ -200,6 +214,36 @@ public sealed record AdminResourceTypeUpdateRequest(
     string Slug,
     string Name,
     string? Description,
-    string SourceDirectory,
+    int SortOrder,
+    bool IsEnabled);
+
+public sealed record AdminResourceDocumentRecord(
+    Guid ResourceDocumentId,
+    Guid ResourceTypeId,
+    string Slug,
+    string Title,
+    string? Description,
+    string FileName,
+    string ContentType,
+    long SizeBytes,
+    string StorageProvider,
+    string StorageBucket,
+    string StorageObjectKey,
+    int SortOrder,
+    bool IsEnabled,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? UpdatedAt);
+
+public sealed record AdminResourceDocumentCreateRequest(
+    Guid ResourceTypeId,
+    string Slug,
+    string Title,
+    string? Description,
+    string FileName,
+    string ContentType,
+    long SizeBytes,
+    string StorageProvider,
+    string StorageBucket,
+    string StorageObjectKey,
     int SortOrder,
     bool IsEnabled);

@@ -10,7 +10,6 @@ public sealed class SupabaseResourceCatalogService(
     HttpClient httpClient,
     IOptions<SupabaseOptions> supabaseOptions,
     IMemoryCache memoryCache,
-    IWebHostEnvironment webHostEnvironment,
     ILogger<SupabaseResourceCatalogService> logger) : IResourceCatalogService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -19,7 +18,6 @@ public sealed class SupabaseResourceCatalogService(
     private readonly HttpClient _httpClient = httpClient;
     private readonly SupabaseOptions _options = supabaseOptions.Value;
     private readonly IMemoryCache _memoryCache = memoryCache;
-    private readonly IWebHostEnvironment _webHostEnvironment = webHostEnvironment;
     private readonly ILogger<SupabaseResourceCatalogService> _logger = logger;
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
 
@@ -51,11 +49,10 @@ public sealed class SupabaseResourceCatalogService(
     }
 
     public async Task<ResourceDocumentDownload?> GetDocumentDownloadAsync(
-        string? typeSlug,
-        string? fileName,
+        Guid resourceDocumentId,
         CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(typeSlug) || string.IsNullOrWhiteSpace(fileName))
+        if (resourceDocumentId == Guid.Empty)
         {
             return null;
         }
@@ -71,41 +68,58 @@ public sealed class SupabaseResourceCatalogService(
             return null;
         }
 
-        var escapedSlug = Uri.EscapeDataString(typeSlug.Trim().ToLowerInvariant());
-        var requestUri = new Uri(
+        var escapedDocumentId = Uri.EscapeDataString(resourceDocumentId.ToString("D"));
+        var documentUri = new Uri(
             baseUri,
-            "rest/v1/resource_types" +
-            "?select=resource_type_id,slug,name,description,source_directory,sort_order,is_enabled" +
-            $"&slug=eq.{escapedSlug}" +
+            "rest/v1/resource_documents" +
+            "?select=resource_document_id,resource_type_id,file_name,content_type,storage_bucket,storage_object_key,updated_at,is_enabled" +
+            $"&resource_document_id=eq.{escapedDocumentId}" +
             "&is_enabled=eq.true" +
             "&limit=1");
 
-        var rows = await FetchRowsAsync<ResourceTypeRow>(requestUri, apiKey, cancellationToken);
-        var row = rows.FirstOrDefault();
-        if (row is null)
+        var documents = await FetchRowsAsync<ResourceDocumentRow>(documentUri, apiKey, cancellationToken);
+        var document = documents.FirstOrDefault();
+        if (document is null ||
+            document.ResourceDocumentId == Guid.Empty ||
+            document.ResourceTypeId == Guid.Empty ||
+            string.IsNullOrWhiteSpace(document.StorageBucket) ||
+            string.IsNullOrWhiteSpace(document.StorageObjectKey))
         {
             return null;
         }
 
-        var requestedFileName = Path.GetFileName(Uri.UnescapeDataString(fileName.Trim()));
-        if (string.IsNullOrWhiteSpace(requestedFileName) ||
-            !requestedFileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+        var escapedTypeId = Uri.EscapeDataString(document.ResourceTypeId.ToString("D"));
+        var typeUri = new Uri(
+            baseUri,
+            "rest/v1/resource_types" +
+            "?select=resource_type_id" +
+            $"&resource_type_id=eq.{escapedTypeId}" +
+            "&is_enabled=eq.true" +
+            "&limit=1");
+
+        var types = await FetchRowsAsync<ResourceTypeLookupRow>(typeUri, apiKey, cancellationToken);
+        if (types.Count == 0)
         {
             return null;
         }
 
-        var file = ResourceFileSystemHelper.FindPdfFile(
-            row.SourceDirectory,
-            requestedFileName,
-            _webHostEnvironment.ContentRootPath,
-            _webHostEnvironment.WebRootPath);
+        var fileName = Path.GetFileName(document.FileName?.Trim());
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            fileName = $"{document.ResourceDocumentId:D}.pdf";
+        }
 
-        return file is null
-            ? null
-            : new ResourceDocumentDownload(
-                PhysicalPath: file.FullPath,
-                DownloadFileName: file.FileName,
-                ContentType: "application/pdf");
+        var contentType = string.IsNullOrWhiteSpace(document.ContentType)
+            ? "application/pdf"
+            : document.ContentType.Trim();
+
+        return new ResourceDocumentDownload(
+            ResourceDocumentId: document.ResourceDocumentId,
+            DownloadFileName: fileName,
+            ContentType: contentType,
+            StorageBucket: document.StorageBucket.Trim(),
+            StorageObjectKey: document.StorageObjectKey.Trim(),
+            LastModified: document.UpdatedAt);
     }
 
     private async Task<IReadOnlyList<ResourceTypeCatalog>> FetchCatalogAsync(CancellationToken cancellationToken)
@@ -123,47 +137,61 @@ public sealed class SupabaseResourceCatalogService(
             return Array.Empty<ResourceTypeCatalog>();
         }
 
-        var requestUri = new Uri(
+        var resourceTypesUri = new Uri(
             baseUri,
             "rest/v1/resource_types" +
-            "?select=resource_type_id,slug,name,description,source_directory,sort_order,is_enabled" +
+            "?select=resource_type_id,slug,name,description,sort_order" +
             "&is_enabled=eq.true" +
             "&order=sort_order.asc" +
             "&order=name.asc" +
             "&limit=200");
 
-        var rows = await FetchRowsAsync<ResourceTypeRow>(requestUri, apiKey, cancellationToken);
-        return rows
+        var documentsUri = new Uri(
+            baseUri,
+            "rest/v1/resource_documents" +
+            "?select=resource_document_id,resource_type_id,title,file_name,size_bytes,created_at,updated_at,sort_order" +
+            "&is_enabled=eq.true" +
+            "&order=sort_order.asc" +
+            "&order=title.asc" +
+            "&limit=5000");
+
+        var resourceTypesTask = FetchRowsAsync<ResourceTypeRow>(resourceTypesUri, apiKey, cancellationToken);
+        var documentsTask = FetchRowsAsync<ResourceDocumentListRow>(documentsUri, apiKey, cancellationToken);
+        await Task.WhenAll(resourceTypesTask, documentsTask);
+
+        var documentsByType = documentsTask.Result
+            .Where(row => row.ResourceDocumentId != Guid.Empty && row.ResourceTypeId != Guid.Empty)
+            .GroupBy(row => row.ResourceTypeId)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<ResourceDocumentItem>)group
+                    .OrderBy(row => row.SortOrder)
+                    .ThenBy(row => row.Title, StringComparer.OrdinalIgnoreCase)
+                    .Select(row => new ResourceDocumentItem(
+                        ResourceDocumentId: row.ResourceDocumentId,
+                        FileName: Path.GetFileName(row.FileName?.Trim()) ?? $"{row.ResourceDocumentId:D}.pdf",
+                        Title: NormalizeOptionalText(row.Title, 240) ?? Path.GetFileNameWithoutExtension(row.FileName?.Trim()) ?? "PDF",
+                        Url: $"/media/resources/{row.ResourceDocumentId:D}",
+                        SizeBytes: Math.Max(0, row.SizeBytes),
+                        LastModified: row.UpdatedAt ?? row.CreatedAt))
+                    .ToArray());
+
+        return resourceTypesTask.Result
             .Where(row => row.ResourceTypeId != Guid.Empty)
             .Where(row => !string.IsNullOrWhiteSpace(row.Slug))
             .Where(row => !string.IsNullOrWhiteSpace(row.Name))
-            .Select(MapToCatalog)
+            .Select(row => new ResourceTypeCatalog(
+                ResourceTypeId: row.ResourceTypeId,
+                Slug: row.Slug.Trim(),
+                Name: row.Name.Trim(),
+                Description: NormalizeOptionalText(row.Description, 4000),
+                SortOrder: row.SortOrder,
+                Documents: documentsByType.TryGetValue(row.ResourceTypeId, out var documents)
+                    ? documents
+                    : Array.Empty<ResourceDocumentItem>()))
             .OrderBy(type => type.SortOrder)
             .ThenBy(type => type.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
-    }
-
-    private ResourceTypeCatalog MapToCatalog(ResourceTypeRow row)
-    {
-        var documents = ResourceFileSystemHelper.GetPdfFiles(
-                row.SourceDirectory,
-                _webHostEnvironment.ContentRootPath,
-                _webHostEnvironment.WebRootPath)
-            .Select(file => new ResourceDocumentItem(
-                FileName: file.FileName,
-                Title: file.Title,
-                Url: $"/media/resources/{Uri.EscapeDataString(row.Slug.Trim())}/{Uri.EscapeDataString(file.FileName)}",
-                SizeBytes: file.SizeBytes,
-                LastModified: file.LastModified))
-            .ToArray();
-
-        return new ResourceTypeCatalog(
-            ResourceTypeId: row.ResourceTypeId,
-            Slug: row.Slug.Trim(),
-            Name: row.Name.Trim(),
-            Description: NormalizeOptionalText(row.Description, 4000),
-            SortOrder: row.SortOrder,
-            Documents: documents);
     }
 
     private async Task<IReadOnlyList<T>> FetchRowsAsync<T>(Uri uri, string apiKey, CancellationToken cancellationToken)
@@ -243,13 +271,64 @@ public sealed class SupabaseResourceCatalogService(
         [JsonPropertyName("description")]
         public string? Description { get; set; }
 
-        [JsonPropertyName("source_directory")]
-        public string? SourceDirectory { get; set; }
+        [JsonPropertyName("sort_order")]
+        public int SortOrder { get; set; }
+    }
+
+    private sealed class ResourceTypeLookupRow
+    {
+        [JsonPropertyName("resource_type_id")]
+        public Guid ResourceTypeId { get; set; }
+    }
+
+    private sealed class ResourceDocumentListRow
+    {
+        [JsonPropertyName("resource_document_id")]
+        public Guid ResourceDocumentId { get; set; }
+
+        [JsonPropertyName("resource_type_id")]
+        public Guid ResourceTypeId { get; set; }
+
+        [JsonPropertyName("title")]
+        public string? Title { get; set; }
+
+        [JsonPropertyName("file_name")]
+        public string? FileName { get; set; }
+
+        [JsonPropertyName("size_bytes")]
+        public long SizeBytes { get; set; }
+
+        [JsonPropertyName("updated_at")]
+        public DateTimeOffset? UpdatedAt { get; set; }
+
+        [JsonPropertyName("created_at")]
+        public DateTimeOffset CreatedAt { get; set; }
 
         [JsonPropertyName("sort_order")]
         public int SortOrder { get; set; }
+    }
 
-        [JsonPropertyName("is_enabled")]
-        public bool IsEnabled { get; set; }
+    private sealed class ResourceDocumentRow
+    {
+        [JsonPropertyName("resource_document_id")]
+        public Guid ResourceDocumentId { get; set; }
+
+        [JsonPropertyName("resource_type_id")]
+        public Guid ResourceTypeId { get; set; }
+
+        [JsonPropertyName("file_name")]
+        public string? FileName { get; set; }
+
+        [JsonPropertyName("content_type")]
+        public string? ContentType { get; set; }
+
+        [JsonPropertyName("storage_bucket")]
+        public string? StorageBucket { get; set; }
+
+        [JsonPropertyName("storage_object_key")]
+        public string? StorageObjectKey { get; set; }
+
+        [JsonPropertyName("updated_at")]
+        public DateTimeOffset? UpdatedAt { get; set; }
     }
 }

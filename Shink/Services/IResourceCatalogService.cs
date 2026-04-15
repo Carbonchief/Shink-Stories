@@ -5,8 +5,7 @@ public interface IResourceCatalogService
     Task<IReadOnlyList<ResourceTypeCatalog>> GetResourceTypesAsync(CancellationToken cancellationToken = default);
 
     Task<ResourceDocumentDownload?> GetDocumentDownloadAsync(
-        string? typeSlug,
-        string? fileName,
+        Guid resourceDocumentId,
         CancellationToken cancellationToken = default);
 }
 
@@ -19,6 +18,7 @@ public sealed record ResourceTypeCatalog(
     IReadOnlyList<ResourceDocumentItem> Documents);
 
 public sealed record ResourceDocumentItem(
+    Guid ResourceDocumentId,
     string FileName,
     string Title,
     string Url,
@@ -26,6 +26,9 @@ public sealed record ResourceDocumentItem(
     DateTimeOffset LastModified);
 
 public sealed record ResourceDocumentDownload(
-    string PhysicalPath,
+    Guid ResourceDocumentId,
     string DownloadFileName,
-    string ContentType);
+    string ContentType,
+    string StorageBucket,
+    string StorageObjectKey,
+    DateTimeOffset? LastModified);
