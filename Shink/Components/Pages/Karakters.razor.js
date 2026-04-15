@@ -1,6 +1,34 @@
 let audioPlayer;
 let maatAnimationLoop;
 let maatAnimationTimeout;
+let activeAudioTrigger;
+
+function clearActiveAudioTrigger() {
+  if (!activeAudioTrigger) {
+    return;
+  }
+
+  activeAudioTrigger.classList.remove("is-playing");
+  activeAudioTrigger = undefined;
+}
+
+function resolveAudioTrigger(triggerSlug) {
+  if (!triggerSlug || typeof document === "undefined") {
+    return undefined;
+  }
+
+  return document.querySelector(`[data-character-audio-slug="${triggerSlug}"]`) ?? undefined;
+}
+
+function setActiveAudioTrigger(triggerSlug) {
+  const nextTrigger = resolveAudioTrigger(triggerSlug);
+  if (activeAudioTrigger && activeAudioTrigger !== nextTrigger) {
+    activeAudioTrigger.classList.remove("is-playing");
+  }
+
+  activeAudioTrigger = nextTrigger;
+  activeAudioTrigger?.classList.add("is-playing");
+}
 
 function ensureAudioPlayer() {
   if (audioPlayer) {
@@ -17,12 +45,15 @@ function ensureAudioPlayer() {
   audioPlayer.setAttribute("aria-hidden", "true");
   audioPlayer.hidden = true;
   audioPlayer.oncontextmenu = () => false;
+  audioPlayer.addEventListener("ended", clearActiveAudioTrigger);
+  audioPlayer.addEventListener("error", clearActiveAudioTrigger);
   document.body.appendChild(audioPlayer);
   return audioPlayer;
 }
 
-export async function playCharacterAudio(sourceUrl) {
+export async function playCharacterAudio(sourceUrl, triggerSlug) {
   if (!sourceUrl) {
+    clearActiveAudioTrigger();
     return;
   }
 
@@ -30,10 +61,12 @@ export async function playCharacterAudio(sourceUrl) {
   player.pause();
   player.src = sourceUrl;
   player.load();
+  setActiveAudioTrigger(triggerSlug);
 
   try {
     await player.play();
   } catch {
+    clearActiveAudioTrigger();
     // Ignore browser autoplay failures; the click gesture usually satisfies playback.
   }
 }
@@ -46,6 +79,7 @@ export function stopCharacterAudio() {
   audioPlayer.pause();
   audioPlayer.removeAttribute("src");
   audioPlayer.load();
+  clearActiveAudioTrigger();
 }
 
 export function triggerCharacterHaptics() {

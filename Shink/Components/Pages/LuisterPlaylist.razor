@@ -69,7 +69,7 @@ else if (CurrentStory is null || AccessibleStories.Count == 0)
 }
 else
 {
-    <section class="playlist-page @(IsManualFullscreenFocus ? "manual-fullscreen-focus" : null)">
+    <section class="playlist-page story-player-page @(IsManualFullscreenFocus ? "manual-fullscreen-focus" : null)">
         <header class="playlist-header">
             <h1>@CurrentPlaylist.Title</h1>
             @if (!string.IsNullOrWhiteSpace(CurrentPlaylist.Description))
@@ -224,7 +224,9 @@ else
                                             <i class="story-autoplay-icon fa-solid @(AutoplayEnabled ? "fa-toggle-on" : "fa-toggle-off")" aria-hidden="true"></i>
                                             <span class="sr-only">@(AutoplayEnabled ? "Autospeel aan" : "Autospeel af")</span>
                                         </button>
-                                        <label class="story-autoplay-control" for="playlist-autoplay-mode">
+                                        <label class="story-autoplay-control @(HasAutoplayLimitSelection ? "has-short-label" : "is-empty")"
+                                               data-short-label="@AutoplayCapShortLabel"
+                                               for="playlist-autoplay-mode">
                                             <span class="sr-only">Kies 'n autospeel limiet</span>
                                             <select id="playlist-autoplay-mode"
                                                     class="story-autoplay-mode-select"
@@ -382,6 +384,8 @@ else
         AccessibleStories.Count == 1 ? "1 storie beskikbaar" : $"{AccessibleStories.Count} stories beskikbaar";
 
     private string AutoplayCapValue => AutoplayLimitStories?.ToString() ?? "none";
+    private bool HasAutoplayLimitSelection => AutoplayLimitStories.HasValue;
+    private string AutoplayCapShortLabel => AutoplayLimitStories?.ToString() ?? string.Empty;
 
     private int CurrentTrackNumber =>
         CurrentStory is null
@@ -460,6 +464,7 @@ else
         AllowEmptyState = false;
         ShowStoryAccessPopup = false;
         IsRedirectingToOpsies = false;
+        IsManualFullscreenFocus = false;
         ResetPlaybackOrder();
         CurrentPlaylist = null;
         AccessibleStories = Array.Empty<StoryItem>();
@@ -651,6 +656,17 @@ else
         {
             await module.InvokeVoidAsync("initializeStoryMediaSession", _dotNetRef);
             await module.InvokeVoidAsync("initializeStoryPlayerFullscreenExperience", _dotNetRef);
+
+            if (!IsManualFullscreenFocus)
+            {
+                var shouldResumeFullscreen = await module.InvokeAsync<bool>("consumePendingStoryPlayerFullscreenIntent");
+                if (shouldResumeFullscreen)
+                {
+                    IsManualFullscreenFocus = true;
+                    await module.InvokeVoidAsync("setStoryPlayerFullscreenIntent", true);
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
         }
         catch (JSException)
         {

@@ -4,9 +4,9 @@
 @using System.Security.Claims
 @inject NavigationManager NavigationManager
 
-<div class="site-shell @(IsStoryRoute ? "story-route" : null) @(IsHomeRoute ? "home-route" : null) @(IsLuisterRoute ? "luister-route" : null) @(IsMeerOorOnsRoute ? "about-route" : null) @(IsAdminRoute ? "admin-route" : null) @(IsLuisterPlaylistShowcaseRoute ? "playlist-showcase-route" : null)">
+<div class="site-shell @(IsStoryRoute ? "story-route" : null) @(IsHomeRoute ? "home-route" : null) @(IsLuisterRoute ? "luister-route" : null) @(IsMeerOorOnsRoute ? "about-route" : null) @(IsAdminRoute ? "admin-route" : null) @(IsFloatingPlaylistRoute ? "playlist-nav-route" : null) @(IsLuisterPlaylistShowcaseRoute ? "playlist-showcase-route" : null)">
     <a class="skip-link" href="#main-content">Spring na inhoud</a>
-    @if (!IsLuisterPlaylistShowcaseRoute)
+    @if (!IsFloatingPlaylistRoute)
     {
     <header class="site-header">
         @if (IsStoryRoute)
@@ -338,7 +338,7 @@
     </header>
     }
 
-    @if (IsLuisterPlaylistShowcaseRoute)
+    @if (IsFloatingPlaylistRoute)
     {
         <a class="showcase-floating-back"
            href="@StoryHeaderBackHref"
@@ -364,13 +364,34 @@
                     <nav id="showcase-site-nav"
                          class="site-nav"
                          aria-label="Hoofnavigasie">
-                        <NavLink href="/meer-oor-ons">Meer oor Ons</NavLink>
-                        <NavLink href="/gratis">Gratis stories</NavLink>
-                        <NavLink href="/blog">Blog</NavLink>
-                        <NavLink href="/resources">Hulpbronne</NavLink>
-                        <NavLink href="/karakters">Karakters</NavLink>
-                        <NavLink href="/luister">Alle stories</NavLink>
-                        <NavLink href="/my-stories">My stories</NavLink>
+                        <NavLink href="/meer-oor-ons" class="nav-panel-link">
+                            <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
+                            <span>Meer oor Ons</span>
+                        </NavLink>
+                        <NavLink href="/gratis" class="nav-panel-link">
+                            <i class="fa-solid fa-gift" aria-hidden="true"></i>
+                            <span>Gratis stories</span>
+                        </NavLink>
+                        <NavLink href="/blog" class="nav-panel-link">
+                            <i class="fa-solid fa-pen-nib" aria-hidden="true"></i>
+                            <span>Blog</span>
+                        </NavLink>
+                        <NavLink href="/resources" class="nav-panel-link">
+                            <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
+                            <span>Hulpbronne</span>
+                        </NavLink>
+                        <NavLink href="/karakters" class="nav-panel-link">
+                            <i class="fa-solid fa-people-group" aria-hidden="true"></i>
+                            <span>Karakters</span>
+                        </NavLink>
+                        <NavLink href="/luister" class="nav-panel-link">
+                            <i class="fa-solid fa-headphones" aria-hidden="true"></i>
+                            <span>Alle stories</span>
+                        </NavLink>
+                        <NavLink href="/my-stories" class="nav-panel-link">
+                            <i class="fa-solid fa-book-open" aria-hidden="true"></i>
+                            <span>My stories</span>
+                        </NavLink>
                     </nav>
                 </div>
             </Authorized>
@@ -390,14 +411,38 @@
                     <nav id="showcase-site-nav"
                          class="site-nav"
                          aria-label="Hoofnavigasie">
-                        <NavLink href="/meer-oor-ons">Meer oor Ons</NavLink>
-                        <NavLink href="/gratis">Gratis stories</NavLink>
-                        <NavLink href="/blog">Blog</NavLink>
-                        <NavLink href="/resources">Hulpbronne</NavLink>
-                        <NavLink href="/karakters">Karakters</NavLink>
-                        <NavLink href="/luister">Alle stories</NavLink>
-                        <NavLink href="/opsies">Opsies</NavLink>
-                        <NavLink href="@LoginHref">Teken in</NavLink>
+                        <NavLink href="/meer-oor-ons" class="nav-panel-link">
+                            <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
+                            <span>Meer oor Ons</span>
+                        </NavLink>
+                        <NavLink href="/gratis" class="nav-panel-link">
+                            <i class="fa-solid fa-gift" aria-hidden="true"></i>
+                            <span>Gratis stories</span>
+                        </NavLink>
+                        <NavLink href="/blog" class="nav-panel-link">
+                            <i class="fa-solid fa-pen-nib" aria-hidden="true"></i>
+                            <span>Blog</span>
+                        </NavLink>
+                        <NavLink href="/resources" class="nav-panel-link">
+                            <i class="fa-solid fa-file-lines" aria-hidden="true"></i>
+                            <span>Hulpbronne</span>
+                        </NavLink>
+                        <NavLink href="/karakters" class="nav-panel-link">
+                            <i class="fa-solid fa-people-group" aria-hidden="true"></i>
+                            <span>Karakters</span>
+                        </NavLink>
+                        <NavLink href="/luister" class="nav-panel-link">
+                            <i class="fa-solid fa-headphones" aria-hidden="true"></i>
+                            <span>Alle stories</span>
+                        </NavLink>
+                        <NavLink href="/opsies" class="nav-panel-link">
+                            <i class="fa-solid fa-sliders" aria-hidden="true"></i>
+                            <span>Opsies</span>
+                        </NavLink>
+                        <NavLink href="@LoginHref" class="nav-panel-link">
+                            <i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i>
+                            <span>Teken in</span>
+                        </NavLink>
                     </nav>
                 </div>
             </NotAuthorized>
@@ -517,6 +562,20 @@
                    string.Equals(segments[3], "stories", StringComparison.OrdinalIgnoreCase);
         }
     }
+
+    private bool IsLuisterPlaylistRoute
+    {
+        get
+        {
+            var relativePath = GetCurrentRelativePathWithoutQuery();
+            var segments = relativePath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            return segments.Length == 3 &&
+                   string.Equals(segments[0], "luister", StringComparison.OrdinalIgnoreCase) &&
+                   string.Equals(segments[1], "speellys", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private bool IsFloatingPlaylistRoute => IsLuisterPlaylistRoute || IsLuisterPlaylistShowcaseRoute;
 
     private bool IsLuisterStoryRoute
     {

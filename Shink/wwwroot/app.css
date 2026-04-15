@@ -111,6 +111,11 @@ body.story-immersive-mode .site-shell.story-route .site-footer {
     display: none !important;
 }
 
+body.story-immersive-mode .site-shell.story-route .showcase-floating-back,
+body.story-immersive-mode .site-shell.story-route .showcase-floating-menu {
+    display: none !important;
+}
+
 body.story-immersive-mode .site-shell.story-route .site-main {
     padding-top: 0 !important;
     padding-bottom: 0 !important;
