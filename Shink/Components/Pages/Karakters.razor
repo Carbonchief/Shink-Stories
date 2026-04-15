@@ -104,6 +104,7 @@
                             {
                                 <button type="button"
                                         class="character-card-badge character-card-audio-trigger"
+                                        data-character-audio-slug="@card.Character.Slug"
                                         @onclick="() => PlayCharacterAudioAsync(card)"
                                         @onclick:stopPropagation="true"
                                         aria-label=$"Speel {card.Character.DisplayName} se stem"
@@ -641,7 +642,10 @@
             return;
         }
 
-        await module.InvokeVoidAsync("playCharacterAudio", AudioAccessService.CreateSignedAudioUrl(clip.StreamSlug));
+        await module.InvokeVoidAsync(
+            "playCharacterAudio",
+            AudioAccessService.CreateSignedAudioUrl(clip.StreamSlug),
+            card.Character.Slug);
 
         if (!IsSignedIn || string.IsNullOrWhiteSpace(SignedInEmail))
         {
