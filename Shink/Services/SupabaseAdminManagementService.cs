@@ -328,6 +328,11 @@ public sealed partial class SupabaseAdminManagementService(
             return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
         }
 
+        var existingStory = await FetchStoryByIdAsync(baseUri, apiKey, request.StoryId, cancellationToken);
+        var shouldCreatePublishedStoryNotifications =
+            string.Equals(normalizedStatus, "published", StringComparison.OrdinalIgnoreCase) &&
+            !HasStoryBeenPublished(existingStory);
+
         var payload = new Dictionary<string, object?>
         {
             ["slug"] = normalizedSlug,
@@ -356,7 +361,7 @@ public sealed partial class SupabaseAdminManagementService(
         if (updateResponse.IsSuccessStatusCode)
         {
             InvalidateStoryCatalogCache();
-            if (string.Equals(normalizedStatus, "published", StringComparison.OrdinalIgnoreCase))
+            if (shouldCreatePublishedStoryNotifications)
             {
                 await _userNotificationService.CreatePublishedStoryNotificationsAsync(
                     new PublishedStoryNotificationRequest(
@@ -1350,6 +1355,31 @@ public sealed partial class SupabaseAdminManagementService(
         return await FetchRowsAsync<StoryRow>(uri, apiKey, cancellationToken);
     }
 
+    private async Task<StoryRow?> FetchStoryByIdAsync(
+        Uri baseUri,
+        string apiKey,
+        Guid storyId,
+        CancellationToken cancellationToken)
+    {
+        if (storyId == Guid.Empty)
+        {
+            return null;
+        }
+
+        var escapedStoryId = Uri.EscapeDataString(storyId.ToString("D"));
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/stories" +
+            "?select=story_id,status,published_at" +
+            $"&story_id=eq.{escapedStoryId}" +
+            "&limit=1");
+
+        var rows = await FetchRowsAsync<StoryRow>(uri, apiKey, cancellationToken);
+        return rows
+            .Where(row => row.StoryId != Guid.Empty)
+            .FirstOrDefault();
+    }
+
     private async Task<IReadOnlyList<PlaylistRow>> FetchPlaylistsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
     {
         var uri = new Uri(
@@ -1476,6 +1506,11 @@ public sealed partial class SupabaseAdminManagementService(
             return Array.Empty<T>();
         }
     }
+
+    private static bool HasStoryBeenPublished(StoryRow? story) =>
+        story is not null &&
+        (story.PublishedAt.HasValue ||
+         string.Equals(story.Status, "published", StringComparison.OrdinalIgnoreCase));
 
     private async Task<bool> TryResolveAdminContextAsync(string? adminEmail, CancellationToken cancellationToken)
     {

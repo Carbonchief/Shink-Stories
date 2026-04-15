@@ -425,6 +425,75 @@ public sealed class SupabaseUserNotificationService(
         }
     }
 
+    public async Task<int> CreatePublishedBlogNotificationsAsync(
+        PublishedBlogNotificationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request.PostId == Guid.Empty ||
+            string.IsNullOrWhiteSpace(request.Slug) ||
+            string.IsNullOrWhiteSpace(request.Title))
+        {
+            return 0;
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            _logger.LogWarning("Supabase blog notification sync skipped: URL is not configured.");
+            return 0;
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            _logger.LogWarning("Supabase blog notification sync skipped: ServiceRoleKey is not configured.");
+            return 0;
+        }
+
+        try
+        {
+            var subscriberIds = await GetAllSubscriberIdsAsync(baseUri, apiKey, cancellationToken);
+            if (subscriberIds.Count == 0)
+            {
+                return 0;
+            }
+
+            var normalizedSlug = request.Slug.Trim().ToLowerInvariant();
+            var normalizedTitle = request.Title.Trim();
+            var imagePath = ResolveBlogNotificationImagePath(request);
+            var body = BuildPublishedBlogNotificationBody(request);
+            var href = BuildPublishedBlogNotificationHref(normalizedSlug);
+            var sourceKey = BuildPublishedBlogSourceKey(request.PostId);
+
+            var notificationsToInsert = subscriberIds
+                .Select(subscriberId => new
+                {
+                    subscriber_id = subscriberId,
+                    notification_type = "blog_published",
+                    source_key = sourceKey,
+                    title = "Nuwe blog plasing",
+                    body,
+                    image_path = imagePath,
+                    image_alt = $"Hoofprent vir {normalizedTitle}",
+                    href,
+                    metadata = new
+                    {
+                        post_id = request.PostId,
+                        post_slug = normalizedSlug,
+                        post_title = normalizedTitle
+                    }
+                })
+                .Cast<object>()
+                .ToArray();
+
+            return await InsertNotificationsAsync(baseUri, apiKey, notificationsToInsert, cancellationToken);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(exception, "Supabase blog notification sync failed unexpectedly.");
+            return 0;
+        }
+    }
+
     public async Task<NotificationSyncResult> SyncCharacterUnlockNotificationsAsync(
         string? email,
         string? storySlug = null,
@@ -855,8 +924,26 @@ public sealed class SupabaseUserNotificationService(
     private static string BuildCharacterUnlockSourceKey(StoryCharacterItem character) =>
         $"character-unlocked-{character.CharacterId:N}";
 
+    private static string BuildPublishedBlogSourceKey(Guid postId) =>
+        $"blog-published-{postId:N}";
+
     private static string BuildPublishedStorySourceKey(Guid storyId) =>
         $"story-published-{storyId:N}";
+
+    private static string BuildPublishedBlogNotificationBody(PublishedBlogNotificationRequest request)
+    {
+        var normalizedTitle = request.Title.Trim();
+        var summary = string.IsNullOrWhiteSpace(request.Summary)
+            ? null
+            : request.Summary.Trim();
+
+        if (string.IsNullOrWhiteSpace(summary))
+        {
+            return $"{normalizedTitle} is nou op die blog beskikbaar. Tik om te lees.";
+        }
+
+        return $"{normalizedTitle} is nou op die blog beskikbaar. {summary}";
+    }
 
     private static string BuildPublishedStoryNotificationBody(PublishedStoryNotificationRequest request)
     {
@@ -871,6 +958,16 @@ public sealed class SupabaseUserNotificationService(
         }
 
         return $"{normalizedTitle} is nou beskikbaar. {summary}";
+    }
+
+    private static string ResolveBlogNotificationImagePath(PublishedBlogNotificationRequest request)
+    {
+        if (!string.IsNullOrWhiteSpace(request.FeaturedImageUrl))
+        {
+            return request.FeaturedImageUrl.Trim();
+        }
+
+        return "/branding/schink-logo-green.png";
     }
 
     private static string ResolveStoryNotificationImagePath(PublishedStoryNotificationRequest request)
@@ -892,6 +989,9 @@ public sealed class SupabaseUserNotificationService(
         string.Equals(accessLevel, "free", StringComparison.OrdinalIgnoreCase)
             ? $"/gratis/{Uri.EscapeDataString(slug)}"
             : $"/luister/{Uri.EscapeDataString(slug)}";
+
+    private static string BuildPublishedBlogNotificationHref(string slug) =>
+        $"/blog/{Uri.EscapeDataString(slug)}";
 
     private static string ResolveNotificationImagePath(StoryCharacterItem character)
     {
