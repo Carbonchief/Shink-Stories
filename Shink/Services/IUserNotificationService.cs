@@ -27,6 +27,10 @@ public interface IUserNotificationService
         Guid notificationId,
         CancellationToken cancellationToken = default);
 
+    Task<int> CreatePublishedBlogNotificationsAsync(
+        PublishedBlogNotificationRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<int> CreatePublishedStoryNotificationsAsync(
         PublishedStoryNotificationRequest request,
         CancellationToken cancellationToken = default);
@@ -60,3 +64,10 @@ public sealed record PublishedStoryNotificationRequest(
     string? Summary,
     string? ThumbnailImagePath,
     string? CoverImagePath);
+
+public sealed record PublishedBlogNotificationRequest(
+    Guid PostId,
+    string Slug,
+    string Title,
+    string? Summary,
+    string? FeaturedImageUrl);

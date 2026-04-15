@@ -359,6 +359,12 @@ function buildNotificationTypeMeta(notificationType) {
             badgeClass: "is-story",
             icon: "fa-book-open"
         };
+    case "blog_published":
+        return {
+            label: "Nuwe blog",
+            badgeClass: "is-blog",
+            icon: "fa-newspaper"
+        };
     default:
         return {
             label: "Kennisgewing",

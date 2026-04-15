@@ -1044,6 +1044,10 @@
     border-left: 3px solid rgba(31, 108, 143, 0.42);
 }
 
+.notification-list ::deep .notification-item.is-blog {
+    border-left: 3px solid rgba(190, 118, 32, 0.42);
+}
+
 .notification-list ::deep .notification-item-shell:last-child .notification-item {
     border-bottom: 0;
 }
@@ -1140,6 +1144,10 @@
     background: linear-gradient(180deg, #2d7ba0 0%, #215c78 100%);
 }
 
+.notification-list ::deep .notification-item-image-badge.is-blog {
+    background: linear-gradient(180deg, #d28a2d 0%, #b5651f 100%);
+}
+
 .notification-list ::deep .notification-item-image-badge.is-general {
     background: linear-gradient(180deg, #6c7682 0%, #535b65 100%);
 }
@@ -1178,6 +1186,11 @@
 .notification-list ::deep .notification-item-type.is-story {
     color: #184963;
     background: rgba(45, 123, 160, 0.16);
+}
+
+.notification-list ::deep .notification-item-type.is-blog {
+    color: #8f4f13;
+    background: rgba(210, 138, 45, 0.16);
 }
 
 .notification-list ::deep .notification-item-type.is-general {
