@@ -108,8 +108,16 @@
                     @foreach (var document in ActiveResourceType.Documents)
                     {
                         <article class="resources-card">
-                            <div class="resources-card-icon" aria-hidden="true">
-                                <i class="fa-solid fa-file-pdf"></i>
+                            <div class="resources-card-preview" aria-hidden="true">
+                                <iframe class="resources-card-preview-frame"
+                                        src="@BuildPreviewUrl(document.Url)"
+                                        loading="lazy"
+                                        tabindex="-1"
+                                        title="@($"{document.Title} preview")">
+                                </iframe>
+                                <div class="resources-card-icon">
+                                    <i class="fa-solid fa-file-pdf"></i>
+                                </div>
                             </div>
                             <div class="resources-card-body">
                                 <h3>@document.Title</h3>
@@ -119,13 +127,17 @@
                                 <a class="resources-open-link"
                                    href="@document.Url"
                                    target="_blank"
-                                   rel="noopener noreferrer">
-                                    Maak oop
+                                   rel="noopener noreferrer"
+                                   aria-label="@($"Open {document.Title}")"
+                                   title="@($"Open {document.Title}")">
+                                    <i class="fa-solid fa-up-right-from-square" aria-hidden="true"></i>
                                 </a>
                                 <a class="resources-download-link"
                                    href="@document.Url"
-                                   download="@document.FileName">
-                                    Laai af
+                                   download="@document.FileName"
+                                   aria-label="@($"Download {document.Title}")"
+                                   title="@($"Download {document.Title}")">
+                                    <i class="fa-solid fa-download" aria-hidden="true"></i>
                                 </a>
                             </div>
                         </article>
@@ -209,7 +221,7 @@
     {
         var size = FormatFileSize(document.SizeBytes);
         var date = document.LastModified.ToLocalTime().ToString("dd MMM yyyy", CultureInfo.GetCultureInfo("af-ZA"));
-        return $"{size} · opgedateer {date}";
+        return $"{size}\nOpgedateer {date}";
     }
 
     private static string FormatFileSize(long sizeBytes)
@@ -231,4 +243,7 @@
 
     private string BuildTabHref(string slug) =>
         QueryHelpers.AddQueryString("/resources", "tipe", slug);
+
+    private static string BuildPreviewUrl(string documentUrl) =>
+        $"{documentUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH&page=1";
 }
