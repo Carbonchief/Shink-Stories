@@ -9,6 +9,13 @@ public interface IResourceDocumentStorageService
         Stream content,
         CancellationToken cancellationToken = default);
 
+    Task<UploadedResourcePreviewImage> UploadPreviewImageAsync(
+        string resourceTypeSlug,
+        string fileName,
+        string? contentType,
+        Stream content,
+        CancellationToken cancellationToken = default);
+
     Task<ResourceDocumentStream?> OpenReadAsync(
         string bucket,
         string objectKey,
@@ -20,6 +27,11 @@ public interface IResourceDocumentStorageService
 }
 
 public sealed record UploadedResourceDocument(
+    string Bucket,
+    string ObjectKey,
+    string ContentType);
+
+public sealed record UploadedResourcePreviewImage(
     string Bucket,
     string ObjectKey,
     string ContentType);

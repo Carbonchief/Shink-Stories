@@ -109,12 +109,13 @@
                     {
                         <article class="resources-card">
                             <div class="resources-card-preview" aria-hidden="true">
-                                <iframe class="resources-card-preview-frame"
-                                        src="@BuildPreviewUrl(document.Url)"
-                                        loading="lazy"
-                                        tabindex="-1"
-                                        title="@($"{document.Title} preview")">
-                                </iframe>
+                                @if (!string.IsNullOrWhiteSpace(document.PreviewUrl))
+                                {
+                                    <img class="resources-card-preview-image"
+                                         src="@document.PreviewUrl"
+                                         loading="lazy"
+                                         alt="" />
+                                }
                                 <div class="resources-card-icon">
                                     <i class="fa-solid fa-file-pdf"></i>
                                 </div>
@@ -221,7 +222,7 @@
     {
         var size = FormatFileSize(document.SizeBytes);
         var date = document.LastModified.ToLocalTime().ToString("dd MMM yyyy", CultureInfo.GetCultureInfo("af-ZA"));
-        return $"{size}\nOpgedateer {date}";
+        return $"{size}\n{date}";
     }
 
     private static string FormatFileSize(long sizeBytes)
@@ -243,7 +244,4 @@
 
     private string BuildTabHref(string slug) =>
         QueryHelpers.AddQueryString("/resources", "tipe", slug);
-
-    private static string BuildPreviewUrl(string documentUrl) =>
-        $"{documentUrl}#toolbar=0&navpanes=0&scrollbar=0&view=FitH&page=1";
 }

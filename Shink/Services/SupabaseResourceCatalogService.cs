@@ -68,37 +68,10 @@ public sealed class SupabaseResourceCatalogService(
             return null;
         }
 
-        var escapedDocumentId = Uri.EscapeDataString(resourceDocumentId.ToString("D"));
-        var documentUri = new Uri(
-            baseUri,
-            "rest/v1/resource_documents" +
-            "?select=resource_document_id,resource_type_id,file_name,content_type,storage_bucket,storage_object_key,updated_at,is_enabled" +
-            $"&resource_document_id=eq.{escapedDocumentId}" +
-            "&is_enabled=eq.true" +
-            "&limit=1");
-
-        var documents = await FetchRowsAsync<ResourceDocumentRow>(documentUri, apiKey, cancellationToken);
-        var document = documents.FirstOrDefault();
+        var document = await FetchEnabledDocumentAsync(baseUri, apiKey, resourceDocumentId, cancellationToken);
         if (document is null ||
-            document.ResourceDocumentId == Guid.Empty ||
-            document.ResourceTypeId == Guid.Empty ||
             string.IsNullOrWhiteSpace(document.StorageBucket) ||
             string.IsNullOrWhiteSpace(document.StorageObjectKey))
-        {
-            return null;
-        }
-
-        var escapedTypeId = Uri.EscapeDataString(document.ResourceTypeId.ToString("D"));
-        var typeUri = new Uri(
-            baseUri,
-            "rest/v1/resource_types" +
-            "?select=resource_type_id" +
-            $"&resource_type_id=eq.{escapedTypeId}" +
-            "&is_enabled=eq.true" +
-            "&limit=1");
-
-        var types = await FetchRowsAsync<ResourceTypeLookupRow>(typeUri, apiKey, cancellationToken);
-        if (types.Count == 0)
         {
             return null;
         }
@@ -119,7 +92,47 @@ public sealed class SupabaseResourceCatalogService(
             ContentType: contentType,
             StorageBucket: document.StorageBucket.Trim(),
             StorageObjectKey: document.StorageObjectKey.Trim(),
-            LastModified: document.UpdatedAt);
+            LastModified: document.DocumentUpdatedAt ?? document.UpdatedAt);
+    }
+
+    public async Task<ResourceDocumentPreviewDownload?> GetDocumentPreviewAsync(
+        Guid resourceDocumentId,
+        CancellationToken cancellationToken = default)
+    {
+        if (resourceDocumentId == Guid.Empty)
+        {
+            return null;
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return null;
+        }
+
+        var apiKey = ResolveReadApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return null;
+        }
+
+        var document = await FetchEnabledDocumentAsync(baseUri, apiKey, resourceDocumentId, cancellationToken);
+        if (document is null ||
+            string.IsNullOrWhiteSpace(document.PreviewImageBucket) ||
+            string.IsNullOrWhiteSpace(document.PreviewImageObjectKey))
+        {
+            return null;
+        }
+
+        var contentType = string.IsNullOrWhiteSpace(document.PreviewImageContentType)
+            ? "image/png"
+            : document.PreviewImageContentType.Trim();
+
+        return new ResourceDocumentPreviewDownload(
+            ResourceDocumentId: document.ResourceDocumentId,
+            ContentType: contentType,
+            StorageBucket: document.PreviewImageBucket.Trim(),
+            StorageObjectKey: document.PreviewImageObjectKey.Trim(),
+            LastModified: document.PreviewGeneratedAt ?? document.UpdatedAt);
     }
 
     private async Task<IReadOnlyList<ResourceTypeCatalog>> FetchCatalogAsync(CancellationToken cancellationToken)
@@ -149,7 +162,7 @@ public sealed class SupabaseResourceCatalogService(
         var documentsUri = new Uri(
             baseUri,
             "rest/v1/resource_documents" +
-            "?select=resource_document_id,resource_type_id,title,file_name,size_bytes,created_at,updated_at,sort_order" +
+            "?select=resource_document_id,resource_type_id,title,file_name,size_bytes,created_at,document_updated_at,updated_at,preview_image_object_key,sort_order" +
             "&is_enabled=eq.true" +
             "&order=sort_order.asc" +
             "&order=title.asc" +
@@ -172,8 +185,11 @@ public sealed class SupabaseResourceCatalogService(
                         FileName: Path.GetFileName(row.FileName?.Trim()) ?? $"{row.ResourceDocumentId:D}.pdf",
                         Title: NormalizeOptionalText(row.Title, 240) ?? Path.GetFileNameWithoutExtension(row.FileName?.Trim()) ?? "PDF",
                         Url: $"/media/resources/{row.ResourceDocumentId:D}",
+                        PreviewUrl: string.IsNullOrWhiteSpace(row.PreviewImageObjectKey)
+                            ? null
+                            : $"/media/resources/{row.ResourceDocumentId:D}/preview",
                         SizeBytes: Math.Max(0, row.SizeBytes),
-                        LastModified: row.UpdatedAt ?? row.CreatedAt))
+                        LastModified: row.DocumentUpdatedAt ?? row.UpdatedAt ?? row.CreatedAt))
                     .ToArray());
 
         return resourceTypesTask.Result
@@ -244,6 +260,43 @@ public sealed class SupabaseResourceCatalogService(
 
     private string ResolveReadApiKey() => _options.AnonKey;
 
+    private async Task<ResourceDocumentAccessRow?> FetchEnabledDocumentAsync(
+        Uri baseUri,
+        string apiKey,
+        Guid resourceDocumentId,
+        CancellationToken cancellationToken)
+    {
+        var escapedDocumentId = Uri.EscapeDataString(resourceDocumentId.ToString("D"));
+        var documentUri = new Uri(
+            baseUri,
+            "rest/v1/resource_documents" +
+            "?select=resource_document_id,resource_type_id,file_name,content_type,storage_bucket,storage_object_key,preview_image_content_type,preview_image_bucket,preview_image_object_key,preview_generated_at,document_updated_at,updated_at,is_enabled" +
+            $"&resource_document_id=eq.{escapedDocumentId}" +
+            "&is_enabled=eq.true" +
+            "&limit=1");
+
+        var documents = await FetchRowsAsync<ResourceDocumentAccessRow>(documentUri, apiKey, cancellationToken);
+        var document = documents.FirstOrDefault();
+        if (document is null ||
+            document.ResourceDocumentId == Guid.Empty ||
+            document.ResourceTypeId == Guid.Empty)
+        {
+            return null;
+        }
+
+        var escapedTypeId = Uri.EscapeDataString(document.ResourceTypeId.ToString("D"));
+        var typeUri = new Uri(
+            baseUri,
+            "rest/v1/resource_types" +
+            "?select=resource_type_id" +
+            $"&resource_type_id=eq.{escapedTypeId}" +
+            "&is_enabled=eq.true" +
+            "&limit=1");
+
+        var types = await FetchRowsAsync<ResourceTypeLookupRow>(typeUri, apiKey, cancellationToken);
+        return types.Count == 0 ? null : document;
+    }
+
     private static string? NormalizeOptionalText(string? value, int maxLength)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -304,11 +357,17 @@ public sealed class SupabaseResourceCatalogService(
         [JsonPropertyName("created_at")]
         public DateTimeOffset CreatedAt { get; set; }
 
+        [JsonPropertyName("document_updated_at")]
+        public DateTimeOffset? DocumentUpdatedAt { get; set; }
+
+        [JsonPropertyName("preview_image_object_key")]
+        public string? PreviewImageObjectKey { get; set; }
+
         [JsonPropertyName("sort_order")]
         public int SortOrder { get; set; }
     }
 
-    private sealed class ResourceDocumentRow
+    private sealed class ResourceDocumentAccessRow
     {
         [JsonPropertyName("resource_document_id")]
         public Guid ResourceDocumentId { get; set; }
@@ -327,6 +386,21 @@ public sealed class SupabaseResourceCatalogService(
 
         [JsonPropertyName("storage_object_key")]
         public string? StorageObjectKey { get; set; }
+
+        [JsonPropertyName("preview_image_content_type")]
+        public string? PreviewImageContentType { get; set; }
+
+        [JsonPropertyName("preview_image_bucket")]
+        public string? PreviewImageBucket { get; set; }
+
+        [JsonPropertyName("preview_image_object_key")]
+        public string? PreviewImageObjectKey { get; set; }
+
+        [JsonPropertyName("preview_generated_at")]
+        public DateTimeOffset? PreviewGeneratedAt { get; set; }
+
+        [JsonPropertyName("document_updated_at")]
+        public DateTimeOffset? DocumentUpdatedAt { get; set; }
 
         [JsonPropertyName("updated_at")]
         public DateTimeOffset? UpdatedAt { get; set; }

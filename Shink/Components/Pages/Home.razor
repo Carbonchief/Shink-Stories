@@ -1,5 +1,6 @@
 ﻿@page "/"
 @rendermode InteractiveServer
+@attribute [StreamRendering(true)]
 @using System.ComponentModel.DataAnnotations
 @using System.Globalization
 @using System.Net.Http.Json
@@ -61,7 +62,11 @@
             <em>een storie op 'n slag.</em>
         </p>
         <div class="hero-actions">
-            @if (IsSignedIn)
+            @if (!HasResolvedAuthState)
+            {
+                <span class="cta cta-placeholder" aria-hidden="true"></span>
+            }
+            else if (IsSignedIn)
             {
                 <a class="cta cta-primary" href="/luister">Luister Stories</a>
             }
@@ -76,74 +81,96 @@
 </section>
 
 <div class="home-content-gradient">
-@for (var index = 0; index < HomePlaylists.Count; index++)
+@if (IsLoadingPlaylists && HomePlaylists.Count == 0)
 {
-    var playlist = HomePlaylists[index];
-    var headingId = $"home-playlist-{playlist.Slug}-heading";
-    var hasDescription = !string.IsNullOrWhiteSpace(playlist.Description);
-
-    <section class="section-block stories-carousel-section home-scroll-reveal" style="--home-reveal-delay: 0.08s;" aria-labelledby="@headingId">
-        <h2 id="@headingId">@playlist.Title</h2>
-        @if (hasDescription)
-        {
-            <p class="section-intro">@playlist.Description</p>
-        }
-
-        <div class="">
-            <div class="@($"stories-carousel {(playlist.Stories.Count <= 3 ? "stories-carousel-free" : string.Empty)}")"
-                 role="list"
-                 aria-label="@playlist.Title">
-            @foreach (var story in playlist.Stories)
-            {
-                var storyPath = GetHomeStoryHref(story);
-                var canAccessStory = HasAccessToStory(story);
-                <article class="story-carousel-item" role="listitem">
-                    @if (canAccessStory)
-                    {
-                        <a class="story-carousel-link"
-                           href="@storyPath"
-                           data-enhance-nav="false"
-                           draggable="false"
-                           aria-label="Luister @story.Title">
-                            <span class="story-carousel-cover">
-                                <img class="story-carousel-image"
-                                     src="@story.ThumbnailPath"
-                                     srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
-                                     sizes="(max-width: 620px) 56vw, (max-width: 900px) 35vw, 240px"
-                                     draggable="false"
-                                     alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
-                                <span class="story-cover-play" aria-hidden="true">
-                                    <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
-                                </span>
-                            </span>
-                            <h3>@story.Title</h3>
-                        </a>
-                    }
-                    else
-                    {
-                        <button type="button"
-                                class="story-carousel-link story-carousel-link-button"
-                                @onclick="@(() => ShowAccessPopupForPath(storyPath))"
-                                aria-label="Luister @story.Title">
-                            <span class="story-carousel-cover">
-                                <img class="story-carousel-image"
-                                     src="@story.ThumbnailPath"
-                                     srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
-                                     sizes="(max-width: 620px) 56vw, (max-width: 900px) 35vw, 240px"
-                                     draggable="false"
-                                     alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
-                                <span class="story-cover-play" aria-hidden="true">
-                                    <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
-                                </span>
-                            </span>
-                            <h3>@story.Title</h3>
-                        </button>
-                    }
-                </article>
-            }
+    @for (var index = 0; index < 2; index++)
+    {
+        <section class="section-block stories-carousel-section home-loading-section" aria-hidden="true">
+            <div class="home-loading-title shimmer-block"></div>
+            <div class="home-loading-subtitle shimmer-block"></div>
+            <div class="home-loading-carousel">
+                @for (var storyIndex = 0; storyIndex < 4; storyIndex++)
+                {
+                    <article class="home-loading-card">
+                        <div class="home-loading-cover shimmer-block"></div>
+                        <div class="home-loading-line shimmer-block"></div>
+                    </article>
+                }
             </div>
-        </div>
-    </section>
+        </section>
+    }
+}
+else
+{
+    @for (var index = 0; index < HomePlaylists.Count; index++)
+    {
+        var playlist = HomePlaylists[index];
+        var headingId = $"home-playlist-{playlist.Slug}-heading";
+        var hasDescription = !string.IsNullOrWhiteSpace(playlist.Description);
+
+        <section class="section-block stories-carousel-section home-scroll-reveal" style="--home-reveal-delay: 0.08s;" aria-labelledby="@headingId">
+            <h2 id="@headingId">@playlist.Title</h2>
+            @if (hasDescription)
+            {
+                <p class="section-intro">@playlist.Description</p>
+            }
+
+            <div class="">
+                <div class="@($"stories-carousel {(playlist.Stories.Count <= 3 ? "stories-carousel-free" : string.Empty)}")"
+                     role="list"
+                     aria-label="@playlist.Title">
+                @foreach (var story in playlist.Stories)
+                {
+                    var storyPath = GetHomeStoryHref(story);
+                    var canAccessStory = HasAccessToStory(story);
+                    <article class="story-carousel-item" role="listitem">
+                        @if (canAccessStory)
+                        {
+                            <a class="story-carousel-link"
+                               href="@storyPath"
+                               data-enhance-nav="false"
+                               draggable="false"
+                               aria-label="Luister @story.Title">
+                                <span class="story-carousel-cover">
+                                    <img class="story-carousel-image"
+                                         src="@story.ThumbnailPath"
+                                         srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
+                                         sizes="(max-width: 620px) 56vw, (max-width: 900px) 35vw, 240px"
+                                         draggable="false"
+                                         alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
+                                    <span class="story-cover-play" aria-hidden="true">
+                                        <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
+                                    </span>
+                                </span>
+                                <h3>@story.Title</h3>
+                            </a>
+                        }
+                        else
+                        {
+                            <button type="button"
+                                    class="story-carousel-link story-carousel-link-button"
+                                    @onclick="@(() => ShowAccessPopupForPath(storyPath))"
+                                    aria-label="Luister @story.Title">
+                                <span class="story-carousel-cover">
+                                    <img class="story-carousel-image"
+                                         src="@story.ThumbnailPath"
+                                         srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
+                                         sizes="(max-width: 620px) 56vw, (max-width: 900px) 35vw, 240px"
+                                         draggable="false"
+                                         alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
+                                    <span class="story-cover-play" aria-hidden="true">
+                                        <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
+                                    </span>
+                                </span>
+                                <h3>@story.Title</h3>
+                            </button>
+                        }
+                    </article>
+                }
+                </div>
+            </div>
+        </section>
+    }
 }
 
 <StoryAccessPopup IsOpen="@ShowStoryAccessPopup"
@@ -344,6 +371,8 @@
 @code {
     private IJSObjectReference? _homeModule;
     private bool _homeModuleLoadFailed;
+    private bool HasResolvedAuthState { get; set; }
+    private bool IsLoadingPlaylists { get; set; } = true;
     private bool IsSignedIn { get; set; }
     private string? SignedInEmail { get; set; }
     private LuisterAccessProfile AccessProfile { get; set; } = new(false, false);
@@ -518,9 +547,15 @@
             SignedInEmail = IsSignedIn
                 ? authState.User.FindFirst(ClaimTypes.Email)?.Value ?? authState.User.Identity?.Name
                 : null;
-            AccessProfile = await ResolveLuisterAccessProfileAsync(authState.User);
+            HasResolvedAuthState = true;
 
-            var luisterPlaylists = await StoryCatalogService.GetLuisterPlaylistsAsync(SignedInEmail);
+            var accessProfileTask = ResolveLuisterAccessProfileAsync(authState.User);
+            var luisterPlaylistsTask = StoryCatalogService.GetLuisterPlaylistsAsync(SignedInEmail);
+
+            await Task.WhenAll(accessProfileTask, luisterPlaylistsTask);
+
+            AccessProfile = accessProfileTask.Result;
+            var luisterPlaylists = luisterPlaylistsTask.Result;
             HomePlaylists = luisterPlaylists
                 .Where(playlist => playlist.ShowOnHome)
                 .OrderBy(playlist => playlist.SortOrder)
@@ -529,7 +564,12 @@
         }
         catch
         {
+            HasResolvedAuthState = true;
             HomePlaylists = Array.Empty<StoryPlaylist>();
+        }
+        finally
+        {
+            IsLoadingPlaylists = false;
         }
     }
 
@@ -566,15 +606,15 @@
             return new LuisterAccessProfile(false, false);
         }
 
-        var storyCornerTask = SubscriptionLedgerService.HasActiveSubscriptionForTierAsync(email, StoryAccessPolicy.StoryCornerMonthlyTierCode);
-        var allStoriesMonthlyTask = SubscriptionLedgerService.HasActiveSubscriptionForTierAsync(email, StoryAccessPolicy.AllStoriesMonthlyTierCode);
-        var allStoriesYearlyTask = SubscriptionLedgerService.HasActiveSubscriptionForTierAsync(email, StoryAccessPolicy.AllStoriesYearlyTierCode);
+        var activeTierCodes = await SubscriptionLedgerService.GetActiveTierCodesAsync(email);
+        var activeTierCodeSet = activeTierCodes.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var hasStoryCorner = activeTierCodeSet.Contains(StoryAccessPolicy.StoryCornerMonthlyTierCode);
+        var hasAllStories =
+            activeTierCodeSet.Contains(StoryAccessPolicy.AllStoriesMonthlyTierCode) ||
+            activeTierCodeSet.Contains(StoryAccessPolicy.AllStoriesYearlyTierCode);
 
-        await Task.WhenAll(storyCornerTask, allStoriesMonthlyTask, allStoriesYearlyTask);
-
-        var hasAllStories = allStoriesMonthlyTask.Result || allStoriesYearlyTask.Result;
         return new LuisterAccessProfile(
-            HasStoryCornerOrAll: storyCornerTask.Result || hasAllStories,
+            HasStoryCornerOrAll: hasStoryCorner || hasAllStories,
             HasAllStories: hasAllStories);
     }
 

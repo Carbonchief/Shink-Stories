@@ -19,6 +19,7 @@
     <PackageReference Include="HtmlSanitizer" Version="9.0.892" />
     <PackageReference Include="Markdig" Version="1.1.2" />
     <PackageReference Include="MudBlazor" Version="9.2.0" />
+    <PackageReference Include="PDFtoImage" Version="5.2.1" />
     <PackageReference Include="SixLabors.ImageSharp" Version="3.1.12" />
     <PackageReference Include="Supabase" Version="1.1.1" />
   </ItemGroup>

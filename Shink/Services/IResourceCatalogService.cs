@@ -7,6 +7,10 @@ public interface IResourceCatalogService
     Task<ResourceDocumentDownload?> GetDocumentDownloadAsync(
         Guid resourceDocumentId,
         CancellationToken cancellationToken = default);
+
+    Task<ResourceDocumentPreviewDownload?> GetDocumentPreviewAsync(
+        Guid resourceDocumentId,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record ResourceTypeCatalog(
@@ -22,12 +26,20 @@ public sealed record ResourceDocumentItem(
     string FileName,
     string Title,
     string Url,
+    string? PreviewUrl,
     long SizeBytes,
     DateTimeOffset LastModified);
 
 public sealed record ResourceDocumentDownload(
     Guid ResourceDocumentId,
     string DownloadFileName,
+    string ContentType,
+    string StorageBucket,
+    string StorageObjectKey,
+    DateTimeOffset? LastModified);
+
+public sealed record ResourceDocumentPreviewDownload(
+    Guid ResourceDocumentId,
     string ContentType,
     string StorageBucket,
     string StorageObjectKey,

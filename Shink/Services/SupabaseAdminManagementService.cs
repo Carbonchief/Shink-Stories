@@ -1130,9 +1130,13 @@ public sealed partial class SupabaseAdminManagementService(
                 StorageProvider: NormalizeOptionalText(row.StorageProvider, 32) ?? "r2",
                 StorageBucket: row.StorageBucket!.Trim(),
                 StorageObjectKey: row.StorageObjectKey!.Trim(),
+                PreviewImageContentType: NormalizeOptionalText(row.PreviewImageContentType, 120),
+                PreviewImageBucket: NormalizeOptionalText(row.PreviewImageBucket, 120),
+                PreviewImageObjectKey: NormalizeOptionalText(row.PreviewImageObjectKey, 1024),
                 SortOrder: row.SortOrder,
                 IsEnabled: row.IsEnabled,
                 CreatedAt: row.CreatedAt,
+                DocumentUpdatedAt: row.DocumentUpdatedAt ?? row.UpdatedAt ?? row.CreatedAt,
                 UpdatedAt: row.UpdatedAt))
             .OrderBy(document => document.SortOrder)
             .ThenBy(document => document.Title, StringComparer.OrdinalIgnoreCase)
@@ -1204,6 +1208,21 @@ public sealed partial class SupabaseAdminManagementService(
             return new AdminOperationResult(false, "Resource document storage metadata ontbreek.");
         }
 
+        var normalizedPreviewContentType = NormalizeOptionalText(request.PreviewImageContentType, 120)?.ToLowerInvariant();
+        var normalizedPreviewBucket = NormalizeOptionalText(request.PreviewImageBucket, 120);
+        var normalizedPreviewObjectKey = NormalizeOptionalText(request.PreviewImageObjectKey, 1024);
+        if (string.IsNullOrWhiteSpace(normalizedPreviewContentType) ||
+            string.IsNullOrWhiteSpace(normalizedPreviewBucket) ||
+            string.IsNullOrWhiteSpace(normalizedPreviewObjectKey))
+        {
+            return new AdminOperationResult(false, "Resource document preview metadata ontbreek.");
+        }
+
+        if (!string.Equals(normalizedPreviewContentType, "image/png", StringComparison.OrdinalIgnoreCase))
+        {
+            return new AdminOperationResult(false, "Resource document preview metadata ontbreek.");
+        }
+
         var payload = new Dictionary<string, object?>
         {
             ["resource_type_id"] = request.ResourceTypeId,
@@ -1216,6 +1235,10 @@ public sealed partial class SupabaseAdminManagementService(
             ["storage_provider"] = "r2",
             ["storage_bucket"] = normalizedStorageBucket,
             ["storage_object_key"] = normalizedStorageObjectKey,
+            ["preview_image_content_type"] = normalizedPreviewContentType,
+            ["preview_image_bucket"] = normalizedPreviewBucket,
+            ["preview_image_object_key"] = normalizedPreviewObjectKey,
+            ["preview_generated_at"] = DateTimeOffset.UtcNow,
             ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
             ["is_enabled"] = request.IsEnabled
         };
@@ -1385,7 +1408,7 @@ public sealed partial class SupabaseAdminManagementService(
     {
         var queryBuilder = new StringBuilder(
             "rest/v1/resource_documents" +
-            "?select=resource_document_id,resource_type_id,slug,title,description,file_name,content_type,size_bytes,storage_provider,storage_bucket,storage_object_key,sort_order,is_enabled,created_at,updated_at" +
+            "?select=resource_document_id,resource_type_id,slug,title,description,file_name,content_type,size_bytes,storage_provider,storage_bucket,storage_object_key,preview_image_content_type,preview_image_bucket,preview_image_object_key,sort_order,is_enabled,created_at,document_updated_at,updated_at" +
             "&order=sort_order.asc" +
             "&order=title.asc" +
             "&limit=5000");
@@ -2051,6 +2074,15 @@ public sealed partial class SupabaseAdminManagementService(
         [JsonPropertyName("storage_object_key")]
         public string? StorageObjectKey { get; set; }
 
+        [JsonPropertyName("preview_image_content_type")]
+        public string? PreviewImageContentType { get; set; }
+
+        [JsonPropertyName("preview_image_bucket")]
+        public string? PreviewImageBucket { get; set; }
+
+        [JsonPropertyName("preview_image_object_key")]
+        public string? PreviewImageObjectKey { get; set; }
+
         [JsonPropertyName("sort_order")]
         public int SortOrder { get; set; }
 
@@ -2059,6 +2091,9 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("created_at")]
         public DateTimeOffset CreatedAt { get; set; }
+
+        [JsonPropertyName("document_updated_at")]
+        public DateTimeOffset? DocumentUpdatedAt { get; set; }
 
         [JsonPropertyName("updated_at")]
         public DateTimeOffset? UpdatedAt { get; set; }

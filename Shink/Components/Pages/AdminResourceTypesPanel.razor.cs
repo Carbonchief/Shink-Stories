@@ -25,6 +25,9 @@ public partial class AdminResourceTypesPanel : ComponentBase
     private IResourceDocumentStorageService ResourceDocumentStorageService { get; set; } = default!;
 
     [Inject]
+    private IResourceDocumentPreviewService ResourceDocumentPreviewService { get; set; } = default!;
+
+    [Inject]
     private ILogger<AdminResourceTypesPanel> Logger { get; set; } = default!;
 
     private IReadOnlyList<AdminResourceTypeRecord> ResourceTypes { get; set; } = Array.Empty<AdminResourceTypeRecord>();
@@ -312,6 +315,7 @@ public partial class AdminResourceTypesPanel : ComponentBase
             }
 
             UploadedResourceDocument? uploadedDocument = null;
+            UploadedResourcePreviewImage? uploadedPreview = null;
 
             try
             {
@@ -319,11 +323,25 @@ public partial class AdminResourceTypesPanel : ComponentBase
                 var slug = BuildUniqueDocumentSlug(title, usedSlugs);
 
                 await using var stream = file.OpenReadStream(MaxPdfUploadBytes);
+                await using var pdfBuffer = new MemoryStream();
+                await stream.CopyToAsync(pdfBuffer);
+                pdfBuffer.Position = 0;
+
+                var generatedPreview = await ResourceDocumentPreviewService.GeneratePreviewAsync(pdfBuffer);
+                pdfBuffer.Position = 0;
+
                 uploadedDocument = await ResourceDocumentStorageService.UploadDocumentAsync(
                     Editor.SlugPreview,
                     file.Name,
                     NormalizePdfContentType(file),
-                    stream);
+                    pdfBuffer);
+
+                await using var previewStream = new MemoryStream(generatedPreview.Content, writable: false);
+                uploadedPreview = await ResourceDocumentStorageService.UploadPreviewImageAsync(
+                    Editor.SlugPreview,
+                    $"{Path.GetFileNameWithoutExtension(file.Name)}.png",
+                    generatedPreview.ContentType,
+                    previewStream);
 
                 var result = await AdminManagementService.CreateResourceDocumentAsync(
                     SignedInEmail,
@@ -338,11 +356,15 @@ public partial class AdminResourceTypesPanel : ComponentBase
                         StorageProvider: "r2",
                         StorageBucket: uploadedDocument.Bucket,
                         StorageObjectKey: uploadedDocument.ObjectKey,
+                        PreviewImageContentType: uploadedPreview.ContentType,
+                        PreviewImageBucket: uploadedPreview.Bucket,
+                        PreviewImageObjectKey: uploadedPreview.ObjectKey,
                         SortOrder: nextSortOrder,
                         IsEnabled: true));
 
                 if (!result.IsSuccess)
                 {
+                    await DeletePreviewIfPresentAsync(uploadedPreview);
                     await ResourceDocumentStorageService.DeleteObjectIfExistsAsync(uploadedDocument.ObjectKey);
                     failures.Add($"{file.Name}: {TranslateServiceMessage(result.ErrorMessage) ?? T("Kon nie metadata stoor nie.", "Could not save metadata.")}");
                     continue;
@@ -354,6 +376,8 @@ public partial class AdminResourceTypesPanel : ComponentBase
             }
             catch (Exception exception)
             {
+                await DeletePreviewIfPresentAsync(uploadedPreview);
+
                 if (uploadedDocument is not null)
                 {
                     await ResourceDocumentStorageService.DeleteObjectIfExistsAsync(uploadedDocument.ObjectKey);
@@ -405,6 +429,7 @@ public partial class AdminResourceTypesPanel : ComponentBase
             }
 
             await ResourceDocumentStorageService.DeleteObjectIfExistsAsync(document.StorageObjectKey);
+            await DeletePreviewIfPresentAsync(document.PreviewImageObjectKey);
             await ReloadAsync(document.ResourceTypeId);
             StatusMessage = T("Hulpbron dokument verwyder.", "Resource document deleted.");
         }
@@ -436,7 +461,9 @@ public partial class AdminResourceTypesPanel : ComponentBase
         var culture = string.Equals(CurrentLanguageCode, "en", StringComparison.OrdinalIgnoreCase)
             ? CultureInfo.GetCultureInfo("en-ZA")
             : CultureInfo.GetCultureInfo("af-ZA");
-        var date = (document.UpdatedAt ?? document.CreatedAt).ToLocalTime().ToString("d MMM yyyy", culture);
+        var date = (document.DocumentUpdatedAt != default ? document.DocumentUpdatedAt : document.UpdatedAt ?? document.CreatedAt)
+            .ToLocalTime()
+            .ToString("d MMM yyyy", culture);
         return $"{FormatFileSize(document.SizeBytes)} · {date}";
     }
 
@@ -477,6 +504,8 @@ public partial class AdminResourceTypesPanel : ComponentBase
         {
             "Cloudflare R2 is not fully configured for resource uploads." => T("Cloudflare R2 is nog nie volledig opgestel vir hulpbron uploads nie.", "Cloudflare R2 is not fully configured for resource uploads."),
             "Unsupported document file type. Use PDF files only." => T("Net PDF files word ondersteun.", "Only PDF files are supported."),
+            "Unsupported preview image file type. Use PNG files only." => T("Net PNG preview images word ondersteun.", "Only PNG preview images are supported."),
+            "Could not generate the PDF preview image." => T("Kon nie 'n preview beeld vir die PDF skep nie.", "Could not generate a preview image for the PDF."),
             _ => T("Die hulpbron upload het misluk. Probeer asseblief weer.", "The resource upload failed. Please try again.")
         };
 
@@ -499,12 +528,23 @@ public partial class AdminResourceTypesPanel : ComponentBase
             "Resource document file moet 'n PDF wees." => T("Die hulpbron dokument moet 'n PDF wees.", "The resource document must be a PDF."),
             "Resource document storage provider moet 'r2' wees." => T("Die hulpbron dokument storage provider moet 'r2' wees.", "The resource document storage provider must be 'r2'."),
             "Resource document storage metadata ontbreek." => T("Die hulpbron dokument se storage metadata ontbreek.", "The resource document storage metadata is missing."),
+            "Resource document preview metadata ontbreek." => T("Die hulpbron dokument se preview metadata ontbreek.", "The resource document preview metadata is missing."),
             "Resource document slug bestaan reeds." => T("Die hulpbron dokument slug bestaan reeds.", "The resource document slug already exists."),
             "Kon nie resource document skep nie." => T("Kon nie hulpbron dokument skep nie.", "Could not create the resource document."),
             "Kies asseblief 'n geldige resource document." => T("Kies asseblief 'n geldige hulpbron dokument.", "Please choose a valid resource document."),
             "Kon nie resource document nou verwyder nie." => T("Kon nie hulpbron dokument nou verwyder nie.", "Could not delete the resource document right now."),
             _ => null
         };
+
+    private Task DeletePreviewIfPresentAsync(UploadedResourcePreviewImage? uploadedPreview) =>
+        uploadedPreview is null
+            ? Task.CompletedTask
+            : DeletePreviewIfPresentAsync(uploadedPreview.ObjectKey);
+
+    private Task DeletePreviewIfPresentAsync(string? previewObjectKey) =>
+        string.IsNullOrWhiteSpace(previewObjectKey)
+            ? Task.CompletedTask
+            : ResourceDocumentStorageService.DeleteObjectIfExistsAsync(previewObjectKey);
 
     private string T(string afrikaans, string english) =>
         string.Equals(CurrentLanguageCode, "en", StringComparison.OrdinalIgnoreCase) ? english : afrikaans;
