@@ -229,9 +229,13 @@ public sealed record AdminResourceDocumentRecord(
     string StorageProvider,
     string StorageBucket,
     string StorageObjectKey,
+    string? PreviewImageContentType,
+    string? PreviewImageBucket,
+    string? PreviewImageObjectKey,
     int SortOrder,
     bool IsEnabled,
     DateTimeOffset CreatedAt,
+    DateTimeOffset DocumentUpdatedAt,
     DateTimeOffset? UpdatedAt);
 
 public sealed record AdminResourceDocumentCreateRequest(
@@ -245,5 +249,8 @@ public sealed record AdminResourceDocumentCreateRequest(
     string StorageProvider,
     string StorageBucket,
     string StorageObjectKey,
+    string PreviewImageContentType,
+    string PreviewImageBucket,
+    string PreviewImageObjectKey,
     int SortOrder,
     bool IsEnabled);

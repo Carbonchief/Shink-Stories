@@ -32,6 +32,25 @@ public sealed class CloudflareR2ResourceDocumentStorageService(
             ContentType: normalizedContentType);
     }
 
+    public async Task<UploadedResourcePreviewImage> UploadPreviewImageAsync(
+        string resourceTypeSlug,
+        string fileName,
+        string? contentType,
+        Stream content,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedTypeSlug = NormalizeSlug(resourceTypeSlug, "Resource type slug is required for preview uploads.");
+        var normalizedContentType = ResolvePreviewContentType(contentType, fileName);
+        var objectKey = BuildPreviewObjectKey(normalizedTypeSlug);
+
+        await UploadObjectAsync(objectKey, normalizedContentType, content, cancellationToken);
+
+        return new UploadedResourcePreviewImage(
+            Bucket: _options.BucketName.Trim(),
+            ObjectKey: objectKey,
+            ContentType: normalizedContentType);
+    }
+
     public async Task<ResourceDocumentStream?> OpenReadAsync(
         string bucket,
         string objectKey,
@@ -200,6 +219,12 @@ public sealed class CloudflareR2ResourceDocumentStorageService(
         return $"uploaded/resources/{timestamp:yyyy}/{timestamp:MM}/{resourceTypeSlug}/{timestamp:yyyyMMddHHmmss}-{Guid.NewGuid():N}{ResolveExtension(fileName)}";
     }
 
+    private static string BuildPreviewObjectKey(string resourceTypeSlug)
+    {
+        var timestamp = DateTimeOffset.UtcNow;
+        return $"uploaded/resource-previews/{timestamp:yyyy}/{timestamp:MM}/{resourceTypeSlug}/{timestamp:yyyyMMddHHmmss}-{Guid.NewGuid():N}.png";
+    }
+
     private static string ResolveDocumentContentType(string? contentType, string fileName)
     {
         var normalized = NormalizeContentType(contentType);
@@ -220,6 +245,22 @@ public sealed class CloudflareR2ResourceDocumentStorageService(
     {
         var extension = Path.GetExtension(fileName).Trim().ToLowerInvariant();
         return string.IsNullOrWhiteSpace(extension) ? ".pdf" : extension;
+    }
+
+    private static string ResolvePreviewContentType(string? contentType, string fileName)
+    {
+        var normalized = NormalizeContentType(contentType);
+        if (normalized == "image/png")
+        {
+            return normalized;
+        }
+
+        if (Path.GetExtension(fileName).Trim().Equals(".png", StringComparison.OrdinalIgnoreCase))
+        {
+            return "image/png";
+        }
+
+        throw new InvalidOperationException("Unsupported preview image file type. Use PNG files only.");
     }
 
     private static string NormalizeSlug(string value, string errorMessage)

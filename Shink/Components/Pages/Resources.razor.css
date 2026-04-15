@@ -229,12 +229,12 @@
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
 }
 
-.resources-card-preview-frame {
+.resources-card-preview-image {
     width: 100%;
     height: 100%;
-    border: 0;
+    display: block;
+    object-fit: contain;
     background: white;
-    pointer-events: none;
 }
 
 .resources-card-icon {
@@ -269,6 +269,8 @@
     grid-column: 1 / -1;
     display: flex;
     flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
     gap: 0.65rem;
 }
 

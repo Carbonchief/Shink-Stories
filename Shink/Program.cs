@@ -84,6 +84,7 @@ builder.Services.AddAuthorization();
 builder.Services.AddSingleton<IAudioAccessService, AudioAccessService>();
 builder.Services.AddSingleton<IStoryMediaStorageService, CloudflareR2StoryMediaStorageService>();
 builder.Services.AddSingleton<IResourceDocumentStorageService, CloudflareR2ResourceDocumentStorageService>();
+builder.Services.AddSingleton<IResourceDocumentPreviewService, ResourceDocumentPreviewService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpContextAccessor();
 builder.Services.Configure<ResendOptions>(builder.Configuration.GetSection(ResendOptions.SectionName));
@@ -108,6 +109,7 @@ builder.Services.AddHttpClient<IStoryTrackingService, SupabaseStoryTrackingServi
 builder.Services.AddHttpClient<IStoryFavoriteService, SupabaseStoryFavoriteService>();
 builder.Services.AddHttpClient<IResourceCatalogService, SupabaseResourceCatalogService>();
 builder.Services.AddHttpClient<IAdminManagementService, SupabaseAdminManagementService>();
+builder.Services.AddHttpClient<IResourceDocumentPreviewBackfillService, SupabaseResourceDocumentPreviewBackfillService>();
 builder.Services.AddHttpClient<ICharacterCatalogService, SupabaseCharacterService>();
 builder.Services.AddHttpClient<ICharacterAdminService, SupabaseCharacterService>();
 builder.Services.AddHttpClient<ICharacterTrackingService, SupabaseCharacterService>();
@@ -505,6 +507,33 @@ app.MapGet("/media/resources/{resourceDocumentId:guid}", async (
     httpContext.Response.Headers.ContentDisposition = $"inline; filename*=UTF-8''{Uri.EscapeDataString(document.DownloadFileName)}";
 
     return Results.File(resourceStream.Content, resourceStream.ContentType, lastModified: resourceStream.LastModified ?? document.LastModified);
+});
+
+app.MapGet("/media/resources/{resourceDocumentId:guid}/preview", async (
+    Guid resourceDocumentId,
+    IResourceCatalogService resourceCatalogService,
+    IResourceDocumentStorageService resourceDocumentStorageService,
+    HttpContext httpContext) =>
+{
+    var preview = await resourceCatalogService.GetDocumentPreviewAsync(resourceDocumentId, httpContext.RequestAborted);
+    if (preview is null)
+    {
+        return Results.NotFound();
+    }
+
+    var previewStream = await resourceDocumentStorageService.OpenReadAsync(
+        preview.StorageBucket,
+        preview.StorageObjectKey,
+        httpContext.RequestAborted);
+    if (previewStream is null)
+    {
+        return Results.NotFound();
+    }
+
+    httpContext.Response.Headers.CacheControl = "public, max-age=86400";
+    httpContext.Response.Headers["X-Robots-Tag"] = "noindex, nofollow";
+
+    return Results.File(previewStream.Content, previewStream.ContentType, lastModified: previewStream.LastModified ?? preview.LastModified);
 });
 
 app.MapGet("/betaal/payfast/{planSlug}", (string planSlug) =>
@@ -1592,6 +1621,34 @@ using (var scope = app.Services.CreateScope())
 foreach (var slug in legacyFreeStorySlugs)
 {
     app.MapGet($"/{slug}", () => Results.Redirect($"/gratis/{slug}", permanent: false));
+}
+
+if (args.Any(argument => string.Equals(argument, "--backfill-resource-previews", StringComparison.OrdinalIgnoreCase)))
+{
+    using var scope = app.Services.CreateScope();
+    var backfillService = scope.ServiceProvider.GetRequiredService<IResourceDocumentPreviewBackfillService>();
+    var result = await backfillService.BackfillMissingPreviewsAsync();
+
+    app.Logger.LogInformation(
+        "Resource preview backfill finished. scanned={ScannedCount} created={CreatedCount} errors={ErrorCount}",
+        result.ScannedCount,
+        result.CreatedCount,
+        result.Errors.Count);
+
+    foreach (var error in result.Errors.Take(25))
+    {
+        app.Logger.LogWarning("Resource preview backfill issue: {Error}", error);
+    }
+
+    if (result.Errors.Count > 25)
+    {
+        app.Logger.LogWarning(
+            "Resource preview backfill omitted {RemainingCount} additional errors from the log output.",
+            result.Errors.Count - 25);
+    }
+
+    Environment.ExitCode = result.Errors.Count == 0 ? 0 : 1;
+    return;
 }
 
 app.MapStaticAssets();
