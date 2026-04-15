@@ -277,70 +277,87 @@
                             </div>
 
                             <div class="blog-admin-rich-editor-shell" @ref="_richTextEditorShell">
-                                <div class="blog-admin-rich-toolbar" role="toolbar" aria-label="@T("Rykteks nutsbalk", "Rich text toolbar")">
-                                    <button type="button"
-                                            class="blog-admin-rich-btn"
-                                            data-rich-text-command="bold"
-                                            title="@T("Vet", "Bold")"
-                                            aria-label="@T("Vet", "Bold")">
-                                        <strong>B</strong>
-                                    </button>
-                                    <button type="button"
-                                            class="blog-admin-rich-btn"
-                                            data-rich-text-command="italic"
-                                            title="@T("Kursief", "Italic")"
-                                            aria-label="@T("Kursief", "Italic")">
-                                        <em>I</em>
-                                    </button>
-                                    <button type="button"
-                                            class="blog-admin-rich-btn"
-                                            data-rich-text-command="underline"
-                                            title="@T("Onderstreep", "Underline")"
-                                            aria-label="@T("Onderstreep", "Underline")">
-                                        <span>U</span>
-                                    </button>
-                                    <button type="button"
-                                            class="blog-admin-rich-btn"
-                                            data-rich-text-command="heading2"
-                                            title="@T("Opskrif 2", "Heading 2")"
-                                            aria-label="@T("Opskrif 2", "Heading 2")">
-                                        H2
-                                    </button>
-                                    <button type="button"
-                                            class="blog-admin-rich-btn"
-                                            data-rich-text-command="heading3"
-                                            title="@T("Opskrif 3", "Heading 3")"
-                                            aria-label="@T("Opskrif 3", "Heading 3")">
-                                        H3
-                                    </button>
-                                    <button type="button"
-                                            class="blog-admin-rich-btn"
-                                            data-rich-text-command="unorderedList"
-                                            title="@T("Kolpunte lys", "Bullet list")"
-                                            aria-label="@T("Kolpunte lys", "Bullet list")">
-                                        &bull;
-                                    </button>
-                                    <button type="button"
-                                            class="blog-admin-rich-btn"
-                                            data-rich-text-command="orderedList"
-                                            title="@T("Genommerde lys", "Numbered list")"
-                                            aria-label="@T("Genommerde lys", "Numbered list")">
-                                        1.
-                                    </button>
-                                    <button type="button"
-                                            class="blog-admin-rich-btn"
-                                            data-rich-text-command="clearFormatting"
-                                            title="@T("Wis formatering", "Clear formatting")"
-                                            aria-label="@T("Wis formatering", "Clear formatting")">
-                                        ⌫
-                                    </button>
+                                <div class="blog-admin-rich-toolbar"
+                                     role="toolbar"
+                                     aria-label="@T("Rykteks nutsbalk", "Rich text toolbar")"
+                                     data-editor-label="@T("Blog inhoud redigeerder", "Blog content editor")">
+                                    <span class="ql-formats">
+                                        <button type="button"
+                                                class="ql-undo"
+                                                title="@T("Ontdoen", "Undo")"
+                                                aria-label="@T("Ontdoen", "Undo")">
+                                            <i class="fa-solid fa-rotate-left" aria-hidden="true"></i>
+                                        </button>
+                                        <button type="button"
+                                                class="ql-redo"
+                                                title="@T("Herdoen", "Redo")"
+                                                aria-label="@T("Herdoen", "Redo")">
+                                            <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
+                                        </button>
+                                    </span>
+
+                                    <span class="ql-formats">
+                                        <button type="button"
+                                                class="ql-bold"
+                                                title="@T("Vet", "Bold")"
+                                                aria-label="@T("Vet", "Bold")"></button>
+                                        <button type="button"
+                                                class="ql-italic"
+                                                title="@T("Kursief", "Italic")"
+                                                aria-label="@T("Kursief", "Italic")"></button>
+                                        <button type="button"
+                                                class="ql-underline"
+                                                title="@T("Onderstreep", "Underline")"
+                                                aria-label="@T("Onderstreep", "Underline")"></button>
+                                        <button type="button"
+                                                class="ql-strike"
+                                                title="@T("Deurstreep", "Strikethrough")"
+                                                aria-label="@T("Deurstreep", "Strikethrough")"></button>
+                                    </span>
+
+                                    <span class="ql-formats">
+                                        <button type="button"
+                                                class="ql-header"
+                                                value="2"
+                                                title="@T("Opskrif 2", "Heading 2")"
+                                                aria-label="@T("Opskrif 2", "Heading 2")"></button>
+                                        <button type="button"
+                                                class="ql-header"
+                                                value="3"
+                                                title="@T("Opskrif 3", "Heading 3")"
+                                                aria-label="@T("Opskrif 3", "Heading 3")"></button>
+                                        <button type="button"
+                                                class="ql-blockquote"
+                                                title="@T("Aanhaling", "Block quote")"
+                                                aria-label="@T("Aanhaling", "Block quote")"></button>
+                                    </span>
+
+                                    <span class="ql-formats">
+                                        <button type="button"
+                                                class="ql-list"
+                                                value="ordered"
+                                                title="@T("Genommerde lys", "Numbered list")"
+                                                aria-label="@T("Genommerde lys", "Numbered list")"></button>
+                                        <button type="button"
+                                                class="ql-list"
+                                                value="bullet"
+                                                title="@T("Kolpunte lys", "Bullet list")"
+                                                aria-label="@T("Kolpunte lys", "Bullet list")"></button>
+                                    </span>
+
+                                    <span class="ql-formats">
+                                        <button type="button"
+                                                class="ql-link"
+                                                title="@T("Skakel", "Link")"
+                                                aria-label="@T("Skakel", "Link")"></button>
+                                        <button type="button"
+                                                class="ql-clean"
+                                                title="@T("Wis formatering", "Clear formatting")"
+                                                aria-label="@T("Wis formatering", "Clear formatting")"></button>
+                                    </span>
                                 </div>
 
                                 <div class="blog-admin-markdown-editor"
-                                     contenteditable="true"
-                                     spellcheck="true"
-                                     role="textbox"
-                                     aria-multiline="true"
                                      data-placeholder="@T("Tik of plak jou blog inhoud hier.", "Type or paste your blog content here.")"></div>
                             </div>
                         </section>

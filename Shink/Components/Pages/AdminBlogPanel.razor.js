@@ -1,54 +1,72 @@
 const editorStates = new WeakMap();
+let quillLoaderPromise;
 
-export function syncRichTextEditor(shellElement, dotNetReference, html) {
+export async function syncRichTextEditor(shellElement, dotNetReference, html) {
     if (!shellElement) {
         return;
     }
 
-    const editor = shellElement.querySelector(".blog-admin-markdown-editor[contenteditable='true']");
-    const toolbar = shellElement.querySelector(".blog-admin-rich-toolbar");
-    if (!editor) {
+    await ensureQuillLoaded();
+
+    const editorElement = shellElement.querySelector(".blog-admin-markdown-editor");
+    const toolbarElement = shellElement.querySelector(".blog-admin-rich-toolbar");
+    if (!editorElement || !toolbarElement) {
         return;
     }
 
     let state = editorStates.get(shellElement);
     if (!state) {
+        const quill = new window.Quill(editorElement, {
+            theme: "snow",
+            placeholder: editorElement.dataset.placeholder ?? "",
+            modules: {
+                history: {
+                    delay: 500,
+                    maxStack: 200,
+                    userOnly: true
+                },
+                toolbar: {
+                    container: toolbarElement,
+                    handlers: {
+                        undo() {
+                            this.quill.history.undo();
+                        },
+                        redo() {
+                            this.quill.history.redo();
+                        }
+                    }
+                }
+            }
+        });
+
+        quill.root.setAttribute("spellcheck", "true");
+        quill.root.setAttribute("role", "textbox");
+        quill.root.setAttribute("aria-multiline", "true");
+
+        const editorLabel = toolbarElement.dataset.editorLabel ?? editorElement.dataset.placeholder ?? "";
+        if (editorLabel) {
+            quill.root.setAttribute("aria-label", editorLabel);
+        }
+
         state = {
-            editor,
-            toolbar,
             dotNetReference,
             isApplying: false,
-            onInput: null,
-            onToolbarClick: null
+            onTextChange: null,
+            quill
         };
 
-        state.onInput = () => {
-            if (state.isApplying) {
+        state.onTextChange = (_delta, _oldDelta, source) => {
+            if (state.isApplying || source !== "user") {
                 return;
             }
 
-            const currentHtml = state.editor.innerHTML ?? "";
+            const currentHtml = getEditorHtml(state.quill);
             state.dotNetReference?.invokeMethodAsync("OnRichTextEditorInput", currentHtml);
         };
 
-        state.onToolbarClick = (event) => {
-            const button = event.target?.closest?.("[data-rich-text-command]");
-            if (!button || !state.toolbar?.contains(button)) {
-                return;
-            }
-
-            event.preventDefault();
-            event.stopPropagation();
-            applyCommand(state.editor, button.dataset.richTextCommand);
-        };
-
-        editor.addEventListener("input", state.onInput);
-        editor.addEventListener("blur", state.onInput);
-        toolbar?.addEventListener("click", state.onToolbarClick);
+        quill.on("text-change", state.onTextChange);
         editorStates.set(shellElement, state);
     } else {
-        state.editor = editor;
-        state.toolbar = toolbar;
         state.dotNetReference = dotNetReference;
     }
 
@@ -65,60 +83,126 @@ export function disposeRichTextEditor(shellElement) {
         return;
     }
 
-    if (state.onInput) {
-        state.editor.removeEventListener("input", state.onInput);
-        state.editor.removeEventListener("blur", state.onInput);
-    }
-
-    if (state.onToolbarClick) {
-        state.toolbar?.removeEventListener("click", state.onToolbarClick);
+    if (state.onTextChange) {
+        state.quill.off("text-change", state.onTextChange);
     }
 
     editorStates.delete(shellElement);
 }
 
+async function ensureQuillLoaded() {
+    if (window.Quill) {
+        await ensureQuillStylesheet();
+        return window.Quill;
+    }
+
+    if (!quillLoaderPromise) {
+        quillLoaderPromise = Promise.all([
+            ensureQuillStylesheet(),
+            ensureQuillScript()
+        ]).then(() => {
+            if (!window.Quill) {
+                throw new Error("Quill did not load correctly.");
+            }
+
+            return window.Quill;
+        });
+    }
+
+    return quillLoaderPromise;
+}
+
+function ensureQuillStylesheet() {
+    const existing = document.querySelector("link[data-blog-admin-quill-styles='true']");
+    if (existing) {
+        return Promise.resolve();
+    }
+
+    return new Promise((resolve, reject) => {
+        const link = document.createElement("link");
+        link.rel = "stylesheet";
+        link.href = "/lib/quill/quill.snow.css";
+        link.dataset.blogAdminQuillStyles = "true";
+        link.addEventListener("load", () => resolve(), { once: true });
+        link.addEventListener("error", () => reject(new Error("Failed to load Quill stylesheet.")), { once: true });
+        document.head.appendChild(link);
+    });
+}
+
+function ensureQuillScript() {
+    if (window.Quill) {
+        return Promise.resolve(window.Quill);
+    }
+
+    const existing = document.querySelector("script[data-blog-admin-quill-script='true']");
+    if (existing) {
+        return new Promise((resolve, reject) => {
+            if (existing.dataset.loaded === "true") {
+                resolve(window.Quill);
+                return;
+            }
+
+            existing.addEventListener("load", () => resolve(window.Quill), { once: true });
+            existing.addEventListener("error", () => reject(new Error("Failed to load Quill script.")), { once: true });
+        });
+    }
+
+    return new Promise((resolve, reject) => {
+        const script = document.createElement("script");
+        script.src = "/lib/quill/quill.js";
+        script.async = true;
+        script.dataset.blogAdminQuillScript = "true";
+        script.addEventListener("load", () => {
+            script.dataset.loaded = "true";
+            resolve(window.Quill);
+        }, { once: true });
+        script.addEventListener("error", () => reject(new Error("Failed to load Quill script.")), { once: true });
+        document.head.appendChild(script);
+    });
+}
+
 function setEditorHtml(state, html) {
-    if (state.editor.innerHTML === html) {
+    const normalizedHtml = normalizeHtml(html);
+    if (getEditorHtml(state.quill) === normalizedHtml) {
         return;
     }
 
     state.isApplying = true;
-    state.editor.innerHTML = html;
+
+    if (normalizedHtml) {
+        state.quill.clipboard.dangerouslyPasteHTML(normalizedHtml, "silent");
+    } else {
+        state.quill.setText("", "silent");
+    }
+
+    state.quill.history.clear();
     state.isApplying = false;
 }
 
-function applyCommand(editor, command) {
-    editor.focus();
-
-    switch (command) {
-        case "bold":
-            document.execCommand("bold");
-            break;
-        case "italic":
-            document.execCommand("italic");
-            break;
-        case "underline":
-            document.execCommand("underline");
-            break;
-        case "heading2":
-            document.execCommand("formatBlock", false, "<h2>");
-            break;
-        case "heading3":
-            document.execCommand("formatBlock", false, "<h3>");
-            break;
-        case "unorderedList":
-            document.execCommand("insertUnorderedList");
-            break;
-        case "orderedList":
-            document.execCommand("insertOrderedList");
-            break;
-        case "clearFormatting":
-            document.execCommand("removeFormat");
-            document.execCommand("formatBlock", false, "<p>");
-            break;
-        default:
-            break;
+function getEditorHtml(quill) {
+    if (!quill || quill.getLength() <= 1) {
+        return "";
     }
 
-    editor.dispatchEvent(new Event("input", { bubbles: true }));
+    const exportedHtml = typeof quill.getSemanticHTML === "function"
+        ? quill.getSemanticHTML()
+        : quill.root.innerHTML;
+
+    return normalizeHtml(exportedHtml);
+}
+
+function normalizeHtml(html) {
+    const trimmed = (html ?? "").trim();
+    if (!trimmed || /^<p>(?:<br\s*\/?>|&nbsp;|\s)*<\/p>$/i.test(trimmed)) {
+        return "";
+    }
+
+    const container = document.createElement("div");
+    container.innerHTML = trimmed;
+
+    if (/^<p>(?:<br\s*\/?>|&nbsp;|\s)*<\/p>$/i.test(container.innerHTML.trim())) {
+        return "";
+    }
+
+    return container.innerHTML.trim();
 }

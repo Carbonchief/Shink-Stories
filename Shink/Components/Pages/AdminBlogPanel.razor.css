@@ -339,69 +339,162 @@
     gap: 0.75rem;
 }
 
-.blog-admin-rich-toolbar {
+.blog-admin-rich-toolbar,
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow {
     display: flex;
     flex-wrap: wrap;
     gap: 0.45rem;
+    padding: 0.55rem 0.65rem;
+    border-radius: 10px;
+    background: #12202d;
+    border: 1px solid var(--admin-border);
 }
 
-.blog-admin-rich-btn {
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(.ql-formats) {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    margin-right: 0;
+}
+
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(button),
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(.ql-picker-label) {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     min-width: 2.5rem;
     min-height: 2.5rem;
     padding: 0.35rem 0.65rem;
     border-radius: 10px;
-    border: 1px solid var(--admin-border);
-    background: #12202d;
+    border: 1px solid transparent;
+    background: transparent;
     color: var(--admin-text);
-    font: inherit;
-    font-weight: 800;
     cursor: pointer;
 }
 
-.blog-admin-rich-btn:hover,
-.blog-admin-rich-btn:focus-visible {
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(button:hover),
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(button:focus-visible),
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(button.ql-active),
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(.ql-picker-label:hover),
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(.ql-picker-label:focus-visible),
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(.ql-picker.ql-expanded .ql-picker-label) {
     border-color: var(--admin-border-strong);
     background: var(--admin-row-hover);
 }
 
-.blog-admin-markdown-editor {
-    min-height: 22rem;
-    padding: 0.9rem 1rem;
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(.ql-picker) {
+    color: var(--admin-text);
+}
+
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(.ql-picker-options) {
+    padding: 0.35rem;
+    border-radius: 12px;
+    border: 1px solid var(--admin-border);
+    background: #12202d;
+    color: var(--admin-text);
+}
+
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(.ql-picker-item) {
+    border-radius: 8px;
+}
+
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(.ql-picker-item:hover),
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(.ql-picker-item.ql-selected) {
+    color: #8dc66f;
+}
+
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(.ql-stroke) {
+    stroke: var(--admin-text);
+}
+
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(.ql-fill) {
+    fill: var(--admin-text);
+}
+
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(button:hover .ql-stroke),
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(button.ql-active .ql-stroke),
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(.ql-picker-label:hover .ql-stroke),
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(.ql-picker.ql-expanded .ql-picker-label .ql-stroke) {
+    stroke: #8dc66f;
+}
+
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(button:hover .ql-fill),
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(button.ql-active .ql-fill),
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(.ql-picker-label:hover .ql-fill),
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(.ql-picker.ql-expanded .ql-picker-label .ql-fill) {
+    fill: #8dc66f;
+}
+
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(.ql-undo),
+.blog-admin-rich-toolbar.ql-toolbar.ql-snow :global(.ql-redo) {
+    font-size: 0.95rem;
+}
+
+.blog-admin-markdown-editor,
+.blog-admin-markdown-editor.ql-container.ql-snow {
     border-radius: 12px;
     border: 1px solid var(--admin-input-border);
     background: var(--admin-input-bg);
     color: var(--admin-text);
-    line-height: 1.75;
+    font: inherit;
     overflow: auto;
     outline: none;
 }
 
-.blog-admin-markdown-editor:empty::before {
-    content: attr(data-placeholder);
-    color: var(--admin-muted);
+.blog-admin-markdown-editor.ql-container.ql-snow :global(.ql-editor) {
+    min-height: 22rem;
+    padding: 0.9rem 1rem;
+    color: var(--admin-text);
+    line-height: 1.75;
 }
 
-.blog-admin-markdown-editor :global(p:first-child) {
+.blog-admin-markdown-editor.ql-container.ql-snow :global(.ql-editor.ql-blank::before) {
+    left: 1rem;
+    right: 1rem;
+    color: var(--admin-muted);
+    font-style: normal;
+}
+
+.blog-admin-markdown-editor.ql-container.ql-snow :global(.ql-editor > p:first-child) {
     margin-top: 0;
 }
 
-.blog-admin-markdown-editor :global(p:last-child) {
+.blog-admin-markdown-editor.ql-container.ql-snow :global(.ql-editor > p:last-child) {
     margin-bottom: 0;
 }
 
-.blog-admin-markdown-editor :global(h2),
-.blog-admin-markdown-editor :global(h3),
-.blog-admin-markdown-editor :global(h4) {
+.blog-admin-markdown-editor.ql-container.ql-snow :global(.ql-editor h2),
+.blog-admin-markdown-editor.ql-container.ql-snow :global(.ql-editor h3),
+.blog-admin-markdown-editor.ql-container.ql-snow :global(.ql-editor h4) {
     margin-top: 1em;
     color: var(--admin-text);
 }
 
-.blog-admin-markdown-editor :global(ul),
-.blog-admin-markdown-editor :global(ol) {
+.blog-admin-markdown-editor.ql-container.ql-snow :global(.ql-editor ul),
+.blog-admin-markdown-editor.ql-container.ql-snow :global(.ql-editor ol) {
     padding-left: 1.3rem;
 }
 
-.blog-admin-markdown-editor :global(a) {
+.blog-admin-markdown-editor.ql-container.ql-snow :global(.ql-editor a) {
+    color: #8dc66f;
+}
+
+.blog-admin-markdown-editor.ql-container.ql-snow :global(.ql-tooltip) {
+    border-radius: 12px;
+    border: 1px solid var(--admin-border);
+    background: #12202d;
+    color: var(--admin-text);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.3);
+}
+
+.blog-admin-markdown-editor.ql-container.ql-snow :global(.ql-tooltip input[type="text"]) {
+    border-radius: 8px;
+    border: 1px solid var(--admin-input-border);
+    background: var(--admin-input-bg);
+    color: var(--admin-text);
+}
+
+.blog-admin-markdown-editor.ql-container.ql-snow :global(.ql-tooltip a) {
     color: #8dc66f;
 }
 
