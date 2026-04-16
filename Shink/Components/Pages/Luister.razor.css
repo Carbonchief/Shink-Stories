@@ -308,7 +308,7 @@ h1 {
 }
 
 .luister-stories-section .stories-carousel-shell {
-    width: auto;
+    width: calc(100% + (2 * var(--luister-page-inline-padding)));
     margin-left: calc(-1 * var(--luister-page-inline-padding));
     margin-right: calc(-1 * var(--luister-page-inline-padding));
     padding-inline: 0;
