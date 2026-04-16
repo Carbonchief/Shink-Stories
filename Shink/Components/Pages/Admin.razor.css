@@ -190,15 +190,15 @@
 
 .admin-tabs-shell ::deep .mud-tab.mud-tab-active {
     background: color-mix(in srgb, #ffffff 12%, transparent);
-    color: #ffffff;
-    -webkit-text-fill-color: #ffffff !important;
+    color: var(--admin-text);
+    -webkit-text-fill-color: var(--admin-text) !important;
     opacity: 1 !important;
 }
 
 .admin-tabs-shell ::deep .mud-tab[aria-selected="true"] {
     background: color-mix(in srgb, #ffffff 12%, transparent);
-    color: #ffffff;
-    -webkit-text-fill-color: #ffffff !important;
+    color: var(--admin-text);
+    -webkit-text-fill-color: var(--admin-text) !important;
     opacity: 1 !important;
 }
 
@@ -471,6 +471,10 @@
     grid-column: span 2;
 }
 
+.admin-playlist-checkbox {
+    align-self: start;
+}
+
 .admin-form-note {
     margin: 0;
     color: var(--admin-muted);
@@ -588,6 +592,15 @@
     border-radius: 8px;
     border: 1px solid var(--admin-border);
     background: #0f1a25;
+}
+
+.admin-playlist-preview-grid {
+    align-items: start;
+}
+
+.admin-playlist-preview-card img {
+    width: min(100%, 180px);
+    justify-self: start;
 }
 
 .admin-luister-preview-card {
