@@ -1,5 +1,6 @@
 @using System.Globalization
 @using System.Security.Claims
+@using System.Text.Json
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.Extensions.Options
@@ -143,7 +144,8 @@
 
     @if (Editor is not null)
     {
-        <MudDialog @bind-Visible="IsCharacterDialogOpen"
+        <MudDialog Visible="IsCharacterDialogOpen"
+                   VisibleChanged="OnCharacterDialogVisibleChanged"
                    Class="characters-admin-dialog"
                    ContentClass="characters-admin-dialog-content"
                    Gutters="false"
@@ -169,7 +171,7 @@
 
                                 <button type="button"
                                         class="characters-admin-btn characters-admin-btn-secondary characters-admin-close-btn"
-                                        @onclick="CloseCharacterDialog"
+                                        @onclick="CloseCharacterDialogAsync"
                                         aria-label='@T("Sluit", "Close")'
                                         title='@T("Sluit", "Close")'>
                                     <i class="fa-solid fa-xmark" aria-hidden="true"></i>
@@ -493,9 +495,21 @@
 
                             <div class="characters-admin-image-grid">
                                 <div class="characters-admin-image-panel">
-                                    <img src="@Editor.MainImagePreviewPath"
-                                         alt="@T("Hoofprent voorskou", "Main image preview")"
-                                         onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                                    <div class="characters-admin-image-preview">
+                                        <img src="@Editor.MainImagePreviewPath"
+                                             alt="@T("Hoofprent voorskou", "Main image preview")"
+                                             onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                                        @if (CanRemoveMainImage())
+                                        {
+                                            <button type="button"
+                                                    class="characters-admin-image-remove"
+                                                    @onclick="RemoveMainImageAsync"
+                                                    aria-label='@T("Verwyder hoofprent", "Remove main image")'
+                                                    title='@T("Verwyder hoofprent", "Remove main image")'>
+                                                <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                                            </button>
+                                        }
+                                    </div>
                                     <label class="characters-admin-file-picker">
                                         <span>@T("Laai nuwe hoofprent op", "Upload new main image")</span>
                                         <InputFile OnChange="OnMainImageSelectedAsync" accept="image/png,image/jpeg,image/webp" />
@@ -503,9 +517,21 @@
                                 </div>
 
                                 <div class="characters-admin-image-panel">
-                                    <img src="@Editor.MysteryImagePreviewPath"
-                                         alt="@T("Mysterieprent voorskou", "Mystery image preview")"
-                                         onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                                    <div class="characters-admin-image-preview">
+                                        <img src="@Editor.MysteryImagePreviewPath"
+                                             alt="@T("Mysterieprent voorskou", "Mystery image preview")"
+                                             onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                                        @if (CanRemoveMysteryImage())
+                                        {
+                                            <button type="button"
+                                                    class="characters-admin-image-remove"
+                                                    @onclick="RemoveMysteryImageAsync"
+                                                    aria-label='@T("Verwyder mysterieprent", "Remove mystery image")'
+                                                    title='@T("Verwyder mysterieprent", "Remove mystery image")'>
+                                                <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                                            </button>
+                                        }
+                                    </div>
                                     <label class="characters-admin-file-picker">
                                         <span>@T("Laai nuwe mysterieprent op", "Upload new mystery image")</span>
                                         <InputFile OnChange="OnMysteryImageSelectedAsync" accept="image/png,image/jpeg,image/webp" />
@@ -542,6 +568,7 @@
     private IReadOnlyList<AdminCharacterRecord> Characters { get; set; } = Array.Empty<AdminCharacterRecord>();
     private IReadOnlyList<AdminStoryRecord> StoryOptions { get; set; } = Array.Empty<AdminStoryRecord>();
     private CharacterEditorModel? Editor { get; set; }
+    private string? CharacterEditorStateSignature { get; set; }
     private bool IsNewCharacter => Editor?.CharacterId is null;
     private static readonly DialogOptions CharacterDialogOptions = new()
     {
@@ -659,6 +686,10 @@
                     Editor = CharacterEditorModel.FromRecord(refreshed, Characters);
                 }
             }
+
+            CharacterEditorStateSignature = Editor is null
+                ? null
+                : BuildCharacterEditorStateSignature(Editor);
         }
         catch (Exception exception)
         {
@@ -678,6 +709,7 @@
         RelatedStorySearch = string.Empty;
         FriendSearch = string.Empty;
         Editor = CharacterEditorModel.CreateEmpty();
+        CharacterEditorStateSignature = BuildCharacterEditorStateSignature(Editor);
         IsCharacterDialogOpen = true;
     }
 
@@ -688,11 +720,29 @@
         RelatedStorySearch = string.Empty;
         FriendSearch = string.Empty;
         Editor = CharacterEditorModel.FromRecord(character, Characters);
+        CharacterEditorStateSignature = BuildCharacterEditorStateSignature(Editor);
         IsCharacterDialogOpen = true;
     }
 
-    private void CloseCharacterDialog()
+    private async Task OnCharacterDialogVisibleChanged(bool visible)
     {
+        if (visible)
+        {
+            IsCharacterDialogOpen = true;
+            return;
+        }
+
+        await CloseCharacterDialogAsync();
+    }
+
+    private async Task CloseCharacterDialogAsync()
+    {
+        if (!await ConfirmDiscardDialogChangesAsync(IsCharacterEditorDirty()))
+        {
+            IsCharacterDialogOpen = true;
+            return;
+        }
+
         IsCharacterDialogOpen = false;
     }
 
@@ -748,6 +798,46 @@
 
         Editor.MysteryImageFile = file;
         Editor.MysteryImagePreviewPath = await BuildPreviewDataUrlAsync(file);
+    }
+
+    private bool CanRemoveMainImage() =>
+        Editor is not null &&
+        (Editor.MainImageFile is not null || !string.IsNullOrWhiteSpace(Editor.ImagePath));
+
+    private bool CanRemoveMysteryImage() =>
+        Editor is not null &&
+        (Editor.MysteryImageFile is not null || !string.IsNullOrWhiteSpace(Editor.MysteryImagePath));
+
+    private async Task RemoveMainImageAsync()
+    {
+        if (Editor is null ||
+            !await ConfirmImageRemovalAsync(
+                "Is jy seker jy wil hierdie hoofprent verwyder?",
+                "Are you sure you want to remove this main image?"))
+        {
+            return;
+        }
+
+        Editor.MainImageFile = null;
+        Editor.ImagePath = null;
+        Editor.ImageDriveFileId = null;
+        Editor.MainImagePreviewPath = "/branding/schink-logo-green.png";
+    }
+
+    private async Task RemoveMysteryImageAsync()
+    {
+        if (Editor is null ||
+            !await ConfirmImageRemovalAsync(
+                "Is jy seker jy wil hierdie mysterieprent verwyder?",
+                "Are you sure you want to remove this mystery image?"))
+        {
+            return;
+        }
+
+        Editor.MysteryImageFile = null;
+        Editor.MysteryImagePath = null;
+        Editor.MysteryImageDriveFileId = null;
+        Editor.MysteryImagePreviewPath = "/branding/schink-logo-green.png";
     }
 
     private Task OnAudioFilesSelectedAsync(InputFileChangeEventArgs args)
@@ -855,6 +945,8 @@
 
         try
         {
+            var originalImagePath = Editor.ImagePath;
+            var originalMysteryImagePath = Editor.MysteryImagePath;
             var effectiveSlug = BuildEffectiveSlug(Editor.Slug, Editor.DisplayName);
             if (string.IsNullOrWhiteSpace(effectiveSlug))
             {
@@ -913,6 +1005,8 @@
             }
 
             var successMessage = T("Karakter suksesvol gestoor.", "Character saved successfully.");
+            await CleanupReplacedImageAssetAsync(originalImagePath, imagePath);
+            await CleanupReplacedImageAssetAsync(originalMysteryImagePath, mysteryImagePath);
             await ReloadAsync();
             StatusMessage = successMessage;
 
@@ -925,6 +1019,9 @@
                 }
             }
 
+            CharacterEditorStateSignature = Editor is null
+                ? null
+                : BuildCharacterEditorStateSignature(Editor);
             IsCharacterDialogOpen = true;
         }
         catch (Exception exception)
@@ -1197,6 +1294,145 @@
     private string T(string afrikaans, string english) =>
         string.Equals(CurrentLanguageCode, "en", StringComparison.OrdinalIgnoreCase) ? english : afrikaans;
 
+    private async Task<bool> ConfirmImageRemovalAsync(string afrikaansMessage, string englishMessage)
+    {
+        try
+        {
+            return await JSRuntime.InvokeAsync<bool>("confirm", T(afrikaansMessage, englishMessage));
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(exception, "Character image removal confirmation could not be displayed.");
+            return false;
+        }
+    }
+
+    private async Task<bool> ConfirmDiscardDialogChangesAsync(bool isDirty)
+    {
+        if (!isDirty)
+        {
+            return true;
+        }
+
+        try
+        {
+            return await JSRuntime.InvokeAsync<bool>(
+                "confirm",
+                T(
+                    "Jy het ongestoorde veranderinge. Is jy seker jy wil sluit en dit verloor?",
+                    "You have unsaved changes. Are you sure you want to close and lose them?"));
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(exception, "Character discard confirmation could not be displayed.");
+            return false;
+        }
+    }
+
+    private async Task CleanupReplacedImageAssetAsync(string? originalPath, string? updatedPath)
+    {
+        if (AdminManagedImageAssetHelper.AreEquivalent(originalPath, updatedPath))
+        {
+            return;
+        }
+
+        await DeleteManagedImageAssetAsync(originalPath);
+    }
+
+    private async Task DeleteManagedImageAssetAsync(string? imagePath)
+    {
+        var r2ObjectKey = AdminManagedImageAssetHelper.TryResolveR2ObjectKey(
+            imagePath,
+            CloudflareR2OptionsAccessor.Value.PublicBaseUrl);
+        if (!string.IsNullOrWhiteSpace(r2ObjectKey))
+        {
+            await StoryMediaStorageService.DeleteObjectIfExistsAsync(r2ObjectKey);
+            return;
+        }
+
+        var localFilePath = AdminManagedImageAssetHelper.TryResolveLocalUploadedFilePath(
+            imagePath,
+            WebHostEnvironment.WebRootPath);
+        if (string.IsNullOrWhiteSpace(localFilePath))
+        {
+            return;
+        }
+
+        try
+        {
+            if (File.Exists(localFilePath))
+            {
+                File.Delete(localFilePath);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            Logger.LogWarning(exception, "Failed to delete managed character image asset {ImagePath}.", imagePath);
+        }
+    }
+
+    private bool IsCharacterEditorDirty() =>
+        Editor is not null &&
+        !string.IsNullOrEmpty(CharacterEditorStateSignature) &&
+        !string.Equals(
+            CharacterEditorStateSignature,
+            BuildCharacterEditorStateSignature(Editor),
+            StringComparison.Ordinal);
+
+    private static string BuildCharacterEditorStateSignature(CharacterEditorModel editor)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            editor.CharacterId,
+            DisplayName = NormalizeDirtyText(editor.DisplayName),
+            Slug = NormalizeDirtyText(editor.Slug),
+            CharacterCategory = NormalizeDirtyText(editor.CharacterCategory),
+            Status = NormalizeDirtyText(editor.Status),
+            editor.SortOrder,
+            editor.UnlockThresholdSeconds,
+            Tagline = NormalizeDirtyText(editor.Tagline),
+            Species = NormalizeDirtyText(editor.Species),
+            Habitat = NormalizeDirtyText(editor.Habitat),
+            Catchphrase = NormalizeDirtyText(editor.Catchphrase),
+            FavoriteThing = NormalizeDirtyText(editor.FavoriteThing),
+            CharacterTrait = NormalizeDirtyText(editor.CharacterTrait),
+            GoldenLesson = NormalizeDirtyText(editor.GoldenLesson),
+            CoreValue = NormalizeDirtyText(editor.CoreValue),
+            FirstAppearance = NormalizeDirtyText(editor.FirstAppearance),
+            FriendSlugs = NormalizeDirtyTextValues(editor.FriendSlugs),
+            ManualFriends = NormalizeDirtyText(editor.ManualFriends),
+            ReflectionQuestion = NormalizeDirtyText(editor.ReflectionQuestion),
+            ChallengeText = NormalizeDirtyText(editor.ChallengeText),
+            ImagePath = NormalizeDirtyText(editor.ImagePath),
+            MysteryImagePath = NormalizeDirtyText(editor.MysteryImagePath),
+            ImageDriveFileId = NormalizeDirtyText(editor.ImageDriveFileId),
+            MysteryImageDriveFileId = NormalizeDirtyText(editor.MysteryImageDriveFileId),
+            UnlockStorySlug = NormalizeDirtyText(editor.UnlockStorySlug),
+            RelatedStorySlugs = NormalizeDirtyTextValues(editor.RelatedStorySlugs),
+            UnlockRules = editor.UnlockRules.Select(rule => new
+            {
+                RuleType = NormalizeDirtyText(rule.RuleType),
+                TargetMatchMode = NormalizeDirtyText(rule.TargetMatchMode),
+                TargetSlugsText = NormalizeDirtyText(rule.TargetSlugsText),
+                rule.MinimumCount,
+                rule.MinimumSeconds
+            }),
+            AudioClips = editor.AudioClips.Select(clip => new
+            {
+                StreamSlug = NormalizeDirtyText(clip.StreamSlug),
+                Title = NormalizeDirtyText(clip.Title),
+                AudioProvider = NormalizeDirtyText(clip.AudioProvider),
+                AudioObjectKey = NormalizeDirtyText(clip.AudioObjectKey),
+                AudioContentType = NormalizeDirtyText(clip.AudioContentType),
+                clip.SortOrder,
+                FileName = NormalizeDirtyText(clip.FileName),
+                PendingFile = BuildBrowserFileState(clip.File, clip.FileName)
+            }),
+            MainImage = BuildBrowserFileState(editor.MainImageFile),
+            MysteryImage = BuildBrowserFileState(editor.MysteryImageFile)
+        });
+    }
+
     private string BuildStatusLabel(string status) =>
         status switch
         {
@@ -1338,6 +1574,29 @@
                 .Where(token => !string.IsNullOrWhiteSpace(token))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+
+    private static string[] NormalizeDirtyTextValues(IEnumerable<string>? values) =>
+        values is null
+            ? Array.Empty<string>()
+            : values
+                .Select(NormalizeDirtyText)
+                .Where(value => !string.IsNullOrWhiteSpace(value))
+                .Select(value => value!)
+                .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+    private static string? NormalizeDirtyText(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string? BuildBrowserFileState(IBrowserFile? file, string? fallbackFileName = null)
+    {
+        if (file is null)
+        {
+            return NormalizeDirtyText(fallbackFileName);
+        }
+
+        return $"{NormalizeDirtyText(file.Name)}|{file.Size}|{NormalizeDirtyText(file.ContentType)}";
+    }
 
     private static string BuildEffectiveSlug(string? slug, string? displayName)
     {

@@ -602,8 +602,8 @@ public sealed partial class SupabaseAdminManagementService(
                     IsSystemPlaylist: IsSystemPlaylistType(row.PlaylistType),
                     SystemKey: NormalizeSystemKey(row.SystemKey),
                     Description: NormalizeOptionalText(row.Description, 4000),
-                    LogoImagePath: NormalizePlaylistImagePath(row.LogoImagePath, StoryPlaylist.DefaultLogoImagePath),
-                    BackdropImagePath: NormalizePlaylistImagePath(row.BackdropImagePath, StoryPlaylist.DefaultBackdropImagePath),
+                    LogoImagePath: NormalizePlaylistImagePath(row.LogoImagePath),
+                    BackdropImagePath: NormalizePlaylistImagePath(row.BackdropImagePath),
                     SortOrder: row.SortOrder,
                     MaxItems: row.MaxItems is > 0 ? row.MaxItems : null,
                     IsEnabled: row.IsEnabled,
@@ -657,8 +657,8 @@ public sealed partial class SupabaseAdminManagementService(
                 ["slug"] = normalizedSlug,
                 ["title"] = normalizedTitle,
                 ["description"] = NormalizeOptionalText(request.Description, 4000),
-                ["logo_image_path"] = NormalizePlaylistImagePath(request.LogoImagePath, StoryPlaylist.DefaultLogoImagePath),
-                ["backdrop_image_path"] = NormalizePlaylistImagePath(request.BackdropImagePath, StoryPlaylist.DefaultBackdropImagePath),
+                ["logo_image_path"] = NormalizePlaylistImagePath(request.LogoImagePath),
+                ["backdrop_image_path"] = NormalizePlaylistImagePath(request.BackdropImagePath),
                 ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
                 ["max_items"] = request.MaxItems is > 0 ? request.MaxItems : null,
                 ["is_enabled"] = request.IsEnabled,
@@ -699,8 +699,8 @@ public sealed partial class SupabaseAdminManagementService(
             ? new Dictionary<string, object?>
             {
                 ["description"] = NormalizeOptionalText(request.Description, 4000),
-                ["logo_image_path"] = NormalizePlaylistImagePath(request.LogoImagePath, StoryPlaylist.DefaultLogoImagePath),
-                ["backdrop_image_path"] = NormalizePlaylistImagePath(request.BackdropImagePath, StoryPlaylist.DefaultBackdropImagePath),
+                ["logo_image_path"] = NormalizePlaylistImagePath(request.LogoImagePath),
+                ["backdrop_image_path"] = NormalizePlaylistImagePath(request.BackdropImagePath),
                 ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
                 ["is_enabled"] = request.IsEnabled,
                 ["show_on_home"] = request.ShowOnHome,
@@ -711,8 +711,8 @@ public sealed partial class SupabaseAdminManagementService(
                 ["slug"] = normalizedSlug,
                 ["title"] = normalizedTitle,
                 ["description"] = NormalizeOptionalText(request.Description, 4000),
-                ["logo_image_path"] = NormalizePlaylistImagePath(request.LogoImagePath, StoryPlaylist.DefaultLogoImagePath),
-                ["backdrop_image_path"] = NormalizePlaylistImagePath(request.BackdropImagePath, StoryPlaylist.DefaultBackdropImagePath),
+                ["logo_image_path"] = NormalizePlaylistImagePath(request.LogoImagePath),
+                ["backdrop_image_path"] = NormalizePlaylistImagePath(request.BackdropImagePath),
                 ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
                 ["max_items"] = request.MaxItems is > 0 ? request.MaxItems : null,
                 ["is_enabled"] = request.IsEnabled,
@@ -1811,11 +1811,8 @@ public sealed partial class SupabaseAdminManagementService(
             : normalized[..maxLength];
     }
 
-    private static string NormalizePlaylistImagePath(string? value, string fallbackPath)
-    {
-        var normalized = NormalizeOptionalText(value, 1024);
-        return string.IsNullOrWhiteSpace(normalized) ? fallbackPath : normalized;
-    }
+    private static string NormalizePlaylistImagePath(string? value) =>
+        NormalizeOptionalText(value, 1024) ?? string.Empty;
 
     private static bool IsSystemPlaylistType(string? playlistType) =>
         string.Equals(playlistType?.Trim(), "system", StringComparison.OrdinalIgnoreCase);
