@@ -972,6 +972,12 @@
         @if (PlaylistEditor is not null)
         {
             var isSystemPlaylist = PlaylistEditor.IsSystemPlaylist;
+            var playlistLogoPreviewUrl = !string.IsNullOrWhiteSpace(PlaylistEditor.LogoPreviewDataUrl)
+                ? PlaylistEditor.LogoPreviewDataUrl
+                : PlaylistEditor.LogoImagePath;
+            var playlistBackdropPreviewUrl = !string.IsNullOrWhiteSpace(PlaylistEditor.BackdropPreviewDataUrl)
+                ? PlaylistEditor.BackdropPreviewDataUrl
+                : PlaylistEditor.BackdropImagePath;
 
             <MudDialog @bind-Visible="IsPlaylistDialogOpen"
                        Options="EditorDialogOptions">
@@ -1005,16 +1011,6 @@
                                                      Disabled="@isSystemPlaylist"
                                                      Variant="Variant.Outlined"
                                                      Margin="Margin.Dense" />
-                                    <MudCheckBox T="bool"
-                                                 Label='@T("Aktief", "Active")'
-                                                 @bind-Value="PlaylistEditor.IsEnabled" />
-                                    <MudCheckBox T="bool"
-                                                 Label='@T("Wys op tuisblad", "Show on home")'
-                                                 Disabled="@isSystemPlaylist"
-                                                 @bind-Value="PlaylistEditor.ShowOnHome" />
-                                    <MudCheckBox T="bool"
-                                                 Label='@T("Wys showcase image op Luister", "Show showcase image on Luister")'
-                                                 @bind-Value="PlaylistEditor.ShowShowcaseImageOnLuisterPage" />
                                     <MudTextField T="string"
                                                   Class="admin-span-2"
                                                   Label='@T("Beskrywing", "Description")'
@@ -1022,6 +1018,19 @@
                                                   Variant="Variant.Outlined"
                                                   Margin="Margin.Dense"
                                                   Lines="3" />
+                                    <MudCheckBox T="bool"
+                                                 Class="admin-span-2 admin-playlist-checkbox"
+                                                 Label='@T("Aktief", "Active")'
+                                                 @bind-Value="PlaylistEditor.IsEnabled" />
+                                    <MudCheckBox T="bool"
+                                                 Class="admin-span-2 admin-playlist-checkbox"
+                                                 Label='@T("Wys op tuisblad", "Show on home")'
+                                                 Disabled="@isSystemPlaylist"
+                                                 @bind-Value="PlaylistEditor.ShowOnHome" />
+                                    <MudCheckBox T="bool"
+                                                 Class="admin-span-2 admin-playlist-checkbox"
+                                                 Label='@T("Wys showcase image op Luister", "Show showcase image on Luister")'
+                                                 @bind-Value="PlaylistEditor.ShowShowcaseImageOnLuisterPage" />
                                     <div class="admin-upload-group admin-span-2">
                                         <div class="admin-upload-card">
                                             <div class="admin-upload-head">
@@ -1052,6 +1061,36 @@
                                             <p class="admin-upload-file-name">@GetSelectedFileLabel(PlaylistEditor.BackdropFileName, T("Hou huidige agtergrond as jy niks kies nie.", "Keeps the current backdrop if you do not choose a file."))</p>
                                         </div>
                                     </div>
+                                    <div class="admin-image-preview-grid admin-span-2 admin-playlist-preview-grid">
+                                        <article class="admin-image-preview-card admin-playlist-preview-card">
+                                            <h4>@T("Logo voorskou", "Logo preview")</h4>
+                                            @if (!string.IsNullOrWhiteSpace(playlistLogoPreviewUrl))
+                                            {
+                                                <img src="@playlistLogoPreviewUrl"
+                                                     alt='@T("Playlist logo voorskou", "Playlist logo preview")'
+                                                     loading="lazy"
+                                                     decoding="async" />
+                                            }
+                                            else
+                                            {
+                                                <p>@T("Geen logo beskikbaar nie.", "No logo available.")</p>
+                                            }
+                                        </article>
+                                        <article class="admin-image-preview-card admin-playlist-preview-card">
+                                            <h4>@T("Agtergrond voorskou", "Backdrop preview")</h4>
+                                            @if (!string.IsNullOrWhiteSpace(playlistBackdropPreviewUrl))
+                                            {
+                                                <img src="@playlistBackdropPreviewUrl"
+                                                     alt='@T("Playlist agtergrond voorskou", "Playlist backdrop preview")'
+                                                     loading="lazy"
+                                                     decoding="async" />
+                                            }
+                                            else
+                                            {
+                                                <p>@T("Geen agtergrond beskikbaar nie.", "No backdrop available.")</p>
+                                            }
+                                        </article>
+                                    </div>
                                     @if (!IsR2UploadConfigured)
                                     {
                                         <p class="admin-form-note admin-span-2">
@@ -1059,22 +1098,6 @@
                                                 "Cloudflare R2 uploads are not configured yet. Playlist images will be stored locally on the server.")
                                         </p>
                                     }
-                                    <MudTextField T="string"
-                                                  Class="admin-span-2"
-                                                  Label='@T("Logo pad", "Logo path")'
-                                                  Placeholder="@StoryPlaylist.DefaultLogoImagePath"
-                                                  @bind-Value="PlaylistEditor.LogoImagePath"
-                                                  Disabled="@isSystemPlaylist"
-                                                  Variant="Variant.Outlined"
-                                                  Margin="Margin.Dense" />
-                                    <MudTextField T="string"
-                                                  Class="admin-span-2"
-                                                  Label='@T("Agtergrond pad", "Backdrop path")'
-                                                  Placeholder="@StoryPlaylist.DefaultBackdropImagePath"
-                                                  @bind-Value="PlaylistEditor.BackdropImagePath"
-                                                  Disabled="@isSystemPlaylist"
-                                                  Variant="Variant.Outlined"
-                                                  Margin="Margin.Dense" />
                                 </div>
                                 <MudButton Variant="Variant.Filled"
                                            Color="Color.Primary"
@@ -1867,30 +1890,36 @@
         return Task.CompletedTask;
     }
 
-    private Task OnPlaylistLogoSelected(InputFileChangeEventArgs args)
+    private async Task OnPlaylistLogoSelected(InputFileChangeEventArgs args)
     {
         if (PlaylistEditor is null)
         {
-            return Task.CompletedTask;
+            return;
         }
 
         var file = args.File;
         PlaylistEditor.LogoFile = file;
         PlaylistEditor.LogoFileName = file?.Name;
-        return Task.CompletedTask;
+        PlaylistEditor.LogoPreviewDataUrl = file is null
+            ? null
+            : await ReadImageFileAsDataUrlAsync(file);
+        return;
     }
 
-    private Task OnPlaylistBackdropSelected(InputFileChangeEventArgs args)
+    private async Task OnPlaylistBackdropSelected(InputFileChangeEventArgs args)
     {
         if (PlaylistEditor is null)
         {
-            return Task.CompletedTask;
+            return;
         }
 
         var file = args.File;
         PlaylistEditor.BackdropFile = file;
         PlaylistEditor.BackdropFileName = file?.Name;
-        return Task.CompletedTask;
+        PlaylistEditor.BackdropPreviewDataUrl = file is null
+            ? null
+            : await ReadImageFileAsDataUrlAsync(file);
+        return;
     }
 
     private async Task SaveNewStoryAsync()
@@ -3721,8 +3750,10 @@
         public string? BackdropImagePath { get; set; } = StoryPlaylist.DefaultBackdropImagePath;
         public IBrowserFile? LogoFile { get; set; }
         public string? LogoFileName { get; set; }
+        public string? LogoPreviewDataUrl { get; set; }
         public IBrowserFile? BackdropFile { get; set; }
         public string? BackdropFileName { get; set; }
+        public string? BackdropPreviewDataUrl { get; set; }
         public int SortOrder { get; set; } = 100;
         public int? MaxItems { get; set; }
         public bool IsEnabled { get; set; } = true;

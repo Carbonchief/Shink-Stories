@@ -7,6 +7,7 @@
 @using Microsoft.AspNetCore.WebUtilities
 @using Microsoft.JSInterop
 @inject IStoryCatalogService StoryCatalogService
+@inject ICharacterCatalogService CharacterCatalogService
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ISubscriptionLedgerService SubscriptionLedgerService
@@ -72,16 +73,19 @@ else
                  loading="eager"
                  fetchpriority="high"
                  decoding="async" />
-            <img class="playlist-showcase-splash-logo"
-                 src="@LogoImagePath"
-                 srcset="@($"{LogoImagePath} 512w, {LogoImagePath} 1024w")"
-                 sizes="(max-width: 1024px) 92vw, 920px"
-                 alt="@LogoImageAlt"
-                 width="1024"
-                 height="1024"
-                 loading="eager"
-                 fetchpriority="high"
-                 decoding="async" />
+            @if (!string.IsNullOrWhiteSpace(LogoImagePath))
+            {
+                <img class="playlist-showcase-splash-logo"
+                     src="@LogoImagePath"
+                     srcset="@($"{LogoImagePath} 512w, {LogoImagePath} 1024w")"
+                     sizes="(max-width: 1024px) 92vw, 920px"
+                     alt="@LogoImageAlt"
+                     width="1024"
+                     height="1024"
+                     loading="eager"
+                     fetchpriority="high"
+                     decoding="async" />
+            }
             <h1 class="sr-only">@CurrentPlaylist.Title</h1>
             <div class="playlist-showcase-action-bar" aria-label="Speellys aksies">
                 <a class="playlist-showcase-playlist-link" href="@GetPlaylistPlayerHref(CurrentPlaylist.Slug)">
@@ -219,6 +223,7 @@ else
     private bool IsLoadingShowcase { get; set; } = true;
     private bool AllowEmptyState { get; set; }
     private string PendingLockedStoryPath { get; set; } = "/luister";
+    private string? FallbackCharacterLogoImagePath { get; set; }
     private CancellationTokenSource? _emptyStateDelayCts;
 
     private string PageTitleText =>
@@ -266,20 +271,24 @@ else
             : $"Agtergrond vir {CurrentPlaylist.Title}";
 
     private string BackdropImagePath =>
-        CurrentPlaylist?.ResolvedBackdropImagePath ?? StoryPlaylist.DefaultBackdropImagePath;
+        ResolveBackdropImagePath();
 
     private string BackdropImageAlt =>
         CurrentPlaylist is null
             ? "Schink Stories speellys agtergrond"
             : $"{CurrentPlaylist.Title} speellys agtergrond";
 
-    private string LogoImagePath =>
-        CurrentPlaylist?.ResolvedLogoImagePath ?? StoryPlaylist.DefaultLogoImagePath;
+    private string? LogoImagePath =>
+        ResolveLogoImagePath();
 
     private string LogoImageAlt =>
         CurrentPlaylist is null
             ? "Schink Stories logo"
-            : $"{CurrentPlaylist.Title} logo";
+            : HasConfiguredLogo(CurrentPlaylist)
+                ? $"{CurrentPlaylist.Title} logo"
+                : !string.IsNullOrWhiteSpace(FallbackCharacterLogoImagePath)
+                    ? $"Karakter illustrasie vir {CurrentPlaylistStories.FirstOrDefault()?.Title ?? CurrentPlaylist.Title}"
+                    : $"{CurrentPlaylist.Title} beeld";
 
     private MarkupString ShowcaseJsonLd => new(JsonSerializer.Serialize(new Dictionary<string, object?>
     {
@@ -327,6 +336,7 @@ else
 
         CurrentPlaylist = null;
         CurrentPlaylistStories = Array.Empty<StoryItem>();
+        FallbackCharacterLogoImagePath = null;
 
         if (string.IsNullOrWhiteSpace(PlaylistSlug))
         {
@@ -350,7 +360,9 @@ else
                 CurrentPlaylistStories = Array.Empty<StoryItem>();
             }
 
-            await LoadFavoriteStorySlugsAsync();
+            await Task.WhenAll(
+                LoadShowcaseFallbackAssetsAsync(),
+                LoadFavoriteStorySlugsAsync());
         }
         finally
         {
@@ -400,6 +412,39 @@ else
             $"/luister/speellys/{Uri.EscapeDataString(playlistSlug.Trim())}",
             "playlistView",
             "showcase");
+
+    private async Task LoadShowcaseFallbackAssetsAsync()
+    {
+        FallbackCharacterLogoImagePath = null;
+
+        if (CurrentPlaylist is null ||
+            !HasConfiguredBackdrop(CurrentPlaylist) ||
+            HasConfiguredLogo(CurrentPlaylist))
+        {
+            return;
+        }
+
+        try
+        {
+            var firstStory = CurrentPlaylistStories.FirstOrDefault();
+            if (firstStory is null || string.IsNullOrWhiteSpace(firstStory.Slug))
+            {
+                return;
+            }
+
+            var characters = await CharacterCatalogService.GetPublishedCharactersAsync();
+            var matchingCharacter = characters.FirstOrDefault(character =>
+                !string.IsNullOrWhiteSpace(character.ImagePath) &&
+                CharacterUnlockEvaluator.GetRelevantStorySlugs(character).Any(slug =>
+                    string.Equals(slug, firstStory.Slug, StringComparison.OrdinalIgnoreCase)));
+
+            FallbackCharacterLogoImagePath = ResolveCharacterImagePath(matchingCharacter);
+        }
+        catch
+        {
+            FallbackCharacterLogoImagePath = null;
+        }
+    }
 
     private bool IsStoryFavorite(string slug) => FavoriteStorySlugs.Contains(slug);
 
@@ -643,6 +688,71 @@ else
             ".jpeg" => "image/jpeg",
             _ => "image/jpeg"
         };
+    }
+
+    private string ResolveBackdropImagePath()
+    {
+        if (CurrentPlaylist is null)
+        {
+            return StoryPlaylist.DefaultBackdropImagePath;
+        }
+
+        var configuredBackdrop = NormalizeOptionalImagePath(CurrentPlaylist.BackdropImagePath);
+        if (!string.IsNullOrWhiteSpace(configuredBackdrop))
+        {
+            return configuredBackdrop;
+        }
+
+        if (HasConfiguredLogo(CurrentPlaylist))
+        {
+            return StoryPlaylist.DefaultBackdropImagePath;
+        }
+
+        return CurrentPlaylistStories.FirstOrDefault()?.ImagePath ?? StoryPlaylist.DefaultBackdropImagePath;
+    }
+
+    private string? ResolveLogoImagePath()
+    {
+        if (CurrentPlaylist is null)
+        {
+            return null;
+        }
+
+        var configuredLogo = NormalizeOptionalImagePath(CurrentPlaylist.LogoImagePath);
+        if (!string.IsNullOrWhiteSpace(configuredLogo))
+        {
+            return configuredLogo;
+        }
+
+        return HasConfiguredBackdrop(CurrentPlaylist)
+            ? FallbackCharacterLogoImagePath
+            : null;
+    }
+
+    private static bool HasConfiguredLogo(StoryPlaylist playlist) =>
+        !string.IsNullOrWhiteSpace(NormalizeOptionalImagePath(playlist.LogoImagePath));
+
+    private static bool HasConfiguredBackdrop(StoryPlaylist playlist) =>
+        !string.IsNullOrWhiteSpace(NormalizeOptionalImagePath(playlist.BackdropImagePath));
+
+    private static string? NormalizeOptionalImagePath(string? path) =>
+        string.IsNullOrWhiteSpace(path) ? null : path.Trim();
+
+    private static string? ResolveCharacterImagePath(StoryCharacterItem? character)
+    {
+        var imagePath = NormalizeOptionalImagePath(character?.ImagePath);
+        if (string.IsNullOrWhiteSpace(imagePath))
+        {
+            return null;
+        }
+
+        if (character?.UpdatedAt is null)
+        {
+            return imagePath;
+        }
+
+        var separator = imagePath.Contains('?', StringComparison.Ordinal) ? '&' : '?';
+        return $"{imagePath}{separator}v={character.UpdatedAt.Value.ToUnixTimeSeconds()}";
     }
 
     private IJSObjectReference? _showcaseModule;
