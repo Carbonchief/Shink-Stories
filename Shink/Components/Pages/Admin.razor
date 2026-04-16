@@ -394,6 +394,234 @@
                 </section>
             </MudTabPanel>
 
+            <MudTabPanel Text='@T("Analitika", "Analytics")'>
+                <section class="admin-section admin-analytics-section">
+                    <div class="admin-section-head">
+                        <div class="admin-analytics-copy">
+                            <h2>@T("Gebruiksanalitika", "Usage analytics")</h2>
+                            <p class="admin-form-note">
+                                @T(
+                                    "Hier wys ons die storie-kyke, luistersessies, gunstelinge en karakter-profiel klankspeelaksies wat tans reeds nagespoor word.",
+                                    "This shows the story views, listen sessions, favorites, and character profile audio plays that are currently being tracked.")
+                            </p>
+                        </div>
+                        <MudButton Class="admin-mobile-cta"
+                                   Variant="Variant.Outlined"
+                                   Color="Color.Primary"
+                                   OnClick="RefreshAnalyticsAsync"
+                                   Disabled="IsRefreshingAnalytics"
+                                   aria-label='@T("Verfris analitika", "Refresh analytics")'
+                                   title='@T("Verfris analitika", "Refresh analytics")'>
+                            <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
+                            <span class="admin-btn-text">
+                                @(IsRefreshingAnalytics ? T("Verfris...", "Refreshing...") : T("Verfris", "Refresh"))
+                            </span>
+                        </MudButton>
+                    </div>
+
+                    @if (!HasAnalyticsData)
+                    {
+                        <section class="admin-state">
+                            <h2>@T("Nog geen analitika beskikbaar nie", "No analytics available yet")</h2>
+                            <p>
+                                @T(
+                                    "Sodra stories of karakterprofiele gebruik word, sal die nagespoorde data hier verskyn.",
+                                    "As stories or character profiles get used, the tracked data will appear here.")
+                            </p>
+                        </section>
+                    }
+                    else
+                    {
+                        <div class="admin-analytics-grid">
+                            <article class="admin-analytics-card">
+                                <p class="admin-analytics-label">@T("Storie-kyke", "Story views")</p>
+                                <p class="admin-analytics-value">@FormatAnalyticsNumber(Analytics.StorySummary.TotalViews)</p>
+                                <div class="admin-analytics-meta">
+                                    <span>@T("Unieke kykers", "Unique viewers")</span>
+                                    <strong>@FormatAnalyticsNumber(Analytics.StorySummary.UniqueViewers)</strong>
+                                </div>
+                                <div class="admin-analytics-meta">
+                                    <span>@T("Stories met kyke", "Stories with views")</span>
+                                    <strong>@FormatAnalyticsNumber(Analytics.StorySummary.UniqueViewedStories)</strong>
+                                </div>
+                                <p class="admin-analytics-footnote">
+                                    @T("Laaste kyk", "Last view"): @FormatAdminDateTime(Analytics.StorySummary.LastViewAt)
+                                </p>
+                            </article>
+
+                            <article class="admin-analytics-card">
+                                <p class="admin-analytics-label">@T("Luistersessies", "Listen sessions")</p>
+                                <p class="admin-analytics-value">@FormatAnalyticsNumber(Analytics.StorySummary.TotalListenSessions)</p>
+                                <div class="admin-analytics-meta">
+                                    <span>@T("Luister-events", "Listen events")</span>
+                                    <strong>@FormatAnalyticsNumber(Analytics.StorySummary.TotalListenEvents)</strong>
+                                </div>
+                                <div class="admin-analytics-meta">
+                                    <span>@T("Unieke luisteraars", "Unique listeners")</span>
+                                    <strong>@FormatAnalyticsNumber(Analytics.StorySummary.UniqueListeners)</strong>
+                                </div>
+                                <p class="admin-analytics-footnote">
+                                    @T("Laaste luister", "Last listen"): @FormatAdminDateTime(Analytics.StorySummary.LastListenAt)
+                                </p>
+                            </article>
+
+                            <article class="admin-analytics-card">
+                                <p class="admin-analytics-label">@T("Totale luistertyd", "Total listening time")</p>
+                                <p class="admin-analytics-value">@FormatAnalyticsDuration(Analytics.StorySummary.TotalListenedSeconds)</p>
+                                <div class="admin-analytics-meta">
+                                    <span>@T("Gemiddeld per sessie", "Average per session")</span>
+                                    <strong>@FormatAnalyticsDuration(Analytics.StorySummary.AverageListenedSecondsPerSession)</strong>
+                                </div>
+                                <div class="admin-analytics-meta">
+                                    <span>@T("Stories wat geluister is", "Stories listened to")</span>
+                                    <strong>@FormatAnalyticsNumber(Analytics.StorySummary.UniqueListenedStories)</strong>
+                                </div>
+                                <p class="admin-analytics-footnote">
+                                    @T("Laas verfris", "Last refreshed"): @FormatAdminDateTime(Analytics.GeneratedAt)
+                                </p>
+                            </article>
+
+                            <article class="admin-analytics-card">
+                                <p class="admin-analytics-label">@T("Gunstelinge", "Favorites")</p>
+                                <p class="admin-analytics-value">@FormatAnalyticsNumber(Analytics.StorySummary.TotalFavorites)</p>
+                                <div class="admin-analytics-meta">
+                                    <span>@T("Unieke mense", "Unique people")</span>
+                                    <strong>@FormatAnalyticsNumber(Analytics.StorySummary.UniqueFavoriters)</strong>
+                                </div>
+                                <div class="admin-analytics-meta">
+                                    <span>@T("Bron", "Source")</span>
+                                    <strong>@T("Luister", "Luister")</strong>
+                                </div>
+                                <p class="admin-analytics-footnote">
+                                    @T("Laaste gunsteling", "Last favorite"): @FormatAdminDateTime(Analytics.StorySummary.LastFavoriteAt)
+                                </p>
+                            </article>
+
+                            <article class="admin-analytics-card">
+                                <p class="admin-analytics-label">@T("Karakter-klankspelings", "Character audio plays")</p>
+                                <p class="admin-analytics-value">@FormatAnalyticsNumber(Analytics.CharacterSummary.TotalAudioPlays)</p>
+                                <div class="admin-analytics-meta">
+                                    <span>@T("Unieke karakters", "Unique characters")</span>
+                                    <strong>@FormatAnalyticsNumber(Analytics.CharacterSummary.UniqueCharacters)</strong>
+                                </div>
+                                <div class="admin-analytics-meta">
+                                    <span>@T("Unieke intekenaars", "Unique subscribers")</span>
+                                    <strong>@FormatAnalyticsNumber(Analytics.CharacterSummary.UniqueSubscribers)</strong>
+                                </div>
+                                <p class="admin-analytics-footnote">
+                                    @T("Laaste klankspeling", "Last audio play"): @FormatAdminDateTime(Analytics.CharacterSummary.LastAudioPlayAt)
+                                </p>
+                            </article>
+                        </div>
+
+                        <div class="admin-analytics-layout">
+                            <section class="admin-analytics-panel">
+                                <div class="admin-analytics-panel-head">
+                                    <div>
+                                        <h3>@T("Laaste 14 dae", "Last 14 days")</h3>
+                                        <p>@T("Dag-vir-dag gebruik vir die events wat ons reeds log.", "Day-by-day usage for the events we already log.")</p>
+                                    </div>
+                                </div>
+
+                                <div class="admin-activity-list">
+                                    @foreach (var activity in Analytics.DailyActivity)
+                                    {
+                                        <article class="admin-activity-row">
+                                            <div class="admin-activity-date">
+                                                <strong>@FormatAnalyticsDay(activity.ActivityDate)</strong>
+                                            </div>
+                                            <div class="admin-activity-metrics">
+                                                <span>@T("Kyke", "Views"): @FormatAnalyticsNumber(activity.TotalViews)</span>
+                                                <span>@T("Sessies", "Sessions"): @FormatAnalyticsNumber(activity.TotalListenSessions)</span>
+                                                <span>@T("Luistertyd", "Listening time"): @FormatAnalyticsDuration(activity.TotalListenedSeconds)</span>
+                                                <span>@T("Gunstelinge", "Favorites"): @FormatAnalyticsNumber(activity.TotalFavorites)</span>
+                                            </div>
+                                        </article>
+                                    }
+                                </div>
+                            </section>
+
+                            <section class="admin-analytics-panel">
+                                <div class="admin-analytics-panel-head">
+                                    <div>
+                                        <h3>@T("Top karakters", "Top characters")</h3>
+                                        <p>@T("Karakterprofiele waarvan die klank die meeste gespeel is.", "Character profiles whose audio has been played the most.")</p>
+                                    </div>
+                                </div>
+
+                                @if (Analytics.TopCharacters.Count == 0)
+                                {
+                                    <p class="admin-form-note">@T("Nog geen karakter-klankspelings nie.", "No character audio plays yet.")</p>
+                                }
+                                else
+                                {
+                                    <div class="admin-character-analytics-list">
+                                        @foreach (var character in Analytics.TopCharacters)
+                                        {
+                                            <article class="admin-character-analytics-item">
+                                                <div>
+                                                    <strong>@character.DisplayName</strong>
+                                                    <span>@character.CharacterSlug</span>
+                                                </div>
+                                                <div class="admin-character-analytics-stats">
+                                                    <span>@T("Spelings", "Plays"): @FormatAnalyticsNumber(character.TotalAudioPlays)</span>
+                                                    <span>@T("Mense", "People"): @FormatAnalyticsNumber(character.UniqueSubscribers)</span>
+                                                    <span>@T("Laaste", "Last"): @FormatAdminDateTime(character.LastActivityAt)</span>
+                                                </div>
+                                            </article>
+                                        }
+                                    </div>
+                                }
+                            </section>
+
+                            <section class="admin-analytics-panel admin-analytics-panel-wide">
+                                <div class="admin-analytics-panel-head">
+                                    <div>
+                                        <h3>@T("Top stories", "Top stories")</h3>
+                                        <p>@T("Gerangskik volgens luistertyd, en dan kyke en gunstelinge.", "Ranked by listening time, then views and favorites.")</p>
+                                    </div>
+                                </div>
+
+                                <MudTable T="AdminAnalyticsTopStoryRecord"
+                                          Class="admin-grid"
+                                          Items="Analytics.TopStories"
+                                          RowsPerPage="10"
+                                          Dense="true"
+                                          Hover="true"
+                                          Bordered="true"
+                                          Elevation="0"
+                                          Breakpoint="Breakpoint.Md">
+                                    <HeaderContent>
+                                        <MudTh>@T("Titel", "Title")</MudTh>
+                                        <MudTh>@T("Kyke", "Views")</MudTh>
+                                        <MudTh>@T("Sessies", "Sessions")</MudTh>
+                                        <MudTh>@T("Luistertyd", "Listening time")</MudTh>
+                                        <MudTh>@T("Gunstelinge", "Favorites")</MudTh>
+                                        <MudTh>@T("Laaste aktiwiteit", "Last activity")</MudTh>
+                                    </HeaderContent>
+                                    <RowTemplate>
+                                        <MudTd DataLabel='@T("Titel", "Title")'>
+                                            <div class="admin-analytics-story-cell">
+                                                <strong>@context.Title</strong>
+                                                <span>@context.StorySlug</span>
+                                            </div>
+                                        </MudTd>
+                                        <MudTd DataLabel='@T("Kyke", "Views")'>@FormatAnalyticsNumber(context.TotalViews)</MudTd>
+                                        <MudTd DataLabel='@T("Sessies", "Sessions")'>@FormatAnalyticsNumber(context.TotalListenSessions)</MudTd>
+                                        <MudTd DataLabel='@T("Luistertyd", "Listening time")'>@FormatAnalyticsDuration(context.TotalListenedSeconds)</MudTd>
+                                        <MudTd DataLabel='@T("Gunstelinge", "Favorites")'>@FormatAnalyticsNumber(context.TotalFavorites)</MudTd>
+                                        <MudTd DataLabel='@T("Laaste aktiwiteit", "Last activity")'>@FormatAdminDateTime(context.LastActivityAt)</MudTd>
+                                    </RowTemplate>
+                                    <NoRecordsContent>
+                                        <MudText Typo="Typo.body2">@T("Nog geen storie-analitika nie.", "No story analytics yet.")</MudText>
+                                    </NoRecordsContent>
+                                </MudTable>
+                            </section>
+                        </div>
+                    }
+                </section>
+            </MudTabPanel>
+
             <MudTabPanel Text='@T("Hulpbronne", "Resources")'>
                 <AdminResourceTypesPanel CurrentLanguageCode="@CurrentLanguageCode" />
             </MudTabPanel>
@@ -1022,6 +1250,7 @@
     private bool IsSavingPlaylist { get; set; }
     private bool IsSavingPlaylistsOrder { get; set; }
     private bool IsSavingPlaylistStories { get; set; }
+    private bool IsRefreshingAnalytics { get; set; }
     private bool IsSubscriberDialogOpen { get; set; }
     private bool IsStoryDialogOpen { get; set; }
     private bool IsNewStoryDialogOpen { get; set; }
@@ -1049,6 +1278,7 @@
     private IReadOnlyList<AdminSubscriberRecord> Subscribers { get; set; } = Array.Empty<AdminSubscriberRecord>();
     private IReadOnlyList<AdminStoryRecord> Stories { get; set; } = Array.Empty<AdminStoryRecord>();
     private IReadOnlyList<AdminPlaylistRecord> Playlists { get; set; } = Array.Empty<AdminPlaylistRecord>();
+    private AdminAnalyticsSnapshot Analytics { get; set; } = AdminAnalyticsSnapshot.Empty;
     private IReadOnlyList<AdminSubscriberRecord> FilteredSubscribers =>
         FilterSubscribers(Subscribers, SubscriberSearch);
     private IReadOnlyList<AdminStoryRecord> FilteredStories =>
@@ -1069,6 +1299,12 @@
             .Where(story => PlaylistStoryEditor.All(item => item.StoryId != story.StoryId))
             .OrderBy(story => story.Title, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+
+    private bool HasAnalyticsData =>
+        Analytics.StorySummary.TotalViews > 0 ||
+        Analytics.StorySummary.TotalListenEvents > 0 ||
+        Analytics.StorySummary.TotalFavorites > 0 ||
+        Analytics.CharacterSummary.TotalAudioPlays > 0;
 
     private string CurrentLanguageCode => CurrentLanguage == AdminLanguage.English ? "en" : "af";
     private bool IsR2UploadConfigured
@@ -1227,7 +1463,8 @@
         var subscribersTask = RefreshSubscribersAsync();
         var storiesTask = RefreshStoriesAsync();
         var playlistsTask = RefreshPlaylistsAsync();
-        await Task.WhenAll(subscribersTask, storiesTask, playlistsTask);
+        var analyticsTask = RefreshAnalyticsAsync();
+        await Task.WhenAll(subscribersTask, storiesTask, playlistsTask, analyticsTask);
         IsLoading = false;
     }
 
@@ -1318,6 +1555,26 @@
             StoryToAddIdString = string.Empty;
             IsPlaylistDialogOpen = false;
             SetError(T("Kon nie playlists nou laai nie.", "Could not load playlists right now."));
+        }
+    }
+
+    private async Task RefreshAnalyticsAsync()
+    {
+        IsRefreshingAnalytics = true;
+
+        try
+        {
+            Analytics = await AdminManagementService.GetAnalyticsAsync(CurrentAdminEmail);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to refresh admin analytics.");
+            Analytics = AdminAnalyticsSnapshot.Empty;
+            SetError(T("Kon nie analitika nou laai nie.", "Could not load analytics right now."));
+        }
+        finally
+        {
+            IsRefreshingAnalytics = false;
         }
     }
 
@@ -3273,6 +3530,39 @@
         return new MarkupString(builder.ToString());
     }
 
+    private CultureInfo GetAdminCulture() =>
+        CurrentLanguage == AdminLanguage.English
+            ? CultureInfo.GetCultureInfo("en-ZA")
+            : CultureInfo.GetCultureInfo("af-ZA");
+
+    private string FormatAnalyticsNumber(int value) =>
+        value.ToString("N0", GetAdminCulture());
+
+    private string FormatAnalyticsDay(DateOnly value) =>
+        value.ToDateTime(TimeOnly.MinValue).ToString("ddd d MMM", GetAdminCulture());
+
+    private string FormatAdminDateTime(DateTimeOffset? value)
+    {
+        if (value is null)
+        {
+            return "-";
+        }
+
+        return value.Value.ToLocalTime().ToString("d MMM yyyy HH:mm", GetAdminCulture());
+    }
+
+    private static string FormatAnalyticsDuration(decimal totalSeconds)
+    {
+        var roundedSeconds = Math.Max(0, decimal.ToInt32(decimal.Round(totalSeconds, MidpointRounding.AwayFromZero)));
+        var duration = TimeSpan.FromSeconds(roundedSeconds);
+        if (duration.TotalHours >= 1)
+        {
+            return $"{(int)duration.TotalHours}:{duration.Minutes:00}:{duration.Seconds:00}";
+        }
+
+        return $"{(int)duration.TotalMinutes}:{duration.Seconds:00}";
+    }
+
     private string FormatAdminDate(DateTimeOffset? value)
     {
         if (value is null)
@@ -3280,11 +3570,7 @@
             return "-";
         }
 
-        var culture = CurrentLanguage == AdminLanguage.English
-            ? CultureInfo.GetCultureInfo("en-ZA")
-            : CultureInfo.GetCultureInfo("af-ZA");
-
-        return value.Value.ToLocalTime().ToString("d MMM yyyy", culture);
+        return value.Value.ToLocalTime().ToString("d MMM yyyy", GetAdminCulture());
     }
 
     private string BuildPaymentProviderLabel(string? provider) =>

@@ -10,6 +10,7 @@
 
 <PageTitle>Schink Stories | Intekening en betaling</PageTitle>
 <HeadContent>
+    <link href="/lib/bootstrap/css/bootstrap.min.css" rel="stylesheet" />
     <meta name="description" content="Bestuur jou intekening, betalings en rekeningbesonderhede op Schink Stories." />
     <meta name="robots" content="noindex, follow, noarchive, nosnippet" />
     <link rel="canonical" href="@BillingCanonicalUrl" />
@@ -32,119 +33,231 @@
 
 <section class="billing-page">
     <header class="billing-hero">
-        <p class="billing-kicker">Jou rekening</p>
-        <h1>Intekening en betaling</h1>
-        <p>
-            Bestuur jou Schink Stories plan, kyk jou status en kies maklik 'n opsie wat by jou gesin pas.
-        </p>
-    </header>
+        <div class="billing-hero-copy">
+            <p class="billing-kicker">Jou rekening</p>
+            <h1>Intekening en betaling</h1>
+            <p class="billing-hero-lead">
+                Bestuur jou profiel, kyk jou toegang en kies die Schink Stories plan wat die beste by julle storietyd pas.
+            </p>
 
-    @if (IsRedirectingToLogin)
-    {
-        <section class="billing-state">
-            <h2>Neem jou nou na teken in...</h2>
-            <p>Jy moet ingeteken wees om jou intekening te bestuur.</p>
-        </section>
-    }
-    else if (IsLoading)
-    {
-        <section class="billing-state">
-            <h2>Laai jou intekening...</h2>
-        </section>
-    }
-    else
-    {
-        <section class="billing-profile" aria-label="Jou profiel">
-            <h2>Jou profiel</h2>
-            <p>Werk jou besonderhede op sodat ons jou rekeninginligting korrek hou.</p>
-
-            <EditForm FormName="billing-profile-form" class="billing-profile-form" Model="ProfileForm" OnValidSubmit="SaveProfileAsync" aria-busy="@IsSavingProfile">
-                <DataAnnotationsValidator />
-
-                <div class="billing-profile-grid">
-                    <div class="billing-field">
-                        <label for="billing-first-name">Voornaam</label>
-                        <InputText id="billing-first-name" @bind-Value="ProfileForm.FirstName" autocomplete="given-name" />
-                        <ValidationMessage For="@(() => ProfileForm.FirstName)" />
-                    </div>
-                    <div class="billing-field">
-                        <label for="billing-last-name">Van</label>
-                        <InputText id="billing-last-name" @bind-Value="ProfileForm.LastName" autocomplete="family-name" />
-                        <ValidationMessage For="@(() => ProfileForm.LastName)" />
-                    </div>
-                    <div class="billing-field">
-                        <label for="billing-display-name">Publieke naam</label>
-                        <InputText id="billing-display-name" @bind-Value="ProfileForm.DisplayName" autocomplete="nickname" />
-                        <ValidationMessage For="@(() => ProfileForm.DisplayName)" />
-                    </div>
-                    <div class="billing-field">
-                        <label for="billing-mobile-number">Selfoonnommer</label>
-                        <InputText id="billing-mobile-number" @bind-Value="ProfileForm.MobileNumber" autocomplete="tel" />
-                        <ValidationMessage For="@(() => ProfileForm.MobileNumber)" />
-                    </div>
+            <div class="billing-hero-points" aria-label="Wat jy hier kan doen">
+                <div class="billing-hero-point">
+                    <strong>Hou besonderhede netjies</strong>
+                    <span>Werk jou naam en selfoonnommer by sodat jou rekening altyd op datum bly.</span>
                 </div>
-
-                <div class="billing-field billing-field-readonly">
-                    <label for="billing-email">E-posadres</label>
-                    <input id="billing-email" value="@UserEmail" autocomplete="email" readonly />
+                <div class="billing-hero-point">
+                    <strong>Kies maklik jou toegang</strong>
+                    <span>Skuif van gratis luister na volle toegang wanneer dit vir julle gesin sin maak.</span>
                 </div>
+            </div>
+        </div>
 
-                <div class="billing-actions">
-                    <button type="submit" class="billing-btn" disabled="@IsSavingProfile">
-                        @(IsSavingProfile ? "Stoor..." : "Stoor profiel")
-                    </button>
-                </div>
+        <aside class="billing-hero-panel" aria-label="Vinnige rekening oorsig">
+            <img class="billing-hero-logo" src="/branding/schink-logo-text.png" alt="Schink" loading="eager" decoding="async" />
+            <p class="billing-section-kicker">Vinnige oorsig</p>
 
-                @if (!string.IsNullOrWhiteSpace(ProfileStatusMessage))
-                {
-                    <p class="billing-profile-status @(ProfileSaveSucceeded ? "is-success" : "is-error")"
-                       role="@(ProfileSaveSucceeded ? "status" : "alert")"
-                       aria-live="polite">
-                        @ProfileStatusMessage
-                    </p>
-                }
-            </EditForm>
-        </section>
-
-        <section class="billing-status @(HasActivePaidSubscription ? "is-active" : "is-free")" aria-live="polite">
-            @if (HasActivePaidSubscription)
+            @if (IsLoading)
             {
-                <h2>Jou betaalde intekening is aktief</h2>
-                <p>Jy het tans toegang tot betaalde stories. Dankie dat jy deel is van Schink Stories.</p>
-                <div class="billing-actions">
-                    <a class="billing-btn" href="/luister">Gaan na alle stories</a>
-                    <a class="billing-btn billing-btn-secondary" href="/opsies">Sien plan opsies</a>
+                <h2>Besig om te laai</h2>
+                <p>Ons haal nou jou jongste intekeninginligting.</p>
+            }
+            else if (IsRedirectingToLogin)
+            {
+                <h2>Teken in om voort te gaan</h2>
+                <p>Jy moet ingeteken wees om jou rekening en betalings te bestuur.</p>
+            }
+            else if (HasActivePaidSubscription)
+            {
+                <h2>Jou volle toegang is aktief</h2>
+                <p>Jy is tans ingeteken en kan direk na al jou stories teruggaan.</p>
+
+                @if (!string.IsNullOrWhiteSpace(UserEmail))
+                {
+                    <p class="billing-hero-email">@UserEmail</p>
+                }
+
+                <div class="billing-hero-panel-actions">
+                    <a class="btn btn-warning billing-primary-btn" href="/luister">Gaan na alle stories</a>
                 </div>
             }
             else
             {
-                <h2>Jy is tans op die gratis opsie</h2>
-                <p>Sluit aan by 'n betaalde plan vir volle toegang tot ons stories.</p>
-                <div class="billing-actions">
-                    <a class="billing-btn" href="/opsies">Kies 'n plan</a>
-                    <a class="billing-btn billing-btn-secondary" href="/gratis">Gaan na gratis stories</a>
+                <h2>Jy luister tans gratis</h2>
+                <p>Kies enige tyd 'n betaalde plan om al die stories oop te maak.</p>
+
+                @if (!string.IsNullOrWhiteSpace(UserEmail))
+                {
+                    <p class="billing-hero-email">@UserEmail</p>
+                }
+
+                <div class="billing-hero-panel-actions">
+                    <a class="btn btn-outline-secondary billing-secondary-btn" href="/opsies">Kies 'n plan</a>
                 </div>
             }
+        </aside>
+    </header>
+
+    @if (IsRedirectingToLogin)
+    {
+        <section class="billing-state-card billing-state-card-neutral">
+            <div class="billing-state-copy">
+                <p class="billing-section-kicker">Teken in</p>
+                <h2>Neem jou nou na teken in...</h2>
+                <p>Jy moet ingeteken wees om jou intekening en rekeningbesonderhede te bestuur.</p>
+            </div>
         </section>
+    }
+    else if (IsLoading)
+    {
+        <section class="billing-state-card billing-state-card-neutral">
+            <div class="spinner-border billing-state-spinner" role="status" aria-hidden="true"></div>
+            <div class="billing-state-copy">
+                <p class="billing-section-kicker">Laai</p>
+                <h2>Laai jou intekening...</h2>
+                <p>Ons bring nou jou profiel- en toegangsinligting in.</p>
+            </div>
+        </section>
+    }
+    else
+    {
+        <div class="billing-content-grid">
+            <section class="billing-panel billing-profile-card" aria-label="Jou profiel">
+                <div class="billing-panel-heading">
+                    <p class="billing-section-kicker">Profiel</p>
+                    <h2>Hou jou rekeningbesonderhede op datum</h2>
+                    <p>Gebruik die vorm hieronder om jou besonderhede netjies en op datum te hou.</p>
+                </div>
+
+                <EditForm FormName="billing-profile-form" class="billing-profile-form" Model="ProfileForm" OnValidSubmit="SaveProfileAsync" aria-busy="@IsSavingProfile">
+                    <DataAnnotationsValidator />
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label" for="billing-first-name">Voornaam</label>
+                            <InputText id="billing-first-name" class="form-control form-control-lg" autocomplete="given-name" @bind-Value="ProfileForm.FirstName" />
+                            <ValidationMessage class="invalid-feedback d-block" For="@(() => ProfileForm.FirstName)" />
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="billing-last-name">Van</label>
+                            <InputText id="billing-last-name" class="form-control form-control-lg" autocomplete="family-name" @bind-Value="ProfileForm.LastName" />
+                            <ValidationMessage class="invalid-feedback d-block" For="@(() => ProfileForm.LastName)" />
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="billing-display-name">Publieke naam</label>
+                            <InputText id="billing-display-name" class="form-control form-control-lg" autocomplete="nickname" @bind-Value="ProfileForm.DisplayName" />
+                            <ValidationMessage class="invalid-feedback d-block" For="@(() => ProfileForm.DisplayName)" />
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="billing-mobile-number">Selfoonnommer</label>
+                            <InputText id="billing-mobile-number" class="form-control form-control-lg" type="tel" autocomplete="tel" @bind-Value="ProfileForm.MobileNumber" />
+                            <ValidationMessage class="invalid-feedback d-block" For="@(() => ProfileForm.MobileNumber)" />
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label" for="billing-email">E-posadres</label>
+                            <input id="billing-email"
+                                   class="form-control form-control-lg billing-readonly-input"
+                                   value="@UserEmail"
+                                   autocomplete="email"
+                                   aria-describedby="billing-email-help"
+                                   readonly />
+                            <div id="billing-email-help" class="form-text billing-form-hint">
+                                Jou e-posadres kom vanaf jou rekening en kan nie op hierdie blad verander word nie.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="billing-form-actions d-flex flex-wrap gap-2">
+                        <button type="submit" class="btn btn-warning btn-lg billing-primary-btn" disabled="@IsSavingProfile">
+                            @(IsSavingProfile ? "Stoor..." : "Stoor profiel")
+                        </button>
+                        <a class="btn btn-outline-secondary btn-lg billing-secondary-btn" href="/opsies">Sien plan opsies</a>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(ProfileStatusMessage))
+                    {
+                        <div class="alert @(ProfileSaveSucceeded ? "alert-success" : "alert-danger") billing-profile-status"
+                             role="@(ProfileSaveSucceeded ? "status" : "alert")"
+                             aria-live="polite">
+                            @ProfileStatusMessage
+                        </div>
+                    }
+                </EditForm>
+            </section>
+
+            <aside class="billing-panel billing-status-card @(HasActivePaidSubscription ? "is-active" : "is-free")" aria-live="polite">
+                <div class="billing-panel-heading">
+                    <p class="billing-section-kicker">Toegang</p>
+                    @if (HasActivePaidSubscription)
+                    {
+                        <h2>Jou betaalde intekening is aktief</h2>
+                        <p>Jy het tans toegang tot betaalde stories. Dankie dat jy deel is van Schink Stories.</p>
+                    }
+                    else
+                    {
+                        <h2>Jy is tans op die gratis opsie</h2>
+                        <p>Sluit aan by 'n betaalde plan vir volle toegang tot ons stories wanneer julle gereed is.</p>
+                    }
+                </div>
+
+                <ul class="billing-status-list">
+                    @if (HasActivePaidSubscription)
+                    {
+                        <li>Volle toegang tot die betaalde stories en reekse.</li>
+                        <li>Jou profielbesonderhede en betalings bly op een plek beskikbaar.</li>
+                        <li>Jy kan steeds enige tyd na plan opsies teruggaan.</li>
+                    }
+                    else
+                    {
+                        <li>Jou gratis stories bly beskikbaar terwyl jy besluit.</li>
+                        <li>Jy kan enige tyd opgradeer na volle toegang.</li>
+                        <li>Vergelyk planne voordat jy 'n betaling begin.</li>
+                    }
+                </ul>
+
+                <div class="billing-status-actions d-grid gap-2">
+                    @if (HasActivePaidSubscription)
+                    {
+                        <a class="btn btn-warning btn-lg billing-primary-btn" href="/luister">Gaan na alle stories</a>
+                        <a class="btn btn-outline-secondary btn-lg billing-secondary-btn" href="/opsies">Sien plan opsies</a>
+                    }
+                    else
+                    {
+                        <a class="btn btn-warning btn-lg billing-primary-btn" href="/opsies">Kies 'n plan</a>
+                        <a class="btn btn-outline-secondary btn-lg billing-secondary-btn" href="/gratis">Gaan na gratis stories</a>
+                    }
+                </div>
+            </aside>
+        </div>
 
         <section class="billing-plans" aria-label="Betaal planne">
-            <h2>Vinnige plan keuses</h2>
+            <div class="billing-section-heading">
+                <p class="billing-section-kicker">Plan keuses</p>
+                <h2>Vinnige opsies vir jou gesin</h2>
+                <p>Begin direk by die regte plan, of gaan na <a href="/opsies">Opsies</a> vir die volledige vergelyking.</p>
+            </div>
+
             <div class="billing-plan-grid">
                 @foreach (var plan in PaymentPlanCatalog.All)
                 {
-                    <article class="billing-plan-card">
+                    <article class="billing-plan-card @(IsYearlyAllStoriesPlan(plan) ? "is-highlighted" : string.Empty)">
+                        <p class="billing-plan-badge">@(plan.BillingPeriodMonths <= 1 ? "Maandeliks" : "Jaarliks")</p>
                         <h3>@plan.Name</h3>
                         <p class="billing-price">@FormatRand(plan.Amount) <span>@ResolveBillingLabel(plan.BillingPeriodMonths)</span></p>
                         @if (IsYearlyAllStoriesPlan(plan))
                         {
-                            <p class="billing-save-badge">Save 2 months</p>
+                            <p class="billing-save-badge">2 maande gratis</p>
                         }
                         <p class="billing-description">@plan.ItemDescription</p>
-                        <a class="billing-btn" href="@($"/betaal/{plan.Slug}")">Kies hierdie plan</a>
+                        <div class="billing-plan-actions">
+                            <a class="btn btn-warning billing-primary-btn" href="@($"/betaal/{plan.Slug}")">Kies hierdie plan</a>
+                        </div>
                     </article>
                 }
             </div>
-            <p class="billing-help">Vir meer besonderhede en vergelyking, gaan na <a href="/opsies">Opsies</a>.</p>
         </section>
     }
 </section>

@@ -904,6 +904,35 @@ public sealed partial class SupabaseAdminManagementService(
         return new AdminOperationResult(false, "Kon nie nuwe playlist stories stoor nie.");
     }
 
+    public async Task<AdminAnalyticsSnapshot> GetAnalyticsAsync(
+        string? adminEmail,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
+        {
+            return AdminAnalyticsSnapshot.Empty;
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return AdminAnalyticsSnapshot.Empty;
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return AdminAnalyticsSnapshot.Empty;
+        }
+
+        return await InvokeRpcAsync<AdminAnalyticsSnapshot>(
+                   baseUri,
+                   apiKey,
+                   "get_admin_analytics_snapshot",
+                   new { },
+                   cancellationToken)
+               ?? AdminAnalyticsSnapshot.Empty;
+    }
+
     public async Task<IReadOnlyList<AdminResourceTypeRecord>> GetResourceTypesAsync(
         string? adminEmail,
         CancellationToken cancellationToken = default)
@@ -1616,6 +1645,75 @@ public sealed partial class SupabaseAdminManagementService(
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
         request.Headers.TryAddWithoutValidation("Prefer", preferHeader);
         return request;
+    }
+
+    private async Task<T?> InvokeRpcAsync<T>(
+        Uri baseUri,
+        string apiKey,
+        string functionName,
+        object payload,
+        CancellationToken cancellationToken)
+    {
+        var uri = new Uri(baseUri, $"rest/v1/rpc/{functionName}");
+
+        try
+        {
+            using var request = CreateJsonRequest(HttpMethod.Post, uri, apiKey, payload, "return=representation");
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning(
+                    "Supabase RPC failed. function={FunctionName} Status={StatusCode} Body={Body}",
+                    functionName,
+                    (int)response.StatusCode,
+                    responseBody);
+                return default;
+            }
+
+            var responseBodyText = await response.Content.ReadAsStringAsync(cancellationToken);
+            return DeserializeRpcResponse<T>(responseBodyText, functionName);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(exception, "Supabase RPC failed unexpectedly. function={FunctionName}", functionName);
+            return default;
+        }
+    }
+
+    private static T? DeserializeRpcResponse<T>(string? responseBody, string functionName)
+    {
+        if (string.IsNullOrWhiteSpace(responseBody))
+        {
+            return default;
+        }
+
+        using var document = JsonDocument.Parse(responseBody);
+        var root = document.RootElement;
+
+        if (root.ValueKind == JsonValueKind.Object)
+        {
+            if (root.TryGetProperty(functionName, out var wrappedValue))
+            {
+                return wrappedValue.Deserialize<T>(JsonOptions);
+            }
+
+            return root.Deserialize<T>(JsonOptions);
+        }
+
+        if (root.ValueKind == JsonValueKind.Array && root.GetArrayLength() > 0)
+        {
+            var first = root[0];
+            if (first.ValueKind == JsonValueKind.Object &&
+                first.TryGetProperty(functionName, out var wrappedValue))
+            {
+                return wrappedValue.Deserialize<T>(JsonOptions);
+            }
+
+            return first.Deserialize<T>(JsonOptions);
+        }
+
+        return default;
     }
 
     private static Dictionary<Guid, string[]> BuildActiveTierMap(IReadOnlyList<SubscriptionRow> subscriptions)
