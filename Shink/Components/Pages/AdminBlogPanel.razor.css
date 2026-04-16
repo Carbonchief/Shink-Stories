@@ -335,6 +335,35 @@
     border: 1px solid var(--admin-border);
 }
 
+.blog-admin-image-preview-wrap {
+    position: relative;
+}
+
+.blog-admin-image-remove {
+    position: absolute;
+    top: 0.7rem;
+    right: 0.7rem;
+    width: 38px;
+    min-width: 38px;
+    min-height: 38px;
+    border: 0;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffeef2;
+    background: rgba(122, 50, 64, 0.92);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+    cursor: pointer;
+    transition: transform 0.16s ease, filter 0.16s ease;
+}
+
+.blog-admin-image-remove:hover,
+.blog-admin-image-remove:focus-visible {
+    transform: translateY(-1px);
+    filter: brightness(1.06);
+}
+
 .blog-admin-rich-editor-shell {
     display: grid;
     gap: 0.75rem;

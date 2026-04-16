@@ -244,10 +244,22 @@
 
                             @if (!string.IsNullOrWhiteSpace(Editor.FeaturedImagePreviewUrl))
                             {
-                                <img class="blog-admin-image-preview"
-                                     src="@Editor.FeaturedImagePreviewUrl"
-                                     alt="@T("Blog prent voorskou", "Blog image preview")"
-                                     onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                                <div class="blog-admin-image-preview-wrap">
+                                    <img class="blog-admin-image-preview"
+                                         src="@Editor.FeaturedImagePreviewUrl"
+                                         alt="@T("Blog prent voorskou", "Blog image preview")"
+                                         onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                                    @if (CanRemoveFeaturedImage())
+                                    {
+                                        <button type="button"
+                                                class="blog-admin-image-remove"
+                                                @onclick="RemoveFeaturedImageAsync"
+                                                aria-label='@T("Verwyder hoofprent", "Remove featured image")'
+                                                title='@T("Verwyder hoofprent", "Remove featured image")'>
+                                            <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                                        </button>
+                                    }
+                                </div>
                             }
 
                             <label class="blog-admin-field">
@@ -590,6 +602,26 @@
             ?? ResolvePreviewImageUrl(Editor.FeaturedImageUrl);
     }
 
+    private bool CanRemoveFeaturedImage() =>
+        Editor is not null &&
+        (Editor.FeaturedImageFile is not null || !string.IsNullOrWhiteSpace(Editor.FeaturedImageUrl));
+
+    private async Task RemoveFeaturedImageAsync()
+    {
+        if (Editor is null ||
+            !await ConfirmImageRemovalAsync(
+                "Is jy seker jy wil hierdie hoofprent verwyder?",
+                "Are you sure you want to remove this featured image?"))
+        {
+            return;
+        }
+
+        Editor.FeaturedImageFile = null;
+        Editor.FeaturedImageFileName = null;
+        Editor.FeaturedImagePreviewUrl = null;
+        Editor.FeaturedImageUrl = null;
+    }
+
     private async Task SavePostAsync()
     {
         if (Editor is null || IsSaving)
@@ -603,6 +635,7 @@
 
         try
         {
+            var originalFeaturedImageUrl = Editor.FeaturedImageUrl;
             var effectiveSlug = BuildEffectiveSlug(Editor.Slug, Editor.Title);
             if (string.IsNullOrWhiteSpace(effectiveSlug))
             {
@@ -647,6 +680,7 @@
                 return;
             }
 
+            await CleanupReplacedImageAssetAsync(originalFeaturedImageUrl, Editor.FeaturedImageUrl);
             await ReloadAsync(result.EntityId);
             StatusMessage = T("Blog plasing suksesvol gestoor.", "Blog post saved successfully.");
         }
@@ -824,6 +858,61 @@
 
     private string T(string afrikaans, string english) =>
         string.Equals(CurrentLanguageCode, "en", StringComparison.OrdinalIgnoreCase) ? english : afrikaans;
+
+    private async Task<bool> ConfirmImageRemovalAsync(string afrikaansMessage, string englishMessage)
+    {
+        try
+        {
+            return await JSRuntime.InvokeAsync<bool>("confirm", T(afrikaansMessage, englishMessage));
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(exception, "Blog image removal confirmation could not be displayed.");
+            return false;
+        }
+    }
+
+    private async Task CleanupReplacedImageAssetAsync(string? originalPath, string? updatedPath)
+    {
+        if (AdminManagedImageAssetHelper.AreEquivalent(originalPath, updatedPath))
+        {
+            return;
+        }
+
+        await DeleteManagedImageAssetAsync(originalPath);
+    }
+
+    private async Task DeleteManagedImageAssetAsync(string? imagePath)
+    {
+        var r2ObjectKey = AdminManagedImageAssetHelper.TryResolveR2ObjectKey(
+            imagePath,
+            CloudflareR2OptionsAccessor.Value.PublicBaseUrl);
+        if (!string.IsNullOrWhiteSpace(r2ObjectKey))
+        {
+            await StoryMediaStorageService.DeleteObjectIfExistsAsync(r2ObjectKey);
+            return;
+        }
+
+        var localFilePath = AdminManagedImageAssetHelper.TryResolveLocalUploadedFilePath(
+            imagePath,
+            WebHostEnvironment.WebRootPath);
+        if (string.IsNullOrWhiteSpace(localFilePath))
+        {
+            return;
+        }
+
+        try
+        {
+            if (File.Exists(localFilePath))
+            {
+                File.Delete(localFilePath);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            Logger.LogWarning(exception, "Failed to delete managed blog image asset {ImagePath}.", imagePath);
+        }
+    }
 
     private void MarkRichTextEditorDirty()
     {

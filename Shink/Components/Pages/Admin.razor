@@ -5,6 +5,7 @@
 @using System.Security.Claims
 @using System.Text
 @using System.Text.Encodings.Web
+@using System.Text.Json
 @using Microsoft.Extensions.Options
 @using Microsoft.AspNetCore.Components.Authorization
 @using SixLabors.ImageSharp.Formats.Jpeg
@@ -258,11 +259,32 @@
                             @T("Toegang", "Access")
                         </MudTableSortLabel>
                     </MudTh>
+                    <MudTh Class="admin-col-center">@T("Aksies", "Actions")</MudTh>
                 </HeaderContent>
                 <RowTemplate>
+                    @{
+                        var storyOpenPath = BuildAdminStoryOpenPath(context);
+                    }
                     <MudTd DataLabel='@T("Titel", "Title")'>@HighlightSearchMatch(context.Title, StorySearch)</MudTd>
                     <MudTd DataLabel='@T("Status", "Status")'>@context.Status</MudTd>
                     <MudTd DataLabel='@T("Toegang", "Access")'>@context.AccessLevel</MudTd>
+                    <MudTd Class="admin-col-center" DataLabel='@T("Aksies", "Actions")'>
+                        <div class="admin-table-actions">
+                            @if (!string.IsNullOrWhiteSpace(storyOpenPath))
+                            {
+                                <a class="admin-icon-btn"
+                                   href="@storyOpenPath"
+                                   target="_blank"
+                                   rel="noopener noreferrer"
+                                   @onclick:stopPropagation="true"
+                                   aria-label='@T("Maak storie oop in nuwe oortjie", "Open story in new tab")'
+                                   title='@T("Maak storie oop in nuwe oortjie", "Open story in new tab")'>
+                                    <i class="fa-solid fa-up-right-from-square" aria-hidden="true"></i>
+                                    <span class="sr-only">@T("Maak storie oop in nuwe oortjie", "Open story in new tab")</span>
+                                </a>
+                            }
+                        </div>
+                    </MudTd>
                 </RowTemplate>
                 <NoRecordsContent>
                     <MudText Typo="Typo.body2">@T("Geen stories gevind nie.", "No stories found.")</MudText>
@@ -319,6 +341,8 @@
                 <RowTemplate>
                     @{
                         var playlistIndex = GetPlaylistIndex(context.PlaylistId);
+                        var playlistPlayerPath = BuildAdminPlaylistPlayerPath(context);
+                        var playlistShowcasePath = BuildAdminPlaylistShowcasePath(context);
                     }
                     <MudTd DataLabel='@T("Titel", "Title")'>
                         @HighlightSearchMatch(
@@ -355,7 +379,33 @@
                         </div>
                     </MudTd>
                     <MudTd Class="admin-col-center" DataLabel='@T("Aksies", "Actions")'>
-                        <div class="admin-playlist-actions">
+                        <div class="admin-table-actions admin-playlist-actions">
+                            @if (!string.IsNullOrWhiteSpace(playlistPlayerPath))
+                            {
+                                <a class="admin-icon-btn"
+                                   href="@playlistPlayerPath"
+                                   target="_blank"
+                                   rel="noopener noreferrer"
+                                   @onclick:stopPropagation="true"
+                                   aria-label='@T("Maak playlist speler oop in nuwe oortjie", "Open playlist player in new tab")'
+                                   title='@T("Maak playlist speler oop in nuwe oortjie", "Open playlist player in new tab")'>
+                                    <i class="fa-solid fa-play" aria-hidden="true"></i>
+                                    <span class="sr-only">@T("Maak playlist speler oop in nuwe oortjie", "Open playlist player in new tab")</span>
+                                </a>
+                            }
+                            @if (!string.IsNullOrWhiteSpace(playlistShowcasePath))
+                            {
+                                <a class="admin-icon-btn"
+                                   href="@playlistShowcasePath"
+                                   target="_blank"
+                                   rel="noopener noreferrer"
+                                   @onclick:stopPropagation="true"
+                                   aria-label='@T("Maak playlist showcase oop in nuwe oortjie", "Open playlist showcase in new tab")'
+                                   title='@T("Maak playlist showcase oop in nuwe oortjie", "Open playlist showcase in new tab")'>
+                                    <i class="fa-solid fa-images" aria-hidden="true"></i>
+                                    <span class="sr-only">@T("Maak playlist showcase oop in nuwe oortjie", "Open playlist showcase in new tab")</span>
+                                </a>
+                            }
                             <button type="button"
                                     class="admin-icon-btn"
                                     @onclick="() => MovePlaylistAsync(context.PlaylistId, -1)"
@@ -392,6 +442,18 @@
             </MudTable>
 
                 </section>
+            </MudTabPanel>
+
+            <MudTabPanel Text='@T("Karakters", "Characters")'>
+                <AdminCharactersPanel CurrentLanguageCode="@CurrentLanguageCode" />
+            </MudTabPanel>
+
+            <MudTabPanel Text='@T("Hulpbronne", "Resources")'>
+                <AdminResourceTypesPanel CurrentLanguageCode="@CurrentLanguageCode" />
+            </MudTabPanel>
+
+            <MudTabPanel Text='@T("Blog", "Blog")'>
+                <AdminBlogPanel CurrentLanguageCode="@CurrentLanguageCode" />
             </MudTabPanel>
 
             <MudTabPanel Text='@T("Analitika", "Analytics")'>
@@ -622,23 +684,13 @@
                 </section>
             </MudTabPanel>
 
-            <MudTabPanel Text='@T("Hulpbronne", "Resources")'>
-                <AdminResourceTypesPanel CurrentLanguageCode="@CurrentLanguageCode" />
-            </MudTabPanel>
-
-            <MudTabPanel Text='@T("Blog", "Blog")'>
-                <AdminBlogPanel CurrentLanguageCode="@CurrentLanguageCode" />
-            </MudTabPanel>
-
-            <MudTabPanel Text='@T("Karakters", "Characters")'>
-                <AdminCharactersPanel CurrentLanguageCode="@CurrentLanguageCode" />
-            </MudTabPanel>
         </MudTabs>
         </div>
 
         @if (SubscriberEditor is not null)
         {
-            <MudDialog @bind-Visible="IsSubscriberDialogOpen"
+            <MudDialog Visible="IsSubscriberDialogOpen"
+                       VisibleChanged="OnSubscriberDialogVisibleChanged"
                        Options="EditorDialogOptions">
                 <TitleContent>
                     <MudText Typo="Typo.h6">@T("Wysig intekenaar", "Edit subscriber")</MudText>
@@ -677,7 +729,7 @@
                     <div class="admin-dialog-actions-row">
                         <MudButton Variant="Variant.Text"
                                    Color="Color.Default"
-                                   OnClick="CloseSubscriberDialog">
+                                   OnClick="CloseSubscriberDialogAsync">
                             @T("Sluit", "Close")
                         </MudButton>
                         <MudButton Variant="Variant.Filled"
@@ -694,7 +746,8 @@
 
         @if (NewStoryEditor is not null)
         {
-            <MudDialog @bind-Visible="IsNewStoryDialogOpen"
+            <MudDialog Visible="IsNewStoryDialogOpen"
+                       VisibleChanged="OnNewStoryDialogVisibleChanged"
                        Options="EditorDialogOptions">
                 <TitleContent>
                     <MudText Typo="Typo.h6">@T("Laai nuwe storie op", "Upload new story")</MudText>
@@ -791,7 +844,7 @@
                     <div class="admin-dialog-actions-row">
                         <MudButton Variant="Variant.Text"
                                    Color="Color.Default"
-                                   OnClick="CloseNewStoryDialog">
+                                   OnClick="CloseNewStoryDialogAsync">
                             @T("Sluit", "Close")
                         </MudButton>
                         <MudButton Variant="Variant.Filled"
@@ -814,9 +867,12 @@
             var thumbnailPreviewUrl = !string.IsNullOrWhiteSpace(StoryEditor.ThumbnailPreviewDataUrl)
                 ? StoryEditor.ThumbnailPreviewDataUrl
                 : ResolvePreviewImageUrl(StoryEditor.ThumbnailImagePath);
+            var storyCoverPreviewUrl = coverPreviewUrl;
+            var storyThumbnailPreviewUrl = thumbnailPreviewUrl;
             var carouselPreviewUrl = !string.IsNullOrWhiteSpace(thumbnailPreviewUrl) ? thumbnailPreviewUrl : coverPreviewUrl;
 
-            <MudDialog @bind-Visible="IsStoryDialogOpen"
+            <MudDialog Visible="IsStoryDialogOpen"
+                       VisibleChanged="OnStoryDialogVisibleChanged"
                        Options="EditorDialogOptions">
                 <TitleContent>
                     <MudText Typo="Typo.h6">@T("Wysig storie", "Edit story")</MudText>
@@ -899,6 +955,60 @@
                                 <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.AudioFileName, T("Hou huidige audio as jy niks kies nie.", "Keeps the current audio if you do not choose a file."))</p>
                             </div>
                         </div>
+                        <div class="admin-image-preview-grid admin-span-2 admin-playlist-preview-grid">
+                            <article class="admin-image-preview-card admin-playlist-preview-card">
+                                <h4>@T("Cover voorskou", "Cover preview")</h4>
+                                @if (!string.IsNullOrWhiteSpace(storyCoverPreviewUrl))
+                                {
+                                    <div class="admin-image-preview-media">
+                                        <img src="@storyCoverPreviewUrl"
+                                             alt='@T("Story cover voorskou", "Story cover preview")'
+                                             loading="lazy"
+                                             decoding="async" />
+                                        @if (CanRemoveStoryCoverImage())
+                                        {
+                                            <button type="button"
+                                                    class="admin-image-preview-remove"
+                                                    @onclick="RemoveStoryCoverImageAsync"
+                                                    aria-label='@T("Verwyder cover image", "Remove cover image")'
+                                                    title='@T("Verwyder cover image", "Remove cover image")'>
+                                                <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    <p>@T("Geen cover image beskikbaar nie.", "No cover image available.")</p>
+                                }
+                            </article>
+                            <article class="admin-image-preview-card admin-playlist-preview-card">
+                                <h4>@T("Thumbnail voorskou", "Thumbnail preview")</h4>
+                                @if (!string.IsNullOrWhiteSpace(storyThumbnailPreviewUrl))
+                                {
+                                    <div class="admin-image-preview-media">
+                                        <img src="@storyThumbnailPreviewUrl"
+                                             alt='@T("Story thumbnail voorskou", "Story thumbnail preview")'
+                                             loading="lazy"
+                                             decoding="async" />
+                                        @if (CanRemoveStoryThumbnailImage())
+                                        {
+                                            <button type="button"
+                                                    class="admin-image-preview-remove"
+                                                    @onclick="RemoveStoryThumbnailImageAsync"
+                                                    aria-label='@T("Verwyder thumbnail image", "Remove thumbnail image")'
+                                                    title='@T("Verwyder thumbnail image", "Remove thumbnail image")'>
+                                                <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                                else
+                                {
+                                    <p>@T("Geen thumbnail image beskikbaar nie.", "No thumbnail image available.")</p>
+                                }
+                            </article>
+                        </div>
                         <div class="admin-story-edit-detail-grid admin-span-2">
                             <article class="admin-image-preview-card admin-luister-preview-card">
                                 <h4>@T("Carousel voorskou", "Carousel preview")</h4>
@@ -954,7 +1064,7 @@
                     <div class="admin-dialog-actions-row">
                         <MudButton Variant="Variant.Text"
                                    Color="Color.Default"
-                                   OnClick="CloseStoryDialog">
+                                   OnClick="CloseStoryDialogAsync">
                             @T("Sluit", "Close")
                         </MudButton>
                         <MudButton Variant="Variant.Filled"
@@ -979,7 +1089,8 @@
                 ? PlaylistEditor.BackdropPreviewDataUrl
                 : PlaylistEditor.BackdropImagePath;
 
-            <MudDialog @bind-Visible="IsPlaylistDialogOpen"
+            <MudDialog Visible="IsPlaylistDialogOpen"
+                       VisibleChanged="OnPlaylistDialogVisibleChanged"
                        Options="EditorDialogOptions">
                 <TitleContent>
                     <MudText Typo="Typo.h6">@T("Wysig playlist", "Edit playlist")</MudText>
@@ -1066,10 +1177,22 @@
                                             <h4>@T("Logo voorskou", "Logo preview")</h4>
                                             @if (!string.IsNullOrWhiteSpace(playlistLogoPreviewUrl))
                                             {
-                                                <img src="@playlistLogoPreviewUrl"
-                                                     alt='@T("Playlist logo voorskou", "Playlist logo preview")'
-                                                     loading="lazy"
-                                                     decoding="async" />
+                                                <div class="admin-image-preview-media">
+                                                    <img src="@playlistLogoPreviewUrl"
+                                                         alt='@T("Playlist logo voorskou", "Playlist logo preview")'
+                                                         loading="lazy"
+                                                         decoding="async" />
+                                                    @if (CanRemovePlaylistLogoImage())
+                                                    {
+                                                        <button type="button"
+                                                                class="admin-image-preview-remove"
+                                                                @onclick="RemovePlaylistLogoImageAsync"
+                                                                aria-label='@T("Verwyder logo image", "Remove logo image")'
+                                                                title='@T("Verwyder logo image", "Remove logo image")'>
+                                                            <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                                                        </button>
+                                                    }
+                                                </div>
                                             }
                                             else
                                             {
@@ -1080,10 +1203,22 @@
                                             <h4>@T("Agtergrond voorskou", "Backdrop preview")</h4>
                                             @if (!string.IsNullOrWhiteSpace(playlistBackdropPreviewUrl))
                                             {
-                                                <img src="@playlistBackdropPreviewUrl"
-                                                     alt='@T("Playlist agtergrond voorskou", "Playlist backdrop preview")'
-                                                     loading="lazy"
-                                                     decoding="async" />
+                                                <div class="admin-image-preview-media">
+                                                    <img src="@playlistBackdropPreviewUrl"
+                                                         alt='@T("Playlist agtergrond voorskou", "Playlist backdrop preview")'
+                                                         loading="lazy"
+                                                         decoding="async" />
+                                                    @if (CanRemovePlaylistBackdropImage())
+                                                    {
+                                                        <button type="button"
+                                                                class="admin-image-preview-remove"
+                                                                @onclick="RemovePlaylistBackdropImageAsync"
+                                                                aria-label='@T("Verwyder agtergrond image", "Remove backdrop image")'
+                                                                title='@T("Verwyder agtergrond image", "Remove backdrop image")'>
+                                                            <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                                                        </button>
+                                                    }
+                                                </div>
                                             }
                                             else
                                             {
@@ -1238,7 +1373,7 @@
                     <div class="admin-dialog-actions-row">
                         <MudButton Variant="Variant.Text"
                                    Color="Color.Default"
-                                   OnClick="ClosePlaylistDialog">
+                                   OnClick="ClosePlaylistDialogAsync">
                             @T("Sluit", "Close")
                         </MudButton>
                     </div>
@@ -1314,6 +1449,10 @@
     private NewStoryDraft? NewStoryEditor { get; set; }
     private EditablePlaylist? PlaylistEditor { get; set; }
     private List<EditablePlaylistStoryItem> PlaylistStoryEditor { get; set; } = [];
+    private string? SubscriberEditorStateSignature { get; set; }
+    private string? StoryEditorStateSignature { get; set; }
+    private string? NewStoryEditorStateSignature { get; set; }
+    private string? PlaylistEditorStateSignature { get; set; }
     private string NewStoryDialogInstanceKey { get; set; } = Guid.NewGuid().ToString("N");
     private IJSObjectReference? AdminUploadModule { get; set; }
 
@@ -1501,6 +1640,9 @@
                 ? Subscribers.FirstOrDefault(subscriber => subscriber.SubscriberId == selectedSubscriberId.Value)
                 : Subscribers.FirstOrDefault();
             SubscriberEditor = selectedSubscriber is null ? null : EditableSubscriber.From(selectedSubscriber);
+            SubscriberEditorStateSignature = SubscriberEditor is null
+                ? null
+                : BuildSubscriberEditorStateSignature(SubscriberEditor);
             if (SubscriberEditor is null)
             {
                 IsSubscriberDialogOpen = false;
@@ -1511,6 +1653,7 @@
             Logger.LogError(exception, "Failed to refresh subscribers.");
             Subscribers = Array.Empty<AdminSubscriberRecord>();
             SubscriberEditor = null;
+            SubscriberEditorStateSignature = null;
             IsSubscriberDialogOpen = false;
             SetError(T("Kon nie intekenaars nou laai nie.", "Could not load subscribers right now."));
         }
@@ -1526,6 +1669,9 @@
                 ? Stories.FirstOrDefault(story => story.StoryId == targetStoryId.Value)
                 : Stories.FirstOrDefault();
             StoryEditor = selectedStory is null ? null : EditableStory.From(selectedStory);
+            StoryEditorStateSignature = StoryEditor is null
+                ? null
+                : BuildStoryEditorStateSignature(StoryEditor);
             if (StoryEditor is null)
             {
                 IsStoryDialogOpen = false;
@@ -1536,6 +1682,7 @@
             Logger.LogError(exception, "Failed to refresh stories.");
             Stories = Array.Empty<AdminStoryRecord>();
             StoryEditor = null;
+            StoryEditorStateSignature = null;
             IsStoryDialogOpen = false;
             SetError(T("Kon nie stories nou laai nie.", "Could not load stories right now."));
         }
@@ -1556,6 +1703,7 @@
             {
                 PlaylistEditor = null;
                 PlaylistStoryEditor = [];
+                PlaylistEditorStateSignature = null;
                 StoryToAddIdString = string.Empty;
                 IsPlaylistDialogOpen = false;
                 return;
@@ -1568,6 +1716,7 @@
                 .ToList();
             EnsurePlaylistShowcaseSelection();
             ReindexPlaylistStories();
+            PlaylistEditorStateSignature = BuildPlaylistEditorStateSignature(PlaylistEditor, PlaylistStoryEditor);
         }
         catch (Exception exception)
         {
@@ -1575,6 +1724,7 @@
             Playlists = Array.Empty<AdminPlaylistRecord>();
             PlaylistEditor = null;
             PlaylistStoryEditor = [];
+            PlaylistEditorStateSignature = null;
             StoryToAddIdString = string.Empty;
             IsPlaylistDialogOpen = false;
             SetError(T("Kon nie playlists nou laai nie.", "Could not load playlists right now."));
@@ -1679,6 +1829,7 @@
         }
 
         SubscriberEditor = EditableSubscriber.From(selected);
+        SubscriberEditorStateSignature = BuildSubscriberEditorStateSignature(SubscriberEditor);
     }
 
     private void SelectStory(Guid storyId)
@@ -1690,6 +1841,7 @@
         }
 
         StoryEditor = EditableStory.From(selected);
+        StoryEditorStateSignature = BuildStoryEditorStateSignature(StoryEditor);
     }
 
     private void StartNewStory()
@@ -1700,6 +1852,7 @@
             AccessLevel = "subscriber",
             PublishNow = true
         };
+        NewStoryEditorStateSignature = BuildNewStoryEditorStateSignature(NewStoryEditor);
         NewStoryDialogInstanceKey = Guid.NewGuid().ToString("N");
         IsNewStoryDialogOpen = true;
         CompleteEditModalOpenRequest(IsNewStoryDialogOpen);
@@ -1715,36 +1868,113 @@
         BeginEditModalOpen();
         PlaylistEditor = new EditablePlaylist();
         PlaylistStoryEditor = [];
+        PlaylistEditorStateSignature = BuildPlaylistEditorStateSignature(PlaylistEditor, PlaylistStoryEditor);
         StoryToAddIdString = string.Empty;
         IsPlaylistDialogOpen = true;
         CompleteEditModalOpenRequest(IsPlaylistDialogOpen);
     }
 
-    private void CloseSubscriberDialog()
+    private async Task OnSubscriberDialogVisibleChanged(bool visible)
     {
+        if (visible)
+        {
+            IsSubscriberDialogOpen = true;
+            return;
+        }
+
+        await CloseSubscriberDialogAsync();
+    }
+
+    private async Task OnStoryDialogVisibleChanged(bool visible)
+    {
+        if (visible)
+        {
+            IsStoryDialogOpen = true;
+            return;
+        }
+
+        await CloseStoryDialogAsync();
+    }
+
+    private async Task OnNewStoryDialogVisibleChanged(bool visible)
+    {
+        if (visible)
+        {
+            IsNewStoryDialogOpen = true;
+            return;
+        }
+
+        await CloseNewStoryDialogAsync();
+    }
+
+    private async Task OnPlaylistDialogVisibleChanged(bool visible)
+    {
+        if (visible)
+        {
+            IsPlaylistDialogOpen = true;
+            return;
+        }
+
+        await ClosePlaylistDialogAsync();
+    }
+
+    private async Task CloseSubscriberDialogAsync()
+    {
+        if (!await ConfirmDiscardDialogChangesAsync(IsSubscriberEditorDirty()))
+        {
+            IsSubscriberDialogOpen = true;
+            return;
+        }
+
         IsSubscriberDialogOpen = false;
-        IsEditModalOpening = false;
-        ClearModalLoadingOnNextRender = false;
+        CompleteEditModalClose();
     }
 
-    private void CloseStoryDialog()
+    private async Task CloseStoryDialogAsync()
     {
+        if (!await ConfirmDiscardDialogChangesAsync(IsStoryEditorDirty()))
+        {
+            IsStoryDialogOpen = true;
+            return;
+        }
+
         IsStoryDialogOpen = false;
-        IsEditModalOpening = false;
-        ClearModalLoadingOnNextRender = false;
+        CompleteEditModalClose();
     }
 
-    private void CloseNewStoryDialog()
+    private async Task CloseNewStoryDialogAsync()
+    {
+        if (!await ConfirmDiscardDialogChangesAsync(IsNewStoryEditorDirty()))
+        {
+            IsNewStoryDialogOpen = true;
+            return;
+        }
+
+        CloseNewStoryDialogCore();
+    }
+
+    private async Task ClosePlaylistDialogAsync()
+    {
+        if (!await ConfirmDiscardDialogChangesAsync(IsPlaylistEditorDirty()))
+        {
+            IsPlaylistDialogOpen = true;
+            return;
+        }
+
+        IsPlaylistDialogOpen = false;
+        CompleteEditModalClose();
+    }
+
+    private void CloseNewStoryDialogCore()
     {
         IsNewStoryDialogOpen = false;
         NewStoryEditor = null;
-        IsEditModalOpening = false;
-        ClearModalLoadingOnNextRender = false;
+        NewStoryEditorStateSignature = null;
+        CompleteEditModalClose();
     }
 
-    private void ClosePlaylistDialog()
+    private void CompleteEditModalClose()
     {
-        IsPlaylistDialogOpen = false;
         IsEditModalOpening = false;
         ClearModalLoadingOnNextRender = false;
     }
@@ -1922,6 +2152,88 @@
         return;
     }
 
+    private bool CanRemoveStoryCoverImage() =>
+        StoryEditor is not null &&
+        (StoryEditor.CoverFile is not null || !string.IsNullOrWhiteSpace(StoryEditor.CoverImagePath));
+
+    private bool CanRemoveStoryThumbnailImage() =>
+        StoryEditor is not null &&
+        (StoryEditor.ThumbnailFile is not null || !string.IsNullOrWhiteSpace(StoryEditor.ThumbnailImagePath));
+
+    private bool CanRemovePlaylistLogoImage() =>
+        PlaylistEditor is not null &&
+        (PlaylistEditor.LogoFile is not null ||
+         !string.IsNullOrWhiteSpace(PlaylistEditor.LogoImagePath));
+
+    private bool CanRemovePlaylistBackdropImage() =>
+        PlaylistEditor is not null &&
+        (PlaylistEditor.BackdropFile is not null ||
+         !string.IsNullOrWhiteSpace(PlaylistEditor.BackdropImagePath));
+
+    private async Task RemoveStoryCoverImageAsync()
+    {
+        if (StoryEditor is null ||
+            !await ConfirmImageRemovalAsync(
+                "Is jy seker jy wil hierdie cover image verwyder?",
+                "Are you sure you want to remove this cover image?"))
+        {
+            return;
+        }
+
+        StoryEditor.CoverFile = null;
+        StoryEditor.CoverFileName = null;
+        StoryEditor.CoverPreviewDataUrl = null;
+        StoryEditor.CoverImagePath = null;
+    }
+
+    private async Task RemoveStoryThumbnailImageAsync()
+    {
+        if (StoryEditor is null ||
+            !await ConfirmImageRemovalAsync(
+                "Is jy seker jy wil hierdie thumbnail image verwyder?",
+                "Are you sure you want to remove this thumbnail image?"))
+        {
+            return;
+        }
+
+        StoryEditor.ThumbnailFile = null;
+        StoryEditor.ThumbnailFileName = null;
+        StoryEditor.ThumbnailPreviewDataUrl = null;
+        StoryEditor.ThumbnailImagePath = null;
+    }
+
+    private async Task RemovePlaylistLogoImageAsync()
+    {
+        if (PlaylistEditor is null ||
+            !await ConfirmImageRemovalAsync(
+                "Is jy seker jy wil hierdie logo image verwyder?",
+                "Are you sure you want to remove this logo image?"))
+        {
+            return;
+        }
+
+        PlaylistEditor.LogoFile = null;
+        PlaylistEditor.LogoFileName = null;
+        PlaylistEditor.LogoPreviewDataUrl = null;
+        PlaylistEditor.LogoImagePath = null;
+    }
+
+    private async Task RemovePlaylistBackdropImageAsync()
+    {
+        if (PlaylistEditor is null ||
+            !await ConfirmImageRemovalAsync(
+                "Is jy seker jy wil hierdie agtergrond image verwyder?",
+                "Are you sure you want to remove this backdrop image?"))
+        {
+            return;
+        }
+
+        PlaylistEditor.BackdropFile = null;
+        PlaylistEditor.BackdropFileName = null;
+        PlaylistEditor.BackdropPreviewDataUrl = null;
+        PlaylistEditor.BackdropImagePath = null;
+    }
+
     private async Task SaveNewStoryAsync()
     {
         if (NewStoryEditor is null)
@@ -2013,8 +2325,7 @@
             }
 
             await RefreshStoriesAsync(result.EntityId);
-            NewStoryEditor = null;
-            IsNewStoryDialogOpen = false;
+            CloseNewStoryDialogCore();
             if (string.IsNullOrWhiteSpace(ErrorMessage))
             {
                 SetStatus(T("Nuwe storie is geskep en opgelaai.", "New story was created and uploaded."));
@@ -2042,6 +2353,8 @@
         IsSavingStory = true;
         ClearFeedback();
         var uploadedObjectKeys = new List<string>();
+        var originalCoverImagePath = StoryEditor.CoverImagePath;
+        var originalThumbnailImagePath = StoryEditor.ThumbnailImagePath;
 
         try
         {
@@ -2136,6 +2449,8 @@
             StoryEditor.AudioFile = null;
             StoryEditor.AudioFileName = null;
 
+            await CleanupReplacedImageAssetAsync(originalCoverImagePath, StoryEditor.CoverImagePath);
+            await CleanupReplacedImageAssetAsync(originalThumbnailImagePath, StoryEditor.ThumbnailImagePath);
             await RefreshStoriesAsync(StoryEditor.StoryId);
         }
         catch (Exception exception)
@@ -2161,6 +2476,8 @@
         ClearFeedback();
         var uploadedObjectKeys = new List<string>();
         var uploadedLocalFilePaths = new List<string>();
+        var originalLogoImagePath = PlaylistEditor.LogoImagePath;
+        var originalBackdropImagePath = PlaylistEditor.BackdropImagePath;
 
         try
         {
@@ -2247,6 +2564,8 @@
             PlaylistEditor.BackdropFile = null;
             PlaylistEditor.BackdropFileName = null;
 
+            await CleanupReplacedImageAssetAsync(originalLogoImagePath, PlaylistEditor.LogoImagePath);
+            await CleanupReplacedImageAssetAsync(originalBackdropImagePath, PlaylistEditor.BackdropImagePath);
             var selectedPlaylistId = result.EntityId ?? PlaylistEditor.PlaylistId;
             await RefreshPlaylistsAsync(selectedPlaylistId);
         }
@@ -3026,6 +3345,48 @@
         return Task.CompletedTask;
     }
 
+    private async Task CleanupReplacedImageAssetAsync(string? originalPath, string? updatedPath)
+    {
+        if (AdminManagedImageAssetHelper.AreEquivalent(originalPath, updatedPath))
+        {
+            return;
+        }
+
+        await DeleteManagedImageAssetAsync(originalPath);
+    }
+
+    private async Task DeleteManagedImageAssetAsync(string? imagePath)
+    {
+        var r2ObjectKey = AdminManagedImageAssetHelper.TryResolveR2ObjectKey(
+            imagePath,
+            CloudflareR2OptionsAccessor.Value.PublicBaseUrl);
+        if (!string.IsNullOrWhiteSpace(r2ObjectKey))
+        {
+            await StoryMediaStorageService.DeleteObjectIfExistsAsync(r2ObjectKey);
+            return;
+        }
+
+        var localFilePath = AdminManagedImageAssetHelper.TryResolveLocalUploadedFilePath(
+            imagePath,
+            WebHostEnvironment.WebRootPath);
+        if (string.IsNullOrWhiteSpace(localFilePath))
+        {
+            return;
+        }
+
+        try
+        {
+            if (File.Exists(localFilePath))
+            {
+                File.Delete(localFilePath);
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            Logger.LogWarning(exception, "Failed to delete managed image asset {ImagePath}.", imagePath);
+        }
+    }
+
     private bool HandleOperationResult(AdminOperationResult result, string successMessage)
     {
         if (!result.IsSuccess)
@@ -3037,6 +3398,73 @@
         SetStatus(successMessage);
         return true;
     }
+
+    private async Task<bool> ConfirmImageRemovalAsync(string afrikaansMessage, string englishMessage)
+    {
+        try
+        {
+            return await JSRuntime.InvokeAsync<bool>("confirm", T(afrikaansMessage, englishMessage));
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(exception, "Admin image removal confirmation could not be displayed.");
+            return false;
+        }
+    }
+
+    private async Task<bool> ConfirmDiscardDialogChangesAsync(bool isDirty)
+    {
+        if (!isDirty)
+        {
+            return true;
+        }
+
+        try
+        {
+            return await JSRuntime.InvokeAsync<bool>(
+                "confirm",
+                T(
+                    "Jy het ongestoorde veranderinge. Is jy seker jy wil sluit en dit verloor?",
+                    "You have unsaved changes. Are you sure you want to close and lose them?"));
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(exception, "Admin discard confirmation could not be displayed.");
+            return false;
+        }
+    }
+
+    private bool IsSubscriberEditorDirty() =>
+        SubscriberEditor is not null &&
+        !string.IsNullOrEmpty(SubscriberEditorStateSignature) &&
+        !string.Equals(
+            SubscriberEditorStateSignature,
+            BuildSubscriberEditorStateSignature(SubscriberEditor),
+            StringComparison.Ordinal);
+
+    private bool IsStoryEditorDirty() =>
+        StoryEditor is not null &&
+        !string.IsNullOrEmpty(StoryEditorStateSignature) &&
+        !string.Equals(
+            StoryEditorStateSignature,
+            BuildStoryEditorStateSignature(StoryEditor),
+            StringComparison.Ordinal);
+
+    private bool IsNewStoryEditorDirty() =>
+        NewStoryEditor is not null &&
+        !string.IsNullOrEmpty(NewStoryEditorStateSignature) &&
+        !string.Equals(
+            NewStoryEditorStateSignature,
+            BuildNewStoryEditorStateSignature(NewStoryEditor),
+            StringComparison.Ordinal);
+
+    private bool IsPlaylistEditorDirty() =>
+        PlaylistEditor is not null &&
+        !string.IsNullOrEmpty(PlaylistEditorStateSignature) &&
+        !string.Equals(
+            PlaylistEditorStateSignature,
+            BuildPlaylistEditorStateSignature(PlaylistEditor, PlaylistStoryEditor),
+            StringComparison.Ordinal);
 
     private void ClearFeedback()
     {
@@ -3380,8 +3808,103 @@
             : summary.Trim();
     }
 
+    private static string BuildSubscriberEditorStateSignature(EditableSubscriber editor)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            editor.SubscriberId,
+            Email = NormalizeDirtyText(editor.Email),
+            FirstName = NormalizeDirtyText(editor.FirstName),
+            LastName = NormalizeDirtyText(editor.LastName),
+            DisplayName = NormalizeDirtyText(editor.DisplayName),
+            MobileNumber = NormalizeDirtyText(editor.MobileNumber)
+        });
+    }
+
+    private static string BuildStoryEditorStateSignature(EditableStory editor)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            editor.StoryId,
+            Slug = NormalizeDirtyText(editor.Slug),
+            Title = NormalizeDirtyText(editor.Title),
+            Summary = NormalizeDirtyText(editor.Summary),
+            Description = NormalizeDirtyText(editor.Description),
+            CoverImagePath = NormalizeDirtyText(editor.CoverImagePath),
+            ThumbnailImagePath = NormalizeDirtyText(editor.ThumbnailImagePath),
+            CoverFile = BuildBrowserFileState(editor.CoverFile, editor.CoverFileName),
+            ThumbnailFile = BuildBrowserFileState(editor.ThumbnailFile, editor.ThumbnailFileName),
+            AudioFile = BuildBrowserFileState(editor.AudioFile, editor.AudioFileName),
+            AudioProvider = NormalizeDirtyText(editor.AudioProvider),
+            AudioBucket = NormalizeDirtyText(editor.AudioBucket),
+            AudioObjectKey = NormalizeDirtyText(editor.AudioObjectKey),
+            AudioContentType = NormalizeDirtyText(editor.AudioContentType),
+            AccessLevel = NormalizeDirtyText(editor.AccessLevel),
+            Status = NormalizeDirtyText(editor.Status),
+            editor.SortOrder,
+            editor.DurationSeconds,
+            PublishedAtLocal = NormalizeDirtyText(editor.PublishedAtLocal)
+        });
+    }
+
+    private static string BuildNewStoryEditorStateSignature(NewStoryDraft editor)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            Title = NormalizeDirtyText(editor.Title),
+            Summary = NormalizeDirtyText(editor.Summary),
+            Description = NormalizeDirtyText(editor.Description),
+            AccessLevel = NormalizeDirtyText(editor.AccessLevel),
+            editor.PublishNow,
+            CoverFile = BuildBrowserFileState(editor.CoverFile, editor.CoverFileName),
+            ThumbnailFile = BuildBrowserFileState(editor.ThumbnailFile, editor.ThumbnailFileName),
+            AudioFile = BuildBrowserFileState(editor.AudioFile, editor.AudioFileName)
+        });
+    }
+
+    private static string BuildPlaylistEditorStateSignature(
+        EditablePlaylist editor,
+        IReadOnlyList<EditablePlaylistStoryItem> storyItems)
+    {
+        return JsonSerializer.Serialize(new
+        {
+            editor.PlaylistId,
+            Slug = NormalizeDirtyText(editor.Slug),
+            Title = NormalizeDirtyText(editor.Title),
+            Description = NormalizeDirtyText(editor.Description),
+            LogoImagePath = NormalizeDirtyText(editor.LogoImagePath),
+            BackdropImagePath = NormalizeDirtyText(editor.BackdropImagePath),
+            LogoFile = BuildBrowserFileState(editor.LogoFile, editor.LogoFileName),
+            BackdropFile = BuildBrowserFileState(editor.BackdropFile, editor.BackdropFileName),
+            editor.SortOrder,
+            editor.MaxItems,
+            editor.IsEnabled,
+            editor.ShowOnHome,
+            editor.ShowShowcaseImageOnLuisterPage,
+            StoryItems = storyItems.Select(item => new
+            {
+                item.StoryId,
+                item.SortOrder,
+                item.IsShowcase
+            })
+        });
+    }
+
     private static string GetSelectedFileLabel(string? fileName, string emptyStateLabel) =>
         string.IsNullOrWhiteSpace(fileName) ? emptyStateLabel : fileName.Trim();
+
+    private static string? NormalizeDirtyText(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static string? BuildBrowserFileState(IBrowserFile? file, string? fallbackFileName = null)
+    {
+        if (file is null)
+        {
+            return NormalizeDirtyText(fallbackFileName);
+        }
+
+        return $"{NormalizeDirtyText(file.Name)}|{file.Size}|{NormalizeDirtyText(file.ContentType)}";
+    }
 
     private static string CreatePlaylistSlug(string? value)
     {
@@ -3630,6 +4153,37 @@
             : T("Geen", "None");
     }
 
+    private static string? BuildAdminStoryOpenPath(AdminStoryRecord story)
+    {
+        if (string.IsNullOrWhiteSpace(story.Slug))
+        {
+            return null;
+        }
+
+        var encodedSlug = Uri.EscapeDataString(story.Slug.Trim());
+        return string.Equals(story.AccessLevel, "free", StringComparison.OrdinalIgnoreCase)
+            ? $"/gratis/{encodedSlug}"
+            : $"/luister/{encodedSlug}";
+    }
+
+    private static string? BuildAdminPlaylistPlayerPath(AdminPlaylistRecord playlist)
+    {
+        if (string.IsNullOrWhiteSpace(playlist.Slug))
+        {
+            return null;
+        }
+
+        return $"/luister/speellys/{Uri.EscapeDataString(playlist.Slug.Trim())}";
+    }
+
+    private static string? BuildAdminPlaylistShowcasePath(AdminPlaylistRecord playlist)
+    {
+        var playerPath = BuildAdminPlaylistPlayerPath(playlist);
+        return string.IsNullOrWhiteSpace(playerPath)
+            ? null
+            : $"{playerPath}/stories";
+    }
+
     private sealed record PlaylistImageUploadResult(
         string PublicPath,
         string? R2ObjectKey = null,
@@ -3746,8 +4300,8 @@
         public bool IsSystemPlaylist { get; set; }
         public string? SystemKey { get; set; }
         public string? Description { get; set; }
-        public string? LogoImagePath { get; set; } = StoryPlaylist.DefaultLogoImagePath;
-        public string? BackdropImagePath { get; set; } = StoryPlaylist.DefaultBackdropImagePath;
+        public string? LogoImagePath { get; set; }
+        public string? BackdropImagePath { get; set; }
         public IBrowserFile? LogoFile { get; set; }
         public string? LogoFileName { get; set; }
         public string? LogoPreviewDataUrl { get; set; }
@@ -3769,10 +4323,10 @@
             SystemKey = playlist.SystemKey,
             Description = playlist.Description,
             LogoImagePath = string.IsNullOrWhiteSpace(playlist.LogoImagePath)
-                ? StoryPlaylist.DefaultLogoImagePath
+                ? null
                 : playlist.LogoImagePath,
             BackdropImagePath = string.IsNullOrWhiteSpace(playlist.BackdropImagePath)
-                ? StoryPlaylist.DefaultBackdropImagePath
+                ? null
                 : playlist.BackdropImagePath,
             SortOrder = playlist.SortOrder,
             MaxItems = playlist.MaxItems,

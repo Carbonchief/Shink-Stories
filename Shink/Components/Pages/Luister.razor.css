@@ -1,10 +1,10 @@
 .luister-page-shell {
     --luister-first-screen-reserve: clamp(17.5rem, 45svh, 20rem);
+    --luister-page-inline-padding: max(0.9rem, calc((100% - 1080px) / 2 + 0.9rem));
     position: relative;
-    width: 100vw;
-    margin-left: calc(50% - 50vw);
-    margin-right: calc(50% - 50vw);
-    padding: 1rem max(0.9rem, calc((100vw - 1080px) / 2 + 0.9rem)) 0;
+    width: 100%;
+    margin: 0;
+    padding: 1rem var(--luister-page-inline-padding) 0;
     background:
         linear-gradient(180deg, rgba(64, 141, 147, 0.18) 0%, rgba(79, 157, 179, 0.14) 18%, rgba(212, 207, 105, 0.2) 46%, rgba(239, 239, 239, 0.88) 78%, #efefef 100%);
 }
@@ -308,9 +308,9 @@ h1 {
 }
 
 .luister-stories-section .stories-carousel-shell {
-    width: 100vw;
-    margin-left: calc(50% - 50vw);
-    margin-right: calc(50% - 50vw);
+    width: auto;
+    margin-left: calc(-1 * var(--luister-page-inline-padding));
+    margin-right: calc(-1 * var(--luister-page-inline-padding));
     padding-inline: 0;
 }
 
@@ -583,7 +583,8 @@ h1 {
 @media (max-width: 680px) {
     .luister-page-shell {
         --luister-first-screen-reserve: clamp(16.5rem, 46svh, 19rem);
-        padding: 0.8rem 0.85rem 0;
+        --luister-page-inline-padding: 0.85rem;
+        padding-top: 0.8rem;
     }
 
     .gratis-hero {

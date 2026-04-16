@@ -326,6 +326,8 @@
 
 .admin-search button,
 .admin-btn,
+.admin-table-actions button,
+.admin-table-actions a,
 .admin-playlist-actions button,
 .admin-story-picker button {
     min-height: 40px;
@@ -339,6 +341,10 @@
     background: #f3a13f;
 }
 
+.admin-table-actions a {
+    text-decoration: none;
+}
+
 .admin-btn.admin-btn-secondary {
     border-color: var(--admin-border-strong);
     background: #24384c;
@@ -346,6 +352,7 @@
 }
 
 .admin-btn:disabled,
+.admin-table-actions button:disabled,
 .admin-playlist-actions button:disabled {
     cursor: not-allowed;
     opacity: 0.6;
@@ -585,6 +592,11 @@
     font-size: 0.85rem;
 }
 
+.admin-image-preview-media {
+    position: relative;
+    display: grid;
+}
+
 .admin-image-preview-card img {
     width: 100%;
     aspect-ratio: 1 / 1;
@@ -594,8 +606,38 @@
     background: #0f1a25;
 }
 
+.admin-image-preview-remove {
+    position: absolute;
+    top: 0.55rem;
+    right: 0.55rem;
+    width: 36px;
+    min-width: 36px;
+    min-height: 36px;
+    border: 0;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffeef2;
+    background: rgba(122, 50, 64, 0.92);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
+    cursor: pointer;
+    transition: transform 0.16s ease, filter 0.16s ease;
+}
+
+.admin-image-preview-remove:hover,
+.admin-image-preview-remove:focus-visible {
+    transform: translateY(-1px);
+    filter: brightness(1.06);
+}
+
 .admin-playlist-preview-grid {
     align-items: start;
+}
+
+.admin-playlist-preview-card .admin-image-preview-media {
+    width: min(100%, 180px);
+    justify-self: start;
 }
 
 .admin-playlist-preview-card img {
@@ -728,27 +770,39 @@
     color: var(--admin-muted);
 }
 
-.admin-playlist-actions {
+.admin-playlist-actions,
+.admin-table-actions {
     display: flex;
     flex-wrap: wrap;
     gap: 0.3rem;
+}
+
+.admin-playlist-actions {
     justify-content: flex-end;
+}
+
+.admin-table-actions {
+    justify-content: center;
 }
 
 .admin-col-center {
     text-align: center;
 }
 
-.admin-playlist-grid .admin-playlist-actions {
+.admin-playlist-grid .admin-playlist-actions,
+.admin-playlist-grid .admin-table-actions {
     justify-content: center;
 }
 
-.admin-playlist-actions button {
+.admin-playlist-actions button,
+.admin-table-actions button,
+.admin-table-actions a {
     min-height: 34px;
     padding: 0.4rem 0.55rem;
 }
 
-.admin-playlist-actions .admin-icon-btn {
+.admin-playlist-actions .admin-icon-btn,
+.admin-table-actions .admin-icon-btn {
     width: 34px;
     min-width: 34px;
     min-height: 34px;
@@ -924,7 +978,8 @@
     gap: 0.15rem;
 }
 
-.admin-playlist-actions .is-danger {
+.admin-playlist-actions .is-danger,
+.admin-table-actions .is-danger {
     background: #5f2531;
     color: #ffe2e8;
 }
