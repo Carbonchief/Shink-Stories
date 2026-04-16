@@ -1,0 +1,176 @@
+Using launch settings from C:\Users\LVanderwalt\source\repos\Shink\Shink\Properties\launchSettings.json...
+Building...
+warn: Shink[0]
+      Cloudflare R2 PublicBaseUrl is using the managed r2.dev domain (https://pub-0696529d5a7d426882c0dcb881a7d08d.r2.dev). Cloudflare documents r2.dev as a testing endpoint with variable throttling; switch to a custom domain for production media delivery.
+info: Shink[0]
+      PostHog analytics is configured with host https://eu.i.posthog.com.
+info: System.Net.Http.HttpClient.IStoryCatalogService.LogicalHandler[100]
+      Start processing HTTP request GET https://btpsoyiyhtfbeznonygn.supabase.co/rest/v1/stories?*
+info: System.Net.Http.HttpClient.IStoryCatalogService.ClientHandler[100]
+      Sending HTTP request GET https://btpsoyiyhtfbeznonygn.supabase.co/rest/v1/stories?*
+info: System.Net.Http.HttpClient.IStoryCatalogService.ClientHandler[101]
+      Received HTTP response headers after 1114.5917ms - 200
+info: System.Net.Http.HttpClient.IStoryCatalogService.LogicalHandler[101]
+      End processing HTTP request after 1128.3002ms - 200
+info: System.Net.Http.HttpClient.IStoryCatalogService.LogicalHandler[100]
+      Start processing HTTP request GET https://btpsoyiyhtfbeznonygn.supabase.co/rest/v1/story_playlists?*
+info: System.Net.Http.HttpClient.IStoryCatalogService.ClientHandler[100]
+      Sending HTTP request GET https://btpsoyiyhtfbeznonygn.supabase.co/rest/v1/story_playlists?*
+info: System.Net.Http.HttpClient.IStoryCatalogService.ClientHandler[101]
+      Received HTTP response headers after 489.4349ms - 200
+info: System.Net.Http.HttpClient.IStoryCatalogService.LogicalHandler[101]
+      End processing HTTP request after 489.606ms - 200
+info: System.Net.Http.HttpClient.IStoryCatalogService.LogicalHandler[100]
+      Start processing HTTP request GET https://btpsoyiyhtfbeznonygn.supabase.co/rest/v1/story_playlist_items?*
+info: System.Net.Http.HttpClient.IStoryCatalogService.ClientHandler[100]
+      Sending HTTP request GET https://btpsoyiyhtfbeznonygn.supabase.co/rest/v1/story_playlist_items?*
+info: System.Net.Http.HttpClient.IStoryCatalogService.ClientHandler[101]
+      Received HTTP response headers after 373.9963ms - 200
+info: System.Net.Http.HttpClient.IStoryCatalogService.LogicalHandler[101]
+      End processing HTTP request after 374.1193ms - 200
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://127.0.0.1:5007
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Development
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: C:\Users\LVanderwalt\source\repos\Shink\Shink
+warn: Microsoft.AspNetCore.HttpsPolicy.HttpsRedirectionMiddleware[3]
+      Failed to determine the https port for redirect.
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[100]
+      Start processing HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/kokketiel-se-kuif-cover-20260414103058-60bbbc70614043e48b5cb1646a039b09.jpg
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[100]
+      Start processing HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/grootseun-die-wildebakkie-thumbnail-20260415090207-f9fe27d503314a6c879426eec1e25950.jpg
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[100]
+      Sending HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/kokketiel-se-kuif-cover-20260414103058-60bbbc70614043e48b5cb1646a039b09.jpg
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[100]
+      Sending HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/grootseun-die-wildebakkie-thumbnail-20260415090207-f9fe27d503314a6c879426eec1e25950.jpg
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[100]
+      Start processing HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/rammetjie-uitnek-thumbnail-20260415130304-411e4d42c06a4e7d99c779323f63cd8a.jpg
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[100]
+      Sending HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/rammetjie-uitnek-thumbnail-20260415130304-411e4d42c06a4e7d99c779323f63cd8a.jpg
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[100]
+      Start processing HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/dit-was-jou-stert-thumbnail-20260415130354-bc13e5fc20df4d35acd52f845be63bd8.jpg
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[100]
+      Sending HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/dit-was-jou-stert-thumbnail-20260415130354-bc13e5fc20df4d35acd52f845be63bd8.jpg
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[100]
+      Start processing HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/nah-nah-thumbnail-20260415090316-156e132f7a9d407793ab604588933722.jpg
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[100]
+      Sending HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/nah-nah-thumbnail-20260415090316-156e132f7a9d407793ab604588933722.jpg
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[100]
+      Start processing HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/diekwaaigrommel-thumbnail-20260415130421-9b91fc02f71a496e9b61bcf8fdf89e7e.jpg
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[100]
+      Sending HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/diekwaaigrommel-thumbnail-20260415130421-9b91fc02f71a496e9b61bcf8fdf89e7e.jpg
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[101]
+      Received HTTP response headers after 50.6898ms - 200
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[101]
+      Received HTTP response headers after 53.572ms - 200
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[101]
+      End processing HTTP request after 50.8136ms - 200
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[101]
+      End processing HTTP request after 53.7562ms - 200
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[101]
+      Received HTTP response headers after 53.8074ms - 200
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[101]
+      End processing HTTP request after 53.883ms - 200
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[101]
+      Received HTTP response headers after 53.8591ms - 200
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[101]
+      End processing HTTP request after 53.9178ms - 200
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[101]
+      Received HTTP response headers after 54.1258ms - 200
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[101]
+      End processing HTTP request after 54.2384ms - 200
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[101]
+      Received HTTP response headers after 58.0861ms - 200
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[101]
+      End processing HTTP request after 58.1757ms - 200
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[100]
+      Start processing HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/stewels-thumbnail-20260415130457-545f73a92c4a4586b7b3b592e8923f4e.jpg
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[100]
+      Sending HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/stewels-thumbnail-20260415130457-545f73a92c4a4586b7b3b592e8923f4e.jpg
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[100]
+      Start processing HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/die-buffel-baas-thumbnail-20260415130516-c3642bc671c8464bbc61055c0e527f2f.jpg
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[100]
+      Sending HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/die-buffel-baas-thumbnail-20260415130516-c3642bc671c8464bbc61055c0e527f2f.jpg
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[100]
+      Start processing HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/seekoei-sluit-sy-mond-toe-thumbnail-20260415090104-33509b12f9dd48fb8fe0b3346bf9a0e1.jpg
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[100]
+      Sending HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/seekoei-sluit-sy-mond-toe-thumbnail-20260415090104-33509b12f9dd48fb8fe0b3346bf9a0e1.jpg
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[101]
+      Received HTTP response headers after 9.646ms - 200
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[101]
+      End processing HTTP request after 9.8701ms - 200
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[101]
+      Received HTTP response headers after 15.6119ms - 200
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[101]
+      Received HTTP response headers after 9.3772ms - 200
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[101]
+      End processing HTTP request after 9.4903ms - 200
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[101]
+      End processing HTTP request after 15.8054ms - 200
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[100]
+      Start processing HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/kokketiel-se-kuif-thumbnail-20260414103102-97afcee6525b4bc38592677be21a98f3.jpg
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[100]
+      Sending HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/kokketiel-se-kuif-thumbnail-20260414103102-97afcee6525b4bc38592677be21a98f3.jpg
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[100]
+      Start processing HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/llama-llama-pajama-llama-thumbnail-20260415131030-53ab2d256ac24eac9ca1e1937d6511e6.jpg
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[100]
+      Sending HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/llama-llama-pajama-llama-thumbnail-20260415131030-53ab2d256ac24eac9ca1e1937d6511e6.jpg
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[101]
+      Received HTTP response headers after 8.5299ms - 200
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[101]
+      End processing HTTP request after 8.7478ms - 200
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[100]
+      Start processing HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/die-fluistervarke-thumbnail-20260415130749-7312995f20e74af18858fe325a9a3a9e.jpg
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[100]
+      Sending HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/die-fluistervarke-thumbnail-20260415130749-7312995f20e74af18858fe325a9a3a9e.jpg
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[101]
+      Received HTTP response headers after 12.2561ms - 200
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[101]
+      End processing HTTP request after 12.3844ms - 200
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[100]
+      Start processing HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/haily-hasie-se-groentetuin-thumbnail-20260415130814-916df063e23c47e3adf13152d1a3915a.jpg
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[100]
+      Sending HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/haily-hasie-se-groentetuin-thumbnail-20260415130814-916df063e23c47e3adf13152d1a3915a.jpg
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[101]
+      Received HTTP response headers after 22.3966ms - 200
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[101]
+      End processing HTTP request after 22.535ms - 200
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[101]
+      Received HTTP response headers after 10.7206ms - 200
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[101]
+      End processing HTTP request after 10.83ms - 200
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[100]
+      Start processing HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/schink-stories-02-ai-piesang-thumbnail-20260415104317-e17570a0232241a390c098f3542f4718.jpg
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[100]
+      Sending HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/schink-stories-02-ai-piesang-thumbnail-20260415104317-e17570a0232241a390c098f3542f4718.jpg
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[100]
+      Start processing HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/die-kwaai-bok-sit-vas-thumbnail-20260415145458-af5ebcaedea54691b320c1e122e7c3ca.jpg
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[100]
+      Sending HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/die-kwaai-bok-sit-vas-thumbnail-20260415145458-af5ebcaedea54691b320c1e122e7c3ca.jpg
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[100]
+      Start processing HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/dankie-en-die-mislukke-skree-thumbnail-20260415150056-cf7c5e56231b4a08a45317b86a99ad55.jpg
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[100]
+      Sending HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/dankie-en-die-mislukke-skree-thumbnail-20260415150056-cf7c5e56231b4a08a45317b86a99ad55.jpg
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[100]
+      Start processing HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/aarbeitjie-thumbnail-20260415103720-0cf40444582f4b538ceb8fb310cccff9.jpg
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[100]
+      Sending HTTP request GET https://media.prioritybit.co.za/uploaded/stories/images/2026/04/aarbeitjie-thumbnail-20260415103720-0cf40444582f4b538ceb8fb310cccff9.jpg
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[101]
+      Received HTTP response headers after 10.392ms - 200
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[101]
+      End processing HTTP request after 10.4838ms - 200
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[101]
+      Received HTTP response headers after 11.5276ms - 200
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[101]
+      End processing HTTP request after 11.615ms - 200
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[101]
+      Received HTTP response headers after 7.6761ms - 200
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[101]
+      End processing HTTP request after 7.8016ms - 200
+info: System.Net.Http.HttpClient.audio-origin.ClientHandler[101]
+      Received HTTP response headers after 8.1623ms - 200
+info: System.Net.Http.HttpClient.audio-origin.LogicalHandler[101]
+      End processing HTTP request after 8.3246ms - 200
