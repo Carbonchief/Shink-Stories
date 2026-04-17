@@ -107,23 +107,39 @@ else
         var playlist = HomePlaylists[index];
         var headingId = $"home-playlist-{playlist.Slug}-heading";
         var hasDescription = !string.IsNullOrWhiteSpace(playlist.Description);
+        var isWeeklyPopularPlaylist = IsWeeklyPopularPlaylist(playlist);
+        var displayTitle = GetHomePlaylistTitle(playlist);
+        var sectionClassName = isWeeklyPopularPlaylist
+            ? "section-block stories-carousel-section stories-carousel-section-ranked home-scroll-reveal"
+            : "section-block stories-carousel-section home-scroll-reveal";
+        var carouselClassName = $"stories-carousel {(playlist.Stories.Count <= 3 ? "stories-carousel-free" : string.Empty)}";
+        var rankedStoryItemStyle = isWeeklyPopularPlaylist ? WeeklyPopularStoryItemInlineStyle : null;
 
-        <section class="section-block stories-carousel-section home-scroll-reveal" style="--home-reveal-delay: 0.08s;" aria-labelledby="@headingId">
-            <h2 id="@headingId">@playlist.Title</h2>
+        <section class="@sectionClassName" style="--home-reveal-delay: 0.08s;" aria-labelledby="@headingId">
+            <h2 id="@headingId">@displayTitle</h2>
             @if (hasDescription)
             {
                 <p class="section-intro">@playlist.Description</p>
             }
 
             <div class="stories-carousel-shell">
-                <div class="@($"stories-carousel {(playlist.Stories.Count <= 3 ? "stories-carousel-free" : string.Empty)}")"
+                <div class="@carouselClassName"
                      role="list"
-                     aria-label="@playlist.Title">
-                @foreach (var story in playlist.Stories)
+                     aria-label="@displayTitle">
+                @for (var storyIndex = 0; storyIndex < playlist.Stories.Count; storyIndex++)
                 {
+                    var story = playlist.Stories[storyIndex];
                     var storyPath = GetHomeStoryHref(story);
                     var canAccessStory = HasAccessToStory(story);
-                    <article class="story-carousel-item" role="listitem">
+                    var articleClassName = isWeeklyPopularPlaylist
+                        ? "story-carousel-item story-carousel-item-ranked"
+                        : "story-carousel-item";
+
+                    <article class="@articleClassName" style="@rankedStoryItemStyle" role="listitem">
+                        @if (isWeeklyPopularPlaylist)
+                        {
+                            <span class="story-carousel-rank" style="@WeeklyPopularStoryRankInlineStyle" aria-hidden="true">@((storyIndex + 1).ToString(CultureInfo.InvariantCulture))</span>
+                        }
                         @if (canAccessStory)
                         {
                             <a class="story-carousel-link"
@@ -617,6 +633,26 @@ else
             HasStoryCornerOrAll: hasStoryCorner || hasAllStories,
             HasAllStories: hasAllStories);
     }
+
+    private static string GetHomePlaylistTitle(StoryPlaylist playlist) =>
+        IsWeeklyPopularPlaylist(playlist)
+            ? "Gewild dié week"
+            : playlist.Title;
+
+    private static bool IsWeeklyPopularPlaylist(StoryPlaylist playlist) =>
+        string.Equals(playlist.SystemKey, "popular-stories-this-week", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(playlist.Slug, "popular-stories-this-week", StringComparison.OrdinalIgnoreCase);
+
+    private const string WeeklyPopularStoryItemInlineStyle =
+        "position:relative;padding-top:clamp(0.78rem,1.2vw,1rem);";
+
+    private const string WeeklyPopularStoryRankInlineStyle =
+        "position:absolute;top:0;left:0;z-index:6;display:block;pointer-events:none;user-select:none;" +
+        "font-family:'Arial Rounded MT Bold','Trebuchet MS','Segoe UI',sans-serif;" +
+        "font-size:clamp(2.5rem,8vw,4.7rem);font-weight:900;line-height:0.82;letter-spacing:-0.11em;" +
+        "color:#fffef8;-webkit-text-stroke:2px rgba(205,214,214,0.92);" +
+        "text-shadow:0 5px 10px rgba(52,65,70,0.28),-1px -1px 0 rgba(205,214,214,0.92)," +
+        "1px -1px 0 rgba(205,214,214,0.92),-1px 1px 0 rgba(205,214,214,0.92),1px 1px 0 rgba(205,214,214,0.92);";
 
     private static string BuildOpsiesHref(string returnPath)
     {
