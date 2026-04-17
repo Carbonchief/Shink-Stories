@@ -14,6 +14,7 @@ using System.Net.Http.Headers;
 using System.Net.Mail;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.RateLimiting;
 using System.Xml.Linq;
@@ -105,6 +106,8 @@ builder.Services.AddHttpClient<IStoryCatalogService, SupabaseStoryCatalogService
 builder.Services.AddHttpClient<PayFastCheckoutService>();
 builder.Services.AddHttpClient<PaystackCheckoutService>();
 builder.Services.AddHttpClient<ISubscriptionLedgerService, SupabaseSubscriptionLedgerService>();
+builder.Services.AddHttpClient<IStoreOrderService, SupabaseStoreOrderService>();
+builder.Services.AddHttpClient<IStoreOrderNotificationService, ResendStoreOrderNotificationService>();
 builder.Services.AddHttpClient<IStoryTrackingService, SupabaseStoryTrackingService>();
 builder.Services.AddHttpClient<IStoryFavoriteService, SupabaseStoryFavoriteService>();
 builder.Services.AddHttpClient<IResourceCatalogService, SupabaseResourceCatalogService>();
@@ -161,6 +164,17 @@ builder.Services.AddRateLimiter(options =>
         {
             PermitLimit = 180,
             Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
+    });
+    options.AddPolicy("store-checkout", httpContext =>
+    {
+        var clientId = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown-client";
+        return RateLimitPartition.GetFixedWindowLimiter($"store:{clientId}", _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 12,
+            Window = TimeSpan.FromMinutes(10),
             QueueLimit = 0,
             AutoReplenishment = true
         });
@@ -634,6 +648,190 @@ app.MapGet("/betaal/{planSlug}", async (
     return Results.Content(html, "text/html; charset=utf-8");
 });
 
+app.MapPost("/winkel/koop/paystack", async (
+    HttpContext httpContext,
+    PaystackCheckoutService paystackCheckoutService,
+    IStoreOrderService storeOrderService,
+    ILogger<Program> logger) =>
+{
+    if (!httpContext.Request.HasFormContentType)
+    {
+        return Results.Redirect(BuildStorePageRedirectPath(
+            paymentStatus: "misluk",
+            message: "Gebruik asseblief die bestelvorm op die winkelblad."));
+    }
+
+    var form = await httpContext.Request.ReadFormAsync(httpContext.RequestAborted);
+    if (!TryBuildStoreCheckoutDraft(form, out var product, out var draft, out var amountInCents, out var errorMessage))
+    {
+        var requestedProductSlug = NormalizeOptionalFormText(form["produk"], 120);
+        return Results.Redirect(BuildStorePageRedirectPath(
+            paymentStatus: "misluk",
+            productSlug: requestedProductSlug,
+            message: errorMessage));
+    }
+
+    var selectedProduct = product!;
+    var storeDraft = draft!;
+
+    var createResult = await storeOrderService.CreatePendingOrderAsync(storeDraft, httpContext.RequestAborted);
+    if (!createResult.IsSuccess || createResult.Order is null)
+    {
+        logger.LogWarning(
+            "Store order create failed. product={ProductSlug} email={Email} error={Error}",
+            storeDraft.ProductSlug,
+            storeDraft.CustomerEmail,
+            createResult.ErrorMessage);
+
+        return Results.Redirect(BuildStorePageRedirectPath(
+            paymentStatus: "misluk",
+            productSlug: storeDraft.ProductSlug,
+            message: createResult.ErrorMessage ?? "Kon nie jou bestelling nou begin nie."));
+    }
+
+    var callbackPath = QueryHelpers.AddQueryString("/winkel/paystack/callback", new Dictionary<string, string?>
+    {
+        ["verwysing"] = createResult.Order.OrderReference
+    });
+
+    var checkoutResult = await paystackCheckoutService.InitializeStoreCheckoutAsync(
+        new StorePaystackCheckoutRequest(
+            OrderReference: createResult.Order.OrderReference,
+            ProductSlug: selectedProduct.Slug,
+            ProductName: selectedProduct.Name,
+            Quantity: storeDraft.Quantity,
+            CustomerName: storeDraft.CustomerName,
+            CustomerEmail: storeDraft.CustomerEmail,
+            CustomerPhone: storeDraft.CustomerPhone,
+            AmountInCents: amountInCents,
+            CallbackPath: callbackPath,
+            CancelPath: BuildStorePageRedirectPath(
+                paymentStatus: "gekanselleer",
+                productSlug: storeDraft.ProductSlug,
+                orderReference: createResult.Order.OrderReference)),
+        httpContext,
+        httpContext.RequestAborted);
+
+    if (!checkoutResult.IsSuccess || string.IsNullOrWhiteSpace(checkoutResult.AuthorizationUrl))
+    {
+        logger.LogWarning(
+            "Store Paystack initialize failed. reference={Reference} product={ProductSlug} error={Error}",
+            createResult.Order.OrderReference,
+            storeDraft.ProductSlug,
+            checkoutResult.ErrorMessage);
+
+        return Results.Redirect(BuildStorePageRedirectPath(
+            paymentStatus: "misluk",
+            productSlug: storeDraft.ProductSlug,
+            orderReference: createResult.Order.OrderReference,
+            message: checkoutResult.ErrorMessage ?? "Kon nie Paystack nou begin nie."));
+    }
+
+    logger.LogInformation(
+        "Store Paystack checkout initialized. reference={Reference} product={ProductSlug} quantity={Quantity}",
+        createResult.Order.OrderReference,
+        storeDraft.ProductSlug,
+        storeDraft.Quantity);
+
+    return Results.Redirect(checkoutResult.AuthorizationUrl);
+})
+.DisableAntiforgery()
+.RequireRateLimiting("store-checkout");
+
+app.MapGet("/winkel/paystack/callback", async (
+    string? reference,
+    string? trxref,
+    string? verwysing,
+    HttpContext httpContext,
+    PaystackCheckoutService paystackCheckoutService,
+    IStoreOrderService storeOrderService,
+    IStoreOrderNotificationService storeOrderNotificationService,
+    ILogger<Program> logger) =>
+{
+    var resolvedReference = ResolveStorePaymentReference(reference, trxref, verwysing);
+    if (string.IsNullOrWhiteSpace(resolvedReference))
+    {
+        return Results.Redirect(BuildStorePageRedirectPath(
+            paymentStatus: "misluk",
+            message: "Ons kon nie jou betaling verwysing vind nie."));
+    }
+
+    var verifyResult = await paystackCheckoutService.VerifyTransactionAsync(resolvedReference, httpContext.RequestAborted);
+    if (!verifyResult.IsSuccess)
+    {
+        var existingOrder = await storeOrderService.GetOrderByReferenceAsync(resolvedReference, httpContext.RequestAborted);
+        if (existingOrder is not null &&
+            string.Equals(existingOrder.PaymentStatus, "paid", StringComparison.OrdinalIgnoreCase))
+        {
+            return Results.Redirect(BuildStorePageRedirectPath(
+                paymentStatus: "sukses",
+                productSlug: existingOrder.ProductSlug,
+                orderReference: existingOrder.OrderReference));
+        }
+
+        logger.LogWarning(
+            "Store Paystack verify failed. reference={Reference} error={Error}",
+            resolvedReference,
+            verifyResult.ErrorMessage);
+
+        return Results.Redirect(BuildStorePageRedirectPath(
+            paymentStatus: "verwerk",
+            productSlug: existingOrder?.ProductSlug,
+            orderReference: existingOrder?.OrderReference ?? resolvedReference,
+            message: "Ons verwerk nog jou betaling. Kyk weer oor 'n oomblik."));
+    }
+
+    if (verifyResult.AmountInCents <= 0 || verifyResult.AmountInCents > int.MaxValue)
+    {
+        logger.LogWarning(
+            "Store Paystack verify returned invalid amount. reference={Reference} amount={Amount}",
+            resolvedReference,
+            verifyResult.AmountInCents);
+
+        return Results.Redirect(BuildStorePageRedirectPath(
+            paymentStatus: "verwerk",
+            orderReference: resolvedReference,
+            message: "Ons verwerk nog jou betaling."));
+    }
+
+    var paymentUpdate = new StoreOrderPaymentUpdate(
+        OrderReference: verifyResult.Reference ?? resolvedReference,
+        PaymentStatus: verifyResult.TransactionStatus ?? "pending",
+        AmountInCents: (int)verifyResult.AmountInCents,
+        Currency: verifyResult.Currency ?? "ZAR",
+        CustomerEmail: verifyResult.CustomerEmail,
+        ProviderTransactionId: verifyResult.ProviderTransactionId,
+        PaidAt: verifyResult.PaidAt,
+        StatusReason: verifyResult.GatewayResponse ?? verifyResult.ErrorMessage,
+        RawPayload: verifyResult.RawPayload ?? string.Empty,
+        Source: "verify");
+
+    var updateResult = await storeOrderService.ApplyPaymentUpdateAsync(paymentUpdate, httpContext.RequestAborted);
+    if (!updateResult.IsSuccess || updateResult.Order is null)
+    {
+        logger.LogWarning(
+            "Store Paystack verify persistence failed. reference={Reference} error={Error}",
+            resolvedReference,
+            updateResult.ErrorMessage);
+
+        return Results.Redirect(BuildStorePageRedirectPath(
+            paymentStatus: "verwerk",
+            orderReference: resolvedReference,
+            message: updateResult.ErrorMessage ?? "Ons verwerk nog jou betaling."));
+    }
+
+    await TryNotifyPaidStoreOrderAsync(
+        updateResult,
+        storeOrderNotificationService,
+        logger,
+        httpContext.RequestAborted);
+
+    return Results.Redirect(BuildStorePageRedirectPath(
+        paymentStatus: ResolveStorePaymentStatusQueryValue(updateResult.Order.PaymentStatus),
+        productSlug: updateResult.Order.ProductSlug,
+        orderReference: updateResult.Order.OrderReference));
+});
+
 app.MapPost("/api/payfast/notify", async (HttpContext httpContext, PayFastCheckoutService payFastCheckoutService, ISubscriptionLedgerService subscriptionLedgerService, ILogger<Program> logger) =>
 {
     if (!httpContext.Request.HasFormContentType)
@@ -687,7 +885,13 @@ app.MapPost("/api/payfast/notify", async (HttpContext httpContext, PayFastChecko
     return Results.Ok();
 }).DisableAntiforgery();
 
-app.MapPost("/api/paystack/webhook", async (HttpContext httpContext, PaystackCheckoutService paystackCheckoutService, ISubscriptionLedgerService subscriptionLedgerService, ILogger<Program> logger) =>
+app.MapPost("/api/paystack/webhook", async (
+    HttpContext httpContext,
+    PaystackCheckoutService paystackCheckoutService,
+    ISubscriptionLedgerService subscriptionLedgerService,
+    IStoreOrderService storeOrderService,
+    IStoreOrderNotificationService storeOrderNotificationService,
+    ILogger<Program> logger) =>
 {
     using var reader = new StreamReader(httpContext.Request.Body, Encoding.UTF8);
     var payload = await reader.ReadToEndAsync(httpContext.RequestAborted);
@@ -702,6 +906,32 @@ app.MapPost("/api/paystack/webhook", async (HttpContext httpContext, PaystackChe
     if (!signatureValid)
     {
         logger.LogWarning("Paystack webhook rejected: invalid signature.");
+        return Results.Ok();
+    }
+
+    if (IsStorePaystackWebhookPayload(payload))
+    {
+        var storePersistResult = await storeOrderService.RecordPaystackWebhookAsync(payload, httpContext.RequestAborted);
+        if (!storePersistResult.IsSuccess)
+        {
+            logger.LogWarning(
+                "Paystack store persistence failed. Error={Error}",
+                storePersistResult.ErrorMessage);
+        }
+        else
+        {
+            await TryNotifyPaidStoreOrderAsync(
+                storePersistResult,
+                storeOrderNotificationService,
+                logger,
+                httpContext.RequestAborted);
+
+            logger.LogInformation(
+                "Paystack store order persisted. order_reference={Reference} payment_status={PaymentStatus}",
+                storePersistResult.Order?.OrderReference,
+                storePersistResult.Order?.PaymentStatus);
+        }
+
         return Results.Ok();
     }
 
@@ -2331,6 +2561,269 @@ static bool TryResolvePaymentProvider(string? provider, out string resolvedProvi
 
     resolvedProvider = string.Empty;
     return false;
+}
+
+static bool TryBuildStoreCheckoutDraft(
+    IFormCollection form,
+    out StoreProduct? product,
+    out StoreOrderDraft? draft,
+    out int amountInCents,
+    out string? errorMessage)
+{
+    product = null;
+    draft = null;
+    amountInCents = 0;
+    errorMessage = null;
+
+    var productSlug = NormalizeOptionalFormText(form["produk"], 120);
+    product = StoreProductCatalog.FindBySlug(productSlug);
+    if (product is null)
+    {
+        errorMessage = "Kies asseblief 'n geldige StorieTjommie.";
+        return false;
+    }
+
+    if (!int.TryParse(form["hoeveelheid"], NumberStyles.Integer, CultureInfo.InvariantCulture, out var quantity) ||
+        quantity is < 1 or > 10)
+    {
+        errorMessage = "Kies asseblief 'n hoeveelheid tussen 1 en 10.";
+        return false;
+    }
+
+    var customerName = NormalizeOptionalFormText(form["naam"], 120);
+    if (string.IsNullOrWhiteSpace(customerName))
+    {
+        errorMessage = "Vul asseblief jou naam in.";
+        return false;
+    }
+
+    var customerEmail = NormalizeOptionalFormText(form["epos"], 254)?.ToLowerInvariant();
+    if (string.IsNullOrWhiteSpace(customerEmail) || !IsValidEmail(customerEmail))
+    {
+        errorMessage = "Gebruik asseblief 'n geldige e-posadres.";
+        return false;
+    }
+
+    var customerPhone = NormalizeOptionalFormText(form["selfoon"], 40);
+    if (string.IsNullOrWhiteSpace(customerPhone) || !IsValidMobileNumber(customerPhone))
+    {
+        errorMessage = "Gebruik asseblief 'n geldige selfoonnommer.";
+        return false;
+    }
+
+    var deliveryAddressLine1 = NormalizeOptionalFormText(form["adresLyn1"], 250);
+    if (string.IsNullOrWhiteSpace(deliveryAddressLine1))
+    {
+        errorMessage = "Vul asseblief jou straatadres in.";
+        return false;
+    }
+
+    var deliveryCity = NormalizeOptionalFormText(form["stad"], 120);
+    if (string.IsNullOrWhiteSpace(deliveryCity))
+    {
+        errorMessage = "Vul asseblief jou stad of dorp in.";
+        return false;
+    }
+
+    var deliveryPostalCode = NormalizeOptionalFormText(form["poskode"], 20);
+    if (string.IsNullOrWhiteSpace(deliveryPostalCode) ||
+        deliveryPostalCode.Length < 3 ||
+        !Regex.IsMatch(deliveryPostalCode, @"^[A-Za-z0-9 -]{3,20}$", RegexOptions.CultureInvariant))
+    {
+        errorMessage = "Gebruik asseblief 'n geldige poskode.";
+        return false;
+    }
+
+    var orderReference = BuildStoreOrderReference(product.Slug);
+    amountInCents = decimal.ToInt32(decimal.Round(product.UnitPriceZar * quantity * 100m, 0, MidpointRounding.AwayFromZero));
+    draft = new StoreOrderDraft(
+        OrderReference: orderReference,
+        ProductSlug: product.Slug,
+        ProductName: product.Name,
+        Quantity: quantity,
+        UnitPriceZar: product.UnitPriceZar,
+        CustomerName: customerName,
+        CustomerEmail: customerEmail,
+        CustomerPhone: customerPhone,
+        DeliveryAddressLine1: deliveryAddressLine1,
+        DeliveryAddressLine2: NormalizeOptionalFormText(form["adresLyn2"], 250),
+        DeliverySuburb: NormalizeOptionalFormText(form["voorstad"], 120),
+        DeliveryCity: deliveryCity,
+        DeliveryPostalCode: deliveryPostalCode,
+        Notes: NormalizeOptionalFormText(form["notas"], 2000));
+    return true;
+}
+
+static string BuildStoreOrderReference(string productSlug)
+{
+    var safeProductSlug = string.Concat(
+        (productSlug ?? string.Empty)
+            .Trim()
+            .ToLowerInvariant()
+            .Where(character => char.IsAsciiLetterOrDigit(character) || character == '-'));
+
+    if (string.IsNullOrWhiteSpace(safeProductSlug))
+    {
+        safeProductSlug = "winkel";
+    }
+
+    return $"winkel-{safeProductSlug}-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}";
+}
+
+static string BuildStorePageRedirectPath(
+    string paymentStatus,
+    string? productSlug = null,
+    string? orderReference = null,
+    string? message = null)
+{
+    var query = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["betaling"] = ResolveStorePaymentStatusQueryValue(paymentStatus)
+    };
+
+    var normalizedProductSlug = NormalizeOptionalFormText(productSlug, 120);
+    if (!string.IsNullOrWhiteSpace(normalizedProductSlug))
+    {
+        query["produk"] = normalizedProductSlug;
+    }
+
+    var normalizedOrderReference = NormalizeOptionalFormText(orderReference, 160);
+    if (!string.IsNullOrWhiteSpace(normalizedOrderReference))
+    {
+        query["verwysing"] = normalizedOrderReference;
+    }
+
+    var normalizedMessage = NormalizeOptionalFormText(message, 240);
+    if (!string.IsNullOrWhiteSpace(normalizedMessage))
+    {
+        query["boodskap"] = normalizedMessage;
+    }
+
+    return QueryHelpers.AddQueryString("/winkel", query);
+}
+
+static string ResolveStorePaymentStatusQueryValue(string? paymentStatus) =>
+    paymentStatus?.Trim().ToLowerInvariant() switch
+    {
+        "paid" => "sukses",
+        "success" => "sukses",
+        "sukses" => "sukses",
+        "cancelled" => "gekanselleer",
+        "canceled" => "gekanselleer",
+        "abandoned" => "gekanselleer",
+        "gekanselleer" => "gekanselleer",
+        "failed" => "misluk",
+        "misluk" => "misluk",
+        "pending" => "verwerk",
+        "processing" => "verwerk",
+        "verwerk" => "verwerk",
+        _ => "verwerk"
+    };
+
+static string? ResolveStorePaymentReference(string? reference, string? trxref, string? orderReference)
+{
+    foreach (var candidate in new[] { reference, trxref, orderReference })
+    {
+        var normalized = NormalizeOptionalFormText(candidate, 160);
+        if (!string.IsNullOrWhiteSpace(normalized))
+        {
+            return normalized;
+        }
+    }
+
+    return null;
+}
+
+static bool IsStorePaystackWebhookPayload(string payloadJson)
+{
+    if (string.IsNullOrWhiteSpace(payloadJson))
+    {
+        return false;
+    }
+
+    try
+    {
+        using var document = JsonDocument.Parse(payloadJson);
+        if (!document.RootElement.TryGetProperty("data", out var data) ||
+            data.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        if (!data.TryGetProperty("metadata", out var metadata) ||
+            metadata.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        return string.Equals(
+            TryReadJsonString(metadata, "checkout_kind"),
+            "store",
+            StringComparison.OrdinalIgnoreCase);
+    }
+    catch (JsonException)
+    {
+        return false;
+    }
+}
+
+static async Task TryNotifyPaidStoreOrderAsync(
+    StoreOrderPaymentUpdateResult updateResult,
+    IStoreOrderNotificationService notificationService,
+    ILogger logger,
+    CancellationToken cancellationToken)
+{
+    if (!updateResult.IsSuccess ||
+        updateResult.Order is null ||
+        !updateResult.StatusChanged ||
+        updateResult.WasAlreadyPaid ||
+        !string.Equals(updateResult.Order.PaymentStatus, "paid", StringComparison.OrdinalIgnoreCase))
+    {
+        return;
+    }
+
+    try
+    {
+        await notificationService.SendPaidOrderNotificationAsync(updateResult.Order, cancellationToken);
+    }
+    catch (Exception exception)
+    {
+        logger.LogWarning(
+            exception,
+            "Store paid notification failed. reference={Reference}",
+            updateResult.Order.OrderReference);
+    }
+}
+
+static string? NormalizeOptionalFormText(string? value, int maxLength)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return null;
+    }
+
+    var normalized = value.Trim();
+    return normalized.Length > maxLength
+        ? normalized[..maxLength]
+        : normalized;
+}
+
+static string? TryReadJsonString(JsonElement element, string propertyName)
+{
+    if (element.ValueKind != JsonValueKind.Object ||
+        !element.TryGetProperty(propertyName, out var node))
+    {
+        return null;
+    }
+
+    return node.ValueKind switch
+    {
+        JsonValueKind.String => node.GetString(),
+        JsonValueKind.Number => node.GetRawText(),
+        JsonValueKind.True => "true",
+        JsonValueKind.False => "false",
+        _ => null
+    };
 }
 
 static bool CanMapLegacyStorySlug(string? slug)

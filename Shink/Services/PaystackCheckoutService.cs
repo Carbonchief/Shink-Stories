@@ -15,7 +15,8 @@ public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<Pays
 
     public bool IsConfigured =>
         !string.IsNullOrWhiteSpace(_options.SecretKey) &&
-        Uri.TryCreate(_options.InitializeUrl, UriKind.Absolute, out _);
+        Uri.TryCreate(_options.InitializeUrl, UriKind.Absolute, out _) &&
+        Uri.TryCreate(_options.VerifyUrl, UriKind.Absolute, out _);
 
     public async Task<PaystackCheckoutInitResult> InitializeCheckoutAsync(
         PaymentPlan plan,
@@ -26,11 +27,6 @@ public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<Pays
         if (!IsConfigured)
         {
             return new PaystackCheckoutInitResult(false, ErrorMessage: "Paystack is nog nie volledig opgestel nie.");
-        }
-
-        if (!Uri.TryCreate(_options.InitializeUrl, UriKind.Absolute, out var initializeUri))
-        {
-            return new PaystackCheckoutInitResult(false, ErrorMessage: "Paystack Initialize URL is ongeldig.");
         }
 
         var email = GetBuyerEmail(httpContext.User);
@@ -54,13 +50,7 @@ public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<Pays
             callbackQuery = $"{callbackQuery}&returnUrl={Uri.EscapeDataString(returnUrl)}";
         }
 
-        var callbackUrl = BuildAbsoluteUrl(
-            httpContext,
-            _options.CallbackUrlPath,
-            callbackQuery);
-
-        var amountInCents = (long)Math.Round(plan.Amount * 100m, MidpointRounding.AwayFromZero);
-
+        var callbackUrl = BuildAbsoluteUrl(httpContext, _options.CallbackUrlPath, callbackQuery);
         var metadata = new Dictionary<string, object?>
         {
             ["plan_slug"] = plan.Slug,
@@ -69,6 +59,185 @@ public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<Pays
             ["is_subscription"] = plan.IsSubscription,
             ["subscription_key"] = reference
         };
+
+        return await InitializeTransactionAsync(
+            email,
+            (long)Math.Round(plan.Amount * 100m, MidpointRounding.AwayFromZero),
+            reference,
+            callbackUrl,
+            metadata,
+            planCode,
+            cancellationToken);
+    }
+
+    public async Task<PaystackCheckoutInitResult> InitializeStoreCheckoutAsync(
+        StorePaystackCheckoutRequest checkout,
+        HttpContext httpContext,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsConfigured)
+        {
+            return new PaystackCheckoutInitResult(false, ErrorMessage: "Paystack is nog nie volledig opgestel nie.");
+        }
+
+        if (string.IsNullOrWhiteSpace(checkout.CustomerEmail))
+        {
+            return new PaystackCheckoutInitResult(false, ErrorMessage: "E-posadres is verpligtend vir betaling.");
+        }
+
+        if (checkout.AmountInCents <= 0)
+        {
+            return new PaystackCheckoutInitResult(false, ErrorMessage: "Bedrag moet groter as nul wees.");
+        }
+
+        var callbackUrl = BuildAbsoluteUrl(httpContext, checkout.CallbackPath, null);
+        var cancelUrl = BuildAbsoluteUrl(httpContext, checkout.CancelPath, null);
+        var metadata = new Dictionary<string, object?>
+        {
+            ["checkout_kind"] = "store",
+            ["order_reference"] = checkout.OrderReference,
+            ["product_slug"] = checkout.ProductSlug,
+            ["product_name"] = checkout.ProductName,
+            ["quantity"] = checkout.Quantity,
+            ["customer_name"] = checkout.CustomerName,
+            ["customer_phone"] = checkout.CustomerPhone,
+            ["cancel_action"] = cancelUrl,
+            ["custom_fields"] = new object[]
+            {
+                new Dictionary<string, object?>
+                {
+                    ["display_name"] = "Product",
+                    ["variable_name"] = "product_name",
+                    ["value"] = checkout.ProductName
+                },
+                new Dictionary<string, object?>
+                {
+                    ["display_name"] = "Quantity",
+                    ["variable_name"] = "quantity",
+                    ["value"] = checkout.Quantity.ToString()
+                },
+                new Dictionary<string, object?>
+                {
+                    ["display_name"] = "Order Reference",
+                    ["variable_name"] = "order_reference",
+                    ["value"] = checkout.OrderReference
+                }
+            }
+        };
+
+        return await InitializeTransactionAsync(
+            checkout.CustomerEmail,
+            checkout.AmountInCents,
+            checkout.OrderReference,
+            callbackUrl,
+            metadata,
+            planCode: null,
+            cancellationToken);
+    }
+
+    public async Task<PaystackVerifyResult> VerifyTransactionAsync(
+        string reference,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsConfigured)
+        {
+            return new PaystackVerifyResult(false, ErrorMessage: "Paystack is nog nie volledig opgestel nie.");
+        }
+
+        if (string.IsNullOrWhiteSpace(reference))
+        {
+            return new PaystackVerifyResult(false, ErrorMessage: "Transaksie verwysing ontbreek.");
+        }
+
+        if (!Uri.TryCreate(_options.VerifyUrl, UriKind.Absolute, out _))
+        {
+            return new PaystackVerifyResult(false, ErrorMessage: "Paystack Verify URL is ongeldig.");
+        }
+
+        var verifyUri = new Uri($"{_options.VerifyUrl.TrimEnd('/')}/{Uri.EscapeDataString(reference.Trim())}");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, verifyUri);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.SecretKey);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return new PaystackVerifyResult(
+                false,
+                ErrorMessage: $"Paystack betaling kon nie bevestig word nie (HTTP {(int)response.StatusCode}).",
+                RawPayload: body);
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            var status = root.TryGetProperty("status", out var statusNode) &&
+                         statusNode.ValueKind == JsonValueKind.True;
+
+            var dataNode = root.TryGetProperty("data", out var parsedData) &&
+                           parsedData.ValueKind == JsonValueKind.Object
+                ? parsedData
+                : default;
+
+            if (!status || dataNode.ValueKind != JsonValueKind.Object)
+            {
+                var message = TryReadString(root, "message") ?? "Paystack betaling kon nie bevestig word nie.";
+                return new PaystackVerifyResult(false, ErrorMessage: message, RawPayload: body);
+            }
+
+            return new PaystackVerifyResult(
+                true,
+                Reference: TryReadString(dataNode, "reference") ?? reference,
+                TransactionStatus: TryReadString(dataNode, "status"),
+                AmountInCents: TryReadInt64(dataNode, "amount"),
+                Currency: TryReadString(dataNode, "currency"),
+                CustomerEmail: TryReadNestedString(dataNode, "customer", "email"),
+                ProviderTransactionId: TryReadString(dataNode, "id") ?? TryReadString(dataNode, "reference"),
+                PaidAt: ParseDateTimeOffset(TryReadString(dataNode, "paid_at")),
+                GatewayResponse: TryReadString(dataNode, "gateway_response") ?? TryReadString(dataNode, "message"),
+                RawPayload: body);
+        }
+        catch (JsonException)
+        {
+            return new PaystackVerifyResult(false, ErrorMessage: "Paystack verify antwoord kon nie gelees word nie.", RawPayload: body);
+        }
+    }
+
+    public bool IsWebhookSignatureValid(string rawPayload, string? providedSignature)
+    {
+        if (string.IsNullOrWhiteSpace(rawPayload) ||
+            string.IsNullOrWhiteSpace(providedSignature) ||
+            string.IsNullOrWhiteSpace(_options.SecretKey))
+        {
+            return false;
+        }
+
+        if (!TryParseHex(providedSignature.Trim(), out var providedBytes))
+        {
+            return false;
+        }
+
+        using var hmac = new HMACSHA512(Encoding.UTF8.GetBytes(_options.SecretKey));
+        var payloadBytes = Encoding.UTF8.GetBytes(rawPayload);
+        var computedBytes = hmac.ComputeHash(payloadBytes);
+        return CryptographicOperations.FixedTimeEquals(computedBytes, providedBytes);
+    }
+
+    private async Task<PaystackCheckoutInitResult> InitializeTransactionAsync(
+        string email,
+        long amountInCents,
+        string reference,
+        string callbackUrl,
+        Dictionary<string, object?> metadata,
+        string? planCode,
+        CancellationToken cancellationToken)
+    {
+        if (!Uri.TryCreate(_options.InitializeUrl, UriKind.Absolute, out var initializeUri))
+        {
+            return new PaystackCheckoutInitResult(false, ErrorMessage: "Paystack Initialize URL is ongeldig.");
+        }
 
         var payload = new Dictionary<string, object?>
         {
@@ -130,26 +299,6 @@ public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<Pays
         {
             return new PaystackCheckoutInitResult(false, ErrorMessage: "Paystack checkout antwoord kon nie gelees word nie.");
         }
-    }
-
-    public bool IsWebhookSignatureValid(string rawPayload, string? providedSignature)
-    {
-        if (string.IsNullOrWhiteSpace(rawPayload) ||
-            string.IsNullOrWhiteSpace(providedSignature) ||
-            string.IsNullOrWhiteSpace(_options.SecretKey))
-        {
-            return false;
-        }
-
-        if (!TryParseHex(providedSignature.Trim(), out var providedBytes))
-        {
-            return false;
-        }
-
-        using var hmac = new HMACSHA512(Encoding.UTF8.GetBytes(_options.SecretKey));
-        var payloadBytes = Encoding.UTF8.GetBytes(rawPayload);
-        var computedBytes = hmac.ComputeHash(payloadBytes);
-        return CryptographicOperations.FixedTimeEquals(computedBytes, providedBytes);
     }
 
     private string BuildAbsoluteUrl(HttpContext httpContext, string path, string? queryString)
@@ -224,6 +373,44 @@ public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<Pays
         };
     }
 
+    private static string? TryReadNestedString(JsonElement element, string firstProperty, string secondProperty)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(firstProperty, out var nested))
+        {
+            return null;
+        }
+
+        return TryReadString(nested, secondProperty);
+    }
+
+    private static long TryReadInt64(JsonElement element, string propertyName)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(propertyName, out var node))
+        {
+            return 0;
+        }
+
+        if (node.ValueKind == JsonValueKind.Number && node.TryGetInt64(out var intValue))
+        {
+            return intValue;
+        }
+
+        if (node.ValueKind == JsonValueKind.String &&
+            long.TryParse(node.GetString(), out var parsed))
+        {
+            return parsed;
+        }
+
+        return 0;
+    }
+
+    private static DateTimeOffset? ParseDateTimeOffset(string? value) =>
+        DateTimeOffset.TryParse(value, out var parsed)
+            ? parsed
+            : null;
+
     private static bool TryParseHex(string value, out byte[] bytes)
     {
         bytes = [];
@@ -249,3 +436,28 @@ public sealed record PaystackCheckoutInitResult(
     string? AuthorizationUrl = null,
     string? Reference = null,
     string? ErrorMessage = null);
+
+public sealed record StorePaystackCheckoutRequest(
+    string OrderReference,
+    string ProductSlug,
+    string ProductName,
+    int Quantity,
+    string CustomerName,
+    string CustomerEmail,
+    string CustomerPhone,
+    long AmountInCents,
+    string CallbackPath,
+    string CancelPath);
+
+public sealed record PaystackVerifyResult(
+    bool IsSuccess,
+    string? Reference = null,
+    string? TransactionStatus = null,
+    long AmountInCents = 0,
+    string? Currency = null,
+    string? CustomerEmail = null,
+    string? ProviderTransactionId = null,
+    DateTimeOffset? PaidAt = null,
+    string? GatewayResponse = null,
+    string? ErrorMessage = null,
+    string? RawPayload = null);

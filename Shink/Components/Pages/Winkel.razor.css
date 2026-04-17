@@ -1,0 +1,601 @@
+.winkel-page {
+    --winkel-ink: #233428;
+    --winkel-muted: #5e6f63;
+    --winkel-line: rgba(35, 52, 40, 0.12);
+    --winkel-cream: #fffaf1;
+    --winkel-panel: rgba(255, 251, 243, 0.9);
+    --winkel-accent: #d86f34;
+    --winkel-accent-deep: #a74a1f;
+    display: grid;
+    gap: 2rem;
+    padding: clamp(1.4rem, 2vw, 2.2rem);
+    color: var(--winkel-ink);
+}
+
+.winkel-page > * {
+    opacity: 0;
+    transform: translateY(18px);
+    animation: winkel-reveal 560ms ease-out forwards;
+}
+
+.winkel-page > *:nth-child(1) { animation-delay: 30ms; }
+.winkel-page > *:nth-child(2) { animation-delay: 90ms; }
+.winkel-page > *:nth-child(3) { animation-delay: 150ms; }
+.winkel-page > *:nth-child(4) { animation-delay: 210ms; }
+.winkel-page > *:nth-child(5) { animation-delay: 270ms; }
+
+.winkel-payment-status,
+.winkel-hero,
+.winkel-story-block,
+.winkel-order-section {
+    border: 1px solid var(--winkel-line);
+    border-radius: 28px;
+    background:
+        radial-gradient(circle at top right, rgba(255, 214, 179, 0.42), transparent 34%),
+        linear-gradient(180deg, rgba(255, 252, 247, 0.98) 0%, rgba(255, 248, 237, 0.96) 100%);
+    box-shadow: 0 26px 70px rgba(86, 64, 35, 0.12);
+}
+
+.winkel-payment-status {
+    margin: 0;
+    padding: 1rem 1.25rem;
+    font-size: 0.98rem;
+    line-height: 1.6;
+}
+
+.winkel-payment-status.is-success {
+    border-color: rgba(41, 114, 71, 0.22);
+    background:
+        linear-gradient(135deg, rgba(228, 247, 235, 0.98) 0%, rgba(246, 255, 249, 0.98) 100%);
+}
+
+.winkel-payment-status.is-processing {
+    border-color: rgba(219, 153, 44, 0.24);
+    background:
+        linear-gradient(135deg, rgba(255, 245, 221, 0.98) 0%, rgba(255, 252, 242, 0.98) 100%);
+}
+
+.winkel-payment-status.is-cancelled,
+.winkel-payment-status.is-error {
+    border-color: rgba(183, 86, 56, 0.2);
+    background:
+        linear-gradient(135deg, rgba(255, 239, 231, 0.98) 0%, rgba(255, 248, 244, 0.98) 100%);
+}
+
+.winkel-hero,
+.winkel-story-block,
+.winkel-order-section {
+    display: grid;
+    gap: clamp(1.5rem, 3vw, 2.4rem);
+    padding: clamp(1.4rem, 2.6vw, 2.3rem);
+}
+
+.winkel-hero {
+    grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+    align-items: center;
+}
+
+.winkel-hero-copy,
+.winkel-order-copy {
+    display: grid;
+    gap: 1rem;
+}
+
+.winkel-eyebrow,
+.winkel-section-kicker,
+.winkel-order-panel-kicker {
+    margin: 0;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--winkel-accent-deep);
+}
+
+.winkel-hero h1,
+.winkel-story-copy h2,
+.winkel-products-header h2,
+.winkel-order-copy h2 {
+    margin: 0;
+    font-size: clamp(2rem, 4vw, 3.45rem);
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+}
+
+.winkel-story-copy h2,
+.winkel-products-header h2,
+.winkel-order-copy h2 {
+    font-size: clamp(1.6rem, 3vw, 2.4rem);
+}
+
+.winkel-intro,
+.winkel-story-copy p,
+.winkel-products-header p,
+.winkel-order-copy p,
+.winkel-order-panel p,
+.winkel-order-notes li,
+.winkel-order-list li {
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.7;
+    color: var(--winkel-muted);
+}
+
+.winkel-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.9rem;
+}
+
+.winkel-cta,
+.winkel-product-link,
+.winkel-submit {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 3.15rem;
+    padding: 0.85rem 1.25rem;
+    border-radius: 999px;
+    text-decoration: none;
+    font-weight: 700;
+    transition: transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease, border-color 180ms ease;
+}
+
+.winkel-cta:hover,
+.winkel-product-link:hover,
+.winkel-submit:hover {
+    transform: translateY(-1px);
+}
+
+.winkel-cta-primary,
+.winkel-product-link,
+.winkel-submit {
+    border: none;
+    color: #fffefb;
+    background: linear-gradient(135deg, var(--winkel-accent) 0%, #c8591f 100%);
+    box-shadow: 0 16px 36px rgba(184, 92, 37, 0.24);
+}
+
+.winkel-cta-secondary {
+    border: 1px solid rgba(167, 74, 31, 0.18);
+    color: var(--winkel-accent-deep);
+    background: rgba(255, 255, 255, 0.72);
+}
+
+.winkel-cta:focus-visible,
+.winkel-product-link:focus-visible,
+.winkel-submit:focus-visible,
+.winkel-choice-card input:focus-visible + .winkel-choice-card-body,
+.winkel-field input:focus-visible,
+.winkel-field select:focus-visible,
+.winkel-field textarea:focus-visible {
+    outline: 3px solid rgba(216, 111, 52, 0.22);
+    outline-offset: 2px;
+}
+
+.winkel-highlights,
+.winkel-order-notes,
+.winkel-order-list {
+    margin: 0;
+    padding-left: 1.15rem;
+    display: grid;
+    gap: 0.65rem;
+}
+
+.winkel-highlights li {
+    color: var(--winkel-ink);
+}
+
+.winkel-hero-media,
+.winkel-story-media {
+    display: flex;
+    justify-content: center;
+}
+
+.winkel-hero-photo-shell {
+    display: grid;
+    gap: 0.85rem;
+}
+
+.winkel-hero-photo-shell img,
+.winkel-story-media img {
+    width: min(100%, 32rem);
+    height: auto;
+    border-radius: 28px;
+    box-shadow: 0 26px 60px rgba(72, 48, 23, 0.18);
+    background: linear-gradient(180deg, #fff8f0 0%, #f9e9d8 100%);
+}
+
+.winkel-hero-photo-shell img {
+    animation: winkel-float 12s ease-in-out 1s infinite;
+}
+
+.winkel-story-media img {
+    animation: winkel-float 12s ease-in-out 1.4s infinite;
+}
+
+.winkel-hero-caption {
+    margin: 0;
+    text-align: center;
+    color: var(--winkel-muted);
+    font-size: 0.94rem;
+}
+
+.winkel-story-block {
+    grid-template-columns: minmax(260px, 0.9fr) minmax(0, 1.1fr);
+    align-items: center;
+}
+
+.winkel-story-copy {
+    display: grid;
+    gap: 0.9rem;
+}
+
+.winkel-products {
+    display: grid;
+    gap: 1.4rem;
+}
+
+.winkel-products-header {
+    display: grid;
+    gap: 0.8rem;
+    max-width: 46rem;
+}
+
+.winkel-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1.2rem;
+}
+
+.winkel-product {
+    --winkel-product-start: #fff2cf;
+    --winkel-product-end: #fffdf8;
+    display: grid;
+    grid-template-rows: auto 1fr;
+    overflow: hidden;
+    border: 1px solid rgba(35, 52, 40, 0.08);
+    border-radius: 24px;
+    background: rgba(255, 255, 255, 0.86);
+    box-shadow: 0 18px 48px rgba(78, 58, 32, 0.1);
+}
+
+.winkel-product-media {
+    padding: 1rem;
+    background: linear-gradient(180deg, var(--winkel-product-start) 0%, var(--winkel-product-end) 100%);
+}
+
+.winkel-product-media img {
+    width: 100%;
+    height: auto;
+    border-radius: 18px;
+    transition: transform 220ms ease;
+}
+
+.winkel-product:hover .winkel-product-media img {
+    transform: scale(1.03);
+}
+
+.winkel-product-body {
+    display: grid;
+    gap: 0.65rem;
+    padding: 1.15rem 1.15rem 1.25rem;
+    align-content: start;
+}
+
+.winkel-product-type {
+    margin: 0;
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--winkel-accent-deep);
+}
+
+.winkel-product h3 {
+    margin: 0;
+    font-size: 1.3rem;
+    line-height: 1.18;
+}
+
+.winkel-product-price {
+    margin: 0;
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: var(--winkel-ink);
+}
+
+.winkel-product-description {
+    margin: 0;
+    font-size: 0.96rem;
+    line-height: 1.65;
+    color: var(--winkel-muted);
+}
+
+.is-suurlemoentjie {
+    --winkel-product-start: #fff3b8;
+    --winkel-product-end: #fffdf2;
+}
+
+.is-tiekie {
+    --winkel-product-start: #ffd9d2;
+    --winkel-product-end: #fff8f6;
+}
+
+.is-lama {
+    --winkel-product-start: #efe1ff;
+    --winkel-product-end: #fff9f3;
+}
+
+.is-georgie {
+    --winkel-product-start: #d8f1ff;
+    --winkel-product-end: #fffdf7;
+}
+
+.winkel-order-section {
+    grid-template-columns: minmax(0, 0.88fr) minmax(0, 1.12fr);
+    align-items: start;
+}
+
+.winkel-order-copy {
+    gap: 1rem;
+}
+
+.winkel-order-panel {
+    display: grid;
+    gap: 0.8rem;
+    margin-top: 0.8rem;
+    padding: 1.2rem;
+    border: 1px solid rgba(35, 52, 40, 0.09);
+    border-radius: 22px;
+    background: var(--winkel-panel);
+}
+
+.winkel-order-panel h3 {
+    margin: 0;
+    font-size: 1.3rem;
+    line-height: 1.2;
+}
+
+.winkel-order-panel-price {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 800;
+    color: var(--winkel-accent-deep);
+}
+
+.winkel-order-form-shell {
+    padding: 1.1rem;
+    border-radius: 26px;
+    border: 1px solid rgba(35, 52, 40, 0.09);
+    background:
+        radial-gradient(circle at top, rgba(255, 225, 199, 0.36), transparent 36%),
+        rgba(255, 255, 255, 0.92);
+}
+
+.winkel-order-form {
+    display: grid;
+    gap: 1.2rem;
+}
+
+.winkel-choice-grid {
+    margin: 0;
+    padding: 0;
+    border: none;
+    display: grid;
+    gap: 0.8rem;
+}
+
+.winkel-choice-grid legend {
+    padding: 0;
+    font-weight: 800;
+    font-size: 1rem;
+    color: var(--winkel-ink);
+}
+
+.winkel-choice-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.8rem;
+}
+
+.winkel-choice-card {
+    display: block;
+    cursor: pointer;
+}
+
+.winkel-choice-card input {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+.winkel-choice-card-body {
+    display: grid;
+    gap: 0.35rem;
+    min-height: 100%;
+    padding: 1rem;
+    border: 1px solid rgba(35, 52, 40, 0.1);
+    border-radius: 18px;
+    background: rgba(255, 252, 247, 0.95);
+    transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease, background-color 180ms ease;
+}
+
+.winkel-choice-card:hover .winkel-choice-card-body {
+    transform: translateY(-1px);
+    border-color: rgba(167, 74, 31, 0.18);
+}
+
+.winkel-choice-card input:checked + .winkel-choice-card-body {
+    border-color: rgba(167, 74, 31, 0.28);
+    background: rgba(255, 246, 234, 1);
+    box-shadow: 0 14px 34px rgba(177, 103, 53, 0.12);
+}
+
+.winkel-choice-name {
+    font-weight: 800;
+    color: var(--winkel-ink);
+}
+
+.winkel-choice-price {
+    color: var(--winkel-accent-deep);
+    font-weight: 700;
+}
+
+.winkel-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.95rem;
+}
+
+.winkel-field {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.winkel-field-full {
+    grid-column: 1 / -1;
+}
+
+.winkel-field span {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--winkel-ink);
+}
+
+.winkel-field em {
+    font-style: normal;
+    font-weight: 500;
+    color: var(--winkel-muted);
+}
+
+.winkel-field input,
+.winkel-field select,
+.winkel-field textarea {
+    width: 100%;
+    border: 1px solid rgba(35, 52, 40, 0.12);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.96);
+    color: var(--winkel-ink);
+    font: inherit;
+}
+
+.winkel-field input,
+.winkel-field select {
+    min-height: 3.15rem;
+    padding: 0.8rem 0.95rem;
+}
+
+.winkel-field textarea {
+    min-height: 8rem;
+    padding: 0.85rem 0.95rem;
+    resize: vertical;
+}
+
+.winkel-form-actions {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.winkel-submit {
+    width: 100%;
+    cursor: pointer;
+    font: inherit;
+}
+
+.winkel-form-fineprint {
+    margin: 0;
+    text-align: center;
+    color: var(--winkel-muted);
+    font-size: 0.92rem;
+    line-height: 1.6;
+}
+
+@keyframes winkel-reveal {
+    from {
+        opacity: 0;
+        transform: translateY(18px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes winkel-float {
+    0%, 100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-8px);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .winkel-page > *,
+    .winkel-hero-photo-shell img,
+    .winkel-story-media img {
+        animation: none;
+        opacity: 1;
+        transform: none;
+    }
+
+    .winkel-cta,
+    .winkel-product-link,
+    .winkel-submit,
+    .winkel-product-media img,
+    .winkel-choice-card-body {
+        transition: none;
+    }
+}
+
+@media (max-width: 1100px) {
+    .winkel-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 980px) {
+    .winkel-hero,
+    .winkel-story-block,
+    .winkel-order-section {
+        grid-template-columns: 1fr;
+    }
+
+    .winkel-hero-photo-shell img,
+    .winkel-story-media img {
+        width: min(100%, 28rem);
+    }
+}
+
+@media (max-width: 720px) {
+    .winkel-page {
+        padding: 1rem;
+    }
+
+    .winkel-actions,
+    .winkel-choice-options,
+    .winkel-form-grid,
+    .winkel-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .winkel-actions {
+        display: grid;
+    }
+
+    .winkel-cta,
+    .winkel-product-link,
+    .winkel-submit {
+        width: 100%;
+    }
+
+    .winkel-hero,
+    .winkel-story-block,
+    .winkel-order-section {
+        padding: 1.15rem;
+        border-radius: 24px;
+    }
+}
