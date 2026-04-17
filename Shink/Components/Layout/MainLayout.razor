@@ -4,7 +4,7 @@
 @using System.Security.Claims
 @inject NavigationManager NavigationManager
 
-<div class="site-shell @(IsStoryRoute ? "story-route" : null) @(IsHomeRoute ? "home-route" : null) @(IsLuisterRoute ? "luister-route" : null) @(IsMeerOorOnsRoute ? "about-route" : null) @(IsAdminRoute ? "admin-route" : null) @(IsFloatingPlaylistRoute ? "playlist-nav-route" : null) @(IsLuisterPlaylistShowcaseRoute ? "playlist-showcase-route" : null)">
+<div class="site-shell @(IsStoryRoute ? "story-route" : null) @(IsHomeRoute ? "home-route" : null) @(IsLuisterRoute ? "luister-route" : null) @(IsMeerOorOnsRoute ? "about-route" : null) @(IsWinkelRoute ? "store-route" : null) @(IsAdminRoute ? "admin-route" : null) @(IsFloatingPlaylistRoute ? "playlist-nav-route" : null) @(IsLuisterPlaylistShowcaseRoute ? "playlist-showcase-route" : null)">
     <a class="skip-link" href="#main-content">Spring na inhoud</a>
     @if (!IsFloatingPlaylistRoute)
     {
@@ -38,6 +38,7 @@
                                      aria-label="Hoofnavigasie">
                                     <NavLink href="/meer-oor-ons">Meer oor Ons</NavLink>
                                     <NavLink href="/gratis">Gratis stories</NavLink>
+                                    <NavLink href="/winkel">Winkel</NavLink>
                                     <NavLink href="/blog">Blog</NavLink>
                                     <NavLink href="/resources">Hulpbronne</NavLink>
                                     <NavLink href="/karakters">Karakters</NavLink>
@@ -64,6 +65,7 @@
                                      aria-label="Hoofnavigasie">
                                     <NavLink href="/meer-oor-ons">Meer oor Ons</NavLink>
                                     <NavLink href="/gratis">Gratis stories</NavLink>
+                                    <NavLink href="/winkel">Winkel</NavLink>
                                     <NavLink href="/blog">Blog</NavLink>
                                     <NavLink href="/resources">Hulpbronne</NavLink>
                                     <NavLink href="/karakters">Karakters</NavLink>
@@ -239,6 +241,10 @@
                                     <i class="fa-solid fa-gift" aria-hidden="true"></i>
                                     <span>Gratis stories</span>
                                 </NavLink>
+                                <NavLink href="/winkel" class="nav-panel-link">
+                                    <i class="fa-solid fa-bag-shopping" aria-hidden="true"></i>
+                                    <span>Winkel</span>
+                                </NavLink>
                                 <NavLink href="/blog" class="nav-panel-link">
                                     <i class="fa-solid fa-pen-nib" aria-hidden="true"></i>
                                     <span>Blog</span>
@@ -309,6 +315,10 @@
                                     <i class="fa-solid fa-gift" aria-hidden="true"></i>
                                     <span>Gratis stories</span>
                                 </NavLink>
+                                <NavLink href="/winkel" class="nav-panel-link">
+                                    <i class="fa-solid fa-bag-shopping" aria-hidden="true"></i>
+                                    <span>Winkel</span>
+                                </NavLink>
                                 <NavLink href="/blog" class="nav-panel-link">
                                     <i class="fa-solid fa-pen-nib" aria-hidden="true"></i>
                                     <span>Blog</span>
@@ -372,6 +382,10 @@
                             <i class="fa-solid fa-gift" aria-hidden="true"></i>
                             <span>Gratis stories</span>
                         </NavLink>
+                        <NavLink href="/winkel" class="nav-panel-link">
+                            <i class="fa-solid fa-bag-shopping" aria-hidden="true"></i>
+                            <span>Winkel</span>
+                        </NavLink>
                         <NavLink href="/blog" class="nav-panel-link">
                             <i class="fa-solid fa-pen-nib" aria-hidden="true"></i>
                             <span>Blog</span>
@@ -418,6 +432,10 @@
                         <NavLink href="/gratis" class="nav-panel-link">
                             <i class="fa-solid fa-gift" aria-hidden="true"></i>
                             <span>Gratis stories</span>
+                        </NavLink>
+                        <NavLink href="/winkel" class="nav-panel-link">
+                            <i class="fa-solid fa-bag-shopping" aria-hidden="true"></i>
+                            <span>Winkel</span>
                         </NavLink>
                         <NavLink href="/blog" class="nav-panel-link">
                             <i class="fa-solid fa-pen-nib" aria-hidden="true"></i>
@@ -538,6 +556,15 @@
         {
             var relativePath = GetCurrentRelativePathWithoutQuery();
             return string.Equals(relativePath, "meer-oor-ons", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private bool IsWinkelRoute
+    {
+        get
+        {
+            var relativePath = GetCurrentRelativePathWithoutQuery();
+            return string.Equals(relativePath, "winkel", StringComparison.OrdinalIgnoreCase);
         }
     }
 
