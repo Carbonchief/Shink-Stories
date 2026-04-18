@@ -4,8 +4,12 @@
 @using System.Globalization
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.JSInterop
+@rendermode InteractiveServer
+@implements IAsyncDisposable
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ISubscriptionLedgerService SubscriptionLedgerService
+@inject IJSRuntime JS
 @inject NavigationManager NavigationManager
 
 <PageTitle>Schink Stories | Intekening en betaling</PageTitle>
@@ -46,8 +50,8 @@
                     <span>Werk jou naam en selfoonnommer by sodat jou rekening altyd op datum bly.</span>
                 </div>
                 <div class="billing-hero-point">
-                    <strong>Kies maklik jou toegang</strong>
-                    <span>Skuif van gratis luister na volle toegang wanneer dit vir julle gesin sin maak.</span>
+                    <strong>Beheer jou rekening veilig</strong>
+                    <span>Verander jou e-pos met Supabase bevestiging en hou jou toegang veilig.</span>
                 </div>
             </div>
         </div>
@@ -65,6 +69,11 @@
             {
                 <h2>Teken in om voort te gaan</h2>
                 <p>Jy moet ingeteken wees om jou rekening en betalings te bestuur.</p>
+            }
+            else if (IsEmailChangeCallbackRequest())
+            {
+                <h2>Ons bevestig jou nuwe e-posadres</h2>
+                <p>Hou asseblief hierdie blad oop terwyl ons jou Supabase bevestiging afrond.</p>
             }
             else if (HasActivePaidSubscription)
             {
@@ -118,75 +127,162 @@
             </div>
         </section>
     }
+    else if (IsEmailChangeCallbackRequest())
+    {
+        <section class="billing-state-card billing-state-card-neutral">
+            @if (IsCompletingEmailChange)
+            {
+                <div class="spinner-border billing-state-spinner" role="status" aria-hidden="true"></div>
+            }
+
+            <div class="billing-state-copy">
+                <p class="billing-section-kicker">Bevestig e-pos</p>
+                <h2>@(IsCompletingEmailChange ? "Ons verifieer jou nuwe e-posadres..." : "E-posbevestiging")</h2>
+                <p>
+                    @if (!string.IsNullOrWhiteSpace(EmailChangeCallbackMessage))
+                    {
+                        @EmailChangeCallbackMessage
+                    }
+                    else
+                    {
+                        <text>Ons verifieer nou jou nuwe e-posadres en sal jou terugstuur sodra dit klaar is.</text>
+                    }
+                </p>
+            </div>
+        </section>
+    }
     else
     {
         <div class="billing-content-grid">
-            <section class="billing-panel billing-profile-card" aria-label="Jou profiel">
-                <div class="billing-panel-heading">
-                    <p class="billing-section-kicker">Profiel</p>
-                    <h2>Hou jou rekeningbesonderhede op datum</h2>
-                    <p>Gebruik die vorm hieronder om jou besonderhede netjies en op datum te hou.</p>
-                </div>
+            <div class="billing-account-stack">
+                <section class="billing-panel billing-profile-card" aria-label="Jou profiel">
+                    <div class="billing-panel-heading">
+                        <p class="billing-section-kicker">Profiel</p>
+                        <h2>Hou jou rekeningbesonderhede op datum</h2>
+                        <p>Gebruik die vorm hieronder om jou besonderhede netjies en op datum te hou.</p>
+                    </div>
 
-                <EditForm FormName="billing-profile-form" class="billing-profile-form" Model="ProfileForm" OnValidSubmit="SaveProfileAsync" aria-busy="@IsSavingProfile">
-                    <DataAnnotationsValidator />
+                    <EditForm FormName="billing-profile-form" class="billing-profile-form" Model="ProfileForm" OnValidSubmit="SaveProfileAsync" aria-busy="@IsSavingProfile">
+                        <DataAnnotationsValidator />
 
-                    <div class="row g-3">
-                        <div class="col-md-6">
-                            <label class="form-label" for="billing-first-name">Voornaam</label>
-                            <InputText id="billing-first-name" class="form-control form-control-lg" autocomplete="given-name" @bind-Value="ProfileForm.FirstName" />
-                            <ValidationMessage class="invalid-feedback d-block" For="@(() => ProfileForm.FirstName)" />
-                        </div>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label" for="billing-first-name">Voornaam</label>
+                                <InputText id="billing-first-name" class="form-control form-control-lg" autocomplete="given-name" @bind-Value="ProfileForm.FirstName" />
+                                <ValidationMessage class="invalid-feedback d-block" For="@(() => ProfileForm.FirstName)" />
+                            </div>
 
-                        <div class="col-md-6">
-                            <label class="form-label" for="billing-last-name">Van</label>
-                            <InputText id="billing-last-name" class="form-control form-control-lg" autocomplete="family-name" @bind-Value="ProfileForm.LastName" />
-                            <ValidationMessage class="invalid-feedback d-block" For="@(() => ProfileForm.LastName)" />
-                        </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="billing-last-name">Van</label>
+                                <InputText id="billing-last-name" class="form-control form-control-lg" autocomplete="family-name" @bind-Value="ProfileForm.LastName" />
+                                <ValidationMessage class="invalid-feedback d-block" For="@(() => ProfileForm.LastName)" />
+                            </div>
 
-                        <div class="col-md-6">
-                            <label class="form-label" for="billing-display-name">Publieke naam</label>
-                            <InputText id="billing-display-name" class="form-control form-control-lg" autocomplete="nickname" @bind-Value="ProfileForm.DisplayName" />
-                            <ValidationMessage class="invalid-feedback d-block" For="@(() => ProfileForm.DisplayName)" />
-                        </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="billing-display-name">Publieke naam</label>
+                                <InputText id="billing-display-name" class="form-control form-control-lg" autocomplete="nickname" @bind-Value="ProfileForm.DisplayName" />
+                                <ValidationMessage class="invalid-feedback d-block" For="@(() => ProfileForm.DisplayName)" />
+                            </div>
 
-                        <div class="col-md-6">
-                            <label class="form-label" for="billing-mobile-number">Selfoonnommer</label>
-                            <InputText id="billing-mobile-number" class="form-control form-control-lg" type="tel" autocomplete="tel" @bind-Value="ProfileForm.MobileNumber" />
-                            <ValidationMessage class="invalid-feedback d-block" For="@(() => ProfileForm.MobileNumber)" />
-                        </div>
+                            <div class="col-md-6">
+                                <label class="form-label" for="billing-mobile-number">Selfoonnommer</label>
+                                <InputText id="billing-mobile-number" class="form-control form-control-lg" type="tel" autocomplete="tel" @bind-Value="ProfileForm.MobileNumber" />
+                                <ValidationMessage class="invalid-feedback d-block" For="@(() => ProfileForm.MobileNumber)" />
+                            </div>
 
-                        <div class="col-12">
-                            <label class="form-label" for="billing-email">E-posadres</label>
-                            <input id="billing-email"
-                                   class="form-control form-control-lg billing-readonly-input"
-                                   value="@UserEmail"
-                                   autocomplete="email"
-                                   aria-describedby="billing-email-help"
-                                   readonly />
-                            <div id="billing-email-help" class="form-text billing-form-hint">
-                                Jou e-posadres kom vanaf jou rekening en kan nie op hierdie blad verander word nie.
+                            <div class="col-12">
+                                <label class="form-label" for="billing-email">Huidige e-posadres</label>
+                                <input id="billing-email"
+                                       class="form-control form-control-lg billing-readonly-input"
+                                       value="@UserEmail"
+                                       autocomplete="email"
+                                       aria-describedby="billing-email-help"
+                                       readonly />
+                                <div id="billing-email-help" class="form-text billing-form-hint">
+                                    Jou huidige e-posadres word hier gewys. Gebruik die kaart hieronder om dit veilig met Supabase te verander.
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    <div class="billing-form-actions d-flex flex-wrap gap-2">
-                        <button type="submit" class="btn btn-warning btn-lg billing-primary-btn" disabled="@IsSavingProfile">
-                            @(IsSavingProfile ? "Stoor..." : "Stoor profiel")
-                        </button>
-                        <a class="btn btn-outline-secondary btn-lg billing-secondary-btn" href="/opsies">Sien plan opsies</a>
-                    </div>
-
-                    @if (!string.IsNullOrWhiteSpace(ProfileStatusMessage))
-                    {
-                        <div class="alert @(ProfileSaveSucceeded ? "alert-success" : "alert-danger") billing-profile-status"
-                             role="@(ProfileSaveSucceeded ? "status" : "alert")"
-                             aria-live="polite">
-                            @ProfileStatusMessage
+                        <div class="billing-form-actions d-flex flex-wrap gap-2">
+                            <button type="submit" class="btn btn-warning btn-lg billing-primary-btn" disabled="@IsSavingProfile">
+                                @(IsSavingProfile ? "Stoor..." : "Stoor profiel")
+                            </button>
+                            <a class="btn btn-outline-secondary btn-lg billing-secondary-btn" href="/opsies">Sien plan opsies</a>
                         </div>
-                    }
-                </EditForm>
-            </section>
+
+                        @if (!string.IsNullOrWhiteSpace(ProfileStatusMessage))
+                        {
+                            <div class="alert @(ProfileSaveSucceeded ? "alert-success" : "alert-danger") billing-profile-status"
+                                 role="@(ProfileSaveSucceeded ? "status" : "alert")"
+                                 aria-live="polite">
+                                @ProfileStatusMessage
+                            </div>
+                        }
+                    </EditForm>
+                </section>
+
+                <section class="billing-panel billing-email-card" aria-label="Verander e-posadres">
+                    <div class="billing-panel-heading">
+                        <p class="billing-section-kicker">Veilige e-posverandering</p>
+                        <h2>Verander jou e-posadres</h2>
+                        <p>
+                            Vul jou nuwe e-posadres en huidige wagwoord in. Supabase stuur dan 'n bevestiging-skakel
+                            om jou verandering veilig klaar te maak.
+                        </p>
+                    </div>
+
+                    <EditForm FormName="billing-email-change-form"
+                              class="billing-profile-form billing-email-form"
+                              EditContext="EmailChangeEditContext"
+                              OnSubmit="HandleEmailChangeSubmitAsync"
+                              aria-busy="@IsSubmittingEmailChange">
+                        <DataAnnotationsValidator />
+
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label" for="billing-email-change-new">Nuwe e-posadres</label>
+                                <InputText id="billing-email-change-new"
+                                           class="form-control form-control-lg"
+                                           type="email"
+                                           autocomplete="email"
+                                           @bind-Value="EmailChangeForm.NewEmail" />
+                                <ValidationMessage class="invalid-feedback d-block" For="@(() => EmailChangeForm.NewEmail)" />
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label" for="billing-email-change-password">Huidige wagwoord</label>
+                                <InputText id="billing-email-change-password"
+                                           class="form-control form-control-lg"
+                                           type="password"
+                                           autocomplete="current-password"
+                                           @bind-Value="EmailChangeForm.CurrentPassword" />
+                                <ValidationMessage class="invalid-feedback d-block" For="@(() => EmailChangeForm.CurrentPassword)" />
+                            </div>
+                        </div>
+
+                        <p class="billing-email-note">
+                            Gebruik 'n e-posadres waartoe jy nou toegang het. As Supabase twee bevestigings vereis,
+                            maak asseblief albei skakels oop.
+                        </p>
+
+                        <div class="billing-form-actions d-flex flex-wrap gap-2">
+                            <button type="submit" class="btn btn-warning btn-lg billing-primary-btn" disabled="@IsSubmittingEmailChange">
+                                @(IsSubmittingEmailChange ? "Besig..." : "Stuur bevestiging")
+                            </button>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(EmailChangeStatusMessage))
+                        {
+                            <div class="alert @(EmailChangeStatusIsSuccess ? "alert-success" : "alert-danger") billing-profile-status"
+                                 role="@(EmailChangeStatusIsSuccess ? "status" : "alert")"
+                                 aria-live="polite">
+                                @EmailChangeStatusMessage
+                            </div>
+                        }
+                    </EditForm>
+                </section>
+            </div>
 
             <aside class="billing-panel billing-status-card @(HasActivePaidSubscription ? "is-active" : "is-free")" aria-live="polite">
                 <div class="billing-panel-heading">
@@ -266,18 +362,47 @@
     private string BillingCanonicalUrl => NavigationManager.ToAbsoluteUri("/intekening-en-betaling").ToString();
     private bool IsLoading { get; set; } = true;
     private bool IsRedirectingToLogin { get; set; }
+    private bool IsAuthenticatedUser { get; set; }
     private bool HasActivePaidSubscription { get; set; }
+    private bool IsCompletingEmailChange { get; set; }
     private string UserEmail { get; set; } = string.Empty;
     private ProfileFormModel ProfileForm { get; set; } = new();
+    private EmailChangeFormModel EmailChangeForm { get; set; } = new();
+    private EditContext EmailChangeEditContext { get; set; } = default!;
     private bool IsSavingProfile { get; set; }
+    private bool IsSubmittingEmailChange { get; set; }
     private bool ProfileSaveSucceeded { get; set; }
+    private bool EmailChangeStatusIsSuccess { get; set; }
+    private bool EmailChangeCallbackIsSuccess { get; set; }
     private string? ProfileStatusMessage { get; set; }
+    private string? EmailChangeStatusMessage { get; set; }
+    private string? EmailChangeCallbackMessage { get; set; }
+    private IJSObjectReference? _authModule;
+
+    [SupplyParameterFromQuery(Name = "emailChange")]
+    public string? EmailChange { get; set; }
+
+    [SupplyParameterFromQuery(Name = "emailChangeState")]
+    public string? EmailChangeState { get; set; }
+
+    protected override void OnInitialized()
+    {
+        EmailChangeEditContext = new EditContext(EmailChangeForm);
+    }
 
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        if (authState.User.Identity?.IsAuthenticated != true)
+        IsAuthenticatedUser = authState.User.Identity?.IsAuthenticated == true;
+
+        if (!IsAuthenticatedUser)
         {
+            if (IsEmailChangeCallbackRequest())
+            {
+                IsLoading = false;
+                return;
+            }
+
             IsRedirectingToLogin = true;
             IsLoading = false;
 
@@ -302,6 +427,12 @@
 
             HasActivePaidSubscription = hasActivePaidSubscriptionTask.Result;
             HydrateProfileForm(subscriberProfileTask.Result, authState.User);
+
+            if (string.Equals(EmailChange, "success", StringComparison.OrdinalIgnoreCase))
+            {
+                EmailChangeStatusIsSuccess = true;
+                EmailChangeStatusMessage = "Jou e-posadres is suksesvol opgedateer.";
+            }
         }
         catch
         {
@@ -312,6 +443,16 @@
         {
             IsLoading = false;
         }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || !IsEmailChangeCallbackRequest())
+        {
+            return;
+        }
+
+        await HandleEmailChangeCallbackAsync();
     }
 
     private async Task SaveProfileAsync()
@@ -355,6 +496,174 @@
         }
     }
 
+    private async Task HandleEmailChangeSubmitAsync(EditContext editContext)
+    {
+        await SyncEmailChangeInputsFromDomAsync();
+
+        if (!editContext.Validate() || IsSubmittingEmailChange)
+        {
+            return;
+        }
+
+        IsSubmittingEmailChange = true;
+        EmailChangeStatusIsSuccess = false;
+        EmailChangeStatusMessage = null;
+        await ShowSubmittingStateAsync();
+
+        try
+        {
+            var authModule = await EnsureAuthModuleAsync();
+            var response = await authModule.InvokeAsync<AuthBrowserResponse>(
+                "postAuthJson",
+                "/api/auth/email-change/request",
+                new EmailChangeRequestPayload(
+                    EmailChangeForm.NewEmail.Trim(),
+                    EmailChangeForm.CurrentPassword));
+
+            EmailChangeStatusIsSuccess = response.Ok;
+            EmailChangeStatusMessage = response.Message ?? (response.Ok
+                ? "Ons het 'n bevestiging-skakel vir jou e-posverandering gestuur."
+                : "Kon nie nou jou e-posadres verander nie. Probeer asseblief weer.");
+
+            if (response.Ok)
+            {
+                EmailChangeForm.CurrentPassword = string.Empty;
+            }
+        }
+        catch
+        {
+            EmailChangeStatusIsSuccess = false;
+            EmailChangeStatusMessage = "Kon nie nou jou e-posadres verander nie. Probeer asseblief weer.";
+        }
+        finally
+        {
+            IsSubmittingEmailChange = false;
+        }
+    }
+
+    private async Task HandleEmailChangeCallbackAsync()
+    {
+        if (IsCompletingEmailChange)
+        {
+            return;
+        }
+
+        IsCompletingEmailChange = true;
+        EmailChangeCallbackIsSuccess = false;
+        EmailChangeCallbackMessage = null;
+        await ShowSubmittingStateAsync();
+
+        try
+        {
+            var authModule = await EnsureAuthModuleAsync();
+            var browserState = await authModule.InvokeAsync<RecoveryBrowserState>("readSupabaseRecoveryState");
+
+            if (!string.IsNullOrWhiteSpace(browserState.ErrorDescription))
+            {
+                EmailChangeCallbackMessage = browserState.ErrorDescription.Trim();
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(browserState.AccessToken) ||
+                string.IsNullOrWhiteSpace(browserState.RefreshToken))
+            {
+                EmailChangeCallbackMessage = "Kon nie die bevestiging-skakel lees nie. Probeer asseblief weer vanaf jou e-pos.";
+                return;
+            }
+
+            var response = await authModule.InvokeAsync<AuthBrowserResponse>(
+                "postAuthJson",
+                "/api/auth/email-change/complete",
+                new EmailChangeCompletePayload(
+                    browserState.AccessToken,
+                    browserState.RefreshToken,
+                    EmailChangeState));
+
+            EmailChangeCallbackIsSuccess = response.Ok;
+            EmailChangeCallbackMessage = response.Message ?? (response.Ok
+                ? "Jou e-posadres is suksesvol opgedateer."
+                : "Kon nie nou jou e-posadres bevestig nie. Probeer asseblief weer.");
+
+            if (response.Ok && !string.IsNullOrWhiteSpace(response.RedirectPath))
+            {
+                await RedirectToTargetAsync(response.RedirectPath);
+            }
+        }
+        catch
+        {
+            EmailChangeCallbackIsSuccess = false;
+            EmailChangeCallbackMessage = "Kon nie nou jou e-posadres bevestig nie. Probeer asseblief weer.";
+        }
+        finally
+        {
+            IsCompletingEmailChange = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SyncEmailChangeInputsFromDomAsync()
+    {
+        try
+        {
+            var authModule = await EnsureAuthModuleAsync();
+            var values = await authModule.InvokeAsync<Dictionary<string, string>>(
+                "readInputValues",
+                new[] { "billing-email-change-new", "billing-email-change-password" });
+
+            if (values.TryGetValue("billing-email-change-new", out var newEmailValue))
+            {
+                EmailChangeForm.NewEmail = newEmailValue?.Trim() ?? string.Empty;
+            }
+
+            if (values.TryGetValue("billing-email-change-password", out var passwordValue))
+            {
+                EmailChangeForm.CurrentPassword = passwordValue ?? string.Empty;
+            }
+        }
+        catch
+        {
+            // Keep existing bound values if DOM reads fail.
+        }
+    }
+
+    private async Task ShowSubmittingStateAsync()
+    {
+        StateHasChanged();
+        await Task.Yield();
+    }
+
+    private async Task RedirectToTargetAsync(string? target)
+    {
+        var safeTarget = string.IsNullOrWhiteSpace(target)
+            ? "/intekening-en-betaling?emailChange=success"
+            : target;
+
+        try
+        {
+            var authModule = await EnsureAuthModuleAsync();
+            await authModule.InvokeVoidAsync("redirectTo", safeTarget);
+        }
+        catch
+        {
+            NavigationManager.NavigateTo(safeTarget, forceLoad: true);
+        }
+    }
+
+    private async Task<IJSObjectReference> EnsureAuthModuleAsync()
+    {
+        if (_authModule is not null)
+        {
+            return _authModule;
+        }
+
+        _authModule = await JS.InvokeAsync<IJSObjectReference>("import", "./js/auth-browser.js");
+        return _authModule;
+    }
+
+    private bool IsEmailChangeCallbackRequest() =>
+        string.Equals(EmailChange, "complete", StringComparison.OrdinalIgnoreCase) &&
+        !string.IsNullOrWhiteSpace(EmailChangeState);
+
     private void HydrateProfileForm(SubscriberProfile? profile, ClaimsPrincipal user)
     {
         ProfileForm = new ProfileFormModel
@@ -388,6 +697,34 @@
         return $"R {amount.ToString("0.00", culture)}";
     }
 
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_authModule is not null)
+            {
+                await _authModule.DisposeAsync();
+            }
+        }
+        catch
+        {
+            // Ignore module disposal failures.
+        }
+    }
+
+    private sealed record RecoveryBrowserState(
+        string? AccessToken,
+        string? RefreshToken,
+        string? Type,
+        string? ErrorCode,
+        string? ErrorDescription);
+
+    private sealed record AuthBrowserResponse(bool Ok, int Status, string? Message, string? RedirectPath);
+
+    private sealed record EmailChangeRequestPayload(string NewEmail, string CurrentPassword);
+
+    private sealed record EmailChangeCompletePayload(string? AccessToken, string? RefreshToken, string? EmailChangeState);
+
     private sealed class ProfileFormModel
     {
         [StringLength(80, ErrorMessage = "Voornaam mag nie langer as 80 karakters wees nie.")]
@@ -401,5 +738,17 @@
 
         [RegularExpression(@"^\+?[0-9\s\-\(\)]{7,24}$", ErrorMessage = "Gebruik asseblief 'n geldige selfoonnommer.")]
         public string MobileNumber { get; set; } = string.Empty;
+    }
+
+    private sealed class EmailChangeFormModel
+    {
+        [Required(ErrorMessage = "Vul asseblief jou nuwe e-pos in.")]
+        [EmailAddress(ErrorMessage = "Gebruik asseblief 'n geldige nuwe e-posadres.")]
+        [StringLength(254)]
+        public string NewEmail { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Vul asseblief jou huidige wagwoord in.")]
+        [StringLength(200, MinimumLength = 6, ErrorMessage = "Jou wagwoord moet tussen 6 en 200 karakters wees.")]
+        public string CurrentPassword { get; set; } = string.Empty;
     }
 }

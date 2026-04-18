@@ -43,6 +43,74 @@ public sealed partial class SupabaseAdminManagementService(
         return await IsAdminCoreAsync(baseUri, apiKey, email, cancellationToken);
     }
 
+    public async Task<bool> ChangeAdminEmailAsync(
+        string? currentEmail,
+        string? newEmail,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(currentEmail) || string.IsNullOrWhiteSpace(newEmail))
+        {
+            return false;
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            _logger.LogWarning("Admin email change skipped: Supabase URL is not configured.");
+            return false;
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            _logger.LogWarning("Admin email change skipped: Supabase ServiceRoleKey is not configured.");
+            return false;
+        }
+
+        var normalizedCurrentEmail = currentEmail.Trim().ToLowerInvariant();
+        var normalizedNewEmail = newEmail.Trim().ToLowerInvariant();
+        if (string.Equals(normalizedCurrentEmail, normalizedNewEmail, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        if (!await IsAdminCoreAsync(baseUri, apiKey, normalizedCurrentEmail, cancellationToken))
+        {
+            return true;
+        }
+
+        if (await IsAdminCoreAsync(baseUri, apiKey, normalizedNewEmail, cancellationToken))
+        {
+            _logger.LogWarning(
+                "Admin email change blocked because target email already exists. current_email={CurrentEmail} new_email={NewEmail}",
+                normalizedCurrentEmail,
+                normalizedNewEmail);
+            return false;
+        }
+
+        var escapedCurrentEmail = Uri.EscapeDataString(normalizedCurrentEmail);
+        var updateUri = new Uri(baseUri, $"rest/v1/admin_users?email=eq.{escapedCurrentEmail}");
+        using var updateRequest = CreateJsonRequest(
+            new HttpMethod("PATCH"),
+            updateUri,
+            apiKey,
+            new { email = normalizedNewEmail },
+            "return=minimal");
+        using var updateResponse = await _httpClient.SendAsync(updateRequest, cancellationToken);
+        if (updateResponse.IsSuccessStatusCode)
+        {
+            return true;
+        }
+
+        var responseBody = await updateResponse.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Admin email change failed. current_email={CurrentEmail} new_email={NewEmail} Status={StatusCode} Body={Body}",
+            normalizedCurrentEmail,
+            normalizedNewEmail,
+            (int)updateResponse.StatusCode,
+            responseBody);
+        return false;
+    }
+
     public async Task<IReadOnlyList<AdminSubscriberRecord>> GetSubscribersAsync(
         string? adminEmail,
         string? search = null,

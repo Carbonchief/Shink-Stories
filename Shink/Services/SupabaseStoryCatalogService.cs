@@ -727,10 +727,15 @@ public sealed class SupabaseStoryCatalogService(
     private static StoryItem MapToStoryItem(StoryCatalogRow row)
     {
         var title = row.Title.Trim();
+        var storyDetails = ReadStoryDetails(row.Metadata);
+        var summary = !string.IsNullOrWhiteSpace(row.Summary)
+            ? row.Summary.Trim()
+            : storyDetails.Synopsis;
+
         var description = !string.IsNullOrWhiteSpace(row.Description)
             ? row.Description.Trim()
-            : !string.IsNullOrWhiteSpace(row.Summary)
-                ? row.Summary.Trim()
+            : !string.IsNullOrWhiteSpace(summary)
+                ? summary
                 : $"Luister na {title} op Schink Stories.";
 
         var imageFileName = !string.IsNullOrWhiteSpace(row.CoverImagePath)
@@ -751,7 +756,75 @@ public sealed class SupabaseStoryCatalogService(
             AudioProvider: string.IsNullOrWhiteSpace(row.AudioProvider) ? "local" : row.AudioProvider.Trim(),
             AudioBucket: string.IsNullOrWhiteSpace(row.AudioBucket) ? null : row.AudioBucket.Trim(),
             AudioContentType: string.IsNullOrWhiteSpace(row.AudioContentType) ? null : row.AudioContentType.Trim(),
-            AccessLevel: string.IsNullOrWhiteSpace(row.AccessLevel) ? "subscriber" : row.AccessLevel.Trim().ToLowerInvariant());
+            AccessLevel: string.IsNullOrWhiteSpace(row.AccessLevel) ? "subscriber" : row.AccessLevel.Trim().ToLowerInvariant(),
+            Summary: summary,
+            Lessons: storyDetails.Lessons,
+            ValueTags: storyDetails.Values,
+            ConversationQuestions: storyDetails.ConversationQuestions,
+            Characters: storyDetails.Characters);
+    }
+
+    private static StoryDetails ReadStoryDetails(JsonElement metadata)
+    {
+        if (metadata.ValueKind != JsonValueKind.Object ||
+            !metadata.TryGetProperty("story_details", out var storyDetailsNode) ||
+            storyDetailsNode.ValueKind != JsonValueKind.Object)
+        {
+            return StoryDetails.Empty;
+        }
+
+        var values = ReadMetadataStringArray(storyDetailsNode, "values");
+        if (values.Count == 0)
+        {
+            values = ReadMetadataStringArray(storyDetailsNode, "value_tags");
+        }
+
+        return new StoryDetails(
+            Synopsis: ReadMetadataString(storyDetailsNode, "synopsis"),
+            Lessons: ReadMetadataStringArray(storyDetailsNode, "lessons"),
+            Values: values,
+            ConversationQuestions: ReadMetadataStringArray(storyDetailsNode, "conversation_questions"),
+            Characters: ReadMetadataStringArray(storyDetailsNode, "characters"));
+    }
+
+    private static string? ReadMetadataString(JsonElement node, string propertyName)
+    {
+        if (node.ValueKind != JsonValueKind.Object ||
+            !node.TryGetProperty(propertyName, out var property) ||
+            property.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        var value = property.GetString();
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static IReadOnlyList<string> ReadMetadataStringArray(JsonElement node, string propertyName)
+    {
+        if (node.ValueKind != JsonValueKind.Object ||
+            !node.TryGetProperty(propertyName, out var property) ||
+            property.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<string>();
+        }
+
+        var values = new List<string>();
+        foreach (var item in property.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+
+            var value = item.GetString();
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                values.Add(value.Trim());
+            }
+        }
+
+        return values.Count == 0 ? Array.Empty<string>() : values;
     }
 
     private static IReadOnlyList<StoryPlaylist> BuildLuisterPlaylistsFromConfiguredTables(
@@ -1225,6 +1298,21 @@ public sealed class SupabaseStoryCatalogService(
         IReadOnlyList<StoryPlaylistRow> PlaylistRows,
         IReadOnlyList<StoryPlaylistItemRow> PlaylistItemRows,
         IReadOnlyList<StoryPlaylist> LuisterPlaylists);
+
+    private sealed record StoryDetails(
+        string? Synopsis,
+        IReadOnlyList<string> Lessons,
+        IReadOnlyList<string> Values,
+        IReadOnlyList<string> ConversationQuestions,
+        IReadOnlyList<string> Characters)
+    {
+        public static StoryDetails Empty { get; } = new(
+            Synopsis: null,
+            Lessons: Array.Empty<string>(),
+            Values: Array.Empty<string>(),
+            ConversationQuestions: Array.Empty<string>(),
+            Characters: Array.Empty<string>());
+    }
 
     private sealed class StoryCatalogRow
     {

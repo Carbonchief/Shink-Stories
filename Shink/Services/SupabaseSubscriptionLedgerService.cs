@@ -164,6 +164,113 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         }
     }
 
+    public async Task<SubscriberEmailChangeResult> ChangeSubscriberEmailAsync(
+        string? currentEmail,
+        string? newEmail,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(currentEmail) || string.IsNullOrWhiteSpace(newEmail))
+        {
+            return new SubscriberEmailChangeResult(false, "Gebruik asseblief geldige e-posadresse.");
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            _logger.LogWarning("Supabase subscriber email change skipped: URL is not configured.");
+            return new SubscriberEmailChangeResult(false, "Supabase URL is nog nie opgestel nie.");
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            _logger.LogWarning("Supabase subscriber email change skipped: ServiceRoleKey is not configured.");
+            return new SubscriberEmailChangeResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+        }
+
+        var normalizedCurrentEmail = currentEmail.Trim().ToLowerInvariant();
+        var normalizedNewEmail = newEmail.Trim().ToLowerInvariant();
+        if (string.Equals(normalizedCurrentEmail, normalizedNewEmail, StringComparison.Ordinal))
+        {
+            return new SubscriberEmailChangeResult(true);
+        }
+
+        try
+        {
+            var currentSubscriberId = await FindSubscriberIdByEmailAsync(
+                baseUri,
+                apiKey,
+                normalizedCurrentEmail,
+                cancellationToken);
+            var targetSubscriberId = await FindSubscriberIdByEmailAsync(
+                baseUri,
+                apiKey,
+                normalizedNewEmail,
+                cancellationToken);
+
+            if (string.IsNullOrWhiteSpace(currentSubscriberId))
+            {
+                return string.IsNullOrWhiteSpace(targetSubscriberId)
+                    ? new SubscriberEmailChangeResult(true)
+                    : new SubscriberEmailChangeResult(false, "Daardie e-posadres word reeds deur 'n ander rekening gebruik.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(targetSubscriberId) &&
+                !string.Equals(currentSubscriberId, targetSubscriberId, StringComparison.OrdinalIgnoreCase))
+            {
+                return new SubscriberEmailChangeResult(false, "Daardie e-posadres word reeds deur 'n ander rekening gebruik.");
+            }
+
+            var escapedCurrentEmail = Uri.EscapeDataString(normalizedCurrentEmail);
+            var updateUri = new Uri(
+                baseUri,
+                $"rest/v1/subscribers?email=eq.{escapedCurrentEmail}&select=subscriber_id,email");
+
+            using var request = CreateJsonRequest(
+                new HttpMethod("PATCH"),
+                updateUri,
+                apiKey,
+                new { email = normalizedNewEmail },
+                "return=representation");
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning(
+                    "Supabase subscriber email change failed. current_email={CurrentEmail} new_email={NewEmail} Status={StatusCode} Body={Body}",
+                    normalizedCurrentEmail,
+                    normalizedNewEmail,
+                    (int)response.StatusCode,
+                    responseBody);
+
+                return new SubscriberEmailChangeResult(
+                    false,
+                    ContainsUniqueEmailViolation(responseBody)
+                        ? "Daardie e-posadres word reeds deur 'n ander rekening gebruik."
+                        : "Kon nie nou jou intekenaar e-pos opdateer nie.");
+            }
+
+            var updatedBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            var updatedEmail = ReadFirstStringProperty(updatedBody, "email");
+            if (!string.IsNullOrWhiteSpace(updatedEmail) &&
+                !string.Equals(updatedEmail.Trim(), normalizedNewEmail, StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogWarning(
+                    "Supabase subscriber email change returned an unexpected email. current_email={CurrentEmail} new_email={NewEmail} updated_email={UpdatedEmail}",
+                    normalizedCurrentEmail,
+                    normalizedNewEmail,
+                    updatedEmail);
+                return new SubscriberEmailChangeResult(false, "Kon nie nou jou intekenaar e-pos opdateer nie.");
+            }
+
+            return new SubscriberEmailChangeResult(true);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(exception, "Supabase subscriber email change failed unexpectedly.");
+            return new SubscriberEmailChangeResult(false, "Kon nie nou jou intekenaar e-pos opdateer nie.");
+        }
+    }
+
     public async Task<bool> EnsureGratisAccessAsync(
         string? email,
         string? firstName,
@@ -340,6 +447,34 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             _logger.LogWarning(exception, "Supabase subscription lookup failed unexpectedly.");
             return [];
         }
+    }
+
+    private async Task<string?> FindSubscriberIdByEmailAsync(
+        Uri baseUri,
+        string apiKey,
+        string normalizedEmail,
+        CancellationToken cancellationToken)
+    {
+        var escapedEmail = Uri.EscapeDataString(normalizedEmail);
+        var lookupUri = new Uri(
+            baseUri,
+            $"rest/v1/subscribers?select=subscriber_id&email=eq.{escapedEmail}&limit=1");
+
+        using var request = CreateRequest(HttpMethod.Get, lookupUri, apiKey);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Supabase subscriber email lookup failed. email={Email} Status={StatusCode} Body={Body}",
+                normalizedEmail,
+                (int)response.StatusCode,
+                responseBody);
+            return null;
+        }
+
+        var lookupBody = await response.Content.ReadAsStringAsync(cancellationToken);
+        return ReadFirstStringProperty(lookupBody, "subscriber_id");
     }
 
     private static bool IsCurrentlyActiveSubscription(SubscriptionStatusRow row, DateTimeOffset nowUtc)
@@ -1168,6 +1303,12 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         return DateTimeOffset.TryParse(value, out var parsed) ? parsed : null;
     }
+
+    private static bool ContainsUniqueEmailViolation(string? responseBody) =>
+        !string.IsNullOrWhiteSpace(responseBody) &&
+        (responseBody.Contains("duplicate key value", StringComparison.OrdinalIgnoreCase) ||
+         responseBody.Contains("unique constraint", StringComparison.OrdinalIgnoreCase) ||
+         responseBody.Contains("subscribers_email_key", StringComparison.OrdinalIgnoreCase));
 
     private static string? ReadFirstStringProperty(string json, string propertyName)
     {

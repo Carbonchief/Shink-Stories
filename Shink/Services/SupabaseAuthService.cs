@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Options;
 using Supabase.Gotrue;
 
@@ -188,7 +189,7 @@ public sealed class SupabaseAuthService(
 
         if (updateResult.ShouldRefreshSession)
         {
-            var refreshedSession = await TryRefreshPasswordResetSessionAsync(
+            var refreshedSession = await TryRefreshAuthenticatedSessionAsync(
                 refreshTokenEndpoint,
                 refreshToken.Trim(),
                 cancellationToken);
@@ -212,6 +213,107 @@ public sealed class SupabaseAuthService(
 
         return SupabasePasswordResetResult.Failure(
             updateResult.ErrorMessage ?? "Kon nie jou wagwoord nou opdateer nie. Probeer asseblief weer.");
+    }
+
+    public async Task<SupabaseEmailChangeResult> RequestEmailChangeAsync(
+        string currentEmail,
+        string currentPassword,
+        string newEmail,
+        string redirectTo,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(currentEmail) ||
+            string.IsNullOrWhiteSpace(currentPassword) ||
+            string.IsNullOrWhiteSpace(newEmail))
+        {
+            return SupabaseEmailChangeResult.Failure("Vul asseblief jou huidige wagwoord en nuwe e-posadres in.");
+        }
+
+        if (string.IsNullOrWhiteSpace(redirectTo))
+        {
+            return SupabaseEmailChangeResult.Failure("Kon nie die e-pos bevestiging-skakel voorberei nie. Probeer asseblief weer.");
+        }
+
+        if (!TryBuildTokenEndpoint(out var tokenEndpoint) ||
+            !TryBuildUserEndpoint(out var userEndpoint))
+        {
+            return SupabaseEmailChangeResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en anon key op.");
+        }
+
+        var authenticatedSession = await TryAuthenticateSessionAsync(
+            tokenEndpoint,
+            currentEmail.Trim(),
+            currentPassword,
+            cancellationToken);
+        if (!authenticatedSession.IsSuccess)
+        {
+            return SupabaseEmailChangeResult.Failure(
+                authenticatedSession.ErrorMessage ?? "Kon nie jou identiteit bevestig nie. Kontroleer jou wagwoord en probeer weer.");
+        }
+
+        var requestResult = await TryRequestEmailChangeAsync(
+            userEndpoint,
+            authenticatedSession.AccessToken!,
+            newEmail.Trim(),
+            redirectTo.Trim(),
+            cancellationToken);
+
+        return requestResult.IsSuccess
+            ? SupabaseEmailChangeResult.Success(authenticatedSession.UserEmail ?? currentEmail)
+            : SupabaseEmailChangeResult.Failure(
+                requestResult.ErrorMessage ?? "Kon nie nou jou e-posadres verander nie. Probeer asseblief weer.");
+    }
+
+    public async Task<SupabaseSessionUserResult> ResolveUserSessionAsync(
+        string accessToken,
+        string refreshToken,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(refreshToken))
+        {
+            return SupabaseSessionUserResult.Failure("Die bevestiging-skakel is ongeldig of het verval. Probeer asseblief weer.");
+        }
+
+        if (!TryBuildUserEndpoint(out var userEndpoint) ||
+            !TryBuildRefreshTokenEndpoint(out var refreshTokenEndpoint))
+        {
+            return SupabaseSessionUserResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en anon key op.");
+        }
+
+        var resolveResult = await TryGetAuthenticatedUserAsync(
+            userEndpoint,
+            accessToken.Trim(),
+            cancellationToken);
+        if (resolveResult.IsSuccess)
+        {
+            return SupabaseSessionUserResult.Success(resolveResult.UserEmail);
+        }
+
+        if (!resolveResult.ShouldRefreshSession)
+        {
+            return SupabaseSessionUserResult.Failure(
+                resolveResult.ErrorMessage ?? "Kon nie jou bevestiging-skakel bevestig nie. Probeer asseblief weer.");
+        }
+
+        var refreshedSession = await TryRefreshAuthenticatedSessionAsync(
+            refreshTokenEndpoint,
+            refreshToken.Trim(),
+            cancellationToken);
+        if (!refreshedSession.IsSuccess || string.IsNullOrWhiteSpace(refreshedSession.AccessToken))
+        {
+            return SupabaseSessionUserResult.Failure(
+                refreshedSession.ErrorMessage ?? resolveResult.ErrorMessage ?? "Kon nie jou bevestiging-skakel bevestig nie. Probeer asseblief weer.");
+        }
+
+        resolveResult = await TryGetAuthenticatedUserAsync(
+            userEndpoint,
+            refreshedSession.AccessToken,
+            cancellationToken);
+
+        return resolveResult.IsSuccess
+            ? SupabaseSessionUserResult.Success(resolveResult.UserEmail ?? refreshedSession.UserEmail)
+            : SupabaseSessionUserResult.Failure(
+                resolveResult.ErrorMessage ?? "Kon nie jou bevestiging-skakel bevestig nie. Probeer asseblief weer.");
     }
 
     public async Task<SupabaseOAuthStartResult> StartGoogleSignInAsync(
@@ -561,11 +663,144 @@ public sealed class SupabaseAuthService(
                 errorMessage);
             return PasswordUpdateAttemptResult.Failure(
                 errorMessage,
-                ShouldRefreshPasswordResetSession(response.StatusCode, errorMessage));
+                ShouldRefreshAuthenticatedSession(response.StatusCode, errorMessage));
         }
     }
 
-    private async Task<RefreshedSessionResult> TryRefreshPasswordResetSessionAsync(
+    private async Task<AuthenticatedSessionResult> TryAuthenticateSessionAsync(
+        Uri tokenEndpoint,
+        string email,
+        string password,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, tokenEndpoint)
+        {
+            Content = JsonContent.Create(new SupabasePasswordSignInRequest(email, password))
+        };
+        request.Headers.TryAddWithoutValidation("apikey", _options.AnonKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.AnonKey);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(request, cancellationToken);
+        }
+        catch (HttpRequestException exception)
+        {
+            _logger.LogWarning(exception, "Supabase session authentication request failed.");
+            return AuthenticatedSessionResult.Failure("Kon nie nou met Supabase koppel nie. Probeer asseblief weer.");
+        }
+
+        using (response)
+        {
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var session = ReadSessionResponse(responseBody);
+                if (!string.IsNullOrWhiteSpace(session.AccessToken))
+                {
+                    return AuthenticatedSessionResult.Success(
+                        session.AccessToken!,
+                        session.RefreshToken,
+                        session.UserEmail ?? email);
+                }
+            }
+
+            var errorMessage = ReadErrorMessage(responseBody) ?? "Kon nie jou identiteit bevestig nie. Kontroleer jou wagwoord en probeer weer.";
+            _logger.LogInformation(
+                "Supabase session authentication rejected: {StatusCode} {Message}",
+                (int)response.StatusCode,
+                errorMessage);
+            return AuthenticatedSessionResult.Failure(errorMessage);
+        }
+    }
+
+    private async Task<EmailChangeAttemptResult> TryRequestEmailChangeAsync(
+        Uri userEndpoint,
+        string accessToken,
+        string newEmail,
+        string redirectTo,
+        CancellationToken cancellationToken)
+    {
+        var requestUri = new Uri(QueryHelpers.AddQueryString(userEndpoint.ToString(), "redirect_to", redirectTo));
+
+        using var request = new HttpRequestMessage(HttpMethod.Put, requestUri)
+        {
+            Content = JsonContent.Create(new SupabaseEmailUpdateRequest(newEmail))
+        };
+        request.Headers.TryAddWithoutValidation("apikey", _options.AnonKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(request, cancellationToken);
+        }
+        catch (HttpRequestException exception)
+        {
+            _logger.LogWarning(exception, "Supabase email change request failed.");
+            return EmailChangeAttemptResult.Failure("Kon nie nou met Supabase koppel nie. Probeer asseblief weer.");
+        }
+
+        using (response)
+        {
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                return EmailChangeAttemptResult.Success();
+            }
+
+            var errorMessage = ReadErrorMessage(responseBody) ?? "Kon nie nou jou e-posadres verander nie. Probeer asseblief weer.";
+            _logger.LogInformation(
+                "Supabase email change rejected: {StatusCode} {Message}",
+                (int)response.StatusCode,
+                errorMessage);
+            return EmailChangeAttemptResult.Failure(errorMessage);
+        }
+    }
+
+    private async Task<AuthenticatedUserLookupResult> TryGetAuthenticatedUserAsync(
+        Uri userEndpoint,
+        string accessToken,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, userEndpoint);
+        request.Headers.TryAddWithoutValidation("apikey", _options.AnonKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(request, cancellationToken);
+        }
+        catch (HttpRequestException exception)
+        {
+            _logger.LogWarning(exception, "Supabase authenticated user lookup failed.");
+            return AuthenticatedUserLookupResult.Failure(
+                "Kon nie nou met Supabase koppel nie. Probeer asseblief weer.",
+                shouldRefreshSession: false);
+        }
+
+        using (response)
+        {
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                return AuthenticatedUserLookupResult.Success(ReadUserEmail(responseBody));
+            }
+
+            var errorMessage = ReadErrorMessage(responseBody) ?? "Die bevestiging-skakel is ongeldig of het verval. Probeer asseblief weer.";
+            _logger.LogInformation(
+                "Supabase authenticated user lookup rejected: {StatusCode} {Message}",
+                (int)response.StatusCode,
+                errorMessage);
+            return AuthenticatedUserLookupResult.Failure(
+                errorMessage,
+                ShouldRefreshAuthenticatedSession(response.StatusCode, errorMessage));
+        }
+    }
+
+    private async Task<RefreshedSessionResult> TryRefreshAuthenticatedSessionAsync(
         Uri refreshTokenEndpoint,
         string refreshToken,
         CancellationToken cancellationToken)
@@ -593,7 +828,7 @@ public sealed class SupabaseAuthService(
             var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
             if (response.IsSuccessStatusCode)
             {
-                var tokenResponse = ReadRefreshTokenResponse(responseBody);
+                var tokenResponse = ReadSessionResponse(responseBody);
                 if (!string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
                 {
                     return RefreshedSessionResult.Success(
@@ -645,11 +880,11 @@ public sealed class SupabaseAuthService(
         return null;
     }
 
-    private static RefreshTokenResponse ReadRefreshTokenResponse(string responseBody)
+    private static SessionResponse ReadSessionResponse(string responseBody)
     {
         if (string.IsNullOrWhiteSpace(responseBody))
         {
-            return new RefreshTokenResponse(null, null, null);
+            return new SessionResponse(null, null, null);
         }
 
         try
@@ -666,11 +901,11 @@ public sealed class SupabaseAuthService(
                 ? refreshTokenNode.GetString()
                 : null;
 
-            return new RefreshTokenResponse(accessToken, refreshToken, ReadUserEmail(responseBody));
+            return new SessionResponse(accessToken, refreshToken, ReadUserEmail(responseBody));
         }
         catch (JsonException)
         {
-            return new RefreshTokenResponse(null, null, null);
+            return new SessionResponse(null, null, null);
         }
     }
 
@@ -718,10 +953,24 @@ public sealed class SupabaseAuthService(
             return "Hierdie e-posadres is reeds geregistreer. Teken asseblief in.";
         }
 
+        if (message.Contains("email address is already in use", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("email address has already been registered", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("email address is already registered", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("already been registered", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Daardie e-posadres word reeds deur 'n ander rekening gebruik.";
+        }
+
+        if (message.Contains("new email address should be different", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("same as your current email", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Gebruik asseblief 'n nuwe e-posadres wat verskil van jou huidige een.";
+        }
+
         if (message.Contains("For security purposes", StringComparison.OrdinalIgnoreCase) ||
             message.Contains("rate limit", StringComparison.OrdinalIgnoreCase))
         {
-            return "Wag asseblief 'n oomblik voor jy weer 'n herstel-skakel aanvra.";
+            return "Wag asseblief 'n oomblik voor jy weer probeer.";
         }
 
         if (message.Contains("Error sending confirmation email", StringComparison.OrdinalIgnoreCase))
@@ -750,7 +999,7 @@ public sealed class SupabaseAuthService(
         !string.IsNullOrWhiteSpace(message) &&
         message.Contains("bevestigings-e-pos", StringComparison.OrdinalIgnoreCase);
 
-    private static bool ShouldRefreshPasswordResetSession(HttpStatusCode statusCode, string? errorMessage) =>
+    private static bool ShouldRefreshAuthenticatedSession(HttpStatusCode statusCode, string? errorMessage) =>
         statusCode == HttpStatusCode.Unauthorized ||
         (!string.IsNullOrWhiteSpace(errorMessage) &&
          (errorMessage.Contains("verval", StringComparison.OrdinalIgnoreCase) ||
@@ -837,6 +1086,7 @@ public sealed class SupabaseAuthService(
         string Email,
         [property: JsonPropertyName("redirect_to")] string RedirectTo);
     private sealed record SupabasePasswordUpdateRequest(string Password);
+    private sealed record SupabaseEmailUpdateRequest(string Email);
     private sealed record SupabaseRefreshTokenRequest([property: JsonPropertyName("refresh_token")] string RefreshToken);
     private sealed record SupabaseAdminCreateUserRequest(
         string Email,
@@ -879,5 +1129,42 @@ public sealed class SupabaseAuthService(
             new(false, null, null, null, errorMessage);
     }
 
-    private sealed record RefreshTokenResponse(string? AccessToken, string? RefreshToken, string? UserEmail);
+    private sealed record AuthenticatedSessionResult(
+        bool IsSuccess,
+        string? AccessToken,
+        string? RefreshToken,
+        string? UserEmail,
+        string? ErrorMessage)
+    {
+        public static AuthenticatedSessionResult Success(
+            string accessToken,
+            string? refreshToken,
+            string? userEmail) =>
+            new(true, accessToken, refreshToken, userEmail, null);
+
+        public static AuthenticatedSessionResult Failure(string errorMessage) =>
+            new(false, null, null, null, errorMessage);
+    }
+
+    private sealed record EmailChangeAttemptResult(bool IsSuccess, string? ErrorMessage)
+    {
+        public static EmailChangeAttemptResult Success() => new(true, null);
+
+        public static EmailChangeAttemptResult Failure(string errorMessage) => new(false, errorMessage);
+    }
+
+    private sealed record AuthenticatedUserLookupResult(
+        bool IsSuccess,
+        string? UserEmail,
+        string? ErrorMessage,
+        bool ShouldRefreshSession)
+    {
+        public static AuthenticatedUserLookupResult Success(string? userEmail) =>
+            new(true, userEmail, null, false);
+
+        public static AuthenticatedUserLookupResult Failure(string errorMessage, bool shouldRefreshSession) =>
+            new(false, null, errorMessage, shouldRefreshSession);
+    }
+
+    private sealed record SessionResponse(string? AccessToken, string? RefreshToken, string? UserEmail);
 }

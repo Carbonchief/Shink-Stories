@@ -17,6 +17,16 @@ public interface ISupabaseAuthService
         string refreshToken,
         string newPassword,
         CancellationToken cancellationToken = default);
+    Task<SupabaseEmailChangeResult> RequestEmailChangeAsync(
+        string currentEmail,
+        string currentPassword,
+        string newEmail,
+        string redirectTo,
+        CancellationToken cancellationToken = default);
+    Task<SupabaseSessionUserResult> ResolveUserSessionAsync(
+        string accessToken,
+        string refreshToken,
+        CancellationToken cancellationToken = default);
     Task<SupabaseOAuthStartResult> StartGoogleSignInAsync(
         string redirectTo,
         bool useImplicitFlow,
@@ -48,6 +58,20 @@ public sealed record SupabasePasswordResetResult(bool IsSuccess, string? UserEma
     public static SupabasePasswordResetResult Success(string? userEmail = null) => new(true, userEmail, null);
 
     public static SupabasePasswordResetResult Failure(string errorMessage) => new(false, null, errorMessage);
+}
+
+public sealed record SupabaseEmailChangeResult(bool IsSuccess, string? UserEmail, string? ErrorMessage)
+{
+    public static SupabaseEmailChangeResult Success(string? userEmail = null) => new(true, userEmail, null);
+
+    public static SupabaseEmailChangeResult Failure(string errorMessage) => new(false, null, errorMessage);
+}
+
+public sealed record SupabaseSessionUserResult(bool IsSuccess, string? UserEmail, string? ErrorMessage)
+{
+    public static SupabaseSessionUserResult Success(string? userEmail) => new(true, userEmail, null);
+
+    public static SupabaseSessionUserResult Failure(string errorMessage) => new(false, null, errorMessage);
 }
 
 public sealed record SupabaseOAuthStartResult(bool IsSuccess, Uri? RedirectUri, string? CodeVerifier, string? ErrorMessage)

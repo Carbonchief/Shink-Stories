@@ -23,6 +23,7 @@ const string AuthSessionIdClaimType = "shink:session_id";
 const string AdminRoleName = "admin";
 const string GooglePkceCookieName = "shink.auth.google.pkce";
 const string GooglePkceProtectorPurpose = "Shink.Auth.GooglePkce.v1";
+const string EmailChangeStateProtectorPurpose = "Shink.Auth.EmailChange.v1";
 
 var builder = WebApplication.CreateBuilder(args);
 var postHogSettings = PostHogSettings.FromConfiguration(builder.Configuration);
@@ -1222,6 +1223,194 @@ app.MapPost("/api/auth/password-reset/complete", async (
     {
         message = "Jou wagwoord is suksesvol opgedateer.",
         redirectPath = "/teken-in?reset=success"
+    });
+}).RequireRateLimiting("auth-submit").DisableAntiforgery();
+
+app.MapPost("/api/auth/email-change/request", async (
+    AuthEmailChangeRequestApiRequest request,
+    ISupabaseAuthService supabaseAuthService,
+    IDataProtectionProvider dataProtectionProvider,
+    HttpContext httpContext) =>
+{
+    if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
+    {
+        return Results.Unauthorized();
+    }
+
+    var currentEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
+                       ?? httpContext.User.Identity?.Name;
+
+    request = request with
+    {
+        NewEmail = request.NewEmail?.Trim() ?? string.Empty,
+        CurrentPassword = request.CurrentPassword ?? string.Empty
+    };
+
+    var validationError = ValidateEmailChangeRequest(currentEmail, request);
+    if (validationError is not null)
+    {
+        return Results.BadRequest(new { message = validationError });
+    }
+
+    var protector = dataProtectionProvider.CreateProtector(EmailChangeStateProtectorPurpose);
+    var callbackState = protector.Protect(JsonSerializer.Serialize(new EmailChangeCallbackStatePayload(
+        ExpiresAtUtc: DateTimeOffset.UtcNow.AddHours(24),
+        CurrentEmail: currentEmail!.Trim().ToLowerInvariant(),
+        NewEmail: request.NewEmail!.Trim().ToLowerInvariant())));
+    var callbackPath = QueryHelpers.AddQueryString(
+        "/intekening-en-betaling",
+        new Dictionary<string, string?>
+        {
+            ["emailChange"] = "complete",
+            ["emailChangeState"] = callbackState
+        });
+    var redirectTo = BuildAbsoluteUrl(httpContext.Request, callbackPath);
+
+    var changeResult = await supabaseAuthService.RequestEmailChangeAsync(
+        currentEmail!,
+        request.CurrentPassword!,
+        request.NewEmail!,
+        redirectTo,
+        httpContext.RequestAborted);
+    if (!changeResult.IsSuccess)
+    {
+        return Results.BadRequest(new
+        {
+            message = changeResult.ErrorMessage ?? "Kon nie nou jou e-posadres verander nie. Probeer asseblief weer."
+        });
+    }
+
+    return Results.Ok(new
+    {
+        message = "Ons het 'n bevestiging-skakel vir jou e-posverandering gestuur. Volg asseblief die skakel(s) in jou inkassie om dit klaar te maak."
+    });
+}).RequireRateLimiting("auth-submit").DisableAntiforgery();
+
+app.MapPost("/api/auth/email-change/complete", async (
+    AuthEmailChangeCompleteApiRequest request,
+    ISupabaseAuthService supabaseAuthService,
+    ISubscriptionLedgerService subscriptionLedgerService,
+    IAuthSessionService authSessionService,
+    IAdminManagementService adminManagementService,
+    IDataProtectionProvider dataProtectionProvider,
+    HttpContext httpContext) =>
+{
+    request = request with
+    {
+        AccessToken = request.AccessToken?.Trim() ?? string.Empty,
+        RefreshToken = request.RefreshToken?.Trim() ?? string.Empty,
+        EmailChangeState = request.EmailChangeState?.Trim() ?? string.Empty
+    };
+
+    var validationError = ValidateEmailChangeCompletion(request);
+    if (validationError is not null)
+    {
+        return Results.BadRequest(new { message = validationError });
+    }
+
+    var protector = dataProtectionProvider.CreateProtector(EmailChangeStateProtectorPurpose);
+    if (!TryReadEmailChangeCallbackState(request.EmailChangeState!, protector, out var callbackState))
+    {
+        return Results.BadRequest(new
+        {
+            message = "Die bevestiging-skakel is ongeldig of het verval. Probeer asseblief weer."
+        });
+    }
+
+    if (callbackState!.ExpiresAtUtc <= DateTimeOffset.UtcNow)
+    {
+        return Results.BadRequest(new
+        {
+            message = "Die bevestiging-skakel het verval. Vra asseblief weer 'n nuwe e-posverandering aan."
+        });
+    }
+
+    var currentEmail = callbackState.CurrentEmail.Trim().ToLowerInvariant();
+    var newEmail = callbackState.NewEmail.Trim().ToLowerInvariant();
+    var resolvedSession = await supabaseAuthService.ResolveUserSessionAsync(
+        request.AccessToken!,
+        request.RefreshToken!,
+        httpContext.RequestAborted);
+    if (!resolvedSession.IsSuccess)
+    {
+        return Results.BadRequest(new
+        {
+            message = resolvedSession.ErrorMessage ?? "Kon nie jou e-posbevestiging voltooi nie. Probeer asseblief weer."
+        });
+    }
+
+    var resolvedEmail = resolvedSession.UserEmail?.Trim().ToLowerInvariant();
+    if (string.IsNullOrWhiteSpace(resolvedEmail))
+    {
+        return Results.BadRequest(new
+        {
+            message = "Kon nie die bevestigde e-posadres uit Supabase lees nie. Probeer asseblief weer."
+        });
+    }
+
+    if (string.Equals(resolvedEmail, currentEmail, StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.Json(
+            new
+            {
+                message = "Ons wag nog vir die finale bevestiging van jou nuwe e-posadres. Maak asseblief al die bevestiging-skakels in jou inkassie oop indien Supabase dit vra."
+            },
+            statusCode: StatusCodes.Status202Accepted);
+    }
+
+    if (!string.Equals(resolvedEmail, newEmail, StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new
+        {
+            message = "Die bevestigde e-posadres stem nie ooreen met die nuwe adres wat jy gekies het nie."
+        });
+    }
+
+    var subscriberChangeResult = await subscriptionLedgerService.ChangeSubscriberEmailAsync(
+        currentEmail,
+        newEmail,
+        httpContext.RequestAborted);
+    if (!subscriberChangeResult.IsSuccess)
+    {
+        return Results.Json(
+            new
+            {
+                message = subscriberChangeResult.ErrorMessage ?? "Jou e-pos is by Supabase bevestig, maar ons kon nie jou rekeningdata nou bywerk nie."
+            },
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
+    var adminEmailChanged = await adminManagementService.ChangeAdminEmailAsync(
+        currentEmail,
+        newEmail,
+        httpContext.RequestAborted);
+    if (!adminEmailChanged)
+    {
+        return Results.Json(
+            new
+            {
+                message = "Jou e-pos is bevestig, maar ons kon nie al jou rekeningtoegang nou skuif nie. Probeer asseblief weer of kontak ons."
+            },
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
+    await authSessionService.RevokeAllSessionsAsync(currentEmail, httpContext.RequestAborted);
+
+    var signInCookieResult = await SignInUserAsync(httpContext, newEmail, authSessionService, adminManagementService);
+    if (!signInCookieResult.IsSuccess)
+    {
+        return Results.Json(
+            new
+            {
+                message = signInCookieResult.ErrorMessage ?? "Jou e-pos is bevestig, maar ons kon nie nou jou nuwe sessie begin nie."
+            },
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
+    return Results.Ok(new
+    {
+        message = "Jou e-posadres is suksesvol opgedateer.",
+        redirectPath = "/intekening-en-betaling?emailChange=success"
     });
 }).RequireRateLimiting("auth-submit").DisableAntiforgery();
 
@@ -3539,6 +3728,76 @@ static string? ValidatePasswordResetCompletion(AuthPasswordResetCompleteApiReque
     return null;
 }
 
+static string? ValidateEmailChangeRequest(string? currentEmail, AuthEmailChangeRequestApiRequest request)
+{
+    if (string.IsNullOrWhiteSpace(currentEmail) || !IsValidEmail(currentEmail))
+    {
+        return "Jy moet ingeteken wees om jou e-posadres te verander.";
+    }
+
+    if (string.IsNullOrWhiteSpace(request.NewEmail) ||
+        request.NewEmail.Length > 254 ||
+        !IsValidEmail(request.NewEmail))
+    {
+        return "Gebruik asseblief 'n geldige nuwe e-posadres.";
+    }
+
+    if (string.Equals(
+            currentEmail.Trim(),
+            request.NewEmail.Trim(),
+            StringComparison.OrdinalIgnoreCase))
+    {
+        return "Gebruik asseblief 'n nuwe e-posadres wat verskil van jou huidige een.";
+    }
+
+    if (string.IsNullOrWhiteSpace(request.CurrentPassword) || request.CurrentPassword.Length is < 6 or > 200)
+    {
+        return "Vul asseblief jou huidige wagwoord in.";
+    }
+
+    return null;
+}
+
+static string? ValidateEmailChangeCompletion(AuthEmailChangeCompleteApiRequest request)
+{
+    if (string.IsNullOrWhiteSpace(request.AccessToken) || string.IsNullOrWhiteSpace(request.RefreshToken))
+    {
+        return "Die bevestiging-skakel is ongeldig of het verval. Probeer asseblief weer.";
+    }
+
+    if (string.IsNullOrWhiteSpace(request.EmailChangeState))
+    {
+        return "Die bevestiging-skakel is ongeldig of onvolledig. Probeer asseblief weer.";
+    }
+
+    return null;
+}
+
+static bool TryReadEmailChangeCallbackState(
+    string protectedValue,
+    IDataProtector protector,
+    out EmailChangeCallbackStatePayload? payload)
+{
+    payload = null;
+    if (string.IsNullOrWhiteSpace(protectedValue))
+    {
+        return false;
+    }
+
+    try
+    {
+        var json = protector.Unprotect(protectedValue);
+        payload = JsonSerializer.Deserialize<EmailChangeCallbackStatePayload>(json);
+        return payload is not null &&
+               !string.IsNullOrWhiteSpace(payload.CurrentEmail) &&
+               !string.IsNullOrWhiteSpace(payload.NewEmail);
+    }
+    catch
+    {
+        return false;
+    }
+}
+
 static IReadOnlyList<SearchSiteCandidate> BuildSearchStaticCandidates() =>
 [
     new(
@@ -3897,6 +4156,9 @@ sealed record ContactApiRequest(string? Name, string? Email, string? Subject, st
 sealed record AuthSignInApiRequest(string? Email, string? Password);
 sealed record AuthPasswordResetRequestApiRequest(string? Email, string? ReturnUrl);
 sealed record AuthPasswordResetCompleteApiRequest(string? AccessToken, string? RefreshToken, string? Password);
+sealed record AuthEmailChangeRequestApiRequest(string? NewEmail, string? CurrentPassword);
+sealed record AuthEmailChangeCompleteApiRequest(string? AccessToken, string? RefreshToken, string? EmailChangeState);
+sealed record EmailChangeCallbackStatePayload(DateTimeOffset ExpiresAtUtc, string CurrentEmail, string NewEmail);
 sealed record AuthSignUpApiRequest(
     string? FirstName,
     string? LastName,
