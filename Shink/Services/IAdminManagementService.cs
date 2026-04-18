@@ -5,6 +5,10 @@ namespace Shink.Services;
 public interface IAdminManagementService
 {
     Task<bool> IsAdminAsync(string? email, CancellationToken cancellationToken = default);
+    Task<bool> ChangeAdminEmailAsync(
+        string? currentEmail,
+        string? newEmail,
+        CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<AdminSubscriberRecord>> GetSubscribersAsync(
         string? adminEmail,

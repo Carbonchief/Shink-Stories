@@ -483,10 +483,16 @@
     padding: 1.25rem 1.35rem;
     color: #f6f1ea;
     box-shadow: 0 18px 34px rgba(34, 34, 34, 0.12);
+    display: grid;
+    gap: 1rem;
+}
+
+.story-summary-card h1,
+.story-summary-card h2 {
+    margin: 0;
 }
 
 .story-summary-card h2 {
-    margin: 0 0 0.8rem;
     font-size: 1.1rem;
     color: #ffffff;
 }
@@ -494,6 +500,47 @@
 .story-summary-card p {
     margin: 0;
     line-height: 1.5;
+}
+
+.story-summary-lead {
+    color: #f0ddc8;
+    font-size: 1rem;
+}
+
+.story-summary-block {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.story-summary-list {
+    margin: 0;
+    padding-left: 1.2rem;
+    display: grid;
+    gap: 0.5rem;
+    line-height: 1.55;
+}
+
+.story-summary-list li::marker {
+    color: #d4b075;
+}
+
+.story-summary-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+}
+
+.story-summary-tag {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    padding: 0.38rem 0.78rem;
+    background: rgba(212, 176, 117, 0.14);
+    border: 1px solid rgba(212, 176, 117, 0.34);
+    color: #f6f1ea;
+    font-size: 0.92rem;
+    line-height: 1.2;
 }
 
 .story-carousel-section {

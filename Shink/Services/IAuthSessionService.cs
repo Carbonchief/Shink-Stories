@@ -17,6 +17,10 @@ public interface IAuthSessionService
         string? email,
         Guid sessionId,
         CancellationToken cancellationToken = default);
+
+    Task RevokeAllSessionsAsync(
+        string? email,
+        CancellationToken cancellationToken = default);
 }
 
 public enum AuthSessionValidationState

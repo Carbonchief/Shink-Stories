@@ -22,6 +22,10 @@ public interface ISubscriptionLedgerService
         string? displayName,
         string? mobileNumber,
         CancellationToken cancellationToken = default);
+    Task<SubscriberEmailChangeResult> ChangeSubscriberEmailAsync(
+        string? currentEmail,
+        string? newEmail,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record SubscriptionPersistResult(bool IsSuccess, string? ErrorMessage = null, string? SubscriptionId = null);
@@ -31,3 +35,4 @@ public sealed record SubscriberProfile(
     string? LastName,
     string? DisplayName,
     string? MobileNumber);
+public sealed record SubscriberEmailChangeResult(bool IsSuccess, string? ErrorMessage = null);

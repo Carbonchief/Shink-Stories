@@ -195,8 +195,70 @@ else
 
         <section class="story-summary-card">
             <h1 class="story-player-title">@CurrentStory.Title</h1>
-            <br />
-            <p>@CurrentStory.Description</p>
+            @if (ShouldShowStoryLead(CurrentStory))
+            {
+                <p class="story-summary-lead">@CurrentStory.Description</p>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(GetStorySynopsis(CurrentStory)))
+            {
+                <div class="story-summary-block">
+                    <h2>Waaroor gaan die storie?</h2>
+                    <p>@GetStorySynopsis(CurrentStory)</p>
+                </div>
+            }
+
+            @if (HasStoryValues(CurrentStory))
+            {
+                <div class="story-summary-block">
+                    <h2>Waardes</h2>
+                    <div class="story-summary-tags" aria-label="Waardes uit die storie">
+                        @foreach (var valueTag in CurrentStory.ValueTags!)
+                        {
+                            <span class="story-summary-tag">@valueTag</span>
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (HasStoryLessons(CurrentStory))
+            {
+                <div class="story-summary-block">
+                    <h2>@(CurrentStory.Lessons!.Count == 1 ? "Les" : "Lesse")</h2>
+                    <ul class="story-summary-list">
+                        @foreach (var lesson in CurrentStory.Lessons)
+                        {
+                            <li>@lesson</li>
+                        }
+                    </ul>
+                </div>
+            }
+
+            @if (HasStoryQuestions(CurrentStory))
+            {
+                <div class="story-summary-block">
+                    <h2>Gesels 'n bietjie</h2>
+                    <ul class="story-summary-list">
+                        @foreach (var question in CurrentStory.ConversationQuestions!)
+                        {
+                            <li>@question</li>
+                        }
+                    </ul>
+                </div>
+            }
+
+            @if (HasStoryCharacters(CurrentStory))
+            {
+                <div class="story-summary-block">
+                    <h2>Karakters in die storie</h2>
+                    <ul class="story-summary-list">
+                        @foreach (var character in CurrentStory.Characters!)
+                        {
+                            <li>@character</li>
+                        }
+                    </ul>
+                </div>
+            }
         </section>
 
         <section class="story-carousel-section" aria-label="Ander luister stories">
@@ -774,4 +836,49 @@ else
         var safePath = string.IsNullOrWhiteSpace(returnPath) ? "/luister" : returnPath;
         return $"/opsies?returnUrl={Uri.EscapeDataString(safePath)}";
     }
+
+    private static string? GetStorySynopsis(StoryItem? story)
+    {
+        if (story is null)
+        {
+            return null;
+        }
+
+        if (!string.IsNullOrWhiteSpace(story.Summary))
+        {
+            return story.Summary;
+        }
+
+        return string.IsNullOrWhiteSpace(story.Description) ? null : story.Description;
+    }
+
+    private static bool ShouldShowStoryLead(StoryItem? story)
+    {
+        if (story is null ||
+            string.IsNullOrWhiteSpace(story.Description) ||
+            string.IsNullOrWhiteSpace(story.Summary))
+        {
+            return false;
+        }
+
+        return !string.Equals(
+            NormalizeStoryText(story.Description),
+            NormalizeStoryText(story.Summary),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool HasStoryLessons(StoryItem? story) =>
+        story?.Lessons is { Count: > 0 };
+
+    private static bool HasStoryValues(StoryItem? story) =>
+        story?.ValueTags is { Count: > 0 };
+
+    private static bool HasStoryQuestions(StoryItem? story) =>
+        story?.ConversationQuestions is { Count: > 0 };
+
+    private static bool HasStoryCharacters(StoryItem? story) =>
+        story?.Characters is { Count: > 0 };
+
+    private static string NormalizeStoryText(string value) =>
+        string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 }

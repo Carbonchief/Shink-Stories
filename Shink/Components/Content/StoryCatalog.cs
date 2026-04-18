@@ -14,7 +14,12 @@ public sealed record StoryItem(
     string AudioProvider = "local",
     string? AudioBucket = null,
     string? AudioContentType = null,
-    string AccessLevel = "subscriber")
+    string AccessLevel = "subscriber",
+    string? Summary = null,
+    IReadOnlyList<string>? Lessons = null,
+    IReadOnlyList<string>? ValueTags = null,
+    IReadOnlyList<string>? ConversationQuestions = null,
+    IReadOnlyList<string>? Characters = null)
 {
     public string ImagePath => ResolveAssetPath(ImageFileName);
     public string ThumbnailPath => string.IsNullOrWhiteSpace(ThumbnailFileName)

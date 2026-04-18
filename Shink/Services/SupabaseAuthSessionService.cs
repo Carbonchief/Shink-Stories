@@ -249,6 +249,48 @@ public sealed class SupabaseAuthSessionService(
             cancellationToken);
     }
 
+    public async Task RevokeAllSessionsAsync(
+        string? email,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return;
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return;
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return;
+        }
+
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+        var activeSessionIds = await GetActiveSessionIdsAsync(
+            baseUri,
+            apiKey,
+            normalizedEmail,
+            DateTimeOffset.UtcNow,
+            cancellationToken);
+
+        if (activeSessionIds is null || activeSessionIds.Count == 0)
+        {
+            return;
+        }
+
+        await TryRevokeSessionsAsync(
+            baseUri,
+            apiKey,
+            normalizedEmail,
+            activeSessionIds,
+            reason: "email_change",
+            cancellationToken);
+    }
+
     private async Task<int> ResolveConcurrentSessionLimitAsync(string normalizedEmail, CancellationToken cancellationToken)
     {
         var maxConcurrentSessions = ResolveDefaultMaxConcurrentSessions();

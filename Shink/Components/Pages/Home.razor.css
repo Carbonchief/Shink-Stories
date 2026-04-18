@@ -63,21 +63,31 @@
     font-size: 0.92rem;
 }
 
-h1 {
+.hero-title {
     margin: 0 auto 0.9rem;
-    max-width: 15.8ch;
+    width: fit-content;
+    max-width: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.08em;
     font-size: clamp(2.55rem, 5vw, 4.55rem);
     line-height: 0.97;
     color: #ffffff;
     font-weight: 700;
     letter-spacing: -0.045em;
+    text-align: center;
     text-shadow: 0 12px 28px rgba(9, 40, 48, 0.2);
-    text-wrap: balance;
+    text-wrap: initial;
 }
 
-.hero-copy h1 span {
+.hero-title-line {
     display: block;
-    margin-top: 0.22em;
+    white-space: nowrap;
+}
+
+.hero-title-subline {
+    display: block;
     font-size: 0.92em;
     font-weight: 300;
     font-style: italic;
@@ -101,11 +111,12 @@ h1 {
     margin-inline: auto;
     display: grid;
     justify-items: center;
+    text-align: center;
 }
 
 .hero-copy p {
     color: #ffffff;
-    max-width: 34ch;
+    max-width: none;
     margin-inline: auto;
     margin-block: 0;
     text-shadow: 0 10px 24px rgba(9, 40, 48, 0.18);
@@ -113,7 +124,7 @@ h1 {
 
 .hero-intro {
     width: fit-content;
-    max-width: min(100%, 52ch);
+    max-width: none;
     font-size: clamp(1.34rem, 2.15vw, 2rem);
     line-height: 1.2;
     font-weight: 400;
@@ -131,7 +142,8 @@ h1 {
 }
 
 .hero-support {
-    max-width: 44ch;
+    width: fit-content;
+    max-width: none;
     margin-top: 0.72rem !important;
     font-size: clamp(0.92rem, 1.15vw, 1.18rem);
     line-height: 1.25;
@@ -283,25 +295,21 @@ h1 {
         width: min(100%, 46rem);
     }
 
-    h1 {
+    .hero-title {
         margin-bottom: 0.82rem;
         font-size: clamp(2.25rem, 4.4vw, 3.55rem);
         line-height: 0.98;
     }
 
-    .hero-copy p {
-        max-width: 34ch;
-    }
-
     .hero-intro {
         width: fit-content;
-        max-width: min(100%, 38ch);
+        max-width: none;
         font-size: 1.22rem;
         white-space: nowrap;
     }
 
     .hero-support {
-        max-width: 40ch;
+        max-width: none;
         font-size: 1rem;
     }
 
@@ -680,12 +688,14 @@ h2 {
     display: block;
     -webkit-user-drag: none;
     user-select: none;
+    transform: scale(1.1);
+    transform-origin: center center;
     transition: transform 0.22s ease, filter 0.22s ease;
 }
 
 .story-carousel-item.is-navigating .story-carousel-image {
     filter: brightness(0.72);
-    transform: scale(1.01);
+    transform: scale(1.11);
 }
 
 .kwaaibok-home-cover {
@@ -720,7 +730,7 @@ h2 {
 
 .story-carousel-link:hover .story-carousel-image,
 .story-carousel-link:focus-visible .story-carousel-image {
-    transform: scale(1.03);
+    transform: scale(1.14);
     filter: brightness(0.8);
 }
 
@@ -1489,9 +1499,9 @@ h2 {
         width: min(100%, 34rem);
     }
 
-    h1 {
+    .hero-title {
         margin-bottom: 0.72rem;
-        font-size: clamp(1.95rem, 10vw, 3rem);
+        font-size: clamp(1.45rem, 7.2vw, 3rem);
         line-height: 0.99;
     }
 
@@ -1500,10 +1510,10 @@ h2 {
     }
 
     .hero-intro {
-        font-size: 1rem;
+        font-size: clamp(0.72rem, 3.5vw, 1rem);
         width: auto;
-        max-width: 23ch;
-        white-space: normal;
+        max-width: none;
+        white-space: nowrap;
     }
 
     .hero-support {
