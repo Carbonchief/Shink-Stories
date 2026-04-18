@@ -124,6 +124,60 @@ h1 {
     margin-top: 0.5rem;
 }
 
+.luister-loading-state {
+    width: min(100%, 720px);
+    min-height: clamp(15rem, 34vh, 20rem);
+    margin: 0.9rem auto 0;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+}
+
+.luister-loading-indicator {
+    width: min(100%, 320px);
+    display: grid;
+    justify-items: center;
+    gap: 0.95rem;
+    padding: 1.5rem 1.25rem;
+    border-radius: 28px;
+    border: 1px solid rgba(40, 70, 78, 0.12);
+    background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.94) 0%, rgba(246, 249, 245, 0.92) 100%);
+    box-shadow:
+        0 18px 36px rgba(27, 56, 63, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.luister-loading-spinner {
+    position: relative;
+    width: 4.35rem;
+    height: 4.35rem;
+    display: inline-block;
+    border-radius: 50%;
+    border: 5px solid rgba(49, 122, 129, 0.16);
+    border-top-color: #2d8d95;
+    border-right-color: #cfbf59;
+    box-shadow: 0 10px 24px rgba(45, 141, 149, 0.16);
+    animation: luister-loading-spin 0.82s linear infinite;
+}
+
+.luister-loading-spinner::before {
+    content: "";
+    position: absolute;
+    inset: 0.55rem;
+    border-radius: 50%;
+    border: 4px solid rgba(255, 255, 255, 0.86);
+    border-top-color: rgba(45, 141, 149, 0.22);
+}
+
+.luister-loading-text {
+    color: #203236;
+    font-size: 1.08rem;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+    text-align: center;
+}
+
 .luister-empty-state {
     width: min(100%, 720px);
     margin: 0.9rem auto 0;
@@ -307,7 +361,7 @@ h1 {
     display: block;
     pointer-events: none;
     user-select: none;
-    font-family: "Arial Rounded MT Bold", "Trebuchet MS", "Segoe UI", sans-serif;
+    font-family: "Schink Rank Rounded", "Poppins", "Trebuchet MS", "Segoe UI", sans-serif;
     font-size: clamp(2.5rem, 8vw, 4.7rem);
     font-weight: 900;
     line-height: 0.82;
@@ -491,6 +545,12 @@ h1 {
     }
 }
 
+@keyframes luister-loading-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 @media (max-width: 980px) {
     .stories-carousel {
         grid-auto-columns: minmax(170px, 42vw);
@@ -527,6 +587,21 @@ h1 {
     .luister-search-form {
         min-height: 50px;
         padding: 0 0.78rem;
+    }
+
+    .luister-loading-state {
+        min-height: clamp(13rem, 30vh, 17rem);
+        padding-inline: 0.8rem;
+    }
+
+    .luister-loading-indicator {
+        padding: 1.35rem 1rem;
+        border-radius: 24px;
+    }
+
+    .luister-loading-spinner {
+        width: 3.85rem;
+        height: 3.85rem;
     }
 }
 
