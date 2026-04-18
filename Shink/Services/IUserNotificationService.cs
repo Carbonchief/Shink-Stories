@@ -18,6 +18,11 @@ public interface IUserNotificationService
         string? email,
         CancellationToken cancellationToken = default);
 
+    Task<bool> MarkNotificationReadAsync(
+        string? email,
+        Guid notificationId,
+        CancellationToken cancellationToken = default);
+
     Task<int> ClearNotificationsAsync(
         string? email,
         CancellationToken cancellationToken = default);
