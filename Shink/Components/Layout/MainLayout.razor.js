@@ -14,6 +14,7 @@ const NOTIFICATION_LOADING_SELECTOR = "[data-notification-loading]";
 const NOTIFICATION_COUNT_SELECTOR = "[data-notification-count]";
 const NOTIFICATION_PANEL_COUNT_SELECTOR = "[data-notification-panel-count]";
 const NOTIFICATION_CLEAR_SELECTOR = "[data-notification-clear]";
+const NOTIFICATION_ITEM_SELECTOR = "[data-notification-item]";
 const NOTIFICATION_ITEM_CLEAR_SELECTOR = "[data-notification-item-clear]";
 const NOTIFICATION_FOOTER_SELECTOR = "[data-notification-footer]";
 const NOTIFICATION_LOAD_MORE_SELECTOR = "[data-notification-load-more]";
@@ -49,6 +50,14 @@ function buildNotificationClearItemEndpoint(notificationId) {
     }
 
     return `/api/notifications/${encodeURIComponent(notificationId)}/clear`;
+}
+
+function buildNotificationReadItemEndpoint(notificationId) {
+    if (typeof notificationId !== "string" || notificationId.length === 0) {
+        return null;
+    }
+
+    return `/api/notifications/${encodeURIComponent(notificationId)}/read`;
 }
 
 function replaceNodeChildren(parent, child) {
@@ -303,7 +312,7 @@ function syncNotificationClearButton(parts, state) {
     const hasItemClearInFlight = state.clearingNotificationIds instanceof Set && state.clearingNotificationIds.size > 0;
     const hasItemRemovalInFlight = state.removingNotificationIds instanceof Set && state.removingNotificationIds.size > 0;
     parts.notificationClear.hidden = !hasNotifications;
-    parts.notificationClear.disabled = state.isClearing || state.isLoading || state.isLoadingMore || hasItemClearInFlight || hasItemRemovalInFlight || !hasNotifications;
+    parts.notificationClear.disabled = state.isClearing || state.isLoading || state.isLoadingMore || state.isMarkingRead || hasItemClearInFlight || hasItemRemovalInFlight || !hasNotifications;
     parts.notificationClear.textContent = state.isClearing ? "Maak skoon..." : "Maak skoon";
 }
 
@@ -316,7 +325,7 @@ function syncNotificationLoadMoreButton(parts, state) {
     const shouldShow = state.hasMore || state.hasHistory;
     parts.notificationFooter.hidden = !shouldShow;
     parts.notificationLoadMore.hidden = !shouldShow;
-    parts.notificationLoadMore.disabled = state.isLoading || state.isLoadingMore || state.isClearing;
+    parts.notificationLoadMore.disabled = state.isLoading || state.isLoadingMore || state.isMarkingRead || state.isClearing;
     parts.notificationLoadMore.textContent = state.isLoadingMore
         ? "Laai vorige kennisgewings..."
         : "Wys vorige kennisgewings";
@@ -403,6 +412,8 @@ function renderNotificationItems(parts, notifications, fallbackMessage) {
         const isRead = Boolean(notification && notification.isRead);
         const typeMeta = buildNotificationTypeMeta(notification && notification.type);
         item.className = `notification-item ${typeMeta.badgeClass}${isRead ? "" : " is-unread"}`;
+        item.dataset.notificationItem = "true";
+        item.dataset.notificationId = notificationId;
         if (href && item instanceof HTMLAnchorElement) {
             item.href = href;
         }
@@ -477,7 +488,7 @@ function renderNotificationItems(parts, notifications, fallbackMessage) {
         clearButton.className = "notification-item-clear";
         clearButton.dataset.notificationItemClear = "true";
         clearButton.dataset.notificationId = notificationId;
-        clearButton.disabled = state.isClearing || state.isLoading || state.isLoadingMore || isClearingItem || isRemovingItem || notificationId.length === 0;
+        clearButton.disabled = state.isClearing || state.isLoading || state.isLoadingMore || state.isMarkingRead || isClearingItem || isRemovingItem || notificationId.length === 0;
         clearButton.setAttribute("aria-label", `Verwyder kennisgewing: ${titleText}`);
         clearButton.title = "Verwyder kennisgewing";
         clearButton.innerHTML = `<i class="fa-solid fa-xmark" aria-hidden="true"></i>`;
@@ -680,45 +691,145 @@ async function markNotificationCenterRead(centerRoot) {
     }
 
     const state = getNotificationCenterState(parts.centerRoot);
-    if (state.isMarkingRead || state.unreadCount <= 0) {
+    if (state.isMarkingRead || state.isClearing || state.unreadCount <= 0) {
         return;
     }
 
+    const previousNotifications = Array.isArray(state.notifications)
+        ? state.notifications.map((notification) => ({ ...notification }))
+        : [];
+    const previousUnreadCount = state.unreadCount;
+
     state.isMarkingRead = true;
+    state.notifications = Array.isArray(state.notifications)
+        ? state.notifications.map((notification) => ({
+            ...notification,
+            isRead: true
+        }))
+        : [];
+    state.unreadCount = 0;
+    setNotificationCount(parts, 0);
+    renderNotificationItems(parts, state.notifications);
     syncNotificationClearButton(parts, state);
+    syncNotificationLoadMoreButton(parts, state);
 
     try {
         const response = await fetch(NOTIFICATION_READ_ALL_ENDPOINT, {
             method: "POST",
             credentials: "same-origin",
+            keepalive: true,
             headers: {
-                "Content-Type": "application/json",
                 Accept: "application/json"
-            },
-            body: JSON.stringify({})
+            }
         });
 
         if (!response.ok) {
+            state.notifications = previousNotifications;
+            state.unreadCount = previousUnreadCount;
+            setNotificationCount(parts, previousUnreadCount);
+            renderNotificationItems(parts, previousNotifications);
+            syncNotificationClearButton(parts, state);
+            syncNotificationLoadMoreButton(parts, state);
             return;
         }
-
-        state.notifications = Array.isArray(state.notifications)
-            ? state.notifications.map((notification) => ({
-                ...notification,
-                isRead: true
-            }))
-            : [];
-        state.unreadCount = 0;
-        setNotificationCount(parts, 0);
-        renderNotificationItems(parts, state.notifications);
+    } catch {
+        state.notifications = previousNotifications;
+        state.unreadCount = previousUnreadCount;
+        setNotificationCount(parts, previousUnreadCount);
+        renderNotificationItems(parts, previousNotifications);
         syncNotificationClearButton(parts, state);
         syncNotificationLoadMoreButton(parts, state);
-    } catch {
-        // Ignore mark-read failures to keep the panel usable.
     } finally {
         state.isMarkingRead = false;
         syncNotificationClearButton(parts, state);
         syncNotificationLoadMoreButton(parts, state);
+    }
+}
+
+async function markSingleNotificationRead(centerRoot, notificationId) {
+    if (typeof notificationId !== "string" || notificationId.length === 0) {
+        return false;
+    }
+
+    const parts = findNotificationCenterParts(centerRoot);
+    if (!parts) {
+        return false;
+    }
+
+    const state = getNotificationCenterState(parts.centerRoot);
+    const endpoint = buildNotificationReadItemEndpoint(notificationId);
+    if (!endpoint) {
+        return false;
+    }
+
+    const notification = Array.isArray(state.notifications)
+        ? state.notifications.find((candidate) => candidate && candidate.id === notificationId)
+        : null;
+    if (notification && notification.isCleared) {
+        return false;
+    }
+
+    if (state.isMarkingRead || state.isClearing || !notification || notification.isRead) {
+        try {
+            const response = await fetch(endpoint, {
+                method: "POST",
+                credentials: "same-origin",
+                keepalive: true,
+                headers: {
+                    Accept: "application/json"
+                }
+            });
+
+            return response.ok;
+        } catch {
+            return false;
+        }
+    }
+
+    const previousNotifications = state.notifications.map((candidate) => ({ ...candidate }));
+    const previousUnreadCount = state.unreadCount;
+
+    state.notifications = state.notifications.map((candidate) => candidate && candidate.id === notificationId
+        ? {
+            ...candidate,
+            isRead: true
+        }
+        : candidate);
+    state.unreadCount = Math.max(0, state.unreadCount - 1);
+    setNotificationCount(parts, state.unreadCount);
+    renderNotificationItems(parts, state.notifications);
+    syncNotificationClearButton(parts, state);
+    syncNotificationLoadMoreButton(parts, state);
+
+    try {
+        const response = await fetch(endpoint, {
+            method: "POST",
+            credentials: "same-origin",
+            keepalive: true,
+            headers: {
+                Accept: "application/json"
+            }
+        });
+
+        if (!response.ok) {
+            state.notifications = previousNotifications;
+            state.unreadCount = previousUnreadCount;
+            setNotificationCount(parts, previousUnreadCount);
+            renderNotificationItems(parts, previousNotifications);
+            syncNotificationClearButton(parts, state);
+            syncNotificationLoadMoreButton(parts, state);
+            return false;
+        }
+
+        return true;
+    } catch {
+        state.notifications = previousNotifications;
+        state.unreadCount = previousUnreadCount;
+        setNotificationCount(parts, previousUnreadCount);
+        renderNotificationItems(parts, previousNotifications);
+        syncNotificationClearButton(parts, state);
+        syncNotificationLoadMoreButton(parts, state);
+        return false;
     }
 }
 
@@ -729,7 +840,8 @@ async function clearNotificationCenter(centerRoot) {
     }
 
     const state = getNotificationCenterState(parts.centerRoot);
-    if (state.isClearing ||
+    if (state.isMarkingRead ||
+        state.isClearing ||
         (state.clearingNotificationIds instanceof Set && state.clearingNotificationIds.size > 0) ||
         (state.removingNotificationIds instanceof Set && state.removingNotificationIds.size > 0) ||
         !Array.isArray(state.notifications) ||
@@ -802,7 +914,8 @@ async function clearSingleNotification(centerRoot, notificationId) {
     }
 
     const state = getNotificationCenterState(parts.centerRoot);
-    if (state.isClearing ||
+    if (state.isMarkingRead ||
+        state.isClearing ||
         !(state.clearingNotificationIds instanceof Set) ||
         state.clearingNotificationIds.has(notificationId) ||
         (state.removingNotificationIds instanceof Set && state.removingNotificationIds.has(notificationId)) ||
@@ -1596,6 +1709,11 @@ function startNotificationCenterDelegates() {
 
             const clickedLink = target.closest(`${NOTIFICATION_PANEL_SELECTOR} a`);
             if (clickedLink instanceof HTMLAnchorElement) {
+                const notificationItem = clickedLink.closest(NOTIFICATION_ITEM_SELECTOR);
+                const notificationId = notificationItem instanceof HTMLElement
+                    ? notificationItem.dataset.notificationId
+                    : "";
+                void markSingleNotificationRead(clickedInsideCenter, notificationId);
                 setNotificationCenterState(clickedInsideCenter, false);
             }
             return;
@@ -1626,6 +1744,7 @@ function startNotificationCenterDelegates() {
                 state.isLoaded = false;
                 state.notifications = [];
                 state.unreadCount = 0;
+                state.isMarkingRead = false;
                 state.isClearing = false;
                 state.isLoadingMore = false;
                 state.hasMore = false;
@@ -1646,6 +1765,7 @@ function startNotificationCenterDelegates() {
                 state.isLoaded = false;
                 state.notifications = [];
                 state.unreadCount = 0;
+                state.isMarkingRead = false;
                 state.isClearing = false;
                 state.isLoadingMore = false;
                 state.hasMore = false;

@@ -1425,6 +1425,34 @@ app.MapPost("/api/notifications/read-all", async (
     });
 }).RequireRateLimiting("auth-submit").DisableAntiforgery();
 
+app.MapPost("/api/notifications/{notificationId:guid}/read", async (
+    Guid notificationId,
+    IUserNotificationService userNotificationService,
+    HttpContext httpContext) =>
+{
+    if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
+    {
+        return Results.Unauthorized();
+    }
+
+    if (!IsLikelySameSiteRequest(httpContext))
+    {
+        return Results.Forbid();
+    }
+
+    var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
+                       ?? httpContext.User.Identity?.Name;
+    var marked = await userNotificationService.MarkNotificationReadAsync(
+        signedInEmail,
+        notificationId,
+        httpContext.RequestAborted);
+
+    return Results.Ok(new
+    {
+        marked
+    });
+}).RequireRateLimiting("auth-submit").DisableAntiforgery();
+
 app.MapPost("/api/notifications/clear", async (
     IUserNotificationService userNotificationService,
     HttpContext httpContext) =>
