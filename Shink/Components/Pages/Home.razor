@@ -55,12 +55,14 @@
     </div>
 
     <div class="hero-copy">
-        <p class="eyebrow">Afrikaanse oudiostories</p>
-        <h1>Stories wat kinders vorm.</h1>
+        <h1>
+            Bou jou kind se karakter -
+            <span>een storie op 'n slag.</span>
+        </h1>
         <p class="hero-intro">
-            Egte Afrikaanse storietyd wat karakter bou -
-            <em>een storie op 'n slag.</em>
+            Rustige, opbouende <strong>Afrikaanse storietyd</strong> - sonder skerms.
         </p>
+        <p class="hero-support">Minder skerms. Rustiger aande. Stories wat waardes bou.</p>
         <div class="hero-actions">
             @if (!HasResolvedAuthState)
             {
@@ -72,8 +74,8 @@
             }
             else
             {
-                <button type="button" class="cta cta-primary" @onclick="@(() => NavigationManager.NavigateTo("/gratis"))">Probeer gratis</button>
-                <a class="cta cta-secondary" href="#perfekte-plan">Kies 'n plan</a>
+                <button type="button" class="cta cta-primary" @onclick="@(() => NavigationManager.NavigateTo("/gratis"))">PROBEER GRATIS</button>
+                <a class="cta cta-secondary" href="#perfekte-plan">KIES 'N PLAN</a>
             }
         </div>
         <p class="hero-pricing">R 79 per maand. Kanselleer enige tyd.</p>
