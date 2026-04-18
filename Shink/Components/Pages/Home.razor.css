@@ -64,42 +64,61 @@
 }
 
 h1 {
-    margin: 0.35rem 0 0.55rem;
-    font-size: clamp(2.2rem, 4.2vw, 4rem);
-    line-height: 1.02;
+    margin: 0 auto 0.9rem;
+    max-width: 15.8ch;
+    font-size: clamp(2.55rem, 5vw, 4.55rem);
+    line-height: 0.97;
     color: #ffffff;
+    font-weight: 700;
+    letter-spacing: -0.045em;
+    text-shadow: 0 12px 28px rgba(9, 40, 48, 0.2);
+    text-wrap: balance;
 }
 
 .hero-copy h1 span {
     display: block;
-    margin-top: 0.14em;
-    font-weight: 500;
+    margin-top: 0.22em;
+    font-size: 0.92em;
+    font-weight: 300;
     font-style: italic;
+    letter-spacing: -0.04em;
+    color: rgba(255, 255, 255, 0.97);
+    text-shadow: 0 8px 18px rgba(9, 40, 48, 0.12);
 }
 
 .hero-copy {
     text-align: center;
-    width: min(100%, 680px);
+    width: min(100%, 860px);
     margin-inline: auto;
-    margin-top: 0.1rem;
-    padding: 1.45rem 1.2rem 1.1rem;
-    border-radius: 28px;
-    background:
-        linear-gradient(180deg, rgba(99, 176, 194, 0.98) 0%, rgba(89, 166, 188, 0.98) 100%);
+    margin-top: -8.5rem;
+    padding: 0 1.2rem 1.1rem;
+    position: relative;
+    z-index: 3;
+}
+
+.hero-copy-text {
+    width: min(100%, 54rem);
+    margin-inline: auto;
+    display: grid;
+    justify-items: center;
 }
 
 .hero-copy p {
     color: #ffffff;
-    max-width: 28ch;
+    max-width: 34ch;
     margin-inline: auto;
     margin-block: 0;
+    text-shadow: 0 10px 24px rgba(9, 40, 48, 0.18);
 }
 
 .hero-intro {
-    max-width: 34ch;
-    font-size: clamp(1.18rem, 2vw, 1.75rem);
-    line-height: 1.28;
-    font-weight: 500;
+    width: fit-content;
+    max-width: min(100%, 52ch);
+    font-size: clamp(1.34rem, 2.15vw, 2rem);
+    line-height: 1.2;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    white-space: nowrap;
 }
 
 .hero-intro em {
@@ -112,19 +131,26 @@ h1 {
 }
 
 .hero-support {
-    max-width: 36ch;
-    margin-top: 0.65rem !important;
-    font-size: clamp(0.96rem, 1.45vw, 1.12rem);
-    line-height: 1.35;
-    color: rgba(255, 255, 255, 0.92) !important;
+    max-width: 44ch;
+    margin-top: 0.72rem !important;
+    font-size: clamp(0.92rem, 1.15vw, 1.18rem);
+    line-height: 1.25;
+    color: rgba(255, 255, 255, 0.82) !important;
+    font-weight: 500;
+    font-style: italic;
+    letter-spacing: -0.015em;
 }
 
 .hero-actions {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.72rem;
-    margin-top: 1.1rem;
-    margin-bottom: 0.75rem;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 0.75rem;
+    width: min(100%, 470px);
+    margin-inline: auto;
+    margin-top: 1.3rem;
+    margin-bottom: 0.95rem;
     justify-content: center;
 }
 
@@ -135,16 +161,16 @@ h1 {
     text-decoration: none;
     font: inherit;
     font-weight: 800;
-    font-size: 1.02rem;
+    font-size: 0.98rem;
     line-height: 1.1;
     text-transform: uppercase;
-    min-height: 56px;
-    min-width: 196px;
-    padding: 0.78rem 1.35rem;
-    border-radius: 16px;
+    min-height: 48px;
+    min-width: 214px;
+    padding: 0.72rem 1.55rem;
+    border-radius: 999px;
     cursor: pointer;
     appearance: none;
-    box-shadow: 0 10px 20px rgba(18, 35, 40, 0.22);
+    box-shadow: 0 10px 22px rgba(18, 35, 40, 0.2);
     transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease, background 0.18s ease;
 }
 
@@ -153,9 +179,9 @@ h1 {
 }
 
 .cta-placeholder {
-    min-height: 56px;
-    min-width: 196px;
-    border-radius: 16px;
+    min-height: 48px;
+    min-width: 214px;
+    border-radius: 999px;
     background: linear-gradient(110deg, rgba(255, 255, 255, 0.24) 8%, rgba(255, 255, 255, 0.42) 18%, rgba(255, 255, 255, 0.24) 33%);
     background-size: 200% 100%;
     animation: home-shimmer 1.6s linear infinite;
@@ -171,23 +197,24 @@ h1 {
 .cta-primary,
 .cta-secondary {
     border: 0;
-    background: #f2d8a4;
-    color: #394750;
+    background: linear-gradient(180deg, #f4d18d 0%, #e9c06e 100%);
+    color: #3b5874;
 }
 
 .cta-primary:hover,
 .cta-secondary:hover {
-    background: var(--accent-deep);
+    background: linear-gradient(180deg, #f6d895 0%, #efca7f 100%);
     color: #111;
     box-shadow: 0 12px 22px rgba(20, 24, 26, 0.24);
 }
 
 .hero-pricing {
     max-width: none;
-    font-size: 1.02rem;
+    font-size: 1rem;
     font-style: italic;
     color: rgba(255, 255, 255, 0.9);
     white-space: nowrap;
+    text-shadow: 0 10px 24px rgba(9, 40, 48, 0.18);
 }
 
 .hero-media {
@@ -212,18 +239,18 @@ h1 {
 }
 
 .hero-logo {
-    width: min(420px, 92%);
+    width: min(440px, 94%);
     height: auto;
     object-fit: contain;
-    margin-bottom: -32px;
-    filter: drop-shadow(0 18px 34px rgba(5, 34, 40, 0.16));
+    margin-bottom: -50px;
+    filter: drop-shadow(0 18px 34px rgba(5, 34, 40, 0.12));
 }
 
 .hero-media img {
     width: 100%;
     height: auto;
     display: block;
-    margin-top: -1.1rem;
+    margin-top: -1.6rem;
     transform-origin: center top;
     animation: home-hero-artwork-drift 14s ease-in-out infinite;
     /* Fade top edge so artwork blends into logo gradient background. */
@@ -242,45 +269,53 @@ h1 {
     }
 
     .hero-logo {
-        width: min(360px, 88%);
-        margin-bottom: -20px;
+        width: min(380px, 90%);
+        margin-bottom: -38px;
     }
 
     .hero-copy {
-        width: min(100%, 620px);
-        margin-top: 0;
-        padding: 1.25rem 1rem 1rem;
+        width: min(100%, 760px);
+        margin-top: -7rem;
+        padding: 0 1rem 1rem;
+    }
+
+    .hero-copy-text {
+        width: min(100%, 46rem);
     }
 
     h1 {
-        margin: 0.3rem 0 0.45rem;
-        font-size: clamp(1.95rem, 3.8vw, 3rem);
-        line-height: 1.03;
+        margin-bottom: 0.82rem;
+        font-size: clamp(2.25rem, 4.4vw, 3.55rem);
+        line-height: 0.98;
     }
 
     .hero-copy p {
-        max-width: 28ch;
+        max-width: 34ch;
     }
 
     .hero-intro {
-        font-size: 1.06rem;
+        width: fit-content;
+        max-width: min(100%, 38ch);
+        font-size: 1.22rem;
+        white-space: nowrap;
     }
 
     .hero-support {
-        max-width: 34ch;
-        font-size: 0.96rem;
+        max-width: 40ch;
+        font-size: 1rem;
     }
 
     .hero-actions {
-        margin-top: 0.9rem;
-        margin-bottom: 0.62rem;
+        margin-top: 1.05rem;
+        margin-bottom: 0.72rem;
+        width: min(100%, 430px);
     }
 
     .cta {
-        min-height: 50px;
-        min-width: 170px;
-        padding: 0.68rem 1.05rem;
-        font-size: 0.94rem;
+        min-height: 46px;
+        min-width: 204px;
+        padding: 0.68rem 1.2rem;
+        font-size: 0.92rem;
     }
 
     .hero-pricing {
@@ -291,15 +326,15 @@ h1 {
 @media (max-height: 860px) {
     .hero-logo {
         width: min(320px, 84%);
-        margin-bottom: -12px;
+        margin-bottom: -24px;
     }
 
     .hero-media img {
-        margin-top: -0.72rem;
+        margin-top: -1rem;
     }
 
     .hero-copy p {
-        max-width: 26ch;
+        max-width: 30ch;
     }
 
     .eyebrow {
@@ -307,11 +342,12 @@ h1 {
     }
 
     .hero-intro {
-        font-size: 1rem;
+        font-size: 1.08rem;
+        white-space: nowrap;
     }
 
     .hero-support {
-        font-size: 0.9rem;
+        font-size: 0.92rem;
     }
 }
 
@@ -472,13 +508,17 @@ h2 {
 }
 
 .home-loading-carousel {
+    --home-carousel-edge-space: 15px;
     margin-top: 1rem;
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
     display: grid;
     grid-auto-flow: column;
     grid-auto-columns: 220px;
     gap: 0.9rem;
     overflow: hidden;
-    padding-inline: 1.65rem;
+    padding-inline: var(--home-carousel-edge-space);
 }
 
 .home-loading-card {
@@ -513,22 +553,27 @@ h2 {
 
 .stories-carousel-shell {
     position: relative;
-    width: min(100%, 1080px);
-    margin: 0.65rem auto 0;
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
+    margin-top: 0.65rem;
+    padding-inline: 0;
 }
 
 .stories-carousel {
+    --home-carousel-edge-space: 15px;
     margin-top: 0;
     display: grid;
     grid-auto-flow: column;
     grid-auto-columns: 220px;
+    justify-content: safe center;
     gap: 0.9rem;
     overflow-x: auto;
     overflow-y: hidden;
-    padding-inline: 1.65rem;
+    padding-inline: var(--home-carousel-edge-space);
     padding-bottom: 0.38rem;
     scroll-snap-type: x mandatory;
-    scroll-padding-inline: 1.65rem;
+    scroll-padding-inline: var(--home-carousel-edge-space);
     -webkit-overflow-scrolling: touch;
     touch-action: pan-x pan-y pinch-zoom;
     overscroll-behavior-x: contain;
@@ -1435,14 +1480,19 @@ h2 {
     }
 
     .hero-copy {
-        width: min(100%, 540px);
-        margin-top: 0;
-        padding: 1.15rem 0.9rem 0.95rem;
-        border-radius: 24px;
+        width: min(100%, 560px);
+        margin-top: -4.7rem;
+        padding: 0 0.9rem 0.95rem;
+    }
+
+    .hero-copy-text {
+        width: min(100%, 34rem);
     }
 
     h1 {
-        font-size: clamp(1.95rem, 11vw, 2.9rem);
+        margin-bottom: 0.72rem;
+        font-size: clamp(1.95rem, 10vw, 3rem);
+        line-height: 0.99;
     }
 
     .eyebrow {
@@ -1451,21 +1501,30 @@ h2 {
 
     .hero-intro {
         font-size: 1rem;
-        max-width: 22ch;
+        width: auto;
+        max-width: 23ch;
+        white-space: normal;
     }
 
     .hero-support {
-        max-width: 25ch;
-        margin-top: 0.55rem !important;
-        font-size: 0.88rem;
+        max-width: 27ch;
+        margin-top: 0.5rem !important;
+        font-size: 0.84rem;
+    }
+
+    .hero-actions {
+        gap: 0.55rem;
+        width: min(100%, 332px);
+        margin-top: 0.88rem;
+        margin-bottom: 0.62rem;
     }
 
     .stories-carousel {
         grid-auto-columns: minmax(146px, 44vw);
         gap: 0.72rem;
-        padding-inline: 0.8rem;
+        padding-inline: var(--home-carousel-edge-space);
         padding-bottom: 0.25rem;
-        scroll-padding-inline: 0.8rem;
+        scroll-padding-inline: var(--home-carousel-edge-space);
     }
 
     .home-review-grid {
@@ -1488,19 +1547,13 @@ h2 {
         padding: 1.95rem 0.84rem 0.9rem;
     }
 
-    .hero-actions {
-        flex-direction: row;
-        gap: 0.55rem;
-        margin-top: 0.88rem;
-        margin-bottom: 0.62rem;
-    }
-
     .cta {
         text-align: center;
-        min-width: 148px;
-        min-height: 48px;
-        padding: 0.64rem 0.82rem;
-        font-size: 0.92rem;
+        min-width: 0;
+        flex: 1 1 0;
+        min-height: 46px;
+        padding: 0.62rem 1rem;
+        font-size: 0.9rem;
     }
 
     .hero-pricing {
@@ -1517,10 +1570,11 @@ h2 {
     .hero-visual,
     .hero-logo-wrap,
     .hero-media img,
+    .hero-copy > .hero-copy-text,
     .hero-copy > .eyebrow,
-    .hero-copy > h1,
-    .hero-copy > p,
     .hero-copy > .hero-actions,
+    .hero-copy-text > h1,
+    .hero-copy-text > p,
     .join-promo-media img,
     .cta-placeholder,
     .shimmer-block,

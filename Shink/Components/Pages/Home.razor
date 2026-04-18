@@ -55,14 +55,16 @@
     </div>
 
     <div class="hero-copy">
-        <h1>
-            Bou jou kind se karakter -
-            <span>een storie op 'n slag.</span>
-        </h1>
-        <p class="hero-intro">
-            Rustige, opbouende <strong>Afrikaanse storietyd</strong> - sonder skerms.
-        </p>
-        <p class="hero-support">Minder skerms. Rustiger aande. Stories wat waardes bou.</p>
+        <div class="hero-copy-text">
+            <h1>
+                Bou jou kind se karakter -
+                <span>een storie op 'n slag.</span>
+            </h1>
+            <p class="hero-intro">
+                Rustige, opbouende <strong>Afrikaanse storietyd</strong> - sonder skerms.
+            </p>
+            <p class="hero-support">Minder skerms. Rustiger aande. Stories wat waardes bou.</p>
+        </div>
         <div class="hero-actions">
             @if (!HasResolvedAuthState)
             {
@@ -593,12 +595,12 @@ else
 
     private bool HasAccessToStory(StoryItem story)
     {
-        var requirement = StoryAccessPolicy.ResolveRequirement("luister", story);
+        var requirement = StoryAccessPolicy.ResolveRequirement(GetHomeStorySource(story), story);
         return requirement switch
         {
             StoryAccessRequirement.Free => true,
-            StoryAccessRequirement.StoryCornerOrAllStories => AccessProfile.HasStoryCornerOrAll,
-            StoryAccessRequirement.AllStoriesOnly => AccessProfile.HasAllStories,
+            StoryAccessRequirement.StoryCornerOrAllStories => IsSignedIn && AccessProfile.HasStoryCornerOrAll,
+            StoryAccessRequirement.AllStoriesOnly => IsSignedIn && AccessProfile.HasAllStories,
             _ => false
         };
     }
@@ -850,12 +852,15 @@ else
         return null;
     }
 
+    private static string GetHomeStorySource(StoryItem story) =>
+        string.Equals(story.AccessLevel, "free", StringComparison.OrdinalIgnoreCase)
+            ? "gratis"
+            : "luister";
+
     private static string GetHomeStoryHref(StoryItem story)
     {
-        var routePrefix = string.Equals(story.AccessLevel, "free", StringComparison.OrdinalIgnoreCase)
-            ? "/gratis/"
-            : "/luister/";
-        return $"{routePrefix}{Uri.EscapeDataString(story.Slug)}";
+        var routePrefix = GetHomeStorySource(story);
+        return $"/{routePrefix}/{Uri.EscapeDataString(story.Slug)}";
     }
 
     private static string FormatAmount(decimal amount)
