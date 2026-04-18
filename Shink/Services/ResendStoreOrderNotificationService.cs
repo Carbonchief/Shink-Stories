@@ -26,7 +26,6 @@ public sealed class ResendStoreOrderNotificationService(
         }
 
         var encodedReference = HtmlEncoder.Default.Encode(order.OrderReference);
-        var encodedProductName = HtmlEncoder.Default.Encode(order.ProductName);
         var encodedCustomerName = HtmlEncoder.Default.Encode(order.CustomerName);
         var encodedEmail = HtmlEncoder.Default.Encode(order.CustomerEmail);
         var encodedPhone = HtmlEncoder.Default.Encode(order.CustomerPhone);
@@ -36,14 +35,22 @@ public sealed class ResendStoreOrderNotificationService(
         var encodedCity = HtmlEncoder.Default.Encode(order.DeliveryCity);
         var encodedPostalCode = HtmlEncoder.Default.Encode(order.DeliveryPostalCode);
         var encodedNotes = HtmlEncoder.Default.Encode(order.Notes ?? string.Empty).Replace("\n", "<br />");
+        var encodedItemsHtml = string.Join(
+            string.Empty,
+            order.Items.Select(item =>
+                $"<li><strong>{HtmlEncoder.Default.Encode(item.ProductName)}</strong> x{item.Quantity} - R {item.LineTotalZar:0.00}</li>"));
+        var plainTextItems = string.Join(
+            "\n",
+            order.Items.Select(item => $"- {item.ProductName} x{item.Quantity} - R {item.LineTotalZar:0.00}"));
 
-        var subject = $"Store bestelling betaal: {order.ProductName} x{order.Quantity} ({order.OrderReference})";
+        var subject = $"Store bestelling betaal: {order.Quantity} items ({order.OrderReference})";
         var html = $$"""
             <h2>Nuwe winkel bestelling is betaal</h2>
             <p><strong>Verwysing:</strong> {{encodedReference}}</p>
-            <p><strong>Produk:</strong> {{encodedProductName}}</p>
-            <p><strong>Hoeveelheid:</strong> {{order.Quantity}}</p>
+            <p><strong>Aantal items:</strong> {{order.Quantity}}</p>
             <p><strong>Totaal:</strong> R {{order.TotalPriceZar:0.00}}</p>
+            <p><strong>Bestelling:</strong></p>
+            <ul>{{encodedItemsHtml}}</ul>
             <hr />
             <p><strong>Naam:</strong> {{encodedCustomerName}}</p>
             <p><strong>E-pos:</strong> {{encodedEmail}}</p>
@@ -59,9 +66,11 @@ public sealed class ResendStoreOrderNotificationService(
             Nuwe winkel bestelling is betaal
 
             Verwysing: {{order.OrderReference}}
-            Produk: {{order.ProductName}}
-            Hoeveelheid: {{order.Quantity}}
+            Aantal items: {{order.Quantity}}
             Totaal: R {{order.TotalPriceZar:0.00}}
+
+            Bestelling:
+            {{plainTextItems}}
 
             Naam: {{order.CustomerName}}
             E-pos: {{order.CustomerEmail}}

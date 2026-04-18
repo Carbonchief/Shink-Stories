@@ -326,7 +326,7 @@ app.Use(async (httpContext, next) =>
     httpContext.Response.OnStarting(() =>
     {
         var headers = httpContext.Response.Headers;
-        var contentSecurityPolicy = BuildContentSecurityPolicy(app.Environment.IsDevelopment(), postHogHostUrl);
+        var contentSecurityPolicy = BuildContentSecurityPolicy(httpContext.Request, app.Environment.IsDevelopment(), postHogHostUrl);
 
         headers["X-Content-Type-Options"] = "nosniff";
         headers["X-Frame-Options"] = "SAMEORIGIN";
@@ -662,16 +662,15 @@ app.MapPost("/winkel/koop/paystack", async (
     }
 
     var form = await httpContext.Request.ReadFormAsync(httpContext.RequestAborted);
-    if (!TryBuildStoreCheckoutDraft(form, out var product, out var draft, out var amountInCents, out var errorMessage))
+    if (!TryBuildStoreCheckoutDraft(form, out var draft, out var amountInCents, out var errorMessage))
     {
-        var requestedProductSlug = NormalizeOptionalFormText(form["produk"], 120);
+        var requestedProductSlug = GetFirstSelectedStoreProductSlugFromForm(form);
         return Results.Redirect(BuildStorePageRedirectPath(
             paymentStatus: "misluk",
             productSlug: requestedProductSlug,
             message: errorMessage));
     }
 
-    var selectedProduct = product!;
     var storeDraft = draft!;
 
     var createResult = await storeOrderService.CreatePendingOrderAsync(storeDraft, httpContext.RequestAborted);
@@ -697,9 +696,10 @@ app.MapPost("/winkel/koop/paystack", async (
     var checkoutResult = await paystackCheckoutService.InitializeStoreCheckoutAsync(
         new StorePaystackCheckoutRequest(
             OrderReference: createResult.Order.OrderReference,
-            ProductSlug: selectedProduct.Slug,
-            ProductName: selectedProduct.Name,
+            ProductSlug: storeDraft.ProductSlug,
+            ProductName: storeDraft.ProductName,
             Quantity: storeDraft.Quantity,
+            ItemSummary: BuildStoreItemSummary(storeDraft.Items),
             CustomerName: storeDraft.CustomerName,
             CustomerEmail: storeDraft.CustomerEmail,
             CustomerPhone: storeDraft.CustomerPhone,
@@ -1144,6 +1144,84 @@ app.MapPost("/api/auth/login", async (
     {
         message = "Welkom terug! Jy is nou ingeteken.",
         redirectPath
+    });
+}).RequireRateLimiting("auth-submit").DisableAntiforgery();
+
+app.MapPost("/api/auth/password-reset/request", async (
+    AuthPasswordResetRequestApiRequest request,
+    ISupabaseAuthService supabaseAuthService,
+    HttpContext httpContext) =>
+{
+    request = request with
+    {
+        Email = request.Email?.Trim() ?? string.Empty,
+        ReturnUrl = request.ReturnUrl?.Trim()
+    };
+
+    var validationError = ValidatePasswordResetRequest(request.Email);
+    if (validationError is not null)
+    {
+        return Results.BadRequest(new { message = validationError });
+    }
+
+    var safeReturnUrl = GetSafeAuthReturnUrl(request.ReturnUrl);
+    var recoveryPath = safeReturnUrl is null
+        ? "/herstel-wagwoord"
+        : QueryHelpers.AddQueryString("/herstel-wagwoord", "returnUrl", safeReturnUrl);
+    var redirectTo = BuildAbsoluteUrl(httpContext.Request, recoveryPath);
+    var resetResult = await supabaseAuthService.SendPasswordResetEmailAsync(
+        request.Email!,
+        redirectTo,
+        httpContext.RequestAborted);
+    if (!resetResult.IsSuccess)
+    {
+        return Results.BadRequest(new
+        {
+            message = resetResult.ErrorMessage ?? "Kon nie nou 'n herstel-skakel stuur nie. Probeer asseblief weer."
+        });
+    }
+
+    return Results.Ok(new
+    {
+        message = "As daardie e-pos by Schink geregistreer is, het ons vir jou 'n herstel-skakel gestuur."
+    });
+}).RequireRateLimiting("auth-submit").DisableAntiforgery();
+
+app.MapPost("/api/auth/password-reset/complete", async (
+    AuthPasswordResetCompleteApiRequest request,
+    ISupabaseAuthService supabaseAuthService,
+    HttpContext httpContext) =>
+{
+    request = request with
+    {
+        AccessToken = request.AccessToken?.Trim() ?? string.Empty,
+        RefreshToken = request.RefreshToken?.Trim() ?? string.Empty,
+        Password = request.Password ?? string.Empty
+    };
+
+    var validationError = ValidatePasswordResetCompletion(request);
+    if (validationError is not null)
+    {
+        return Results.BadRequest(new { message = validationError });
+    }
+
+    var resetResult = await supabaseAuthService.UpdatePasswordAsync(
+        request.AccessToken!,
+        request.RefreshToken!,
+        request.Password!,
+        httpContext.RequestAborted);
+    if (!resetResult.IsSuccess)
+    {
+        return Results.BadRequest(new
+        {
+            message = resetResult.ErrorMessage ?? "Kon nie jou wagwoord nou opdateer nie. Probeer asseblief weer."
+        });
+    }
+
+    return Results.Ok(new
+    {
+        message = "Jou wagwoord is suksesvol opgedateer.",
+        redirectPath = "/teken-in?reset=success"
     });
 }).RequireRateLimiting("auth-submit").DisableAntiforgery();
 
@@ -1940,16 +2018,76 @@ static async Task<bool> TryServeBundledBlazorRuntimeScriptAsync(HttpContext http
     return true;
 }
 
-static string BuildContentSecurityPolicy(bool isDevelopment, string? postHogHostUrl)
+static string BuildContentSecurityPolicy(HttpRequest request, bool isDevelopment, string? postHogHostUrl)
 {
     var postHogHostOrigin = TryGetCspHostOrigin(postHogHostUrl);
     var postHogAssetsOrigin = TryGetPostHogAssetsOrigin(postHogHostOrigin);
     var scriptSources = BuildScriptSources(postHogHostOrigin, postHogAssetsOrigin);
+    var formActionSources = BuildFormActionSources(request, isDevelopment);
     var connectSources = isDevelopment
         ? "'self' https: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* wss:"
         : "'self' https: wss:";
 
-    return $"default-src 'self'; base-uri 'self'; form-action 'self' https://sandbox.payfast.co.za https://www.payfast.co.za; object-src 'none'; frame-ancestors 'self'; img-src 'self' data: https:; media-src 'self' blob:; font-src 'self' data:; connect-src {connectSources}; script-src {scriptSources}; script-src-elem {scriptSources}; style-src 'self' 'unsafe-inline';";
+    return $"default-src 'self'; base-uri 'self'; form-action {formActionSources}; object-src 'none'; frame-ancestors 'self'; img-src 'self' data: https:; media-src 'self' blob:; font-src 'self' data:; connect-src {connectSources}; script-src {scriptSources}; script-src-elem {scriptSources}; style-src 'self' 'unsafe-inline';";
+}
+
+static string BuildFormActionSources(HttpRequest request, bool isDevelopment)
+{
+    var sources = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "'self'",
+        "https://sandbox.payfast.co.za",
+        "https://www.payfast.co.za",
+        "https://checkout.paystack.com"
+    };
+
+    if (isDevelopment)
+    {
+        AddDevelopmentFormActionOrigins(sources, request);
+    }
+
+    return string.Join(' ', sources);
+}
+
+static void AddDevelopmentFormActionOrigins(HashSet<string> sources, HttpRequest request)
+{
+    var requestOrigin = TryGetRequestOrigin(request);
+    if (!string.IsNullOrWhiteSpace(requestOrigin))
+    {
+        sources.Add(requestOrigin);
+    }
+
+    var port = request.Host.Port;
+    if (!port.HasValue)
+    {
+        return;
+    }
+
+    foreach (var scheme in new[] { Uri.UriSchemeHttp, Uri.UriSchemeHttps })
+    {
+        sources.Add($"{scheme}://localhost:{port.Value}");
+        sources.Add($"{scheme}://127.0.0.1:{port.Value}");
+        sources.Add($"{scheme}://[::1]:{port.Value}");
+    }
+}
+
+static string? TryGetRequestOrigin(HttpRequest request)
+{
+    if (!request.Host.HasValue)
+    {
+        return null;
+    }
+
+    try
+    {
+        var builder = new UriBuilder(request.Scheme, request.Host.Host);
+        builder.Port = request.Host.Port ?? -1;
+        return builder.Uri.GetLeftPart(UriPartial.Authority);
+    }
+    catch (UriFormatException)
+    {
+        return null;
+    }
 }
 
 static string? TryGetCspHostOrigin(string? url)
@@ -2593,28 +2731,60 @@ static bool TryResolvePaymentProvider(string? provider, out string resolvedProvi
 
 static bool TryBuildStoreCheckoutDraft(
     IFormCollection form,
-    out StoreProduct? product,
     out StoreOrderDraft? draft,
     out int amountInCents,
     out string? errorMessage)
 {
-    product = null;
     draft = null;
     amountInCents = 0;
     errorMessage = null;
 
-    var productSlug = NormalizeOptionalFormText(form["produk"], 120);
-    product = StoreProductCatalog.FindBySlug(productSlug);
-    if (product is null)
+    var items = new List<StoreOrderItemDraft>();
+    foreach (var product in StoreProductCatalog.All)
     {
-        errorMessage = "Kies asseblief 'n geldige StorieTjommie.";
+        var fieldName = $"qty-{product.Slug}";
+        var rawQuantity = form[fieldName].ToString();
+        if (string.IsNullOrWhiteSpace(rawQuantity))
+        {
+            continue;
+        }
+
+        if (!int.TryParse(rawQuantity, NumberStyles.Integer, CultureInfo.InvariantCulture, out var quantity) ||
+            quantity is < 0 or > 10)
+        {
+            errorMessage = $"Gebruik asseblief 'n geldige hoeveelheid vir {product.Name}.";
+            return false;
+        }
+
+        if (quantity == 0)
+        {
+            continue;
+        }
+
+        items.Add(new StoreOrderItemDraft(
+            ProductSlug: product.Slug,
+            ProductName: product.Name,
+            Quantity: quantity,
+            UnitPriceZar: product.UnitPriceZar));
+    }
+
+    if (items.Count == 0)
+    {
+        errorMessage = "Kies asseblief ten minste een StorieTjommie.";
         return false;
     }
 
-    if (!int.TryParse(form["hoeveelheid"], NumberStyles.Integer, CultureInfo.InvariantCulture, out var quantity) ||
-        quantity is < 1 or > 10)
+    var totalQuantity = items.Sum(item => item.Quantity);
+    if (totalQuantity > 20)
     {
-        errorMessage = "Kies asseblief 'n hoeveelheid tussen 1 en 10.";
+        errorMessage = "Jy kan tans tot 20 teddies in een bestelling plaas.";
+        return false;
+    }
+
+    var unitPriceZar = items[0].UnitPriceZar;
+    if (items.Any(item => item.UnitPriceZar != unitPriceZar))
+    {
+        errorMessage = "Die winkelpryse is tans nie korrek opgestel nie. Probeer asseblief later weer.";
         return false;
     }
 
@@ -2662,14 +2832,18 @@ static bool TryBuildStoreCheckoutDraft(
         return false;
     }
 
-    var orderReference = BuildStoreOrderReference(product.Slug);
-    amountInCents = decimal.ToInt32(decimal.Round(product.UnitPriceZar * quantity * 100m, 0, MidpointRounding.AwayFromZero));
+    var summarySlug = items.Count == 1 ? items[0].ProductSlug : "multi-item-order";
+    var summaryName = items.Count == 1 ? items[0].ProductName : "Gemengde StorieTjommie bestelling";
+    var orderReference = BuildStoreOrderReference(summarySlug);
+    var totalPriceZar = items.Sum(item => item.LineTotalZar);
+    amountInCents = decimal.ToInt32(decimal.Round(totalPriceZar * 100m, 0, MidpointRounding.AwayFromZero));
     draft = new StoreOrderDraft(
         OrderReference: orderReference,
-        ProductSlug: product.Slug,
-        ProductName: product.Name,
-        Quantity: quantity,
-        UnitPriceZar: product.UnitPriceZar,
+        ProductSlug: summarySlug,
+        ProductName: summaryName,
+        Quantity: totalQuantity,
+        UnitPriceZar: unitPriceZar,
+        Items: items,
         CustomerName: customerName,
         CustomerEmail: customerEmail,
         CustomerPhone: customerPhone,
@@ -2681,6 +2855,26 @@ static bool TryBuildStoreCheckoutDraft(
         Notes: NormalizeOptionalFormText(form["notas"], 2000));
     return true;
 }
+
+static string? GetFirstSelectedStoreProductSlugFromForm(IFormCollection form)
+{
+    foreach (var product in StoreProductCatalog.All)
+    {
+        var rawQuantity = form[$"qty-{product.Slug}"].ToString();
+        if (int.TryParse(rawQuantity, NumberStyles.Integer, CultureInfo.InvariantCulture, out var quantity) &&
+            quantity > 0)
+        {
+            return product.Slug;
+        }
+    }
+
+    return NormalizeOptionalFormText(form["produk"], 120);
+}
+
+static string BuildStoreItemSummary(IReadOnlyList<StoreOrderItemDraft> items) =>
+    string.Join(
+        ", ",
+        items.Select(item => $"{item.ProductName} x{item.Quantity}"));
 
 static string BuildStoreOrderReference(string productSlug)
 {
@@ -3244,7 +3438,8 @@ static string? GetSafeAuthReturnUrl(string? returnUrl)
 
 static bool IsAuthEntryPath(string path) =>
     path.StartsWith("/teken-in", StringComparison.OrdinalIgnoreCase) ||
-    path.StartsWith("/teken-op", StringComparison.OrdinalIgnoreCase);
+    path.StartsWith("/teken-op", StringComparison.OrdinalIgnoreCase) ||
+    path.StartsWith("/herstel-wagwoord", StringComparison.OrdinalIgnoreCase);
 
 static string? NormalizeAuthReturnUrl(string? value)
 {
@@ -3317,6 +3512,31 @@ static string? ValidateSignUpRequest(AuthSignUpApiRequest request)
     }
 
     return ValidateSignInRequest(request.Email, request.Password);
+}
+
+static string? ValidatePasswordResetRequest(string? email)
+{
+    if (string.IsNullOrWhiteSpace(email) || email.Length > 254 || !IsValidEmail(email))
+    {
+        return "Gebruik asseblief 'n geldige e-posadres.";
+    }
+
+    return null;
+}
+
+static string? ValidatePasswordResetCompletion(AuthPasswordResetCompleteApiRequest request)
+{
+    if (string.IsNullOrWhiteSpace(request.AccessToken) || string.IsNullOrWhiteSpace(request.RefreshToken))
+    {
+        return "Die herstel-skakel is ongeldig of het verval. Vra asseblief 'n nuwe skakel aan.";
+    }
+
+    if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length is < 6 or > 200)
+    {
+        return "Jou wagwoord moet tussen 6 en 200 karakters wees.";
+    }
+
+    return null;
 }
 
 static IReadOnlyList<SearchSiteCandidate> BuildSearchStaticCandidates() =>
@@ -3675,6 +3895,8 @@ static MobileStorySummaryResponse BuildMobileStorySummary(
 
 sealed record ContactApiRequest(string? Name, string? Email, string? Subject, string? Message, string? Website);
 sealed record AuthSignInApiRequest(string? Email, string? Password);
+sealed record AuthPasswordResetRequestApiRequest(string? Email, string? ReturnUrl);
+sealed record AuthPasswordResetCompleteApiRequest(string? AccessToken, string? RefreshToken, string? Password);
 sealed record AuthSignUpApiRequest(
     string? FirstName,
     string? LastName,

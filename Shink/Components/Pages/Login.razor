@@ -70,6 +70,10 @@
                     <ValidationMessage class="invalid-feedback d-block" For="@(() => SignInForm.Password)" />
                 </div>
 
+                <div class="login-helper-row">
+                    <a class="login-inline-link" href="@ForgotPasswordHref">Wagwoord vergeet?</a>
+                </div>
+
                 <div class="login-actions">
                     <button type="submit" class="login-submit" disabled="@IsSubmitting">
                         @(IsSubmitting ? "Besig..." : "Teken in")
@@ -116,6 +120,8 @@
     public string? ReturnUrl { get; set; }
     [SupplyParameterFromQuery(Name = "oauthError")]
     public string? OAuthError { get; set; }
+    [SupplyParameterFromQuery(Name = "reset")]
+    public string? ResetState { get; set; }
     private bool IsSubmitting { get; set; }
     private bool SignInSucceeded { get; set; }
     private string? StatusMessage { get; set; }
@@ -123,6 +129,10 @@
         GetSafeReturnUrlForSignUp(ReturnUrl) is { } safeReturnUrl
             ? $"/teken-op?returnUrl={Uri.EscapeDataString(safeReturnUrl)}"
             : "/teken-op";
+    private string ForgotPasswordHref =>
+        GetSafeReturnUrl(ReturnUrl) is { } safeReturnUrl
+            ? $"/herstel-wagwoord?returnUrl={Uri.EscapeDataString(safeReturnUrl)}"
+            : "/herstel-wagwoord";
     private string GoogleSignInHref =>
         GetSafeReturnUrl(ReturnUrl) is { } safeReturnUrl
             ? $"/api/auth/google/start?returnUrl={Uri.EscapeDataString(safeReturnUrl)}"
@@ -147,6 +157,14 @@
         {
             SignInSucceeded = false;
             StatusMessage = OAuthError.Trim();
+            return;
+        }
+
+        if (!IsSubmitting &&
+            string.Equals(ResetState, "success", StringComparison.OrdinalIgnoreCase))
+        {
+            SignInSucceeded = true;
+            StatusMessage = "Jou wagwoord is opgedateer. Teken nou met jou nuwe wagwoord in.";
         }
     }
 
@@ -223,6 +241,7 @@
         IsSubmitting = true;
         SignInSucceeded = false;
         StatusMessage = null;
+        await ShowSubmittingStateAsync();
 
         try
         {
@@ -255,6 +274,12 @@
         {
             IsSubmitting = false;
         }
+    }
+
+    private async Task ShowSubmittingStateAsync()
+    {
+        StateHasChanged();
+        await Task.Yield();
     }
 
     private async Task<string> GetRedirectTargetForAuthenticatedUserAsync(AuthenticationState authState)
@@ -354,7 +379,8 @@
 
     private static bool IsAuthEntryPath(string path) =>
         path.StartsWith("/teken-in", StringComparison.OrdinalIgnoreCase) ||
-        path.StartsWith("/teken-op", StringComparison.OrdinalIgnoreCase);
+        path.StartsWith("/teken-op", StringComparison.OrdinalIgnoreCase) ||
+        path.StartsWith("/herstel-wagwoord", StringComparison.OrdinalIgnoreCase);
 
     private static string? NormalizeReturnUrl(string? value)
     {

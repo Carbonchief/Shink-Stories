@@ -1,0 +1,60 @@
+﻿<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<Project ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup Condition=" '$(ExcludeRestorePackageImports)' != 'true' ">
+    <RestoreSuccess Condition=" '$(RestoreSuccess)' == '' ">True</RestoreSuccess>
+    <RestoreTool Condition=" '$(RestoreTool)' == '' ">NuGet</RestoreTool>
+    <ProjectAssetsFile Condition=" '$(ProjectAssetsFile)' == '' ">$(MSBuildThisFileDirectory)project.assets.json</ProjectAssetsFile>
+    <NuGetPackageRoot Condition=" '$(NuGetPackageRoot)' == '' ">$(UserProfile)\.nuget\packages\</NuGetPackageRoot>
+    <NuGetPackageFolders Condition=" '$(NuGetPackageFolders)' == '' ">C:\Users\LVanderwalt\.nuget\packages\;C:\Program Files (x86)\Microsoft Visual Studio\Shared\NuGetPackages</NuGetPackageFolders>
+    <NuGetProjectStyle Condition=" '$(NuGetProjectStyle)' == '' ">PackageReference</NuGetProjectStyle>
+    <NuGetToolVersion Condition=" '$(NuGetToolVersion)' == '' ">7.0.0</NuGetToolVersion>
+  </PropertyGroup>
+  <ItemGroup Condition=" '$(ExcludeRestorePackageImports)' != 'true' ">
+    <SourceRoot Include="C:\Users\LVanderwalt\.nuget\packages\" />
+    <SourceRoot Include="C:\Program Files (x86)\Microsoft Visual Studio\Shared\NuGetPackages\" />
+  </ItemGroup>
+  <ItemGroup Condition=" '$(ExcludeRestorePackageImports)' != 'true' ">
+    <Content Include="$(NuGetPackageRoot)bit.blazores2019\10.4.3\contentFiles\any\net10.0\wwwroot\_framework\bit.blazor.server.es2019.js" Condition="Exists('$(NuGetPackageRoot)bit.blazores2019\10.4.3\contentFiles\any\net10.0\wwwroot\_framework\bit.blazor.server.es2019.js')">
+      <NuGetPackageId>Bit.BlazorES2019</NuGetPackageId>
+      <NuGetPackageVersion>10.4.3</NuGetPackageVersion>
+      <NuGetItemType>Content</NuGetItemType>
+      <Pack>false</Pack>
+      <Private>False</Private>
+      <Link>wwwroot\_framework\bit.blazor.server.es2019.js</Link>
+    </Content>
+    <Content Include="$(NuGetPackageRoot)bit.blazores2019\10.4.3\contentFiles\any\net10.0\wwwroot\_framework\bit.blazor.web.es2019.js" Condition="Exists('$(NuGetPackageRoot)bit.blazores2019\10.4.3\contentFiles\any\net10.0\wwwroot\_framework\bit.blazor.web.es2019.js')">
+      <NuGetPackageId>Bit.BlazorES2019</NuGetPackageId>
+      <NuGetPackageVersion>10.4.3</NuGetPackageVersion>
+      <NuGetItemType>Content</NuGetItemType>
+      <Pack>false</Pack>
+      <Private>False</Private>
+      <Link>wwwroot\_framework\bit.blazor.web.es2019.js</Link>
+    </Content>
+    <Content Include="$(NuGetPackageRoot)bit.blazores2019\10.4.3\contentFiles\any\net10.0\wwwroot\_framework\bit.blazor.webassembly.es2019.js" Condition="Exists('$(NuGetPackageRoot)bit.blazores2019\10.4.3\contentFiles\any\net10.0\wwwroot\_framework\bit.blazor.webassembly.es2019.js')">
+      <NuGetPackageId>Bit.BlazorES2019</NuGetPackageId>
+      <NuGetPackageVersion>10.4.3</NuGetPackageVersion>
+      <NuGetItemType>Content</NuGetItemType>
+      <Pack>false</Pack>
+      <Private>False</Private>
+      <Link>wwwroot\_framework\bit.blazor.webassembly.es2019.js</Link>
+    </Content>
+    <Content Include="$(NuGetPackageRoot)bit.blazores2019\10.4.3\contentFiles\any\net10.0\wwwroot\_framework\bit.blazor.webview.es2019.js" Condition="Exists('$(NuGetPackageRoot)bit.blazores2019\10.4.3\contentFiles\any\net10.0\wwwroot\_framework\bit.blazor.webview.es2019.js')">
+      <NuGetPackageId>Bit.BlazorES2019</NuGetPackageId>
+      <NuGetPackageVersion>10.4.3</NuGetPackageVersion>
+      <NuGetItemType>Content</NuGetItemType>
+      <Pack>false</Pack>
+      <Private>False</Private>
+      <Link>wwwroot\_framework\bit.blazor.webview.es2019.js</Link>
+    </Content>
+  </ItemGroup>
+  <ImportGroup Condition=" '$(ExcludeRestorePackageImports)' != 'true' ">
+    <Import Project="$(NuGetPackageRoot)sixlabors.imagesharp\3.1.12\build\SixLabors.ImageSharp.props" Condition="Exists('$(NuGetPackageRoot)sixlabors.imagesharp\3.1.12\build\SixLabors.ImageSharp.props')" />
+    <Import Project="$(NuGetPackageRoot)pdftoimage\5.2.1\buildTransitive\PDFtoImage.props" Condition="Exists('$(NuGetPackageRoot)pdftoimage\5.2.1\buildTransitive\PDFtoImage.props')" />
+    <Import Project="$(NuGetPackageRoot)mudblazor\9.2.0\buildTransitive\MudBlazor.props" Condition="Exists('$(NuGetPackageRoot)mudblazor\9.2.0\buildTransitive\MudBlazor.props')" />
+    <Import Project="$(NuGetPackageRoot)microsoft.aspnetcore.app.internal.assets\10.0.5\build\Microsoft.AspNetCore.App.Internal.Assets.props" Condition="Exists('$(NuGetPackageRoot)microsoft.aspnetcore.app.internal.assets\10.0.5\build\Microsoft.AspNetCore.App.Internal.Assets.props')" />
+  </ImportGroup>
+  <PropertyGroup Condition=" '$(ExcludeRestorePackageImports)' != 'true' ">
+    <PkgAWSSDK_Core Condition=" '$(PkgAWSSDK_Core)' == '' ">C:\Users\LVanderwalt\.nuget\packages\awssdk.core\4.0.3.19</PkgAWSSDK_Core>
+    <PkgAWSSDK_S3 Condition=" '$(PkgAWSSDK_S3)' == '' ">C:\Users\LVanderwalt\.nuget\packages\awssdk.s3\4.0.19.2</PkgAWSSDK_S3>
+  </PropertyGroup>
+</Project>

@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -96,6 +97,121 @@ public sealed class SupabaseAuthService(
         }
 
         return SupabaseSignInResult.Success(signupResult.UserEmail ?? email);
+    }
+
+    public async Task<SupabasePasswordResetResult> SendPasswordResetEmailAsync(
+        string email,
+        string redirectTo,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return SupabasePasswordResetResult.Failure("Gebruik asseblief 'n geldige e-posadres.");
+        }
+
+        if (string.IsNullOrWhiteSpace(redirectTo))
+        {
+            return SupabasePasswordResetResult.Failure("Kon nie die herstel-skakel voorberei nie. Probeer asseblief weer.");
+        }
+
+        if (!TryBuildRecoverEndpoint(out var recoverEndpoint))
+        {
+            return SupabasePasswordResetResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en anon key op.");
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, recoverEndpoint)
+        {
+            Content = JsonContent.Create(new SupabasePasswordRecoveryRequest(email, redirectTo))
+        };
+        request.Headers.TryAddWithoutValidation("apikey", _options.AnonKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.AnonKey);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(request, cancellationToken);
+        }
+        catch (HttpRequestException exception)
+        {
+            _logger.LogWarning(exception, "Supabase password recovery request failed.");
+            return SupabasePasswordResetResult.Failure("Kon nie nou met Supabase koppel nie. Probeer asseblief weer.");
+        }
+
+        using (response)
+        {
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                return SupabasePasswordResetResult.Success();
+            }
+
+            var errorMessage = ReadErrorMessage(responseBody) ?? "Kon nie nou 'n herstel-skakel stuur nie. Probeer asseblief weer.";
+            _logger.LogInformation(
+                "Supabase password recovery rejected: {StatusCode} {Message}",
+                (int)response.StatusCode,
+                errorMessage);
+            return SupabasePasswordResetResult.Failure(errorMessage);
+        }
+    }
+
+    public async Task<SupabasePasswordResetResult> UpdatePasswordAsync(
+        string accessToken,
+        string refreshToken,
+        string newPassword,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(accessToken) || string.IsNullOrWhiteSpace(refreshToken))
+        {
+            return SupabasePasswordResetResult.Failure("Die herstel-skakel is ongeldig of het verval. Vra asseblief 'n nuwe skakel aan.");
+        }
+
+        if (string.IsNullOrWhiteSpace(newPassword))
+        {
+            return SupabasePasswordResetResult.Failure("Vul asseblief 'n nuwe wagwoord in.");
+        }
+
+        if (!TryBuildUserEndpoint(out var userEndpoint) ||
+            !TryBuildRefreshTokenEndpoint(out var refreshTokenEndpoint))
+        {
+            return SupabasePasswordResetResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en anon key op.");
+        }
+
+        var updateResult = await TryUpdatePasswordAsync(
+            userEndpoint,
+            accessToken.Trim(),
+            newPassword,
+            cancellationToken);
+        if (updateResult.IsSuccess)
+        {
+            return SupabasePasswordResetResult.Success(updateResult.UserEmail);
+        }
+
+        if (updateResult.ShouldRefreshSession)
+        {
+            var refreshedSession = await TryRefreshPasswordResetSessionAsync(
+                refreshTokenEndpoint,
+                refreshToken.Trim(),
+                cancellationToken);
+
+            if (!refreshedSession.IsSuccess)
+            {
+                return SupabasePasswordResetResult.Failure(
+                    refreshedSession.ErrorMessage ?? updateResult.ErrorMessage ?? "Kon nie jou wagwoord nou opdateer nie. Probeer asseblief weer.");
+            }
+
+            updateResult = await TryUpdatePasswordAsync(
+                userEndpoint,
+                refreshedSession.AccessToken!,
+                newPassword,
+                cancellationToken);
+            if (updateResult.IsSuccess)
+            {
+                return SupabasePasswordResetResult.Success(updateResult.UserEmail ?? refreshedSession.UserEmail);
+            }
+        }
+
+        return SupabasePasswordResetResult.Failure(
+            updateResult.ErrorMessage ?? "Kon nie jou wagwoord nou opdateer nie. Probeer asseblief weer.");
     }
 
     public async Task<SupabaseOAuthStartResult> StartGoogleSignInAsync(
@@ -272,6 +388,60 @@ public sealed class SupabaseAuthService(
         return true;
     }
 
+    private bool TryBuildRecoverEndpoint(out Uri recoverEndpoint)
+    {
+        recoverEndpoint = default!;
+        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.AnonKey))
+        {
+            return false;
+        }
+
+        if (!Uri.TryCreate(_options.Url, UriKind.Absolute, out var supabaseUri))
+        {
+            _logger.LogWarning("Supabase URL is invalid: {SupabaseUrl}", _options.Url);
+            return false;
+        }
+
+        recoverEndpoint = new Uri(supabaseUri, "auth/v1/recover");
+        return true;
+    }
+
+    private bool TryBuildUserEndpoint(out Uri userEndpoint)
+    {
+        userEndpoint = default!;
+        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.AnonKey))
+        {
+            return false;
+        }
+
+        if (!Uri.TryCreate(_options.Url, UriKind.Absolute, out var supabaseUri))
+        {
+            _logger.LogWarning("Supabase URL is invalid: {SupabaseUrl}", _options.Url);
+            return false;
+        }
+
+        userEndpoint = new Uri(supabaseUri, "auth/v1/user");
+        return true;
+    }
+
+    private bool TryBuildRefreshTokenEndpoint(out Uri refreshTokenEndpoint)
+    {
+        refreshTokenEndpoint = default!;
+        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.AnonKey))
+        {
+            return false;
+        }
+
+        if (!Uri.TryCreate(_options.Url, UriKind.Absolute, out var supabaseUri))
+        {
+            _logger.LogWarning("Supabase URL is invalid: {SupabaseUrl}", _options.Url);
+            return false;
+        }
+
+        refreshTokenEndpoint = new Uri(supabaseUri, "auth/v1/token?grant_type=refresh_token");
+        return true;
+    }
+
     private bool TryBuildAdminUsersEndpoint(out Uri adminUsersEndpoint)
     {
         adminUsersEndpoint = default!;
@@ -350,6 +520,98 @@ public sealed class SupabaseAuthService(
         }
     }
 
+    private async Task<PasswordUpdateAttemptResult> TryUpdatePasswordAsync(
+        Uri userEndpoint,
+        string accessToken,
+        string newPassword,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Put, userEndpoint)
+        {
+            Content = JsonContent.Create(new SupabasePasswordUpdateRequest(newPassword))
+        };
+        request.Headers.TryAddWithoutValidation("apikey", _options.AnonKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(request, cancellationToken);
+        }
+        catch (HttpRequestException exception)
+        {
+            _logger.LogWarning(exception, "Supabase password update request failed.");
+            return PasswordUpdateAttemptResult.Failure(
+                "Kon nie nou met Supabase koppel nie. Probeer asseblief weer.",
+                shouldRefreshSession: false);
+        }
+
+        using (response)
+        {
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                return PasswordUpdateAttemptResult.Success(ReadUserEmail(responseBody));
+            }
+
+            var errorMessage = ReadErrorMessage(responseBody) ?? "Kon nie jou wagwoord nou opdateer nie. Probeer asseblief weer.";
+            _logger.LogInformation(
+                "Supabase password update rejected: {StatusCode} {Message}",
+                (int)response.StatusCode,
+                errorMessage);
+            return PasswordUpdateAttemptResult.Failure(
+                errorMessage,
+                ShouldRefreshPasswordResetSession(response.StatusCode, errorMessage));
+        }
+    }
+
+    private async Task<RefreshedSessionResult> TryRefreshPasswordResetSessionAsync(
+        Uri refreshTokenEndpoint,
+        string refreshToken,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, refreshTokenEndpoint)
+        {
+            Content = JsonContent.Create(new SupabaseRefreshTokenRequest(refreshToken))
+        };
+        request.Headers.TryAddWithoutValidation("apikey", _options.AnonKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.AnonKey);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(request, cancellationToken);
+        }
+        catch (HttpRequestException exception)
+        {
+            _logger.LogWarning(exception, "Supabase password recovery session refresh failed.");
+            return RefreshedSessionResult.Failure("Kon nie nou met Supabase koppel nie. Probeer asseblief weer.");
+        }
+
+        using (response)
+        {
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var tokenResponse = ReadRefreshTokenResponse(responseBody);
+                if (!string.IsNullOrWhiteSpace(tokenResponse.AccessToken))
+                {
+                    return RefreshedSessionResult.Success(
+                        tokenResponse.AccessToken!,
+                        tokenResponse.RefreshToken ?? refreshToken,
+                        tokenResponse.UserEmail);
+                }
+            }
+
+            var errorMessage = ReadErrorMessage(responseBody) ?? "Die herstel-skakel is ongeldig of het verval. Vra asseblief 'n nuwe skakel aan.";
+            _logger.LogInformation(
+                "Supabase password recovery session refresh rejected: {StatusCode} {Message}",
+                (int)response.StatusCode,
+                errorMessage);
+            return RefreshedSessionResult.Failure(errorMessage);
+        }
+    }
+
     private static string? ReadUserEmail(string responseBody)
     {
         if (string.IsNullOrWhiteSpace(responseBody))
@@ -360,6 +622,13 @@ public sealed class SupabaseAuthService(
         try
         {
             using var doc = JsonDocument.Parse(responseBody);
+            if (doc.RootElement.ValueKind == JsonValueKind.Object &&
+                doc.RootElement.TryGetProperty("email", out var rootEmailNode) &&
+                rootEmailNode.ValueKind == JsonValueKind.String)
+            {
+                return rootEmailNode.GetString();
+            }
+
             if (doc.RootElement.TryGetProperty("user", out var userNode) &&
                 userNode.ValueKind == JsonValueKind.Object &&
                 userNode.TryGetProperty("email", out var emailNode) &&
@@ -374,6 +643,35 @@ public sealed class SupabaseAuthService(
         }
 
         return null;
+    }
+
+    private static RefreshTokenResponse ReadRefreshTokenResponse(string responseBody)
+    {
+        if (string.IsNullOrWhiteSpace(responseBody))
+        {
+            return new RefreshTokenResponse(null, null, null);
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(responseBody);
+            var root = doc.RootElement;
+
+            var accessToken = root.TryGetProperty("access_token", out var accessTokenNode) &&
+                              accessTokenNode.ValueKind == JsonValueKind.String
+                ? accessTokenNode.GetString()
+                : null;
+            var refreshToken = root.TryGetProperty("refresh_token", out var refreshTokenNode) &&
+                               refreshTokenNode.ValueKind == JsonValueKind.String
+                ? refreshTokenNode.GetString()
+                : null;
+
+            return new RefreshTokenResponse(accessToken, refreshToken, ReadUserEmail(responseBody));
+        }
+        catch (JsonException)
+        {
+            return new RefreshTokenResponse(null, null, null);
+        }
     }
 
     private static string? ReadErrorMessage(string responseBody)
@@ -420,9 +718,29 @@ public sealed class SupabaseAuthService(
             return "Hierdie e-posadres is reeds geregistreer. Teken asseblief in.";
         }
 
+        if (message.Contains("For security purposes", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("rate limit", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Wag asseblief 'n oomblik voor jy weer 'n herstel-skakel aanvra.";
+        }
+
         if (message.Contains("Error sending confirmation email", StringComparison.OrdinalIgnoreCase))
         {
             return "Kon nie bevestigings-e-pos stuur nie. Probeer asseblief weer.";
+        }
+
+        if (message.Contains("invalid or has expired", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("expired", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("invalid token", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("jwt", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Die herstel-skakel is ongeldig of het verval. Vra asseblief 'n nuwe skakel aan.";
+        }
+
+        if (message.Contains("same password", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("different from the old password", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Gebruik asseblief 'n nuwe wagwoord wat verskil van jou vorige een.";
         }
 
         return message;
@@ -431,6 +749,12 @@ public sealed class SupabaseAuthService(
     private static bool ShouldFallbackToAdminCreateUser(string? message) =>
         !string.IsNullOrWhiteSpace(message) &&
         message.Contains("bevestigings-e-pos", StringComparison.OrdinalIgnoreCase);
+
+    private static bool ShouldRefreshPasswordResetSession(HttpStatusCode statusCode, string? errorMessage) =>
+        statusCode == HttpStatusCode.Unauthorized ||
+        (!string.IsNullOrWhiteSpace(errorMessage) &&
+         (errorMessage.Contains("verval", StringComparison.OrdinalIgnoreCase) ||
+          errorMessage.Contains("jwt", StringComparison.OrdinalIgnoreCase)));
 
     private static SupabaseOAuthExchangeResult CreateGoogleOAuthExchangeResult(Session? session)
     {
@@ -509,6 +833,11 @@ public sealed class SupabaseAuthService(
 
     private sealed record SupabasePasswordSignInRequest(string Email, string Password);
     private sealed record SupabasePasswordSignUpRequest(string Email, string Password, SupabasePasswordSignUpMetadata? Data = null);
+    private sealed record SupabasePasswordRecoveryRequest(
+        string Email,
+        [property: JsonPropertyName("redirect_to")] string RedirectTo);
+    private sealed record SupabasePasswordUpdateRequest(string Password);
+    private sealed record SupabaseRefreshTokenRequest([property: JsonPropertyName("refresh_token")] string RefreshToken);
     private sealed record SupabaseAdminCreateUserRequest(
         string Email,
         string Password,
@@ -520,4 +849,35 @@ public sealed class SupabaseAuthService(
         string? DisplayName,
         string? FullName,
         string? MobileNumber);
+    private sealed record PasswordUpdateAttemptResult(
+        bool IsSuccess,
+        string? UserEmail,
+        string? ErrorMessage,
+        bool ShouldRefreshSession)
+    {
+        public static PasswordUpdateAttemptResult Success(string? userEmail) =>
+            new(true, userEmail, null, false);
+
+        public static PasswordUpdateAttemptResult Failure(string errorMessage, bool shouldRefreshSession) =>
+            new(false, null, errorMessage, shouldRefreshSession);
+    }
+
+    private sealed record RefreshedSessionResult(
+        bool IsSuccess,
+        string? AccessToken,
+        string? RefreshToken,
+        string? UserEmail,
+        string? ErrorMessage)
+    {
+        public static RefreshedSessionResult Success(
+            string accessToken,
+            string? refreshToken,
+            string? userEmail) =>
+            new(true, accessToken, refreshToken, userEmail, null);
+
+        public static RefreshedSessionResult Failure(string errorMessage) =>
+            new(false, null, null, null, errorMessage);
+    }
+
+    private sealed record RefreshTokenResponse(string? AccessToken, string? RefreshToken, string? UserEmail);
 }

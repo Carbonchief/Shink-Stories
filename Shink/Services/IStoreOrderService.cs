@@ -19,12 +19,22 @@ public interface IStoreOrderService
         CancellationToken cancellationToken = default);
 }
 
+public sealed record StoreOrderItemDraft(
+    string ProductSlug,
+    string ProductName,
+    int Quantity,
+    decimal UnitPriceZar)
+{
+    public decimal LineTotalZar => UnitPriceZar * Quantity;
+}
+
 public sealed record StoreOrderDraft(
     string OrderReference,
     string ProductSlug,
     string ProductName,
     int Quantity,
     decimal UnitPriceZar,
+    IReadOnlyList<StoreOrderItemDraft> Items,
     string CustomerName,
     string CustomerEmail,
     string CustomerPhone,
@@ -43,6 +53,7 @@ public sealed record StoreOrderRecord(
     int Quantity,
     decimal UnitPriceZar,
     decimal TotalPriceZar,
+    IReadOnlyList<StoreOrderItemRecord> Items,
     string CustomerName,
     string CustomerEmail,
     string CustomerPhone,
@@ -60,6 +71,15 @@ public sealed record StoreOrderRecord(
     DateTimeOffset? PaidAt,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);
+
+public sealed record StoreOrderItemRecord(
+    string ProductSlug,
+    string ProductName,
+    int Quantity,
+    decimal UnitPriceZar)
+{
+    public decimal LineTotalZar => UnitPriceZar * Quantity;
+}
 
 public sealed record StoreOrderCreateResult(
     bool IsSuccess,
