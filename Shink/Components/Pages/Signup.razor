@@ -253,6 +253,7 @@
         SignUpSucceeded = false;
         ShowAccountCreatedPopup = false;
         StatusMessage = null;
+        await ShowSubmittingStateAsync();
 
         try
         {
@@ -288,6 +289,12 @@
         {
             IsSubmitting = false;
         }
+    }
+
+    private async Task ShowSubmittingStateAsync()
+    {
+        StateHasChanged();
+        await Task.Yield();
     }
 
     private async Task SyncSignUpInputsFromDomAsync()

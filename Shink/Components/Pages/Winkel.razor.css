@@ -165,10 +165,10 @@
 .winkel-cta:focus-visible,
 .winkel-product-link:focus-visible,
 .winkel-submit:focus-visible,
-.winkel-choice-card input:focus-visible + .winkel-choice-card-body,
 .winkel-field input:focus-visible,
 .winkel-field select:focus-visible,
-.winkel-field textarea:focus-visible {
+.winkel-field textarea:focus-visible,
+.winkel-choice-quantity select:focus-visible {
     outline: 3px solid rgba(216, 111, 52, 0.22);
     outline-offset: 2px;
 }
@@ -401,18 +401,11 @@
 
 .winkel-choice-card {
     display: block;
-    cursor: pointer;
-}
-
-.winkel-choice-card input {
-    position: absolute;
-    opacity: 0;
-    pointer-events: none;
 }
 
 .winkel-choice-card-body {
     display: grid;
-    gap: 0.35rem;
+    gap: 1rem;
     min-height: 100%;
     padding: 1rem;
     border: 1px solid rgba(35, 52, 40, 0.1);
@@ -426,10 +419,9 @@
     border-color: rgba(167, 74, 31, 0.18);
 }
 
-.winkel-choice-card input:checked + .winkel-choice-card-body {
-    border-color: rgba(167, 74, 31, 0.28);
-    background: rgba(255, 246, 234, 1);
-    box-shadow: 0 14px 34px rgba(177, 103, 53, 0.12);
+.winkel-choice-copy {
+    display: grid;
+    gap: 0.35rem;
 }
 
 .winkel-choice-name {
@@ -437,9 +429,44 @@
     color: var(--winkel-ink);
 }
 
+.winkel-choice-blurb {
+    color: var(--winkel-muted);
+    line-height: 1.55;
+    font-size: 0.94rem;
+}
+
+.winkel-choice-meta {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
 .winkel-choice-price {
     color: var(--winkel-accent-deep);
     font-weight: 700;
+}
+
+.winkel-choice-quantity {
+    display: grid;
+    gap: 0.35rem;
+    min-width: 8rem;
+}
+
+.winkel-choice-quantity span {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--winkel-ink);
+}
+
+.winkel-choice-quantity select {
+    min-height: 3rem;
+    padding: 0.75rem 0.9rem;
+    border: 1px solid rgba(35, 52, 40, 0.12);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.96);
+    color: var(--winkel-ink);
+    font: inherit;
 }
 
 .winkel-form-grid {
@@ -597,5 +624,14 @@
     .winkel-order-section {
         padding: 1.15rem;
         border-radius: 24px;
+    }
+
+    .winkel-choice-meta {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .winkel-choice-quantity {
+        min-width: 0;
     }
 }

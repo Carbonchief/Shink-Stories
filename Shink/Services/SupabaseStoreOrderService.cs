@@ -40,7 +40,15 @@ public sealed class SupabaseStoreOrderService(
                 product_name = draft.ProductName,
                 quantity = draft.Quantity,
                 unit_price_zar = draft.UnitPriceZar,
-                total_price_zar = draft.UnitPriceZar * draft.Quantity,
+                total_price_zar = draft.Items.Sum(item => item.LineTotalZar),
+                items = draft.Items.Select(item => new
+                {
+                    product_slug = item.ProductSlug,
+                    product_name = item.ProductName,
+                    quantity = item.Quantity,
+                    unit_price_zar = item.UnitPriceZar,
+                    line_total_zar = item.LineTotalZar
+                }).ToArray(),
                 customer_name = draft.CustomerName,
                 customer_email = draft.CustomerEmail,
                 customer_phone = draft.CustomerPhone,
@@ -357,6 +365,12 @@ public sealed class SupabaseStoreOrderService(
             Quantity: row.Quantity,
             UnitPriceZar: row.UnitPriceZar,
             TotalPriceZar: row.TotalPriceZar,
+            Items: MapItems(
+                row.Items,
+                row.ProductSlug,
+                row.ProductName,
+                row.Quantity,
+                row.UnitPriceZar),
             CustomerName: row.CustomerName?.Trim() ?? string.Empty,
             CustomerEmail: row.CustomerEmail?.Trim().ToLowerInvariant() ?? string.Empty,
             CustomerPhone: row.CustomerPhone?.Trim() ?? string.Empty,
@@ -374,6 +388,66 @@ public sealed class SupabaseStoreOrderService(
             PaidAt: row.PaidAt,
             CreatedAt: row.CreatedAt,
             UpdatedAt: row.UpdatedAt);
+
+    private static IReadOnlyList<StoreOrderItemRecord> MapItems(
+        JsonElement itemsNode,
+        string? fallbackProductSlug,
+        string? fallbackProductName,
+        int fallbackQuantity,
+        decimal fallbackUnitPriceZar)
+    {
+        if (itemsNode.ValueKind == JsonValueKind.Array)
+        {
+            var items = new List<StoreOrderItemRecord>();
+            foreach (var itemNode in itemsNode.EnumerateArray())
+            {
+                if (itemNode.ValueKind != JsonValueKind.Object)
+                {
+                    continue;
+                }
+
+                var productSlug = NormalizeOptionalText(TryReadString(itemNode, "product_slug"), 120);
+                var productName = NormalizeOptionalText(TryReadString(itemNode, "product_name"), 200);
+                var quantity = TryReadInt(itemNode, "quantity");
+                var unitPriceZar = TryReadDecimal(itemNode, "unit_price_zar");
+                if (string.IsNullOrWhiteSpace(productSlug) ||
+                    string.IsNullOrWhiteSpace(productName) ||
+                    quantity <= 0 ||
+                    unitPriceZar <= 0)
+                {
+                    continue;
+                }
+
+                items.Add(new StoreOrderItemRecord(
+                    ProductSlug: productSlug,
+                    ProductName: productName,
+                    Quantity: quantity,
+                    UnitPriceZar: unitPriceZar));
+            }
+
+            if (items.Count > 0)
+            {
+                return items;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(fallbackProductSlug) &&
+            !string.IsNullOrWhiteSpace(fallbackProductName) &&
+            fallbackQuantity > 0 &&
+            fallbackUnitPriceZar > 0)
+        {
+            return
+            [
+                new StoreOrderItemRecord(
+                    ProductSlug: fallbackProductSlug.Trim(),
+                    ProductName: fallbackProductName.Trim(),
+                    Quantity: fallbackQuantity,
+                    UnitPriceZar: fallbackUnitPriceZar)
+            ];
+        }
+
+        return [];
+    }
 
     private static string NormalizePaymentStatus(string? status) =>
         status?.Trim().ToLowerInvariant() switch
@@ -476,6 +550,28 @@ public sealed class SupabaseStoreOrderService(
         return 0;
     }
 
+    private static decimal TryReadDecimal(JsonElement element, string propertyName)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(propertyName, out var node))
+        {
+            return 0m;
+        }
+
+        if (node.ValueKind == JsonValueKind.Number && node.TryGetDecimal(out var decimalValue))
+        {
+            return decimalValue;
+        }
+
+        if (node.ValueKind == JsonValueKind.String &&
+            decimal.TryParse(node.GetString(), out var parsed))
+        {
+            return parsed;
+        }
+
+        return 0m;
+    }
+
     private static string? TryReadNestedString(JsonElement element, string firstProperty, string secondProperty)
     {
         if (element.ValueKind != JsonValueKind.Object ||
@@ -495,6 +591,7 @@ public sealed class SupabaseStoreOrderService(
         [property: JsonPropertyName("quantity")] int Quantity,
         [property: JsonPropertyName("unit_price_zar")] decimal UnitPriceZar,
         [property: JsonPropertyName("total_price_zar")] decimal TotalPriceZar,
+        [property: JsonPropertyName("items")] JsonElement Items,
         [property: JsonPropertyName("customer_name")] string? CustomerName,
         [property: JsonPropertyName("customer_email")] string? CustomerEmail,
         [property: JsonPropertyName("customer_phone")] string? CustomerPhone,

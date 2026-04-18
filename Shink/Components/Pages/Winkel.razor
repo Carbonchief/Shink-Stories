@@ -11,7 +11,7 @@
     <link rel="canonical" href="@WinkelCanonicalUrl" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Schink Stories | Winkel" />
-    <meta property="og:description" content="Koop StorieTjommie teddies vir R 250 elk en betaal veilig met Paystack." />
+    <meta property="og:description" content="Koop een of meer StorieTjommie teddies vir R 250 elk en betaal alles in een veilige Paystack betaling." />
     <meta property="og:url" content="@WinkelCanonicalUrl" />
     <meta property="og:image" content="@NavigationManager.ToAbsoluteUri("/branding/winkel/storie-tjommie-panda.png").ToString()" />
     <meta property="og:image:secure_url" content="@NavigationManager.ToAbsoluteUri("/branding/winkel/storie-tjommie-panda.png").ToString()" />
@@ -21,7 +21,7 @@
     <meta property="og:image:alt" content="Voorbeeld van 'n kind wat 'n StorieTjommie vashou" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Schink Stories | Winkel" />
-    <meta name="twitter:description" content="Koop StorieTjommie teddies vir R 250 elk en betaal veilig met Paystack." />
+    <meta name="twitter:description" content="Koop een of meer StorieTjommie teddies vir R 250 elk en betaal alles in een veilige Paystack betaling." />
     <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/branding/winkel/storie-tjommie-panda.png").ToString()" />
     <meta name="twitter:image:alt" content="Voorbeeld van 'n kind wat 'n StorieTjommie vashou" />
     <script type="application/ld+json">@WinkelJsonLd</script>
@@ -42,19 +42,19 @@
             <p class="winkel-intro">
                 Ons verkoop tans teddies van vier geliefde Schink karakters:
                 <strong>Suurlemoentjie, Tiekie, Lama Lama Pajama Lama</strong> en <strong>Georgie</strong>.
-                Elke StorieTjommie kos <strong>R 250.00</strong> en jy kan nou direk veilig met Paystack betaal.
+                Elke StorieTjommie kos <strong>R 250.00</strong> en jy kan nou verskillende karakters saam in <strong>een</strong> veilige Paystack betaling bestel.
             </p>
 
             <div class="winkel-actions">
-                <a class="winkel-cta winkel-cta-primary" href="#winkel-bestelvorm">Bestel nou</a>
+                <a class="winkel-cta winkel-cta-primary" href="#winkel-bestelvorm">Bou jou bestelling</a>
                 <a class="winkel-cta winkel-cta-secondary" href="#winkel-produkte">Sien die karakters</a>
             </div>
 
             <ul class="winkel-highlights" aria-label="Winkel hoogtepunte">
                 <li>R 250.00 per StorieTjommie</li>
+                <li>Meer as een karakter in een bestelling</li>
                 <li>Veilige Paystack betaling</li>
                 <li>4 karakters nou beskikbaar</li>
-                <li>Gemaak vir storietyd en knuffeltyd</li>
             </ul>
         </div>
 
@@ -90,8 +90,8 @@
                 Hulle werk mooi vir rustige bedtyd, lekker speeltyd en daardie ekstra spesiale geskenk.
             </p>
             <p>
-                Kies jou karakter, vul jou besonderhede in en voltooi jou betaling op Paystack.
-                Sodra dit deur is, land die bestelling direk by ons.
+                Jy kan nou een karakter kies of sommer 'n hele kombinasie saam in jou mandjie sit,
+                dan word alles in een bestelling en een betaling hanteer.
             </p>
         </div>
     </section>
@@ -99,9 +99,9 @@
     <section class="winkel-products" aria-labelledby="winkel-produkte">
         <div class="winkel-products-header">
             <p class="winkel-section-kicker">Ons verkoop tans</p>
-            <h2 id="winkel-produkte">Kies jou StorieTjommie</h2>
+            <h2 id="winkel-produkte">Kies jou StorieTjommies</h2>
             <p>
-                Al vier teddies kos dieselfde. Kies net jou gunsteling en spring dan af na die bestelvorm.
+                Al vier teddies kos dieselfde. Klik op enigeen hieronder om die bestelvorm met daardie karakter klaar te vul, of stel jou hoeveelhede handmatig in.
             </p>
         </div>
 
@@ -123,7 +123,7 @@
                         <h3>@product.Name</h3>
                         <p class="winkel-product-price">R @product.UnitPriceDisplay</p>
                         <p class="winkel-product-description">@GetProductBlurb(product)</p>
-                        <a class="winkel-product-link" href="@BuildOrderFormHref(product.Slug)">Koop nou</a>
+                        <a class="winkel-product-link" href="@BuildOrderFormHref(product.Slug)">Voeg by bestelling</a>
                     </div>
                 </article>
             }
@@ -133,25 +133,25 @@
     <section class="winkel-order-section" aria-labelledby="winkel-bestel">
         <div class="winkel-order-copy">
             <p class="winkel-section-kicker">Maklik om te bestel</p>
-            <h2 id="winkel-bestel">Betaal veilig en klaar.</h2>
+            <h2 id="winkel-bestel">Bou jou bestelling en betaal alles saam.</h2>
             <p>
-                Vul die vorm hieronder in, kies jou hoeveelheid en jy word na Paystack gestuur om die betaling af te handel.
-                Ons gebruik jou besonderhede net om jou bestelling op te neem en af te lewer.
+                Stel 'n hoeveelheid vir elke karakter hieronder. Jy kan soveel verskillende StorieTjommies kies as wat jy nodig het,
+                en Paystack hanteer dit as een enkele betaling.
             </p>
 
             <ul class="winkel-order-notes">
+                <li>Kies hoeveel van elke karakter jy wil hê. Laat dit op <strong>0</strong> as jy daardie een nie wil bestel nie.</li>
                 <li>Gebruik jou beste e-posadres en selfoonnommer.</li>
                 <li>Gebruik die afleweringsadres waar jy die pakket wil ontvang.</li>
-                <li>Elke teddie kos R 250.00, so die totaal word volgens jou hoeveelheid bereken.</li>
             </ul>
 
             <aside class="winkel-order-panel">
                 <p class="winkel-order-panel-kicker">Vinnig opgesom</p>
                 <h3>Wat gebeur na betaling?</h3>
                 <ol class="winkel-order-list">
-                    <li>Jy kies jou StorieTjommie en hoeveelheid.</li>
-                    <li>Paystack hanteer die betaling op hulle veilige blad.</li>
-                    <li>Ons ontvang jou bestelling en volg op met die volgende stap indien nodig.</li>
+                    <li>Jy kies jou kombinasie van teddies en hoeveel van elkeen jy wil hê.</li>
+                    <li>Paystack hanteer die hele bestelling as een veilige betaling.</li>
+                    <li>Ons ontvang die volledige bestelling met al jou items en volg op indien nodig.</li>
                 </ol>
                 <p class="winkel-order-panel-price">R 250.00 elk</p>
             </aside>
@@ -160,35 +160,37 @@
         <div class="winkel-order-form-shell" id="winkel-bestelvorm">
             <form class="winkel-order-form" method="post" action="/winkel/koop/paystack">
                 <fieldset class="winkel-choice-grid">
-                    <legend>Kies jou StorieTjommie</legend>
+                    <legend>Kies hoeveel van elke StorieTjommie jy wil hê</legend>
                     <div class="winkel-choice-options">
                         @foreach (var product in Products)
                         {
-                            <label class="winkel-choice-card">
-                                <input type="radio"
-                                       name="produk"
-                                       value="@product.Slug"
-                                       checked="@(product.Slug == SelectedProductSlug)" />
-                                <span class="winkel-choice-card-body">
-                                    <span class="winkel-choice-name">@product.Name</span>
-                                    <span class="winkel-choice-price">R @product.UnitPriceDisplay</span>
-                                </span>
-                            </label>
+                            var defaultQuantity = GetDefaultQuantity(product);
+
+                            <div class="winkel-choice-card">
+                                <div class="winkel-choice-card-body">
+                                    <div class="winkel-choice-copy">
+                                        <span class="winkel-choice-name">@product.Name</span>
+                                        <span class="winkel-choice-blurb">@GetProductBlurb(product)</span>
+                                    </div>
+                                    <div class="winkel-choice-meta">
+                                        <span class="winkel-choice-price">R @product.UnitPriceDisplay elk</span>
+                                        <label class="winkel-choice-quantity">
+                                            <span>Hoeveelheid</span>
+                                            <select name="@($"qty-{product.Slug}")" autocomplete="off">
+                                                @for (var quantity = 0; quantity <= 10; quantity++)
+                                                {
+                                                    <option value="@quantity" selected="@(quantity == defaultQuantity)">@quantity</option>
+                                                }
+                                            </select>
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
                         }
                     </div>
                 </fieldset>
 
                 <div class="winkel-form-grid">
-                    <label class="winkel-field">
-                        <span>Hoeveelheid</span>
-                        <select name="hoeveelheid" autocomplete="off">
-                            @for (var quantity = 1; quantity <= 10; quantity++)
-                            {
-                                <option value="@quantity" selected="@(quantity == 1)">@quantity</option>
-                            }
-                        </select>
-                    </label>
-
                     <label class="winkel-field">
                         <span>Volle naam</span>
                         <input type="text" name="naam" maxlength="120" autocomplete="name" required />
@@ -202,6 +204,11 @@
                     <label class="winkel-field">
                         <span>Selfoonnommer</span>
                         <input type="tel" name="selfoon" maxlength="40" autocomplete="tel" required />
+                    </label>
+
+                    <label class="winkel-field">
+                        <span>Poskode</span>
+                        <input type="text" name="poskode" maxlength="20" autocomplete="postal-code" required />
                     </label>
 
                     <label class="winkel-field winkel-field-full">
@@ -224,11 +231,6 @@
                         <input type="text" name="stad" maxlength="120" autocomplete="address-level2" required />
                     </label>
 
-                    <label class="winkel-field">
-                        <span>Poskode</span>
-                        <input type="text" name="poskode" maxlength="20" autocomplete="postal-code" required />
-                    </label>
-
                     <label class="winkel-field winkel-field-full">
                         <span>Notas <em>(opsioneel)</em></span>
                         <textarea name="notas" rows="4" maxlength="2000"></textarea>
@@ -236,9 +238,9 @@
                 </div>
 
                 <div class="winkel-form-actions">
-                    <button class="winkel-submit" type="submit">Betaal met Paystack</button>
+                    <button class="winkel-submit" type="submit">Betaal hele bestelling met Paystack</button>
                     <p class="winkel-form-fineprint">
-                        Jy word na Paystack gestuur om die betaling veilig te voltooi.
+                        Jy word na Paystack gestuur om die hele bestelling veilig in een betaling te voltooi.
                     </p>
                 </div>
             </form>
@@ -260,10 +262,6 @@
     public string? MessageFromQuery { get; set; }
 
     private static IReadOnlyList<StoreProduct> Products => StoreProductCatalog.All;
-
-    private string SelectedProductSlug =>
-        StoreProductCatalog.FindBySlug(ProductSlugFromQuery)?.Slug
-        ?? Products[0].Slug;
 
     private string WinkelCanonicalUrl => NavigationManager.ToAbsoluteUri("/winkel").ToString();
 
@@ -301,6 +299,9 @@
         }
     }
 
+    private int GetDefaultQuantity(StoreProduct product) =>
+        string.Equals(product.Slug, ProductSlugFromQuery, StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+
     private string BuildOrderFormHref(string productSlug) =>
         $"{QueryHelpers.AddQueryString("/winkel", "produk", productSlug)}#winkel-bestelvorm";
 
@@ -318,7 +319,7 @@
         ["@context"] = "https://schema.org",
         ["@type"] = "CollectionPage",
         ["name"] = "Schink Stories | Winkel",
-        ["description"] = "Koop StorieTjommie teddies vir R 250 elk en betaal veilig met Paystack.",
+        ["description"] = "Koop een of meer StorieTjommie teddies vir R 250 elk en betaal alles in een veilige Paystack betaling.",
         ["url"] = WinkelCanonicalUrl,
         ["inLanguage"] = "af-ZA",
         ["isPartOf"] = new Dictionary<string, object?>

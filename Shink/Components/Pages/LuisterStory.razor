@@ -226,18 +226,14 @@ else
                                         <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
                                     </span>
                                 </span>
-                                <div class="story-carousel-copy">
-                                    <h3>@story.Title</h3>
-                                    @if (isActiveStory)
-                                    {
-                                        <span class="story-carousel-status">Jy luister nou</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="story-carousel-status">Maak oop</span>
-                                    }
-                                </div>
-                            </a>
+                                 <div class="story-carousel-copy">
+                                     <h3>@story.Title</h3>
+                                     @if (isActiveStory)
+                                     {
+                                         <span class="story-carousel-status">Jy luister nou</span>
+                                     }
+                                 </div>
+                             </a>
                             <button type="button"
                                     class="story-favorite-toggle story-favorite-toggle-small @(IsStoryFavorite(story.Slug) ? "is-favorite" : null)"
                                     @onclick="() => ToggleStoryFavoriteAsync(story)"

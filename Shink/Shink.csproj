@@ -5,12 +5,16 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <BlazorDisableThrowNavigationException>true</BlazorDisableThrowNavigationException>
-    <DefaultItemExcludes>$(DefaultItemExcludes);artifacts\**;artifacts/**;.artifacts\**;.artifacts/**</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);artifacts\**;artifacts/**;.artifacts\**;.artifacts/**;bin_verify\**;bin_verify/**;obj_verify\**;obj_verify/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Remove="artifacts\**\*.cs" />
     <Compile Remove=".artifacts\**\*.cs" />
+    <Compile Remove="bin\**\*.cs" />
+    <Compile Remove="obj\**\*.cs" />
+    <Compile Remove="bin_verify\**\*.cs" />
+    <Compile Remove="obj_verify\**\*.cs" />
   </ItemGroup>
 
   <ItemGroup>

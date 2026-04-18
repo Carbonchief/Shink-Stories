@@ -99,6 +99,7 @@ public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<Pays
             ["product_slug"] = checkout.ProductSlug,
             ["product_name"] = checkout.ProductName,
             ["quantity"] = checkout.Quantity,
+            ["item_summary"] = checkout.ItemSummary,
             ["customer_name"] = checkout.CustomerName,
             ["customer_phone"] = checkout.CustomerPhone,
             ["cancel_action"] = cancelUrl,
@@ -106,13 +107,13 @@ public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<Pays
             {
                 new Dictionary<string, object?>
                 {
-                    ["display_name"] = "Product",
-                    ["variable_name"] = "product_name",
-                    ["value"] = checkout.ProductName
+                    ["display_name"] = "Items",
+                    ["variable_name"] = "item_summary",
+                    ["value"] = checkout.ItemSummary
                 },
                 new Dictionary<string, object?>
                 {
-                    ["display_name"] = "Quantity",
+                    ["display_name"] = "Total Items",
                     ["variable_name"] = "quantity",
                     ["value"] = checkout.Quantity.ToString()
                 },
@@ -442,6 +443,7 @@ public sealed record StorePaystackCheckoutRequest(
     string ProductSlug,
     string ProductName,
     int Quantity,
+    string ItemSummary,
     string CustomerName,
     string CustomerEmail,
     string CustomerPhone,

@@ -109,6 +109,77 @@ export function readInputValues(inputIds) {
     return values;
 }
 
+const SUPABASE_RECOVERY_PARAM_NAMES = [
+    "access_token",
+    "refresh_token",
+    "expires_in",
+    "expires_at",
+    "token_type",
+    "type",
+    "error",
+    "error_code",
+    "error_description",
+    "provider_token",
+    "provider_refresh_token"
+];
+
+function readNamedParam(paramName, ...searchParams) {
+    for (const params of searchParams) {
+        if (!(params instanceof URLSearchParams)) {
+            continue;
+        }
+
+        const value = params.get(paramName);
+        if (typeof value === "string" && value.trim() !== "") {
+            return value;
+        }
+    }
+
+    return null;
+}
+
+export function readSupabaseRecoveryState() {
+    if (typeof window !== "object" || typeof window.location !== "object") {
+        return {
+            accessToken: null,
+            refreshToken: null,
+            type: null,
+            errorCode: null,
+            errorDescription: null
+        };
+    }
+
+    const currentUrl = new URL(window.location.href);
+    const queryParams = currentUrl.searchParams;
+    const hashText = currentUrl.hash.startsWith("#")
+        ? currentUrl.hash.slice(1)
+        : currentUrl.hash;
+    const hashParams = new URLSearchParams(hashText);
+
+    const state = {
+        accessToken: readNamedParam("access_token", hashParams, queryParams),
+        refreshToken: readNamedParam("refresh_token", hashParams, queryParams),
+        type: readNamedParam("type", hashParams, queryParams),
+        errorCode: readNamedParam("error_code", hashParams, queryParams),
+        errorDescription: readNamedParam("error_description", hashParams, queryParams)
+    };
+
+    const hasSensitiveParams = SUPABASE_RECOVERY_PARAM_NAMES.some((paramName) =>
+        queryParams.has(paramName) || hashParams.has(paramName));
+
+    if (hasSensitiveParams && typeof window.history?.replaceState === "function") {
+        const cleanUrl = new URL(currentUrl.toString());
+        for (const paramName of SUPABASE_RECOVERY_PARAM_NAMES) {
+            cleanUrl.searchParams.delete(paramName);
+        }
+
+        cleanUrl.hash = "";
+        window.history.replaceState({}, document.title, cleanUrl.toString());
+    }
+
+    return state;
+}
+
 async function readJsonPayload(response) {
     try {
         const payload = await response.json();
