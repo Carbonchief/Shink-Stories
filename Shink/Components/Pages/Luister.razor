@@ -191,67 +191,65 @@ else
 
             <div class="stories-carousel-shell">
                 <div class="stories-carousel" role="list" aria-label="@playlistTitle">
-                    <div class="stories-carousel-track">
-                        @foreach (var story in playlistStories)
-                        {
-                            var canAccessStory = HasAccessToStory(story);
-                            var storyTitle = string.IsNullOrWhiteSpace(story.Title) ? "hierdie storie" : story.Title.Trim();
-                            <article class="story-carousel-item" role="listitem">
-                                <div class="story-carousel-card-shell">
-                                    @if (canAccessStory)
-                                    {
-                                        <a class="story-carousel-link"
-                                           href="@GetStoryHref(story.Slug)"
-                                           data-enhance-nav="false"
-                                           draggable="false"
-                                           aria-label="Luister na @storyTitle">
-                                            <span class="story-carousel-cover">
-                                                <img class="story-carousel-image"
-                                                     src="@story.ThumbnailPath"
-                                                     srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
-                                                     sizes="(max-width: 620px) 68vw, (max-width: 980px) 42vw, 320px"
-                                                     draggable="false"
-                                                     alt="Voorblad van @storyTitle" width="640" height="485" loading="lazy" decoding="async" />
-                                                <span class="story-cover-play" aria-hidden="true">
-                                                    <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
-                                                </span>
+                    @foreach (var story in playlistStories)
+                    {
+                        var canAccessStory = HasAccessToStory(story);
+                        var storyTitle = string.IsNullOrWhiteSpace(story.Title) ? "hierdie storie" : story.Title.Trim();
+                        <article class="story-carousel-item" role="listitem">
+                            <div class="story-carousel-card-shell">
+                                @if (canAccessStory)
+                                {
+                                    <a class="story-carousel-link"
+                                       href="@GetStoryHref(story.Slug)"
+                                       data-enhance-nav="false"
+                                       draggable="false"
+                                       aria-label="Luister na @storyTitle">
+                                        <span class="story-carousel-cover">
+                                            <img class="story-carousel-image"
+                                                 src="@story.ThumbnailPath"
+                                                 srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
+                                                 sizes="(max-width: 620px) 68vw, (max-width: 980px) 42vw, 320px"
+                                                 draggable="false"
+                                                 alt="Voorblad van @storyTitle" width="640" height="485" loading="lazy" decoding="async" />
+                                            <span class="story-cover-play" aria-hidden="true">
+                                                <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
                                             </span>
-                                            <h3>@storyTitle</h3>
-                                        </a>
-                                    }
-                                    else
-                                    {
-                                        <button type="button"
-                                                class="story-carousel-link story-carousel-link-button"
-                                                @onclick="() => HandleStoryCardClickAsync(story)"
-                                                aria-label="Luister na @storyTitle">
-                                            <span class="story-carousel-cover">
-                                                <img class="story-carousel-image"
-                                                     src="@story.ThumbnailPath"
-                                                     srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
-                                                     sizes="(max-width: 620px) 68vw, (max-width: 980px) 42vw, 320px"
-                                                     draggable="false"
-                                                     alt="Voorblad van @storyTitle" width="640" height="485" loading="lazy" decoding="async" />
-                                                <span class="story-cover-play" aria-hidden="true">
-                                                    <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
-                                                </span>
-                                            </span>
-                                            <h3>@storyTitle</h3>
-                                        </button>
-                                    }
+                                        </span>
+                                        <h3>@storyTitle</h3>
+                                    </a>
+                                }
+                                else
+                                {
                                     <button type="button"
-                                            class="story-favorite-toggle @(IsStoryFavorite(story.Slug) ? "is-favorite" : null)"
-                                            @onclick="() => ToggleStoryFavoriteAsync(story)"
-                                            aria-label="@(IsStoryFavorite(story.Slug) ? $"Verwyder {storyTitle} uit jou gunstelinge" : $"Voeg {storyTitle} by jou gunstelinge")"
-                                            title="@(IsStoryFavorite(story.Slug) ? "Verwyder uit gunstelinge" : "Voeg by gunstelinge")"
-                                            aria-pressed="@IsStoryFavorite(story.Slug)"
-                                            disabled="@IsFavoriteBusy(story.Slug)">
-                                        <i class="fa-@(IsStoryFavorite(story.Slug) ? "solid" : "regular") fa-heart" aria-hidden="true"></i>
+                                            class="story-carousel-link story-carousel-link-button"
+                                            @onclick="() => HandleStoryCardClickAsync(story)"
+                                            aria-label="Luister na @storyTitle">
+                                        <span class="story-carousel-cover">
+                                            <img class="story-carousel-image"
+                                                 src="@story.ThumbnailPath"
+                                                 srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
+                                                 sizes="(max-width: 620px) 68vw, (max-width: 980px) 42vw, 320px"
+                                                 draggable="false"
+                                                 alt="Voorblad van @storyTitle" width="640" height="485" loading="lazy" decoding="async" />
+                                            <span class="story-cover-play" aria-hidden="true">
+                                                <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
+                                            </span>
+                                        </span>
+                                        <h3>@storyTitle</h3>
                                     </button>
-                                </div>
-                            </article>
-                        }
-                    </div>
+                                }
+                                <button type="button"
+                                        class="story-favorite-toggle @(IsStoryFavorite(story.Slug) ? "is-favorite" : null)"
+                                        @onclick="() => ToggleStoryFavoriteAsync(story)"
+                                        aria-label="@(IsStoryFavorite(story.Slug) ? $"Verwyder {storyTitle} uit jou gunstelinge" : $"Voeg {storyTitle} by jou gunstelinge")"
+                                        title="@(IsStoryFavorite(story.Slug) ? "Verwyder uit gunstelinge" : "Voeg by gunstelinge")"
+                                        aria-pressed="@IsStoryFavorite(story.Slug)"
+                                        disabled="@IsFavoriteBusy(story.Slug)">
+                                    <i class="fa-@(IsStoryFavorite(story.Slug) ? "solid" : "regular") fa-heart" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        </article>
+                    }
                 </div>
             </div>
         </section>
