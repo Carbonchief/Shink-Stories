@@ -1,5 +1,6 @@
 @page "/luister"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using System.Globalization
 @using System.Security.Claims
 @using System.Text.Json
 @using Microsoft.AspNetCore.Components
@@ -114,6 +115,7 @@ else
         var canOpenPlaylist = CanOpenPlaylist(playlist);
         var showcaseStory = GetPlaylistShowcaseStory(playlist);
         var hasShowcaseImage = playlist.ShowShowcaseImageOnLuisterPage && showcaseStory is not null;
+        var isWeeklyPopularPlaylist = IsWeeklyPopularPlaylist(playlist);
 
         <section class="section-block stories-carousel-section luister-stories-section" aria-labelledby="@headingId">
             <h2 id="@headingId">
@@ -191,12 +193,21 @@ else
 
             <div class="stories-carousel-shell">
                 <div class="stories-carousel" role="list" aria-label="@playlistTitle">
-                    @foreach (var story in playlistStories)
+                    @for (var storyIndex = 0; storyIndex < playlistStories.Count; storyIndex++)
                     {
+                        var story = playlistStories[storyIndex];
                         var canAccessStory = HasAccessToStory(story);
                         var storyTitle = string.IsNullOrWhiteSpace(story.Title) ? "hierdie storie" : story.Title.Trim();
-                        <article class="story-carousel-item" role="listitem">
+                        var articleClassName = isWeeklyPopularPlaylist
+                            ? "story-carousel-item story-carousel-item-ranked"
+                            : "story-carousel-item";
+
+                        <article class="@articleClassName" role="listitem">
                             <div class="story-carousel-card-shell">
+                                @if (isWeeklyPopularPlaylist)
+                                {
+                                    <span class="story-carousel-rank" aria-hidden="true">@((storyIndex + 1).ToString(CultureInfo.InvariantCulture))</span>
+                                }
                                 @if (canAccessStory)
                                 {
                                     <a class="story-carousel-link"
@@ -402,6 +413,10 @@ else
 
     private static StoryItem? GetPlaylistShowcaseStory(StoryPlaylist playlist) =>
         playlist.PreferredStory;
+
+    private static bool IsWeeklyPopularPlaylist(StoryPlaylist playlist) =>
+        string.Equals(playlist.SystemKey, "popular-stories-this-week", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(playlist.Slug, "popular-stories-this-week", StringComparison.OrdinalIgnoreCase);
 
     private bool IsStoryFavorite(string slug) => FavoriteStorySlugs.Contains(slug);
 
