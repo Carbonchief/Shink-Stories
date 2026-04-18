@@ -129,7 +129,8 @@
     line-height: 1.2;
     font-weight: 400;
     letter-spacing: -0.02em;
-    white-space: nowrap;
+    white-space: normal;
+    text-wrap: balance;
 }
 
 .hero-intro em {
@@ -305,7 +306,7 @@
         width: fit-content;
         max-width: none;
         font-size: 1.22rem;
-        white-space: nowrap;
+        white-space: normal;
     }
 
     .hero-support {
@@ -351,7 +352,7 @@
 
     .hero-intro {
         font-size: 1.08rem;
-        white-space: nowrap;
+        white-space: normal;
     }
 
     .hero-support {
@@ -1513,7 +1514,7 @@ h2 {
         font-size: clamp(0.72rem, 3.5vw, 1rem);
         width: auto;
         max-width: none;
-        white-space: nowrap;
+        white-space: normal;
     }
 
     .hero-support {
