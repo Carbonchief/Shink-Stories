@@ -492,6 +492,13 @@
     margin: 0;
 }
 
+.story-summary-title {
+    text-align: center;
+    color: #ffffff;
+    font-size: clamp(2rem, 4.2vw, 2.7rem);
+    line-height: 1.05;
+}
+
 .story-summary-card h2 {
     font-size: 1.1rem;
     color: #ffffff;
