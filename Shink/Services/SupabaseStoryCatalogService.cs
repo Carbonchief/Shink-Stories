@@ -242,7 +242,7 @@ public sealed class SupabaseStoryCatalogService(
         var requestUri = new Uri(
             baseUri,
             "rest/v1/stories" +
-            "?select=story_id,slug,title,summary,description,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,access_level,status,sort_order,published_at,duration_seconds,tags,metadata" +
+            "?select=story_id,slug,title,summary,description,youtube_url,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,access_level,status,sort_order,published_at,duration_seconds,tags,metadata" +
             "&status=eq.published" +
             "&order=published_at.desc.nullslast" +
             "&order=sort_order.asc");
@@ -761,7 +761,8 @@ public sealed class SupabaseStoryCatalogService(
             Lessons: storyDetails.Lessons,
             ValueTags: storyDetails.Values,
             ConversationQuestions: storyDetails.ConversationQuestions,
-            Characters: storyDetails.Characters);
+            Characters: storyDetails.Characters,
+            YouTubeUrl: string.IsNullOrWhiteSpace(row.YouTubeUrl) ? null : row.YouTubeUrl.Trim());
     }
 
     private static StoryDetails ReadStoryDetails(JsonElement metadata)
@@ -1330,6 +1331,9 @@ public sealed class SupabaseStoryCatalogService(
 
         [JsonPropertyName("description")]
         public string? Description { get; set; }
+
+        [JsonPropertyName("youtube_url")]
+        public string? YouTubeUrl { get; set; }
 
         [JsonPropertyName("cover_image_path")]
         public string? CoverImagePath { get; set; }

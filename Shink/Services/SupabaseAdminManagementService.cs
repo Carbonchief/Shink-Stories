@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using Shink.Components.Content;
+using Shink.Utilities;
 
 namespace Shink.Services;
 
@@ -272,6 +273,7 @@ public sealed partial class SupabaseAdminManagementService(
                 Title: row.Title.Trim(),
                 Summary: NormalizeOptionalText(row.Summary, 512),
                 Description: NormalizeOptionalText(row.Description, 4000),
+                YouTubeUrl: NormalizeOptionalText(row.YouTubeUrl, 2048),
                 CoverImagePath: NormalizeOptionalText(row.CoverImagePath, 1024),
                 ThumbnailImagePath: NormalizeOptionalText(row.ThumbnailImagePath, 1024),
                 AudioProvider: string.IsNullOrWhiteSpace(row.AudioProvider) ? "local" : row.AudioProvider.Trim().ToLowerInvariant(),
@@ -353,6 +355,13 @@ public sealed partial class SupabaseAdminManagementService(
 
         var normalizedSummary = NormalizeOptionalText(request.Summary, 512);
         var normalizedDescription = NormalizeOptionalText(request.Description, 4000);
+        var normalizedYouTubeUrl = NormalizeYouTubeUrl(request.YouTubeUrl);
+        if (!string.IsNullOrWhiteSpace(request.YouTubeUrl) &&
+            normalizedYouTubeUrl is null)
+        {
+            return new AdminOperationResult(false, "Gebruik asseblief 'n geldige YouTube skakel.");
+        }
+
         var normalizedCoverImagePath = NormalizeOptionalText(request.CoverImagePath, 1024);
         var normalizedThumbnailPath = NormalizeOptionalText(request.ThumbnailImagePath, 1024);
         var normalizedAudioBucket = NormalizeOptionalText(request.AudioBucket, 120);
@@ -406,6 +415,7 @@ public sealed partial class SupabaseAdminManagementService(
             ["title"] = normalizedTitle,
             ["summary"] = normalizedSummary,
             ["description"] = normalizedDescription,
+            ["youtube_url"] = normalizedYouTubeUrl,
             ["cover_image_path"] = normalizedCoverImagePath,
             ["thumbnail_image_path"] = normalizedThumbnailPath,
             ["audio_provider"] = normalizedAudioProvider,
@@ -500,6 +510,13 @@ public sealed partial class SupabaseAdminManagementService(
 
         var normalizedSummary = NormalizeOptionalText(request.Summary, 512);
         var normalizedDescription = NormalizeOptionalText(request.Description, 4000);
+        var normalizedYouTubeUrl = NormalizeYouTubeUrl(request.YouTubeUrl);
+        if (!string.IsNullOrWhiteSpace(request.YouTubeUrl) &&
+            normalizedYouTubeUrl is null)
+        {
+            return new AdminOperationResult(false, "Gebruik asseblief 'n geldige YouTube skakel.");
+        }
+
         var normalizedCoverImagePath = NormalizeOptionalText(request.CoverImagePath, 1024);
         var normalizedThumbnailPath = NormalizeOptionalText(request.ThumbnailImagePath, 1024);
         var normalizedAudioBucket = NormalizeOptionalText(request.AudioBucket, 120);
@@ -541,6 +558,7 @@ public sealed partial class SupabaseAdminManagementService(
             ["title"] = normalizedTitle,
             ["summary"] = normalizedSummary,
             ["description"] = normalizedDescription,
+            ["youtube_url"] = normalizedYouTubeUrl,
             ["cover_image_path"] = normalizedCoverImagePath,
             ["thumbnail_image_path"] = normalizedThumbnailPath,
             ["audio_provider"] = "r2",
@@ -1445,7 +1463,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/stories" +
-            "?select=story_id,slug,title,summary,description,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,access_level,status,sort_order,published_at,duration_seconds,updated_at" +
+            "?select=story_id,slug,title,summary,description,youtube_url,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,access_level,status,sort_order,published_at,duration_seconds,updated_at" +
             "&order=updated_at.desc.nullslast" +
             "&order=sort_order.asc" +
             "&limit=2000");
@@ -1609,6 +1627,14 @@ public sealed partial class SupabaseAdminManagementService(
         story is not null &&
         (story.PublishedAt.HasValue ||
          string.Equals(story.Status, "published", StringComparison.OrdinalIgnoreCase));
+
+    private static string? NormalizeYouTubeUrl(string? value)
+    {
+        var normalizedValue = NormalizeOptionalText(value, 2048);
+        return normalizedValue is null
+            ? null
+            : YouTubeUrlHelper.BuildWatchUrl(normalizedValue);
+    }
 
     private async Task<bool> TryResolveAdminContextAsync(string? adminEmail, CancellationToken cancellationToken)
     {
@@ -2104,6 +2130,9 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("description")]
         public string? Description { get; set; }
+
+        [JsonPropertyName("youtube_url")]
+        public string? YouTubeUrl { get; set; }
 
         [JsonPropertyName("cover_image_path")]
         public string? CoverImagePath { get; set; }

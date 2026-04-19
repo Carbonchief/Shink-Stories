@@ -792,6 +792,13 @@
                                           Variant="Variant.Outlined"
                                           Margin="Margin.Dense"
                                           Lines="4" />
+                            <MudTextField T="string"
+                                          Class="admin-span-2"
+                                          Label='@T("YouTube skakel", "YouTube link")'
+                                          Placeholder="https://www.youtube.com/watch?v=..."
+                                          @bind-Value="NewStoryEditor.YouTubeUrl"
+                                          Variant="Variant.Outlined"
+                                          Margin="Margin.Dense" />
 
                             <div class="admin-upload-card">
                                 <div class="admin-upload-head">
@@ -1056,6 +1063,12 @@
                                               Variant="Variant.Outlined"
                                               Margin="Margin.Dense"
                                               Lines="4" />
+                                <MudTextField T="string"
+                                              Label='@T("YouTube skakel", "YouTube link")'
+                                              Placeholder="https://www.youtube.com/watch?v=..."
+                                              @bind-Value="StoryEditor.YouTubeUrl"
+                                              Variant="Variant.Outlined"
+                                              Margin="Margin.Dense" />
                             </div>
                         </div>
                     </div>
@@ -2306,6 +2319,7 @@
                     Title: NewStoryEditor.Title,
                     Summary: summary,
                     Description: description,
+                    YouTubeUrl: NewStoryEditor.YouTubeUrl,
                     CoverImagePath: coverUpload.PublicUrl,
                     ThumbnailImagePath: thumbnailPath,
                     AudioBucket: audioUpload.Bucket,
@@ -2417,22 +2431,23 @@
             var result = await AdminManagementService.UpdateStoryAsync(
                 CurrentAdminEmail,
                 new AdminStoryUpdateRequest(
-                    StoryEditor.StoryId,
-                    StoryEditor.Slug,
-                    StoryEditor.Title,
-                    StoryEditor.Summary,
-                    StoryEditor.Description,
-                    StoryEditor.CoverImagePath,
-                    StoryEditor.ThumbnailImagePath,
-                    StoryEditor.AudioProvider,
-                    StoryEditor.AudioBucket,
-                    StoryEditor.AudioObjectKey,
-                    StoryEditor.AudioContentType,
-                    StoryEditor.AccessLevel,
-                    StoryEditor.Status,
-                    StoryEditor.SortOrder,
-                    publishedAt,
-                    StoryEditor.DurationSeconds));
+                    StoryId: StoryEditor.StoryId,
+                    Slug: StoryEditor.Slug,
+                    Title: StoryEditor.Title,
+                    Summary: StoryEditor.Summary,
+                    Description: StoryEditor.Description,
+                    YouTubeUrl: StoryEditor.YouTubeUrl,
+                    CoverImagePath: StoryEditor.CoverImagePath,
+                    ThumbnailImagePath: StoryEditor.ThumbnailImagePath,
+                    AudioProvider: StoryEditor.AudioProvider,
+                    AudioBucket: StoryEditor.AudioBucket,
+                    AudioObjectKey: StoryEditor.AudioObjectKey,
+                    AudioContentType: StoryEditor.AudioContentType,
+                    AccessLevel: StoryEditor.AccessLevel,
+                    Status: StoryEditor.Status,
+                    SortOrder: StoryEditor.SortOrder,
+                    PublishedAt: publishedAt,
+                    DurationSeconds: StoryEditor.DurationSeconds));
 
             if (!HandleOperationResult(result, T("Storie is opgedateer.", "Story updated.")))
             {
@@ -3027,6 +3042,12 @@
             return T("Die audio file moet kleiner as 256 MB wees.", "The audio file must be smaller than 256 MB.");
         }
 
+        if (!string.IsNullOrWhiteSpace(draft.YouTubeUrl) &&
+            !Shink.Utilities.YouTubeUrlHelper.TryGetVideoId(draft.YouTubeUrl, out _))
+        {
+            return T("Gebruik asseblief 'n geldige YouTube skakel.", "Please use a valid YouTube link.");
+        }
+
         return null;
     }
 
@@ -3048,6 +3069,12 @@
             (draft.AudioFile.Size <= 0 || draft.AudioFile.Size > MaxAudioUploadBytes))
         {
             return T("Die audio file moet kleiner as 256 MB wees.", "The audio file must be smaller than 256 MB.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(draft.YouTubeUrl) &&
+            !Shink.Utilities.YouTubeUrlHelper.TryGetVideoId(draft.YouTubeUrl, out _))
+        {
+            return T("Gebruik asseblief 'n geldige YouTube skakel.", "Please use a valid YouTube link.");
         }
 
         return null;
@@ -3830,6 +3857,7 @@
             Title = NormalizeDirtyText(editor.Title),
             Summary = NormalizeDirtyText(editor.Summary),
             Description = NormalizeDirtyText(editor.Description),
+            YouTubeUrl = NormalizeDirtyText(editor.YouTubeUrl),
             CoverImagePath = NormalizeDirtyText(editor.CoverImagePath),
             ThumbnailImagePath = NormalizeDirtyText(editor.ThumbnailImagePath),
             CoverFile = BuildBrowserFileState(editor.CoverFile, editor.CoverFileName),
@@ -3854,6 +3882,7 @@
             Title = NormalizeDirtyText(editor.Title),
             Summary = NormalizeDirtyText(editor.Summary),
             Description = NormalizeDirtyText(editor.Description),
+            YouTubeUrl = NormalizeDirtyText(editor.YouTubeUrl),
             AccessLevel = NormalizeDirtyText(editor.AccessLevel),
             editor.PublishNow,
             CoverFile = BuildBrowserFileState(editor.CoverFile, editor.CoverFileName),
@@ -4236,6 +4265,7 @@
         public string Title { get; set; } = string.Empty;
         public string? Summary { get; set; }
         public string? Description { get; set; }
+        public string? YouTubeUrl { get; set; }
         public string? CoverImagePath { get; set; }
         public string? ThumbnailImagePath { get; set; }
         public IBrowserFile? CoverFile { get; set; }
@@ -4263,6 +4293,7 @@
             Title = story.Title,
             Summary = story.Summary,
             Description = story.Description,
+            YouTubeUrl = story.YouTubeUrl,
             CoverImagePath = story.CoverImagePath,
             ThumbnailImagePath = story.ThumbnailImagePath,
             AudioProvider = story.AudioProvider,
@@ -4282,6 +4313,7 @@
         public string Title { get; set; } = string.Empty;
         public string? Summary { get; set; }
         public string? Description { get; set; }
+        public string? YouTubeUrl { get; set; }
         public string AccessLevel { get; set; } = "subscriber";
         public bool PublishNow { get; set; } = true;
         public IBrowserFile? CoverFile { get; set; }

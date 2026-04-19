@@ -5,6 +5,7 @@
 @using Microsoft.AspNetCore.WebUtilities
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Authorization
+@using Shink.Utilities
 @inject IAudioAccessService AudioAccessService
 @inject IStoryCatalogService StoryCatalogService
 @inject IJSRuntime JS
@@ -259,6 +260,21 @@ else
                     </ul>
                 </div>
             }
+
+            @if (!string.IsNullOrWhiteSpace(StoryVideoEmbedUrl))
+            {
+                <div class="story-summary-block">
+                    <h2>Kyk saam op YouTube</h2>
+                    <div class="story-video-embed">
+                        <iframe src="@StoryVideoEmbedUrl"
+                                title="@($"YouTube video van {CurrentStory.Title}")"
+                                loading="lazy"
+                                referrerpolicy="strict-origin-when-cross-origin"
+                                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                allowfullscreen></iframe>
+                    </div>
+                </div>
+            }
         </section>
 
         <section class="story-carousel-section" aria-label="Ander luister stories">
@@ -349,6 +365,9 @@ else
 
     private string? StoryArtworkUrl =>
         CurrentStory is null ? null : NavigationManager.ToAbsoluteUri(CurrentStory.ImagePath).ToString();
+
+    private string? StoryVideoEmbedUrl =>
+        CurrentStory is null ? null : YouTubeUrlHelper.BuildEmbedUrl(CurrentStory.YouTubeUrl);
 
     private string StoryArtworkMimeType =>
         CurrentStory is null ? "image/jpeg" : GetImageMimeType(CurrentStory.ImageFileName);
