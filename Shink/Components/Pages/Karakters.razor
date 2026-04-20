@@ -3,11 +3,13 @@
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
 @using Microsoft.JSInterop
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IAudioAccessService AudioAccessService
 @inject ICharacterCatalogService CharacterCatalogService
 @inject IJSRuntime JS
+@inject ILogger<Karakters> Logger
 @inject IStoryTrackingService StoryTrackingService
 @inject ICharacterTrackingService CharacterTrackingService
 @inject IStoryCatalogService StoryCatalogService
@@ -323,34 +325,30 @@
     {
         try
         {
-            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            var signedInEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
-                               ?? authState.User.Identity?.Name;
-            SignedInEmail = signedInEmail;
-            IsSignedIn = authState.User.Identity?.IsAuthenticated == true && !string.IsNullOrWhiteSpace(signedInEmail);
+            await TryResolveSignedInStateAsync();
 
             var charactersTask = CharacterCatalogService.GetPublishedCharactersAsync();
             var freeStoriesTask = StoryCatalogService.GetFreeStoriesAsync();
             var luisterStoriesTask = StoryCatalogService.GetLuisterStoriesAsync();
-            Task<IReadOnlyList<UserStoryProgressItem>> progressTask = Task.FromResult<IReadOnlyList<UserStoryProgressItem>>(Array.Empty<UserStoryProgressItem>());
-            Task<IReadOnlyList<UserCharacterProfileListenItem>> profileListenTask = Task.FromResult<IReadOnlyList<UserCharacterProfileListenItem>>(Array.Empty<UserCharacterProfileListenItem>());
 
-            if (IsSignedIn)
+            await Task.WhenAll(charactersTask, freeStoriesTask, luisterStoriesTask);
+
+            var progressItems = Array.Empty<UserStoryProgressItem>();
+            var profileListenItems = Array.Empty<UserCharacterProfileListenItem>();
+
+            if (IsSignedIn && !string.IsNullOrWhiteSpace(SignedInEmail))
             {
-                progressTask = StoryTrackingService.GetUserStoryProgressAsync(signedInEmail);
-                profileListenTask = CharacterTrackingService.GetUserProfileListenStatsAsync(signedInEmail);
+                (progressItems, profileListenItems) = await TryLoadUserUnlockProgressAsync(SignedInEmail);
             }
 
-            await Task.WhenAll(charactersTask, freeStoriesTask, luisterStoriesTask, progressTask, profileListenTask);
-
             var storyLookup = BuildStoryLookup(freeStoriesTask.Result, luisterStoriesTask.Result);
-            var progressLookup = progressTask.Result
+            var progressLookup = progressItems
                 .GroupBy(progress => progress.StorySlug, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(
                     group => group.Key,
                     group => group.OrderByDescending(item => item.LastListenedAtUtc).First(),
                     StringComparer.OrdinalIgnoreCase);
-            var profileListenLookup = profileListenTask.Result
+            var profileListenLookup = profileListenItems
                 .GroupBy(item => item.CharacterSlug, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(
                     group => group.Key,
@@ -369,13 +367,57 @@
 
             TryOpenCharacterFromQuery();
         }
-        catch
+        catch (Exception exception)
         {
+            Logger.LogWarning(exception, "Karakters page failed to initialize.");
             LoadErrorMessage = "Herlaai asseblief die bladsy of probeer weer oor 'n rukkie.";
         }
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    private async Task TryResolveSignedInStateAsync()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var signedInEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                               ?? authState.User.Identity?.Name;
+            SignedInEmail = signedInEmail;
+            IsSignedIn = authState.User.Identity?.IsAuthenticated == true && !string.IsNullOrWhiteSpace(signedInEmail);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(exception, "Karakters page could not resolve the current auth state. Falling back to signed-out mode.");
+            SignedInEmail = null;
+            IsSignedIn = false;
+        }
+    }
+
+    private async Task<(UserStoryProgressItem[] ProgressItems, UserCharacterProfileListenItem[] ProfileListenItems)> TryLoadUserUnlockProgressAsync(string email)
+    {
+        try
+        {
+            var progressTask = StoryTrackingService.GetUserStoryProgressAsync(email);
+            var profileListenTask = CharacterTrackingService.GetUserProfileListenStatsAsync(email);
+
+            await Task.WhenAll(progressTask, profileListenTask);
+
+            return
+            (
+                ProgressItems: progressTask.Result.ToArray(),
+                ProfileListenItems: profileListenTask.Result.ToArray()
+            );
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(
+                exception,
+                "Karakters page could not load unlock progress for {Email}. Rendering the catalogue without personalised unlock data.",
+                email);
+            return (Array.Empty<UserStoryProgressItem>(), Array.Empty<UserCharacterProfileListenItem>());
         }
     }
 
