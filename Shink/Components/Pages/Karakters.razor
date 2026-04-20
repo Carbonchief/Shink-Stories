@@ -833,10 +833,7 @@
 
     private static string ResolveCharacterImagePath(string? path, DateTimeOffset? updatedAt = null)
     {
-        var resolvedPath = string.IsNullOrWhiteSpace(path)
-            ? "/branding/schink-logo-green.png"
-            : path;
-
+        var resolvedPath = RewriteCharacterImagePath(path);
         if (updatedAt is null)
         {
             return resolvedPath;
@@ -844,6 +841,50 @@
 
         var separator = resolvedPath.Contains('?', StringComparison.Ordinal) ? '&' : '?';
         return $"{resolvedPath}{separator}v={updatedAt.Value.ToUnixTimeSeconds()}";
+    }
+
+    private static string RewriteCharacterImagePath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return "/branding/schink-logo-green.png";
+        }
+
+        var trimmedPath = path.Trim();
+        if (Uri.TryCreate(trimmedPath, UriKind.Absolute, out var absoluteUri) &&
+            (string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)))
+        {
+            if (string.Equals(absoluteUri.Host, "media.prioritybit.co.za", StringComparison.OrdinalIgnoreCase))
+            {
+                return $"/media/image?src={Uri.EscapeDataString(absoluteUri.ToString())}";
+            }
+
+            return absoluteUri.ToString();
+        }
+
+        return EncodeLocalCharacterImagePath(trimmedPath);
+    }
+
+    private static string EncodeLocalCharacterImagePath(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "/branding/schink-logo-green.png";
+        }
+
+        var normalized = value.Replace('\\', '/');
+        var suffixStart = normalized.IndexOfAny(['?', '#']);
+        var pathPart = suffixStart >= 0 ? normalized[..suffixStart] : normalized;
+        var suffixPart = suffixStart >= 0 ? normalized[suffixStart..] : string.Empty;
+
+        var encodedPath = "/" + string.Join(
+            '/',
+            pathPart
+                .Split('/', StringSplitOptions.RemoveEmptyEntries)
+                .Select(Uri.EscapeDataString));
+
+        return encodedPath + suffixPart;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
