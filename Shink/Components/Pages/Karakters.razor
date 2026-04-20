@@ -62,8 +62,11 @@
 
     @if (IsLoading)
     {
-        <section class="characters-state" aria-live="polite">
-            <h2>Laai karakters...</h2>
+        <section class="characters-loading-state" aria-live="polite" aria-busy="true">
+            <div class="characters-loading-indicator" role="status" aria-label="Stories laai">
+                <span class="characters-loading-spinner" aria-hidden="true"></span>
+                <span class="characters-loading-text">Stories laai</span>
+            </div>
         </section>
     }
     else if (!string.IsNullOrWhiteSpace(LoadErrorMessage))

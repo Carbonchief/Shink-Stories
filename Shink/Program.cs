@@ -2213,11 +2213,12 @@ static string BuildContentSecurityPolicy(HttpRequest request, bool isDevelopment
     var postHogAssetsOrigin = TryGetPostHogAssetsOrigin(postHogHostOrigin);
     var scriptSources = BuildScriptSources(postHogHostOrigin, postHogAssetsOrigin);
     var formActionSources = BuildFormActionSources(request, isDevelopment);
+    var frameSources = BuildFrameSources();
     var connectSources = isDevelopment
         ? "'self' https: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* wss:"
         : "'self' https: wss:";
 
-    return $"default-src 'self'; base-uri 'self'; form-action {formActionSources}; object-src 'none'; frame-ancestors 'self'; img-src 'self' data: https:; media-src 'self' blob:; font-src 'self' data:; connect-src {connectSources}; script-src {scriptSources}; script-src-elem {scriptSources}; style-src 'self' 'unsafe-inline';";
+    return $"default-src 'self'; base-uri 'self'; form-action {formActionSources}; object-src 'none'; frame-ancestors 'self'; frame-src {frameSources}; img-src 'self' data: https:; media-src 'self' blob:; font-src 'self' data:; connect-src {connectSources}; script-src {scriptSources}; script-src-elem {scriptSources}; style-src 'self' 'unsafe-inline';";
 }
 
 static string BuildFormActionSources(HttpRequest request, bool isDevelopment)
@@ -2316,6 +2317,18 @@ static string BuildScriptSources(string? postHogHostOrigin, string? postHogAsset
 
     sources.Add("'unsafe-inline'");
     sources.Add("'unsafe-eval'");
+
+    return string.Join(' ', sources);
+}
+
+static string BuildFrameSources()
+{
+    var sources = new[]
+    {
+        "'self'",
+        "https://www.youtube-nocookie.com",
+        "https://www.youtube.com"
+    };
 
     return string.Join(' ', sources);
 }
