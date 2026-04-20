@@ -115,7 +115,7 @@
                                                 data-character-audio-slug="@card.Character.Slug"
                                                 @onclick="() => PlayCharacterAudioAsync(card)"
                                                 @onclick:stopPropagation="true"
-                                                aria-label=$"Speel {card.Character.DisplayName} se stem"
+                                                aria-label="@($"Speel {card.Character.DisplayName} se stem")"
                                                 title="Speel karakterklank">
                                             <i class="fa-solid fa-volume-high" aria-hidden="true"></i>
                                         </button>
