@@ -1880,6 +1880,21 @@ function setLatestClientError(prefix, value) {
     latestClientErrorText = `${prefix}: ${text}`;
 }
 
+function isKaraktersRoute() {
+    return window.location.pathname === "/karakters";
+}
+
+function getBlazorErrorDiagnosticEndpoints() {
+    if (isKaraktersRoute()) {
+        return [
+            `${DEV_UI_ERROR_ENDPOINT}?contains=${encodeURIComponent("Karakters")}`,
+            DEV_UI_ERROR_ENDPOINT
+        ];
+    }
+
+    return [DEV_UI_ERROR_ENDPOINT];
+}
+
 function isBlazorErrorUiVisible(errorUi) {
     if (!(errorUi instanceof HTMLElement)) {
         return false;
@@ -1905,17 +1920,23 @@ async function populateBlazorErrorUi(errorUi) {
 
     let detailText = latestClientErrorText;
     let diagnosticsText = latestClientErrorText;
+    let diagnosticsFetchSummary = "";
 
     try {
-        const response = await fetch(DEV_UI_ERROR_ENDPOINT, {
-            method: "GET",
-            credentials: "same-origin",
-            headers: {
-                Accept: "application/json"
-            }
-        });
+        for (const endpoint of getBlazorErrorDiagnosticEndpoints()) {
+            const response = await fetch(endpoint, {
+                method: "GET",
+                credentials: "same-origin",
+                headers: {
+                    Accept: "application/json"
+                }
+            });
 
-        if (response.ok) {
+            diagnosticsFetchSummary = `Diagnostics endpoint: ${endpoint} (${response.status})`;
+            if (!response.ok) {
+                continue;
+            }
+
             const payload = await response.json();
             if (payload && payload.found) {
                 const message = typeof payload.message === "string" ? payload.message.trim() : "";
@@ -1923,14 +1944,25 @@ async function populateBlazorErrorUi(errorUi) {
                 const exceptionText = typeof payload.exception === "string" ? payload.exception.trim() : "";
                 detailText = [category, message].filter((part) => part && part.length > 0).join(": ");
                 diagnosticsText = exceptionText || detailText;
+                break;
             }
         }
     } catch {
         // Ignore diagnostics fetch failures and fall back to any client-side error text.
     }
 
-    if (title instanceof HTMLElement && window.location.pathname === "/karakters") {
-        title.textContent = "The Karakters page failed.";
+    if (isKaraktersRoute() && (!detailText || detailText.length === 0)) {
+        detailText = "Geen presiese foutdetail is nog vasgevang nie. Maak die Diagnostics oop hieronder.";
+    }
+
+    if (isKaraktersRoute() && (!diagnosticsText || diagnosticsText.length === 0)) {
+        diagnosticsText = latestClientErrorText
+            || diagnosticsFetchSummary
+            || "Geen bedienerfout is vasgevang nie. Die fout gebeur moontlik in die Blazor-koppelvlak of die iPad se blaaierlooptyd.";
+    }
+
+    if (title instanceof HTMLElement && isKaraktersRoute()) {
+        title.textContent = "Die Karakters-blad het misluk.";
     }
 
     if (detail instanceof HTMLElement) {
@@ -1957,6 +1989,14 @@ async function populateBlazorErrorUi(errorUi) {
 function startBlazorErrorDiagnostics() {
     if (blazorErrorDiagnosticsStarted) {
         return;
+    }
+
+    if (typeof console !== "undefined" && typeof console.error === "function") {
+        const originalConsoleError = console.error.bind(console);
+        console.error = (...args) => {
+            setLatestClientError("Console error", args.map(stringifyClientError).join("\n"));
+            originalConsoleError(...args);
+        };
     }
 
     window.addEventListener("error", (event) => {

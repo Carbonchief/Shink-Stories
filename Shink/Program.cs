@@ -2014,24 +2014,21 @@ app.MapGet("/api/mobile/meer-oor-ons", (HttpContext httpContext) =>
     return Results.Ok(new MobileAboutResponse(blocks));
 }).DisableAntiforgery();
 
-if (app.Environment.IsDevelopment())
+app.MapGet("/api/dev/ui-error", (UiErrorDiagnosticsStore diagnosticsStore, string? contains) =>
 {
-    app.MapGet("/api/dev/ui-error", (UiErrorDiagnosticsStore diagnosticsStore, string? contains) =>
-    {
-        var entry = diagnosticsStore.GetLatest(contains);
-        return Results.Json(entry is null
-            ? new { found = false }
-            : new
-            {
-                found = true,
-                occurredAtUtc = entry.OccurredAtUtc,
-                category = entry.Category,
-                level = entry.Level,
-                message = entry.Message,
-                exception = entry.ExceptionText
-            });
-    }).DisableAntiforgery();
-}
+    var entry = diagnosticsStore.GetLatest(contains);
+    return Results.Json(entry is null
+        ? new { found = false }
+        : new
+        {
+            found = true,
+            occurredAtUtc = entry.OccurredAtUtc,
+            category = entry.Category,
+            level = entry.Level,
+            message = entry.Message,
+            exception = entry.ExceptionText
+        });
+}).DisableAntiforgery();
 
 app.MapPost("/api/mobile/stories/{slug}/favorite", async (
     string slug,

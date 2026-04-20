@@ -90,133 +90,154 @@
         <section class="characters-grid" aria-label="Schink Stories karakters">
             @foreach (var card in CharacterCards)
             {
-                if (card.IsUnlocked)
-                {
-                    <article class="character-card is-unlocked character-card-clickable"
-                             @key="card.Character.CharacterId"
-                             @onclick="() => OpenCharacterProfile(card)"
-                             @onkeydown="args => HandleCharacterCardKeyDown(args, card)"
-                             tabindex="0"
-                             role="button"
-                             aria-label="Wys profiel vir @card.Character.DisplayName">
-                        <div class="character-card-media">
-                            <img src="@card.DisplayImagePath"
-                                 alt="@card.ImageAlt"
-                                 class="character-card-image"
-                                 loading="lazy"
-                                 decoding="async"
-                                 onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
-                            @if (card.HasAudio)
-                            {
-                                <button type="button"
-                                        class="character-card-badge character-card-audio-trigger"
-                                        data-character-audio-slug="@card.Character.Slug"
-                                        @onclick="() => PlayCharacterAudioAsync(card)"
-                                        @onclick:stopPropagation="true"
-                                        aria-label=$"Speel {card.Character.DisplayName} se stem"
-                                        title="Speel karakterklank">
-                                    <i class="fa-solid fa-volume-high" aria-hidden="true"></i>
-                                </button>
-                            }
-
-                            @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
-                            {
-                                <button type="button"
-                                        class="character-card-mobile-play"
-                                        @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
-                                        @onclick:stopPropagation="true"
-                                        disabled="@IsCallToActionLoading(card.CallToActionHref)"
-                                        aria-label="@card.CallToActionLabel"
-                                        title="@card.CallToActionLabel">
-                                    <i class="fa-solid fa-play" aria-hidden="true"></i>
-                                </button>
-                            }
-                        </div>
-
-                        <div class="character-card-body">
-                            <h2>@card.Heading</h2>
-                            <p class="character-card-summary">@card.SummaryText</p>
-
-                            @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
-                            {
-                                <button type="button"
-                                        class="character-card-cta"
-                                        @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
-                                        @onclick:stopPropagation="true"
-                                        disabled="@IsCallToActionLoading(card.CallToActionHref)">
-                                    @if (IsCallToActionLoading(card.CallToActionHref))
+                <ErrorBoundary @key="card.Character.CharacterId">
+                    <ChildContent>
+                        @if (card.IsUnlocked)
+                        {
+                            <article class="character-card is-unlocked character-card-clickable"
+                                     @key="card.Character.CharacterId"
+                                     @onclick="() => OpenCharacterProfile(card)"
+                                     @onkeydown="args => HandleCharacterCardKeyDown(args, card)"
+                                     tabindex="0"
+                                     role="button"
+                                     aria-label="Wys profiel vir @card.Character.DisplayName">
+                                <div class="character-card-media">
+                                    <img src="@card.DisplayImagePath"
+                                         alt="@card.ImageAlt"
+                                         class="character-card-image"
+                                         loading="lazy"
+                                         decoding="async"
+                                         onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                                    @if (card.HasAudio)
                                     {
-                                        <span class="character-card-cta-spinner" aria-hidden="true"></span>
-                                        <span>Loading</span>
+                                        <button type="button"
+                                                class="character-card-badge character-card-audio-trigger"
+                                                data-character-audio-slug="@card.Character.Slug"
+                                                @onclick="() => PlayCharacterAudioAsync(card)"
+                                                @onclick:stopPropagation="true"
+                                                aria-label=$"Speel {card.Character.DisplayName} se stem"
+                                                title="Speel karakterklank">
+                                            <i class="fa-solid fa-volume-high" aria-hidden="true"></i>
+                                        </button>
                                     }
-                                    else
+
+                                    @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
                                     {
-                                        <span>@card.CallToActionLabel</span>
+                                        <button type="button"
+                                                class="character-card-mobile-play"
+                                                @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
+                                                @onclick:stopPropagation="true"
+                                                disabled="@IsCallToActionLoading(card.CallToActionHref)"
+                                                aria-label="@card.CallToActionLabel"
+                                                title="@card.CallToActionLabel">
+                                            <i class="fa-solid fa-play" aria-hidden="true"></i>
+                                        </button>
                                     }
-                                </button>
-                            }
-                        </div>
+                                </div>
 
-                    </article>
-                }
-                else
-                {
-                    <article class="@($"character-card is-locked{(ShakingLockedCharacterId == card.Character.CharacterId ? " is-shaking" : string.Empty)}")"
-                             @key="card.Character.CharacterId"
-                             @onclick="() => TriggerLockedCardShakeAsync(card)">
-                        <div class="character-card-media">
-                            <img src="@card.DisplayImagePath"
-                                 alt="@card.ImageAlt"
-                                 class="character-card-image"
-                                 loading="lazy"
-                                 decoding="async"
-                                 onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
-                            <span class="@($"character-card-badge{(ShakingLockedCharacterId == card.Character.CharacterId ? " is-slamming" : string.Empty)}")"
-                                  aria-label="Nog gesluit"
-                                  title="Nog gesluit">
-                                <i class="fa-solid fa-lock" aria-hidden="true"></i>
-                            </span>
+                                <div class="character-card-body">
+                                    <h2>@card.Heading</h2>
+                                    <p class="character-card-summary">@card.SummaryText</p>
 
-                            @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
-                            {
-                                <button type="button"
-                                        class="character-card-mobile-play"
-                                        @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
-                                        @onclick:stopPropagation="true"
-                                        disabled="@IsCallToActionLoading(card.CallToActionHref)"
-                                        aria-label="@card.CallToActionLabel"
-                                        title="@card.CallToActionLabel">
-                                    <i class="fa-solid fa-play" aria-hidden="true"></i>
-                                </button>
-                            }
-                        </div>
-
-                        <div class="character-card-body">
-                            <h2>@card.Heading</h2>
-                            <p class="character-card-summary">@card.SummaryText</p>
-
-                            @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
-                            {
-                                <button type="button"
-                                        class="character-card-cta"
-                                        @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
-                                        @onclick:stopPropagation="true"
-                                        disabled="@IsCallToActionLoading(card.CallToActionHref)">
-                                    @if (IsCallToActionLoading(card.CallToActionHref))
+                                    @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
                                     {
-                                        <span class="character-card-cta-spinner" aria-hidden="true"></span>
-                                        <span>Loading</span>
+                                        <button type="button"
+                                                class="character-card-cta"
+                                                @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
+                                                @onclick:stopPropagation="true"
+                                                disabled="@IsCallToActionLoading(card.CallToActionHref)">
+                                            @if (IsCallToActionLoading(card.CallToActionHref))
+                                            {
+                                                <span class="character-card-cta-spinner" aria-hidden="true"></span>
+                                                <span>Loading</span>
+                                            }
+                                            else
+                                            {
+                                                <span>@card.CallToActionLabel</span>
+                                            }
+                                        </button>
                                     }
-                                    else
-                                    {
-                                        <span>@card.CallToActionLabel</span>
-                                    }
-                                </button>
-                            }
-                        </div>
+                                </div>
 
-                    </article>
-                }
+                            </article>
+                        }
+                        else
+                        {
+                            <article class="@($"character-card is-locked{(ShakingLockedCharacterId == card.Character.CharacterId ? " is-shaking" : string.Empty)}")"
+                                     @key="card.Character.CharacterId"
+                                     @onclick="() => TriggerLockedCardShakeAsync(card)">
+                                <div class="character-card-media">
+                                    <img src="@card.DisplayImagePath"
+                                         alt="@card.ImageAlt"
+                                         class="character-card-image"
+                                         loading="lazy"
+                                         decoding="async"
+                                         onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                                    <span class="@($"character-card-badge{(ShakingLockedCharacterId == card.Character.CharacterId ? " is-slamming" : string.Empty)}")"
+                                          aria-label="Nog gesluit"
+                                          title="Nog gesluit">
+                                        <i class="fa-solid fa-lock" aria-hidden="true"></i>
+                                    </span>
+
+                                    @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
+                                    {
+                                        <button type="button"
+                                                class="character-card-mobile-play"
+                                                @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
+                                                @onclick:stopPropagation="true"
+                                                disabled="@IsCallToActionLoading(card.CallToActionHref)"
+                                                aria-label="@card.CallToActionLabel"
+                                                title="@card.CallToActionLabel">
+                                            <i class="fa-solid fa-play" aria-hidden="true"></i>
+                                        </button>
+                                    }
+                                </div>
+
+                                <div class="character-card-body">
+                                    <h2>@card.Heading</h2>
+                                    <p class="character-card-summary">@card.SummaryText</p>
+
+                                    @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
+                                    {
+                                        <button type="button"
+                                                class="character-card-cta"
+                                                @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
+                                                @onclick:stopPropagation="true"
+                                                disabled="@IsCallToActionLoading(card.CallToActionHref)">
+                                            @if (IsCallToActionLoading(card.CallToActionHref))
+                                            {
+                                                <span class="character-card-cta-spinner" aria-hidden="true"></span>
+                                                <span>Loading</span>
+                                            }
+                                            else
+                                            {
+                                                <span>@card.CallToActionLabel</span>
+                                            }
+                                        </button>
+                                    }
+                                </div>
+
+                            </article>
+                        }
+                    </ChildContent>
+                    <ErrorContent Context="cardException">
+                        <article class="character-card character-card-error" aria-live="polite">
+                            <div class="character-card-body">
+                                <p class="character-card-error-kicker">Karakter fout</p>
+                                <h2>@card.Character.DisplayName</h2>
+                                <p class="character-card-error-slug">@card.Character.Slug</p>
+                                @if (!string.IsNullOrWhiteSpace(cardException.Message))
+                                {
+                                    <p class="character-card-error-message">@cardException.Message</p>
+                                }
+                                <details class="character-card-error-details" open>
+                                    <summary>Volledige fout</summary>
+                                    <pre>@cardException.ToString()</pre>
+                                </details>
+                            </div>
+                        </article>
+                    </ErrorContent>
+                </ErrorBoundary>
             }
         </section>
     }
