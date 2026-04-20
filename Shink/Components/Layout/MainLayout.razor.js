@@ -46,6 +46,8 @@ let notificationCenterDelegatesStarted = false;
 let accountMenuDelegatesStarted = false;
 let blazorErrorDiagnosticsStarted = false;
 let latestClientErrorText = "";
+let characterPreviewAudioPlayer = null;
+let characterPreviewActiveTrigger = null;
 const notificationCenterState = new WeakMap();
 const headerSearchState = new WeakMap();
 const notificationDateFormatter = typeof Intl !== "undefined"
@@ -83,6 +85,68 @@ function delay(milliseconds) {
         window.setTimeout(resolve, milliseconds);
     });
 }
+
+function clearCharacterPreviewAudioTrigger() {
+    if (!(characterPreviewActiveTrigger instanceof HTMLElement)) {
+        characterPreviewActiveTrigger = null;
+        return;
+    }
+
+    characterPreviewActiveTrigger.classList.remove("is-playing");
+    characterPreviewActiveTrigger = null;
+}
+
+function ensureCharacterPreviewAudioPlayer() {
+    if (characterPreviewAudioPlayer instanceof HTMLAudioElement) {
+        return characterPreviewAudioPlayer;
+    }
+
+    const player = document.createElement("audio");
+    player.preload = "auto";
+    player.controls = false;
+    player.disablePictureInPicture = true;
+    player.setAttribute("playsinline", "true");
+    player.setAttribute("webkit-playsinline", "true");
+    player.setAttribute("controlslist", "nodownload noplaybackrate");
+    player.setAttribute("aria-hidden", "true");
+    player.hidden = true;
+    player.oncontextmenu = () => false;
+    player.addEventListener("ended", clearCharacterPreviewAudioTrigger);
+    player.addEventListener("error", clearCharacterPreviewAudioTrigger);
+    document.body.appendChild(player);
+    characterPreviewAudioPlayer = player;
+    return player;
+}
+
+window.playCharacterAudioFromButton = async (button) => {
+    if (!(button instanceof HTMLElement)) {
+        clearCharacterPreviewAudioTrigger();
+        return;
+    }
+
+    const sourceUrl = button.getAttribute("data-character-audio-url") || "";
+    if (sourceUrl.length === 0) {
+        clearCharacterPreviewAudioTrigger();
+        return;
+    }
+
+    const player = ensureCharacterPreviewAudioPlayer();
+    if (characterPreviewActiveTrigger instanceof HTMLElement && characterPreviewActiveTrigger !== button) {
+        characterPreviewActiveTrigger.classList.remove("is-playing");
+    }
+
+    characterPreviewActiveTrigger = button;
+    button.classList.add("is-playing");
+
+    try {
+        player.pause();
+        player.src = sourceUrl;
+        await player.play();
+    } catch (error) {
+        clearCharacterPreviewAudioTrigger();
+        console.error("Character audio play failed.", error);
+    }
+};
 
 function closeHeaderSearchInContainer(container, options = {}) {
     if (!(container instanceof Element)) {

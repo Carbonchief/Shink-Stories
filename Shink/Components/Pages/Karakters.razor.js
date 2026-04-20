@@ -148,7 +148,3 @@ export function stopMaatAnimation() {
     .querySelectorAll(".character-profile-popup-card [data-maat-tile].is-shuffling")
     .forEach((element) => element.classList.remove("is-shuffling"));
 }
-
-if (typeof window !== "undefined") {
-  window.playCharacterAudioFromButton = playCharacterAudioFromButton;
-}

@@ -114,9 +114,9 @@
                                                 class="character-card-badge character-card-audio-trigger"
                                                 data-character-audio-slug="@card.Character.Slug"
                                                 data-character-audio-url="@card.PreviewAudioUrl"
-                                                onpointerdown="window.playCharacterAudioFromButton?.(this);"
-                                                @onclick="() => TrackCharacterAudioAsync(card)"
-                                                @onclick:stopPropagation="true"
+                                                onclick="event.stopPropagation(); window.playCharacterAudioFromButton?.(this);"
+                                                @onpointerup="() => TrackCharacterAudioAsync(card)"
+                                                @onpointerup:stopPropagation="true"
                                                 aria-label="@($"Speel {card.Character.DisplayName} se stem")"
                                                 title="Speel karakterklank">
                                             <i class="fa-solid fa-volume-high" aria-hidden="true"></i>

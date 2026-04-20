@@ -67,33 +67,22 @@
         {
             <section class="my-stories-section" aria-label="Jou gunsteling stories">
                 <h2>Jou gunstelinge</h2>
-                <div class="my-stories-grid">
+                <div class="my-stories-carousel" role="list" aria-label="Jou gunstelinge">
                     @foreach (var story in FavoriteStories)
                     {
-                        <article class="my-story-card my-story-card-favorite @(story.IsCompleted ? "is-complete" : null)">
-                            <a class="my-story-image-link" href="@story.LinkPath" aria-label="@($"Maak {story.Title} oop")">
-                                <img src="@story.ImagePath" alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
+                        <article class="my-story-card @(story.IsCompleted ? "is-complete" : null)" role="listitem">
+                            <a class="my-story-link" href="@story.LinkPath" aria-label="@($"Maak {story.Title} oop")">
+                                <span class="my-story-image-shell">
+                                    <img src="@story.ImagePath" alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
+                                </span>
+                                <span class="my-story-copy">
+                                    <h3>@story.Title</h3>
+                                    @if (!string.IsNullOrWhiteSpace(story.DurationLabel))
+                                    {
+                                        <span class="my-story-duration">@story.DurationLabel</span>
+                                    }
+                                </span>
                             </a>
-                            <div class="my-story-body">
-                                <p class="my-story-source">@story.SourceLabel</p>
-                                <h3>@story.Title</h3>
-                                <p class="my-story-description">@story.Description</p>
-                                @if (!string.IsNullOrWhiteSpace(story.ProgressLabel))
-                                {
-                                    <p class="my-story-meta">@story.ProgressLabel</p>
-                                }
-                                @if (story.ShowProgressBar)
-                                {
-                                    <div class="my-story-progress-wrap" aria-hidden="true">
-                                        <span class="my-story-progress" style="@($"width: {story.CompletionPercent:0.#}%;")"></span>
-                                    </div>
-                                }
-                                @if (!string.IsNullOrWhiteSpace(story.LastListenedLabel))
-                                {
-                                    <p class="my-story-meta">@story.LastListenedLabel</p>
-                                }
-                                <a class="my-story-link" href="@story.LinkPath">@story.ActionLabel</a>
-                            </div>
                         </article>
                     }
                 </div>
@@ -104,24 +93,22 @@
         {
             <section class="my-stories-section" aria-label="Stories waarmee jy besig is">
                 <h2>Jy luister tans</h2>
-                <div class="my-stories-grid">
+                <div class="my-stories-carousel" role="list" aria-label="Jy luister tans">
                     @foreach (var story in InProgressStories)
                     {
-                        <article class="my-story-card">
-                            <a class="my-story-image-link" href="@story.LinkPath" aria-label="@($"Maak {story.Title} oop")">
-                                <img src="@story.ImagePath" alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
+                        <article class="my-story-card" role="listitem">
+                            <a class="my-story-link" href="@story.LinkPath" aria-label="@($"Maak {story.Title} oop")">
+                                <span class="my-story-image-shell">
+                                    <img src="@story.ImagePath" alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
+                                </span>
+                                <span class="my-story-copy">
+                                    <h3>@story.Title</h3>
+                                    @if (!string.IsNullOrWhiteSpace(story.DurationLabel))
+                                    {
+                                        <span class="my-story-duration">@story.DurationLabel</span>
+                                    }
+                                </span>
                             </a>
-                            <div class="my-story-body">
-                                <p class="my-story-source">@story.SourceLabel</p>
-                                <h3>@story.Title</h3>
-                                <p class="my-story-description">@story.Description</p>
-                                <p class="my-story-meta">@story.ProgressLabel</p>
-                                <div class="my-story-progress-wrap" aria-hidden="true">
-                                    <span class="my-story-progress" style="@($"width: {story.CompletionPercent:0.#}%;")"></span>
-                                </div>
-                                <p class="my-story-meta">@story.LastListenedLabel</p>
-                                <a class="my-story-link" href="@story.LinkPath">Gaan voort</a>
-                            </div>
                         </article>
                     }
                 </div>
@@ -132,21 +119,22 @@
         {
             <section class="my-stories-section" aria-label="Stories wat jy reeds geluister het">
                 <h2>Reeds geluister</h2>
-                <div class="my-stories-grid">
+                <div class="my-stories-carousel" role="list" aria-label="Reeds geluister">
                     @foreach (var story in CompletedStories)
                     {
-                        <article class="my-story-card is-complete">
-                            <a class="my-story-image-link" href="@story.LinkPath" aria-label="@($"Maak {story.Title} oop")">
-                                <img src="@story.ImagePath" alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
+                        <article class="my-story-card is-complete" role="listitem">
+                            <a class="my-story-link" href="@story.LinkPath" aria-label="@($"Maak {story.Title} oop")">
+                                <span class="my-story-image-shell">
+                                    <img src="@story.ImagePath" alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
+                                </span>
+                                <span class="my-story-copy">
+                                    <h3>@story.Title</h3>
+                                    @if (!string.IsNullOrWhiteSpace(story.DurationLabel))
+                                    {
+                                        <span class="my-story-duration">@story.DurationLabel</span>
+                                    }
+                                </span>
                             </a>
-                            <div class="my-story-body">
-                                <p class="my-story-source">@story.SourceLabel</p>
-                                <h3>@story.Title</h3>
-                                <p class="my-story-description">@story.Description</p>
-                                <p class="my-story-meta">@story.ProgressLabel</p>
-                                <p class="my-story-meta">@story.LastListenedLabel</p>
-                                <a class="my-story-link" href="@story.LinkPath">Luister weer</a>
-                            </div>
                         </article>
                     }
                 </div>
@@ -160,7 +148,7 @@
     private bool IsRedirectingToLogin { get; set; }
     private IReadOnlyList<MyStoryCard> InProgressStories { get; set; } = Array.Empty<MyStoryCard>();
     private IReadOnlyList<MyStoryCard> CompletedStories { get; set; } = Array.Empty<MyStoryCard>();
-    private IReadOnlyList<FavoriteStoryCard> FavoriteStories { get; set; } = Array.Empty<FavoriteStoryCard>();
+    private IReadOnlyList<MyStoryCard> FavoriteStories { get; set; } = Array.Empty<MyStoryCard>();
     private string MyStoriesCanonicalUrl => NavigationManager.ToAbsoluteUri("/my-stories").ToString();
 
     protected override async Task OnInitializedAsync()
@@ -207,13 +195,15 @@
 
         var cards = progressTask.Result
             .Select(progress => BuildStoryCard(progress, storiesBySlug))
-            .OrderByDescending(card => card.LastListenedAtUtc)
+            .OrderByDescending(card => card.LastActivityAtUtc)
             .ToArray();
 
         FavoriteStories = favoriteSlugsTask.Result
             .Select(slug => BuildFavoriteStoryCard(slug, progressBySlug, freeStoriesBySlug, luisterStoriesBySlug, storiesBySlug))
             .Where(card => card is not null)
-            .Cast<FavoriteStoryCard>()
+            .Cast<MyStoryCard>()
+            .OrderByDescending(card => card.LastActivityAtUtc)
+            .ThenBy(card => card.Title, StringComparer.OrdinalIgnoreCase)
             .ToArray();
         InProgressStories = cards.Where(card => !card.IsCompleted).ToArray();
         CompletedStories = cards.Where(card => card.IsCompleted).ToArray();
@@ -224,32 +214,26 @@
     {
         var hasCatalogStory = storiesBySlug.TryGetValue(progress.StorySlug, out var catalogStory);
         var title = hasCatalogStory ? catalogStory!.Title : FormatFallbackTitle(progress.StorySlug);
-        var description = hasCatalogStory
-            ? catalogStory!.Description
-            : "Maak hierdie storie oop om weer te luister.";
         var imagePath = hasCatalogStory
             ? catalogStory!.ThumbnailPath
             : "/branding/schink-logo-green.png";
-        var completionPercent = ResolveCompletionPercent(progress);
         var linkPath = ResolveStoryLinkPath(progress);
-        var progressLabel = BuildProgressLabel(progress);
-        var lastListenedLabel = $"Laas geluister: {progress.LastListenedAtUtc.ToLocalTime():dd MMMM yyyy HH:mm}";
+        var durationLabel = ResolveDisplayDuration(
+            progress.DurationSeconds,
+            hasCatalogStory ? catalogStory!.DurationSeconds : null,
+            progress.TotalListenedSeconds);
 
         return new MyStoryCard(
             StorySlug: progress.StorySlug,
             Title: title,
-            Description: description,
             ImagePath: imagePath,
             LinkPath: linkPath,
-            SourceLabel: string.Equals(progress.Source, "gratis", StringComparison.OrdinalIgnoreCase) ? "Gratis storie" : "Alle stories",
-            ProgressLabel: progressLabel,
-            LastListenedLabel: lastListenedLabel,
-            LastListenedAtUtc: progress.LastListenedAtUtc,
-            CompletionPercent: completionPercent,
+            DurationLabel: durationLabel,
+            LastActivityAtUtc: progress.LastListenedAtUtc,
             IsCompleted: progress.IsCompleted);
     }
 
-    private static FavoriteStoryCard? BuildFavoriteStoryCard(
+    private static MyStoryCard? BuildFavoriteStoryCard(
         string slug,
         IReadOnlyDictionary<string, UserStoryProgressItem> progressBySlug,
         IReadOnlyDictionary<string, StoryItem> freeStoriesBySlug,
@@ -265,67 +249,43 @@
         var linkPath = string.Equals(source, "gratis", StringComparison.OrdinalIgnoreCase)
             ? $"/gratis/{Uri.EscapeDataString(catalogStory.Slug)}"
             : $"/luister/{Uri.EscapeDataString(catalogStory.Slug)}";
-        var sourceLabel = string.Equals(source, "gratis", StringComparison.OrdinalIgnoreCase)
-            ? "Gratis storie"
-            : "Alle stories";
 
         if (progressBySlug.TryGetValue(slug, out var progress))
         {
-            var completionPercent = ResolveCompletionPercent(progress);
-            return new FavoriteStoryCard(
+            return new MyStoryCard(
                 StorySlug: catalogStory.Slug,
                 Title: catalogStory.Title,
-                Description: catalogStory.Description,
                 ImagePath: catalogStory.ThumbnailPath,
                 LinkPath: linkPath,
-                SourceLabel: sourceLabel,
-                ProgressLabel: BuildProgressLabel(progress),
-                LastListenedLabel: $"Laas geluister: {progress.LastListenedAtUtc.ToLocalTime():dd MMMM yyyy HH:mm}",
-                ActionLabel: progress.IsCompleted ? "Luister weer" : "Gaan voort",
-                CompletionPercent: completionPercent,
-                ShowProgressBar: !progress.IsCompleted,
+                DurationLabel: ResolveDisplayDuration(
+                    progress.DurationSeconds,
+                    catalogStory.DurationSeconds,
+                    progress.TotalListenedSeconds),
+                LastActivityAtUtc: progress.LastListenedAtUtc,
                 IsCompleted: progress.IsCompleted);
         }
 
-        return new FavoriteStoryCard(
+        return new MyStoryCard(
             StorySlug: catalogStory.Slug,
             Title: catalogStory.Title,
-            Description: catalogStory.Description,
             ImagePath: catalogStory.ThumbnailPath,
             LinkPath: linkPath,
-            SourceLabel: sourceLabel,
-            ProgressLabel: null,
-            LastListenedLabel: null,
-            ActionLabel: "Maak oop",
-            CompletionPercent: 0m,
-            ShowProgressBar: false,
+            DurationLabel: ResolveDisplayDuration(catalogStory.DurationSeconds),
+            LastActivityAtUtc: DateTimeOffset.MinValue,
             IsCompleted: false);
     }
 
-    private static decimal ResolveCompletionPercent(UserStoryProgressItem progress)
+    private static string? ResolveDisplayDuration(params decimal?[] candidates)
     {
-        if (progress.IsCompleted)
+        foreach (var candidate in candidates)
         {
-            return 100m;
+            if (candidate is > 0m)
+            {
+                return FormatDuration(candidate.Value);
+            }
         }
 
-        if (progress.LastPositionSeconds is > 0m && progress.DurationSeconds is > 0m)
-        {
-            var ratio = progress.LastPositionSeconds.Value / progress.DurationSeconds.Value;
-            return decimal.Round(Math.Clamp(ratio * 100m, 0m, 99.5m), 1, MidpointRounding.AwayFromZero);
-        }
-
-        return 0m;
-    }
-
-    private static string BuildProgressLabel(UserStoryProgressItem progress)
-    {
-        if (progress.LastPositionSeconds is > 0m && progress.DurationSeconds is > 0m)
-        {
-            return $"{FormatDuration(progress.LastPositionSeconds.Value)} van {FormatDuration(progress.DurationSeconds.Value)}";
-        }
-
-        return $"{FormatDuration(progress.TotalListenedSeconds)} geluister";
+        return null;
     }
 
     private static string ResolveStoryLinkPath(UserStoryProgressItem progress)
@@ -372,27 +332,9 @@
     private sealed record MyStoryCard(
         string StorySlug,
         string Title,
-        string Description,
         string ImagePath,
         string LinkPath,
-        string SourceLabel,
-        string ProgressLabel,
-        string LastListenedLabel,
-        DateTimeOffset LastListenedAtUtc,
-        decimal CompletionPercent,
-        bool IsCompleted);
-
-    private sealed record FavoriteStoryCard(
-        string StorySlug,
-        string Title,
-        string Description,
-        string ImagePath,
-        string LinkPath,
-        string SourceLabel,
-        string? ProgressLabel,
-        string? LastListenedLabel,
-        string ActionLabel,
-        decimal CompletionPercent,
-        bool ShowProgressBar,
+        string? DurationLabel,
+        DateTimeOffset LastActivityAtUtc,
         bool IsCompleted);
 }

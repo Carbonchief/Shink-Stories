@@ -75,7 +75,7 @@
 
 .my-stories-section {
     display: grid;
-    gap: 0.75rem;
+    gap: 0.85rem;
 }
 
 .my-stories-section h2 {
@@ -83,112 +83,97 @@
     font-size: clamp(1.2rem, 2.2vw, 1.6rem);
 }
 
-.my-stories-grid {
+.my-stories-carousel {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-auto-flow: column;
+    grid-auto-columns: clamp(180px, 24vw, 220px);
     gap: 1rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 0.45rem;
+    scroll-snap-type: x mandatory;
+    scroll-padding-inline: 0;
+    -webkit-overflow-scrolling: touch;
+}
+
+.my-stories-carousel::-webkit-scrollbar {
+    height: 8px;
+}
+
+.my-stories-carousel::-webkit-scrollbar-track {
+    background: rgba(15, 26, 42, 0.08);
+    border-radius: 999px;
+}
+
+.my-stories-carousel::-webkit-scrollbar-thumb {
+    background: rgba(15, 26, 42, 0.26);
+    border-radius: 999px;
 }
 
 .my-story-card {
+    scroll-snap-align: start;
+}
+
+.my-story-link {
     display: grid;
-    grid-template-columns: 220px 1fr;
-    border-radius: 16px;
-    overflow: hidden;
-    border: 1px solid color-mix(in srgb, var(--line) 87%, #b8bdb4);
-    background: var(--surface);
+    gap: 0.72rem;
+    color: inherit;
+    text-decoration: none;
 }
 
-.my-story-card-favorite {
-    min-height: 100%;
-}
-
-.my-story-image-link {
+.my-story-image-shell {
+    position: relative;
     display: block;
-    height: 100%;
+    overflow: hidden;
+    border-radius: 16px;
+    aspect-ratio: 3 / 4;
     background: #111;
+    box-shadow: 0 10px 24px rgba(14, 18, 24, 0.22);
 }
 
-.my-story-image-link img {
+.my-story-image-shell img {
     display: block;
     width: 100%;
     height: 100%;
     object-fit: cover;
+    transition: transform 0.22s ease, filter 0.22s ease;
 }
 
-.my-story-body {
-    padding: 0.85rem;
+.my-story-link:hover .my-story-image-shell img,
+.my-story-link:focus-visible .my-story-image-shell img {
+    transform: scale(1.03);
+    filter: brightness(0.84);
+}
+
+.my-story-copy {
     display: grid;
-    align-content: start;
-    gap: 0.46rem;
+    gap: 0.18rem;
+    padding-inline: 0.08rem;
 }
 
-.my-story-source {
+.my-story-copy h3 {
     margin: 0;
-    font-size: 0.8rem;
-    font-weight: 700;
-    letter-spacing: 0.02em;
-    color: #2f6072;
+    font-size: 1.03rem;
+    line-height: 1.32;
+    color: #1b2231;
+    min-height: 2.64em;
 }
 
-.my-story-body h3 {
-    margin: 0;
-    font-size: 1.18rem;
-    line-height: 1.25;
-}
-
-.my-story-description {
-    margin: 0;
-    color: var(--muted);
-    line-height: 1.45;
-}
-
-.my-story-meta {
-    margin: 0;
+.my-story-duration {
     color: #35505b;
-    font-size: 0.9rem;
+    font-size: 0.92rem;
+    font-weight: 600;
 }
 
-.my-story-progress-wrap {
-    height: 8px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--line) 75%, #d1d7d2);
-    overflow: hidden;
-}
-
-.my-story-progress {
-    display: block;
-    height: 100%;
-    min-width: 4px;
-    border-radius: inherit;
-    background: linear-gradient(90deg, #0b8b6b 0%, #54b668 100%);
-}
-
-.my-story-link {
-    margin-top: 0.2rem;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 42px;
-    width: fit-content;
-    padding: 0.58rem 0.84rem;
-    border-radius: 10px;
-    text-decoration: none;
-    font-weight: 700;
-    color: #181818;
-    background: var(--accent);
-}
-
-.my-story-link:hover {
-    background: var(--accent-deep);
-}
-
-.my-story-card.is-complete .my-story-progress-wrap {
-    display: none;
+.my-story-link:focus-visible {
+    outline: 3px solid color-mix(in srgb, #ffffff 40%, var(--accent));
+    outline-offset: 4px;
+    border-radius: 20px;
 }
 
 @media (max-width: 980px) {
-    .my-stories-grid {
-        grid-template-columns: 1fr;
+    .my-stories-carousel {
+        grid-auto-columns: clamp(180px, 42vw, 220px);
     }
 }
 
@@ -201,19 +186,7 @@
         padding: 0.85rem 0.85rem 0.9rem;
     }
 
-    .my-story-card {
-        grid-template-columns: 1fr;
-    }
-
-    .my-story-image-link img {
-        max-height: 260px;
-    }
-
-    .my-story-body {
-        padding: 0.8rem;
-    }
-
-    .my-story-link {
-        width: 100%;
+    .my-stories-carousel {
+        grid-auto-columns: minmax(0, 68vw);
     }
 }
