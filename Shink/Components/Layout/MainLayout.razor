@@ -12,7 +12,11 @@
         @if (IsStoryRoute)
         {
             <div class="site-container story-header-wrap">
-                <a class="story-header-back" href="@StoryHeaderBackHref" aria-label="@StoryHeaderBackLabel" title="@StoryHeaderBackLabel">
+                <a class="story-header-back"
+                   href="@StoryHeaderBackHref"
+                   data-enhance-nav="false"
+                   aria-label="@StoryHeaderBackLabel"
+                   title="@StoryHeaderBackLabel">
                     <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
                     <span class="sr-only">@StoryHeaderBackLabel</span>
                 </a>
@@ -342,6 +346,7 @@
     {
         <a class="showcase-floating-back"
            href="@StoryHeaderBackHref"
+           data-enhance-nav="false"
            aria-label="@StoryHeaderBackLabel"
            title="@StoryHeaderBackLabel">
             <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
