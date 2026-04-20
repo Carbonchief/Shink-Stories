@@ -89,6 +89,8 @@ builder.Services.AddSingleton<IResourceDocumentStorageService, CloudflareR2Resou
 builder.Services.AddSingleton<IResourceDocumentPreviewService, ResourceDocumentPreviewService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<UiErrorDiagnosticsStore>();
+builder.Services.AddSingleton<ILoggerProvider, UiErrorDiagnosticsLoggerProvider>();
 builder.Services.Configure<ResendOptions>(builder.Configuration.GetSection(ResendOptions.SectionName));
 builder.Services.Configure<SupabaseOptions>(builder.Configuration.GetSection(SupabaseOptions.SectionName));
 builder.Services.Configure<CloudflareR2Options>(builder.Configuration.GetSection(CloudflareR2Options.SectionName));
@@ -2011,6 +2013,25 @@ app.MapGet("/api/mobile/meer-oor-ons", (HttpContext httpContext) =>
 
     return Results.Ok(new MobileAboutResponse(blocks));
 }).DisableAntiforgery();
+
+if (app.Environment.IsDevelopment())
+{
+    app.MapGet("/api/dev/ui-error", (UiErrorDiagnosticsStore diagnosticsStore, string? contains) =>
+    {
+        var entry = diagnosticsStore.GetLatest(contains);
+        return Results.Json(entry is null
+            ? new { found = false }
+            : new
+            {
+                found = true,
+                occurredAtUtc = entry.OccurredAtUtc,
+                category = entry.Category,
+                level = entry.Level,
+                message = entry.Message,
+                exception = entry.ExceptionText
+            });
+    }).DisableAntiforgery();
+}
 
 app.MapPost("/api/mobile/stories/{slug}/favorite", async (
     string slug,

@@ -1610,6 +1610,38 @@
     z-index: 1000;
 }
 
+#blazor-error-ui .blazor-error-title {
+    display: block;
+    margin-right: 5.5rem;
+}
+
+#blazor-error-ui .blazor-error-detail {
+    margin: 0.45rem 5.5rem 0 0;
+    font-size: 0.92rem;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+#blazor-error-ui .blazor-error-diagnostics {
+    margin: 0.55rem 5.5rem 0 0;
+}
+
+#blazor-error-ui .blazor-error-diagnostics summary {
+    cursor: pointer;
+    font-weight: 700;
+}
+
+#blazor-error-ui .blazor-error-diagnostics pre {
+    margin: 0.45rem 0 0;
+    max-height: 16rem;
+    overflow: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+    font-size: 0.82rem;
+    line-height: 1.4;
+}
+
 #blazor-error-ui .dismiss {
     cursor: pointer;
     position: absolute;

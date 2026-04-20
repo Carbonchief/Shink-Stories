@@ -21,6 +21,12 @@ const NOTIFICATION_LOAD_MORE_SELECTOR = "[data-notification-load-more]";
 const ACCOUNT_MENU_ROOT_SELECTOR = "[data-account-menu-root]";
 const ACCOUNT_TOGGLE_SELECTOR = "[data-account-toggle]";
 const ACCOUNT_DROPDOWN_SELECTOR = "[data-account-dropdown]";
+const BLAZOR_ERROR_UI_SELECTOR = "#blazor-error-ui";
+const BLAZOR_ERROR_TITLE_SELECTOR = "[data-blazor-error-title]";
+const BLAZOR_ERROR_DETAIL_SELECTOR = "[data-blazor-error-detail]";
+const BLAZOR_ERROR_DIAGNOSTICS_SELECTOR = "[data-blazor-error-diagnostics]";
+const BLAZOR_ERROR_PRE_SELECTOR = "[data-blazor-error-pre]";
+const DEV_UI_ERROR_ENDPOINT = "/api/dev/ui-error";
 const OPEN_CLASS = "is-open";
 const SEARCH_ACTIVE_CLASS = "is-search-active";
 const SEARCH_SUGGEST_ENDPOINT = "/api/search/suggest";
@@ -38,6 +44,8 @@ const CLOSED_LABEL = "Maak navigasie oop";
 let navMenuDelegatesStarted = false;
 let notificationCenterDelegatesStarted = false;
 let accountMenuDelegatesStarted = false;
+let blazorErrorDiagnosticsStarted = false;
+let latestClientErrorText = "";
 const notificationCenterState = new WeakMap();
 const headerSearchState = new WeakMap();
 const notificationDateFormatter = typeof Intl !== "undefined"
@@ -1847,17 +1855,158 @@ function startHeaderObserver() {
     headerObserverStarted = true;
 }
 
+function stringifyClientError(value) {
+    if (value instanceof Error) {
+        return value.stack || value.message || String(value);
+    }
+
+    if (typeof value === "string") {
+        return value;
+    }
+
+    try {
+        return JSON.stringify(value);
+    } catch {
+        return String(value);
+    }
+}
+
+function setLatestClientError(prefix, value) {
+    const text = stringifyClientError(value).trim();
+    if (text.length === 0) {
+        return;
+    }
+
+    latestClientErrorText = `${prefix}: ${text}`;
+}
+
+function isBlazorErrorUiVisible(errorUi) {
+    if (!(errorUi instanceof HTMLElement)) {
+        return false;
+    }
+
+    if (errorUi.hidden) {
+        return false;
+    }
+
+    const computedStyle = window.getComputedStyle(errorUi);
+    return computedStyle.display !== "none" && computedStyle.visibility !== "hidden";
+}
+
+async function populateBlazorErrorUi(errorUi) {
+    if (!(errorUi instanceof HTMLElement)) {
+        return;
+    }
+
+    const title = errorUi.querySelector(BLAZOR_ERROR_TITLE_SELECTOR);
+    const detail = errorUi.querySelector(BLAZOR_ERROR_DETAIL_SELECTOR);
+    const diagnostics = errorUi.querySelector(BLAZOR_ERROR_DIAGNOSTICS_SELECTOR);
+    const diagnosticsPre = errorUi.querySelector(BLAZOR_ERROR_PRE_SELECTOR);
+
+    let detailText = latestClientErrorText;
+    let diagnosticsText = latestClientErrorText;
+
+    try {
+        const response = await fetch(DEV_UI_ERROR_ENDPOINT, {
+            method: "GET",
+            credentials: "same-origin",
+            headers: {
+                Accept: "application/json"
+            }
+        });
+
+        if (response.ok) {
+            const payload = await response.json();
+            if (payload && payload.found) {
+                const message = typeof payload.message === "string" ? payload.message.trim() : "";
+                const category = typeof payload.category === "string" ? payload.category.trim() : "";
+                const exceptionText = typeof payload.exception === "string" ? payload.exception.trim() : "";
+                detailText = [category, message].filter((part) => part && part.length > 0).join(": ");
+                diagnosticsText = exceptionText || detailText;
+            }
+        }
+    } catch {
+        // Ignore diagnostics fetch failures and fall back to any client-side error text.
+    }
+
+    if (title instanceof HTMLElement && window.location.pathname === "/karakters") {
+        title.textContent = "The Karakters page failed.";
+    }
+
+    if (detail instanceof HTMLElement) {
+        if (detailText && detailText.length > 0) {
+            detail.hidden = false;
+            detail.textContent = detailText;
+        } else {
+            detail.hidden = true;
+            detail.textContent = "";
+        }
+    }
+
+    if (diagnostics instanceof HTMLElement && diagnosticsPre instanceof HTMLElement) {
+        if (diagnosticsText && diagnosticsText.length > 0) {
+            diagnostics.hidden = false;
+            diagnosticsPre.textContent = diagnosticsText;
+        } else {
+            diagnostics.hidden = true;
+            diagnosticsPre.textContent = "";
+        }
+    }
+}
+
+function startBlazorErrorDiagnostics() {
+    if (blazorErrorDiagnosticsStarted) {
+        return;
+    }
+
+    window.addEventListener("error", (event) => {
+        setLatestClientError("Browser error", event.error || event.message || "Unknown browser error");
+    });
+
+    window.addEventListener("unhandledrejection", (event) => {
+        setLatestClientError("Unhandled promise rejection", event.reason || "Unknown rejection");
+    });
+
+    const errorUi = document.querySelector(BLAZOR_ERROR_UI_SELECTOR);
+    if (!(errorUi instanceof HTMLElement)) {
+        return;
+    }
+
+    const refreshDiagnostics = () => {
+        if (isBlazorErrorUiVisible(errorUi)) {
+            void populateBlazorErrorUi(errorUi);
+        }
+    };
+
+    if (typeof MutationObserver !== "undefined") {
+        const observer = new MutationObserver(() => {
+            refreshDiagnostics();
+        });
+
+        observer.observe(errorUi, {
+            attributes: true,
+            attributeFilter: ["style", "class", "hidden"]
+        });
+    }
+
+    refreshDiagnostics();
+    blazorErrorDiagnosticsStarted = true;
+}
+
 if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => {
         initializeHeaderInteractions();
         startHeaderObserver();
+        startBlazorErrorDiagnostics();
     }, { once: true });
 } else {
     initializeHeaderInteractions();
     startHeaderObserver();
+    startBlazorErrorDiagnostics();
 }
 
 document.addEventListener("enhancedload", initializeHeaderInteractions);
+document.addEventListener("enhancedload", startBlazorErrorDiagnostics);
 window.addEventListener("pageshow", scheduleHeaderInteractionsInitialization);
 window.addEventListener("popstate", scheduleHeaderInteractionsInitialization);
 window.addEventListener("resize", scheduleNotificationPanelPositionSync);

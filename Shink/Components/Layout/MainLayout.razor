@@ -482,7 +482,12 @@
 <script type="module" src="@Assets["Components/Layout/MainLayout.razor.js"]"></script>
 
 <div id="blazor-error-ui" data-nosnippet>
-    An unhandled error has occurred.
+    <strong class="blazor-error-title" data-blazor-error-title>An unhandled error has occurred.</strong>
+    <p class="blazor-error-detail" data-blazor-error-detail hidden></p>
+    <details class="blazor-error-diagnostics" data-blazor-error-diagnostics hidden>
+        <summary>Diagnostics</summary>
+        <pre data-blazor-error-pre></pre>
+    </details>
     <a href="." class="reload">Reload</a>
     <span class="dismiss">x</span>
 </div>
