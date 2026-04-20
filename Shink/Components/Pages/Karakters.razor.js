@@ -60,7 +60,6 @@ export async function playCharacterAudio(sourceUrl, triggerSlug) {
   const player = ensureAudioPlayer();
   player.pause();
   player.src = sourceUrl;
-  player.load();
   setActiveAudioTrigger(triggerSlug);
 
   try {
@@ -69,6 +68,17 @@ export async function playCharacterAudio(sourceUrl, triggerSlug) {
     clearActiveAudioTrigger();
     // Ignore browser autoplay failures; the click gesture usually satisfies playback.
   }
+}
+
+export function playCharacterAudioFromButton(button) {
+  if (!(button instanceof HTMLElement)) {
+    clearActiveAudioTrigger();
+    return;
+  }
+
+  const sourceUrl = button.getAttribute("data-character-audio-url") || "";
+  const triggerSlug = button.getAttribute("data-character-audio-slug") || "";
+  void playCharacterAudio(sourceUrl, triggerSlug);
 }
 
 export function stopCharacterAudio() {
@@ -137,4 +147,8 @@ export function stopMaatAnimation() {
   document
     .querySelectorAll(".character-profile-popup-card [data-maat-tile].is-shuffling")
     .forEach((element) => element.classList.remove("is-shuffling"));
+}
+
+if (typeof window !== "undefined") {
+  window.playCharacterAudioFromButton = playCharacterAudioFromButton;
 }

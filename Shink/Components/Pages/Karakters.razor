@@ -113,7 +113,9 @@
                                         <button type="button"
                                                 class="character-card-badge character-card-audio-trigger"
                                                 data-character-audio-slug="@card.Character.Slug"
-                                                @onclick="() => PlayCharacterAudioAsync(card)"
+                                                data-character-audio-url="@card.PreviewAudioUrl"
+                                                onpointerdown="window.playCharacterAudioFromButton?.(this);"
+                                                @onclick="() => TrackCharacterAudioAsync(card)"
                                                 @onclick:stopPropagation="true"
                                                 aria-label="@($"Speel {card.Character.DisplayName} se stem")"
                                                 title="Speel karakterklank">
@@ -696,24 +698,14 @@
         }
     }
 
-    private async Task PlayCharacterAudioAsync(CharacterCardViewModel card)
+    private async Task TrackCharacterAudioAsync(CharacterCardViewModel card)
     {
-        if (!card.IsUnlocked || !card.HasAudio)
+        if (!card.IsUnlocked ||
+            !card.HasAudio ||
+            string.IsNullOrWhiteSpace(card.PreviewAudioStreamSlug))
         {
             return;
         }
-
-        var clip = card.Character.AudioClips[Random.Shared.Next(card.Character.AudioClips.Count)];
-        var module = await TryGetCharactersModuleAsync();
-        if (module is null)
-        {
-            return;
-        }
-
-        await module.InvokeVoidAsync(
-            "playCharacterAudio",
-            AudioAccessService.CreateSignedAudioUrl(clip.StreamSlug),
-            card.Character.Slug);
 
         if (!IsSignedIn || string.IsNullOrWhiteSpace(SignedInEmail))
         {
@@ -725,7 +717,7 @@
             new CharacterProfileListenTrackingRequest(
                 CharacterId: card.Character.CharacterId,
                 CharacterSlug: card.Character.Slug,
-                StreamSlug: clip.StreamSlug,
+                StreamSlug: card.PreviewAudioStreamSlug,
                 Source: "profile"));
         if (tracked)
         {
@@ -781,6 +773,10 @@
             .Where(static story => story is not null)
             .Cast<StoryLinkInfo>()
             .ToArray();
+        var previewAudioClip = character.AudioClips
+            .OrderBy(clip => clip.SortOrder)
+            .ThenBy(clip => clip.Title, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
         var hasStoryDrivenUnlockRule = CharacterUnlockEvaluator.HasStoryDrivenUnlockRule(character);
         var primaryStory = ResolvePrimaryStory(character, relatedStories);
         var ctaHref = ResolveCallToActionHref(primaryStory);
@@ -799,7 +795,7 @@
         return new CharacterCardViewModel(
             Character: character,
             IsUnlocked: unlocked,
-            HasAudio: character.AudioClips.Count > 0,
+            HasAudio: previewAudioClip is not null,
             Heading: unlocked ? character.DisplayName : "?????",
             SummaryText: summaryText,
             DisplayImagePath: unlocked
@@ -810,7 +806,11 @@
                 : $"Mysterie illustrasie vir {character.DisplayName}",
             RelatedStories: relatedStories,
             CallToActionHref: ctaHref,
-            CallToActionLabel: ctaLabel);
+            CallToActionLabel: ctaLabel,
+            PreviewAudioUrl: previewAudioClip is null
+                ? null
+                : AudioAccessService.CreateSignedAudioUrl(previewAudioClip.StreamSlug, TimeSpan.FromHours(2)),
+            PreviewAudioStreamSlug: previewAudioClip?.StreamSlug);
     }
 
     private static IReadOnlyDictionary<string, StoryLinkInfo> BuildStoryLookup(
@@ -1011,5 +1011,7 @@
         string ImageAlt,
         IReadOnlyList<StoryLinkInfo> RelatedStories,
         string? CallToActionHref,
-        string CallToActionLabel);
+        string CallToActionLabel,
+        string? PreviewAudioUrl,
+        string? PreviewAudioStreamSlug);
 }
