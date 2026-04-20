@@ -1009,6 +1009,87 @@
     }
 }
 
+@media (min-width: 641px) and (max-width: 1024px) {
+    .characters-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.85rem;
+    }
+
+    .character-card {
+        padding: 0.75rem;
+        border-radius: 22px;
+    }
+
+    .character-card-media {
+        padding: 0.5rem;
+        border-radius: 18px;
+    }
+
+    .character-card-image {
+        padding: 0.1rem;
+    }
+
+    .character-card-body {
+        gap: 0.5rem;
+        padding: 0.8rem 0.7rem 0.2rem;
+        align-items: center;
+        text-align: center;
+    }
+
+    .character-card-body h2 {
+        font-size: 1rem;
+        line-height: 1.12;
+    }
+
+    .character-card-summary,
+    .character-card-cta {
+        display: none;
+    }
+
+    .character-card-mobile-play {
+        position: absolute;
+        right: 0.65rem;
+        bottom: 0.65rem;
+        width: 2rem;
+        height: 2rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: none;
+        border-radius: 999px;
+        background: #f39a32;
+        color: #1d1306;
+        font-size: 0.8rem;
+        box-shadow: 0 10px 18px rgba(243, 154, 50, 0.28);
+        cursor: pointer;
+        z-index: 2;
+    }
+
+    .character-card.is-locked .character-card-mobile-play {
+        background: #8dc66f;
+        color: #113420;
+        box-shadow: 0 10px 18px rgba(141, 198, 111, 0.26);
+    }
+
+    .character-card-mobile-play:disabled {
+        cursor: wait;
+        opacity: 0.72;
+    }
+
+    .character-card-mobile-play:focus-visible {
+        outline: 3px solid rgba(243, 154, 50, 0.45);
+        outline-offset: 2px;
+    }
+
+    .character-card-badge {
+        top: 0.7rem;
+        right: 0.7rem;
+        width: 2rem;
+        height: 2rem;
+        font-size: 0.8rem;
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .character-card-badge.is-slamming,
     .character-card.is-locked.is-shaking,

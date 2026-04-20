@@ -93,6 +93,7 @@
                 if (card.IsUnlocked)
                 {
                     <article class="character-card is-unlocked character-card-clickable"
+                             @key="card.Character.CharacterId"
                              @onclick="() => OpenCharacterProfile(card)"
                              @onkeydown="args => HandleCharacterCardKeyDown(args, card)"
                              tabindex="0"
@@ -161,6 +162,7 @@
                 else
                 {
                     <article class="@($"character-card is-locked{(ShakingLockedCharacterId == card.Character.CharacterId ? " is-shaking" : string.Empty)}")"
+                             @key="card.Character.CharacterId"
                              @onclick="() => TriggerLockedCardShakeAsync(card)">
                         <div class="character-card-media">
                             <img src="@card.DisplayImagePath"
