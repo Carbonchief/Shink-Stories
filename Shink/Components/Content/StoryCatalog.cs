@@ -20,7 +20,8 @@ public sealed record StoryItem(
     IReadOnlyList<string>? ValueTags = null,
     IReadOnlyList<string>? ConversationQuestions = null,
     IReadOnlyList<string>? Characters = null,
-    string? YouTubeUrl = null)
+    string? YouTubeUrl = null,
+    decimal? DurationSeconds = null)
 {
     public string ImagePath => ResolveAssetPath(ImageFileName);
     public string ThumbnailPath => string.IsNullOrWhiteSpace(ThumbnailFileName)

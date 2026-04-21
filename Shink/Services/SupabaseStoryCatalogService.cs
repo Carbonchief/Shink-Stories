@@ -762,7 +762,8 @@ public sealed class SupabaseStoryCatalogService(
             ValueTags: storyDetails.Values,
             ConversationQuestions: storyDetails.ConversationQuestions,
             Characters: storyDetails.Characters,
-            YouTubeUrl: string.IsNullOrWhiteSpace(row.YouTubeUrl) ? null : row.YouTubeUrl.Trim());
+            YouTubeUrl: string.IsNullOrWhiteSpace(row.YouTubeUrl) ? null : row.YouTubeUrl.Trim(),
+            DurationSeconds: row.DurationSeconds);
     }
 
     private static StoryDetails ReadStoryDetails(JsonElement metadata)

@@ -89,6 +89,8 @@ builder.Services.AddSingleton<IResourceDocumentStorageService, CloudflareR2Resou
 builder.Services.AddSingleton<IResourceDocumentPreviewService, ResourceDocumentPreviewService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddSingleton<UiErrorDiagnosticsStore>();
+builder.Services.AddSingleton<ILoggerProvider, UiErrorDiagnosticsLoggerProvider>();
 builder.Services.Configure<ResendOptions>(builder.Configuration.GetSection(ResendOptions.SectionName));
 builder.Services.Configure<SupabaseOptions>(builder.Configuration.GetSection(SupabaseOptions.SectionName));
 builder.Services.Configure<CloudflareR2Options>(builder.Configuration.GetSection(CloudflareR2Options.SectionName));
@@ -2012,6 +2014,22 @@ app.MapGet("/api/mobile/meer-oor-ons", (HttpContext httpContext) =>
     return Results.Ok(new MobileAboutResponse(blocks));
 }).DisableAntiforgery();
 
+app.MapGet("/api/dev/ui-error", (UiErrorDiagnosticsStore diagnosticsStore, string? contains) =>
+{
+    var entry = diagnosticsStore.GetLatest(contains);
+    return Results.Json(entry is null
+        ? new { found = false }
+        : new
+        {
+            found = true,
+            occurredAtUtc = entry.OccurredAtUtc,
+            category = entry.Category,
+            level = entry.Level,
+            message = entry.Message,
+            exception = entry.ExceptionText
+        });
+}).DisableAntiforgery();
+
 app.MapPost("/api/mobile/stories/{slug}/favorite", async (
     string slug,
     MobileFavoriteMutationRequest request,
@@ -2213,11 +2231,12 @@ static string BuildContentSecurityPolicy(HttpRequest request, bool isDevelopment
     var postHogAssetsOrigin = TryGetPostHogAssetsOrigin(postHogHostOrigin);
     var scriptSources = BuildScriptSources(postHogHostOrigin, postHogAssetsOrigin);
     var formActionSources = BuildFormActionSources(request, isDevelopment);
+    var frameSources = BuildFrameSources();
     var connectSources = isDevelopment
         ? "'self' https: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* wss:"
         : "'self' https: wss:";
 
-    return $"default-src 'self'; base-uri 'self'; form-action {formActionSources}; object-src 'none'; frame-ancestors 'self'; img-src 'self' data: https:; media-src 'self' blob:; font-src 'self' data:; connect-src {connectSources}; script-src {scriptSources}; script-src-elem {scriptSources}; style-src 'self' 'unsafe-inline';";
+    return $"default-src 'self'; base-uri 'self'; form-action {formActionSources}; object-src 'none'; frame-ancestors 'self'; frame-src {frameSources}; img-src 'self' data: https:; media-src 'self' blob:; font-src 'self' data:; connect-src {connectSources}; script-src {scriptSources}; script-src-elem {scriptSources}; style-src 'self' 'unsafe-inline';";
 }
 
 static string BuildFormActionSources(HttpRequest request, bool isDevelopment)
@@ -2316,6 +2335,18 @@ static string BuildScriptSources(string? postHogHostOrigin, string? postHogAsset
 
     sources.Add("'unsafe-inline'");
     sources.Add("'unsafe-eval'");
+
+    return string.Join(' ', sources);
+}
+
+static string BuildFrameSources()
+{
+    var sources = new[]
+    {
+        "'self'",
+        "https://www.youtube-nocookie.com",
+        "https://www.youtube.com"
+    };
 
     return string.Join(' ', sources);
 }

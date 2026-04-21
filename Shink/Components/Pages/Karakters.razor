@@ -3,11 +3,13 @@
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Web
+@using Microsoft.Extensions.Logging
 @using Microsoft.JSInterop
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IAudioAccessService AudioAccessService
 @inject ICharacterCatalogService CharacterCatalogService
 @inject IJSRuntime JS
+@inject ILogger<Karakters> Logger
 @inject IStoryTrackingService StoryTrackingService
 @inject ICharacterTrackingService CharacterTrackingService
 @inject IStoryCatalogService StoryCatalogService
@@ -62,8 +64,11 @@
 
     @if (IsLoading)
     {
-        <section class="characters-state" aria-live="polite">
-            <h2>Laai karakters...</h2>
+        <section class="characters-loading-state" aria-live="polite" aria-busy="true">
+            <div class="characters-loading-indicator" role="status" aria-label="Stories laai">
+                <span class="characters-loading-spinner" aria-hidden="true"></span>
+                <span class="characters-loading-text">Stories laai</span>
+            </div>
         </section>
     }
     else if (!string.IsNullOrWhiteSpace(LoadErrorMessage))
@@ -85,131 +90,156 @@
         <section class="characters-grid" aria-label="Schink Stories karakters">
             @foreach (var card in CharacterCards)
             {
-                if (card.IsUnlocked)
-                {
-                    <article class="character-card is-unlocked character-card-clickable"
-                             @onclick="() => OpenCharacterProfile(card)"
-                             @onkeydown="args => HandleCharacterCardKeyDown(args, card)"
-                             tabindex="0"
-                             role="button"
-                             aria-label="Wys profiel vir @card.Character.DisplayName">
-                        <div class="character-card-media">
-                            <img src="@card.DisplayImagePath"
-                                 alt="@card.ImageAlt"
-                                 class="character-card-image"
-                                 loading="lazy"
-                                 decoding="async"
-                                 onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
-                            @if (card.HasAudio)
-                            {
-                                <button type="button"
-                                        class="character-card-badge character-card-audio-trigger"
-                                        data-character-audio-slug="@card.Character.Slug"
-                                        @onclick="() => PlayCharacterAudioAsync(card)"
-                                        @onclick:stopPropagation="true"
-                                        aria-label=$"Speel {card.Character.DisplayName} se stem"
-                                        title="Speel karakterklank">
-                                    <i class="fa-solid fa-volume-high" aria-hidden="true"></i>
-                                </button>
-                            }
-
-                            @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
-                            {
-                                <button type="button"
-                                        class="character-card-mobile-play"
-                                        @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
-                                        @onclick:stopPropagation="true"
-                                        disabled="@IsCallToActionLoading(card.CallToActionHref)"
-                                        aria-label="@card.CallToActionLabel"
-                                        title="@card.CallToActionLabel">
-                                    <i class="fa-solid fa-play" aria-hidden="true"></i>
-                                </button>
-                            }
-                        </div>
-
-                        <div class="character-card-body">
-                            <h2>@card.Heading</h2>
-                            <p class="character-card-summary">@card.SummaryText</p>
-
-                            @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
-                            {
-                                <button type="button"
-                                        class="character-card-cta"
-                                        @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
-                                        @onclick:stopPropagation="true"
-                                        disabled="@IsCallToActionLoading(card.CallToActionHref)">
-                                    @if (IsCallToActionLoading(card.CallToActionHref))
+                <ErrorBoundary @key="card.Character.CharacterId">
+                    <ChildContent>
+                        @if (card.IsUnlocked)
+                        {
+                            <article class="character-card is-unlocked character-card-clickable"
+                                     @key="card.Character.CharacterId"
+                                     @onclick="() => OpenCharacterProfile(card)"
+                                     @onkeydown="args => HandleCharacterCardKeyDown(args, card)"
+                                     tabindex="0"
+                                     role="button"
+                                     aria-label="Wys profiel vir @card.Character.DisplayName">
+                                <div class="character-card-media">
+                                    <img src="@card.DisplayImagePath"
+                                         alt="@card.ImageAlt"
+                                         class="character-card-image"
+                                         loading="lazy"
+                                         decoding="async"
+                                         onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                                    @if (card.HasAudio)
                                     {
-                                        <span class="character-card-cta-spinner" aria-hidden="true"></span>
-                                        <span>Loading</span>
+                                        <button type="button"
+                                                class="character-card-badge character-card-audio-trigger"
+                                                data-character-audio-slug="@card.Character.Slug"
+                                                data-character-audio-url="@card.PreviewAudioUrl"
+                                                onclick="event.stopPropagation(); window.playCharacterAudioFromButton?.(this);"
+                                                @onpointerup="() => TrackCharacterAudioAsync(card)"
+                                                @onpointerup:stopPropagation="true"
+                                                aria-label="@($"Speel {card.Character.DisplayName} se stem")"
+                                                title="Speel karakterklank">
+                                            <i class="fa-solid fa-volume-high" aria-hidden="true"></i>
+                                        </button>
                                     }
-                                    else
+
+                                    @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
                                     {
-                                        <span>@card.CallToActionLabel</span>
+                                        <button type="button"
+                                                class="character-card-mobile-play"
+                                                @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
+                                                @onclick:stopPropagation="true"
+                                                disabled="@IsCallToActionLoading(card.CallToActionHref)"
+                                                aria-label="@card.CallToActionLabel"
+                                                title="@card.CallToActionLabel">
+                                            <i class="fa-solid fa-play" aria-hidden="true"></i>
+                                        </button>
                                     }
-                                </button>
-                            }
-                        </div>
+                                </div>
 
-                    </article>
-                }
-                else
-                {
-                    <article class="@($"character-card is-locked{(ShakingLockedCharacterId == card.Character.CharacterId ? " is-shaking" : string.Empty)}")"
-                             @onclick="() => TriggerLockedCardShakeAsync(card)">
-                        <div class="character-card-media">
-                            <img src="@card.DisplayImagePath"
-                                 alt="@card.ImageAlt"
-                                 class="character-card-image"
-                                 loading="lazy"
-                                 decoding="async"
-                                 onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
-                            <span class="@($"character-card-badge{(ShakingLockedCharacterId == card.Character.CharacterId ? " is-slamming" : string.Empty)}")"
-                                  aria-label="Nog gesluit"
-                                  title="Nog gesluit">
-                                <i class="fa-solid fa-lock" aria-hidden="true"></i>
-                            </span>
+                                <div class="character-card-body">
+                                    <h2>@card.Heading</h2>
+                                    <p class="character-card-summary">@card.SummaryText</p>
 
-                            @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
-                            {
-                                <button type="button"
-                                        class="character-card-mobile-play"
-                                        @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
-                                        @onclick:stopPropagation="true"
-                                        disabled="@IsCallToActionLoading(card.CallToActionHref)"
-                                        aria-label="@card.CallToActionLabel"
-                                        title="@card.CallToActionLabel">
-                                    <i class="fa-solid fa-play" aria-hidden="true"></i>
-                                </button>
-                            }
-                        </div>
-
-                        <div class="character-card-body">
-                            <h2>@card.Heading</h2>
-                            <p class="character-card-summary">@card.SummaryText</p>
-
-                            @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
-                            {
-                                <button type="button"
-                                        class="character-card-cta"
-                                        @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
-                                        @onclick:stopPropagation="true"
-                                        disabled="@IsCallToActionLoading(card.CallToActionHref)">
-                                    @if (IsCallToActionLoading(card.CallToActionHref))
+                                    @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
                                     {
-                                        <span class="character-card-cta-spinner" aria-hidden="true"></span>
-                                        <span>Loading</span>
+                                        <button type="button"
+                                                class="character-card-cta"
+                                                @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
+                                                @onclick:stopPropagation="true"
+                                                disabled="@IsCallToActionLoading(card.CallToActionHref)">
+                                            @if (IsCallToActionLoading(card.CallToActionHref))
+                                            {
+                                                <span class="character-card-cta-spinner" aria-hidden="true"></span>
+                                                <span>Loading</span>
+                                            }
+                                            else
+                                            {
+                                                <span>@card.CallToActionLabel</span>
+                                            }
+                                        </button>
                                     }
-                                    else
-                                    {
-                                        <span>@card.CallToActionLabel</span>
-                                    }
-                                </button>
-                            }
-                        </div>
+                                </div>
 
-                    </article>
-                }
+                            </article>
+                        }
+                        else
+                        {
+                            <article class="@($"character-card is-locked{(ShakingLockedCharacterId == card.Character.CharacterId ? " is-shaking" : string.Empty)}")"
+                                     @key="card.Character.CharacterId"
+                                     @onclick="() => TriggerLockedCardShakeAsync(card)">
+                                <div class="character-card-media">
+                                    <img src="@card.DisplayImagePath"
+                                         alt="@card.ImageAlt"
+                                         class="character-card-image"
+                                         loading="lazy"
+                                         decoding="async"
+                                         onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                                    <span class="@($"character-card-badge{(ShakingLockedCharacterId == card.Character.CharacterId ? " is-slamming" : string.Empty)}")"
+                                          aria-label="Nog gesluit"
+                                          title="Nog gesluit">
+                                        <i class="fa-solid fa-lock" aria-hidden="true"></i>
+                                    </span>
+
+                                    @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
+                                    {
+                                        <button type="button"
+                                                class="character-card-mobile-play"
+                                                @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
+                                                @onclick:stopPropagation="true"
+                                                disabled="@IsCallToActionLoading(card.CallToActionHref)"
+                                                aria-label="@card.CallToActionLabel"
+                                                title="@card.CallToActionLabel">
+                                            <i class="fa-solid fa-play" aria-hidden="true"></i>
+                                        </button>
+                                    }
+                                </div>
+
+                                <div class="character-card-body">
+                                    <h2>@card.Heading</h2>
+                                    <p class="character-card-summary">@card.SummaryText</p>
+
+                                    @if (!string.IsNullOrWhiteSpace(card.CallToActionHref))
+                                    {
+                                        <button type="button"
+                                                class="character-card-cta"
+                                                @onclick="() => HandleCallToActionAsync(card.CallToActionHref!)"
+                                                @onclick:stopPropagation="true"
+                                                disabled="@IsCallToActionLoading(card.CallToActionHref)">
+                                            @if (IsCallToActionLoading(card.CallToActionHref))
+                                            {
+                                                <span class="character-card-cta-spinner" aria-hidden="true"></span>
+                                                <span>Loading</span>
+                                            }
+                                            else
+                                            {
+                                                <span>@card.CallToActionLabel</span>
+                                            }
+                                        </button>
+                                    }
+                                </div>
+
+                            </article>
+                        }
+                    </ChildContent>
+                    <ErrorContent Context="cardException">
+                        <article class="character-card character-card-error" aria-live="polite">
+                            <div class="character-card-body">
+                                <p class="character-card-error-kicker">Karakter fout</p>
+                                <h2>@card.Character.DisplayName</h2>
+                                <p class="character-card-error-slug">@card.Character.Slug</p>
+                                @if (!string.IsNullOrWhiteSpace(cardException.Message))
+                                {
+                                    <p class="character-card-error-message">@cardException.Message</p>
+                                }
+                                <details class="character-card-error-details" open>
+                                    <summary>Volledige fout</summary>
+                                    <pre>@cardException.ToString()</pre>
+                                </details>
+                            </div>
+                        </article>
+                    </ErrorContent>
+                </ErrorBoundary>
             }
         </section>
     }
@@ -320,34 +350,30 @@
     {
         try
         {
-            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            var signedInEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
-                               ?? authState.User.Identity?.Name;
-            SignedInEmail = signedInEmail;
-            IsSignedIn = authState.User.Identity?.IsAuthenticated == true && !string.IsNullOrWhiteSpace(signedInEmail);
+            await TryResolveSignedInStateAsync();
 
             var charactersTask = CharacterCatalogService.GetPublishedCharactersAsync();
             var freeStoriesTask = StoryCatalogService.GetFreeStoriesAsync();
             var luisterStoriesTask = StoryCatalogService.GetLuisterStoriesAsync();
-            Task<IReadOnlyList<UserStoryProgressItem>> progressTask = Task.FromResult<IReadOnlyList<UserStoryProgressItem>>(Array.Empty<UserStoryProgressItem>());
-            Task<IReadOnlyList<UserCharacterProfileListenItem>> profileListenTask = Task.FromResult<IReadOnlyList<UserCharacterProfileListenItem>>(Array.Empty<UserCharacterProfileListenItem>());
 
-            if (IsSignedIn)
+            await Task.WhenAll(charactersTask, freeStoriesTask, luisterStoriesTask);
+
+            var progressItems = Array.Empty<UserStoryProgressItem>();
+            var profileListenItems = Array.Empty<UserCharacterProfileListenItem>();
+
+            if (IsSignedIn && !string.IsNullOrWhiteSpace(SignedInEmail))
             {
-                progressTask = StoryTrackingService.GetUserStoryProgressAsync(signedInEmail);
-                profileListenTask = CharacterTrackingService.GetUserProfileListenStatsAsync(signedInEmail);
+                (progressItems, profileListenItems) = await TryLoadUserUnlockProgressAsync(SignedInEmail);
             }
 
-            await Task.WhenAll(charactersTask, freeStoriesTask, luisterStoriesTask, progressTask, profileListenTask);
-
             var storyLookup = BuildStoryLookup(freeStoriesTask.Result, luisterStoriesTask.Result);
-            var progressLookup = progressTask.Result
+            var progressLookup = progressItems
                 .GroupBy(progress => progress.StorySlug, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(
                     group => group.Key,
                     group => group.OrderByDescending(item => item.LastListenedAtUtc).First(),
                     StringComparer.OrdinalIgnoreCase);
-            var profileListenLookup = profileListenTask.Result
+            var profileListenLookup = profileListenItems
                 .GroupBy(item => item.CharacterSlug, StringComparer.OrdinalIgnoreCase)
                 .ToDictionary(
                     group => group.Key,
@@ -366,13 +392,57 @@
 
             TryOpenCharacterFromQuery();
         }
-        catch
+        catch (Exception exception)
         {
+            Logger.LogWarning(exception, "Karakters page failed to initialize.");
             LoadErrorMessage = "Herlaai asseblief die bladsy of probeer weer oor 'n rukkie.";
         }
         finally
         {
             IsLoading = false;
+        }
+    }
+
+    private async Task TryResolveSignedInStateAsync()
+    {
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var signedInEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                               ?? authState.User.Identity?.Name;
+            SignedInEmail = signedInEmail;
+            IsSignedIn = authState.User.Identity?.IsAuthenticated == true && !string.IsNullOrWhiteSpace(signedInEmail);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(exception, "Karakters page could not resolve the current auth state. Falling back to signed-out mode.");
+            SignedInEmail = null;
+            IsSignedIn = false;
+        }
+    }
+
+    private async Task<(UserStoryProgressItem[] ProgressItems, UserCharacterProfileListenItem[] ProfileListenItems)> TryLoadUserUnlockProgressAsync(string email)
+    {
+        try
+        {
+            var progressTask = StoryTrackingService.GetUserStoryProgressAsync(email);
+            var profileListenTask = CharacterTrackingService.GetUserProfileListenStatsAsync(email);
+
+            await Task.WhenAll(progressTask, profileListenTask);
+
+            return
+            (
+                ProgressItems: progressTask.Result.ToArray(),
+                ProfileListenItems: profileListenTask.Result.ToArray()
+            );
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(
+                exception,
+                "Karakters page could not load unlock progress for {Email}. Rendering the catalogue without personalised unlock data.",
+                email);
+            return (Array.Empty<UserStoryProgressItem>(), Array.Empty<UserCharacterProfileListenItem>());
         }
     }
 
@@ -628,24 +698,14 @@
         }
     }
 
-    private async Task PlayCharacterAudioAsync(CharacterCardViewModel card)
+    private async Task TrackCharacterAudioAsync(CharacterCardViewModel card)
     {
-        if (!card.IsUnlocked || !card.HasAudio)
+        if (!card.IsUnlocked ||
+            !card.HasAudio ||
+            string.IsNullOrWhiteSpace(card.PreviewAudioStreamSlug))
         {
             return;
         }
-
-        var clip = card.Character.AudioClips[Random.Shared.Next(card.Character.AudioClips.Count)];
-        var module = await TryGetCharactersModuleAsync();
-        if (module is null)
-        {
-            return;
-        }
-
-        await module.InvokeVoidAsync(
-            "playCharacterAudio",
-            AudioAccessService.CreateSignedAudioUrl(clip.StreamSlug),
-            card.Character.Slug);
 
         if (!IsSignedIn || string.IsNullOrWhiteSpace(SignedInEmail))
         {
@@ -657,7 +717,7 @@
             new CharacterProfileListenTrackingRequest(
                 CharacterId: card.Character.CharacterId,
                 CharacterSlug: card.Character.Slug,
-                StreamSlug: clip.StreamSlug,
+                StreamSlug: card.PreviewAudioStreamSlug,
                 Source: "profile"));
         if (tracked)
         {
@@ -713,6 +773,10 @@
             .Where(static story => story is not null)
             .Cast<StoryLinkInfo>()
             .ToArray();
+        var previewAudioClip = character.AudioClips
+            .OrderBy(clip => clip.SortOrder)
+            .ThenBy(clip => clip.Title, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
         var hasStoryDrivenUnlockRule = CharacterUnlockEvaluator.HasStoryDrivenUnlockRule(character);
         var primaryStory = ResolvePrimaryStory(character, relatedStories);
         var ctaHref = ResolveCallToActionHref(primaryStory);
@@ -731,7 +795,7 @@
         return new CharacterCardViewModel(
             Character: character,
             IsUnlocked: unlocked,
-            HasAudio: character.AudioClips.Count > 0,
+            HasAudio: previewAudioClip is not null,
             Heading: unlocked ? character.DisplayName : "?????",
             SummaryText: summaryText,
             DisplayImagePath: unlocked
@@ -742,7 +806,11 @@
                 : $"Mysterie illustrasie vir {character.DisplayName}",
             RelatedStories: relatedStories,
             CallToActionHref: ctaHref,
-            CallToActionLabel: ctaLabel);
+            CallToActionLabel: ctaLabel,
+            PreviewAudioUrl: previewAudioClip is null
+                ? null
+                : AudioAccessService.CreateSignedAudioUrl(previewAudioClip.StreamSlug, TimeSpan.FromHours(2)),
+            PreviewAudioStreamSlug: previewAudioClip?.StreamSlug);
     }
 
     private static IReadOnlyDictionary<string, StoryLinkInfo> BuildStoryLookup(
@@ -788,10 +856,7 @@
 
     private static string ResolveCharacterImagePath(string? path, DateTimeOffset? updatedAt = null)
     {
-        var resolvedPath = string.IsNullOrWhiteSpace(path)
-            ? "/branding/schink-logo-green.png"
-            : path;
-
+        var resolvedPath = RewriteCharacterImagePath(path);
         if (updatedAt is null)
         {
             return resolvedPath;
@@ -799,6 +864,50 @@
 
         var separator = resolvedPath.Contains('?', StringComparison.Ordinal) ? '&' : '?';
         return $"{resolvedPath}{separator}v={updatedAt.Value.ToUnixTimeSeconds()}";
+    }
+
+    private static string RewriteCharacterImagePath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return "/branding/schink-logo-green.png";
+        }
+
+        var trimmedPath = path.Trim();
+        if (Uri.TryCreate(trimmedPath, UriKind.Absolute, out var absoluteUri) &&
+            (string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)))
+        {
+            if (string.Equals(absoluteUri.Host, "media.prioritybit.co.za", StringComparison.OrdinalIgnoreCase))
+            {
+                return $"/media/image?src={Uri.EscapeDataString(absoluteUri.ToString())}";
+            }
+
+            return absoluteUri.ToString();
+        }
+
+        return EncodeLocalCharacterImagePath(trimmedPath);
+    }
+
+    private static string EncodeLocalCharacterImagePath(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "/branding/schink-logo-green.png";
+        }
+
+        var normalized = value.Replace('\\', '/');
+        var suffixStart = normalized.IndexOfAny(['?', '#']);
+        var pathPart = suffixStart >= 0 ? normalized[..suffixStart] : normalized;
+        var suffixPart = suffixStart >= 0 ? normalized[suffixStart..] : string.Empty;
+
+        var encodedPath = "/" + string.Join(
+            '/',
+            pathPart
+                .Split('/', StringSplitOptions.RemoveEmptyEntries)
+                .Select(Uri.EscapeDataString));
+
+        return encodedPath + suffixPart;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -902,5 +1011,7 @@
         string ImageAlt,
         IReadOnlyList<StoryLinkInfo> RelatedStories,
         string? CallToActionHref,
-        string CallToActionLabel);
+        string CallToActionLabel,
+        string? PreviewAudioUrl,
+        string? PreviewAudioStreamSlug);
 }

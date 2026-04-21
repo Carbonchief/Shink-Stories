@@ -79,20 +79,143 @@ function shouldCarryFullscreenIntentForward() {
     return storyPage instanceof HTMLElement && storyPage.classList.contains("manual-fullscreen-focus");
 }
 
+function getActiveFullscreenElement() {
+    return document.fullscreenElement
+        ?? document.webkitFullscreenElement
+        ?? null;
+}
+
+function getFullscreenRequestMethod(element) {
+    if (!(element instanceof HTMLElement)) {
+        return null;
+    }
+
+    if (typeof element.requestFullscreen === "function") {
+        return "requestFullscreen";
+    }
+
+    if (typeof element.webkitRequestFullscreen === "function") {
+        return "webkitRequestFullscreen";
+    }
+
+    return null;
+}
+
+function getFullscreenExitMethod() {
+    if (typeof document.exitFullscreen === "function") {
+        return "exitFullscreen";
+    }
+
+    if (typeof document.webkitExitFullscreen === "function") {
+        return "webkitExitFullscreen";
+    }
+
+    if (typeof document.webkitCancelFullScreen === "function") {
+        return "webkitCancelFullScreen";
+    }
+
+    return null;
+}
+
 function shouldUseNativeStoryPlayerFullscreen() {
-    if (!document.fullscreenEnabled) {
+    const storyPage = document.querySelector(STORY_PAGE_SELECTOR);
+    if (!(storyPage instanceof HTMLElement)) {
+        return false;
+    }
+
+    const content = storyPage.querySelector(STORY_PLAYER_CONTENT_SELECTOR);
+    const requestMethod = getFullscreenRequestMethod(content);
+    if (!requestMethod) {
         return false;
     }
 
     const userAgent = navigator.userAgent || "";
-    const platform = navigator.platform || "";
-    const maxTouchPoints = navigator.maxTouchPoints || 0;
-    const isAppleTouchDevice = /iPad|iPhone|iPod/i.test(userAgent)
-        || (/Mac/i.test(platform) && maxTouchPoints > 1);
+    const isIPhoneOrIPod = /iPhone|iPod/i.test(userAgent);
 
-    // iPad/iPhone fullscreen composition is prone to visible image seams here,
-    // so keep the player in the app's immersive layout instead.
-    return !isAppleTouchDevice;
+    // Keep the CSS immersive fallback on iPhone/iPod where page-level fullscreen
+    // support is still unreliable, but allow iPad/native Safari fullscreen when supported.
+    return !isIPhoneOrIPod;
+}
+
+async function requestNativeFullscreen(element) {
+    const requestMethod = getFullscreenRequestMethod(element);
+    if (!requestMethod) {
+        return false;
+    }
+
+    try {
+        if (requestMethod === "requestFullscreen") {
+            await element.requestFullscreen({ navigationUI: "hide" });
+        } else {
+            const result = element[requestMethod]();
+            if (result && typeof result.then === "function") {
+                await result;
+            }
+        }
+
+        return true;
+    } catch {
+        if (requestMethod !== "requestFullscreen") {
+            return false;
+        }
+
+        try {
+            await element.requestFullscreen();
+            return true;
+        } catch {
+            return false;
+        }
+    }
+}
+
+async function exitNativeFullscreen() {
+    const exitMethod = getFullscreenExitMethod();
+    if (!exitMethod) {
+        return false;
+    }
+
+    try {
+        const result = document[exitMethod]();
+        if (result && typeof result.then === "function") {
+            await result;
+        }
+
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function syncNativeStoryPlayerFullscreen(content, isEnabled) {
+    if (!(content instanceof HTMLElement) || !shouldUseNativeStoryPlayerFullscreen()) {
+        return;
+    }
+
+    const fullscreenElement = getActiveFullscreenElement();
+
+    if (isEnabled) {
+        try {
+            if (fullscreenElement && fullscreenElement !== content) {
+                suppressFullscreenExitCallbacks += 1;
+                await exitNativeFullscreen();
+                await waitForNextAnimationFrame();
+            }
+
+            if (!getActiveFullscreenElement()) {
+                await requestNativeFullscreen(content);
+            }
+        } finally {
+            if (suppressFullscreenExitCallbacks > 0) {
+                suppressFullscreenExitCallbacks -= 1;
+            }
+        }
+
+        return;
+    }
+
+    if (fullscreenElement) {
+        await exitNativeFullscreen();
+    }
 }
 
 function setFontAwesomeIcon(iconElement, iconClass) {
@@ -1577,7 +1700,6 @@ export async function setStoryPlayerFullscreenIntent(isEnabled) {
     }
 
     const content = storyPage.querySelector(".story-player-content");
-    const shouldUseNativeFullscreen = shouldUseNativeStoryPlayerFullscreen();
     storyPage.classList.toggle("manual-fullscreen-focus", Boolean(isEnabled));
     applyImmersiveChromeState(storyPage);
 
@@ -1596,31 +1718,11 @@ export async function setStoryPlayerFullscreenIntent(isEnabled) {
             content.scrollIntoView({ behavior: "smooth", block: "center" });
         }
 
-        if (content instanceof HTMLElement && shouldUseNativeFullscreen) {
-            try {
-                if (document.fullscreenElement && document.fullscreenElement !== content) {
-                    suppressFullscreenExitCallbacks += 1;
-                    await document.exitFullscreen();
-                    await waitForNextAnimationFrame();
-                }
-
-                if (!document.fullscreenElement) {
-                    await content.requestFullscreen();
-                }
-            } catch {
-                // Ignore blocked fullscreen requests.
-            } finally {
-                if (suppressFullscreenExitCallbacks > 0) {
-                    suppressFullscreenExitCallbacks -= 1;
-                }
-            }
+        if (content instanceof HTMLElement) {
+            await syncNativeStoryPlayerFullscreen(content, true);
         }
-    } else if (shouldUseNativeFullscreen && document.fullscreenElement) {
-        try {
-            await document.exitFullscreen();
-        } catch {
-            // Ignore fullscreen exit errors.
-        }
+    } else if (content instanceof HTMLElement) {
+        await syncNativeStoryPlayerFullscreen(content, false);
     }
 }
 
@@ -1707,10 +1809,39 @@ export function initializeStoryPlayerFullscreenExperience(dotNetRef) {
         }, 0);
     };
 
+    const handleFullscreenToggleClick = async (event) => {
+        const target = event.target instanceof Element
+            ? event.target.closest(".story-fullscreen-toggle")
+            : null;
+
+        if (!(target instanceof HTMLElement) || !storyPage.contains(target) || !shouldUseNativeStoryPlayerFullscreen()) {
+            return;
+        }
+
+        if (!storyPage.classList.contains("manual-fullscreen-focus")) {
+            await syncNativeStoryPlayerFullscreen(content, true);
+            return;
+        }
+
+        if (!getActiveFullscreenElement()) {
+            return;
+        }
+
+        suppressFullscreenExitCallbacks += 1;
+        try {
+            await syncNativeStoryPlayerFullscreen(content, false);
+        } finally {
+            if (suppressFullscreenExitCallbacks > 0) {
+                suppressFullscreenExitCallbacks -= 1;
+            }
+        }
+    };
+
     const handleFullscreenChange = () => {
         const binding = fullscreenBindings.get(storyPage);
+        const fullscreenElement = getActiveFullscreenElement();
 
-        if (!document.fullscreenElement && storyPage.classList.contains("manual-fullscreen-focus")) {
+        if (!fullscreenElement && storyPage.classList.contains("manual-fullscreen-focus")) {
             if (suppressFullscreenExitCallbacks > 0 || hasPendingStoryPlayerFullscreenIntent()) {
                 return;
             }
@@ -1725,7 +1856,7 @@ export function initializeStoryPlayerFullscreenExperience(dotNetRef) {
                     // Ignore callback failures after navigation/disconnect.
                 });
             }
-        } else if (document.fullscreenElement && storyPage.classList.contains("manual-fullscreen-focus") && binding) {
+        } else if (fullscreenElement && storyPage.classList.contains("manual-fullscreen-focus") && binding) {
             revealFullscreenChrome(storyPage, binding, true);
         }
     };
@@ -1737,13 +1868,16 @@ export function initializeStoryPlayerFullscreenExperience(dotNetRef) {
     document.addEventListener("keydown", handleKeyboardActivity, true);
     storyPage.addEventListener("focusin", handleFocusIn);
     storyPage.addEventListener("focusout", handleFocusOut);
+    storyPage.addEventListener("click", handleFullscreenToggleClick, true);
     document.addEventListener("fullscreenchange", handleFullscreenChange);
+    document.addEventListener("webkitfullscreenchange", handleFullscreenChange);
     fullscreenBindings.set(storyPage, {
         content,
         handleUserActivity,
         handleKeyboardActivity,
         handleFocusIn,
         handleFocusOut,
+        handleFullscreenToggleClick,
         handleFullscreenChange,
         hideChromeTimeoutId: 0,
         lastInputWasKeyboard: false
@@ -1767,7 +1901,9 @@ export function disposeStoryPlayerFullscreenExperience() {
             document.removeEventListener("keydown", binding.handleKeyboardActivity, true);
             storyPage.removeEventListener("focusin", binding.handleFocusIn);
             storyPage.removeEventListener("focusout", binding.handleFocusOut);
+            storyPage.removeEventListener("click", binding.handleFullscreenToggleClick, true);
             document.removeEventListener("fullscreenchange", binding.handleFullscreenChange);
+            document.removeEventListener("webkitfullscreenchange", binding.handleFullscreenChange);
             clearFullscreenChromeHideTimer(binding);
             fullscreenBindings.delete(storyPage);
         }
