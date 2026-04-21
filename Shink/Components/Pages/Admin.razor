@@ -135,12 +135,22 @@
                             <span class="admin-btn-text">@T("Soek", "Search")</span>
                             <span class="sr-only">@T("Soek intekenaars", "Search subscribers")</span>
                         </MudButton>
+                        <MudButton Class="admin-icon-btn admin-mobile-cta"
+                                   Variant="Variant.Outlined"
+                                   Color="Color.Primary"
+                                   OnClick="RefreshSubscribersAsync"
+                                   aria-label='@T("Verfris intekenaars", "Refresh subscribers")'
+                                   title='@T("Verfris intekenaars", "Refresh subscribers")'>
+                            <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
+                            <span class="admin-btn-text">@T("Verfris", "Refresh")</span>
+                            <span class="sr-only">@T("Verfris intekenaars", "Refresh subscribers")</span>
+                        </MudButton>
                     </div>
                 </div>
             </div>
 
             <MudTable T="AdminSubscriberRecord"
-                      Class="admin-grid"
+                      Class="admin-grid admin-subscriber-grid"
                       Items="FilteredSubscribers"
                       SortLabel='@T("Sorteer volgens", "Sort by")'
                       RowsPerPage="100"
@@ -153,18 +163,23 @@
                       OnRowClick="OnSubscriberRowClick">
                 <HeaderContent>
                     <MudTh>
-                        <MudTableSortLabel SortBy="new Func<AdminSubscriberRecord, object?>(subscriber => subscriber.Email)">
-                            @T("E-pos", "Email")
+                        <MudTableSortLabel SortBy="new Func<AdminSubscriberRecord, object?>(subscriber => BuildSubscriberSortKey(subscriber))">
+                            @T("Intekenaar", "Subscriber")
                         </MudTableSortLabel>
                     </MudTh>
                     <MudTh>
-                        <MudTableSortLabel SortBy="new Func<AdminSubscriberRecord, object?>(subscriber => BuildSubscriberName(subscriber))">
-                            @T("Naam", "Name")
+                        <MudTableSortLabel SortBy="new Func<AdminSubscriberRecord, object?>(subscriber => subscriber.MobileNumber ?? string.Empty)">
+                            @T("Selfoon", "Mobile")
                         </MudTableSortLabel>
                     </MudTh>
                     <MudTh>
                         <MudTableSortLabel SortBy="new Func<AdminSubscriberRecord, object?>(subscriber => BuildTierSortKey(subscriber.ActiveTierCodes))">
                             @T("Vlakke", "Tiers")
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel SortBy="new Func<AdminSubscriberRecord, object?>(subscriber => BuildSubscriptionSourceLabel(subscriber.SubscriptionSourceSystem))">
+                            @T("Bron", "Source")
                         </MudTableSortLabel>
                     </MudTh>
                     <MudTh>
@@ -189,9 +204,38 @@
                     </MudTh>
                 </HeaderContent>
                 <RowTemplate>
-                    <MudTd DataLabel='@T("E-pos", "Email")'>@HighlightSearchMatch(context.Email, SubscriberSearch)</MudTd>
-                    <MudTd DataLabel='@T("Naam", "Name")'>@HighlightSearchMatch(BuildSubscriberName(context), SubscriberSearch)</MudTd>
+                    @{
+                        var subscriberPrimaryLabel = BuildSubscriberPrimaryLabel(context);
+                        var subscriberSecondaryLabel = BuildSubscriberSecondaryLabel(context);
+                    }
+                    <MudTd DataLabel='@T("Intekenaar", "Subscriber")'>
+                        <div class="admin-subscriber-cell">
+                            <span class="admin-subscriber-avatar" aria-hidden="true">
+                                @if (!string.IsNullOrWhiteSpace(context.ProfileImageUrl))
+                                {
+                                    <img class="admin-subscriber-avatar-image"
+                                         src="@context.ProfileImageUrl"
+                                         alt=""
+                                         loading="lazy"
+                                         decoding="async" />
+                                }
+                                else
+                                {
+                                    <span class="admin-subscriber-avatar-fallback">@BuildSubscriberInitials(context)</span>
+                                }
+                            </span>
+                            <div class="admin-subscriber-meta">
+                                <span class="admin-subscriber-primary">@HighlightSearchMatch(subscriberPrimaryLabel, SubscriberSearch)</span>
+                                @if (!string.IsNullOrWhiteSpace(subscriberSecondaryLabel))
+                                {
+                                    <span class="admin-subscriber-secondary">@HighlightSearchMatch(subscriberSecondaryLabel, SubscriberSearch)</span>
+                                }
+                            </div>
+                        </div>
+                    </MudTd>
+                    <MudTd DataLabel='@T("Selfoon", "Mobile")'>@HighlightSearchMatch(context.MobileNumber ?? "-", SubscriberSearch)</MudTd>
                     <MudTd DataLabel='@T("Vlakke", "Tiers")'>@BuildTierSummary(context.ActiveTierCodes)</MudTd>
+                    <MudTd DataLabel='@T("Bron", "Source")'>@BuildSubscriptionSourceLabel(context.SubscriptionSourceSystem)</MudTd>
                     <MudTd DataLabel='@T("Betaalverskaffer", "Payment Provider")'>@BuildPaymentProviderLabel(context.PaymentProvider)</MudTd>
                     <MudTd DataLabel='@T("Status", "Status")'>@BuildSubscriptionStatusLabel(context)</MudTd>
                     <MudTd DataLabel='@T("Ingeteken op", "Subscribed On")'>@FormatAdminDate(context.SubscribedAt)</MudTd>
@@ -1468,6 +1512,8 @@
     private string? PlaylistEditorStateSignature { get; set; }
     private string NewStoryDialogInstanceKey { get; set; } = Guid.NewGuid().ToString("N");
     private IJSObjectReference? AdminUploadModule { get; set; }
+    private IJSObjectReference? AdminGridModule { get; set; }
+    private bool SubscriberGridEnhancementPending { get; set; } = true;
 
     private IReadOnlyList<AdminStoryRecord> AvailableStoriesForPlaylist =>
         Stories
@@ -1552,53 +1598,85 @@
             await InvokeAsync(StateHasChanged);
         }
 
-        if (!firstRender)
+        if (firstRender)
+        {
+            try
+            {
+                var storedLanguageCode = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", AdminLanguageStorageKey);
+                var storedLanguage = ParseLanguage(storedLanguageCode);
+                if (storedLanguage != CurrentLanguage)
+                {
+                    CurrentLanguage = storedLanguage;
+                    SubscriberGridEnhancementPending = true;
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+            catch (Exception exception)
+            {
+                // Ignore storage availability issues (private mode / blocked storage).
+                Logger.LogDebug(exception, "Admin language preference load skipped.");
+            }
+
+            try
+            {
+                AdminUploadModule = await GetAdminUploadModuleAsync();
+            }
+            catch (Exception exception)
+            {
+                Logger.LogWarning(exception, "Admin direct-upload module could not be loaded during first render.");
+            }
+        }
+
+        if (!SubscriberGridEnhancementPending)
         {
             return;
         }
 
         try
         {
-            var storedLanguageCode = await JSRuntime.InvokeAsync<string?>("localStorage.getItem", AdminLanguageStorageKey);
-            var storedLanguage = ParseLanguage(storedLanguageCode);
-            if (storedLanguage == CurrentLanguage)
-            {
-                return;
-            }
-
-            CurrentLanguage = storedLanguage;
-            await InvokeAsync(StateHasChanged);
+            var gridModule = await GetAdminGridModuleAsync();
+            await gridModule.InvokeVoidAsync(
+                "enhanceSubscriberGrid",
+                ".admin-subscriber-grid",
+                "shink.admin.subscribers.column-widths",
+                T("Verstel kolomwydte", "Resize column width"),
+                T("Dubbelkliek om kolom outomaties te pas", "Double-click to autofit column"));
+            SubscriberGridEnhancementPending = false;
+        }
+        catch (JSDisconnectedException)
+        {
+            // Ignore disconnects during teardown/reconnect.
         }
         catch (Exception exception)
         {
-            // Ignore storage availability issues (private mode / blocked storage).
-            Logger.LogDebug(exception, "Admin language preference load skipped.");
-        }
-
-        try
-        {
-            AdminUploadModule = await GetAdminUploadModuleAsync();
-        }
-        catch (Exception exception)
-        {
-            Logger.LogWarning(exception, "Admin direct-upload module could not be loaded during first render.");
+            Logger.LogDebug(exception, "Admin subscriber grid enhancement skipped.");
         }
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (AdminUploadModule is null)
+        if (AdminGridModule is not null)
         {
-            return;
+            try
+            {
+                await AdminGridModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Ignore disconnects during teardown.
+            }
         }
 
-        try
+        if (AdminUploadModule is not null)
         {
-            await AdminUploadModule.DisposeAsync();
-        }
-        catch (JSDisconnectedException)
-        {
-            // Ignore disconnects during teardown.
+            try
+            {
+                await AdminUploadModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // Ignore disconnects during teardown.
+            }
         }
     }
 
@@ -1649,6 +1727,7 @@
         {
             var selectedSubscriberId = SubscriberEditor?.SubscriberId;
             Subscribers = await AdminManagementService.GetSubscribersAsync(CurrentAdminEmail, SubscriberSearch);
+            SubscriberGridEnhancementPending = true;
             var selectedSubscriber = selectedSubscriberId is not null
                 ? Subscribers.FirstOrDefault(subscriber => subscriber.SubscriberId == selectedSubscriberId.Value)
                 : Subscribers.FirstOrDefault();
@@ -3340,6 +3419,17 @@
         return AdminUploadModule;
     }
 
+    private async Task<IJSObjectReference> GetAdminGridModuleAsync()
+    {
+        if (AdminGridModule is not null)
+        {
+            return AdminGridModule;
+        }
+
+        AdminGridModule = await JSRuntime.InvokeAsync<IJSObjectReference>("import", "/js/admin-grid-tools.js");
+        return AdminGridModule;
+    }
+
     private async Task CleanupUploadedStoryObjectsAsync(IEnumerable<string> objectKeys)
     {
         foreach (var objectKey in objectKeys
@@ -3999,6 +4089,106 @@
             : subscriber.DisplayName!;
     }
 
+    private static string BuildSubscriberPrimaryLabel(AdminSubscriberRecord? subscriber)
+    {
+        if (subscriber is null)
+        {
+            return "-";
+        }
+
+        var name = BuildSubscriberName(subscriber);
+        return string.Equals(name, "-", StringComparison.Ordinal)
+            ? subscriber.Email
+            : name;
+    }
+
+    private static string? BuildSubscriberSecondaryLabel(AdminSubscriberRecord? subscriber)
+    {
+        if (subscriber is null)
+        {
+            return null;
+        }
+
+        var primary = BuildSubscriberPrimaryLabel(subscriber);
+        return string.Equals(primary, subscriber.Email, StringComparison.OrdinalIgnoreCase)
+            ? null
+            : subscriber.Email;
+    }
+
+    private static string BuildSubscriberSortKey(AdminSubscriberRecord? subscriber)
+    {
+        if (subscriber is null)
+        {
+            return string.Empty;
+        }
+
+        return $"{BuildSubscriberPrimaryLabel(subscriber)}|{subscriber.Email}";
+    }
+
+    private static string BuildSubscriberInitials(AdminSubscriberRecord? subscriber)
+    {
+        if (subscriber is null)
+        {
+            return "S";
+        }
+
+        var fromSeparateNames = BuildInitials(subscriber.FirstName, subscriber.LastName);
+        if (!string.IsNullOrWhiteSpace(fromSeparateNames))
+        {
+            return fromSeparateNames;
+        }
+
+        var displayName = BuildSubscriberPrimaryLabel(subscriber);
+        var localName = displayName.Contains('@', StringComparison.Ordinal)
+            ? displayName[..displayName.IndexOf('@')]
+            : displayName;
+
+        var tokens = localName
+            .Split([' ', '.', '_', '-'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(token => token.Length > 0)
+            .Take(2)
+            .ToArray();
+
+        if (tokens.Length >= 2)
+        {
+            return string.Concat(
+                char.ToUpperInvariant(tokens[0][0]),
+                char.ToUpperInvariant(tokens[1][0]));
+        }
+
+        if (tokens.Length == 1)
+        {
+            var token = tokens[0];
+            if (token.Length >= 2)
+            {
+                return string.Concat(
+                    char.ToUpperInvariant(token[0]),
+                    char.ToUpperInvariant(token[1]));
+            }
+
+            return char.ToUpperInvariant(token[0]).ToString();
+        }
+
+        return "S";
+    }
+
+    private static string? BuildInitials(string? first, string? last)
+    {
+        var firstInitial = string.IsNullOrWhiteSpace(first)
+            ? null
+            : char.ToUpperInvariant(first.Trim()[0]).ToString();
+        var lastInitial = string.IsNullOrWhiteSpace(last)
+            ? null
+            : char.ToUpperInvariant(last.Trim()[0]).ToString();
+
+        if (firstInitial is null && lastInitial is null)
+        {
+            return null;
+        }
+
+        return $"{firstInitial}{lastInitial}".Trim();
+    }
+
     private string BuildTierSummary(IReadOnlyList<string>? tiers) =>
         tiers is null || tiers.Count == 0 ? T("Geen", "None") : string.Join(", ", tiers);
 
@@ -4159,8 +4349,18 @@
         {
             "payfast" => "PayFast",
             "paystack" => "Paystack",
+            "free" => T("Gratis", "Free"),
             null or "" => "-",
             _ => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(provider.Trim().ToLowerInvariant())
+        };
+
+    private string BuildSubscriptionSourceLabel(string? sourceSystem) =>
+        sourceSystem?.Trim().ToLowerInvariant() switch
+        {
+            "wordpress_pmpro" => "WordPress / PMPro",
+            "shink_app" => T("App", "App"),
+            null or "" => "-",
+            _ => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(sourceSystem.Trim().Replace("_", " ", StringComparison.Ordinal).ToLowerInvariant())
         };
 
     private string BuildSubscriptionStatusLabel(AdminSubscriberRecord subscriber)

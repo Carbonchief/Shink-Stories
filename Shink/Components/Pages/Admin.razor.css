@@ -438,6 +438,145 @@
     background: var(--admin-selected-row);
 }
 
+.admin-subscriber-grid ::deep table {
+    width: 100%;
+    table-layout: fixed;
+}
+
+.admin-subscriber-grid {
+    overflow-x: auto;
+}
+
+.admin-subscriber-grid ::deep .mud-table-head .mud-table-cell {
+    position: relative;
+}
+
+.admin-subscriber-grid ::deep tr > .mud-table-cell:nth-child(1) {
+    width: 31%;
+}
+
+.admin-subscriber-grid ::deep tr > .mud-table-cell:nth-child(2) {
+    width: 13%;
+}
+
+.admin-subscriber-grid ::deep tr > .mud-table-cell:nth-child(3) {
+    width: 13%;
+}
+
+.admin-subscriber-grid ::deep tr > .mud-table-cell:nth-child(4) {
+    width: 12%;
+}
+
+.admin-subscriber-grid ::deep tr > .mud-table-cell:nth-child(5) {
+    width: 11%;
+}
+
+.admin-subscriber-grid ::deep tr > .mud-table-cell:nth-child(6) {
+    width: 8%;
+}
+
+.admin-subscriber-grid ::deep tr > .mud-table-cell:nth-child(7),
+.admin-subscriber-grid ::deep tr > .mud-table-cell:nth-child(8) {
+    width: 6%;
+}
+
+.admin-subscriber-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.admin-subscriber-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 999px;
+    overflow: hidden;
+    flex: 0 0 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, #f3a13f 24%, var(--admin-surface));
+    border: 1px solid color-mix(in srgb, var(--admin-border-strong) 72%, transparent);
+}
+
+.admin-subscriber-avatar-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+.admin-subscriber-avatar-fallback {
+    font-size: 0.8rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    color: #f6f9fc;
+}
+
+.admin-subscriber-meta {
+    min-width: 0;
+    display: grid;
+    gap: 0.1rem;
+    overflow: hidden;
+}
+
+.admin-subscriber-primary,
+.admin-subscriber-secondary {
+    display: block;
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+.admin-subscriber-primary {
+    font-weight: 700;
+    color: inherit;
+}
+
+.admin-subscriber-secondary {
+    color: color-mix(in srgb, currentColor 62%, transparent);
+    font-size: 0.87rem;
+}
+
+.admin-grid-resize-handle {
+    position: absolute;
+    top: 0;
+    right: -5px;
+    width: 10px;
+    height: 100%;
+    cursor: col-resize;
+    touch-action: none;
+    user-select: none;
+    z-index: 3;
+}
+
+.admin-grid-resize-handle::before {
+    content: "";
+    position: absolute;
+    top: 14%;
+    bottom: 14%;
+    left: 50%;
+    width: 1px;
+    transform: translateX(-50%);
+    background: color-mix(in srgb, #ffffff 40%, transparent);
+    transition: background-color 120ms ease, width 120ms ease;
+}
+
+.admin-grid-resize-handle:hover::before,
+.admin-grid-resize-handle.is-active::before {
+    width: 2px;
+    background: #f3a13f;
+}
+
+.admin-subscriber-grid.is-column-resizing,
+.admin-subscriber-grid.is-column-resizing * {
+    cursor: col-resize !important;
+    user-select: none !important;
+}
+
 .admin-editor {
     display: grid;
     gap: 0.6rem;
@@ -1145,6 +1284,21 @@
 
     .admin-grid ::deep table {
         min-width: 0;
+    }
+
+    .admin-subscriber-grid ::deep tr > .mud-table-cell:nth-child(1),
+    .admin-subscriber-grid ::deep tr > .mud-table-cell:nth-child(2),
+    .admin-subscriber-grid ::deep tr > .mud-table-cell:nth-child(3),
+    .admin-subscriber-grid ::deep tr > .mud-table-cell:nth-child(4),
+    .admin-subscriber-grid ::deep tr > .mud-table-cell:nth-child(5),
+    .admin-subscriber-grid ::deep tr > .mud-table-cell:nth-child(6),
+    .admin-subscriber-grid ::deep tr > .mud-table-cell:nth-child(7),
+    .admin-subscriber-grid ::deep tr > .mud-table-cell:nth-child(8) {
+        width: auto;
+    }
+
+    .admin-grid-resize-handle {
+        display: none;
     }
 
     .admin-editor > .admin-btn,

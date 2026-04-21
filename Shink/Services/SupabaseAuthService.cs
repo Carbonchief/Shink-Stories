@@ -12,10 +12,14 @@ namespace Shink.Services;
 public sealed class SupabaseAuthService(
     HttpClient httpClient,
     IOptions<SupabaseOptions> supabaseOptions,
+    IWordPressMigrationService wordPressMigrationService,
+    WordPressPasswordVerifier wordPressPasswordVerifier,
     ILogger<SupabaseAuthService> logger) : ISupabaseAuthService
 {
     private readonly HttpClient _httpClient = httpClient;
     private readonly SupabaseOptions _options = supabaseOptions.Value;
+    private readonly IWordPressMigrationService _wordPressMigrationService = wordPressMigrationService;
+    private readonly WordPressPasswordVerifier _wordPressPasswordVerifier = wordPressPasswordVerifier;
     private readonly ILogger<SupabaseAuthService> _logger = logger;
 
     public async Task<SupabaseSignInResult> SignInWithPasswordAsync(string email, string password, CancellationToken cancellationToken = default)
@@ -30,12 +34,63 @@ public sealed class SupabaseAuthService(
             return SupabaseSignInResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en anon key op.");
         }
 
-        return await ExecuteAuthRequestAsync(
+        var signInResult = await ExecuteAuthRequestAsync(
             tokenEndpoint,
             new SupabasePasswordSignInRequest(email, password),
             failureFallbackMessage: "Kon nie in teken nie. Kontroleer jou e-pos en wagwoord en probeer weer.",
             requestActionName: "sign-in",
             cancellationToken);
+        if (signInResult.IsSuccess)
+        {
+            return signInResult;
+        }
+
+        var importedUser = await _wordPressMigrationService.GetImportedUserByEmailAsync(email, cancellationToken);
+        if (importedUser is null ||
+            string.IsNullOrWhiteSpace(importedUser.PasswordHash) ||
+            !_wordPressPasswordVerifier.Verify(password, importedUser.PasswordHash))
+        {
+            return signInResult;
+        }
+
+        var importedDisplayName = importedUser.DisplayName;
+        if (string.IsNullOrWhiteSpace(importedDisplayName))
+        {
+            importedDisplayName = $"{importedUser.FirstName} {importedUser.LastName}".Trim();
+        }
+
+        var signUpMetadata = new SupabasePasswordSignUpMetadata(
+            FirstName: importedUser.FirstName,
+            LastName: importedUser.LastName,
+            DisplayName: string.IsNullOrWhiteSpace(importedDisplayName) ? null : importedDisplayName,
+            FullName: string.IsNullOrWhiteSpace(importedDisplayName) ? null : importedDisplayName,
+            MobileNumber: importedUser.MobileNumber);
+
+        var adminCreateResult = await TryCreateConfirmedUserWithAdminApiAsync(
+            importedUser.Email,
+            password,
+            signUpMetadata,
+            cancellationToken);
+        if (!adminCreateResult.IsSuccess)
+        {
+            return IndicatesExistingAuthUser(adminCreateResult.ErrorMessage)
+                ? signInResult
+                : adminCreateResult;
+        }
+
+        var migratedSignInResult = await ExecuteAuthRequestAsync(
+            tokenEndpoint,
+            new SupabasePasswordSignInRequest(importedUser.Email, password),
+            failureFallbackMessage: "Kon nie in teken nie. Kontroleer jou e-pos en wagwoord en probeer weer.",
+            requestActionName: "sign-in-after-wordpress-migration",
+            cancellationToken);
+        if (migratedSignInResult.IsSuccess)
+        {
+            await _wordPressMigrationService.MarkPasswordMigratedAsync(importedUser.WordPressUserId, cancellationToken);
+            return migratedSignInResult;
+        }
+
+        return signInResult;
     }
 
     public async Task<SupabaseSignInResult> SignUpWithPasswordAsync(
@@ -998,6 +1053,11 @@ public sealed class SupabaseAuthService(
     private static bool ShouldFallbackToAdminCreateUser(string? message) =>
         !string.IsNullOrWhiteSpace(message) &&
         message.Contains("bevestigings-e-pos", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IndicatesExistingAuthUser(string? message) =>
+        !string.IsNullOrWhiteSpace(message) &&
+        (message.Contains("reeds deur 'n ander rekening gebruik", StringComparison.OrdinalIgnoreCase) ||
+         message.Contains("already", StringComparison.OrdinalIgnoreCase));
 
     private static bool ShouldRefreshAuthenticatedSession(HttpStatusCode statusCode, string? errorMessage) =>
         statusCode == HttpStatusCode.Unauthorized ||

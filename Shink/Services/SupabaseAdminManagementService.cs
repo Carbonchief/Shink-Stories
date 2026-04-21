@@ -161,10 +161,12 @@ public sealed partial class SupabaseAdminManagementService(
                     LastName: NormalizeOptionalText(row.LastName, 80),
                     DisplayName: NormalizeOptionalText(row.DisplayName, 120),
                     MobileNumber: NormalizeOptionalText(row.MobileNumber, 32),
+                    ProfileImageUrl: NormalizeOptionalText(row.ProfileImageUrl, 2048),
                     CreatedAt: row.CreatedAt,
                     UpdatedAt: row.UpdatedAt,
                     ActiveTierCodes: activeTierCodes,
                     PaymentProvider: subscriptionSummary?.PaymentProvider,
+                    SubscriptionSourceSystem: subscriptionSummary?.SourceSystem,
                     SubscriptionStatus: subscriptionSummary?.Status,
                     SubscribedAt: subscriptionSummary?.SubscribedAt,
                     NextPaymentDueAt: subscriptionSummary?.NextRenewalAt,
@@ -1440,9 +1442,9 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/subscribers" +
-            "?select=subscriber_id,email,first_name,last_name,display_name,mobile_number,created_at,updated_at" +
+            "?select=subscriber_id,email,first_name,last_name,display_name,mobile_number,profile_image_url,created_at,updated_at" +
             "&order=updated_at.desc" +
-            "&limit=1000");
+            "&limit=5000");
         return await FetchRowsAsync<SubscriberRow>(uri, apiKey, cancellationToken);
     }
 
@@ -1451,9 +1453,9 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/subscriptions" +
-            "?select=subscriber_id,tier_code,provider,status,subscribed_at,next_renewal_at,cancelled_at" +
+            "?select=subscriber_id,tier_code,provider,source_system,status,subscribed_at,next_renewal_at,cancelled_at" +
             "&order=subscribed_at.desc" +
-            "&limit=5000");
+            "&limit=10000");
 
         return await FetchRowsAsync<SubscriptionRow>(uri, apiKey, cancellationToken);
     }
@@ -1845,6 +1847,7 @@ public sealed partial class SupabaseAdminManagementService(
 
                     return new SubscriptionSummary(
                         NormalizeOptionalText(selected.Provider, 40),
+                        NormalizeOptionalText(selected.SourceSystem, 40),
                         NormalizeOptionalText(selected.Status, 40),
                         selected.SubscribedAt,
                         selected.NextRenewalAt,
@@ -2076,6 +2079,9 @@ public sealed partial class SupabaseAdminManagementService(
         [JsonPropertyName("mobile_number")]
         public string? MobileNumber { get; set; }
 
+        [JsonPropertyName("profile_image_url")]
+        public string? ProfileImageUrl { get; set; }
+
         [JsonPropertyName("created_at")]
         public DateTimeOffset CreatedAt { get; set; }
 
@@ -2094,6 +2100,9 @@ public sealed partial class SupabaseAdminManagementService(
         [JsonPropertyName("provider")]
         public string? Provider { get; set; }
 
+        [JsonPropertyName("source_system")]
+        public string? SourceSystem { get; set; }
+
         [JsonPropertyName("status")]
         public string Status { get; set; } = string.Empty;
 
@@ -2109,6 +2118,7 @@ public sealed partial class SupabaseAdminManagementService(
 
     private sealed record SubscriptionSummary(
         string? PaymentProvider,
+        string? SourceSystem,
         string? Status,
         DateTimeOffset? SubscribedAt,
         DateTimeOffset? NextRenewalAt,

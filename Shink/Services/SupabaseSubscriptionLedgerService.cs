@@ -79,7 +79,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var escapedEmail = Uri.EscapeDataString(normalizedEmail);
         var uri = new Uri(
             baseUri,
-            $"rest/v1/subscribers?select=email,first_name,last_name,display_name,mobile_number&email=eq.{escapedEmail}&limit=1");
+            $"rest/v1/subscribers?select=email,first_name,last_name,display_name,mobile_number,profile_image_url,profile_image_object_key,profile_image_content_type&email=eq.{escapedEmail}&limit=1");
 
         try
         {
@@ -101,7 +101,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             var profile = profiles.FirstOrDefault();
             if (profile is null)
             {
-                return new SubscriberProfile(normalizedEmail, null, null, null, null);
+                return new SubscriberProfile(normalizedEmail, null, null, null, null, null, null, null);
             }
 
             return new SubscriberProfile(
@@ -109,7 +109,10 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 FirstName: NormalizeOptionalText(profile.FirstName, 80),
                 LastName: NormalizeOptionalText(profile.LastName, 80),
                 DisplayName: NormalizeOptionalText(profile.DisplayName, 120),
-                MobileNumber: NormalizeOptionalText(profile.MobileNumber, 32));
+                MobileNumber: NormalizeOptionalText(profile.MobileNumber, 32),
+                ProfileImageUrl: NormalizeOptionalText(profile.ProfileImageUrl, 2048),
+                ProfileImageObjectKey: NormalizeOptionalText(profile.ProfileImageObjectKey, 512),
+                ProfileImageContentType: NormalizeOptionalText(profile.ProfileImageContentType, 128));
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
         {
@@ -124,6 +127,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string? lastName,
         string? displayName,
         string? mobileNumber,
+        string? profileImageUrl = null,
+        string? profileImageObjectKey = null,
+        string? profileImageContentType = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(email))
@@ -154,6 +160,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 lastName ?? string.Empty,
                 displayName,
                 mobileNumber,
+                profileImageUrl,
+                profileImageObjectKey,
+                profileImageContentType,
                 cancellationToken);
             return !string.IsNullOrWhiteSpace(subscriberId);
         }
@@ -277,6 +286,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string? lastName,
         string? displayName,
         string? mobileNumber,
+        string? profileImageUrl = null,
+        string? profileImageObjectKey = null,
+        string? profileImageContentType = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(email))
@@ -307,6 +319,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 lastName ?? string.Empty,
                 displayName,
                 mobileNumber,
+                profileImageUrl,
+                profileImageObjectKey,
+                profileImageContentType,
                 cancellationToken);
             if (string.IsNullOrWhiteSpace(subscriberId))
             {
@@ -703,6 +718,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             formCollection["name_last"].ToString().Trim(),
             displayName: null,
             mobileNumber: null,
+            profileImageUrl: null,
+            profileImageObjectKey: null,
+            profileImageContentType: null,
             cancellationToken);
 
         if (subscriberId is null)
@@ -767,6 +785,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             TryReadNestedString(data, "customer", "last_name") ?? string.Empty,
             displayName: TryReadNestedString(data, "customer", "display_name"),
             mobileNumber: TryReadNestedString(data, "customer", "phone"),
+            profileImageUrl: null,
+            profileImageObjectKey: null,
+            profileImageContentType: null,
             cancellationToken);
 
         if (subscriberId is null)
@@ -905,6 +926,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string lastName,
         string? displayName,
         string? mobileNumber,
+        string? profileImageUrl,
+        string? profileImageObjectKey,
+        string? profileImageContentType,
         CancellationToken cancellationToken)
     {
         var payload = new Dictionary<string, object?>
@@ -931,6 +955,21 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         if (!string.IsNullOrWhiteSpace(normalizedMobileNumber))
         {
             payload["mobile_number"] = normalizedMobileNumber;
+        }
+
+        if (!string.IsNullOrWhiteSpace(profileImageUrl))
+        {
+            payload["profile_image_url"] = profileImageUrl.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(profileImageObjectKey))
+        {
+            payload["profile_image_object_key"] = profileImageObjectKey.Trim();
+        }
+
+        if (!string.IsNullOrWhiteSpace(profileImageContentType))
+        {
+            payload["profile_image_content_type"] = profileImageContentType.Trim();
         }
 
         var uri = new Uri(baseUri, "rest/v1/subscribers?on_conflict=email&select=subscriber_id");
@@ -1435,5 +1474,14 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         [JsonPropertyName("mobile_number")]
         public string? MobileNumber { get; set; }
+
+        [JsonPropertyName("profile_image_url")]
+        public string? ProfileImageUrl { get; set; }
+
+        [JsonPropertyName("profile_image_object_key")]
+        public string? ProfileImageObjectKey { get; set; }
+
+        [JsonPropertyName("profile_image_content_type")]
+        public string? ProfileImageContentType { get; set; }
     }
 }

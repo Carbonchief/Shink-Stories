@@ -14,6 +14,9 @@ public interface ISubscriptionLedgerService
         string? lastName,
         string? displayName,
         string? mobileNumber,
+        string? profileImageUrl = null,
+        string? profileImageObjectKey = null,
+        string? profileImageContentType = null,
         CancellationToken cancellationToken = default);
     Task<bool> EnsureGratisAccessAsync(
         string? email,
@@ -21,6 +24,9 @@ public interface ISubscriptionLedgerService
         string? lastName,
         string? displayName,
         string? mobileNumber,
+        string? profileImageUrl = null,
+        string? profileImageObjectKey = null,
+        string? profileImageContentType = null,
         CancellationToken cancellationToken = default);
     Task<SubscriberEmailChangeResult> ChangeSubscriberEmailAsync(
         string? currentEmail,
@@ -34,5 +40,8 @@ public sealed record SubscriberProfile(
     string? FirstName,
     string? LastName,
     string? DisplayName,
-    string? MobileNumber);
+    string? MobileNumber,
+    string? ProfileImageUrl,
+    string? ProfileImageObjectKey,
+    string? ProfileImageContentType);
 public sealed record SubscriberEmailChangeResult(bool IsSuccess, string? ErrorMessage = null);

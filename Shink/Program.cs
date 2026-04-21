@@ -85,8 +85,10 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
 builder.Services.AddAuthorization();
 builder.Services.AddSingleton<IAudioAccessService, AudioAccessService>();
 builder.Services.AddSingleton<IStoryMediaStorageService, CloudflareR2StoryMediaStorageService>();
+builder.Services.AddSingleton<ISubscriberAvatarStorageService, CloudflareR2SubscriberAvatarStorageService>();
 builder.Services.AddSingleton<IResourceDocumentStorageService, CloudflareR2ResourceDocumentStorageService>();
 builder.Services.AddSingleton<IResourceDocumentPreviewService, ResourceDocumentPreviewService>();
+builder.Services.AddSingleton<WordPressPasswordVerifier>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<UiErrorDiagnosticsStore>();
@@ -94,6 +96,7 @@ builder.Services.AddSingleton<ILoggerProvider, UiErrorDiagnosticsLoggerProvider>
 builder.Services.Configure<ResendOptions>(builder.Configuration.GetSection(ResendOptions.SectionName));
 builder.Services.Configure<SupabaseOptions>(builder.Configuration.GetSection(SupabaseOptions.SectionName));
 builder.Services.Configure<CloudflareR2Options>(builder.Configuration.GetSection(CloudflareR2Options.SectionName));
+builder.Services.Configure<WordPressOptions>(builder.Configuration.GetSection(WordPressOptions.SectionName));
 builder.Services.Configure<AuthSessionOptions>(builder.Configuration.GetSection(AuthSessionOptions.SectionName));
 builder.Services.Configure<PayFastOptions>(builder.Configuration.GetSection(PayFastOptions.SectionName));
 builder.Services.Configure<PaystackOptions>(builder.Configuration.GetSection(PaystackOptions.SectionName));
@@ -115,6 +118,7 @@ builder.Services.AddHttpClient<IStoryTrackingService, SupabaseStoryTrackingServi
 builder.Services.AddHttpClient<IStoryFavoriteService, SupabaseStoryFavoriteService>();
 builder.Services.AddHttpClient<IResourceCatalogService, SupabaseResourceCatalogService>();
 builder.Services.AddHttpClient<IAdminManagementService, SupabaseAdminManagementService>();
+builder.Services.AddHttpClient<IWordPressMigrationService, WordPressMigrationService>();
 builder.Services.AddHttpClient<IResourceDocumentPreviewBackfillService, SupabaseResourceDocumentPreviewBackfillService>();
 builder.Services.AddHttpClient<ICharacterCatalogService, SupabaseCharacterService>();
 builder.Services.AddHttpClient<ICharacterAdminService, SupabaseCharacterService>();
@@ -1076,14 +1080,14 @@ app.MapGet("/auth/callback", async (
         exchangeResult.LastName,
         exchangeResult.DisplayName,
         null,
-        httpContext.RequestAborted);
+        cancellationToken: httpContext.RequestAborted);
     var gratisProvisioned = await subscriptionLedgerService.EnsureGratisAccessAsync(
         signedInEmail,
         exchangeResult.FirstName,
         exchangeResult.LastName,
         exchangeResult.DisplayName,
         null,
-        httpContext.RequestAborted);
+        cancellationToken: httpContext.RequestAborted);
 
     if (!profileStored || !gratisProvisioned)
     {
@@ -1091,7 +1095,7 @@ app.MapGet("/auth/callback", async (
             "Kon nie jou gratis toegang nou aktiveer nie. Probeer asseblief weer."));
     }
 
-    var signInCookieResult = await SignInUserAsync(httpContext, signedInEmail, authSessionService, adminManagementService);
+    var signInCookieResult = await SignInUserAsync(httpContext, signedInEmail, authSessionService, adminManagementService, subscriptionLedgerService, httpContext.RequestServices.GetRequiredService<IWordPressMigrationService>());
     if (!signInCookieResult.IsSuccess)
     {
         return Results.Redirect(BuildGoogleAuthErrorRedirectPath(signInCookieResult.ErrorMessage));
@@ -1134,7 +1138,7 @@ app.MapPost("/api/auth/login", async (
     }
 
     var signedInEmail = signInResult.UserEmail ?? request.Email!;
-    var signInCookieResult = await SignInUserAsync(httpContext, signedInEmail, authSessionService, adminManagementService);
+    var signInCookieResult = await SignInUserAsync(httpContext, signedInEmail, authSessionService, adminManagementService, subscriptionLedgerService, httpContext.RequestServices.GetRequiredService<IWordPressMigrationService>());
     if (!signInCookieResult.IsSuccess)
     {
         return Results.Json(
@@ -1398,7 +1402,7 @@ app.MapPost("/api/auth/email-change/complete", async (
 
     await authSessionService.RevokeAllSessionsAsync(currentEmail, httpContext.RequestAborted);
 
-    var signInCookieResult = await SignInUserAsync(httpContext, newEmail, authSessionService, adminManagementService);
+    var signInCookieResult = await SignInUserAsync(httpContext, newEmail, authSessionService, adminManagementService, subscriptionLedgerService, httpContext.RequestServices.GetRequiredService<IWordPressMigrationService>());
     if (!signInCookieResult.IsSuccess)
     {
         return Results.Json(
@@ -1473,16 +1477,16 @@ app.MapPost("/api/auth/signup", async (
         request.LastName,
         request.DisplayName,
         request.MobileNumber,
-        httpContext.RequestAborted);
+        cancellationToken: httpContext.RequestAborted);
     var gratisProvisioned = await subscriptionLedgerService.EnsureGratisAccessAsync(
         signedInEmail,
         request.FirstName,
         request.LastName,
         request.DisplayName,
         request.MobileNumber,
-        httpContext.RequestAborted);
+        cancellationToken: httpContext.RequestAborted);
 
-    var signInCookieResult = await SignInUserAsync(httpContext, signedInEmail, authSessionService, adminManagementService);
+    var signInCookieResult = await SignInUserAsync(httpContext, signedInEmail, authSessionService, adminManagementService, subscriptionLedgerService, httpContext.RequestServices.GetRequiredService<IWordPressMigrationService>());
     if (!signInCookieResult.IsSuccess)
     {
         return Results.Json(
@@ -2187,6 +2191,41 @@ if (args.Any(argument => string.Equals(argument, "--backfill-resource-previews",
     {
         app.Logger.LogWarning(
             "Resource preview backfill omitted {RemainingCount} additional errors from the log output.",
+            result.Errors.Count - 25);
+    }
+
+    Environment.ExitCode = result.Errors.Count == 0 ? 0 : 1;
+    return;
+}
+
+if (args.Any(argument => string.Equals(argument, "--sync-wordpress-users", StringComparison.OrdinalIgnoreCase)))
+{
+    using var scope = app.Services.CreateScope();
+    var migrationService = scope.ServiceProvider.GetRequiredService<IWordPressMigrationService>();
+    var result = await migrationService.SyncAsync();
+
+    app.Logger.LogInformation(
+        "WordPress sync finished. users={ImportedUsers} subscribers={UpsertedSubscribers} avatars={UploadedAvatars} periods={UpsertedMembershipPeriods} orders={UpsertedMembershipOrders} subscriptions={UpsertedSubscriptions} active={UpsertedCurrentEntitlements} cancelled={CancelledCurrentEntitlements} auth_backfill={BackfilledAuthSubscribers} errors={ErrorCount}",
+        result.ImportedUsers,
+        result.UpsertedSubscribers,
+        result.UploadedAvatars,
+        result.UpsertedMembershipPeriods,
+        result.UpsertedMembershipOrders,
+        result.UpsertedSubscriptions,
+        result.UpsertedCurrentEntitlements,
+        result.CancelledCurrentEntitlements,
+        result.BackfilledAuthSubscribers,
+        result.Errors.Count);
+
+    foreach (var error in result.Errors.Take(25))
+    {
+        app.Logger.LogWarning("WordPress sync issue: {Error}", error);
+    }
+
+    if (result.Errors.Count > 25)
+    {
+        app.Logger.LogWarning(
+            "WordPress sync omitted {RemainingCount} additional errors from the log output.",
             result.Errors.Count - 25);
     }
 
@@ -3476,8 +3515,20 @@ static async Task<AuthCookieSignInResult> SignInUserAsync(
     HttpContext httpContext,
     string email,
     IAuthSessionService authSessionService,
-    IAdminManagementService adminManagementService)
+    IAdminManagementService adminManagementService,
+    ISubscriptionLedgerService subscriptionLedgerService,
+    IWordPressMigrationService wordPressMigrationService)
 {
+    try
+    {
+        await wordPressMigrationService.SyncImportedUserProfileAndAccessAsync(email, httpContext.RequestAborted);
+    }
+    catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+    {
+        var logger = httpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("AuthCookieSignIn");
+        logger.LogWarning(exception, "WordPress imported profile sync failed for {Email}.", email);
+    }
+
     var sessionIssueResult = await authSessionService.IssueSessionAsync(
         email,
         httpContext.Request.Headers.UserAgent.ToString(),
@@ -3490,13 +3541,48 @@ static async Task<AuthCookieSignInResult> SignInUserAsync(
             sessionIssueResult.ErrorMessage ?? "Kon nie nou jou sessie begin nie. Probeer asseblief weer.");
     }
 
+    var subscriberProfile = await subscriptionLedgerService.GetSubscriberProfileAsync(email, httpContext.RequestAborted);
+    var displayName = subscriberProfile?.DisplayName;
+    if (string.IsNullOrWhiteSpace(displayName))
+    {
+        var firstName = subscriberProfile?.FirstName;
+        var lastName = subscriberProfile?.LastName;
+        displayName = $"{firstName} {lastName}".Trim();
+    }
+
     var claims = new List<Claim>
     {
         new(ClaimTypes.NameIdentifier, email),
-        new(ClaimTypes.Name, email),
+        new(ClaimTypes.Name, string.IsNullOrWhiteSpace(displayName) ? email : displayName),
         new(ClaimTypes.Email, email),
         new(AuthSessionIdClaimType, sessionIssueResult.SessionId.ToString("D"))
     };
+
+    if (!string.IsNullOrWhiteSpace(subscriberProfile?.FirstName))
+    {
+        claims.Add(new Claim("first_name", subscriberProfile.FirstName));
+    }
+
+    if (!string.IsNullOrWhiteSpace(subscriberProfile?.LastName))
+    {
+        claims.Add(new Claim("last_name", subscriberProfile.LastName));
+    }
+
+    if (!string.IsNullOrWhiteSpace(subscriberProfile?.DisplayName))
+    {
+        claims.Add(new Claim("display_name", subscriberProfile.DisplayName));
+    }
+
+    if (!string.IsNullOrWhiteSpace(subscriberProfile?.MobileNumber))
+    {
+        claims.Add(new Claim("mobile_number", subscriberProfile.MobileNumber));
+    }
+
+    if (!string.IsNullOrWhiteSpace(subscriberProfile?.ProfileImageUrl))
+    {
+        claims.Add(new Claim("profile_image_url", subscriberProfile.ProfileImageUrl));
+        claims.Add(new Claim("avatar_url", subscriberProfile.ProfileImageUrl));
+    }
 
     var isAdminUser = await adminManagementService.IsAdminAsync(email, httpContext.RequestAborted);
     if (isAdminUser)
