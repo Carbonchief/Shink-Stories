@@ -567,7 +567,11 @@
 }
 
 .story-carousel-section {
+    --story-carousel-edge-space: 15px;
     margin-top: 0.2rem;
+    width: 100vw;
+    margin-left: calc(50% - 50vw);
+    margin-right: calc(50% - 50vw);
     text-align: center;
     color: #27231f;
 }
@@ -584,12 +588,11 @@
     gap: 0.9rem;
     overflow-x: auto;
     overflow-y: hidden;
-    padding-inline: 0.9rem;
+    padding-inline: var(--story-carousel-edge-space);
     padding-bottom: 0.38rem;
-    margin-inline: auto;
-    width: min(100%, 920px);
+    width: 100%;
     scroll-snap-type: x mandatory;
-    scroll-padding-inline: 0.9rem;
+    scroll-padding-inline: var(--story-carousel-edge-space);
     -webkit-overflow-scrolling: touch;
     touch-action: pan-y pinch-zoom;
     overscroll-behavior-x: contain;
@@ -1001,8 +1004,8 @@
     .story-carousel {
         grid-auto-columns: minmax(146px, 44vw);
         gap: 0.72rem;
-        padding-inline: 0.8rem;
-        scroll-padding-inline: 0.8rem;
+        padding-inline: var(--story-carousel-edge-space);
+        scroll-padding-inline: var(--story-carousel-edge-space);
     }
 }
 

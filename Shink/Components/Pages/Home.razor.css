@@ -123,14 +123,14 @@
 }
 
 .hero-intro {
-    width: fit-content;
-    max-width: none;
-    font-size: clamp(1.34rem, 2.15vw, 2rem);
+    width: min(100%, 770px);
+    max-width: 770px;
+    font-size: clamp(1.18rem, 1.8vw, 1.5rem);
     line-height: 1.2;
-    font-weight: 400;
-    letter-spacing: -0.02em;
+    font-weight: 300;
+    letter-spacing: normal;
     white-space: normal;
-    text-wrap: balance;
+    text-wrap: initial;
 }
 
 .hero-intro em {
@@ -139,19 +139,19 @@
 }
 
 .hero-intro strong {
-    font-weight: 800;
+    font-weight: 700;
 }
 
 .hero-support {
-    width: fit-content;
-    max-width: none;
+    width: min(100%, 690px);
+    max-width: 690px;
     margin-top: 0.72rem !important;
-    font-size: clamp(0.92rem, 1.15vw, 1.18rem);
-    line-height: 1.25;
-    color: rgba(255, 255, 255, 0.82) !important;
-    font-weight: 500;
+    font-size: clamp(0.96rem, 1.05vw, 1rem);
+    line-height: 1.2;
+    color: rgba(255, 255, 255, 0.8) !important;
+    font-weight: 400;
     font-style: italic;
-    letter-spacing: -0.015em;
+    letter-spacing: normal;
 }
 
 .hero-actions {
@@ -237,7 +237,7 @@
 }
 
 .hero-visual {
-    width: min(100%, 760px);
+    width: min(100%, 570px);
     margin-inline: auto;
     border-radius: 22px;
     overflow: hidden;
@@ -278,7 +278,7 @@
     }
 
     .hero-visual {
-        width: min(100%, 700px);
+        width: min(100%, 525px);
     }
 
     .hero-logo {
@@ -303,15 +303,14 @@
     }
 
     .hero-intro {
-        width: fit-content;
-        max-width: none;
-        font-size: 1.22rem;
+        width: min(100%, 770px);
+        max-width: 770px;
         white-space: normal;
     }
 
     .hero-support {
-        max-width: none;
-        font-size: 1rem;
+        width: min(100%, 690px);
+        max-width: 690px;
     }
 
     .hero-actions {
@@ -342,21 +341,19 @@
         margin-top: -1rem;
     }
 
-    .hero-copy p {
-        max-width: 30ch;
-    }
-
     .eyebrow {
         font-size: 0.78rem;
     }
 
     .hero-intro {
-        font-size: 1.08rem;
+        width: min(100%, 770px);
+        max-width: 770px;
         white-space: normal;
     }
 
     .hero-support {
-        font-size: 0.92rem;
+        width: min(100%, 690px);
+        max-width: 690px;
     }
 }
 
@@ -825,6 +822,117 @@ h2 {
     width: min(100%, 980px);
 }
 
+.home-whatsapp-join {
+    margin: 1.35rem auto 0;
+    width: min(100%, 980px);
+}
+
+.home-whatsapp-join-card {
+    position: relative;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1rem;
+    align-items: center;
+    padding: 1.25rem 1.35rem;
+    border-radius: 28px;
+    border: 1px solid rgba(18, 140, 126, 0.3);
+    background:
+        radial-gradient(circle at top right, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0) 34%),
+        linear-gradient(135deg, #128c7e 0%, #25d366 100%);
+    box-shadow: 0 18px 34px rgba(10, 84, 70, 0.22);
+    color: #ffffff;
+}
+
+.home-whatsapp-join-card::before,
+.home-whatsapp-join-card::after {
+    content: "";
+    position: absolute;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.14);
+    pointer-events: none;
+}
+
+.home-whatsapp-join-card::before {
+    width: 180px;
+    height: 180px;
+    top: -76px;
+    right: -52px;
+}
+
+.home-whatsapp-join-card::after {
+    width: 120px;
+    height: 120px;
+    bottom: -56px;
+    left: -30px;
+}
+
+.home-whatsapp-join-copy {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    gap: 0.45rem;
+}
+
+.home-whatsapp-join-kicker {
+    margin: 0;
+    font-size: 0.76rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.86);
+}
+
+.home-whatsapp-join-copy h2 {
+    margin: 0;
+    color: #ffffff;
+    text-align: left;
+    font-size: clamp(1.45rem, 2.8vw, 2rem);
+    line-height: 1.1;
+}
+
+.home-whatsapp-join-copy p:last-child {
+    margin: 0;
+    max-width: 52ch;
+    color: rgba(255, 255, 255, 0.92);
+    line-height: 1.55;
+}
+
+.home-whatsapp-join-btn {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.68rem;
+    min-height: 52px;
+    padding: 0.82rem 1.25rem;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.58);
+    background: #ffffff;
+    color: #0f6b5c;
+    text-decoration: none;
+    font-weight: 800;
+    box-shadow: 0 12px 26px rgba(8, 54, 45, 0.2);
+    transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+
+.home-whatsapp-join-btn i {
+    font-size: 1.3rem;
+    line-height: 1;
+}
+
+.home-whatsapp-join-btn:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.02);
+    box-shadow: 0 16px 30px rgba(8, 54, 45, 0.26);
+}
+
+.home-whatsapp-join-btn:focus-visible {
+    outline: 3px solid rgba(255, 255, 255, 0.9);
+    outline-offset: 3px;
+}
+
 .home-testimonials-header {
     display: flex;
     align-items: center;
@@ -981,6 +1089,11 @@ h2 {
 }
 
 @media (max-width: 860px) {
+    .home-whatsapp-join-card {
+        grid-template-columns: 1fr;
+        justify-items: start;
+    }
+
     .home-testimonials-header {
         align-items: center;
         flex-direction: column;
@@ -1429,11 +1542,28 @@ h2 {
     .home-review-grid {
         grid-auto-columns: 68%;
     }
+
+    .hero-intro {
+        max-width: 340px;
+    }
+
+    .hero-support {
+        max-width: 280px;
+    }
 }
 
 @media (max-width: 620px) {
     .stories-carousel-shell {
         overflow-x: clip;
+    }
+
+    .home-whatsapp-join-card {
+        border-radius: 22px;
+        padding: 1.1rem 1rem;
+    }
+
+    .home-whatsapp-join-btn {
+        width: 100%;
     }
 
     .perfect-plan-option-save-badge {
@@ -1512,14 +1642,14 @@ h2 {
     }
 
     .hero-intro {
-        font-size: clamp(0.72rem, 3.5vw, 1rem);
+        font-size: clamp(0.88rem, 3.4vw, 1rem);
         width: auto;
-        max-width: none;
+        max-width: 285px;
         white-space: normal;
     }
 
     .hero-support {
-        max-width: 27ch;
+        max-width: 285px;
         margin-top: 0.5rem !important;
         font-size: 0.84rem;
     }
