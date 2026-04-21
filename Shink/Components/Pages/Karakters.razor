@@ -261,10 +261,10 @@
             </button>
 
             <button type="button"
-                    class="character-profile-popup-image-button"
+                    class="@($"character-profile-popup-image-button{(IsProfileImageCelebrating ? " is-celebrating" : string.Empty)}")"
                     @onclick="CelebrateProfileImageAsync"
                     aria-label="Druk vir 'n verrassing">
-                <img class="@($"character-profile-popup-image{(IsProfileImageCelebrating ? " is-celebrating" : string.Empty)}")"
+                <img class="character-profile-popup-image"
                      src="@ResolveCharacterImagePath(ActiveProfileCard.Character.ImagePath, ActiveProfileCard.Character.UpdatedAt)"
                      alt="Illustrasie van @ActiveProfileCard.Character.DisplayName"
                      loading="lazy"

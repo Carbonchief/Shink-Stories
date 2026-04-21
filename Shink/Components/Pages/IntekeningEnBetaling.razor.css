@@ -311,6 +311,74 @@
     line-height: 1.6;
 }
 
+.billing-modal-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    background: rgba(18, 34, 41, 0.46);
+    backdrop-filter: blur(6px);
+}
+
+.billing-modal {
+    width: min(620px, 100%);
+    max-height: min(88vh, 860px);
+    overflow: auto;
+    border-radius: 28px;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    background:
+        radial-gradient(110% 140% at 100% 0%, rgba(33, 95, 104, 0.11), transparent 56%),
+        linear-gradient(180deg, #ffffff 0%, #f8fbfb 100%);
+    box-shadow: 0 28px 60px rgba(12, 24, 30, 0.28);
+    padding: clamp(1rem, 2.5vw, 1.5rem);
+}
+
+.billing-modal-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.billing-modal-heading {
+    display: grid;
+    gap: 0.42rem;
+}
+
+.billing-modal-heading h2 {
+    margin: 0;
+    color: #162a34;
+    font-size: clamp(1.5rem, 2.4vw, 2rem);
+    line-height: 1.1;
+}
+
+.billing-modal-heading p:last-child {
+    margin: 0;
+    color: #5b6971;
+    line-height: 1.65;
+}
+
+.billing-modal-close {
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
+    border: 1px solid #d6ddd9;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.88);
+    color: #163643;
+    font-size: 1.75rem;
+    line-height: 1;
+}
+
+.billing-modal-close:hover,
+.billing-modal-close:focus-visible {
+    background: #f4f1e9;
+    border-color: #b9c4bf;
+}
+
 .billing-profile-form ::deep .invalid-feedback {
     margin-top: 0.35rem;
     font-size: 0.83rem;
@@ -586,5 +654,14 @@
 
     .billing-hero h1 {
         max-width: 13ch;
+    }
+
+    .billing-modal {
+        border-radius: 22px;
+        padding: 1rem;
+    }
+
+    .billing-modal-header {
+        gap: 0.75rem;
     }
 }

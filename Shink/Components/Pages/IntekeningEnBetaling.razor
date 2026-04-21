@@ -154,135 +154,77 @@
     else
     {
         <div class="billing-content-grid">
-            <div class="billing-account-stack">
-                <section class="billing-panel billing-profile-card" aria-label="Jou profiel">
-                    <div class="billing-panel-heading">
-                        <p class="billing-section-kicker">Profiel</p>
-                        <h2>Hou jou rekeningbesonderhede op datum</h2>
-                        <p>Gebruik die vorm hieronder om jou besonderhede netjies en op datum te hou.</p>
+            <section class="billing-panel billing-profile-card" aria-label="Jou profiel">
+                <div class="billing-panel-heading">
+                    <p class="billing-section-kicker">Profiel</p>
+                    <h2>Hou jou rekeningbesonderhede op datum</h2>
+                    <p>Gebruik die vorm hieronder om jou besonderhede netjies en op datum te hou.</p>
+                </div>
+
+                <EditForm FormName="billing-profile-form" class="billing-profile-form" Model="ProfileForm" OnValidSubmit="SaveProfileAsync" aria-busy="@IsSavingProfile">
+                    <DataAnnotationsValidator />
+
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label" for="billing-first-name">Voornaam</label>
+                            <InputText id="billing-first-name" class="form-control form-control-lg" autocomplete="given-name" @bind-Value="ProfileForm.FirstName" />
+                            <ValidationMessage class="invalid-feedback d-block" For="@(() => ProfileForm.FirstName)" />
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="billing-last-name">Van</label>
+                            <InputText id="billing-last-name" class="form-control form-control-lg" autocomplete="family-name" @bind-Value="ProfileForm.LastName" />
+                            <ValidationMessage class="invalid-feedback d-block" For="@(() => ProfileForm.LastName)" />
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="billing-display-name">Publieke naam</label>
+                            <InputText id="billing-display-name" class="form-control form-control-lg" autocomplete="nickname" @bind-Value="ProfileForm.DisplayName" />
+                            <ValidationMessage class="invalid-feedback d-block" For="@(() => ProfileForm.DisplayName)" />
+                        </div>
+
+                        <div class="col-md-6">
+                            <label class="form-label" for="billing-mobile-number">Selfoonnommer</label>
+                            <InputText id="billing-mobile-number" class="form-control form-control-lg" type="tel" autocomplete="tel" @bind-Value="ProfileForm.MobileNumber" />
+                            <ValidationMessage class="invalid-feedback d-block" For="@(() => ProfileForm.MobileNumber)" />
+                        </div>
+
+                        <div class="col-12">
+                            <label class="form-label" for="billing-email">Huidige e-posadres</label>
+                            <input id="billing-email"
+                                   class="form-control form-control-lg billing-readonly-input"
+                                   value="@UserEmail"
+                                   autocomplete="email"
+                                   aria-describedby="billing-email-help"
+                                   readonly />
+                            <div id="billing-email-help" class="form-text billing-form-hint">
+                                Jou huidige e-posadres word hier gewys. Gebruik die knoppie hieronder om dit veilig met Supabase te verander.
+                            </div>
+                        </div>
                     </div>
 
-                    <EditForm FormName="billing-profile-form" class="billing-profile-form" Model="ProfileForm" OnValidSubmit="SaveProfileAsync" aria-busy="@IsSavingProfile">
-                        <DataAnnotationsValidator />
-
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label class="form-label" for="billing-first-name">Voornaam</label>
-                                <InputText id="billing-first-name" class="form-control form-control-lg" autocomplete="given-name" @bind-Value="ProfileForm.FirstName" />
-                                <ValidationMessage class="invalid-feedback d-block" For="@(() => ProfileForm.FirstName)" />
-                            </div>
-
-                            <div class="col-md-6">
-                                <label class="form-label" for="billing-last-name">Van</label>
-                                <InputText id="billing-last-name" class="form-control form-control-lg" autocomplete="family-name" @bind-Value="ProfileForm.LastName" />
-                                <ValidationMessage class="invalid-feedback d-block" For="@(() => ProfileForm.LastName)" />
-                            </div>
-
-                            <div class="col-md-6">
-                                <label class="form-label" for="billing-display-name">Publieke naam</label>
-                                <InputText id="billing-display-name" class="form-control form-control-lg" autocomplete="nickname" @bind-Value="ProfileForm.DisplayName" />
-                                <ValidationMessage class="invalid-feedback d-block" For="@(() => ProfileForm.DisplayName)" />
-                            </div>
-
-                            <div class="col-md-6">
-                                <label class="form-label" for="billing-mobile-number">Selfoonnommer</label>
-                                <InputText id="billing-mobile-number" class="form-control form-control-lg" type="tel" autocomplete="tel" @bind-Value="ProfileForm.MobileNumber" />
-                                <ValidationMessage class="invalid-feedback d-block" For="@(() => ProfileForm.MobileNumber)" />
-                            </div>
-
-                            <div class="col-12">
-                                <label class="form-label" for="billing-email">Huidige e-posadres</label>
-                                <input id="billing-email"
-                                       class="form-control form-control-lg billing-readonly-input"
-                                       value="@UserEmail"
-                                       autocomplete="email"
-                                       aria-describedby="billing-email-help"
-                                       readonly />
-                                <div id="billing-email-help" class="form-text billing-form-hint">
-                                    Jou huidige e-posadres word hier gewys. Gebruik die kaart hieronder om dit veilig met Supabase te verander.
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="billing-form-actions d-flex flex-wrap gap-2">
-                            <button type="submit" class="btn btn-warning btn-lg billing-primary-btn" disabled="@IsSavingProfile">
-                                @(IsSavingProfile ? "Stoor..." : "Stoor profiel")
-                            </button>
-                            <a class="btn btn-outline-secondary btn-lg billing-secondary-btn" href="/opsies">Sien plan opsies</a>
-                        </div>
-
-                        @if (!string.IsNullOrWhiteSpace(ProfileStatusMessage))
-                        {
-                            <div class="alert @(ProfileSaveSucceeded ? "alert-success" : "alert-danger") billing-profile-status"
-                                 role="@(ProfileSaveSucceeded ? "status" : "alert")"
-                                 aria-live="polite">
-                                @ProfileStatusMessage
-                            </div>
-                        }
-                    </EditForm>
-                </section>
-
-                <section class="billing-panel billing-email-card" aria-label="Verander e-posadres">
-                    <div class="billing-panel-heading">
-                        <p class="billing-section-kicker">Veilige e-posverandering</p>
-                        <h2>Verander jou e-posadres</h2>
-                        <p>
-                            Vul jou nuwe e-posadres en huidige wagwoord in. Supabase stuur dan 'n bevestiging-skakel
-                            om jou verandering veilig klaar te maak.
-                        </p>
+                    <div class="billing-form-actions d-flex flex-wrap gap-2">
+                        <button type="submit" class="btn btn-warning btn-lg billing-primary-btn" disabled="@IsSavingProfile">
+                            @(IsSavingProfile ? "Stoor..." : "Stoor profiel")
+                        </button>
+                        <button type="button"
+                                class="btn btn-outline-secondary btn-lg billing-secondary-btn"
+                                @onclick="OpenEmailChangeModal">
+                            Verander e-posadres
+                        </button>
+                        <a class="btn btn-outline-secondary btn-lg billing-secondary-btn" href="/opsies">Sien plan opsies</a>
                     </div>
 
-                    <EditForm FormName="billing-email-change-form"
-                              class="billing-profile-form billing-email-form"
-                              EditContext="EmailChangeEditContext"
-                              OnSubmit="HandleEmailChangeSubmitAsync"
-                              aria-busy="@IsSubmittingEmailChange">
-                        <DataAnnotationsValidator />
-
-                        <div class="row g-3">
-                            <div class="col-12">
-                                <label class="form-label" for="billing-email-change-new">Nuwe e-posadres</label>
-                                <InputText id="billing-email-change-new"
-                                           class="form-control form-control-lg"
-                                           type="email"
-                                           autocomplete="email"
-                                           @bind-Value="EmailChangeForm.NewEmail" />
-                                <ValidationMessage class="invalid-feedback d-block" For="@(() => EmailChangeForm.NewEmail)" />
-                            </div>
-
-                            <div class="col-12">
-                                <label class="form-label" for="billing-email-change-password">Huidige wagwoord</label>
-                                <InputText id="billing-email-change-password"
-                                           class="form-control form-control-lg"
-                                           type="password"
-                                           autocomplete="current-password"
-                                           @bind-Value="EmailChangeForm.CurrentPassword" />
-                                <ValidationMessage class="invalid-feedback d-block" For="@(() => EmailChangeForm.CurrentPassword)" />
-                            </div>
+                    @if (!string.IsNullOrWhiteSpace(ProfileStatusMessage))
+                    {
+                        <div class="alert @(ProfileSaveSucceeded ? "alert-success" : "alert-danger") billing-profile-status"
+                             role="@(ProfileSaveSucceeded ? "status" : "alert")"
+                             aria-live="polite">
+                            @ProfileStatusMessage
                         </div>
-
-                        <p class="billing-email-note">
-                            Gebruik 'n e-posadres waartoe jy nou toegang het. As Supabase twee bevestigings vereis,
-                            maak asseblief albei skakels oop.
-                        </p>
-
-                        <div class="billing-form-actions d-flex flex-wrap gap-2">
-                            <button type="submit" class="btn btn-warning btn-lg billing-primary-btn" disabled="@IsSubmittingEmailChange">
-                                @(IsSubmittingEmailChange ? "Besig..." : "Stuur bevestiging")
-                            </button>
-                        </div>
-
-                        @if (!string.IsNullOrWhiteSpace(EmailChangeStatusMessage))
-                        {
-                            <div class="alert @(EmailChangeStatusIsSuccess ? "alert-success" : "alert-danger") billing-profile-status"
-                                 role="@(EmailChangeStatusIsSuccess ? "status" : "alert")"
-                                 aria-live="polite">
-                                @EmailChangeStatusMessage
-                            </div>
-                        }
-                    </EditForm>
-                </section>
-            </div>
+                    }
+                </EditForm>
+            </section>
 
             <aside class="billing-panel billing-status-card @(HasActivePaidSubscription ? "is-active" : "is-free")" aria-live="polite">
                 <div class="billing-panel-heading">
@@ -329,6 +271,90 @@
             </aside>
         </div>
 
+        @if (IsEmailChangeModalOpen)
+        {
+            <div class="billing-modal-backdrop" @onclick="CloseEmailChangeModal">
+                <div class="billing-modal"
+                     role="dialog"
+                     aria-modal="true"
+                     aria-labelledby="billing-email-modal-title"
+                     @onclick:stopPropagation="true">
+                    <div class="billing-modal-header">
+                        <div class="billing-modal-heading">
+                            <p class="billing-section-kicker">Veilige e-posverandering</p>
+                            <h2 id="billing-email-modal-title">Verander jou e-posadres</h2>
+                            <p>
+                                Vul jou nuwe e-posadres en huidige wagwoord in. Supabase stuur dan 'n bevestiging-skakel
+                                om jou verandering veilig klaar te maak.
+                            </p>
+                        </div>
+
+                        <button type="button"
+                                class="billing-modal-close"
+                                aria-label="Maak toe"
+                                @onclick="CloseEmailChangeModal">
+                            ×
+                        </button>
+                    </div>
+
+                    <EditForm FormName="billing-email-change-form"
+                              class="billing-profile-form billing-email-form"
+                              EditContext="EmailChangeEditContext"
+                              OnSubmit="HandleEmailChangeSubmitAsync"
+                              aria-busy="@IsSubmittingEmailChange">
+                        <DataAnnotationsValidator />
+
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label" for="billing-email-change-new">Nuwe e-posadres</label>
+                                <InputText id="billing-email-change-new"
+                                           class="form-control form-control-lg"
+                                           type="email"
+                                           autocomplete="email"
+                                           @bind-Value="EmailChangeForm.NewEmail" />
+                                <ValidationMessage class="invalid-feedback d-block" For="@(() => EmailChangeForm.NewEmail)" />
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label" for="billing-email-change-password">Huidige wagwoord</label>
+                                <InputText id="billing-email-change-password"
+                                           class="form-control form-control-lg"
+                                           type="password"
+                                           autocomplete="current-password"
+                                           @bind-Value="EmailChangeForm.CurrentPassword" />
+                                <ValidationMessage class="invalid-feedback d-block" For="@(() => EmailChangeForm.CurrentPassword)" />
+                            </div>
+                        </div>
+
+                        <p class="billing-email-note">
+                            Gebruik 'n e-posadres waartoe jy nou toegang het. As Supabase twee bevestigings vereis,
+                            maak asseblief albei skakels oop.
+                        </p>
+
+                        <div class="billing-form-actions d-flex flex-wrap gap-2">
+                            <button type="submit" class="btn btn-warning btn-lg billing-primary-btn" disabled="@IsSubmittingEmailChange">
+                                @(IsSubmittingEmailChange ? "Besig..." : "Stuur bevestiging")
+                            </button>
+                            <button type="button"
+                                    class="btn btn-outline-secondary btn-lg billing-secondary-btn"
+                                    @onclick="CloseEmailChangeModal">
+                                Kanselleer
+                            </button>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(EmailChangeStatusMessage))
+                        {
+                            <div class="alert @(EmailChangeStatusIsSuccess ? "alert-success" : "alert-danger") billing-profile-status"
+                                 role="@(EmailChangeStatusIsSuccess ? "status" : "alert")"
+                                 aria-live="polite">
+                                @EmailChangeStatusMessage
+                            </div>
+                        }
+                    </EditForm>
+                </div>
+            </div>
+        }
+
         <section class="billing-plans" aria-label="Betaal planne">
             <div class="billing-section-heading">
                 <p class="billing-section-kicker">Plan keuses</p>
@@ -365,6 +391,7 @@
     private bool IsAuthenticatedUser { get; set; }
     private bool HasActivePaidSubscription { get; set; }
     private bool IsCompletingEmailChange { get; set; }
+    private bool IsEmailChangeModalOpen { get; set; }
     private string UserEmail { get; set; } = string.Empty;
     private ProfileFormModel ProfileForm { get; set; } = new();
     private EmailChangeFormModel EmailChangeForm { get; set; } = new();
@@ -432,6 +459,7 @@
             {
                 EmailChangeStatusIsSuccess = true;
                 EmailChangeStatusMessage = "Jou e-posadres is suksesvol opgedateer.";
+                IsEmailChangeModalOpen = true;
             }
         }
         catch
@@ -539,6 +567,17 @@
         {
             IsSubmittingEmailChange = false;
         }
+    }
+
+    private void OpenEmailChangeModal()
+    {
+        IsEmailChangeModalOpen = true;
+    }
+
+    private void CloseEmailChangeModal()
+    {
+        IsEmailChangeModalOpen = false;
+        EmailChangeForm.CurrentPassword = string.Empty;
     }
 
     private async Task HandleEmailChangeCallbackAsync()

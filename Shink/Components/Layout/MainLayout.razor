@@ -26,6 +26,35 @@
                     <AuthorizeView>
                         <Authorized>
                             <div class="story-header-menu nav-controls">
+                                <form class="site-search-form" role="search" action="/soek" method="get" data-search-form>
+                                    <button type="button"
+                                            class="site-search-toggle"
+                                            data-search-toggle
+                                            aria-expanded="false"
+                                            aria-controls="site-nav-search-story-auth"
+                                            aria-label="Soek op die webwerf"
+                                            title="Soek op die webwerf">
+                                        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                                        <span class="sr-only">Soek op die webwerf</span>
+                                    </button>
+                                    <div class="site-search-fields">
+                                        <label class="sr-only" for="site-nav-search-story-auth">Soek op die webwerf</label>
+                                        <input id="site-nav-search-story-auth"
+                                               class="site-search-input"
+                                               data-search-input
+                                               type="search"
+                                               name="q"
+                                               placeholder="Soek op die webwerf"
+                                               autocomplete="off" />
+                                    </div>
+                                    <span class="site-search-loader" data-search-loader hidden aria-live="polite">
+                                        <span class="site-search-spinner" aria-hidden="true"></span>
+                                        <span class="site-search-loader-text">Soek...</span>
+                                    </span>
+                                    <section class="site-search-suggestions" data-search-suggestions hidden aria-label="Soek voorstelle">
+                                        <div class="site-search-suggestions-list" data-search-suggestions-list></div>
+                                    </section>
+                                </form>
                                 <button type="button"
                                         class="nav-menu-toggle"
                                         data-nav-menu-toggle
@@ -51,7 +80,36 @@
                             </div>
                         </Authorized>
                         <NotAuthorized>
-                            <div class="story-header-menu guest-controls">
+                            <div class="story-header-menu nav-controls">
+                                <form class="site-search-form" role="search" action="/soek" method="get" data-search-form>
+                                    <button type="button"
+                                            class="site-search-toggle"
+                                            data-search-toggle
+                                            aria-expanded="false"
+                                            aria-controls="site-nav-search-story-guest"
+                                            aria-label="Soek op die webwerf"
+                                            title="Soek op die webwerf">
+                                        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                                        <span class="sr-only">Soek op die webwerf</span>
+                                    </button>
+                                    <div class="site-search-fields">
+                                        <label class="sr-only" for="site-nav-search-story-guest">Soek op die webwerf</label>
+                                        <input id="site-nav-search-story-guest"
+                                               class="site-search-input"
+                                               data-search-input
+                                               type="search"
+                                               name="q"
+                                               placeholder="Soek op die webwerf"
+                                               autocomplete="off" />
+                                    </div>
+                                    <span class="site-search-loader" data-search-loader hidden aria-live="polite">
+                                        <span class="site-search-spinner" aria-hidden="true"></span>
+                                        <span class="site-search-loader-text">Soek...</span>
+                                    </span>
+                                    <section class="site-search-suggestions" data-search-suggestions hidden aria-label="Soek voorstelle">
+                                        <div class="site-search-suggestions-list" data-search-suggestions-list></div>
+                                    </section>
+                                </form>
                                 <button type="button"
                                         class="nav-menu-toggle"
                                         data-nav-menu-toggle

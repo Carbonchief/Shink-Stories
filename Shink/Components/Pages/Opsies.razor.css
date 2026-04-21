@@ -225,10 +225,6 @@
     box-shadow: 0 24px 42px rgba(19, 31, 37, 0.1);
 }
 
-.opsie-free {
-    --opsie-accent: #7a8a47;
-}
-
 .opsie-monthly {
     --opsie-accent: #d67f12;
     --opsie-accent-soft: rgba(214, 127, 18, 0.12);
@@ -236,11 +232,6 @@
 
 .opsie-all {
     --opsie-accent: #215f68;
-}
-
-.opsie-yearly {
-    --opsie-accent: #ab5d15;
-    --opsie-accent-soft: rgba(171, 93, 21, 0.1);
 }
 
 .opsie-card.featured {
@@ -280,6 +271,49 @@
     background: var(--opsie-accent-soft);
     border: 1px solid color-mix(in srgb, var(--opsie-accent) 22%, #ece6da);
     box-shadow: none;
+}
+
+.opsie-billing-toggle-row {
+    margin: 0;
+    width: 100%;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    flex-wrap: wrap;
+}
+
+.opsie-billing-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    width: fit-content;
+    padding: 0.22rem;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--opsie-accent) 25%, #d9e2e6);
+    background: rgba(247, 250, 252, 0.92);
+}
+
+.opsie-billing-toggle-btn {
+    border: 1px solid transparent;
+    margin: 0;
+    border-radius: 999px;
+    min-height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.32rem 0.78rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    color: #36505a;
+    background: transparent;
+    transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease;
+}
+
+.opsie-billing-toggle-btn.is-active {
+    border-color: transparent;
+    color: #ffffff;
+    background: color-mix(in srgb, var(--opsie-accent) 92%, #ffffff);
 }
 
 .opsie-pill {
@@ -422,18 +456,6 @@
     box-shadow: 0 16px 28px color-mix(in srgb, var(--opsie-accent) 32%, transparent);
 }
 
-.opsie-free .opsie-btn {
-    background: #ffffff;
-    color: #214954;
-    border-color: #cbd7db;
-    box-shadow: none;
-}
-
-.opsie-free .opsie-btn:hover {
-    background: #f5f8f9;
-    box-shadow: none;
-}
-
 .opsie-btn-disabled,
 .opsie-btn-disabled:hover {
     background: #eef0f2;
@@ -553,5 +575,20 @@
 
     .opsie-card {
         padding: 1.2rem;
+    }
+
+    .opsie-billing-toggle-row {
+        width: 100%;
+    }
+
+    .opsie-billing-toggle {
+        flex-wrap: wrap;
+        justify-content: stretch;
+        width: 100%;
+    }
+
+    .opsie-billing-toggle-btn {
+        width: 100%;
+        flex: 1 1 auto;
     }
 }

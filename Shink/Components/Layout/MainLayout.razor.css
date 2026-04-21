@@ -573,7 +573,7 @@
 
 .story-header-wrap {
     display: grid;
-    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
     align-items: center;
     gap: 0.5rem;
     min-height: 72px;
