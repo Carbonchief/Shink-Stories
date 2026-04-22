@@ -136,6 +136,17 @@
                             <span class="sr-only">@T("Soek intekenaars", "Search subscribers")</span>
                         </MudButton>
                         <MudButton Class="admin-icon-btn admin-mobile-cta"
+                                   Variant="Variant.Text"
+                                   Color="Color.Default"
+                                   Disabled="@(!HasActiveSubscriberColumnFilters)"
+                                   OnClick="ClearSubscriberColumnFiltersAsync"
+                                   aria-label='@T("Maak intekenaarfilters skoon", "Clear subscriber filters")'
+                                   title='@T("Maak intekenaarfilters skoon", "Clear subscriber filters")'>
+                            <i class="fa-solid fa-filter-circle-xmark" aria-hidden="true"></i>
+                            <span class="admin-btn-text">@T("Maak filters skoon", "Clear filters")</span>
+                            <span class="sr-only">@T("Maak intekenaarfilters skoon", "Clear subscriber filters")</span>
+                        </MudButton>
+                        <MudButton Class="admin-icon-btn admin-mobile-cta"
                                    Variant="Variant.Outlined"
                                    Color="Color.Primary"
                                    OnClick="ReloadSubscribersAsync"
@@ -165,34 +176,214 @@
                       OnRowClick="OnSubscriberRowClick">
                 <HeaderContent>
                     <MudTh>
-                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="subscriber">
-                            @T("Intekenaar", "Subscriber")
-                        </MudTableSortLabel>
+                        <div class="admin-header-cell">
+                            <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="subscriber">
+                                @T("Intekenaar", "Subscriber")
+                            </MudTableSortLabel>
+                            <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(SubscriberColumnFilters.SubscriberText) ? string.Empty : " is-active")}")'
+                                     @onclick:stopPropagation="true">
+                                <summary class="admin-header-filter-toggle"
+                                         @onclick:stopPropagation="true"
+                                         title='@T("Filter intekenaar", "Filter subscriber")'>
+                                    <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                                    <span class="sr-only">@T("Filter intekenaar", "Filter subscriber")</span>
+                                </summary>
+                                <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
+                                    <label class="admin-header-filter-label" for="subscriber-filter-text">
+                                        @T("Naam of e-pos", "Name or email")
+                                    </label>
+                                    <input id="subscriber-filter-text"
+                                           class="admin-header-filter-input"
+                                           type="search"
+                                           @bind="SubscriberTextFilterDraft"
+                                           @bind:event="oninput"
+                                           placeholder='@T("Tik om te filter", "Type to filter")' />
+                                    <div class="admin-header-filter-actions-row">
+                                        <button type="button"
+                                                class="admin-header-filter-action"
+                                                @onclick='() => ApplySubscriberTextFilterAsync("subscriber")'>
+                                            @T("Pas toe", "Apply")
+                                        </button>
+                                        <button type="button"
+                                                class="admin-header-filter-action is-secondary"
+                                                @onclick='() => ClearSubscriberTextFilterAsync("subscriber")'>
+                                            @T("Maak skoon", "Clear")
+                                        </button>
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
                     </MudTh>
                     <MudTh>
-                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="mobile">
-                            @T("Selfoon", "Mobile")
-                        </MudTableSortLabel>
+                        <div class="admin-header-cell">
+                            <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="mobile">
+                                @T("Selfoon", "Mobile")
+                            </MudTableSortLabel>
+                            <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(SubscriberColumnFilters.MobileText) ? string.Empty : " is-active")}")'
+                                     @onclick:stopPropagation="true">
+                                <summary class="admin-header-filter-toggle"
+                                         @onclick:stopPropagation="true"
+                                         title='@T("Filter selfoon", "Filter mobile")'>
+                                    <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                                    <span class="sr-only">@T("Filter selfoon", "Filter mobile")</span>
+                                </summary>
+                                <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
+                                    <label class="admin-header-filter-label" for="subscriber-filter-mobile">
+                                        @T("Selfoon bevat", "Mobile contains")
+                                    </label>
+                                    <input id="subscriber-filter-mobile"
+                                           class="admin-header-filter-input"
+                                           type="search"
+                                           @bind="SubscriberMobileFilterDraft"
+                                           @bind:event="oninput"
+                                           placeholder='@T("Tik om te filter", "Type to filter")' />
+                                    <div class="admin-header-filter-actions-row">
+                                        <button type="button"
+                                                class="admin-header-filter-action"
+                                                @onclick='() => ApplySubscriberTextFilterAsync("mobile")'>
+                                            @T("Pas toe", "Apply")
+                                        </button>
+                                        <button type="button"
+                                                class="admin-header-filter-action is-secondary"
+                                                @onclick='() => ClearSubscriberTextFilterAsync("mobile")'>
+                                            @T("Maak skoon", "Clear")
+                                        </button>
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
                     </MudTh>
                     <MudTh>
-                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="tiers">
-                            @T("Vlakke", "Tiers")
-                        </MudTableSortLabel>
+                        <div class="admin-header-cell">
+                            <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="tiers">
+                                @T("Vlakke", "Tiers")
+                            </MudTableSortLabel>
+                            <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(SubscriberColumnFilters.TierText) ? string.Empty : " is-active")}")'
+                                     @onclick:stopPropagation="true">
+                                <summary class="admin-header-filter-toggle"
+                                         @onclick:stopPropagation="true"
+                                         title='@T("Filter vlakke", "Filter tiers")'>
+                                    <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                                    <span class="sr-only">@T("Filter vlakke", "Filter tiers")</span>
+                                </summary>
+                                <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
+                                    <label class="admin-header-filter-label" for="subscriber-filter-tier">
+                                        @T("Vlak bevat", "Tier contains")
+                                    </label>
+                                    <input id="subscriber-filter-tier"
+                                           class="admin-header-filter-input"
+                                           type="search"
+                                           @bind="SubscriberTierFilterDraft"
+                                           @bind:event="oninput"
+                                           placeholder='@T("Tik om te filter", "Type to filter")' />
+                                    <div class="admin-header-filter-actions-row">
+                                        <button type="button"
+                                                class="admin-header-filter-action"
+                                                @onclick='() => ApplySubscriberTextFilterAsync("tiers")'>
+                                            @T("Pas toe", "Apply")
+                                        </button>
+                                        <button type="button"
+                                                class="admin-header-filter-action is-secondary"
+                                                @onclick='() => ClearSubscriberTextFilterAsync("tiers")'>
+                                            @T("Maak skoon", "Clear")
+                                        </button>
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
                     </MudTh>
                     <MudTh>
-                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="source">
-                            @T("Bron", "Source")
-                        </MudTableSortLabel>
+                        <div class="admin-header-cell">
+                            <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="source">
+                                @T("Bron", "Source")
+                            </MudTableSortLabel>
+                            <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(SubscriberColumnFilters.SourceSystem) ? string.Empty : " is-active")}")'
+                                     @onclick:stopPropagation="true">
+                                <summary class="admin-header-filter-toggle"
+                                         @onclick:stopPropagation="true"
+                                         title='@T("Filter bron", "Filter source")'>
+                                    <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                                    <span class="sr-only">@T("Filter bron", "Filter source")</span>
+                                </summary>
+                                <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
+                                    <label class="admin-header-filter-label" for="subscriber-filter-source">
+                                        @T("Bron", "Source")
+                                    </label>
+                                    <select id="subscriber-filter-source"
+                                            class="admin-header-filter-select"
+                                            value="@SubscriberColumnFilters.SourceSystem"
+                                            @onchange="OnSubscriberSourceFilterChanged">
+                                        <option value="@AdminGridFilterOptionValues.All">@T("Alles", "All")</option>
+                                        <option value="@AdminGridFilterOptionValues.None">@T("Geen", "None")</option>
+                                        <option value="wordpress_pmpro">WordPress / PMPro</option>
+                                        <option value="shink_app">@T("App", "App")</option>
+                                    </select>
+                                </div>
+                            </details>
+                        </div>
                     </MudTh>
                     <MudTh>
-                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="provider">
-                            @T("Betaalverskaffer", "Payment Provider")
-                        </MudTableSortLabel>
+                        <div class="admin-header-cell">
+                            <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="provider">
+                                @T("Betaalverskaffer", "Payment Provider")
+                            </MudTableSortLabel>
+                            <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(SubscriberColumnFilters.PaymentProvider) ? string.Empty : " is-active")}")'
+                                     @onclick:stopPropagation="true">
+                                <summary class="admin-header-filter-toggle"
+                                         @onclick:stopPropagation="true"
+                                         title='@T("Filter betaalverskaffer", "Filter payment provider")'>
+                                    <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                                    <span class="sr-only">@T("Filter betaalverskaffer", "Filter payment provider")</span>
+                                </summary>
+                                <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
+                                    <label class="admin-header-filter-label" for="subscriber-filter-provider">
+                                        @T("Betaalverskaffer", "Payment Provider")
+                                    </label>
+                                    <select id="subscriber-filter-provider"
+                                            class="admin-header-filter-select"
+                                            value="@SubscriberColumnFilters.PaymentProvider"
+                                            @onchange="OnSubscriberProviderFilterChanged">
+                                        <option value="@AdminGridFilterOptionValues.All">@T("Alles", "All")</option>
+                                        <option value="@AdminGridFilterOptionValues.None">@T("Geen", "None")</option>
+                                        <option value="payfast">PayFast</option>
+                                        <option value="paystack">Paystack</option>
+                                        <option value="free">@T("Gratis", "Free")</option>
+                                    </select>
+                                </div>
+                            </details>
+                        </div>
                     </MudTh>
                     <MudTh>
-                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="status">
-                            @T("Status", "Status")
-                        </MudTableSortLabel>
+                        <div class="admin-header-cell">
+                            <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="status">
+                                @T("Status", "Status")
+                            </MudTableSortLabel>
+                            <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(SubscriberColumnFilters.SubscriptionStatus) ? string.Empty : " is-active")}")'
+                                     @onclick:stopPropagation="true">
+                                <summary class="admin-header-filter-toggle"
+                                         @onclick:stopPropagation="true"
+                                         title='@T("Filter status", "Filter status")'>
+                                    <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                                    <span class="sr-only">@T("Filter status", "Filter status")</span>
+                                </summary>
+                                <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
+                                    <label class="admin-header-filter-label" for="subscriber-filter-status">
+                                        @T("Status", "Status")
+                                    </label>
+                                    <select id="subscriber-filter-status"
+                                            class="admin-header-filter-select"
+                                            value="@SubscriberColumnFilters.SubscriptionStatus"
+                                            @onchange="OnSubscriberStatusFilterChanged">
+                                        <option value="@AdminGridFilterOptionValues.All">@T("Alles", "All")</option>
+                                        <option value="@AdminGridFilterOptionValues.None">@T("Geen", "None")</option>
+                                        <option value="active">@T("Aktief", "Active")</option>
+                                        <option value="pending">@T("Hangend", "Pending")</option>
+                                        <option value="cancelled">@T("Gekanselleer", "Cancelled")</option>
+                                        <option value="failed">@T("Misluk", "Failed")</option>
+                                    </select>
+                                </div>
+                            </details>
+                        </div>
                     </MudTh>
                     <MudTh>
                         <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="subscribed_at">
@@ -265,6 +456,17 @@
                                placeholder='@T("Soek titel of slug", "Search title or slug")' />
                     </div>
                     <div class="admin-search-actions">
+                        <MudButton Class="admin-icon-btn admin-mobile-cta"
+                                   Variant="Variant.Text"
+                                   Color="Color.Default"
+                                   Disabled="@(!HasActiveStoryColumnFilters)"
+                                   OnClick="ClearStoryColumnFilters"
+                                   aria-label='@T("Maak storiefilters skoon", "Clear story filters")'
+                                   title='@T("Maak storiefilters skoon", "Clear story filters")'>
+                            <i class="fa-solid fa-filter-circle-xmark" aria-hidden="true"></i>
+                            <span class="admin-btn-text">@T("Maak filters skoon", "Clear filters")</span>
+                            <span class="sr-only">@T("Maak storiefilters skoon", "Clear story filters")</span>
+                        </MudButton>
                         <MudButton Class="admin-new-action-btn"
                                    Variant="Variant.Outlined"
                                    Color="Color.Primary"
@@ -291,19 +493,102 @@
                       OnRowClick="OnStoryRowClick">
                 <HeaderContent>
                     <MudTh>
-                        <MudTableSortLabel T="AdminStoryRecord" SortBy="new Func<AdminStoryRecord, object?>(story => story.Title)">
-                            @T("Titel", "Title")
-                        </MudTableSortLabel>
+                        <div class="admin-header-cell">
+                            <MudTableSortLabel T="AdminStoryRecord" SortBy="new Func<AdminStoryRecord, object?>(story => story.Title)">
+                                @T("Titel", "Title")
+                            </MudTableSortLabel>
+                            <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(StoryColumnFilters.TitleText) ? string.Empty : " is-active")}")'
+                                     @onclick:stopPropagation="true">
+                                <summary class="admin-header-filter-toggle"
+                                         @onclick:stopPropagation="true"
+                                         title='@T("Filter titel", "Filter title")'>
+                                    <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                                    <span class="sr-only">@T("Filter titel", "Filter title")</span>
+                                </summary>
+                                <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
+                                    <label class="admin-header-filter-label" for="story-filter-title">
+                                        @T("Titel bevat", "Title contains")
+                                    </label>
+                                    <input id="story-filter-title"
+                                           class="admin-header-filter-input"
+                                           type="search"
+                                           @bind="StoryTitleFilterDraft"
+                                           @bind:event="oninput"
+                                           placeholder='@T("Tik om te filter", "Type to filter")' />
+                                    <div class="admin-header-filter-actions-row">
+                                        <button type="button"
+                                                class="admin-header-filter-action"
+                                                @onclick="ApplyStoryTitleFilter">
+                                            @T("Pas toe", "Apply")
+                                        </button>
+                                        <button type="button"
+                                                class="admin-header-filter-action is-secondary"
+                                                @onclick="ClearStoryTitleFilter">
+                                            @T("Maak skoon", "Clear")
+                                        </button>
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
                     </MudTh>
                     <MudTh>
-                        <MudTableSortLabel T="AdminStoryRecord" SortBy="new Func<AdminStoryRecord, object?>(story => story.Status)">
-                            @T("Status", "Status")
-                        </MudTableSortLabel>
+                        <div class="admin-header-cell">
+                            <MudTableSortLabel T="AdminStoryRecord" SortBy="new Func<AdminStoryRecord, object?>(story => story.Status)">
+                                @T("Status", "Status")
+                            </MudTableSortLabel>
+                            <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(StoryColumnFilters.Status) ? string.Empty : " is-active")}")'
+                                     @onclick:stopPropagation="true">
+                                <summary class="admin-header-filter-toggle"
+                                         @onclick:stopPropagation="true"
+                                         title='@T("Filter status", "Filter status")'>
+                                    <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                                    <span class="sr-only">@T("Filter status", "Filter status")</span>
+                                </summary>
+                                <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
+                                    <label class="admin-header-filter-label" for="story-filter-status">
+                                        @T("Status", "Status")
+                                    </label>
+                                    <select id="story-filter-status"
+                                            class="admin-header-filter-select"
+                                            value="@StoryColumnFilters.Status"
+                                            @onchange="OnStoryStatusFilterChanged">
+                                        <option value="@AdminGridFilterOptionValues.All">@T("Alles", "All")</option>
+                                        <option value="draft">draft</option>
+                                        <option value="published">published</option>
+                                        <option value="archived">archived</option>
+                                    </select>
+                                </div>
+                            </details>
+                        </div>
                     </MudTh>
                     <MudTh>
-                        <MudTableSortLabel T="AdminStoryRecord" SortBy="new Func<AdminStoryRecord, object?>(story => story.AccessLevel)">
-                            @T("Toegang", "Access")
-                        </MudTableSortLabel>
+                        <div class="admin-header-cell">
+                            <MudTableSortLabel T="AdminStoryRecord" SortBy="new Func<AdminStoryRecord, object?>(story => story.AccessLevel)">
+                                @T("Toegang", "Access")
+                            </MudTableSortLabel>
+                            <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(StoryColumnFilters.AccessLevel) ? string.Empty : " is-active")}")'
+                                     @onclick:stopPropagation="true">
+                                <summary class="admin-header-filter-toggle"
+                                         @onclick:stopPropagation="true"
+                                         title='@T("Filter toegang", "Filter access")'>
+                                    <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                                    <span class="sr-only">@T("Filter toegang", "Filter access")</span>
+                                </summary>
+                                <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
+                                    <label class="admin-header-filter-label" for="story-filter-access">
+                                        @T("Toegang", "Access")
+                                    </label>
+                                    <select id="story-filter-access"
+                                            class="admin-header-filter-select"
+                                            value="@StoryColumnFilters.AccessLevel"
+                                            @onchange="OnStoryAccessFilterChanged">
+                                        <option value="@AdminGridFilterOptionValues.All">@T("Alles", "All")</option>
+                                        <option value="subscriber">subscriber</option>
+                                        <option value="free">free</option>
+                                    </select>
+                                </div>
+                            </details>
+                        </div>
                     </MudTh>
                     <MudTh Class="admin-col-center">@T("Aksies", "Actions")</MudTh>
                 </HeaderContent>
@@ -354,6 +639,17 @@
                                placeholder='@T("Soek titel of slug", "Search title or slug")' />
                     </div>
                     <div class="admin-search-actions">
+                        <MudButton Class="admin-icon-btn admin-mobile-cta"
+                                   Variant="Variant.Text"
+                                   Color="Color.Default"
+                                   Disabled="@(!HasActivePlaylistColumnFilters)"
+                                   OnClick="ClearPlaylistColumnFilters"
+                                   aria-label='@T("Maak playlistfilters skoon", "Clear playlist filters")'
+                                   title='@T("Maak playlistfilters skoon", "Clear playlist filters")'>
+                            <i class="fa-solid fa-filter-circle-xmark" aria-hidden="true"></i>
+                            <span class="admin-btn-text">@T("Maak filters skoon", "Clear filters")</span>
+                            <span class="sr-only">@T("Maak playlistfilters skoon", "Clear playlist filters")</span>
+                        </MudButton>
                         <MudButton Variant="Variant.Outlined"
                                    Color="Color.Primary"
                                    Class="admin-new-action-btn"
@@ -378,10 +674,124 @@
                       RowClassFunc="GetPlaylistRowClass"
                       OnRowClick="OnPlaylistRowClick">
                 <HeaderContent>
-                    <MudTh>@T("Titel", "Title")</MudTh>
-                    <MudTh>@T("Aktief", "Active")</MudTh>
-                    <MudTh>@T("Tuisblad", "Home")</MudTh>
-                    <MudTh>@T("Showcase op Luister", "Showcase on Luister")</MudTh>
+                    <MudTh>
+                        <div class="admin-header-cell">
+                            <span class="admin-header-title">@T("Titel", "Title")</span>
+                            <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(PlaylistColumnFilters.TitleText) ? string.Empty : " is-active")}")'
+                                     @onclick:stopPropagation="true">
+                                <summary class="admin-header-filter-toggle"
+                                         @onclick:stopPropagation="true"
+                                         title='@T("Filter titel", "Filter title")'>
+                                    <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                                    <span class="sr-only">@T("Filter titel", "Filter title")</span>
+                                </summary>
+                                <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
+                                    <label class="admin-header-filter-label" for="playlist-filter-title">
+                                        @T("Titel bevat", "Title contains")
+                                    </label>
+                                    <input id="playlist-filter-title"
+                                           class="admin-header-filter-input"
+                                           type="search"
+                                           @bind="PlaylistTitleFilterDraft"
+                                           @bind:event="oninput"
+                                           placeholder='@T("Tik om te filter", "Type to filter")' />
+                                    <div class="admin-header-filter-actions-row">
+                                        <button type="button"
+                                                class="admin-header-filter-action"
+                                                @onclick="ApplyPlaylistTitleFilter">
+                                            @T("Pas toe", "Apply")
+                                        </button>
+                                        <button type="button"
+                                                class="admin-header-filter-action is-secondary"
+                                                @onclick="ClearPlaylistTitleFilter">
+                                            @T("Maak skoon", "Clear")
+                                        </button>
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
+                    </MudTh>
+                    <MudTh>
+                        <div class="admin-header-cell">
+                            <span class="admin-header-title">@T("Aktief", "Active")</span>
+                            <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(PlaylistColumnFilters.IsEnabled) ? string.Empty : " is-active")}")'
+                                     @onclick:stopPropagation="true">
+                                <summary class="admin-header-filter-toggle"
+                                         @onclick:stopPropagation="true"
+                                         title='@T("Filter aktief", "Filter active")'>
+                                    <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                                    <span class="sr-only">@T("Filter aktief", "Filter active")</span>
+                                </summary>
+                                <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
+                                    <label class="admin-header-filter-label" for="playlist-filter-enabled">
+                                        @T("Aktief", "Active")
+                                    </label>
+                                    <select id="playlist-filter-enabled"
+                                            class="admin-header-filter-select"
+                                            value="@PlaylistColumnFilters.IsEnabled"
+                                            @onchange="OnPlaylistEnabledFilterChanged">
+                                        <option value="@AdminGridFilterOptionValues.All">@T("Alles", "All")</option>
+                                        <option value="@AdminGridFilterOptionValues.True">@T("Ja", "Yes")</option>
+                                        <option value="@AdminGridFilterOptionValues.False">@T("Nee", "No")</option>
+                                    </select>
+                                </div>
+                            </details>
+                        </div>
+                    </MudTh>
+                    <MudTh>
+                        <div class="admin-header-cell">
+                            <span class="admin-header-title">@T("Tuisblad", "Home")</span>
+                            <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(PlaylistColumnFilters.ShowOnHome) ? string.Empty : " is-active")}")'
+                                     @onclick:stopPropagation="true">
+                                <summary class="admin-header-filter-toggle"
+                                         @onclick:stopPropagation="true"
+                                         title='@T("Filter tuisblad", "Filter home")'>
+                                    <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                                    <span class="sr-only">@T("Filter tuisblad", "Filter home")</span>
+                                </summary>
+                                <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
+                                    <label class="admin-header-filter-label" for="playlist-filter-home">
+                                        @T("Tuisblad", "Home")
+                                    </label>
+                                    <select id="playlist-filter-home"
+                                            class="admin-header-filter-select"
+                                            value="@PlaylistColumnFilters.ShowOnHome"
+                                            @onchange="OnPlaylistHomeFilterChanged">
+                                        <option value="@AdminGridFilterOptionValues.All">@T("Alles", "All")</option>
+                                        <option value="@AdminGridFilterOptionValues.True">@T("Ja", "Yes")</option>
+                                        <option value="@AdminGridFilterOptionValues.False">@T("Nee", "No")</option>
+                                    </select>
+                                </div>
+                            </details>
+                        </div>
+                    </MudTh>
+                    <MudTh>
+                        <div class="admin-header-cell">
+                            <span class="admin-header-title">@T("Showcase op Luister", "Showcase on Luister")</span>
+                            <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(PlaylistColumnFilters.ShowShowcase) ? string.Empty : " is-active")}")'
+                                     @onclick:stopPropagation="true">
+                                <summary class="admin-header-filter-toggle"
+                                         @onclick:stopPropagation="true"
+                                         title='@T("Filter showcase op Luister", "Filter showcase on Luister")'>
+                                    <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                                    <span class="sr-only">@T("Filter showcase op Luister", "Filter showcase on Luister")</span>
+                                </summary>
+                                <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
+                                    <label class="admin-header-filter-label" for="playlist-filter-showcase">
+                                        @T("Showcase op Luister", "Showcase on Luister")
+                                    </label>
+                                    <select id="playlist-filter-showcase"
+                                            class="admin-header-filter-select"
+                                            value="@PlaylistColumnFilters.ShowShowcase"
+                                            @onchange="OnPlaylistShowcaseFilterChanged">
+                                        <option value="@AdminGridFilterOptionValues.All">@T("Alles", "All")</option>
+                                        <option value="@AdminGridFilterOptionValues.True">@T("Ja", "Yes")</option>
+                                        <option value="@AdminGridFilterOptionValues.False">@T("Nee", "No")</option>
+                                    </select>
+                                </div>
+                            </details>
+                        </div>
+                    </MudTh>
                     <MudTh Class="admin-col-center">@T("Aksies", "Actions")</MudTh>
                 </HeaderContent>
                 <RowTemplate>
@@ -1492,15 +1902,23 @@
     private string StorySearch { get; set; } = string.Empty;
     private string PlaylistSearch { get; set; } = string.Empty;
     private string StoryToAddIdString { get; set; } = string.Empty;
+    private string SubscriberTextFilterDraft { get; set; } = string.Empty;
+    private string SubscriberMobileFilterDraft { get; set; } = string.Empty;
+    private string SubscriberTierFilterDraft { get; set; } = string.Empty;
+    private string StoryTitleFilterDraft { get; set; } = string.Empty;
+    private string PlaylistTitleFilterDraft { get; set; } = string.Empty;
 
     private IReadOnlyList<AdminSubscriberRecord> Subscribers { get; set; } = Array.Empty<AdminSubscriberRecord>();
     private IReadOnlyList<AdminStoryRecord> Stories { get; set; } = Array.Empty<AdminStoryRecord>();
     private IReadOnlyList<AdminPlaylistRecord> Playlists { get; set; } = Array.Empty<AdminPlaylistRecord>();
     private AdminAnalyticsSnapshot Analytics { get; set; } = AdminAnalyticsSnapshot.Empty;
+    private AdminSubscriberColumnFilters SubscriberColumnFilters { get; } = new();
+    private AdminStoryColumnFilters StoryColumnFilters { get; } = new();
+    private AdminPlaylistColumnFilters PlaylistColumnFilters { get; } = new();
     private IReadOnlyList<AdminStoryRecord> FilteredStories =>
-        FilterStories(Stories, StorySearch);
+        AdminGridFilterLogic.FilterStories(Stories, StorySearch, StoryColumnFilters);
     private IReadOnlyList<AdminPlaylistRecord> FilteredPlaylists =>
-        FilterPlaylists(Playlists, PlaylistSearch);
+        AdminGridFilterLogic.FilterPlaylists(Playlists, PlaylistSearch, PlaylistColumnFilters);
 
     private MudTable<AdminSubscriberRecord>? SubscribersTable { get; set; }
     private EditableSubscriber? SubscriberEditor { get; set; }
@@ -1529,6 +1947,10 @@
         Analytics.StorySummary.TotalListenEvents > 0 ||
         Analytics.StorySummary.TotalFavorites > 0 ||
         Analytics.CharacterSummary.TotalAudioPlays > 0;
+
+    private bool HasActiveSubscriberColumnFilters => SubscriberColumnFilters.HasActiveFilters;
+    private bool HasActiveStoryColumnFilters => StoryColumnFilters.HasActiveFilters;
+    private bool HasActivePlaylistColumnFilters => PlaylistColumnFilters.HasActiveFilters;
 
     private string CurrentLanguageCode => CurrentLanguage == AdminLanguage.English ? "en" : "af";
     private bool IsR2UploadConfigured
@@ -1774,7 +2196,13 @@
                     PageSize: state.PageSize,
                     Search: SubscriberSearch,
                     SortLabel: state.SortLabel,
-                    SortDescending: state.SortDirection == SortDirection.Descending),
+                    SortDescending: state.SortDirection == SortDirection.Descending,
+                    SubscriberText: SubscriberColumnFilters.SubscriberText,
+                    MobileText: SubscriberColumnFilters.MobileText,
+                    TierText: SubscriberColumnFilters.TierText,
+                    SourceSystem: SubscriberColumnFilters.SourceSystem,
+                    PaymentProvider: SubscriberColumnFilters.PaymentProvider,
+                    SubscriptionStatus: SubscriberColumnFilters.SubscriptionStatus),
                 cancellationToken);
 
             Subscribers = page.Items;
@@ -1818,6 +2246,131 @@
         {
             IsRefreshingSubscribers = false;
         }
+    }
+
+    private async Task ApplySubscriberTextFilterAsync(string filterKey)
+    {
+        switch (filterKey)
+        {
+            case "subscriber":
+                SubscriberColumnFilters.SubscriberText = SubscriberTextFilterDraft.Trim();
+                break;
+            case "mobile":
+                SubscriberColumnFilters.MobileText = SubscriberMobileFilterDraft.Trim();
+                break;
+            case "tiers":
+                SubscriberColumnFilters.TierText = SubscriberTierFilterDraft.Trim();
+                break;
+        }
+
+        await RefreshSubscribersAsync(resetToFirstPage: true);
+    }
+
+    private async Task ClearSubscriberTextFilterAsync(string filterKey)
+    {
+        switch (filterKey)
+        {
+            case "subscriber":
+                SubscriberTextFilterDraft = string.Empty;
+                SubscriberColumnFilters.SubscriberText = string.Empty;
+                break;
+            case "mobile":
+                SubscriberMobileFilterDraft = string.Empty;
+                SubscriberColumnFilters.MobileText = string.Empty;
+                break;
+            case "tiers":
+                SubscriberTierFilterDraft = string.Empty;
+                SubscriberColumnFilters.TierText = string.Empty;
+                break;
+        }
+
+        await RefreshSubscribersAsync(resetToFirstPage: true);
+    }
+
+    private async Task OnSubscriberSourceFilterChanged(ChangeEventArgs args)
+    {
+        SubscriberColumnFilters.SourceSystem = ReadFilterValue(args);
+        await RefreshSubscribersAsync(resetToFirstPage: true);
+    }
+
+    private async Task OnSubscriberProviderFilterChanged(ChangeEventArgs args)
+    {
+        SubscriberColumnFilters.PaymentProvider = ReadFilterValue(args);
+        await RefreshSubscribersAsync(resetToFirstPage: true);
+    }
+
+    private async Task OnSubscriberStatusFilterChanged(ChangeEventArgs args)
+    {
+        SubscriberColumnFilters.SubscriptionStatus = ReadFilterValue(args);
+        await RefreshSubscribersAsync(resetToFirstPage: true);
+    }
+
+    private async Task ClearSubscriberColumnFiltersAsync()
+    {
+        SubscriberColumnFilters.Clear();
+        SubscriberTextFilterDraft = string.Empty;
+        SubscriberMobileFilterDraft = string.Empty;
+        SubscriberTierFilterDraft = string.Empty;
+        await RefreshSubscribersAsync(resetToFirstPage: true);
+    }
+
+    private void ApplyStoryTitleFilter()
+    {
+        StoryColumnFilters.TitleText = StoryTitleFilterDraft.Trim();
+    }
+
+    private void ClearStoryTitleFilter()
+    {
+        StoryTitleFilterDraft = string.Empty;
+        StoryColumnFilters.TitleText = string.Empty;
+    }
+
+    private void OnStoryStatusFilterChanged(ChangeEventArgs args)
+    {
+        StoryColumnFilters.Status = ReadFilterValue(args);
+    }
+
+    private void OnStoryAccessFilterChanged(ChangeEventArgs args)
+    {
+        StoryColumnFilters.AccessLevel = ReadFilterValue(args);
+    }
+
+    private void ClearStoryColumnFilters()
+    {
+        StoryColumnFilters.Clear();
+        StoryTitleFilterDraft = string.Empty;
+    }
+
+    private void ApplyPlaylistTitleFilter()
+    {
+        PlaylistColumnFilters.TitleText = PlaylistTitleFilterDraft.Trim();
+    }
+
+    private void ClearPlaylistTitleFilter()
+    {
+        PlaylistTitleFilterDraft = string.Empty;
+        PlaylistColumnFilters.TitleText = string.Empty;
+    }
+
+    private void OnPlaylistEnabledFilterChanged(ChangeEventArgs args)
+    {
+        PlaylistColumnFilters.IsEnabled = ReadFilterValue(args);
+    }
+
+    private void OnPlaylistHomeFilterChanged(ChangeEventArgs args)
+    {
+        PlaylistColumnFilters.ShowOnHome = ReadFilterValue(args);
+    }
+
+    private void OnPlaylistShowcaseFilterChanged(ChangeEventArgs args)
+    {
+        PlaylistColumnFilters.ShowShowcase = ReadFilterValue(args);
+    }
+
+    private void ClearPlaylistColumnFilters()
+    {
+        PlaylistColumnFilters.Clear();
+        PlaylistTitleFilterDraft = string.Empty;
     }
 
     private async Task RefreshStoriesAsync(Guid? selectedStoryId = null)
@@ -4264,69 +4817,8 @@
     private static string BuildTierSortKey(IReadOnlyList<string>? tiers) =>
         tiers is null || tiers.Count == 0 ? string.Empty : string.Join(", ", tiers);
 
-    private static IReadOnlyList<AdminSubscriberRecord> FilterSubscribers(
-        IReadOnlyList<AdminSubscriberRecord> source,
-        string? searchTerm)
-    {
-        if (source.Count == 0)
-        {
-            return source;
-        }
-
-        var normalizedSearch = searchTerm?.Trim();
-        if (string.IsNullOrWhiteSpace(normalizedSearch))
-        {
-            return source;
-        }
-
-        return source.Where(subscriber =>
-                subscriber.Email.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase) ||
-                BuildSubscriberName(subscriber).Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase) ||
-                (subscriber.MobileNumber?.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase) ?? false))
-            .ToArray();
-    }
-
-    private static IReadOnlyList<AdminStoryRecord> FilterStories(
-        IReadOnlyList<AdminStoryRecord> source,
-        string? searchTerm)
-    {
-        if (source.Count == 0)
-        {
-            return source;
-        }
-
-        var normalizedSearch = searchTerm?.Trim();
-        if (string.IsNullOrWhiteSpace(normalizedSearch))
-        {
-            return source;
-        }
-
-        return source.Where(story =>
-                story.Title.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase) ||
-                story.Slug.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase))
-            .ToArray();
-    }
-
-    private static IReadOnlyList<AdminPlaylistRecord> FilterPlaylists(
-        IReadOnlyList<AdminPlaylistRecord> source,
-        string? searchTerm)
-    {
-        if (source.Count == 0)
-        {
-            return source;
-        }
-
-        var normalizedSearch = searchTerm?.Trim();
-        if (string.IsNullOrWhiteSpace(normalizedSearch))
-        {
-            return source;
-        }
-
-        return source.Where(playlist =>
-                playlist.Title.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase) ||
-                playlist.Slug.Contains(normalizedSearch, StringComparison.OrdinalIgnoreCase))
-            .ToArray();
-    }
+    private static string ReadFilterValue(ChangeEventArgs args) =>
+        args.Value?.ToString()?.Trim() ?? string.Empty;
 
     private static MarkupString HighlightSearchMatch(string? value, string? searchTerm)
     {

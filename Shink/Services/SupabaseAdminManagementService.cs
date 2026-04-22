@@ -157,7 +157,13 @@ public sealed partial class SupabaseAdminManagementService(
             p_page_size = Math.Clamp(request.PageSize, 1, 500),
             p_search = NormalizeSearchTerm(request.Search),
             p_sort_label = NormalizeSubscriberSortLabel(request.SortLabel),
-            p_sort_desc = request.SortDescending
+            p_sort_desc = request.SortDescending,
+            p_subscriber_text = NormalizeSearchTerm(request.SubscriberText),
+            p_mobile_text = NormalizeSearchTerm(request.MobileText),
+            p_tier_text = NormalizeSearchTerm(request.TierText),
+            p_source = NormalizeSubscriberFilterToken(request.SourceSystem),
+            p_provider = NormalizeSubscriberFilterToken(request.PaymentProvider),
+            p_status = NormalizeSubscriberFilterToken(request.SubscriptionStatus)
         };
 
         var response = await InvokeRpcAsync<AdminSubscriberPageRpcResponse>(
@@ -1992,6 +1998,16 @@ public sealed partial class SupabaseAdminManagementService(
         }
 
         return value.Trim();
+    }
+
+    private static string? NormalizeSubscriberFilterToken(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return value.Trim().ToLowerInvariant();
     }
 
     private static string NormalizeSubscriberSortLabel(string? value) =>

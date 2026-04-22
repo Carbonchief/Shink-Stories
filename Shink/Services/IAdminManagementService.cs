@@ -101,7 +101,13 @@ public sealed record AdminSubscriberPageRequest(
     int PageSize,
     string? Search = null,
     string? SortLabel = null,
-    bool SortDescending = false);
+    bool SortDescending = false,
+    string? SubscriberText = null,
+    string? MobileText = null,
+    string? TierText = null,
+    string? SourceSystem = null,
+    string? PaymentProvider = null,
+    string? SubscriptionStatus = null);
 
 public sealed record AdminSubscriberPageResult(
     IReadOnlyList<AdminSubscriberRecord> Items,

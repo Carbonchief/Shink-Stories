@@ -264,7 +264,7 @@
     align-items: center;
     justify-content: flex-end;
     gap: 0.4rem;
-    width: min(100%, 620px);
+    width: min(100%, 860px);
     margin-inline-start: auto;
 }
 
@@ -383,12 +383,19 @@
 .admin-grid {
     border: 1px solid var(--admin-border);
     border-radius: 12px;
-    overflow: hidden;
+    overflow: visible;
+}
+
+.admin-grid ::deep .mud-table-container {
+    overflow-x: auto;
+    overflow-y: visible;
+    border-radius: 12px 12px 0 0;
 }
 
 .admin-grid ::deep .mud-table-root {
     background: var(--admin-surface-soft);
     color: var(--admin-text);
+    overflow: visible;
 }
 
 .admin-grid ::deep .mud-table-pagination {
@@ -412,6 +419,7 @@
     color: #f6f9fc;
     border-bottom: 1px solid var(--admin-border-strong);
     font-weight: 700;
+    overflow: visible;
 }
 
 .admin-grid ::deep .mud-table-cell {
@@ -441,13 +449,122 @@
     background: var(--admin-selected-row);
 }
 
+.admin-header-cell {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.35rem;
+    min-width: 0;
+}
+
+.admin-header-cell ::deep .mud-table-sort-label {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.admin-header-title {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.admin-header-filter {
+    position: relative;
+    display: inline-flex;
+    flex: 0 0 auto;
+}
+
+.admin-header-filter-toggle {
+    list-style: none;
+    width: 1.9rem;
+    min-width: 1.9rem;
+    height: 1.9rem;
+    border: 1px solid color-mix(in srgb, var(--admin-border-strong) 88%, transparent);
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: color-mix(in srgb, var(--admin-surface) 86%, #304457);
+    color: #f6f9fc;
+    cursor: pointer;
+    transition: background 0.16s ease, color 0.16s ease, border-color 0.16s ease;
+}
+
+.admin-header-filter-toggle::-webkit-details-marker {
+    display: none;
+}
+
+.admin-header-filter[open] .admin-header-filter-toggle,
+.admin-header-filter.is-active .admin-header-filter-toggle {
+    border-color: #f3a13f;
+    background: #f3a13f;
+    color: #16212d;
+}
+
+.admin-header-filter-popover {
+    position: absolute;
+    top: calc(100% + 0.45rem);
+    right: 0;
+    width: min(18rem, 75vw);
+    padding: 0.7rem;
+    border: 1px solid var(--admin-border-strong);
+    border-radius: 12px;
+    background: var(--admin-surface);
+    box-shadow: 0 16px 30px rgba(5, 11, 20, 0.46);
+    display: grid;
+    gap: 0.55rem;
+    z-index: 40;
+}
+
+.admin-header-filter-label {
+    color: var(--admin-text);
+    font-size: 0.83rem;
+    font-weight: 700;
+}
+
+.admin-header-filter-input,
+.admin-header-filter-select {
+    width: 100%;
+    min-height: 38px;
+    padding: 0.6rem 0.72rem;
+    border: 1px solid var(--admin-input-border);
+    border-radius: 10px;
+    background: var(--admin-input-bg);
+    color: var(--admin-text);
+    font: inherit;
+}
+
+.admin-header-filter-actions-row {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.4rem;
+}
+
+.admin-header-filter-action {
+    min-height: 36px;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    padding: 0.45rem 0.7rem;
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+    color: #111820;
+    background: #f3a13f;
+}
+
+.admin-header-filter-action.is-secondary {
+    border-color: var(--admin-border-strong);
+    background: #24384c;
+    color: #eaf2fa;
+}
+
 .admin-subscriber-grid ::deep table {
     width: 100%;
     table-layout: fixed;
 }
 
 .admin-subscriber-grid {
-    overflow-x: auto;
+    overflow: visible;
 }
 
 .admin-subscriber-grid ::deep .mud-table-head .mud-table-cell {
