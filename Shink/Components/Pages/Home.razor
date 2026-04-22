@@ -1,4 +1,4 @@
-﻿@page "/"
+@page "/"
 @rendermode InteractiveServer
 @attribute [StreamRendering(true)]
 @using System.ComponentModel.DataAnnotations
@@ -196,6 +196,27 @@ else
                   PlanActionHref="@StoryAccessPopupPlanHref"
                   OnClose="CloseStoryAccessPopupAsync" />
 
+<section class="join-promo home-scroll-reveal" style="--home-reveal-delay: 0.04s;">
+    <div class="join-promo-media">
+        <img src="/branding/Kom_Luister_Saam.png"
+             alt="Kom Luister Saam by Schink Stories" loading="lazy" decoding="async" />
+    </div>
+
+    <div class="join-promo-copy">
+        <p class="join-promo-intro">Ontdek 'n wêreld vol verbeelding, pret en betekenis.</p>
+
+        <ul class="join-promo-list">
+            <li>Geniet <strong>onbeperkte toegang</strong> tot al ons Afrikaanse oudiostories en reekse</li>
+            <li>Dis veilig vir kinders - <strong>geen advertensies of donker temas nie</strong></li>
+            <li>Bou gesonde karakter, leer goeie waardes en waardevolle lewenslesse</li>
+            <li>Help met taalontwikkeling, ouditiewe ontwikkeling, fokus en soveel meer</li>
+            <li>Nuwe stories elke maand + toegang tot die volledige versameling</li>
+        </ul>
+
+        <a class="join-promo-cta" href='@BuildPlanSignUpHref("schink-stories-maandeliks")'>Sluit aan vir slegs R 79 p/maand</a>
+    </div>
+</section>
+
 <section class="home-testimonials section-block home-scroll-reveal p-3" style="--home-reveal-delay: 0.08s;" aria-labelledby="home-ouers-se">
     <div class="home-testimonials-header">
         <h2 id="home-ouers-se">Wat ouers se</h2>
@@ -241,26 +262,6 @@ else
         <button type="button" class="home-review-control home-review-control-next" data-review-carousel-next aria-label="Volgende resensie">
             <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
         </button>
-    </div>
-</section>
-
-<section class="home-whatsapp-join section-block home-scroll-reveal" style="--home-reveal-delay: 0.08s;" aria-labelledby="home-whatsapp-join">
-    <div class="home-whatsapp-join-card">
-        <div class="home-whatsapp-join-copy">
-            <p class="home-whatsapp-join-kicker">WhatsApp groep</p>
-            <h2 id="home-whatsapp-join">Sluit by ons WhatsApp-groep aan</h2>
-            <p>
-                Kry maklike opdaterings, nuus en ondersteuning saam met ander Schink-ouers in een plek.
-            </p>
-        </div>
-        <a class="home-whatsapp-join-btn"
-           href="https://chat.whatsapp.com/FLbBQBo0mVcBZDTublIWi5"
-           target="_blank"
-           rel="noopener noreferrer"
-           aria-label="Sluit by die Schink WhatsApp-groep aan">
-            <i class="fa-brands fa-whatsapp" aria-hidden="true"></i>
-            <span>Sluit aan op WhatsApp</span>
-        </a>
     </div>
 </section>
 
@@ -320,24 +321,23 @@ else
     </div>
 </section>
 
-<section class="join-promo home-scroll-reveal" style="--home-reveal-delay: 0.04s;">
-    <div class="join-promo-media">
-        <img src="/branding/Kom_Luister_Saam.png"
-             alt="Kom Luister Saam by Schink Stories" loading="lazy" decoding="async" />
-    </div>
-
-    <div class="join-promo-copy">
-        <p class="join-promo-intro">Ontdek 'n wêreld vol verbeelding, pret en betekenis.</p>
-
-        <ul class="join-promo-list">
-            <li>Geniet <strong>onbeperkte toegang</strong> tot al ons Afrikaanse oudiostories en reekse</li>
-            <li>Dis veilig vir kinders - <strong>geen advertensies of donker temas nie</strong></li>
-            <li>Bou gesonde karakter, leer goeie waardes en waardevolle lewenslesse</li>
-            <li>Help met taalontwikkeling, ouditiewe ontwikkeling, fokus en soveel meer</li>
-            <li>Nuwe stories elke maand + toegang tot die volledige versameling</li>
-        </ul>
-
-        <a class="join-promo-cta" href='@BuildPlanSignUpHref("schink-stories-maandeliks")'>Sluit aan vir slegs R 79 p/maand</a>
+<section class="home-whatsapp-join section-block home-scroll-reveal" style="--home-reveal-delay: 0.08s;" aria-labelledby="home-whatsapp-join">
+    <div class="home-whatsapp-join-card">
+        <div class="home-whatsapp-join-copy">
+            <p class="home-whatsapp-join-kicker">WhatsApp groep</p>
+            <h2 id="home-whatsapp-join">Sluit by ons WhatsApp-groep aan</h2>
+            <p>
+                Kry maklike opdaterings, nuus en ondersteuning saam met ander Schink-ouers in een plek.
+            </p>
+        </div>
+        <a class="home-whatsapp-join-btn"
+           href="https://chat.whatsapp.com/FLbBQBo0mVcBZDTublIWi5"
+           target="_blank"
+           rel="noopener noreferrer"
+           aria-label="Sluit by die Schink WhatsApp-groep aan">
+            <i class="fa-brands fa-whatsapp" aria-hidden="true"></i>
+            <span>Sluit aan op WhatsApp</span>
+        </a>
     </div>
 </section>
 
@@ -948,3 +948,4 @@ else
         public string Website { get; set; } = string.Empty;
     }
 }
+

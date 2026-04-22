@@ -128,7 +128,7 @@
                         <MudButton Class="admin-icon-btn admin-mobile-cta"
                                    Variant="Variant.Filled"
                                    Color="Color.Primary"
-                                   OnClick="RefreshSubscribersAsync"
+                                   OnClick="SearchSubscribersAsync"
                                    aria-label='@T("Soek intekenaars", "Search subscribers")'
                                    title='@T("Soek intekenaars", "Search subscribers")'>
                             <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
@@ -138,7 +138,7 @@
                         <MudButton Class="admin-icon-btn admin-mobile-cta"
                                    Variant="Variant.Outlined"
                                    Color="Color.Primary"
-                                   OnClick="RefreshSubscribersAsync"
+                                   OnClick="ReloadSubscribersAsync"
                                    aria-label='@T("Verfris intekenaars", "Refresh subscribers")'
                                    title='@T("Verfris intekenaars", "Refresh subscribers")'>
                             <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
@@ -150,9 +150,11 @@
             </div>
 
             <MudTable T="AdminSubscriberRecord"
+                      @ref="SubscribersTable"
                       Class="admin-grid admin-subscriber-grid"
-                      Items="FilteredSubscribers"
+                      ServerData="LoadSubscribersPageAsync"
                       SortLabel='@T("Sorteer volgens", "Sort by")'
+                      Loading="IsRefreshingSubscribers"
                       RowsPerPage="100"
                       Dense="true"
                       Hover="true"
@@ -163,42 +165,42 @@
                       OnRowClick="OnSubscriberRowClick">
                 <HeaderContent>
                     <MudTh>
-                        <MudTableSortLabel SortBy="new Func<AdminSubscriberRecord, object?>(subscriber => BuildSubscriberSortKey(subscriber))">
+                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="subscriber">
                             @T("Intekenaar", "Subscriber")
                         </MudTableSortLabel>
                     </MudTh>
                     <MudTh>
-                        <MudTableSortLabel SortBy="new Func<AdminSubscriberRecord, object?>(subscriber => subscriber.MobileNumber ?? string.Empty)">
+                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="mobile">
                             @T("Selfoon", "Mobile")
                         </MudTableSortLabel>
                     </MudTh>
                     <MudTh>
-                        <MudTableSortLabel SortBy="new Func<AdminSubscriberRecord, object?>(subscriber => BuildTierSortKey(subscriber.ActiveTierCodes))">
+                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="tiers">
                             @T("Vlakke", "Tiers")
                         </MudTableSortLabel>
                     </MudTh>
                     <MudTh>
-                        <MudTableSortLabel SortBy="new Func<AdminSubscriberRecord, object?>(subscriber => BuildSubscriptionSourceLabel(subscriber.SubscriptionSourceSystem))">
+                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="source">
                             @T("Bron", "Source")
                         </MudTableSortLabel>
                     </MudTh>
                     <MudTh>
-                        <MudTableSortLabel SortBy="new Func<AdminSubscriberRecord, object?>(subscriber => BuildPaymentProviderLabel(subscriber.PaymentProvider))">
+                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="provider">
                             @T("Betaalverskaffer", "Payment Provider")
                         </MudTableSortLabel>
                     </MudTh>
                     <MudTh>
-                        <MudTableSortLabel SortBy="new Func<AdminSubscriberRecord, object?>(subscriber => BuildSubscriptionStatusLabel(subscriber))">
+                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="status">
                             @T("Status", "Status")
                         </MudTableSortLabel>
                     </MudTh>
                     <MudTh>
-                        <MudTableSortLabel SortBy="new Func<AdminSubscriberRecord, object?>(subscriber => subscriber.SubscribedAt ?? DateTimeOffset.MinValue)">
+                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="subscribed_at">
                             @T("Ingeteken op", "Subscribed On")
                         </MudTableSortLabel>
                     </MudTh>
                     <MudTh>
-                        <MudTableSortLabel SortBy="new Func<AdminSubscriberRecord, object?>(subscriber => subscriber.NextPaymentDueAt ?? DateTimeOffset.MinValue)">
+                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="next_payment">
                             @T("Volgende betaling", "Next Payment")
                         </MudTableSortLabel>
                     </MudTh>
@@ -289,17 +291,17 @@
                       OnRowClick="OnStoryRowClick">
                 <HeaderContent>
                     <MudTh>
-                        <MudTableSortLabel SortBy="new Func<AdminStoryRecord, object?>(story => story.Title)">
+                        <MudTableSortLabel T="AdminStoryRecord" SortBy="new Func<AdminStoryRecord, object?>(story => story.Title)">
                             @T("Titel", "Title")
                         </MudTableSortLabel>
                     </MudTh>
                     <MudTh>
-                        <MudTableSortLabel SortBy="new Func<AdminStoryRecord, object?>(story => story.Status)">
+                        <MudTableSortLabel T="AdminStoryRecord" SortBy="new Func<AdminStoryRecord, object?>(story => story.Status)">
                             @T("Status", "Status")
                         </MudTableSortLabel>
                     </MudTh>
                     <MudTh>
-                        <MudTableSortLabel SortBy="new Func<AdminStoryRecord, object?>(story => story.AccessLevel)">
+                        <MudTableSortLabel T="AdminStoryRecord" SortBy="new Func<AdminStoryRecord, object?>(story => story.AccessLevel)">
                             @T("Toegang", "Access")
                         </MudTableSortLabel>
                     </MudTh>
@@ -1466,6 +1468,7 @@
     private bool IsSavingPlaylistsOrder { get; set; }
     private bool IsSavingPlaylistStories { get; set; }
     private bool IsRefreshingAnalytics { get; set; }
+    private bool IsRefreshingSubscribers { get; set; }
     private bool IsSubscriberDialogOpen { get; set; }
     private bool IsStoryDialogOpen { get; set; }
     private bool IsNewStoryDialogOpen { get; set; }
@@ -1494,13 +1497,12 @@
     private IReadOnlyList<AdminStoryRecord> Stories { get; set; } = Array.Empty<AdminStoryRecord>();
     private IReadOnlyList<AdminPlaylistRecord> Playlists { get; set; } = Array.Empty<AdminPlaylistRecord>();
     private AdminAnalyticsSnapshot Analytics { get; set; } = AdminAnalyticsSnapshot.Empty;
-    private IReadOnlyList<AdminSubscriberRecord> FilteredSubscribers =>
-        FilterSubscribers(Subscribers, SubscriberSearch);
     private IReadOnlyList<AdminStoryRecord> FilteredStories =>
         FilterStories(Stories, StorySearch);
     private IReadOnlyList<AdminPlaylistRecord> FilteredPlaylists =>
         FilterPlaylists(Playlists, PlaylistSearch);
 
+    private MudTable<AdminSubscriberRecord>? SubscribersTable { get; set; }
     private EditableSubscriber? SubscriberEditor { get; set; }
     private EditableStory? StoryEditor { get; set; }
     private NewStoryDraft? NewStoryEditor { get; set; }
@@ -1514,6 +1516,7 @@
     private IJSObjectReference? AdminUploadModule { get; set; }
     private IJSObjectReference? AdminGridModule { get; set; }
     private bool SubscriberGridEnhancementPending { get; set; } = true;
+    private bool SubscriberTableReloadPending { get; set; } = true;
 
     private IReadOnlyList<AdminStoryRecord> AvailableStoriesForPlaylist =>
         Stories
@@ -1629,6 +1632,14 @@
 
         if (!SubscriberGridEnhancementPending)
         {
+            if (!IsLoading &&
+                SubscriberTableReloadPending &&
+                SubscribersTable is not null)
+            {
+                SubscriberTableReloadPending = false;
+                await RefreshSubscribersAsync();
+            }
+
             return;
         }
 
@@ -1650,6 +1661,14 @@
         catch (Exception exception)
         {
             Logger.LogDebug(exception, "Admin subscriber grid enhancement skipped.");
+        }
+
+        if (!IsLoading &&
+            SubscriberTableReloadPending &&
+            SubscribersTable is not null)
+        {
+            SubscriberTableReloadPending = false;
+            await RefreshSubscribersAsync();
         }
     }
 
@@ -1713,21 +1732,55 @@
     private async Task LoadAllAsync()
     {
         IsLoading = true;
-        var subscribersTask = RefreshSubscribersAsync();
         var storiesTask = RefreshStoriesAsync();
         var playlistsTask = RefreshPlaylistsAsync();
         var analyticsTask = RefreshAnalyticsAsync();
-        await Task.WhenAll(subscribersTask, storiesTask, playlistsTask, analyticsTask);
+        await Task.WhenAll(storiesTask, playlistsTask, analyticsTask);
         IsLoading = false;
     }
 
-    private async Task RefreshSubscribersAsync()
+    private async Task SearchSubscribersAsync() =>
+        await RefreshSubscribersAsync(resetToFirstPage: true);
+
+    private async Task ReloadSubscribersAsync() =>
+        await RefreshSubscribersAsync();
+
+    private async Task RefreshSubscribersAsync(bool resetToFirstPage = false)
     {
+        if (SubscribersTable is null)
+        {
+            SubscriberTableReloadPending = true;
+            return;
+        }
+
+        if (resetToFirstPage)
+        {
+            SubscribersTable.NavigateTo(0);
+        }
+
+        await SubscribersTable.ReloadServerData();
+    }
+
+    private async Task<TableData<AdminSubscriberRecord>> LoadSubscribersPageAsync(TableState state, CancellationToken cancellationToken)
+    {
+        IsRefreshingSubscribers = true;
+
         try
         {
-            var selectedSubscriberId = SubscriberEditor?.SubscriberId;
-            Subscribers = await AdminManagementService.GetSubscribersAsync(CurrentAdminEmail, SubscriberSearch);
+            var page = await AdminManagementService.GetSubscribersPageAsync(
+                CurrentAdminEmail,
+                new AdminSubscriberPageRequest(
+                    PageIndex: state.Page,
+                    PageSize: state.PageSize,
+                    Search: SubscriberSearch,
+                    SortLabel: state.SortLabel,
+                    SortDescending: state.SortDirection == SortDirection.Descending),
+                cancellationToken);
+
+            Subscribers = page.Items;
             SubscriberGridEnhancementPending = true;
+
+            var selectedSubscriberId = SubscriberEditor?.SubscriberId;
             var selectedSubscriber = selectedSubscriberId is not null
                 ? Subscribers.FirstOrDefault(subscriber => subscriber.SubscriberId == selectedSubscriberId.Value)
                 : Subscribers.FirstOrDefault();
@@ -1739,6 +1792,12 @@
             {
                 IsSubscriberDialogOpen = false;
             }
+
+            return new TableData<AdminSubscriberRecord>
+            {
+                Items = Subscribers,
+                TotalItems = page.TotalCount
+            };
         }
         catch (Exception exception)
         {
@@ -1748,6 +1807,16 @@
             SubscriberEditorStateSignature = null;
             IsSubscriberDialogOpen = false;
             SetError(T("Kon nie intekenaars nou laai nie.", "Could not load subscribers right now."));
+
+            return new TableData<AdminSubscriberRecord>
+            {
+                Items = Subscribers,
+                TotalItems = 0
+            };
+        }
+        finally
+        {
+            IsRefreshingSubscribers = false;
         }
     }
 

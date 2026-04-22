@@ -117,64 +117,91 @@ public sealed partial class SupabaseAdminManagementService(
         string? search = null,
         CancellationToken cancellationToken = default)
     {
+        var page = await GetSubscribersPageAsync(
+            adminEmail,
+            new AdminSubscriberPageRequest(
+                PageIndex: 0,
+                PageSize: 5000,
+                Search: search,
+                SortLabel: "subscriber",
+                SortDescending: false),
+            cancellationToken);
+
+        return page.Items;
+    }
+
+    public async Task<AdminSubscriberPageResult> GetSubscribersPageAsync(
+        string? adminEmail,
+        AdminSubscriberPageRequest request,
+        CancellationToken cancellationToken = default)
+    {
         if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
         {
-            return Array.Empty<AdminSubscriberRecord>();
+            return new AdminSubscriberPageResult(Array.Empty<AdminSubscriberRecord>(), 0);
         }
 
         if (!TryBuildSupabaseBaseUri(out var baseUri))
         {
-            return Array.Empty<AdminSubscriberRecord>();
+            return new AdminSubscriberPageResult(Array.Empty<AdminSubscriberRecord>(), 0);
         }
 
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return Array.Empty<AdminSubscriberRecord>();
+            return new AdminSubscriberPageResult(Array.Empty<AdminSubscriberRecord>(), 0);
         }
 
-        var subscribersTask = FetchSubscribersAsync(baseUri, apiKey, cancellationToken);
-        var subscriptionsTask = FetchSubscriptionsAsync(baseUri, apiKey, cancellationToken);
-        await Task.WhenAll(subscribersTask, subscriptionsTask);
+        var payload = new
+        {
+            p_page_index = Math.Max(0, request.PageIndex),
+            p_page_size = Math.Clamp(request.PageSize, 1, 500),
+            p_search = NormalizeSearchTerm(request.Search),
+            p_sort_label = NormalizeSubscriberSortLabel(request.SortLabel),
+            p_sort_desc = request.SortDescending
+        };
 
-        var activeTiersBySubscriber = BuildActiveTierMap(subscriptionsTask.Result);
-        var subscriptionSummaryBySubscriber = BuildSubscriptionSummaryMap(subscriptionsTask.Result);
-        var normalizedSearch = NormalizeSearchTerm(search);
+        var response = await InvokeRpcAsync<AdminSubscriberPageRpcResponse>(
+            baseUri,
+            apiKey,
+            "admin_subscribers_page",
+            payload,
+            cancellationToken);
 
-        return subscribersTask.Result
-            .Where(row => row.SubscriberId != Guid.Empty)
-            .Where(row => !string.IsNullOrWhiteSpace(row.Email))
-            .Where(row => MatchesSubscriberSearch(row, normalizedSearch))
-            .Select(row =>
-            {
-                var activeTierCodes = activeTiersBySubscriber.TryGetValue(row.SubscriberId, out var tierCodes)
-                    ? tierCodes
-                    : Array.Empty<string>();
-                var subscriptionSummary = subscriptionSummaryBySubscriber.TryGetValue(row.SubscriberId, out var summary)
-                    ? summary
-                    : null;
+        if (response is null)
+        {
+            return new AdminSubscriberPageResult(Array.Empty<AdminSubscriberRecord>(), 0);
+        }
 
-                return new AdminSubscriberRecord(
-                    SubscriberId: row.SubscriberId,
-                    Email: row.Email.Trim().ToLowerInvariant(),
-                    FirstName: NormalizeOptionalText(row.FirstName, 80),
-                    LastName: NormalizeOptionalText(row.LastName, 80),
-                    DisplayName: NormalizeOptionalText(row.DisplayName, 120),
-                    MobileNumber: NormalizeOptionalText(row.MobileNumber, 32),
-                    ProfileImageUrl: NormalizeOptionalText(row.ProfileImageUrl, 2048),
-                    CreatedAt: row.CreatedAt,
-                    UpdatedAt: row.UpdatedAt,
-                    ActiveTierCodes: activeTierCodes,
-                    PaymentProvider: subscriptionSummary?.PaymentProvider,
-                    SubscriptionSourceSystem: subscriptionSummary?.SourceSystem,
-                    SubscriptionStatus: subscriptionSummary?.Status,
-                    SubscribedAt: subscriptionSummary?.SubscribedAt,
-                    NextPaymentDueAt: subscriptionSummary?.NextRenewalAt,
-                    CancelledAt: subscriptionSummary?.CancelledAt);
-            })
-            .OrderByDescending(row => row.UpdatedAt)
-            .ThenBy(row => row.Email, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        var items = response.Items?
+            .Where(item => item.SubscriberId != Guid.Empty)
+            .Where(item => !string.IsNullOrWhiteSpace(item.Email))
+            .Select(item => new AdminSubscriberRecord(
+                SubscriberId: item.SubscriberId,
+                Email: item.Email.Trim().ToLowerInvariant(),
+                FirstName: NormalizeOptionalText(item.FirstName, 80),
+                LastName: NormalizeOptionalText(item.LastName, 80),
+                DisplayName: NormalizeOptionalText(item.DisplayName, 120),
+                MobileNumber: NormalizeOptionalText(item.MobileNumber, 32),
+                ProfileImageUrl: NormalizeOptionalText(item.ProfileImageUrl, 2048),
+                CreatedAt: item.CreatedAt,
+                UpdatedAt: item.UpdatedAt,
+                ActiveTierCodes: item.ActiveTierCodes?
+                    .Where(tier => !string.IsNullOrWhiteSpace(tier))
+                    .Select(tier => tier.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(tier => tier, StringComparer.OrdinalIgnoreCase)
+                    .ToArray()
+                    ?? Array.Empty<string>(),
+                PaymentProvider: NormalizeOptionalText(item.PaymentProvider, 40),
+                SubscriptionSourceSystem: NormalizeOptionalText(item.SubscriptionSourceSystem, 40),
+                SubscriptionStatus: NormalizeOptionalText(item.SubscriptionStatus, 40),
+                SubscribedAt: item.SubscribedAt,
+                NextPaymentDueAt: item.NextPaymentDueAt,
+                CancelledAt: item.CancelledAt))
+            .ToArray()
+            ?? Array.Empty<AdminSubscriberRecord>();
+
+        return new AdminSubscriberPageResult(items, Math.Max(0, response.TotalCount));
     }
 
     public async Task<AdminOperationResult> UpdateSubscriberAsync(
@@ -1967,6 +1994,20 @@ public sealed partial class SupabaseAdminManagementService(
         return value.Trim();
     }
 
+    private static string NormalizeSubscriberSortLabel(string? value) =>
+        value?.Trim().ToLowerInvariant() switch
+        {
+            "subscriber" => "subscriber",
+            "mobile" => "mobile",
+            "tiers" => "tiers",
+            "source" => "source",
+            "provider" => "provider",
+            "status" => "status",
+            "subscribed_at" => "subscribed_at",
+            "next_payment" => "next_payment",
+            _ => "subscriber"
+        };
+
     private static bool MatchesSubscriberSearch(SubscriberRow row, string? searchTerm)
     {
         if (string.IsNullOrWhiteSpace(searchTerm))
@@ -2057,6 +2098,66 @@ public sealed partial class SupabaseAdminManagementService(
     {
         [JsonPropertyName("email")]
         public string Email { get; set; } = string.Empty;
+    }
+
+    private sealed class AdminSubscriberPageRpcResponse
+    {
+        [JsonPropertyName("total_count")]
+        public int TotalCount { get; set; }
+
+        [JsonPropertyName("items")]
+        public List<AdminSubscriberPageItemRpc>? Items { get; set; }
+    }
+
+    private sealed class AdminSubscriberPageItemRpc
+    {
+        [JsonPropertyName("subscriber_id")]
+        public Guid SubscriberId { get; set; }
+
+        [JsonPropertyName("email")]
+        public string Email { get; set; } = string.Empty;
+
+        [JsonPropertyName("first_name")]
+        public string? FirstName { get; set; }
+
+        [JsonPropertyName("last_name")]
+        public string? LastName { get; set; }
+
+        [JsonPropertyName("display_name")]
+        public string? DisplayName { get; set; }
+
+        [JsonPropertyName("mobile_number")]
+        public string? MobileNumber { get; set; }
+
+        [JsonPropertyName("profile_image_url")]
+        public string? ProfileImageUrl { get; set; }
+
+        [JsonPropertyName("created_at")]
+        public DateTimeOffset CreatedAt { get; set; }
+
+        [JsonPropertyName("updated_at")]
+        public DateTimeOffset UpdatedAt { get; set; }
+
+        [JsonPropertyName("active_tier_codes")]
+        public List<string>? ActiveTierCodes { get; set; }
+
+        [JsonPropertyName("payment_provider")]
+        public string? PaymentProvider { get; set; }
+
+        [JsonPropertyName("subscription_source_system")]
+        public string? SubscriptionSourceSystem { get; set; }
+
+        [JsonPropertyName("subscription_status")]
+        public string? SubscriptionStatus { get; set; }
+
+        [JsonPropertyName("subscribed_at")]
+        public DateTimeOffset? SubscribedAt { get; set; }
+
+        [JsonPropertyName("next_payment_due_at")]
+        public DateTimeOffset? NextPaymentDueAt { get; set; }
+
+        [JsonPropertyName("cancelled_at")]
+        public DateTimeOffset? CancelledAt { get; set; }
     }
 
     private sealed class SubscriberRow

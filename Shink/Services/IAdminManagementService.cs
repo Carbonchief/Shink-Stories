@@ -15,6 +15,11 @@ public interface IAdminManagementService
         string? search = null,
         CancellationToken cancellationToken = default);
 
+    Task<AdminSubscriberPageResult> GetSubscribersPageAsync(
+        string? adminEmail,
+        AdminSubscriberPageRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<AdminOperationResult> UpdateSubscriberAsync(
         string? adminEmail,
         AdminSubscriberUpdateRequest request,
@@ -90,6 +95,17 @@ public interface IAdminManagementService
 }
 
 public sealed record AdminOperationResult(bool IsSuccess, string? ErrorMessage = null, Guid? EntityId = null);
+
+public sealed record AdminSubscriberPageRequest(
+    int PageIndex,
+    int PageSize,
+    string? Search = null,
+    string? SortLabel = null,
+    bool SortDescending = false);
+
+public sealed record AdminSubscriberPageResult(
+    IReadOnlyList<AdminSubscriberRecord> Items,
+    int TotalCount);
 
 public sealed record AdminSubscriberRecord(
     Guid SubscriberId,

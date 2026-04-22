@@ -12,7 +12,10 @@
     --admin-input-bg: #1d2d3d;
     --admin-input-border: #49657d;
 
-    width: min(100%, 1120px);
+    width: 100%;
+    max-width: none;
+    padding-inline: clamp(0.75rem, 1.8vw, 1.5rem);
+    box-sizing: border-box;
     margin-inline: auto;
     display: grid;
     gap: 1rem;

@@ -1557,6 +1557,10 @@ h2 {
         overflow-x: clip;
     }
 
+    .home-whatsapp-join {
+        padding-inline: 0.75rem;
+    }
+
     .home-whatsapp-join-card {
         border-radius: 22px;
         padding: 1.1rem 1rem;
