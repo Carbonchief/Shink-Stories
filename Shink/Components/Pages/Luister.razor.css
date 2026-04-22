@@ -343,7 +343,11 @@ h1 {
 }
 
 .stories-carousel.luister-speellyste-carousel {
-    grid-auto-columns: calc(var(--luister-speellyste-base-card-width) * 64 / 27);
+    --luister-speellyste-viewport-cap: calc(100vw - (var(--luister-carousel-edge-space, 15px) * 2));
+    grid-auto-columns: min(
+        calc(var(--luister-speellyste-base-card-width) * 64 / 27),
+        var(--luister-speellyste-viewport-cap)
+    );
 }
 
 .luister-stories-section .stories-carousel,
@@ -640,6 +644,10 @@ h1 {
     .luister-speellyste-carousel {
         --luister-speellyste-base-card-width: clamp(170px, 42vw, 420px);
     }
+
+    .stories-carousel.luister-speellyste-carousel {
+        --luister-speellyste-viewport-cap: min(86vw, calc(100vw - (var(--luister-carousel-edge-space, 15px) * 2)));
+    }
 }
 
 @media (max-width: 680px) {
@@ -711,6 +719,10 @@ h1 {
 
     .luister-speellyste-carousel {
         --luister-speellyste-base-card-width: clamp(146px, 44vw, 360px);
+    }
+
+    .stories-carousel.luister-speellyste-carousel {
+        --luister-speellyste-viewport-cap: min(92vw, calc(100vw - (var(--luister-carousel-edge-space, 15px) * 2)));
     }
 
     .luister-stories-section .stories-carousel,
