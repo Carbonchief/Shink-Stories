@@ -109,6 +109,7 @@ builder.Services.AddHttpClient<IContactEmailService, ResendContactEmailService>(
 builder.Services.AddHttpClient<ISupabaseAuthService, SupabaseAuthService>();
 builder.Services.AddHttpClient<IAuthSessionService, SupabaseAuthSessionService>();
 builder.Services.AddHttpClient<IStoryCatalogService, SupabaseStoryCatalogService>();
+builder.Services.AddHttpClient<IStoreProductCatalogService, SupabaseStoreProductCatalogService>();
 builder.Services.AddHttpClient<PayFastCheckoutService>();
 builder.Services.AddHttpClient<PaystackCheckoutService>();
 builder.Services.AddHttpClient<ISubscriptionLedgerService, SupabaseSubscriptionLedgerService>();
@@ -659,6 +660,7 @@ app.MapPost("/winkel/koop/paystack", async (
     HttpContext httpContext,
     PaystackCheckoutService paystackCheckoutService,
     IStoreOrderService storeOrderService,
+    IStoreProductCatalogService storeProductCatalogService,
     ILogger<Program> logger) =>
 {
     if (!httpContext.Request.HasFormContentType)
@@ -669,9 +671,10 @@ app.MapPost("/winkel/koop/paystack", async (
     }
 
     var form = await httpContext.Request.ReadFormAsync(httpContext.RequestAborted);
-    if (!TryBuildStoreCheckoutDraft(form, out var draft, out var amountInCents, out var errorMessage))
+    var availableProducts = await storeProductCatalogService.GetEnabledProductsAsync(httpContext.RequestAborted);
+    if (!TryBuildStoreCheckoutDraft(form, availableProducts, out var draft, out var amountInCents, out var errorMessage))
     {
-        var requestedProductSlug = GetFirstSelectedStoreProductSlugFromForm(form);
+        var requestedProductSlug = GetFirstSelectedStoreProductSlugFromForm(form, availableProducts);
         return Results.Redirect(BuildStorePageRedirectPath(
             paymentStatus: "misluk",
             productSlug: requestedProductSlug,
@@ -2990,6 +2993,7 @@ static bool TryResolvePaymentProvider(string? provider, out string resolvedProvi
 
 static bool TryBuildStoreCheckoutDraft(
     IFormCollection form,
+    IReadOnlyList<StoreProduct> availableProducts,
     out StoreOrderDraft? draft,
     out int amountInCents,
     out string? errorMessage)
@@ -2998,8 +3002,14 @@ static bool TryBuildStoreCheckoutDraft(
     amountInCents = 0;
     errorMessage = null;
 
+    if (availableProducts.Count == 0)
+    {
+        errorMessage = "Die winkel is tans leeg. Probeer asseblief later weer.";
+        return false;
+    }
+
     var items = new List<StoreOrderItemDraft>();
-    foreach (var product in StoreProductCatalog.All)
+    foreach (var product in availableProducts)
     {
         var fieldName = $"qty-{product.Slug}";
         var rawQuantity = form[fieldName].ToString();
@@ -3037,13 +3047,6 @@ static bool TryBuildStoreCheckoutDraft(
     if (totalQuantity > 20)
     {
         errorMessage = "Jy kan tans tot 20 teddies in een bestelling plaas.";
-        return false;
-    }
-
-    var unitPriceZar = items[0].UnitPriceZar;
-    if (items.Any(item => item.UnitPriceZar != unitPriceZar))
-    {
-        errorMessage = "Die winkelpryse is tans nie korrek opgestel nie. Probeer asseblief later weer.";
         return false;
     }
 
@@ -3093,6 +3096,7 @@ static bool TryBuildStoreCheckoutDraft(
 
     var summarySlug = items.Count == 1 ? items[0].ProductSlug : "multi-item-order";
     var summaryName = items.Count == 1 ? items[0].ProductName : "Gemengde StorieTjommie bestelling";
+    var summaryUnitPriceZar = items.Count == 1 ? items[0].UnitPriceZar : 0m;
     var orderReference = BuildStoreOrderReference(summarySlug);
     var totalPriceZar = items.Sum(item => item.LineTotalZar);
     amountInCents = decimal.ToInt32(decimal.Round(totalPriceZar * 100m, 0, MidpointRounding.AwayFromZero));
@@ -3101,7 +3105,7 @@ static bool TryBuildStoreCheckoutDraft(
         ProductSlug: summarySlug,
         ProductName: summaryName,
         Quantity: totalQuantity,
-        UnitPriceZar: unitPriceZar,
+        UnitPriceZar: summaryUnitPriceZar,
         Items: items,
         CustomerName: customerName,
         CustomerEmail: customerEmail,
@@ -3115,9 +3119,11 @@ static bool TryBuildStoreCheckoutDraft(
     return true;
 }
 
-static string? GetFirstSelectedStoreProductSlugFromForm(IFormCollection form)
+static string? GetFirstSelectedStoreProductSlugFromForm(
+    IFormCollection form,
+    IReadOnlyList<StoreProduct> availableProducts)
 {
-    foreach (var product in StoreProductCatalog.All)
+    foreach (var product in availableProducts)
     {
         var rawQuantity = form[$"qty-{product.Slug}"].ToString();
         if (int.TryParse(rawQuantity, NumberStyles.Integer, CultureInfo.InvariantCulture, out var quantity) &&

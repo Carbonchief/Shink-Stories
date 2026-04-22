@@ -60,6 +60,20 @@ public interface IAdminManagementService
         IReadOnlyList<AdminPlaylistStorySaveItem> orderedStories,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<AdminStoreProductRecord>> GetStoreProductsAsync(
+        string? adminEmail,
+        CancellationToken cancellationToken = default);
+
+    Task<AdminOperationResult> SaveStoreProductAsync(
+        string? adminEmail,
+        AdminStoreProductSaveRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<AdminOperationResult> DeleteStoreProductAsync(
+        string? adminEmail,
+        Guid storeProductId,
+        CancellationToken cancellationToken = default);
+
     Task<AdminAnalyticsSnapshot> GetAnalyticsAsync(
         string? adminEmail,
         CancellationToken cancellationToken = default);
@@ -234,6 +248,31 @@ public sealed record AdminPlaylistUpdateRequest(
     bool IsEnabled,
     bool ShowOnHome,
     bool ShowShowcaseImageOnLuisterPage);
+
+public sealed record AdminStoreProductRecord(
+    Guid StoreProductId,
+    string Slug,
+    string Name,
+    string? Description,
+    string ImagePath,
+    string AltText,
+    string? ThemeClass,
+    decimal UnitPriceZar,
+    int SortOrder,
+    bool IsEnabled,
+    DateTimeOffset? UpdatedAt);
+
+public sealed record AdminStoreProductSaveRequest(
+    Guid? StoreProductId,
+    string Slug,
+    string Name,
+    string? Description,
+    string ImagePath,
+    string? AltText,
+    string? ThemeClass,
+    decimal UnitPriceZar,
+    int SortOrder,
+    bool IsEnabled);
 
 public sealed record AdminStoryAnalyticsSummary(
     [property: JsonPropertyName("total_views")] int TotalViews,

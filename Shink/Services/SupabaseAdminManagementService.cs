@@ -1025,6 +1025,225 @@ public sealed partial class SupabaseAdminManagementService(
         return new AdminOperationResult(false, "Kon nie nuwe playlist stories stoor nie.");
     }
 
+    public async Task<IReadOnlyList<AdminStoreProductRecord>> GetStoreProductsAsync(
+        string? adminEmail,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
+        {
+            return Array.Empty<AdminStoreProductRecord>();
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return Array.Empty<AdminStoreProductRecord>();
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return Array.Empty<AdminStoreProductRecord>();
+        }
+
+        var rows = await FetchStoreProductsAsync(baseUri, apiKey, cancellationToken);
+
+        var records = rows
+            .Where(row => row.StoreProductId != Guid.Empty)
+            .Where(row => !string.IsNullOrWhiteSpace(row.Slug))
+            .Where(row => !string.IsNullOrWhiteSpace(row.Name))
+            .Where(row => !string.IsNullOrWhiteSpace(row.ImagePath))
+            .Select(row =>
+            {
+                var normalizedSlug = row.Slug.Trim().ToLowerInvariant();
+                var normalizedName = row.Name.Trim();
+                var normalizedImagePath = NormalizeStoreProductImagePath(row.ImagePath);
+                var normalizedAltText = NormalizeOptionalText(row.AltText, 220) ?? $"{normalizedName} produk";
+
+                return new AdminStoreProductRecord(
+                    StoreProductId: row.StoreProductId,
+                    Slug: normalizedSlug,
+                    Name: normalizedName,
+                    Description: NormalizeOptionalText(row.Description, 600),
+                    ImagePath: normalizedImagePath,
+                    AltText: normalizedAltText,
+                    ThemeClass: NormalizeOptionalText(row.ThemeClass, 80),
+                    UnitPriceZar: row.UnitPriceZar,
+                    SortOrder: Math.Clamp(row.SortOrder, -500_000, 500_000),
+                    IsEnabled: row.IsEnabled,
+                    UpdatedAt: row.UpdatedAt);
+            })
+            .OrderBy(row => row.SortOrder)
+            .ThenBy(row => row.Name, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        return records.Length > 0
+            ? records
+            : BuildFallbackStoreProductRecords();
+    }
+
+    public async Task<AdminOperationResult> SaveStoreProductAsync(
+        string? adminEmail,
+        AdminStoreProductSaveRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
+        {
+            return new AdminOperationResult(false, "Jy het nie admin toegang nie.");
+        }
+
+        var normalizedSlug = request.Slug?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (!StorySlugRegex().IsMatch(normalizedSlug))
+        {
+            return new AdminOperationResult(false, "Winkel produk slug is ongeldig.");
+        }
+
+        var normalizedName = request.Name?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalizedName))
+        {
+            return new AdminOperationResult(false, "Winkel produk naam is verpligtend.");
+        }
+
+        var normalizedImagePath = NormalizeStoreProductImagePath(request.ImagePath);
+        if (string.IsNullOrWhiteSpace(normalizedImagePath))
+        {
+            return new AdminOperationResult(false, "Winkel produk image is verpligtend.");
+        }
+
+        var normalizedPrice = decimal.Round(request.UnitPriceZar, 2, MidpointRounding.AwayFromZero);
+        if (normalizedPrice <= 0m || normalizedPrice > 999_999.99m)
+        {
+            return new AdminOperationResult(false, "Winkel produk prys moet groter as nul wees.");
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return new AdminOperationResult(false, "Supabase URL is nog nie opgestel nie.");
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+        }
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["slug"] = normalizedSlug,
+            ["name"] = normalizedName,
+            ["description"] = NormalizeOptionalText(request.Description, 600),
+            ["image_path"] = normalizedImagePath,
+            ["alt_text"] = NormalizeOptionalText(request.AltText, 220) ?? $"{normalizedName} produk",
+            ["theme_class"] = NormalizeOptionalText(request.ThemeClass, 80),
+            ["unit_price_zar"] = normalizedPrice,
+            ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
+            ["is_enabled"] = request.IsEnabled
+        };
+
+        if (request.StoreProductId is null || request.StoreProductId == Guid.Empty)
+        {
+            var createUri = new Uri(baseUri, "rest/v1/store_products");
+            using var createRequest = CreateJsonRequest(HttpMethod.Post, createUri, apiKey, new[] { payload }, "return=representation");
+            using var createResponse = await _httpClient.SendAsync(createRequest, cancellationToken);
+            var responseBody = await createResponse.Content.ReadAsStringAsync(cancellationToken);
+            if (!createResponse.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Store product create failed. slug={Slug} Status={StatusCode} Body={Body}",
+                    normalizedSlug,
+                    (int)createResponse.StatusCode,
+                    responseBody);
+
+                if ((int)createResponse.StatusCode == 409 ||
+                    responseBody.Contains("duplicate key", StringComparison.OrdinalIgnoreCase))
+                {
+                    return new AdminOperationResult(false, "Winkel produk slug bestaan reeds.");
+                }
+
+                return new AdminOperationResult(false, "Kon nie winkel produk skep nie.");
+            }
+
+            InvalidateStoreProductCatalogCache();
+            return new AdminOperationResult(true, EntityId: TryReadFirstGuidProperty(responseBody, "store_product_id"));
+        }
+
+        var escapedStoreProductId = Uri.EscapeDataString(request.StoreProductId.Value.ToString("D"));
+        var updateUri = new Uri(baseUri, $"rest/v1/store_products?store_product_id=eq.{escapedStoreProductId}");
+        using var updateRequest = CreateJsonRequest(new HttpMethod("PATCH"), updateUri, apiKey, payload, "return=representation");
+        using var updateResponse = await _httpClient.SendAsync(updateRequest, cancellationToken);
+        var updateBody = await updateResponse.Content.ReadAsStringAsync(cancellationToken);
+
+        if (updateResponse.IsSuccessStatusCode)
+        {
+            var hasUpdatedRow = TryReadFirstGuidProperty(updateBody, "store_product_id").HasValue;
+            if (!hasUpdatedRow)
+            {
+                return new AdminOperationResult(false, "Kies asseblief 'n geldige winkel produk.");
+            }
+
+            InvalidateStoreProductCatalogCache();
+            return new AdminOperationResult(true, EntityId: request.StoreProductId);
+        }
+
+        _logger.LogWarning(
+            "Store product update failed. store_product_id={StoreProductId} Status={StatusCode} Body={Body}",
+            request.StoreProductId,
+            (int)updateResponse.StatusCode,
+            updateBody);
+
+        if ((int)updateResponse.StatusCode == 409 ||
+            updateBody.Contains("duplicate key", StringComparison.OrdinalIgnoreCase))
+        {
+            return new AdminOperationResult(false, "Winkel produk slug bestaan reeds.");
+        }
+
+        return new AdminOperationResult(false, "Kon nie winkel produk nou opdateer nie.");
+    }
+
+    public async Task<AdminOperationResult> DeleteStoreProductAsync(
+        string? adminEmail,
+        Guid storeProductId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
+        {
+            return new AdminOperationResult(false, "Jy het nie admin toegang nie.");
+        }
+
+        if (storeProductId == Guid.Empty)
+        {
+            return new AdminOperationResult(false, "Kies asseblief 'n geldige winkel produk.");
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return new AdminOperationResult(false, "Supabase URL is nog nie opgestel nie.");
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+        }
+
+        var escapedStoreProductId = Uri.EscapeDataString(storeProductId.ToString("D"));
+        var deleteUri = new Uri(baseUri, $"rest/v1/store_products?store_product_id=eq.{escapedStoreProductId}");
+        using var deleteRequest = CreateRequest(HttpMethod.Delete, deleteUri, apiKey);
+        using var deleteResponse = await _httpClient.SendAsync(deleteRequest, cancellationToken);
+        if (deleteResponse.IsSuccessStatusCode)
+        {
+            InvalidateStoreProductCatalogCache();
+            return new AdminOperationResult(true);
+        }
+
+        var responseBody = await deleteResponse.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Store product delete failed. store_product_id={StoreProductId} Status={StatusCode} Body={Body}",
+            storeProductId,
+            (int)deleteResponse.StatusCode,
+            responseBody);
+        return new AdminOperationResult(false, "Kon nie winkel produk nou verwyder nie.");
+    }
+
     public async Task<AdminAnalyticsSnapshot> GetAnalyticsAsync(
         string? adminEmail,
         CancellationToken cancellationToken = default)
@@ -1581,6 +1800,37 @@ public sealed partial class SupabaseAdminManagementService(
         return await FetchRowsAsync<ResourceTypeRow>(uri, apiKey, cancellationToken);
     }
 
+    private async Task<IReadOnlyList<StoreProductRow>> FetchStoreProductsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    {
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/store_products" +
+            "?select=store_product_id,slug,name,description,image_path,alt_text,theme_class,unit_price_zar,sort_order,is_enabled,updated_at" +
+            "&order=sort_order.asc" +
+            "&order=name.asc" +
+            "&limit=1000");
+
+        return await FetchRowsAsync<StoreProductRow>(uri, apiKey, cancellationToken);
+    }
+
+    private static IReadOnlyList<AdminStoreProductRecord> BuildFallbackStoreProductRecords() =>
+        StoreProductCatalog.All
+            .OrderBy(product => product.SortOrder)
+            .ThenBy(product => product.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(product => new AdminStoreProductRecord(
+                StoreProductId: Guid.Empty,
+                Slug: product.Slug,
+                Name: product.Name,
+                Description: product.Description,
+                ImagePath: product.ImagePath,
+                AltText: product.AltText,
+                ThemeClass: product.ThemeClass,
+                UnitPriceZar: product.UnitPriceZar,
+                SortOrder: product.SortOrder,
+                IsEnabled: product.IsEnabled,
+                UpdatedAt: null))
+            .ToArray();
+
     private async Task<IReadOnlyList<ResourceDocumentRow>> FetchResourceDocumentsAsync(
         Uri baseUri,
         string apiKey,
@@ -1754,6 +2004,11 @@ public sealed partial class SupabaseAdminManagementService(
     private void InvalidateResourceCatalogCache()
     {
         _memoryCache.Remove(ResourceCatalogCacheKeys.Catalog);
+    }
+
+    private void InvalidateStoreProductCatalogCache()
+    {
+        _memoryCache.Remove(StoreProductCatalogCacheKeys.Catalog);
     }
 
     private HttpRequestMessage CreateRequest(HttpMethod method, Uri uri, string apiKey)
@@ -1943,6 +2198,41 @@ public sealed partial class SupabaseAdminManagementService(
 
     private static string NormalizePlaylistImagePath(string? value) =>
         NormalizeOptionalText(value, 1024) ?? string.Empty;
+
+    private static string NormalizeStoreProductImagePath(string? value)
+    {
+        var normalized = NormalizeOptionalText(value, 1024) ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return string.Empty;
+        }
+
+        if (Uri.TryCreate(normalized, UriKind.Absolute, out var absoluteUri))
+        {
+            if (string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                return absoluteUri.ToString();
+            }
+
+            return string.Empty;
+        }
+
+        if (normalized.StartsWith("//", StringComparison.Ordinal))
+        {
+            return string.Empty;
+        }
+
+        if (normalized.StartsWith("~/", StringComparison.Ordinal))
+        {
+            normalized = $"/{normalized[2..]}";
+        }
+
+        normalized = normalized.Replace('\\', '/');
+        return normalized.StartsWith("/", StringComparison.Ordinal)
+            ? normalized
+            : $"/{normalized.TrimStart('/')}";
+    }
 
     private static bool IsSystemPlaylistType(string? playlistType) =>
         string.Equals(playlistType?.Trim(), "system", StringComparison.OrdinalIgnoreCase);
@@ -2383,6 +2673,42 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("description")]
         public string? Description { get; set; }
+
+        [JsonPropertyName("sort_order")]
+        public int SortOrder { get; set; }
+
+        [JsonPropertyName("is_enabled")]
+        public bool IsEnabled { get; set; }
+
+        [JsonPropertyName("updated_at")]
+        public DateTimeOffset? UpdatedAt { get; set; }
+    }
+
+    private sealed class StoreProductRow
+    {
+        [JsonPropertyName("store_product_id")]
+        public Guid StoreProductId { get; set; }
+
+        [JsonPropertyName("slug")]
+        public string Slug { get; set; } = string.Empty;
+
+        [JsonPropertyName("name")]
+        public string Name { get; set; } = string.Empty;
+
+        [JsonPropertyName("description")]
+        public string? Description { get; set; }
+
+        [JsonPropertyName("image_path")]
+        public string? ImagePath { get; set; }
+
+        [JsonPropertyName("alt_text")]
+        public string? AltText { get; set; }
+
+        [JsonPropertyName("theme_class")]
+        public string? ThemeClass { get; set; }
+
+        [JsonPropertyName("unit_price_zar")]
+        public decimal UnitPriceZar { get; set; }
 
         [JsonPropertyName("sort_order")]
         public int SortOrder { get; set; }

@@ -1,0 +1,796 @@
+@using System.Globalization
+@using System.Security.Claims
+@using System.Text.Json
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.JSInterop
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IAdminManagementService AdminManagementService
+@inject IWebHostEnvironment WebHostEnvironment
+@inject IJSRuntime JSRuntime
+@inject ILogger<AdminStorePanel> Logger
+
+<section class="admin-section store-admin-section">
+    <div class="admin-section-head">
+        <div class="store-admin-actions">
+            <input class="store-admin-search"
+                   type="search"
+                   @bind="ProductSearch"
+                   @bind:event="oninput"
+                   placeholder="@T("Soek naam of slug", "Search name or slug")" />
+
+            <MudButton Class="store-admin-icon-btn"
+                       Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       OnClick="ReloadAsync"
+                       Disabled="@IsLoading"
+                       aria-label='@T("Herlaai", "Refresh")'
+                       title='@T("Herlaai", "Refresh")'>
+                <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
+                <span class="sr-only">@T("Herlaai", "Refresh")</span>
+            </MudButton>
+
+            <MudButton Class="store-admin-icon-btn"
+                       Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       OnClick="BeginCreateProduct"
+                       aria-label='@T("Nuwe produk", "New product")'
+                       title='@T("Nuwe produk", "New product")'>
+                <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                <span class="sr-only">@T("Nuwe produk", "New product")</span>
+            </MudButton>
+        </div>
+    </div>
+
+    @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <p class="admin-feedback is-error">@ErrorMessage</p>
+    }
+    else if (!string.IsNullOrWhiteSpace(StatusMessage))
+    {
+        <p class="admin-feedback is-success">@StatusMessage</p>
+    }
+
+    @if (IsLoading)
+    {
+        <section class="admin-state">
+            <h2>@T("Laai winkel produkte...", "Loading shop products...")</h2>
+        </section>
+    }
+    else
+    {
+        <div class="store-admin-layout">
+            <aside class="store-admin-list">
+                <div class="store-admin-list-header">
+                    <span>@FilteredProducts.Count @T("produkte", "products")</span>
+                </div>
+
+                @if (FilteredProducts.Count == 0)
+                {
+                    <p class="store-admin-empty">@T("Geen produkte pas by jou soektog nie.", "No products match your search.")</p>
+                }
+                else
+                {
+                    @foreach (var product in FilteredProducts)
+                    {
+                        var isSelected = Editor?.StoreProductId == product.StoreProductId;
+                        <button type="button"
+                                class="store-admin-list-item @(isSelected ? "is-selected" : null)"
+                                @onclick="() => SelectProduct(product)">
+                            <img class="store-admin-list-image"
+                                 src="@ResolvePreviewImageUrl(product.ImagePath)"
+                                 alt=""
+                                 loading="lazy"
+                                 decoding="async"
+                                 onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+
+                            <span class="store-admin-list-copy">
+                                <span class="store-admin-list-title">@product.Name</span>
+                                <span class="store-admin-list-meta">@product.Slug</span>
+                                <span class="store-admin-list-price">R @product.UnitPriceZar.ToString("0.00", CultureInfo.InvariantCulture)</span>
+                            </span>
+
+                            @if (!product.IsEnabled)
+                            {
+                                <span class="store-admin-list-badge">@T("Af", "Off")</span>
+                            }
+                        </button>
+                    }
+                }
+            </aside>
+
+            <section class="store-admin-editor">
+                @if (Editor is null)
+                {
+                    <p class="store-admin-empty">@T("Kies 'n produk of skep 'n nuwe produk.", "Select a product or create a new one.")</p>
+                }
+                else
+                {
+                    <div class="store-admin-editor-head">
+                        <div>
+                            <h3>@(IsNewProduct ? T("Nuwe produk", "New product") : Editor.Name)</h3>
+                            <p>@Editor.Slug</p>
+                        </div>
+                        <div class="store-admin-editor-actions">
+                            @if (!IsNewProduct)
+                            {
+                                <button type="button"
+                                        class="store-admin-btn store-admin-btn-danger"
+                                        disabled="@IsSaving"
+                                        @onclick="DeleteProductAsync">
+                                    @T("Verwyder", "Delete")
+                                </button>
+                            }
+
+                            <button type="button"
+                                    class="store-admin-btn store-admin-btn-secondary"
+                                    disabled="@IsSaving"
+                                    @onclick="CancelEditAsync">
+                                @T("Kanselleer", "Cancel")
+                            </button>
+
+                            <button type="button"
+                                    class="store-admin-btn store-admin-btn-primary"
+                                    disabled="@IsSaving"
+                                    @onclick="SaveProductAsync">
+                                @(IsSaving ? T("Stoor...", "Saving...") : T("Stoor produk", "Save product"))
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="store-admin-grid">
+                        <label class="store-admin-field">
+                            <span>@T("Naam", "Name")</span>
+                            <input type="text" maxlength="160" @bind="Editor.Name" />
+                        </label>
+
+                        <label class="store-admin-field">
+                            <span>@T("Slug", "Slug")</span>
+                            <input type="text" maxlength="120" @bind="Editor.Slug" />
+                        </label>
+
+                        <label class="store-admin-field">
+                            <span>@T("Prys (ZAR)", "Price (ZAR)")</span>
+                            <input type="number" min="0.01" max="999999.99" step="0.01" @bind="Editor.UnitPriceZar" />
+                        </label>
+
+                        <label class="store-admin-field">
+                            <span>@T("Sorteer", "Sort order")</span>
+                            <input type="number" min="-500000" max="500000" step="1" @bind="Editor.SortOrder" />
+                        </label>
+
+                        <label class="store-admin-field store-admin-field-wide">
+                            <span>@T("Beskrywing", "Description")</span>
+                            <textarea rows="3" maxlength="600" @bind="Editor.Description"></textarea>
+                        </label>
+
+                        <label class="store-admin-field">
+                            <span>@T("Alt teks", "Alt text")</span>
+                            <input type="text" maxlength="220" @bind="Editor.AltText" />
+                        </label>
+
+                        <label class="store-admin-field">
+                            <span>@T("Tema klas (opsioneel)", "Theme class (optional)")</span>
+                            <input type="text" maxlength="80" @bind="Editor.ThemeClass" />
+                        </label>
+
+                        <label class="store-admin-field">
+                            <span>@T("Aktief", "Enabled")</span>
+                            <span class="store-admin-switch">
+                                <input type="checkbox" @bind="Editor.IsEnabled" />
+                                <strong>@(Editor.IsEnabled ? T("Ja", "Yes") : T("Nee", "No"))</strong>
+                            </span>
+                        </label>
+
+                        <label class="store-admin-field store-admin-field-wide">
+                            <span>@T("Image pad", "Image path")</span>
+                            <input type="text" maxlength="1024" @bind="Editor.ImagePath" />
+                        </label>
+                    </div>
+
+                    <div class="store-admin-image-section">
+                        <div class="store-admin-upload-controls">
+                            <label class="store-admin-upload-label">
+                                <span>@T("Laai nuwe image op", "Upload new image")</span>
+                                <InputFile OnChange="OnImageSelectedAsync"
+                                           accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp" />
+                            </label>
+                            <p class="store-admin-upload-hint">
+                                @(string.IsNullOrWhiteSpace(Editor.ImageFileName)
+                                    ? T("Ondersteun JPG, PNG of WEBP (maks 10 MB).", "Supports JPG, PNG, or WEBP (max 10 MB).")
+                                    : Editor.ImageFileName)
+                            </p>
+                        </div>
+
+                        <div class="store-admin-image-preview">
+                            @if (!string.IsNullOrWhiteSpace(ResolvePreviewImageUrl(Editor.ImagePreviewPath ?? Editor.ImagePath)))
+                            {
+                                <img src="@ResolvePreviewImageUrl(Editor.ImagePreviewPath ?? Editor.ImagePath)"
+                                     alt=""
+                                     loading="lazy"
+                                     decoding="async"
+                                     onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                            }
+                            else
+                            {
+                                <p>@T("Geen image gekies nie.", "No image selected.")</p>
+                            }
+                        </div>
+                    </div>
+                }
+            </section>
+        </div>
+    }
+</section>
+
+@code {
+    private const long MaxImageUploadBytes = 10 * 1024 * 1024;
+
+    [Parameter]
+    public string CurrentLanguageCode { get; set; } = "af";
+
+    private bool IsLoading { get; set; } = true;
+    private bool IsSaving { get; set; }
+    private string ProductSearch { get; set; } = string.Empty;
+    private string? SignedInEmail { get; set; }
+    private string? ErrorMessage { get; set; }
+    private string? StatusMessage { get; set; }
+    private string? EditorStateSignature { get; set; }
+    private IReadOnlyList<AdminStoreProductRecord> Products { get; set; } = Array.Empty<AdminStoreProductRecord>();
+    private StoreProductEditorModel? Editor { get; set; }
+
+    private bool IsNewProduct => Editor?.StoreProductId is null || Editor.StoreProductId == Guid.Empty;
+
+    private IReadOnlyList<AdminStoreProductRecord> FilteredProducts =>
+        string.IsNullOrWhiteSpace(ProductSearch)
+            ? Products
+            : Products
+                .Where(product =>
+                    product.Name.Contains(ProductSearch, StringComparison.OrdinalIgnoreCase) ||
+                    product.Slug.Contains(ProductSearch, StringComparison.OrdinalIgnoreCase))
+                .ToArray();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        IsLoading = true;
+        ErrorMessage = null;
+        StatusMessage = null;
+
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            SignedInEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                            ?? authState.User.Identity?.Name;
+
+            Products = await AdminManagementService.GetStoreProductsAsync(SignedInEmail);
+
+            if (Editor?.StoreProductId is Guid currentId && currentId != Guid.Empty)
+            {
+                var refreshed = Products.FirstOrDefault(product => product.StoreProductId == currentId);
+                if (refreshed is not null)
+                {
+                    Editor = StoreProductEditorModel.FromRecord(refreshed);
+                    EditorStateSignature = BuildEditorStateSignature(Editor);
+                }
+                else
+                {
+                    Editor = null;
+                    EditorStateSignature = null;
+                }
+            }
+            else if (Editor is null)
+            {
+                EditorStateSignature = null;
+            }
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(exception, "Failed to load admin store products.");
+            ErrorMessage = T("Kon nie winkel produkte nou laai nie.", "Could not load shop products right now.");
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private void BeginCreateProduct()
+    {
+        ErrorMessage = null;
+        StatusMessage = null;
+        Editor = StoreProductEditorModel.CreateEmpty();
+        EditorStateSignature = BuildEditorStateSignature(Editor);
+    }
+
+    private void SelectProduct(AdminStoreProductRecord product)
+    {
+        ErrorMessage = null;
+        StatusMessage = null;
+        Editor = StoreProductEditorModel.FromRecord(product);
+        EditorStateSignature = BuildEditorStateSignature(Editor);
+    }
+
+    private async Task CancelEditAsync()
+    {
+        if (Editor is null)
+        {
+            return;
+        }
+
+        if (IsEditorDirty() &&
+            !await ConfirmAsync(
+                "Jy het ongestoorde veranderinge. Is jy seker jy wil dit weggooi?",
+                "You have unsaved changes. Are you sure you want to discard them?"))
+        {
+            return;
+        }
+
+        if (Editor.StoreProductId is Guid storeProductId &&
+            storeProductId != Guid.Empty)
+        {
+            var source = Products.FirstOrDefault(product => product.StoreProductId == storeProductId);
+            Editor = source is null ? null : StoreProductEditorModel.FromRecord(source);
+        }
+        else
+        {
+            Editor = null;
+        }
+
+        EditorStateSignature = Editor is null ? null : BuildEditorStateSignature(Editor);
+    }
+
+    private async Task OnImageSelectedAsync(InputFileChangeEventArgs args)
+    {
+        if (Editor is null)
+        {
+            return;
+        }
+
+        var file = args.File;
+        if (file is null || file.Size <= 0 || file.Size > MaxImageUploadBytes)
+        {
+            ErrorMessage = T("Die image is te groot of leeg.", "The image is too large or empty.");
+            return;
+        }
+
+        var normalizedContentType = NormalizeImageContentType(file);
+        if (!IsSupportedImageContentType(normalizedContentType))
+        {
+            ErrorMessage = T("Ondersteunde images is JPG, PNG of WEBP.", "Supported images are JPG, PNG, or WEBP.");
+            return;
+        }
+
+        Editor.ImageFile = file;
+        Editor.ImageFileName = file.Name;
+        Editor.ImagePreviewPath = await ReadImageFileAsDataUrlAsync(file);
+        ErrorMessage = null;
+        StatusMessage = null;
+    }
+
+    private async Task SaveProductAsync()
+    {
+        if (Editor is null || IsSaving)
+        {
+            return;
+        }
+
+        ErrorMessage = null;
+        StatusMessage = null;
+        IsSaving = true;
+
+        var originalImagePath = Products
+            .FirstOrDefault(product => product.StoreProductId == Editor.StoreProductId)?
+            .ImagePath;
+
+        string? uploadedImagePath = null;
+        try
+        {
+            if (Editor.ImageFile is not null)
+            {
+                uploadedImagePath = await SaveUploadedImageToDiskAsync(Editor.ImageFile, Editor.Slug);
+                Editor.ImagePath = uploadedImagePath;
+                Editor.ImagePreviewPath = uploadedImagePath;
+            }
+
+            var request = new AdminStoreProductSaveRequest(
+                StoreProductId: Editor.StoreProductId,
+                Slug: Editor.Slug,
+                Name: Editor.Name,
+                Description: Editor.Description,
+                ImagePath: Editor.ImagePath,
+                AltText: Editor.AltText,
+                ThemeClass: Editor.ThemeClass,
+                UnitPriceZar: Editor.UnitPriceZar,
+                SortOrder: Editor.SortOrder,
+                IsEnabled: Editor.IsEnabled);
+
+            var result = await AdminManagementService.SaveStoreProductAsync(SignedInEmail, request);
+            if (!result.IsSuccess)
+            {
+                if (!string.IsNullOrWhiteSpace(uploadedImagePath))
+                {
+                    DeleteManagedUploadedImage(uploadedImagePath);
+                }
+
+                ErrorMessage = LocalizeServiceMessage(result.ErrorMessage ?? T("Kon nie winkel produk nou stoor nie.", "Could not save shop product right now."));
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(originalImagePath) &&
+                !AdminManagedImageAssetHelper.AreEquivalent(originalImagePath, Editor.ImagePath))
+            {
+                DeleteManagedUploadedImage(originalImagePath);
+            }
+
+            var successMessage = IsNewProduct
+                ? T("Winkel produk is geskep.", "Shop product was created.")
+                : T("Winkel produk is gestoor.", "Shop product was saved.");
+
+            await ReloadAsync();
+            if (string.IsNullOrWhiteSpace(ErrorMessage))
+            {
+                StatusMessage = successMessage;
+            }
+
+            if (result.EntityId is Guid createdId && createdId != Guid.Empty)
+            {
+                var createdProduct = Products.FirstOrDefault(product => product.StoreProductId == createdId);
+                if (createdProduct is not null)
+                {
+                    Editor = StoreProductEditorModel.FromRecord(createdProduct);
+                    EditorStateSignature = BuildEditorStateSignature(Editor);
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(Editor.Slug))
+            {
+                var refreshed = Products.FirstOrDefault(product =>
+                    string.Equals(product.Slug, Editor.Slug.Trim(), StringComparison.OrdinalIgnoreCase));
+                if (refreshed is not null)
+                {
+                    Editor = StoreProductEditorModel.FromRecord(refreshed);
+                    EditorStateSignature = BuildEditorStateSignature(Editor);
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            if (!string.IsNullOrWhiteSpace(uploadedImagePath))
+            {
+                DeleteManagedUploadedImage(uploadedImagePath);
+            }
+
+            Logger.LogWarning(exception, "Failed to save store product.");
+            ErrorMessage = T("Kon nie winkel produk nou stoor nie.", "Could not save shop product right now.");
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+
+    private async Task DeleteProductAsync()
+    {
+        if (Editor?.StoreProductId is not Guid storeProductId ||
+            storeProductId == Guid.Empty ||
+            IsSaving)
+        {
+            return;
+        }
+
+        if (!await ConfirmAsync(
+                "Is jy seker jy wil hierdie produk verwyder?",
+                "Are you sure you want to remove this product?"))
+        {
+            return;
+        }
+
+        ErrorMessage = null;
+        StatusMessage = null;
+        IsSaving = true;
+
+        var imagePathToDelete = Editor.ImagePath;
+
+        try
+        {
+            var result = await AdminManagementService.DeleteStoreProductAsync(SignedInEmail, storeProductId);
+            if (!result.IsSuccess)
+            {
+                ErrorMessage = LocalizeServiceMessage(result.ErrorMessage ?? T("Kon nie winkel produk nou verwyder nie.", "Could not remove shop product right now."));
+                return;
+            }
+
+            DeleteManagedUploadedImage(imagePathToDelete);
+            var successMessage = T("Winkel produk is verwyder.", "Shop product was removed.");
+            Editor = null;
+            EditorStateSignature = null;
+            await ReloadAsync();
+            if (string.IsNullOrWhiteSpace(ErrorMessage))
+            {
+                StatusMessage = successMessage;
+            }
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(exception, "Failed to delete store product.");
+            ErrorMessage = T("Kon nie winkel produk nou verwyder nie.", "Could not remove shop product right now.");
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+
+    private bool IsEditorDirty() =>
+        Editor is not null &&
+        !string.IsNullOrEmpty(EditorStateSignature) &&
+        !string.Equals(EditorStateSignature, BuildEditorStateSignature(Editor), StringComparison.Ordinal);
+
+    private static string BuildEditorStateSignature(StoreProductEditorModel editor) =>
+        JsonSerializer.Serialize(new
+        {
+            editor.StoreProductId,
+            Slug = editor.Slug.Trim(),
+            Name = editor.Name.Trim(),
+            Description = editor.Description?.Trim(),
+            ImagePath = editor.ImagePath?.Trim(),
+            AltText = editor.AltText?.Trim(),
+            ThemeClass = editor.ThemeClass?.Trim(),
+            editor.UnitPriceZar,
+            editor.SortOrder,
+            editor.IsEnabled,
+            HasNewImage = editor.ImageFile is not null
+        });
+
+    private async Task<string?> ReadImageFileAsDataUrlAsync(IBrowserFile file)
+    {
+        try
+        {
+            var normalizedContentType = NormalizeImageContentType(file);
+            if (!IsSupportedImageContentType(normalizedContentType))
+            {
+                return null;
+            }
+
+            await using var stream = file.OpenReadStream(MaxImageUploadBytes);
+            using var buffer = new MemoryStream();
+            await stream.CopyToAsync(buffer);
+            var base64 = Convert.ToBase64String(buffer.ToArray());
+            return $"data:{normalizedContentType};base64,{base64}";
+        }
+        catch (Exception exception) when (exception is IOException or InvalidOperationException)
+        {
+            Logger.LogDebug(exception, "Store product preview generation skipped.");
+            return null;
+        }
+    }
+
+    private async Task<string> SaveUploadedImageToDiskAsync(IBrowserFile file, string? productSlug)
+    {
+        var normalizedContentType = NormalizeImageContentType(file);
+        if (!IsSupportedImageContentType(normalizedContentType))
+        {
+            throw new InvalidOperationException("Unsupported image file type. Use JPG, PNG, or WEBP.");
+        }
+
+        var safeSlug = BuildSafeFileSlug(productSlug);
+        var nowUtc = DateTimeOffset.UtcNow;
+        var year = nowUtc.ToString("yyyy", CultureInfo.InvariantCulture);
+        var month = nowUtc.ToString("MM", CultureInfo.InvariantCulture);
+        var extension = normalizedContentType switch
+        {
+            "image/png" => ".png",
+            "image/webp" => ".webp",
+            _ => ".jpg"
+        };
+
+        var rootPath = WebHostEnvironment.WebRootPath;
+        if (string.IsNullOrWhiteSpace(rootPath))
+        {
+            throw new InvalidOperationException("Web root path is not configured.");
+        }
+
+        var directoryPath = Path.Combine(rootPath, "branding", "uploaded", "winkel", year, month);
+        Directory.CreateDirectory(directoryPath);
+
+        var fileName = $"{safeSlug}-{nowUtc:yyyyMMddHHmmss}-{Guid.NewGuid():N}{extension}";
+        var fullPath = Path.Combine(directoryPath, fileName);
+
+        await using (var sourceStream = file.OpenReadStream(MaxImageUploadBytes))
+        await using (var targetStream = File.Create(fullPath))
+        {
+            await sourceStream.CopyToAsync(targetStream);
+        }
+
+        return $"/branding/uploaded/winkel/{year}/{month}/{fileName}";
+    }
+
+    private void DeleteManagedUploadedImage(string? imagePath)
+    {
+        var localFilePath = AdminManagedImageAssetHelper.TryResolveLocalUploadedFilePath(
+            imagePath,
+            WebHostEnvironment.WebRootPath);
+
+        if (string.IsNullOrWhiteSpace(localFilePath))
+        {
+            return;
+        }
+
+        try
+        {
+            if (File.Exists(localFilePath))
+            {
+                File.Delete(localFilePath);
+            }
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(exception, "Failed to delete uploaded store image {ImagePath}.", imagePath);
+        }
+    }
+
+    private static string BuildSafeFileSlug(string? slug)
+    {
+        var safeSlug = string.Concat(
+            (slug ?? string.Empty)
+                .Trim()
+                .ToLowerInvariant()
+                .Where(character => char.IsAsciiLetterOrDigit(character) || character == '-'));
+
+        return string.IsNullOrWhiteSpace(safeSlug)
+            ? "winkel-produk"
+            : safeSlug;
+    }
+
+    private static string NormalizeImageContentType(IBrowserFile file) =>
+        file.ContentType?.Trim().ToLowerInvariant() switch
+        {
+            "image/jpeg" or "image/jpg" => "image/jpeg",
+            "image/png" => "image/png",
+            "image/webp" => "image/webp",
+            _ => Path.GetExtension(file.Name).Trim().ToLowerInvariant() switch
+            {
+                ".jpg" or ".jpeg" => "image/jpeg",
+                ".png" => "image/png",
+                ".webp" => "image/webp",
+                _ => file.ContentType ?? string.Empty
+            }
+        };
+
+    private static bool IsSupportedImageContentType(string normalizedContentType) =>
+        normalizedContentType is "image/jpeg" or "image/png" or "image/webp";
+
+    private static string? ResolvePreviewImageUrl(string? imagePath)
+    {
+        if (string.IsNullOrWhiteSpace(imagePath))
+        {
+            return null;
+        }
+
+        var candidate = imagePath.Trim();
+        if (candidate.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+        {
+            return candidate;
+        }
+
+        if (Uri.TryCreate(candidate, UriKind.Absolute, out var absoluteUri))
+        {
+            if (string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                return absoluteUri.ToString();
+            }
+
+            return null;
+        }
+
+        if (candidate.StartsWith("//", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        if (candidate.StartsWith("~/", StringComparison.Ordinal))
+        {
+            candidate = $"/{candidate[2..]}";
+        }
+
+        candidate = candidate.Replace('\\', '/');
+        return candidate.StartsWith("/", StringComparison.Ordinal)
+            ? candidate
+            : $"/{candidate.TrimStart('/')}";
+    }
+
+    private string LocalizeServiceMessage(string message)
+    {
+        if (string.Equals(CurrentLanguageCode, "af", StringComparison.OrdinalIgnoreCase))
+        {
+            return message;
+        }
+
+        return message switch
+        {
+            "Jy het nie admin toegang nie." => "You do not have admin access.",
+            "Kies asseblief 'n geldige winkel produk." => "Please select a valid shop product.",
+            "Winkel produk slug is ongeldig." => "Shop product slug is invalid.",
+            "Winkel produk naam is verpligtend." => "Shop product name is required.",
+            "Winkel produk image is verpligtend." => "Shop product image is required.",
+            "Winkel produk prys moet groter as nul wees." => "Shop product price must be greater than zero.",
+            "Winkel produk slug bestaan reeds." => "Shop product slug already exists.",
+            "Kon nie winkel produk skep nie." => "Could not create shop product.",
+            "Kon nie winkel produk nou opdateer nie." => "Could not update shop product right now.",
+            "Kon nie winkel produk nou verwyder nie." => "Could not remove shop product right now.",
+            "Supabase URL is nog nie opgestel nie." => "Supabase URL is not configured yet.",
+            "Supabase ServiceRoleKey is nog nie opgestel nie." => "Supabase ServiceRoleKey is not configured yet.",
+            _ => message
+        };
+    }
+
+    private string T(string afrikaans, string english) =>
+        string.Equals(CurrentLanguageCode, "en", StringComparison.OrdinalIgnoreCase)
+            ? english
+            : afrikaans;
+
+    private async Task<bool> ConfirmAsync(string afrikaansMessage, string englishMessage)
+    {
+        try
+        {
+            return await JSRuntime.InvokeAsync<bool>("confirm", T(afrikaansMessage, englishMessage));
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(exception, "Confirm dialog failed.");
+            return false;
+        }
+    }
+
+    private sealed class StoreProductEditorModel
+    {
+        public Guid? StoreProductId { get; set; }
+        public string Slug { get; set; } = string.Empty;
+        public string Name { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public string ImagePath { get; set; } = string.Empty;
+        public string? AltText { get; set; }
+        public string? ThemeClass { get; set; }
+        public decimal UnitPriceZar { get; set; } = 250.00m;
+        public int SortOrder { get; set; } = 100;
+        public bool IsEnabled { get; set; } = true;
+        public IBrowserFile? ImageFile { get; set; }
+        public string? ImageFileName { get; set; }
+        public string? ImagePreviewPath { get; set; }
+
+        public static StoreProductEditorModel CreateEmpty() =>
+            new()
+            {
+                Slug = "nuwe-produk",
+                Name = string.Empty,
+                Description = string.Empty,
+                ImagePath = string.Empty,
+                AltText = string.Empty,
+                ThemeClass = string.Empty,
+                UnitPriceZar = 250.00m,
+                SortOrder = 100,
+                IsEnabled = true
+            };
+
+        public static StoreProductEditorModel FromRecord(AdminStoreProductRecord record) =>
+            new()
+            {
+                StoreProductId = record.StoreProductId,
+                Slug = record.Slug,
+                Name = record.Name,
+                Description = record.Description,
+                ImagePath = record.ImagePath,
+                AltText = record.AltText,
+                ThemeClass = record.ThemeClass,
+                UnitPriceZar = record.UnitPriceZar,
+                SortOrder = record.SortOrder,
+                IsEnabled = record.IsEnabled,
+                ImagePreviewPath = record.ImagePath
+            };
+    }
+}

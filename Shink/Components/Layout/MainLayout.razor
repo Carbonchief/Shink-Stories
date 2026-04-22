@@ -4,7 +4,7 @@
 @using System.Security.Claims
 @inject NavigationManager NavigationManager
 
-<div class="site-shell @(IsStoryRoute ? "story-route" : null) @(IsHomeRoute ? "home-route" : null) @(IsLuisterRoute ? "luister-route" : null) @(IsMeerOorOnsRoute ? "about-route" : null) @((IsWinkelRoute || IsBlogRoute || IsResourcesRoute) ? "store-route" : null) @(IsAdminRoute ? "admin-route" : null) @(IsFloatingPlaylistRoute ? "playlist-nav-route" : null) @(IsLuisterPlaylistShowcaseRoute ? "playlist-showcase-route" : null)">
+<div class="site-shell @(IsStoryRoute ? "story-route" : null) @(IsHomeRoute ? "home-route" : null) @(IsLuisterRoute ? "luister-route" : null) @(IsMeerOorOnsRoute ? "about-route" : null) @((IsWinkelRoute || IsBlogRoute || IsResourcesRoute || IsMeerOorOnsRoute) ? "store-route" : null) @(IsAdminRoute ? "admin-route" : null) @(IsFloatingPlaylistRoute ? "playlist-nav-route" : null) @(IsLuisterPlaylistShowcaseRoute ? "playlist-showcase-route" : null)">
     <a class="skip-link" href="#main-content">Spring na inhoud</a>
     @if (!IsFloatingPlaylistRoute)
     {
