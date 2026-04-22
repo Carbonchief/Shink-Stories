@@ -104,6 +104,51 @@ else if (FilteredLuisterPlaylists.Count == 0)
 }
 else
 {
+    var speellysteCarouselPlaylists = GetSpeellysteCarouselPlaylists();
+
+    @if (speellysteCarouselPlaylists.Count > 0)
+    {
+        <section class="section-block stories-carousel-section luister-speellyste-section" aria-labelledby="luister-speellyste-heading">
+            <h2 id="luister-speellyste-heading">Speellyste</h2>
+            <div class="stories-carousel-shell">
+                <div class="stories-carousel luister-speellyste-carousel" role="list" aria-label="Speellyste">
+                    @for (var playlistIndex = 0; playlistIndex < speellysteCarouselPlaylists.Count; playlistIndex++)
+                    {
+                        var playlist = speellysteCarouselPlaylists[playlistIndex];
+                        var playlistTitle = GetPlaylistTitle(playlist);
+                        var playlistSlug = GetPlaylistSlug(playlist);
+                        var playlistShowcasePath = GetPlaylistShowcaseHref(playlistSlug);
+                        var playlistImagePath = GetPlaylistCarouselImagePath(playlist);
+
+                        <article class="story-carousel-item luister-speellyste-item" role="listitem">
+                            <a class="story-carousel-link luister-speellyste-link"
+                               href="@playlistShowcasePath"
+                               data-enhance-nav="false"
+                               draggable="false"
+                               aria-label="Maak @playlistTitle se speellys showcase oop">
+                                <span class="story-carousel-cover luister-speellyste-cover">
+                                    <img class="story-carousel-image luister-speellyste-image"
+                                         src="@playlistImagePath"
+                                         sizes="(max-width: 620px) 76vw, (max-width: 980px) 46vw, 360px"
+                                         draggable="false"
+                                         alt="Voorblad vir @playlistTitle speellys"
+                                         width="1024"
+                                         height="576"
+                                         loading="lazy"
+                                         decoding="async" />
+                                    <span class="story-cover-play" aria-hidden="true">
+                                        <i class="story-cover-play-icon fa-solid fa-images" aria-hidden="true"></i>
+                                    </span>
+                                </span>
+                                <h3>@playlistTitle</h3>
+                            </a>
+                        </article>
+                    }
+                </div>
+            </div>
+        </section>
+    }
+
     @for (var index = 0; index < FilteredLuisterPlaylists.Count; index++)
     {
         var playlist = FilteredLuisterPlaylists[index];
@@ -413,6 +458,11 @@ else
             ? "/luister"
             : $"/luister/speellys/{Uri.EscapeDataString(slug.Trim())}/stories";
 
+    private static string GetPlaylistShowcaseHref(string? slug) =>
+        string.IsNullOrWhiteSpace(slug)
+            ? "/luister"
+            : $"/luister/speellys/{Uri.EscapeDataString(slug.Trim())}/stories";
+
     private static string GetPlaylistSlug(StoryPlaylist playlist) =>
         string.IsNullOrWhiteSpace(playlist.Slug) ? "stories" : playlist.Slug.Trim();
 
@@ -424,6 +474,53 @@ else
 
     private static StoryItem? GetPlaylistShowcaseStory(StoryPlaylist playlist) =>
         playlist.PreferredStory;
+
+    private IReadOnlyList<StoryPlaylist> GetSpeellysteCarouselPlaylists() =>
+        FilteredLuisterPlaylists
+            .Where(playlist => playlist.IncludeInSpeellysteCarousel)
+            .ToArray();
+
+    private static string GetPlaylistCarouselImagePath(StoryPlaylist playlist)
+    {
+        var explicitShowcaseImagePath = NormalizeOptionalImagePath(playlist.ShowcaseImagePath);
+        if (!string.IsNullOrWhiteSpace(explicitShowcaseImagePath))
+        {
+            return explicitShowcaseImagePath;
+        }
+
+        var preferredStory = playlist.PreferredStory;
+        if (preferredStory is not null)
+        {
+            var preferredStoryImage = NormalizeOptionalImagePath(preferredStory.ImagePath);
+            if (!string.IsNullOrWhiteSpace(preferredStoryImage))
+            {
+                return preferredStoryImage;
+            }
+
+            var preferredStoryThumbnail = NormalizeOptionalImagePath(preferredStory.ThumbnailPath);
+            if (!string.IsNullOrWhiteSpace(preferredStoryThumbnail))
+            {
+                return preferredStoryThumbnail;
+            }
+        }
+
+        var backdropPath = NormalizeOptionalImagePath(playlist.BackdropImagePath);
+        if (!string.IsNullOrWhiteSpace(backdropPath))
+        {
+            return backdropPath;
+        }
+
+        var logoPath = NormalizeOptionalImagePath(playlist.LogoImagePath);
+        if (!string.IsNullOrWhiteSpace(logoPath))
+        {
+            return logoPath;
+        }
+
+        return "/branding/Schink_Stories_01.png";
+    }
+
+    private static string? NormalizeOptionalImagePath(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static bool IsWeeklyPopularPlaylist(StoryPlaylist playlist) =>
         string.Equals(playlist.SystemKey, "popular-stories-this-week", StringComparison.OrdinalIgnoreCase) ||

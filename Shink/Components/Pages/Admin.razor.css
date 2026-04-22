@@ -894,6 +894,10 @@
     align-items: start;
 }
 
+.admin-playlist-preview-grid-3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .admin-playlist-preview-card .admin-image-preview-media {
     width: min(100%, 180px);
     justify-self: start;

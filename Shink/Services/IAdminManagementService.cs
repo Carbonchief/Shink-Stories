@@ -217,10 +217,12 @@ public sealed record AdminPlaylistRecord(
     string? Description,
     string? LogoImagePath,
     string? BackdropImagePath,
+    string? ShowcaseImagePath,
     int SortOrder,
     int? MaxItems,
     bool IsEnabled,
     bool ShowOnHome,
+    bool IncludeInSpeellysteCarousel,
     bool ShowShowcaseImageOnLuisterPage,
     DateTimeOffset? UpdatedAt,
     IReadOnlyList<AdminPlaylistStoryItem> Stories);
@@ -243,10 +245,12 @@ public sealed record AdminPlaylistUpdateRequest(
     string? Description,
     string? LogoImagePath,
     string? BackdropImagePath,
+    string? ShowcaseImagePath,
     int SortOrder,
     int? MaxItems,
     bool IsEnabled,
     bool ShowOnHome,
+    bool IncludeInSpeellysteCarousel,
     bool ShowShowcaseImageOnLuisterPage);
 
 public sealed record AdminStoreProductRecord(

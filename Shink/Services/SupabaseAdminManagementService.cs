@@ -725,10 +725,12 @@ public sealed partial class SupabaseAdminManagementService(
                     Description: NormalizeOptionalText(row.Description, 4000),
                     LogoImagePath: NormalizePlaylistImagePath(row.LogoImagePath),
                     BackdropImagePath: NormalizePlaylistImagePath(row.BackdropImagePath),
+                    ShowcaseImagePath: NormalizePlaylistImagePath(row.ShowcaseImagePath),
                     SortOrder: row.SortOrder,
                     MaxItems: row.MaxItems is > 0 ? row.MaxItems : null,
                     IsEnabled: row.IsEnabled,
                     ShowOnHome: row.ShowOnHome,
+                    IncludeInSpeellysteCarousel: row.IncludeInSpeellysteCarousel,
                     ShowShowcaseImageOnLuisterPage: row.ShowShowcaseImageOnLuisterPage,
                     UpdatedAt: row.UpdatedAt,
                     Stories: stories);
@@ -780,10 +782,12 @@ public sealed partial class SupabaseAdminManagementService(
                 ["description"] = NormalizeOptionalText(request.Description, 4000),
                 ["logo_image_path"] = NormalizePlaylistImagePath(request.LogoImagePath),
                 ["backdrop_image_path"] = NormalizePlaylistImagePath(request.BackdropImagePath),
+                ["showcase_image_path"] = NormalizePlaylistImagePath(request.ShowcaseImagePath),
                 ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
                 ["max_items"] = request.MaxItems is > 0 ? request.MaxItems : null,
                 ["is_enabled"] = request.IsEnabled,
                 ["show_on_home"] = request.ShowOnHome,
+                ["include_in_speellyste_carousel"] = request.IncludeInSpeellysteCarousel,
                 ["show_showcase_image_on_luister_page"] = request.ShowShowcaseImageOnLuisterPage,
                 ["playlist_type"] = "manual",
                 ["system_key"] = null
@@ -822,9 +826,11 @@ public sealed partial class SupabaseAdminManagementService(
                 ["description"] = NormalizeOptionalText(request.Description, 4000),
                 ["logo_image_path"] = NormalizePlaylistImagePath(request.LogoImagePath),
                 ["backdrop_image_path"] = NormalizePlaylistImagePath(request.BackdropImagePath),
+                ["showcase_image_path"] = NormalizePlaylistImagePath(request.ShowcaseImagePath),
                 ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
                 ["is_enabled"] = request.IsEnabled,
                 ["show_on_home"] = request.ShowOnHome,
+                ["include_in_speellyste_carousel"] = request.IncludeInSpeellysteCarousel,
                 ["show_showcase_image_on_luister_page"] = request.ShowShowcaseImageOnLuisterPage
             }
             : new Dictionary<string, object?>
@@ -834,10 +840,12 @@ public sealed partial class SupabaseAdminManagementService(
                 ["description"] = NormalizeOptionalText(request.Description, 4000),
                 ["logo_image_path"] = NormalizePlaylistImagePath(request.LogoImagePath),
                 ["backdrop_image_path"] = NormalizePlaylistImagePath(request.BackdropImagePath),
+                ["showcase_image_path"] = NormalizePlaylistImagePath(request.ShowcaseImagePath),
                 ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
                 ["max_items"] = request.MaxItems is > 0 ? request.MaxItems : null,
                 ["is_enabled"] = request.IsEnabled,
                 ["show_on_home"] = request.ShowOnHome,
+                ["include_in_speellyste_carousel"] = request.IncludeInSpeellysteCarousel,
                 ["show_showcase_image_on_luister_page"] = request.ShowShowcaseImageOnLuisterPage
             };
 
@@ -1755,7 +1763,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/story_playlists" +
-            "?select=playlist_id,slug,title,playlist_type,system_key,description,logo_image_path,backdrop_image_path,sort_order,max_items,is_enabled,show_on_home,show_showcase_image_on_luister_page,updated_at" +
+            "?select=playlist_id,slug,title,playlist_type,system_key,description,logo_image_path,backdrop_image_path,showcase_image_path,sort_order,max_items,is_enabled,show_on_home,include_in_speellyste_carousel,show_showcase_image_on_luister_page,updated_at" +
             "&order=sort_order.asc" +
             "&order=title.asc" +
             "&limit=500");
@@ -1869,7 +1877,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/story_playlists" +
-            "?select=playlist_id,slug,title,playlist_type,system_key,description,logo_image_path,backdrop_image_path,sort_order,max_items,is_enabled,show_on_home,show_showcase_image_on_luister_page,updated_at" +
+            "?select=playlist_id,slug,title,playlist_type,system_key,description,logo_image_path,backdrop_image_path,showcase_image_path,sort_order,max_items,is_enabled,show_on_home,include_in_speellyste_carousel,show_showcase_image_on_luister_page,updated_at" +
             $"&playlist_id=eq.{escapedPlaylistId}" +
             "&limit=1");
 
@@ -2614,6 +2622,9 @@ public sealed partial class SupabaseAdminManagementService(
         [JsonPropertyName("backdrop_image_path")]
         public string? BackdropImagePath { get; set; }
 
+        [JsonPropertyName("showcase_image_path")]
+        public string? ShowcaseImagePath { get; set; }
+
         [JsonPropertyName("sort_order")]
         public int SortOrder { get; set; }
 
@@ -2625,6 +2636,9 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("show_on_home")]
         public bool ShowOnHome { get; set; }
+
+        [JsonPropertyName("include_in_speellyste_carousel")]
+        public bool IncludeInSpeellysteCarousel { get; set; }
 
         [JsonPropertyName("show_showcase_image_on_luister_page")]
         public bool ShowShowcaseImageOnLuisterPage { get; set; }

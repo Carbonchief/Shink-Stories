@@ -9,6 +9,8 @@ public sealed record StoryPlaylist(
     bool ShowOnHome = false,
     string? LogoImagePath = null,
     string? BackdropImagePath = null,
+    string? ShowcaseImagePath = null,
+    bool IncludeInSpeellysteCarousel = false,
     bool IsSystemPlaylist = false,
     string? SystemKey = null,
     string? ShowcaseStorySlug = null,
@@ -20,6 +22,8 @@ public sealed record StoryPlaylist(
     public string ResolvedLogoImagePath => ResolveImagePath(LogoImagePath, DefaultLogoImagePath);
 
     public string ResolvedBackdropImagePath => ResolveImagePath(BackdropImagePath, DefaultBackdropImagePath);
+
+    public string? ResolvedShowcaseImagePath => string.IsNullOrWhiteSpace(ShowcaseImagePath) ? null : ShowcaseImagePath.Trim();
 
     public StoryItem? ShowcaseStory =>
         string.IsNullOrWhiteSpace(ShowcaseStorySlug)

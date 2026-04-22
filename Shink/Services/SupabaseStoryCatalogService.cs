@@ -287,7 +287,7 @@ public sealed class SupabaseStoryCatalogService(
         var requestUri = new Uri(
             baseUri,
             "rest/v1/story_playlists" +
-            "?select=playlist_id,slug,title,playlist_type,system_key,description,sort_order,max_items,is_enabled,show_on_home,show_showcase_image_on_luister_page,logo_image_path,backdrop_image_path" +
+            "?select=playlist_id,slug,title,playlist_type,system_key,description,sort_order,max_items,is_enabled,show_on_home,include_in_speellyste_carousel,show_showcase_image_on_luister_page,logo_image_path,backdrop_image_path,showcase_image_path" +
             "&is_enabled=eq.true" +
             "&order=sort_order.asc" +
             "&order=title.asc");
@@ -424,6 +424,8 @@ public sealed class SupabaseStoryCatalogService(
             ShowShowcaseImageOnLuisterPage: favouritesConfig.ShowShowcaseImageOnLuisterPage,
             LogoImagePath: NormalizeOptionalText(favouritesConfig.LogoImagePath),
             BackdropImagePath: NormalizeOptionalText(favouritesConfig.BackdropImagePath),
+            ShowcaseImagePath: NormalizeOptionalText(favouritesConfig.ShowcaseImagePath),
+            IncludeInSpeellysteCarousel: favouritesConfig.IncludeInSpeellysteCarousel,
             IsSystemPlaylist: true,
             SystemKey: NormalizeSystemKey(favouritesConfig.SystemKey),
             ShowcaseStorySlug: null);
@@ -931,6 +933,8 @@ public sealed class SupabaseStoryCatalogService(
                 ShowShowcaseImageOnLuisterPage: playlistRow.ShowShowcaseImageOnLuisterPage,
                 LogoImagePath: NormalizeOptionalText(playlistRow.LogoImagePath),
                 BackdropImagePath: NormalizeOptionalText(playlistRow.BackdropImagePath),
+                ShowcaseImagePath: NormalizeOptionalText(playlistRow.ShowcaseImagePath),
+                IncludeInSpeellysteCarousel: playlistRow.IncludeInSpeellysteCarousel,
                 IsSystemPlaylist: playlistRow.IsSystemPlaylist,
                 SystemKey: NormalizeSystemKey(playlistRow.SystemKey),
                 ShowcaseStorySlug: showcaseStorySlug));
@@ -961,6 +965,8 @@ public sealed class SupabaseStoryCatalogService(
                 ShowShowcaseImageOnLuisterPage: allStoriesConfig?.ShowShowcaseImageOnLuisterPage ?? false,
                 LogoImagePath: NormalizeOptionalText(allStoriesConfig?.LogoImagePath),
                 BackdropImagePath: NormalizeOptionalText(allStoriesConfig?.BackdropImagePath),
+                ShowcaseImagePath: NormalizeOptionalText(allStoriesConfig?.ShowcaseImagePath),
+                IncludeInSpeellysteCarousel: allStoriesConfig?.IncludeInSpeellysteCarousel ?? false,
                 IsSystemPlaylist: allStoriesConfig?.IsSystemPlaylist ?? false,
                 SystemKey: NormalizeSystemKey(allStoriesConfig?.SystemKey),
                 ShowcaseStorySlug: null));
@@ -1408,6 +1414,9 @@ public sealed class SupabaseStoryCatalogService(
         [JsonPropertyName("show_on_home")]
         public bool ShowOnHome { get; set; }
 
+        [JsonPropertyName("include_in_speellyste_carousel")]
+        public bool IncludeInSpeellysteCarousel { get; set; }
+
         [JsonPropertyName("show_showcase_image_on_luister_page")]
         public bool ShowShowcaseImageOnLuisterPage { get; set; }
 
@@ -1416,6 +1425,9 @@ public sealed class SupabaseStoryCatalogService(
 
         [JsonPropertyName("backdrop_image_path")]
         public string? BackdropImagePath { get; set; }
+
+        [JsonPropertyName("showcase_image_path")]
+        public string? ShowcaseImagePath { get; set; }
 
         [JsonIgnore]
         public bool IsSystemPlaylist =>

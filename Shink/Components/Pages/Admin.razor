@@ -1613,9 +1613,13 @@
                                                  @bind-Value="PlaylistEditor.ShowOnHome" />
                                     <MudCheckBox T="bool"
                                                  Class="admin-span-2 admin-playlist-checkbox"
+                                                 Label='@T("Sluit in Speellyste carousel op Luister", "Include in Speellyste carousel on Luister")'
+                                                 @bind-Value="PlaylistEditor.IncludeInSpeellysteCarousel" />
+                                    <MudCheckBox T="bool"
+                                                 Class="admin-span-2 admin-playlist-checkbox"
                                                  Label='@T("Wys showcase image op Luister", "Show showcase image on Luister")'
                                                  @bind-Value="PlaylistEditor.ShowShowcaseImageOnLuisterPage" />
-                                    <div class="admin-upload-group admin-span-2">
+                                    <div class="admin-upload-group admin-upload-group-3 admin-span-2">
                                         <div class="admin-upload-card">
                                             <div class="admin-upload-head">
                                                 <h4>@T("Laai logo op", "Upload logo")</h4>
@@ -1644,8 +1648,22 @@
                                             </label>
                                             <p class="admin-upload-file-name">@GetSelectedFileLabel(PlaylistEditor.BackdropFileName, T("Hou huidige agtergrond as jy niks kies nie.", "Keeps the current backdrop if you do not choose a file."))</p>
                                         </div>
+                                        <div class="admin-upload-card">
+                                            <div class="admin-upload-head">
+                                                <h4>@T("Laai Speellyste image op", "Upload Speellyste image")</h4>
+                                                <p>@T("Opsioneel", "Optional")</p>
+                                            </div>
+                                            <label class="admin-upload-btn">
+                                                @T("Kies image", "Choose image")
+                                                <InputFile id="@EditPlaylistShowcaseInputId"
+                                                           class="admin-file-input"
+                                                           OnChange="OnPlaylistShowcaseSelected"
+                                                           accept=".jpg,.jpeg,.png,.webp" />
+                                            </label>
+                                            <p class="admin-upload-file-name">@GetSelectedFileLabel(PlaylistEditor.ShowcaseFileName, T("Hou huidige Speellyste image as jy niks kies nie.", "Keeps the current Speellyste image if you do not choose a file."))</p>
+                                        </div>
                                     </div>
-                                    <div class="admin-image-preview-grid admin-span-2 admin-playlist-preview-grid">
+                                    <div class="admin-image-preview-grid admin-playlist-preview-grid admin-playlist-preview-grid-3 admin-span-2">
                                         <article class="admin-image-preview-card admin-playlist-preview-card">
                                             <h4>@T("Logo voorskou", "Logo preview")</h4>
                                             @if (!string.IsNullOrWhiteSpace(playlistLogoPreviewUrl))
@@ -1696,6 +1714,33 @@
                                             else
                                             {
                                                 <p>@T("Geen agtergrond beskikbaar nie.", "No backdrop available.")</p>
+                                            }
+                                        </article>
+                                        <article class="admin-image-preview-card admin-playlist-preview-card">
+                                            <h4>@T("Speellyste voorskou", "Speellyste preview")</h4>
+                                            @if (!string.IsNullOrWhiteSpace(PlaylistEditor.ShowcasePreviewDataUrl) ||
+                                                 !string.IsNullOrWhiteSpace(PlaylistEditor.ShowcaseImagePath))
+                                            {
+                                                <div class="admin-image-preview-media">
+                                                    <img src="@(!string.IsNullOrWhiteSpace(PlaylistEditor.ShowcasePreviewDataUrl) ? PlaylistEditor.ShowcasePreviewDataUrl : PlaylistEditor.ShowcaseImagePath)"
+                                                         alt='@T("Playlist Speellyste voorskou", "Playlist Speellyste preview")'
+                                                         loading="lazy"
+                                                         decoding="async" />
+                                                    @if (CanRemovePlaylistShowcaseImage())
+                                                    {
+                                                        <button type="button"
+                                                                class="admin-image-preview-remove"
+                                                                @onclick="RemovePlaylistShowcaseImageAsync"
+                                                                aria-label='@T("Verwyder Speellyste image", "Remove Speellyste image")'
+                                                                title='@T("Verwyder Speellyste image", "Remove Speellyste image")'>
+                                                            <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                                                        </button>
+                                                    }
+                                                </div>
+                                            }
+                                            else
+                                            {
+                                                <p>@T("Geen Speellyste image beskikbaar nie.", "No Speellyste image available.")</p>
                                             }
                                         </article>
                                     </div>
@@ -1874,6 +1919,7 @@
     private const string EditStoryAudioInputId = "admin-edit-story-audio";
     private const string EditPlaylistLogoInputId = "admin-edit-playlist-logo";
     private const string EditPlaylistBackdropInputId = "admin-edit-playlist-backdrop";
+    private const string EditPlaylistShowcaseInputId = "admin-edit-playlist-showcase";
 
     private bool IsSavingSubscriber { get; set; }
     private bool IsSavingStory { get; set; }
@@ -2870,6 +2916,22 @@
         return;
     }
 
+    private async Task OnPlaylistShowcaseSelected(InputFileChangeEventArgs args)
+    {
+        if (PlaylistEditor is null)
+        {
+            return;
+        }
+
+        var file = args.File;
+        PlaylistEditor.ShowcaseFile = file;
+        PlaylistEditor.ShowcaseFileName = file?.Name;
+        PlaylistEditor.ShowcasePreviewDataUrl = file is null
+            ? null
+            : await ReadImageFileAsDataUrlAsync(file);
+        return;
+    }
+
     private bool CanRemoveStoryCoverImage() =>
         StoryEditor is not null &&
         (StoryEditor.CoverFile is not null || !string.IsNullOrWhiteSpace(StoryEditor.CoverImagePath));
@@ -2887,6 +2949,11 @@
         PlaylistEditor is not null &&
         (PlaylistEditor.BackdropFile is not null ||
          !string.IsNullOrWhiteSpace(PlaylistEditor.BackdropImagePath));
+
+    private bool CanRemovePlaylistShowcaseImage() =>
+        PlaylistEditor is not null &&
+        (PlaylistEditor.ShowcaseFile is not null ||
+         !string.IsNullOrWhiteSpace(PlaylistEditor.ShowcaseImagePath));
 
     private async Task RemoveStoryCoverImageAsync()
     {
@@ -2950,6 +3017,22 @@
         PlaylistEditor.BackdropFileName = null;
         PlaylistEditor.BackdropPreviewDataUrl = null;
         PlaylistEditor.BackdropImagePath = null;
+    }
+
+    private async Task RemovePlaylistShowcaseImageAsync()
+    {
+        if (PlaylistEditor is null ||
+            !await ConfirmImageRemovalAsync(
+                "Is jy seker jy wil hierdie Speellyste image verwyder?",
+                "Are you sure you want to remove this Speellyste image?"))
+        {
+            return;
+        }
+
+        PlaylistEditor.ShowcaseFile = null;
+        PlaylistEditor.ShowcaseFileName = null;
+        PlaylistEditor.ShowcasePreviewDataUrl = null;
+        PlaylistEditor.ShowcaseImagePath = null;
     }
 
     private async Task SaveNewStoryAsync()
@@ -3198,6 +3281,7 @@
         var uploadedLocalFilePaths = new List<string>();
         var originalLogoImagePath = PlaylistEditor.LogoImagePath;
         var originalBackdropImagePath = PlaylistEditor.BackdropImagePath;
+        var originalShowcaseImagePath = PlaylistEditor.ShowcaseImagePath;
 
         try
         {
@@ -3257,6 +3341,26 @@
                 PlaylistEditor.BackdropImagePath = backdropUpload.PublicPath;
             }
 
+            if (PlaylistEditor.ShowcaseFile is not null)
+            {
+                var showcaseUpload = await UploadPlaylistImageAsync(
+                    playlistSlug,
+                    PlaylistImageAssetKind.Showcase,
+                    PlaylistEditor.ShowcaseFile,
+                    EditPlaylistShowcaseInputId);
+                if (!string.IsNullOrWhiteSpace(showcaseUpload.R2ObjectKey))
+                {
+                    uploadedObjectKeys.Add(showcaseUpload.R2ObjectKey);
+                }
+
+                if (!string.IsNullOrWhiteSpace(showcaseUpload.LocalFilePath))
+                {
+                    uploadedLocalFilePaths.Add(showcaseUpload.LocalFilePath);
+                }
+
+                PlaylistEditor.ShowcaseImagePath = showcaseUpload.PublicPath;
+            }
+
             var result = await AdminManagementService.SavePlaylistAsync(
                 CurrentAdminEmail,
                 new AdminPlaylistUpdateRequest(
@@ -3266,10 +3370,12 @@
                     PlaylistEditor.Description,
                     PlaylistEditor.LogoImagePath,
                     PlaylistEditor.BackdropImagePath,
+                    PlaylistEditor.ShowcaseImagePath,
                     PlaylistEditor.SortOrder,
                     PlaylistEditor.MaxItems,
                     PlaylistEditor.IsEnabled,
                     PlaylistEditor.ShowOnHome,
+                    PlaylistEditor.IncludeInSpeellysteCarousel,
                     PlaylistEditor.ShowShowcaseImageOnLuisterPage));
 
             if (!HandleOperationResult(result, T("Playlist is gestoor.", "Playlist saved.")))
@@ -3283,9 +3389,12 @@
             PlaylistEditor.LogoFileName = null;
             PlaylistEditor.BackdropFile = null;
             PlaylistEditor.BackdropFileName = null;
+            PlaylistEditor.ShowcaseFile = null;
+            PlaylistEditor.ShowcaseFileName = null;
 
             await CleanupReplacedImageAssetAsync(originalLogoImagePath, PlaylistEditor.LogoImagePath);
             await CleanupReplacedImageAssetAsync(originalBackdropImagePath, PlaylistEditor.BackdropImagePath);
+            await CleanupReplacedImageAssetAsync(originalShowcaseImagePath, PlaylistEditor.ShowcaseImagePath);
             var selectedPlaylistId = result.EntityId ?? PlaylistEditor.PlaylistId;
             await RefreshPlaylistsAsync(selectedPlaylistId);
         }
@@ -3327,10 +3436,12 @@
                     playlist.Description,
                     playlist.LogoImagePath,
                     playlist.BackdropImagePath,
+                    playlist.ShowcaseImagePath,
                     playlist.SortOrder,
                     playlist.MaxItems,
                     isEnabled,
                     playlist.ShowOnHome,
+                    playlist.IncludeInSpeellysteCarousel,
                     playlist.ShowShowcaseImageOnLuisterPage));
 
             if (!HandleOperationResult(
@@ -3380,10 +3491,12 @@
                     playlist.Description,
                     playlist.LogoImagePath,
                     playlist.BackdropImagePath,
+                    playlist.ShowcaseImagePath,
                     playlist.SortOrder,
                     playlist.MaxItems,
                     playlist.IsEnabled,
                     showOnHome,
+                    playlist.IncludeInSpeellysteCarousel,
                     playlist.ShowShowcaseImageOnLuisterPage));
 
             if (!HandleOperationResult(
@@ -3433,10 +3546,12 @@
                     playlist.Description,
                     playlist.LogoImagePath,
                     playlist.BackdropImagePath,
+                    playlist.ShowcaseImagePath,
                     playlist.SortOrder,
                     playlist.MaxItems,
                     playlist.IsEnabled,
                     playlist.ShowOnHome,
+                    playlist.IncludeInSpeellysteCarousel,
                     showOnLuister));
 
             if (!HandleOperationResult(
@@ -3809,6 +3924,17 @@
             return T("Ondersteunde agtergrond images is JPG, PNG of WEBP.", "Supported backdrop image types are JPG, PNG, or WEBP.");
         }
 
+        if (draft.ShowcaseFile is not null &&
+            (draft.ShowcaseFile.Size <= 0 || draft.ShowcaseFile.Size > MaxImageUploadBytes))
+        {
+            return T("Die Speellyste image moet kleiner as 10 MB wees.", "The Speellyste image must be smaller than 10 MB.");
+        }
+
+        if (draft.ShowcaseFile is not null && !IsSupportedImageFile(draft.ShowcaseFile))
+        {
+            return T("Ondersteunde Speellyste images is JPG, PNG of WEBP.", "Supported Speellyste image types are JPG, PNG, or WEBP.");
+        }
+
         return null;
     }
 
@@ -3939,9 +4065,17 @@
     {
         if (IsR2UploadConfigured)
         {
+            var storyImageKind = kind switch
+            {
+                PlaylistImageAssetKind.Logo => StoryImageKind.Thumbnail,
+                PlaylistImageAssetKind.Backdrop => StoryImageKind.Cover,
+                PlaylistImageAssetKind.Showcase => StoryImageKind.Cover,
+                _ => StoryImageKind.Cover
+            };
+
             var uploaded = await UploadImageWithFallbackAsync(
                 playlistSlug,
-                kind == PlaylistImageAssetKind.Logo ? StoryImageKind.Thumbnail : StoryImageKind.Cover,
+                storyImageKind,
                 file,
                 inputId);
 
@@ -3979,7 +4113,13 @@
         var timestamp = DateTimeOffset.UtcNow;
         var year = timestamp.ToString("yyyy");
         var month = timestamp.ToString("MM");
-        var suffix = kind == PlaylistImageAssetKind.Logo ? "logo" : "backdrop";
+        var suffix = kind switch
+        {
+            PlaylistImageAssetKind.Logo => "logo",
+            PlaylistImageAssetKind.Backdrop => "backdrop",
+            PlaylistImageAssetKind.Showcase => "showcase",
+            _ => "image"
+        };
         var fileName = $"{normalizedSlug}-{suffix}-{timestamp:yyyyMMddHHmmss}-{Guid.NewGuid():N}{extension}";
 
         var rootPath = string.IsNullOrWhiteSpace(WebHostEnvironment.WebRootPath)
@@ -4619,12 +4759,15 @@
             Description = NormalizeDirtyText(editor.Description),
             LogoImagePath = NormalizeDirtyText(editor.LogoImagePath),
             BackdropImagePath = NormalizeDirtyText(editor.BackdropImagePath),
+            ShowcaseImagePath = NormalizeDirtyText(editor.ShowcaseImagePath),
             LogoFile = BuildBrowserFileState(editor.LogoFile, editor.LogoFileName),
             BackdropFile = BuildBrowserFileState(editor.BackdropFile, editor.BackdropFileName),
+            ShowcaseFile = BuildBrowserFileState(editor.ShowcaseFile, editor.ShowcaseFileName),
             editor.SortOrder,
             editor.MaxItems,
             editor.IsEnabled,
             editor.ShowOnHome,
+            editor.IncludeInSpeellysteCarousel,
             editor.ShowShowcaseImageOnLuisterPage,
             StoryItems = storyItems.Select(item => new
             {
@@ -4994,7 +5137,8 @@
     private enum PlaylistImageAssetKind
     {
         Logo,
-        Backdrop
+        Backdrop,
+        Showcase
     }
 
     private enum AdminLanguage
@@ -5099,16 +5243,21 @@
         public string? Description { get; set; }
         public string? LogoImagePath { get; set; }
         public string? BackdropImagePath { get; set; }
+        public string? ShowcaseImagePath { get; set; }
         public IBrowserFile? LogoFile { get; set; }
         public string? LogoFileName { get; set; }
         public string? LogoPreviewDataUrl { get; set; }
         public IBrowserFile? BackdropFile { get; set; }
         public string? BackdropFileName { get; set; }
         public string? BackdropPreviewDataUrl { get; set; }
+        public IBrowserFile? ShowcaseFile { get; set; }
+        public string? ShowcaseFileName { get; set; }
+        public string? ShowcasePreviewDataUrl { get; set; }
         public int SortOrder { get; set; } = 100;
         public int? MaxItems { get; set; }
         public bool IsEnabled { get; set; } = true;
         public bool ShowOnHome { get; set; }
+        public bool IncludeInSpeellysteCarousel { get; set; }
         public bool ShowShowcaseImageOnLuisterPage { get; set; }
 
         public static EditablePlaylist From(AdminPlaylistRecord playlist) => new()
@@ -5125,10 +5274,14 @@
             BackdropImagePath = string.IsNullOrWhiteSpace(playlist.BackdropImagePath)
                 ? null
                 : playlist.BackdropImagePath,
+            ShowcaseImagePath = string.IsNullOrWhiteSpace(playlist.ShowcaseImagePath)
+                ? null
+                : playlist.ShowcaseImagePath,
             SortOrder = playlist.SortOrder,
             MaxItems = playlist.MaxItems,
             IsEnabled = playlist.IsEnabled,
             ShowOnHome = playlist.ShowOnHome,
+            IncludeInSpeellysteCarousel = playlist.IncludeInSpeellysteCarousel,
             ShowShowcaseImageOnLuisterPage = playlist.ShowShowcaseImageOnLuisterPage
         };
     }

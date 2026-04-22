@@ -289,13 +289,33 @@ h1 {
     color: #3f5255;
 }
 
+.luister-speellyste-section {
+    margin-bottom: 1rem;
+}
+
+.luister-speellyste-carousel {
+    --luister-speellyste-base-card-width: 220px;
+    grid-auto-columns: calc(var(--luister-speellyste-base-card-width) * 64 / 27);
+}
+
+.luister-speellyste-cover,
+.luister-speellyste-image {
+    aspect-ratio: 16 / 9;
+}
+
+.luister-speellyste-link h3 {
+    min-height: 0;
+    text-align: center;
+}
+
 .stories-carousel-shell {
     position: relative;
     width: min(100%, 1080px);
     margin: 0.65rem auto 0;
 }
 
-.luister-stories-section .stories-carousel-shell {
+.luister-stories-section .stories-carousel-shell,
+.luister-speellyste-section .stories-carousel-shell {
     width: 100vw;
     margin-left: calc(50% - 50vw);
     margin-right: calc(50% - 50vw);
@@ -322,7 +342,12 @@ h1 {
     cursor: grab;
 }
 
-.luister-stories-section .stories-carousel {
+.stories-carousel.luister-speellyste-carousel {
+    grid-auto-columns: calc(var(--luister-speellyste-base-card-width) * 64 / 27);
+}
+
+.luister-stories-section .stories-carousel,
+.luister-speellyste-section .stories-carousel {
     --luister-carousel-edge-space: 15px;
     justify-content: safe center;
     padding-inline: var(--luister-carousel-edge-space);
@@ -463,6 +488,20 @@ h1 {
     transition: transform 0.22s ease, filter 0.22s ease;
 }
 
+.luister-speellyste-link {
+    width: 100%;
+}
+
+.luister-speellyste-link .story-carousel-cover {
+    aspect-ratio: 16 / 9;
+    width: 100%;
+    height: auto;
+}
+
+.luister-speellyste-link .story-carousel-image {
+    aspect-ratio: 16 / 9;
+}
+
 .story-carousel-item.is-navigating .story-carousel-image {
     filter: brightness(0.72);
     transform: scale(1.01);
@@ -597,6 +636,10 @@ h1 {
     .stories-carousel {
         grid-auto-columns: minmax(170px, 42vw);
     }
+
+    .luister-speellyste-carousel {
+        --luister-speellyste-base-card-width: clamp(170px, 42vw, 420px);
+    }
 }
 
 @media (max-width: 680px) {
@@ -666,7 +709,12 @@ h1 {
         scroll-padding-inline: 0.8rem;
     }
 
-    .luister-stories-section .stories-carousel {
+    .luister-speellyste-carousel {
+        --luister-speellyste-base-card-width: clamp(146px, 44vw, 360px);
+    }
+
+    .luister-stories-section .stories-carousel,
+    .luister-speellyste-section .stories-carousel {
         padding-inline: var(--luister-carousel-edge-space);
         scroll-padding-inline: var(--luister-carousel-edge-space);
     }
