@@ -1,4 +1,5 @@
 @page "/opsies"
+@rendermode InteractiveServer
 @using System.Text.Json
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components
@@ -17,16 +18,16 @@
     <meta property="og:title" content="Schink Stories | Opsies" />
     <meta property="og:description" content="Kies jou Schink Stories opsie en begin luister na veilige Afrikaanse stories." />
     <meta property="og:url" content="@OpsiesCanonicalUrl" />
-    <meta property="og:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
-    <meta property="og:image:secure_url" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
+    <meta property="og:image" content="@NavigationManager.ToAbsoluteUri("/branding/Schink_Stories_Logo_turqoise.png").ToString()" />
+    <meta property="og:image:secure_url" content="@NavigationManager.ToAbsoluteUri("/branding/Schink_Stories_Logo_turqoise.png").ToString()" />
     <meta property="og:image:type" content="image/png" />
-    <meta property="og:image:width" content="512" />
-    <meta property="og:image:height" content="512" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="1200" />
     <meta property="og:image:alt" content="Schink Stories logo" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Schink Stories | Opsies" />
     <meta name="twitter:description" content="Kies jou Schink Stories opsie en begin luister na veilige Afrikaanse stories." />
-    <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
+    <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/branding/Schink_Stories_Logo_turqoise.png").ToString()" />
     <meta name="twitter:image:alt" content="Schink Stories logo" />
     <script type="application/ld+json">@OpsiesJsonLd</script>
 </HeadContent>
@@ -53,7 +54,7 @@
 
     <section class="opsies-hero">
         <div class="opsies-hero-media">
-            <img src="/branding/Schink_Stories_Home_Banner_White.png"
+            <img src="/branding/Schink_Stories_Logo_turqoise.png"
                  alt="Schink Stories Opsies" class="opsies-hero-image" loading="eager" decoding="async" />
         </div>
         <div class="opsies-hero-copy">
@@ -92,7 +93,6 @@
                 <article class="@GetPlanCardClass("opsie-card featured opsie-monthly", "storie-hoekie-maandeliks")">
                     <div class="opsie-head">
                         <p class="opsie-badge">MAANDELIKS</p>
-                        <p class="opsie-pill">Gewildste keuse</p>
                         <p class="opsie-summary">Vir gesinne wat met een geliefde reeks wil begin</p>
                         <h2>Storie Hoekie</h2>
                         <p class="opsie-price">R 55.00 <span>per maand.</span></p>
@@ -116,35 +116,11 @@
             {
                 <article class="@GetPlanCardClass("opsie-card opsie-all", CurrentAllStoriesPlanSlug)">
                     <div class="opsie-head">
-                        <p class="opsie-badge">@(AllStoriesBillingLabel)</p>
-                        <div class="opsie-billing-toggle-row">
-                            <div class="opsie-billing-toggle" role="group" aria-label="Faktureringsiklus">
-                                <button type="button"
-                                        class="opsie-billing-toggle-btn @(!IsYearlyAllStoriesPlan ? "is-active" : null)"
-                                        @onclick="(() => SetAllStoriesBillingCycle(false))"
-                                        aria-pressed="@(!IsYearlyAllStoriesPlan)">
-                                    Maandeliks
-                                </button>
-                                <button type="button"
-                                        class="opsie-billing-toggle-btn @(IsYearlyAllStoriesPlan ? "is-active" : null)"
-                                        @onclick="(() => SetAllStoriesBillingCycle(true))"
-                                        aria-pressed="@(IsYearlyAllStoriesPlan)">
-                                    Jaarliks
-                                </button>
-                            </div>
-                            @if (IsYearlyAllStoriesPlan)
-                            {
-                                <p class="opsie-save-badge">2 maande gratis</p>
-                            }
-                        </div>
+                        <p class="opsie-badge">Volle toegang</p>
+                        <p class="opsie-pill opsie-pill-value">Meeste waarde</p>
                         <p class="opsie-summary">Vir volle toegang tot alles</p>
                         <h2>Schink Stories</h2>
-                        <p class="opsie-price">@(AllStoriesPriceText) <span>@(AllStoriesPeriodText)</span></p>
                     </div>
-                    @if (IsSelectedPlan(CurrentAllStoriesPlanSlug))
-                    {
-                        <p class="opsie-selected-indicator">Gekose plan</p>
-                    }
                     <p class="opsie-detail"><strong>Geniet toegang tot ALLES!</strong></p>
                     <ul>
                         <li>Onbeperkte toegang tot alle stories en reekse</li>
@@ -153,10 +129,176 @@
                         <li>Nuwe stories elke maand</li>
                         <li>Toegang tot hulpbronne</li>
                     </ul>
-                    <p class="opsie-note">@(IsYearlyAllStoriesPlan ? "Beste waarde vir gesinne wat vooruit beplan met vaste jaarlikse toegang." : "Die beste maandelikse plan as jy volle toegang wil hê.")</p>
+
+                    <div class="opsie-plan-options" role="radiogroup" aria-label="Schink Stories plan opsies">
+                        <button type="button"
+                                class="opsie-plan-option @(!IsYearlyAllStoriesPlan ? "is-selected" : null)"
+                                role="radio"
+                                aria-checked="@(!IsYearlyAllStoriesPlan)"
+                                @onclick="(() => SetAllStoriesBillingCycle(false))">
+                            <span class="opsie-plan-option-marker" aria-hidden="true">
+                                <span class="opsie-plan-option-marker-dot"></span>
+                            </span>
+                            <span class="opsie-plan-option-copy">
+                                <span class="opsie-plan-option-head">
+                                    <span class="opsie-plan-option-price">R79</span>
+                                    <span class="opsie-plan-option-period">Maandeliks</span>
+                                </span>
+                                <span class="opsie-plan-option-note">Volledige toegang vir 1 maand</span>
+                            </span>
+                        </button>
+
+                        <button type="button"
+                                class="opsie-plan-option @(IsYearlyAllStoriesPlan ? "is-selected" : null)"
+                                role="radio"
+                                aria-checked="@(IsYearlyAllStoriesPlan)"
+                                @onclick="(() => SetAllStoriesBillingCycle(true))">
+                            <span class="opsie-plan-option-marker" aria-hidden="true">
+                                <span class="opsie-plan-option-marker-dot"></span>
+                            </span>
+                            <span class="opsie-plan-option-copy">
+                                <span class="opsie-plan-option-head">
+                                    <span class="opsie-plan-option-price">R790</span>
+                                    <span class="opsie-plan-option-period">Jaarliks</span>
+                                    <span class="opsie-save-badge">2 maande gratis</span>
+                                </span>
+                                <span class="opsie-plan-option-note">Volledige toegang vir 12 maande</span>
+                            </span>
+                        </button>
+                    </div>
+
                     <a href='@BuildPlanSignUpHref(CurrentAllStoriesPlanSlug, SafeStoryReturnPath)' class="opsie-btn">@(IsSelectedPlan(CurrentAllStoriesPlanSlug) ? "Gaan voort" : "Kies hierdie plan")</a>
                 </article>
             }
+        </div>
+    </section>
+
+    <section class="opsies-compare" aria-labelledby="opsies-compare-title">
+        <div class="opsies-section-heading">
+            <p class="opsies-section-kicker">Vergelyk opsies</p>
+            <h2 id="opsies-compare-title">Sien die verskille vinnig</h2>
+            <p>Kyk hier langs mekaar watter plan die beste by julle gesin se storietyd pas.</p>
+        </div>
+
+        <div class="opsies-compare-scroll" role="region" aria-label="Vergelyk opsies tabel">
+            <table class="opsies-compare-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Kenmerk</th>
+                        @if (ShouldShowStoryCornerPlanOption)
+                        {
+                            <th scope="col" class="@GetCompareColumnClass("storie-hoekie-maandeliks")">Storie Hoekie</th>
+                        }
+                        <th scope="col" class="@GetCompareColumnClass("schink-stories-maandeliks")">Schink Stories Maandeliks</th>
+                        <th scope="col" class="@GetCompareColumnClass("schink-stories-jaarliks")">Schink Stories Jaarliks</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <th scope="row">Prys</th>
+                        @if (ShouldShowStoryCornerPlanOption)
+                        {
+                            <td class="@GetCompareColumnClass("storie-hoekie-maandeliks")">R55 per maand</td>
+                        }
+                        <td class="@GetCompareColumnClass("schink-stories-maandeliks")">R79 per maand</td>
+                        <td class="@GetCompareColumnClass("schink-stories-jaarliks")">R790 per jaar</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Toegang</th>
+                        @if (ShouldShowStoryCornerPlanOption)
+                        {
+                            <td class="@GetCompareColumnClass("storie-hoekie-maandeliks")">Storie Hoekie-reeks</td>
+                        }
+                        <td class="@GetCompareColumnClass("schink-stories-maandeliks")">Alle stories en reekse</td>
+                        <td class="@GetCompareColumnClass("schink-stories-jaarliks")">Alle stories en reekse</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Nuwe stories</th>
+                        @if (ShouldShowStoryCornerPlanOption)
+                        {
+                            <td class="@GetCompareColumnClass("storie-hoekie-maandeliks")">In Storie Hoekie-reeks</td>
+                        }
+                        <td class="@GetCompareColumnClass("schink-stories-maandeliks")">Ja, elke maand</td>
+                        <td class="@GetCompareColumnClass("schink-stories-jaarliks")">Ja, elke maand</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Hulpbronne</th>
+                        @if (ShouldShowStoryCornerPlanOption)
+                        {
+                            <td class="@GetCompareColumnClass("storie-hoekie-maandeliks")">Basiese toegang</td>
+                        }
+                        <td class="@GetCompareColumnClass("schink-stories-maandeliks")">Vol toegang</td>
+                        <td class="@GetCompareColumnClass("schink-stories-jaarliks")">Vol toegang</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Advertensies</th>
+                        @if (ShouldShowStoryCornerPlanOption)
+                        {
+                            <td class="@GetCompareColumnClass("storie-hoekie-maandeliks")">Geen advertensies</td>
+                        }
+                        <td class="@GetCompareColumnClass("schink-stories-maandeliks")">Geen advertensies</td>
+                        <td class="@GetCompareColumnClass("schink-stories-jaarliks")">Geen advertensies</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Besparing</th>
+                        @if (ShouldShowStoryCornerPlanOption)
+                        {
+                            <td class="@GetCompareColumnClass("storie-hoekie-maandeliks")">NVT</td>
+                        }
+                        <td class="@GetCompareColumnClass("schink-stories-maandeliks")">NVT</td>
+                        <td class="@GetCompareColumnClass("schink-stories-jaarliks")">2 maande gratis</td>
+                    </tr>
+                    <tr>
+                        <th scope="row">Beste vir</th>
+                        @if (ShouldShowStoryCornerPlanOption)
+                        {
+                            <td class="@GetCompareColumnClass("storie-hoekie-maandeliks")">Begin met een reeks</td>
+                        }
+                        <td class="@GetCompareColumnClass("schink-stories-maandeliks")">Volle toegang per maand</td>
+                        <td class="@GetCompareColumnClass("schink-stories-jaarliks")">Volle toegang vir 'n jaar</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="opsies-faq" aria-labelledby="opsies-faq-title">
+        <div class="opsies-section-heading">
+            <p class="opsies-section-kicker">Algemene vrae</p>
+            <h2 id="opsies-faq-title">Vrae wat ouers gereeld vra</h2>
+            <p>Hier is vinnige antwoorde op die mees algemene vrae oor planne, toegang en betalings.</p>
+        </div>
+
+        <div class="opsies-faq-list">
+            <details class="opsies-faq-item" open>
+                <summary>Kan ek enige tyd kanselleer?</summary>
+                <p>Ja. Jy kan jou intekening stop wanneer dit jou pas, en jy behou toegang tot die gratis stories.</p>
+            </details>
+
+            <details class="opsies-faq-item">
+                <summary>Kry ek onmiddellik toegang nadat ek inteken?</summary>
+                <p>Ja. Sodra betaling bevestig is, word jou toegang outomaties geaktiveer en kan julle dadelik begin luister.</p>
+            </details>
+
+            <details class="opsies-faq-item">
+                <summary>Werk Schink Stories op foon, tablet en rekenaar?</summary>
+                <p>Ja. Julle kan luister op enige moderne blaaier op selfoon, tablet of rekenaar.</p>
+            </details>
+
+            <details class="opsies-faq-item">
+                <summary>Is daar advertensies in die stories?</summary>
+                <p>Nee. Die luisterervaring is advertensievry en ontwerp vir rustige, veilige storietyd.</p>
+            </details>
+
+            <details class="opsies-faq-item">
+                <summary>Wat gebeur as 'n betaling misluk?</summary>
+                <p>Jy sal steeds gratis stories kan gebruik, en jy kan jou betaalde plan weer aktiveer sodra betaling suksesvol is.</p>
+            </details>
+
+            <details class="opsies-faq-item">
+                <summary>Watter plan moet ek kies?</summary>
+                <p>Kies Storie Hoekie as jy klein wil begin met een reeks, of Schink Stories vir volle toegang tot alles.</p>
+            </details>
         </div>
     </section>
 
@@ -230,12 +372,6 @@
         ? "schink-stories-jaarliks"
         : "schink-stories-maandeliks";
 
-    private string AllStoriesBillingLabel => IsYearlyAllStoriesPlan ? "JAARLIKS" : "MAANDELIKS";
-
-    private string AllStoriesPriceText => IsYearlyAllStoriesPlan ? "R 790.00" : "R 79.00";
-
-    private string AllStoriesPeriodText => IsYearlyAllStoriesPlan ? "per jaar." : "per maand.";
-
     private bool ShouldShowStoryCornerPlanOption =>
         RequiredAccess is not StoryAccessRequirement.AllStoriesOnly;
 
@@ -255,7 +391,7 @@
             ["name"] = "Schink Stories",
             ["url"] = NavigationManager.ToAbsoluteUri("/").ToString()
         },
-        ["primaryImageOfPage"] = NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()
+        ["primaryImageOfPage"] = NavigationManager.ToAbsoluteUri("/branding/Schink_Stories_Logo_turqoise.png").ToString()
     }));
 
     protected override async Task OnParametersSetAsync()
@@ -428,6 +564,11 @@
     private bool IsSelectedPlan(string planSlug) =>
         !string.IsNullOrWhiteSpace(SelectedPlanSlug) &&
         string.Equals(SelectedPlanSlug, planSlug, StringComparison.OrdinalIgnoreCase);
+
+    private string GetCompareColumnClass(string planSlug) =>
+        IsSelectedPlan(planSlug)
+            ? "opsies-compare-plan is-selected"
+            : "opsies-compare-plan";
 
     private string GetPlanCardClass(string baseClass, string planSlug)
     {

@@ -25,7 +25,10 @@ const SPEED_LABEL_SELECTOR = ".story-speed-label";
 const SHARE_TOGGLE_SELECTOR = ".story-share-toggle";
 const SPEED_STEPS = [1, 1.25, 1.5, 0.8];
 const STORY_TRACKING_ENDPOINT_PREFIX = "/api/stories/";
+const NOTIFICATION_ENDPOINT = "/api/notifications?limit=10";
 const NOTIFICATION_REFRESH_EVENT = "schink:notifications-refresh";
+const CHARACTER_UNLOCK_NOTIFICATION_TYPE = "character_unlock";
+const CHARACTER_UNLOCK_POPUP_STORAGE_KEY = "schink:pending-character-unlock-popup";
 const LISTEN_FLUSH_THRESHOLD_SECONDS = 12;
 const LISTEN_MAX_DELTA_SECONDS = 30;
 const LISTEN_MAX_EVENT_SECONDS = 600;
@@ -823,6 +826,89 @@ async function postStoryTracking(slug, endpointSuffix, payload, useKeepalive) {
     }
 }
 
+function normalizeNotificationType(notificationType) {
+    return typeof notificationType === "string" && notificationType.length > 0
+        ? notificationType.trim().toLowerCase()
+        : "";
+}
+
+async function fetchLatestCharacterUnlockNotification() {
+    try {
+        const response = await fetch(NOTIFICATION_ENDPOINT, {
+            method: "GET",
+            credentials: "same-origin",
+            headers: {
+                Accept: "application/json"
+            }
+        });
+
+        if (!response.ok) {
+            return null;
+        }
+
+        const responseContentType = response.headers.get("content-type") || "";
+        if (!responseContentType.toLowerCase().includes("application/json")) {
+            return null;
+        }
+
+        const payload = await response.json();
+        const notifications = Array.isArray(payload?.notifications) ? payload.notifications : [];
+        return notifications.find((notification) =>
+            normalizeNotificationType(notification?.type) === CHARACTER_UNLOCK_NOTIFICATION_TYPE) ?? null;
+    } catch {
+        return null;
+    }
+}
+
+function storePendingCharacterUnlockPopup(notification) {
+    if (!notification || typeof notification !== "object") {
+        return;
+    }
+
+    const popupPayload = {
+        type: CHARACTER_UNLOCK_NOTIFICATION_TYPE,
+        imagePath: typeof notification.imagePath === "string" && notification.imagePath.length > 0
+            ? notification.imagePath
+            : "/branding/schink-logo-text.png",
+        imageAlt: typeof notification.imageAlt === "string" && notification.imageAlt.length > 0
+            ? notification.imageAlt
+            : "Karakter illustrasie",
+        href: typeof notification.href === "string" && notification.href.length > 0
+            ? notification.href
+            : "/karakters",
+        title: typeof notification.title === "string" && notification.title.length > 0
+            ? notification.title
+            : "Nuwe karakter oopgesluit",
+        body: typeof notification.body === "string" && notification.body.length > 0
+            ? notification.body
+            : "Jou nuwe karakter wag vir jou op die Karakter blad.",
+        createdAt: typeof notification.createdAt === "string" ? notification.createdAt : null
+    };
+
+    try {
+        window.sessionStorage.setItem(CHARACTER_UNLOCK_POPUP_STORAGE_KEY, JSON.stringify(popupPayload));
+    } catch {
+        // Ignore session storage availability errors.
+    }
+}
+
+function capturePendingCharacterUnlockPopup() {
+    // Write a minimal payload immediately so fast navigation back to /luister
+    // still has something to display; enrich it asynchronously if available.
+    storePendingCharacterUnlockPopup({
+        href: "/karakters"
+    });
+
+    void (async () => {
+        const notification = await fetchLatestCharacterUnlockNotification();
+        if (!notification) {
+            return;
+        }
+
+        storePendingCharacterUnlockPopup(notification);
+    })();
+}
+
 function trackStoryView(trackingState) {
     if (!trackingState || trackingState.viewTracked) {
         return;
@@ -888,6 +974,8 @@ function flushStoryListen(audioElement, trackingState, eventType, force, useKeep
             if (!result || !Number.isFinite(result.newNotificationsCreated) || result.newNotificationsCreated <= 0) {
                 return;
             }
+
+            void capturePendingCharacterUnlockPopup();
 
             window.dispatchEvent(new CustomEvent(NOTIFICATION_REFRESH_EVENT, {
                 detail: {

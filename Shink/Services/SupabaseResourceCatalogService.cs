@@ -92,6 +92,7 @@ public sealed class SupabaseResourceCatalogService(
             ContentType: contentType,
             StorageBucket: document.StorageBucket.Trim(),
             StorageObjectKey: document.StorageObjectKey.Trim(),
+            RequiredTierCode: NormalizeOptionalText(document.RequiredTierCode, 64),
             LastModified: document.DocumentUpdatedAt ?? document.UpdatedAt);
     }
 
@@ -162,7 +163,7 @@ public sealed class SupabaseResourceCatalogService(
         var documentsUri = new Uri(
             baseUri,
             "rest/v1/resource_documents" +
-            "?select=resource_document_id,resource_type_id,title,file_name,size_bytes,created_at,document_updated_at,updated_at,preview_image_object_key,sort_order" +
+            "?select=resource_document_id,resource_type_id,title,file_name,size_bytes,created_at,document_updated_at,updated_at,preview_image_object_key,required_tier_code,sort_order" +
             "&is_enabled=eq.true" +
             "&order=sort_order.asc" +
             "&order=title.asc" +
@@ -188,6 +189,7 @@ public sealed class SupabaseResourceCatalogService(
                         PreviewUrl: string.IsNullOrWhiteSpace(row.PreviewImageObjectKey)
                             ? null
                             : $"/media/resources/{row.ResourceDocumentId:D}/preview",
+                        RequiredTierCode: NormalizeOptionalText(row.RequiredTierCode, 64),
                         SizeBytes: Math.Max(0, row.SizeBytes),
                         LastModified: row.DocumentUpdatedAt ?? row.UpdatedAt ?? row.CreatedAt))
                     .ToArray());
@@ -270,7 +272,7 @@ public sealed class SupabaseResourceCatalogService(
         var documentUri = new Uri(
             baseUri,
             "rest/v1/resource_documents" +
-            "?select=resource_document_id,resource_type_id,file_name,content_type,storage_bucket,storage_object_key,preview_image_content_type,preview_image_bucket,preview_image_object_key,preview_generated_at,document_updated_at,updated_at,is_enabled" +
+            "?select=resource_document_id,resource_type_id,file_name,content_type,storage_bucket,storage_object_key,preview_image_content_type,preview_image_bucket,preview_image_object_key,preview_generated_at,required_tier_code,document_updated_at,updated_at,is_enabled" +
             $"&resource_document_id=eq.{escapedDocumentId}" +
             "&is_enabled=eq.true" +
             "&limit=1");
@@ -363,6 +365,9 @@ public sealed class SupabaseResourceCatalogService(
         [JsonPropertyName("preview_image_object_key")]
         public string? PreviewImageObjectKey { get; set; }
 
+        [JsonPropertyName("required_tier_code")]
+        public string? RequiredTierCode { get; set; }
+
         [JsonPropertyName("sort_order")]
         public int SortOrder { get; set; }
     }
@@ -398,6 +403,9 @@ public sealed class SupabaseResourceCatalogService(
 
         [JsonPropertyName("preview_generated_at")]
         public DateTimeOffset? PreviewGeneratedAt { get; set; }
+
+        [JsonPropertyName("required_tier_code")]
+        public string? RequiredTierCode { get; set; }
 
         [JsonPropertyName("document_updated_at")]
         public DateTimeOffset? DocumentUpdatedAt { get; set; }

@@ -328,13 +328,29 @@ else
                   PlanActionHref="@StoryAccessPopupPlanHref"
                   OnClose="CloseStoryAccessPopupAsync" />
 
+<StoryAccessPopup IsOpen="@ShowCharacterUnlockPopup"
+                  ImageSrc="@CharacterUnlockPopupImagePath"
+                  ImageAlt="@CharacterUnlockPopupImageAlt"
+                  Title="@CharacterUnlockPopupTitle"
+                  Subtitle="@CharacterUnlockPopupSubtitle"
+                  ShowSubtitleLockIcon="false"
+                  Message="@CharacterUnlockPopupMessage"
+                  PrimaryActionHref="@CharacterUnlockPopupHref"
+                  PrimaryActionText="Maak Karakter Blad Oop"
+                  PlanActionHref=""
+                  OnClose="CloseCharacterUnlockPopupAsync" />
+
 @code {
+    private const string PendingCharacterUnlockPopupStorageKey = "schink:pending-character-unlock-popup";
+    private static readonly JsonSerializerOptions BrowserJsonOptions = new(JsonSerializerDefaults.Web);
+
     private IReadOnlyList<StoryPlaylist> LuisterPlaylists { get; set; } = Array.Empty<StoryPlaylist>();
     private IReadOnlyList<StoryPlaylist> FilteredLuisterPlaylists { get; set; } = Array.Empty<StoryPlaylist>();
     private HashSet<string> FavoriteStorySlugs { get; } = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> FavoriteStoryBusySlugs { get; } = new(StringComparer.OrdinalIgnoreCase);
     private IJSObjectReference? _luisterModule;
     private bool _luisterModuleLoadFailed;
+    private bool _checkedPendingCharacterUnlockPopup;
     private CancellationTokenSource? _searchDebounceCts;
     private string? SignedInEmail { get; set; }
     private string SearchQuery { get; set; } = string.Empty;
@@ -342,9 +358,16 @@ else
     private LuisterAccessProfile AccessProfile { get; set; } = new(false, false);
     private string? PageLoadErrorMessage { get; set; }
     private bool ShowStoryAccessPopup { get; set; }
+    private bool ShowCharacterUnlockPopup { get; set; }
     private bool IsLoadingPage { get; set; } = true;
     private bool AllowEmptyState { get; set; }
     private string PendingLockedStoryPath { get; set; } = "/luister";
+    private string CharacterUnlockPopupImagePath { get; set; } = "/branding/schink-logo-text.png";
+    private string CharacterUnlockPopupImageAlt { get; set; } = "Karakter illustrasie";
+    private string CharacterUnlockPopupTitle { get; set; } = "Nuwe karakter oopgesluit";
+    private string CharacterUnlockPopupSubtitle { get; set; } = "Kyk nou jou nuwe karakter";
+    private string CharacterUnlockPopupMessage { get; set; } = "Jou nuwe karakter wag vir jou op die Karakter blad.";
+    private string CharacterUnlockPopupHref { get; set; } = "/karakters";
     private CancellationTokenSource? _emptyStateDelayCts;
 
     private string LuisterCanonicalUrl => NavigationManager.ToAbsoluteUri("/luister").ToString();
@@ -641,6 +664,12 @@ else
         return Task.CompletedTask;
     }
 
+    private Task CloseCharacterUnlockPopupAsync()
+    {
+        ShowCharacterUnlockPopup = false;
+        return Task.CompletedTask;
+    }
+
     private bool HasAccessToStory(StoryItem story)
     {
         var requirement = StoryAccessPolicy.ResolveRequirement("luister", story);
@@ -769,6 +798,12 @@ else
 
     protected override async Task OnAfterRenderAsync(bool _)
     {
+        if (!_checkedPendingCharacterUnlockPopup)
+        {
+            _checkedPendingCharacterUnlockPopup = true;
+            await TryShowPendingCharacterUnlockPopupAsync();
+        }
+
         var module = await TryGetLuisterModuleAsync();
         if (module is null)
         {
@@ -791,6 +826,105 @@ else
         {
             // Ignore circuit disconnects during teardown/navigation.
         }
+    }
+
+    private async Task TryShowPendingCharacterUnlockPopupAsync()
+    {
+        string? pendingPopupPayload = null;
+        try
+        {
+            pendingPopupPayload = await JS.InvokeAsync<string?>("sessionStorage.getItem", PendingCharacterUnlockPopupStorageKey);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (JSException)
+        {
+            return;
+        }
+        catch (JSDisconnectedException)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(pendingPopupPayload))
+        {
+            return;
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("sessionStorage.removeItem", PendingCharacterUnlockPopupStorageKey);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (JSException)
+        {
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+
+        PendingCharacterUnlockPopupPayload? payload = null;
+        try
+        {
+            payload = JsonSerializer.Deserialize<PendingCharacterUnlockPopupPayload>(pendingPopupPayload, BrowserJsonOptions);
+        }
+        catch (JsonException)
+        {
+            payload = null;
+        }
+
+        CharacterUnlockPopupImagePath = NormalizePopupPath(payload?.ImagePath) ?? "/branding/schink-logo-text.png";
+        CharacterUnlockPopupImageAlt = string.IsNullOrWhiteSpace(payload?.ImageAlt)
+            ? "Karakter illustrasie"
+            : payload.ImageAlt.Trim();
+        CharacterUnlockPopupHref = NormalizePopupHref(payload?.Href);
+        CharacterUnlockPopupTitle = string.IsNullOrWhiteSpace(payload?.Title)
+            ? "Nuwe karakter oopgesluit"
+            : payload.Title.Trim();
+        CharacterUnlockPopupSubtitle = "Kyk nou jou nuwe karakter";
+        CharacterUnlockPopupMessage = string.IsNullOrWhiteSpace(payload?.Body)
+            ? "Jou nuwe karakter wag vir jou op die Karakter blad."
+            : payload.Body.Trim();
+
+        ShowCharacterUnlockPopup = true;
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private static string NormalizePopupHref(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "/karakters";
+        }
+
+        var trimmed = value.Trim();
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var absoluteUri))
+        {
+            var pathAndQuery = absoluteUri.PathAndQuery;
+            return string.IsNullOrWhiteSpace(pathAndQuery) ? "/karakters" : pathAndQuery;
+        }
+
+        return trimmed.StartsWith("/", StringComparison.Ordinal) ? trimmed : $"/{trimmed.TrimStart('/')}";
+    }
+
+    private static string? NormalizePopupPath(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var trimmed = value.Trim();
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out _))
+        {
+            return trimmed;
+        }
+
+        return trimmed.StartsWith("/", StringComparison.Ordinal) ? trimmed : $"/{trimmed.TrimStart('/')}";
     }
 
     private async Task<IJSObjectReference?> TryGetLuisterModuleAsync()
@@ -851,6 +985,15 @@ else
     }
 
     private sealed record LuisterAccessProfile(bool HasStoryCornerOrAll, bool HasAllStories);
+
+    private sealed record PendingCharacterUnlockPopupPayload(
+        string? Type,
+        string? ImagePath,
+        string? ImageAlt,
+        string? Href,
+        string? Title,
+        string? Body,
+        string? CreatedAt);
 }
 
 </div>

@@ -48,6 +48,7 @@ let blazorErrorDiagnosticsStarted = false;
 let latestClientErrorText = "";
 let characterPreviewAudioPlayer = null;
 let characterPreviewActiveTrigger = null;
+const characterProfileCelebrateTimers = new WeakMap();
 const notificationCenterState = new WeakMap();
 const headerSearchState = new WeakMap();
 const notificationDateFormatter = typeof Intl !== "undefined"
@@ -146,6 +147,33 @@ window.playCharacterAudioFromButton = async (button) => {
         clearCharacterPreviewAudioTrigger();
         console.error("Character audio play failed.", error);
     }
+};
+
+function celebrateCharacterProfileButton(button, durationMs = 980) {
+    if (!(button instanceof HTMLElement)) {
+        return;
+    }
+
+    button.classList.remove("is-celebrating");
+    void button.offsetWidth;
+    button.classList.add("is-celebrating");
+
+    const existingTimer = characterProfileCelebrateTimers.get(button);
+    if (typeof existingTimer === "number") {
+        window.clearTimeout(existingTimer);
+    }
+
+    const timer = window.setTimeout(() => {
+        button.classList.remove("is-celebrating");
+        characterProfileCelebrateTimers.delete(button);
+    }, durationMs);
+
+    characterProfileCelebrateTimers.set(button, timer);
+}
+
+window.playCharacterAudioFromButtonAndCelebrate = (button) => {
+    celebrateCharacterProfileButton(button);
+    void window.playCharacterAudioFromButton?.(button);
 };
 
 function closeHeaderSearchInContainer(container, options = {}) {
@@ -1097,6 +1125,10 @@ function setNotificationCenterState(centerRoot, open, options = {}) {
             if (state.unreadCount > 0) {
                 void markNotificationCenterRead(parts.centerRoot);
             }
+
+            // Always refresh when opening so newly-created notifications
+            // (for example unlocks created after initial page load) are visible.
+            void loadNotificationCenter(parts.centerRoot, { force: true });
         } else {
             void loadNotificationCenter(parts.centerRoot);
         }

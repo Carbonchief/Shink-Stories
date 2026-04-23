@@ -45,6 +45,7 @@
     <div class="signup-checkout-grid">
         <article class="signup-card signup-card-form">
             <header class="signup-card-header">
+                <img class="signup-mobile-card-logo" src="/branding/schink_stories_logo_turqoise.png" alt="Schink Stories" />
                 <h2>Rekeninginligting</h2>
                 <p class="signup-required-note"><span class="required-indicator" aria-hidden="true">*</span> dui verpligte velde aan.</p>
             </header>
@@ -55,31 +56,31 @@
                 <div class="signup-grid">
                     <div class="signup-field">
                         <label class="form-label" for="signup-first-name">Voornaam <span class="required-indicator" aria-hidden="true">*</span></label>
-                        <InputText id="signup-first-name" class="form-control" autocomplete="given-name" @bind-Value="SignUpForm.FirstName" />
+                        <InputText id="signup-first-name" class="form-control" autocomplete="given-name" placeholder="Voornaam *" aria-label="Voornaam" @bind-Value="SignUpForm.FirstName" />
                         <ValidationMessage class="invalid-feedback d-block" For="@(() => SignUpForm.FirstName)" />
                     </div>
 
                     <div class="signup-field">
                         <label class="form-label" for="signup-last-name">Van</label>
-                        <InputText id="signup-last-name" class="form-control" autocomplete="family-name" @bind-Value="SignUpForm.LastName" />
+                        <InputText id="signup-last-name" class="form-control" autocomplete="family-name" placeholder="Van" aria-label="Van" @bind-Value="SignUpForm.LastName" />
                         <ValidationMessage class="invalid-feedback d-block" For="@(() => SignUpForm.LastName)" />
                     </div>
 
                     <div class="signup-field">
                         <label class="form-label" for="signup-display-name">Wys my naam as</label>
-                        <InputText id="signup-display-name" class="form-control" autocomplete="nickname" @bind-Value="SignUpForm.DisplayName" />
+                        <InputText id="signup-display-name" class="form-control" autocomplete="nickname" placeholder="Wys my naam as" aria-label="Wys my naam as" @bind-Value="SignUpForm.DisplayName" />
                         <ValidationMessage class="invalid-feedback d-block" For="@(() => SignUpForm.DisplayName)" />
                     </div>
 
                     <div class="signup-field">
                         <label class="form-label" for="signup-email">E-pos <span class="required-indicator" aria-hidden="true">*</span></label>
-                        <InputText id="signup-email" class="form-control" type="email" autocomplete="email" @bind-Value="SignUpForm.Email" />
+                        <InputText id="signup-email" class="form-control" type="email" autocomplete="email" placeholder="E-pos *" aria-label="E-pos" @bind-Value="SignUpForm.Email" />
                         <ValidationMessage class="invalid-feedback d-block" For="@(() => SignUpForm.Email)" />
                     </div>
 
                     <div class="signup-field signup-field-full">
                         <label class="form-label" for="signup-mobile-number">Selfoonnommer</label>
-                        <InputText id="signup-mobile-number" class="form-control" autocomplete="tel" @bind-Value="SignUpForm.MobileNumber" />
+                        <InputText id="signup-mobile-number" class="form-control" autocomplete="tel" placeholder="Selfoonnommer" aria-label="Selfoonnommer" @bind-Value="SignUpForm.MobileNumber" />
                         <ValidationMessage class="invalid-feedback d-block" For="@(() => SignUpForm.MobileNumber)" />
                     </div>
                 </div>
@@ -87,18 +88,22 @@
                 <div class="signup-grid signup-grid-security">
                     <div class="signup-field">
                         <label class="form-label" for="signup-password">Wagwoord <span class="required-indicator" aria-hidden="true">*</span></label>
-                        <InputText id="signup-password" class="form-control" type="password" autocomplete="new-password" @bind-Value="SignUpForm.Password" />
+                        <InputText id="signup-password" class="form-control" type="password" autocomplete="new-password" placeholder="Wagwoord *" aria-label="Wagwoord" @bind-Value="SignUpForm.Password" />
                         <ValidationMessage class="invalid-feedback d-block" For="@(() => SignUpForm.Password)" />
                     </div>
 
                     <div class="signup-field">
                         <label class="form-label" for="signup-password-confirm">Bevestig wagwoord <span class="required-indicator" aria-hidden="true">*</span></label>
-                        <InputText id="signup-password-confirm" class="form-control" type="password" autocomplete="new-password" @bind-Value="SignUpForm.ConfirmPassword" />
+                        <InputText id="signup-password-confirm" class="form-control" type="password" autocomplete="new-password" placeholder="Bevestig wagwoord *" aria-label="Bevestig wagwoord" @bind-Value="SignUpForm.ConfirmPassword" />
                         <ValidationMessage class="invalid-feedback d-block" For="@(() => SignUpForm.ConfirmPassword)" />
                     </div>
                 </div>
 
                 <div class="signup-actions">
+                    <p class="signup-selected-option" aria-live="polite">
+                        Gekose opsie:
+                        <strong>@GetSelectedOptionLabel()</strong>
+                    </p>
                     <button type="submit" class="signup-submit" disabled="@IsSubmitting">
                         @(IsSubmitting ? "Besig..." : "Skep rekening")
                     </button>
@@ -702,6 +707,11 @@
             "all_stories_yearly" => "Volledige jaarlikse toegang tot alle Schink Stories teen afslag.",
             _ => "Volledige toegang volgens jou gekose plan."
         };
+
+    private string GetSelectedOptionLabel() =>
+        SelectedPlan is null
+            ? "Gratis stories"
+            : $"{SelectedPlan.Name} ({FormatPlanAmount(SelectedPlan)} {GetPlanBillingLabel(SelectedPlan)})";
 
     private bool IsSelectedPlan(PaymentPlan plan) =>
         SelectedPlan is not null &&

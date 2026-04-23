@@ -65,9 +65,9 @@
     @if (IsLoading)
     {
         <section class="characters-loading-state" aria-live="polite" aria-busy="true">
-            <div class="characters-loading-indicator" role="status" aria-label="Stories laai">
+            <div class="characters-loading-indicator" role="status" aria-label="Karakters laai">
                 <span class="characters-loading-spinner" aria-hidden="true"></span>
-                <span class="characters-loading-text">Stories laai</span>
+                <span class="characters-loading-text">Karakters laai</span>
             </div>
         </section>
     }
@@ -261,7 +261,10 @@
             </button>
 
             <button type="button"
-                    class="@($"character-profile-popup-image-button{(IsProfileImageCelebrating ? " is-celebrating" : string.Empty)}")"
+                    class="character-profile-popup-image-button"
+                    data-character-audio-slug="@ActiveProfileCard.Character.Slug"
+                    data-character-audio-url="@ActiveProfileCard.PreviewAudioUrl"
+                    onpointerdown="window.playCharacterAudioFromButtonAndCelebrate?.(this);"
                     @onclick="CelebrateProfileImageAsync"
                     aria-label="Druk vir 'n verrassing">
                 <img class="character-profile-popup-image"
@@ -338,7 +341,6 @@
     private IReadOnlyList<CharacterCardViewModel> CharacterCards { get; set; } = Array.Empty<CharacterCardViewModel>();
     private CharacterCardViewModel? ActiveProfileCard { get; set; }
     private string? LoadingCallToActionHref { get; set; }
-    private bool IsProfileImageCelebrating { get; set; }
     private Guid? AnimatedFriendCharacterId { get; set; }
     private Guid? ShakingLockedCharacterId { get; set; }
     private IJSObjectReference? _charactersModule;
@@ -495,19 +497,46 @@
 
         foreach (var friend in friends)
         {
-            builder.OpenElement(sequence++, "button");
-            builder.AddAttribute(sequence++, "type", "button");
-            builder.AddAttribute(sequence++, "class", "character-friend-item character-friend-button");
+            if (friend.IsUnlocked)
+            {
+                builder.OpenElement(sequence++, "button");
+                builder.AddAttribute(sequence++, "type", "button");
+                builder.AddAttribute(sequence++, "class", "character-friend-item character-friend-button");
+                builder.AddAttribute(sequence++, "data-maat-tile", "true");
+                builder.AddAttribute(sequence++, "style", "display:flex;flex-direction:column;align-items:center;gap:0.35rem;width:calc((100% - 1.5rem) / 3);max-width:88px;text-align:center;flex:0 0 calc((100% - 1.5rem) / 3);padding:0;border:none;background:transparent;cursor:pointer;");
+                builder.AddAttribute(sequence++, "aria-label", $"Maak {friend.Character.DisplayName} se profiel oop");
+                builder.AddAttribute(sequence++, "onclick", EventCallback.Factory.Create(this, () => OpenCharacterProfile(friend.Character.CharacterId)));
+
+                builder.OpenElement(sequence++, "img");
+                builder.AddAttribute(sequence++, "class", "character-friend-image");
+                builder.AddAttribute(sequence++, "style", "width:64px;max-width:64px;height:auto;display:block;object-fit:contain;flex:0 0 auto;");
+                builder.AddAttribute(sequence++, "src", friend.DisplayImagePath);
+                builder.AddAttribute(sequence++, "alt", $"Illustrasie van {friend.Character.DisplayName}");
+                builder.AddAttribute(sequence++, "loading", "lazy");
+                builder.AddAttribute(sequence++, "decoding", "async");
+                builder.AddAttribute(sequence++, "onerror", "this.onerror=null;this.src='/branding/schink-logo-green.png';");
+                builder.CloseElement();
+
+                builder.OpenElement(sequence++, "span");
+                builder.AddAttribute(sequence++, "class", "character-friend-name");
+                builder.AddAttribute(sequence++, "style", "font-size:0.76rem;line-height:1.2;color:#26373e;");
+                builder.AddContent(sequence++, friend.Character.DisplayName);
+                builder.CloseElement();
+
+                builder.CloseElement();
+                continue;
+            }
+
+            builder.OpenElement(sequence++, "div");
+            builder.AddAttribute(sequence++, "class", "character-friend-item character-friend-item-mystery");
             builder.AddAttribute(sequence++, "data-maat-tile", "true");
-            builder.AddAttribute(sequence++, "style", "display:flex;flex-direction:column;align-items:center;gap:0.35rem;width:calc((100% - 1.5rem) / 3);max-width:88px;text-align:center;flex:0 0 calc((100% - 1.5rem) / 3);padding:0;border:none;background:transparent;cursor:pointer;");
-            builder.AddAttribute(sequence++, "aria-label", $"Maak {friend.DisplayName} se profiel oop");
-            builder.AddAttribute(sequence++, "onclick", EventCallback.Factory.Create(this, () => OpenCharacterProfile(friend.CharacterId)));
+            builder.AddAttribute(sequence++, "style", "display:flex;flex-direction:column;align-items:center;gap:0.35rem;width:calc((100% - 1.5rem) / 3);max-width:88px;text-align:center;flex:0 0 calc((100% - 1.5rem) / 3);");
 
             builder.OpenElement(sequence++, "img");
             builder.AddAttribute(sequence++, "class", "character-friend-image");
             builder.AddAttribute(sequence++, "style", "width:64px;max-width:64px;height:auto;display:block;object-fit:contain;flex:0 0 auto;");
-            builder.AddAttribute(sequence++, "src", ResolveCharacterImagePath(friend.ImagePath, friend.UpdatedAt));
-            builder.AddAttribute(sequence++, "alt", $"Illustrasie van {friend.DisplayName}");
+            builder.AddAttribute(sequence++, "src", friend.DisplayImagePath);
+            builder.AddAttribute(sequence++, "alt", "Mysterie karakter illustrasie");
             builder.AddAttribute(sequence++, "loading", "lazy");
             builder.AddAttribute(sequence++, "decoding", "async");
             builder.AddAttribute(sequence++, "onerror", "this.onerror=null;this.src='/branding/schink-logo-green.png';");
@@ -516,36 +545,38 @@
             builder.OpenElement(sequence++, "span");
             builder.AddAttribute(sequence++, "class", "character-friend-name");
             builder.AddAttribute(sequence++, "style", "font-size:0.76rem;line-height:1.2;color:#26373e;");
-            builder.AddContent(sequence++, friend.DisplayName);
-            builder.CloseElement();
-
-            builder.CloseElement();
-        }
-
-        foreach (var unmatchedFriend in unmatchedFriends)
-        {
-            builder.OpenElement(sequence++, "div");
-            builder.AddAttribute(sequence++, "class", "character-friend-item");
-            builder.AddAttribute(sequence++, "data-maat-tile", "true");
-            builder.AddAttribute(sequence++, "style", "display:flex;flex-direction:column;align-items:center;gap:0.35rem;width:calc((100% - 1.5rem) / 3);max-width:88px;text-align:center;flex:0 0 calc((100% - 1.5rem) / 3);");
-
-            builder.OpenElement(sequence++, "span");
-            builder.AddAttribute(sequence++, "class", "character-friend-name");
-            builder.AddAttribute(sequence++, "style", "font-size:0.76rem;line-height:1.2;color:#26373e;");
-            builder.AddContent(sequence++, unmatchedFriend);
+            builder.AddContent(sequence++, friend.Heading);
             builder.CloseElement();
 
             builder.CloseElement();
         }
 
         builder.CloseElement();
+
+        if (unmatchedFriends.Count > 0)
+        {
+            builder.OpenElement(sequence++, "dd");
+            builder.AddAttribute(sequence++, "class", "character-friend-other");
+
+            builder.OpenElement(sequence++, "span");
+            builder.AddAttribute(sequence++, "class", "character-friend-other-label");
+            builder.AddContent(sequence++, unmatchedFriends.Count == 1 ? "Ander maat" : "Ander maats");
+            builder.CloseElement();
+
+            builder.OpenElement(sequence++, "span");
+            builder.AddAttribute(sequence++, "class", "character-friend-other-names");
+            builder.AddContent(sequence++, string.Join(", ", unmatchedFriends));
+            builder.CloseElement();
+
+            builder.CloseElement();
+        }
+
         builder.CloseElement();
     };
 
     private void OpenCharacterProfile(CharacterCardViewModel card)
     {
         ActiveProfileCard = card;
-        IsProfileImageCelebrating = false;
     }
 
     private void OpenCharacterProfile(Guid characterId)
@@ -554,33 +585,31 @@
         if (card is not null)
         {
             ActiveProfileCard = card;
-            IsProfileImageCelebrating = false;
         }
     }
 
-    private IReadOnlyList<StoryCharacterItem> ResolveFriendCharacters(string? friends)
+    private IReadOnlyList<CharacterCardViewModel> ResolveFriendCharacters(string? friends)
     {
         var friendNames = SplitFriendNames(friends);
         if (friendNames.Count == 0 || CharacterCards.Count == 0)
         {
-            return Array.Empty<StoryCharacterItem>();
+            return Array.Empty<CharacterCardViewModel>();
         }
 
-        var characters = CharacterCards
-            .Select(card => card.Character)
-            .GroupBy(character => character.CharacterId)
+        var cards = CharacterCards
+            .GroupBy(card => card.Character.CharacterId)
             .Select(group => group.First())
             .ToArray();
 
-        var matched = new List<StoryCharacterItem>();
+        var matched = new List<CharacterCardViewModel>();
         foreach (var friendName in friendNames)
         {
             var normalizedFriendName = NormalizeFriendToken(friendName);
-            var match = characters.FirstOrDefault(character =>
-                string.Equals(NormalizeFriendToken(character.DisplayName), normalizedFriendName, StringComparison.Ordinal) ||
-                string.Equals(NormalizeFriendToken(character.Slug.Replace("-", " ")), normalizedFriendName, StringComparison.Ordinal));
+            var match = cards.FirstOrDefault(card =>
+                string.Equals(NormalizeFriendToken(card.Character.DisplayName), normalizedFriendName, StringComparison.Ordinal) ||
+                string.Equals(NormalizeFriendToken(card.Character.Slug.Replace("-", " ")), normalizedFriendName, StringComparison.Ordinal));
 
-            if (match is not null && matched.All(existing => existing.CharacterId != match.CharacterId))
+            if (match is not null && matched.All(existing => existing.Character.CharacterId != match.Character.CharacterId))
             {
                 matched.Add(match);
             }
@@ -589,10 +618,10 @@
         return matched;
     }
 
-    private IReadOnlyList<string> ResolveUnmatchedFriendNames(string? friends, IReadOnlyList<StoryCharacterItem> matchedFriends)
+    private IReadOnlyList<string> ResolveUnmatchedFriendNames(string? friends, IReadOnlyList<CharacterCardViewModel> matchedFriends)
     {
         var matchedNames = matchedFriends
-            .Select(friend => NormalizeFriendToken(friend.DisplayName))
+            .Select(friend => NormalizeFriendToken(friend.Character.DisplayName))
             .ToHashSet(StringComparer.Ordinal);
 
         return SplitFriendNames(friends)
@@ -633,22 +662,17 @@
     private void CloseCharacterProfile()
     {
         ActiveProfileCard = null;
-        IsProfileImageCelebrating = false;
     }
 
     private async Task CelebrateProfileImageAsync()
     {
-        if (ActiveProfileCard is null)
+        var activeCard = ActiveProfileCard;
+        if (activeCard is null)
         {
             return;
         }
 
-        IsProfileImageCelebrating = false;
-        StateHasChanged();
-        await Task.Yield();
-
-        IsProfileImageCelebrating = true;
-        StateHasChanged();
+        await TrackCharacterAudioAsync(activeCard);
 
         var module = await TryGetCharactersModuleAsync();
         if (module is not null)
@@ -661,14 +685,6 @@
             {
                 // Ignore haptic failures on unsupported browsers/devices.
             }
-        }
-
-        await Task.Delay(900);
-
-        if (ActiveProfileCard is not null)
-        {
-            IsProfileImageCelebrating = false;
-            StateHasChanged();
         }
     }
 

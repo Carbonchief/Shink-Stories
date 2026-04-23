@@ -27,6 +27,7 @@ public sealed record ResourceDocumentItem(
     string Title,
     string Url,
     string? PreviewUrl,
+    string? RequiredTierCode,
     long SizeBytes,
     DateTimeOffset LastModified);
 
@@ -36,6 +37,7 @@ public sealed record ResourceDocumentDownload(
     string ContentType,
     string StorageBucket,
     string StorageObjectKey,
+    string? RequiredTierCode,
     DateTimeOffset? LastModified);
 
 public sealed record ResourceDocumentPreviewDownload(

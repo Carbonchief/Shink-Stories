@@ -429,7 +429,7 @@
     scroll-snap-type: x mandatory;
     scroll-padding-inline: 0.2rem;
     -webkit-overflow-scrolling: touch;
-    touch-action: pan-y pinch-zoom;
+    touch-action: pan-x pan-y pinch-zoom;
     overscroll-behavior-x: contain;
     cursor: grab;
 }

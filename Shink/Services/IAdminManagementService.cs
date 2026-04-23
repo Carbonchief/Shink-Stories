@@ -102,6 +102,11 @@ public interface IAdminManagementService
         AdminResourceDocumentCreateRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<AdminOperationResult> UpdateResourceDocumentAccessTierAsync(
+        string? adminEmail,
+        AdminResourceDocumentAccessTierUpdateRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<AdminOperationResult> DeleteResourceDocumentAsync(
         string? adminEmail,
         Guid resourceDocumentId,
@@ -392,6 +397,7 @@ public sealed record AdminResourceDocumentRecord(
     string? PreviewImageContentType,
     string? PreviewImageBucket,
     string? PreviewImageObjectKey,
+    string? RequiredTierCode,
     int SortOrder,
     bool IsEnabled,
     DateTimeOffset CreatedAt,
@@ -412,5 +418,10 @@ public sealed record AdminResourceDocumentCreateRequest(
     string PreviewImageContentType,
     string PreviewImageBucket,
     string PreviewImageObjectKey,
+    string? RequiredTierCode,
     int SortOrder,
     bool IsEnabled);
+
+public sealed record AdminResourceDocumentAccessTierUpdateRequest(
+    Guid ResourceDocumentId,
+    string? RequiredTierCode);

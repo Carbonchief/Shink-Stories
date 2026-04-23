@@ -96,17 +96,39 @@
                             @if (!IsNewResourceType)
                             {
                                 <button type="button"
-                                        class="resource-types-admin-btn resource-types-admin-btn-danger"
+                                        class="resource-types-admin-btn resource-types-admin-btn-danger resource-types-admin-btn-icon"
                                         @onclick="DeleteResourceTypeAsync"
-                                        disabled="@IsDeleting">
-                                    @(IsDeleting ? T("Verwyder...", "Deleting...") : T("Verwyder", "Delete"))
+                                        disabled="@IsDeleting"
+                                        aria-label="@(IsDeleting ? T("Verwyder tipe...", "Deleting type...") : T("Verwyder tipe", "Delete type"))"
+                                        title="@(IsDeleting ? T("Verwyder tipe...", "Deleting type...") : T("Verwyder tipe", "Delete type"))">
+                                    @if (IsDeleting)
+                                    {
+                                        <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+                                        <span class="sr-only">@T("Verwyder tipe...", "Deleting type...")</span>
+                                    }
+                                    else
+                                    {
+                                        <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                                        <span class="sr-only">@T("Verwyder tipe", "Delete type")</span>
+                                    }
                                 </button>
                             }
                             <button type="button"
-                                    class="resource-types-admin-btn"
+                                    class="resource-types-admin-btn resource-types-admin-btn-icon"
                                     @onclick="SaveResourceTypeAsync"
-                                    disabled="@IsSaving">
-                                @(IsSaving ? T("Stoor...", "Saving...") : T("Stoor tipe", "Save type"))
+                                    disabled="@IsSaving"
+                                    aria-label="@(IsSaving ? T("Stoor tipe...", "Saving type...") : T("Stoor tipe", "Save type"))"
+                                    title="@(IsSaving ? T("Stoor tipe...", "Saving type...") : T("Stoor tipe", "Save type"))">
+                                @if (IsSaving)
+                                {
+                                    <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+                                    <span class="sr-only">@T("Stoor tipe...", "Saving type...")</span>
+                                }
+                                else
+                                {
+                                    <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                                    <span class="sr-only">@T("Stoor tipe", "Save type")</span>
+                                }
                             </button>
                         </div>
                     </div>
@@ -178,16 +200,30 @@
                                 </div>
                                 <div class="resource-types-admin-upload-actions">
                                     <button type="button"
-                                            class="resource-types-admin-btn"
+                                            class="resource-types-admin-btn resource-types-admin-btn-icon"
                                             @onclick="UploadSelectedDocumentsAsync"
-                                            disabled="@(IsUploading || !CanUploadDocuments)">
-                                        @(IsUploading ? T("Laai op...", "Uploading...") : T("Laai gekose PDF's op", "Upload selected PDFs"))
+                                            disabled="@(IsUploading || !CanUploadDocuments)"
+                                            aria-label='@(IsUploading ? T("Laai PDFs op...", "Uploading PDFs...") : T("Laai gekose PDFs op", "Upload selected PDFs"))'
+                                            title='@(IsUploading ? T("Laai PDFs op...", "Uploading PDFs...") : T("Laai gekose PDFs op", "Upload selected PDFs"))'>
+                                        @if (IsUploading)
+                                        {
+                                            <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+                                            <span class="sr-only">@T("Laai PDFs op...", "Uploading PDFs...")</span>
+                                        }
+                                        else
+                                        {
+                                            <i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i>
+                                            <span class="sr-only">@T("Laai gekose PDFs op", "Upload selected PDFs")</span>
+                                        }
                                     </button>
                                     <button type="button"
-                                            class="resource-types-admin-btn resource-types-admin-btn-secondary"
+                                            class="resource-types-admin-btn resource-types-admin-btn-secondary resource-types-admin-btn-icon"
                                             @onclick="ClearSelectedFiles"
-                                            disabled="@(IsUploading || SelectedFiles.Count == 0)">
-                                        @T("Maak skoon", "Clear")
+                                            disabled="@(IsUploading || SelectedFiles.Count == 0)"
+                                            aria-label='@T("Maak skoon", "Clear")'
+                                            title='@T("Maak skoon", "Clear")'>
+                                        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                                        <span class="sr-only">@T("Maak skoon", "Clear")</span>
                                     </button>
                                 </div>
                             </div>
@@ -266,6 +302,8 @@
                                     @foreach (var document in FilteredDocuments)
                                     {
                                         var isDeletingDocument = DeletingDocumentIds.Contains(document.ResourceDocumentId);
+                                        var isUpdatingDocumentTier = UpdatingDocumentTierIds.Contains(document.ResourceDocumentId);
+                                        var isDocumentBusy = isDeletingDocument || isUpdatingDocumentTier;
                                         <article class="resource-types-admin-document-item">
                                             <div class="resource-types-admin-document-copy">
                                                 <h5>@document.Title</h5>
@@ -273,14 +311,40 @@
                                                 <span>@BuildDocumentMeta(document)</span>
                                             </div>
                                             <div class="resource-types-admin-document-actions">
-                                                <span class="resource-types-admin-status-tag @(document.IsEnabled ? "is-enabled" : "is-disabled")">
-                                                    @(document.IsEnabled ? T("Aktief", "Enabled") : T("Af", "Disabled"))
+                                                <label class="resource-types-admin-document-tier-field">
+                                                    <span>@T("Toegangsvlak", "Access tier")</span>
+                                                    <select value="@ResolveDocumentTierSelectionValue(document.RequiredTierCode)"
+                                                            @onchange="args => UpdateDocumentAccessTierAsync(document, args.Value?.ToString())"
+                                                            disabled="@isDocumentBusy">
+                                                        @foreach (var option in BuildDocumentTierOptions(document))
+                                                        {
+                                                            <option value="@option.Value">@option.Label</option>
+                                                        }
+                                                    </select>
+                                                </label>
+                                                <span class="resource-types-admin-status-tag @(document.IsEnabled ? "is-enabled" : "is-disabled")"
+                                                      role="status"
+                                                      aria-label="@(document.IsEnabled ? T("Aktief", "Enabled") : T("Af", "Disabled"))"
+                                                      title="@(document.IsEnabled ? T("Aktief", "Enabled") : T("Af", "Disabled"))">
+                                                    <i class="fa-solid @(document.IsEnabled ? "fa-circle-check" : "fa-circle-xmark")" aria-hidden="true"></i>
+                                                    <span class="sr-only">@(document.IsEnabled ? T("Aktief", "Enabled") : T("Af", "Disabled"))</span>
                                                 </span>
                                                 <button type="button"
-                                                        class="resource-types-admin-btn resource-types-admin-btn-danger"
+                                                        class="resource-types-admin-btn resource-types-admin-btn-danger resource-types-admin-btn-icon"
                                                         @onclick="() => DeleteDocumentAsync(document)"
-                                                        disabled="@isDeletingDocument">
-                                                    @(isDeletingDocument ? T("Verwyder...", "Deleting...") : T("Verwyder", "Delete"))
+                                                        disabled="@isDocumentBusy"
+                                                        aria-label="@(isDeletingDocument ? T("Verwyder dokument...", "Deleting document...") : T("Verwyder dokument", "Delete document"))"
+                                                        title="@(isDeletingDocument ? T("Verwyder dokument...", "Deleting document...") : T("Verwyder dokument", "Delete document"))">
+                                                    @if (isDeletingDocument)
+                                                    {
+                                                        <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+                                                        <span class="sr-only">@T("Verwyder dokument...", "Deleting document...")</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                                                        <span class="sr-only">@T("Verwyder dokument", "Delete document")</span>
+                                                    }
                                                 </button>
                                             </div>
                                         </article>

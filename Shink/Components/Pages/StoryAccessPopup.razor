@@ -14,30 +14,40 @@
             </button>
 
             <img class="story-access-popup-image"
-                 src="/media/imported/misc/2024/09/404_Rammetjie.png"
-                 alt="Rammetjie"
+                 src="@ImageSrc"
+                 alt="@ImageAlt"
                  width="220"
                  height="220"
                  loading="lazy"
                  decoding="async" />
 
             <h2 id="story-access-popup-title">
-                Oeps!
-                <br />
-                Hierdie stories is nog gesluit <i class="fa-solid fa-lock" aria-hidden="true"></i>
+                @Title
+                @if (!string.IsNullOrWhiteSpace(Subtitle))
+                {
+                    <br />
+                    @Subtitle
+                    @if (ShowSubtitleLockIcon)
+                    {
+                        <i class="fa-solid fa-lock" aria-hidden="true"></i>
+                    }
+                }
             </h2>
 
             <p>
-                Kry toegang tot die volle storiewêreld - alle stories, enige tyd.
+                @Message
             </p>
 
             <div class="story-access-popup-actions">
                 <a class="story-access-popup-button story-access-popup-button-primary" href="@PrimaryActionHref">
-                   👉 Kry toegang
+                    @PrimaryActionText
                 </a>
-                <a class="story-access-popup-button story-access-popup-button-secondary" href="@PlanActionHref">
-                   👉 Kies 'n plan
-                </a>
+                @if (!string.IsNullOrWhiteSpace(PlanActionHref))
+                {
+                    <a class="story-access-popup-button story-access-popup-button-secondary" href="@PlanActionHref">
+                        @PlanActionText
+                    </a>
+                }
             </div>
         </section>
     </div>
@@ -51,7 +61,31 @@
     public string PrimaryActionHref { get; set; } = "/teken-in";
 
     [Parameter]
+    public string PrimaryActionText { get; set; } = "👉 Kry toegang";
+
+    [Parameter]
     public string PlanActionHref { get; set; } = "/opsies";
+
+    [Parameter]
+    public string PlanActionText { get; set; } = "👉 Kies 'n plan";
+
+    [Parameter]
+    public string ImageSrc { get; set; } = "/media/imported/misc/2024/09/404_Rammetjie.png";
+
+    [Parameter]
+    public string ImageAlt { get; set; } = "Rammetjie";
+
+    [Parameter]
+    public string Title { get; set; } = "Oeps!";
+
+    [Parameter]
+    public string? Subtitle { get; set; } = "Hierdie stories is nog gesluit";
+
+    [Parameter]
+    public bool ShowSubtitleLockIcon { get; set; } = true;
+
+    [Parameter]
+    public string Message { get; set; } = "Kry toegang tot die volle storiewêreld - alle stories, enige tyd.";
 
     [Parameter]
     public EventCallback OnClose { get; set; }

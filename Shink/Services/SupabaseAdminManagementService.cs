@@ -1516,6 +1516,7 @@ public sealed partial class SupabaseAdminManagementService(
                 PreviewImageContentType: NormalizeOptionalText(row.PreviewImageContentType, 120),
                 PreviewImageBucket: NormalizeOptionalText(row.PreviewImageBucket, 120),
                 PreviewImageObjectKey: NormalizeOptionalText(row.PreviewImageObjectKey, 1024),
+                RequiredTierCode: NormalizeOptionalText(row.RequiredTierCode, 64),
                 SortOrder: row.SortOrder,
                 IsEnabled: row.IsEnabled,
                 CreatedAt: row.CreatedAt,
@@ -1606,6 +1607,21 @@ public sealed partial class SupabaseAdminManagementService(
             return new AdminOperationResult(false, "Resource document preview metadata ontbreek.");
         }
 
+        var normalizedRequiredTierCode = NormalizeOptionalText(request.RequiredTierCode, 64)?.ToLowerInvariant();
+        if (!string.IsNullOrWhiteSpace(normalizedRequiredTierCode))
+        {
+            if (!TierCodeRegex().IsMatch(normalizedRequiredTierCode))
+            {
+                return new AdminOperationResult(false, "Resource document tier is ongeldig.");
+            }
+
+            var tierExists = await SubscriptionTierExistsAsync(baseUri, apiKey, normalizedRequiredTierCode, cancellationToken);
+            if (!tierExists)
+            {
+                return new AdminOperationResult(false, "Resource document tier bestaan nie.");
+            }
+        }
+
         var payload = new Dictionary<string, object?>
         {
             ["resource_type_id"] = request.ResourceTypeId,
@@ -1622,6 +1638,7 @@ public sealed partial class SupabaseAdminManagementService(
             ["preview_image_bucket"] = normalizedPreviewBucket,
             ["preview_image_object_key"] = normalizedPreviewObjectKey,
             ["preview_generated_at"] = DateTimeOffset.UtcNow,
+            ["required_tier_code"] = normalizedRequiredTierCode,
             ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
             ["is_enabled"] = request.IsEnabled
         };
@@ -1695,6 +1712,74 @@ public sealed partial class SupabaseAdminManagementService(
             (int)deleteResponse.StatusCode,
             deleteBody);
         return new AdminOperationResult(false, "Kon nie resource document nou verwyder nie.");
+    }
+
+    public async Task<AdminOperationResult> UpdateResourceDocumentAccessTierAsync(
+        string? adminEmail,
+        AdminResourceDocumentAccessTierUpdateRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
+        {
+            return new AdminOperationResult(false, "Jy het nie admin toegang nie.");
+        }
+
+        if (request.ResourceDocumentId == Guid.Empty)
+        {
+            return new AdminOperationResult(false, "Kies asseblief 'n geldige resource document.");
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return new AdminOperationResult(false, "Supabase URL is nog nie opgestel nie.");
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+        }
+
+        var normalizedRequiredTierCode = NormalizeOptionalText(request.RequiredTierCode, 64)?.ToLowerInvariant();
+        if (!string.IsNullOrWhiteSpace(normalizedRequiredTierCode))
+        {
+            if (!TierCodeRegex().IsMatch(normalizedRequiredTierCode))
+            {
+                return new AdminOperationResult(false, "Resource document tier is ongeldig.");
+            }
+
+            var tierExists = await SubscriptionTierExistsAsync(baseUri, apiKey, normalizedRequiredTierCode, cancellationToken);
+            if (!tierExists)
+            {
+                return new AdminOperationResult(false, "Resource document tier bestaan nie.");
+            }
+        }
+
+        var escapedResourceDocumentId = Uri.EscapeDataString(request.ResourceDocumentId.ToString("D"));
+        var updateUri = new Uri(baseUri, $"rest/v1/resource_documents?resource_document_id=eq.{escapedResourceDocumentId}");
+        var payload = new Dictionary<string, object?>
+        {
+            ["required_tier_code"] = normalizedRequiredTierCode,
+            ["document_updated_at"] = DateTimeOffset.UtcNow
+        };
+
+        using var updateRequest = CreateJsonRequest(new HttpMethod("PATCH"), updateUri, apiKey, payload, "return=minimal");
+        using var updateResponse = await _httpClient.SendAsync(updateRequest, cancellationToken);
+        if (updateResponse.IsSuccessStatusCode)
+        {
+            InvalidateResourceCatalogCache();
+            return new AdminOperationResult(true, EntityId: request.ResourceDocumentId);
+        }
+
+        var updateBody = await updateResponse.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Resource document tier update failed. resource_document_id={ResourceDocumentId} required_tier_code={RequiredTierCode} Status={StatusCode} Body={Body}",
+            request.ResourceDocumentId,
+            normalizedRequiredTierCode,
+            (int)updateResponse.StatusCode,
+            updateBody);
+
+        return new AdminOperationResult(false, "Kon nie resource document tier nou opdateer nie.");
     }
 
     private async Task<IReadOnlyList<SubscriberRow>> FetchSubscribersAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
@@ -1847,7 +1932,7 @@ public sealed partial class SupabaseAdminManagementService(
     {
         var queryBuilder = new StringBuilder(
             "rest/v1/resource_documents" +
-            "?select=resource_document_id,resource_type_id,slug,title,description,file_name,content_type,size_bytes,storage_provider,storage_bucket,storage_object_key,preview_image_content_type,preview_image_bucket,preview_image_object_key,sort_order,is_enabled,created_at,document_updated_at,updated_at" +
+            "?select=resource_document_id,resource_type_id,slug,title,description,file_name,content_type,size_bytes,storage_provider,storage_bucket,storage_object_key,preview_image_content_type,preview_image_bucket,preview_image_object_key,required_tier_code,sort_order,is_enabled,created_at,document_updated_at,updated_at" +
             "&order=sort_order.asc" +
             "&order=title.asc" +
             "&limit=5000");
@@ -1860,6 +1945,30 @@ public sealed partial class SupabaseAdminManagementService(
 
         var uri = new Uri(baseUri, queryBuilder.ToString());
         return await FetchRowsAsync<ResourceDocumentRow>(uri, apiKey, cancellationToken);
+    }
+
+    private async Task<bool> SubscriptionTierExistsAsync(
+        Uri baseUri,
+        string apiKey,
+        string tierCode,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(tierCode))
+        {
+            return false;
+        }
+
+        var escapedTierCode = Uri.EscapeDataString(tierCode);
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/subscription_tiers" +
+            "?select=tier_code" +
+            $"&tier_code=eq.{escapedTierCode}" +
+            "&is_active=eq.true" +
+            "&limit=1");
+
+        var rows = await FetchRowsAsync<SubscriptionTierLookupRow>(uri, apiKey, cancellationToken);
+        return rows.Any(row => !string.IsNullOrWhiteSpace(row.TierCode));
     }
 
     private async Task<PlaylistRow?> FetchPlaylistByIdAsync(
@@ -2405,6 +2514,9 @@ public sealed partial class SupabaseAdminManagementService(
     [GeneratedRegex("^[a-z0-9]+(?:-[a-z0-9]+)*$", RegexOptions.CultureInvariant)]
     private static partial Regex StorySlugRegex();
 
+    [GeneratedRegex("^[a-z0-9_]+$", RegexOptions.CultureInvariant)]
+    private static partial Regex TierCodeRegex();
+
     [GeneratedRegex("^\\+?[0-9]{7,20}$", RegexOptions.CultureInvariant)]
     private static partial Regex MobileNumberRegex();
 
@@ -2538,6 +2650,12 @@ public sealed partial class SupabaseAdminManagementService(
         DateTimeOffset? SubscribedAt,
         DateTimeOffset? NextRenewalAt,
         DateTimeOffset? CancelledAt);
+
+    private sealed class SubscriptionTierLookupRow
+    {
+        [JsonPropertyName("tier_code")]
+        public string? TierCode { get; set; }
+    }
 
     private sealed class StoryRow
     {
@@ -2777,6 +2895,9 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("preview_image_object_key")]
         public string? PreviewImageObjectKey { get; set; }
+
+        [JsonPropertyName("required_tier_code")]
+        public string? RequiredTierCode { get; set; }
 
         [JsonPropertyName("sort_order")]
         public int SortOrder { get; set; }

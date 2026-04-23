@@ -3,6 +3,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Components.Forms;
+using Shink.Components.Content;
 using Shink.Services;
 
 namespace Shink.Components.Pages;
@@ -11,6 +12,7 @@ public partial class AdminResourceTypesPanel : ComponentBase
 {
     private const int MaxResourceFilesPerBatch = 25;
     private const long MaxPdfUploadBytes = 64L * 1024L * 1024L;
+    private const string AllStoriesResourceTierCode = StoryAccessPolicy.AllStoriesMonthlyTierCode;
 
     [Parameter]
     public string CurrentLanguageCode { get; set; } = "af";
@@ -45,6 +47,7 @@ public partial class AdminResourceTypesPanel : ComponentBase
     private bool IsDeleting { get; set; }
     private bool IsUploading { get; set; }
     private HashSet<Guid> DeletingDocumentIds { get; } = [];
+    private HashSet<Guid> UpdatingDocumentTierIds { get; } = [];
 
     private bool IsNewResourceType => Editor?.ResourceTypeId is not Guid resourceTypeId || resourceTypeId == Guid.Empty;
     private bool CanUploadDocuments => !IsNewResourceType && SelectedFiles.Count > 0;
@@ -359,6 +362,7 @@ public partial class AdminResourceTypesPanel : ComponentBase
                         PreviewImageContentType: uploadedPreview.ContentType,
                         PreviewImageBucket: uploadedPreview.Bucket,
                         PreviewImageObjectKey: uploadedPreview.ObjectKey,
+                        RequiredTierCode: null,
                         SortOrder: nextSortOrder,
                         IsEnabled: true));
 
@@ -444,6 +448,73 @@ public partial class AdminResourceTypesPanel : ComponentBase
         }
     }
 
+    private IReadOnlyList<(string Value, string Label)> BuildDocumentTierOptions(AdminResourceDocumentRecord document)
+    {
+        var options = new List<(string Value, string Label)>
+        {
+            (string.Empty, T("Alle ingetekende gebruikers", "All signed-in users")),
+            ("gratis", T("Gratis", "Free")),
+            ("story_corner_monthly", T("Storie Hoekie (maandeliks)", "Story Corner (monthly)")),
+            (AllStoriesResourceTierCode, T("Schink Stories", "Schink Stories"))
+        };
+
+        var requiredTierCode = NormalizeOptionalText(document.RequiredTierCode, 64)?.ToLowerInvariant();
+        var normalizedRequiredTierCode = NormalizeDocumentTierCodeForAccess(requiredTierCode);
+        if (!string.IsNullOrWhiteSpace(requiredTierCode) &&
+            options.All(option => !string.Equals(option.Value, normalizedRequiredTierCode, StringComparison.OrdinalIgnoreCase)))
+        {
+            options.Add((requiredTierCode, requiredTierCode));
+        }
+
+        return options;
+    }
+
+    private async Task UpdateDocumentAccessTierAsync(AdminResourceDocumentRecord document, string? selectedTierCode)
+    {
+        if (!UpdatingDocumentTierIds.Add(document.ResourceDocumentId))
+        {
+            return;
+        }
+
+        ErrorMessage = null;
+        StatusMessage = null;
+
+        try
+        {
+            var normalizedTierCode = NormalizeDocumentTierCodeForAccess(NormalizeOptionalText(selectedTierCode, 64));
+            var currentTierCode = NormalizeDocumentTierCodeForAccess(NormalizeOptionalText(document.RequiredTierCode, 64));
+            if (string.Equals(currentTierCode, normalizedTierCode, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            var result = await AdminManagementService.UpdateResourceDocumentAccessTierAsync(
+                SignedInEmail,
+                new AdminResourceDocumentAccessTierUpdateRequest(
+                    ResourceDocumentId: document.ResourceDocumentId,
+                    RequiredTierCode: normalizedTierCode));
+
+            if (!result.IsSuccess)
+            {
+                ErrorMessage = TranslateServiceMessage(result.ErrorMessage) ??
+                               T("Kon nie dokument toegangsvlak nou opdateer nie.", "Could not update document access tier right now.");
+                return;
+            }
+
+            await ReloadAsync(document.ResourceTypeId);
+            StatusMessage = T("Dokument toegangsvlak opgedateer.", "Document access tier updated.");
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to update resource document tier for {ResourceDocumentId}.", document.ResourceDocumentId);
+            ErrorMessage = T("Kon nie dokument toegangsvlak nou opdateer nie.", "Could not update document access tier right now.");
+        }
+        finally
+        {
+            UpdatingDocumentTierIds.Remove(document.ResourceDocumentId);
+        }
+    }
+
     private string BuildSelectedFilesHint()
     {
         if (SelectedFiles.Count == 0)
@@ -464,8 +535,41 @@ public partial class AdminResourceTypesPanel : ComponentBase
         var date = (document.DocumentUpdatedAt != default ? document.DocumentUpdatedAt : document.UpdatedAt ?? document.CreatedAt)
             .ToLocalTime()
             .ToString("d MMM yyyy", culture);
-        return $"{FormatFileSize(document.SizeBytes)} · {date}";
+        var tierSummary = ResolveDocumentTierSummary(document.RequiredTierCode);
+        return $"{FormatFileSize(document.SizeBytes)} · {date} · {tierSummary}";
     }
+
+    private string ResolveDocumentTierSummary(string? requiredTierCode)
+    {
+        var normalizedTierCode = NormalizeDocumentTierCodeForAccess(requiredTierCode);
+        if (string.IsNullOrWhiteSpace(normalizedTierCode))
+        {
+            return T("Alle ingetekende gebruikers", "All signed-in users");
+        }
+
+        return normalizedTierCode switch
+        {
+            "gratis" => T("Gratis", "Free"),
+            "story_corner_monthly" => T("Storie Hoekie", "Story Corner"),
+            AllStoriesResourceTierCode => T("Schink Stories", "Schink Stories"),
+            _ => normalizedTierCode
+        };
+    }
+
+    private static string ResolveDocumentTierSelectionValue(string? requiredTierCode) =>
+        NormalizeDocumentTierCodeForAccess(requiredTierCode) ?? string.Empty;
+
+    private static string? NormalizeDocumentTierCodeForAccess(string? tierCode)
+    {
+        var normalizedTierCode = NormalizeOptionalText(tierCode, 64)?.ToLowerInvariant();
+        return IsAllStoriesTierCode(normalizedTierCode)
+            ? AllStoriesResourceTierCode
+            : normalizedTierCode;
+    }
+
+    private static bool IsAllStoriesTierCode(string? tierCode) =>
+        string.Equals(tierCode, StoryAccessPolicy.AllStoriesMonthlyTierCode, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(tierCode, StoryAccessPolicy.AllStoriesYearlyTierCode, StringComparison.OrdinalIgnoreCase);
 
     private static string FormatFileSize(long sizeBytes)
     {
@@ -532,6 +636,9 @@ public partial class AdminResourceTypesPanel : ComponentBase
             "Resource document slug bestaan reeds." => T("Die hulpbron dokument slug bestaan reeds.", "The resource document slug already exists."),
             "Kon nie resource document skep nie." => T("Kon nie hulpbron dokument skep nie.", "Could not create the resource document."),
             "Kies asseblief 'n geldige resource document." => T("Kies asseblief 'n geldige hulpbron dokument.", "Please choose a valid resource document."),
+            "Resource document tier is ongeldig." => T("Die hulpbron dokument se toegangsvlak is ongeldig.", "The resource document access tier is invalid."),
+            "Resource document tier bestaan nie." => T("Die hulpbron dokument se toegangsvlak bestaan nie.", "The resource document access tier does not exist."),
+            "Kon nie resource document tier nou opdateer nie." => T("Kon nie hulpbron dokument se toegangsvlak nou opdateer nie.", "Could not update the resource document access tier right now."),
             "Kon nie resource document nou verwyder nie." => T("Kon nie hulpbron dokument nou verwyder nie.", "Could not delete the resource document right now."),
             _ => null
         };
@@ -561,6 +668,19 @@ public partial class AdminResourceTypesPanel : ComponentBase
         normalized = System.Text.RegularExpressions.Regex.Replace(normalized, "[^a-z0-9]+", "-");
         normalized = System.Text.RegularExpressions.Regex.Replace(normalized, "-{2,}", "-");
         return normalized.Trim('-');
+    }
+
+    private static string? NormalizeOptionalText(string? value, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var normalized = value.Trim();
+        return normalized.Length <= maxLength
+            ? normalized
+            : normalized[..maxLength];
     }
 
     private static string BuildDocumentTitle(string fileName)

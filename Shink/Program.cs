@@ -504,13 +504,58 @@ app.MapGet("/media/audio/{slug}", async (
 app.MapGet("/media/resources/{resourceDocumentId:guid}", async (
     Guid resourceDocumentId,
     IResourceCatalogService resourceCatalogService,
+    ISubscriptionLedgerService subscriptionLedgerService,
     IResourceDocumentStorageService resourceDocumentStorageService,
     HttpContext httpContext) =>
 {
+    if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
+    {
+        return Results.Unauthorized();
+    }
+
     var document = await resourceCatalogService.GetDocumentDownloadAsync(resourceDocumentId, httpContext.RequestAborted);
     if (document is null)
     {
         return Results.NotFound();
+    }
+
+    var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
+                       ?? httpContext.User.Identity?.Name;
+    if (string.IsNullOrWhiteSpace(signedInEmail))
+    {
+        return Results.Forbid();
+    }
+
+    var requiredTierCode = document.RequiredTierCode?.Trim().ToLowerInvariant();
+    if (!string.IsNullOrWhiteSpace(requiredTierCode))
+    {
+        bool hasRequiredTier;
+        if (string.Equals(requiredTierCode, StoryAccessPolicy.AllStoriesMonthlyTierCode, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(requiredTierCode, StoryAccessPolicy.AllStoriesYearlyTierCode, StringComparison.OrdinalIgnoreCase))
+        {
+            var hasAllStoriesMonthlyTask = subscriptionLedgerService.HasActiveSubscriptionForTierAsync(
+                signedInEmail,
+                StoryAccessPolicy.AllStoriesMonthlyTierCode,
+                httpContext.RequestAborted);
+            var hasAllStoriesYearlyTask = subscriptionLedgerService.HasActiveSubscriptionForTierAsync(
+                signedInEmail,
+                StoryAccessPolicy.AllStoriesYearlyTierCode,
+                httpContext.RequestAborted);
+            await Task.WhenAll(hasAllStoriesMonthlyTask, hasAllStoriesYearlyTask);
+            hasRequiredTier = hasAllStoriesMonthlyTask.Result || hasAllStoriesYearlyTask.Result;
+        }
+        else
+        {
+            hasRequiredTier = await subscriptionLedgerService.HasActiveSubscriptionForTierAsync(
+                signedInEmail,
+                requiredTierCode,
+                httpContext.RequestAborted);
+        }
+
+        if (!hasRequiredTier)
+        {
+            return Results.Forbid();
+        }
     }
 
     var resourceStream = await resourceDocumentStorageService.OpenReadAsync(
@@ -537,6 +582,11 @@ app.MapGet("/media/resources/{resourceDocumentId:guid}/preview", async (
     IResourceDocumentStorageService resourceDocumentStorageService,
     HttpContext httpContext) =>
 {
+    if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
+    {
+        return Results.Unauthorized();
+    }
+
     var preview = await resourceCatalogService.GetDocumentPreviewAsync(resourceDocumentId, httpContext.RequestAborted);
     if (preview is null)
     {

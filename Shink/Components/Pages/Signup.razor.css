@@ -70,6 +70,13 @@
     margin-bottom: 0.85rem;
 }
 
+.signup-mobile-card-logo {
+    display: none;
+    width: min(170px, 70vw);
+    height: auto;
+    margin: 0 auto 0.55rem;
+}
+
 .signup-card-header h2 {
     margin: 0;
     color: #173f4f;
@@ -128,6 +135,21 @@
     gap: 0.7rem;
     margin-top: 0.4rem;
     padding-top: 0.35rem;
+}
+
+.signup-selected-option {
+    margin: 0;
+    padding: 0.55rem 0.7rem;
+    border-radius: 10px;
+    border: 1px solid color-mix(in srgb, var(--line) 84%, #ffffff);
+    background: color-mix(in srgb, #f7fbfd 86%, #ffffff);
+    color: #204a5a;
+    font-size: 0.88rem;
+    line-height: 1.35;
+}
+
+.signup-selected-option strong {
+    color: #133f4f;
 }
 
 .signup-submit {
@@ -573,13 +595,53 @@
         display: none;
     }
 
+    .signup-card-header {
+        margin-bottom: 0.65rem;
+        text-align: center;
+    }
+
+    .signup-mobile-card-logo {
+        display: block;
+    }
+
+    .signup-form {
+        gap: 0.72rem;
+    }
+
     .signup-logo {
         margin-inline: auto;
     }
 
     .signup-grid {
         grid-template-columns: 1fr;
-        gap: 0.62rem;
+        gap: 0.5rem;
+    }
+
+    .signup-grid-security {
+        padding-top: 0.12rem;
+    }
+
+    .signup-field {
+        gap: 0.2rem;
+    }
+
+    .signup-field label {
+        display: none;
+    }
+
+    .signup-field .form-control {
+        padding: 0.5rem 0.68rem;
+    }
+
+    .signup-actions {
+        gap: 0.6rem;
+        margin-top: 0.25rem;
+        padding-top: 0.2rem;
+    }
+
+    .signup-selected-option {
+        padding: 0.48rem 0.6rem;
+        font-size: 0.84rem;
     }
 
     .signup-field-full {
