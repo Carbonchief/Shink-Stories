@@ -1,0 +1,6 @@
+Contact: https://schink.prioritybit.co.za/#kontak-ons
+Canonical: https://schink.prioritybit.co.za/.well-known/security.txt
+Preferred-Languages: af, en
+Expires: 2027-04-23T00:00:00.000Z
+
+# Replace the contact URL above with a dedicated monitored security mailbox or policy page when available.

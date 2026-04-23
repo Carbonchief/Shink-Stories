@@ -2,9 +2,10 @@
 @using Shink.Services
 @implements IDisposable
 @inject IConfiguration Configuration
+@inject IHttpContextAccessor HttpContextAccessor
 @inject NavigationManager NavigationManager
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="browser-support-pending">
 
 <head>
     <meta charset="utf-8" />
@@ -19,218 +20,12 @@
     <link rel="stylesheet" href="_content/MudBlazor/MudBlazor.min.css" />
     <link rel="stylesheet" href="@Assets["app.css"]" />
     <link rel="stylesheet" href="@Assets["Shink.styles.css"]" />
-    <script>
-        document.documentElement.className += (document.documentElement.className ? " " : "") + "browser-support-pending";
-    </script>
-    <style>
-        html.browser-support-pending #app-shell-root {
-            visibility: hidden;
-        }
-
-        html.unsupported-browser #app-shell-root {
-            display: none !important;
-        }
-
-        .unsupported-browser-fallback[hidden] {
-            display: none !important;
-        }
-
-        .unsupported-browser-fallback {
-            min-height: 100vh;
-            padding: 2rem 1rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background:
-                linear-gradient(180deg, #408D93 0%, #4f9db3 22%, #d4cf69 56%, #efefef 86%, #efefef 100%);
-        }
-
-        .unsupported-browser-card {
-            width: min(34rem, 100%);
-            padding: 2rem 1.5rem;
-            border-radius: 28px;
-            background: rgba(255, 254, 250, 0.96);
-            border: 1px solid rgba(14, 73, 93, 0.12);
-            box-shadow: 0 28px 60px rgba(14, 73, 93, 0.18);
-            text-align: center;
-            color: #232b2b;
-        }
-
-        .unsupported-browser-logo {
-            width: min(12rem, 62vw);
-            height: auto;
-            margin-bottom: 1.5rem;
-        }
-
-        .unsupported-browser-card h1 {
-            margin: 0 0 1rem;
-            font-size: clamp(1.8rem, 4vw, 2.4rem);
-            line-height: 1.15;
-            color: #0e495d;
-        }
-
-        .unsupported-browser-card p {
-            margin: 0;
-            font-size: 1rem;
-            line-height: 1.65;
-        }
-
-        .unsupported-browser-detail {
-            margin-top: 1rem !important;
-            color: #0e495d;
-            font-weight: 600;
-        }
-
-        .unsupported-browser-steps {
-            margin: 1.5rem 0 0;
-            padding: 0;
-            list-style: none;
-            text-align: left;
-            display: grid;
-            gap: 0.75rem;
-        }
-
-        .unsupported-browser-step {
-            padding: 0.85rem 1rem;
-            border-radius: 16px;
-            background: #f7f4ea;
-            border: 1px solid rgba(14, 73, 93, 0.1);
-        }
-
-        .unsupported-browser-english {
-            margin-top: 1.25rem !important;
-            color: #58605f;
-            font-size: 0.95rem !important;
-        }
-
-        .route-error-fallback {
-            min-height: 100vh;
-            padding: 1.5rem 1rem 2rem;
-            display: flex;
-            align-items: flex-start;
-            justify-content: center;
-            background:
-                linear-gradient(180deg, #408D93 0%, #4f9db3 22%, #d4cf69 56%, #efefef 86%, #efefef 100%);
-        }
-
-        .route-error-card {
-            width: min(52rem, 100%);
-            margin-top: 0.5rem;
-            padding: 1.35rem 1.1rem 1.1rem;
-            border-radius: 24px;
-            background: rgba(255, 254, 250, 0.97);
-            border: 1px solid rgba(14, 73, 93, 0.14);
-            box-shadow: 0 22px 48px rgba(14, 73, 93, 0.16);
-            color: #232b2b;
-        }
-
-        .route-error-kicker {
-            margin: 0 0 0.5rem;
-            font-size: 0.82rem;
-            font-weight: 800;
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-            color: #0e495d;
-        }
-
-        .route-error-card h1 {
-            margin: 0;
-            font-size: clamp(1.5rem, 4vw, 2rem);
-            line-height: 1.12;
-            color: #0e495d;
-        }
-
-        .route-error-card p {
-            margin: 0.7rem 0 0;
-            line-height: 1.55;
-        }
-
-        .route-error-chip {
-            margin-top: 0.9rem;
-            display: inline-flex;
-            max-width: 100%;
-            padding: 0.45rem 0.7rem;
-            border-radius: 999px;
-            background: #f3f0e6;
-            border: 1px solid rgba(14, 73, 93, 0.12);
-            color: #173c47;
-            font-size: 0.88rem;
-            font-weight: 700;
-            overflow-wrap: anywhere;
-        }
-
-        .route-error-details {
-            margin-top: 1rem;
-            border-radius: 18px;
-            background: #f7f4ea;
-            border: 1px solid rgba(14, 73, 93, 0.1);
-            overflow: hidden;
-        }
-
-        .route-error-details summary {
-            cursor: pointer;
-            padding: 0.8rem 0.95rem;
-            font-weight: 700;
-            color: #0e495d;
-        }
-
-        .route-error-details pre {
-            margin: 0;
-            padding: 0 0.95rem 0.95rem;
-            white-space: pre-wrap;
-            word-break: break-word;
-            max-height: min(50vh, 28rem);
-            overflow: auto;
-            font-size: 0.82rem;
-            line-height: 1.45;
-            color: #1f2b31;
-        }
-
-        .route-error-actions {
-            margin-top: 1rem;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.65rem;
-        }
-
-        .route-error-button,
-        .route-error-link {
-            min-height: 42px;
-            padding: 0.7rem 1rem;
-            border-radius: 999px;
-            border: none;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font: inherit;
-            font-weight: 700;
-            text-decoration: none;
-            cursor: pointer;
-        }
-
-        .route-error-button {
-            background: #f39a32;
-            color: #1d1306;
-            box-shadow: 0 12px 24px rgba(243, 154, 50, 0.24);
-        }
-
-        .route-error-link {
-            background: rgba(14, 73, 93, 0.08);
-            color: #0e495d;
-            border: 1px solid rgba(14, 73, 93, 0.12);
-        }
-
-        .route-error-button:focus-visible,
-        .route-error-link:focus-visible {
-            outline: 3px solid rgba(243, 154, 50, 0.4);
-            outline-offset: 2px;
-        }
-    </style>
-    <ImportMap />
+    <link rel="stylesheet" href="@Assets["css/app-shell.css"]" />
+    <ImportMap AdditionalAttributes="ImportMapAttributes" />
     <HeadOutlet />
 </head>
 
-<body>
+<body data-posthog-api-key="@PostHogProjectApiKey" data-posthog-host-url="@PostHogHostUrl">
     <section id="unsupported-browser-fallback" class="unsupported-browser-fallback" hidden aria-live="polite">
         <div class="unsupported-browser-card">
             <img class="unsupported-browser-logo" src="/branding/schink-logo-text.png" alt="Schink Stories" />
@@ -254,174 +49,49 @@
     </section>
 
     <div id="app-shell-root">
-        <CascadingAuthenticationState>
-            @if (IsKaraktersRoute)
-            {
-                <ErrorBoundary @ref="_karaktersErrorBoundary">
-                    <ChildContent>
-                        <Routes />
-                    </ChildContent>
-                    <ErrorContent Context="exception">
-                        <section class="route-error-fallback" aria-live="assertive">
-                            <div class="route-error-card">
-                                <p class="route-error-kicker">Karakters fout</p>
-                                <h1>Hierdie blad het op 'n fout geloop.</h1>
-                                <p>Neem asseblief 'n skermgreep van die besonderhede hieronder sodat ons die presiese fout kan sien.</p>
-                                <div class="route-error-chip">@exception.GetType().FullName</div>
-                                @if (!string.IsNullOrWhiteSpace(exception.Message))
-                                {
-                                    <p>@exception.Message</p>
-                                }
-                                <details class="route-error-details" open>
-                                    <summary>Volledige fout</summary>
-                                    <pre>@exception.ToString()</pre>
-                                </details>
-                                <div class="route-error-actions">
-                                    <button type="button" class="route-error-button" @onclick="RecoverKaraktersRoute">Probeer weer</button>
-                                    <button type="button" class="route-error-link" @onclick="ReloadCurrentRoute">Herlaai blad</button>
+        <CascadingValue Name="CspNonce" Value="@_cspNonce">
+            <CascadingAuthenticationState>
+                @if (IsKaraktersRoute)
+                {
+                    <ErrorBoundary @ref="_karaktersErrorBoundary">
+                        <ChildContent>
+                            <Routes />
+                        </ChildContent>
+                        <ErrorContent Context="exception">
+                            <section class="route-error-fallback" aria-live="assertive">
+                                <div class="route-error-card">
+                                    <p class="route-error-kicker">Karakters fout</p>
+                                    <h1>Hierdie blad het op 'n fout geloop.</h1>
+                                    <p>Neem asseblief 'n skermgreep van die besonderhede hieronder sodat ons die presiese fout kan sien.</p>
+                                    <div class="route-error-chip">@exception.GetType().FullName</div>
+                                    @if (!string.IsNullOrWhiteSpace(exception.Message))
+                                    {
+                                        <p>@exception.Message</p>
+                                    }
+                                    <details class="route-error-details" open>
+                                        <summary>Volledige fout</summary>
+                                        <pre>@exception.ToString()</pre>
+                                    </details>
+                                    <div class="route-error-actions">
+                                        <button type="button" class="route-error-button" @onclick="RecoverKaraktersRoute">Probeer weer</button>
+                                        <button type="button" class="route-error-link" @onclick="ReloadCurrentRoute">Herlaai blad</button>
+                                    </div>
                                 </div>
-                            </div>
-                        </section>
-                    </ErrorContent>
-                </ErrorBoundary>
-            }
-            else
-            {
-                <Routes />
-            }
-        </CascadingAuthenticationState>
+                            </section>
+                        </ErrorContent>
+                    </ErrorBoundary>
+                }
+                else
+                {
+                    <Routes />
+                }
+            </CascadingAuthenticationState>
+        </CascadingValue>
         <ReconnectModal />
     </div>
 
-    @if (IsPostHogConfigured)
-    {
-        <script id="posthog-config" data-api-key="@PostHogProjectApiKey" data-host-url="@PostHogHostUrl"></script>
-        <script>
-            (function () {
-                if (window.posthog) {
-                    return;
-                }
-
-                var configElement = document.getElementById("posthog-config");
-                if (!configElement) {
-                    return;
-                }
-
-                var apiKey = configElement.getAttribute("data-api-key");
-                var hostUrl = configElement.getAttribute("data-host-url");
-                if (!apiKey || !hostUrl) {
-                    return;
-                }
-
-                var script = document.createElement("script");
-                script.async = true;
-                script.src = hostUrl.replace(/\/+$/, "") + "/static/array.js";
-                script.onload = function () {
-                    if (!window.posthog) {
-                        return;
-                    }
-
-                    window.posthog.init(apiKey, {
-                        api_host: hostUrl,
-                        person_profiles: "identified_only",
-                        capture_pageview: true,
-                        capture_pageleave: true
-                    });
-                };
-
-                document.head.appendChild(script);
-            })();
-        </script>
-    }
-
-    <script src="@Assets["js/browser-support.js"]"></script>
-    <script>
-        (function () {
-            var documentElement = document.documentElement;
-            var fallback = document.getElementById("unsupported-browser-fallback");
-            var fallbackDetail = document.getElementById("unsupported-browser-detail");
-            var appShellRoot = document.getElementById("app-shell-root");
-            var browserSupport = window.shinkBrowserSupport;
-
-            function finishSupportCheck() {
-                documentElement.className = documentElement.className.replace(/\bbrowser-support-pending\b/g, "").replace(/\s{2,}/g, " ").trim();
-            }
-
-            function showUnsupportedFallback(detailMessage) {
-                if (documentElement.className.indexOf("unsupported-browser") === -1) {
-                    documentElement.className += (documentElement.className ? " " : "") + "unsupported-browser";
-                }
-
-                if (appShellRoot) {
-                    appShellRoot.setAttribute("hidden", "hidden");
-                }
-
-                if (fallbackDetail && detailMessage) {
-                    fallbackDetail.textContent = detailMessage;
-                }
-
-                if (fallback) {
-                    fallback.hidden = false;
-                }
-
-                finishSupportCheck();
-            }
-
-            function loadScript(source) {
-                return new Promise(function (resolve, reject) {
-                    var script = document.createElement("script");
-                    script.src = source;
-                    script.type = "text/javascript";
-                    script.async = false;
-                    script.onload = function () { resolve(); };
-                    script.onerror = function () { reject(new Error("Failed to load script: " + source)); };
-                    document.body.appendChild(script);
-                });
-            }
-
-            try {
-                var supportResult;
-
-                try {
-                    supportResult = browserSupport && typeof browserSupport.checkSupport === "function"
-                        ? browserSupport.checkSupport()
-                        : { supported: true };
-                } catch (supportError) {
-                    console.error("Browser support check failed.", supportError);
-                    showUnsupportedFallback("Ons kon nie jou blaaier se ondersteuning veilig bevestig nie. Gebruik asseblief die nuutste Safari, Chrome, Edge of Firefox.");
-                    return;
-                }
-
-                if (!supportResult.supported) {
-                    var detailMessage = browserSupport && typeof browserSupport.buildFallbackDetail === "function"
-                        ? browserSupport.buildFallbackDetail(supportResult)
-                        : "Werk asseblief jou blaaier op en probeer weer.";
-
-                    showUnsupportedFallback(detailMessage);
-                    return;
-                }
-
-                var blazorRuntimeSource = supportResult && supportResult.useLegacyBlazorRuntime
-                    ? "/_framework/bit.blazor.web.es2019.js?v=20260409-2"
-                    : "/_framework/blazor.web.js?v=20260409-2";
-
-                loadScript("_content/MudBlazor/MudBlazor.min.js")
-                    .then(function () {
-                        return loadScript(blazorRuntimeSource);
-                    })
-                    .then(function () {
-                        finishSupportCheck();
-                    })
-                    .catch(function (scriptError) {
-                        console.error("Browser runtime load failed.", scriptError);
-                        showUnsupportedFallback("Hierdie bladsy se kernlêers het nie reg gelaai nie. Maak die bladsy heeltemal toe, maak dit weer oop en probeer weer.");
-                    });
-            } catch (bootstrapError) {
-                console.error("Browser bootstrap failed.", bootstrapError);
-                showUnsupportedFallback("Hierdie bladsy kon nie veilig begin laai nie. Werk asseblief jou blaaier op en probeer weer.");
-            }
-        })();
-    </script>
+    <script src="@Assets["js/browser-support.js"]" defer></script>
+    <script src="@Assets["js/app-shell.js"]" defer></script>
 </body>
 
 </html>
@@ -429,17 +99,26 @@
 @code {
     private ErrorBoundary? _karaktersErrorBoundary;
     private PostHogSettings? _postHogSettings;
+    private string? _cspNonce;
 
     private PostHogSettings PostHogSettings =>
         _postHogSettings ??= PostHogSettings.FromConfiguration(Configuration);
 
+    private IReadOnlyDictionary<string, object>? ImportMapAttributes =>
+        string.IsNullOrWhiteSpace(_cspNonce)
+            ? null
+            : new Dictionary<string, object>
+            {
+                ["nonce"] = _cspNonce
+            };
+
     private string? PostHogProjectApiKey => PostHogSettings.ProjectApiKey;
     private string? PostHogHostUrl => PostHogSettings.HostUrl;
-    private bool IsPostHogConfigured => PostHogSettings.IsConfigured;
     private bool IsKaraktersRoute => string.Equals(GetCurrentRoutePath(), "/karakters", StringComparison.OrdinalIgnoreCase);
 
     protected override void OnInitialized()
     {
+        _cspNonce ??= CspConstants.GetNonce(HttpContextAccessor.HttpContext);
         NavigationManager.LocationChanged += HandleLocationChanged;
     }
 
