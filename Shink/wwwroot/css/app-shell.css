@@ -1,7 +1,3 @@
-html.browser-support-pending #app-shell-root {
-    visibility: hidden;
-}
-
 html.unsupported-browser #app-shell-root {
     display: none !important;
 }

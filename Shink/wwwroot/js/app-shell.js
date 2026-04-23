@@ -42,21 +42,52 @@
 
     function initializeBrowserShell() {
         var documentElement = document.documentElement;
-        var fallback = document.getElementById("unsupported-browser-fallback");
-        var fallbackDetail = document.getElementById("unsupported-browser-detail");
-        var appShellRoot = document.getElementById("app-shell-root");
         var browserSupport = window.shinkBrowserSupport;
+
+        function getFallback() {
+            return document.getElementById("unsupported-browser-fallback");
+        }
+
+        function getFallbackDetail() {
+            return document.getElementById("unsupported-browser-detail");
+        }
+
+        function getAppShellRoot() {
+            return document.getElementById("app-shell-root");
+        }
+
+        function ensureSupportedShellVisibility() {
+            if (documentElement.className.indexOf("unsupported-browser") !== -1) {
+                return;
+            }
+
+            var appShellRoot = getAppShellRoot();
+            if (appShellRoot) {
+                appShellRoot.removeAttribute("hidden");
+            }
+
+            var fallback = getFallback();
+            if (fallback) {
+                fallback.hidden = true;
+            }
+        }
 
         function finishSupportCheck() {
             documentElement.className = documentElement.className
                 .replace(/\bbrowser-support-pending\b/g, "")
                 .replace(/\s{2,}/g, " ")
                 .trim();
+
+            ensureSupportedShellVisibility();
         }
 
         document.addEventListener("enhancedload", finishSupportCheck);
 
         function showUnsupportedFallback(detailMessage) {
+            var fallback = getFallback();
+            var fallbackDetail = getFallbackDetail();
+            var appShellRoot = getAppShellRoot();
+
             if (documentElement.className.indexOf("unsupported-browser") === -1) {
                 documentElement.className += (documentElement.className ? " " : "") + "unsupported-browser";
             }
