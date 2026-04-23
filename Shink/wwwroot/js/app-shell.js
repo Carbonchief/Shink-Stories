@@ -54,6 +54,8 @@
                 .trim();
         }
 
+        document.addEventListener("enhancedload", finishSupportCheck);
+
         function showUnsupportedFallback(detailMessage) {
             if (documentElement.className.indexOf("unsupported-browser") === -1) {
                 documentElement.className += (documentElement.className ? " " : "") + "unsupported-browser";
