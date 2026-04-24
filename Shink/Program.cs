@@ -120,6 +120,7 @@ builder.Services.AddHttpClient<PaystackCheckoutService>();
 builder.Services.AddHttpClient<ISubscriptionLedgerService, SupabaseSubscriptionLedgerService>();
 builder.Services.AddHttpClient<IStoreOrderService, SupabaseStoreOrderService>();
 builder.Services.AddHttpClient<IStoreOrderNotificationService, ResendStoreOrderNotificationService>();
+builder.Services.AddHttpClient<ISubscriptionPaymentRecoveryEmailService, ResendSubscriptionPaymentRecoveryEmailService>();
 builder.Services.AddHttpClient<IStoryTrackingService, SupabaseStoryTrackingService>();
 builder.Services.AddHttpClient<IStoryFavoriteService, SupabaseStoryFavoriteService>();
 builder.Services.AddHttpClient<IResourceCatalogService, SupabaseResourceCatalogService>();
@@ -134,6 +135,7 @@ builder.Services.AddHttpClient<IBlogCatalogService, SupabaseBlogService>();
 builder.Services.AddHttpClient<IBlogAdminService, SupabaseBlogService>();
 builder.Services.AddHttpClient<IUserNotificationService, SupabaseUserNotificationService>();
 builder.Services.AddSingleton<IContactFormProtectionService, ContactFormProtectionService>();
+builder.Services.AddHostedService<SubscriptionPaymentRecoveryWorker>();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;

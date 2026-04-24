@@ -7,4 +7,18 @@ public sealed class ResendOptions
     public string ApiKey { get; set; } = string.Empty;
     public string FromEmail { get; set; } = string.Empty;
     public string ToEmail { get; set; } = string.Empty;
+    public string BillingManageUrl { get; set; } = string.Empty;
+    public ResendTemplateOptions Templates { get; set; } = new();
+}
+
+public sealed class ResendTemplateOptions
+{
+    public SubscriptionPaymentRecoveryTemplateOptions SubscriptionPaymentRecovery { get; set; } = new();
+}
+
+public sealed class SubscriptionPaymentRecoveryTemplateOptions
+{
+    public string Day1TemplateId { get; set; } = string.Empty;
+    public string Day3TemplateId { get; set; } = string.Empty;
+    public string Day5TemplateId { get; set; } = string.Empty;
 }

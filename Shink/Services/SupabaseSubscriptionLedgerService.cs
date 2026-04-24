@@ -11,14 +11,17 @@ namespace Shink.Services;
 public sealed partial class SupabaseSubscriptionLedgerService(
     HttpClient httpClient,
     IOptions<SupabaseOptions> supabaseOptions,
+    ISubscriptionPaymentRecoveryEmailService subscriptionPaymentRecoveryEmailService,
     ILogger<SupabaseSubscriptionLedgerService> logger) : ISubscriptionLedgerService
 {
     private const string GratisTierCode = "gratis";
     private const string GratisProvider = "paystack";
     private const string GratisPlanSlug = "gratis";
+    private static readonly TimeSpan PaymentRecoveryGracePeriod = TimeSpan.FromDays(4);
 
     private readonly HttpClient _httpClient = httpClient;
     private readonly SupabaseOptions _options = supabaseOptions.Value;
+    private readonly ISubscriptionPaymentRecoveryEmailService _subscriptionPaymentRecoveryEmailService = subscriptionPaymentRecoveryEmailService;
     private readonly ILogger<SupabaseSubscriptionLedgerService> _logger = logger;
 
     public async Task<bool> HasActivePaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default)
@@ -356,6 +359,59 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         }
     }
 
+    public async Task ProcessExpiredPaymentRecoveriesAsync(CancellationToken cancellationToken = default)
+    {
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return;
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return;
+        }
+
+        IReadOnlyList<PaymentRecoveryRow> dueRecoveries;
+        try
+        {
+            dueRecoveries = await GetDuePaymentRecoveriesAsync(baseUri, apiKey, DateTimeOffset.UtcNow, cancellationToken);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(exception, "Expired subscription payment recovery lookup failed unexpectedly.");
+            return;
+        }
+
+        foreach (var recovery in dueRecoveries)
+        {
+            if (string.IsNullOrWhiteSpace(recovery.SubscriptionId))
+            {
+                continue;
+            }
+
+            try
+            {
+                await MarkSubscriptionFailedByIdAsync(baseUri, apiKey, recovery.SubscriptionId, cancellationToken);
+                await ResolvePaymentRecoveryAsync(
+                    baseUri,
+                    apiKey,
+                    recovery.RecoveryId,
+                    resolvedAtUtc: DateTimeOffset.UtcNow,
+                    resolution: "suspended",
+                    cancellationToken);
+            }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+            {
+                _logger.LogWarning(
+                    exception,
+                    "Subscription payment recovery suspension failed. recovery_id={RecoveryId} subscription_id={SubscriptionId}",
+                    recovery.RecoveryId,
+                    recovery.SubscriptionId);
+            }
+        }
+    }
+
     private async Task<bool> HasActiveSubscriptionAsync(
         string? email,
         string? tierCode,
@@ -530,8 +586,21 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var mPaymentId = formCollection["m_payment_id"].ToString().Trim();
         var pfPaymentId = formCollection["pf_payment_id"].ToString().Trim();
         var rawPayload = formCollection.ToDictionary(field => field.Key, field => field.Value.ToString());
+        var duplicateEvent = await TryGetExistingSubscriptionEventAsync(
+            baseUri,
+            apiKey,
+            provider: "payfast",
+            providerPaymentId: mPaymentId,
+            providerTransactionId: pfPaymentId,
+            eventType: "payfast_itn",
+            cancellationToken);
+        if (duplicateEvent is not null)
+        {
+            return new SubscriptionPersistResult(true, null, duplicateEvent.SubscriptionId);
+        }
 
         string? subscriptionId = null;
+        PaymentRecoverySubscriptionContext? payFastContext = null;
         if (string.Equals(paymentStatus, "COMPLETE", StringComparison.OrdinalIgnoreCase))
         {
             var upsertResult = await UpsertActivePayFastSubscriptionAsync(baseUri, apiKey, formCollection, nowUtc, cancellationToken);
@@ -541,6 +610,20 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             }
 
             subscriptionId = upsertResult.SubscriptionId;
+            if (!string.IsNullOrWhiteSpace(mPaymentId))
+            {
+                payFastContext = await TryGetSubscriptionContextByProviderPaymentIdAsync(
+                    baseUri,
+                    apiKey,
+                    provider: "payfast",
+                    providerPaymentId: mPaymentId,
+                    cancellationToken);
+            }
+
+            if (payFastContext is not null)
+            {
+                await TryResolvePaymentRecoveryAfterSuccessfulChargeAsync(baseUri, apiKey, payFastContext, nowUtc, cancellationToken);
+            }
         }
         else if (string.Equals(paymentStatus, "CANCELLED", StringComparison.OrdinalIgnoreCase) &&
                  !string.IsNullOrWhiteSpace(mPaymentId))
@@ -553,6 +636,39 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 status: "cancelled",
                 changedAtUtc: nowUtc,
                 cancellationToken);
+
+            payFastContext = await TryGetSubscriptionContextByProviderPaymentIdAsync(
+                baseUri,
+                apiKey,
+                provider: "payfast",
+                providerPaymentId: mPaymentId,
+                cancellationToken);
+            if (payFastContext is not null)
+            {
+                await TryResolvePaymentRecoveryAfterCancellationAsync(baseUri, apiKey, payFastContext, nowUtc, cancellationToken);
+            }
+        }
+        else if (IsPayFastFailureStatus(paymentStatus) &&
+                 !string.IsNullOrWhiteSpace(mPaymentId))
+        {
+            payFastContext = await TryGetSubscriptionContextByProviderPaymentIdAsync(
+                baseUri,
+                apiKey,
+                provider: "payfast",
+                providerPaymentId: mPaymentId,
+                cancellationToken);
+            if (payFastContext is not null)
+            {
+                subscriptionId = payFastContext.SubscriptionId;
+                await TryStartPaymentRecoveryAsync(
+                    baseUri,
+                    apiKey,
+                    payFastContext,
+                    providerPaymentId: mPaymentId,
+                    provider: "payfast",
+                    nowUtc,
+                    cancellationToken);
+            }
         }
 
         var eventInserted = await InsertSubscriptionEventAsync(
@@ -567,7 +683,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             payload: rawPayload,
             cancellationToken);
 
-        if (!eventInserted)
+        if (!eventInserted.IsSuccess)
         {
             return new SubscriptionPersistResult(false, "Could not persist subscription event.", subscriptionId);
         }
@@ -620,8 +736,21 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             var providerTransactionId = ResolvePaystackProviderTransactionId(data);
             var eventStatus = ResolvePaystackEventStatus(eventType, data);
             var nowUtc = DateTimeOffset.UtcNow;
+            var duplicateEvent = await TryGetExistingSubscriptionEventAsync(
+                baseUri,
+                apiKey,
+                provider: "paystack",
+                providerPaymentId: providerPaymentId,
+                providerTransactionId: providerTransactionId,
+                eventType: eventType,
+                cancellationToken);
+            if (duplicateEvent is not null)
+            {
+                return new SubscriptionPersistResult(true, null, duplicateEvent.SubscriptionId);
+            }
 
             string? subscriptionId = null;
+            PaymentRecoverySubscriptionContext? paystackContext = null;
             if (ShouldActivatePaystackSubscription(eventType, eventStatus))
             {
                 var upsertResult = await UpsertActivePaystackSubscriptionAsync(baseUri, apiKey, data, nowUtc, cancellationToken);
@@ -633,6 +762,21 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 subscriptionId = upsertResult.SubscriptionId;
                 providerPaymentId ??= upsertResult.ProviderPaymentId;
                 providerTransactionId ??= upsertResult.ProviderTransactionId;
+
+                if (!string.IsNullOrWhiteSpace(providerPaymentId))
+                {
+                    paystackContext = await TryGetSubscriptionContextByProviderPaymentIdAsync(
+                        baseUri,
+                        apiKey,
+                        provider: "paystack",
+                        providerPaymentId,
+                        cancellationToken);
+                }
+
+                if (paystackContext is not null)
+                {
+                    await TryResolvePaymentRecoveryAfterSuccessfulChargeAsync(baseUri, apiKey, paystackContext, nowUtc, cancellationToken);
+                }
             }
             else if (ShouldCancelPaystackSubscription(eventType, eventStatus) &&
                      !string.IsNullOrWhiteSpace(providerPaymentId))
@@ -645,18 +789,40 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                     status: "cancelled",
                     changedAtUtc: nowUtc,
                     cancellationToken);
+
+                paystackContext = await TryGetSubscriptionContextByProviderPaymentIdAsync(
+                    baseUri,
+                    apiKey,
+                    provider: "paystack",
+                    providerPaymentId,
+                    cancellationToken);
+                if (paystackContext is not null)
+                {
+                    await TryResolvePaymentRecoveryAfterCancellationAsync(baseUri, apiKey, paystackContext, nowUtc, cancellationToken);
+                }
             }
             else if (ShouldFailPaystackSubscription(eventType, eventStatus) &&
                      !string.IsNullOrWhiteSpace(providerPaymentId))
             {
-                subscriptionId = await MarkSubscriptionStatusAsync(
+                paystackContext = await TryGetSubscriptionContextByProviderPaymentIdAsync(
                     baseUri,
                     apiKey,
                     provider: "paystack",
-                    providerPaymentId: providerPaymentId,
-                    status: "failed",
-                    changedAtUtc: nowUtc,
+                    providerPaymentId,
                     cancellationToken);
+                if (paystackContext is not null)
+                {
+                    subscriptionId = paystackContext.SubscriptionId;
+                    await TryStartPaymentRecoveryAsync(
+                        baseUri,
+                        apiKey,
+                        paystackContext,
+                        providerPaymentId,
+                        provider: "paystack",
+                        nowUtc,
+                        cancellationToken,
+                        isRecurringFailure: IsPaystackRecoverableFailureEvent(eventType, eventStatus));
+                }
             }
 
             var normalizedPayload = DeserializePayloadObject(payloadJson);
@@ -672,7 +838,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 payload: normalizedPayload,
                 cancellationToken: cancellationToken);
 
-            if (!eventInserted)
+            if (!eventInserted.IsSuccess)
             {
                 return new SubscriptionPersistResult(false, "Could not persist Paystack event.", subscriptionId);
             }
@@ -1076,7 +1242,342 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         return ReadFirstStringProperty(responseBody, "subscription_id");
     }
 
-    private async Task<bool> InsertSubscriptionEventAsync(
+    private async Task MarkSubscriptionFailedByIdAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriptionId,
+        CancellationToken cancellationToken)
+    {
+        var escapedSubscriptionId = Uri.EscapeDataString(subscriptionId);
+        var uri = new Uri(baseUri, $"rest/v1/subscriptions?subscription_id=eq.{escapedSubscriptionId}");
+        using var request = CreateJsonRequest(
+            new HttpMethod("PATCH"),
+            uri,
+            apiKey,
+            new { status = "failed" },
+            "return=minimal");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Supabase subscription final suspend failed. subscription_id={SubscriptionId} Status={StatusCode} Body={Body}",
+            subscriptionId,
+            (int)response.StatusCode,
+            body);
+    }
+
+    private async Task ExtendSubscriptionGracePeriodAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriptionId,
+        DateTimeOffset graceEndsAtUtc,
+        CancellationToken cancellationToken)
+    {
+        var escapedSubscriptionId = Uri.EscapeDataString(subscriptionId);
+        var uri = new Uri(baseUri, $"rest/v1/subscriptions?subscription_id=eq.{escapedSubscriptionId}");
+        using var request = CreateJsonRequest(
+            new HttpMethod("PATCH"),
+            uri,
+            apiKey,
+            new
+            {
+                status = "active",
+                next_renewal_at = graceEndsAtUtc.UtcDateTime
+            },
+            "return=minimal");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Supabase subscription grace-period update failed. subscription_id={SubscriptionId} Status={StatusCode} Body={Body}",
+            subscriptionId,
+            (int)response.StatusCode,
+            body);
+    }
+
+    private async Task<PaymentRecoverySubscriptionContext?> TryGetSubscriptionContextByProviderPaymentIdAsync(
+        Uri baseUri,
+        string apiKey,
+        string provider,
+        string providerPaymentId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(providerPaymentId))
+        {
+            return null;
+        }
+
+        var escapedProvider = Uri.EscapeDataString(provider);
+        var escapedPaymentId = Uri.EscapeDataString(providerPaymentId);
+        var uri = new Uri(
+            baseUri,
+            $"rest/v1/subscriptions?provider=eq.{escapedProvider}&provider_payment_id=eq.{escapedPaymentId}&select=subscription_id,subscriber_id,tier_code,status&limit=1");
+        using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Supabase subscription recovery lookup failed. provider={Provider} provider_payment_id={ProviderPaymentId} Status={StatusCode} Body={Body}",
+                provider,
+                providerPaymentId,
+                (int)response.StatusCode,
+                body);
+            return null;
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var rows = await JsonSerializer.DeserializeAsync<List<PaymentRecoverySubscriptionRow>>(stream, cancellationToken: cancellationToken)
+            ?? [];
+        var row = rows.FirstOrDefault();
+        if (row is null ||
+            string.IsNullOrWhiteSpace(row.SubscriptionId) ||
+            string.IsNullOrWhiteSpace(row.SubscriberId))
+        {
+            return null;
+        }
+
+        var subscriberEmail = await GetSubscriberEmailByIdAsync(baseUri, apiKey, row.SubscriberId, cancellationToken);
+        if (string.IsNullOrWhiteSpace(subscriberEmail))
+        {
+            return null;
+        }
+
+        var subscriberProfile = await GetSubscriberNamesByIdAsync(baseUri, apiKey, row.SubscriberId, cancellationToken);
+        var planName = PaymentPlanCatalog.FindByTierCode(row.TierCode)?.Name
+                       ?? row.TierCode
+                       ?? "Schink Stories";
+
+        return new PaymentRecoverySubscriptionContext(
+            row.SubscriptionId,
+            row.SubscriberId,
+            subscriberEmail,
+            subscriberProfile?.FirstName,
+            subscriberProfile?.DisplayName,
+            row.TierCode,
+            planName,
+            row.Status);
+    }
+
+    private async Task<string?> GetSubscriberEmailByIdAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriberId,
+        CancellationToken cancellationToken)
+    {
+        var escapedSubscriberId = Uri.EscapeDataString(subscriberId);
+        var uri = new Uri(baseUri, $"rest/v1/subscribers?subscriber_id=eq.{escapedSubscriberId}&select=email&limit=1");
+        using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Supabase subscriber email lookup failed for recovery. subscriber_id={SubscriberId} Status={StatusCode} Body={Body}",
+                subscriberId,
+                (int)response.StatusCode,
+                body);
+            return null;
+        }
+
+        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+        return ReadFirstStringProperty(responseBody, "email");
+    }
+
+    private async Task<PaymentRecoverySubscriberRow?> GetSubscriberNamesByIdAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriberId,
+        CancellationToken cancellationToken)
+    {
+        var escapedSubscriberId = Uri.EscapeDataString(subscriberId);
+        var uri = new Uri(baseUri, $"rest/v1/subscribers?subscriber_id=eq.{escapedSubscriberId}&select=first_name,display_name&limit=1");
+        using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var rows = await JsonSerializer.DeserializeAsync<List<PaymentRecoverySubscriberRow>>(stream, cancellationToken: cancellationToken)
+            ?? [];
+        return rows.FirstOrDefault();
+    }
+
+    private async Task<PaymentRecoveryRow?> GetActivePaymentRecoveryAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriptionId,
+        CancellationToken cancellationToken)
+    {
+        var escapedSubscriptionId = Uri.EscapeDataString(subscriptionId);
+        var uri = new Uri(
+            baseUri,
+            $"rest/v1/subscription_payment_recoveries?subscription_id=eq.{escapedSubscriptionId}&resolved_at=is.null&select=recovery_id,subscription_id,provider_payment_id,first_failed_at,grace_ends_at,immediate_email_id,warning_email_id,suspension_email_id&limit=1");
+        using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Supabase active payment recovery lookup failed. subscription_id={SubscriptionId} Status={StatusCode} Body={Body}",
+                subscriptionId,
+                (int)response.StatusCode,
+                body);
+            return null;
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var rows = await JsonSerializer.DeserializeAsync<List<PaymentRecoveryRow>>(stream, cancellationToken: cancellationToken)
+            ?? [];
+        return rows.FirstOrDefault();
+    }
+
+    private async Task<IReadOnlyList<PaymentRecoveryRow>> GetDuePaymentRecoveriesAsync(
+        Uri baseUri,
+        string apiKey,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var escapedNow = Uri.EscapeDataString(nowUtc.UtcDateTime.ToString("O"));
+        var uri = new Uri(
+            baseUri,
+            $"rest/v1/subscription_payment_recoveries?resolved_at=is.null&grace_ends_at=lte.{escapedNow}&select=recovery_id,subscription_id,provider_payment_id,first_failed_at,grace_ends_at,immediate_email_id,warning_email_id,suspension_email_id&order=grace_ends_at.asc&limit=100");
+        using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Supabase due payment recovery lookup failed. Status={StatusCode} Body={Body}",
+                (int)response.StatusCode,
+                body);
+            return [];
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        return await JsonSerializer.DeserializeAsync<List<PaymentRecoveryRow>>(stream, cancellationToken: cancellationToken)
+            ?? [];
+    }
+
+    private async Task<PaymentRecoveryRow?> CreatePaymentRecoveryAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriptionId,
+        string provider,
+        string providerPaymentId,
+        DateTimeOffset firstFailedAtUtc,
+        DateTimeOffset graceEndsAtUtc,
+        CancellationToken cancellationToken)
+    {
+        var payload = new
+        {
+            subscription_id = subscriptionId,
+            provider,
+            provider_payment_id = providerPaymentId,
+            first_failed_at = firstFailedAtUtc.UtcDateTime,
+            grace_ends_at = graceEndsAtUtc.UtcDateTime
+        };
+
+        var uri = new Uri(baseUri, "rest/v1/subscription_payment_recoveries?select=recovery_id,subscription_id,provider_payment_id,first_failed_at,grace_ends_at,immediate_email_id,warning_email_id,suspension_email_id");
+        using var request = CreateJsonRequest(HttpMethod.Post, uri, apiKey, payload, "return=representation");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Supabase payment recovery insert failed. subscription_id={SubscriptionId} Status={StatusCode} Body={Body}",
+                subscriptionId,
+                (int)response.StatusCode,
+                body);
+            return null;
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var rows = await JsonSerializer.DeserializeAsync<List<PaymentRecoveryRow>>(stream, cancellationToken: cancellationToken)
+            ?? [];
+        return rows.FirstOrDefault();
+    }
+
+    private async Task StorePaymentRecoveryEmailIdsAsync(
+        Uri baseUri,
+        string apiKey,
+        string recoveryId,
+        SubscriptionPaymentRecoveryEmailSequence emailSequence,
+        CancellationToken cancellationToken)
+    {
+        var escapedRecoveryId = Uri.EscapeDataString(recoveryId);
+        var uri = new Uri(baseUri, $"rest/v1/subscription_payment_recoveries?recovery_id=eq.{escapedRecoveryId}");
+        using var request = CreateJsonRequest(
+            new HttpMethod("PATCH"),
+            uri,
+            apiKey,
+            new
+            {
+                immediate_email_id = emailSequence.ImmediateEmailId,
+                warning_email_id = emailSequence.WarningEmailId,
+                suspension_email_id = emailSequence.SuspensionEmailId
+            },
+            "return=minimal");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Supabase payment recovery email-id update failed. recovery_id={RecoveryId} Status={StatusCode} Body={Body}",
+            recoveryId,
+            (int)response.StatusCode,
+            body);
+    }
+
+    private async Task ResolvePaymentRecoveryAsync(
+        Uri baseUri,
+        string apiKey,
+        string recoveryId,
+        DateTimeOffset resolvedAtUtc,
+        string resolution,
+        CancellationToken cancellationToken)
+    {
+        var escapedRecoveryId = Uri.EscapeDataString(recoveryId);
+        var uri = new Uri(baseUri, $"rest/v1/subscription_payment_recoveries?recovery_id=eq.{escapedRecoveryId}");
+        using var request = CreateJsonRequest(
+            new HttpMethod("PATCH"),
+            uri,
+            apiKey,
+            new
+            {
+                resolved_at = resolvedAtUtc.UtcDateTime,
+                resolution
+            },
+            "return=minimal");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Supabase payment recovery resolve failed. recovery_id={RecoveryId} resolution={Resolution} Status={StatusCode} Body={Body}",
+            recoveryId,
+            resolution,
+            (int)response.StatusCode,
+            body);
+    }
+
+    private async Task<EventInsertResult> InsertSubscriptionEventAsync(
         Uri baseUri,
         string apiKey,
         string? subscriptionId,
@@ -1111,10 +1612,157 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 eventType,
                 (int)response.StatusCode,
                 body);
-            return false;
+            return new EventInsertResult(false, false);
         }
 
-        return true;
+        return new EventInsertResult(true, true);
+    }
+
+    private async Task<ExistingEventLookupRow?> TryGetExistingSubscriptionEventAsync(
+        Uri baseUri,
+        string apiKey,
+        string provider,
+        string? providerPaymentId,
+        string? providerTransactionId,
+        string eventType,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(providerTransactionId) ||
+            string.IsNullOrWhiteSpace(providerPaymentId))
+        {
+            return null;
+        }
+
+        var filters = new List<string>
+        {
+            $"provider=eq.{Uri.EscapeDataString(provider)}",
+            $"provider_payment_id=eq.{Uri.EscapeDataString(providerPaymentId)}",
+            $"provider_transaction_id=eq.{Uri.EscapeDataString(providerTransactionId)}",
+            $"event_type=eq.{Uri.EscapeDataString(eventType)}",
+            "select=subscription_id",
+            "limit=1"
+        };
+        var uri = new Uri(baseUri, $"rest/v1/subscription_events?{string.Join("&", filters)}");
+        using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var rows = await JsonSerializer.DeserializeAsync<List<ExistingEventLookupRow>>(stream, cancellationToken: cancellationToken)
+            ?? [];
+        return rows.FirstOrDefault();
+    }
+
+    private async Task TryStartPaymentRecoveryAsync(
+        Uri baseUri,
+        string apiKey,
+        PaymentRecoverySubscriptionContext subscriptionContext,
+        string providerPaymentId,
+        string provider,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken,
+        bool isRecurringFailure = true)
+    {
+        if (!isRecurringFailure ||
+            !string.Equals(subscriptionContext.Status, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var existingRecovery = await GetActivePaymentRecoveryAsync(baseUri, apiKey, subscriptionContext.SubscriptionId, cancellationToken);
+        if (existingRecovery is not null)
+        {
+            return;
+        }
+
+        var graceEndsAtUtc = nowUtc.Add(PaymentRecoveryGracePeriod);
+        var recovery = await CreatePaymentRecoveryAsync(
+            baseUri,
+            apiKey,
+            subscriptionContext.SubscriptionId,
+            provider,
+            providerPaymentId,
+            nowUtc,
+            graceEndsAtUtc,
+            cancellationToken);
+        if (recovery is null)
+        {
+            return;
+        }
+
+        await ExtendSubscriptionGracePeriodAsync(
+            baseUri,
+            apiKey,
+            subscriptionContext.SubscriptionId,
+            graceEndsAtUtc,
+            cancellationToken);
+
+        var emailSequence = await _subscriptionPaymentRecoveryEmailService.ScheduleSequenceAsync(
+            new SubscriptionPaymentRecoveryEmailRequest(
+                recovery.RecoveryId,
+                subscriptionContext.SubscriptionId,
+                subscriptionContext.Email,
+                subscriptionContext.FirstName,
+                subscriptionContext.DisplayName,
+                subscriptionContext.PlanName,
+                provider,
+                nowUtc,
+                graceEndsAtUtc),
+            cancellationToken);
+
+        if (emailSequence is null)
+        {
+            return;
+        }
+
+        await StorePaymentRecoveryEmailIdsAsync(baseUri, apiKey, recovery.RecoveryId, emailSequence, cancellationToken);
+    }
+
+    private async Task TryResolvePaymentRecoveryAfterSuccessfulChargeAsync(
+        Uri baseUri,
+        string apiKey,
+        PaymentRecoverySubscriptionContext subscriptionContext,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var recovery = await GetActivePaymentRecoveryAsync(baseUri, apiKey, subscriptionContext.SubscriptionId, cancellationToken);
+        if (recovery is null)
+        {
+            return;
+        }
+
+        await _subscriptionPaymentRecoveryEmailService.CancelSequenceAsync(
+            new SubscriptionPaymentRecoveryEmailSequence(
+                recovery.ImmediateEmailId,
+                recovery.WarningEmailId,
+                recovery.SuspensionEmailId),
+            cancellationToken);
+        await ResolvePaymentRecoveryAsync(baseUri, apiKey, recovery.RecoveryId, nowUtc, "recovered", cancellationToken);
+    }
+
+    private async Task TryResolvePaymentRecoveryAfterCancellationAsync(
+        Uri baseUri,
+        string apiKey,
+        PaymentRecoverySubscriptionContext subscriptionContext,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var recovery = await GetActivePaymentRecoveryAsync(baseUri, apiKey, subscriptionContext.SubscriptionId, cancellationToken);
+        if (recovery is null)
+        {
+            return;
+        }
+
+        await _subscriptionPaymentRecoveryEmailService.CancelSequenceAsync(
+            new SubscriptionPaymentRecoveryEmailSequence(
+                recovery.ImmediateEmailId,
+                recovery.WarningEmailId,
+                recovery.SuspensionEmailId),
+            cancellationToken);
+        await ResolvePaymentRecoveryAsync(baseUri, apiKey, recovery.RecoveryId, nowUtc, "cancelled", cancellationToken);
     }
 
     private HttpRequestMessage CreateRequest(HttpMethod method, Uri uri, string apiKey)
@@ -1293,6 +1941,24 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                string.Equals(eventStatus, "abandoned", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsPaystackRecoverableFailureEvent(string eventType, string? eventStatus)
+    {
+        return string.Equals(eventType, "invoice.payment_failed", StringComparison.OrdinalIgnoreCase) ||
+               (string.Equals(eventType, "charge.failed", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(eventStatus, "failed", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsPayFastFailureStatus(string? paymentStatus)
+    {
+        if (string.IsNullOrWhiteSpace(paymentStatus))
+        {
+            return false;
+        }
+
+        return string.Equals(paymentStatus, "FAILED", StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(paymentStatus, "DENIED", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static bool IsSuccessfulPaystackStatus(string? status) =>
         string.Equals(status, "success", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(status, "successful", StringComparison.OrdinalIgnoreCase) ||
@@ -1442,6 +2108,75 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string? SubscriptionId = null,
         string? ProviderPaymentId = null,
         string? ProviderTransactionId = null);
+
+    private sealed record EventInsertResult(bool IsSuccess, bool WasInserted);
+
+    private sealed class ExistingEventLookupRow
+    {
+        [JsonPropertyName("subscription_id")]
+        public string? SubscriptionId { get; set; }
+    }
+
+    private sealed class PaymentRecoverySubscriptionRow
+    {
+        [JsonPropertyName("subscription_id")]
+        public string? SubscriptionId { get; set; }
+
+        [JsonPropertyName("subscriber_id")]
+        public string? SubscriberId { get; set; }
+
+        [JsonPropertyName("tier_code")]
+        public string? TierCode { get; set; }
+
+        [JsonPropertyName("status")]
+        public string? Status { get; set; }
+    }
+
+    private sealed class PaymentRecoverySubscriberRow
+    {
+        [JsonPropertyName("first_name")]
+        public string? FirstName { get; set; }
+
+        [JsonPropertyName("display_name")]
+        public string? DisplayName { get; set; }
+    }
+
+    private sealed record PaymentRecoverySubscriptionContext(
+        string SubscriptionId,
+        string SubscriberId,
+        string Email,
+        string? FirstName,
+        string? DisplayName,
+        string? TierCode,
+        string PlanName,
+        string? Status);
+
+    private sealed class PaymentRecoveryRow
+    {
+        [JsonPropertyName("recovery_id")]
+        public string RecoveryId { get; set; } = string.Empty;
+
+        [JsonPropertyName("subscription_id")]
+        public string? SubscriptionId { get; set; }
+
+        [JsonPropertyName("provider_payment_id")]
+        public string? ProviderPaymentId { get; set; }
+
+        [JsonPropertyName("first_failed_at")]
+        public DateTimeOffset? FirstFailedAt { get; set; }
+
+        [JsonPropertyName("grace_ends_at")]
+        public DateTimeOffset? GraceEndsAt { get; set; }
+
+        [JsonPropertyName("immediate_email_id")]
+        public string? ImmediateEmailId { get; set; }
+
+        [JsonPropertyName("warning_email_id")]
+        public string? WarningEmailId { get; set; }
+
+        [JsonPropertyName("suspension_email_id")]
+        public string? SuspensionEmailId { get; set; }
+    }
 
     private sealed class SubscriptionStatusRow
     {

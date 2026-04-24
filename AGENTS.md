@@ -59,6 +59,7 @@ Project-specific rules for this repository.
 - Afrikaans-first copy and tone.
 - Mobile responsiveness is required for all page changes.
 - Preserve existing visual style unless explicitly asked to redesign.
+- When creating new emails through Resend, always use published Resend Email Templates instead of inline HTML/text payloads.
 
 ## 7) Admin Page Localization
 - The `/admin` page must support both Afrikaans and English.
