@@ -1,0 +1,26 @@
+@if (!string.IsNullOrWhiteSpace(JsonText))
+{
+    <script type="application/ld+json" nonce="@CspNonce">@JsonContent</script>
+}
+
+@code {
+    [Parameter]
+    public object? Json { get; set; }
+
+    [CascadingParameter(Name = "CspNonce")]
+    public string? CspNonce { get; set; }
+
+    private string? JsonText => Json switch
+    {
+        MarkupString markup => markup.Value,
+        string text => text,
+        _ => Json?.ToString()
+    };
+
+    private MarkupString JsonContent => Json switch
+    {
+        MarkupString markup => markup,
+        string text => new MarkupString(text),
+        _ => new MarkupString(Json?.ToString() ?? string.Empty)
+    };
+}

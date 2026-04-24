@@ -37,8 +37,8 @@
     <meta name="twitter:description" content="Afrikaanse oudiostories vir gesinne. Luister veilig en bou karakter, een storie op 'n slag." />
     <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
     <meta name="twitter:image:alt" content="Schink Stories logo" />
-    <script type="application/ld+json">@HomeOrganizationJsonLd</script>
-    <script type="application/ld+json">@HomeWebSiteJsonLd</script>
+    <JsonLdScript Json="@HomeOrganizationJsonLd" />
+    <JsonLdScript Json="@HomeWebSiteJsonLd" />
 </HeadContent>
 
 <section class="hero">
@@ -114,12 +114,11 @@ else
         var isWeeklyPopularPlaylist = IsWeeklyPopularPlaylist(playlist);
         var displayTitle = GetHomePlaylistTitle(playlist);
         var sectionClassName = isWeeklyPopularPlaylist
-            ? "section-block stories-carousel-section stories-carousel-section-ranked home-scroll-reveal"
-            : "section-block stories-carousel-section home-scroll-reveal";
+            ? "section-block stories-carousel-section stories-carousel-section-ranked home-scroll-reveal home-reveal-delay-standard"
+            : "section-block stories-carousel-section home-scroll-reveal home-reveal-delay-standard";
         var carouselClassName = $"stories-carousel {(playlist.Stories.Count <= 3 ? "stories-carousel-free" : string.Empty)}";
-        var rankedStoryItemStyle = isWeeklyPopularPlaylist ? WeeklyPopularStoryItemInlineStyle : null;
 
-        <section class="@sectionClassName" style="--home-reveal-delay: 0.08s;" aria-labelledby="@headingId">
+        <section class="@sectionClassName" aria-labelledby="@headingId">
             <h2 id="@headingId">@displayTitle</h2>
             @if (hasDescription)
             {
@@ -139,10 +138,10 @@ else
                         ? "story-carousel-item story-carousel-item-ranked"
                         : "story-carousel-item";
 
-                    <article class="@articleClassName" style="@rankedStoryItemStyle" role="listitem">
+                    <article class="@articleClassName" role="listitem">
                         @if (isWeeklyPopularPlaylist)
                         {
-                            <span class="story-carousel-rank" style="@WeeklyPopularStoryRankInlineStyle" aria-hidden="true">@((storyIndex + 1).ToString(CultureInfo.InvariantCulture))</span>
+                            <span class="story-carousel-rank" aria-hidden="true">@((storyIndex + 1).ToString(CultureInfo.InvariantCulture))</span>
                         }
                         @if (canAccessStory)
                         {
@@ -198,7 +197,7 @@ else
                   PlanActionHref="@StoryAccessPopupPlanHref"
                   OnClose="CloseStoryAccessPopupAsync" />
 
-<section class="join-promo home-scroll-reveal" style="--home-reveal-delay: 0.04s;">
+<section class="join-promo home-scroll-reveal home-reveal-delay-fast">
     <div class="join-promo-media">
         <img src="/branding/Kom_Luister_Saam.png"
              alt="Kom Luister Saam by Schink Stories" loading="lazy" decoding="async" />
@@ -219,7 +218,7 @@ else
     </div>
 </section>
 
-<section class="home-testimonials section-block home-scroll-reveal p-3" style="--home-reveal-delay: 0.08s;" aria-labelledby="home-ouers-se">
+<section class="home-testimonials section-block home-scroll-reveal home-reveal-delay-standard p-3" aria-labelledby="home-ouers-se">
     <div class="home-testimonials-header">
         <h2 id="home-ouers-se">Wat ouers se</h2>
     </div>
@@ -267,7 +266,7 @@ else
     </div>
 </section>
 
-<section class="perfect-plan-section home-scroll-reveal" style="--home-reveal-delay: 0.08s;" aria-labelledby="perfekte-plan">
+<section class="perfect-plan-section home-scroll-reveal home-reveal-delay-standard" aria-labelledby="perfekte-plan">
     <div class="perfect-plan-header">
         <h2 id="perfekte-plan">Vind jou perfekte plan</h2>
         <p>Vergelyk ons opsies en kies die intekening wat die beste by jou gesin pas.</p>
@@ -323,7 +322,7 @@ else
     </div>
 </section>
 
-<section class="home-whatsapp-join section-block home-scroll-reveal" style="--home-reveal-delay: 0.08s;" aria-labelledby="home-whatsapp-join">
+<section class="home-whatsapp-join section-block home-scroll-reveal home-reveal-delay-standard" aria-labelledby="home-whatsapp-join">
     <div class="home-whatsapp-join-card">
         <div class="home-whatsapp-join-copy">
             <p class="home-whatsapp-join-kicker">WhatsApp groep</p>
@@ -343,7 +342,7 @@ else
     </div>
 </section>
 
-<section class="contact-section home-scroll-reveal" style="--home-reveal-delay: 0.08s;" aria-labelledby="kontak-ons">
+<section class="contact-section home-scroll-reveal home-reveal-delay-standard" aria-labelledby="kontak-ons">
     <div class="contact-inner">
         <h2 id="kontak-ons" class="contact-title">Kontak Ons</h2>
 
@@ -667,17 +666,6 @@ else
         string.Equals(playlist.SystemKey, "popular-stories-this-week", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(playlist.Slug, "popular-stories-this-week", StringComparison.OrdinalIgnoreCase);
 
-    private const string WeeklyPopularStoryItemInlineStyle =
-        "position:relative;padding-top:clamp(0.78rem,1.2vw,1rem);";
-
-    private const string WeeklyPopularStoryRankInlineStyle =
-        "position:absolute;top:0;left:0;z-index:6;display:block;pointer-events:none;user-select:none;" +
-        "font-family:'Schink Rank Rounded','Poppins','Trebuchet MS','Segoe UI',sans-serif;" +
-        "font-size:clamp(2.5rem,8vw,4.7rem);font-weight:900;line-height:0.82;letter-spacing:-0.11em;" +
-        "color:#fffef8;-webkit-text-stroke:2px rgba(205,214,214,0.92);" +
-        "text-shadow:0 5px 10px rgba(52,65,70,0.28),-1px -1px 0 rgba(205,214,214,0.92)," +
-        "1px -1px 0 rgba(205,214,214,0.92),-1px 1px 0 rgba(205,214,214,0.92),1px 1px 0 rgba(205,214,214,0.92);";
-
     private static string BuildOpsiesHref(string returnPath)
     {
         var safePath = string.IsNullOrWhiteSpace(returnPath) ? "/" : returnPath;
@@ -950,4 +938,3 @@ else
         public string Website { get; set; } = string.Empty;
     }
 }
-

@@ -83,6 +83,11 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         };
     });
 builder.Services.AddAuthorization();
+builder.Services.AddHsts(options =>
+{
+    options.MaxAge = TimeSpan.FromDays(365);
+    options.IncludeSubDomains = true;
+});
 builder.Services.AddSingleton<IAudioAccessService, AudioAccessService>();
 builder.Services.AddSingleton<IStoryMediaStorageService, CloudflareR2StoryMediaStorageService>();
 builder.Services.AddSingleton<ISubscriberAvatarStorageService, CloudflareR2SubscriberAvatarStorageService>();
@@ -202,6 +207,11 @@ if (!app.Environment.IsDevelopment())
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();
+app.Use((httpContext, next) =>
+{
+    CspConstants.GetOrCreateNonce(httpContext);
+    return next(httpContext);
+});
 app.UseAuthentication();
 app.UseAuthorization();
 
@@ -334,17 +344,46 @@ app.Use(async (httpContext, next) =>
     httpContext.Response.OnStarting(() =>
     {
         var headers = httpContext.Response.Headers;
-        var contentSecurityPolicy = BuildContentSecurityPolicy(httpContext.Request, app.Environment.IsDevelopment(), postHogHostUrl);
+        var cspNonce = CspConstants.GetNonce(httpContext);
+        var contentSecurityPolicy = BuildContentSecurityPolicy(httpContext.Request, app.Environment.IsDevelopment(), postHogHostUrl, cspNonce);
 
         headers["X-Content-Type-Options"] = "nosniff";
         headers["X-Frame-Options"] = "SAMEORIGIN";
         headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
         headers["Permissions-Policy"] = "accelerometer=(), autoplay=(self), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()";
+        headers["Cross-Origin-Opener-Policy"] = "same-origin";
+        headers["Cross-Origin-Resource-Policy"] = "same-origin";
         headers["Content-Security-Policy"] = contentSecurityPolicy;
         return Task.CompletedTask;
     });
 
     await next();
+});
+
+app.Use(async (httpContext, next) =>
+{
+    if (!httpContext.Request.Path.Equals("/.well-known/security.txt", StringComparison.OrdinalIgnoreCase))
+    {
+        await next();
+        return;
+    }
+
+    var securityFilePath = Path.Combine(app.Environment.WebRootPath, ".well-known", "security.txt");
+    if (!File.Exists(securityFilePath))
+    {
+        httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    httpContext.Response.ContentType = "text/plain; charset=utf-8";
+    httpContext.Response.ContentLength = new FileInfo(securityFilePath).Length;
+
+    if (HttpMethods.IsHead(httpContext.Request.Method))
+    {
+        return;
+    }
+
+    await httpContext.Response.SendFileAsync(securityFilePath, httpContext.RequestAborted);
 });
 
 app.UseAntiforgery();
@@ -698,7 +737,10 @@ app.MapGet("/betaal/{planSlug}", async (
             statusCode: StatusCodes.Status500InternalServerError);
     }
 
-    var html = payFastCheckoutService.BuildAutoSubmitFormHtml(checkoutForm, $"Jy betaal nou vir {plan.Name}.");
+    var html = payFastCheckoutService.BuildAutoSubmitFormHtml(
+        checkoutForm,
+        $"Jy betaal nou vir {plan.Name}.",
+        CspConstants.GetNonce(httpContext));
     httpContext.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
     httpContext.Response.Headers.Pragma = "no-cache";
     httpContext.Response.Headers.Expires = "0";
@@ -2317,18 +2359,19 @@ static async Task<bool> TryServeBundledBlazorRuntimeScriptAsync(HttpContext http
     return true;
 }
 
-static string BuildContentSecurityPolicy(HttpRequest request, bool isDevelopment, string? postHogHostUrl)
+static string BuildContentSecurityPolicy(HttpRequest request, bool isDevelopment, string? postHogHostUrl, string? cspNonce)
 {
     var postHogHostOrigin = TryGetCspHostOrigin(postHogHostUrl);
     var postHogAssetsOrigin = TryGetPostHogAssetsOrigin(postHogHostOrigin);
-    var scriptSources = BuildScriptSources(postHogHostOrigin, postHogAssetsOrigin);
+    var scriptSources = BuildScriptSources(postHogHostOrigin, postHogAssetsOrigin, cspNonce, includeUnsafeInlineCompatibility: true);
+    var scriptElementSources = BuildScriptSources(postHogHostOrigin, postHogAssetsOrigin, cspNonce, includeUnsafeInlineCompatibility: false);
     var formActionSources = BuildFormActionSources(request, isDevelopment);
     var frameSources = BuildFrameSources();
     var connectSources = isDevelopment
         ? "'self' https: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* wss:"
         : "'self' https: wss:";
 
-    return $"default-src 'self'; base-uri 'self'; form-action {formActionSources}; object-src 'none'; frame-ancestors 'self'; frame-src {frameSources}; img-src 'self' data: https:; media-src 'self' blob:; font-src 'self' data:; connect-src {connectSources}; script-src {scriptSources}; script-src-elem {scriptSources}; style-src 'self' 'unsafe-inline';";
+    return $"default-src 'self'; base-uri 'self'; form-action {formActionSources}; object-src 'none'; frame-ancestors 'self'; frame-src {frameSources}; img-src 'self' data: https:; media-src 'self' blob:; font-src 'self' data:; connect-src {connectSources}; manifest-src 'self'; script-src {scriptSources}; script-src-elem {scriptElementSources}; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; style-src-elem 'self'; style-src-attr 'unsafe-inline';";
 }
 
 static string BuildFormActionSources(HttpRequest request, bool isDevelopment)
@@ -2406,7 +2449,7 @@ static string? TryGetCspHostOrigin(string? url)
     return uri.IsDefaultPort ? $"{uri.Scheme}://{uri.Host}" : $"{uri.Scheme}://{uri.Host}:{uri.Port}";
 }
 
-static string BuildScriptSources(string? postHogHostOrigin, string? postHogAssetsOrigin)
+static string BuildScriptSources(string? postHogHostOrigin, string? postHogAssetsOrigin, string? cspNonce, bool includeUnsafeInlineCompatibility)
 {
     var sources = new List<string>
     {
@@ -2425,8 +2468,16 @@ static string BuildScriptSources(string? postHogHostOrigin, string? postHogAsset
         sources.Add(postHogAssetsOrigin);
     }
 
-    sources.Add("'unsafe-inline'");
-    sources.Add("'unsafe-eval'");
+    if (!string.IsNullOrWhiteSpace(cspNonce))
+    {
+        sources.Add($"'nonce-{cspNonce}'");
+    }
+
+    if (includeUnsafeInlineCompatibility)
+    {
+        // Keep existing inline handler attributes working while inline script blocks stay nonce-gated.
+        sources.Add("'unsafe-inline'");
+    }
 
     return string.Join(' ', sources);
 }
@@ -3518,6 +3569,11 @@ static void LogPostHogConfiguration(WebApplication app, PostHogSettings settings
 
     if (settings.IsConfigured)
     {
+        if (!LooksLikePublicPostHogProjectApiKey(settings.ProjectApiKey))
+        {
+            logger.LogWarning("PostHog analytics is configured, but the exposed client key does not match the expected public project key format. Verify that a browser-safe project key is configured rather than a private credential.");
+        }
+
         logger.LogInformation("PostHog analytics is configured with host {PostHogHostUrl}.", settings.HostUrl);
         return;
     }
@@ -3533,6 +3589,10 @@ static void LogPostHogConfiguration(WebApplication app, PostHogSettings settings
 
     logger.LogInformation("PostHog analytics is not configured.");
 }
+
+static bool LooksLikePublicPostHogProjectApiKey(string? apiKey) =>
+    !string.IsNullOrWhiteSpace(apiKey) &&
+    apiKey.StartsWith("phc_", StringComparison.OrdinalIgnoreCase);
 
 static string ResolveAudioMimeType(string? configuredContentType, string? audioObjectKey)
 {

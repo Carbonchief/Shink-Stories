@@ -87,9 +87,12 @@ public sealed partial class PayFastCheckoutService(HttpClient httpClient, IOptio
         return true;
     }
 
-    public string BuildAutoSubmitFormHtml(PayFastCheckoutForm checkoutForm, string heading)
+    public string BuildAutoSubmitFormHtml(PayFastCheckoutForm checkoutForm, string heading, string? cspNonce = null)
     {
         var builder = new StringBuilder();
+        var scriptNonceAttribute = string.IsNullOrWhiteSpace(cspNonce)
+            ? string.Empty
+            : $" nonce=\"{HtmlEncode(cspNonce)}\"";
         builder.AppendLine("<!doctype html>");
         builder.AppendLine("<html lang=\"af\">");
         builder.AppendLine("<head>");
@@ -112,7 +115,7 @@ public sealed partial class PayFastCheckoutService(HttpClient httpClient, IOptio
         builder.AppendLine("      <noscript><button type=\"submit\">Gaan na PayFast</button></noscript>");
         builder.AppendLine("    </form>");
         builder.AppendLine("  </main>");
-        builder.AppendLine("  <script>document.getElementById('payfast-form')?.submit();</script>");
+        builder.AppendLine($"  <script{scriptNonceAttribute}>document.getElementById('payfast-form')?.submit();</script>");
         builder.AppendLine("</body>");
         builder.AppendLine("</html>");
         return builder.ToString();
