@@ -39,14 +39,34 @@
 }
 
 .resources-hero {
-    padding: clamp(1.4rem, 2.6vw, 2.3rem);
-    overflow: hidden;
+    padding: clamp(0.75rem, 1.8vw, 1.4rem) clamp(1rem, 2.6vw, 2rem) clamp(1.2rem, 2.2vw, 1.8rem);
+    overflow: visible;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.resources-hero-art {
+    display: flex;
+    justify-content: center;
+    margin: 0 auto 0.45rem;
+}
+
+.resources-hero-art img {
+    width: clamp(180px, 22vw, 270px);
+    height: auto;
+    display: block;
+    object-fit: contain;
+    filter: drop-shadow(0 14px 22px rgba(74, 56, 34, 0.14));
 }
 
 .resources-hero-copy {
     display: grid;
-    gap: 0.9rem;
-    max-width: 45rem;
+    justify-items: center;
+    gap: 0.72rem;
+    max-width: 48rem;
+    margin-inline: auto;
+    text-align: center;
 }
 
 .resources-eyebrow {
@@ -391,6 +411,14 @@
     .resources-tabs,
     .resources-panel {
         border-radius: 24px;
+    }
+
+    .resources-hero {
+        padding-inline: 0;
+    }
+
+    .resources-hero-art img {
+        width: min(72vw, 230px);
     }
 
     .resources-tab {
