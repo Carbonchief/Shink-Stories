@@ -85,6 +85,27 @@
 </section>
 
 <div class="home-content-gradient">
+<section class="join-promo home-scroll-reveal home-reveal-delay-fast">
+    <div class="join-promo-media">
+        <img src="/branding/Kom_Luister_Saam.png"
+             alt="Kom Luister Saam by Schink Stories" loading="lazy" decoding="async" />
+    </div>
+
+    <div class="join-promo-copy">
+        <p class="join-promo-intro">Ontdek 'n wêreld vol verbeelding, pret en betekenis.</p>
+
+        <ul class="join-promo-list">
+            <li>Geniet <strong>onbeperkte toegang</strong> tot al ons Afrikaanse oudiostories en reekse</li>
+            <li>Dis veilig vir kinders - <strong>geen advertensies of donker temas nie</strong></li>
+            <li>Bou gesonde karakter, leer goeie waardes en waardevolle lewenslesse</li>
+            <li>Help met taalontwikkeling, ouditiewe ontwikkeling, fokus en soveel meer</li>
+            <li>Nuwe stories elke maand + toegang tot die volledige versameling</li>
+        </ul>
+
+        <a class="join-promo-cta" href='@BuildPlanSignUpHref("schink-stories-maandeliks")'>Sluit aan vir slegs R 79 p/maand</a>
+    </div>
+</section>
+
 @if (IsLoadingPlaylists && HomePlaylists.Count == 0)
 {
     @for (var index = 0; index < 2; index++)
@@ -196,27 +217,6 @@ else
                   PrimaryActionHref="@StoryAccessPopupPrimaryHref"
                   PlanActionHref="@StoryAccessPopupPlanHref"
                   OnClose="CloseStoryAccessPopupAsync" />
-
-<section class="join-promo home-scroll-reveal home-reveal-delay-fast">
-    <div class="join-promo-media">
-        <img src="/branding/Kom_Luister_Saam.png"
-             alt="Kom Luister Saam by Schink Stories" loading="lazy" decoding="async" />
-    </div>
-
-    <div class="join-promo-copy">
-        <p class="join-promo-intro">Ontdek 'n wêreld vol verbeelding, pret en betekenis.</p>
-
-        <ul class="join-promo-list">
-            <li>Geniet <strong>onbeperkte toegang</strong> tot al ons Afrikaanse oudiostories en reekse</li>
-            <li>Dis veilig vir kinders - <strong>geen advertensies of donker temas nie</strong></li>
-            <li>Bou gesonde karakter, leer goeie waardes en waardevolle lewenslesse</li>
-            <li>Help met taalontwikkeling, ouditiewe ontwikkeling, fokus en soveel meer</li>
-            <li>Nuwe stories elke maand + toegang tot die volledige versameling</li>
-        </ul>
-
-        <a class="join-promo-cta" href='@BuildPlanSignUpHref("schink-stories-maandeliks")'>Sluit aan vir slegs R 79 p/maand</a>
-    </div>
-</section>
 
 <section class="home-testimonials section-block home-scroll-reveal home-reveal-delay-standard p-3" aria-labelledby="home-ouers-se">
     <div class="home-testimonials-header">
@@ -347,6 +347,35 @@ else
             <i class="fa-brands fa-whatsapp" aria-hidden="true"></i>
             <span>Sluit aan op WhatsApp</span>
         </a>
+    </div>
+</section>
+
+<section class="home-faq section-block home-scroll-reveal home-reveal-delay-standard" aria-labelledby="home-faq-title">
+    <div class="home-faq-heading">
+        <p class="home-faq-kicker">Algemene vrae</p>
+        <h2 id="home-faq-title">Vrae wat ouers gereeld vra</h2>
+    </div>
+
+    <div class="home-faq-list">
+        <details class="home-faq-item" open>
+            <summary>Moet ek 'n kredietkaart invoer om die 3 gratis stories te luister?</summary>
+            <p>Nee, glad nie. Jy kan dadelik begin luister - geen kaart, geen verbintenis.</p>
+        </details>
+
+        <details class="home-faq-item">
+            <summary>Vir watter ouderdom is Schink Stories geskik?</summary>
+            <p>Ons stories is geskik vir kinders van 3 tot 10 jaar, met rustige karakters, eenvoudige verhale en opbouende waardes.</p>
+        </details>
+
+        <details class="home-faq-item">
+            <summary>Hoe gereeld word nuwe stories bygevoeg?</summary>
+            <p>Nuwe stories word elke maand bygevoeg, en intekenare kry volle toegang tot die groeiende biblioteek.</p>
+        </details>
+
+        <details class="home-faq-item">
+            <summary>Kan ek op enige tyd kanselleer?</summary>
+            <p>Ja. Jy kan enige tyd kanselleer, en jou toegang bly aktief tot die einde van jou betaalde tydperk.</p>
+        </details>
     </div>
 </section>
 

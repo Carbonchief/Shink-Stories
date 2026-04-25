@@ -504,6 +504,7 @@ h2 {
 
 .stories-carousel-section h2,
 .perfect-plan-header h2,
+.home-faq-heading h2,
 .contact-title {
     margin: 0;
     font-size: clamp(1.65rem, 2.8vw, 2.35rem);
@@ -513,6 +514,7 @@ h2 {
 
 .stories-carousel-section .section-intro,
 .perfect-plan-header p,
+.home-faq-heading p,
 .contact-copy p {
     margin-top: 0.4rem;
     max-width: 64ch;
@@ -917,6 +919,87 @@ h2 {
 .home-testimonials {
     margin: 1.4rem auto 0;
     width: min(100%, 980px);
+}
+
+.home-faq {
+    margin: 1.35rem auto 0;
+    width: min(100%, 880px);
+    padding: 0 0.75rem;
+}
+
+.home-faq-heading {
+    text-align: center;
+    margin-bottom: 0.75rem;
+}
+
+.home-faq-kicker {
+    margin: 0 0 0.18rem;
+    color: #d67f12;
+    font-size: 0.76rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.home-faq-heading h2 {
+    color: var(--text);
+}
+
+.home-faq-list {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.home-faq-item {
+    border: 1px solid rgba(35, 52, 40, 0.1);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.78);
+    overflow: clip;
+    box-shadow: 0 10px 22px rgba(78, 58, 32, 0.06);
+}
+
+.home-faq-item summary {
+    cursor: pointer;
+    list-style: none;
+    margin: 0;
+    padding: 0.68rem 0.82rem;
+    font-weight: 700;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 0.52rem;
+    line-height: 1.3;
+}
+
+.home-faq-item summary::-webkit-details-marker {
+    display: none;
+}
+
+.home-faq-item summary::before {
+    content: "\2b";
+    width: 1.05rem;
+    height: 1.05rem;
+    border-radius: 999px;
+    border: 1px solid rgba(216, 111, 52, 0.36);
+    color: #9d5712;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.78rem;
+    line-height: 1;
+    flex-shrink: 0;
+}
+
+.home-faq-item[open] summary::before {
+    content: "\2212";
+}
+
+.home-faq-item p {
+    margin: 0;
+    padding: 0 0.82rem 0.75rem 2.39rem;
+    color: var(--muted);
+    font-size: 0.95rem;
+    line-height: 1.52;
 }
 
 .home-whatsapp-join {
@@ -1891,6 +1974,20 @@ h2 {
         width: 100%;
         border-radius: 22px;
         padding: 1.95rem 0.84rem 0.9rem;
+    }
+
+    .home-faq {
+        padding-inline: 0.72rem;
+    }
+
+    .home-faq-item summary {
+        padding: 0.64rem 0.74rem;
+        font-size: 0.95rem;
+    }
+
+    .home-faq-item p {
+        padding: 0 0.74rem 0.72rem 2.2rem;
+        font-size: 0.9rem;
     }
 
     .cta {
