@@ -62,7 +62,7 @@
                 <span class="hero-title-line">Bou jou kind se karakter -</span>
                 <span class="hero-title-line hero-title-subline">een storie op 'n slag.</span>
             </h1>
-            <p class="hero-intro">Rustige, opbouende <strong>Afrikaanse storietyd</strong> – sonder skerms.</p>
+            <p class="hero-intro">Rustige, opbouende <strong>Afrikaanse storietyd</strong>.</p>
             <p class="hero-support">Minder skerms. Rustiger aande. Stories wat waardes bou.</p>
         </div>
         <div class="hero-actions">
@@ -76,8 +76,11 @@
             }
             else
             {
-                <button type="button" class="cta cta-primary" @onclick="@(() => NavigationManager.NavigateTo("/gratis"))">PROBEER GRATIS</button>
-                <a class="cta cta-secondary" href="#perfekte-plan">KIES 'N PLAN</a>
+                <div class="hero-cta-row">
+                    <button type="button" class="cta cta-primary" @onclick="@(() => NavigationManager.NavigateTo("/gratis"))">Luister 3 Stories Gratis</button>
+                    <a class="cta cta-secondary" href="#perfekte-plan">KIES 'N PLAN</a>
+                </div>
+                <a class="hero-more-link" href="/opsies">Meer inligting</a>
             }
         </div>
         <p class="hero-pricing">R 79 per maand. Kanselleer enige tyd.</p>
@@ -108,6 +111,11 @@
 
 @if (IsLoadingPlaylists && HomePlaylists.Count == 0)
 {
+    <section class="home-page-loading" role="status" aria-live="polite">
+        <span class="home-page-loading-spinner" aria-hidden="true"></span>
+        <span>Stories laai...</span>
+    </section>
+
     @for (var index = 0; index < 2; index++)
     {
         <section class="section-block stories-carousel-section home-loading-section" aria-hidden="true">

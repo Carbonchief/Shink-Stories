@@ -224,11 +224,6 @@
     transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
 }
 
-.resources-card.is-unlocked {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0.8rem;
-}
-
 .resources-card::before {
     content: "";
     position: absolute;
@@ -306,10 +301,6 @@
     justify-content: flex-start;
     align-items: center;
     gap: 0.65rem;
-}
-
-.resources-card.is-unlocked .resources-card-actions {
-    grid-column: 1;
 }
 
 .resources-open-link,

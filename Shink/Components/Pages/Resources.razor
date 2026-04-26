@@ -128,21 +128,18 @@
                     {
                         var canAccessDocument = UserCanAccessDocument(document);
                         <article class="resources-card @(canAccessDocument ? "is-unlocked" : "is-locked")">
-                            @if (!canAccessDocument)
-                            {
-                                <div class="resources-card-preview" aria-hidden="true">
-                                    @if (!string.IsNullOrWhiteSpace(document.PreviewUrl))
-                                    {
-                                        <img class="resources-card-preview-image"
-                                             src="@document.PreviewUrl"
-                                             loading="lazy"
-                                             alt="" />
-                                    }
-                                    <div class="resources-card-icon">
-                                        <i class="fa-solid fa-file-pdf"></i>
-                                    </div>
+                            <div class="resources-card-preview" aria-hidden="true">
+                                @if (!string.IsNullOrWhiteSpace(document.PreviewUrl))
+                                {
+                                    <img class="resources-card-preview-image"
+                                         src="@document.PreviewUrl"
+                                         loading="lazy"
+                                         alt="" />
+                                }
+                                <div class="resources-card-icon">
+                                    <i class="fa-solid fa-file-pdf"></i>
                                 </div>
-                            }
+                            </div>
                             <div class="resources-card-body">
                                 <h3>@document.Title</h3>
                                 <p>@BuildDocumentMeta(document)</p>
