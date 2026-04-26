@@ -10,7 +10,7 @@
     padding: clamp(1.4rem, 2vw, 2.2rem);
     box-sizing: border-box;
     display: grid;
-    gap: 2rem;
+    gap: 1.4rem;
     color: var(--opsies-ink);
 }
 
@@ -24,6 +24,19 @@
 .opsies-page > *:nth-child(2) { animation-delay: 90ms; }
 .opsies-page > *:nth-child(3) { animation-delay: 150ms; }
 .opsies-page > *:nth-child(4) { animation-delay: 210ms; }
+
+.opsies-page-logo {
+    display: flex;
+    justify-content: center;
+    margin: 0 auto -0.25rem;
+}
+
+.opsies-page-logo-image {
+    display: block;
+    width: clamp(180px, 22vw, 280px);
+    height: auto;
+    filter: drop-shadow(0 16px 24px rgba(28, 86, 88, 0.14));
+}
 
 .opsies-payment-status,
 .opsies-hero,
@@ -77,17 +90,21 @@
 
 .opsies-hero {
     overflow: hidden;
-    grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
-    align-items: center;
+    grid-template-columns: 1fr;
+    align-items: start;
+    justify-items: center;
+    text-align: center;
+    gap: 0.9rem;
 }
 
 .opsies-hero-copy {
     position: relative;
     z-index: 1;
     display: grid;
-    gap: 1rem;
-    max-width: 40rem;
-    order: 1;
+    justify-items: center;
+    gap: 0.8rem;
+    max-width: 48rem;
+    order: 2;
 }
 
 .opsies-eyebrow,
@@ -101,11 +118,17 @@
 }
 
 .opsies-hero-copy h1 {
-    margin: 0;
-    font-size: clamp(2rem, 4vw, 3.35rem);
+    margin: 0 auto;
+    width: fit-content;
+    max-width: min(100%, 18ch);
+    padding: 0.56rem 1.05rem;
+    border-radius: 999px;
+    border: 1px solid rgba(64, 141, 147, 0.18);
+    background: rgba(255, 255, 255, 0.74);
+    box-shadow: 0 14px 32px rgba(28, 86, 88, 0.08);
+    font-size: clamp(1.76rem, 3.2vw, 2.72rem);
     line-height: 1.05;
-    letter-spacing: -0.03em;
-    max-width: 14ch;
+    letter-spacing: -0.02em;
 }
 
 .opsies-hero-lead,
@@ -122,7 +145,7 @@
 }
 
 .opsies-hero-lead {
-    max-width: 58ch;
+    max-width: 54ch;
 }
 
 .opsies-hero-points {
@@ -146,33 +169,14 @@
     font-size: 0.96rem;
 }
 
-.opsies-hero-media {
-    position: relative;
-    z-index: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: 100%;
-    order: 2;
-}
-
-.opsies-hero-image {
-    display: block;
-    width: min(100%, 32rem);
-    height: auto;
-    border-radius: 28px;
-    background: linear-gradient(180deg, #fff8f0 0%, #f9e9d8 100%);
-    box-shadow: 0 26px 60px rgba(72, 48, 23, 0.18);
-    animation: opsies-float 12s ease-in-out 1s infinite;
-}
-
 .opsies-plan-shell {
     scroll-margin-top: 6rem;
 }
 
 .opsies-section-heading {
     display: grid;
-    gap: 0.8rem;
+    justify-items: start;
+    gap: 0.62rem;
     max-width: 46rem;
 }
 
@@ -184,7 +188,14 @@
 
 .opsies-section-heading h2 {
     margin: 0;
-    font-size: clamp(1.55rem, 2.8vw, 2.35rem);
+    width: fit-content;
+    max-width: 100%;
+    padding: 0.46rem 0.86rem;
+    border-radius: 999px;
+    border: 1px solid rgba(216, 111, 52, 0.16);
+    background: rgba(255, 255, 255, 0.72);
+    box-shadow: 0 12px 28px rgba(78, 58, 32, 0.07);
+    font-size: clamp(1.35rem, 2.3vw, 2rem);
     line-height: 1.1;
 }
 
@@ -736,12 +747,8 @@
         gap: 1rem;
     }
 
-    .opsies-hero {
-        grid-template-columns: 1fr;
-    }
-
     .opsies-hero-copy h1 {
-        max-width: none;
+        max-width: min(100%, 22ch);
     }
 
     .opsies-hero-points {
@@ -755,7 +762,8 @@
 
 @media (max-width: 720px) {
     .opsies-page {
-        padding: 1rem;
+        gap: 0.85rem;
+        padding: 0.75rem;
     }
 
     .opsies-grid {
@@ -764,15 +772,82 @@
 
     .opsies-payment-status,
     .opsies-hero,
+    .opsies-plan-shell,
     .opsies-compare,
     .opsies-faq,
     .opsies-testimonials,
     .opsie-card {
-        border-radius: 24px;
+        border-radius: 20px;
+    }
+
+    .opsies-hero,
+    .opsies-plan-shell,
+    .opsies-compare,
+    .opsies-faq,
+    .opsies-testimonials {
+        gap: 0.8rem;
+        padding: 0.85rem;
+    }
+
+    .opsies-page-logo {
+        margin-bottom: -0.2rem;
+    }
+
+    .opsies-page-logo-image {
+        width: min(52vw, 168px);
+    }
+
+    .opsies-hero-copy {
+        gap: 0.52rem;
+    }
+
+    .opsies-eyebrow,
+    .opsies-section-kicker {
+        font-size: 0.68rem;
+        letter-spacing: 0.14em;
+    }
+
+    .opsies-hero-copy h1 {
+        max-width: 100%;
+        padding: 0.42rem 0.72rem;
+        border-radius: 20px;
+        font-size: clamp(1.22rem, 6vw, 1.62rem);
+        line-height: 1.12;
+    }
+
+    .opsies-hero-lead {
+        font-size: 0.9rem;
+        line-height: 1.45;
+    }
+
+    .opsies-hero-points {
+        display: none;
+    }
+
+    .opsies-section-heading {
+        gap: 0.45rem;
+    }
+
+    .opsies-section-heading h2 {
+        padding: 0.38rem 0.68rem;
+        border-radius: 18px;
+        font-size: clamp(1.1rem, 5vw, 1.42rem);
+        line-height: 1.15;
+    }
+
+    .opsies-section-heading p:last-child {
+        font-size: 0.9rem;
+        line-height: 1.45;
     }
 
     .opsie-card {
-        padding: 1rem 1rem 1.15rem;
+        padding: 0.85rem 0.85rem 1rem;
+    }
+
+    .opsie-head {
+        gap: 0.5rem;
+        padding: 0.82rem;
+        border-radius: 16px;
     }
 
     .opsie-plan-option {

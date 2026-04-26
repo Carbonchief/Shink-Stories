@@ -32,6 +32,19 @@
 .about-page > *:nth-child(12) { animation-delay: 690ms; }
 .about-page > *:nth-child(13) { animation-delay: 750ms; }
 
+.about-page-logo {
+    display: flex;
+    justify-content: center;
+    margin: 0 auto -0.2rem;
+}
+
+.about-page-logo-image {
+    display: block;
+    width: clamp(180px, 22vw, 280px);
+    height: auto;
+    filter: drop-shadow(0 16px 24px rgba(28, 86, 88, 0.14));
+}
+
 .about-hero,
 .about-title-block,
 .about-block,
@@ -49,6 +62,22 @@
 .about-block,
 .about-card {
     padding: clamp(1.2rem, 2.6vw, 2rem);
+}
+
+.about-page-logo,
+.about-hero,
+.about-title-block,
+.about-intro-block {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+.about-page-logo,
+.about-title-block,
+.about-intro-block {
+    padding: 0;
 }
 
 .about-hero {
@@ -332,6 +361,17 @@
     .about-block,
     .about-card {
         border-radius: 24px;
+    }
+
+    .about-page-logo,
+    .about-hero,
+    .about-title-block,
+    .about-intro-block {
+        border-radius: 0;
+    }
+
+    .about-page-logo-image {
+        width: min(52vw, 168px);
     }
 
     .about-grid,

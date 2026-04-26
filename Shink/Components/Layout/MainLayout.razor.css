@@ -279,6 +279,8 @@
 .nav-controls.is-search-active .nav-menu-toggle,
 .nav-controls.is-search-active .notification-center,
 .nav-controls.is-search-active .account-menu,
+.nav-controls.is-search-active .night-mode-toggle,
+.guest-controls.is-search-active .night-mode-toggle,
 .guest-controls.is-search-active .header-signin-btn {
     display: none !important;
 }
@@ -413,6 +415,42 @@
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
     z-index: 61;
+}
+
+.night-mode-toggle {
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: #113d4d;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    -webkit-appearance: none;
+    appearance: none;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.night-mode-toggle i {
+    width: 17px;
+    height: 17px;
+    font-size: 17px;
+    line-height: 1;
+}
+
+.night-mode-toggle:hover,
+.night-mode-toggle[aria-pressed="true"] {
+    background: color-mix(in srgb, #1b4453 8%, transparent);
+    border-color: color-mix(in srgb, #1b4453 18%, transparent);
+}
+
+.night-mode-toggle:focus-visible {
+    outline: 3px solid color-mix(in srgb, #ffffff 30%, var(--accent));
+    outline-offset: 2px;
 }
 
 .site-shell.admin-route .nav-menu-toggle {
@@ -714,11 +752,40 @@
     color: #f2f7fb;
 }
 
+.site-shell.story-route .night-mode-toggle {
+    border-color: transparent;
+    background: transparent;
+    color: #f4f8fb;
+}
+
+.site-shell.story-route .night-mode-toggle:hover,
+.site-shell.story-route .night-mode-toggle[aria-pressed="true"] {
+    background: rgba(236, 242, 247, 0.14);
+    border-color: rgba(236, 242, 247, 0.28);
+}
+
 .site-shell.story-route.playlist-nav-route .showcase-floating-menu .nav-menu-toggle,
 .site-shell.story-route.playlist-showcase-route .showcase-floating-menu .nav-menu-toggle {
     border-color: transparent;
     background: transparent;
     color: #000000;
+}
+
+.site-shell.story-route.playlist-nav-route .showcase-floating-menu .night-mode-toggle,
+.site-shell.story-route.playlist-showcase-route .showcase-floating-menu .night-mode-toggle {
+    width: 44px;
+    height: 44px;
+    color: #000000;
+    background: rgba(255, 255, 255, 0.7);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+.site-shell.story-route.playlist-nav-route .showcase-floating-menu .night-mode-toggle:hover,
+.site-shell.story-route.playlist-showcase-route .showcase-floating-menu .night-mode-toggle:hover,
+.site-shell.story-route.playlist-nav-route .showcase-floating-menu .night-mode-toggle[aria-pressed="true"],
+.site-shell.story-route.playlist-showcase-route .showcase-floating-menu .night-mode-toggle[aria-pressed="true"] {
+    background: rgba(255, 255, 255, 0.9);
+    border-color: rgba(0, 0, 0, 0.16);
 }
 
 .site-shell.story-route.playlist-nav-route .showcase-floating-menu .nav-menu-toggle:hover,
@@ -1675,6 +1742,11 @@
     .notification-toggle {
         min-height: 32px;
         padding: 0.28rem 0.34rem;
+    }
+
+    .night-mode-toggle {
+        width: 32px;
+        height: 32px;
     }
 
     .notification-panel {

@@ -33,6 +33,14 @@
 </HeadContent>
 
 <section class="opsies-page">
+    <div class="opsies-page-logo">
+        <img src="/branding/Schink_Stories_Logo_turqoise.png"
+             alt="Schink Stories"
+             class="opsies-page-logo-image"
+             loading="eager"
+             decoding="async" />
+    </div>
+
     @if (string.Equals(PaymentStatus, "sukses", StringComparison.OrdinalIgnoreCase))
     {
         <p class="opsies-payment-status opsies-payment-success" role="status" aria-live="polite">
@@ -53,10 +61,6 @@
     }
 
     <section class="opsies-hero">
-        <div class="opsies-hero-media">
-            <img src="/branding/Schink_Stories_Logo_turqoise.png"
-                 alt="Schink Stories Opsies" class="opsies-hero-image" loading="eager" decoding="async" />
-        </div>
         <div class="opsies-hero-copy">
             <p class="opsies-eyebrow">Kies 'n opsie</p>
             <h1>Kies die plan wat die beste by julle storietyd pas.</h1>

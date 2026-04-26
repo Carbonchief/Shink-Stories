@@ -70,6 +70,209 @@ body {
     line-height: 1.5;
 }
 
+body.schink-night-mode {
+    color-scheme: dark;
+    --paper: #10161a;
+    --surface: #172027;
+    --text: #f3f0e8;
+    --muted: #bbc4c7;
+    --ink: #9dddea;
+    --accent: #f2a84d;
+    --accent-deep: #d88a1e;
+    --line: rgba(234, 229, 216, 0.18);
+    color: var(--text);
+    background: #0f1519;
+}
+
+body.schink-night-mode .site-shell {
+    background:
+        radial-gradient(86% 64% at 50% -12%, rgba(86, 151, 162, 0.42) 0%, rgba(86, 151, 162, 0) 58%),
+        linear-gradient(180deg, #10191f 0%, #132127 46%, #0f1519 100%);
+}
+
+body.schink-night-mode .site-shell.home-route {
+    background:
+        radial-gradient(82% 58% at 50% 10%, rgba(243, 154, 50, 0.16) 0%, rgba(243, 154, 50, 0) 62%),
+        linear-gradient(180deg, #0d1820 0%, #132931 42%, #111719 100%);
+}
+
+body.schink-night-mode .site-shell.story-route {
+    background:
+        radial-gradient(120% 90% at 50% -12%, rgba(113, 175, 118, 0.12) 0%, rgba(113, 175, 118, 0) 52%),
+        linear-gradient(180deg, #12181d 0%, #0e1418 100%);
+}
+
+body.schink-night-mode .site-shell.store-route,
+body.schink-night-mode .site-shell.about-route,
+body.schink-night-mode .site-shell.about-route.store-route {
+    background: linear-gradient(180deg, #141b20 0%, #11171b 100%);
+}
+
+body.schink-night-mode .site-shell.playlist-nav-route,
+body.schink-night-mode .site-shell.playlist-showcase-route,
+body.schink-night-mode .site-shell.story-route.playlist-nav-route,
+body.schink-night-mode .site-shell.story-route.playlist-showcase-route,
+body.schink-night-mode .site-shell.playlist-nav-route .site-main,
+body.schink-night-mode .site-shell.playlist-showcase-route .site-main {
+    background: #0f1519;
+}
+
+body.schink-night-mode .site-header {
+    border-bottom-color: rgba(234, 229, 216, 0.13);
+    background: rgba(16, 23, 28, 0.92);
+    box-shadow: 0 12px 26px rgba(0, 0, 0, 0.38);
+}
+
+body.schink-night-mode .site-shell.home-route .site-header {
+    background: linear-gradient(180deg, rgba(8, 13, 16, 0.38) 0%, rgba(8, 13, 16, 0.2) 100%);
+    border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+body.schink-night-mode .site-shell.story-route .site-header {
+    background: rgba(17, 23, 28, 0.93);
+    border-bottom-color: rgba(234, 229, 216, 0.12);
+    box-shadow: 0 10px 22px rgba(0, 0, 0, 0.34);
+}
+
+body.schink-night-mode .brand-wordmark {
+    filter: brightness(0) invert(1);
+}
+
+body.schink-night-mode .site-footer .brand-wordmark {
+    filter: brightness(0) invert(1);
+}
+
+body.schink-night-mode .site-main,
+body.schink-night-mode .site-main h1,
+body.schink-night-mode .site-main h2,
+body.schink-night-mode .site-main h3,
+body.schink-night-mode .site-main h4,
+body.schink-night-mode .site-main p,
+body.schink-night-mode .site-main li {
+    color: var(--text);
+}
+
+body.schink-night-mode .site-main small,
+body.schink-night-mode .site-main figcaption,
+body.schink-night-mode .site-main .eyebrow,
+body.schink-night-mode .site-main .kicker,
+body.schink-night-mode .site-main .muted {
+    color: var(--muted);
+}
+
+body.schink-night-mode .nav-menu-toggle,
+body.schink-night-mode .site-search-toggle,
+body.schink-night-mode .notification-toggle,
+body.schink-night-mode .account-toggle,
+body.schink-night-mode .night-mode-toggle {
+    color: #eaf5f7;
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.12);
+}
+
+body.schink-night-mode .nav-menu-toggle:hover,
+body.schink-night-mode .site-search-toggle:hover,
+body.schink-night-mode .notification-toggle:hover,
+body.schink-night-mode .account-toggle:hover,
+body.schink-night-mode .night-mode-toggle:hover,
+body.schink-night-mode .night-mode-toggle[aria-pressed="true"] {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+body.schink-night-mode .account-caret {
+    color: #eaf5f7;
+}
+
+body.schink-night-mode .site-search-suggestions,
+body.schink-night-mode .notification-panel,
+body.schink-night-mode .site-nav.is-open {
+    background: rgba(13, 18, 22, 0.98);
+    border-color: rgba(234, 229, 216, 0.16);
+    box-shadow: 0 18px 34px rgba(0, 0, 0, 0.52);
+}
+
+body.schink-night-mode .site-search-suggestions-list .site-search-suggestion,
+body.schink-night-mode .notification-list .notification-item {
+    color: #f3f0e8;
+    border-bottom-color: rgba(234, 229, 216, 0.12);
+}
+
+body.schink-night-mode .site-search-suggestions-list .site-search-suggestion:hover,
+body.schink-night-mode .notification-list .notification-item:hover {
+    background: rgba(255, 255, 255, 0.08);
+}
+
+body.schink-night-mode .notification-panel-header,
+body.schink-night-mode .notification-panel-footer {
+    background: rgba(20, 27, 32, 0.98);
+    border-color: rgba(234, 229, 216, 0.12);
+    color: #f3f0e8;
+}
+
+body.schink-night-mode .notification-panel-status,
+body.schink-night-mode .notification-panel-count,
+body.schink-night-mode .notification-list .notification-item-date,
+body.schink-night-mode .notification-list .notification-item-empty,
+body.schink-night-mode .site-search-suggestions-list .site-search-suggestion-kind,
+body.schink-night-mode .site-search-suggestions-list .site-search-suggestion-empty {
+    color: var(--muted);
+}
+
+body.schink-night-mode .site-search-input {
+    color: #f3f0e8;
+}
+
+body.schink-night-mode .site-search-input::placeholder {
+    color: #aab5b9;
+}
+
+body.schink-night-mode .is-search-active .site-search-form {
+    background: #121a20;
+    border-color: rgba(242, 168, 77, 0.62);
+}
+
+body.schink-night-mode .is-search-active .site-search-toggle {
+    color: #f3f0e8;
+}
+
+body.schink-night-mode .site-main .about-block,
+body.schink-night-mode .site-main .about-card,
+body.schink-night-mode .site-main .gratis-card,
+body.schink-night-mode .site-main .home-review-card,
+body.schink-night-mode .site-main .review-card,
+body.schink-night-mode .site-main .opsies-testimonials,
+body.schink-night-mode .site-main .opsies-review-card,
+body.schink-night-mode .site-main .opsie-card,
+body.schink-night-mode .site-main .perfect-plan-card,
+body.schink-night-mode .site-main .billing-plan-card,
+body.schink-night-mode .site-main .my-story-card,
+body.schink-night-mode .site-main .blog-card,
+body.schink-night-mode .site-main .blog-post-card,
+body.schink-night-mode .site-main .resource-card,
+body.schink-night-mode .site-main .story-card,
+body.schink-night-mode .site-main .character-card,
+body.schink-night-mode .site-main .store-card,
+body.schink-night-mode .site-main .story-access-card {
+    background: rgba(23, 32, 39, 0.96);
+    border-color: rgba(234, 229, 216, 0.15);
+    color: var(--text);
+    box-shadow: 0 18px 36px rgba(0, 0, 0, 0.26);
+}
+
+body.schink-night-mode .site-main input,
+body.schink-night-mode .site-main textarea,
+body.schink-night-mode .site-main select {
+    background: #11191f;
+    border-color: rgba(234, 229, 216, 0.2);
+    color: #f3f0e8;
+}
+
+body.schink-night-mode .site-main input::placeholder,
+body.schink-night-mode .site-main textarea::placeholder {
+    color: #a6b0b4;
+}
+
 .mud-overlay.mud-overlay-dialog {
     z-index: calc(var(--mud-zindex-dialog) + 1) !important;
 }

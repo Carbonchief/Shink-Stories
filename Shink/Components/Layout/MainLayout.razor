@@ -26,6 +26,7 @@
                     <AuthorizeView>
                         <Authorized>
                             <div class="story-header-menu nav-controls">
+                                @NightModeToggle
                                 <form class="site-search-form" role="search" action="/soek" method="get" data-search-form>
                                     <button type="button"
                                             class="site-search-toggle"
@@ -81,6 +82,7 @@
                         </Authorized>
                         <NotAuthorized>
                             <div class="story-header-menu nav-controls">
+                                @NightModeToggle
                                 <form class="site-search-form" role="search" action="/soek" method="get" data-search-form>
                                     <button type="button"
                                             class="site-search-toggle"
@@ -163,6 +165,7 @@
                 <AuthorizeView>
                     <Authorized Context="authState">
                         <div class="nav-controls">
+                            @NightModeToggle
                             <form class="site-search-form" role="search" action="/soek" method="get" data-search-form>
                                 <button type="button"
                                         class="site-search-toggle"
@@ -322,6 +325,7 @@
                     </Authorized>
                     <NotAuthorized>
                         <div class="guest-controls">
+                            @NightModeToggle
                             <form class="site-search-form" role="search" action="/soek" method="get" data-search-form>
                                 <button type="button"
                                         class="site-search-toggle"
@@ -413,6 +417,7 @@
         <AuthorizeView>
             <Authorized>
                 <div class="showcase-floating-menu nav-controls">
+                    @NightModeToggle
                     <button type="button"
                             class="nav-menu-toggle"
                             data-nav-menu-toggle
@@ -460,6 +465,7 @@
             </Authorized>
             <NotAuthorized>
                 <div class="showcase-floating-menu guest-controls">
+                    @NightModeToggle
                     <button type="button"
                             class="nav-menu-toggle"
                             data-nav-menu-toggle
@@ -551,6 +557,16 @@
 </div>
 
 @code {
+    private RenderFragment NightModeToggle => @<button type="button"
+                                                       class="night-mode-toggle"
+                                                       data-night-mode-toggle
+                                                       aria-pressed="false"
+                                                       aria-label="Skakel nagmodus aan"
+                                                       title="Skakel nagmodus aan">
+        <i class="fa-solid fa-moon" aria-hidden="true"></i>
+        <span class="sr-only" data-night-mode-toggle-label>Skakel nagmodus aan</span>
+    </button>;
+
     private string LoginHref
     {
         get

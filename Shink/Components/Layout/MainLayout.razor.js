@@ -21,6 +21,8 @@ const NOTIFICATION_LOAD_MORE_SELECTOR = "[data-notification-load-more]";
 const ACCOUNT_MENU_ROOT_SELECTOR = "[data-account-menu-root]";
 const ACCOUNT_TOGGLE_SELECTOR = "[data-account-toggle]";
 const ACCOUNT_DROPDOWN_SELECTOR = "[data-account-dropdown]";
+const NIGHT_MODE_TOGGLE_SELECTOR = "[data-night-mode-toggle]";
+const NIGHT_MODE_TOGGLE_LABEL_SELECTOR = "[data-night-mode-toggle-label]";
 const BLAZOR_ERROR_UI_SELECTOR = "#blazor-error-ui";
 const BLAZOR_ERROR_TITLE_SELECTOR = "[data-blazor-error-title]";
 const BLAZOR_ERROR_DETAIL_SELECTOR = "[data-blazor-error-detail]";
@@ -39,11 +41,16 @@ const NOTIFICATION_PAGE_SIZE = 10;
 const SEARCH_MIN_QUERY_LENGTH = 2;
 const SEARCH_DEBOUNCE_MS = 160;
 const SEARCH_MAX_RESULTS = 8;
+const NIGHT_MODE_STORAGE_KEY = "schink:night-mode";
+const NIGHT_MODE_BODY_CLASS = "schink-night-mode";
 const OPEN_LABEL = "Maak navigasie toe";
 const CLOSED_LABEL = "Maak navigasie oop";
+const NIGHT_MODE_ON_LABEL = "Skakel nagmodus af";
+const NIGHT_MODE_OFF_LABEL = "Skakel nagmodus aan";
 let navMenuDelegatesStarted = false;
 let notificationCenterDelegatesStarted = false;
 let accountMenuDelegatesStarted = false;
+let nightModeDelegatesStarted = false;
 let blazorErrorDiagnosticsStarted = false;
 let latestClientErrorText = "";
 let characterPreviewAudioPlayer = null;
@@ -54,6 +61,81 @@ const headerSearchState = new WeakMap();
 const notificationDateFormatter = typeof Intl !== "undefined"
     ? new Intl.DateTimeFormat("af-ZA", { day: "numeric", month: "short" })
     : null;
+
+function readStoredNightModePreference() {
+    try {
+        return window.localStorage?.getItem(NIGHT_MODE_STORAGE_KEY) === "on";
+    } catch {
+        return false;
+    }
+}
+
+function writeStoredNightModePreference(isEnabled) {
+    try {
+        window.localStorage?.setItem(NIGHT_MODE_STORAGE_KEY, isEnabled ? "on" : "off");
+    } catch {
+        // Ignore storage failures; the current page can still switch modes.
+    }
+}
+
+function setNightModeEnabled(isEnabled, options = {}) {
+    if (document.body instanceof HTMLElement) {
+        document.body.classList.toggle(NIGHT_MODE_BODY_CLASS, isEnabled);
+    }
+
+    document.querySelectorAll(NIGHT_MODE_TOGGLE_SELECTOR).forEach((toggle) => {
+        if (!(toggle instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        const label = isEnabled ? NIGHT_MODE_ON_LABEL : NIGHT_MODE_OFF_LABEL;
+        toggle.setAttribute("aria-pressed", isEnabled ? "true" : "false");
+        toggle.setAttribute("aria-label", label);
+        toggle.setAttribute("title", label);
+
+        const icon = toggle.querySelector("i");
+        if (icon instanceof HTMLElement) {
+            icon.classList.toggle("fa-moon", !isEnabled);
+            icon.classList.toggle("fa-sun", isEnabled);
+        }
+
+        const srLabel = toggle.querySelector(NIGHT_MODE_TOGGLE_LABEL_SELECTOR);
+        if (srLabel instanceof HTMLElement) {
+            srLabel.textContent = label;
+        }
+    });
+
+    if (options.persist) {
+        writeStoredNightModePreference(isEnabled);
+    }
+}
+
+function initializeNightModeToggles() {
+    setNightModeEnabled(readStoredNightModePreference());
+}
+
+function startNightModeDelegates() {
+    if (nightModeDelegatesStarted) {
+        return;
+    }
+
+    document.addEventListener("click", (event) => {
+        const toggle = event.target instanceof Element
+            ? event.target.closest(NIGHT_MODE_TOGGLE_SELECTOR)
+            : null;
+        if (!(toggle instanceof HTMLButtonElement)) {
+            return;
+        }
+
+        event.preventDefault();
+        const shouldEnable = !document.body?.classList.contains(NIGHT_MODE_BODY_CLASS);
+        setNightModeEnabled(shouldEnable, { persist: true });
+    });
+
+    nightModeDelegatesStarted = true;
+}
+
+initializeNightModeToggles();
 
 function buildNotificationClearItemEndpoint(notificationId) {
     if (typeof notificationId !== "string" || notificationId.length === 0) {
@@ -1911,10 +1993,12 @@ function initializeNotificationCenters() {
 }
 
 function initializeHeaderInteractions() {
+    initializeNightModeToggles();
     initializeNavMenus();
     initializeHeaderSearch();
     initializeNotificationCenters();
     initializeAccountMenus();
+    startNightModeDelegates();
     startNavMenuDelegates();
     startNotificationCenterDelegates();
     startAccountMenuDelegates();
