@@ -457,6 +457,10 @@
     z-index: 224;
 }
 
+.site-shell.home-route .night-mode-toggle {
+    display: none;
+}
+
 .nav-menu-toggle i {
     width: 17px;
     height: 17px;

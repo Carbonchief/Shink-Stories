@@ -425,25 +425,74 @@
         white-space: normal;
     }
 
+    .resources-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.7rem;
+    }
+
     .resources-card {
         grid-template-columns: 1fr;
+        gap: 0.65rem;
         justify-items: center;
+        padding: 0.65rem;
+        border-radius: 18px;
         text-align: center;
     }
 
     .resources-card-preview {
         grid-row: auto;
-        max-width: 180px;
+        max-width: min(100%, 150px);
+        border-radius: 14px;
         justify-self: center;
+    }
+
+    .resources-card-icon {
+        right: 0.4rem;
+        bottom: 0.4rem;
+        width: 2.25rem;
+        height: 2.25rem;
+        border-radius: 10px;
+        font-size: 0.9rem;
     }
 
     .resources-card-body {
         justify-items: center;
         text-align: center;
+        gap: 0.28rem;
+    }
+
+    .resources-card-body h3 {
+        font-size: 0.92rem;
+        line-height: 1.22;
+    }
+
+    .resources-card-body p,
+    .resources-card-lock-note {
+        font-size: 0.72rem;
+        line-height: 1.32;
     }
 
     .resources-card-actions {
         grid-column: 1;
         justify-content: center;
+        gap: 0.45rem;
+    }
+
+    .resources-open-link,
+    .resources-download-link {
+        width: 38px;
+        min-width: 38px;
+        min-height: 38px;
+        border-radius: 12px;
+    }
+
+    .resources-upgrade-link {
+        width: 100%;
+        justify-content: center;
+        min-height: 38px;
+        padding: 0.38rem 0.45rem;
+        border-radius: 12px;
+        font-size: 0.72rem;
+        line-height: 1.2;
     }
 }
