@@ -49,6 +49,10 @@
     background: linear-gradient(180deg, #fff6e8 0%, #fff8f0 42%, #ffffff 100%);
 }
 
+.site-shell.about-route.store-route {
+    background: #ffffff;
+}
+
 .site-container {
     width: min(1080px, 100% - 2rem);
     margin-inline: auto;

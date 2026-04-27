@@ -227,17 +227,6 @@ public sealed class SupabaseStoreProductCatalogService(
             return string.Empty;
         }
 
-        if (Uri.TryCreate(normalized, UriKind.Absolute, out var absoluteUri))
-        {
-            if (string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
-            {
-                return absoluteUri.ToString();
-            }
-
-            return string.Empty;
-        }
-
         if (normalized.StartsWith("//", StringComparison.Ordinal))
         {
             return string.Empty;
@@ -248,10 +237,54 @@ public sealed class SupabaseStoreProductCatalogService(
             normalized = $"/{normalized[2..]}";
         }
 
-        normalized = normalized.Replace('\\', '/');
-        return normalized.StartsWith("/", StringComparison.Ordinal)
-            ? normalized
-            : $"/{normalized.TrimStart('/')}";
+        if (normalized.StartsWith("/", StringComparison.Ordinal))
+        {
+            return EncodeLocalImagePath(normalized);
+        }
+
+        if (Uri.TryCreate(normalized, UriKind.Absolute, out var absoluteUri))
+        {
+            if (string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+            {
+                return RewriteAbsoluteImageUri(absoluteUri);
+            }
+
+            return string.Empty;
+        }
+
+        return EncodeLocalImagePath(normalized);
+    }
+
+    private static string RewriteAbsoluteImageUri(Uri absoluteUri)
+    {
+        if (string.Equals(absoluteUri.Host, "media.prioritybit.co.za", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"/media/image?src={Uri.EscapeDataString(absoluteUri.ToString())}";
+        }
+
+        return absoluteUri.ToString();
+    }
+
+    private static string EncodeLocalImagePath(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var normalized = value.Replace('\\', '/');
+        var suffixStart = normalized.IndexOfAny(['?', '#']);
+        var pathPart = suffixStart >= 0 ? normalized[..suffixStart] : normalized;
+        var suffixPart = suffixStart >= 0 ? normalized[suffixStart..] : string.Empty;
+
+        var encodedPath = "/" + string.Join(
+            '/',
+            pathPart
+                .Split('/', StringSplitOptions.RemoveEmptyEntries)
+                .Select(Uri.EscapeDataString));
+
+        return encodedPath + suffixPart;
     }
 
     private sealed class StoreProductRow

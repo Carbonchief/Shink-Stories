@@ -90,10 +90,9 @@
 .about-hero img {
     width: min(100%, 32rem);
     height: auto;
-    border-radius: 28px;
     display: block;
-    background: linear-gradient(180deg, #fff8f0 0%, #f9e9d8 100%);
-    box-shadow: 0 26px 60px rgba(72, 48, 23, 0.18);
+    background: transparent;
+    box-shadow: none;
     animation: about-image-float 12s ease-in-out 1s infinite;
 }
 

@@ -49,7 +49,7 @@
 .hero-visual {
     position: relative;
     z-index: 1;
-    padding-top: 100px;
+    padding-top: 0;
 }
 
 .hero::before,

@@ -3383,6 +3383,18 @@ static async Task TryNotifyPaidStoreOrderAsync(
             "Store paid notification failed. reference={Reference}",
             updateResult.Order.OrderReference);
     }
+
+    try
+    {
+        await notificationService.SendCustomerOrderConfirmationAsync(updateResult.Order, cancellationToken);
+    }
+    catch (Exception exception)
+    {
+        logger.LogWarning(
+            exception,
+            "Store customer confirmation failed. reference={Reference}",
+            updateResult.Order.OrderReference);
+    }
 }
 
 static string? NormalizeOptionalFormText(string? value, int maxLength)

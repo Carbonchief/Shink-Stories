@@ -14,6 +14,7 @@ public sealed class ResendOptions
 public sealed class ResendTemplateOptions
 {
     public SubscriptionPaymentRecoveryTemplateOptions SubscriptionPaymentRecovery { get; set; } = new();
+    public StoreOrderTemplateOptions StoreOrder { get; set; } = new();
 }
 
 public sealed class SubscriptionPaymentRecoveryTemplateOptions
@@ -21,4 +22,9 @@ public sealed class SubscriptionPaymentRecoveryTemplateOptions
     public string Day1TemplateId { get; set; } = string.Empty;
     public string Day3TemplateId { get; set; } = string.Empty;
     public string Day5TemplateId { get; set; } = string.Empty;
+}
+
+public sealed class StoreOrderTemplateOptions
+{
+    public string CustomerConfirmationTemplateId { get; set; } = "shink-store-order-confirmation";
 }

@@ -37,7 +37,14 @@
     <JsonLdScript Json="@StoryPageJsonLd" />
 </HeadContent>
 
-@if (IsRedirectingToOpsies)
+@if (IsStoryLoading)
+{
+    <section class="story-player-empty story-player-loading" aria-live="polite" aria-busy="true">
+        <span class="story-loading-spinner" aria-hidden="true"></span>
+        <span>Storie laai</span>
+    </section>
+}
+else if (IsRedirectingToOpsies)
 {
     <section class="story-player-empty">
         <h1>Hierdie storie is nog gesluit.</h1>
@@ -398,6 +405,7 @@ else
     private StoryItem? PreviousStory { get; set; }
     private StoryItem? NextStory { get; set; }
     private bool IsRedirectingToOpsies { get; set; }
+    private bool IsStoryLoading { get; set; } = true;
     private string? SignedInEmail { get; set; }
     private bool ShowStoryAccessPopup { get; set; }
     private string PendingLockedStoryPath { get; set; } = "/luister";
@@ -475,6 +483,7 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
+        IsStoryLoading = true;
         var isSocialPreviewRequest = SocialPreviewRequestDetector.IsSocialPreviewRequest(HttpContextAccessor.HttpContext);
         ShowStoryAccessPopup = false;
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
@@ -497,6 +506,7 @@ else
 
             PendingLockedStoryPath = GetCurrentPathAndQuery();
             ShowStoryAccessPopup = !isSocialPreviewRequest;
+            IsStoryLoading = false;
 
             return;
         }
@@ -530,6 +540,7 @@ else
             IsManualFullscreenFocus = false;
             PendingLockedStoryPath = GetCurrentPathAndQuery();
             ShowStoryAccessPopup = true;
+            IsStoryLoading = false;
             return;
         }
 
@@ -538,6 +549,7 @@ else
         ResolveAdjacentStories();
         IsManualFullscreenFocus = false;
         ShowStoryAccessPopup = false;
+        IsStoryLoading = false;
     }
 
     private bool IsStoryFavorite(string slug) => FavoriteStorySlugs.Contains(slug);
