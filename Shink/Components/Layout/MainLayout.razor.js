@@ -52,6 +52,8 @@ let notificationCenterDelegatesStarted = false;
 let accountMenuDelegatesStarted = false;
 let nightModeDelegatesStarted = false;
 let blazorErrorDiagnosticsStarted = false;
+let homeHeaderResizeObserver = null;
+let observedHomeHeader = null;
 let latestClientErrorText = "";
 let characterPreviewAudioPlayer = null;
 let characterPreviewActiveTrigger = null;
@@ -2038,6 +2040,7 @@ function initializeHeaderInteractions() {
     initializeHeaderSearch();
     initializeNotificationCenters();
     initializeAccountMenus();
+    syncHomeHeroNavbarOffset();
     startNightModeDelegates();
     startNavMenuDelegates();
     startNotificationCenterDelegates();
@@ -2056,6 +2059,42 @@ function scheduleHeaderInteractionsInitialization() {
         headerInitFrameHandle = null;
         initializeHeaderInteractions();
     });
+}
+
+function syncHomeHeroNavbarOffset() {
+    const homeShell = document.querySelector(".site-shell.home-route");
+    const header = homeShell instanceof HTMLElement
+        ? homeShell.querySelector(".site-header")
+        : null;
+
+    if (!(header instanceof HTMLElement)) {
+        document.documentElement.style.removeProperty("--home-navbar-offset");
+        if (typeof ResizeObserver !== "undefined" && homeHeaderResizeObserver instanceof ResizeObserver) {
+            homeHeaderResizeObserver.disconnect();
+        }
+        homeHeaderResizeObserver = null;
+        observedHomeHeader = null;
+        return;
+    }
+
+    const updateOffset = () => {
+        const headerHeight = Math.ceil(header.getBoundingClientRect().height);
+        document.documentElement.style.setProperty("--home-navbar-offset", `${headerHeight + 5}px`);
+    };
+
+    updateOffset();
+
+    if (typeof ResizeObserver === "undefined" || observedHomeHeader === header) {
+        return;
+    }
+
+    if (homeHeaderResizeObserver instanceof ResizeObserver) {
+        homeHeaderResizeObserver.disconnect();
+    }
+
+    homeHeaderResizeObserver = new ResizeObserver(updateOffset);
+    homeHeaderResizeObserver.observe(header);
+    observedHomeHeader = header;
 }
 
 function startHeaderObserver() {
