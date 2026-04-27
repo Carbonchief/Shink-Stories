@@ -15,6 +15,7 @@ public sealed partial class SupabaseAdminManagementService(
     IOptions<SupabaseOptions> supabaseOptions,
     IMemoryCache memoryCache,
     IUserNotificationService userNotificationService,
+    IWordPressMigrationService wordPressMigrationService,
     ILogger<SupabaseAdminManagementService> logger) : IAdminManagementService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -24,6 +25,7 @@ public sealed partial class SupabaseAdminManagementService(
     private readonly SupabaseOptions _options = supabaseOptions.Value;
     private readonly IMemoryCache _memoryCache = memoryCache;
     private readonly IUserNotificationService _userNotificationService = userNotificationService;
+    private readonly IWordPressMigrationService _wordPressMigrationService = wordPressMigrationService;
     private readonly ILogger<SupabaseAdminManagementService> _logger = logger;
 
     public async Task<bool> IsAdminAsync(string? email, CancellationToken cancellationToken = default)
@@ -1281,6 +1283,65 @@ public sealed partial class SupabaseAdminManagementService(
                ?? AdminAnalyticsSnapshot.Empty;
     }
 
+    public async Task<AdminSubscriberReportsSnapshot> GetSubscriberReportsAsync(
+        string? adminEmail,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
+        {
+            return AdminSubscriberReportsSnapshot.Empty;
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return AdminSubscriberReportsSnapshot.Empty;
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return AdminSubscriberReportsSnapshot.Empty;
+        }
+
+        var wordPressSubscriberReportsTask = FetchWordPressSubscriberReportsAsync(baseUri, apiKey, cancellationToken);
+        var subscriptionsTask = FetchSubscriptionsAsync(baseUri, apiKey, cancellationToken);
+        var subscriptionTiersTask = FetchSubscriptionTiersAsync(baseUri, apiKey, cancellationToken);
+        var recoveriesTask = FetchSubscriptionRecoveriesAsync(baseUri, apiKey, cancellationToken);
+        var abandonedCartRecoveriesTask = FetchAbandonedCartRecoveriesAsync(baseUri, apiKey, cancellationToken);
+        var authSessionsTask = FetchAuthSessionsAsync(baseUri, apiKey, cancellationToken);
+        var storyViewsTask = FetchStoryViewsAsync(baseUri, apiKey, cancellationToken);
+        var storyListenSessionsTask = FetchStoryListenSessionsAsync(baseUri, apiKey, cancellationToken);
+
+        await Task.WhenAll(
+            wordPressSubscriberReportsTask,
+            subscriptionsTask,
+            subscriptionTiersTask,
+            recoveriesTask,
+            abandonedCartRecoveriesTask,
+            authSessionsTask,
+            storyViewsTask,
+            storyListenSessionsTask);
+
+        var wordPressSubscriberReports = wordPressSubscriberReportsTask.Result;
+        if (wordPressSubscriberReports is null || !wordPressSubscriberReports.HasWordPressData)
+        {
+            wordPressSubscriberReports = await TrySyncAndFetchWordPressSubscriberReportsAsync(
+                baseUri,
+                apiKey,
+                cancellationToken) ?? wordPressSubscriberReports;
+        }
+
+        return BuildSubscriberReportsSnapshot(
+            wordPressSubscriberReports,
+            subscriptionsTask.Result,
+            subscriptionTiersTask.Result,
+            recoveriesTask.Result,
+            abandonedCartRecoveriesTask.Result,
+            authSessionsTask.Result,
+            storyViewsTask.Result,
+            storyListenSessionsTask.Result);
+    }
+
     public async Task<IReadOnlyList<AdminResourceTypeRecord>> GetResourceTypesAsync(
         string? adminEmail,
         CancellationToken cancellationToken = default)
@@ -1798,11 +1859,94 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/subscriptions" +
-            "?select=subscriber_id,tier_code,provider,source_system,status,subscribed_at,next_renewal_at,cancelled_at" +
+            "?select=subscription_id,subscriber_id,tier_code,provider,source_system,status,subscribed_at,next_renewal_at,cancelled_at" +
             "&order=subscribed_at.desc" +
             "&limit=10000");
 
         return await FetchRowsAsync<SubscriptionRow>(uri, apiKey, cancellationToken);
+    }
+
+    private async Task<WordPressSubscriberReportsRpcSnapshot?> FetchWordPressSubscriberReportsAsync(
+        Uri baseUri,
+        string apiKey,
+        CancellationToken cancellationToken) =>
+        await InvokeRpcAsync<WordPressSubscriberReportsRpcSnapshot>(
+            baseUri,
+            apiKey,
+            "get_wordpress_subscriber_report_snapshot",
+            new { },
+            cancellationToken);
+
+    private async Task<IReadOnlyList<SubscriptionTierRow>> FetchSubscriptionTiersAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    {
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/subscription_tiers" +
+            "?select=tier_code,display_name,price_zar,is_active" +
+            "&order=display_name.asc" +
+            "&limit=100");
+
+        return await FetchRowsAsync<SubscriptionTierRow>(uri, apiKey, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<SubscriptionRecoveryRow>> FetchSubscriptionRecoveriesAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    {
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/subscription_payment_recoveries" +
+            "?select=subscription_id,created_at,resolved_at,resolution" +
+            "&order=created_at.desc" +
+            "&limit=50000");
+
+        return await FetchRowsAsync<SubscriptionRecoveryRow>(uri, apiKey, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<AbandonedCartRecoveryRow>> FetchAbandonedCartRecoveriesAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    {
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/abandoned_cart_recoveries" +
+            "?select=source_type,source_key,cart_total_zar,created_at,resolved_at,resolution" +
+            "&order=created_at.desc" +
+            "&limit=50000");
+
+        return await FetchRowsAsync<AbandonedCartRecoveryRow>(uri, apiKey, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<AuthSessionMetricRow>> FetchAuthSessionsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    {
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/auth_sessions" +
+            "?select=created_at" +
+            "&order=created_at.desc" +
+            "&limit=50000");
+
+        return await FetchRowsAsync<AuthSessionMetricRow>(uri, apiKey, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<StoryViewMetricRow>> FetchStoryViewsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    {
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/story_views" +
+            "?select=viewed_at" +
+            "&order=viewed_at.desc" +
+            "&limit=100000");
+
+        return await FetchRowsAsync<StoryViewMetricRow>(uri, apiKey, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<StoryListenSessionMetricRow>> FetchStoryListenSessionsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    {
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/story_listen_events" +
+            "?select=session_id,occurred_at" +
+            "&order=occurred_at.desc" +
+            "&limit=100000");
+
+        return await FetchRowsAsync<StoryListenSessionMetricRow>(uri, apiKey, cancellationToken);
     }
 
     private async Task<IReadOnlyList<StoryRow>> FetchStoriesAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
@@ -2234,6 +2378,431 @@ public sealed partial class SupabaseAdminManagementService(
                     .ToArray());
     }
 
+    private static AdminSubscriberReportsSnapshot BuildSubscriberReportsSnapshot(
+        WordPressSubscriberReportsRpcSnapshot? wordPressSubscriberReports,
+        IReadOnlyList<SubscriptionRow> subscriptions,
+        IReadOnlyList<SubscriptionTierRow> subscriptionTiers,
+        IReadOnlyList<SubscriptionRecoveryRow> recoveries,
+        IReadOnlyList<AbandonedCartRecoveryRow> abandonedCartRecoveries,
+        IReadOnlyList<AuthSessionMetricRow> authSessions,
+        IReadOnlyList<StoryViewMetricRow> storyViews,
+        IReadOnlyList<StoryListenSessionMetricRow> storyListenSessions)
+    {
+        var tierDetails = subscriptionTiers
+            .Where(tier => !string.IsNullOrWhiteSpace(tier.TierCode))
+            .GroupBy(tier => tier.TierCode!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.First(),
+                StringComparer.OrdinalIgnoreCase);
+
+        return new AdminSubscriberReportsSnapshot(
+            MembershipStats: BuildMembershipStatsMetrics(wordPressSubscriberReports, subscriptions),
+            ActiveMembersPerLevel: BuildTierDistributionMetrics(wordPressSubscriberReports, subscriptions, tierDetails),
+            SalesAndRevenue: BuildSalesRevenueMetrics(wordPressSubscriberReports, subscriptions, tierDetails),
+            AbandonedCartRecoveries: BuildRecoveryMetrics(subscriptions, tierDetails, recoveries, abandonedCartRecoveries),
+            VisitsViewsAndLogins: BuildVisitsViewsLoginsMetrics(authSessions, storyViews, storyListenSessions));
+    }
+
+    private static IReadOnlyList<AdminMembershipStatsMetric> BuildMembershipStatsMetrics(
+        WordPressSubscriberReportsRpcSnapshot? wordPressSubscriberReports,
+        IReadOnlyList<SubscriptionRow> subscriptions)
+    {
+        if (wordPressSubscriberReports is { HasWordPressData: true })
+        {
+            var metrics = (wordPressSubscriberReports.MembershipStats ?? [])
+                .Where(metric => !string.IsNullOrWhiteSpace(metric.PeriodKey))
+                .ToDictionary(metric => metric.PeriodKey!.Trim(), StringComparer.OrdinalIgnoreCase);
+
+            return
+            [
+                CreateWordPressMembershipStatsMetric(metrics, "today"),
+                CreateWordPressMembershipStatsMetric(metrics, "this_month"),
+                CreateWordPressMembershipStatsMetric(metrics, "this_year"),
+                CreateWordPressMembershipStatsMetric(metrics, "all_time")
+            ];
+        }
+
+        var activeOrCompletedSignups = subscriptions
+            .Where(IsSignupMetricEligible)
+            .ToArray();
+
+        return
+        [
+            new AdminMembershipStatsMetric(
+                "today",
+                CountByLocalPeriod(activeOrCompletedSignups.Select(subscription => subscription.SubscribedAt), SubscriberPeriod.Today),
+                CountByLocalPeriod(subscriptions.Select(subscription => subscription.CancelledAt), SubscriberPeriod.Today)),
+            new AdminMembershipStatsMetric(
+                "this_month",
+                CountByLocalPeriod(activeOrCompletedSignups.Select(subscription => subscription.SubscribedAt), SubscriberPeriod.ThisMonth),
+                CountByLocalPeriod(subscriptions.Select(subscription => subscription.CancelledAt), SubscriberPeriod.ThisMonth)),
+            new AdminMembershipStatsMetric(
+                "this_year",
+                CountByLocalPeriod(activeOrCompletedSignups.Select(subscription => subscription.SubscribedAt), SubscriberPeriod.ThisYear),
+                CountByLocalPeriod(subscriptions.Select(subscription => subscription.CancelledAt), SubscriberPeriod.ThisYear)),
+            new AdminMembershipStatsMetric(
+                "all_time",
+                CountByLocalPeriod(activeOrCompletedSignups.Select(subscription => subscription.SubscribedAt), SubscriberPeriod.AllTime),
+                CountByLocalPeriod(subscriptions.Select(subscription => subscription.CancelledAt), SubscriberPeriod.AllTime))
+        ];
+    }
+
+    private static IReadOnlyList<AdminTierDistributionMetric> BuildTierDistributionMetrics(
+        WordPressSubscriberReportsRpcSnapshot? wordPressSubscriberReports,
+        IReadOnlyList<SubscriptionRow> subscriptions,
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails)
+    {
+        if (wordPressSubscriberReports is { HasWordPressData: true })
+        {
+            var wordPressGrouped = (wordPressSubscriberReports.ActiveMembersPerLevel ?? [])
+                .Where(metric => !string.IsNullOrWhiteSpace(metric.TierCode))
+                .Where(metric => metric.ActiveMembers > 0)
+                .Select(metric =>
+                {
+                    var tierCode = metric.TierCode!.Trim();
+                    var tier = tierDetails.TryGetValue(tierCode, out var detail) ? detail : null;
+                    return new
+                    {
+                        TierCode = tierCode,
+                        TierName = NormalizeTierDisplayName(tierCode, tier?.DisplayName),
+                        ActiveMembers = metric.ActiveMembers
+                    };
+                })
+                .OrderByDescending(item => item.ActiveMembers)
+                .ThenBy(item => item.TierName, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            var wordPressTotalActiveMembers = wordPressGrouped.Sum(item => item.ActiveMembers);
+            if (wordPressTotalActiveMembers <= 0)
+            {
+                return [];
+            }
+
+            return wordPressGrouped
+                .Select(item => new AdminTierDistributionMetric(
+                    item.TierCode,
+                    item.TierName,
+                    item.ActiveMembers,
+                    decimal.Round(item.ActiveMembers * 100m / wordPressTotalActiveMembers, 1, MidpointRounding.AwayFromZero)))
+                .ToArray();
+        }
+
+        var nowUtc = DateTimeOffset.UtcNow;
+        var grouped = subscriptions
+            .Where(subscription => !string.IsNullOrWhiteSpace(subscription.TierCode))
+            .Where(subscription => IsActiveSubscription(subscription, nowUtc))
+            .GroupBy(subscription => subscription.TierCode!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                var activeMembers = group.Count();
+                var tier = tierDetails.TryGetValue(group.Key, out var detail) ? detail : null;
+                return new
+                {
+                    TierCode = group.Key,
+                    TierName = NormalizeTierDisplayName(group.Key, tier?.DisplayName),
+                    ActiveMembers = activeMembers
+                };
+            })
+            .OrderByDescending(item => item.ActiveMembers)
+            .ThenBy(item => item.TierName, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        var totalActiveMembers = grouped.Sum(item => item.ActiveMembers);
+        if (totalActiveMembers <= 0)
+        {
+            return [];
+        }
+
+        return grouped
+            .Select(item => new AdminTierDistributionMetric(
+                item.TierCode,
+                item.TierName,
+                item.ActiveMembers,
+                decimal.Round(item.ActiveMembers * 100m / totalActiveMembers, 1, MidpointRounding.AwayFromZero)))
+            .ToArray();
+    }
+
+    private static IReadOnlyList<AdminSalesRevenueMetric> BuildSalesRevenueMetrics(
+        WordPressSubscriberReportsRpcSnapshot? wordPressSubscriberReports,
+        IReadOnlyList<SubscriptionRow> subscriptions,
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails)
+    {
+        if (wordPressSubscriberReports is { HasWordPressData: true })
+        {
+            var metrics = (wordPressSubscriberReports.SalesAndRevenue ?? [])
+                .Where(metric => !string.IsNullOrWhiteSpace(metric.PeriodKey))
+                .ToDictionary(metric => metric.PeriodKey!.Trim(), StringComparer.OrdinalIgnoreCase);
+
+            return
+            [
+                CreateWordPressSalesRevenueMetric(metrics, "today"),
+                CreateWordPressSalesRevenueMetric(metrics, "this_month"),
+                CreateWordPressSalesRevenueMetric(metrics, "this_year"),
+                CreateWordPressSalesRevenueMetric(metrics, "all_time")
+            ];
+        }
+
+        var eligibleSales = subscriptions
+            .Where(IsRevenueMetricEligible)
+            .Select(subscription => new SubscriberSaleMetricCandidate(
+                subscription.SubscribedAt,
+                ResolveTierPrice(subscription.TierCode, tierDetails)))
+            .ToArray();
+
+        return
+        [
+            BuildSalesRevenueMetric("today", eligibleSales, SubscriberPeriod.Today),
+            BuildSalesRevenueMetric("this_month", eligibleSales, SubscriberPeriod.ThisMonth),
+            BuildSalesRevenueMetric("this_year", eligibleSales, SubscriberPeriod.ThisYear),
+            BuildSalesRevenueMetric("all_time", eligibleSales, SubscriberPeriod.AllTime)
+        ];
+    }
+
+    private static IReadOnlyList<AdminRecoveryMetric> BuildRecoveryMetrics(
+        IReadOnlyList<SubscriptionRow> subscriptions,
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
+        IReadOnlyList<SubscriptionRecoveryRow> recoveries,
+        IReadOnlyList<AbandonedCartRecoveryRow> abandonedCartRecoveries)
+    {
+        var subscriptionPrices = subscriptions
+            .Where(subscription => subscription.SubscriptionId != Guid.Empty)
+            .GroupBy(subscription => subscription.SubscriptionId)
+            .ToDictionary(
+                group => group.Key,
+                group => ResolveTierPrice(group.First().TierCode, tierDetails));
+
+        return
+        [
+            BuildRecoveryMetric("past_30_days", recoveries, abandonedCartRecoveries, subscriptionPrices, tierDetails, SubscriberPeriod.Past30Days),
+            BuildRecoveryMetric("past_12_months", recoveries, abandonedCartRecoveries, subscriptionPrices, tierDetails, SubscriberPeriod.Past12Months),
+            BuildRecoveryMetric("all_time", recoveries, abandonedCartRecoveries, subscriptionPrices, tierDetails, SubscriberPeriod.AllTime)
+        ];
+    }
+
+    private static IReadOnlyList<AdminVisitsViewsLoginsMetric> BuildVisitsViewsLoginsMetrics(
+        IReadOnlyList<AuthSessionMetricRow> authSessions,
+        IReadOnlyList<StoryViewMetricRow> storyViews,
+        IReadOnlyList<StoryListenSessionMetricRow> storyListenSessions)
+    {
+        var visitStarts = storyListenSessions
+            .Where(row => row.SessionId != Guid.Empty)
+            .GroupBy(row => row.SessionId)
+            .Select(group => group.Min(row => row.OccurredAt))
+            .ToArray();
+
+        return
+        [
+            new AdminVisitsViewsLoginsMetric(
+                "today",
+                CountByLocalPeriod(visitStarts, SubscriberPeriod.Today),
+                CountByLocalPeriod(storyViews.Select(row => row.ViewedAt), SubscriberPeriod.Today),
+                CountByLocalPeriod(authSessions.Select(row => row.CreatedAt), SubscriberPeriod.Today)),
+            new AdminVisitsViewsLoginsMetric(
+                "this_week",
+                CountByLocalPeriod(visitStarts, SubscriberPeriod.ThisWeek),
+                CountByLocalPeriod(storyViews.Select(row => row.ViewedAt), SubscriberPeriod.ThisWeek),
+                CountByLocalPeriod(authSessions.Select(row => row.CreatedAt), SubscriberPeriod.ThisWeek)),
+            new AdminVisitsViewsLoginsMetric(
+                "this_month",
+                CountByLocalPeriod(visitStarts, SubscriberPeriod.ThisMonth),
+                CountByLocalPeriod(storyViews.Select(row => row.ViewedAt), SubscriberPeriod.ThisMonth),
+                CountByLocalPeriod(authSessions.Select(row => row.CreatedAt), SubscriberPeriod.ThisMonth)),
+            new AdminVisitsViewsLoginsMetric(
+                "year_to_date",
+                CountByLocalPeriod(visitStarts, SubscriberPeriod.YearToDate),
+                CountByLocalPeriod(storyViews.Select(row => row.ViewedAt), SubscriberPeriod.YearToDate),
+                CountByLocalPeriod(authSessions.Select(row => row.CreatedAt), SubscriberPeriod.YearToDate)),
+            new AdminVisitsViewsLoginsMetric(
+                "all_time",
+                CountByLocalPeriod(visitStarts, SubscriberPeriod.AllTime),
+                CountByLocalPeriod(storyViews.Select(row => row.ViewedAt), SubscriberPeriod.AllTime),
+                CountByLocalPeriod(authSessions.Select(row => row.CreatedAt), SubscriberPeriod.AllTime))
+        ];
+    }
+
+    private static AdminSalesRevenueMetric BuildSalesRevenueMetric(
+        string periodKey,
+        IEnumerable<SubscriberSaleMetricCandidate> eligibleSales,
+        SubscriberPeriod period)
+    {
+        var matchingSales = eligibleSales
+            .Where(item => IsInLocalPeriod(item.SubscribedAt, period))
+            .ToArray();
+
+        return new AdminSalesRevenueMetric(
+            periodKey,
+            matchingSales.Length,
+            decimal.Round(matchingSales.Sum(item => item.Price), 2, MidpointRounding.AwayFromZero));
+    }
+
+    private static AdminRecoveryMetric BuildRecoveryMetric(
+        string periodKey,
+        IReadOnlyList<SubscriptionRecoveryRow> recoveries,
+        IReadOnlyList<AbandonedCartRecoveryRow> abandonedCartRecoveries,
+        IReadOnlyDictionary<Guid, decimal> subscriptionPrices,
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
+        SubscriberPeriod period)
+    {
+        var subscriptionRecoveryAttempts = recoveries.Count(recovery => IsInLocalPeriod(recovery.CreatedAt, period));
+        var abandonedCartRecoveryAttempts = abandonedCartRecoveries.Count(recovery => IsInLocalPeriod(recovery.CreatedAt, period));
+        var subscriptionRecoveredRows = recoveries
+            .Where(recovery => string.Equals(recovery.Resolution, "recovered", StringComparison.OrdinalIgnoreCase))
+            .Where(recovery => IsInLocalPeriod(recovery.ResolvedAt, period))
+            .ToArray();
+        var abandonedCartRecoveredRows = abandonedCartRecoveries
+            .Where(recovery => string.Equals(recovery.Resolution, "paid", StringComparison.OrdinalIgnoreCase))
+            .Where(recovery => IsInLocalPeriod(recovery.ResolvedAt, period))
+            .ToArray();
+
+        var subscriptionRecoveredRevenue = subscriptionRecoveredRows.Sum(recovery =>
+            subscriptionPrices.TryGetValue(recovery.SubscriptionId, out var price) ? price : 0m);
+        var abandonedCartRecoveredRevenue = abandonedCartRecoveredRows.Sum(recovery =>
+            ResolveAbandonedCartRecoveredRevenue(recovery, tierDetails));
+
+        return new AdminRecoveryMetric(
+            periodKey,
+            decimal.Round(subscriptionRecoveredRevenue + abandonedCartRecoveredRevenue, 2, MidpointRounding.AwayFromZero),
+            subscriptionRecoveredRows.Length + abandonedCartRecoveredRows.Length,
+            subscriptionRecoveryAttempts + abandonedCartRecoveryAttempts);
+    }
+
+    private static decimal ResolveAbandonedCartRecoveredRevenue(
+        AbandonedCartRecoveryRow recovery,
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails)
+    {
+        if (recovery.CartTotalZar is > 0m)
+        {
+            return recovery.CartTotalZar.Value;
+        }
+
+        return string.Equals(recovery.SourceType, "subscription", StringComparison.OrdinalIgnoreCase)
+            ? ResolveTierPrice(recovery.SourceKey, tierDetails)
+            : 0m;
+    }
+
+    private async Task<WordPressSubscriberReportsRpcSnapshot?> TrySyncAndFetchWordPressSubscriberReportsAsync(
+        Uri baseUri,
+        string apiKey,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var syncResult = await _wordPressMigrationService.SyncAsync(cancellationToken);
+            if (syncResult.Errors.Count > 0)
+            {
+                _logger.LogWarning(
+                    "WordPress subscriber report sync completed with {ErrorCount} error(s): {Errors}",
+                    syncResult.Errors.Count,
+                    string.Join(" | ", syncResult.Errors));
+            }
+        }
+        catch (Exception exception) when (exception is InvalidOperationException or HttpRequestException or TaskCanceledException)
+        {
+            _logger.LogWarning(exception, "WordPress subscriber report sync fallback failed.");
+        }
+
+        return await FetchWordPressSubscriberReportsAsync(baseUri, apiKey, cancellationToken);
+    }
+
+    private static AdminMembershipStatsMetric CreateWordPressMembershipStatsMetric(
+        IReadOnlyDictionary<string, WordPressMembershipStatsRpcMetric> metrics,
+        string periodKey)
+    {
+        if (!metrics.TryGetValue(periodKey, out var metric))
+        {
+            return new AdminMembershipStatsMetric(periodKey, 0, 0);
+        }
+
+        return new AdminMembershipStatsMetric(periodKey, metric.Signups, metric.Cancellations);
+    }
+
+    private static AdminSalesRevenueMetric CreateWordPressSalesRevenueMetric(
+        IReadOnlyDictionary<string, WordPressSalesRevenueRpcMetric> metrics,
+        string periodKey)
+    {
+        if (!metrics.TryGetValue(periodKey, out var metric))
+        {
+            return new AdminSalesRevenueMetric(periodKey, 0, 0m);
+        }
+
+        return new AdminSalesRevenueMetric(periodKey, metric.Sales, metric.Revenue);
+    }
+
+    private static int CountByLocalPeriod(IEnumerable<DateTimeOffset?> values, SubscriberPeriod period) =>
+        values.Count(value => IsInLocalPeriod(value, period));
+
+    private static int CountByLocalPeriod(IEnumerable<DateTimeOffset> values, SubscriberPeriod period) =>
+        values.Count(value => IsInLocalPeriod(value, period));
+
+    private static bool IsInLocalPeriod(DateTimeOffset? value, SubscriberPeriod period)
+    {
+        if (value is null)
+        {
+            return false;
+        }
+
+        if (period == SubscriberPeriod.AllTime)
+        {
+            return true;
+        }
+
+        var localValue = value.Value.ToLocalTime().DateTime;
+        var nowLocal = DateTime.Now;
+        var start = period switch
+        {
+            SubscriberPeriod.Today => nowLocal.Date,
+            SubscriberPeriod.ThisWeek => GetStartOfWeek(nowLocal.Date),
+            SubscriberPeriod.ThisMonth => new DateTime(nowLocal.Year, nowLocal.Month, 1),
+            SubscriberPeriod.ThisYear or SubscriberPeriod.YearToDate => new DateTime(nowLocal.Year, 1, 1),
+            SubscriberPeriod.Past30Days => nowLocal.Date.AddDays(-29),
+            SubscriberPeriod.Past12Months => nowLocal.Date.AddMonths(-12).AddDays(1),
+            _ => DateTime.MinValue
+        };
+
+        return localValue >= start && localValue <= nowLocal;
+    }
+
+    private static DateTime GetStartOfWeek(DateTime value)
+    {
+        var dayOfWeek = value.DayOfWeek;
+        var daysSinceMonday = ((int)dayOfWeek + 6) % 7;
+        return value.AddDays(-daysSinceMonday);
+    }
+
+    private static bool IsSignupMetricEligible(SubscriptionRow subscription) =>
+        !string.Equals(subscription.Status, "failed", StringComparison.OrdinalIgnoreCase) &&
+        subscription.SubscribedAt is not null;
+
+    private static bool IsRevenueMetricEligible(SubscriptionRow subscription) =>
+        subscription.SubscribedAt is not null &&
+        (string.Equals(subscription.Status, "active", StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(subscription.Status, "cancelled", StringComparison.OrdinalIgnoreCase));
+
+    private static decimal ResolveTierPrice(string? tierCode, IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails)
+    {
+        if (string.IsNullOrWhiteSpace(tierCode))
+        {
+            return 0m;
+        }
+
+        return tierDetails.TryGetValue(tierCode.Trim(), out var tier)
+            ? Math.Max(0m, tier.PriceZar)
+            : 0m;
+    }
+
+    private static string NormalizeTierDisplayName(string tierCode, string? displayName)
+    {
+        var normalized = NormalizeOptionalText(displayName, 120);
+        if (!string.IsNullOrWhiteSpace(normalized))
+        {
+            return normalized;
+        }
+
+        return tierCode.Replace("_", " ", StringComparison.Ordinal)
+            .Replace("-", " ", StringComparison.Ordinal);
+    }
+
     private static Dictionary<Guid, SubscriptionSummary> BuildSubscriptionSummaryMap(IReadOnlyList<SubscriptionRow> subscriptions)
     {
         var nowUtc = DateTimeOffset.UtcNow;
@@ -2618,6 +3187,9 @@ public sealed partial class SupabaseAdminManagementService(
 
     private sealed class SubscriptionRow
     {
+        [JsonPropertyName("subscription_id")]
+        public Guid SubscriptionId { get; set; }
+
         [JsonPropertyName("subscriber_id")]
         public Guid SubscriberId { get; set; }
 
@@ -2643,6 +3215,126 @@ public sealed partial class SupabaseAdminManagementService(
         public DateTimeOffset? CancelledAt { get; set; }
     }
 
+    private sealed class SubscriptionTierRow
+    {
+        [JsonPropertyName("tier_code")]
+        public string? TierCode { get; set; }
+
+        [JsonPropertyName("display_name")]
+        public string? DisplayName { get; set; }
+
+        [JsonPropertyName("price_zar")]
+        public decimal PriceZar { get; set; }
+
+        [JsonPropertyName("is_active")]
+        public bool IsActive { get; set; }
+    }
+
+    private sealed class WordPressSubscriberReportsRpcSnapshot
+    {
+        [JsonPropertyName("has_wordpress_data")]
+        public bool HasWordPressData { get; set; }
+
+        [JsonPropertyName("membership_stats")]
+        public List<WordPressMembershipStatsRpcMetric>? MembershipStats { get; set; }
+
+        [JsonPropertyName("active_members_per_level")]
+        public List<WordPressActiveMembersPerLevelRpcMetric>? ActiveMembersPerLevel { get; set; }
+
+        [JsonPropertyName("sales_and_revenue")]
+        public List<WordPressSalesRevenueRpcMetric>? SalesAndRevenue { get; set; }
+    }
+
+    private sealed class WordPressMembershipStatsRpcMetric
+    {
+        [JsonPropertyName("period_key")]
+        public string? PeriodKey { get; set; }
+
+        [JsonPropertyName("signups")]
+        public int Signups { get; set; }
+
+        [JsonPropertyName("cancellations")]
+        public int Cancellations { get; set; }
+    }
+
+    private sealed class WordPressActiveMembersPerLevelRpcMetric
+    {
+        [JsonPropertyName("tier_code")]
+        public string? TierCode { get; set; }
+
+        [JsonPropertyName("active_members")]
+        public int ActiveMembers { get; set; }
+    }
+
+    private sealed class WordPressSalesRevenueRpcMetric
+    {
+        [JsonPropertyName("period_key")]
+        public string? PeriodKey { get; set; }
+
+        [JsonPropertyName("sales")]
+        public int Sales { get; set; }
+
+        [JsonPropertyName("revenue")]
+        public decimal Revenue { get; set; }
+    }
+
+    private sealed class SubscriptionRecoveryRow
+    {
+        [JsonPropertyName("subscription_id")]
+        public Guid SubscriptionId { get; set; }
+
+        [JsonPropertyName("created_at")]
+        public DateTimeOffset CreatedAt { get; set; }
+
+        [JsonPropertyName("resolved_at")]
+        public DateTimeOffset? ResolvedAt { get; set; }
+
+        [JsonPropertyName("resolution")]
+        public string? Resolution { get; set; }
+    }
+
+    private sealed class AbandonedCartRecoveryRow
+    {
+        [JsonPropertyName("source_type")]
+        public string? SourceType { get; set; }
+
+        [JsonPropertyName("source_key")]
+        public string? SourceKey { get; set; }
+
+        [JsonPropertyName("cart_total_zar")]
+        public decimal? CartTotalZar { get; set; }
+
+        [JsonPropertyName("created_at")]
+        public DateTimeOffset CreatedAt { get; set; }
+
+        [JsonPropertyName("resolved_at")]
+        public DateTimeOffset? ResolvedAt { get; set; }
+
+        [JsonPropertyName("resolution")]
+        public string? Resolution { get; set; }
+    }
+
+    private sealed class AuthSessionMetricRow
+    {
+        [JsonPropertyName("created_at")]
+        public DateTimeOffset CreatedAt { get; set; }
+    }
+
+    private sealed class StoryViewMetricRow
+    {
+        [JsonPropertyName("viewed_at")]
+        public DateTimeOffset ViewedAt { get; set; }
+    }
+
+    private sealed class StoryListenSessionMetricRow
+    {
+        [JsonPropertyName("session_id")]
+        public Guid SessionId { get; set; }
+
+        [JsonPropertyName("occurred_at")]
+        public DateTimeOffset OccurredAt { get; set; }
+    }
+
     private sealed record SubscriptionSummary(
         string? PaymentProvider,
         string? SourceSystem,
@@ -2650,6 +3342,10 @@ public sealed partial class SupabaseAdminManagementService(
         DateTimeOffset? SubscribedAt,
         DateTimeOffset? NextRenewalAt,
         DateTimeOffset? CancelledAt);
+
+    private sealed record SubscriberSaleMetricCandidate(
+        DateTimeOffset? SubscribedAt,
+        decimal Price);
 
     private sealed class SubscriptionTierLookupRow
     {
@@ -2913,5 +3609,17 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("updated_at")]
         public DateTimeOffset? UpdatedAt { get; set; }
+    }
+
+    private enum SubscriberPeriod
+    {
+        Today,
+        ThisWeek,
+        ThisMonth,
+        ThisYear,
+        YearToDate,
+        Past30Days,
+        Past12Months,
+        AllTime
     }
 }

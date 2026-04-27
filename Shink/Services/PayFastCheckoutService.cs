@@ -15,6 +15,20 @@ public sealed partial class PayFastCheckoutService(HttpClient httpClient, IOptio
 
     public bool TryBuildCheckout(PaymentPlan plan, HttpContext httpContext, string? returnUrl, out PayFastCheckoutForm checkoutForm, out string errorMessage)
     {
+        var (firstName, lastName, emailAddress) = GetBuyerDetails(httpContext.User);
+        return TryBuildCheckoutForBuyer(plan, httpContext, returnUrl, firstName, lastName, emailAddress, out checkoutForm, out errorMessage);
+    }
+
+    public bool TryBuildCheckoutForBuyer(
+        PaymentPlan plan,
+        HttpContext httpContext,
+        string? returnUrl,
+        string firstName,
+        string lastName,
+        string emailAddress,
+        out PayFastCheckoutForm checkoutForm,
+        out string errorMessage)
+    {
         checkoutForm = default!;
         errorMessage = string.Empty;
 
@@ -45,7 +59,6 @@ public sealed partial class PayFastCheckoutService(HttpClient httpClient, IOptio
         var cancelPath = BuildAbsoluteUrl(httpContext, _options.CancelUrlPath, cancelQuery);
         var notifyUrl = BuildAbsoluteUrl(httpContext, _options.NotifyUrlPath, null);
         var paymentId = $"{plan.Slug}-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}";
-        var (firstName, lastName, emailAddress) = GetBuyerDetails(httpContext.User);
 
         var fields = new List<KeyValuePair<string, string>>
         {

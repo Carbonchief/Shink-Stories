@@ -114,333 +114,558 @@
                  Rounded="true">
             <MudTabPanel Text='@T("Intekenaars", "Subscribers")'>
                 <section class="admin-section">
-            <div class="admin-section-head">
-                <div class="admin-search">
-                    <div class="admin-search-field">
-                        <MudTextField T="string"
-                                      @bind-Value="SubscriberSearch"
-                                      Placeholder='@T("Soek e-pos of naam", "Search email or name")'
-                                      Variant="Variant.Outlined"
-                                      Margin="Margin.Dense"
-                                      Immediate="true" />
-                    </div>
-                    <div class="admin-search-actions">
-                        <MudButton Class="admin-icon-btn admin-mobile-cta"
-                                   Variant="Variant.Filled"
-                                   Color="Color.Primary"
-                                   OnClick="SearchSubscribersAsync"
-                                   aria-label='@T("Soek intekenaars", "Search subscribers")'
-                                   title='@T("Soek intekenaars", "Search subscribers")'>
-                            <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                            <span class="admin-btn-text">@T("Soek", "Search")</span>
-                            <span class="sr-only">@T("Soek intekenaars", "Search subscribers")</span>
-                        </MudButton>
-                        <MudButton Class="admin-icon-btn admin-mobile-cta"
-                                   Variant="Variant.Text"
-                                   Color="Color.Default"
-                                   Disabled="@(!HasActiveSubscriberColumnFilters)"
-                                   OnClick="ClearSubscriberColumnFiltersAsync"
-                                   aria-label='@T("Maak intekenaarfilters skoon", "Clear subscriber filters")'
-                                   title='@T("Maak intekenaarfilters skoon", "Clear subscriber filters")'>
-                            <i class="fa-solid fa-filter-circle-xmark" aria-hidden="true"></i>
-                            <span class="admin-btn-text">@T("Maak filters skoon", "Clear filters")</span>
-                            <span class="sr-only">@T("Maak intekenaarfilters skoon", "Clear subscriber filters")</span>
-                        </MudButton>
-                        <MudButton Class="admin-icon-btn admin-mobile-cta"
-                                   Variant="Variant.Outlined"
-                                   Color="Color.Primary"
-                                   OnClick="ReloadSubscribersAsync"
-                                   aria-label='@T("Verfris intekenaars", "Refresh subscribers")'
-                                   title='@T("Verfris intekenaars", "Refresh subscribers")'>
-                            <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
-                            <span class="admin-btn-text">@T("Verfris", "Refresh")</span>
-                            <span class="sr-only">@T("Verfris intekenaars", "Refresh subscribers")</span>
-                        </MudButton>
-                    </div>
-                </div>
-            </div>
-
-            <MudTable T="AdminSubscriberRecord"
-                      @ref="SubscribersTable"
-                      Class="admin-grid admin-subscriber-grid"
-                      ServerData="LoadSubscribersPageAsync"
-                      SortLabel='@T("Sorteer volgens", "Sort by")'
-                      Loading="IsRefreshingSubscribers"
-                      RowsPerPage="100"
-                      Dense="true"
-                      Hover="true"
-                      Bordered="true"
-                      Elevation="0"
-                      Breakpoint="Breakpoint.Sm"
-                      RowClassFunc="GetSubscriberRowClass"
-                      OnRowClick="OnSubscriberRowClick">
-                <HeaderContent>
-                    <MudTh>
-                        <div class="admin-header-cell">
-                            <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="subscriber">
-                                @T("Intekenaar", "Subscriber")
-                            </MudTableSortLabel>
-                            <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(SubscriberColumnFilters.SubscriberText) ? string.Empty : " is-active")}")'
-                                     @onclick:stopPropagation="true">
-                                <summary class="admin-header-filter-toggle"
-                                         @onclick:stopPropagation="true"
-                                         title='@T("Filter intekenaar", "Filter subscriber")'>
-                                    <i class="fa-solid fa-filter" aria-hidden="true"></i>
-                                    <span class="sr-only">@T("Filter intekenaar", "Filter subscriber")</span>
-                                </summary>
-                                <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
-                                    <label class="admin-header-filter-label" for="subscriber-filter-text">
-                                        @T("Naam of e-pos", "Name or email")
-                                    </label>
-                                    <input id="subscriber-filter-text"
-                                           class="admin-header-filter-input"
-                                           type="search"
-                                           @bind="SubscriberTextFilterDraft"
-                                           @bind:event="oninput"
-                                           placeholder='@T("Tik om te filter", "Type to filter")' />
-                                    <div class="admin-header-filter-actions-row">
-                                        <button type="button"
-                                                class="admin-header-filter-action"
-                                                @onclick='() => ApplySubscriberTextFilterAsync("subscriber")'>
-                                            @T("Pas toe", "Apply")
-                                        </button>
-                                        <button type="button"
-                                                class="admin-header-filter-action is-secondary"
-                                                @onclick='() => ClearSubscriberTextFilterAsync("subscriber")'>
-                                            @T("Maak skoon", "Clear")
-                                        </button>
-                                    </div>
-                                </div>
-                            </details>
-                        </div>
-                    </MudTh>
-                    <MudTh>
-                        <div class="admin-header-cell">
-                            <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="mobile">
-                                @T("Selfoon", "Mobile")
-                            </MudTableSortLabel>
-                            <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(SubscriberColumnFilters.MobileText) ? string.Empty : " is-active")}")'
-                                     @onclick:stopPropagation="true">
-                                <summary class="admin-header-filter-toggle"
-                                         @onclick:stopPropagation="true"
-                                         title='@T("Filter selfoon", "Filter mobile")'>
-                                    <i class="fa-solid fa-filter" aria-hidden="true"></i>
-                                    <span class="sr-only">@T("Filter selfoon", "Filter mobile")</span>
-                                </summary>
-                                <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
-                                    <label class="admin-header-filter-label" for="subscriber-filter-mobile">
-                                        @T("Selfoon bevat", "Mobile contains")
-                                    </label>
-                                    <input id="subscriber-filter-mobile"
-                                           class="admin-header-filter-input"
-                                           type="search"
-                                           @bind="SubscriberMobileFilterDraft"
-                                           @bind:event="oninput"
-                                           placeholder='@T("Tik om te filter", "Type to filter")' />
-                                    <div class="admin-header-filter-actions-row">
-                                        <button type="button"
-                                                class="admin-header-filter-action"
-                                                @onclick='() => ApplySubscriberTextFilterAsync("mobile")'>
-                                            @T("Pas toe", "Apply")
-                                        </button>
-                                        <button type="button"
-                                                class="admin-header-filter-action is-secondary"
-                                                @onclick='() => ClearSubscriberTextFilterAsync("mobile")'>
-                                            @T("Maak skoon", "Clear")
-                                        </button>
-                                    </div>
-                                </div>
-                            </details>
-                        </div>
-                    </MudTh>
-                    <MudTh>
-                        <div class="admin-header-cell">
-                            <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="tiers">
-                                @T("Vlakke", "Tiers")
-                            </MudTableSortLabel>
-                            <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(SubscriberColumnFilters.TierText) ? string.Empty : " is-active")}")'
-                                     @onclick:stopPropagation="true">
-                                <summary class="admin-header-filter-toggle"
-                                         @onclick:stopPropagation="true"
-                                         title='@T("Filter vlakke", "Filter tiers")'>
-                                    <i class="fa-solid fa-filter" aria-hidden="true"></i>
-                                    <span class="sr-only">@T("Filter vlakke", "Filter tiers")</span>
-                                </summary>
-                                <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
-                                    <label class="admin-header-filter-label" for="subscriber-filter-tier">
-                                        @T("Vlak bevat", "Tier contains")
-                                    </label>
-                                    <input id="subscriber-filter-tier"
-                                           class="admin-header-filter-input"
-                                           type="search"
-                                           @bind="SubscriberTierFilterDraft"
-                                           @bind:event="oninput"
-                                           placeholder='@T("Tik om te filter", "Type to filter")' />
-                                    <div class="admin-header-filter-actions-row">
-                                        <button type="button"
-                                                class="admin-header-filter-action"
-                                                @onclick='() => ApplySubscriberTextFilterAsync("tiers")'>
-                                            @T("Pas toe", "Apply")
-                                        </button>
-                                        <button type="button"
-                                                class="admin-header-filter-action is-secondary"
-                                                @onclick='() => ClearSubscriberTextFilterAsync("tiers")'>
-                                            @T("Maak skoon", "Clear")
-                                        </button>
-                                    </div>
-                                </div>
-                            </details>
-                        </div>
-                    </MudTh>
-                    <MudTh>
-                        <div class="admin-header-cell">
-                            <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="source">
-                                @T("Bron", "Source")
-                            </MudTableSortLabel>
-                            <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(SubscriberColumnFilters.SourceSystem) ? string.Empty : " is-active")}")'
-                                     @onclick:stopPropagation="true">
-                                <summary class="admin-header-filter-toggle"
-                                         @onclick:stopPropagation="true"
-                                         title='@T("Filter bron", "Filter source")'>
-                                    <i class="fa-solid fa-filter" aria-hidden="true"></i>
-                                    <span class="sr-only">@T("Filter bron", "Filter source")</span>
-                                </summary>
-                                <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
-                                    <label class="admin-header-filter-label" for="subscriber-filter-source">
-                                        @T("Bron", "Source")
-                                    </label>
-                                    <select id="subscriber-filter-source"
-                                            class="admin-header-filter-select"
-                                            value="@SubscriberColumnFilters.SourceSystem"
-                                            @onchange="OnSubscriberSourceFilterChanged">
-                                        <option value="@AdminGridFilterOptionValues.All">@T("Alles", "All")</option>
-                                        <option value="@AdminGridFilterOptionValues.None">@T("Geen", "None")</option>
-                                        <option value="wordpress_pmpro">WordPress / PMPro</option>
-                                        <option value="shink_app">@T("App", "App")</option>
-                                    </select>
-                                </div>
-                            </details>
-                        </div>
-                    </MudTh>
-                    <MudTh>
-                        <div class="admin-header-cell">
-                            <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="provider">
-                                @T("Betaalverskaffer", "Payment Provider")
-                            </MudTableSortLabel>
-                            <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(SubscriberColumnFilters.PaymentProvider) ? string.Empty : " is-active")}")'
-                                     @onclick:stopPropagation="true">
-                                <summary class="admin-header-filter-toggle"
-                                         @onclick:stopPropagation="true"
-                                         title='@T("Filter betaalverskaffer", "Filter payment provider")'>
-                                    <i class="fa-solid fa-filter" aria-hidden="true"></i>
-                                    <span class="sr-only">@T("Filter betaalverskaffer", "Filter payment provider")</span>
-                                </summary>
-                                <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
-                                    <label class="admin-header-filter-label" for="subscriber-filter-provider">
-                                        @T("Betaalverskaffer", "Payment Provider")
-                                    </label>
-                                    <select id="subscriber-filter-provider"
-                                            class="admin-header-filter-select"
-                                            value="@SubscriberColumnFilters.PaymentProvider"
-                                            @onchange="OnSubscriberProviderFilterChanged">
-                                        <option value="@AdminGridFilterOptionValues.All">@T("Alles", "All")</option>
-                                        <option value="@AdminGridFilterOptionValues.None">@T("Geen", "None")</option>
-                                        <option value="payfast">PayFast</option>
-                                        <option value="paystack">Paystack</option>
-                                        <option value="free">@T("Gratis", "Free")</option>
-                                    </select>
-                                </div>
-                            </details>
-                        </div>
-                    </MudTh>
-                    <MudTh>
-                        <div class="admin-header-cell">
-                            <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="status">
-                                @T("Status", "Status")
-                            </MudTableSortLabel>
-                            <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(SubscriberColumnFilters.SubscriptionStatus) ? string.Empty : " is-active")}")'
-                                     @onclick:stopPropagation="true">
-                                <summary class="admin-header-filter-toggle"
-                                         @onclick:stopPropagation="true"
-                                         title='@T("Filter status", "Filter status")'>
-                                    <i class="fa-solid fa-filter" aria-hidden="true"></i>
-                                    <span class="sr-only">@T("Filter status", "Filter status")</span>
-                                </summary>
-                                <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
-                                    <label class="admin-header-filter-label" for="subscriber-filter-status">
-                                        @T("Status", "Status")
-                                    </label>
-                                    <select id="subscriber-filter-status"
-                                            class="admin-header-filter-select"
-                                            value="@SubscriberColumnFilters.SubscriptionStatus"
-                                            @onchange="OnSubscriberStatusFilterChanged">
-                                        <option value="@AdminGridFilterOptionValues.All">@T("Alles", "All")</option>
-                                        <option value="@AdminGridFilterOptionValues.None">@T("Geen", "None")</option>
-                                        <option value="active">@T("Aktief", "Active")</option>
-                                        <option value="pending">@T("Hangend", "Pending")</option>
-                                        <option value="cancelled">@T("Gekanselleer", "Cancelled")</option>
-                                        <option value="failed">@T("Misluk", "Failed")</option>
-                                    </select>
-                                </div>
-                            </details>
-                        </div>
-                    </MudTh>
-                    <MudTh>
-                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="subscribed_at">
-                            @T("Ingeteken op", "Subscribed On")
-                        </MudTableSortLabel>
-                    </MudTh>
-                    <MudTh>
-                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="next_payment">
-                            @T("Volgende betaling", "Next Payment")
-                        </MudTableSortLabel>
-                    </MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    @{
-                        var subscriberPrimaryLabel = BuildSubscriberPrimaryLabel(context);
-                        var subscriberSecondaryLabel = BuildSubscriberSecondaryLabel(context);
-                    }
-                    <MudTd DataLabel='@T("Intekenaar", "Subscriber")'>
-                        <div class="admin-subscriber-cell">
-                            <span class="admin-subscriber-avatar" aria-hidden="true">
-                                @if (!string.IsNullOrWhiteSpace(context.ProfileImageUrl))
+                    <div class="admin-section-head admin-subscriber-section-head">
+                        <div class="admin-subscriber-submenu">
+                            <span class="admin-subscriber-submenu-label">@T("Verslagtipes", "Report types")</span>
+                            <div class="admin-subscriber-submenu-links"
+                                 role="navigation"
+                                 aria-label='@T("Intekenaar verslagtipes", "Subscriber report types")'>
+                                @foreach (var subscriberView in SubscriberViews)
                                 {
-                                    <img class="admin-subscriber-avatar-image"
-                                         src="@context.ProfileImageUrl"
-                                         alt=""
-                                         loading="lazy"
-                                         decoding="async" />
-                                }
-                                else
-                                {
-                                    <span class="admin-subscriber-avatar-fallback">@BuildSubscriberInitials(context)</span>
-                                }
-                            </span>
-                            <div class="admin-subscriber-meta">
-                                <span class="admin-subscriber-primary">@HighlightSearchMatch(subscriberPrimaryLabel, SubscriberSearch)</span>
-                                @if (!string.IsNullOrWhiteSpace(subscriberSecondaryLabel))
-                                {
-                                    <span class="admin-subscriber-secondary">@HighlightSearchMatch(subscriberSecondaryLabel, SubscriberSearch)</span>
+                                    var isActiveSubscriberView = ActiveSubscriberView == subscriberView;
+                                    <button type="button"
+                                            class='@($"admin-subscriber-submenu-link{(isActiveSubscriberView ? " is-active" : string.Empty)}")'
+                                            @onclick='() => SelectSubscriberViewAsync(subscriberView)'
+                                            aria-pressed="@isActiveSubscriberView"
+                                            title="@GetSubscriberViewLabel(subscriberView)">
+                                        @GetSubscriberViewLabel(subscriberView)
+                                    </button>
                                 }
                             </div>
                         </div>
-                    </MudTd>
-                    <MudTd DataLabel='@T("Selfoon", "Mobile")'>@HighlightSearchMatch(context.MobileNumber ?? "-", SubscriberSearch)</MudTd>
-                    <MudTd DataLabel='@T("Vlakke", "Tiers")'>@BuildTierSummary(context.ActiveTierCodes)</MudTd>
-                    <MudTd DataLabel='@T("Bron", "Source")'>@BuildSubscriptionSourceLabel(context.SubscriptionSourceSystem)</MudTd>
-                    <MudTd DataLabel='@T("Betaalverskaffer", "Payment Provider")'>@BuildPaymentProviderLabel(context.PaymentProvider)</MudTd>
-                    <MudTd DataLabel='@T("Status", "Status")'>@BuildSubscriptionStatusLabel(context)</MudTd>
-                    <MudTd DataLabel='@T("Ingeteken op", "Subscribed On")'>@FormatAdminDate(context.SubscribedAt)</MudTd>
-                    <MudTd DataLabel='@T("Volgende betaling", "Next Payment")'>@FormatAdminDate(context.NextPaymentDueAt)</MudTd>
-                </RowTemplate>
-                <NoRecordsContent>
-                    <MudText Typo="Typo.body2">@T("Geen intekenaars gevind nie.", "No subscribers found.")</MudText>
-                </NoRecordsContent>
-                <PagerContent>
-                    <MudTablePager />
-                </PagerContent>
-            </MudTable>
+
+                        @if (IsShowingSubscriberGrid)
+                        {
+                            <div class="admin-search">
+                                <div class="admin-search-field">
+                                    <MudTextField T="string"
+                                                  @bind-Value="SubscriberSearch"
+                                                  Placeholder='@T("Soek e-pos of naam", "Search email or name")'
+                                                  Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense"
+                                                  Immediate="true" />
+                                </div>
+                                <div class="admin-search-actions">
+                                    <MudButton Class="admin-icon-btn admin-mobile-cta"
+                                               Variant="Variant.Filled"
+                                               Color="Color.Primary"
+                                               OnClick="SearchSubscribersAsync"
+                                               aria-label='@T("Soek intekenaars", "Search subscribers")'
+                                               title='@T("Soek intekenaars", "Search subscribers")'>
+                                        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                                        <span class="admin-btn-text">@T("Soek", "Search")</span>
+                                        <span class="sr-only">@T("Soek intekenaars", "Search subscribers")</span>
+                                    </MudButton>
+                                    <MudButton Class="admin-icon-btn admin-mobile-cta"
+                                               Variant="Variant.Text"
+                                               Color="Color.Default"
+                                               Disabled="@(!HasActiveSubscriberColumnFilters)"
+                                               OnClick="ClearSubscriberColumnFiltersAsync"
+                                               aria-label='@T("Maak intekenaarfilters skoon", "Clear subscriber filters")'
+                                               title='@T("Maak intekenaarfilters skoon", "Clear subscriber filters")'>
+                                        <i class="fa-solid fa-filter-circle-xmark" aria-hidden="true"></i>
+                                        <span class="admin-btn-text">@T("Maak filters skoon", "Clear filters")</span>
+                                        <span class="sr-only">@T("Maak intekenaarfilters skoon", "Clear subscriber filters")</span>
+                                    </MudButton>
+                                    <MudButton Class="admin-icon-btn admin-mobile-cta"
+                                               Variant="Variant.Outlined"
+                                               Color="Color.Primary"
+                                               OnClick="ReloadSubscribersAsync"
+                                               aria-label='@T("Verfris intekenaars", "Refresh subscribers")'
+                                               title='@T("Verfris intekenaars", "Refresh subscribers")'>
+                                        <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
+                                        <span class="admin-btn-text">@T("Verfris", "Refresh")</span>
+                                        <span class="sr-only">@T("Verfris intekenaars", "Refresh subscribers")</span>
+                                    </MudButton>
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    @if (IsShowingSubscriberGrid)
+                    {
+                        <MudTable T="AdminSubscriberRecord"
+                                  @ref="SubscribersTable"
+                                  Class="admin-grid admin-subscriber-grid"
+                                  ServerData="LoadSubscribersPageAsync"
+                                  SortLabel='@T("Sorteer volgens", "Sort by")'
+                                  Loading="IsRefreshingSubscribers"
+                                  RowsPerPage="100"
+                                  Dense="true"
+                                  Hover="true"
+                                  Bordered="true"
+                                  Elevation="0"
+                                  Breakpoint="Breakpoint.Sm"
+                                  RowClassFunc="GetSubscriberRowClass"
+                                  OnRowClick="OnSubscriberRowClick">
+                            <HeaderContent>
+                                <MudTh>
+                                    <div class="admin-header-cell">
+                                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="subscriber">
+                                            @T("Intekenaar", "Subscriber")
+                                        </MudTableSortLabel>
+                                        <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(SubscriberColumnFilters.SubscriberText) ? string.Empty : " is-active")}")'
+                                                 @onclick:stopPropagation="true">
+                                            <summary class="admin-header-filter-toggle"
+                                                     @onclick:stopPropagation="true"
+                                                     title='@T("Filter intekenaar", "Filter subscriber")'>
+                                                <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                                                <span class="sr-only">@T("Filter intekenaar", "Filter subscriber")</span>
+                                            </summary>
+                                            <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
+                                                <label class="admin-header-filter-label" for="subscriber-filter-text">
+                                                    @T("Naam of e-pos", "Name or email")
+                                                </label>
+                                                <input id="subscriber-filter-text"
+                                                       class="admin-header-filter-input"
+                                                       type="search"
+                                                       @bind="SubscriberTextFilterDraft"
+                                                       @bind:event="oninput"
+                                                       placeholder='@T("Tik om te filter", "Type to filter")' />
+                                                <div class="admin-header-filter-actions-row">
+                                                    <button type="button"
+                                                            class="admin-header-filter-action"
+                                                            @onclick='() => ApplySubscriberTextFilterAsync("subscriber")'>
+                                                        @T("Pas toe", "Apply")
+                                                    </button>
+                                                    <button type="button"
+                                                            class="admin-header-filter-action is-secondary"
+                                                            @onclick='() => ClearSubscriberTextFilterAsync("subscriber")'>
+                                                        @T("Maak skoon", "Clear")
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </details>
+                                    </div>
+                                </MudTh>
+                                <MudTh>
+                                    <div class="admin-header-cell">
+                                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="mobile">
+                                            @T("Selfoon", "Mobile")
+                                        </MudTableSortLabel>
+                                        <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(SubscriberColumnFilters.MobileText) ? string.Empty : " is-active")}")'
+                                                 @onclick:stopPropagation="true">
+                                            <summary class="admin-header-filter-toggle"
+                                                     @onclick:stopPropagation="true"
+                                                     title='@T("Filter selfoon", "Filter mobile")'>
+                                                <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                                                <span class="sr-only">@T("Filter selfoon", "Filter mobile")</span>
+                                            </summary>
+                                            <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
+                                                <label class="admin-header-filter-label" for="subscriber-filter-mobile">
+                                                    @T("Selfoon bevat", "Mobile contains")
+                                                </label>
+                                                <input id="subscriber-filter-mobile"
+                                                       class="admin-header-filter-input"
+                                                       type="search"
+                                                       @bind="SubscriberMobileFilterDraft"
+                                                       @bind:event="oninput"
+                                                       placeholder='@T("Tik om te filter", "Type to filter")' />
+                                                <div class="admin-header-filter-actions-row">
+                                                    <button type="button"
+                                                            class="admin-header-filter-action"
+                                                            @onclick='() => ApplySubscriberTextFilterAsync("mobile")'>
+                                                        @T("Pas toe", "Apply")
+                                                    </button>
+                                                    <button type="button"
+                                                            class="admin-header-filter-action is-secondary"
+                                                            @onclick='() => ClearSubscriberTextFilterAsync("mobile")'>
+                                                        @T("Maak skoon", "Clear")
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </details>
+                                    </div>
+                                </MudTh>
+                                <MudTh>
+                                    <div class="admin-header-cell">
+                                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="tiers">
+                                            @T("Vlakke", "Tiers")
+                                        </MudTableSortLabel>
+                                        <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(SubscriberColumnFilters.TierText) ? string.Empty : " is-active")}")'
+                                                 @onclick:stopPropagation="true">
+                                            <summary class="admin-header-filter-toggle"
+                                                     @onclick:stopPropagation="true"
+                                                     title='@T("Filter vlakke", "Filter tiers")'>
+                                                <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                                                <span class="sr-only">@T("Filter vlakke", "Filter tiers")</span>
+                                            </summary>
+                                            <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
+                                                <label class="admin-header-filter-label" for="subscriber-filter-tier">
+                                                    @T("Vlak bevat", "Tier contains")
+                                                </label>
+                                                <input id="subscriber-filter-tier"
+                                                       class="admin-header-filter-input"
+                                                       type="search"
+                                                       @bind="SubscriberTierFilterDraft"
+                                                       @bind:event="oninput"
+                                                       placeholder='@T("Tik om te filter", "Type to filter")' />
+                                                <div class="admin-header-filter-actions-row">
+                                                    <button type="button"
+                                                            class="admin-header-filter-action"
+                                                            @onclick='() => ApplySubscriberTextFilterAsync("tiers")'>
+                                                        @T("Pas toe", "Apply")
+                                                    </button>
+                                                    <button type="button"
+                                                            class="admin-header-filter-action is-secondary"
+                                                            @onclick='() => ClearSubscriberTextFilterAsync("tiers")'>
+                                                        @T("Maak skoon", "Clear")
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </details>
+                                    </div>
+                                </MudTh>
+                                <MudTh>
+                                    <div class="admin-header-cell">
+                                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="source">
+                                            @T("Bron", "Source")
+                                        </MudTableSortLabel>
+                                        <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(SubscriberColumnFilters.SourceSystem) ? string.Empty : " is-active")}")'
+                                                 @onclick:stopPropagation="true">
+                                            <summary class="admin-header-filter-toggle"
+                                                     @onclick:stopPropagation="true"
+                                                     title='@T("Filter bron", "Filter source")'>
+                                                <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                                                <span class="sr-only">@T("Filter bron", "Filter source")</span>
+                                            </summary>
+                                            <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
+                                                <label class="admin-header-filter-label" for="subscriber-filter-source">
+                                                    @T("Bron", "Source")
+                                                </label>
+                                                <select id="subscriber-filter-source"
+                                                        class="admin-header-filter-select"
+                                                        value="@SubscriberColumnFilters.SourceSystem"
+                                                        @onchange="OnSubscriberSourceFilterChanged">
+                                                    <option value="@AdminGridFilterOptionValues.All">@T("Alles", "All")</option>
+                                                    <option value="@AdminGridFilterOptionValues.None">@T("Geen", "None")</option>
+                                                    <option value="wordpress_pmpro">WordPress / PMPro</option>
+                                                    <option value="shink_app">@T("App", "App")</option>
+                                                </select>
+                                            </div>
+                                        </details>
+                                    </div>
+                                </MudTh>
+                                <MudTh>
+                                    <div class="admin-header-cell">
+                                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="provider">
+                                            @T("Betaalverskaffer", "Payment Provider")
+                                        </MudTableSortLabel>
+                                        <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(SubscriberColumnFilters.PaymentProvider) ? string.Empty : " is-active")}")'
+                                                 @onclick:stopPropagation="true">
+                                            <summary class="admin-header-filter-toggle"
+                                                     @onclick:stopPropagation="true"
+                                                     title='@T("Filter betaalverskaffer", "Filter payment provider")'>
+                                                <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                                                <span class="sr-only">@T("Filter betaalverskaffer", "Filter payment provider")</span>
+                                            </summary>
+                                            <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
+                                                <label class="admin-header-filter-label" for="subscriber-filter-provider">
+                                                    @T("Betaalverskaffer", "Payment Provider")
+                                                </label>
+                                                <select id="subscriber-filter-provider"
+                                                        class="admin-header-filter-select"
+                                                        value="@SubscriberColumnFilters.PaymentProvider"
+                                                        @onchange="OnSubscriberProviderFilterChanged">
+                                                    <option value="@AdminGridFilterOptionValues.All">@T("Alles", "All")</option>
+                                                    <option value="@AdminGridFilterOptionValues.None">@T("Geen", "None")</option>
+                                                    <option value="payfast">PayFast</option>
+                                                    <option value="paystack">Paystack</option>
+                                                    <option value="free">@T("Gratis", "Free")</option>
+                                                </select>
+                                            </div>
+                                        </details>
+                                    </div>
+                                </MudTh>
+                                <MudTh>
+                                    <div class="admin-header-cell">
+                                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="status">
+                                            @T("Status", "Status")
+                                        </MudTableSortLabel>
+                                        <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(SubscriberColumnFilters.SubscriptionStatus) ? string.Empty : " is-active")}")'
+                                                 @onclick:stopPropagation="true">
+                                            <summary class="admin-header-filter-toggle"
+                                                     @onclick:stopPropagation="true"
+                                                     title='@T("Filter status", "Filter status")'>
+                                                <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                                                <span class="sr-only">@T("Filter status", "Filter status")</span>
+                                            </summary>
+                                            <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
+                                                <label class="admin-header-filter-label" for="subscriber-filter-status">
+                                                    @T("Status", "Status")
+                                                </label>
+                                                <select id="subscriber-filter-status"
+                                                        class="admin-header-filter-select"
+                                                        value="@SubscriberColumnFilters.SubscriptionStatus"
+                                                        @onchange="OnSubscriberStatusFilterChanged">
+                                                    <option value="@AdminGridFilterOptionValues.All">@T("Alles", "All")</option>
+                                                    <option value="@AdminGridFilterOptionValues.None">@T("Geen", "None")</option>
+                                                    <option value="active">@T("Aktief", "Active")</option>
+                                                    <option value="pending">@T("Hangend", "Pending")</option>
+                                                    <option value="cancelled">@T("Gekanselleer", "Cancelled")</option>
+                                                    <option value="failed">@T("Misluk", "Failed")</option>
+                                                </select>
+                                            </div>
+                                        </details>
+                                    </div>
+                                </MudTh>
+                                <MudTh>
+                                    <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="subscribed_at">
+                                        @T("Ingeteken op", "Subscribed On")
+                                    </MudTableSortLabel>
+                                </MudTh>
+                                <MudTh>
+                                    <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="next_payment">
+                                        @T("Volgende betaling", "Next Payment")
+                                    </MudTableSortLabel>
+                                </MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                @{
+                                    var subscriberPrimaryLabel = BuildSubscriberPrimaryLabel(context);
+                                    var subscriberSecondaryLabel = BuildSubscriberSecondaryLabel(context);
+                                }
+                                <MudTd DataLabel='@T("Intekenaar", "Subscriber")'>
+                                    <div class="admin-subscriber-cell">
+                                        <span class="admin-subscriber-avatar" aria-hidden="true">
+                                            @if (!string.IsNullOrWhiteSpace(context.ProfileImageUrl))
+                                            {
+                                                <img class="admin-subscriber-avatar-image"
+                                                     src="@context.ProfileImageUrl"
+                                                     alt=""
+                                                     loading="lazy"
+                                                     decoding="async" />
+                                            }
+                                            else
+                                            {
+                                                <span class="admin-subscriber-avatar-fallback">@BuildSubscriberInitials(context)</span>
+                                            }
+                                        </span>
+                                        <div class="admin-subscriber-meta">
+                                            <span class="admin-subscriber-primary">@HighlightSearchMatch(subscriberPrimaryLabel, SubscriberSearch)</span>
+                                            @if (!string.IsNullOrWhiteSpace(subscriberSecondaryLabel))
+                                            {
+                                                <span class="admin-subscriber-secondary">@HighlightSearchMatch(subscriberSecondaryLabel, SubscriberSearch)</span>
+                                            }
+                                        </div>
+                                    </div>
+                                </MudTd>
+                                <MudTd DataLabel='@T("Selfoon", "Mobile")'>@HighlightSearchMatch(context.MobileNumber ?? "-", SubscriberSearch)</MudTd>
+                                <MudTd DataLabel='@T("Vlakke", "Tiers")'>@BuildTierSummary(context.ActiveTierCodes)</MudTd>
+                                <MudTd DataLabel='@T("Bron", "Source")'>@BuildSubscriptionSourceLabel(context.SubscriptionSourceSystem)</MudTd>
+                                <MudTd DataLabel='@T("Betaalverskaffer", "Payment Provider")'>@BuildPaymentProviderLabel(context.PaymentProvider)</MudTd>
+                                <MudTd DataLabel='@T("Status", "Status")'>@BuildSubscriptionStatusLabel(context)</MudTd>
+                                <MudTd DataLabel='@T("Ingeteken op", "Subscribed On")'>@FormatAdminDate(context.SubscribedAt)</MudTd>
+                                <MudTd DataLabel='@T("Volgende betaling", "Next Payment")'>@FormatAdminDate(context.NextPaymentDueAt)</MudTd>
+                            </RowTemplate>
+                            <NoRecordsContent>
+                                <MudText Typo="Typo.body2">@T("Geen intekenaars gevind nie.", "No subscribers found.")</MudText>
+                            </NoRecordsContent>
+                            <PagerContent>
+                                <MudTablePager />
+                            </PagerContent>
+                        </MudTable>
+                    }
+                    else
+                    {
+                        <div class="admin-section-head">
+                            <div class="admin-report-copy">
+                                <h2>@GetSubscriberViewLabel(ActiveSubscriberView)</h2>
+                                <p class="admin-form-note">@GetSubscriberViewDescription(ActiveSubscriberView)</p>
+                            </div>
+                            <MudButton Class="admin-mobile-cta"
+                                       Variant="Variant.Outlined"
+                                       Color="Color.Primary"
+                                       OnClick="RefreshSubscriberReportsAsync"
+                                       Disabled="IsRefreshingSubscriberReports"
+                                       aria-label='@T("Verfris intekenaar verslag", "Refresh subscriber report")'
+                                       title='@T("Verfris intekenaar verslag", "Refresh subscriber report")'>
+                                <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
+                                <span class="admin-btn-text">
+                                    @(IsRefreshingSubscriberReports ? T("Verfris...", "Refreshing...") : T("Verfris", "Refresh"))
+                                </span>
+                            </MudButton>
+                        </div>
+
+                        @if (IsRefreshingSubscriberReports && !HasSubscriberReportData(ActiveSubscriberView))
+                        {
+                            <section class="admin-state">
+                                <h2>@T("Laai intekenaar verslag...", "Loading subscriber report...")</h2>
+                            </section>
+                        }
+                        else if (!HasSubscriberReportData(ActiveSubscriberView))
+                        {
+                            <section class="admin-state">
+                                <h2>@T("Nog geen data beskikbaar nie", "No data available yet")</h2>
+                                <p>@T("Sodra ons nagespoorde data het, sal hierdie verslag hier wys.", "As soon as tracked data is available, this report will appear here.")</p>
+                            </section>
+                        }
+                        else if (ActiveSubscriberView == SubscriberAdminView.MembershipStats)
+                        {
+                            <div class="admin-report-table-wrap">
+                                <table class="admin-report-table">
+                                    <thead>
+                                        <tr>
+                                            <th>@T("Periode", "Period")</th>
+                                            <th>@T("Intekeninge", "Signups")</th>
+                                            <th>@T("Kansellasies", "Cancellations")</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var metric in SubscriberReports.MembershipStats)
+                                        {
+                                            <tr>
+                                                <td>@GetSubscriberPeriodLabel(metric.PeriodKey)</td>
+                                                <td>@FormatAnalyticsNumber(metric.Signups)</td>
+                                                <td>@FormatAnalyticsNumber(metric.Cancellations)</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else if (ActiveSubscriberView == SubscriberAdminView.ActiveMembersPerLevel)
+                        {
+                            <div class="admin-report-cards">
+                                @foreach (var metric in SubscriberReports.ActiveMembersPerLevel)
+                                {
+                                    <article class="admin-report-card">
+                                        <p class="admin-report-card-label">@metric.TierName</p>
+                                        <p class="admin-report-card-value">@FormatAnalyticsNumber(metric.ActiveMembers)</p>
+                                        <p class="admin-report-card-meta">@FormatReportPercentage(metric.Percentage)</p>
+                                    </article>
+                                }
+                            </div>
+
+                            <div class="admin-report-analytics-layout">
+                                <section class="admin-report-panel">
+                                    <div class="admin-analytics-panel-head">
+                                        <div>
+                                            <h3>@T("Lede verdeling", "Member distribution")</h3>
+                                            <p>@T("Sirkelgrafiek van aktiewe lede per vlak.", "Pie chart of active members per level.")</p>
+                                        </div>
+                                    </div>
+
+                                    <div class="admin-report-chart-shell">
+                                        <MudChart T="double"
+                                                  ChartType="ChartType.Pie"
+                                                  ChartSeries="ActiveMembersPerLevelChartSeries"
+                                                  ChartLabels="ActiveMembersPerLevelChartLabels"
+                                                  ChartOptions="ActiveMembersPerLevelPieChartOptions"
+                                                  Width="100%"
+                                                  Height="320px" />
+                                    </div>
+                                </section>
+
+                                <section class="admin-report-panel">
+                                    <div class="admin-analytics-panel-head">
+                                        <div>
+                                            <h3>@T("Vlak opsomming", "Level summary")</h3>
+                                            <p>@T("Aktiewe lede en persentasie per intekenvlak.", "Active members and percentage by subscription level.")</p>
+                                        </div>
+                                    </div>
+
+                                    <div class="admin-report-table-wrap">
+                                        <table class="admin-report-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>@T("Vlak", "Level")</th>
+                                                    <th>@T("Aktiewe lede", "Active members")</th>
+                                                    <th>@T("Persentasie", "Percentage")</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var metric in SubscriberReports.ActiveMembersPerLevel)
+                                                {
+                                                    <tr>
+                                                        <td>@metric.TierName</td>
+                                                        <td>@FormatAnalyticsNumber(metric.ActiveMembers)</td>
+                                                        <td>@FormatReportPercentage(metric.Percentage)</td>
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </section>
+                            </div>
+                        }
+                        else if (ActiveSubscriberView == SubscriberAdminView.SalesAndRevenue)
+                        {
+                            <div class="admin-report-table-wrap">
+                                <table class="admin-report-table">
+                                    <thead>
+                                        <tr>
+                                            <th>@T("Periode", "Period")</th>
+                                            <th>@T("Verkope", "Sales")</th>
+                                            <th>@T("Inkomste", "Revenue")</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var metric in SubscriberReports.SalesAndRevenue)
+                                        {
+                                            <tr>
+                                                <td>@GetSubscriberPeriodLabel(metric.PeriodKey)</td>
+                                                <td>@FormatAnalyticsNumber(metric.SalesCount)</td>
+                                                <td>@FormatCurrency(metric.RevenueZar)</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else if (ActiveSubscriberView == SubscriberAdminView.AbandonedCartRecoveries)
+                        {
+                            <div class="admin-report-table-wrap">
+                                <table class="admin-report-table">
+                                    <thead>
+                                        <tr>
+                                            <th>@T("Periode", "Period")</th>
+                                            <th>@T("Herwinde inkomste", "Recovered revenue")</th>
+                                            <th>@T("Herwinde bestellings", "Recovered orders")</th>
+                                            <th>@T("Herstel pogings", "Recovery attempts")</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var metric in SubscriberReports.AbandonedCartRecoveries)
+                                        {
+                                            <tr>
+                                                <td>@GetSubscriberPeriodLabel(metric.PeriodKey)</td>
+                                                <td>@FormatCurrency(metric.RecoveredRevenueZar)</td>
+                                                <td>@FormatAnalyticsNumber(metric.RecoveredOrders)</td>
+                                                <td>@FormatAnalyticsNumber(metric.RecoveryAttempts)</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else if (ActiveSubscriberView == SubscriberAdminView.VisitsViewsAndLogins)
+                        {
+                            <div class="admin-report-table-wrap">
+                                <table class="admin-report-table">
+                                    <thead>
+                                        <tr>
+                                            <th>@T("Periode", "Period")</th>
+                                            <th>@T("Besoeke", "Visits")</th>
+                                            <th>@T("Kyke", "Views")</th>
+                                            <th>@T("Aanmeldings", "Logins")</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var metric in SubscriberReports.VisitsViewsAndLogins)
+                                        {
+                                            <tr>
+                                                <td>@GetSubscriberPeriodLabel(metric.PeriodKey)</td>
+                                                <td>@FormatAnalyticsNumber(metric.Visits)</td>
+                                                <td>@FormatAnalyticsNumber(metric.Views)</td>
+                                                <td>@FormatAnalyticsNumber(metric.Logins)</td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                    }
                 </section>
             </MudTabPanel>
 
@@ -1929,6 +2154,7 @@
     private bool IsSavingPlaylistStories { get; set; }
     private bool IsRefreshingAnalytics { get; set; }
     private bool IsRefreshingSubscribers { get; set; }
+    private bool IsRefreshingSubscriberReports { get; set; }
     private bool IsSubscriberDialogOpen { get; set; }
     private bool IsStoryDialogOpen { get; set; }
     private bool IsNewStoryDialogOpen { get; set; }
@@ -1962,6 +2188,8 @@
     private IReadOnlyList<AdminStoryRecord> Stories { get; set; } = Array.Empty<AdminStoryRecord>();
     private IReadOnlyList<AdminPlaylistRecord> Playlists { get; set; } = Array.Empty<AdminPlaylistRecord>();
     private AdminAnalyticsSnapshot Analytics { get; set; } = AdminAnalyticsSnapshot.Empty;
+    private AdminSubscriberReportsSnapshot SubscriberReports { get; set; } = AdminSubscriberReportsSnapshot.Empty;
+    private bool HasLoadedSubscriberReports { get; set; }
     private AdminSubscriberColumnFilters SubscriberColumnFilters { get; } = new();
     private AdminStoryColumnFilters StoryColumnFilters { get; } = new();
     private AdminPlaylistColumnFilters PlaylistColumnFilters { get; } = new();
@@ -1969,6 +2197,35 @@
         AdminGridFilterLogic.FilterStories(Stories, StorySearch, StoryColumnFilters);
     private IReadOnlyList<AdminPlaylistRecord> FilteredPlaylists =>
         AdminGridFilterLogic.FilterPlaylists(Playlists, PlaylistSearch, PlaylistColumnFilters);
+    private PieChartOptions ActiveMembersPerLevelPieChartOptions { get; } = new()
+    {
+        ShowValues = true
+    };
+    private SubscriberAdminView ActiveSubscriberView { get; set; } = SubscriberAdminView.AllSubscribers;
+    private bool IsShowingSubscriberGrid => ActiveSubscriberView == SubscriberAdminView.AllSubscribers;
+    private IReadOnlyList<SubscriberAdminView> SubscriberViews { get; } =
+    [
+        SubscriberAdminView.AllSubscribers,
+        SubscriberAdminView.MembershipStats,
+        SubscriberAdminView.ActiveMembersPerLevel,
+        SubscriberAdminView.SalesAndRevenue,
+        SubscriberAdminView.AbandonedCartRecoveries,
+        SubscriberAdminView.VisitsViewsAndLogins
+    ];
+    private string[] ActiveMembersPerLevelChartLabels =>
+        SubscriberReports.ActiveMembersPerLevel
+            .Select(metric => metric.TierName)
+            .ToArray();
+    private List<ChartSeries<double>> ActiveMembersPerLevelChartSeries =>
+        [
+            new ChartSeries<double>
+            {
+                Name = T("Aktiewe lede", "Active members"),
+                Data = SubscriberReports.ActiveMembersPerLevel
+                    .Select(metric => (double)metric.ActiveMembers)
+                    .ToArray()
+            }
+        ];
 
     private MudTable<AdminSubscriberRecord>? SubscribersTable { get; set; }
     private EditableSubscriber? SubscriberEditor { get; set; }
@@ -4380,6 +4637,105 @@
         Snackbar.Add(message, severity);
     }
 
+    private async Task SelectSubscriberViewAsync(SubscriberAdminView subscriberView)
+    {
+        if (ActiveSubscriberView == subscriberView)
+        {
+            return;
+        }
+
+        ActiveSubscriberView = subscriberView;
+
+        if (subscriberView != SubscriberAdminView.AllSubscribers &&
+            !HasLoadedSubscriberReports)
+        {
+            await RefreshSubscriberReportsAsync();
+        }
+    }
+
+    private async Task RefreshSubscriberReportsAsync()
+    {
+        IsRefreshingSubscriberReports = true;
+
+        try
+        {
+            SubscriberReports = await AdminManagementService.GetSubscriberReportsAsync(CurrentAdminEmail);
+            HasLoadedSubscriberReports = true;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to refresh subscriber reports.");
+            SubscriberReports = AdminSubscriberReportsSnapshot.Empty;
+            HasLoadedSubscriberReports = false;
+            SetError(T("Kon nie intekenaar verslae nou laai nie.", "Could not load subscriber reports right now."));
+        }
+        finally
+        {
+            IsRefreshingSubscriberReports = false;
+        }
+    }
+
+    private bool HasSubscriberReportData(SubscriberAdminView subscriberView) =>
+        subscriberView switch
+        {
+            SubscriberAdminView.AllSubscribers => true,
+            SubscriberAdminView.MembershipStats => SubscriberReports.MembershipStats.Count > 0,
+            SubscriberAdminView.ActiveMembersPerLevel => SubscriberReports.ActiveMembersPerLevel.Count > 0,
+            SubscriberAdminView.SalesAndRevenue => SubscriberReports.SalesAndRevenue.Count > 0,
+            SubscriberAdminView.AbandonedCartRecoveries => SubscriberReports.AbandonedCartRecoveries.Count > 0,
+            SubscriberAdminView.VisitsViewsAndLogins => SubscriberReports.VisitsViewsAndLogins.Count > 0,
+            _ => false
+        };
+
+    private string GetSubscriberViewLabel(SubscriberAdminView subscriberView)
+    {
+        return subscriberView switch
+        {
+            SubscriberAdminView.AllSubscribers => T("Alle intekenaars", "All subscribers"),
+            SubscriberAdminView.MembershipStats => T("Lidmaatskap statistiek", "Membership Stats"),
+            SubscriberAdminView.ActiveMembersPerLevel => T("Aktiewe lede per vlak", "Active Members Per Level"),
+            SubscriberAdminView.SalesAndRevenue => T("Verkope en inkomste", "Sales and Revenue"),
+            SubscriberAdminView.AbandonedCartRecoveries => T("Herwinning van verlate mandjies", "Abandoned Cart Recoveries"),
+            SubscriberAdminView.VisitsViewsAndLogins => T("Besoeke, kyke en aanmeldings", "Visits, Views, and Logins"),
+            _ => string.Empty
+        };
+    }
+
+    private string GetSubscriberViewDescription(SubscriberAdminView subscriberView) =>
+        subscriberView switch
+        {
+            SubscriberAdminView.MembershipStats => T(
+                "Intekeninge en kansellasies volgens tydperk vanaf die huidige subskripsie-ledger.",
+                "Signups and cancellations by period from the current subscription ledger."),
+            SubscriberAdminView.ActiveMembersPerLevel => T(
+                "Huidige aktiewe lede per intekenvlak met hulle aandeel van die totaal.",
+                "Current active members by subscription level with their share of the total."),
+            SubscriberAdminView.SalesAndRevenue => T(
+                "Lidmaatskap verkope en beraamde inkomste volgens suksesvolle intekeninge.",
+                "Membership sales and estimated revenue based on successful subscriptions."),
+            SubscriberAdminView.AbandonedCartRecoveries => T(
+                "Herstelstatistiek vir verlate intekening-betalings en Winkel-bestellings.",
+                "Recovery stats for abandoned subscription payments and Winkel orders."),
+            SubscriberAdminView.VisitsViewsAndLogins => T(
+                "Sessies, storie-kyke en aanmeldings uit die bestaande gebruiksopsporing.",
+                "Sessions, story views, and logins from the existing usage tracking."),
+            _ => string.Empty
+        };
+
+    private string GetSubscriberPeriodLabel(string periodKey) =>
+        periodKey switch
+        {
+            "today" => T("Vandag", "Today"),
+            "this_week" => T("Hierdie week", "This Week"),
+            "this_month" => T("Hierdie maand", "This Month"),
+            "this_year" => T("Hierdie jaar", "This Year"),
+            "year_to_date" => T("Jaar tot dusver", "Year to Date"),
+            "past_30_days" => T("Laaste 30 dae", "Past 30 Days"),
+            "past_12_months" => T("Laaste 12 maande", "Past 12 Months"),
+            "all_time" => T("Alles", "All Time"),
+            _ => periodKey
+        };
+
     private string T(string afrikaans, string english)
     {
         return CurrentLanguage == AdminLanguage.English
@@ -5017,6 +5373,12 @@
     private string FormatAnalyticsNumber(int value) =>
         value.ToString("N0", GetAdminCulture());
 
+    private string FormatCurrency(decimal value) =>
+        $"R {value.ToString("N2", GetAdminCulture())}";
+
+    private string FormatReportPercentage(decimal value) =>
+        $"{value.ToString("N1", GetAdminCulture())}%";
+
     private string FormatAnalyticsDay(DateOnly value) =>
         value.ToDateTime(TimeOnly.MinValue).ToString("ddd d MMM", GetAdminCulture());
 
@@ -5302,5 +5664,15 @@
             SortOrder = item.SortOrder,
             IsShowcase = item.IsShowcase
         };
+    }
+
+    private enum SubscriberAdminView
+    {
+        AllSubscribers,
+        MembershipStats,
+        ActiveMembersPerLevel,
+        SalesAndRevenue,
+        AbandonedCartRecoveries,
+        VisitsViewsAndLogins
     }
 }

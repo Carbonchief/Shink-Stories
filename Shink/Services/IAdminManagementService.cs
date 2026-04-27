@@ -78,6 +78,10 @@ public interface IAdminManagementService
         string? adminEmail,
         CancellationToken cancellationToken = default);
 
+    Task<AdminSubscriberReportsSnapshot> GetSubscriberReportsAsync(
+        string? adminEmail,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<AdminResourceTypeRecord>> GetResourceTypesAsync(
         string? adminEmail,
         CancellationToken cancellationToken = default);
@@ -363,6 +367,49 @@ public sealed record AdminAnalyticsSnapshot(
             LastAudioPlayAt: null),
         TopCharacters: []);
 }
+
+public sealed record AdminSubscriberReportsSnapshot(
+    IReadOnlyList<AdminMembershipStatsMetric> MembershipStats,
+    IReadOnlyList<AdminTierDistributionMetric> ActiveMembersPerLevel,
+    IReadOnlyList<AdminSalesRevenueMetric> SalesAndRevenue,
+    IReadOnlyList<AdminRecoveryMetric> AbandonedCartRecoveries,
+    IReadOnlyList<AdminVisitsViewsLoginsMetric> VisitsViewsAndLogins)
+{
+    public static AdminSubscriberReportsSnapshot Empty { get; } = new(
+        MembershipStats: [],
+        ActiveMembersPerLevel: [],
+        SalesAndRevenue: [],
+        AbandonedCartRecoveries: [],
+        VisitsViewsAndLogins: []);
+}
+
+public sealed record AdminMembershipStatsMetric(
+    string PeriodKey,
+    int Signups,
+    int Cancellations);
+
+public sealed record AdminTierDistributionMetric(
+    string TierCode,
+    string TierName,
+    int ActiveMembers,
+    decimal Percentage);
+
+public sealed record AdminSalesRevenueMetric(
+    string PeriodKey,
+    int SalesCount,
+    decimal RevenueZar);
+
+public sealed record AdminRecoveryMetric(
+    string PeriodKey,
+    decimal RecoveredRevenueZar,
+    int RecoveredOrders,
+    int RecoveryAttempts);
+
+public sealed record AdminVisitsViewsLoginsMetric(
+    string PeriodKey,
+    int Visits,
+    int Views,
+    int Logins);
 
 public sealed record AdminResourceTypeRecord(
     Guid ResourceTypeId,

@@ -70,6 +70,58 @@ public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<Pays
             cancellationToken);
     }
 
+    public async Task<PaystackCheckoutInitResult> InitializeCheckoutForEmailAsync(
+        PaymentPlan plan,
+        string email,
+        HttpContext httpContext,
+        string? returnUrl = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsConfigured)
+        {
+            return new PaystackCheckoutInitResult(false, ErrorMessage: "Paystack is nog nie volledig opgestel nie.");
+        }
+
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return new PaystackCheckoutInitResult(false, ErrorMessage: "Kon nie 'n e-posadres vir betaling bepaal nie.");
+        }
+
+        var planCode = ResolvePlanCode(plan.TierCode);
+        if (plan.IsSubscription && string.IsNullOrWhiteSpace(planCode))
+        {
+            return new PaystackCheckoutInitResult(
+                false,
+                ErrorMessage: $"Paystack plan code ontbreek vir tier '{plan.TierCode}'.");
+        }
+
+        var reference = BuildReference(plan.Slug);
+        var callbackQuery = $"betaling=sukses&provider=paystack&plan={Uri.EscapeDataString(plan.Slug)}";
+        if (!string.IsNullOrWhiteSpace(returnUrl))
+        {
+            callbackQuery = $"{callbackQuery}&returnUrl={Uri.EscapeDataString(returnUrl)}";
+        }
+
+        var callbackUrl = BuildAbsoluteUrl(httpContext, _options.CallbackUrlPath, callbackQuery);
+        var metadata = new Dictionary<string, object?>
+        {
+            ["plan_slug"] = plan.Slug,
+            ["tier_code"] = plan.TierCode,
+            ["billing_period_months"] = plan.BillingPeriodMonths,
+            ["is_subscription"] = plan.IsSubscription,
+            ["subscription_key"] = reference
+        };
+
+        return await InitializeTransactionAsync(
+            email,
+            (long)Math.Round(plan.Amount * 100m, MidpointRounding.AwayFromZero),
+            reference,
+            callbackUrl,
+            metadata,
+            planCode,
+            cancellationToken);
+    }
+
     public async Task<PaystackCheckoutInitResult> InitializeStoreCheckoutAsync(
         StorePaystackCheckoutRequest checkout,
         HttpContext httpContext,

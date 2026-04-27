@@ -13,8 +13,16 @@ public sealed class ResendOptions
 
 public sealed class ResendTemplateOptions
 {
+    public AbandonedCartRecoveryTemplateOptions AbandonedCartRecovery { get; set; } = new();
     public SubscriptionPaymentRecoveryTemplateOptions SubscriptionPaymentRecovery { get; set; } = new();
     public StoreOrderTemplateOptions StoreOrder { get; set; } = new();
+}
+
+public sealed class AbandonedCartRecoveryTemplateOptions
+{
+    public string Hour1TemplateId { get; set; } = string.Empty;
+    public string Hour24TemplateId { get; set; } = string.Empty;
+    public string Day7TemplateId { get; set; } = string.Empty;
 }
 
 public sealed class SubscriptionPaymentRecoveryTemplateOptions
