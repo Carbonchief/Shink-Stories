@@ -26,7 +26,6 @@
                     <AuthorizeView>
                         <Authorized>
                             <div class="story-header-menu nav-controls">
-                                @NightModeToggle
                                 <form class="site-search-form" role="search" action="/soek" method="get" data-search-form>
                                     <button type="button"
                                             class="site-search-toggle"
@@ -76,13 +75,13 @@
                                     <NavLink href="/blog">Blog</NavLink>
                                     <NavLink href="/meer-oor-ons">Meer oor Ons</NavLink>
                                     <NavLink href="/winkel">Winkel</NavLink>
+                                    @NightModeToggle
                                     <NavLink href="/my-stories">My stories</NavLink>
                                 </nav>
                             </div>
                         </Authorized>
                         <NotAuthorized>
                             <div class="story-header-menu nav-controls">
-                                @NightModeToggle
                                 <form class="site-search-form" role="search" action="/soek" method="get" data-search-form>
                                     <button type="button"
                                             class="site-search-toggle"
@@ -132,6 +131,7 @@
                                     <NavLink href="/blog">Blog</NavLink>
                                     <NavLink href="/meer-oor-ons">Meer oor Ons</NavLink>
                                     <NavLink href="/winkel">Winkel</NavLink>
+                                    @NightModeToggle
                                     <NavLink href="/opsies">Opsies</NavLink>
                                     <NavLink href="@LoginHref">Teken in</NavLink>
                                 </nav>
@@ -165,7 +165,6 @@
                 <AuthorizeView>
                     <Authorized Context="authState">
                         <div class="nav-controls">
-                            @NightModeToggle
                             <form class="site-search-form" role="search" action="/soek" method="get" data-search-form>
                                 <button type="button"
                                         class="site-search-toggle"
@@ -320,12 +319,12 @@
                                     <i class="fa-solid fa-bag-shopping" aria-hidden="true"></i>
                                     <span>Winkel</span>
                                 </NavLink>
+                                @NightModeToggle
                             </nav>
                         </div>
                     </Authorized>
                     <NotAuthorized>
                         <div class="guest-controls">
-                            @NightModeToggle
                             <form class="site-search-form" role="search" action="/soek" method="get" data-search-form>
                                 <button type="button"
                                         class="site-search-toggle"
@@ -391,6 +390,7 @@
                                     <i class="fa-solid fa-bag-shopping" aria-hidden="true"></i>
                                     <span>Winkel</span>
                                 </NavLink>
+                                @NightModeToggle
                                 <NavLink href="/opsies" class="nav-panel-link">
                                     <i class="fa-solid fa-sliders" aria-hidden="true"></i>
                                     <span>Opsies</span>
@@ -417,7 +417,6 @@
         <AuthorizeView>
             <Authorized>
                 <div class="showcase-floating-menu nav-controls">
-                    @NightModeToggle
                     <button type="button"
                             class="nav-menu-toggle"
                             data-nav-menu-toggle
@@ -456,6 +455,7 @@
                             <i class="fa-solid fa-bag-shopping" aria-hidden="true"></i>
                             <span>Winkel</span>
                         </NavLink>
+                        @NightModeToggle
                         <NavLink href="/my-stories" class="nav-panel-link">
                             <i class="fa-solid fa-book-open" aria-hidden="true"></i>
                             <span>My stories</span>
@@ -465,7 +465,6 @@
             </Authorized>
             <NotAuthorized>
                 <div class="showcase-floating-menu guest-controls">
-                    @NightModeToggle
                     <button type="button"
                             class="nav-menu-toggle"
                             data-nav-menu-toggle
@@ -504,6 +503,7 @@
                             <i class="fa-solid fa-bag-shopping" aria-hidden="true"></i>
                             <span>Winkel</span>
                         </NavLink>
+                        @NightModeToggle
                         <NavLink href="/opsies" class="nav-panel-link">
                             <i class="fa-solid fa-sliders" aria-hidden="true"></i>
                             <span>Opsies</span>
@@ -558,12 +558,13 @@
 
 @code {
     private RenderFragment NightModeToggle => @<button type="button"
-                                                       class="night-mode-toggle"
+                                                       class="night-mode-toggle nav-panel-link"
                                                        data-night-mode-toggle
                                                        aria-pressed="false"
                                                        aria-label="Skakel nagmodus aan"
                                                        title="Skakel nagmodus aan">
         <i class="fa-solid fa-moon" aria-hidden="true"></i>
+        <span>Nagmodus</span>
         <span class="sr-only" data-night-mode-toggle-label>Skakel nagmodus aan</span>
     </button>;
 
