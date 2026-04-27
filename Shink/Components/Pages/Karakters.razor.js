@@ -70,13 +70,53 @@ export async function playCharacterAudio(sourceUrl, triggerSlug) {
   }
 }
 
+function resolveAudioSourceFromButton(button) {
+  if (!(button instanceof HTMLElement)) {
+    return "";
+  }
+
+  const serializedSources = button.getAttribute("data-character-audio-urls") || "";
+  if (serializedSources.length) {
+    try {
+      const parsedSources = JSON.parse(serializedSources);
+      const sourceUrls = Array.isArray(parsedSources)
+        ? parsedSources
+            .map((source) => {
+              if (typeof source === "string") {
+                return source;
+              }
+
+              if (source && typeof source.Url === "string") {
+                return source.Url;
+              }
+
+              if (source && typeof source.url === "string") {
+                return source.url;
+              }
+
+              return "";
+            })
+            .filter((sourceUrl) => sourceUrl.length > 0)
+        : [];
+
+      if (sourceUrls.length) {
+        return sourceUrls[Math.floor(Math.random() * sourceUrls.length)];
+      }
+    } catch {
+      // Keep older single-source markup working.
+    }
+  }
+
+  return button.getAttribute("data-character-audio-url") || "";
+}
+
 export function playCharacterAudioFromButton(button) {
   if (!(button instanceof HTMLElement)) {
     clearActiveAudioTrigger();
     return;
   }
 
-  const sourceUrl = button.getAttribute("data-character-audio-url") || "";
+  const sourceUrl = resolveAudioSourceFromButton(button);
   const triggerSlug = button.getAttribute("data-character-audio-slug") || "";
   void playCharacterAudio(sourceUrl, triggerSlug);
 }

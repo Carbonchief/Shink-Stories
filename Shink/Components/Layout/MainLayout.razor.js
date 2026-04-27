@@ -201,13 +201,53 @@ function ensureCharacterPreviewAudioPlayer() {
     return player;
 }
 
+function resolveCharacterAudioSourceFromButton(button) {
+    if (!(button instanceof HTMLElement)) {
+        return "";
+    }
+
+    const serializedSources = button.getAttribute("data-character-audio-urls") || "";
+    if (serializedSources.length > 0) {
+        try {
+            const parsedSources = JSON.parse(serializedSources);
+            const sourceUrls = Array.isArray(parsedSources)
+                ? parsedSources
+                    .map((source) => {
+                        if (typeof source === "string") {
+                            return source;
+                        }
+
+                        if (source && typeof source.Url === "string") {
+                            return source.Url;
+                        }
+
+                        if (source && typeof source.url === "string") {
+                            return source.url;
+                        }
+
+                        return "";
+                    })
+                    .filter((sourceUrl) => sourceUrl.length > 0)
+                : [];
+
+            if (sourceUrls.length > 0) {
+                return sourceUrls[Math.floor(Math.random() * sourceUrls.length)];
+            }
+        } catch {
+            // Fall back to the single signed URL below if older markup produced plain text.
+        }
+    }
+
+    return button.getAttribute("data-character-audio-url") || "";
+}
+
 window.playCharacterAudioFromButton = async (button) => {
     if (!(button instanceof HTMLElement)) {
         clearCharacterPreviewAudioTrigger();
         return;
     }
 
-    const sourceUrl = button.getAttribute("data-character-audio-url") || "";
+    const sourceUrl = resolveCharacterAudioSourceFromButton(button);
     if (sourceUrl.length === 0) {
         clearCharacterPreviewAudioTrigger();
         return;

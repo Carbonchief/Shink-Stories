@@ -1,6 +1,7 @@
 @page "/karakters"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using System.Security.Claims
+@using System.Text.Json
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Web
 @using Microsoft.Extensions.Logging
@@ -114,6 +115,7 @@
                                                 class="character-card-badge character-card-audio-trigger"
                                                 data-character-audio-slug="@card.Character.Slug"
                                                 data-character-audio-url="@card.PreviewAudioUrl"
+                                                data-character-audio-urls="@BuildCharacterAudioUrlsJson(card)"
                                                 onclick="event.stopPropagation(); window.playCharacterAudioFromButton?.(this);"
                                                 @onpointerup="() => TrackCharacterAudioAsync(card)"
                                                 @onpointerup:stopPropagation="true"
@@ -264,6 +266,7 @@
                     class="character-profile-popup-image-button"
                     data-character-audio-slug="@ActiveProfileCard.Character.Slug"
                     data-character-audio-url="@ActiveProfileCard.PreviewAudioUrl"
+                    data-character-audio-urls="@BuildCharacterAudioUrlsJson(ActiveProfileCard)"
                     onpointerdown="window.playCharacterAudioFromButtonAndCelebrate?.(this);"
                     @onclick="CelebrateProfileImageAsync"
                     aria-label="Druk vir 'n verrassing">
@@ -789,9 +792,14 @@
             .Where(static story => story is not null)
             .Cast<StoryLinkInfo>()
             .ToArray();
-        var previewAudioClip = character.AudioClips
+        var previewAudioClips = character.AudioClips
             .OrderBy(clip => clip.SortOrder)
             .ThenBy(clip => clip.Title, StringComparer.OrdinalIgnoreCase)
+            .Select(clip => new CharacterPreviewAudioClip(
+                AudioAccessService.CreateSignedAudioUrl(clip.StreamSlug, TimeSpan.FromHours(2)),
+                clip.StreamSlug))
+            .ToArray();
+        var previewAudioClip = previewAudioClips
             .FirstOrDefault();
         var hasStoryDrivenUnlockRule = CharacterUnlockEvaluator.HasStoryDrivenUnlockRule(character);
         var primaryStory = ResolvePrimaryStory(character, relatedStories);
@@ -811,7 +819,7 @@
         return new CharacterCardViewModel(
             Character: character,
             IsUnlocked: unlocked,
-            HasAudio: previewAudioClip is not null,
+            HasAudio: previewAudioClips.Length > 0,
             Heading: unlocked ? character.DisplayName : "?????",
             SummaryText: summaryText,
             DisplayImagePath: unlocked
@@ -823,10 +831,19 @@
             RelatedStories: relatedStories,
             CallToActionHref: ctaHref,
             CallToActionLabel: ctaLabel,
-            PreviewAudioUrl: previewAudioClip is null
-                ? null
-                : AudioAccessService.CreateSignedAudioUrl(previewAudioClip.StreamSlug, TimeSpan.FromHours(2)),
-            PreviewAudioStreamSlug: previewAudioClip?.StreamSlug);
+            PreviewAudioUrl: previewAudioClip?.Url,
+            PreviewAudioStreamSlug: previewAudioClip?.StreamSlug,
+            PreviewAudioClips: previewAudioClips);
+    }
+
+    private static string BuildCharacterAudioUrlsJson(CharacterCardViewModel card)
+    {
+        if (card.PreviewAudioClips.Count == 0)
+        {
+            return "[]";
+        }
+
+        return JsonSerializer.Serialize(card.PreviewAudioClips);
     }
 
     private static IReadOnlyDictionary<string, StoryLinkInfo> BuildStoryLookup(
@@ -1017,6 +1034,10 @@
         string AccessLevel,
         string CoverPath);
 
+    private sealed record CharacterPreviewAudioClip(
+        string Url,
+        string StreamSlug);
+
     private sealed record CharacterCardViewModel(
         StoryCharacterItem Character,
         bool IsUnlocked,
@@ -1029,5 +1050,6 @@
         string? CallToActionHref,
         string CallToActionLabel,
         string? PreviewAudioUrl,
-        string? PreviewAudioStreamSlug);
+        string? PreviewAudioStreamSlug,
+        IReadOnlyList<CharacterPreviewAudioClip> PreviewAudioClips);
 }

@@ -7,7 +7,10 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Shink.Utilities
 @inject IAudioAccessService AudioAccessService
+@inject ICharacterCatalogService CharacterCatalogService
+@inject ICharacterTrackingService CharacterTrackingService
 @inject IStoryCatalogService StoryCatalogService
+@inject IStoryTrackingService StoryTrackingService
 @inject IJSRuntime JS
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
@@ -252,12 +255,46 @@ else
             {
                 <div class="story-summary-block">
                     <h2>Karakters in die storie</h2>
-                    <ul class="story-summary-list">
-                        @foreach (var character in CurrentStory.Characters!)
+                    <div class="story-character-list" aria-label="Karakters in die storie">
+                        @foreach (var character in ResolveStoryCharacterTiles(CurrentStory))
                         {
-                            <li>@character</li>
+                            @if (!string.IsNullOrWhiteSpace(character.ProfileHref))
+                            {
+                                <a class="story-character-item story-character-link"
+                                   href="@character.ProfileHref"
+                                   aria-label="Maak @character.DisplayName se karakterprofiel oop">
+                                    <img class="story-character-image"
+                                         src="@character.ImagePath"
+                                         alt="Illustrasie van @character.DisplayName"
+                                         loading="lazy"
+                                         decoding="async"
+                                         onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                                    <span class="story-character-name">@character.DisplayName</span>
+                                </a>
+                            }
+                            else
+                            {
+                                <span class="story-character-item">
+                                    @if (!string.IsNullOrWhiteSpace(character.ImagePath))
+                                    {
+                                        <img class="story-character-image"
+                                             src="@character.ImagePath"
+                                             alt="@character.ImageAlt"
+                                             loading="lazy"
+                                             decoding="async"
+                                             onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                                    }
+                                    else
+                                    {
+                                        <span class="story-character-image story-character-image-fallback" aria-hidden="true">
+                                            <i class="fa-solid fa-user" aria-hidden="true"></i>
+                                        </span>
+                                    }
+                                    <span class="story-character-name">@character.DisplayName</span>
+                                </span>
+                            }
                         }
-                    </ul>
+                    </div>
                 </div>
             }
 
@@ -354,6 +391,8 @@ else
     private bool _mediaSessionModuleLoadFailed;
     private bool IsManualFullscreenFocus { get; set; }
     private IReadOnlyList<StoryItem> LuisterStories { get; set; } = Array.Empty<StoryItem>();
+    private IReadOnlyList<StoryCharacterItem> PublishedCharacters { get; set; } = Array.Empty<StoryCharacterItem>();
+    private IReadOnlyDictionary<Guid, bool> CharacterUnlockStates { get; set; } = new Dictionary<Guid, bool>();
     private HashSet<string> FavoriteStorySlugs { get; } = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> FavoriteStoryBusySlugs { get; } = new(StringComparer.OrdinalIgnoreCase);
     private StoryItem? PreviousStory { get; set; }
@@ -449,6 +488,8 @@ else
             CurrentStory = await StoryCatalogService.FindLuisterBySlugAsync(Slug);
             AudioUrl = null;
             LuisterStories = Array.Empty<StoryItem>();
+            PublishedCharacters = Array.Empty<StoryCharacterItem>();
+            CharacterUnlockStates = new Dictionary<Guid, bool>();
             FavoriteStorySlugs.Clear();
             FavoriteStoryBusySlugs.Clear();
             ResolveAdjacentStories();
@@ -463,10 +504,17 @@ else
         IsRedirectingToOpsies = false;
         var luisterStoriesTask = StoryCatalogService.GetLuisterStoriesAsync();
         var currentStoryTask = StoryCatalogService.FindLuisterBySlugAsync(Slug);
-        await Task.WhenAll(luisterStoriesTask, currentStoryTask);
+        var charactersTask = TryLoadPublishedCharactersAsync();
+        var unlockProgressTask = TryLoadCharacterUnlockProgressAsync(SignedInEmail);
+        await Task.WhenAll(luisterStoriesTask, currentStoryTask, charactersTask, unlockProgressTask);
 
         LuisterStories = luisterStoriesTask.Result;
         CurrentStory = currentStoryTask.Result;
+        PublishedCharacters = charactersTask.Result;
+        CharacterUnlockStates = CharacterUnlockEvaluator.EvaluateUnlockStates(
+            PublishedCharacters,
+            unlockProgressTask.Result.ProgressLookup,
+            unlockProgressTask.Result.ProfileListenLookup);
         if (CurrentStory is not null &&
             !await HasAccessToStoryAsync(authState.User, CurrentStory))
         {
@@ -474,6 +522,8 @@ else
             CurrentStory = null;
             AudioUrl = null;
             LuisterStories = Array.Empty<StoryItem>();
+            PublishedCharacters = Array.Empty<StoryCharacterItem>();
+            CharacterUnlockStates = new Dictionary<Guid, bool>();
             FavoriteStorySlugs.Clear();
             FavoriteStoryBusySlugs.Clear();
             ResolveAdjacentStories();
@@ -898,6 +948,179 @@ else
     private static bool HasStoryCharacters(StoryItem? story) =>
         story?.Characters is { Count: > 0 };
 
+    private async Task<IReadOnlyList<StoryCharacterItem>> TryLoadPublishedCharactersAsync()
+    {
+        try
+        {
+            return await CharacterCatalogService.GetPublishedCharactersAsync();
+        }
+        catch
+        {
+            return Array.Empty<StoryCharacterItem>();
+        }
+    }
+
+    private async Task<CharacterUnlockProgress> TryLoadCharacterUnlockProgressAsync(string? email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return CharacterUnlockProgress.Empty;
+        }
+
+        try
+        {
+            var progressTask = StoryTrackingService.GetUserStoryProgressAsync(email);
+            var profileListenTask = CharacterTrackingService.GetUserProfileListenStatsAsync(email);
+
+            await Task.WhenAll(progressTask, profileListenTask);
+
+            var progressLookup = progressTask.Result
+                .GroupBy(progress => progress.StorySlug, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.OrderByDescending(item => item.LastListenedAtUtc).First(),
+                    StringComparer.OrdinalIgnoreCase);
+            var profileListenLookup = profileListenTask.Result
+                .GroupBy(item => item.CharacterSlug, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group.Sum(item => item.ListenCount),
+                    StringComparer.OrdinalIgnoreCase);
+
+            return new CharacterUnlockProgress(progressLookup, profileListenLookup);
+        }
+        catch
+        {
+            return CharacterUnlockProgress.Empty;
+        }
+    }
+
+    private IReadOnlyList<StoryCharacterTile> ResolveStoryCharacterTiles(StoryItem? story)
+    {
+        if (story?.Characters is not { Count: > 0 })
+        {
+            return Array.Empty<StoryCharacterTile>();
+        }
+
+        return story.Characters
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(ResolveStoryCharacterTile)
+            .ToArray();
+    }
+
+    private StoryCharacterTile ResolveStoryCharacterTile(string characterName)
+    {
+        var displayName = characterName.Trim();
+        var normalizedName = NormalizeCharacterToken(displayName);
+        var matchedCharacter = PublishedCharacters.FirstOrDefault(character =>
+            string.Equals(NormalizeCharacterToken(character.DisplayName), normalizedName, StringComparison.Ordinal) ||
+            string.Equals(NormalizeCharacterToken(character.Slug.Replace("-", " ")), normalizedName, StringComparison.Ordinal));
+
+        if (matchedCharacter is null)
+        {
+            return new StoryCharacterTile(displayName, null, null, null);
+        }
+
+        var isUnlocked = CharacterUnlockStates.TryGetValue(matchedCharacter.CharacterId, out var unlocked) && unlocked;
+        var imagePath = isUnlocked ? matchedCharacter.ImagePath : matchedCharacter.MysteryImagePath;
+        var resolvedImagePath = ResolveCharacterImagePath(imagePath, matchedCharacter.UpdatedAt);
+        var resolvedDisplayName = isUnlocked ? matchedCharacter.DisplayName : "?????";
+        var imageAlt = isUnlocked
+            ? $"Illustrasie van {matchedCharacter.DisplayName}"
+            : "Mysterie karakter illustrasie";
+
+        return new StoryCharacterTile(
+            resolvedDisplayName,
+            resolvedImagePath,
+            imageAlt,
+            isUnlocked ? $"/karakters?karakter={Uri.EscapeDataString(matchedCharacter.Slug)}" : null);
+    }
+
+    private static string NormalizeCharacterToken(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        return new string(value
+            .Trim()
+            .ToLowerInvariant()
+            .Where(char.IsLetterOrDigit)
+            .ToArray());
+    }
+
+    private static string ResolveCharacterImagePath(string? path, DateTimeOffset? updatedAt = null)
+    {
+        var resolvedPath = RewriteCharacterImagePath(path);
+        if (updatedAt is null)
+        {
+            return resolvedPath;
+        }
+
+        var separator = resolvedPath.Contains('?', StringComparison.Ordinal) ? '&' : '?';
+        return $"{resolvedPath}{separator}v={updatedAt.Value.ToUnixTimeSeconds()}";
+    }
+
+    private static string RewriteCharacterImagePath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return "/branding/schink-logo-green.png";
+        }
+
+        var trimmedPath = path.Trim();
+        if (Uri.TryCreate(trimmedPath, UriKind.Absolute, out var absoluteUri) &&
+            (string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)))
+        {
+            if (string.Equals(absoluteUri.Host, "media.prioritybit.co.za", StringComparison.OrdinalIgnoreCase))
+            {
+                return $"/media/image?src={Uri.EscapeDataString(absoluteUri.ToString())}";
+            }
+
+            return absoluteUri.ToString();
+        }
+
+        return EncodeLocalCharacterImagePath(trimmedPath);
+    }
+
+    private static string EncodeLocalCharacterImagePath(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return "/branding/schink-logo-green.png";
+        }
+
+        var normalized = value.Replace('\\', '/');
+        var suffixStart = normalized.IndexOfAny(['?', '#']);
+        var pathPart = suffixStart >= 0 ? normalized[..suffixStart] : normalized;
+        var suffixPart = suffixStart >= 0 ? normalized[suffixStart..] : string.Empty;
+
+        var encodedPath = "/" + string.Join(
+            '/',
+            pathPart
+                .Split('/', StringSplitOptions.RemoveEmptyEntries)
+                .Select(Uri.EscapeDataString));
+
+        return encodedPath + suffixPart;
+    }
+
     private static string NormalizeStoryText(string value) =>
         string.Join(' ', value.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+    private sealed record StoryCharacterTile(
+        string DisplayName,
+        string? ImagePath,
+        string? ImageAlt,
+        string? ProfileHref);
+
+    private sealed record CharacterUnlockProgress(
+        IReadOnlyDictionary<string, UserStoryProgressItem> ProgressLookup,
+        IReadOnlyDictionary<string, int> ProfileListenLookup)
+    {
+        public static CharacterUnlockProgress Empty { get; } = new(
+            new Dictionary<string, UserStoryProgressItem>(StringComparer.OrdinalIgnoreCase),
+            new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase));
+    }
 }
