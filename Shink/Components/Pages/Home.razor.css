@@ -128,7 +128,7 @@
     text-align: center;
     width: min(100%, 860px);
     margin-inline: auto;
-    margin-top: -5rem;
+    margin-top: -3.2rem;
     padding: 0 1.2rem 1.1rem;
     position: relative;
     z-index: 3;
@@ -296,6 +296,7 @@
     width: 100%;
     display: flex;
     justify-content: center;
+    margin-top: 1.15rem;
 }
 
 .hero-visual {
@@ -350,7 +351,7 @@
 
     .hero-copy {
         width: min(100%, 760px);
-        margin-top: -7rem;
+        margin-top: -5.1rem;
         padding: 0 1rem 1rem;
     }
 
@@ -2032,7 +2033,7 @@ h2 {
 
     .hero-copy {
         width: min(100%, 560px);
-        margin-top: -4.7rem;
+        margin-top: -3rem;
         padding: 0 0.9rem 0.95rem;
     }
 

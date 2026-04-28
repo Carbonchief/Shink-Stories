@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using Shink.Components.Content;
+using Shink.Components.Pages;
 using Shink.Utilities;
 
 namespace Shink.Services;
@@ -16,6 +17,9 @@ public sealed partial class SupabaseAdminManagementService(
     IMemoryCache memoryCache,
     IUserNotificationService userNotificationService,
     IWordPressMigrationService wordPressMigrationService,
+    ISupabaseAuthService supabaseAuthService,
+    IAuthSessionService authSessionService,
+    ISubscriptionPaymentRecoveryEmailService subscriptionPaymentRecoveryEmailService,
     ILogger<SupabaseAdminManagementService> logger) : IAdminManagementService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -26,6 +30,9 @@ public sealed partial class SupabaseAdminManagementService(
     private readonly IMemoryCache _memoryCache = memoryCache;
     private readonly IUserNotificationService _userNotificationService = userNotificationService;
     private readonly IWordPressMigrationService _wordPressMigrationService = wordPressMigrationService;
+    private readonly ISupabaseAuthService _supabaseAuthService = supabaseAuthService;
+    private readonly IAuthSessionService _authSessionService = authSessionService;
+    private readonly ISubscriptionPaymentRecoveryEmailService _subscriptionPaymentRecoveryEmailService = subscriptionPaymentRecoveryEmailService;
     private readonly ILogger<SupabaseAdminManagementService> _logger = logger;
 
     public async Task<bool> IsAdminAsync(string? email, CancellationToken cancellationToken = default)
@@ -180,9 +187,18 @@ public sealed partial class SupabaseAdminManagementService(
             return new AdminSubscriberPageResult(Array.Empty<AdminSubscriberRecord>(), 0);
         }
 
-        var items = response.Items?
+        var pageItems = response.Items?
             .Where(item => item.SubscriberId != Guid.Empty)
             .Where(item => !string.IsNullOrWhiteSpace(item.Email))
+            .ToArray()
+            ?? [];
+        var disabledStates = await FetchSubscriberDisabledStatesAsync(
+            baseUri,
+            apiKey,
+            pageItems.Select(item => item.SubscriberId).ToArray(),
+            cancellationToken);
+
+        var items = pageItems
             .Select(item => new AdminSubscriberRecord(
                 SubscriberId: item.SubscriberId,
                 Email: item.Email.Trim().ToLowerInvariant(),
@@ -193,7 +209,9 @@ public sealed partial class SupabaseAdminManagementService(
                 ProfileImageUrl: NormalizeOptionalText(item.ProfileImageUrl, 2048),
                 CreatedAt: item.CreatedAt,
                 UpdatedAt: item.UpdatedAt,
-                ActiveTierCodes: item.ActiveTierCodes?
+                ActiveTierCodes: disabledStates.GetValueOrDefault(item.SubscriberId)?.DisabledAt is not null
+                    ? Array.Empty<string>()
+                    : item.ActiveTierCodes?
                     .Where(tier => !string.IsNullOrWhiteSpace(tier))
                     .Select(tier => tier.Trim())
                     .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -202,12 +220,16 @@ public sealed partial class SupabaseAdminManagementService(
                     ?? Array.Empty<string>(),
                 PaymentProvider: NormalizeOptionalText(item.PaymentProvider, 40),
                 SubscriptionSourceSystem: NormalizeOptionalText(item.SubscriptionSourceSystem, 40),
-                SubscriptionStatus: NormalizeOptionalText(item.SubscriptionStatus, 40),
+                SubscriptionStatus: disabledStates.GetValueOrDefault(item.SubscriberId)?.DisabledAt is not null
+                    ? "disabled"
+                    : NormalizeOptionalText(item.SubscriptionStatus, 40),
                 SubscribedAt: item.SubscribedAt,
                 NextPaymentDueAt: item.NextPaymentDueAt,
-                CancelledAt: item.CancelledAt))
-            .ToArray()
-            ?? Array.Empty<AdminSubscriberRecord>();
+                CancelledAt: item.CancelledAt,
+                DisabledAt: disabledStates.GetValueOrDefault(item.SubscriberId)?.DisabledAt ?? item.DisabledAt,
+                DisabledByAdminEmail: NormalizeOptionalText(disabledStates.GetValueOrDefault(item.SubscriberId)?.DisabledByAdminEmail ?? item.DisabledByAdminEmail, 320),
+                DisabledReason: NormalizeOptionalText(disabledStates.GetValueOrDefault(item.SubscriberId)?.DisabledReason ?? item.DisabledReason, 400)))
+            .ToArray();
 
         return new AdminSubscriberPageResult(items, Math.Max(0, response.TotalCount));
     }
@@ -247,6 +269,12 @@ public sealed partial class SupabaseAdminManagementService(
             return new AdminOperationResult(false, "Selfoonnommer moet 7 tot 20 syfers wees.");
         }
 
+        var normalizedEmail = NormalizeEmail(request.Email);
+        if (!string.IsNullOrWhiteSpace(request.Email) && normalizedEmail is null)
+        {
+            return new AdminOperationResult(false, "Gebruik asseblief 'n geldige e-posadres.");
+        }
+
         var payload = new Dictionary<string, object?>
         {
             ["first_name"] = normalizedFirstName,
@@ -254,6 +282,10 @@ public sealed partial class SupabaseAdminManagementService(
             ["display_name"] = normalizedDisplayName,
             ["mobile_number"] = normalizedMobileNumber
         };
+        if (!string.IsNullOrWhiteSpace(normalizedEmail))
+        {
+            payload["email"] = normalizedEmail;
+        }
 
         var escapedSubscriberId = Uri.EscapeDataString(request.SubscriberId.ToString("D"));
         var uri = new Uri(baseUri, $"rest/v1/subscribers?subscriber_id=eq.{escapedSubscriberId}");
@@ -273,6 +305,497 @@ public sealed partial class SupabaseAdminManagementService(
             (int)updateResponse.StatusCode,
             responseBody);
         return new AdminOperationResult(false, "Kon nie intekenaar nou opdateer nie.");
+    }
+
+    public async Task<AdminOperationResult> CreateSubscriberAsync(
+        string? adminEmail,
+        AdminSubscriberCreateRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var context = await TryCreateAdminOperationContextAsync(adminEmail, cancellationToken);
+        if (context is null)
+        {
+            return new AdminOperationResult(false, "Jy het nie admin toegang nie.");
+        }
+
+        var normalizedEmail = NormalizeEmail(request.Email);
+        if (normalizedEmail is null)
+        {
+            return new AdminOperationResult(false, "Gebruik asseblief 'n geldige e-posadres.");
+        }
+
+        var normalizedMobileNumber = NormalizeMobileNumber(request.MobileNumber);
+        if (!string.IsNullOrWhiteSpace(request.MobileNumber) && normalizedMobileNumber is null)
+        {
+            return new AdminOperationResult(false, "Selfoonnommer moet 7 tot 20 syfers wees.");
+        }
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["email"] = normalizedEmail,
+            ["first_name"] = NormalizeOptionalText(request.FirstName, 80),
+            ["last_name"] = NormalizeOptionalText(request.LastName, 80),
+            ["display_name"] = NormalizeOptionalText(request.DisplayName, 120),
+            ["mobile_number"] = normalizedMobileNumber,
+            ["disabled_at"] = null,
+            ["disabled_by_admin_email"] = null,
+            ["disabled_reason"] = null
+        };
+
+        var uri = new Uri(context.BaseUri, "rest/v1/subscribers?on_conflict=email&select=subscriber_id");
+        using var createRequest = CreateJsonRequest(HttpMethod.Post, uri, context.ApiKey, payload, "resolution=merge-duplicates,return=representation");
+        using var createResponse = await _httpClient.SendAsync(createRequest, cancellationToken);
+        if (!createResponse.IsSuccessStatusCode)
+        {
+            var responseBody = await createResponse.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Subscriber create failed. email={Email} Status={StatusCode} Body={Body}",
+                normalizedEmail,
+                (int)createResponse.StatusCode,
+                responseBody);
+            return new AdminOperationResult(false, "Kon nie intekenaar nou skep nie.");
+        }
+
+        var responseText = await createResponse.Content.ReadAsStringAsync(cancellationToken);
+        var subscriberId = TryReadFirstGuidProperty(responseText, "subscriber_id") ?? Guid.Empty;
+        if (subscriberId == Guid.Empty)
+        {
+            return new AdminOperationResult(false, "Kon nie nuwe intekenaar bevestig nie.");
+        }
+
+        await WriteSubscriberAuditAsync(
+            context,
+            subscriberId,
+            "subscriber.created",
+            "Subscriber profile created from admin.",
+            new { email = normalizedEmail },
+            cancellationToken);
+
+        if (request.SendPasswordReset)
+        {
+            var resetUrl = NormalizeOptionalText(request.ResetUrl, 2048);
+            if (!string.IsNullOrWhiteSpace(resetUrl))
+            {
+                await _supabaseAuthService.SendPasswordResetEmailAsync(normalizedEmail, resetUrl, cancellationToken);
+            }
+        }
+
+        return new AdminOperationResult(true, EntityId: subscriberId);
+    }
+
+    public async Task<AdminSubscriberDetailSnapshot?> GetSubscriberDetailAsync(
+        string? adminEmail,
+        Guid subscriberId,
+        CancellationToken cancellationToken = default)
+    {
+        var context = await TryCreateAdminOperationContextAsync(adminEmail, cancellationToken);
+        if (context is null || subscriberId == Guid.Empty)
+        {
+            return null;
+        }
+
+        var subscriber = await FetchSubscriberRecordByIdAsync(context, subscriberId, cancellationToken);
+        if (subscriber is null)
+        {
+            return null;
+        }
+
+        var subscriptions = await FetchSubscriberSubscriptionsAsync(context, subscriberId, cancellationToken);
+        var tierOptions = await FetchAdminSubscriptionTierOptionsAsync(context, cancellationToken);
+        var tierNames = tierOptions.ToDictionary(tier => tier.TierCode, tier => tier.DisplayName, StringComparer.OrdinalIgnoreCase);
+
+        return new AdminSubscriberDetailSnapshot(
+            subscriber,
+            subscriptions.Select(row => MapSubscriberSubscription(row, tierNames)).ToArray(),
+            await FetchSubscriberBillingEventsAsync(context, subscriberId, subscriptions, cancellationToken),
+            await FetchSubscriberStoreOrdersAsync(context, subscriber.Email, cancellationToken),
+            await FetchSubscriberActivityAsync(context, subscriberId, subscriber.Email, cancellationToken),
+            await FetchSubscriberRecoveriesAsync(context, subscriber, subscriptions, cancellationToken),
+            await FetchSubscriberNotificationsAsync(context, subscriberId, cancellationToken),
+            tierOptions,
+            await FetchSubscriberAuditAsync(context, subscriberId, cancellationToken));
+    }
+
+    public async Task<AdminOperationResult> SetSubscriberDisabledAsync(
+        string? adminEmail,
+        AdminSubscriberDisabledUpdateRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var context = await TryCreateAdminOperationContextAsync(adminEmail, cancellationToken);
+        if (context is null)
+        {
+            return new AdminOperationResult(false, "Jy het nie admin toegang nie.");
+        }
+
+        var subscriber = await FetchSubscriberRecordByIdAsync(context, request.SubscriberId, cancellationToken);
+        if (subscriber is null)
+        {
+            return new AdminOperationResult(false, "Kies asseblief 'n geldige intekenaar.");
+        }
+
+        var nowUtc = DateTimeOffset.UtcNow;
+        var payload = request.IsDisabled
+            ? new Dictionary<string, object?>
+            {
+                ["disabled_at"] = nowUtc.UtcDateTime,
+                ["disabled_by_admin_email"] = context.AdminEmail,
+                ["disabled_reason"] = NormalizeOptionalText(request.Reason, 400)
+            }
+            : new Dictionary<string, object?>
+            {
+                ["disabled_at"] = null,
+                ["disabled_by_admin_email"] = null,
+                ["disabled_reason"] = null
+            };
+
+        var escapedSubscriberId = Uri.EscapeDataString(request.SubscriberId.ToString("D"));
+        var uri = new Uri(context.BaseUri, $"rest/v1/subscribers?subscriber_id=eq.{escapedSubscriberId}");
+        using var updateRequest = CreateJsonRequest(new HttpMethod("PATCH"), uri, context.ApiKey, payload, "return=minimal");
+        using var updateResponse = await _httpClient.SendAsync(updateRequest, cancellationToken);
+        if (!updateResponse.IsSuccessStatusCode)
+        {
+            var responseBody = await updateResponse.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Subscriber disabled-state update failed. subscriber_id={SubscriberId} Status={StatusCode} Body={Body}",
+                request.SubscriberId,
+                (int)updateResponse.StatusCode,
+                responseBody);
+            return new AdminOperationResult(false, "Kon nie intekenaarstatus nou opdateer nie.");
+        }
+
+        if (request.IsDisabled)
+        {
+            await _authSessionService.RevokeAllSessionsAsync(subscriber.Email, cancellationToken);
+        }
+
+        await WriteSubscriberAuditAsync(
+            context,
+            request.SubscriberId,
+            request.IsDisabled ? "subscriber.disabled" : "subscriber.enabled",
+            NormalizeOptionalText(request.Reason, 400),
+            new { disabled = request.IsDisabled },
+            cancellationToken);
+
+        return new AdminOperationResult(true, EntityId: request.SubscriberId);
+    }
+
+    public async Task<AdminOperationResult> GrantSubscriberAccessAsync(
+        string? adminEmail,
+        AdminSubscriberAccessGrantRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var context = await TryCreateAdminOperationContextAsync(adminEmail, cancellationToken);
+        if (context is null)
+        {
+            return new AdminOperationResult(false, "Jy het nie admin toegang nie.");
+        }
+
+        var normalizedTierCode = NormalizeOptionalText(request.TierCode, 80)?.ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(normalizedTierCode) || !TierCodeRegex().IsMatch(normalizedTierCode))
+        {
+            return new AdminOperationResult(false, "Kies asseblief 'n geldige toegangsvlak.");
+        }
+
+        var expiryValidation = AdminSubscriberManagementLogic.ValidateManualAccessExpiry(request.ExpiresAt, DateTimeOffset.UtcNow);
+        if (!expiryValidation.IsValid)
+        {
+            return new AdminOperationResult(false, expiryValidation.ErrorMessage);
+        }
+
+        var subscriber = await FetchSubscriberRecordByIdAsync(context, request.SubscriberId, cancellationToken);
+        if (subscriber is null)
+        {
+            return new AdminOperationResult(false, "Kies asseblief 'n geldige intekenaar.");
+        }
+
+        var providerPaymentId = $"admin-override-{request.SubscriberId:D}-{normalizedTierCode}";
+        var payload = new
+        {
+            subscriber_id = request.SubscriberId,
+            tier_code = normalizedTierCode,
+            provider = "free",
+            provider_payment_id = providerPaymentId,
+            provider_transaction_id = (string?)null,
+            provider_token = (string?)null,
+            status = "active",
+            subscribed_at = DateTimeOffset.UtcNow.UtcDateTime,
+            next_renewal_at = request.ExpiresAt!.Value.UtcDateTime,
+            cancelled_at = (DateTime?)null,
+            source_system = "admin_override"
+        };
+
+        var uri = new Uri(context.BaseUri, "rest/v1/subscriptions?on_conflict=provider,provider_payment_id&select=subscription_id");
+        using var grantRequest = CreateJsonRequest(HttpMethod.Post, uri, context.ApiKey, payload, "resolution=merge-duplicates,return=representation");
+        using var grantResponse = await _httpClient.SendAsync(grantRequest, cancellationToken);
+        if (!grantResponse.IsSuccessStatusCode)
+        {
+            var responseBody = await grantResponse.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Admin subscriber access grant failed. subscriber_id={SubscriberId} Status={StatusCode} Body={Body}",
+                request.SubscriberId,
+                (int)grantResponse.StatusCode,
+                responseBody);
+            return new AdminOperationResult(false, "Kon nie handmatige toegang nou stoor nie.");
+        }
+
+        var responseText = await grantResponse.Content.ReadAsStringAsync(cancellationToken);
+        var subscriptionId = TryReadFirstGuidProperty(responseText, "subscription_id") ?? Guid.Empty;
+
+        await WriteSubscriberAuditAsync(
+            context,
+            request.SubscriberId,
+            "access.granted",
+            NormalizeOptionalText(request.Reason, 400),
+            new { tier_code = normalizedTierCode, expires_at = request.ExpiresAt.Value.UtcDateTime },
+            cancellationToken);
+
+        return new AdminOperationResult(true, EntityId: subscriptionId);
+    }
+
+    public async Task<AdminOperationResult> CancelSubscriberAccessAsync(
+        string? adminEmail,
+        AdminSubscriberAccessCancelRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var context = await TryCreateAdminOperationContextAsync(adminEmail, cancellationToken);
+        if (context is null)
+        {
+            return new AdminOperationResult(false, "Jy het nie admin toegang nie.");
+        }
+
+        var subscriptions = await FetchSubscriberSubscriptionsAsync(context, request.SubscriberId, cancellationToken);
+        var subscription = subscriptions.FirstOrDefault(item => item.SubscriptionId == request.SubscriptionId);
+        if (subscription is null)
+        {
+            return new AdminOperationResult(false, "Kies asseblief 'n geldige intekening.");
+        }
+
+        if (!string.Equals(subscription.SourceSystem, "admin_override", StringComparison.OrdinalIgnoreCase))
+        {
+            return new AdminOperationResult(false, "Net handmatige admin-toegang kan hier gekanselleer word.");
+        }
+
+        var escapedSubscriptionId = Uri.EscapeDataString(request.SubscriptionId.ToString("D"));
+        var uri = new Uri(context.BaseUri, $"rest/v1/subscriptions?subscription_id=eq.{escapedSubscriptionId}&source_system=eq.admin_override");
+        var payload = new
+        {
+            status = "cancelled",
+            cancelled_at = DateTimeOffset.UtcNow.UtcDateTime
+        };
+
+        using var cancelRequest = CreateJsonRequest(new HttpMethod("PATCH"), uri, context.ApiKey, payload, "return=minimal");
+        using var cancelResponse = await _httpClient.SendAsync(cancelRequest, cancellationToken);
+        if (!cancelResponse.IsSuccessStatusCode)
+        {
+            var responseBody = await cancelResponse.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Admin subscriber access cancel failed. subscription_id={SubscriptionId} Status={StatusCode} Body={Body}",
+                request.SubscriptionId,
+                (int)cancelResponse.StatusCode,
+                responseBody);
+            return new AdminOperationResult(false, "Kon nie handmatige toegang nou kanselleer nie.");
+        }
+
+        await WriteSubscriberAuditAsync(
+            context,
+            request.SubscriberId,
+            "access.cancelled",
+            NormalizeOptionalText(request.Reason, 400),
+            new { subscription_id = request.SubscriptionId },
+            cancellationToken);
+
+        return new AdminOperationResult(true, EntityId: request.SubscriptionId);
+    }
+
+    public async Task<AdminOperationResult> SendSubscriberPasswordResetAsync(
+        string? adminEmail,
+        Guid subscriberId,
+        string resetUrl,
+        CancellationToken cancellationToken = default)
+    {
+        var context = await TryCreateAdminOperationContextAsync(adminEmail, cancellationToken);
+        if (context is null)
+        {
+            return new AdminOperationResult(false, "Jy het nie admin toegang nie.");
+        }
+
+        var subscriber = await FetchSubscriberRecordByIdAsync(context, subscriberId, cancellationToken);
+        if (subscriber is null)
+        {
+            return new AdminOperationResult(false, "Kies asseblief 'n geldige intekenaar.");
+        }
+
+        var resetResult = await _supabaseAuthService.SendPasswordResetEmailAsync(subscriber.Email, resetUrl, cancellationToken);
+        if (!resetResult.IsSuccess)
+        {
+            return new AdminOperationResult(false, resetResult.ErrorMessage ?? "Kon nie wagwoordherstel nou stuur nie.");
+        }
+
+        await WriteSubscriberAuditAsync(
+            context,
+            subscriberId,
+            "auth.password_reset_sent",
+            "Password reset email sent from admin.",
+            new { email = subscriber.Email },
+            cancellationToken);
+
+        return new AdminOperationResult(true, EntityId: subscriberId);
+    }
+
+    public async Task<AdminOperationResult> ResendSubscriberRecoveryEmailAsync(
+        string? adminEmail,
+        Guid subscriberId,
+        CancellationToken cancellationToken = default)
+    {
+        var context = await TryCreateAdminOperationContextAsync(adminEmail, cancellationToken);
+        if (context is null)
+        {
+            return new AdminOperationResult(false, "Jy het nie admin toegang nie.");
+        }
+
+        var subscriber = await FetchSubscriberRecordByIdAsync(context, subscriberId, cancellationToken);
+        if (subscriber is null)
+        {
+            return new AdminOperationResult(false, "Kies asseblief 'n geldige intekenaar.");
+        }
+
+        var subscriptions = await FetchSubscriberSubscriptionsAsync(context, subscriberId, cancellationToken);
+        var activeRecovery = (await FetchSubscriptionRecoveryRowsForSubscriberAsync(context, subscriptions, cancellationToken))
+            .Where(recovery => recovery.ResolvedAt is null)
+            .OrderByDescending(recovery => recovery.CreatedAt)
+            .FirstOrDefault();
+        if (activeRecovery is null)
+        {
+            return new AdminOperationResult(false, "Daar is nie 'n aktiewe herstel-e-pos vir hierdie intekenaar nie.");
+        }
+
+        var subscription = subscriptions.FirstOrDefault(item => item.SubscriptionId == activeRecovery.SubscriptionId);
+        if (subscription is null)
+        {
+            return new AdminOperationResult(false, "Kon nie die herstel-intekening vind nie.");
+        }
+
+        var sequence = await _subscriptionPaymentRecoveryEmailService.ScheduleSequenceAsync(
+            new SubscriptionPaymentRecoveryEmailRequest(
+                activeRecovery.RecoveryId.ToString("D"),
+                subscription.SubscriptionId.ToString("D"),
+                subscriber.Email,
+                subscriber.FirstName,
+                subscriber.DisplayName,
+                subscription.TierCode ?? "Schink Stories",
+                subscription.Provider ?? "unknown",
+                activeRecovery.CreatedAt,
+                DateTimeOffset.UtcNow.AddDays(4)),
+            cancellationToken);
+
+        if (sequence is null)
+        {
+            return new AdminOperationResult(false, "Kon nie herstel-e-pos nou stuur nie.");
+        }
+
+        await WriteSubscriberAuditAsync(
+            context,
+            subscriberId,
+            "recovery.resent",
+            "Recovery email sequence resent from admin.",
+            new { recovery_id = activeRecovery.RecoveryId },
+            cancellationToken);
+
+        return new AdminOperationResult(true, EntityId: subscriberId);
+    }
+
+    public async Task<string> ExportSubscribersCsvAsync(
+        string? adminEmail,
+        AdminSubscriberExportRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
+        {
+            return AdminSubscriberManagementLogic.BuildSubscriberCsv(Array.Empty<AdminSubscriberRecord>());
+        }
+
+        var selectedIds = AdminSubscriberManagementLogic.NormalizeSelectedSubscriberIds(request.SelectedSubscriberIds);
+        IReadOnlyList<AdminSubscriberRecord> subscribers;
+        if (selectedIds.Count > 0)
+        {
+            subscribers = await FetchSubscriberRecordsByIdsAsync(selectedIds, cancellationToken);
+        }
+        else
+        {
+            var exportedSubscribers = new List<AdminSubscriberRecord>();
+            var pageIndex = 0;
+            var totalCount = int.MaxValue;
+            while (exportedSubscribers.Count < totalCount)
+            {
+                var page = await GetSubscribersPageAsync(
+                    adminEmail,
+                    request.PageRequest with { PageIndex = pageIndex, PageSize = 500 },
+                    cancellationToken);
+                if (page.Items.Count == 0)
+                {
+                    break;
+                }
+
+                exportedSubscribers.AddRange(page.Items);
+                totalCount = page.TotalCount;
+                pageIndex++;
+            }
+
+            subscribers = exportedSubscribers;
+        }
+
+        return AdminSubscriberManagementLogic.BuildSubscriberCsv(subscribers);
+    }
+
+    public async Task<AdminBulkOperationResult> RunSubscriberBulkActionAsync(
+        string? adminEmail,
+        AdminSubscriberBulkActionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var selectedIds = AdminSubscriberManagementLogic.NormalizeSelectedSubscriberIds(request.SubscriberIds);
+        if (selectedIds.Count == 0)
+        {
+            return new AdminBulkOperationResult(false, 0, 0, ["Kies asseblief ten minste een intekenaar."]);
+        }
+
+        var errors = new List<string>();
+        var successCount = 0;
+
+        foreach (var subscriberId in selectedIds)
+        {
+            AdminOperationResult result = request.Action switch
+            {
+                AdminSubscriberBulkAction.Disable => await SetSubscriberDisabledAsync(
+                    adminEmail,
+                    new AdminSubscriberDisabledUpdateRequest(subscriberId, true, request.Reason),
+                    cancellationToken),
+                AdminSubscriberBulkAction.Enable => await SetSubscriberDisabledAsync(
+                    adminEmail,
+                    new AdminSubscriberDisabledUpdateRequest(subscriberId, false, request.Reason),
+                    cancellationToken),
+                AdminSubscriberBulkAction.SendPasswordReset => await SendSubscriberPasswordResetAsync(
+                    adminEmail,
+                    subscriberId,
+                    request.ResetUrl ?? string.Empty,
+                    cancellationToken),
+                _ => new AdminOperationResult(false, "Onbekende grootmaataksie.")
+            };
+
+            if (result.IsSuccess)
+            {
+                successCount++;
+            }
+            else if (!string.IsNullOrWhiteSpace(result.ErrorMessage))
+            {
+                errors.Add(result.ErrorMessage);
+            }
+        }
+
+        return new AdminBulkOperationResult(
+            successCount == selectedIds.Count,
+            selectedIds.Count,
+            successCount,
+            errors.Distinct(StringComparer.OrdinalIgnoreCase).ToArray());
     }
 
     public async Task<IReadOnlyList<AdminStoryRecord>> GetStoriesAsync(
@@ -1342,6 +1865,413 @@ public sealed partial class SupabaseAdminManagementService(
             storyListenSessionsTask.Result);
     }
 
+    private async Task<AdminOperationContext?> TryCreateAdminOperationContextAsync(
+        string? adminEmail,
+        CancellationToken cancellationToken)
+    {
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return null;
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return null;
+        }
+
+        var normalizedAdminEmail = NormalizeEmail(adminEmail);
+        if (normalizedAdminEmail is null ||
+            !await IsAdminCoreAsync(baseUri, apiKey, normalizedAdminEmail, cancellationToken))
+        {
+            return null;
+        }
+
+        return new AdminOperationContext(baseUri, apiKey, normalizedAdminEmail);
+    }
+
+    private async Task<AdminSubscriberRecord?> FetchSubscriberRecordByIdAsync(
+        AdminOperationContext context,
+        Guid subscriberId,
+        CancellationToken cancellationToken)
+    {
+        if (subscriberId == Guid.Empty)
+        {
+            return null;
+        }
+
+        var escapedSubscriberId = Uri.EscapeDataString(subscriberId.ToString("D"));
+        var uri = new Uri(
+            context.BaseUri,
+            "rest/v1/subscribers" +
+            "?select=subscriber_id,email,first_name,last_name,display_name,mobile_number,profile_image_url,created_at,updated_at,disabled_at,disabled_by_admin_email,disabled_reason" +
+            $"&subscriber_id=eq.{escapedSubscriberId}&limit=1");
+        var rows = await FetchRowsAsync<SubscriberRow>(uri, context.ApiKey, cancellationToken);
+        var row = rows.FirstOrDefault();
+        if (row is null)
+        {
+            return null;
+        }
+
+        var subscriptions = await FetchSubscriberSubscriptionsAsync(context, subscriberId, cancellationToken);
+        var summary = BuildSubscriptionSummaryMap(subscriptions).GetValueOrDefault(subscriberId);
+        return MapSubscriberRecord(row, summary);
+    }
+
+    private async Task<IReadOnlyList<AdminSubscriberRecord>> FetchSubscriberRecordsByIdsAsync(
+        IReadOnlyList<Guid> subscriberIds,
+        CancellationToken cancellationToken)
+    {
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return Array.Empty<AdminSubscriberRecord>();
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return Array.Empty<AdminSubscriberRecord>();
+        }
+
+        var normalizedIds = AdminSubscriberManagementLogic.NormalizeSelectedSubscriberIds(subscriberIds);
+        if (normalizedIds.Count == 0)
+        {
+            return Array.Empty<AdminSubscriberRecord>();
+        }
+
+        var idFilter = string.Join(",", normalizedIds.Select(id => id.ToString("D")));
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/subscribers" +
+            "?select=subscriber_id,email,first_name,last_name,display_name,mobile_number,profile_image_url,created_at,updated_at,disabled_at,disabled_by_admin_email,disabled_reason" +
+            $"&subscriber_id=in.({idFilter})&limit=500");
+        var subscribers = await FetchRowsAsync<SubscriberRow>(uri, apiKey, cancellationToken);
+        var subscriptions = await FetchSubscriptionsAsync(baseUri, apiKey, cancellationToken);
+        var summaries = BuildSubscriptionSummaryMap(subscriptions);
+
+        return subscribers
+            .Select(row => MapSubscriberRecord(row, summaries.GetValueOrDefault(row.SubscriberId)))
+            .OrderBy(row => row.Email, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private async Task<IReadOnlyDictionary<Guid, SubscriberDisabledStateRow>> FetchSubscriberDisabledStatesAsync(
+        Uri baseUri,
+        string apiKey,
+        IReadOnlyList<Guid> subscriberIds,
+        CancellationToken cancellationToken)
+    {
+        var normalizedIds = AdminSubscriberManagementLogic.NormalizeSelectedSubscriberIds(subscriberIds);
+        if (normalizedIds.Count == 0)
+        {
+            return new Dictionary<Guid, SubscriberDisabledStateRow>();
+        }
+
+        var idFilter = string.Join(",", normalizedIds.Select(id => id.ToString("D")));
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/subscribers" +
+            "?select=subscriber_id,disabled_at,disabled_by_admin_email,disabled_reason" +
+            $"&subscriber_id=in.({idFilter})&limit=500");
+        var rows = await FetchRowsAsync<SubscriberDisabledStateRow>(uri, apiKey, cancellationToken);
+        return rows
+            .Where(row => row.SubscriberId != Guid.Empty)
+            .ToDictionary(row => row.SubscriberId);
+    }
+
+    private async Task<IReadOnlyList<SubscriptionRow>> FetchSubscriberSubscriptionsAsync(
+        AdminOperationContext context,
+        Guid subscriberId,
+        CancellationToken cancellationToken)
+    {
+        var escapedSubscriberId = Uri.EscapeDataString(subscriberId.ToString("D"));
+        var uri = new Uri(
+            context.BaseUri,
+            "rest/v1/subscriptions" +
+            "?select=subscription_id,subscriber_id,tier_code,provider,source_system,status,subscribed_at,next_renewal_at,cancelled_at,provider_payment_id,provider_transaction_id" +
+            $"&subscriber_id=eq.{escapedSubscriberId}&order=subscribed_at.desc&limit=100");
+        return await FetchRowsAsync<SubscriptionRow>(uri, context.ApiKey, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<AdminSubscriptionTierOption>> FetchAdminSubscriptionTierOptionsAsync(
+        AdminOperationContext context,
+        CancellationToken cancellationToken)
+    {
+        var uri = new Uri(
+            context.BaseUri,
+            "rest/v1/subscription_tiers?select=tier_code,display_name,price_zar,is_active&order=display_name.asc&limit=100");
+        var rows = await FetchRowsAsync<SubscriptionTierRow>(uri, context.ApiKey, cancellationToken);
+        return rows
+            .Where(row => !string.IsNullOrWhiteSpace(row.TierCode))
+            .Select(row => new AdminSubscriptionTierOption(
+                row.TierCode!.Trim(),
+                NormalizeOptionalText(row.DisplayName, 120) ?? row.TierCode!.Trim(),
+                row.PriceZar,
+                row.IsActive))
+            .ToArray();
+    }
+
+    private async Task<IReadOnlyList<AdminSubscriberBillingEventRecord>> FetchSubscriberBillingEventsAsync(
+        AdminOperationContext context,
+        Guid subscriberId,
+        IReadOnlyList<SubscriptionRow> subscriptions,
+        CancellationToken cancellationToken)
+    {
+        _ = subscriberId;
+        var subscriptionIds = subscriptions
+            .Select(row => row.SubscriptionId)
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToArray();
+        if (subscriptionIds.Length == 0)
+        {
+            return Array.Empty<AdminSubscriberBillingEventRecord>();
+        }
+
+        var idFilter = string.Join(",", subscriptionIds.Select(id => id.ToString("D")));
+        var uri = new Uri(
+            context.BaseUri,
+            "rest/v1/subscription_events" +
+            "?select=received_at,provider,event_type,event_status,provider_payment_id,provider_transaction_id" +
+            $"&subscription_id=in.({idFilter})&order=received_at.desc&limit=50");
+        var rows = await FetchRowsAsync<SubscriptionEventDetailRow>(uri, context.ApiKey, cancellationToken);
+        return rows
+            .Select(row => new AdminSubscriberBillingEventRecord(
+                row.ReceivedAt,
+                NormalizeOptionalText(row.Provider, 40) ?? "-",
+                NormalizeOptionalText(row.EventType, 80),
+                NormalizeOptionalText(row.EventStatus, 80),
+                NormalizeOptionalText(row.ProviderPaymentId, 160),
+                NormalizeOptionalText(row.ProviderTransactionId, 160)))
+            .ToArray();
+    }
+
+    private async Task<IReadOnlyList<AdminSubscriberStoreOrderRecord>> FetchSubscriberStoreOrdersAsync(
+        AdminOperationContext context,
+        string email,
+        CancellationToken cancellationToken)
+    {
+        var escapedEmail = Uri.EscapeDataString(email);
+        var uri = new Uri(
+            context.BaseUri,
+            "rest/v1/store_orders" +
+            "?select=order_id,order_reference,product_name,total_price_zar,payment_status,provider,provider_transaction_id,created_at,paid_at" +
+            $"&customer_email=eq.{escapedEmail}&order=created_at.desc&limit=50");
+        var rows = await FetchRowsAsync<StoreOrderDetailRow>(uri, context.ApiKey, cancellationToken);
+        return rows
+            .Where(row => row.OrderId != Guid.Empty)
+            .Select(row => new AdminSubscriberStoreOrderRecord(
+                row.OrderId,
+                row.OrderReference ?? string.Empty,
+                row.ProductName ?? string.Empty,
+                row.TotalPriceZar,
+                row.PaymentStatus ?? string.Empty,
+                row.Provider ?? string.Empty,
+                NormalizeOptionalText(row.ProviderTransactionId, 160),
+                row.CreatedAt,
+                row.PaidAt))
+            .ToArray();
+    }
+
+    private async Task<IReadOnlyList<AdminSubscriberActivityRecord>> FetchSubscriberActivityAsync(
+        AdminOperationContext context,
+        Guid subscriberId,
+        string email,
+        CancellationToken cancellationToken)
+    {
+        var activity = new List<AdminSubscriberActivityRecord>();
+        var escapedSubscriberId = Uri.EscapeDataString(subscriberId.ToString("D"));
+        var escapedEmail = Uri.EscapeDataString(email);
+
+        var sessionRows = await FetchRowsAsync<AuthSessionDetailRow>(
+            new Uri(context.BaseUri, $"rest/v1/auth_sessions?select=created_at,expires_at,revoked_at&email=eq.{escapedEmail}&order=created_at.desc&limit=10"),
+            context.ApiKey,
+            cancellationToken);
+        activity.AddRange(sessionRows.Select(row => new AdminSubscriberActivityRecord(
+            row.CreatedAt,
+            "login",
+            "Aanmelding",
+            row.RevokedAt is null ? "Active or expired session" : "Session revoked")));
+
+        var viewRows = await FetchRowsAsync<StoryViewDetailRow>(
+            new Uri(context.BaseUri, $"rest/v1/story_views?select=story_slug,story_path,viewed_at&subscriber_id=eq.{escapedSubscriberId}&order=viewed_at.desc&limit=10"),
+            context.ApiKey,
+            cancellationToken);
+        activity.AddRange(viewRows.Select(row => new AdminSubscriberActivityRecord(
+            row.ViewedAt,
+            "story_view",
+            $"Storie gekyk: {row.StorySlug}",
+            row.StoryPath)));
+
+        var listenRows = await FetchRowsAsync<StoryListenDetailRow>(
+            new Uri(context.BaseUri, $"rest/v1/story_listen_events?select=story_slug,event_type,listened_seconds,occurred_at&subscriber_id=eq.{escapedSubscriberId}&order=occurred_at.desc&limit=10"),
+            context.ApiKey,
+            cancellationToken);
+        activity.AddRange(listenRows.Select(row => new AdminSubscriberActivityRecord(
+            row.OccurredAt,
+            "story_listen",
+            $"Luister: {row.StorySlug}",
+            $"{row.EventType}; {row.ListenedSeconds:N0}s")));
+
+        var favoriteRows = await FetchRowsAsync<StoryFavoriteDetailRow>(
+            new Uri(context.BaseUri, $"rest/v1/story_favorites?select=story_slug,source,updated_at&subscriber_id=eq.{escapedSubscriberId}&order=updated_at.desc&limit=10"),
+            context.ApiKey,
+            cancellationToken);
+        activity.AddRange(favoriteRows.Select(row => new AdminSubscriberActivityRecord(
+            row.UpdatedAt,
+            "favorite",
+            $"Gunsteling: {row.StorySlug}",
+            row.Source)));
+
+        return activity
+            .OrderByDescending(item => item.OccurredAt)
+            .Take(40)
+            .ToArray();
+    }
+
+    private async Task<IReadOnlyList<AdminSubscriberRecoveryRecord>> FetchSubscriberRecoveriesAsync(
+        AdminOperationContext context,
+        AdminSubscriberRecord subscriber,
+        IReadOnlyList<SubscriptionRow> subscriptions,
+        CancellationToken cancellationToken)
+    {
+        var result = new List<AdminSubscriberRecoveryRecord>();
+        var subscriptionRecoveries = await FetchSubscriptionRecoveryRowsForSubscriberAsync(context, subscriptions, cancellationToken);
+        result.AddRange(subscriptionRecoveries.Select(row => new AdminSubscriberRecoveryRecord(
+            row.RecoveryId.ToString("D"),
+            "subscription",
+            row.ResolvedAt is null ? "active" : "resolved",
+            row.SubscriptionId.ToString("D"),
+            row.Provider,
+            row.CreatedAt,
+            row.ResolvedAt,
+            row.Resolution)));
+
+        var escapedEmail = Uri.EscapeDataString(subscriber.Email);
+        var abandonedUri = new Uri(
+            context.BaseUri,
+            "rest/v1/abandoned_cart_recoveries" +
+            "?select=recovery_id,source_type,source_key,created_at,resolved_at,resolution" +
+            $"&customer_email=eq.{escapedEmail}&order=created_at.desc&limit=30");
+        var abandonedRows = await FetchRowsAsync<AbandonedCartRecoveryDetailRow>(abandonedUri, context.ApiKey, cancellationToken);
+        result.AddRange(abandonedRows.Select(row => new AdminSubscriberRecoveryRecord(
+            row.RecoveryId.ToString("D"),
+            row.SourceType ?? "abandoned_cart",
+            row.ResolvedAt is null ? "active" : "resolved",
+            row.SourceKey,
+            null,
+            row.CreatedAt,
+            row.ResolvedAt,
+            row.Resolution)));
+
+        return result.OrderByDescending(row => row.CreatedAt).ToArray();
+    }
+
+    private async Task<IReadOnlyList<SubscriptionRecoveryDetailRow>> FetchSubscriptionRecoveryRowsForSubscriberAsync(
+        AdminOperationContext context,
+        IReadOnlyList<SubscriptionRow> subscriptions,
+        CancellationToken cancellationToken)
+    {
+        var subscriptionIds = subscriptions
+            .Select(row => row.SubscriptionId)
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToArray();
+        if (subscriptionIds.Length == 0)
+        {
+            return Array.Empty<SubscriptionRecoveryDetailRow>();
+        }
+
+        var idFilter = string.Join(",", subscriptionIds.Select(id => id.ToString("D")));
+        var uri = new Uri(
+            context.BaseUri,
+            "rest/v1/subscription_payment_recoveries" +
+            "?select=recovery_id,subscription_id,provider,provider_payment_id,created_at,resolved_at,resolution" +
+            $"&subscription_id=in.({idFilter})&order=created_at.desc&limit=30");
+        return await FetchRowsAsync<SubscriptionRecoveryDetailRow>(uri, context.ApiKey, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<AdminSubscriberNotificationRecord>> FetchSubscriberNotificationsAsync(
+        AdminOperationContext context,
+        Guid subscriberId,
+        CancellationToken cancellationToken)
+    {
+        var escapedSubscriberId = Uri.EscapeDataString(subscriberId.ToString("D"));
+        var uri = new Uri(
+            context.BaseUri,
+            "rest/v1/subscriber_notifications" +
+            "?select=notification_id,notification_type,title,created_at,read_at,cleared_at" +
+            $"&subscriber_id=eq.{escapedSubscriberId}&order=created_at.desc&limit=30");
+        var rows = await FetchRowsAsync<SubscriberNotificationDetailRow>(uri, context.ApiKey, cancellationToken);
+        return rows
+            .Where(row => row.NotificationId != Guid.Empty)
+            .Select(row => new AdminSubscriberNotificationRecord(
+                row.NotificationId,
+                row.NotificationType ?? string.Empty,
+                row.Title ?? string.Empty,
+                row.CreatedAt,
+                row.ReadAt,
+                row.ClearedAt))
+            .ToArray();
+    }
+
+    private async Task<IReadOnlyList<AdminSubscriberAuditRecord>> FetchSubscriberAuditAsync(
+        AdminOperationContext context,
+        Guid subscriberId,
+        CancellationToken cancellationToken)
+    {
+        var escapedSubscriberId = Uri.EscapeDataString(subscriberId.ToString("D"));
+        var uri = new Uri(
+            context.BaseUri,
+            "rest/v1/subscriber_admin_audit" +
+            "?select=created_at,admin_email,action_key,notes" +
+            $"&subscriber_id=eq.{escapedSubscriberId}&order=created_at.desc&limit=30");
+        var rows = await FetchRowsAsync<SubscriberAdminAuditRow>(uri, context.ApiKey, cancellationToken);
+        return rows
+            .Select(row => new AdminSubscriberAuditRecord(
+                row.CreatedAt,
+                row.AdminEmail ?? string.Empty,
+                row.ActionKey ?? string.Empty,
+                NormalizeOptionalText(row.Notes, 400)))
+            .ToArray();
+    }
+
+    private async Task WriteSubscriberAuditAsync(
+        AdminOperationContext context,
+        Guid subscriberId,
+        string actionKey,
+        string? notes,
+        object metadata,
+        CancellationToken cancellationToken)
+    {
+        if (subscriberId == Guid.Empty)
+        {
+            return;
+        }
+
+        var payload = new
+        {
+            subscriber_id = subscriberId,
+            admin_email = context.AdminEmail,
+            action_key = actionKey,
+            notes = NormalizeOptionalText(notes, 400),
+            metadata
+        };
+        var uri = new Uri(context.BaseUri, "rest/v1/subscriber_admin_audit");
+        using var request = CreateJsonRequest(HttpMethod.Post, uri, context.ApiKey, payload, "return=minimal");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Subscriber admin audit insert failed. subscriber_id={SubscriberId} action={Action} Status={StatusCode} Body={Body}",
+                subscriberId,
+                actionKey,
+                (int)response.StatusCode,
+                responseBody);
+        }
+    }
+
     public async Task<IReadOnlyList<AdminResourceTypeRecord>> GetResourceTypesAsync(
         string? adminEmail,
         CancellationToken cancellationToken = default)
@@ -1848,7 +2778,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/subscribers" +
-            "?select=subscriber_id,email,first_name,last_name,display_name,mobile_number,profile_image_url,created_at,updated_at" +
+            "?select=subscriber_id,email,first_name,last_name,display_name,mobile_number,profile_image_url,created_at,updated_at,disabled_at,disabled_by_admin_email,disabled_reason" +
             "&order=updated_at.desc" +
             "&limit=5000");
         return await FetchRowsAsync<SubscriberRow>(uri, apiKey, cancellationToken);
@@ -1859,7 +2789,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/subscriptions" +
-            "?select=subscription_id,subscriber_id,tier_code,provider,source_system,status,subscribed_at,next_renewal_at,cancelled_at" +
+            "?select=subscription_id,subscriber_id,tier_code,provider,source_system,status,subscribed_at,next_renewal_at,cancelled_at,provider_payment_id,provider_transaction_id" +
             "&order=subscribed_at.desc" +
             "&limit=10000");
 
@@ -2829,6 +3759,53 @@ public sealed partial class SupabaseAdminManagementService(
                 });
     }
 
+    private static AdminSubscriberRecord MapSubscriberRecord(SubscriberRow row, SubscriptionSummary? summary)
+    {
+        return new AdminSubscriberRecord(
+            SubscriberId: row.SubscriberId,
+            Email: row.Email.Trim().ToLowerInvariant(),
+            FirstName: NormalizeOptionalText(row.FirstName, 80),
+            LastName: NormalizeOptionalText(row.LastName, 80),
+            DisplayName: NormalizeOptionalText(row.DisplayName, 120),
+            MobileNumber: NormalizeOptionalText(row.MobileNumber, 32),
+            ProfileImageUrl: NormalizeOptionalText(row.ProfileImageUrl, 2048),
+            CreatedAt: row.CreatedAt,
+            UpdatedAt: row.UpdatedAt,
+            ActiveTierCodes: Array.Empty<string>(),
+            PaymentProvider: summary?.PaymentProvider,
+            SubscriptionSourceSystem: summary?.SourceSystem,
+            SubscriptionStatus: row.DisabledAt is not null ? "disabled" : summary?.Status,
+            SubscribedAt: summary?.SubscribedAt,
+            NextPaymentDueAt: summary?.NextRenewalAt,
+            CancelledAt: summary?.CancelledAt,
+            DisabledAt: row.DisabledAt,
+            DisabledByAdminEmail: NormalizeOptionalText(row.DisabledByAdminEmail, 320),
+            DisabledReason: NormalizeOptionalText(row.DisabledReason, 400));
+    }
+
+    private static AdminSubscriberSubscriptionRecord MapSubscriberSubscription(
+        SubscriptionRow row,
+        IReadOnlyDictionary<string, string> tierNames)
+    {
+        var tierCode = NormalizeOptionalText(row.TierCode, 80) ?? string.Empty;
+        var sourceSystem = NormalizeOptionalText(row.SourceSystem, 40) ?? "shink_app";
+        var isAdminOverride = string.Equals(sourceSystem, "admin_override", StringComparison.OrdinalIgnoreCase);
+        return new AdminSubscriberSubscriptionRecord(
+            row.SubscriptionId,
+            tierCode,
+            tierNames.GetValueOrDefault(tierCode, tierCode),
+            NormalizeOptionalText(row.Provider, 40) ?? string.Empty,
+            sourceSystem,
+            NormalizeOptionalText(row.Status, 40) ?? string.Empty,
+            row.SubscribedAt,
+            row.NextRenewalAt,
+            row.CancelledAt,
+            NormalizeOptionalText(row.ProviderPaymentId, 160),
+            NormalizeOptionalText(row.ProviderTransactionId, 160),
+            isAdminOverride,
+            !isAdminOverride);
+    }
+
     private static int GetSubscriptionPriority(SubscriptionRow subscription, DateTimeOffset nowUtc)
     {
         if (IsActiveSubscription(subscription, nowUtc))
@@ -2880,6 +3857,20 @@ public sealed partial class SupabaseAdminManagementService(
         return normalized.Length <= maxLength
             ? normalized
             : normalized[..maxLength];
+    }
+
+    private static string? NormalizeEmail(string? value)
+    {
+        var normalized = NormalizeOptionalText(value, 320)?.ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(normalized) ||
+            normalized.Count(character => character == '@') != 1 ||
+            normalized.StartsWith('@') ||
+            normalized.EndsWith('@'))
+        {
+            return null;
+        }
+
+        return normalized;
     }
 
     private static string NormalizePlaylistImagePath(string? value) =>
@@ -3089,6 +4080,8 @@ public sealed partial class SupabaseAdminManagementService(
     [GeneratedRegex("^\\+?[0-9]{7,20}$", RegexOptions.CultureInvariant)]
     private static partial Regex MobileNumberRegex();
 
+    private sealed record AdminOperationContext(Uri BaseUri, string ApiKey, string AdminEmail);
+
     private sealed class AdminUserRow
     {
         [JsonPropertyName("email")]
@@ -3153,6 +4146,15 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("cancelled_at")]
         public DateTimeOffset? CancelledAt { get; set; }
+
+        [JsonPropertyName("disabled_at")]
+        public DateTimeOffset? DisabledAt { get; set; }
+
+        [JsonPropertyName("disabled_by_admin_email")]
+        public string? DisabledByAdminEmail { get; set; }
+
+        [JsonPropertyName("disabled_reason")]
+        public string? DisabledReason { get; set; }
     }
 
     private sealed class SubscriberRow
@@ -3183,6 +4185,30 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("updated_at")]
         public DateTimeOffset UpdatedAt { get; set; }
+
+        [JsonPropertyName("disabled_at")]
+        public DateTimeOffset? DisabledAt { get; set; }
+
+        [JsonPropertyName("disabled_by_admin_email")]
+        public string? DisabledByAdminEmail { get; set; }
+
+        [JsonPropertyName("disabled_reason")]
+        public string? DisabledReason { get; set; }
+    }
+
+    private sealed class SubscriberDisabledStateRow
+    {
+        [JsonPropertyName("subscriber_id")]
+        public Guid SubscriberId { get; set; }
+
+        [JsonPropertyName("disabled_at")]
+        public DateTimeOffset? DisabledAt { get; set; }
+
+        [JsonPropertyName("disabled_by_admin_email")]
+        public string? DisabledByAdminEmail { get; set; }
+
+        [JsonPropertyName("disabled_reason")]
+        public string? DisabledReason { get; set; }
     }
 
     private sealed class SubscriptionRow
@@ -3213,6 +4239,12 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("cancelled_at")]
         public DateTimeOffset? CancelledAt { get; set; }
+
+        [JsonPropertyName("provider_payment_id")]
+        public string? ProviderPaymentId { get; set; }
+
+        [JsonPropertyName("provider_transaction_id")]
+        public string? ProviderTransactionId { get; set; }
     }
 
     private sealed class SubscriptionTierRow
@@ -3291,6 +4323,189 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("resolution")]
         public string? Resolution { get; set; }
+    }
+
+    private sealed class SubscriptionRecoveryDetailRow
+    {
+        [JsonPropertyName("recovery_id")]
+        public Guid RecoveryId { get; set; }
+
+        [JsonPropertyName("subscription_id")]
+        public Guid SubscriptionId { get; set; }
+
+        [JsonPropertyName("provider")]
+        public string? Provider { get; set; }
+
+        [JsonPropertyName("provider_payment_id")]
+        public string? ProviderPaymentId { get; set; }
+
+        [JsonPropertyName("created_at")]
+        public DateTimeOffset CreatedAt { get; set; }
+
+        [JsonPropertyName("resolved_at")]
+        public DateTimeOffset? ResolvedAt { get; set; }
+
+        [JsonPropertyName("resolution")]
+        public string? Resolution { get; set; }
+    }
+
+    private sealed class SubscriptionEventDetailRow
+    {
+        [JsonPropertyName("received_at")]
+        public DateTimeOffset ReceivedAt { get; set; }
+
+        [JsonPropertyName("provider")]
+        public string? Provider { get; set; }
+
+        [JsonPropertyName("event_type")]
+        public string? EventType { get; set; }
+
+        [JsonPropertyName("event_status")]
+        public string? EventStatus { get; set; }
+
+        [JsonPropertyName("provider_payment_id")]
+        public string? ProviderPaymentId { get; set; }
+
+        [JsonPropertyName("provider_transaction_id")]
+        public string? ProviderTransactionId { get; set; }
+    }
+
+    private sealed class StoreOrderDetailRow
+    {
+        [JsonPropertyName("order_id")]
+        public Guid OrderId { get; set; }
+
+        [JsonPropertyName("order_reference")]
+        public string? OrderReference { get; set; }
+
+        [JsonPropertyName("product_name")]
+        public string? ProductName { get; set; }
+
+        [JsonPropertyName("total_price_zar")]
+        public decimal TotalPriceZar { get; set; }
+
+        [JsonPropertyName("payment_status")]
+        public string? PaymentStatus { get; set; }
+
+        [JsonPropertyName("provider")]
+        public string? Provider { get; set; }
+
+        [JsonPropertyName("provider_transaction_id")]
+        public string? ProviderTransactionId { get; set; }
+
+        [JsonPropertyName("created_at")]
+        public DateTimeOffset CreatedAt { get; set; }
+
+        [JsonPropertyName("paid_at")]
+        public DateTimeOffset? PaidAt { get; set; }
+    }
+
+    private sealed class AuthSessionDetailRow
+    {
+        [JsonPropertyName("created_at")]
+        public DateTimeOffset CreatedAt { get; set; }
+
+        [JsonPropertyName("expires_at")]
+        public DateTimeOffset ExpiresAt { get; set; }
+
+        [JsonPropertyName("revoked_at")]
+        public DateTimeOffset? RevokedAt { get; set; }
+    }
+
+    private sealed class StoryViewDetailRow
+    {
+        [JsonPropertyName("story_slug")]
+        public string? StorySlug { get; set; }
+
+        [JsonPropertyName("story_path")]
+        public string? StoryPath { get; set; }
+
+        [JsonPropertyName("viewed_at")]
+        public DateTimeOffset ViewedAt { get; set; }
+    }
+
+    private sealed class StoryListenDetailRow
+    {
+        [JsonPropertyName("story_slug")]
+        public string? StorySlug { get; set; }
+
+        [JsonPropertyName("event_type")]
+        public string? EventType { get; set; }
+
+        [JsonPropertyName("listened_seconds")]
+        public decimal ListenedSeconds { get; set; }
+
+        [JsonPropertyName("occurred_at")]
+        public DateTimeOffset OccurredAt { get; set; }
+    }
+
+    private sealed class StoryFavoriteDetailRow
+    {
+        [JsonPropertyName("story_slug")]
+        public string? StorySlug { get; set; }
+
+        [JsonPropertyName("source")]
+        public string? Source { get; set; }
+
+        [JsonPropertyName("updated_at")]
+        public DateTimeOffset UpdatedAt { get; set; }
+    }
+
+    private sealed class SubscriberNotificationDetailRow
+    {
+        [JsonPropertyName("notification_id")]
+        public Guid NotificationId { get; set; }
+
+        [JsonPropertyName("notification_type")]
+        public string? NotificationType { get; set; }
+
+        [JsonPropertyName("title")]
+        public string? Title { get; set; }
+
+        [JsonPropertyName("created_at")]
+        public DateTimeOffset CreatedAt { get; set; }
+
+        [JsonPropertyName("read_at")]
+        public DateTimeOffset? ReadAt { get; set; }
+
+        [JsonPropertyName("cleared_at")]
+        public DateTimeOffset? ClearedAt { get; set; }
+    }
+
+    private sealed class AbandonedCartRecoveryDetailRow
+    {
+        [JsonPropertyName("recovery_id")]
+        public Guid RecoveryId { get; set; }
+
+        [JsonPropertyName("source_type")]
+        public string? SourceType { get; set; }
+
+        [JsonPropertyName("source_key")]
+        public string? SourceKey { get; set; }
+
+        [JsonPropertyName("created_at")]
+        public DateTimeOffset CreatedAt { get; set; }
+
+        [JsonPropertyName("resolved_at")]
+        public DateTimeOffset? ResolvedAt { get; set; }
+
+        [JsonPropertyName("resolution")]
+        public string? Resolution { get; set; }
+    }
+
+    private sealed class SubscriberAdminAuditRow
+    {
+        [JsonPropertyName("created_at")]
+        public DateTimeOffset CreatedAt { get; set; }
+
+        [JsonPropertyName("admin_email")]
+        public string? AdminEmail { get; set; }
+
+        [JsonPropertyName("action_key")]
+        public string? ActionKey { get; set; }
+
+        [JsonPropertyName("notes")]
+        public string? Notes { get; set; }
     }
 
     private sealed class AbandonedCartRecoveryRow

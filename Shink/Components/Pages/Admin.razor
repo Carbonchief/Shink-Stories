@@ -148,6 +148,15 @@
                                 <div class="admin-search-actions">
                                     <MudButton Class="admin-icon-btn admin-mobile-cta"
                                                Variant="Variant.Filled"
+                                               Color="Color.Secondary"
+                                               OnClick="StartNewSubscriber"
+                                               aria-label='@T("Skep intekenaar", "Create subscriber")'
+                                               title='@T("Skep intekenaar", "Create subscriber")'>
+                                        <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
+                                        <span class="admin-btn-text">@T("Nuwe intekenaar", "New subscriber")</span>
+                                    </MudButton>
+                                    <MudButton Class="admin-icon-btn admin-mobile-cta"
+                                               Variant="Variant.Filled"
                                                Color="Color.Primary"
                                                OnClick="SearchSubscribersAsync"
                                                aria-label='@T("Soek intekenaars", "Search subscribers")'
@@ -177,8 +186,38 @@
                                         <span class="admin-btn-text">@T("Verfris", "Refresh")</span>
                                         <span class="sr-only">@T("Verfris intekenaars", "Refresh subscribers")</span>
                                     </MudButton>
+                                    <MudButton Class="admin-icon-btn admin-mobile-cta"
+                                               Variant="Variant.Outlined"
+                                               Color="Color.Primary"
+                                               OnClick="ExportFilteredSubscribersAsync"
+                                               aria-label='@T("Voer gefilterde intekenaars uit", "Export filtered subscribers")'
+                                               title='@T("Voer gefilterde intekenaars uit", "Export filtered subscribers")'>
+                                        <i class="fa-solid fa-file-csv" aria-hidden="true"></i>
+                                        <span class="admin-btn-text">@T("Voer uit", "Export")</span>
+                                    </MudButton>
                                 </div>
                             </div>
+                            @if (SelectedSubscriberIds.Count > 0)
+                            {
+                                <div class="admin-bulk-toolbar" role="region" aria-label='@T("Gekose intekenaar aksies", "Selected subscriber actions")'>
+                                    <span>@T($"{SelectedSubscriberIds.Count} gekies", $"{SelectedSubscriberIds.Count} selected")</span>
+                                    <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="ExportSelectedSubscribersAsync">
+                                        @T("Voer gekies uit", "Export selected")
+                                    </MudButton>
+                                    <MudButton Variant="Variant.Text" Color="Color.Warning" OnClick='() => RunSelectedSubscriberBulkActionAsync(AdminSubscriberBulkAction.Disable)'>
+                                        @T("Deaktiveer", "Disable")
+                                    </MudButton>
+                                    <MudButton Variant="Variant.Text" Color="Color.Success" OnClick='() => RunSelectedSubscriberBulkActionAsync(AdminSubscriberBulkAction.Enable)'>
+                                        @T("Heraktiveer", "Enable")
+                                    </MudButton>
+                                    <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick='() => RunSelectedSubscriberBulkActionAsync(AdminSubscriberBulkAction.SendPasswordReset)'>
+                                        @T("Stuur herstel", "Send reset")
+                                    </MudButton>
+                                    <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="ClearSubscriberSelection">
+                                        @T("Maak keuse skoon", "Clear selection")
+                                    </MudButton>
+                                </div>
+                            }
                         }
                     </div>
 
@@ -199,6 +238,13 @@
                                   RowClassFunc="GetSubscriberRowClass"
                                   OnRowClick="OnSubscriberRowClick">
                             <HeaderContent>
+                                <MudTh Class="admin-selection-cell">
+                                    <MudCheckBox T="bool"
+                                                 Value="AreAllVisibleSubscribersSelected"
+                                                 ValueChanged="ToggleVisibleSubscriberSelection"
+                                                 aria-label='@T("Kies alle sigbare intekenaars", "Select all visible subscribers")'
+                                                 @onclick:stopPropagation="true" />
+                                </MudTh>
                                 <MudTh>
                                     <div class="admin-header-cell">
                                         <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="subscriber">
@@ -425,6 +471,13 @@
                                     var subscriberPrimaryLabel = BuildSubscriberPrimaryLabel(context);
                                     var subscriberSecondaryLabel = BuildSubscriberSecondaryLabel(context);
                                 }
+                                <MudTd Class="admin-selection-cell" DataLabel="">
+                                    <MudCheckBox T="bool"
+                                                 Value="@SelectedSubscriberIds.Contains(context.SubscriberId)"
+                                                 ValueChanged="@((bool isSelected) => ToggleSubscriberSelection(context.SubscriberId, isSelected))"
+                                                 aria-label='@T("Kies intekenaar", "Select subscriber")'
+                                                 @onclick:stopPropagation="true" />
+                                </MudTd>
                                 <MudTd DataLabel='@T("Intekenaar", "Subscriber")'>
                                     <div class="admin-subscriber-cell">
                                         <span class="admin-subscriber-avatar" aria-hidden="true">
@@ -1376,38 +1429,158 @@
         {
             <MudDialog Visible="IsSubscriberDialogOpen"
                        VisibleChanged="OnSubscriberDialogVisibleChanged"
-                       Options="EditorDialogOptions">
+                       Class="admin-solid-dialog"
+                       ContentClass="admin-solid-dialog-content"
+                       Options="SubscriberEditorDialogOptions">
                 <TitleContent>
-                    <MudText Typo="Typo.h6">@T("Wysig intekenaar", "Edit subscriber")</MudText>
+                    <MudText Typo="Typo.h6">
+                        @(SubscriberEditor.IsNew ? T("Skep intekenaar", "Create subscriber") : T("Bestuur intekenaar", "Manage subscriber"))
+                    </MudText>
                 </TitleContent>
                 <DialogContent>
-                    <div class="admin-form-grid">
-                        <MudTextField T="string"
-                                      Label='@T("E-pos", "Email")'
-                                      Value="SubscriberEditor.Email"
-                                      Disabled="true"
-                                      Variant="Variant.Outlined"
-                                      Margin="Margin.Dense" />
-                        <MudTextField T="string"
-                                      Label='@T("Voornaam", "First name")'
-                                      @bind-Value="SubscriberEditor.FirstName"
-                                      Variant="Variant.Outlined"
-                                      Margin="Margin.Dense" />
-                        <MudTextField T="string"
-                                      Label='@T("Van", "Last name")'
-                                      @bind-Value="SubscriberEditor.LastName"
-                                      Variant="Variant.Outlined"
-                                      Margin="Margin.Dense" />
-                        <MudTextField T="string"
-                                      Label='@T("Vertoonnaam", "Display name")'
-                                      @bind-Value="SubscriberEditor.DisplayName"
-                                      Variant="Variant.Outlined"
-                                      Margin="Margin.Dense" />
-                        <MudTextField T="string"
-                                      Label='@T("Selfoon", "Mobile")'
-                                      @bind-Value="SubscriberEditor.MobileNumber"
-                                      Variant="Variant.Outlined"
-                                      Margin="Margin.Dense" />
+                    <div class="admin-solid-dialog-body">
+                        <MudTabs Class="admin-detail-tabs" Rounded="true">
+                            <MudTabPanel Text='@T("Rekening", "Account")'>
+                                <div class="admin-form-grid">
+                                <MudTextField T="string"
+                                              Label='@T("E-pos", "Email")'
+                                              @bind-Value="SubscriberEditor.Email"
+                                              Disabled="@(!SubscriberEditor.IsNew && IsSavingSubscriber)"
+                                              Variant="Variant.Outlined"
+                                              Margin="Margin.Dense" />
+                                <MudTextField T="string"
+                                              Label='@T("Voornaam", "First name")'
+                                              @bind-Value="SubscriberEditor.FirstName"
+                                              Variant="Variant.Outlined"
+                                              Margin="Margin.Dense" />
+                                <MudTextField T="string"
+                                              Label='@T("Van", "Last name")'
+                                              @bind-Value="SubscriberEditor.LastName"
+                                              Variant="Variant.Outlined"
+                                              Margin="Margin.Dense" />
+                                <MudTextField T="string"
+                                              Label='@T("Vertoonnaam", "Display name")'
+                                              @bind-Value="SubscriberEditor.DisplayName"
+                                              Variant="Variant.Outlined"
+                                              Margin="Margin.Dense" />
+                                <MudTextField T="string"
+                                              Label='@T("Selfoon", "Mobile")'
+                                              @bind-Value="SubscriberEditor.MobileNumber"
+                                              Variant="Variant.Outlined"
+                                              Margin="Margin.Dense" />
+                                @if (SubscriberEditor.IsNew)
+                                {
+                                    <MudCheckBox T="bool"
+                                                 Class="admin-span-2"
+                                                 Label='@T("Stuur wagwoordherstel e-pos", "Send password reset email")'
+                                                 @bind-Value="SendNewSubscriberReset" />
+                                }
+                                </div>
+                                @if (!SubscriberEditor.IsNew)
+                                {
+                                    <div class="admin-action-grid">
+                                        <MudTextField T="string"
+                                                      Label='@T("Rede vir deaktivering", "Disable reason")'
+                                                      @bind-Value="SubscriberDisableReason"
+                                                      Variant="Variant.Outlined"
+                                                      Margin="Margin.Dense" />
+                                        <MudButton Variant="Variant.Outlined"
+                                                   Color="@(SubscriberEditor.DisabledAt is null ? Color.Warning : Color.Success)"
+                                                   Disabled="@IsSavingSubscriberAction"
+                                                   OnClick="ToggleSubscriberDisabledAsync">
+                                            @(SubscriberEditor.DisabledAt is null ? T("Deaktiveer intekenaar", "Disable subscriber") : T("Heraktiveer intekenaar", "Enable subscriber"))
+                                        </MudButton>
+                                        <MudButton Variant="Variant.Outlined"
+                                                   Color="Color.Primary"
+                                                   Disabled="@IsSavingSubscriberAction"
+                                                   OnClick="SendSubscriberPasswordResetAsync">
+                                            @T("Stuur wagwoordherstel", "Send password reset")
+                                        </MudButton>
+                                    </div>
+                                }
+                            </MudTabPanel>
+                            <MudTabPanel Text='@T("Toegang", "Access")'>
+                                @if (IsLoadingSubscriberDetail)
+                                {
+                                    <p class="admin-form-note">@T("Laai intekenaarbesonderhede...", "Loading subscriber details...")</p>
+                                }
+                                else
+                                {
+                                    @RenderSubscriberSubscriptions()
+                                    <div class="admin-override-header">
+                                        <h4>@T("Override", "Override")</h4>
+                                        <p>@T("Gebruik hierdie velde om handmatige admin-toegang by te voeg. Verskaffer- en invoerintekeninge bly leesalleen.", "Use these fields to add manual admin access. Provider and imported subscriptions remain read-only.")</p>
+                                    </div>
+                                    <div class="admin-action-grid">
+                                        <MudSelect T="string"
+                                                   Label='@T("Toegangsvlak", "Access tier")'
+                                                   @bind-Value="ManualAccessTierCode"
+                                                   Variant="Variant.Outlined"
+                                                   Margin="Margin.Dense">
+                                            @foreach (var tier in SubscriberDetail?.TierOptions.Where(tier => tier.IsActive) ?? Array.Empty<AdminSubscriptionTierOption>())
+                                            {
+                                                <MudSelectItem Value="@tier.TierCode">@tier.DisplayName</MudSelectItem>
+                                            }
+                                        </MudSelect>
+                                        <MudDatePicker Label='@T("Verval op", "Expires on")'
+                                                       Date="ManualAccessExpiryDate"
+                                                       DateChanged="OnManualAccessExpiryChanged"
+                                                       Variant="Variant.Outlined"
+                                                       Margin="Margin.Dense" />
+                                        <MudTextField T="string"
+                                                      Label='@T("Nota", "Note")'
+                                                      @bind-Value="ManualAccessReason"
+                                                      Variant="Variant.Outlined"
+                                                      Margin="Margin.Dense" />
+                                        <MudButton Variant="Variant.Filled"
+                                                   Color="Color.Primary"
+                                                   Disabled="@IsSavingSubscriberAction"
+                                                   OnClick="GrantSubscriberAccessAsync">
+                                            @T("Gee handmatige toegang", "Grant manual access")
+                                        </MudButton>
+                                        @if (SubscriberDetail?.Subscriptions.Any(subscription => subscription.IsAdminOverride && string.Equals(subscription.Status, "active", StringComparison.OrdinalIgnoreCase)) == true)
+                                        {
+                                            <MudSelect T="Guid"
+                                                       Label='@T("Handmatige toegang om te kanselleer", "Manual access to cancel")'
+                                                       @bind-Value="SelectedAdminOverrideSubscriptionId"
+                                                       Variant="Variant.Outlined"
+                                                       Margin="Margin.Dense">
+                                                @foreach (var subscription in SubscriberDetail.Subscriptions.Where(subscription => subscription.IsAdminOverride && string.Equals(subscription.Status, "active", StringComparison.OrdinalIgnoreCase)))
+                                                {
+                                                    <MudSelectItem Value="@subscription.SubscriptionId">@($"{subscription.TierName} - {FormatAdminDate(subscription.NextRenewalAt)}")</MudSelectItem>
+                                                }
+                                            </MudSelect>
+                                            <MudTextField T="string"
+                                                          Label='@T("Kansellasie nota", "Cancellation note")'
+                                                          @bind-Value="SubscriberAccessCancelReason"
+                                                          Variant="Variant.Outlined"
+                                                          Margin="Margin.Dense" />
+                                            <MudButton Variant="Variant.Outlined"
+                                                       Color="Color.Warning"
+                                                       Disabled="@IsSavingSubscriberAction"
+                                                       OnClick="CancelSelectedSubscriberAccessAsync">
+                                                @T("Kanselleer handmatige toegang", "Cancel manual access")
+                                            </MudButton>
+                                        }
+                                    </div>
+                                }
+                            </MudTabPanel>
+                            <MudTabPanel Text='@T("Betaling", "Billing")'>
+                                @RenderSubscriberBilling()
+                            </MudTabPanel>
+                            <MudTabPanel Text='@T("Aktiwiteit", "Activity")'>
+                                @RenderSubscriberActivity()
+                            </MudTabPanel>
+                            <MudTabPanel Text='@T("Herstel", "Recoveries")'>
+                                <MudButton Variant="Variant.Outlined"
+                                           Color="Color.Primary"
+                                           Disabled="@IsSavingSubscriberAction"
+                                           OnClick="ResendSubscriberRecoveryEmailAsync">
+                                    @T("Stuur aktiewe herstel-e-pos weer", "Resend active recovery email")
+                                </MudButton>
+                                @RenderSubscriberRecoveries()
+                            </MudTabPanel>
+                        </MudTabs>
                     </div>
                 </DialogContent>
                 <DialogActions>
@@ -1422,7 +1595,7 @@
                                    Class="admin-btn"
                                    Disabled="@IsSavingSubscriber"
                                    OnClick="SaveSubscriberAsync">
-                            @(IsSavingSubscriber ? T("Stoor...", "Saving...") : T("Stoor intekenaar", "Save subscriber"))
+                            @(IsSavingSubscriber ? T("Stoor...", "Saving...") : SubscriberEditor.IsNew ? T("Skep intekenaar", "Create subscriber") : T("Stoor intekenaar", "Save subscriber"))
                         </MudButton>
                     </div>
                 </DialogActions>
@@ -2173,6 +2346,14 @@
         CloseButton = true,
         BackdropClick = false
     };
+    private static readonly DialogOptions SubscriberEditorDialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Large,
+        FullWidth = true,
+        CloseButton = true,
+        BackdropClick = false,
+        BackgroundClass = "admin-solid-dialog-background"
+    };
 
     private string SubscriberSearch { get; set; } = string.Empty;
     private string StorySearch { get; set; } = string.Empty;
@@ -2185,6 +2366,21 @@
     private string PlaylistTitleFilterDraft { get; set; } = string.Empty;
 
     private IReadOnlyList<AdminSubscriberRecord> Subscribers { get; set; } = Array.Empty<AdminSubscriberRecord>();
+    private HashSet<Guid> SelectedSubscriberIds { get; } = [];
+    private AdminSubscriberDetailSnapshot? SubscriberDetail { get; set; }
+    private bool IsLoadingSubscriberDetail { get; set; }
+    private bool IsSavingSubscriberAction { get; set; }
+    private string SubscriberDisableReason { get; set; } = string.Empty;
+    private string ManualAccessTierCode { get; set; } = string.Empty;
+    private DateTime? ManualAccessExpiryDate { get; set; }
+    private string ManualAccessReason { get; set; } = string.Empty;
+    private Guid SelectedAdminOverrideSubscriptionId { get; set; }
+    private string SubscriberAccessCancelReason { get; set; } = string.Empty;
+    private string SubscriberBulkReason { get; set; } = string.Empty;
+    private bool SendNewSubscriberReset { get; set; } = true;
+    private bool AreAllVisibleSubscribersSelected =>
+        Subscribers.Count > 0 &&
+        Subscribers.All(subscriber => SelectedSubscriberIds.Contains(subscriber.SubscriberId));
     private IReadOnlyList<AdminStoryRecord> Stories { get; set; } = Array.Empty<AdminStoryRecord>();
     private IReadOnlyList<AdminPlaylistRecord> Playlists { get; set; } = Array.Empty<AdminPlaylistRecord>();
     private AdminAnalyticsSnapshot Analytics { get; set; } = AdminAnalyticsSnapshot.Empty;
@@ -2242,6 +2438,7 @@
     private IJSObjectReference? AdminGridModule { get; set; }
     private bool SubscriberGridEnhancementPending { get; set; } = true;
     private bool SubscriberTableReloadPending { get; set; } = true;
+    private TableState? LastSubscriberTableState { get; set; }
 
     private IReadOnlyList<AdminStoryRecord> AvailableStoriesForPlaylist =>
         Stories
@@ -2493,26 +2690,17 @@
     private async Task<TableData<AdminSubscriberRecord>> LoadSubscribersPageAsync(TableState state, CancellationToken cancellationToken)
     {
         IsRefreshingSubscribers = true;
+        LastSubscriberTableState = state;
 
         try
         {
             var page = await AdminManagementService.GetSubscribersPageAsync(
                 CurrentAdminEmail,
-                new AdminSubscriberPageRequest(
-                    PageIndex: state.Page,
-                    PageSize: state.PageSize,
-                    Search: SubscriberSearch,
-                    SortLabel: state.SortLabel,
-                    SortDescending: state.SortDirection == SortDirection.Descending,
-                    SubscriberText: SubscriberColumnFilters.SubscriberText,
-                    MobileText: SubscriberColumnFilters.MobileText,
-                    TierText: SubscriberColumnFilters.TierText,
-                    SourceSystem: SubscriberColumnFilters.SourceSystem,
-                    PaymentProvider: SubscriberColumnFilters.PaymentProvider,
-                    SubscriptionStatus: SubscriberColumnFilters.SubscriptionStatus),
+                BuildCurrentSubscriberPageRequest(state.Page, state.PageSize, state.SortLabel, state.SortDirection),
                 cancellationToken);
 
             Subscribers = page.Items;
+            SelectedSubscriberIds.IntersectWith(Subscribers.Select(subscriber => subscriber.SubscriberId));
             SubscriberGridEnhancementPending = true;
 
             var selectedSubscriberId = SubscriberEditor?.SubscriberId;
@@ -2553,6 +2741,28 @@
         {
             IsRefreshingSubscribers = false;
         }
+    }
+
+    private AdminSubscriberPageRequest BuildCurrentSubscriberPageRequest(
+        int? pageIndex = null,
+        int? pageSize = null,
+        string? sortLabel = null,
+        SortDirection? sortDirection = null)
+    {
+        var tableState = LastSubscriberTableState;
+        var resolvedSortDirection = sortDirection ?? tableState?.SortDirection ?? SortDirection.None;
+        return new AdminSubscriberPageRequest(
+            PageIndex: pageIndex ?? tableState?.Page ?? 0,
+            PageSize: pageSize ?? tableState?.PageSize ?? 500,
+            Search: SubscriberSearch,
+            SortLabel: sortLabel ?? tableState?.SortLabel,
+            SortDescending: resolvedSortDirection == SortDirection.Descending,
+            SubscriberText: SubscriberColumnFilters.SubscriberText,
+            MobileText: SubscriberColumnFilters.MobileText,
+            TierText: SubscriberColumnFilters.TierText,
+            SourceSystem: SubscriberColumnFilters.SourceSystem,
+            PaymentProvider: SubscriberColumnFilters.PaymentProvider,
+            SubscriptionStatus: SubscriberColumnFilters.SubscriptionStatus);
     }
 
     private async Task ApplySubscriberTextFilterAsync(string filterKey)
@@ -2806,6 +3016,10 @@
             BeginEditModalOpen();
             await InvokeAsync(StateHasChanged);
             SelectSubscriber(args.Item.SubscriberId);
+            if (SubscriberEditor is not null)
+            {
+                await LoadSubscriberDetailAsync(SubscriberEditor.SubscriberId);
+            }
             IsSubscriberDialogOpen = SubscriberEditor is not null;
             CompleteEditModalOpenRequest(IsSubscriberDialogOpen);
         }
@@ -2851,6 +3065,401 @@
 
         SubscriberEditor = EditableSubscriber.From(selected);
         SubscriberEditorStateSignature = BuildSubscriberEditorStateSignature(SubscriberEditor);
+        SubscriberDetail = null;
+        SubscriberDisableReason = string.Empty;
+        ManualAccessReason = string.Empty;
+        SubscriberAccessCancelReason = string.Empty;
+        SelectedAdminOverrideSubscriptionId = Guid.Empty;
+        ManualAccessTierCode = string.Empty;
+        ManualAccessExpiryDate = null;
+    }
+
+    private void StartNewSubscriber()
+    {
+        BeginEditModalOpen();
+        SubscriberEditor = new EditableSubscriber { IsNew = true };
+        SubscriberDetail = null;
+        SubscriberDisableReason = string.Empty;
+        ManualAccessReason = string.Empty;
+        SubscriberAccessCancelReason = string.Empty;
+        SelectedAdminOverrideSubscriptionId = Guid.Empty;
+        ManualAccessTierCode = string.Empty;
+        ManualAccessExpiryDate = null;
+        SendNewSubscriberReset = true;
+        SubscriberEditorStateSignature = BuildSubscriberEditorStateSignature(SubscriberEditor);
+        IsSubscriberDialogOpen = true;
+        CompleteEditModalOpenRequest(true);
+    }
+
+    private async Task LoadSubscriberDetailAsync(Guid subscriberId)
+    {
+        if (subscriberId == Guid.Empty)
+        {
+            SubscriberDetail = null;
+            return;
+        }
+
+        IsLoadingSubscriberDetail = true;
+        try
+        {
+            SubscriberDetail = await AdminManagementService.GetSubscriberDetailAsync(CurrentAdminEmail, subscriberId);
+            var activeAdminOverride = SubscriberDetail?.Subscriptions
+                .Where(subscription => subscription.IsAdminOverride && string.Equals(subscription.Status, "active", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(subscription => subscription.NextRenewalAt)
+                .FirstOrDefault();
+            SelectedAdminOverrideSubscriptionId = activeAdminOverride?.SubscriptionId ?? Guid.Empty;
+            ManualAccessTierCode = string.Empty;
+            ManualAccessExpiryDate = null;
+            ManualAccessReason = string.Empty;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to load subscriber detail.");
+            SubscriberDetail = null;
+            SetError(T("Kon nie intekenaarbesonderhede nou laai nie.", "Could not load subscriber details right now."));
+        }
+        finally
+        {
+            IsLoadingSubscriberDetail = false;
+        }
+    }
+
+    private void ToggleVisibleSubscriberSelection(bool isSelected)
+    {
+        foreach (var subscriber in Subscribers)
+        {
+            if (isSelected)
+            {
+                SelectedSubscriberIds.Add(subscriber.SubscriberId);
+            }
+            else
+            {
+                SelectedSubscriberIds.Remove(subscriber.SubscriberId);
+            }
+        }
+    }
+
+    private void ToggleSubscriberSelection(Guid subscriberId, bool isSelected)
+    {
+        if (subscriberId == Guid.Empty)
+        {
+            return;
+        }
+
+        if (isSelected)
+        {
+            SelectedSubscriberIds.Add(subscriberId);
+        }
+        else
+        {
+            SelectedSubscriberIds.Remove(subscriberId);
+        }
+    }
+
+    private void ClearSubscriberSelection() => SelectedSubscriberIds.Clear();
+
+    private async Task ExportFilteredSubscribersAsync()
+    {
+        await ExportSubscribersAsync(
+            new AdminSubscriberExportRequest(BuildCurrentSubscriberPageRequest(pageIndex: 0, pageSize: 500)),
+            "schink-subscribers-filtered.csv");
+    }
+
+    private async Task ExportSelectedSubscribersAsync()
+    {
+        var selectedIds = SelectedSubscriberIds
+            .Where(id => Subscribers.Any(subscriber => subscriber.SubscriberId == id))
+            .ToArray();
+        if (selectedIds.Length == 0)
+        {
+            SetError(T("Kies eers ten minste een sigbare intekenaar.", "Select at least one visible subscriber first."));
+            return;
+        }
+
+        await ExportSubscribersAsync(
+            new AdminSubscriberExportRequest(BuildCurrentSubscriberPageRequest(pageIndex: 0, pageSize: 500), selectedIds),
+            "schink-subscribers-selected.csv");
+    }
+
+    private async Task ExportSubscribersAsync(AdminSubscriberExportRequest request, string fileName)
+    {
+        IsSavingSubscriberAction = true;
+        ClearFeedback();
+
+        try
+        {
+            var csv = await AdminManagementService.ExportSubscribersCsvAsync(CurrentAdminEmail, request);
+            await DownloadSubscriberCsvAsync(fileName, csv);
+            SetStatus(T("Intekenaars is uitgevoer.", "Subscribers exported."));
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to export subscribers.");
+            SetError(T("Kon nie intekenaars nou uitvoer nie.", "Could not export subscribers right now."));
+        }
+        finally
+        {
+            IsSavingSubscriberAction = false;
+        }
+    }
+
+    private async Task DownloadSubscriberCsvAsync(string fileName, string csv)
+    {
+        var gridModule = await GetAdminGridModuleAsync();
+        await gridModule.InvokeVoidAsync("downloadCsv", fileName, csv);
+    }
+
+    private async Task RunSelectedSubscriberBulkActionAsync(AdminSubscriberBulkAction action)
+    {
+        var selectedIds = SelectedSubscriberIds
+            .Where(id => Subscribers.Any(subscriber => subscriber.SubscriberId == id))
+            .ToArray();
+        if (selectedIds.Length == 0)
+        {
+            SetError(T("Kies eers ten minste een sigbare intekenaar.", "Select at least one visible subscriber first."));
+            return;
+        }
+
+        IsSavingSubscriberAction = true;
+        ClearFeedback();
+
+        try
+        {
+            var result = await AdminManagementService.RunSubscriberBulkActionAsync(
+                CurrentAdminEmail,
+                new AdminSubscriberBulkActionRequest(
+                    action,
+                    selectedIds,
+                    SubscriberBulkReason,
+                    BuildPasswordResetUrl()));
+
+            if (result.SucceededCount > 0)
+            {
+                SetStatus(T(
+                    $"{result.SucceededCount} van {result.RequestedCount} intekenaars is opgedateer.",
+                    $"{result.SucceededCount} of {result.RequestedCount} subscribers updated."));
+                SelectedSubscriberIds.Clear();
+                await RefreshSubscribersAsync();
+                if (SubscriberEditor is not null && !SubscriberEditor.IsNew)
+                {
+                    await LoadSubscriberDetailAsync(SubscriberEditor.SubscriberId);
+                }
+                return;
+            }
+
+            SetError(result.ErrorMessages.Count > 0
+                ? string.Join(" ", result.ErrorMessages.Select(LocalizeKnownServiceMessage))
+                : T("Die grootmaataksie kon nie voltooi word nie.", "The bulk action could not be completed."));
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to run subscriber bulk action {Action}.", action);
+            SetError(T("Kon nie die grootmaataksie nou voltooi nie.", "Could not complete the bulk action right now."));
+        }
+        finally
+        {
+            IsSavingSubscriberAction = false;
+        }
+    }
+
+    private void OnManualAccessExpiryChanged(DateTime? date) => ManualAccessExpiryDate = date;
+
+    private async Task ToggleSubscriberDisabledAsync()
+    {
+        if (SubscriberEditor is null || SubscriberEditor.IsNew)
+        {
+            return;
+        }
+
+        var shouldDisable = SubscriberEditor.DisabledAt is null;
+        IsSavingSubscriberAction = true;
+        ClearFeedback();
+
+        try
+        {
+            var result = await AdminManagementService.SetSubscriberDisabledAsync(
+                CurrentAdminEmail,
+                new AdminSubscriberDisabledUpdateRequest(
+                    SubscriberEditor.SubscriberId,
+                    shouldDisable,
+                    SubscriberDisableReason));
+
+            if (!HandleOperationResult(result, shouldDisable
+                    ? T("Intekenaar is gedeaktiveer.", "Subscriber disabled.")
+                    : T("Intekenaar is heraktiveer.", "Subscriber enabled.")))
+            {
+                return;
+            }
+
+            await RefreshSubscribersAsync();
+            await LoadSubscriberDetailAsync(SubscriberEditor.SubscriberId);
+            SubscriberEditor.DisabledAt = shouldDisable ? DateTimeOffset.UtcNow : null;
+            SubscriberDisableReason = string.Empty;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to toggle subscriber disabled state.");
+            SetError(T("Kon nie intekenaarstatus nou opdateer nie.", "Could not update subscriber status right now."));
+        }
+        finally
+        {
+            IsSavingSubscriberAction = false;
+        }
+    }
+
+    private async Task SendSubscriberPasswordResetAsync()
+    {
+        if (SubscriberEditor is null || SubscriberEditor.IsNew)
+        {
+            return;
+        }
+
+        IsSavingSubscriberAction = true;
+        ClearFeedback();
+
+        try
+        {
+            var result = await AdminManagementService.SendSubscriberPasswordResetAsync(
+                CurrentAdminEmail,
+                SubscriberEditor.SubscriberId,
+                BuildPasswordResetUrl());
+
+            HandleOperationResult(result, T("Wagwoordherstel is gestuur.", "Password reset sent."));
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to send subscriber password reset.");
+            SetError(T("Kon nie wagwoordherstel nou stuur nie.", "Could not send password reset right now."));
+        }
+        finally
+        {
+            IsSavingSubscriberAction = false;
+        }
+    }
+
+    private async Task GrantSubscriberAccessAsync()
+    {
+        if (SubscriberEditor is null || SubscriberEditor.IsNew)
+        {
+            return;
+        }
+
+        IsSavingSubscriberAction = true;
+        ClearFeedback();
+
+        try
+        {
+            var result = await AdminManagementService.GrantSubscriberAccessAsync(
+                CurrentAdminEmail,
+                new AdminSubscriberAccessGrantRequest(
+                    SubscriberEditor.SubscriberId,
+                    ManualAccessTierCode,
+                    BuildManualAccessExpiry(),
+                    ManualAccessReason));
+
+            if (!HandleOperationResult(result, T("Handmatige toegang is gestoor.", "Manual access saved.")))
+            {
+                return;
+            }
+
+            await RefreshSubscribersAsync();
+            await LoadSubscriberDetailAsync(SubscriberEditor.SubscriberId);
+            ManualAccessReason = string.Empty;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to grant subscriber admin access.");
+            SetError(T("Kon nie handmatige toegang nou stoor nie.", "Could not save manual access right now."));
+        }
+        finally
+        {
+            IsSavingSubscriberAction = false;
+        }
+    }
+
+    private async Task CancelSelectedSubscriberAccessAsync()
+    {
+        if (SubscriberEditor is null || SubscriberEditor.IsNew || SelectedAdminOverrideSubscriptionId == Guid.Empty)
+        {
+            SetError(T("Kies eers handmatige toegang om te kanselleer.", "Select manual access to cancel first."));
+            return;
+        }
+
+        IsSavingSubscriberAction = true;
+        ClearFeedback();
+
+        try
+        {
+            var result = await AdminManagementService.CancelSubscriberAccessAsync(
+                CurrentAdminEmail,
+                new AdminSubscriberAccessCancelRequest(
+                    SubscriberEditor.SubscriberId,
+                    SelectedAdminOverrideSubscriptionId,
+                    SubscriberAccessCancelReason));
+
+            if (!HandleOperationResult(result, T("Handmatige toegang is gekanselleer.", "Manual access cancelled.")))
+            {
+                return;
+            }
+
+            await RefreshSubscribersAsync();
+            await LoadSubscriberDetailAsync(SubscriberEditor.SubscriberId);
+            SubscriberAccessCancelReason = string.Empty;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to cancel subscriber admin access.");
+            SetError(T("Kon nie handmatige toegang nou kanselleer nie.", "Could not cancel manual access right now."));
+        }
+        finally
+        {
+            IsSavingSubscriberAction = false;
+        }
+    }
+
+    private async Task ResendSubscriberRecoveryEmailAsync()
+    {
+        if (SubscriberEditor is null || SubscriberEditor.IsNew)
+        {
+            return;
+        }
+
+        IsSavingSubscriberAction = true;
+        ClearFeedback();
+
+        try
+        {
+            var result = await AdminManagementService.ResendSubscriberRecoveryEmailAsync(CurrentAdminEmail, SubscriberEditor.SubscriberId);
+            HandleOperationResult(result, T("Herstel-e-pos is weer geskeduleer.", "Recovery email rescheduled."));
+            if (result.IsSuccess)
+            {
+                await LoadSubscriberDetailAsync(SubscriberEditor.SubscriberId);
+            }
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to resend subscriber recovery email.");
+            SetError(T("Kon nie herstel-e-pos nou stuur nie.", "Could not send recovery email right now."));
+        }
+        finally
+        {
+            IsSavingSubscriberAction = false;
+        }
+    }
+
+    private string BuildPasswordResetUrl() => NavigationManager.ToAbsoluteUri("/reset-password").ToString();
+
+    private DateTimeOffset? BuildManualAccessExpiry()
+    {
+        if (ManualAccessExpiryDate is null)
+        {
+            return null;
+        }
+
+        var localEndOfDay = DateTime.SpecifyKind(
+            ManualAccessExpiryDate.Value.Date.AddDays(1).AddTicks(-1),
+            DateTimeKind.Local);
+        return new DateTimeOffset(localEndOfDay);
     }
 
     private void SelectStory(Guid storyId)
@@ -3030,21 +3639,46 @@
 
         try
         {
-            var result = await AdminManagementService.UpdateSubscriberAsync(
-                CurrentAdminEmail,
-                new AdminSubscriberUpdateRequest(
-                    SubscriberEditor.SubscriberId,
-                    SubscriberEditor.FirstName,
-                    SubscriberEditor.LastName,
-                    SubscriberEditor.DisplayName,
-                    SubscriberEditor.MobileNumber));
+            var result = SubscriberEditor.IsNew
+                ? await AdminManagementService.CreateSubscriberAsync(
+                    CurrentAdminEmail,
+                    new AdminSubscriberCreateRequest(
+                        SubscriberEditor.Email,
+                        SubscriberEditor.FirstName,
+                        SubscriberEditor.LastName,
+                        SubscriberEditor.DisplayName,
+                        SubscriberEditor.MobileNumber,
+                        SendNewSubscriberReset,
+                        NavigationManager.ToAbsoluteUri("/reset-password").ToString()))
+                : await AdminManagementService.UpdateSubscriberAsync(
+                    CurrentAdminEmail,
+                    new AdminSubscriberUpdateRequest(
+                        SubscriberEditor.SubscriberId,
+                        SubscriberEditor.FirstName,
+                        SubscriberEditor.LastName,
+                        SubscriberEditor.DisplayName,
+                        SubscriberEditor.MobileNumber,
+                        SubscriberEditor.Email));
 
-            if (!HandleOperationResult(result, T("Intekenaar is opgedateer.", "Subscriber updated.")))
+            if (!HandleOperationResult(result, SubscriberEditor.IsNew
+                    ? T("Intekenaar is geskep.", "Subscriber created.")
+                    : T("Intekenaar is opgedateer.", "Subscriber updated.")))
             {
                 return;
             }
 
+            if (result.EntityId is Guid entityId && entityId != Guid.Empty)
+            {
+                SubscriberEditor.SubscriberId = entityId;
+                SubscriberEditor.IsNew = false;
+                await LoadSubscriberDetailAsync(entityId);
+            }
+
             await RefreshSubscribersAsync();
+            if (SubscriberEditor is not null && !SubscriberEditor.IsNew)
+            {
+                await LoadSubscriberDetailAsync(SubscriberEditor.SubscriberId);
+            }
         }
         catch (Exception exception)
         {
@@ -4722,6 +5356,315 @@
             _ => string.Empty
         };
 
+    private MarkupString RenderSubscriberSubscriptions()
+    {
+        if (SubscriberDetail is null)
+        {
+            return RenderSubscriberDetailEmpty(T("Geen toegangbesonderhede is gelaai nie.", "No access details loaded."));
+        }
+
+        if (SubscriberDetail.Subscriptions.Count == 0)
+        {
+            return RenderSubscriberDetailEmpty(T("Geen intekening- of toegangrye is gevind nie.", "No subscription or access rows found."));
+        }
+
+        var builder = new StringBuilder();
+        AppendDetailTableStart(builder, [
+            T("Vlak", "Tier"),
+            T("Bron", "Source"),
+            T("Verskaffer", "Provider"),
+            T("Status", "Status"),
+            T("Begin", "Started"),
+            T("Verval/volgende", "Expires/next"),
+            T("Verwysing", "Reference")
+        ], "admin-access-table");
+
+        foreach (var subscription in SubscriberDetail.Subscriptions)
+        {
+            AppendDetailRow(
+                builder,
+                subscription.TierName,
+                subscription.IsAdminOverride ? T("Admin-toegang", "Admin access") : BuildSubscriptionSourceLabel(subscription.SourceSystem),
+                BuildPaymentProviderLabel(subscription.Provider),
+                subscription.Status,
+                FormatAdminDate(subscription.SubscribedAt),
+                FormatAdminDate(subscription.NextRenewalAt),
+                subscription.ProviderPaymentId ?? subscription.ProviderTransactionId ?? "-");
+        }
+
+        AppendDetailTableEnd(builder);
+        return new MarkupString(builder.ToString());
+    }
+
+    private MarkupString RenderSubscriberBilling()
+    {
+        if (SubscriberDetail is null)
+        {
+            return RenderSubscriberDetailEmpty(T("Geen betalingsbesonderhede is gelaai nie.", "No billing details loaded."));
+        }
+
+        var builder = new StringBuilder();
+        AppendDetailSectionTitle(builder, T("Intekening events", "Subscription events"));
+        if (SubscriberDetail.BillingEvents.Count == 0)
+        {
+            AppendDetailEmpty(builder, T("Geen intekening events is gevind nie.", "No subscription events found."));
+        }
+        else
+        {
+            AppendDetailTableStart(builder, [
+                T("Datum", "Date"),
+                T("Verskaffer", "Provider"),
+                T("Event", "Event"),
+                T("Status", "Status"),
+                T("Betaling", "Payment"),
+                T("Transaksie", "Transaction")
+            ]);
+
+            foreach (var billingEvent in SubscriberDetail.BillingEvents)
+            {
+                AppendDetailRow(
+                    builder,
+                    FormatAdminDateTime(billingEvent.ReceivedAt),
+                    BuildPaymentProviderLabel(billingEvent.Provider),
+                    billingEvent.EventType ?? "-",
+                    billingEvent.EventStatus ?? "-",
+                    billingEvent.ProviderPaymentId ?? "-",
+                    billingEvent.ProviderTransactionId ?? "-");
+            }
+
+            AppendDetailTableEnd(builder);
+        }
+
+        AppendDetailSectionTitle(builder, T("Winkel bestellings", "Winkel orders"));
+        if (SubscriberDetail.StoreOrders.Count == 0)
+        {
+            AppendDetailEmpty(builder, T("Geen Winkel bestellings vir hierdie e-pos is gevind nie.", "No Winkel orders found for this email."));
+        }
+        else
+        {
+            AppendDetailTableStart(builder, [
+                T("Datum", "Date"),
+                T("Bestelling", "Order"),
+                T("Produk", "Product"),
+                T("Totaal", "Total"),
+                T("Status", "Status"),
+                T("Verskaffer", "Provider"),
+                T("Betaal", "Paid")
+            ]);
+
+            foreach (var order in SubscriberDetail.StoreOrders)
+            {
+                AppendDetailRow(
+                    builder,
+                    FormatAdminDateTime(order.CreatedAt),
+                    order.OrderReference,
+                    order.ProductName,
+                    FormatCurrency(order.TotalPriceZar),
+                    order.PaymentStatus,
+                    BuildPaymentProviderLabel(order.Provider),
+                    FormatAdminDateTime(order.PaidAt));
+            }
+
+            AppendDetailTableEnd(builder);
+        }
+
+        return new MarkupString(builder.ToString());
+    }
+
+    private MarkupString RenderSubscriberActivity()
+    {
+        if (SubscriberDetail is null)
+        {
+            return RenderSubscriberDetailEmpty(T("Geen aktiwiteit is gelaai nie.", "No activity loaded."));
+        }
+
+        var builder = new StringBuilder();
+        AppendDetailSectionTitle(builder, T("Onlangse aktiwiteit", "Recent activity"));
+        if (SubscriberDetail.Activity.Count == 0)
+        {
+            AppendDetailEmpty(builder, T("Geen onlangse aktiwiteit is gevind nie.", "No recent activity found."));
+        }
+        else
+        {
+            AppendDetailTableStart(builder, [
+                T("Datum", "Date"),
+                T("Tipe", "Type"),
+                T("Opsomming", "Summary"),
+                T("Besonderhede", "Details")
+            ]);
+
+            foreach (var activity in SubscriberDetail.Activity)
+            {
+                AppendDetailRow(
+                    builder,
+                    FormatAdminDateTime(activity.OccurredAt),
+                    activity.ActivityType,
+                    activity.Summary,
+                    activity.Details ?? "-");
+            }
+
+            AppendDetailTableEnd(builder);
+        }
+
+        AppendDetailSectionTitle(builder, T("Kennisgewings", "Notifications"));
+        if (SubscriberDetail.Notifications.Count == 0)
+        {
+            AppendDetailEmpty(builder, T("Geen kennisgewings is gevind nie.", "No notifications found."));
+        }
+        else
+        {
+            AppendDetailTableStart(builder, [
+                T("Datum", "Date"),
+                T("Tipe", "Type"),
+                T("Titel", "Title"),
+                T("Gelees", "Read"),
+                T("Skoongemaak", "Cleared")
+            ]);
+
+            foreach (var notification in SubscriberDetail.Notifications)
+            {
+                AppendDetailRow(
+                    builder,
+                    FormatAdminDateTime(notification.CreatedAt),
+                    notification.NotificationType,
+                    notification.Title,
+                    FormatAdminDateTime(notification.ReadAt),
+                    FormatAdminDateTime(notification.ClearedAt));
+            }
+
+            AppendDetailTableEnd(builder);
+        }
+
+        AppendDetailSectionTitle(builder, T("Admin oudit", "Admin audit"));
+        if (SubscriberDetail.AuditTrail.Count == 0)
+        {
+            AppendDetailEmpty(builder, T("Geen admin aksies is gelog nie.", "No admin actions logged."));
+        }
+        else
+        {
+            AppendDetailTableStart(builder, [
+                T("Datum", "Date"),
+                T("Admin", "Admin"),
+                T("Aksie", "Action"),
+                T("Nota", "Note")
+            ]);
+
+            foreach (var audit in SubscriberDetail.AuditTrail)
+            {
+                AppendDetailRow(
+                    builder,
+                    FormatAdminDateTime(audit.CreatedAt),
+                    audit.AdminEmail,
+                    audit.ActionKey,
+                    audit.Notes ?? "-");
+            }
+
+            AppendDetailTableEnd(builder);
+        }
+
+        return new MarkupString(builder.ToString());
+    }
+
+    private MarkupString RenderSubscriberRecoveries()
+    {
+        if (SubscriberDetail is null)
+        {
+            return RenderSubscriberDetailEmpty(T("Geen herstelbesonderhede is gelaai nie.", "No recovery details loaded."));
+        }
+
+        if (SubscriberDetail.Recoveries.Count == 0)
+        {
+            return RenderSubscriberDetailEmpty(T("Geen aktiewe of onlangse herstelrye is gevind nie.", "No active or recent recovery rows found."));
+        }
+
+        var builder = new StringBuilder();
+        AppendDetailTableStart(builder, [
+            T("Datum", "Date"),
+            T("Tipe", "Type"),
+            T("Status", "Status"),
+            T("Bron", "Source"),
+            T("Verskaffer", "Provider"),
+            T("Afgehandel", "Resolved"),
+            T("Uitkoms", "Result")
+        ]);
+
+        foreach (var recovery in SubscriberDetail.Recoveries)
+        {
+            AppendDetailRow(
+                builder,
+                FormatAdminDateTime(recovery.CreatedAt),
+                recovery.RecoveryType,
+                recovery.Status,
+                recovery.SourceKey ?? "-",
+                BuildPaymentProviderLabel(recovery.Provider),
+                FormatAdminDateTime(recovery.ResolvedAt),
+                recovery.Resolution ?? "-");
+        }
+
+        AppendDetailTableEnd(builder);
+        return new MarkupString(builder.ToString());
+    }
+
+    private static MarkupString RenderSubscriberDetailEmpty(string message)
+    {
+        var builder = new StringBuilder();
+        AppendDetailEmpty(builder, message);
+        return new MarkupString(builder.ToString());
+    }
+
+    private static void AppendDetailSectionTitle(StringBuilder builder, string title)
+    {
+        builder.Append("<h4 class=\"admin-detail-subtitle\">");
+        builder.Append(HtmlEncoder.Default.Encode(title));
+        builder.Append("</h4>");
+    }
+
+    private static void AppendDetailEmpty(StringBuilder builder, string message)
+    {
+        builder.Append("<p class=\"admin-detail-empty\">");
+        builder.Append(HtmlEncoder.Default.Encode(message));
+        builder.Append("</p>");
+    }
+
+    private static void AppendDetailTableStart(
+        StringBuilder builder,
+        IReadOnlyList<string> headers,
+        string? tableClass = null)
+    {
+        builder.Append("<div class=\"admin-detail-table-wrap\"><table class=\"admin-detail-table");
+        if (!string.IsNullOrWhiteSpace(tableClass))
+        {
+            builder.Append(' ');
+            builder.Append(HtmlEncoder.Default.Encode(tableClass));
+        }
+
+        builder.Append("\"><thead><tr>");
+        foreach (var header in headers)
+        {
+            builder.Append("<th>");
+            builder.Append(HtmlEncoder.Default.Encode(header));
+            builder.Append("</th>");
+        }
+
+        builder.Append("</tr></thead><tbody>");
+    }
+
+    private static void AppendDetailRow(StringBuilder builder, params string?[] cells)
+    {
+        builder.Append("<tr>");
+        foreach (var cell in cells)
+        {
+            builder.Append("<td>");
+            builder.Append(HtmlEncoder.Default.Encode(string.IsNullOrWhiteSpace(cell) ? "-" : cell));
+            builder.Append("</td>");
+        }
+
+        builder.Append("</tr>");
+    }
+
+    private static void AppendDetailTableEnd(StringBuilder builder) =>
+        builder.Append("</tbody></table></div>");
+
     private string GetSubscriberPeriodLabel(string periodKey) =>
         periodKey switch
         {
@@ -4756,8 +5699,25 @@
             "Kies asseblief 'n geldige intekenaar." => "Please select a valid subscriber.",
             "Supabase URL is nog nie opgestel nie." => "Supabase URL is not configured yet.",
             "Supabase ServiceRoleKey is nog nie opgestel nie." => "Supabase ServiceRoleKey is not configured yet.",
+            "Gebruik asseblief 'n geldige e-posadres." => "Please use a valid email address.",
             "Selfoonnommer moet 7 tot 20 syfers wees." => "Mobile number must contain 7 to 20 digits.",
             "Kon nie intekenaar nou opdateer nie." => "Could not update subscriber right now.",
+            "Kon nie intekenaar nou skep nie." => "Could not create subscriber right now.",
+            "Kon nie nuwe intekenaar bevestig nie." => "Could not confirm new subscriber.",
+            "Kon nie intekenaarstatus nou opdateer nie." => "Could not update subscriber status right now.",
+            "Kies asseblief 'n geldige toegangsvlak." => "Please select a valid access tier.",
+            "Handmatige toegang vereis 'n vervaldatum." => "Manual access requires an expiry date.",
+            "Handmatige toegang moet in die toekoms verval." => "Manual access must expire in the future.",
+            "Kon nie handmatige toegang nou stoor nie." => "Could not save manual access right now.",
+            "Kies asseblief 'n geldige intekening." => "Please select a valid subscription.",
+            "Net handmatige admin-toegang kan hier gekanselleer word." => "Only manual admin access can be cancelled here.",
+            "Kon nie handmatige toegang nou kanselleer nie." => "Could not cancel manual access right now.",
+            "Kon nie wagwoordherstel nou stuur nie." => "Could not send password reset right now.",
+            "Daar is nie 'n aktiewe herstel-e-pos vir hierdie intekenaar nie." => "There is no active recovery email for this subscriber.",
+            "Kon nie die herstel-intekening vind nie." => "Could not find the recovery subscription.",
+            "Kon nie herstel-e-pos nou stuur nie." => "Could not send recovery email right now.",
+            "Kies asseblief ten minste een intekenaar." => "Please select at least one subscriber.",
+            "Onbekende grootmaataksie." => "Unknown bulk action.",
             "Kies asseblief 'n geldige storie." => "Please select a valid story.",
             "Die storie slug is ongeldig." => "The story slug is invalid.",
             "Storie titel is verpligtend." => "Story title is required.",
@@ -5052,6 +6012,7 @@
         return JsonSerializer.Serialize(new
         {
             editor.SubscriberId,
+            editor.IsNew,
             Email = NormalizeDirtyText(editor.Email),
             FirstName = NormalizeDirtyText(editor.FirstName),
             LastName = NormalizeDirtyText(editor.LastName),
@@ -5429,6 +6390,7 @@
         {
             "wordpress_pmpro" => "WordPress / PMPro",
             "shink_app" => T("App", "App"),
+            "admin_override" => T("Admin-toegang", "Admin access"),
             null or "" => "-",
             _ => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(sourceSystem.Trim().Replace("_", " ", StringComparison.Ordinal).ToLowerInvariant())
         };
@@ -5443,6 +6405,7 @@
                 "pending" => T("Hangend", "Pending"),
                 "cancelled" => T("Gekanselleer", "Cancelled"),
                 "failed" => T("Misluk", "Failed"),
+                "disabled" => T("Gedeaktiveer", "Disabled"),
                 _ => subscriber.SubscriptionStatus
             };
         }
@@ -5511,12 +6474,14 @@
 
     private sealed class EditableSubscriber
     {
+        public bool IsNew { get; set; }
         public Guid SubscriberId { get; set; }
         public string Email { get; set; } = string.Empty;
         public string? FirstName { get; set; }
         public string? LastName { get; set; }
         public string? DisplayName { get; set; }
         public string? MobileNumber { get; set; }
+        public DateTimeOffset? DisabledAt { get; set; }
 
         public static EditableSubscriber From(AdminSubscriberRecord subscriber) => new()
         {
@@ -5525,7 +6490,8 @@
             FirstName = subscriber.FirstName,
             LastName = subscriber.LastName,
             DisplayName = subscriber.DisplayName,
-            MobileNumber = subscriber.MobileNumber
+            MobileNumber = subscriber.MobileNumber,
+            DisabledAt = subscriber.DisabledAt
         };
     }
 

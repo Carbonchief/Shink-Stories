@@ -487,7 +487,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         var normalizedEmail = email.Trim().ToLowerInvariant();
         var escapedEmail = Uri.EscapeDataString(normalizedEmail);
-        var subscriberLookupUri = new Uri(baseUri, $"rest/v1/subscribers?select=subscriber_id&email=eq.{escapedEmail}&limit=1");
+        var subscriberLookupUri = new Uri(baseUri, $"rest/v1/subscribers?select=subscriber_id,disabled_at&email=eq.{escapedEmail}&limit=1");
 
         try
         {
@@ -504,6 +504,11 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             }
 
             var subscriberResponseBody = await subscriberResponse.Content.ReadAsStringAsync(cancellationToken);
+            if (!string.IsNullOrWhiteSpace(ReadFirstStringProperty(subscriberResponseBody, "disabled_at")))
+            {
+                return [];
+            }
+
             var subscriberId = ReadFirstStringProperty(subscriberResponseBody, "subscriber_id");
             if (string.IsNullOrWhiteSpace(subscriberId))
             {

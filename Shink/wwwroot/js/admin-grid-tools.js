@@ -77,6 +77,23 @@ export function enhanceSubscriberGrid(gridSelector, storageKey, resizeLabel, aut
   return true;
 }
 
+export function downloadCsv(filename, csvText) {
+  const safeFilename =
+    typeof filename === "string" && filename.trim().length > 0
+      ? filename.trim()
+      : "subscribers.csv";
+  const blob = new Blob([csvText ?? ""], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = safeFilename;
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function beginResize(event, grid, table, columnIndex, storageKey) {
   if (!(event.target instanceof HTMLElement)) {
     return;

@@ -222,3 +222,97 @@ public static class AdminGridFilterLogic
         return value.Trim().ToLowerInvariant();
     }
 }
+
+public static class AdminSubscriberManagementLogic
+{
+    private static readonly string[] SubscriberCsvHeaders =
+    [
+        "Email",
+        "First name",
+        "Last name",
+        "Display name",
+        "Mobile",
+        "Tiers",
+        "Provider",
+        "Source",
+        "Status",
+        "Subscribed at",
+        "Next payment",
+        "Disabled at",
+        "Disabled reason"
+    ];
+
+    public static string BuildSubscriberCsv(IReadOnlyList<AdminSubscriberRecord> subscribers)
+    {
+        var builder = new System.Text.StringBuilder();
+        AppendCsvRow(builder, SubscriberCsvHeaders);
+
+        foreach (var subscriber in subscribers)
+        {
+            AppendCsvRow(
+                builder,
+                [
+                    subscriber.Email,
+                    subscriber.FirstName,
+                    subscriber.LastName,
+                    subscriber.DisplayName,
+                    subscriber.MobileNumber,
+                    string.Join("; ", subscriber.ActiveTierCodes),
+                    subscriber.PaymentProvider,
+                    subscriber.SubscriptionSourceSystem,
+                    subscriber.SubscriptionStatus,
+                    subscriber.SubscribedAt?.ToString("O"),
+                    subscriber.NextPaymentDueAt?.ToString("O"),
+                    subscriber.DisabledAt?.ToString("O"),
+                    subscriber.DisabledReason
+                ]);
+        }
+
+        return builder.ToString();
+    }
+
+    public static IReadOnlyList<Guid> NormalizeSelectedSubscriberIds(IEnumerable<Guid>? subscriberIds) =>
+        subscriberIds?
+            .Where(id => id != Guid.Empty)
+            .Distinct()
+            .ToArray()
+        ?? Array.Empty<Guid>();
+
+    public static ManualAccessExpiryValidationResult ValidateManualAccessExpiry(
+        DateTimeOffset? expiresAt,
+        DateTimeOffset nowUtc)
+    {
+        if (expiresAt is null)
+        {
+            return new ManualAccessExpiryValidationResult(false, "Kies asseblief 'n vervaldatum vir handmatige toegang.");
+        }
+
+        return expiresAt.Value.ToUniversalTime() <= nowUtc.ToUniversalTime()
+            ? new ManualAccessExpiryValidationResult(false, "Die vervaldatum moet in die toekoms wees.")
+            : new ManualAccessExpiryValidationResult(true, null);
+    }
+
+    private static void AppendCsvRow(System.Text.StringBuilder builder, IEnumerable<string?> values)
+    {
+        builder.AppendLine(string.Join(",", values.Select(EscapeCsvValue)));
+    }
+
+    private static string EscapeCsvValue(string? value)
+    {
+        var normalized = value ?? string.Empty;
+        if (!RequiresEscaping(normalized))
+        {
+            return normalized;
+        }
+
+        return $"\"{normalized.Replace("\"", "\"\"", StringComparison.Ordinal)}\"";
+    }
+
+    private static bool RequiresEscaping(string value) =>
+        value.Contains(',', StringComparison.Ordinal) ||
+        value.Contains('"', StringComparison.Ordinal) ||
+        value.Contains('\r', StringComparison.Ordinal) ||
+        value.Contains('\n', StringComparison.Ordinal);
+}
+
+public sealed record ManualAccessExpiryValidationResult(bool IsValid, string? ErrorMessage);

@@ -350,6 +350,63 @@ body.schink-night-mode .luister-page-shell .luister-playlist-link {
     overflow: visible !important;
 }
 
+.mud-dialog-container.admin-solid-dialog-background {
+    z-index: var(--mud-zindex-dialog) !important;
+}
+
+.mud-dialog.admin-solid-dialog {
+    background: #16212d !important;
+    color: #eaf1f8 !important;
+    border: 1px solid #3f5a72 !important;
+    border-radius: 14px !important;
+    box-shadow: 0 24px 70px rgba(0, 0, 0, 0.62) !important;
+    overflow: hidden !important;
+}
+
+.mud-dialog.admin-solid-dialog .mud-dialog-title,
+.mud-dialog.admin-solid-dialog .mud-dialog-actions {
+    background: #16212d !important;
+    color: #eaf1f8 !important;
+}
+
+.mud-dialog.admin-solid-dialog .mud-dialog-title {
+    border-bottom: 1px solid #304457 !important;
+}
+
+.mud-dialog.admin-solid-dialog .mud-dialog-actions {
+    border-top: 1px solid #304457 !important;
+}
+
+.mud-dialog.admin-solid-dialog .mud-dialog-content,
+.mud-dialog.admin-solid-dialog .admin-solid-dialog-content,
+.mud-dialog.admin-solid-dialog .admin-solid-dialog-body {
+    background: #1b2836 !important;
+    color: #eaf1f8 !important;
+}
+
+.mud-dialog.admin-solid-dialog .admin-solid-dialog-body {
+    min-height: 360px;
+    border-radius: 12px;
+}
+
+.mud-dialog.admin-solid-dialog .mud-tabs-toolbar,
+.mud-dialog.admin-solid-dialog .mud-tabs-tabbar,
+.mud-dialog.admin-solid-dialog .mud-tabs-tabbar-inner,
+.mud-dialog.admin-solid-dialog .mud-tabs-scroll-wrapper,
+.mud-dialog.admin-solid-dialog .mud-tabs-tabbar-content,
+.mud-dialog.admin-solid-dialog .mud-tabs-panels,
+.mud-dialog.admin-solid-dialog .mud-tab-panel {
+    background: #16212d !important;
+    color: #eaf1f8 !important;
+}
+
+.mud-dialog.admin-solid-dialog .mud-tabs-panels {
+    margin-top: 0.65rem;
+    padding: 0.85rem;
+    border: 1px solid #304457;
+    border-radius: 12px;
+}
+
 body.story-immersive-mode .site-shell.story-route .site-header,
 body.story-immersive-mode .site-shell.story-route .site-footer {
     display: none !important;

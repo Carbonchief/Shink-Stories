@@ -25,6 +25,52 @@ public interface IAdminManagementService
         AdminSubscriberUpdateRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<AdminOperationResult> CreateSubscriberAsync(
+        string? adminEmail,
+        AdminSubscriberCreateRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<AdminSubscriberDetailSnapshot?> GetSubscriberDetailAsync(
+        string? adminEmail,
+        Guid subscriberId,
+        CancellationToken cancellationToken = default);
+
+    Task<AdminOperationResult> SetSubscriberDisabledAsync(
+        string? adminEmail,
+        AdminSubscriberDisabledUpdateRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<AdminOperationResult> GrantSubscriberAccessAsync(
+        string? adminEmail,
+        AdminSubscriberAccessGrantRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<AdminOperationResult> CancelSubscriberAccessAsync(
+        string? adminEmail,
+        AdminSubscriberAccessCancelRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<AdminOperationResult> SendSubscriberPasswordResetAsync(
+        string? adminEmail,
+        Guid subscriberId,
+        string resetUrl,
+        CancellationToken cancellationToken = default);
+
+    Task<AdminOperationResult> ResendSubscriberRecoveryEmailAsync(
+        string? adminEmail,
+        Guid subscriberId,
+        CancellationToken cancellationToken = default);
+
+    Task<string> ExportSubscribersCsvAsync(
+        string? adminEmail,
+        AdminSubscriberExportRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<AdminBulkOperationResult> RunSubscriberBulkActionAsync(
+        string? adminEmail,
+        AdminSubscriberBulkActionRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<AdminStoryRecord>> GetStoriesAsync(
         string? adminEmail,
         string? search = null,
@@ -152,14 +198,159 @@ public sealed record AdminSubscriberRecord(
     string? SubscriptionStatus,
     DateTimeOffset? SubscribedAt,
     DateTimeOffset? NextPaymentDueAt,
-    DateTimeOffset? CancelledAt);
+    DateTimeOffset? CancelledAt,
+    DateTimeOffset? DisabledAt = null,
+    string? DisabledByAdminEmail = null,
+    string? DisabledReason = null);
 
 public sealed record AdminSubscriberUpdateRequest(
     Guid SubscriberId,
     string? FirstName,
     string? LastName,
     string? DisplayName,
-    string? MobileNumber);
+    string? MobileNumber,
+    string? Email = null);
+
+public sealed record AdminSubscriberCreateRequest(
+    string? Email,
+    string? FirstName,
+    string? LastName,
+    string? DisplayName,
+    string? MobileNumber,
+    bool SendPasswordReset,
+    string? ResetUrl = null);
+
+public sealed record AdminSubscriberDisabledUpdateRequest(
+    Guid SubscriberId,
+    bool IsDisabled,
+    string? Reason);
+
+public sealed record AdminSubscriberAccessGrantRequest(
+    Guid SubscriberId,
+    string? TierCode,
+    DateTimeOffset? ExpiresAt,
+    string? Reason);
+
+public sealed record AdminSubscriberAccessCancelRequest(
+    Guid SubscriberId,
+    Guid SubscriptionId,
+    string? Reason);
+
+public sealed record AdminSubscriberExportRequest(
+    AdminSubscriberPageRequest PageRequest,
+    IReadOnlyList<Guid>? SelectedSubscriberIds = null);
+
+public sealed record AdminSubscriberBulkActionRequest(
+    AdminSubscriberBulkAction Action,
+    IReadOnlyList<Guid> SubscriberIds,
+    string? Reason,
+    string? ResetUrl = null);
+
+public sealed record AdminBulkOperationResult(
+    bool IsSuccess,
+    int RequestedCount,
+    int SucceededCount,
+    IReadOnlyList<string> ErrorMessages);
+
+public enum AdminSubscriberBulkAction
+{
+    Disable = 0,
+    Enable = 1,
+    SendPasswordReset = 2
+}
+
+public sealed record AdminSubscriberDetailSnapshot(
+    AdminSubscriberRecord Subscriber,
+    IReadOnlyList<AdminSubscriberSubscriptionRecord> Subscriptions,
+    IReadOnlyList<AdminSubscriberBillingEventRecord> BillingEvents,
+    IReadOnlyList<AdminSubscriberStoreOrderRecord> StoreOrders,
+    IReadOnlyList<AdminSubscriberActivityRecord> Activity,
+    IReadOnlyList<AdminSubscriberRecoveryRecord> Recoveries,
+    IReadOnlyList<AdminSubscriberNotificationRecord> Notifications,
+    IReadOnlyList<AdminSubscriptionTierOption> TierOptions,
+    IReadOnlyList<AdminSubscriberAuditRecord> AuditTrail)
+{
+    public static AdminSubscriberDetailSnapshot Empty(AdminSubscriberRecord subscriber) => new(
+        subscriber,
+        Array.Empty<AdminSubscriberSubscriptionRecord>(),
+        Array.Empty<AdminSubscriberBillingEventRecord>(),
+        Array.Empty<AdminSubscriberStoreOrderRecord>(),
+        Array.Empty<AdminSubscriberActivityRecord>(),
+        Array.Empty<AdminSubscriberRecoveryRecord>(),
+        Array.Empty<AdminSubscriberNotificationRecord>(),
+        Array.Empty<AdminSubscriptionTierOption>(),
+        Array.Empty<AdminSubscriberAuditRecord>());
+}
+
+public sealed record AdminSubscriberSubscriptionRecord(
+    Guid SubscriptionId,
+    string TierCode,
+    string TierName,
+    string Provider,
+    string SourceSystem,
+    string Status,
+    DateTimeOffset? SubscribedAt,
+    DateTimeOffset? NextRenewalAt,
+    DateTimeOffset? CancelledAt,
+    string? ProviderPaymentId,
+    string? ProviderTransactionId,
+    bool IsAdminOverride,
+    bool IsReadOnly);
+
+public sealed record AdminSubscriberBillingEventRecord(
+    DateTimeOffset ReceivedAt,
+    string Provider,
+    string? EventType,
+    string? EventStatus,
+    string? ProviderPaymentId,
+    string? ProviderTransactionId);
+
+public sealed record AdminSubscriberStoreOrderRecord(
+    Guid OrderId,
+    string OrderReference,
+    string ProductName,
+    decimal TotalPriceZar,
+    string PaymentStatus,
+    string Provider,
+    string? ProviderTransactionId,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? PaidAt);
+
+public sealed record AdminSubscriberActivityRecord(
+    DateTimeOffset OccurredAt,
+    string ActivityType,
+    string Summary,
+    string? Details);
+
+public sealed record AdminSubscriberRecoveryRecord(
+    string RecoveryId,
+    string RecoveryType,
+    string Status,
+    string? SourceKey,
+    string? Provider,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? ResolvedAt,
+    string? Resolution);
+
+public sealed record AdminSubscriberNotificationRecord(
+    Guid NotificationId,
+    string NotificationType,
+    string Title,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? ReadAt,
+    DateTimeOffset? ClearedAt);
+
+public sealed record AdminSubscriptionTierOption(
+    string TierCode,
+    string DisplayName,
+    decimal PriceZar,
+    bool IsActive);
+
+public sealed record AdminSubscriberAuditRecord(
+    DateTimeOffset CreatedAt,
+    string AdminEmail,
+    string ActionKey,
+    string? Notes);
 
 public sealed record AdminStoryRecord(
     Guid StoryId,
