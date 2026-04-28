@@ -107,16 +107,27 @@
             finishSupportCheck();
         }
 
-        function loadScript(source) {
+        function loadScript(source, options) {
             return new Promise(function (resolve, reject) {
                 var script = document.createElement("script");
                 script.src = source;
                 script.type = "text/javascript";
                 script.async = false;
+                if (options && options.autostart === false) {
+                    script.setAttribute("autostart", "false");
+                }
                 script.onload = function () { resolve(); };
                 script.onerror = function () { reject(new Error("Failed to load script: " + source)); };
                 document.body.appendChild(script);
             });
+        }
+
+        function startBlazorRuntime() {
+            if (!window.Blazor || typeof window.Blazor.start !== "function") {
+                return Promise.resolve();
+            }
+
+            return Promise.resolve(window.Blazor.start({ logLevel: 3 }));
         }
 
         try {
@@ -147,7 +158,10 @@
 
             loadScript("_content/MudBlazor/MudBlazor.min.js")
                 .then(function () {
-                    return loadScript(blazorRuntimeSource);
+                    return loadScript(blazorRuntimeSource, { autostart: false });
+                })
+                .then(function () {
+                    return startBlazorRuntime();
                 })
                 .then(function () {
                     finishSupportCheck();

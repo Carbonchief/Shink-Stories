@@ -21,6 +21,7 @@ export function scrollCarouselByPage(carouselElement, direction) {
 let homeStoryLoadingWired = false;
 let homeRevealObserver = null;
 let homeReviewCarouselWired = false;
+let homeSocialProofObserver = null;
 
 function wireCarouselDragScrolling() {
     const carousels = document.querySelectorAll(".stories-carousel");
@@ -478,6 +479,102 @@ function disconnectHomeRevealObserver() {
     homeRevealObserver = null;
 }
 
+function disconnectHomeSocialProofObserver() {
+    if (homeSocialProofObserver instanceof IntersectionObserver) {
+        homeSocialProofObserver.disconnect();
+    }
+
+    homeSocialProofObserver = null;
+}
+
+function getSocialProofCounters() {
+    return Array.from(document.querySelectorAll("[data-count-up]"))
+        .filter((element) => element instanceof HTMLElement);
+}
+
+function setSocialProofCounterValue(counter, value) {
+    const suffix = counter.dataset.countSuffix || "";
+    counter.textContent = `${Math.round(value)}${suffix}`;
+}
+
+function animateSocialProofCounter(counter) {
+    if (!(counter instanceof HTMLElement) || counter.dataset.countStarted === "true") {
+        return;
+    }
+
+    const target = Number.parseInt(counter.dataset.countTo || "0", 10);
+    if (!Number.isFinite(target) || target <= 0) {
+        return;
+    }
+
+    counter.dataset.countStarted = "true";
+
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        setSocialProofCounterValue(counter, target);
+        return;
+    }
+
+    const duration = 4200;
+    const startTime = window.performance.now();
+
+    const step = (timestamp) => {
+        const progress = Math.min(1, (timestamp - startTime) / duration);
+        const easedProgress = 1 - Math.pow(1 - progress, 3);
+        setSocialProofCounterValue(counter, target * easedProgress);
+
+        if (progress < 1) {
+            window.requestAnimationFrame(step);
+        }
+    };
+
+    window.requestAnimationFrame(step);
+}
+
+function initializeSocialProofCounters() {
+    disconnectHomeSocialProofObserver();
+
+    const counters = getSocialProofCounters();
+    if (counters.length === 0) {
+        return;
+    }
+
+    for (const counter of counters) {
+        if (counter.dataset.countStarted !== "true") {
+            setSocialProofCounterValue(counter, 0);
+        }
+    }
+
+    if (!("IntersectionObserver" in window)) {
+        for (const counter of counters) {
+            animateSocialProofCounter(counter);
+        }
+
+        return;
+    }
+
+    homeSocialProofObserver = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+            if (!entry.isIntersecting || !(entry.target instanceof HTMLElement)) {
+                continue;
+            }
+
+            animateSocialProofCounter(entry.target);
+            if (homeSocialProofObserver instanceof IntersectionObserver) {
+                homeSocialProofObserver.unobserve(entry.target);
+            }
+        }
+    }, {
+        threshold: 0.45,
+        rootMargin: "0px 0px -8% 0px"
+    });
+
+    for (const counter of counters) {
+        if (counter.dataset.countStarted !== "true") {
+            homeSocialProofObserver.observe(counter);
+        }
+    }
+}
+
 function getHomeRevealElements() {
     return Array.from(document.querySelectorAll(".home-scroll-reveal"))
         .filter((element) => element instanceof HTMLElement);
@@ -490,6 +587,7 @@ function isNearViewport(element) {
 
 export function initializeHomeAnimations() {
     disconnectHomeRevealObserver();
+    initializeSocialProofCounters();
 
     const revealElements = getHomeRevealElements();
     if (revealElements.length === 0) {
@@ -545,6 +643,7 @@ export function initializeHomeAnimations() {
 
 export function disposeHomeAnimations() {
     disconnectHomeRevealObserver();
+    disconnectHomeSocialProofObserver();
 
     for (const element of getHomeRevealElements()) {
         element.classList.remove("home-motion-ready");

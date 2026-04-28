@@ -453,7 +453,7 @@ public sealed class SupabaseUserNotificationService(
 
         try
         {
-            var subscriberIds = await GetAllSubscriberIdsAsync(baseUri, apiKey, cancellationToken);
+            var subscriberIds = await GetActiveSubscriberIdsAsync(baseUri, apiKey, cancellationToken);
             if (subscriberIds.Count == 0)
             {
                 return 0;
@@ -525,7 +525,7 @@ public sealed class SupabaseUserNotificationService(
 
         try
         {
-            var subscriberIds = await GetAllSubscriberIdsAsync(baseUri, apiKey, cancellationToken);
+            var subscriberIds = await GetActiveSubscriberIdsAsync(baseUri, apiKey, cancellationToken);
             if (subscriberIds.Count == 0)
             {
                 return 0;
@@ -593,7 +593,7 @@ public sealed class SupabaseUserNotificationService(
 
         try
         {
-            var subscriberId = await ResolveOrCreateSubscriberIdAsync(baseUri, apiKey, email, cancellationToken);
+            var subscriberId = await ResolveActiveSubscriberIdAsync(baseUri, apiKey, email, cancellationToken);
             if (string.IsNullOrWhiteSpace(subscriberId))
             {
                 return new NotificationSyncResult(0);
@@ -806,7 +806,7 @@ public sealed class SupabaseUserNotificationService(
             : 0;
     }
 
-    private async Task<IReadOnlyList<string>> GetAllSubscriberIdsAsync(
+    private async Task<IReadOnlyList<string>> GetActiveSubscriberIdsAsync(
         Uri baseUri,
         string apiKey,
         CancellationToken cancellationToken)
@@ -814,13 +814,16 @@ public sealed class SupabaseUserNotificationService(
         var subscriberIds = new List<string>();
         const int pageSize = 1000;
         var offset = 0;
+        var nowUtc = DateTimeOffset.UtcNow;
 
         while (true)
         {
             var requestUri = new Uri(
                 baseUri,
                 "rest/v1/subscribers" +
-                "?select=subscriber_id" +
+                "?select=subscriber_id,subscriptions!inner(status,next_renewal_at,cancelled_at)" +
+                "&disabled_at=is.null" +
+                "&subscriptions.status=eq.active" +
                 $"&limit={pageSize}" +
                 $"&offset={offset}");
 
@@ -837,21 +840,22 @@ public sealed class SupabaseUserNotificationService(
             }
 
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            var rows = await JsonSerializer.DeserializeAsync<List<SubscriberLookupRow>>(stream, JsonOptions, cancellationToken)
+            var rows = await JsonSerializer.DeserializeAsync<List<ActiveSubscriberLookupRow>>(stream, JsonOptions, cancellationToken)
                 ?? [];
             var pageSubscriberIds = rows
+                .Where(row => row.Subscriptions?.Any(subscription => IsCurrentlyActiveSubscription(subscription, nowUtc)) == true)
                 .Select(row => row.SubscriberId)
                 .Where(static value => !string.IsNullOrWhiteSpace(value))
                 .Cast<string>()
                 .ToArray();
 
-            if (pageSubscriberIds.Length == 0)
+            if (rows.Count == 0)
             {
                 break;
             }
 
             subscriberIds.AddRange(pageSubscriberIds);
-            if (pageSubscriberIds.Length < pageSize)
+            if (rows.Count < pageSize)
             {
                 break;
             }
@@ -862,6 +866,51 @@ public sealed class SupabaseUserNotificationService(
         return subscriberIds
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    private async Task<string?> ResolveActiveSubscriberIdAsync(
+        Uri baseUri,
+        string apiKey,
+        string email,
+        CancellationToken cancellationToken)
+    {
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(normalizedEmail))
+        {
+            return null;
+        }
+
+        var escapedEmail = Uri.EscapeDataString(normalizedEmail);
+        var lookupUri = new Uri(
+            baseUri,
+            "rest/v1/subscribers" +
+            "?select=subscriber_id,subscriptions!inner(status,next_renewal_at,cancelled_at)" +
+            $"&email=eq.{escapedEmail}" +
+            "&disabled_at=is.null" +
+            "&subscriptions.status=eq.active" +
+            "&limit=1");
+
+        using var lookupRequest = CreateRequest(HttpMethod.Get, lookupUri, apiKey);
+        using var lookupResponse = await _httpClient.SendAsync(lookupRequest, cancellationToken);
+        if (!lookupResponse.IsSuccessStatusCode)
+        {
+            var body = await lookupResponse.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Supabase active subscriber lookup for notifications failed. Status={StatusCode} Body={Body}",
+                (int)lookupResponse.StatusCode,
+                body);
+            return null;
+        }
+
+        await using var lookupStream = await lookupResponse.Content.ReadAsStreamAsync(cancellationToken);
+        var rows = await JsonSerializer.DeserializeAsync<List<ActiveSubscriberLookupRow>>(lookupStream, JsonOptions, cancellationToken)
+            ?? [];
+        var nowUtc = DateTimeOffset.UtcNow;
+
+        return rows
+            .Where(row => row.Subscriptions?.Any(subscription => IsCurrentlyActiveSubscription(subscription, nowUtc)) == true)
+            .Select(row => row.SubscriberId)
+            .FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value));
     }
 
     private async Task<string?> ResolveOrCreateSubscriberIdAsync(
@@ -1006,17 +1055,7 @@ public sealed class SupabaseUserNotificationService(
 
     private static string BuildPublishedBlogNotificationBody(PublishedBlogNotificationRequest request)
     {
-        var normalizedTitle = request.Title.Trim();
-        var summary = string.IsNullOrWhiteSpace(request.Summary)
-            ? null
-            : request.Summary.Trim();
-
-        if (string.IsNullOrWhiteSpace(summary))
-        {
-            return $"{normalizedTitle} is nou op die blog beskikbaar. Tik om te lees.";
-        }
-
-        return $"{normalizedTitle} is nou op die blog beskikbaar. {summary}";
+        return request.Title.Trim();
     }
 
     private static string BuildPublishedStoryNotificationBody(PublishedStoryNotificationRequest request)
@@ -1119,6 +1158,26 @@ public sealed class SupabaseUserNotificationService(
         return int.TryParse(contentRange[(slashIndex + 1)..], out count);
     }
 
+    private static bool IsCurrentlyActiveSubscription(NotificationSubscriptionStatusRow row, DateTimeOffset nowUtc)
+    {
+        if (!string.Equals(row.Status, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (row.CancelledAt is not null && row.CancelledAt <= nowUtc)
+        {
+            return false;
+        }
+
+        if (row.NextRenewalAt is not null && row.NextRenewalAt < nowUtc)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
     private static readonly UserNotificationPageResult EmptyNotificationPageResult =
         new([], 0, false, false);
 
@@ -1126,6 +1185,27 @@ public sealed class SupabaseUserNotificationService(
     {
         [JsonPropertyName("subscriber_id")]
         public string? SubscriberId { get; init; }
+    }
+
+    private sealed class ActiveSubscriberLookupRow
+    {
+        [JsonPropertyName("subscriber_id")]
+        public string? SubscriberId { get; init; }
+
+        [JsonPropertyName("subscriptions")]
+        public List<NotificationSubscriptionStatusRow>? Subscriptions { get; init; }
+    }
+
+    private sealed class NotificationSubscriptionStatusRow
+    {
+        [JsonPropertyName("status")]
+        public string? Status { get; init; }
+
+        [JsonPropertyName("next_renewal_at")]
+        public DateTimeOffset? NextRenewalAt { get; init; }
+
+        [JsonPropertyName("cancelled_at")]
+        public DateTimeOffset? CancelledAt { get; init; }
     }
 
     private sealed class NotificationSourceKeyRow

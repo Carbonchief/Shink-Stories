@@ -122,6 +122,232 @@ public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<Pays
             cancellationToken);
     }
 
+    public async Task<PaystackCheckoutInitResult> InitializeCheckoutForEmailAsync(
+        PaymentPlan plan,
+        string email,
+        CancellationToken cancellationToken = default)
+    {
+        if (!Uri.TryCreate(_options.PublicBaseUrl, UriKind.Absolute, out var publicBaseUri))
+        {
+            return new PaystackCheckoutInitResult(false, ErrorMessage: "Paystack publieke basis-URL is nog nie opgestel nie.");
+        }
+
+        if (!IsConfigured)
+        {
+            return new PaystackCheckoutInitResult(false, ErrorMessage: "Paystack is nog nie volledig opgestel nie.");
+        }
+
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return new PaystackCheckoutInitResult(false, ErrorMessage: "Kon nie 'n e-posadres vir betaling bepaal nie.");
+        }
+
+        var planCode = ResolvePlanCode(plan.TierCode);
+        if (plan.IsSubscription && string.IsNullOrWhiteSpace(planCode))
+        {
+            return new PaystackCheckoutInitResult(
+                false,
+                ErrorMessage: $"Paystack plan code ontbreek vir tier '{plan.TierCode}'.");
+        }
+
+        var reference = BuildReference(plan.Slug);
+        var callbackQuery = $"betaling=sukses&provider=paystack&plan={Uri.EscapeDataString(plan.Slug)}";
+        var callbackUrl = BuildAbsoluteUrl(publicBaseUri.ToString(), _options.CallbackUrlPath, callbackQuery);
+        var metadata = new Dictionary<string, object?>
+        {
+            ["plan_slug"] = plan.Slug,
+            ["tier_code"] = plan.TierCode,
+            ["billing_period_months"] = plan.BillingPeriodMonths,
+            ["is_subscription"] = plan.IsSubscription,
+            ["subscription_key"] = reference,
+            ["source"] = "admin_subscription_recovery"
+        };
+
+        return await InitializeTransactionAsync(
+            email,
+            (long)Math.Round(plan.Amount * 100m, MidpointRounding.AwayFromZero),
+            reference,
+            callbackUrl,
+            metadata,
+            planCode,
+            cancellationToken);
+    }
+
+    public string? BuildCheckoutPageUrl(PaymentPlan plan)
+    {
+        if (!Uri.TryCreate(_options.PublicBaseUrl, UriKind.Absolute, out var publicBaseUri))
+        {
+            return null;
+        }
+
+        return new Uri(
+            publicBaseUri,
+            $"/betaal/{Uri.EscapeDataString(plan.Slug)}?provider=paystack").ToString();
+    }
+
+    public async Task<PaystackSubscriptionManageLinkResult> GenerateSubscriptionUpdateLinkAsync(
+        string subscriptionCode,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.SecretKey))
+        {
+            return new PaystackSubscriptionManageLinkResult(false, ErrorMessage: "Paystack is nog nie volledig opgestel nie.");
+        }
+
+        if (string.IsNullOrWhiteSpace(subscriptionCode))
+        {
+            return new PaystackSubscriptionManageLinkResult(false, ErrorMessage: "Paystack intekeningkode ontbreek.");
+        }
+
+        var uri = new Uri(
+            $"https://api.paystack.co/subscription/{Uri.EscapeDataString(subscriptionCode.Trim())}/manage/link");
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.SecretKey);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return new PaystackSubscriptionManageLinkResult(
+                false,
+                ErrorMessage: $"Paystack kaart-opdateringskakel kon nie geskep word nie (HTTP {(int)response.StatusCode}).");
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            var status = root.TryGetProperty("status", out var statusNode) &&
+                         statusNode.ValueKind == JsonValueKind.True;
+            var link = root.TryGetProperty("data", out var dataNode)
+                ? TryReadString(dataNode, "link")
+                : null;
+
+            if (!status || string.IsNullOrWhiteSpace(link))
+            {
+                var message = TryReadString(root, "message") ?? "Paystack kaart-opdateringskakel kon nie geskep word nie.";
+                return new PaystackSubscriptionManageLinkResult(false, ErrorMessage: message);
+            }
+
+            return new PaystackSubscriptionManageLinkResult(true, Link: link);
+        }
+        catch (JsonException)
+        {
+            return new PaystackSubscriptionManageLinkResult(false, ErrorMessage: "Paystack kaart-opdateringsantwoord kon nie gelees word nie.");
+        }
+    }
+
+    public async Task<PaystackAuthorizationChargeResult> ChargeAuthorizationAsync(
+        PaymentPlan plan,
+        string email,
+        string authorizationCode,
+        string reference,
+        string? subscriptionId = null,
+        string? providerPaymentId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.SecretKey) ||
+            !Uri.TryCreate(_options.ChargeAuthorizationUrl, UriKind.Absolute, out var chargeUri))
+        {
+            return new PaystackAuthorizationChargeResult(false, ErrorMessage: "Paystack charge authorization is nog nie volledig opgestel nie.");
+        }
+
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return new PaystackAuthorizationChargeResult(false, ErrorMessage: "Kon nie 'n e-posadres vir betaling bepaal nie.");
+        }
+
+        if (string.IsNullOrWhiteSpace(authorizationCode))
+        {
+            return new PaystackAuthorizationChargeResult(false, ErrorMessage: "Paystack authorization code ontbreek.");
+        }
+
+        var metadata = new Dictionary<string, object?>
+        {
+            ["source"] = "subscription_authorization_retry",
+            ["plan_slug"] = plan.Slug,
+            ["tier_code"] = plan.TierCode,
+            ["billing_period_months"] = plan.BillingPeriodMonths,
+            ["subscription_id"] = subscriptionId,
+            ["provider_payment_id"] = providerPaymentId
+        };
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["email"] = email,
+            ["amount"] = (long)Math.Round(plan.Amount * 100m, MidpointRounding.AwayFromZero),
+            ["authorization_code"] = authorizationCode.Trim(),
+            ["reference"] = reference,
+            ["currency"] = "ZAR",
+            ["metadata"] = metadata,
+            ["queue"] = true
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, chargeUri)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.SecretKey);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return new PaystackAuthorizationChargeResult(
+                false,
+                Reference: reference,
+                ErrorMessage: $"Paystack outomatiese herlaai kon nie begin nie (HTTP {(int)response.StatusCode}).",
+                RawPayload: body);
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            var status = root.TryGetProperty("status", out var statusNode) &&
+                         statusNode.ValueKind == JsonValueKind.True;
+            var dataNode = root.TryGetProperty("data", out var parsedData) &&
+                           parsedData.ValueKind == JsonValueKind.Object
+                ? parsedData
+                : default;
+            var transactionStatus = TryReadString(dataNode, "status");
+            var parsedReference = TryReadString(dataNode, "reference") ?? reference;
+            var transactionId = TryReadString(dataNode, "id") ?? parsedReference;
+
+            if (status && IsSuccessfulPaystackStatus(transactionStatus))
+            {
+                return new PaystackAuthorizationChargeResult(
+                    true,
+                    Reference: parsedReference,
+                    TransactionStatus: transactionStatus,
+                    ProviderTransactionId: transactionId,
+                    PaidAt: ParseDateTimeOffset(TryReadString(dataNode, "paid_at") ?? TryReadString(dataNode, "transaction_date")),
+                    RawPayload: body);
+            }
+
+            var message = TryReadString(dataNode, "gateway_response") ??
+                          TryReadString(dataNode, "message") ??
+                          TryReadString(root, "message") ??
+                          "Paystack outomatiese herlaai was nie suksesvol nie.";
+            return new PaystackAuthorizationChargeResult(
+                false,
+                Reference: parsedReference,
+                TransactionStatus: transactionStatus,
+                ProviderTransactionId: transactionId,
+                ErrorMessage: message,
+                RawPayload: body);
+        }
+        catch (JsonException)
+        {
+            return new PaystackAuthorizationChargeResult(
+                false,
+                Reference: reference,
+                ErrorMessage: "Paystack outomatiese herlaai antwoord kon nie gelees word nie.",
+                RawPayload: body);
+        }
+    }
+
     public async Task<PaystackCheckoutInitResult> InitializeStoreCheckoutAsync(
         StorePaystackCheckoutRequest checkout,
         HttpContext httpContext,
@@ -357,6 +583,11 @@ public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<Pays
     private string BuildAbsoluteUrl(HttpContext httpContext, string path, string? queryString)
     {
         var baseUri = ResolveBaseUrl(httpContext);
+        return BuildAbsoluteUrl(baseUri, path, queryString);
+    }
+
+    private static string BuildAbsoluteUrl(string baseUri, string path, string? queryString)
+    {
         var builder = new UriBuilder(new Uri(new Uri(baseUri), path));
         if (!string.IsNullOrWhiteSpace(queryString))
         {
@@ -482,6 +713,11 @@ public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<Pays
             return false;
         }
     }
+
+    private static bool IsSuccessfulPaystackStatus(string? status) =>
+        string.Equals(status, "success", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(status, "successful", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(status, "paid", StringComparison.OrdinalIgnoreCase);
 }
 
 public sealed record PaystackCheckoutInitResult(
@@ -489,6 +725,20 @@ public sealed record PaystackCheckoutInitResult(
     string? AuthorizationUrl = null,
     string? Reference = null,
     string? ErrorMessage = null);
+
+public sealed record PaystackSubscriptionManageLinkResult(
+    bool IsSuccess,
+    string? Link = null,
+    string? ErrorMessage = null);
+
+public sealed record PaystackAuthorizationChargeResult(
+    bool IsSuccess,
+    string? Reference = null,
+    string? TransactionStatus = null,
+    string? ProviderTransactionId = null,
+    DateTimeOffset? PaidAt = null,
+    string? ErrorMessage = null,
+    string? RawPayload = null);
 
 public sealed record StorePaystackCheckoutRequest(
     string OrderReference,

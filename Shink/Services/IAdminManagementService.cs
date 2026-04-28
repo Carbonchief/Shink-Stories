@@ -61,6 +61,11 @@ public interface IAdminManagementService
         Guid subscriberId,
         CancellationToken cancellationToken = default);
 
+    Task<AdminOperationResult> SendSubscriberSubscriptionRecoveryEmailAsync(
+        string? adminEmail,
+        Guid subscriberId,
+        CancellationToken cancellationToken = default);
+
     Task<string> ExportSubscribersCsvAsync(
         string? adminEmail,
         AdminSubscriberExportRequest request,

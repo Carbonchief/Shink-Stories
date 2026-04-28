@@ -1567,6 +1567,22 @@
                                 }
                             </MudTabPanel>
                             <MudTabPanel Text='@T("Betaling", "Billing")'>
+                                @if (CanSendSubscriberSubscriptionRecoveryEmail)
+                                {
+                                    <div class="admin-action-grid">
+                                        <p class="admin-form-note admin-span-2">
+                                            @T(
+                                                "Hierdie intekenaar het 'n mislukte intekening. Stuur 'n herstel-e-pos met die vinnigste Paystack-skakel om kaartbesonderhede by te werk of weer in te teken.",
+                                                "This subscriber has a failed subscription. Send a recovery email with the fastest Paystack link to update card details or resubscribe.")
+                                        </p>
+                                        <MudButton Variant="Variant.Filled"
+                                                   Color="Color.Warning"
+                                                   Disabled="@IsSavingSubscriberAction"
+                                                   OnClick="SendSubscriberSubscriptionRecoveryEmailAsync">
+                                            @T("Stuur intekening-herstel", "Send subscription recovery")
+                                        </MudButton>
+                                    </div>
+                                }
                                 @RenderSubscriberBilling()
                             </MudTabPanel>
                             <MudTabPanel Text='@T("Aktiwiteit", "Activity")'>
@@ -2371,6 +2387,9 @@
     private AdminSubscriberDetailSnapshot? SubscriberDetail { get; set; }
     private bool IsLoadingSubscriberDetail { get; set; }
     private bool IsSavingSubscriberAction { get; set; }
+    private bool CanSendSubscriberSubscriptionRecoveryEmail =>
+        !IsLoadingSubscriberDetail &&
+        SubscriberDetail?.Subscriptions.Any(IsRecoverableFailedSubscription) == true;
     private string SubscriberDisableReason { get; set; } = string.Empty;
     private string ManualAccessTierCode { get; set; } = string.Empty;
     private DateTime? ManualAccessExpiryDate { get; set; }
@@ -3441,6 +3460,38 @@
         {
             Logger.LogError(exception, "Failed to resend subscriber recovery email.");
             SetError(T("Kon nie herstel-e-pos nou stuur nie.", "Could not send recovery email right now."));
+        }
+        finally
+        {
+            IsSavingSubscriberAction = false;
+        }
+    }
+
+    private async Task SendSubscriberSubscriptionRecoveryEmailAsync()
+    {
+        if (SubscriberEditor is null || SubscriberEditor.IsNew)
+        {
+            return;
+        }
+
+        IsSavingSubscriberAction = true;
+        ClearFeedback();
+
+        try
+        {
+            var result = await AdminManagementService.SendSubscriberSubscriptionRecoveryEmailAsync(
+                CurrentAdminEmail,
+                SubscriberEditor.SubscriberId);
+            HandleOperationResult(result, T("Intekening-herstel-e-pos is gestuur.", "Subscription recovery email sent."));
+            if (result.IsSuccess)
+            {
+                await LoadSubscriberDetailAsync(SubscriberEditor.SubscriberId);
+            }
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to send subscriber subscription recovery email.");
+            SetError(T("Kon nie intekening-herstel-e-pos nou stuur nie.", "Could not send subscription recovery email right now."));
         }
         finally
         {
@@ -6403,6 +6454,17 @@
             null or "" => "-",
             _ => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(sourceSystem.Trim().Replace("_", " ", StringComparison.Ordinal).ToLowerInvariant())
         };
+
+    private static bool IsRecoverableFailedSubscription(AdminSubscriberSubscriptionRecord subscription) =>
+        IsFailedSubscriptionStatus(subscription.Status) &&
+        !subscription.IsAdminOverride &&
+        !string.Equals(subscription.SourceSystem, "wordpress_pmpro", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsFailedSubscriptionStatus(string? status)
+    {
+        var normalized = status?.Trim().ToLowerInvariant();
+        return normalized is "failed" or "payment_failed" or "past_due";
+    }
 
     private string BuildSubscriptionStatusLabel(AdminSubscriberRecord subscriber)
     {

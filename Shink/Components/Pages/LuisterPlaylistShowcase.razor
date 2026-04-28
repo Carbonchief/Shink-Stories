@@ -63,7 +63,7 @@ else
 {
     <section class="playlist-showcase-page">
         <header class="playlist-showcase-splash">
-            <img class="playlist-showcase-splash-backdrop"
+            <img class="@BackdropImageClass"
                  src="@BackdropImagePath"
                  srcset="@($"{BackdropImagePath} 640w, {BackdropImagePath} 1200w, {BackdropImagePath} 1920w")"
                  sizes="100vw"
@@ -173,7 +173,7 @@ else
                                              alt="Voorblad van @story.Title"
                                              width="640"
                                              height="485"
-                                             loading="lazy"
+                                             loading="eager"
                                              decoding="async" />
                                         <span class="playlist-showcase-card-play" aria-hidden="true">
                                             <i class="playlist-showcase-card-play-icon fa-solid fa-play" aria-hidden="true"></i>
@@ -273,10 +273,21 @@ else
     private string BackdropImagePath =>
         ResolveBackdropImagePath();
 
+    private string BackdropImageClass =>
+        IsUsingFirstStoryBackdropFallback
+            ? "playlist-showcase-splash-backdrop is-first-story-fallback"
+            : "playlist-showcase-splash-backdrop";
+
     private string BackdropImageAlt =>
         CurrentPlaylist is null
             ? "Schink Stories speellys agtergrond"
             : $"{CurrentPlaylist.Title} speellys agtergrond";
+
+    private bool IsUsingFirstStoryBackdropFallback =>
+        CurrentPlaylist is not null &&
+        !HasConfiguredBackdrop(CurrentPlaylist) &&
+        !HasConfiguredLogo(CurrentPlaylist) &&
+        CurrentPlaylistStories.FirstOrDefault() is not null;
 
     private string? LogoImagePath =>
         ResolveLogoImagePath();

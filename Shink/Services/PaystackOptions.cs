@@ -10,6 +10,8 @@ public sealed class PaystackOptions
 
     public string VerifyUrl { get; set; } = "https://api.paystack.co/transaction/verify";
 
+    public string ChargeAuthorizationUrl { get; set; } = "https://api.paystack.co/transaction/charge_authorization";
+
     public string CallbackUrlPath { get; set; } = "/opsies";
 
     public string WebhookUrlPath { get; set; } = "/api/paystack/webhook";

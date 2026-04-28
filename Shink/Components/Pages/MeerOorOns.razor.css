@@ -32,19 +32,6 @@
 .about-page > *:nth-child(12) { animation-delay: 690ms; }
 .about-page > *:nth-child(13) { animation-delay: 750ms; }
 
-.about-page-logo {
-    display: flex;
-    justify-content: center;
-    margin: 0 auto -0.2rem;
-}
-
-.about-page-logo-image {
-    display: block;
-    width: clamp(180px, 22vw, 280px);
-    height: auto;
-    filter: drop-shadow(0 16px 24px rgba(28, 86, 88, 0.14));
-}
-
 .about-hero,
 .about-title-block,
 .about-block,
@@ -64,7 +51,6 @@
     padding: clamp(1.2rem, 2.6vw, 2rem);
 }
 
-.about-page-logo,
 .about-hero,
 .about-title-block,
 .about-intro-block {
@@ -74,7 +60,6 @@
     box-shadow: none;
 }
 
-.about-page-logo,
 .about-title-block,
 .about-intro-block {
     padding: 0;
@@ -194,12 +179,19 @@
     text-align: center;
 }
 
+.founder-block,
+.mission-image-block {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
 .founder-photo {
     width: min(180px, 45vw);
     height: auto;
     border-radius: 999px;
-    border: 4px solid rgba(255, 255, 255, 0.94);
-    box-shadow: 0 18px 42px rgba(72, 48, 23, 0.18);
+    border: 0;
+    box-shadow: none;
     display: block;
     margin: 0 auto;
 }
@@ -362,15 +354,10 @@
         border-radius: 24px;
     }
 
-    .about-page-logo,
     .about-hero,
     .about-title-block,
     .about-intro-block {
         border-radius: 0;
-    }
-
-    .about-page-logo-image {
-        width: min(52vw, 168px);
     }
 
     .about-grid,

@@ -20,6 +20,7 @@ public sealed partial class SupabaseAdminManagementService(
     ISupabaseAuthService supabaseAuthService,
     IAuthSessionService authSessionService,
     ISubscriptionPaymentRecoveryEmailService subscriptionPaymentRecoveryEmailService,
+    PaystackCheckoutService paystackCheckoutService,
     ILogger<SupabaseAdminManagementService> logger) : IAdminManagementService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -33,6 +34,7 @@ public sealed partial class SupabaseAdminManagementService(
     private readonly ISupabaseAuthService _supabaseAuthService = supabaseAuthService;
     private readonly IAuthSessionService _authSessionService = authSessionService;
     private readonly ISubscriptionPaymentRecoveryEmailService _subscriptionPaymentRecoveryEmailService = subscriptionPaymentRecoveryEmailService;
+    private readonly PaystackCheckoutService _paystackCheckoutService = paystackCheckoutService;
     private readonly ILogger<SupabaseAdminManagementService> _logger = logger;
 
     public async Task<bool> IsAdminAsync(string? email, CancellationToken cancellationToken = default)
@@ -704,6 +706,81 @@ public sealed partial class SupabaseAdminManagementService(
         return new AdminOperationResult(true, EntityId: subscriberId);
     }
 
+    public async Task<AdminOperationResult> SendSubscriberSubscriptionRecoveryEmailAsync(
+        string? adminEmail,
+        Guid subscriberId,
+        CancellationToken cancellationToken = default)
+    {
+        var context = await TryCreateAdminOperationContextAsync(adminEmail, cancellationToken);
+        if (context is null)
+        {
+            return new AdminOperationResult(false, "Jy het nie admin toegang nie.");
+        }
+
+        var subscriber = await FetchSubscriberRecordByIdAsync(context, subscriberId, cancellationToken);
+        if (subscriber is null)
+        {
+            return new AdminOperationResult(false, "Kies asseblief 'n geldige intekenaar.");
+        }
+
+        var subscriptions = await FetchSubscriberSubscriptionsAsync(context, subscriberId, cancellationToken);
+        var failedSubscription = subscriptions
+            .Where(IsRecoverableFailedSubscription)
+            .OrderByDescending(subscription => subscription.NextRenewalAt ?? subscription.SubscribedAt ?? DateTimeOffset.MinValue)
+            .FirstOrDefault();
+        if (failedSubscription is null)
+        {
+            return new AdminOperationResult(false, "Hierdie intekenaar het nie tans 'n mislukte intekening nie.");
+        }
+
+        var recoveryAction = await ResolveSubscriptionRecoveryActionAsync(
+            subscriber.Email,
+            failedSubscription,
+            cancellationToken);
+        if (recoveryAction is null)
+        {
+            return new AdminOperationResult(false, "Kon nie 'n Paystack herstelkakel vir hierdie intekening skep nie.");
+        }
+
+        var nowUtc = DateTimeOffset.UtcNow;
+        var emailId = await _subscriptionPaymentRecoveryEmailService.SendImmediateAsync(
+            new SubscriptionPaymentRecoveryEmailRequest(
+                $"admin-{subscriberId:D}-{nowUtc:yyyyMMddHHmmss}",
+                failedSubscription.SubscriptionId.ToString("D"),
+                subscriber.Email,
+                subscriber.FirstName,
+                subscriber.DisplayName,
+                recoveryAction.PlanName,
+                failedSubscription.Provider ?? "paystack",
+                failedSubscription.NextRenewalAt ?? failedSubscription.SubscribedAt ?? nowUtc,
+                nowUtc.AddDays(4),
+                recoveryAction.Url,
+                recoveryAction.ActionLabel,
+                recoveryAction.Context),
+            $"admin-subscription-recovery/{subscriberId:D}/{nowUtc:yyyyMMddHHmmss}",
+            cancellationToken);
+
+        if (string.IsNullOrWhiteSpace(emailId))
+        {
+            return new AdminOperationResult(false, "Kon nie intekening-herstel-e-pos nou stuur nie.");
+        }
+
+        await WriteSubscriberAuditAsync(
+            context,
+            subscriberId,
+            "recovery.subscription_manual_sent",
+            "Subscription recovery email sent from admin.",
+            new
+            {
+                subscription_id = failedSubscription.SubscriptionId,
+                recovery_action = recoveryAction.ActionKey,
+                email_id = emailId
+            },
+            cancellationToken);
+
+        return new AdminOperationResult(true, EntityId: subscriberId);
+    }
+
     public async Task<string> ExportSubscribersCsvAsync(
         string? adminEmail,
         AdminSubscriberExportRequest request,
@@ -745,6 +822,72 @@ public sealed partial class SupabaseAdminManagementService(
         }
 
         return AdminSubscriberManagementLogic.BuildSubscriberCsv(subscribers);
+    }
+
+    private async Task<SubscriptionRecoveryAction?> ResolveSubscriptionRecoveryActionAsync(
+        string subscriberEmail,
+        SubscriptionRow subscription,
+        CancellationToken cancellationToken)
+    {
+        var plan = PaymentPlanCatalog.FindByTierCode(subscription.TierCode);
+        var planName = plan?.Name ?? subscription.TierCode ?? "Schink Stories";
+
+        if (string.Equals(subscription.Provider, "paystack", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(subscription.ProviderPaymentId))
+        {
+            var updateLink = await _paystackCheckoutService.GenerateSubscriptionUpdateLinkAsync(
+                subscription.ProviderPaymentId,
+                cancellationToken);
+            if (updateLink.IsSuccess && !string.IsNullOrWhiteSpace(updateLink.Link))
+            {
+                return new SubscriptionRecoveryAction(
+                    updateLink.Link,
+                    "Werk kaartbesonderhede by",
+                    "Paystack sal jou vra om 'n nuwe kaart of betaalmetode aan hierdie intekening te koppel.",
+                    "paystack_card_update",
+                    planName);
+            }
+        }
+
+        if (plan is null)
+        {
+            return null;
+        }
+
+        var checkout = await _paystackCheckoutService.InitializeCheckoutForEmailAsync(
+            plan,
+            subscriberEmail,
+            cancellationToken);
+        if (checkout.IsSuccess && !string.IsNullOrWhiteSpace(checkout.AuthorizationUrl))
+        {
+            return new SubscriptionRecoveryAction(
+                checkout.AuthorizationUrl,
+                "Teken weer in",
+                "Paystack sal 'n nuwe intekening vir jou huidige plan begin.",
+                "paystack_resubscribe_checkout",
+                planName);
+        }
+
+        var checkoutPageUrl = _paystackCheckoutService.BuildCheckoutPageUrl(plan);
+        return string.IsNullOrWhiteSpace(checkoutPageUrl)
+            ? null
+            : new SubscriptionRecoveryAction(
+                checkoutPageUrl,
+                "Teken weer in",
+                "Gebruik die Paystack betaalblad om jou intekening weer te begin.",
+                "paystack_resubscribe_page",
+                planName);
+    }
+
+    private static bool IsRecoverableFailedSubscription(SubscriptionRow subscription) =>
+        IsFailedSubscriptionStatus(subscription.Status) &&
+        !string.Equals(subscription.SourceSystem, "wordpress_pmpro", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(subscription.SourceSystem, "admin_override", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsFailedSubscriptionStatus(string? status)
+    {
+        var normalized = status?.Trim().ToLowerInvariant();
+        return normalized is "failed" or "payment_failed" or "past_due";
     }
 
     public async Task<AdminBulkOperationResult> RunSubscriberBulkActionAsync(
@@ -4348,6 +4491,13 @@ public sealed partial class SupabaseAdminManagementService(
         [JsonPropertyName("resolution")]
         public string? Resolution { get; set; }
     }
+
+    private sealed record SubscriptionRecoveryAction(
+        string Url,
+        string ActionLabel,
+        string Context,
+        string ActionKey,
+        string PlanName);
 
     private sealed class SubscriptionEventDetailRow
     {

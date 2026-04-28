@@ -94,7 +94,7 @@
 .playlist-player-grid {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 1.5rem;
+    gap: 1rem;
     align-items: start;
     justify-items: center;
 }
@@ -102,17 +102,6 @@
 .story-cover-wrap {
     position: relative;
     width: min(100%, 820px);
-}
-
-.story-cover-title {
-    position: absolute;
-    top: 1rem;
-    left: 50%;
-    transform: translateX(-50%);
-    width: calc(100% - 2rem);
-    text-align: center;
-    pointer-events: none;
-    z-index: 1;
 }
 
 .story-cover {
@@ -295,21 +284,29 @@
 
 .playlist-current-label {
     margin: 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.18rem 0.42rem;
     color: #8fe5e8;
-    font-size: 0.95rem;
+    font-size: 0.92rem;
     font-weight: 800;
     letter-spacing: 0.04em;
     text-transform: uppercase;
     text-align: center;
     width: 100%;
+    line-height: 1.25;
+    overflow-wrap: anywhere;
 }
 
-.story-player-title {
-    margin: 0;
-    text-shadow: 0 6px 22px rgba(0, 0, 0, 0.32);
-    color: #ffffff;
-    font-size: clamp(1.9rem, 3vw, 2.8rem);
-    line-height: 1.06;
+.playlist-current-title,
+.playlist-current-label span:last-child {
+    min-width: 0;
+}
+
+.playlist-current-separator {
+    color: rgba(143, 229, 232, 0.72);
 }
 
 .story-audio {
@@ -846,7 +843,6 @@
     background: transparent;
 }
 
-.playlist-page.manual-fullscreen-focus .story-cover-title,
 .playlist-page.manual-fullscreen-focus .playlist-current-label,
 .playlist-page.manual-fullscreen-focus .playlist-story-summary {
     display: none;
@@ -1102,10 +1098,24 @@
     }
 }
 
+@media (max-width: 1024px) {
+    .playlist-page {
+        overflow: hidden;
+        border-radius: 0;
+        background: #222222;
+        box-shadow: 0 20px 42px rgba(19, 22, 24, 0.18);
+    }
+
+    .playlist-header,
+    .playlist-content-stack {
+        border-radius: 0;
+    }
+}
+
 @media (max-width: 920px) {
     .playlist-page {
         overflow: hidden;
-        border-radius: 28px;
+        border-radius: 0;
         background: #222222;
         box-shadow: 0 20px 42px rgba(19, 22, 24, 0.18);
     }
@@ -1125,7 +1135,8 @@
     }
 
     .story-cover-wrap {
-        max-width: min(100%, 420px);
+        width: min(100%, calc(100vw - 2rem), 900px);
+        max-width: none;
         margin-inline: auto;
     }
 }
@@ -1147,7 +1158,7 @@
     }
 
     .story-cover-wrap {
-        width: min(100%, 45svh, 420px);
+        width: min(100%, calc(100vw - 1.8rem));
         max-width: none;
     }
 
@@ -1158,9 +1169,19 @@
         object-position: bottom center;
     }
 
+    .playlist-page:not(.manual-fullscreen-focus) .story-favorite-toggle {
+        top: max(4.6rem, calc(env(safe-area-inset-top) + 4.1rem));
+    }
+
     .story-custom-player,
     .playlist-story-summary {
         width: 100%;
+    }
+
+    .playlist-current-label {
+        font-size: 0.82rem;
+        gap: 0.12rem 0.34rem;
+        letter-spacing: 0.035em;
     }
 
     .story-secondary-controls {

@@ -2764,7 +2764,6 @@ static void AddDevelopmentFormActionOrigins(HashSet<string> sources, HttpRequest
     {
         sources.Add($"{scheme}://localhost:{port.Value}");
         sources.Add($"{scheme}://127.0.0.1:{port.Value}");
-        sources.Add($"{scheme}://[::1]:{port.Value}");
     }
 }
 
@@ -2978,9 +2977,18 @@ static async Task<IResult> ProxyImageFromOriginAsync(
     {
         using var upstreamRequest = new HttpRequestMessage(HttpMethod.Get, sourceUri);
         upstreamRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("image/*"));
+        ForwardConditionalImageHeader(httpContext, upstreamRequest, "If-None-Match");
+        ForwardConditionalImageHeader(httpContext, upstreamRequest, "If-Modified-Since");
 
         using var upstreamResponse = await httpClientFactory.CreateClient("audio-origin")
             .SendAsync(upstreamRequest, HttpCompletionOption.ResponseHeadersRead, httpContext.RequestAborted);
+
+        if (upstreamResponse.StatusCode == HttpStatusCode.NotModified)
+        {
+            httpContext.Response.StatusCode = StatusCodes.Status304NotModified;
+            ApplyImageProxyCacheHeaders(httpContext, upstreamResponse);
+            return Results.Empty;
+        }
 
         if (upstreamResponse.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized)
         {
@@ -3000,7 +3008,7 @@ static async Task<IResult> ProxyImageFromOriginAsync(
 
         httpContext.Response.ContentType = upstreamResponse.Content.Headers.ContentType?.ToString()
             ?? ResolveImageMimeType(sourceUri.AbsolutePath);
-        httpContext.Response.Headers.CacheControl = "public, max-age=3600";
+        ApplyImageProxyCacheHeaders(httpContext, upstreamResponse);
         httpContext.Response.Headers["X-Content-Type-Options"] = "nosniff";
         httpContext.Response.Headers["Cross-Origin-Resource-Policy"] = "same-site";
 
@@ -3023,6 +3031,33 @@ static async Task<IResult> ProxyImageFromOriginAsync(
     catch (HttpRequestException)
     {
         return Results.StatusCode(StatusCodes.Status502BadGateway);
+    }
+}
+
+static void ForwardConditionalImageHeader(
+    HttpContext httpContext,
+    HttpRequestMessage upstreamRequest,
+    string headerName)
+{
+    var headerValue = httpContext.Request.Headers[headerName].ToString();
+    if (!string.IsNullOrWhiteSpace(headerValue))
+    {
+        upstreamRequest.Headers.TryAddWithoutValidation(headerName, headerValue);
+    }
+}
+
+static void ApplyImageProxyCacheHeaders(HttpContext httpContext, HttpResponseMessage upstreamResponse)
+{
+    httpContext.Response.Headers.CacheControl = "public, max-age=2592000, stale-while-revalidate=86400";
+
+    if (upstreamResponse.Headers.ETag is not null)
+    {
+        httpContext.Response.Headers.ETag = upstreamResponse.Headers.ETag.ToString();
+    }
+
+    if (upstreamResponse.Content.Headers.LastModified.HasValue)
+    {
+        httpContext.Response.Headers.LastModified = upstreamResponse.Content.Headers.LastModified.Value.ToString("R", CultureInfo.InvariantCulture);
     }
 }
 

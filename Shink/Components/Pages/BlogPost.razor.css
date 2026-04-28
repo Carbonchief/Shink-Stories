@@ -84,40 +84,63 @@
     border-radius: 1.8rem;
     background: #fff;
     box-shadow: 0 20px 46px rgba(34, 34, 34, 0.08);
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+}
+
+.blog-post-content {
+    min-width: 0;
+    max-width: 100%;
 }
 
 .blog-post-body {
     color: #33443a;
     font-size: 1.05rem;
     line-height: 1.9;
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
-.blog-post-body :global(p:first-child) {
+.blog-post-body ::deep p:first-child {
     margin-top: 0;
 }
 
-.blog-post-body :global(p:last-child) {
+.blog-post-body ::deep p:last-child {
     margin-bottom: 0;
 }
 
-.blog-post-body :global(h2),
-.blog-post-body :global(h3) {
+.blog-post-body ::deep h1,
+.blog-post-body ::deep h2,
+.blog-post-body ::deep h3 {
     color: #1f3428;
     line-height: 1.2;
+    overflow-wrap: anywhere;
+    word-break: break-word;
 }
 
-.blog-post-body :global(a) {
+.blog-post-body ::deep a {
     color: #1f3428;
     text-decoration-thickness: 2px;
 }
 
-.blog-post-body :global(img) {
+.blog-post-body ::deep img {
     max-width: 100%;
     height: auto;
     border-radius: 1rem;
 }
 
-.blog-post-body :global(blockquote) {
+.blog-post-body ::deep table,
+.blog-post-body ::deep pre,
+.blog-post-body ::deep code {
+    max-width: 100%;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.blog-post-body ::deep blockquote {
     margin: 1.6rem 0;
     padding: 1rem 1.25rem;
     border-left: 4px solid #90af9e;
@@ -125,8 +148,8 @@
     color: #425247;
 }
 
-.blog-post-body :global(ul),
-.blog-post-body :global(ol) {
+.blog-post-body ::deep ul,
+.blog-post-body ::deep ol {
     padding-left: 1.3rem;
 }
 

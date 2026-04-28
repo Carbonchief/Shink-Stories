@@ -6,6 +6,11 @@ public interface ISubscriptionPaymentRecoveryEmailService
         SubscriptionPaymentRecoveryEmailRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<string?> SendImmediateAsync(
+        SubscriptionPaymentRecoveryEmailRequest request,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default);
+
     Task CancelSequenceAsync(
         SubscriptionPaymentRecoveryEmailSequence sequence,
         CancellationToken cancellationToken = default);
@@ -20,7 +25,10 @@ public sealed record SubscriptionPaymentRecoveryEmailRequest(
     string PlanName,
     string Provider,
     DateTimeOffset FirstFailedAtUtc,
-    DateTimeOffset SuspensionAtUtc);
+    DateTimeOffset SuspensionAtUtc,
+    string? RecoveryUrl = null,
+    string? RecoveryActionLabel = null,
+    string? RecoveryContext = null);
 
 public sealed record SubscriptionPaymentRecoveryEmailSequence(
     string? ImmediateEmailId,

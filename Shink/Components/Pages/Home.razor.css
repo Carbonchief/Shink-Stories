@@ -505,6 +505,66 @@
     margin: 0.7rem auto 0;
 }
 
+.home-social-proof {
+    width: min(100%, 1040px);
+    margin: 0 auto 1.15rem;
+    padding: 0 0.75rem;
+}
+
+.home-social-proof-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: center;
+    justify-items: center;
+    gap: clamp(0.25rem, 1.8vw, 1rem);
+}
+
+.home-social-proof-item {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: min(100%, 280px);
+    aspect-ratio: 560 / 292;
+}
+
+.home-social-proof-laurel {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
+    filter: brightness(0) invert(1);
+}
+
+.home-social-proof-copy {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    justify-items: center;
+    gap: 0.04rem;
+    max-width: 58%;
+    margin: 0;
+    color: #ffffff;
+    font-weight: 800;
+    font-size: clamp(0.58rem, 1.08vw, 0.82rem);
+    line-height: 1.08;
+    text-align: center;
+}
+
+.home-social-proof-number {
+    display: block;
+    font-size: clamp(1.34rem, 2.82vw, 1.92rem);
+    font-weight: 900;
+    line-height: 0.95;
+}
+
+.home-social-proof-copy-static {
+    font-size: clamp(0.9rem, 1.58vw, 1.18rem);
+    line-height: 1.08;
+}
+
 .section-block {
     margin-top: 0.5rem;
 }
@@ -809,19 +869,14 @@ h2 {
     display: block;
     pointer-events: none;
     user-select: none;
-    font-family: "Schink Rank Rounded", "Poppins", "Trebuchet MS", "Segoe UI", sans-serif;
-    font-size: clamp(2.5rem, 8vw, 4.7rem);
+    font-family: "Schink Rank Rounded", "Arial Rounded MT Bold", "Arial Black", "Poppins", "Trebuchet MS", "Segoe UI", sans-serif;
+    font-size: clamp(2.75rem, 8.8vw, 5.17rem);
     font-weight: 900;
     line-height: 0.82;
-    letter-spacing: -0.11em;
+    letter-spacing: -0.08em;
     color: #fffef8;
-    -webkit-text-stroke: 2px rgba(205, 214, 214, 0.92);
     text-shadow:
-        0 5px 10px rgba(52, 65, 70, 0.28),
-        -1px -1px 0 rgba(205, 214, 214, 0.92),
-        1px -1px 0 rgba(205, 214, 214, 0.92),
-        -1px 1px 0 rgba(205, 214, 214, 0.92),
-        1px 1px 0 rgba(205, 214, 214, 0.92);
+        0 6px 12px rgba(52, 65, 70, 0.24);
 }
 
 .story-carousel-link {
@@ -1245,7 +1300,39 @@ h2 {
     height: auto;
     display: block;
     transform: translateX(-50%);
+    transform-origin: 50% 82%;
+    animation: home-whatsapp-duck-wiggle 8s ease-in-out infinite;
     filter: drop-shadow(0 14px 16px rgba(4, 72, 64, 0.18));
+}
+
+@keyframes home-whatsapp-duck-wiggle {
+    0%,
+    91%,
+    100% {
+        transform: translateX(-50%) rotate(0deg);
+    }
+
+    92.5% {
+        transform: translateX(-50%) rotate(-1.8deg);
+    }
+
+    94% {
+        transform: translateX(-50%) rotate(1.6deg);
+    }
+
+    95.5% {
+        transform: translateX(-50%) rotate(-1.1deg);
+    }
+
+    97% {
+        transform: translateX(-50%) rotate(0.8deg);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .home-whatsapp-join-duck img {
+        animation: none;
+    }
 }
 
 .home-whatsapp-join-btn {
@@ -2033,6 +2120,33 @@ h2 {
 
     .join-promo-list li {
         font-size: 1.03rem;
+    }
+
+    .home-social-proof {
+        margin-bottom: 0.95rem;
+        padding-inline: 0.55rem;
+    }
+
+    .home-social-proof-grid {
+        grid-template-columns: 1fr;
+        gap: 0.05rem;
+    }
+
+    .home-social-proof-item {
+        width: min(100%, 330px);
+        margin-block: -0.42rem;
+    }
+
+    .home-social-proof-copy {
+        font-size: clamp(0.66rem, 2.82vw, 0.9rem);
+    }
+
+    .home-social-proof-number {
+        font-size: clamp(1.48rem, 7.15vw, 2.18rem);
+    }
+
+    .home-social-proof-copy-static {
+        font-size: clamp(0.98rem, 4.35vw, 1.3rem);
     }
 
     .hero-logo {

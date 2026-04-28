@@ -34,24 +34,24 @@ public sealed class ResendSubscriptionPaymentRecoveryEmailService(
             return null;
         }
 
-        var manageUrl = ResolveManageUrl();
+        var manageUrl = ResolveManageUrl(request);
         var displayName = ResolveGreetingName(request);
 
         var immediate = await SendEmailAsync(
             request.Email,
-            BuildImmediateEmail(displayName, manageUrl),
+            BuildImmediateEmail(request, displayName, manageUrl),
             $"{request.RecoveryId}:day1",
             cancellationToken);
 
         var warning = await SendEmailAsync(
             request.Email,
-            BuildWarningEmail(displayName, manageUrl, request.FirstFailedAtUtc),
+            BuildWarningEmail(request, displayName, manageUrl, request.FirstFailedAtUtc),
             $"{request.RecoveryId}:day3",
             cancellationToken);
 
         var suspension = await SendEmailAsync(
             request.Email,
-            BuildSuspensionEmail(displayName, manageUrl, request.FirstFailedAtUtc),
+            BuildSuspensionEmail(request, displayName, manageUrl, request.FirstFailedAtUtc),
             $"{request.RecoveryId}:day5",
             cancellationToken);
 
@@ -59,6 +59,31 @@ public sealed class ResendSubscriptionPaymentRecoveryEmailService(
             immediate?.Id,
             warning?.Id,
             suspension?.Id);
+    }
+
+    public async Task<string?> SendImmediateAsync(
+        SubscriptionPaymentRecoveryEmailRequest request,
+        string idempotencyKey,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsConfigured() || string.IsNullOrWhiteSpace(request.Email))
+        {
+            _logger.LogWarning(
+                "Subscription payment recovery email skipped. configured={IsConfigured} subscription_id={SubscriptionId}",
+                IsConfigured(),
+                request.SubscriptionId);
+            return null;
+        }
+
+        var manageUrl = ResolveManageUrl(request);
+        var displayName = ResolveGreetingName(request);
+        var email = await SendEmailAsync(
+            request.Email,
+            BuildImmediateEmail(request, displayName, manageUrl),
+            idempotencyKey,
+            cancellationToken);
+
+        return email?.Id;
     }
 
     public async Task CancelSequenceAsync(
@@ -96,8 +121,13 @@ public sealed class ResendSubscriptionPaymentRecoveryEmailService(
         return "daar";
     }
 
-    private string? ResolveManageUrl()
+    private string? ResolveManageUrl(SubscriptionPaymentRecoveryEmailRequest request)
     {
+        if (Uri.TryCreate(request.RecoveryUrl, UriKind.Absolute, out var recoveryUri))
+        {
+            return recoveryUri.ToString();
+        }
+
         if (Uri.TryCreate(_resendOptions.BillingManageUrl, UriKind.Absolute, out var configuredBillingUrl))
         {
             return configuredBillingUrl.ToString();
@@ -117,36 +147,51 @@ public sealed class ResendSubscriptionPaymentRecoveryEmailService(
     }
 
     private RecoveryEmailDefinition BuildImmediateEmail(
+        SubscriptionPaymentRecoveryEmailRequest request,
         string customerName,
         string? manageUrl)
         => new(
             TemplateId: _resendOptions.Templates.SubscriptionPaymentRecovery.Day1TemplateId,
-            Variables: BuildTemplateVariables(customerName, manageUrl),
+            Variables: BuildTemplateVariables(request, customerName, manageUrl),
             ScheduledAtUtc: null);
 
     private RecoveryEmailDefinition BuildWarningEmail(
+        SubscriptionPaymentRecoveryEmailRequest request,
         string customerName,
         string? manageUrl,
         DateTimeOffset firstFailedAtUtc)
         => new(
             TemplateId: _resendOptions.Templates.SubscriptionPaymentRecovery.Day3TemplateId,
-            Variables: BuildTemplateVariables(customerName, manageUrl),
+            Variables: BuildTemplateVariables(request, customerName, manageUrl),
             ScheduledAtUtc: firstFailedAtUtc.Add(WarningOffset));
 
     private RecoveryEmailDefinition BuildSuspensionEmail(
+        SubscriptionPaymentRecoveryEmailRequest request,
         string customerName,
         string? manageUrl,
         DateTimeOffset firstFailedAtUtc)
         => new(
             TemplateId: _resendOptions.Templates.SubscriptionPaymentRecovery.Day5TemplateId,
-            Variables: BuildTemplateVariables(customerName, manageUrl),
+            Variables: BuildTemplateVariables(request, customerName, manageUrl),
             ScheduledAtUtc: firstFailedAtUtc.Add(SuspensionOffset));
 
-    private static Dictionary<string, object?> BuildTemplateVariables(string customerName, string? manageUrl) =>
+    private static Dictionary<string, object?> BuildTemplateVariables(
+        SubscriptionPaymentRecoveryEmailRequest request,
+        string customerName,
+        string? manageUrl) =>
         new(StringComparer.Ordinal)
         {
             ["CUSTOMER_NAME"] = string.IsNullOrWhiteSpace(customerName) ? "daar" : customerName,
-            ["BILLING_URL"] = string.IsNullOrWhiteSpace(manageUrl) ? "https://example.com/intekening-en-betaling" : manageUrl
+            ["BILLING_URL"] = string.IsNullOrWhiteSpace(manageUrl) ? "https://example.com/intekening-en-betaling" : manageUrl,
+            ["RECOVERY_URL"] = string.IsNullOrWhiteSpace(manageUrl) ? "https://example.com/intekening-en-betaling" : manageUrl,
+            ["RECOVERY_ACTION_LABEL"] = string.IsNullOrWhiteSpace(request.RecoveryActionLabel)
+                ? "Werk jou betaling by"
+                : request.RecoveryActionLabel,
+            ["RECOVERY_CONTEXT"] = string.IsNullOrWhiteSpace(request.RecoveryContext)
+                ? "Ons kon nie jou intekeningbetaling verwerk nie."
+                : request.RecoveryContext,
+            ["PLAN_NAME"] = request.PlanName,
+            ["PAYMENT_PROVIDER"] = request.Provider
         };
 
     private async Task<ResendEmailResponse?> SendEmailAsync(

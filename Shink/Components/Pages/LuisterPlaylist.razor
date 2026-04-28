@@ -85,12 +85,9 @@ else
                      oncontextmenu="return false;">
                     <div class="playlist-player-grid">
                         <div class="story-cover-wrap">
-                            <div class="story-cover-title">
-                                <h2 class="story-player-title">@CurrentStory.Title</h2>
-                            </div>
                             <img src="@CurrentStory.ThumbnailPath"
                                  srcset="@($"{CurrentStory.ThumbnailPath} 640w, {CurrentStory.ImagePath} 1024w")"
-                                 sizes="(max-width: 640px) 100vw, 360px"
+                                 sizes="(max-width: 920px) calc(100vw - 2rem), 900px"
                                  alt="Voorblad van @CurrentStory.Title"
                                  class="story-cover"
                                  role="button"
@@ -129,7 +126,11 @@ else
                         </div>
 
                         <div class="playlist-player-main">
-                            <p class="playlist-current-label text-center">Storie @CurrentTrackNumber van @AccessibleStories.Count</p>
+                            <p class="playlist-current-label text-center">
+                                <span class="playlist-current-title">@CurrentStory.Title</span>
+                                <span class="playlist-current-separator" aria-hidden="true">•</span>
+                                <span>Storie @CurrentTrackNumber van @AccessibleStories.Count</span>
+                            </p>
 
                             <audio controls
                                    controlslist="nodownload noplaybackrate"
@@ -308,7 +309,7 @@ else
                                          alt=""
                                          width="64"
                                          height="64"
-                                         loading="lazy"
+                                         loading="eager"
                                          decoding="async" />
                                     <span class="playlist-track-copy">
                                         <span class="playlist-track-title">@story.Title</span>

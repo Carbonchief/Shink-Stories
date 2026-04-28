@@ -51,6 +51,10 @@
     object-position: center bottom;
 }
 
+.playlist-showcase-splash-backdrop.is-first-story-fallback {
+    object-position: center;
+}
+
 .playlist-showcase-splash-logo {
     position: absolute;
     left: 50%;

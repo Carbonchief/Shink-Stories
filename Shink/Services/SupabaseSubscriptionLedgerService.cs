@@ -13,17 +13,20 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     IOptions<SupabaseOptions> supabaseOptions,
     ISubscriptionPaymentRecoveryEmailService subscriptionPaymentRecoveryEmailService,
     ISubscriptionNotificationEmailService subscriptionNotificationEmailService,
+    PaystackCheckoutService paystackCheckoutService,
     ILogger<SupabaseSubscriptionLedgerService> logger) : ISubscriptionLedgerService
 {
     private const string GratisTierCode = "gratis";
     private const string GratisProvider = "paystack";
     private const string GratisPlanSlug = "gratis";
+    private static readonly TimeSpan AuthorizationRetryDelay = TimeSpan.FromDays(1);
     private static readonly TimeSpan PaymentRecoveryGracePeriod = TimeSpan.FromDays(4);
 
     private readonly HttpClient _httpClient = httpClient;
     private readonly SupabaseOptions _options = supabaseOptions.Value;
     private readonly ISubscriptionPaymentRecoveryEmailService _subscriptionPaymentRecoveryEmailService = subscriptionPaymentRecoveryEmailService;
     private readonly ISubscriptionNotificationEmailService _subscriptionNotificationEmailService = subscriptionNotificationEmailService;
+    private readonly PaystackCheckoutService _paystackCheckoutService = paystackCheckoutService;
     private readonly ILogger<SupabaseSubscriptionLedgerService> _logger = logger;
 
     public async Task<bool> HasActivePaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default)
@@ -423,6 +426,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             return;
         }
 
+        await ProcessPendingAuthorizationRetriesAsync(baseUri, apiKey, cancellationToken);
+
         IReadOnlyList<PaymentRecoveryRow> dueRecoveries;
         try
         {
@@ -482,6 +487,193 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                     cancellationToken);
             }
         }
+    }
+
+    private async Task ProcessPendingAuthorizationRetriesAsync(
+        Uri baseUri,
+        string apiKey,
+        CancellationToken cancellationToken)
+    {
+        var nowUtc = DateTimeOffset.UtcNow;
+        IReadOnlyList<PaymentRecoveryRow> pendingRecoveries;
+        try
+        {
+            pendingRecoveries = await GetPendingAuthorizationRetryRecoveriesAsync(baseUri, apiKey, nowUtc, cancellationToken);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(exception, "Pending authorization retry lookup failed unexpectedly.");
+            return;
+        }
+
+        foreach (var recovery in pendingRecoveries)
+        {
+            if (string.IsNullOrWhiteSpace(recovery.SubscriptionId))
+            {
+                continue;
+            }
+
+            try
+            {
+                await ProcessPendingAuthorizationRetryAsync(baseUri, apiKey, recovery, DateTimeOffset.UtcNow, cancellationToken);
+            }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+            {
+                _logger.LogWarning(
+                    exception,
+                    "Subscription authorization retry failed unexpectedly. recovery_id={RecoveryId} subscription_id={SubscriptionId}",
+                    recovery.RecoveryId,
+                    recovery.SubscriptionId);
+                await TrySendAdminOpsAlertAsync(
+                    alertKey: $"payment-recovery-authorization-retry-failed/{recovery.RecoveryId}",
+                    severity: "error",
+                    title: "Subscription authorization retry failed",
+                    summary: "A due automatic subscription retry could not be completed.",
+                    details: $"Recovery ID: {recovery.RecoveryId}\nSubscription ID: {recovery.SubscriptionId}\nError: {exception.Message}",
+                    eventReference: recovery.RecoveryId,
+                    occurredAtUtc: DateTimeOffset.UtcNow,
+                    cancellationToken);
+            }
+        }
+    }
+
+    private async Task ProcessPendingAuthorizationRetryAsync(
+        Uri baseUri,
+        string apiKey,
+        PaymentRecoveryRow recovery,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var subscriptionContext = await TryGetSubscriptionContextByIdAsync(
+            baseUri,
+            apiKey,
+            recovery.SubscriptionId!,
+            cancellationToken);
+        if (subscriptionContext is null)
+        {
+            await MarkPaymentRecoveryAuthorizationRetryAsync(
+                baseUri,
+                apiKey,
+                recovery.RecoveryId,
+                nowUtc,
+                "skipped",
+                null,
+                "Subscription context could not be loaded.",
+                null,
+                cancellationToken);
+            return;
+        }
+
+        if (!string.Equals(subscriptionContext.Status, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            await ResolvePaymentRecoveryAsync(
+                baseUri,
+                apiKey,
+                recovery.RecoveryId,
+                nowUtc,
+                "cancelled",
+                cancellationToken);
+            return;
+        }
+
+        var provider = recovery.Provider ?? subscriptionContext.Provider ?? string.Empty;
+        var providerPaymentId = recovery.ProviderPaymentId ?? subscriptionContext.ProviderPaymentId ?? string.Empty;
+        var plan = PaymentPlanCatalog.FindByTierCode(subscriptionContext.TierCode);
+        if (!string.Equals(provider, "paystack", StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(subscriptionContext.ProviderToken) ||
+            plan is null)
+        {
+            var retryError = plan is null
+                ? "No local subscription plan matched this tier."
+                : "No Paystack authorization code is available for this subscription.";
+            await SchedulePaymentRecoveryEmailsAsync(
+                baseUri,
+                apiKey,
+                recovery,
+                subscriptionContext,
+                string.IsNullOrWhiteSpace(provider) ? "unknown" : provider,
+                providerPaymentId,
+                nowUtc,
+                "skipped",
+                null,
+                retryError,
+                cancellationToken);
+            return;
+        }
+
+        var reference = BuildAuthorizationRetryReference(recovery.RecoveryId);
+        var chargeResult = await _paystackCheckoutService.ChargeAuthorizationAsync(
+            plan,
+            subscriptionContext.Email,
+            subscriptionContext.ProviderToken,
+            reference,
+            subscriptionContext.SubscriptionId,
+            providerPaymentId,
+            cancellationToken);
+
+        var eventPayload = string.IsNullOrWhiteSpace(chargeResult.RawPayload)
+            ? new Dictionary<string, string?>
+            {
+                ["reference"] = chargeResult.Reference,
+                ["error"] = chargeResult.ErrorMessage
+            }
+            : DeserializePayloadObject(chargeResult.RawPayload);
+        await InsertSubscriptionEventAsync(
+            baseUri,
+            apiKey,
+            subscriptionContext.SubscriptionId,
+            provider: "paystack",
+            providerPaymentId,
+            providerTransactionId: chargeResult.ProviderTransactionId ?? chargeResult.Reference,
+            eventType: "paystack.authorization_retry",
+            eventStatus: chargeResult.IsSuccess ? "success" : chargeResult.TransactionStatus ?? "failed",
+            payload: eventPayload,
+            cancellationToken);
+
+        if (chargeResult.IsSuccess)
+        {
+            var paidAtUtc = chargeResult.PaidAt ?? nowUtc;
+            await MarkSubscriptionRecoveredByIdAsync(
+                baseUri,
+                apiKey,
+                subscriptionContext.SubscriptionId,
+                paidAtUtc.AddMonths(plan.BillingPeriodMonths),
+                cancellationToken);
+            await MarkPaymentRecoveryAuthorizationRetryAsync(
+                baseUri,
+                apiKey,
+                recovery.RecoveryId,
+                nowUtc,
+                "succeeded",
+                chargeResult.Reference,
+                null,
+                null,
+                cancellationToken);
+            await ResolvePaymentRecoveryAsync(baseUri, apiKey, recovery.RecoveryId, nowUtc, "recovered", cancellationToken);
+            await TrySendAdminOpsAlertAsync(
+                alertKey: $"payment-recovery-authorization-retry-succeeded/{recovery.RecoveryId}",
+                severity: "info",
+                title: "Subscription authorization retry succeeded",
+                summary: $"Automatic payment retry recovered {subscriptionContext.Email}.",
+                details: $"Provider: Paystack\nSubscription ID: {subscriptionContext.SubscriptionId}\nRecovery ID: {recovery.RecoveryId}\nReference: {chargeResult.Reference ?? "not available"}",
+                eventReference: recovery.RecoveryId,
+                occurredAtUtc: nowUtc,
+                cancellationToken);
+            return;
+        }
+
+        await SchedulePaymentRecoveryEmailsAsync(
+            baseUri,
+            apiKey,
+            recovery,
+            subscriptionContext,
+            "paystack",
+            providerPaymentId,
+            nowUtc,
+            "failed",
+            chargeResult.Reference,
+            chargeResult.ErrorMessage,
+            cancellationToken);
     }
 
     private async Task<bool> HasActiveSubscriptionAsync(
@@ -1434,6 +1626,40 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             body);
     }
 
+    private async Task MarkSubscriptionRecoveredByIdAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriptionId,
+        DateTimeOffset nextRenewalAtUtc,
+        CancellationToken cancellationToken)
+    {
+        var escapedSubscriptionId = Uri.EscapeDataString(subscriptionId);
+        var uri = new Uri(baseUri, $"rest/v1/subscriptions?subscription_id=eq.{escapedSubscriptionId}");
+        using var request = CreateJsonRequest(
+            new HttpMethod("PATCH"),
+            uri,
+            apiKey,
+            new
+            {
+                status = "active",
+                next_renewal_at = nextRenewalAtUtc.UtcDateTime,
+                cancelled_at = (DateTime?)null
+            },
+            "return=minimal");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Supabase subscription retry recovery update failed. subscription_id={SubscriptionId} Status={StatusCode} Body={Body}",
+            subscriptionId,
+            (int)response.StatusCode,
+            body);
+    }
+
     private async Task ExtendSubscriptionGracePeriodAsync(
         Uri baseUri,
         string apiKey,
@@ -1483,7 +1709,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var escapedPaymentId = Uri.EscapeDataString(providerPaymentId);
         var uri = new Uri(
             baseUri,
-            $"rest/v1/subscriptions?provider=eq.{escapedProvider}&provider_payment_id=eq.{escapedPaymentId}&select=subscription_id,subscriber_id,tier_code,status&limit=1");
+            $"rest/v1/subscriptions?provider=eq.{escapedProvider}&provider_payment_id=eq.{escapedPaymentId}&select=subscription_id,subscriber_id,tier_code,provider,provider_payment_id,provider_token,status&limit=1");
         using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -1528,6 +1754,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             subscriberProfile?.DisplayName,
             row.TierCode,
             planName,
+            row.Provider,
+            row.ProviderPaymentId,
+            row.ProviderToken,
             row.Status);
     }
 
@@ -1545,7 +1774,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var escapedSubscriptionId = Uri.EscapeDataString(subscriptionId);
         var uri = new Uri(
             baseUri,
-            $"rest/v1/subscriptions?subscription_id=eq.{escapedSubscriptionId}&select=subscription_id,subscriber_id,tier_code,status&limit=1");
+            $"rest/v1/subscriptions?subscription_id=eq.{escapedSubscriptionId}&select=subscription_id,subscriber_id,tier_code,provider,provider_payment_id,provider_token,status&limit=1");
         using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -1589,6 +1818,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             subscriberProfile?.DisplayName,
             row.TierCode,
             planName,
+            row.Provider,
+            row.ProviderPaymentId,
+            row.ProviderToken,
             row.Status);
     }
 
@@ -1647,7 +1879,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var escapedSubscriptionId = Uri.EscapeDataString(subscriptionId);
         var uri = new Uri(
             baseUri,
-            $"rest/v1/subscription_payment_recoveries?subscription_id=eq.{escapedSubscriptionId}&resolved_at=is.null&select=recovery_id,subscription_id,provider_payment_id,first_failed_at,grace_ends_at,immediate_email_id,warning_email_id,suspension_email_id&limit=1");
+            $"rest/v1/subscription_payment_recoveries?subscription_id=eq.{escapedSubscriptionId}&resolved_at=is.null&select=recovery_id,subscription_id,provider,provider_payment_id,first_failed_at,grace_ends_at,authorization_retry_due_at,authorization_retry_attempted_at,authorization_retry_status,authorization_retry_reference,authorization_retry_error,emails_scheduled_at,immediate_email_id,warning_email_id,suspension_email_id&limit=1");
         using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -1676,7 +1908,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var escapedNow = Uri.EscapeDataString(nowUtc.UtcDateTime.ToString("O"));
         var uri = new Uri(
             baseUri,
-            $"rest/v1/subscription_payment_recoveries?resolved_at=is.null&grace_ends_at=lte.{escapedNow}&select=recovery_id,subscription_id,provider_payment_id,first_failed_at,grace_ends_at,immediate_email_id,warning_email_id,suspension_email_id&order=grace_ends_at.asc&limit=100");
+            $"rest/v1/subscription_payment_recoveries?resolved_at=is.null&grace_ends_at=lte.{escapedNow}&or=(emails_scheduled_at.not.is.null,authorization_retry_status.is.null,authorization_retry_status.in.(failed,skipped))&select=recovery_id,subscription_id,provider,provider_payment_id,first_failed_at,grace_ends_at,authorization_retry_due_at,authorization_retry_attempted_at,authorization_retry_status,authorization_retry_reference,authorization_retry_error,emails_scheduled_at,immediate_email_id,warning_email_id,suspension_email_id&order=grace_ends_at.asc&limit=100");
         using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -1684,6 +1916,33 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             var body = await response.Content.ReadAsStringAsync(cancellationToken);
             _logger.LogWarning(
                 "Supabase due payment recovery lookup failed. Status={StatusCode} Body={Body}",
+                (int)response.StatusCode,
+                body);
+            return [];
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        return await JsonSerializer.DeserializeAsync<List<PaymentRecoveryRow>>(stream, cancellationToken: cancellationToken)
+            ?? [];
+    }
+
+    private async Task<IReadOnlyList<PaymentRecoveryRow>> GetPendingAuthorizationRetryRecoveriesAsync(
+        Uri baseUri,
+        string apiKey,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var escapedNow = Uri.EscapeDataString(nowUtc.UtcDateTime.ToString("O"));
+        var uri = new Uri(
+            baseUri,
+            $"rest/v1/subscription_payment_recoveries?resolved_at=is.null&authorization_retry_status=eq.pending&authorization_retry_due_at=lte.{escapedNow}&select=recovery_id,subscription_id,provider,provider_payment_id,first_failed_at,grace_ends_at,authorization_retry_due_at,authorization_retry_attempted_at,authorization_retry_status,authorization_retry_reference,authorization_retry_error,emails_scheduled_at,immediate_email_id,warning_email_id,suspension_email_id&order=authorization_retry_due_at.asc&limit=100");
+        using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Supabase pending authorization retry lookup failed. Status={StatusCode} Body={Body}",
                 (int)response.StatusCode,
                 body);
             return [];
@@ -1702,6 +1961,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string providerPaymentId,
         DateTimeOffset firstFailedAtUtc,
         DateTimeOffset graceEndsAtUtc,
+        DateTimeOffset authorizationRetryDueAtUtc,
         CancellationToken cancellationToken)
     {
         var payload = new
@@ -1710,10 +1970,12 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             provider,
             provider_payment_id = providerPaymentId,
             first_failed_at = firstFailedAtUtc.UtcDateTime,
-            grace_ends_at = graceEndsAtUtc.UtcDateTime
+            grace_ends_at = graceEndsAtUtc.UtcDateTime,
+            authorization_retry_due_at = authorizationRetryDueAtUtc.UtcDateTime,
+            authorization_retry_status = "pending"
         };
 
-        var uri = new Uri(baseUri, "rest/v1/subscription_payment_recoveries?select=recovery_id,subscription_id,provider_payment_id,first_failed_at,grace_ends_at,immediate_email_id,warning_email_id,suspension_email_id");
+        var uri = new Uri(baseUri, "rest/v1/subscription_payment_recoveries?select=recovery_id,subscription_id,provider,provider_payment_id,first_failed_at,grace_ends_at,authorization_retry_due_at,authorization_retry_attempted_at,authorization_retry_status,authorization_retry_reference,authorization_retry_error,emails_scheduled_at,immediate_email_id,warning_email_id,suspension_email_id");
         using var request = CreateJsonRequest(HttpMethod.Post, uri, apiKey, payload, "return=representation");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -1738,6 +2000,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string apiKey,
         string recoveryId,
         SubscriptionPaymentRecoveryEmailSequence emailSequence,
+        DateTimeOffset emailsScheduledAtUtc,
+        DateTimeOffset graceEndsAtUtc,
         CancellationToken cancellationToken)
     {
         var escapedRecoveryId = Uri.EscapeDataString(recoveryId);
@@ -1750,7 +2014,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             {
                 immediate_email_id = emailSequence.ImmediateEmailId,
                 warning_email_id = emailSequence.WarningEmailId,
-                suspension_email_id = emailSequence.SuspensionEmailId
+                suspension_email_id = emailSequence.SuspensionEmailId,
+                emails_scheduled_at = emailsScheduledAtUtc.UtcDateTime,
+                grace_ends_at = graceEndsAtUtc.UtcDateTime
             },
             "return=minimal");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
@@ -1762,6 +2028,56 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         _logger.LogWarning(
             "Supabase payment recovery email-id update failed. recovery_id={RecoveryId} Status={StatusCode} Body={Body}",
+            recoveryId,
+            (int)response.StatusCode,
+            body);
+    }
+
+    private async Task MarkPaymentRecoveryAuthorizationRetryAsync(
+        Uri baseUri,
+        string apiKey,
+        string recoveryId,
+        DateTimeOffset attemptedAtUtc,
+        string retryStatus,
+        string? retryReference,
+        string? retryError,
+        DateTimeOffset? graceEndsAtUtc,
+        CancellationToken cancellationToken)
+    {
+        var escapedRecoveryId = Uri.EscapeDataString(recoveryId);
+        var uri = new Uri(baseUri, $"rest/v1/subscription_payment_recoveries?recovery_id=eq.{escapedRecoveryId}");
+        object payload = graceEndsAtUtc is null
+            ? new
+            {
+                authorization_retry_attempted_at = attemptedAtUtc.UtcDateTime,
+                authorization_retry_status = retryStatus,
+                authorization_retry_reference = string.IsNullOrWhiteSpace(retryReference) ? null : retryReference,
+                authorization_retry_error = string.IsNullOrWhiteSpace(retryError) ? null : retryError
+            }
+            : new
+            {
+                authorization_retry_attempted_at = attemptedAtUtc.UtcDateTime,
+                authorization_retry_status = retryStatus,
+                authorization_retry_reference = string.IsNullOrWhiteSpace(retryReference) ? null : retryReference,
+                authorization_retry_error = string.IsNullOrWhiteSpace(retryError) ? null : retryError,
+                grace_ends_at = graceEndsAtUtc.Value.UtcDateTime
+            };
+
+        using var request = CreateJsonRequest(
+            new HttpMethod("PATCH"),
+            uri,
+            apiKey,
+            payload,
+            "return=minimal");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Supabase payment recovery authorization retry update failed. recovery_id={RecoveryId} Status={StatusCode} Body={Body}",
             recoveryId,
             (int)response.StatusCode,
             body);
@@ -1903,7 +2219,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             return;
         }
 
-        var graceEndsAtUtc = nowUtc.Add(PaymentRecoveryGracePeriod);
+        var authorizationRetryDueAtUtc = nowUtc.Add(AuthorizationRetryDelay);
+        var graceEndsAtUtc = authorizationRetryDueAtUtc.Add(PaymentRecoveryGracePeriod);
         var recovery = await CreatePaymentRecoveryAsync(
             baseUri,
             apiKey,
@@ -1912,11 +2229,56 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             providerPaymentId,
             nowUtc,
             graceEndsAtUtc,
+            authorizationRetryDueAtUtc,
             cancellationToken);
         if (recovery is null)
         {
             return;
         }
+
+        await ExtendSubscriptionGracePeriodAsync(
+            baseUri,
+            apiKey,
+            subscriptionContext.SubscriptionId,
+            graceEndsAtUtc,
+            cancellationToken);
+
+        await TrySendAdminOpsAlertAsync(
+            alertKey: $"payment-recovery-retry-scheduled/{recovery.RecoveryId}",
+            severity: "warning",
+            title: "Subscription payment retry scheduled",
+            summary: $"Payment retry scheduled for {subscriptionContext.Email}.",
+            details: $"Provider: {provider}\nSubscription ID: {subscriptionContext.SubscriptionId}\nRecovery ID: {recovery.RecoveryId}\nProvider payment ID: {providerPaymentId}\nRetry due: {authorizationRetryDueAtUtc:O}\nGrace ends: {graceEndsAtUtc:O}",
+            eventReference: recovery.RecoveryId,
+            occurredAtUtc: nowUtc,
+            cancellationToken);
+    }
+
+    private async Task SchedulePaymentRecoveryEmailsAsync(
+        Uri baseUri,
+        string apiKey,
+        PaymentRecoveryRow recovery,
+        PaymentRecoverySubscriptionContext subscriptionContext,
+        string provider,
+        string providerPaymentId,
+        DateTimeOffset nowUtc,
+        string retryStatus,
+        string? retryReference,
+        string? retryError,
+        CancellationToken cancellationToken)
+    {
+        var graceEndsAtUtc = nowUtc.Add(PaymentRecoveryGracePeriod);
+
+        await MarkPaymentRecoveryAuthorizationRetryAsync(
+            baseUri,
+            apiKey,
+            recovery.RecoveryId,
+            nowUtc,
+            retryStatus,
+            retryReference,
+            retryError,
+            graceEndsAtUtc,
+            cancellationToken);
 
         await ExtendSubscriptionGracePeriodAsync(
             baseUri,
@@ -1952,7 +2314,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             return;
         }
 
-        await StorePaymentRecoveryEmailIdsAsync(baseUri, apiKey, recovery.RecoveryId, emailSequence, cancellationToken);
+        await StorePaymentRecoveryEmailIdsAsync(baseUri, apiKey, recovery.RecoveryId, emailSequence, nowUtc, graceEndsAtUtc, cancellationToken);
         await TrySendAdminOpsAlertAsync(
             alertKey: $"payment-recovery-started/{recovery.RecoveryId}",
             severity: "warning",
@@ -2179,6 +2541,18 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
     private static string BuildGratisProviderPaymentId(string subscriberId) =>
         $"gratis-{subscriberId}";
+
+    private static string BuildAuthorizationRetryReference(string recoveryId)
+    {
+        var safeRecoveryId = new string(
+            recoveryId.Where(character => char.IsLetterOrDigit(character) || character == '-').ToArray());
+        if (string.IsNullOrWhiteSpace(safeRecoveryId))
+        {
+            safeRecoveryId = Guid.NewGuid().ToString("N");
+        }
+
+        return $"retry-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{safeRecoveryId}";
+    }
 
     private static object DeserializePayloadObject(string payloadJson)
     {
@@ -2475,6 +2849,15 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         [JsonPropertyName("tier_code")]
         public string? TierCode { get; set; }
 
+        [JsonPropertyName("provider")]
+        public string? Provider { get; set; }
+
+        [JsonPropertyName("provider_payment_id")]
+        public string? ProviderPaymentId { get; set; }
+
+        [JsonPropertyName("provider_token")]
+        public string? ProviderToken { get; set; }
+
         [JsonPropertyName("status")]
         public string? Status { get; set; }
     }
@@ -2496,6 +2879,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string? DisplayName,
         string? TierCode,
         string PlanName,
+        string? Provider,
+        string? ProviderPaymentId,
+        string? ProviderToken,
         string? Status);
 
     private sealed class PaymentRecoveryRow
@@ -2506,6 +2892,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         [JsonPropertyName("subscription_id")]
         public string? SubscriptionId { get; set; }
 
+        [JsonPropertyName("provider")]
+        public string? Provider { get; set; }
+
         [JsonPropertyName("provider_payment_id")]
         public string? ProviderPaymentId { get; set; }
 
@@ -2514,6 +2903,24 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         [JsonPropertyName("grace_ends_at")]
         public DateTimeOffset? GraceEndsAt { get; set; }
+
+        [JsonPropertyName("authorization_retry_due_at")]
+        public DateTimeOffset? AuthorizationRetryDueAt { get; set; }
+
+        [JsonPropertyName("authorization_retry_attempted_at")]
+        public DateTimeOffset? AuthorizationRetryAttemptedAt { get; set; }
+
+        [JsonPropertyName("authorization_retry_status")]
+        public string? AuthorizationRetryStatus { get; set; }
+
+        [JsonPropertyName("authorization_retry_reference")]
+        public string? AuthorizationRetryReference { get; set; }
+
+        [JsonPropertyName("authorization_retry_error")]
+        public string? AuthorizationRetryError { get; set; }
+
+        [JsonPropertyName("emails_scheduled_at")]
+        public DateTimeOffset? EmailsScheduledAt { get; set; }
 
         [JsonPropertyName("immediate_email_id")]
         public string? ImmediateEmailId { get; set; }
