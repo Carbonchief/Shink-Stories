@@ -190,6 +190,7 @@ public sealed partial class WordPressMigrationService(
                 LastName: importedUser.LastName,
                 DisplayName: importedUser.DisplayName,
                 MobileNumber: importedUser.MobileNumber,
+                LastLoginAt: importedUser.LastLoginAt,
                 ProfileImageUrl: importedUser.ProfileImageUrl,
                 ProfileImageObjectKey: importedUser.ProfileImageObjectKey,
                 ProfileImageContentType: importedUser.ProfileImageContentType)],
@@ -257,6 +258,7 @@ public sealed partial class WordPressMigrationService(
             LastName: NullIfWhiteSpace(row.LastName),
             DisplayName: NullIfWhiteSpace(row.DisplayName),
             MobileNumber: NullIfWhiteSpace(row.MobileNumber),
+            LastLoginAt: row.LastLoginAt,
             ProfileImageUrl: NullIfWhiteSpace(row.ProfileImageUrl),
             ProfileImageObjectKey: NullIfWhiteSpace(row.ProfileImageObjectKey),
             ProfileImageContentType: NullIfWhiteSpace(row.ProfileImageContentType));
@@ -303,6 +305,9 @@ public sealed partial class WordPressMigrationService(
                 last_name.meta_value as last_name,
                 mobile.meta_value as mobile,
                 billing_phone.meta_value as billing_phone,
+                pmpro_logins.meta_value as pmpro_logins,
+                session_tokens.meta_value as session_tokens,
+                social_users.login_date as social_login_date,
                 avatar.meta_value as avatar_attachment_id,
                 attachment.guid as avatar_attachment_url,
                 basic_avatar.meta_value as basic_avatar_value
@@ -315,6 +320,16 @@ public sealed partial class WordPressMigrationService(
                 on mobile.user_id = u.ID and mobile.meta_key = 'mobile'
             left join {Table("usermeta")} billing_phone
                 on billing_phone.user_id = u.ID and billing_phone.meta_key = 'billing_phone'
+            left join {Table("usermeta")} pmpro_logins
+                on pmpro_logins.user_id = u.ID and pmpro_logins.meta_key = 'pmpro_logins'
+            left join {Table("usermeta")} session_tokens
+                on session_tokens.user_id = u.ID and session_tokens.meta_key = 'session_tokens'
+            left join (
+                select ID, max(login_date) as login_date
+                from {Table("social_users")}
+                group by ID
+            ) social_users
+                on social_users.ID = u.ID
             left join {Table("usermeta")} avatar
                 on avatar.user_id = u.ID and avatar.meta_key = 'wplx_user_avatar'
             left join {Table("posts")} attachment
@@ -346,6 +361,10 @@ public sealed partial class WordPressMigrationService(
                 FirstName = ReadTrimmedString(reader, "first_name"),
                 LastName = ReadTrimmedString(reader, "last_name"),
                 MobileNumber = ReadTrimmedString(reader, "mobile") ?? ReadTrimmedString(reader, "billing_phone"),
+                LastLoginAt = WordPressLastLoginResolver.Resolve(
+                    ReadNullableDateTime(reader, "social_login_date"),
+                    ReadTrimmedString(reader, "pmpro_logins"),
+                    ReadTrimmedString(reader, "session_tokens")),
                 UserRegistered = ReadNullableDateTime(reader, "user_registered"),
                 AvatarSourceUrl = DetermineAvatarSourceUrl(
                     ReadTrimmedString(reader, "avatar_attachment_url"),
@@ -1017,6 +1036,7 @@ public sealed partial class WordPressMigrationService(
                 LastName: null,
                 DisplayName: null,
                 MobileNumber: null,
+                LastLoginAt: null,
                 ProfileImageUrl: null,
                 ProfileImageObjectKey: null,
                 ProfileImageContentType: null))
@@ -1244,6 +1264,7 @@ public sealed partial class WordPressMigrationService(
         PasswordHashFormat: user.PasswordHashFormat,
         IsPasswordMigrated: false,
         HasDuplicateEmail: user.HasDuplicateEmail,
+        LastLoginAt: user.LastLoginAt,
         AvatarSourceUrl: user.AvatarSourceUrl,
         AvatarSourceAttachmentId: user.AvatarSourceAttachmentId,
         AvatarSourceMetaKey: user.AvatarSourceMetaKey,
@@ -1257,6 +1278,7 @@ public sealed partial class WordPressMigrationService(
         LastName: user.LastName,
         DisplayName: user.DisplayName,
         MobileNumber: NormalizeMobileNumber(user.MobileNumber),
+        LastLoginAt: user.LastLoginAt,
         ProfileImageUrl: user.ProfileImageUrl,
         ProfileImageObjectKey: user.ProfileImageObjectKey,
         ProfileImageContentType: user.ProfileImageContentType);
@@ -1661,6 +1683,7 @@ public sealed partial class WordPressMigrationService(
         public string? FirstName { get; init; }
         public string? LastName { get; init; }
         public string? MobileNumber { get; init; }
+        public DateTimeOffset? LastLoginAt { get; init; }
         public DateTimeOffset? UserRegistered { get; init; }
         public string? AvatarSourceUrl { get; init; }
         public long? AvatarSourceAttachmentId { get; init; }
@@ -1769,6 +1792,7 @@ public sealed partial class WordPressMigrationService(
         [property: JsonPropertyName("password_hash_format")] string? PasswordHashFormat,
         [property: JsonPropertyName("is_password_migrated")] bool IsPasswordMigrated,
         [property: JsonPropertyName("has_duplicate_email")] bool HasDuplicateEmail,
+        [property: JsonPropertyName("last_login_at")] DateTimeOffset? LastLoginAt,
         [property: JsonPropertyName("avatar_source_url")] string? AvatarSourceUrl,
         [property: JsonPropertyName("avatar_source_attachment_id")] long? AvatarSourceAttachmentId,
         [property: JsonPropertyName("avatar_source_meta_key")] string? AvatarSourceMetaKey,
@@ -1853,6 +1877,7 @@ public sealed partial class WordPressMigrationService(
         [property: JsonPropertyName("last_name")] string? LastName,
         [property: JsonPropertyName("display_name")] string? DisplayName,
         [property: JsonPropertyName("mobile_number")] string? MobileNumber,
+        [property: JsonPropertyName("last_login_at")] DateTimeOffset? LastLoginAt,
         [property: JsonPropertyName("profile_image_url")] string? ProfileImageUrl,
         [property: JsonPropertyName("profile_image_object_key")] string? ProfileImageObjectKey,
         [property: JsonPropertyName("profile_image_content_type")] string? ProfileImageContentType);
@@ -1948,6 +1973,9 @@ public sealed partial class WordPressMigrationService(
 
         [JsonPropertyName("mobile_number")]
         public string? MobileNumber { get; set; }
+
+        [JsonPropertyName("last_login_at")]
+        public DateTimeOffset? LastLoginAt { get; set; }
 
         [JsonPropertyName("profile_image_url")]
         public string? ProfileImageUrl { get; set; }

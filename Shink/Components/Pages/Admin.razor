@@ -487,7 +487,8 @@
                                                      src="@context.ProfileImageUrl"
                                                      alt=""
                                                      loading="lazy"
-                                                     decoding="async" />
+                                                     decoding="async"
+                                                     onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';this.classList.add('admin-subscriber-avatar-image-fallback');" />
                                             }
                                             else
                                             {
@@ -5377,7 +5378,7 @@
             T("Begin", "Started"),
             T("Verval/volgende", "Expires/next"),
             T("Verwysing", "Reference")
-        ], "admin-access-table");
+        ], "admin-access-table", "admin-access-table-wrap");
 
         foreach (var subscription in SubscriberDetail.Subscriptions)
         {
@@ -5629,9 +5630,17 @@
     private static void AppendDetailTableStart(
         StringBuilder builder,
         IReadOnlyList<string> headers,
-        string? tableClass = null)
+        string? tableClass = null,
+        string? wrapperClass = null)
     {
-        builder.Append("<div class=\"admin-detail-table-wrap\"><table class=\"admin-detail-table");
+        builder.Append("<div class=\"admin-detail-table-wrap");
+        if (!string.IsNullOrWhiteSpace(wrapperClass))
+        {
+            builder.Append(' ');
+            builder.Append(HtmlEncoder.Default.Encode(wrapperClass));
+        }
+
+        builder.Append("\"><table class=\"admin-detail-table");
         if (!string.IsNullOrWhiteSpace(tableClass))
         {
             builder.Append(' ');

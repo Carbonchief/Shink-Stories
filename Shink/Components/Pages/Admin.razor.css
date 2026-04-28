@@ -850,6 +850,12 @@
     display: block;
 }
 
+.admin-subscriber-avatar-image-fallback {
+    object-fit: contain;
+    padding: 0.32rem;
+    background: #ffffff;
+}
+
 .admin-subscriber-avatar-fallback {
     font-size: 0.8rem;
     font-weight: 800;
@@ -1038,7 +1044,8 @@
 .admin-detail-table {
     width: 100%;
     min-width: 680px;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     table-layout: fixed;
 }
 
@@ -1069,21 +1076,31 @@
 }
 
 .admin-access-table {
-    min-width: 920px;
+    min-width: 1120px;
+}
+
+.admin-access-table-wrap {
+    width: calc(100% + 1.7rem);
+    margin-inline: -0.85rem;
+    border-inline: 0;
+    border-radius: 0;
 }
 
 .admin-access-table th:nth-child(1),
 .admin-access-table td:nth-child(1) {
-    width: 20%;
+    width: 18%;
 }
 
 .admin-access-table th:nth-child(2),
 .admin-access-table td:nth-child(2) {
-    width: 15%;
+    width: 17%;
 }
 
 .admin-access-table th:nth-child(3),
-.admin-access-table td:nth-child(3),
+.admin-access-table td:nth-child(3) {
+    width: 12%;
+}
+
 .admin-access-table th:nth-child(4),
 .admin-access-table td:nth-child(4) {
     width: 10%;
@@ -1093,13 +1110,23 @@
 .admin-access-table td:nth-child(5),
 .admin-access-table th:nth-child(6),
 .admin-access-table td:nth-child(6) {
-    width: 12%;
+    width: 13%;
     white-space: nowrap;
 }
 
 .admin-access-table th:nth-child(7),
 .admin-access-table td:nth-child(7) {
-    width: 21%;
+    width: 17%;
+}
+
+.admin-access-table th,
+.admin-access-table td {
+    padding-inline: 1rem;
+}
+
+.admin-access-table th + th,
+.admin-access-table td + td {
+    border-left: 1px solid color-mix(in srgb, var(--admin-border) 52%, transparent);
 }
 
 .admin-playlist-checkbox {

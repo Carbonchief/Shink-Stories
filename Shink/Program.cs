@@ -4054,6 +4054,11 @@ static async Task<AuthCookieSignInResult> SignInUserAsync(
         logger.LogWarning(exception, "WordPress imported profile sync failed for {Email}.", email);
     }
 
+    await subscriptionLedgerService.UpdateSubscriberLastLoginAsync(
+        email,
+        DateTimeOffset.UtcNow,
+        httpContext.RequestAborted);
+
     var sessionIssueResult = await authSessionService.IssueSessionAsync(
         email,
         httpContext.Request.Headers.UserAgent.ToString(),

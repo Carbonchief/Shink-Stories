@@ -32,6 +32,7 @@ public sealed record WordPressImportedUser(
     string? LastName,
     string? DisplayName,
     string? MobileNumber,
+    DateTimeOffset? LastLoginAt,
     string? ProfileImageUrl,
     string? ProfileImageObjectKey,
     string? ProfileImageContentType);

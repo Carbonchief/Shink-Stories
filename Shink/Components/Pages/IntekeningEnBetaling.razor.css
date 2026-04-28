@@ -606,6 +606,187 @@
     width: 100%;
 }
 
+body.schink-night-mode .billing-page::before {
+    background: transparent;
+}
+
+body.schink-night-mode .billing-hero {
+    border-color: rgba(234, 229, 216, 0.14);
+    background:
+        radial-gradient(90% 110% at 0% 0%, rgba(242, 168, 77, 0.1), transparent 58%),
+        linear-gradient(180deg, rgba(23, 32, 39, 0.98) 0%, rgba(17, 25, 31, 0.98) 100%);
+    box-shadow: 0 24px 48px rgba(0, 0, 0, 0.28);
+}
+
+body.schink-night-mode .billing-hero::before {
+    background: radial-gradient(circle, rgba(114, 190, 204, 0.16) 0%, rgba(114, 190, 204, 0) 72%);
+}
+
+body.schink-night-mode .billing-hero::after {
+    background: radial-gradient(circle, rgba(242, 168, 77, 0.16) 0%, rgba(242, 168, 77, 0) 68%);
+}
+
+body.schink-night-mode .billing-hero-panel,
+body.schink-night-mode .billing-state-card,
+body.schink-night-mode .billing-panel,
+body.schink-night-mode .billing-plan-card,
+body.schink-night-mode .billing-modal {
+    border-color: rgba(234, 229, 216, 0.14);
+    background:
+        radial-gradient(120% 140% at 100% 0%, rgba(114, 190, 204, 0.08), transparent 56%),
+        linear-gradient(180deg, rgba(23, 32, 39, 0.97) 0%, rgba(17, 25, 31, 0.97) 100%);
+    color: var(--text);
+    box-shadow: 0 18px 36px rgba(0, 0, 0, 0.28);
+}
+
+body.schink-night-mode .billing-profile-card {
+    background:
+        radial-gradient(115% 130% at 0% 0%, rgba(242, 168, 77, 0.12), transparent 54%),
+        rgba(23, 32, 39, 0.96);
+}
+
+body.schink-night-mode .billing-status-card {
+    background:
+        radial-gradient(100% 120% at 100% 0%, rgba(242, 168, 77, 0.08), transparent 58%),
+        linear-gradient(180deg, rgba(23, 32, 39, 0.97) 0%, rgba(17, 25, 31, 0.97) 100%);
+}
+
+body.schink-night-mode .billing-status-card.is-active {
+    border-color: rgba(103, 220, 145, 0.24);
+}
+
+body.schink-night-mode .billing-status-card.is-free {
+    border-color: rgba(114, 190, 204, 0.24);
+}
+
+body.schink-night-mode .billing-hero-logo {
+    filter: brightness(0) invert(1);
+}
+
+body.schink-night-mode .billing-kicker,
+body.schink-night-mode .billing-section-kicker {
+    color: #f2c57c;
+}
+
+body.schink-night-mode .billing-hero h1,
+body.schink-night-mode .billing-hero-point strong,
+body.schink-night-mode .billing-hero-panel h2,
+body.schink-night-mode .billing-state-card h2,
+body.schink-night-mode .billing-panel-heading h2,
+body.schink-night-mode .billing-section-heading h2,
+body.schink-night-mode .billing-modal-heading h2,
+body.schink-night-mode .billing-plan-card h3,
+body.schink-night-mode .billing-price,
+body.schink-night-mode .billing-hero-email {
+    color: #f7f3ea;
+}
+
+body.schink-night-mode .billing-hero-lead,
+body.schink-night-mode .billing-hero-point span,
+body.schink-night-mode .billing-hero-panel p,
+body.schink-night-mode .billing-state-card p:last-child,
+body.schink-night-mode .billing-panel-heading p:last-child,
+body.schink-night-mode .billing-section-heading p:last-child,
+body.schink-night-mode .billing-modal-heading p:last-child,
+body.schink-night-mode .billing-form-hint,
+body.schink-night-mode .billing-email-note,
+body.schink-night-mode .billing-status-list li,
+body.schink-night-mode .billing-price span,
+body.schink-night-mode .billing-description {
+    color: #c5d0d4;
+}
+
+body.schink-night-mode .billing-hero-point {
+    border-color: rgba(234, 229, 216, 0.12);
+    background: rgba(255, 255, 255, 0.045);
+    box-shadow: 0 12px 22px rgba(0, 0, 0, 0.16);
+}
+
+body.schink-night-mode .billing-profile-form .form-label {
+    color: #dbe8e6;
+}
+
+body.schink-night-mode .billing-profile-form .form-control {
+    border-color: rgba(234, 229, 216, 0.18);
+    background: #11191f;
+    color: #f3f0e8;
+}
+
+body.schink-night-mode .billing-profile-form .form-control:focus {
+    border-color: rgba(242, 168, 77, 0.68);
+    background: #121c22;
+    box-shadow: 0 0 0 0.22rem rgba(242, 168, 77, 0.16);
+}
+
+body.schink-night-mode .billing-readonly-input {
+    background: rgba(255, 255, 255, 0.06) !important;
+    color: #c5d0d4;
+}
+
+body.schink-night-mode .billing-secondary-btn {
+    color: #f3f0e8;
+    border-color: rgba(234, 229, 216, 0.22);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+body.schink-night-mode .billing-secondary-btn:hover,
+body.schink-night-mode .billing-secondary-btn:focus-visible {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(242, 168, 77, 0.55);
+}
+
+body.schink-night-mode .billing-modal-backdrop {
+    background: rgba(5, 9, 12, 0.72);
+}
+
+body.schink-night-mode .billing-modal-close {
+    border-color: rgba(234, 229, 216, 0.18);
+    background: rgba(255, 255, 255, 0.06);
+    color: #f3f0e8;
+}
+
+body.schink-night-mode .billing-modal-close:hover,
+body.schink-night-mode .billing-modal-close:focus-visible {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: rgba(242, 168, 77, 0.55);
+}
+
+body.schink-night-mode .billing-section-heading a,
+body.schink-night-mode .billing-help a {
+    color: #9dddea;
+}
+
+body.schink-night-mode .billing-plan-badge {
+    color: #9dddea;
+    background: rgba(157, 221, 234, 0.1);
+    border-color: rgba(157, 221, 234, 0.2);
+}
+
+body.schink-night-mode .billing-plan-card.is-highlighted {
+    border-color: rgba(242, 168, 77, 0.34);
+    box-shadow: 0 24px 42px rgba(0, 0, 0, 0.3);
+}
+
+body.schink-night-mode .billing-plan-card.is-highlighted .billing-plan-badge,
+body.schink-night-mode .billing-save-badge {
+    color: #f2c57c;
+    background: rgba(242, 168, 77, 0.12);
+    border-color: rgba(242, 168, 77, 0.24);
+}
+
+body.schink-night-mode .billing-profile-status.alert-success {
+    color: #dff8e7;
+    background: rgba(31, 112, 65, 0.22);
+    border-color: rgba(103, 220, 145, 0.28);
+}
+
+body.schink-night-mode .billing-profile-status.alert-danger {
+    color: #ffe2dd;
+    background: rgba(156, 54, 40, 0.24);
+    border-color: rgba(246, 122, 98, 0.3);
+}
+
 @media (max-width: 1024px) {
     .billing-hero,
     .billing-content-grid {

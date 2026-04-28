@@ -1103,6 +1103,23 @@
 }
 
 @media (max-width: 920px) {
+    .playlist-page {
+        overflow: hidden;
+        border-radius: 28px;
+        background: #222222;
+        box-shadow: 0 20px 42px rgba(19, 22, 24, 0.18);
+    }
+
+    .playlist-header {
+        border-radius: 0;
+        box-shadow: none;
+    }
+
+    .playlist-content-stack {
+        border-radius: 0;
+        box-shadow: none;
+    }
+
     .playlist-player-grid {
         grid-template-columns: 1fr;
     }
@@ -1147,8 +1164,14 @@
     }
 
     .story-secondary-controls {
-        grid-template-columns: repeat(4, auto);
+        grid-template-columns: repeat(5, auto);
         justify-content: center;
+        gap: 0.48rem;
+    }
+
+    .story-secondary-controls .story-mini-btn,
+    .story-secondary-controls .story-autoplay-control {
+        padding-inline: 0.62rem;
     }
 
     .story-volume-slider {
@@ -1220,8 +1243,9 @@
     }
 
     .playlist-page.manual-fullscreen-focus .story-secondary-controls {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        justify-content: stretch;
+        grid-template-columns: repeat(5, auto);
+        justify-content: center;
+        gap: 0.48rem;
     }
 
     .playlist-page.manual-fullscreen-focus .story-volume-slider {
@@ -1229,8 +1253,8 @@
     }
 
     .playlist-page.manual-fullscreen-focus .story-autoplay-split-control {
-        width: 100%;
-        grid-column: 1 / -1;
+        width: auto;
+        grid-column: auto;
     }
 
     .playlist-page.manual-fullscreen-focus .story-autoplay-control {
@@ -1248,20 +1272,24 @@
     }
 
     .story-secondary-controls {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 0.5rem;
+        grid-template-columns: repeat(5, auto);
+        gap: 0.34rem;
     }
 
     .story-mini-btn {
         justify-content: center;
+        min-height: 2rem;
+        padding-inline: 0.5rem;
     }
 
     .story-autoplay-split-control {
-        width: 100%;
+        width: auto;
     }
 
     .story-autoplay-control {
         width: auto;
+        min-height: 2rem;
+        padding-inline: 0.48rem 0.5rem;
     }
 
     .story-autoplay-mode-select {

@@ -168,12 +168,60 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 profileImageUrl,
                 profileImageObjectKey,
                 profileImageContentType,
+                lastLoginAtUtc: null,
                 cancellationToken);
             return !string.IsNullOrWhiteSpace(subscriberId);
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
         {
             _logger.LogWarning(exception, "Supabase subscriber upsert failed unexpectedly.");
+            return false;
+        }
+    }
+
+    public async Task<bool> UpdateSubscriberLastLoginAsync(
+        string? email,
+        DateTimeOffset lastLoginAtUtc,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return false;
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            _logger.LogWarning("Supabase subscriber last-login update skipped: URL is not configured.");
+            return false;
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            _logger.LogWarning("Supabase subscriber last-login update skipped: ServiceRoleKey is not configured.");
+            return false;
+        }
+
+        try
+        {
+            var subscriberId = await UpsertSubscriberAsync(
+                baseUri,
+                apiKey,
+                email,
+                string.Empty,
+                string.Empty,
+                displayName: null,
+                mobileNumber: null,
+                profileImageUrl: null,
+                profileImageObjectKey: null,
+                profileImageContentType: null,
+                lastLoginAtUtc,
+                cancellationToken);
+            return !string.IsNullOrWhiteSpace(subscriberId);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(exception, "Supabase subscriber last-login update failed unexpectedly.");
             return false;
         }
     }
@@ -327,6 +375,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 profileImageUrl,
                 profileImageObjectKey,
                 profileImageContentType,
+                lastLoginAtUtc: null,
                 cancellationToken);
             if (string.IsNullOrWhiteSpace(subscriberId))
             {
@@ -994,6 +1043,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             profileImageUrl: null,
             profileImageObjectKey: null,
             profileImageContentType: null,
+            lastLoginAtUtc: null,
             cancellationToken);
 
         if (subscriberId is null)
@@ -1061,6 +1111,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             profileImageUrl: null,
             profileImageObjectKey: null,
             profileImageContentType: null,
+            lastLoginAtUtc: null,
             cancellationToken);
 
         if (subscriberId is null)
@@ -1202,6 +1253,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string? profileImageUrl,
         string? profileImageObjectKey,
         string? profileImageContentType,
+        DateTimeOffset? lastLoginAtUtc,
         CancellationToken cancellationToken)
     {
         var payload = new Dictionary<string, object?>
@@ -1243,6 +1295,11 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         if (!string.IsNullOrWhiteSpace(profileImageContentType))
         {
             payload["profile_image_content_type"] = profileImageContentType.Trim();
+        }
+
+        if (lastLoginAtUtc is not null)
+        {
+            payload["last_login_at"] = lastLoginAtUtc.Value.UtcDateTime;
         }
 
         var uri = new Uri(baseUri, "rest/v1/subscribers?on_conflict=email&select=subscriber_id");

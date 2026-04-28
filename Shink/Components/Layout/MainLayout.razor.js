@@ -95,12 +95,6 @@ function setNightModeEnabled(isEnabled, options = {}) {
         toggle.setAttribute("aria-label", label);
         toggle.setAttribute("title", label);
 
-        const icon = toggle.querySelector("i");
-        if (icon instanceof HTMLElement) {
-            icon.classList.toggle("fa-moon", !isEnabled);
-            icon.classList.toggle("fa-sun", isEnabled);
-        }
-
         const srLabel = toggle.querySelector(NIGHT_MODE_TOGGLE_LABEL_SELECTOR);
         if (srLabel instanceof HTMLElement) {
             srLabel.textContent = label;

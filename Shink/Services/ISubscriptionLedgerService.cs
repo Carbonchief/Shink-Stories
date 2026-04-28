@@ -29,6 +29,10 @@ public interface ISubscriptionLedgerService
         string? profileImageObjectKey = null,
         string? profileImageContentType = null,
         CancellationToken cancellationToken = default);
+    Task<bool> UpdateSubscriberLastLoginAsync(
+        string? email,
+        DateTimeOffset lastLoginAtUtc,
+        CancellationToken cancellationToken = default);
     Task<SubscriberEmailChangeResult> ChangeSubscriberEmailAsync(
         string? currentEmail,
         string? newEmail,
