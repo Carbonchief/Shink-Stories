@@ -1350,6 +1350,48 @@ body.schink-night-mode .site-shell .site-main .perfect-plan-option.is-selected .
     background: #d67f12;
 }
 
+body.schink-night-mode .home-faq {
+    --home-faq-night-ink: #f7f1e7;
+    --home-faq-night-muted: #c6d0ca;
+    --home-faq-night-line: rgba(247, 241, 231, 0.16);
+    --home-faq-night-accent: #ffd39b;
+    color: var(--home-faq-night-ink);
+    border-color: var(--home-faq-night-line);
+    background:
+        radial-gradient(circle at top right, rgba(255, 211, 155, 0.14), transparent 34%),
+        linear-gradient(180deg, rgba(24, 35, 42, 0.98) 0%, rgba(17, 26, 32, 0.98) 100%);
+    box-shadow: 0 24px 58px rgba(0, 0, 0, 0.34);
+}
+
+body.schink-night-mode .site-shell .site-main .home-faq-heading h2 {
+    border-color: rgba(255, 211, 155, 0.22);
+    background: rgba(18, 28, 34, 0.86);
+    color: var(--home-faq-night-ink);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.22);
+}
+
+body.schink-night-mode .site-shell .site-main .home-faq-kicker {
+    color: var(--home-faq-night-accent);
+}
+
+body.schink-night-mode .site-shell .site-main .home-faq-item {
+    border-color: rgba(247, 241, 231, 0.14);
+    background: rgba(18, 28, 34, 0.94);
+}
+
+body.schink-night-mode .site-shell .site-main .home-faq-item summary {
+    color: var(--home-faq-night-ink);
+}
+
+body.schink-night-mode .site-shell .site-main .home-faq-item summary::before {
+    border-color: rgba(255, 211, 155, 0.48);
+    color: var(--home-faq-night-accent);
+}
+
+body.schink-night-mode .site-shell .site-main .home-faq-item p {
+    color: var(--home-faq-night-muted);
+}
+
 body.schink-night-mode .site-shell .site-main .about-card h2,
 body.schink-night-mode .site-shell .site-main .about-block h2,
 body.schink-night-mode .site-shell .site-main .about-title-block h1,
