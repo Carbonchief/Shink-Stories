@@ -40,12 +40,32 @@ public class GratisToLuisterRoutingTests
     }
 
     [TestMethod]
-    public void LuisterStoryAllowsSignedOutUsersToOpenFreeStories()
+    public void HomeGratisCtaSendsSignedOutUsersToSignupThenLuister()
+    {
+        var home = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Home.razor"));
+
+        StringAssert.Contains(home, "private const string GratisSignupHref = \"/teken-op?returnUrl=%2Fluister\";");
+        StringAssert.Contains(home, "<a class=\"cta cta-primary\" href=\"@GratisSignupHref\">Luister 3 Stories Gratis</a>");
+    }
+
+    [TestMethod]
+    public void LuisterStoryRequiresSubscriptionForFreeStories()
     {
         var luisterStory = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "LuisterStory.razor"));
 
-        StringAssert.Contains(luisterStory, "var canAccessCurrentStory = CurrentStory is not null && await HasAccessToStoryAsync(authState.User, CurrentStory);");
-        StringAssert.Contains(luisterStory, "if (authState.User.Identity?.IsAuthenticated != true && !canAccessCurrentStory)");
+        StringAssert.Contains(luisterStory, "if (requirement == StoryAccessRequirement.Free)");
+        StringAssert.Contains(luisterStory, "return await HasAnyActiveStorySubscriptionAsync(email);");
+    }
+
+    [TestMethod]
+    public void SignedAudioEndpointChecksCurrentSubscriptionBeforeServingStoryAudio()
+    {
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+
+        StringAssert.Contains(program, "ISubscriptionLedgerService subscriptionLedgerService");
+        StringAssert.Contains(program, "var requirement = StoryAccessPolicy.ResolveRequirement(\"luister\", story);");
+        StringAssert.Contains(program, "var hasStoryAccess = await HasRequiredStoryAccessAsync(");
+        StringAssert.Contains(program, "return httpContext.User.Identity?.IsAuthenticated == true");
     }
 
     private static string GetRepoPath(params string[] segments)

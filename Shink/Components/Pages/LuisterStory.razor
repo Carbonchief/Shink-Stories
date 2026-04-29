@@ -649,13 +649,14 @@ else
     private async Task<bool> HasAccessToStoryAsync(ClaimsPrincipal user, StoryItem story)
     {
         var requirement = StoryAccessPolicy.ResolveRequirement("luister", story);
-        if (!StoryAccessPolicy.RequiresPaidSubscription(requirement))
-        {
-            return true;
-        }
-
         var email = user.FindFirst(ClaimTypes.Email)?.Value
                     ?? user.Identity?.Name;
+
+        if (requirement == StoryAccessRequirement.Free)
+        {
+            return await HasAnyActiveStorySubscriptionAsync(email);
+        }
+
         if (string.IsNullOrWhiteSpace(email))
         {
             return false;
@@ -673,6 +674,19 @@ else
 
         var tierResults = await Task.WhenAll(tierChecks);
         return tierResults.Any(result => result);
+    }
+
+    private async Task<bool> HasAnyActiveStorySubscriptionAsync(string? email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return false;
+        }
+
+        var gratisTask = SubscriptionLedgerService.HasActiveSubscriptionForTierAsync(email, "gratis");
+        var paidTask = SubscriptionLedgerService.HasActivePaidSubscriptionAsync(email);
+        await Task.WhenAll(gratisTask, paidTask);
+        return gratisTask.Result || paidTask.Result;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)

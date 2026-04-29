@@ -459,6 +459,7 @@ app.MapGet("/media/audio/{slug}", async (
     string? token,
     IAudioAccessService audioAccessService,
     IStoryCatalogService storyCatalogService,
+    ISubscriptionLedgerService subscriptionLedgerService,
     ICharacterCatalogService characterCatalogService,
     IWebHostEnvironment environment,
     IOptions<CloudflareR2Options> cloudflareR2Options,
@@ -478,6 +479,21 @@ app.MapGet("/media/audio/{slug}", async (
     var story = await storyCatalogService.FindAnyBySlugAsync(slug, httpContext.RequestAborted);
     if (story is not null)
     {
+        var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
+                            ?? httpContext.User.Identity?.Name;
+        var requirement = StoryAccessPolicy.ResolveRequirement("luister", story);
+        var hasStoryAccess = await HasRequiredStoryAccessAsync(
+            subscriptionLedgerService,
+            signedInEmail,
+            requirement,
+            httpContext.RequestAborted);
+        if (!hasStoryAccess)
+        {
+            return httpContext.User.Identity?.IsAuthenticated == true
+                ? Results.Forbid()
+                : Results.Unauthorized();
+        }
+
         ApplyAudioResponseSecurityHeaders(httpContext);
 
         if (string.Equals(story.AudioProvider, "r2", StringComparison.OrdinalIgnoreCase))
@@ -2349,8 +2365,10 @@ app.MapGet("/api/mobile/session", async (
 
 app.MapGet("/api/mobile/home", async (
     HttpContext httpContext,
-    IStoryCatalogService storyCatalogService) =>
+    IStoryCatalogService storyCatalogService,
+    ISubscriptionLedgerService subscriptionLedgerService) =>
 {
+    var access = await ResolveMobileStoryAccessAsync(httpContext, subscriptionLedgerService);
     var newestStoriesTask = storyCatalogService.GetNewestTop10Async(httpContext.RequestAborted);
     var bibleStoriesTask = storyCatalogService.GetBibleStoriesAsync(httpContext.RequestAborted);
     var freeStoriesTask = storyCatalogService.GetFreeStoriesAsync(httpContext.RequestAborted);
@@ -2374,20 +2392,22 @@ app.MapGet("/api/mobile/home", async (
                 ToAbsoluteUri(httpContext, item.LinkPath)))
             .ToArray(),
         FreeStories: freeStoriesTask.Result
-            .Select(story => BuildMobileStorySummary(httpContext, story, source: "gratis", isLocked: false, isFavorite: false))
+            .Select(story => BuildMobileStorySummary(httpContext, story, source: "gratis", isLocked: !CanAccessStory(story, access), isFavorite: false))
             .ToArray()));
 }).DisableAntiforgery();
 
 app.MapGet("/api/mobile/gratis", async (
     HttpContext httpContext,
-    IStoryCatalogService storyCatalogService) =>
+    IStoryCatalogService storyCatalogService,
+    ISubscriptionLedgerService subscriptionLedgerService) =>
 {
+    var access = await ResolveMobileStoryAccessAsync(httpContext, subscriptionLedgerService);
     var freeStories = await storyCatalogService.GetFreeStoriesAsync(httpContext.RequestAborted);
     return Results.Ok(new MobileStoryCollectionResponse(
         Title: "Gratis stories",
         Description: "Drie gratis stories vir jou gesin.",
         Stories: freeStories
-            .Select(story => BuildMobileStorySummary(httpContext, story, source: "gratis", isLocked: false, isFavorite: false))
+            .Select(story => BuildMobileStorySummary(httpContext, story, source: "gratis", isLocked: !CanAccessStory(story, access), isFavorite: false))
             .ToArray()));
 }).DisableAntiforgery();
 
@@ -2398,8 +2418,7 @@ app.MapGet("/api/mobile/luister", async (
     IStoryFavoriteService storyFavoriteService) =>
 {
     var signedInEmail = GetSignedInEmail(httpContext.User);
-    var hasPaidSubscription = !string.IsNullOrWhiteSpace(signedInEmail) &&
-        await subscriptionLedgerService.HasActivePaidSubscriptionAsync(signedInEmail, httpContext.RequestAborted);
+    var access = await ResolveMobileStoryAccessAsync(httpContext, subscriptionLedgerService);
     var favoriteSlugs = !string.IsNullOrWhiteSpace(signedInEmail)
         ? await storyFavoriteService.GetFavoriteStorySlugsAsync(signedInEmail, cancellationToken: httpContext.RequestAborted)
         : Array.Empty<string>();
@@ -2418,13 +2437,13 @@ app.MapGet("/api/mobile/luister", async (
                     httpContext,
                     story,
                     source: "luister",
-                    isLocked: !CanAccessStory(story, hasPaidSubscription),
+                    isLocked: !CanAccessStory(story, access),
                     isFavorite: favoriteSet.Contains(story.Slug)))
                 .ToArray()))
         .ToArray();
 
     return Results.Ok(new MobileLuisterResponse(
-        HasPaidSubscription: hasPaidSubscription,
+        HasPaidSubscription: access.HasPaidSubscription,
         Playlists: response));
 }).DisableAntiforgery();
 
@@ -2450,9 +2469,8 @@ app.MapGet("/api/mobile/stories/{slug}", async (
     }
 
     var signedInEmail = GetSignedInEmail(httpContext.User);
-    var hasPaidSubscription = !string.IsNullOrWhiteSpace(signedInEmail) &&
-        await subscriptionLedgerService.HasActivePaidSubscriptionAsync(signedInEmail, httpContext.RequestAborted);
-    var isLocked = !CanAccessStory(story, hasPaidSubscription);
+    var access = await ResolveMobileStoryAccessAsync(httpContext, subscriptionLedgerService);
+    var isLocked = !CanAccessStory(story, access);
     var favoriteSlugs = !string.IsNullOrWhiteSpace(signedInEmail)
         ? await storyFavoriteService.GetFavoriteStorySlugsAsync(signedInEmail, cancellationToken: httpContext.RequestAborted)
         : Array.Empty<string>();
@@ -2471,12 +2489,12 @@ app.MapGet("/api/mobile/stories/{slug}", async (
         AudioUrl: isLocked ? null : ToAbsoluteUri(httpContext, audioAccessService.CreateSignedAudioUrl(story.Slug)),
         ShareUrl: ToAbsoluteUri(httpContext, $"/luister/{Uri.EscapeDataString(story.Slug)}"),
         RequiresSubscription: isLocked,
-        PreviousStory: previousStory is null ? null : BuildMobileStorySummary(httpContext, previousStory, normalizedSource, !CanAccessStory(previousStory, hasPaidSubscription), favoriteSlugs.Contains(previousStory.Slug, StringComparer.OrdinalIgnoreCase)),
-        NextStory: nextStory is null ? null : BuildMobileStorySummary(httpContext, nextStory, normalizedSource, !CanAccessStory(nextStory, hasPaidSubscription), favoriteSlugs.Contains(nextStory.Slug, StringComparer.OrdinalIgnoreCase)),
+        PreviousStory: previousStory is null ? null : BuildMobileStorySummary(httpContext, previousStory, normalizedSource, !CanAccessStory(previousStory, access), favoriteSlugs.Contains(previousStory.Slug, StringComparer.OrdinalIgnoreCase)),
+        NextStory: nextStory is null ? null : BuildMobileStorySummary(httpContext, nextStory, normalizedSource, !CanAccessStory(nextStory, access), favoriteSlugs.Contains(nextStory.Slug, StringComparer.OrdinalIgnoreCase)),
         RelatedStories: orderedStories
             .Where(item => !string.Equals(item.Slug, story.Slug, StringComparison.OrdinalIgnoreCase))
             .Take(12)
-            .Select(item => BuildMobileStorySummary(httpContext, item, normalizedSource, !CanAccessStory(item, hasPaidSubscription), favoriteSlugs.Contains(item.Slug, StringComparer.OrdinalIgnoreCase)))
+            .Select(item => BuildMobileStorySummary(httpContext, item, normalizedSource, !CanAccessStory(item, access), favoriteSlugs.Contains(item.Slug, StringComparer.OrdinalIgnoreCase)))
             .ToArray(),
         LoginUrl: ToAbsoluteUri(httpContext, $"/teken-in?returnUrl={Uri.EscapeDataString($"/luister/{story.Slug}")}"),
         PlansUrl: ToAbsoluteUri(httpContext, $"/opsies?returnUrl={Uri.EscapeDataString($"/luister/{story.Slug}")}")));
@@ -3269,6 +3287,11 @@ static async Task<bool> HasRequiredStoryAccessAsync(
     StoryAccessRequirement requirement,
     CancellationToken cancellationToken = default)
 {
+    if (requirement == StoryAccessRequirement.Free)
+    {
+        return await HasAnyActiveStorySubscriptionAsync(subscriptionLedgerService, email, cancellationToken);
+    }
+
     if (!StoryAccessPolicy.RequiresPaidSubscription(requirement))
     {
         return true;
@@ -3291,6 +3314,22 @@ static async Task<bool> HasRequiredStoryAccessAsync(
 
     var results = await Task.WhenAll(checks);
     return results.Any(result => result);
+}
+
+static async Task<bool> HasAnyActiveStorySubscriptionAsync(
+    ISubscriptionLedgerService subscriptionLedgerService,
+    string? email,
+    CancellationToken cancellationToken = default)
+{
+    if (string.IsNullOrWhiteSpace(email))
+    {
+        return false;
+    }
+
+    var gratisTask = subscriptionLedgerService.HasActiveSubscriptionForTierAsync(email, "gratis", cancellationToken);
+    var paidTask = subscriptionLedgerService.HasActivePaidSubscriptionAsync(email, cancellationToken);
+    await Task.WhenAll(gratisTask, paidTask);
+    return gratisTask.Result || paidTask.Result;
 }
 
 static string? GetSafeStoryReturnUrl(string? returnUrl)
@@ -5119,8 +5158,34 @@ static string? GetSignedInEmail(ClaimsPrincipal user) =>
         ? user.FindFirst(ClaimTypes.Email)?.Value ?? user.Identity?.Name
         : null;
 
-static bool CanAccessStory(StoryItem story, bool hasPaidSubscription) =>
-    string.Equals(story.AccessLevel, "free", StringComparison.OrdinalIgnoreCase) || hasPaidSubscription;
+static async Task<MobileStoryAccess> ResolveMobileStoryAccessAsync(
+    HttpContext httpContext,
+    ISubscriptionLedgerService subscriptionLedgerService)
+{
+    var signedInEmail = GetSignedInEmail(httpContext.User);
+    if (string.IsNullOrWhiteSpace(signedInEmail))
+    {
+        return new MobileStoryAccess(false, false);
+    }
+
+    var gratisTask = subscriptionLedgerService.HasActiveSubscriptionForTierAsync(
+        signedInEmail,
+        "gratis",
+        httpContext.RequestAborted);
+    var paidTask = subscriptionLedgerService.HasActivePaidSubscriptionAsync(
+        signedInEmail,
+        httpContext.RequestAborted);
+    await Task.WhenAll(gratisTask, paidTask);
+
+    return new MobileStoryAccess(
+        HasGratisOrPaidSubscription: gratisTask.Result || paidTask.Result,
+        HasPaidSubscription: paidTask.Result);
+}
+
+static bool CanAccessStory(StoryItem story, MobileStoryAccess access) =>
+    string.Equals(story.AccessLevel, "free", StringComparison.OrdinalIgnoreCase)
+        ? access.HasGratisOrPaidSubscription
+        : access.HasPaidSubscription;
 
 static string ToAbsoluteUri(HttpContext httpContext, string? pathOrUrl)
 {
@@ -5205,6 +5270,7 @@ sealed record MobileSessionResponse(
     string SignupUrl,
     string PlansUrl);
 sealed record MobileStoryPreview(string Title, string ImageUrl, string DetailUrl);
+sealed record MobileStoryAccess(bool HasGratisOrPaidSubscription, bool HasPaidSubscription);
 sealed record MobileStorySummaryResponse(
     string Slug,
     string Title,

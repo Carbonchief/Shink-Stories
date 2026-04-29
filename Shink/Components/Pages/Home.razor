@@ -77,7 +77,7 @@
             else
             {
                 <div class="hero-cta-row">
-                    <button type="button" class="cta cta-primary" @onclick="@(() => NavigationManager.NavigateTo("/luister"))">Luister 3 Stories Gratis</button>
+                    <a class="cta cta-primary" href="@GratisSignupHref">Luister 3 Stories Gratis</a>
                     <a class="cta cta-secondary" href="#perfekte-plan">KIES 'N PLAN</a>
                 </div>
             }
@@ -510,9 +510,10 @@ else
     private bool IsLoadingPlaylists { get; set; } = true;
     private bool IsSignedIn { get; set; }
     private string? SignedInEmail { get; set; }
-    private LuisterAccessProfile AccessProfile { get; set; } = new(false, false);
+    private LuisterAccessProfile AccessProfile { get; set; } = new(false, false, false);
     private bool ShowStoryAccessPopup { get; set; }
     private string PendingLockedStoryPath { get; set; } = "/";
+    private const string GratisSignupHref = "/teken-op?returnUrl=%2Fluister";
 
     private IReadOnlyList<StoryPlaylist> HomePlaylists { get; set; } = Array.Empty<StoryPlaylist>();
     private ContactFormModel ContactForm { get; set; } = new();
@@ -713,7 +714,7 @@ else
         var requirement = StoryAccessPolicy.ResolveRequirement(GetHomeStorySource(story), story);
         return requirement switch
         {
-            StoryAccessRequirement.Free => true,
+            StoryAccessRequirement.Free => IsSignedIn && AccessProfile.HasGratisOrPaid,
             StoryAccessRequirement.StoryCornerOrAllStories => IsSignedIn && AccessProfile.HasStoryCornerOrAll,
             StoryAccessRequirement.AllStoriesOnly => IsSignedIn && AccessProfile.HasAllStories,
             _ => false
@@ -738,17 +739,19 @@ else
                     ?? user.Identity?.Name;
         if (string.IsNullOrWhiteSpace(email))
         {
-            return new LuisterAccessProfile(false, false);
+            return new LuisterAccessProfile(false, false, false);
         }
 
         var activeTierCodes = await SubscriptionLedgerService.GetActiveTierCodesAsync(email);
         var activeTierCodeSet = activeTierCodes.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var hasGratis = activeTierCodeSet.Contains("gratis");
         var hasStoryCorner = activeTierCodeSet.Contains(StoryAccessPolicy.StoryCornerMonthlyTierCode);
         var hasAllStories =
             activeTierCodeSet.Contains(StoryAccessPolicy.AllStoriesMonthlyTierCode) ||
             activeTierCodeSet.Contains(StoryAccessPolicy.AllStoriesYearlyTierCode);
 
         return new LuisterAccessProfile(
+            HasGratisOrPaid: hasGratis || hasStoryCorner || hasAllStories,
             HasStoryCornerOrAll: hasStoryCorner || hasAllStories,
             HasAllStories: hasAllStories);
     }
@@ -986,7 +989,7 @@ else
     private static bool IsYearlyAllStoriesPlan(PaymentPlan plan) =>
         string.Equals(plan.TierCode, "all_stories_yearly", StringComparison.OrdinalIgnoreCase);
 
-    private sealed record LuisterAccessProfile(bool HasStoryCornerOrAll, bool HasAllStories);
+    private sealed record LuisterAccessProfile(bool HasGratisOrPaid, bool HasStoryCornerOrAll, bool HasAllStories);
 
     private sealed record ContactApiPayload(
         string Name,

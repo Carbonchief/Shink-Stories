@@ -355,7 +355,7 @@ else
     private string? SignedInEmail { get; set; }
     private string SearchQuery { get; set; } = string.Empty;
     private bool IsSearching { get; set; }
-    private LuisterAccessProfile AccessProfile { get; set; } = new(false, false);
+    private LuisterAccessProfile AccessProfile { get; set; } = new(false, false, false);
     private string? PageLoadErrorMessage { get; set; }
     private bool ShowStoryAccessPopup { get; set; }
     private bool ShowCharacterUnlockPopup { get; set; }
@@ -410,7 +410,7 @@ else
             }
             catch
             {
-                AccessProfile = new LuisterAccessProfile(false, false);
+                AccessProfile = new LuisterAccessProfile(false, false, false);
             }
 
             try
@@ -430,7 +430,7 @@ else
             PageLoadErrorMessage = "Ons kon nie nou jou luisterblad oopmaak nie. Herlaai asseblief die bladsy of probeer weer vanaf Gratis stories.";
             LuisterPlaylists = Array.Empty<StoryPlaylist>();
             FilteredLuisterPlaylists = Array.Empty<StoryPlaylist>();
-            AccessProfile = new LuisterAccessProfile(false, false);
+            AccessProfile = new LuisterAccessProfile(false, false, false);
         }
         finally
         {
@@ -675,7 +675,7 @@ else
         var requirement = StoryAccessPolicy.ResolveRequirement("luister", story);
         return requirement switch
         {
-            StoryAccessRequirement.Free => true,
+            StoryAccessRequirement.Free => IsSignedIn && AccessProfile.HasGratisOrPaid,
             StoryAccessRequirement.StoryCornerOrAllStories => AccessProfile.HasStoryCornerOrAll,
             StoryAccessRequirement.AllStoriesOnly => AccessProfile.HasAllStories,
             _ => false
@@ -697,17 +697,19 @@ else
                     ?? user.Identity?.Name;
         if (string.IsNullOrWhiteSpace(email))
         {
-            return new LuisterAccessProfile(false, false);
+            return new LuisterAccessProfile(false, false, false);
         }
 
+        var gratisTask = SubscriptionLedgerService.HasActiveSubscriptionForTierAsync(email, "gratis");
         var storyCornerTask = SubscriptionLedgerService.HasActiveSubscriptionForTierAsync(email, StoryAccessPolicy.StoryCornerMonthlyTierCode);
         var allStoriesMonthlyTask = SubscriptionLedgerService.HasActiveSubscriptionForTierAsync(email, StoryAccessPolicy.AllStoriesMonthlyTierCode);
         var allStoriesYearlyTask = SubscriptionLedgerService.HasActiveSubscriptionForTierAsync(email, StoryAccessPolicy.AllStoriesYearlyTierCode);
 
-        await Task.WhenAll(storyCornerTask, allStoriesMonthlyTask, allStoriesYearlyTask);
+        await Task.WhenAll(gratisTask, storyCornerTask, allStoriesMonthlyTask, allStoriesYearlyTask);
 
         var hasAllStories = allStoriesMonthlyTask.Result || allStoriesYearlyTask.Result;
         return new LuisterAccessProfile(
+            HasGratisOrPaid: gratisTask.Result || storyCornerTask.Result || hasAllStories,
             HasStoryCornerOrAll: storyCornerTask.Result || hasAllStories,
             HasAllStories: hasAllStories);
     }
@@ -1010,7 +1012,7 @@ else
         }
     }
 
-    private sealed record LuisterAccessProfile(bool HasStoryCornerOrAll, bool HasAllStories);
+    private sealed record LuisterAccessProfile(bool HasGratisOrPaid, bool HasStoryCornerOrAll, bool HasAllStories);
 
     private sealed record PendingCharacterUnlockPopupPayload(
         string? Type,
