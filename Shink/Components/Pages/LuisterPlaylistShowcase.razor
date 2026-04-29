@@ -747,7 +747,7 @@ else
         !string.IsNullOrWhiteSpace(NormalizeOptionalImagePath(playlist.BackdropImagePath));
 
     private static string? NormalizeOptionalImagePath(string? path) =>
-        string.IsNullOrWhiteSpace(path) ? null : path.Trim();
+        string.IsNullOrWhiteSpace(path) ? null : StoryItem.RewriteImagePathForBrowser(path);
 
     private static string? ResolveCharacterImagePath(StoryCharacterItem? character)
     {

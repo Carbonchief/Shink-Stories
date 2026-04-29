@@ -682,7 +682,7 @@
             if (string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
             {
-                return absoluteUri.ToString();
+                return StoryItem.RewriteImagePathForBrowser(absoluteUri.ToString());
             }
 
             return null;
@@ -699,9 +699,11 @@
         }
 
         candidate = candidate.Replace('\\', '/');
-        return candidate.StartsWith("/", StringComparison.Ordinal)
+        var normalizedPath = candidate.StartsWith("/", StringComparison.Ordinal)
             ? candidate
             : $"/{candidate.TrimStart('/')}";
+
+        return StoryItem.RewriteImagePathForBrowser(normalizedPath);
     }
 
     private string LocalizeServiceMessage(string message)

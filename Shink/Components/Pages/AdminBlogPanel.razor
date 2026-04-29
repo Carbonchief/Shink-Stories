@@ -1043,8 +1043,13 @@
         {
             return string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
                    string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
-                ? absoluteUri.ToString()
+                ? StoryItem.RewriteImagePathForBrowser(absoluteUri.ToString())
                 : null;
+        }
+
+        if (candidate.StartsWith("//", StringComparison.Ordinal))
+        {
+            return null;
         }
 
         if (candidate.StartsWith("~/", StringComparison.Ordinal))
@@ -1052,9 +1057,11 @@
             candidate = $"/{candidate[2..]}";
         }
 
-        return candidate.StartsWith("/", StringComparison.Ordinal)
+        var normalizedPath = candidate.StartsWith("/", StringComparison.Ordinal)
             ? candidate
             : $"/{candidate.TrimStart('/')}";
+
+        return StoryItem.RewriteImagePathForBrowser(normalizedPath);
     }
 
     private sealed class EditableBlogPost

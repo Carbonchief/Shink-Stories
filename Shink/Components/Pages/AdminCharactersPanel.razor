@@ -1513,10 +1513,15 @@
 
     private static string ResolveCharacterListPreviewPath(AdminCharacterRecord character) =>
         !string.IsNullOrWhiteSpace(character.ImagePath)
-            ? character.ImagePath
+            ? ResolveBrowserImagePath(character.ImagePath)
             : !string.IsNullOrWhiteSpace(character.MysteryImagePath)
-                ? character.MysteryImagePath
+                ? ResolveBrowserImagePath(character.MysteryImagePath)
                 : "/branding/schink-logo-green.png";
+
+    private static string ResolveBrowserImagePath(string? imagePath) =>
+        string.IsNullOrWhiteSpace(imagePath)
+            ? "/branding/schink-logo-green.png"
+            : StoryItem.RewriteImagePathForBrowser(imagePath);
 
     private static string? BuildFriendsValue(CharacterEditorModel editor, IReadOnlyList<AdminCharacterRecord> characters)
     {
@@ -1706,8 +1711,8 @@
                         FileName = Path.GetFileName(item.AudioObjectKey)
                     })
                     .ToList(),
-                MainImagePreviewPath = string.IsNullOrWhiteSpace(record.ImagePath) ? "/branding/schink-logo-green.png" : record.ImagePath,
-                MysteryImagePreviewPath = string.IsNullOrWhiteSpace(record.MysteryImagePath) ? "/branding/schink-logo-green.png" : record.MysteryImagePath
+                MainImagePreviewPath = ResolveBrowserImagePath(record.ImagePath),
+                MysteryImagePreviewPath = ResolveBrowserImagePath(record.MysteryImagePath)
             };
         }
     }

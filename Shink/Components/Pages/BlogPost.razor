@@ -74,10 +74,10 @@ else
             </div>
         </header>
 
-        @if (!string.IsNullOrWhiteSpace(CurrentPost.FeaturedImageUrl))
+        @if (!string.IsNullOrWhiteSpace(FeaturedImageUrl))
         {
             <figure class="blog-post-featured">
-                <img src="@CurrentPost.FeaturedImageUrl"
+                <img src="@FeaturedImageUrl"
                      alt="Voorblad vir @CurrentPost.Title"
                      loading="eager"
                      decoding="async" />
@@ -101,11 +101,13 @@ else
                 <div class="blog-post-related-grid">
                     @foreach (var relatedPost in RelatedPosts)
                     {
+                        var relatedImageUrl = ResolveBrowserImageUrl(relatedPost.FeaturedImageUrl);
+
                         <article class="blog-post-related-card">
-                            @if (!string.IsNullOrWhiteSpace(relatedPost.FeaturedImageUrl))
+                            @if (!string.IsNullOrWhiteSpace(relatedImageUrl))
                             {
                                 <a class="blog-post-related-image-link" href="@BuildPostUrl(relatedPost)">
-                                    <img src="@relatedPost.FeaturedImageUrl"
+                                    <img src="@relatedImageUrl"
                                          alt="Voorblad vir @relatedPost.Title"
                                          loading="lazy"
                                          decoding="async" />
@@ -150,9 +152,11 @@ else
         ?? "Lees die nuutste blog plasings van Schink Stories.";
 
     private string ShareImageUrl =>
-        NavigationManager.ToAbsoluteUri(CurrentPost?.FeaturedImageUrl ?? "/branding/schink-logo-green.png").ToString();
+        NavigationManager.ToAbsoluteUri(FeaturedImageUrl ?? "/branding/schink-logo-green.png").ToString();
 
     private string ShareImageMimeType => GetImageMimeType(CurrentPost?.FeaturedImageUrl);
+
+    private string? FeaturedImageUrl => ResolveBrowserImageUrl(CurrentPost?.FeaturedImageUrl);
 
     private string ShareImageAlt =>
         CurrentPost is null ? "Schink Stories blog" : $"Voorblad vir {CurrentPost.Title}";
@@ -281,6 +285,9 @@ else
             _ => "image/png"
         };
     }
+
+    private static string? ResolveBrowserImageUrl(string? imageUrl) =>
+        string.IsNullOrWhiteSpace(imageUrl) ? null : StoryItem.RewriteImagePathForBrowser(imageUrl);
 
     private static string BuildBlogUrl(string? categorySlug, string? tagSlug)
     {

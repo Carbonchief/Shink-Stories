@@ -45,6 +45,29 @@ public sealed record StoryItem(
         return ToAssetPath(fileName);
     }
 
+    public static string RewriteImagePathForBrowser(string imagePath)
+    {
+        if (string.IsNullOrWhiteSpace(imagePath))
+        {
+            return imagePath;
+        }
+
+        var normalized = imagePath.Trim();
+        if (normalized.StartsWith("/", StringComparison.Ordinal))
+        {
+            return EncodeLocalPath(normalized);
+        }
+
+        if (Uri.TryCreate(normalized, UriKind.Absolute, out var absoluteUri) &&
+            (string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)))
+        {
+            return RewriteAbsoluteAssetUri(absoluteUri);
+        }
+
+        return normalized;
+    }
+
     private static string RewriteAbsoluteAssetUri(Uri absoluteUri)
     {
         if (string.Equals(absoluteUri.Host, "media.prioritybit.co.za", StringComparison.OrdinalIgnoreCase))

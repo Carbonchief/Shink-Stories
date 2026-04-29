@@ -543,7 +543,7 @@ else
     }
 
     private static string? NormalizeOptionalImagePath(string? value) =>
-        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+        string.IsNullOrWhiteSpace(value) ? null : StoryItem.RewriteImagePathForBrowser(value);
 
     private static bool IsWeeklyPopularPlaylist(StoryPlaylist playlist) =>
         string.Equals(playlist.SystemKey, "popular-stories-this-week", StringComparison.OrdinalIgnoreCase) ||

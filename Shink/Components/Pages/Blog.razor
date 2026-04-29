@@ -147,12 +147,14 @@
         <div class="blog-grid">
             @foreach (var post in VisiblePosts)
             {
+                var featuredImageUrl = ResolveBrowserImageUrl(post.FeaturedImageUrl);
+
                 <article class="blog-card">
-                    @if (!string.IsNullOrWhiteSpace(post.FeaturedImageUrl))
+                    @if (!string.IsNullOrWhiteSpace(featuredImageUrl))
                     {
                         <a class="blog-card-image-link" href="@BuildPostUrl(post)">
                             <img class="blog-card-image"
-                                 src="@post.FeaturedImageUrl"
+                                 src="@featuredImageUrl"
                                  alt="Voorblad vir @post.Title"
                                  loading="lazy"
                                  decoding="async" />
@@ -269,7 +271,7 @@
             : "Lees Afrikaanse stories, wenke en nuus van Schink Stories se blog.";
 
     private string ShareImageUrl =>
-        NavigationManager.ToAbsoluteUri(VisiblePosts.FirstOrDefault(post => !string.IsNullOrWhiteSpace(post.FeaturedImageUrl))?.FeaturedImageUrl
+        NavigationManager.ToAbsoluteUri(ResolveBrowserImageUrl(VisiblePosts.FirstOrDefault(post => !string.IsNullOrWhiteSpace(post.FeaturedImageUrl))?.FeaturedImageUrl)
                                         ?? "/branding/schink-logo-green.png").ToString();
 
     private string ShareImageMimeType => GetImageMimeType(VisiblePosts.FirstOrDefault(post => !string.IsNullOrWhiteSpace(post.FeaturedImageUrl))?.FeaturedImageUrl);
@@ -442,6 +444,9 @@
             _ => "image/png"
         };
     }
+
+    private static string? ResolveBrowserImageUrl(string? imageUrl) =>
+        string.IsNullOrWhiteSpace(imageUrl) ? null : StoryItem.RewriteImagePathForBrowser(imageUrl);
 
     private static string BuildBlogUrl(string? query, string? category, string? tag, int? page)
     {

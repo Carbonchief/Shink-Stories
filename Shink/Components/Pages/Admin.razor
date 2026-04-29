@@ -2003,10 +2003,13 @@
             var isSystemPlaylist = PlaylistEditor.IsSystemPlaylist;
             var playlistLogoPreviewUrl = !string.IsNullOrWhiteSpace(PlaylistEditor.LogoPreviewDataUrl)
                 ? PlaylistEditor.LogoPreviewDataUrl
-                : PlaylistEditor.LogoImagePath;
+                : ResolvePreviewImageUrl(PlaylistEditor.LogoImagePath);
             var playlistBackdropPreviewUrl = !string.IsNullOrWhiteSpace(PlaylistEditor.BackdropPreviewDataUrl)
                 ? PlaylistEditor.BackdropPreviewDataUrl
-                : PlaylistEditor.BackdropImagePath;
+                : ResolvePreviewImageUrl(PlaylistEditor.BackdropImagePath);
+            var playlistShowcasePreviewUrl = !string.IsNullOrWhiteSpace(PlaylistEditor.ShowcasePreviewDataUrl)
+                ? PlaylistEditor.ShowcasePreviewDataUrl
+                : ResolvePreviewImageUrl(PlaylistEditor.ShowcaseImagePath);
 
             <MudDialog Visible="IsPlaylistDialogOpen"
                        VisibleChanged="OnPlaylistDialogVisibleChanged"
@@ -2164,11 +2167,10 @@
                                         </article>
                                         <article class="admin-image-preview-card admin-playlist-preview-card">
                                             <h4>@T("Speellyste voorskou", "Speellyste preview")</h4>
-                                            @if (!string.IsNullOrWhiteSpace(PlaylistEditor.ShowcasePreviewDataUrl) ||
-                                                 !string.IsNullOrWhiteSpace(PlaylistEditor.ShowcaseImagePath))
+                                            @if (!string.IsNullOrWhiteSpace(playlistShowcasePreviewUrl))
                                             {
                                                 <div class="admin-image-preview-media">
-                                                    <img src="@(!string.IsNullOrWhiteSpace(PlaylistEditor.ShowcasePreviewDataUrl) ? PlaylistEditor.ShowcasePreviewDataUrl : PlaylistEditor.ShowcaseImagePath)"
+                                                    <img src="@playlistShowcasePreviewUrl"
                                                          alt='@T("Playlist Speellyste voorskou", "Playlist Speellyste preview")'
                                                          loading="lazy"
                                                          decoding="async" />
@@ -5981,7 +5983,7 @@
             if (string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
             {
-                return absoluteUri.ToString();
+                return StoryItem.RewriteImagePathForBrowser(absoluteUri.ToString());
             }
 
             return null;
@@ -5997,9 +5999,11 @@
             candidate = $"/{candidate[2..]}";
         }
 
-        return candidate.StartsWith("/", StringComparison.Ordinal)
+        var normalizedPath = candidate.StartsWith("/", StringComparison.Ordinal)
             ? candidate
             : $"/{candidate.TrimStart('/')}";
+
+        return StoryItem.RewriteImagePathForBrowser(normalizedPath);
     }
 
     private static DateTimeOffset? ParseOptionalLocalDateTime(string? value)
