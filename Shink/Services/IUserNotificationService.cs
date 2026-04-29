@@ -39,6 +39,10 @@ public interface IUserNotificationService
     Task<int> CreatePublishedStoryNotificationsAsync(
         PublishedStoryNotificationRequest request,
         CancellationToken cancellationToken = default);
+
+    Task<int> CreatePublishedResourceDocumentNotificationsAsync(
+        PublishedResourceDocumentNotificationRequest request,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record NotificationSyncResult(int CreatedCount);
@@ -76,3 +80,10 @@ public sealed record PublishedBlogNotificationRequest(
     string Title,
     string? Summary,
     string? FeaturedImageUrl);
+
+public sealed record PublishedResourceDocumentNotificationRequest(
+    Guid ResourceDocumentId,
+    string ResourceTypeSlug,
+    string ResourceTypeName,
+    string Title,
+    string? PreviewImageUrl);

@@ -102,6 +102,9 @@ builder.Services.AddMemoryCache();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddSingleton<UiErrorDiagnosticsStore>();
 builder.Services.AddSingleton<ILoggerProvider, UiErrorDiagnosticsLoggerProvider>();
+builder.Services.AddSingleton<AppErrorLogQueue>();
+builder.Services.AddSingleton<ILoggerProvider, SupabaseErrorLoggingProvider>();
+builder.Services.AddHostedService<SupabaseErrorLogWorker>();
 builder.Services.Configure<ResendOptions>(builder.Configuration.GetSection(ResendOptions.SectionName));
 builder.Services.Configure<SupabaseOptions>(builder.Configuration.GetSection(SupabaseOptions.SectionName));
 builder.Services.Configure<CloudflareR2Options>(builder.Configuration.GetSection(CloudflareR2Options.SectionName));
@@ -114,6 +117,7 @@ builder.Services.AddHttpClient("audio-origin", client =>
     // Audio responses can be long-lived streams. Keep timeout above default 100 seconds.
     client.Timeout = TimeSpan.FromMinutes(30);
 });
+builder.Services.AddHttpClient("supabase-error-logs");
 builder.Services.AddHttpClient<IContactEmailService, ResendContactEmailService>();
 builder.Services.AddHttpClient<ISupabaseAuthService, SupabaseAuthService>();
 builder.Services.AddHttpClient<IAuthSessionService, SupabaseAuthSessionService>();

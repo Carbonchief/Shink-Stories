@@ -567,6 +567,78 @@ public sealed class SupabaseUserNotificationService(
         }
     }
 
+    public async Task<int> CreatePublishedResourceDocumentNotificationsAsync(
+        PublishedResourceDocumentNotificationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request.ResourceDocumentId == Guid.Empty ||
+            string.IsNullOrWhiteSpace(request.ResourceTypeSlug) ||
+            string.IsNullOrWhiteSpace(request.Title))
+        {
+            return 0;
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            _logger.LogWarning("Supabase resource notification sync skipped: URL is not configured.");
+            return 0;
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            _logger.LogWarning("Supabase resource notification sync skipped: ServiceRoleKey is not configured.");
+            return 0;
+        }
+
+        try
+        {
+            var subscriberIds = await GetActiveSubscriberIdsAsync(baseUri, apiKey, cancellationToken);
+            if (subscriberIds.Count == 0)
+            {
+                return 0;
+            }
+
+            var normalizedResourceTypeSlug = request.ResourceTypeSlug.Trim().ToLowerInvariant();
+            var normalizedResourceTypeName = string.IsNullOrWhiteSpace(request.ResourceTypeName)
+                ? "Hulpbronne"
+                : request.ResourceTypeName.Trim();
+            var normalizedTitle = request.Title.Trim();
+            var href = BuildPublishedResourceDocumentNotificationHref(normalizedResourceTypeSlug);
+            var sourceKey = BuildPublishedResourceDocumentSourceKey(request.ResourceDocumentId);
+            var imagePath = ResolveResourceDocumentNotificationImagePath(request);
+
+            var notificationsToInsert = subscriberIds
+                .Select(subscriberId => new
+                {
+                    subscriber_id = subscriberId,
+                    notification_type = "resource_document_published",
+                    source_key = sourceKey,
+                    title = "Nuwe hulpbron beskikbaar",
+                    body = $"{normalizedTitle} is nou beskikbaar.",
+                    image_path = imagePath,
+                    image_alt = $"Voorskou van {normalizedTitle}",
+                    href,
+                    metadata = new
+                    {
+                        resource_document_id = request.ResourceDocumentId,
+                        resource_type_slug = normalizedResourceTypeSlug,
+                        resource_type_name = normalizedResourceTypeName,
+                        resource_document_title = normalizedTitle
+                    }
+                })
+                .Cast<object>()
+                .ToArray();
+
+            return await InsertNotificationsAsync(baseUri, apiKey, notificationsToInsert, cancellationToken);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(exception, "Supabase resource notification sync failed unexpectedly.");
+            return 0;
+        }
+    }
+
     public async Task<NotificationSyncResult> SyncCharacterUnlockNotificationsAsync(
         string? email,
         string? storySlug = null,
@@ -1049,6 +1121,9 @@ public sealed class SupabaseUserNotificationService(
     private static string BuildPublishedBlogSourceKey(Guid postId) =>
         $"blog-published-{postId:N}";
 
+    private static string BuildPublishedResourceDocumentSourceKey(Guid resourceDocumentId) =>
+        $"resource-document-published-{resourceDocumentId:N}";
+
     private static string BuildPublishedStorySourceKey(Guid storyId) =>
         $"story-published-{storyId:N}";
 
@@ -1092,6 +1167,16 @@ public sealed class SupabaseUserNotificationService(
         return "/branding/schink-logo-green.png";
     }
 
+    private static string ResolveResourceDocumentNotificationImagePath(PublishedResourceDocumentNotificationRequest request)
+    {
+        if (!string.IsNullOrWhiteSpace(request.PreviewImageUrl))
+        {
+            return request.PreviewImageUrl.Trim();
+        }
+
+        return "/branding/schink-logo-green.png";
+    }
+
     private static string BuildPublishedStoryNotificationHref(string slug, string accessLevel) =>
         string.Equals(accessLevel, "free", StringComparison.OrdinalIgnoreCase)
             ? $"/luister/{Uri.EscapeDataString(slug)}"
@@ -1099,6 +1184,9 @@ public sealed class SupabaseUserNotificationService(
 
     private static string BuildPublishedBlogNotificationHref(string slug) =>
         $"/blog/{Uri.EscapeDataString(slug)}";
+
+    private static string BuildPublishedResourceDocumentNotificationHref(string resourceTypeSlug) =>
+        $"/resources?tipe={Uri.EscapeDataString(resourceTypeSlug)}";
 
     private static string ResolveNotificationImagePath(StoryCharacterItem character)
     {

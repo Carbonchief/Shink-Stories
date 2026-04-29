@@ -227,7 +227,79 @@ public class SupabaseAdminManagementSelfServiceTests
         StringAssert.Contains(handler.AuditPayload!, "subscription.cancelled_by_admin");
     }
 
-    private static SupabaseAdminManagementService CreateService(RecordingHandler handler)
+    [TestMethod]
+    public async Task CreateResourceDocumentAsync_CreatesPublishedResourceNotification()
+    {
+        var resourceDocumentId = Guid.Parse("66666666-6666-6666-6666-666666666666");
+        var resourceTypeId = Guid.Parse("77777777-7777-7777-7777-777777777777");
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/admin_users"))
+            {
+                return JsonResponse("""[{ "email": "admin@example.com" }]""");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/resource_types"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "resource_type_id": "{{resourceTypeId}}",
+                        "slug": "aktiwiteite",
+                        "name": "Aktiwiteite",
+                        "description": null,
+                        "sort_order": 10,
+                        "is_enabled": true,
+                        "updated_at": "2026-04-29T12:00:00Z"
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/resource_documents")
+            {
+                return JsonResponse($$"""[{ "resource_document_id": "{{resourceDocumentId}}" }]""");
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+        var notificationService = new RecordingUserNotificationService();
+        var service = CreateService(handler, notificationService);
+
+        var result = await service.CreateResourceDocumentAsync(
+            "admin@example.com",
+            new AdminResourceDocumentCreateRequest(
+                ResourceTypeId: resourceTypeId,
+                Slug: "nuwe-aktiwiteit",
+                Title: "Nuwe Aktiwiteit",
+                Description: null,
+                FileName: "nuwe-aktiwiteit.pdf",
+                ContentType: "application/pdf",
+                SizeBytes: 12345,
+                StorageProvider: "r2",
+                StorageBucket: "resources",
+                StorageObjectKey: "aktiwiteite/nuwe-aktiwiteit.pdf",
+                PreviewImageContentType: "image/png",
+                PreviewImageBucket: "resources",
+                PreviewImageObjectKey: "aktiwiteite/nuwe-aktiwiteit.png",
+                RequiredTierCode: null,
+                SortOrder: 10,
+                IsEnabled: true));
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.IsNotNull(notificationService.PublishedResourceDocumentRequest);
+        Assert.AreEqual(resourceDocumentId, notificationService.PublishedResourceDocumentRequest.ResourceDocumentId);
+        Assert.AreEqual("aktiwiteite", notificationService.PublishedResourceDocumentRequest.ResourceTypeSlug);
+        Assert.AreEqual("Aktiwiteite", notificationService.PublishedResourceDocumentRequest.ResourceTypeName);
+        Assert.AreEqual("Nuwe Aktiwiteit", notificationService.PublishedResourceDocumentRequest.Title);
+        Assert.AreEqual($"/media/resources/{resourceDocumentId:D}/preview", notificationService.PublishedResourceDocumentRequest.PreviewImageUrl);
+    }
+
+    private static SupabaseAdminManagementService CreateService(
+        RecordingHandler handler,
+        IUserNotificationService? userNotificationService = null)
     {
         var httpClient = new HttpClient(handler)
         {
@@ -263,7 +335,7 @@ public class SupabaseAdminManagementSelfServiceTests
                 ServiceRoleKey = "service-role-key"
             }),
             new MemoryCache(Options.Create(new MemoryCacheOptions())),
-            new NoopUserNotificationService(),
+            userNotificationService ?? new NoopUserNotificationService(),
             new NoopWordPressMigrationService(),
             new NoopSupabaseAuthService(),
             new NoopAuthSessionService(),
@@ -355,6 +427,52 @@ public class SupabaseAdminManagementSelfServiceTests
 
         public Task<int> CreatePublishedStoryNotificationsAsync(PublishedStoryNotificationRequest request, CancellationToken cancellationToken = default) =>
             Task.FromResult(0);
+
+        public Task<int> CreatePublishedResourceDocumentNotificationsAsync(PublishedResourceDocumentNotificationRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromResult(0);
+    }
+
+    private sealed class RecordingUserNotificationService : IUserNotificationService
+    {
+        public PublishedResourceDocumentNotificationRequest? PublishedResourceDocumentRequest { get; private set; }
+
+        public Task<UserNotificationPageResult> GetNotificationsAsync(
+            string? email,
+            int take = 10,
+            DateTimeOffset? before = null,
+            bool history = false,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new UserNotificationPageResult([], 0, false, false));
+
+        public Task<NotificationSyncResult> SyncCharacterUnlockNotificationsAsync(
+            string? email,
+            string? storySlug = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new NotificationSyncResult(0));
+
+        public Task<int> MarkAllNotificationsReadAsync(string? email, CancellationToken cancellationToken = default) =>
+            Task.FromResult(0);
+
+        public Task<bool> MarkNotificationReadAsync(string? email, Guid notificationId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(false);
+
+        public Task<int> ClearNotificationsAsync(string? email, CancellationToken cancellationToken = default) =>
+            Task.FromResult(0);
+
+        public Task<bool> ClearNotificationAsync(string? email, Guid notificationId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(false);
+
+        public Task<int> CreatePublishedBlogNotificationsAsync(PublishedBlogNotificationRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromResult(0);
+
+        public Task<int> CreatePublishedStoryNotificationsAsync(PublishedStoryNotificationRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromResult(0);
+
+        public Task<int> CreatePublishedResourceDocumentNotificationsAsync(PublishedResourceDocumentNotificationRequest request, CancellationToken cancellationToken = default)
+        {
+            PublishedResourceDocumentRequest = request;
+            return Task.FromResult(1);
+        }
     }
 
     private sealed class NoopWordPressMigrationService : IWordPressMigrationService

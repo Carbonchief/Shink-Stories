@@ -313,6 +313,217 @@ body.schink-night-mode .site-main textarea::placeholder {
     color: #a6b0b4;
 }
 
+body.schink-night-mode .about-page {
+    --about-ink: #f7f1e7;
+    --about-muted: #c6d0ca;
+    --about-line: rgba(247, 241, 231, 0.16);
+    --about-accent: #f0a45b;
+    --about-accent-deep: #ffd39b;
+    color: var(--about-ink);
+}
+
+body.schink-night-mode .about-hero,
+body.schink-night-mode .about-title-block,
+body.schink-night-mode .about-intro-block,
+body.schink-night-mode .about-block,
+body.schink-night-mode .about-card {
+    border-color: var(--about-line);
+    background:
+        radial-gradient(circle at top right, rgba(240, 164, 91, 0.18), transparent 36%),
+        linear-gradient(180deg, rgba(24, 35, 42, 0.98) 0%, rgba(17, 26, 32, 0.98) 100%);
+    box-shadow: 0 24px 62px rgba(0, 0, 0, 0.34);
+}
+
+body.schink-night-mode .about-hero,
+body.schink-night-mode .about-title-block,
+body.schink-night-mode .about-intro-block,
+body.schink-night-mode .founder-block,
+body.schink-night-mode .mission-image-block {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+body.schink-night-mode .focus-card,
+body.schink-night-mode .review-card {
+    border-color: rgba(247, 241, 231, 0.14);
+    background: rgba(22, 31, 37, 0.96);
+    box-shadow: 0 22px 52px rgba(0, 0, 0, 0.34);
+}
+
+body.schink-night-mode .focus-card::before {
+    background: linear-gradient(90deg, rgba(240, 164, 91, 0.92) 0%, rgba(144, 175, 158, 0.84) 100%);
+}
+
+body.schink-night-mode .about-card h2,
+body.schink-night-mode .about-block h2,
+body.schink-night-mode .about-title-block h1,
+body.schink-night-mode .review-author {
+    color: var(--about-ink);
+}
+
+body.schink-night-mode .about-block p,
+body.schink-night-mode .about-card p,
+body.schink-night-mode .about-card li,
+body.schink-night-mode .testimonials blockquote,
+body.schink-night-mode .review-role {
+    color: var(--about-muted);
+}
+
+body.schink-night-mode .eyebrow,
+body.schink-night-mode .review-stars {
+    color: var(--about-accent-deep);
+}
+
+body.schink-night-mode .mission-aap,
+body.schink-night-mode .promise-panda,
+body.schink-night-mode .who-we-are-photo {
+    background: linear-gradient(180deg, rgba(245, 241, 232, 0.96), rgba(226, 219, 207, 0.94));
+    box-shadow: 0 26px 60px rgba(0, 0, 0, 0.28);
+}
+
+body.schink-night-mode .site-main .about-card h2,
+body.schink-night-mode .site-main .about-block h2,
+body.schink-night-mode .site-main .about-title-block h1,
+body.schink-night-mode .site-main .review-author {
+    color: var(--about-ink);
+}
+
+body.schink-night-mode .site-main .about-block p,
+body.schink-night-mode .site-main .about-card p,
+body.schink-night-mode .site-main .about-card li,
+body.schink-night-mode .site-main .testimonials blockquote,
+body.schink-night-mode .site-main .review-role {
+    color: var(--about-muted);
+}
+
+body.schink-night-mode .site-main .eyebrow,
+body.schink-night-mode .site-main .review-stars {
+    color: var(--about-accent-deep);
+}
+
+body.schink-night-mode .winkel-page {
+    --winkel-ink: #f7f1e7;
+    --winkel-muted: #c6d0ca;
+    --winkel-line: rgba(247, 241, 231, 0.16);
+    --winkel-cream: #121c22;
+    --winkel-panel: rgba(22, 31, 37, 0.96);
+    --winkel-accent: #f0a45b;
+    --winkel-accent-deep: #ffd39b;
+    color: var(--winkel-ink);
+}
+
+body.schink-night-mode .winkel-payment-status,
+body.schink-night-mode .winkel-story-block,
+body.schink-night-mode .winkel-order-section {
+    border-color: var(--winkel-line);
+    background:
+        radial-gradient(circle at top right, rgba(240, 164, 91, 0.18), transparent 36%),
+        linear-gradient(180deg, rgba(24, 35, 42, 0.98) 0%, rgba(17, 26, 32, 0.98) 100%);
+    box-shadow: 0 24px 62px rgba(0, 0, 0, 0.34);
+}
+
+body.schink-night-mode .winkel-payment-status.is-success {
+    border-color: rgba(123, 213, 157, 0.22);
+    background: linear-gradient(135deg, rgba(25, 59, 43, 0.98) 0%, rgba(18, 37, 31, 0.98) 100%);
+}
+
+body.schink-night-mode .winkel-payment-status.is-processing {
+    border-color: rgba(255, 211, 155, 0.24);
+    background: linear-gradient(135deg, rgba(66, 48, 26, 0.98) 0%, rgba(32, 28, 22, 0.98) 100%);
+}
+
+body.schink-night-mode .winkel-payment-status.is-cancelled,
+body.schink-night-mode .winkel-payment-status.is-error {
+    border-color: rgba(242, 152, 121, 0.24);
+    background: linear-gradient(135deg, rgba(67, 34, 29, 0.98) 0%, rgba(34, 24, 22, 0.98) 100%);
+}
+
+body.schink-night-mode .winkel-products-header h2,
+body.schink-night-mode .winkel-story-copy h2,
+body.schink-night-mode .winkel-order-copy h2,
+body.schink-night-mode .winkel-product h3,
+body.schink-night-mode .winkel-order-panel h3,
+body.schink-night-mode .winkel-field span,
+body.schink-night-mode .winkel-product-price {
+    color: var(--winkel-ink);
+}
+
+body.schink-night-mode .winkel-intro,
+body.schink-night-mode .winkel-story-copy p,
+body.schink-night-mode .winkel-products-header p,
+body.schink-night-mode .winkel-order-copy p,
+body.schink-night-mode .winkel-order-panel p,
+body.schink-night-mode .winkel-order-notes li,
+body.schink-night-mode .winkel-order-list li,
+body.schink-night-mode .winkel-product-description,
+body.schink-night-mode .winkel-field em,
+body.schink-night-mode .winkel-form-fineprint {
+    color: var(--winkel-muted);
+}
+
+body.schink-night-mode .winkel-section-kicker,
+body.schink-night-mode .winkel-order-panel-kicker,
+body.schink-night-mode .winkel-products-header .winkel-section-kicker,
+body.schink-night-mode .winkel-product-type,
+body.schink-night-mode .winkel-order-panel-price {
+    color: var(--winkel-accent-deep);
+}
+
+body.schink-night-mode .winkel-product {
+    border-color: rgba(247, 241, 231, 0.14);
+    background: rgba(22, 31, 37, 0.96);
+    box-shadow: 0 22px 52px rgba(0, 0, 0, 0.34);
+}
+
+body.schink-night-mode .winkel-product-body,
+body.schink-night-mode .winkel-order-panel,
+body.schink-night-mode .winkel-order-form-shell {
+    border-color: rgba(247, 241, 231, 0.14);
+    background: rgba(18, 28, 34, 0.94);
+}
+
+body.schink-night-mode .winkel-product-quantity input,
+body.schink-night-mode .winkel-field input,
+body.schink-night-mode .winkel-field select,
+body.schink-night-mode .winkel-field textarea {
+    border-color: rgba(247, 241, 231, 0.18);
+    background: #101a20;
+    color: var(--winkel-ink);
+}
+
+body.schink-night-mode .winkel-quantity-button {
+    border-color: rgba(255, 211, 155, 0.22);
+    background: rgba(33, 48, 56, 0.94);
+    color: var(--winkel-accent-deep);
+}
+
+body.schink-night-mode .winkel-quantity-button:hover:not(:disabled) {
+    border-color: rgba(255, 211, 155, 0.34);
+    background: rgba(82, 55, 32, 0.72);
+}
+
+body.schink-night-mode .winkel-story-media img {
+    background: linear-gradient(180deg, rgba(245, 241, 232, 0.96), rgba(226, 219, 207, 0.94));
+    box-shadow: 0 26px 60px rgba(0, 0, 0, 0.28);
+}
+
+body.schink-night-mode .site-main .winkel-product-description,
+body.schink-night-mode .site-main .winkel-form-fineprint {
+    color: var(--winkel-muted);
+}
+
+body.schink-night-mode .site-main .winkel-product-type,
+body.schink-night-mode .site-main .winkel-section-kicker,
+body.schink-night-mode .site-main .winkel-order-panel-kicker,
+body.schink-night-mode .site-main .winkel-order-panel-price {
+    color: var(--winkel-accent-deep);
+}
+
+body.schink-night-mode .site-main .winkel-product-price {
+    color: var(--winkel-ink);
+}
+
 body.schink-night-mode .resources-page-shell {
     --resources-ink: #f7f1e7;
     --resources-muted: #c6d0ca;
@@ -1031,4 +1242,53 @@ h1:focus {
         border-color: rgba(179, 33, 33, 0.35);
         color: #8a1d1d;
     }
+}
+
+body.schink-night-mode .site-shell .site-main .about-block,
+body.schink-night-mode .site-shell .site-main .about-card,
+body.schink-night-mode .site-shell .site-main .review-card {
+    border-color: var(--about-line);
+    background:
+        radial-gradient(circle at top right, rgba(240, 164, 91, 0.18), transparent 36%),
+        linear-gradient(180deg, rgba(24, 35, 42, 0.98) 0%, rgba(17, 26, 32, 0.98) 100%);
+    color: var(--about-ink);
+    box-shadow: 0 24px 62px rgba(0, 0, 0, 0.34);
+}
+
+body.schink-night-mode .site-shell .site-main .founder-block,
+body.schink-night-mode .site-shell .site-main .mission-image-block {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+}
+
+body.schink-night-mode .site-shell .site-main .focus-card,
+body.schink-night-mode .site-shell .site-main .review-card {
+    border-color: rgba(247, 241, 231, 0.14);
+    background: rgba(22, 31, 37, 0.96);
+    box-shadow: 0 22px 52px rgba(0, 0, 0, 0.34);
+}
+
+body.schink-night-mode .site-shell .site-main .about-card h2,
+body.schink-night-mode .site-shell .site-main .about-block h2,
+body.schink-night-mode .site-shell .site-main .about-title-block h1,
+body.schink-night-mode .site-shell .site-main .review-author {
+    color: var(--about-ink);
+}
+
+body.schink-night-mode .site-shell .site-main .about-block p,
+body.schink-night-mode .site-shell .site-main .about-card p,
+body.schink-night-mode .site-shell .site-main .about-card li,
+body.schink-night-mode .site-shell .site-main .testimonials blockquote,
+body.schink-night-mode .site-shell .site-main .review-role {
+    color: var(--about-muted);
+}
+
+body.schink-night-mode .site-shell .site-main .review-card .review-author {
+    color: var(--about-ink);
+}
+
+body.schink-night-mode .site-shell .site-main .eyebrow,
+body.schink-night-mode .site-shell .site-main .review-stars {
+    color: var(--about-accent-deep);
 }

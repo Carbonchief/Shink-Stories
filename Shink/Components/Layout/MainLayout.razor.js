@@ -592,6 +592,12 @@ function buildNotificationTypeMeta(notificationType) {
             badgeClass: "is-blog",
             icon: "fa-newspaper"
         };
+    case "resource_document_published":
+        return {
+            label: "Nuwe hulpbron",
+            badgeClass: "is-resource",
+            icon: "fa-file-pdf"
+        };
     default:
         return {
             label: "Kennisgewing",

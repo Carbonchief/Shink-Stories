@@ -2906,8 +2906,27 @@ public sealed partial class SupabaseAdminManagementService(
         if (createResponse.IsSuccessStatusCode)
         {
             var body = await createResponse.Content.ReadAsStringAsync(cancellationToken);
+            var createdResourceDocumentId = TryReadFirstGuidProperty(body, "resource_document_id");
             InvalidateResourceCatalogCache();
-            return new AdminOperationResult(true, EntityId: TryReadFirstGuidProperty(body, "resource_document_id"));
+
+            if (request.IsEnabled && createdResourceDocumentId.HasValue)
+            {
+                var resourceType = (await FetchResourceTypesAsync(baseUri, apiKey, cancellationToken))
+                    .FirstOrDefault(type => type.ResourceTypeId == request.ResourceTypeId);
+                if (resourceType is not null && !string.IsNullOrWhiteSpace(resourceType.Slug))
+                {
+                    await _userNotificationService.CreatePublishedResourceDocumentNotificationsAsync(
+                        new PublishedResourceDocumentNotificationRequest(
+                            createdResourceDocumentId.Value,
+                            resourceType.Slug.Trim(),
+                            string.IsNullOrWhiteSpace(resourceType.Name) ? "Hulpbronne" : resourceType.Name.Trim(),
+                            normalizedTitle,
+                            $"/media/resources/{createdResourceDocumentId.Value:D}/preview"),
+                        cancellationToken);
+                }
+            }
+
+            return new AdminOperationResult(true, EntityId: createdResourceDocumentId);
         }
 
         var createBody = await createResponse.Content.ReadAsStringAsync(cancellationToken);
