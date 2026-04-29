@@ -489,9 +489,13 @@
     margin: 1rem auto 0.2rem;
     display: block;
     width: fit-content;
+    max-width: calc(100vw - 2rem);
+    box-sizing: border-box;
     text-decoration: none;
     font-weight: 700;
     font-size: 1.06rem;
+    line-height: 1.2;
+    white-space: nowrap;
     color: #111111;
     background: #f2d8a4;
     border-radius: 999px;
@@ -2303,8 +2307,23 @@ h2 {
     .hero-pricing {
         font-size: 0.92rem;
     }
+
+    .join-promo-cta {
+        padding-right: 0.95rem;
+        padding-left: 0.95rem;
+        font-size: 0.95rem;
+    }
+
     .contact-section {
         padding: 1.15rem 0.72rem;
+    }
+}
+
+@media (max-width: 360px) {
+    .join-promo-cta {
+        padding-right: 0.78rem;
+        padding-left: 0.78rem;
+        font-size: 0.88rem;
     }
 }
 

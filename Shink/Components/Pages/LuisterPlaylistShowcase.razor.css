@@ -218,6 +218,7 @@
     border-radius: 999px;
     text-decoration: none;
     font-weight: 700;
+    white-space: nowrap;
     color: #151515;
     background: color-mix(in srgb, var(--accent) 86%, #ffffff);
 }
@@ -634,6 +635,11 @@ body.schink-night-mode .playlist-showcase-loading-state {
         flex: 1 1 0;
         justify-content: center;
         padding-inline: 0.66rem;
+    }
+
+    .playlist-showcase-playlist-link {
+        flex-grow: 1.2;
+        flex-shrink: 0;
     }
 }
 

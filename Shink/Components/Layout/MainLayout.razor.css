@@ -35,8 +35,11 @@
 }
 
 .site-shell.playlist-nav-route,
+.site-shell.story-route.playlist-nav-route {
+    background: #222222;
+}
+
 .site-shell.playlist-showcase-route,
-.site-shell.story-route.playlist-nav-route,
 .site-shell.story-route.playlist-showcase-route {
     background: #ffffff;
 }
@@ -797,6 +800,14 @@
     color: #0f1418;
 }
 
+.site-shell.playlist-nav-route .showcase-floating-back {
+    color: #f7f2ea;
+}
+
+.site-shell.playlist-nav-route .showcase-floating-back:hover {
+    color: #ffffff;
+}
+
 .showcase-floating-back:focus-visible {
     outline: 3px solid color-mix(in srgb, #ffffff 70%, var(--accent));
     outline-offset: 2px;
@@ -834,15 +845,27 @@
     color: #0f1418;
 }
 
+.site-shell.playlist-nav-route .showcase-floating-menu .nav-menu-toggle {
+    color: #f7f2ea;
+}
+
+.site-shell.playlist-nav-route .showcase-floating-menu .nav-menu-toggle:hover {
+    color: #ffffff;
+}
+
 .showcase-floating-menu .site-nav {
     right: 0;
     top: calc(100% + 0.45rem);
 }
 
-.site-shell.playlist-nav-route .site-main,
 .site-shell.playlist-showcase-route .site-main {
     padding-top: 0;
     background: #ffffff;
+}
+
+.site-shell.playlist-nav-route .site-main {
+    padding-top: 0;
+    background: #222222;
 }
 
 .site-shell.story-route .nav-menu-toggle {
@@ -863,14 +886,12 @@
     border-color: rgba(236, 242, 247, 0.28);
 }
 
-.site-shell.story-route.playlist-nav-route .showcase-floating-menu .nav-menu-toggle,
 .site-shell.story-route.playlist-showcase-route .showcase-floating-menu .nav-menu-toggle {
     border-color: transparent;
     background: transparent;
     color: #000000;
 }
 
-.site-shell.story-route.playlist-nav-route .showcase-floating-menu > .night-mode-toggle,
 .site-shell.story-route.playlist-showcase-route .showcase-floating-menu > .night-mode-toggle {
     width: 44px;
     height: 44px;
@@ -879,15 +900,12 @@
     border-color: rgba(0, 0, 0, 0.1);
 }
 
-.site-shell.story-route.playlist-nav-route .showcase-floating-menu > .night-mode-toggle:hover,
 .site-shell.story-route.playlist-showcase-route .showcase-floating-menu > .night-mode-toggle:hover,
-.site-shell.story-route.playlist-nav-route .showcase-floating-menu > .night-mode-toggle[aria-pressed="true"],
 .site-shell.story-route.playlist-showcase-route .showcase-floating-menu > .night-mode-toggle[aria-pressed="true"] {
     background: rgba(255, 255, 255, 0.9);
     border-color: rgba(0, 0, 0, 0.16);
 }
 
-.site-shell.story-route.playlist-nav-route .showcase-floating-menu .nav-menu-toggle:hover,
 .site-shell.story-route.playlist-showcase-route .showcase-floating-menu .nav-menu-toggle:hover {
     color: #000000;
 }
