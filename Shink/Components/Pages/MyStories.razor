@@ -57,7 +57,7 @@
             <h2>Jy het nog nie begin luister nie.</h2>
             <p>Kies 'n storie en begin luister. Jou vordering sal hier wys.</p>
             <div class="my-stories-actions">
-                <a href="/gratis" class="my-stories-btn">Gaan na gratis stories</a>
+                <a href="/luister" class="my-stories-btn">Gaan na gratis stories</a>
                 <a href="/luister" class="my-stories-btn my-stories-btn-secondary">Gaan na alle stories</a>
             </div>
         </section>
@@ -309,7 +309,7 @@
 
         var source = freeStoriesBySlug.ContainsKey(slug) ? "gratis" : "luister";
         var linkPath = string.Equals(source, "gratis", StringComparison.OrdinalIgnoreCase)
-            ? $"/gratis/{Uri.EscapeDataString(catalogStory.Slug)}"
+            ? $"/luister/{Uri.EscapeDataString(catalogStory.Slug)}"
             : $"/luister/{Uri.EscapeDataString(catalogStory.Slug)}";
 
         if (progressBySlug.TryGetValue(slug, out var progress))
@@ -404,7 +404,7 @@
         }
 
         return string.Equals(progress.Source, "gratis", StringComparison.OrdinalIgnoreCase)
-            ? $"/gratis/{Uri.EscapeDataString(progress.StorySlug)}"
+            ? $"/luister/{Uri.EscapeDataString(progress.StorySlug)}"
             : $"/luister/{Uri.EscapeDataString(progress.StorySlug)}";
     }
 

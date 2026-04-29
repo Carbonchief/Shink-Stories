@@ -210,6 +210,63 @@ public sealed class SupabaseAuthService(
         }
     }
 
+    public async Task<SupabaseRecoverySessionResult> ExchangeRecoveryTokenHashAsync(
+        string tokenHash,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(tokenHash))
+        {
+            return SupabaseRecoverySessionResult.Failure("Die herstel-skakel is ongeldig of het verval. Vra asseblief 'n nuwe skakel aan.");
+        }
+
+        if (!TryBuildVerifyEndpoint(out var verifyEndpoint))
+        {
+            return SupabaseRecoverySessionResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en anon key op.");
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, verifyEndpoint)
+        {
+            Content = JsonContent.Create(new SupabaseTokenHashVerifyRequest("recovery", tokenHash.Trim()))
+        };
+        request.Headers.TryAddWithoutValidation("apikey", _options.AnonKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.AnonKey);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(request, cancellationToken);
+        }
+        catch (HttpRequestException exception)
+        {
+            _logger.LogWarning(exception, "Supabase recovery token-hash exchange failed.");
+            return SupabaseRecoverySessionResult.Failure("Kon nie nou met Supabase koppel nie. Probeer asseblief weer.");
+        }
+
+        using (response)
+        {
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var session = ReadSessionResponse(responseBody);
+                if (!string.IsNullOrWhiteSpace(session.AccessToken))
+                {
+                    return SupabaseRecoverySessionResult.Success(
+                        session.AccessToken!,
+                        session.RefreshToken,
+                        session.UserEmail);
+                }
+            }
+
+            var errorMessage = ReadErrorMessage(responseBody) ??
+                               "Die herstel-skakel is ongeldig of het verval. Vra asseblief 'n nuwe skakel aan.";
+            _logger.LogInformation(
+                "Supabase recovery token-hash exchange rejected: {StatusCode} {Message}",
+                (int)response.StatusCode,
+                errorMessage);
+            return SupabaseRecoverySessionResult.Failure(errorMessage);
+        }
+    }
+
     public async Task<SupabasePasswordResetResult> UpdatePasswordAsync(
         string accessToken,
         string refreshToken,
@@ -560,6 +617,24 @@ public sealed class SupabaseAuthService(
         }
 
         recoverEndpoint = new Uri(supabaseUri, "auth/v1/recover");
+        return true;
+    }
+
+    private bool TryBuildVerifyEndpoint(out Uri verifyEndpoint)
+    {
+        verifyEndpoint = default!;
+        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.AnonKey))
+        {
+            return false;
+        }
+
+        if (!Uri.TryCreate(_options.Url, UriKind.Absolute, out var supabaseUri))
+        {
+            _logger.LogWarning("Supabase URL is invalid: {SupabaseUrl}", _options.Url);
+            return false;
+        }
+
+        verifyEndpoint = new Uri(supabaseUri, "auth/v1/verify");
         return true;
     }
 
@@ -1003,6 +1078,12 @@ public sealed class SupabaseAuthService(
             return "Ongeldige e-pos of wagwoord. Probeer asseblief weer.";
         }
 
+        if (message.Contains("Email not confirmed", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("email_not_confirmed", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Jou e-posadres is nog nie bevestig nie. Bevestig asseblief jou e-posadres en probeer weer.";
+        }
+
         if (message.Contains("User already registered", StringComparison.OrdinalIgnoreCase))
         {
             return "Hierdie e-posadres is reeds geregistreer. Teken asseblief in.";
@@ -1145,6 +1226,9 @@ public sealed class SupabaseAuthService(
     private sealed record SupabasePasswordRecoveryRequest(
         string Email,
         [property: JsonPropertyName("redirect_to")] string RedirectTo);
+    private sealed record SupabaseTokenHashVerifyRequest(
+        string Type,
+        [property: JsonPropertyName("token_hash")] string TokenHash);
     private sealed record SupabasePasswordUpdateRequest(string Password);
     private sealed record SupabaseEmailUpdateRequest(string Email);
     private sealed record SupabaseRefreshTokenRequest([property: JsonPropertyName("refresh_token")] string RefreshToken);

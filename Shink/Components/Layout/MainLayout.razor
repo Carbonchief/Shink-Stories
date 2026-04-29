@@ -2,7 +2,10 @@
 @using Microsoft.AspNetCore.WebUtilities
 @inherits LayoutComponentBase
 @using System.Security.Claims
+@using Shink.Components.Pages
 @inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ISubscriptionLedgerService SubscriptionLedgerService
 
 <div class="site-shell @(IsStoryRoute ? "story-route" : null) @(IsHomeRoute ? "home-route" : null) @(IsLuisterRoute ? "luister-route" : null) @(IsMeerOorOnsRoute ? "about-route" : null) @(IsOpsiesRoute ? "opsies-route" : null) @((IsWinkelRoute || IsBlogRoute || IsResourcesRoute || IsMeerOorOnsRoute || IsOpsiesRoute) ? "store-route" : null) @(IsAdminRoute ? "admin-route" : null) @(IsFloatingPlaylistRoute ? "playlist-nav-route" : null) @(IsLuisterPlaylistShowcaseRoute ? "playlist-showcase-route" : null)">
     <a class="skip-link" href="#main-content">Spring na inhoud</a>
@@ -591,6 +594,21 @@
             <p>© 2023 Schink</p>
         </div>
     </footer>
+
+    <StoryAccessPopup IsOpen="@ShouldShowSubscriptionAttentionPopup"
+                      PrimaryActionHref="/rekening/herstel-intekening"
+                      PrimaryActionText="Maak rekening reg"
+                      PrimaryActionUsesPost="true"
+                      PlanActionHref="/rekening/skuif-na-gratis"
+                      PlanActionText="Skuif na gratis"
+                      PlanActionUsesPost="true"
+                      ImageSrc="/branding/characters/tiekie.png"
+                      ImageAlt="Tiekie"
+                      Title="Jou intekening kort aandag"
+                      Subtitle=""
+                      ShowSubtitleLockIcon="false"
+                      ShowCloseButton="false"
+                      Message="Iets het fout gegaan met jou betaling. Ons moet dit regmaak om jou toegang te herstel." />
 </div>
 
 <script type="module" src="@Assets["Components/Layout/MainLayout.razor.js"]"></script>
@@ -607,6 +625,8 @@
 </div>
 
 @code {
+    private PaidSubscriptionAttention SubscriptionAttention { get; set; } = new(false);
+
     private RenderFragment NightModeToggle => @<button type="button"
                                                        class="night-mode-toggle nav-panel-link"
                                                        data-night-mode-toggle
@@ -624,6 +644,31 @@
         </span>
         <span class="sr-only" data-night-mode-toggle-label>Skakel nagmodus aan</span>
     </button>;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.Identity?.IsAuthenticated != true)
+        {
+            return;
+        }
+
+        var email = authState.User.FindFirst(ClaimTypes.Email)?.Value
+                    ?? authState.User.Identity?.Name;
+        try
+        {
+            SubscriptionAttention = await SubscriptionLedgerService.GetPaidSubscriptionAttentionAsync(email);
+        }
+        catch
+        {
+            SubscriptionAttention = new PaidSubscriptionAttention(false);
+        }
+    }
+
+    private bool ShouldShowSubscriptionAttentionPopup =>
+        SubscriptionAttention.RequiresAttention &&
+        !IsAdminRoute &&
+        !IsSubscriptionActionRoute;
 
     private string LoginHref
     {
@@ -729,6 +774,21 @@
         }
     }
 
+    private bool IsSubscriptionActionRoute
+    {
+        get
+        {
+            var relativePath = GetCurrentRelativePathWithoutQuery();
+            return relativePath.StartsWith("rekening/herstel-intekening", StringComparison.OrdinalIgnoreCase) ||
+                   relativePath.StartsWith("rekening/skuif-na-gratis", StringComparison.OrdinalIgnoreCase) ||
+                   relativePath.Equals("intekening-en-betaling", StringComparison.OrdinalIgnoreCase) ||
+                   relativePath.Equals("intekening-en-betaaling", StringComparison.OrdinalIgnoreCase) ||
+                   relativePath.StartsWith("betaal/", StringComparison.OrdinalIgnoreCase) ||
+                   relativePath.StartsWith("winkel/paystack", StringComparison.OrdinalIgnoreCase) ||
+                   relativePath.StartsWith("winkel/koop", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
     private bool IsLuisterPlaylistShowcaseRoute
     {
         get
@@ -786,7 +846,7 @@
             var relativePath = GetCurrentRelativePathWithoutQuery();
             if (relativePath.StartsWith("gratis/", StringComparison.OrdinalIgnoreCase))
             {
-                return "/gratis";
+                return "/luister";
             }
 
             if (relativePath.StartsWith("luister/speellys/", StringComparison.OrdinalIgnoreCase))

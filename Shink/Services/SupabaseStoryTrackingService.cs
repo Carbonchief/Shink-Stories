@@ -520,7 +520,7 @@ public sealed class SupabaseStoryTrackingService(
 
         return source switch
         {
-            "gratis" => $"/gratis/{Uri.EscapeDataString(normalizedSlug)}",
+            "gratis" => $"/luister/{Uri.EscapeDataString(normalizedSlug)}",
             _ => $"/luister/{Uri.EscapeDataString(normalizedSlug)}"
         };
     }

@@ -851,7 +851,7 @@
         IReadOnlyList<StoryItem> luisterStories)
     {
         return freeStories
-            .Select(story => new StoryLinkInfo(story.Slug, story.Title, $"/gratis/{Uri.EscapeDataString(story.Slug)}", "free", story.ImagePath))
+            .Select(story => new StoryLinkInfo(story.Slug, story.Title, $"/luister/{Uri.EscapeDataString(story.Slug)}", "free", story.ImagePath))
             .Concat(luisterStories.Select(story => new StoryLinkInfo(story.Slug, story.Title, $"/luister/{Uri.EscapeDataString(story.Slug)}", story.AccessLevel, story.ImagePath)))
             .GroupBy(story => story.Slug, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);

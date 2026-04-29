@@ -25,6 +25,9 @@ const string GooglePkceCookieName = "shink.auth.google.pkce";
 const string GooglePkceProtectorPurpose = "Shink.Auth.GooglePkce.v1";
 const string EmailChangeStateProtectorPurpose = "Shink.Auth.EmailChange.v1";
 const string LongLivedImageCacheControl = "public, max-age=2592000, stale-while-revalidate=86400";
+const string StoreDeliveryProductSlug = "pudo-locker-delivery";
+const string StoreDeliveryProductName = "PUDO locker aflewering";
+const decimal StoreDeliveryFeeZar = 80m;
 
 var builder = WebApplication.CreateBuilder(args);
 var postHogSettings = PostHogSettings.FromConfiguration(builder.Configuration);
@@ -118,6 +121,7 @@ builder.Services.AddHttpClient<IStoryCatalogService, SupabaseStoryCatalogService
 builder.Services.AddHttpClient<IStoreProductCatalogService, SupabaseStoreProductCatalogService>();
 builder.Services.AddHttpClient<PayFastCheckoutService>();
 builder.Services.AddHttpClient<PaystackCheckoutService>();
+builder.Services.AddHttpClient<PaystackAuthorizationRetryBatchService>();
 builder.Services.AddHttpClient<ISubscriptionLedgerService, SupabaseSubscriptionLedgerService>();
 builder.Services.AddHttpClient<IStoreOrderService, SupabaseStoreOrderService>();
 builder.Services.AddHttpClient<IStoreOrderNotificationService, ResendStoreOrderNotificationService>();
@@ -795,17 +799,19 @@ app.MapGet("/betaalherinneringe/gaan", async (
             return Results.Redirect(BuildStorePageRedirectPath("sukses", order.ProductSlug, order.OrderReference));
         }
 
+        var freshOrderItems = AddStoreDeliveryLineItem(order.Items.Select(item => new StoreOrderItemDraft(
+            item.ProductSlug,
+            item.ProductName,
+            item.Quantity,
+            item.UnitPriceZar)).ToArray());
+
         var freshDraft = new StoreOrderDraft(
             OrderReference: BuildStoreOrderReference(order.ProductSlug),
             ProductSlug: order.ProductSlug,
             ProductName: order.ProductName,
             Quantity: order.Quantity,
             UnitPriceZar: order.UnitPriceZar,
-            Items: order.Items.Select(item => new StoreOrderItemDraft(
-                item.ProductSlug,
-                item.ProductName,
-                item.Quantity,
-                item.UnitPriceZar)).ToArray(),
+            Items: freshOrderItems,
             CustomerName: order.CustomerName,
             CustomerEmail: order.CustomerEmail,
             CustomerPhone: order.CustomerPhone,
@@ -851,6 +857,88 @@ app.MapGet("/betaalherinneringe/gaan", async (
 
     return Results.Redirect("/");
 });
+
+app.MapPost("/rekening/skuif-na-gratis", async (
+    ISubscriptionLedgerService subscriptionLedgerService,
+    HttpContext httpContext,
+    ILogger<Program> logger) =>
+{
+    if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
+    {
+        return Results.Redirect($"/teken-in?returnUrl={Uri.EscapeDataString("/luister")}");
+    }
+
+    var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
+                       ?? httpContext.User.Identity?.Name;
+    var result = await subscriptionLedgerService.TransferPaidSubscriptionToGratisAsync(
+        signedInEmail,
+        httpContext.RequestAborted);
+    if (!result.IsSuccess)
+    {
+        logger.LogWarning(
+            "Paid-to-free transfer failed. email={Email} error={Error}",
+            signedInEmail,
+            result.ErrorMessage);
+        return Results.Redirect(QueryHelpers.AddQueryString("/intekening-en-betaling", "rekening", "gratis-misluk"));
+    }
+
+    return Results.Redirect(QueryHelpers.AddQueryString("/luister", "rekening", "gratis"));
+})
+.RequireRateLimiting("auth-submit")
+.DisableAntiforgery();
+
+app.MapPost("/rekening/herstel-intekening", async (
+    ISubscriptionLedgerService subscriptionLedgerService,
+    PaystackCheckoutService paystackCheckoutService,
+    HttpContext httpContext,
+    ILogger<Program> logger) =>
+{
+    if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
+    {
+        return Results.Redirect($"/teken-in?returnUrl={Uri.EscapeDataString("/luister")}");
+    }
+
+    var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
+                       ?? httpContext.User.Identity?.Name;
+    var repairResult = await subscriptionLedgerService.TryRepairPaidSubscriptionAsync(
+        signedInEmail,
+        httpContext.RequestAborted);
+    if (repairResult.IsRecovered)
+    {
+        return Results.Redirect(QueryHelpers.AddQueryString("/luister", "rekening", "hersteld"));
+    }
+
+    var plan = PaymentPlanCatalog.FindBySlug(repairResult.PlanSlug);
+    if (plan is null)
+    {
+        logger.LogWarning(
+            "Subscription repair could not resolve a fallback plan. email={Email} plan_slug={PlanSlug} error={Error}",
+            signedInEmail,
+            repairResult.PlanSlug,
+            repairResult.ErrorMessage);
+        return Results.Redirect(QueryHelpers.AddQueryString("/opsies", "rekening", "herstel-misluk"));
+    }
+
+    var checkoutResult = await paystackCheckoutService.InitializeCheckoutAsync(
+        plan,
+        httpContext,
+        returnUrl: "/luister",
+        httpContext.RequestAborted);
+    if (checkoutResult.IsSuccess && !string.IsNullOrWhiteSpace(checkoutResult.AuthorizationUrl))
+    {
+        return Results.Redirect(checkoutResult.AuthorizationUrl);
+    }
+
+    logger.LogWarning(
+        "Subscription repair Paystack checkout fallback failed. email={Email} plan={PlanSlug} retry_error={RetryError} checkout_error={CheckoutError}",
+        signedInEmail,
+        plan.Slug,
+        repairResult.ErrorMessage,
+        checkoutResult.ErrorMessage);
+    return Results.Redirect($"/betaal/{Uri.EscapeDataString(plan.Slug)}?provider=paystack&returnUrl={Uri.EscapeDataString("/luister")}");
+})
+.RequireRateLimiting("auth-submit")
+.DisableAntiforgery();
 
 app.MapGet("/betaal/{planSlug}", async (
     string planSlug,
@@ -1279,7 +1367,10 @@ app.MapPost("/api/payfast/notify", async (
     return Results.Ok();
 }).DisableAntiforgery();
 
-app.MapPost("/api/paystack/webhook", async (
+app.MapPost("/api/paystack/webhook", HandlePaystackWebhookAsync)
+.DisableAntiforgery();
+
+app.MapPost("/wp-admin/admin-ajax.php", async (
     HttpContext httpContext,
     PaystackCheckoutService paystackCheckoutService,
     ISubscriptionLedgerService subscriptionLedgerService,
@@ -1288,135 +1379,22 @@ app.MapPost("/api/paystack/webhook", async (
     IAbandonedCartRecoveryService abandonedCartRecoveryService,
     ILogger<Program> logger) =>
 {
-    using var reader = new StreamReader(httpContext.Request.Body, Encoding.UTF8);
-    var payload = await reader.ReadToEndAsync(httpContext.RequestAborted);
-    if (string.IsNullOrWhiteSpace(payload))
+    var action = httpContext.Request.Query["action"].ToString();
+    if (!string.Equals(action, "pmpro_paystack_ipn", StringComparison.OrdinalIgnoreCase))
     {
-        logger.LogWarning("Paystack webhook ignored: empty payload.");
-        return Results.Ok();
+        logger.LogWarning("Legacy WordPress admin-ajax webhook rejected: unsupported action={Action}.", action);
+        return Results.NotFound();
     }
 
-    var signature = httpContext.Request.Headers["x-paystack-signature"].ToString();
-    var signatureValid = paystackCheckoutService.IsWebhookSignatureValid(payload, signature);
-    if (!signatureValid)
-    {
-        logger.LogWarning("Paystack webhook rejected: invalid signature.");
-        return Results.Ok();
-    }
-
-    if (IsStorePaystackWebhookPayload(payload))
-    {
-        var storePersistResult = await storeOrderService.RecordPaystackWebhookAsync(payload, httpContext.RequestAborted);
-        if (!storePersistResult.IsSuccess)
-        {
-            logger.LogWarning(
-                "Paystack store persistence failed. Error={Error}",
-                storePersistResult.ErrorMessage);
-        }
-        else
-        {
-            await TryNotifyPaidStoreOrderAsync(
-                storePersistResult,
-                storeOrderNotificationService,
-                logger,
-                httpContext.RequestAborted);
-
-            if (storePersistResult.Order is not null &&
-                string.Equals(storePersistResult.Order.PaymentStatus, "paid", StringComparison.OrdinalIgnoreCase))
-            {
-                await abandonedCartRecoveryService.ResolveByCheckoutReferenceAsync(
-                    "store_order",
-                    storePersistResult.Order.OrderReference,
-                    "paid",
-                    httpContext.RequestAborted);
-            }
-
-            logger.LogInformation(
-                "Paystack store order persisted. order_reference={Reference} payment_status={PaymentStatus}",
-                storePersistResult.Order?.OrderReference,
-                storePersistResult.Order?.PaymentStatus);
-        }
-
-        return Results.Ok();
-    }
-
-    var persistResult = await subscriptionLedgerService.RecordPaystackEventAsync(payload, httpContext.RequestAborted);
-    if (!persistResult.IsSuccess)
-    {
-        logger.LogWarning(
-            "Paystack subscription persistence failed. Error={Error}",
-            persistResult.ErrorMessage);
-    }
-    else
-    {
-        string? subscriptionRecoveryReference = null;
-        if (!string.IsNullOrWhiteSpace(payload))
-        {
-            try
-            {
-                using var payloadDocument = JsonDocument.Parse(payload);
-                var payloadRoot = payloadDocument.RootElement;
-                if (payloadRoot.ValueKind == JsonValueKind.Object &&
-                    payloadRoot.TryGetProperty("event", out var eventElement) &&
-                    eventElement.ValueKind == JsonValueKind.String &&
-                    string.Equals(eventElement.GetString(), "charge.success", StringComparison.OrdinalIgnoreCase) &&
-                    payloadRoot.TryGetProperty("data", out var dataElement) &&
-                    dataElement.ValueKind == JsonValueKind.Object)
-                {
-                    if (dataElement.TryGetProperty("metadata", out var metadataElement) &&
-                        metadataElement.ValueKind == JsonValueKind.Object)
-                    {
-                        if (metadataElement.TryGetProperty("subscription_key", out var subscriptionKeyElement) &&
-                            subscriptionKeyElement.ValueKind == JsonValueKind.String)
-                        {
-                            subscriptionRecoveryReference = subscriptionKeyElement.GetString();
-                        }
-
-                        if (string.IsNullOrWhiteSpace(subscriptionRecoveryReference) &&
-                            metadataElement.TryGetProperty("reference", out var metadataReferenceElement) &&
-                            metadataReferenceElement.ValueKind == JsonValueKind.String)
-                        {
-                            subscriptionRecoveryReference = metadataReferenceElement.GetString();
-                        }
-                    }
-
-                    if (string.IsNullOrWhiteSpace(subscriptionRecoveryReference) &&
-                        dataElement.TryGetProperty("reference", out var dataReferenceElement) &&
-                        dataReferenceElement.ValueKind == JsonValueKind.String)
-                    {
-                        subscriptionRecoveryReference = dataReferenceElement.GetString();
-                    }
-                }
-            }
-            catch (JsonException)
-            {
-                subscriptionRecoveryReference = null;
-            }
-        }
-
-        if (!string.IsNullOrWhiteSpace(subscriptionRecoveryReference))
-        {
-            await abandonedCartRecoveryService.ResolveByCheckoutReferenceAsync(
-                "subscription",
-                subscriptionRecoveryReference,
-                "paid",
-                httpContext.RequestAborted);
-        }
-
-        var (subscriptionRecoveryEmail, subscriptionRecoveryTierCode) = ResolveSubscriptionCustomerFromPaystackPayload(payload);
-        await abandonedCartRecoveryService.ResolveSubscriptionRecoveriesAsync(
-            subscriptionRecoveryEmail,
-            subscriptionRecoveryTierCode,
-            "paid",
-            httpContext.RequestAborted);
-
-        logger.LogInformation(
-            "Paystack subscription persisted. subscription_id={SubscriptionId}",
-            persistResult.SubscriptionId);
-    }
-
-    // Return 200 to avoid repeated retries; process failed validations via logs/monitoring.
-    return Results.Ok();
+    logger.LogInformation("Legacy PMPro Paystack webhook endpoint received a request.");
+    return await HandlePaystackWebhookAsync(
+        httpContext,
+        paystackCheckoutService,
+        subscriptionLedgerService,
+        storeOrderService,
+        storeOrderNotificationService,
+        abandonedCartRecoveryService,
+        logger);
 }).DisableAntiforgery();
 
 app.MapGet("/api/auth/google/start", async (
@@ -1565,6 +1543,42 @@ app.MapGet("/auth/callback", async (
         await ResolvePostAuthRedirectPathAsync(subscriptionLedgerService, signedInEmail, httpContext.RequestAborted);
 
     return Results.Redirect(redirectPath);
+});
+
+app.MapGet("/auth/confirm", async (
+    string? token_hash,
+    string? type,
+    string? next,
+    ISupabaseAuthService supabaseAuthService,
+    HttpContext httpContext) =>
+{
+    if (!string.Equals(type, "recovery", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.Redirect(BuildPasswordRecoveryErrorRedirectPath("Die bevestiging-skakel word nie ondersteun nie. Probeer asseblief weer."));
+    }
+
+    if (string.IsNullOrWhiteSpace(token_hash))
+    {
+        return Results.Redirect(BuildPasswordRecoveryErrorRedirectPath("Die herstel-skakel is ongeldig of het verval. Vra asseblief 'n nuwe skakel aan."));
+    }
+
+    var exchangeResult = await supabaseAuthService.ExchangeRecoveryTokenHashAsync(
+        token_hash,
+        httpContext.RequestAborted);
+    if (!exchangeResult.IsSuccess ||
+        string.IsNullOrWhiteSpace(exchangeResult.AccessToken) ||
+        string.IsNullOrWhiteSpace(exchangeResult.RefreshToken))
+    {
+        return Results.Redirect(BuildPasswordRecoveryErrorRedirectPath(
+            exchangeResult.ErrorMessage ?? "Die herstel-skakel is ongeldig of het verval. Vra asseblief 'n nuwe skakel aan."));
+    }
+
+    var recoveryPath = ResolvePasswordRecoveryRedirectPath(next);
+    return Results.Redirect(BuildPasswordRecoverySessionRedirectPath(
+        recoveryPath,
+        exchangeResult.AccessToken!,
+        exchangeResult.RefreshToken,
+        "recovery"));
 });
 
 app.MapPost("/api/auth/login", async (
@@ -2263,7 +2277,7 @@ app.MapGet("/api/search/suggest", async (
         .Concat(freeStoriesTask.Result.Select(story => new SearchSiteCandidate(
             Title: story.Title,
             Description: story.Description,
-            Url: $"/gratis/{Uri.EscapeDataString(story.Slug)}",
+            Url: $"/luister/{Uri.EscapeDataString(story.Slug)}",
             Kind: "Gratis storie",
             Keywords: "gratis luister kinders afrikaans oudiostorie",
             ThumbnailPath: story.ThumbnailPath,
@@ -2451,7 +2465,7 @@ app.MapGet("/api/mobile/stories/{slug}", async (
     return Results.Ok(new MobileStoryDetailResponse(
         Story: BuildMobileStorySummary(httpContext, story, normalizedSource, isLocked, isFavorite),
         AudioUrl: isLocked ? null : ToAbsoluteUri(httpContext, audioAccessService.CreateSignedAudioUrl(story.Slug)),
-        ShareUrl: ToAbsoluteUri(httpContext, normalizedSource == "gratis" ? $"/gratis/{Uri.EscapeDataString(story.Slug)}" : $"/luister/{Uri.EscapeDataString(story.Slug)}"),
+        ShareUrl: ToAbsoluteUri(httpContext, $"/luister/{Uri.EscapeDataString(story.Slug)}"),
         RequiresSubscription: isLocked,
         PreviousStory: previousStory is null ? null : BuildMobileStorySummary(httpContext, previousStory, normalizedSource, !CanAccessStory(previousStory, hasPaidSubscription), favoriteSlugs.Contains(previousStory.Slug, StringComparer.OrdinalIgnoreCase)),
         NextStory: nextStory is null ? null : BuildMobileStorySummary(httpContext, nextStory, normalizedSource, !CanAccessStory(nextStory, hasPaidSubscription), favoriteSlugs.Contains(nextStory.Slug, StringComparer.OrdinalIgnoreCase)),
@@ -2513,9 +2527,7 @@ app.MapPost("/api/mobile/stories/{slug}/favorite", async (
     var normalizedSource = string.Equals(request.Source, "gratis", StringComparison.OrdinalIgnoreCase)
         ? "gratis"
         : "luister";
-    var storyPath = normalizedSource == "gratis"
-        ? $"/gratis/{Uri.EscapeDataString(normalizedStorySlug)}"
-        : $"/luister/{Uri.EscapeDataString(normalizedStorySlug)}";
+    var storyPath = $"/luister/{Uri.EscapeDataString(normalizedStorySlug)}";
     var isFavorite = await storyFavoriteService.SetStoryFavoriteAsync(
         signedInEmail,
         new StoryFavoriteMutationRequest(
@@ -2581,7 +2593,7 @@ app.MapGet("/sitemap.xml", async (HttpContext httpContext, IStoryCatalogService 
     var paths = new List<string>
     {
         "/",
-        "/gratis",
+        "/luister",
         "/resources",
         "/luister",
         "/opsies",
@@ -2594,7 +2606,7 @@ app.MapGet("/sitemap.xml", async (HttpContext httpContext, IStoryCatalogService 
     var luisterPlaylistsTask = storyCatalogService.GetLuisterPlaylistsAsync(cancellationToken: httpContext.RequestAborted);
     await Task.WhenAll(freeStoriesTask, luisterStoriesTask, luisterPlaylistsTask);
 
-    paths.AddRange(freeStoriesTask.Result.Select(story => $"/gratis/{Uri.EscapeDataString(story.Slug)}"));
+    paths.AddRange(freeStoriesTask.Result.Select(story => $"/luister/{Uri.EscapeDataString(story.Slug)}"));
     paths.AddRange(luisterStoriesTask.Result.Select(story => $"/luister/{Uri.EscapeDataString(story.Slug)}"));
     paths.AddRange(luisterPlaylistsTask.Result.Select(playlist => $"/luister/speellys/{Uri.EscapeDataString(playlist.Slug)}"));
     paths.AddRange(luisterPlaylistsTask.Result.Select(playlist => $"/luister/speellys/{Uri.EscapeDataString(playlist.Slug)}/stories"));
@@ -2626,7 +2638,7 @@ using (var scope = app.Services.CreateScope())
 
 foreach (var slug in legacyFreeStorySlugs)
 {
-    app.MapGet($"/{slug}", () => Results.Redirect($"/gratis/{slug}", permanent: false));
+    app.MapGet($"/{slug}", () => Results.Redirect($"/luister/{slug}", permanent: false));
 }
 
 if (args.Any(argument => string.Equals(argument, "--backfill-resource-previews", StringComparison.OrdinalIgnoreCase)))
@@ -2691,6 +2703,53 @@ if (args.Any(argument => string.Equals(argument, "--sync-wordpress-users", Strin
     Environment.ExitCode = result.Errors.Count == 0 ? 0 : 1;
     return;
 }
+
+if (args.Any(argument => string.Equals(argument, "--retry-overdue-paystack", StringComparison.OrdinalIgnoreCase)))
+{
+    using var scope = app.Services.CreateScope();
+    var retryService = scope.ServiceProvider.GetRequiredService<PaystackAuthorizationRetryBatchService>();
+    var result = await retryService.RetryEligibleSubscriptionsAsync();
+
+    app.Logger.LogInformation(
+        "Paystack overdue retry batch finished. problematic={ProblematicCount} retry_ready={RetryReadyCount} attempted={AttemptedCount} succeeded={SucceededCount} failed={FailedCount} skipped_recent={SkippedRecentCount} skipped_missing_token={SkippedMissingTokenCount} skipped_not_actionable={SkippedNotActionableCount} skipped_missing_data={SkippedMissingDataCount} errors={ErrorCount}",
+        result.TotalProblematicChargeKeys,
+        result.RetryReadyCandidates,
+        result.AttemptedCount,
+        result.SucceededCount,
+        result.FailedCount,
+        result.SkippedRecentRetryCount,
+        result.SkippedMissingTokenCount,
+        result.SkippedNotActionableLiveCount,
+        result.SkippedMissingEmailOrPlanCount,
+        result.Errors.Count);
+
+    foreach (var attempt in result.Attempts.Take(50))
+    {
+        app.Logger.LogInformation(
+            "Paystack retry batch item. email={Email} subscription_id={SubscriptionId} charge_key={ChargeKey} status={AttemptStatus} reference={Reference} next_payment={NextPaymentDate} message={Message}",
+            attempt.Email,
+            attempt.SubscriptionId,
+            attempt.ChargeKey,
+            attempt.AttemptStatus,
+            attempt.Reference,
+            attempt.NextPaymentDateUtc,
+            attempt.Message);
+    }
+
+    foreach (var error in result.Errors.Take(25))
+    {
+        app.Logger.LogWarning("Paystack retry batch issue: {Error}", error);
+    }
+
+    Environment.ExitCode = result.Errors.Count == 0 ? 0 : 1;
+    return;
+}
+
+app.MapGet("/gratis", () => Results.Redirect("/luister"));
+app.MapGet("/gratis/{slug}", (string slug) =>
+    string.IsNullOrWhiteSpace(slug)
+        ? Results.Redirect("/luister")
+        : Results.Redirect($"/luister/{Uri.EscapeDataString(slug.Trim())}"));
 
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
@@ -3420,7 +3479,7 @@ static string ResolveStoryTrackingPath(string? storyPath, string storySlug, stri
 
     return source switch
     {
-        "gratis" => $"/gratis/{Uri.EscapeDataString(storySlug)}",
+        "gratis" => $"/luister/{Uri.EscapeDataString(storySlug)}",
         "luister" => $"/luister/{Uri.EscapeDataString(storySlug)}",
         _ => $"/luister/{Uri.EscapeDataString(storySlug)}"
     };
@@ -3624,11 +3683,12 @@ static bool TryBuildStoreCheckoutDraft(
         return false;
     }
 
+    var checkoutItems = AddStoreDeliveryLineItem(items);
     var summarySlug = items.Count == 1 ? items[0].ProductSlug : "multi-item-order";
     var summaryName = items.Count == 1 ? items[0].ProductName : "Gemengde StorieTjommie bestelling";
     var summaryUnitPriceZar = items.Count == 1 ? items[0].UnitPriceZar : 0m;
     var orderReference = BuildStoreOrderReference(summarySlug);
-    var totalPriceZar = items.Sum(item => item.LineTotalZar);
+    var totalPriceZar = checkoutItems.Sum(item => item.LineTotalZar);
     amountInCents = decimal.ToInt32(decimal.Round(totalPriceZar * 100m, 0, MidpointRounding.AwayFromZero));
     draft = new StoreOrderDraft(
         OrderReference: orderReference,
@@ -3636,7 +3696,7 @@ static bool TryBuildStoreCheckoutDraft(
         ProductName: summaryName,
         Quantity: totalQuantity,
         UnitPriceZar: summaryUnitPriceZar,
-        Items: items,
+        Items: checkoutItems,
         CustomerName: customerName,
         CustomerEmail: customerEmail,
         CustomerPhone: customerPhone,
@@ -3647,6 +3707,24 @@ static bool TryBuildStoreCheckoutDraft(
         DeliveryPostalCode: deliveryPostalCode,
         Notes: NormalizeOptionalFormText(form["notas"], 2000));
     return true;
+}
+
+static IReadOnlyList<StoreOrderItemDraft> AddStoreDeliveryLineItem(IReadOnlyList<StoreOrderItemDraft> items)
+{
+    if (items.Any(item => string.Equals(item.ProductSlug, StoreDeliveryProductSlug, StringComparison.OrdinalIgnoreCase)))
+    {
+        return items;
+    }
+
+    return
+    [
+        .. items,
+        new StoreOrderItemDraft(
+            ProductSlug: StoreDeliveryProductSlug,
+            ProductName: StoreDeliveryProductName,
+            Quantity: 1,
+            UnitPriceZar: StoreDeliveryFeeZar)
+    ];
 }
 
 static string? GetFirstSelectedStoreProductSlugFromForm(
@@ -3685,6 +3763,156 @@ static string BuildStoreOrderReference(string productSlug)
     }
 
     return $"winkel-{safeProductSlug}-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}";
+}
+
+static async Task<IResult> HandlePaystackWebhookAsync(
+    HttpContext httpContext,
+    PaystackCheckoutService paystackCheckoutService,
+    ISubscriptionLedgerService subscriptionLedgerService,
+    IStoreOrderService storeOrderService,
+    IStoreOrderNotificationService storeOrderNotificationService,
+    IAbandonedCartRecoveryService abandonedCartRecoveryService,
+    ILogger<Program> logger)
+{
+    using var reader = new StreamReader(httpContext.Request.Body, Encoding.UTF8);
+    var payload = await reader.ReadToEndAsync(httpContext.RequestAborted);
+    if (string.IsNullOrWhiteSpace(payload))
+    {
+        logger.LogWarning("Paystack webhook ignored: empty payload.");
+        return Results.BadRequest();
+    }
+
+    var signature = httpContext.Request.Headers["x-paystack-signature"].ToString();
+    var signatureValid = paystackCheckoutService.IsWebhookSignatureValid(payload, signature);
+    if (!signatureValid)
+    {
+        logger.LogWarning("Paystack webhook rejected: invalid signature.");
+        return Results.Unauthorized();
+    }
+
+    if (IsStorePaystackWebhookPayload(payload))
+    {
+        var storePersistResult = await storeOrderService.RecordPaystackWebhookAsync(payload, httpContext.RequestAborted);
+        if (!storePersistResult.IsSuccess)
+        {
+            logger.LogWarning(
+                "Paystack store persistence failed. Error={Error}",
+                storePersistResult.ErrorMessage);
+
+            return Results.Problem(
+                title: "Paystack store webhook persistence failed",
+                detail: storePersistResult.ErrorMessage,
+                statusCode: StatusCodes.Status500InternalServerError);
+        }
+        else
+        {
+            await TryNotifyPaidStoreOrderAsync(
+                storePersistResult,
+                storeOrderNotificationService,
+                logger,
+                httpContext.RequestAborted);
+
+            if (storePersistResult.Order is not null &&
+                string.Equals(storePersistResult.Order.PaymentStatus, "paid", StringComparison.OrdinalIgnoreCase))
+            {
+                await abandonedCartRecoveryService.ResolveByCheckoutReferenceAsync(
+                    "store_order",
+                    storePersistResult.Order.OrderReference,
+                    "paid",
+                    httpContext.RequestAborted);
+            }
+
+            logger.LogInformation(
+                "Paystack store order persisted. order_reference={Reference} payment_status={PaymentStatus}",
+                storePersistResult.Order?.OrderReference,
+                storePersistResult.Order?.PaymentStatus);
+        }
+
+        return Results.Ok();
+    }
+
+    var persistResult = await subscriptionLedgerService.RecordPaystackEventAsync(payload, httpContext.RequestAborted);
+    if (!persistResult.IsSuccess)
+    {
+        logger.LogWarning(
+            "Paystack subscription persistence failed. Error={Error}",
+            persistResult.ErrorMessage);
+
+        return Results.Problem(
+            title: "Paystack subscription webhook persistence failed",
+            detail: persistResult.ErrorMessage,
+            statusCode: StatusCodes.Status500InternalServerError);
+    }
+    else
+    {
+        string? subscriptionRecoveryReference = null;
+        if (!string.IsNullOrWhiteSpace(payload))
+        {
+            try
+            {
+                using var payloadDocument = JsonDocument.Parse(payload);
+                var payloadRoot = payloadDocument.RootElement;
+                if (payloadRoot.ValueKind == JsonValueKind.Object &&
+                    payloadRoot.TryGetProperty("event", out var eventElement) &&
+                    eventElement.ValueKind == JsonValueKind.String &&
+                    string.Equals(eventElement.GetString(), "charge.success", StringComparison.OrdinalIgnoreCase) &&
+                    payloadRoot.TryGetProperty("data", out var dataElement) &&
+                    dataElement.ValueKind == JsonValueKind.Object)
+                {
+                    if (dataElement.TryGetProperty("metadata", out var metadataElement) &&
+                        metadataElement.ValueKind == JsonValueKind.Object)
+                    {
+                        if (metadataElement.TryGetProperty("subscription_key", out var subscriptionKeyElement) &&
+                            subscriptionKeyElement.ValueKind == JsonValueKind.String)
+                        {
+                            subscriptionRecoveryReference = subscriptionKeyElement.GetString();
+                        }
+
+                        if (string.IsNullOrWhiteSpace(subscriptionRecoveryReference) &&
+                            metadataElement.TryGetProperty("reference", out var metadataReferenceElement) &&
+                            metadataReferenceElement.ValueKind == JsonValueKind.String)
+                        {
+                            subscriptionRecoveryReference = metadataReferenceElement.GetString();
+                        }
+                    }
+
+                    if (string.IsNullOrWhiteSpace(subscriptionRecoveryReference) &&
+                        dataElement.TryGetProperty("reference", out var dataReferenceElement) &&
+                        dataReferenceElement.ValueKind == JsonValueKind.String)
+                    {
+                        subscriptionRecoveryReference = dataReferenceElement.GetString();
+                    }
+                }
+            }
+            catch (JsonException)
+            {
+                subscriptionRecoveryReference = null;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(subscriptionRecoveryReference))
+        {
+            await abandonedCartRecoveryService.ResolveByCheckoutReferenceAsync(
+                "subscription",
+                subscriptionRecoveryReference,
+                "paid",
+                httpContext.RequestAborted);
+        }
+
+        var (subscriptionRecoveryEmail, subscriptionRecoveryTierCode) = ResolveSubscriptionCustomerFromPaystackPayload(payload);
+        await abandonedCartRecoveryService.ResolveSubscriptionRecoveriesAsync(
+            subscriptionRecoveryEmail,
+            subscriptionRecoveryTierCode,
+            "paid",
+            httpContext.RequestAborted);
+
+        logger.LogInformation(
+            "Paystack subscription persisted. subscription_id={SubscriptionId}",
+            persistResult.SubscriptionId);
+    }
+
+    // Acknowledge only after signature validation and durable persistence.
+    return Results.Ok();
 }
 
 static string BuildStorePageRedirectPath(
@@ -4237,7 +4465,7 @@ static async Task<string> ResolvePostAuthRedirectPathAsync(
     CancellationToken cancellationToken)
 {
     var hasPaidSubscription = await subscriptionLedgerService.HasActivePaidSubscriptionAsync(email, cancellationToken);
-    return hasPaidSubscription ? "/luister" : "/gratis";
+    return "/luister";
 }
 
 static string BuildAbsoluteUrl(HttpRequest request, string path)
@@ -4285,6 +4513,46 @@ static string BuildGoogleAuthErrorRedirectPath(string? message)
         : message.Trim();
 
     return QueryHelpers.AddQueryString("/teken-in", "oauthError", safeMessage);
+}
+
+static string BuildPasswordRecoveryErrorRedirectPath(string? message)
+{
+    var safeMessage = string.IsNullOrWhiteSpace(message)
+        ? "Die herstel-skakel is ongeldig of het verval. Vra asseblief 'n nuwe skakel aan."
+        : message.Trim();
+    var fragment = new QueryString()
+        .Add("type", "recovery")
+        .Add("error_description", safeMessage)
+        .ToUriComponent()
+        .TrimStart('?');
+
+    return $"/herstel-wagwoord#{fragment}";
+}
+
+static string ResolvePasswordRecoveryRedirectPath(string? next)
+{
+    var safeNext = GetSafeAuthReturnUrl(next);
+    return string.Equals(safeNext, "/account/update-password", StringComparison.OrdinalIgnoreCase)
+        ? "/herstel-wagwoord"
+        : safeNext is not null && safeNext.StartsWith("/herstel-wagwoord", StringComparison.OrdinalIgnoreCase)
+            ? safeNext
+            : "/herstel-wagwoord";
+}
+
+static string BuildPasswordRecoverySessionRedirectPath(
+    string recoveryPath,
+    string accessToken,
+    string? refreshToken,
+    string type)
+{
+    var fragment = new QueryString()
+        .Add("access_token", accessToken)
+        .Add("refresh_token", refreshToken ?? string.Empty)
+        .Add("type", type)
+        .ToUriComponent()
+        .TrimStart('?');
+
+    return $"{recoveryPath}#{fragment}";
 }
 
 static bool ShouldUseImplicitGoogleAuthFlow(string? flowType, string? userAgent) =>
@@ -4562,7 +4830,7 @@ static IReadOnlyList<SearchSiteCandidate> BuildSearchStaticCandidates() =>
     new(
         Title: "Gratis stories",
         Description: "Drie gratis Afrikaanse stories vir jou gesin.",
-        Url: "/gratis",
+        Url: "/luister",
         Kind: "Bladsy",
         Keywords: "gratis luister probeer stories",
         ThumbnailPath: "/stories/Schink_Stories_Gratis_Blad_Banner.webp",
@@ -4891,9 +5159,7 @@ static MobileStorySummaryResponse BuildMobileStorySummary(
         IsFavorite: isFavorite,
         DetailUrl: ToAbsoluteUri(
             httpContext,
-            string.Equals(source, "gratis", StringComparison.OrdinalIgnoreCase)
-                ? $"/gratis/{Uri.EscapeDataString(story.Slug)}"
-                : $"/luister/{Uri.EscapeDataString(story.Slug)}"));
+            $"/luister/{Uri.EscapeDataString(story.Slug)}"));
 
 sealed record ContactApiRequest(string? Name, string? Email, string? Subject, string? Message, string? Website);
 sealed record AuthSignInApiRequest(string? Email, string? Password);

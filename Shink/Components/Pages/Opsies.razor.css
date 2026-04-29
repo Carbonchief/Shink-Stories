@@ -812,7 +812,7 @@
     }
 
     .opsies-page-logo-image {
-        width: min(36vw, 118px);
+        width: min(52vw, 172px);
     }
 
     .opsies-hero-copy {
@@ -844,12 +844,15 @@
 
     .opsies-section-heading {
         gap: 0.24rem;
+        justify-items: center;
+        text-align: center;
+        margin-inline: auto;
     }
 
     .opsies-section-heading h2 {
         padding: 0.22rem 0.48rem;
         border-radius: 14px;
-        font-size: clamp(1rem, 4.6vw, 1.24rem);
+        font-size: clamp(1.14rem, 5.25vw, 1.42rem);
         line-height: 1.08;
     }
 

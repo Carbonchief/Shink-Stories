@@ -1100,7 +1100,7 @@ public sealed class SupabaseUserNotificationService(
 
     private static string BuildPublishedStoryNotificationHref(string slug, string accessLevel) =>
         string.Equals(accessLevel, "free", StringComparison.OrdinalIgnoreCase)
-            ? $"/gratis/{Uri.EscapeDataString(slug)}"
+            ? $"/luister/{Uri.EscapeDataString(slug)}"
             : $"/luister/{Uri.EscapeDataString(slug)}";
 
     private static string BuildPublishedBlogNotificationHref(string slug) =>

@@ -1481,7 +1481,7 @@
                                 {
                                     <div class="admin-action-grid">
                                         <MudTextField T="string"
-                                                      Label='@T("Rede vir deaktivering", "Disable reason")'
+                                                      Label='@T("Rede vir sluiting", "Closure reason")'
                                                       @bind-Value="SubscriberDisableReason"
                                                       Variant="Variant.Outlined"
                                                       Margin="Margin.Dense" />
@@ -1489,7 +1489,7 @@
                                                    Color="@(SubscriberEditor.DisabledAt is null ? Color.Warning : Color.Success)"
                                                    Disabled="@IsSavingSubscriberAction"
                                                    OnClick="ToggleSubscriberDisabledAsync">
-                                            @(SubscriberEditor.DisabledAt is null ? T("Deaktiveer intekenaar", "Disable subscriber") : T("Heraktiveer intekenaar", "Enable subscriber"))
+                                            @(SubscriberEditor.DisabledAt is null ? T("Sluit rekening", "Close account") : T("Heraktiveer rekening", "Reactivate account"))
                                         </MudButton>
                                         <MudButton Variant="Variant.Outlined"
                                                    Color="Color.Primary"
@@ -1508,6 +1508,37 @@
                                 else
                                 {
                                     @RenderSubscriberSubscriptions()
+                                    var cancellablePaidSubscriptions = SubscriberDetail?.Subscriptions.Where(CanCancelPaidSubscription).ToArray() ?? [];
+                                    if (cancellablePaidSubscriptions.Length > 0)
+                                    {
+                                        <div class="admin-override-header">
+                                            <h4>@T("Betaalde intekening", "Paid subscription")</h4>
+                                            <p>@T("Kanselleer die herhalende Paystack- of PayFast-betaling. Die intekenaar hou toegang tot die huidige betaalperiode verby is en skuif daarna terug na Gratis.", "Cancel the recurring Paystack or PayFast payment. The subscriber keeps access until the current paid period ends and then moves back to Free.")</p>
+                                        </div>
+                                        <div class="admin-action-grid">
+                                            <MudSelect T="Guid"
+                                                       Label='@T("Betaalde intekening om te kanselleer", "Paid subscription to cancel")'
+                                                       @bind-Value="SelectedPaidSubscriptionId"
+                                                       Variant="Variant.Outlined"
+                                                       Margin="Margin.Dense">
+                                                @foreach (var subscription in cancellablePaidSubscriptions)
+                                                {
+                                                    <MudSelectItem Value="@subscription.SubscriptionId">@($"{subscription.TierName} - {FormatAdminDate(subscription.NextRenewalAt)}")</MudSelectItem>
+                                                }
+                                            </MudSelect>
+                                            <MudTextField T="string"
+                                                          Label='@T("Kansellasie nota", "Cancellation note")'
+                                                          @bind-Value="SubscriberPaidSubscriptionCancelReason"
+                                                          Variant="Variant.Outlined"
+                                                          Margin="Margin.Dense" />
+                                            <MudButton Variant="Variant.Outlined"
+                                                       Color="Color.Warning"
+                                                       Disabled="@IsSavingSubscriberAction"
+                                                       OnClick="CancelSelectedPaidSubscriptionAsync">
+                                                @T("Kanselleer betaalde intekening", "Cancel paid subscription")
+                                            </MudButton>
+                                        </div>
+                                    }
                                     <div class="admin-override-header">
                                         <h4>@T("Override", "Override")</h4>
                                         <p>@T("Gebruik hierdie velde om handmatige admin-toegang by te voeg. Verskaffer- en invoerintekeninge bly leesalleen.", "Use these fields to add manual admin access. Provider and imported subscriptions remain read-only.")</p>
@@ -2369,6 +2400,7 @@
         FullWidth = true,
         CloseButton = true,
         BackdropClick = false,
+        Position = DialogPosition.TopCenter,
         BackgroundClass = "admin-solid-dialog-background"
     };
 
@@ -2396,6 +2428,8 @@
     private string ManualAccessReason { get; set; } = string.Empty;
     private Guid SelectedAdminOverrideSubscriptionId { get; set; }
     private string SubscriberAccessCancelReason { get; set; } = string.Empty;
+    private Guid SelectedPaidSubscriptionId { get; set; }
+    private string SubscriberPaidSubscriptionCancelReason { get; set; } = string.Empty;
     private string SubscriberBulkReason { get; set; } = string.Empty;
     private bool SendNewSubscriberReset { get; set; } = true;
     private bool AreAllVisibleSubscribersSelected =>
@@ -3089,7 +3123,9 @@
         SubscriberDisableReason = string.Empty;
         ManualAccessReason = string.Empty;
         SubscriberAccessCancelReason = string.Empty;
+        SubscriberPaidSubscriptionCancelReason = string.Empty;
         SelectedAdminOverrideSubscriptionId = Guid.Empty;
+        SelectedPaidSubscriptionId = Guid.Empty;
         ManualAccessTierCode = string.Empty;
         ManualAccessExpiryDate = null;
     }
@@ -3102,7 +3138,9 @@
         SubscriberDisableReason = string.Empty;
         ManualAccessReason = string.Empty;
         SubscriberAccessCancelReason = string.Empty;
+        SubscriberPaidSubscriptionCancelReason = string.Empty;
         SelectedAdminOverrideSubscriptionId = Guid.Empty;
+        SelectedPaidSubscriptionId = Guid.Empty;
         ManualAccessTierCode = string.Empty;
         ManualAccessExpiryDate = null;
         SendNewSubscriberReset = true;
@@ -3128,9 +3166,15 @@
                 .OrderByDescending(subscription => subscription.NextRenewalAt)
                 .FirstOrDefault();
             SelectedAdminOverrideSubscriptionId = activeAdminOverride?.SubscriptionId ?? Guid.Empty;
+            var activePaidSubscription = SubscriberDetail?.Subscriptions
+                .Where(CanCancelPaidSubscription)
+                .OrderByDescending(subscription => subscription.NextRenewalAt)
+                .FirstOrDefault();
+            SelectedPaidSubscriptionId = activePaidSubscription?.SubscriptionId ?? Guid.Empty;
             ManualAccessTierCode = string.Empty;
             ManualAccessExpiryDate = null;
             ManualAccessReason = string.Empty;
+            SubscriberPaidSubscriptionCancelReason = string.Empty;
         }
         catch (Exception exception)
         {
@@ -3430,6 +3474,50 @@
         {
             Logger.LogError(exception, "Failed to cancel subscriber admin access.");
             SetError(T("Kon nie handmatige toegang nou kanselleer nie.", "Could not cancel manual access right now."));
+        }
+        finally
+        {
+            IsSavingSubscriberAction = false;
+        }
+    }
+
+    private async Task CancelSelectedPaidSubscriptionAsync()
+    {
+        if (SubscriberEditor is null || SubscriberEditor.IsNew || SelectedPaidSubscriptionId == Guid.Empty)
+        {
+            SetError(T("Kies eers 'n betaalde intekening om te kanselleer.", "Select a paid subscription to cancel first."));
+            return;
+        }
+
+        IsSavingSubscriberAction = true;
+        ClearFeedback();
+
+        try
+        {
+            var result = await AdminManagementService.CancelSubscriberPaidSubscriptionAsync(
+                CurrentAdminEmail,
+                new AdminSubscriberPaidSubscriptionCancelRequest(
+                    SubscriberEditor.SubscriberId,
+                    SelectedPaidSubscriptionId,
+                    SubscriberPaidSubscriptionCancelReason));
+
+            if (!HandleOperationResult(
+                    result,
+                    T(
+                        "Betaalde intekening is gekanselleer. Toegang bly aktief tot die betaalde periode verby is.",
+                        "Paid subscription cancelled. Access remains active until the paid period ends.")))
+            {
+                return;
+            }
+
+            await RefreshSubscribersAsync();
+            await LoadSubscriberDetailAsync(SubscriberEditor.SubscriberId);
+            SubscriberPaidSubscriptionCancelReason = string.Empty;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to cancel subscriber paid subscription.");
+            SetError(T("Kon nie betaalde intekening nou kanselleer nie.", "Could not cancel paid subscription right now."));
         }
         finally
         {
@@ -5438,7 +5526,7 @@
                 subscription.TierName,
                 subscription.IsAdminOverride ? T("Admin-toegang", "Admin access") : BuildSubscriptionSourceLabel(subscription.SourceSystem),
                 BuildPaymentProviderLabel(subscription.Provider),
-                subscription.Status,
+                BuildSubscriptionStatusLabel(subscription),
                 FormatAdminDate(subscription.SubscribedAt),
                 FormatAdminDate(subscription.NextRenewalAt),
                 subscription.ProviderPaymentId ?? subscription.ProviderTransactionId ?? "-");
@@ -6460,10 +6548,64 @@
         !subscription.IsAdminOverride &&
         !string.Equals(subscription.SourceSystem, "wordpress_pmpro", StringComparison.OrdinalIgnoreCase);
 
+    private static bool CanCancelPaidSubscription(AdminSubscriberSubscriptionRecord subscription)
+    {
+        var paystackSubscriptionCode = PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
+            subscription.Provider,
+            subscription.SourceSystem,
+            subscription.ProviderPaymentId,
+            subscription.ProviderTransactionId);
+        if (!string.Equals(subscription.Status, "active", StringComparison.OrdinalIgnoreCase) ||
+            subscription.IsAdminOverride ||
+            string.Equals(subscription.TierCode, "gratis", StringComparison.OrdinalIgnoreCase) ||
+            subscription.CancelledAt is not null)
+        {
+            return false;
+        }
+
+        if (!string.Equals(subscription.Provider, "paystack", StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(paystackSubscriptionCode))
+        {
+            return string.Equals(subscription.Provider, "payfast", StringComparison.OrdinalIgnoreCase) &&
+                   subscription.HasProviderToken &&
+                   (subscription.NextRenewalAt is null || subscription.NextRenewalAt.Value > DateTimeOffset.UtcNow);
+        }
+
+        return subscription.NextRenewalAt is null || subscription.NextRenewalAt.Value > DateTimeOffset.UtcNow;
+    }
+
+    private static bool IsPaidSubscriptionCancellationScheduled(AdminSubscriberSubscriptionRecord subscription) =>
+        string.Equals(subscription.Status, "active", StringComparison.OrdinalIgnoreCase) &&
+        !subscription.IsAdminOverride &&
+        (string.Equals(subscription.Provider, "paystack", StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(subscription.Provider, "payfast", StringComparison.OrdinalIgnoreCase)) &&
+        subscription.CancelledAt is not null &&
+        subscription.CancelledAt.Value > DateTimeOffset.UtcNow;
+
     private static bool IsFailedSubscriptionStatus(string? status)
     {
         var normalized = status?.Trim().ToLowerInvariant();
         return normalized is "failed" or "payment_failed" or "past_due";
+    }
+
+    private string BuildSubscriptionStatusLabel(AdminSubscriberSubscriptionRecord subscription)
+    {
+        if (IsPaidSubscriptionCancellationScheduled(subscription))
+        {
+            return $"{T("Kanselleer op", "Cancels on")} {FormatAdminDate(subscription.CancelledAt)}";
+        }
+
+        return subscription.Status?.Trim().ToLowerInvariant() switch
+        {
+            "active" => T("Aktief", "Active"),
+            "pending" => T("Hangend", "Pending"),
+            "cancelled" => T("Gekanselleer", "Cancelled"),
+            "failed" => T("Misluk", "Failed"),
+            "payment_failed" => T("Betaling misluk", "Payment failed"),
+            "past_due" => T("Agterstallig", "Past due"),
+            null or "" => "-",
+            _ => subscription.Status
+        };
     }
 
     private string BuildSubscriptionStatusLabel(AdminSubscriberRecord subscriber)
@@ -6494,9 +6636,7 @@
         }
 
         var encodedSlug = Uri.EscapeDataString(story.Slug.Trim());
-        return string.Equals(story.AccessLevel, "free", StringComparison.OrdinalIgnoreCase)
-            ? $"/gratis/{encodedSlug}"
-            : $"/luister/{encodedSlug}";
+        return $"/luister/{encodedSlug}";
     }
 
     private static string? BuildAdminPlaylistPlayerPath(AdminPlaylistRecord playlist)

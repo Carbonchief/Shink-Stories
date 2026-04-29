@@ -596,9 +596,18 @@ body.schink-night-mode .luister-page-shell .luister-playlist-link {
 
 .mud-dialog-container.admin-solid-dialog-background {
     z-index: var(--mud-zindex-dialog) !important;
+    align-items: flex-start !important;
+    justify-content: center !important;
+    padding: clamp(1rem, 3dvh, 2rem) 1rem !important;
+    box-sizing: border-box;
+    overflow: hidden !important;
 }
 
 .mud-dialog.admin-solid-dialog {
+    width: min(1280px, calc(100vw - 2rem)) !important;
+    max-height: calc(100dvh - clamp(2rem, 6dvh, 4rem)) !important;
+    display: flex !important;
+    flex-direction: column !important;
     background: #16212d !important;
     color: #eaf1f8 !important;
     border: 1px solid #3f5a72 !important;
@@ -609,6 +618,7 @@ body.schink-night-mode .luister-page-shell .luister-playlist-link {
 
 .mud-dialog.admin-solid-dialog .mud-dialog-title,
 .mud-dialog.admin-solid-dialog .mud-dialog-actions {
+    flex: 0 0 auto !important;
     background: #16212d !important;
     color: #eaf1f8 !important;
 }
@@ -624,13 +634,25 @@ body.schink-night-mode .luister-page-shell .luister-playlist-link {
 .mud-dialog.admin-solid-dialog .mud-dialog-content,
 .mud-dialog.admin-solid-dialog .admin-solid-dialog-content,
 .mud-dialog.admin-solid-dialog .admin-solid-dialog-body {
+    min-height: 0 !important;
     background: #1b2836 !important;
     color: #eaf1f8 !important;
 }
 
+.mud-dialog.admin-solid-dialog .mud-dialog-content {
+    flex: 1 1 auto !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    overscroll-behavior: contain;
+}
+
 .mud-dialog.admin-solid-dialog .admin-solid-dialog-body {
-    min-height: 360px;
+    min-height: 0 !important;
     border-radius: 12px;
+}
+
+.mud-dialog.admin-solid-dialog .admin-detail-tabs {
+    min-height: 0 !important;
 }
 
 .mud-dialog.admin-solid-dialog .mud-tabs-toolbar,

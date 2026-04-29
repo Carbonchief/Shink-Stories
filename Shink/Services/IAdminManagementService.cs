@@ -50,6 +50,11 @@ public interface IAdminManagementService
         AdminSubscriberAccessCancelRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<AdminOperationResult> CancelSubscriberPaidSubscriptionAsync(
+        string? adminEmail,
+        AdminSubscriberPaidSubscriptionCancelRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<AdminOperationResult> SendSubscriberPasswordResetAsync(
         string? adminEmail,
         Guid subscriberId,
@@ -241,6 +246,11 @@ public sealed record AdminSubscriberAccessCancelRequest(
     Guid SubscriptionId,
     string? Reason);
 
+public sealed record AdminSubscriberPaidSubscriptionCancelRequest(
+    Guid SubscriberId,
+    Guid SubscriptionId,
+    string? Reason);
+
 public sealed record AdminSubscriberExportRequest(
     AdminSubscriberPageRequest PageRequest,
     IReadOnlyList<Guid>? SelectedSubscriberIds = null);
@@ -299,6 +309,7 @@ public sealed record AdminSubscriberSubscriptionRecord(
     DateTimeOffset? CancelledAt,
     string? ProviderPaymentId,
     string? ProviderTransactionId,
+    bool HasProviderToken,
     bool IsAdminOverride,
     bool IsReadOnly);
 

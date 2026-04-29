@@ -14,6 +14,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     ISubscriptionPaymentRecoveryEmailService subscriptionPaymentRecoveryEmailService,
     ISubscriptionNotificationEmailService subscriptionNotificationEmailService,
     PaystackCheckoutService paystackCheckoutService,
+    PayFastCheckoutService payFastCheckoutService,
     ILogger<SupabaseSubscriptionLedgerService> logger) : ISubscriptionLedgerService
 {
     private const string GratisTierCode = "gratis";
@@ -27,6 +28,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     private readonly ISubscriptionPaymentRecoveryEmailService _subscriptionPaymentRecoveryEmailService = subscriptionPaymentRecoveryEmailService;
     private readonly ISubscriptionNotificationEmailService _subscriptionNotificationEmailService = subscriptionNotificationEmailService;
     private readonly PaystackCheckoutService _paystackCheckoutService = paystackCheckoutService;
+    private readonly PayFastCheckoutService _payFastCheckoutService = payFastCheckoutService;
     private readonly ILogger<SupabaseSubscriptionLedgerService> _logger = logger;
 
     public async Task<bool> HasActivePaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default)
@@ -61,6 +63,388 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             .Select(tierCode => tierCode!.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
+    }
+
+    public async Task<CurrentPaidSubscription?> GetCurrentPaidSubscriptionAsync(
+        string? email,
+        CancellationToken cancellationToken = default)
+    {
+        var context = await TryResolveSelfServiceContextAsync(email, cancellationToken);
+        if (context is null)
+        {
+            return null;
+        }
+
+        var subscriptions = await FetchSelfServicePaidSubscriptionsAsync(context.BaseUri, context.ApiKey, context.SubscriberId, cancellationToken);
+        var nowUtc = DateTimeOffset.UtcNow;
+        var current = subscriptions
+            .Where(subscription => IsCurrentlyActiveSelfServiceSubscription(subscription, nowUtc))
+            .OrderByDescending(subscription => subscription.NextRenewalAt ?? DateTimeOffset.MaxValue)
+            .ThenByDescending(subscription => subscription.CancelledAt ?? DateTimeOffset.MaxValue)
+            .FirstOrDefault();
+
+        return current is null
+            ? null
+            : new CurrentPaidSubscription(
+                current.SubscriptionId,
+                current.TierCode ?? string.Empty,
+                current.Provider,
+                current.NextRenewalAt,
+                current.CancelledAt,
+                current.CancelledAt is not null && current.CancelledAt > nowUtc);
+    }
+
+    public async Task<PaidSubscriptionAttention> GetPaidSubscriptionAttentionAsync(
+        string? email,
+        CancellationToken cancellationToken = default)
+    {
+        var candidate = await TryResolvePaidSubscriptionAttentionCandidateAsync(email, cancellationToken);
+        if (candidate is null)
+        {
+            return new PaidSubscriptionAttention(false);
+        }
+
+        var subscription = candidate.Subscription;
+        return new PaidSubscriptionAttention(
+            RequiresAttention: true,
+            Reason: candidate.Reason,
+            SubscriptionId: subscription?.SubscriptionId,
+            TierCode: subscription?.TierCode,
+            PlanSlug: candidate.Plan?.Slug,
+            Provider: subscription?.Provider,
+            CanAttemptAutomaticRetry: subscription is not null &&
+                                      candidate.Plan is not null &&
+                                      CanAttemptAutomaticRetry(subscription, candidate.Plan));
+    }
+
+    public async Task<SubscriptionRepairResult> TryRepairPaidSubscriptionAsync(
+        string? email,
+        CancellationToken cancellationToken = default)
+    {
+        var candidate = await TryResolvePaidSubscriptionAttentionCandidateAsync(email, cancellationToken);
+        if (candidate is null)
+        {
+            return new SubscriptionRepairResult(true);
+        }
+
+        var subscription = candidate.Subscription;
+        var plan = candidate.Plan;
+        if (subscription is null || plan is null)
+        {
+            return new SubscriptionRepairResult(false, ErrorMessage: "Kon nie die betaalplan vir hierdie intekening bepaal nie.");
+        }
+
+        if (!CanAttemptAutomaticRetry(subscription, plan))
+        {
+            return new SubscriptionRepairResult(false, plan.Slug);
+        }
+
+        var nowUtc = DateTimeOffset.UtcNow;
+        var providerPaymentId = ResolveProviderPaymentIdForEvent(subscription);
+        var reference = BuildAccountRepairReference(subscription.SubscriptionId);
+        var chargeResult = await _paystackCheckoutService.ChargeAuthorizationAsync(
+            plan,
+            email!.Trim().ToLowerInvariant(),
+            subscription.ProviderToken!,
+            reference,
+            subscription.SubscriptionId,
+            providerPaymentId,
+            cancellationToken);
+
+        var eventPayload = string.IsNullOrWhiteSpace(chargeResult.RawPayload)
+            ? new Dictionary<string, string?>
+            {
+                ["reference"] = chargeResult.Reference,
+                ["error"] = chargeResult.ErrorMessage
+            }
+            : DeserializePayloadObject(chargeResult.RawPayload);
+
+        await InsertSubscriptionEventAsync(
+            candidate.Context.BaseUri,
+            candidate.Context.ApiKey,
+            subscription.SubscriptionId,
+            provider: "paystack",
+            providerPaymentId,
+            providerTransactionId: chargeResult.ProviderTransactionId ?? chargeResult.Reference ?? reference,
+            eventType: "paystack.authorization_retry",
+            eventStatus: chargeResult.IsSuccess ? "success" : chargeResult.TransactionStatus ?? "failed",
+            payload: eventPayload,
+            cancellationToken);
+
+        if (!chargeResult.IsSuccess)
+        {
+            return new SubscriptionRepairResult(false, plan.Slug, chargeResult.ErrorMessage);
+        }
+
+        var nextRenewalAtUtc = (chargeResult.PaidAt ?? nowUtc).AddMonths(plan.BillingPeriodMonths);
+        var paystackSubscriptionCode = PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
+            subscription.Provider,
+            subscription.SourceSystem,
+            subscription.ProviderPaymentId,
+            subscription.ProviderTransactionId);
+        if (!string.IsNullOrWhiteSpace(paystackSubscriptionCode))
+        {
+            var subscriptionLookup = await _paystackCheckoutService.GetSubscriptionAsync(
+                paystackSubscriptionCode,
+                cancellationToken);
+            if (subscriptionLookup.IsSuccess && subscriptionLookup.NextPaymentDate is not null)
+            {
+                nextRenewalAtUtc = subscriptionLookup.NextPaymentDate.Value;
+            }
+        }
+
+        await MarkSubscriptionRecoveredByIdAsync(
+            candidate.Context.BaseUri,
+            candidate.Context.ApiKey,
+            subscription.SubscriptionId,
+            nextRenewalAtUtc,
+            cancellationToken);
+
+        return new SubscriptionRepairResult(true, plan.Slug);
+    }
+
+    public async Task<SubscriptionFreeTierTransferResult> TransferPaidSubscriptionToGratisAsync(
+        string? email,
+        CancellationToken cancellationToken = default)
+    {
+        var context = await TryResolveSelfServiceContextAsync(email, cancellationToken);
+        if (context is null)
+        {
+            return new SubscriptionFreeTierTransferResult(false, "Kon nie jou rekening vind nie. Probeer asseblief weer teken in.");
+        }
+
+        if (context.DisabledAt is not null)
+        {
+            return new SubscriptionFreeTierTransferResult(false, "Hierdie rekening is reeds gesluit.");
+        }
+
+        var subscriptions = await FetchSelfServicePaidSubscriptionsAsync(context.BaseUri, context.ApiKey, context.SubscriberId, cancellationToken);
+        var paidSubscriptions = subscriptions
+            .Where(subscription => !string.IsNullOrWhiteSpace(subscription.SubscriptionId))
+            .ToArray();
+        if (paidSubscriptions.Length == 0)
+        {
+            return new SubscriptionFreeTierTransferResult(false, "Kon nie 'n betaalde intekening vind om na gratis te skuif nie.");
+        }
+
+        var cancelledCount = 0;
+        var nowUtc = DateTimeOffset.UtcNow;
+        foreach (var subscription in paidSubscriptions)
+        {
+            var requiresProviderCancellation = IsUsablePaidSubscription(subscription, nowUtc);
+            var providerEmailToken = subscription.ProviderEmailToken;
+            var paystackSubscriptionCode = PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
+                subscription.Provider,
+                subscription.SourceSystem,
+                subscription.ProviderPaymentId,
+                subscription.ProviderTransactionId);
+            if (!string.IsNullOrWhiteSpace(paystackSubscriptionCode))
+            {
+                var disableResult = await _paystackCheckoutService.DisableSubscriptionAsync(
+                    paystackSubscriptionCode,
+                    providerEmailToken,
+                    cancellationToken);
+                if (!disableResult.IsSuccess)
+                {
+                    if (requiresProviderCancellation)
+                    {
+                        return new SubscriptionFreeTierTransferResult(false, disableResult.ErrorMessage ?? "Paystack kon nie die intekening kanselleer nie.", cancelledCount);
+                    }
+
+                    LogFreeTierProviderCancellationFallback(subscription, disableResult.ErrorMessage);
+                }
+                else
+                {
+                    providerEmailToken = disableResult.EmailToken ?? providerEmailToken;
+                }
+            }
+            else if (string.Equals(subscription.Provider, "payfast", StringComparison.OrdinalIgnoreCase))
+            {
+                var cancelResult = await _payFastCheckoutService.CancelSubscriptionAsync(
+                    subscription.ProviderToken,
+                    cancellationToken);
+                if (!cancelResult.IsSuccess)
+                {
+                    if (requiresProviderCancellation)
+                    {
+                        return new SubscriptionFreeTierTransferResult(false, cancelResult.ErrorMessage ?? "PayFast kon nie die intekening kanselleer nie.", cancelledCount);
+                    }
+
+                    LogFreeTierProviderCancellationFallback(subscription, cancelResult.ErrorMessage);
+                }
+            }
+            else if (!IsLocallyCancellableSubscription(subscription))
+            {
+                return new SubscriptionFreeTierTransferResult(false, "Hierdie betaalverskaffer kan nog nie met selfdiens gekanselleer word nie. Kontak ons asseblief om dit te kanselleer.", cancelledCount);
+            }
+
+            var updated = await MarkSelfServiceSubscriptionCancelledNowAsync(
+                context.BaseUri,
+                context.ApiKey,
+                subscription.SubscriptionId,
+                nowUtc,
+                providerEmailToken,
+                cancellationToken);
+            if (!updated)
+            {
+                return new SubscriptionFreeTierTransferResult(false, "Kon nie jou gratis skuif nou stoor nie. Probeer asseblief weer.", cancelledCount);
+            }
+
+            cancelledCount++;
+        }
+
+        var profile = await GetSubscriberProfileAsync(email, cancellationToken);
+        var gratisReady = await EnsureGratisAccessAsync(
+            email,
+            profile?.FirstName,
+            profile?.LastName,
+            profile?.DisplayName,
+            profile?.MobileNumber,
+            profile?.ProfileImageUrl,
+            profile?.ProfileImageObjectKey,
+            profile?.ProfileImageContentType,
+            cancellationToken);
+        if (!gratisReady)
+        {
+            return new SubscriptionFreeTierTransferResult(false, "Jou betaalde toegang is gestop, maar ons kon nie gratis toegang nou aktiveer nie.", cancelledCount);
+        }
+
+        return new SubscriptionFreeTierTransferResult(true, CancelledPaidSubscriptions: cancelledCount);
+    }
+
+    public async Task<SubscriptionCancelResult> CancelPaidSubscriptionAsync(
+        string? email,
+        CancellationToken cancellationToken = default)
+    {
+        var context = await TryResolveSelfServiceContextAsync(email, cancellationToken);
+        if (context is null)
+        {
+            return new SubscriptionCancelResult(false, "Kon nie jou rekening vind nie. Probeer asseblief weer teken in.");
+        }
+
+        if (context.DisabledAt is not null)
+        {
+            return new SubscriptionCancelResult(false, "Hierdie rekening is reeds gesluit.");
+        }
+
+        var subscriptions = await FetchSelfServicePaidSubscriptionsAsync(context.BaseUri, context.ApiKey, context.SubscriberId, cancellationToken);
+        var nowUtc = DateTimeOffset.UtcNow;
+        var activePaidSubscriptions = subscriptions
+            .Where(subscription => IsCurrentlyActiveSelfServiceSubscription(subscription, nowUtc))
+            .ToArray();
+
+        if (activePaidSubscriptions.Length == 0)
+        {
+            return new SubscriptionCancelResult(false, "Jy het nie tans 'n aktiewe betaalde intekening om te kanselleer nie.");
+        }
+
+        var cancelledCount = 0;
+        DateTimeOffset? latestAccessEndsAtUtc = null;
+        foreach (var subscription in activePaidSubscriptions)
+        {
+            if (string.IsNullOrWhiteSpace(subscription.SubscriptionId))
+            {
+                continue;
+            }
+
+            var providerEmailToken = subscription.ProviderEmailToken;
+            var paystackSubscriptionCode = PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
+                subscription.Provider,
+                subscription.SourceSystem,
+                subscription.ProviderPaymentId,
+                subscription.ProviderTransactionId);
+            if (!string.IsNullOrWhiteSpace(paystackSubscriptionCode))
+            {
+                var disableResult = await _paystackCheckoutService.DisableSubscriptionAsync(
+                    paystackSubscriptionCode,
+                    providerEmailToken,
+                    cancellationToken);
+                if (!disableResult.IsSuccess)
+                {
+                    return new SubscriptionCancelResult(false, disableResult.ErrorMessage ?? "Paystack kon nie die intekening kanselleer nie.");
+                }
+
+                providerEmailToken = disableResult.EmailToken ?? providerEmailToken;
+            }
+            else if (string.Equals(subscription.Provider, "payfast", StringComparison.OrdinalIgnoreCase))
+            {
+                var cancelResult = await _payFastCheckoutService.CancelSubscriptionAsync(
+                    subscription.ProviderToken,
+                    cancellationToken);
+                if (!cancelResult.IsSuccess)
+                {
+                    return new SubscriptionCancelResult(false, cancelResult.ErrorMessage ?? "PayFast kon nie die intekening kanselleer nie.");
+                }
+            }
+            else if (!string.Equals(subscription.Provider, "free", StringComparison.OrdinalIgnoreCase) &&
+                     !IsLocallyCancellableSubscription(subscription))
+            {
+                return new SubscriptionCancelResult(false, "Hierdie betaalverskaffer kan nog nie met selfdiens gekanselleer word nie. Kontak ons asseblief om dit te kanselleer.");
+            }
+
+            var accessEndsAtUtc = ResolveCancellationEffectiveAt(nowUtc, subscription.NextRenewalAt);
+            var updated = await ScheduleSubscriptionCancellationAsync(
+                context.BaseUri,
+                context.ApiKey,
+                subscription.SubscriptionId,
+                accessEndsAtUtc,
+                providerEmailToken,
+                cancellationToken);
+            if (!updated)
+            {
+                return new SubscriptionCancelResult(false, "Kon nie jou kansellasie nou stoor nie. Probeer asseblief weer.");
+            }
+
+            cancelledCount++;
+            latestAccessEndsAtUtc = latestAccessEndsAtUtc is null || accessEndsAtUtc > latestAccessEndsAtUtc
+                ? accessEndsAtUtc
+                : latestAccessEndsAtUtc;
+        }
+
+        return cancelledCount == 0
+            ? new SubscriptionCancelResult(false, "Kon nie 'n aktiewe betaalde intekening vind om te kanselleer nie.")
+            : new SubscriptionCancelResult(true, AccessEndsAtUtc: latestAccessEndsAtUtc, CancelledSubscriptions: cancelledCount);
+    }
+
+    public async Task<AccountClosureResult> CloseAccountAsync(
+        string? email,
+        CancellationToken cancellationToken = default)
+    {
+        var context = await TryResolveSelfServiceContextAsync(email, cancellationToken);
+        if (context is null)
+        {
+            return new AccountClosureResult(false, "Kon nie jou rekening vind nie. Probeer asseblief weer teken in.");
+        }
+
+        if (context.DisabledAt is not null)
+        {
+            return new AccountClosureResult(true);
+        }
+
+        var nowUtc = DateTimeOffset.UtcNow;
+        var payload = new Dictionary<string, object?>
+        {
+            ["disabled_at"] = nowUtc.UtcDateTime,
+            ["disabled_by_admin_email"] = "self_service",
+            ["disabled_reason"] = "Rekening deur gebruiker gesluit."
+        };
+
+        var escapedSubscriberId = Uri.EscapeDataString(context.SubscriberId);
+        var uri = new Uri(context.BaseUri, $"rest/v1/subscribers?subscriber_id=eq.{escapedSubscriberId}");
+        using var request = CreateJsonRequest(new HttpMethod("PATCH"), uri, context.ApiKey, payload, "return=minimal");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Supabase self-service account close failed. subscriber_id={SubscriberId} Status={StatusCode} Body={Body}",
+                context.SubscriberId,
+                (int)response.StatusCode,
+                body);
+            return new AccountClosureResult(false, "Kon nie jou rekening nou sluit nie. Probeer asseblief weer.");
+        }
+
+        return new AccountClosureResult(true);
     }
 
     public async Task<SubscriberProfile?> GetSubscriberProfileAsync(string? email, CancellationToken cancellationToken = default)
@@ -400,6 +784,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 providerPaymentId: BuildGratisProviderPaymentId(subscriberId),
                 providerTransactionId: null,
                 providerToken: null,
+                providerEmailToken: null,
                 subscribedAtUtc: DateTimeOffset.UtcNow,
                 nextRenewalAtUtc: null,
                 cancellationToken);
@@ -633,11 +1018,28 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         if (chargeResult.IsSuccess)
         {
             var paidAtUtc = chargeResult.PaidAt ?? nowUtc;
+            var nextRenewalAtUtc = paidAtUtc.AddMonths(plan.BillingPeriodMonths);
+            var paystackSubscriptionCode = PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
+                subscriptionContext.Provider,
+                subscriptionContext.SourceSystem,
+                subscriptionContext.ProviderPaymentId,
+                subscriptionContext.ProviderTransactionId);
+            if (!string.IsNullOrWhiteSpace(paystackSubscriptionCode))
+            {
+                var subscriptionLookup = await _paystackCheckoutService.GetSubscriptionAsync(
+                    paystackSubscriptionCode,
+                    cancellationToken);
+                if (subscriptionLookup.IsSuccess && subscriptionLookup.NextPaymentDate is not null)
+                {
+                    nextRenewalAtUtc = subscriptionLookup.NextPaymentDate.Value;
+                }
+            }
+
             await MarkSubscriptionRecoveredByIdAsync(
                 baseUri,
                 apiKey,
                 subscriptionContext.SubscriptionId,
-                paidAtUtc.AddMonths(plan.BillingPeriodMonths),
+                nextRenewalAtUtc,
                 cancellationToken);
             await MarkPaymentRecoveryAuthorizationRetryAsync(
                 baseUri,
@@ -817,6 +1219,291 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         return ReadFirstStringProperty(lookupBody, "subscriber_id");
     }
 
+    private async Task<SelfServiceSubscriptionContext?> TryResolveSelfServiceContextAsync(
+        string? email,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return null;
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            _logger.LogWarning("Supabase self-service account action skipped: URL is not configured.");
+            return null;
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            _logger.LogWarning("Supabase self-service account action skipped: ServiceRoleKey is not configured.");
+            return null;
+        }
+
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+        var escapedEmail = Uri.EscapeDataString(normalizedEmail);
+        var lookupUri = new Uri(
+            baseUri,
+            $"rest/v1/subscribers?select=subscriber_id,disabled_at&email=eq.{escapedEmail}&limit=1");
+
+        using var request = CreateRequest(HttpMethod.Get, lookupUri, apiKey);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Supabase self-service subscriber lookup failed. email={Email} Status={StatusCode} Body={Body}",
+                normalizedEmail,
+                (int)response.StatusCode,
+                responseBody);
+            return null;
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var subscribers = await JsonSerializer.DeserializeAsync<List<SelfServiceSubscriberRow>>(stream, cancellationToken: cancellationToken)
+            ?? [];
+        var subscriber = subscribers.FirstOrDefault();
+        if (subscriber is null || string.IsNullOrWhiteSpace(subscriber.SubscriberId))
+        {
+            return null;
+        }
+
+        return new SelfServiceSubscriptionContext(
+            baseUri,
+            apiKey,
+            subscriber.SubscriberId,
+            subscriber.DisabledAt);
+    }
+
+    private async Task<IReadOnlyList<SelfServiceSubscriptionRow>> FetchSelfServicePaidSubscriptionsAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriberId,
+        CancellationToken cancellationToken)
+    {
+        var escapedSubscriberId = Uri.EscapeDataString(subscriberId);
+        var subscriptionsUri = new Uri(
+            baseUri,
+            "rest/v1/subscriptions" +
+            "?select=subscription_id,tier_code,provider,source_system,provider_payment_id,provider_transaction_id,provider_token,provider_email_token,next_renewal_at,cancelled_at,status" +
+            $"&subscriber_id=eq.{escapedSubscriberId}&status=eq.active&order=subscribed_at.desc&limit=25");
+
+        using var request = CreateRequest(HttpMethod.Get, subscriptionsUri, apiKey);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Supabase self-service paid subscription lookup failed. subscriber_id={SubscriberId} Status={StatusCode} Body={Body}",
+                subscriberId,
+                (int)response.StatusCode,
+                responseBody);
+            return [];
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var subscriptions = await JsonSerializer.DeserializeAsync<List<SelfServiceSubscriptionRow>>(stream, cancellationToken: cancellationToken)
+            ?? [];
+        return subscriptions
+            .Where(subscription => !string.Equals(subscription.TierCode, GratisTierCode, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+    }
+
+    private async Task<PaidSubscriptionAttentionCandidate?> TryResolvePaidSubscriptionAttentionCandidateAsync(
+        string? email,
+        CancellationToken cancellationToken)
+    {
+        var context = await TryResolveSelfServiceContextAsync(email, cancellationToken);
+        if (context is null)
+        {
+            return null;
+        }
+
+        if (context.DisabledAt is not null)
+        {
+            return new PaidSubscriptionAttentionCandidate(context, null, null, "account_disabled");
+        }
+
+        var subscriptions = await FetchSelfServicePaidSubscriptionsAsync(context.BaseUri, context.ApiKey, context.SubscriberId, cancellationToken);
+        if (subscriptions.Count == 0)
+        {
+            return null;
+        }
+
+        var nowUtc = DateTimeOffset.UtcNow;
+        if (subscriptions.Any(subscription => IsUsablePaidSubscription(subscription, nowUtc)))
+        {
+            return null;
+        }
+
+        return subscriptions
+            .Select(subscription =>
+            {
+                var plan = PaymentPlanCatalog.FindByTierCode(subscription.TierCode);
+                var reason = ResolvePaidSubscriptionAttentionReason(subscription, plan, nowUtc);
+                return string.IsNullOrWhiteSpace(reason)
+                    ? null
+                    : new PaidSubscriptionAttentionCandidate(context, subscription, plan, reason);
+            })
+            .Where(candidate => candidate is not null)
+            .OrderByDescending(candidate => candidate!.Subscription?.NextRenewalAt ?? DateTimeOffset.MinValue)
+            .ThenByDescending(candidate => candidate!.Subscription?.SubscriptionId)
+            .FirstOrDefault();
+    }
+
+    private static bool IsUsablePaidSubscription(SelfServiceSubscriptionRow row, DateTimeOffset nowUtc) =>
+        string.Equals(row.Status, "active", StringComparison.OrdinalIgnoreCase) &&
+        row.CancelledAt is null &&
+        row.NextRenewalAt is not null &&
+        row.NextRenewalAt > nowUtc;
+
+    private static string? ResolvePaidSubscriptionAttentionReason(
+        SelfServiceSubscriptionRow row,
+        PaymentPlan? plan,
+        DateTimeOffset nowUtc)
+    {
+        if (plan is null)
+        {
+            return "unknown_plan";
+        }
+
+        if (string.Equals(row.Status, "failed", StringComparison.OrdinalIgnoreCase))
+        {
+            return "payment_failed";
+        }
+
+        if (!string.Equals(row.Status, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            return "subscription_not_active";
+        }
+
+        if (row.CancelledAt is not null && row.CancelledAt <= nowUtc)
+        {
+            return "cancelled";
+        }
+
+        if (row.NextRenewalAt is null)
+        {
+            return "missing_next_payment";
+        }
+
+        if (row.NextRenewalAt < nowUtc)
+        {
+            return "next_payment_elapsed";
+        }
+
+        return null;
+    }
+
+    private static bool CanAttemptAutomaticRetry(SelfServiceSubscriptionRow subscription, PaymentPlan plan) =>
+        plan.IsSubscription &&
+        string.Equals(subscription.Provider, "paystack", StringComparison.OrdinalIgnoreCase) &&
+        !string.IsNullOrWhiteSpace(subscription.ProviderToken);
+
+    private static string ResolveProviderPaymentIdForEvent(SelfServiceSubscriptionRow subscription)
+    {
+        if (PaystackSubscriptionCodeResolver.IsSubscriptionCode(subscription.ProviderPaymentId))
+        {
+            return subscription.ProviderPaymentId!.Trim();
+        }
+
+        if (PaystackSubscriptionCodeResolver.IsSubscriptionCode(subscription.ProviderTransactionId))
+        {
+            return subscription.ProviderTransactionId!.Trim();
+        }
+
+        return string.IsNullOrWhiteSpace(subscription.ProviderPaymentId)
+            ? subscription.SubscriptionId
+            : subscription.ProviderPaymentId.Trim();
+    }
+
+    private void LogFreeTierProviderCancellationFallback(SelfServiceSubscriptionRow subscription, string? errorMessage)
+    {
+        _logger.LogWarning(
+            "Provider cancellation failed during paid-to-free transfer for an already-unusable subscription. subscription_id={SubscriptionId} provider={Provider} source_system={SourceSystem} error={Error}",
+            subscription.SubscriptionId,
+            subscription.Provider,
+            subscription.SourceSystem,
+            errorMessage);
+    }
+
+    private async Task<bool> MarkSelfServiceSubscriptionCancelledNowAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriptionId,
+        DateTimeOffset cancelledAtUtc,
+        string? providerEmailToken,
+        CancellationToken cancellationToken)
+    {
+        var payload = new Dictionary<string, object?>
+        {
+            ["status"] = "cancelled",
+            ["cancelled_at"] = cancelledAtUtc.UtcDateTime,
+            ["next_renewal_at"] = null,
+            ["updated_at"] = DateTime.UtcNow
+        };
+
+        if (!string.IsNullOrWhiteSpace(providerEmailToken))
+        {
+            payload["provider_email_token"] = providerEmailToken.Trim();
+        }
+
+        var escapedSubscriptionId = Uri.EscapeDataString(subscriptionId);
+        var uri = new Uri(baseUri, $"rest/v1/subscriptions?subscription_id=eq.{escapedSubscriptionId}");
+        using var request = CreateJsonRequest(new HttpMethod("PATCH"), uri, apiKey, payload, "return=minimal");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return true;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Supabase paid-to-free subscription cancellation failed. subscription_id={SubscriptionId} Status={StatusCode} Body={Body}",
+            subscriptionId,
+            (int)response.StatusCode,
+            body);
+        return false;
+    }
+
+    private async Task<bool> ScheduleSubscriptionCancellationAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriptionId,
+        DateTimeOffset accessEndsAtUtc,
+        string? providerEmailToken,
+        CancellationToken cancellationToken)
+    {
+        var payload = new Dictionary<string, object?>
+        {
+            ["status"] = "active",
+            ["cancelled_at"] = accessEndsAtUtc.UtcDateTime
+        };
+
+        if (!string.IsNullOrWhiteSpace(providerEmailToken))
+        {
+            payload["provider_email_token"] = providerEmailToken.Trim();
+        }
+
+        var escapedSubscriptionId = Uri.EscapeDataString(subscriptionId);
+        var uri = new Uri(baseUri, $"rest/v1/subscriptions?subscription_id=eq.{escapedSubscriptionId}&select=subscription_id");
+        using var request = CreateJsonRequest(new HttpMethod("PATCH"), uri, apiKey, payload, "return=representation");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return true;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Supabase self-service subscription cancellation failed. subscription_id={SubscriptionId} Status={StatusCode} Body={Body}",
+            subscriptionId,
+            (int)response.StatusCode,
+            body);
+        return false;
+    }
+
     private static bool IsCurrentlyActiveSubscription(SubscriptionStatusRow row, DateTimeOffset nowUtc)
     {
         if (!string.Equals(row.Status, "active", StringComparison.OrdinalIgnoreCase))
@@ -834,8 +1521,63 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             return false;
         }
 
+        if (!string.Equals(row.TierCode, GratisTierCode, StringComparison.OrdinalIgnoreCase) &&
+            row.NextRenewalAt is null)
+        {
+            return false;
+        }
+
         return true;
     }
+
+    private static bool IsCurrentlyActiveSelfServiceSubscription(SelfServiceSubscriptionRow row, DateTimeOffset nowUtc)
+    {
+        if (!string.Equals(row.Status, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (row.CancelledAt is not null && row.CancelledAt <= nowUtc)
+        {
+            return false;
+        }
+
+        if (row.NextRenewalAt is not null && row.NextRenewalAt < nowUtc)
+        {
+            return false;
+        }
+
+        if (!string.Equals(row.TierCode, GratisTierCode, StringComparison.OrdinalIgnoreCase) &&
+            row.NextRenewalAt is null)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool IsLocallyCancellableSubscription(SelfServiceSubscriptionRow row)
+    {
+        if (string.Equals(row.Provider, "paystack", StringComparison.OrdinalIgnoreCase))
+        {
+            return PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
+                       row.Provider,
+                       row.SourceSystem,
+                       row.ProviderPaymentId,
+                       row.ProviderTransactionId) is null ||
+                   string.Equals(row.SourceSystem, "wordpress_pmpro", StringComparison.OrdinalIgnoreCase);
+        }
+
+        return string.Equals(row.Provider, "free", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPaystackRecurringSubscriptionCode(string? providerPaymentId) =>
+        PaystackSubscriptionCodeResolver.IsSubscriptionCode(providerPaymentId);
+
+    private static DateTimeOffset ResolveCancellationEffectiveAt(DateTimeOffset nowUtc, DateTimeOffset? nextRenewalAtUtc) =>
+        nextRenewalAtUtc is not null && nextRenewalAtUtc > nowUtc
+            ? nextRenewalAtUtc.Value
+            : nowUtc;
 
     public async Task<SubscriptionPersistResult> RecordPayFastEventAsync(IFormCollection formCollection, CancellationToken cancellationToken = default)
     {
@@ -1253,6 +1995,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             providerPaymentId: mPaymentId,
             providerTransactionId: pfPaymentId,
             providerToken: token,
+            providerEmailToken: null,
             subscribedAtUtc: nowUtc,
             nextRenewalAtUtc,
             cancellationToken);
@@ -1313,6 +2056,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         var providerToken = TryReadNestedString(data, "authorization", "authorization_code")
             ?? TryReadString(data, "authorization_code");
+        var providerEmailToken = TryReadNestedString(data, "subscription", "email_token")
+            ?? TryReadString(data, "email_token");
 
         var subscribedAtUtc = TryParseDateTimeOffset(
             TryReadString(data, "paid_at") ??
@@ -1328,6 +2073,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             providerPaymentId: providerPaymentId,
             providerTransactionId: providerTransactionId,
             providerToken: providerToken,
+            providerEmailToken: providerEmailToken,
             subscribedAtUtc: subscribedAtUtc,
             nextRenewalAtUtc: nextRenewalAtUtc,
             cancellationToken: cancellationToken);
@@ -1520,6 +2266,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string providerPaymentId,
         string? providerTransactionId,
         string? providerToken,
+        string? providerEmailToken,
         DateTimeOffset subscribedAtUtc,
         DateTimeOffset? nextRenewalAtUtc,
         CancellationToken cancellationToken)
@@ -1532,6 +2279,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             provider_payment_id = providerPaymentId,
             provider_transaction_id = string.IsNullOrWhiteSpace(providerTransactionId) ? null : providerTransactionId,
             provider_token = string.IsNullOrWhiteSpace(providerToken) ? null : providerToken,
+            provider_email_token = string.IsNullOrWhiteSpace(providerEmailToken) ? null : providerEmailToken,
             status = "active",
             subscribed_at = subscribedAtUtc.UtcDateTime,
             next_renewal_at = nextRenewalAtUtc?.UtcDateTime,
@@ -1709,7 +2457,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var escapedPaymentId = Uri.EscapeDataString(providerPaymentId);
         var uri = new Uri(
             baseUri,
-            $"rest/v1/subscriptions?provider=eq.{escapedProvider}&provider_payment_id=eq.{escapedPaymentId}&select=subscription_id,subscriber_id,tier_code,provider,provider_payment_id,provider_token,status&limit=1");
+            $"rest/v1/subscriptions?provider=eq.{escapedProvider}&provider_payment_id=eq.{escapedPaymentId}&select=subscription_id,subscriber_id,tier_code,provider,provider_payment_id,provider_transaction_id,provider_token,source_system,status&limit=1");
         using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -1756,7 +2504,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             planName,
             row.Provider,
             row.ProviderPaymentId,
+            row.ProviderTransactionId,
             row.ProviderToken,
+            row.SourceSystem,
             row.Status);
     }
 
@@ -1774,7 +2524,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var escapedSubscriptionId = Uri.EscapeDataString(subscriptionId);
         var uri = new Uri(
             baseUri,
-            $"rest/v1/subscriptions?subscription_id=eq.{escapedSubscriptionId}&select=subscription_id,subscriber_id,tier_code,provider,provider_payment_id,provider_token,status&limit=1");
+            $"rest/v1/subscriptions?subscription_id=eq.{escapedSubscriptionId}&select=subscription_id,subscriber_id,tier_code,provider,provider_payment_id,provider_transaction_id,provider_token,source_system,status&limit=1");
         using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -1820,7 +2570,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             planName,
             row.Provider,
             row.ProviderPaymentId,
+            row.ProviderTransactionId,
             row.ProviderToken,
+            row.SourceSystem,
             row.Status);
     }
 
@@ -2554,6 +3306,18 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         return $"retry-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{safeRecoveryId}";
     }
 
+    private static string BuildAccountRepairReference(string subscriptionId)
+    {
+        var safeSubscriptionId = new string(
+            subscriptionId.Where(character => char.IsLetterOrDigit(character) || character == '-').ToArray());
+        if (string.IsNullOrWhiteSpace(safeSubscriptionId))
+        {
+            safeSubscriptionId = Guid.NewGuid().ToString("N");
+        }
+
+        return $"repair-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{safeSubscriptionId}";
+    }
+
     private static object DeserializePayloadObject(string payloadJson)
     {
         try
@@ -2832,6 +3596,63 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
     private sealed record EventInsertResult(bool IsSuccess, bool WasInserted);
 
+    private sealed record SelfServiceSubscriptionContext(
+        Uri BaseUri,
+        string ApiKey,
+        string SubscriberId,
+        DateTimeOffset? DisabledAt);
+
+    private sealed record PaidSubscriptionAttentionCandidate(
+        SelfServiceSubscriptionContext Context,
+        SelfServiceSubscriptionRow? Subscription,
+        PaymentPlan? Plan,
+        string Reason);
+
+    private sealed class SelfServiceSubscriberRow
+    {
+        [JsonPropertyName("subscriber_id")]
+        public string? SubscriberId { get; set; }
+
+        [JsonPropertyName("disabled_at")]
+        public DateTimeOffset? DisabledAt { get; set; }
+    }
+
+    private sealed class SelfServiceSubscriptionRow
+    {
+        [JsonPropertyName("subscription_id")]
+        public string SubscriptionId { get; set; } = string.Empty;
+
+        [JsonPropertyName("tier_code")]
+        public string? TierCode { get; set; }
+
+        [JsonPropertyName("provider")]
+        public string? Provider { get; set; }
+
+        [JsonPropertyName("source_system")]
+        public string? SourceSystem { get; set; }
+
+        [JsonPropertyName("provider_payment_id")]
+        public string? ProviderPaymentId { get; set; }
+
+        [JsonPropertyName("provider_transaction_id")]
+        public string? ProviderTransactionId { get; set; }
+
+        [JsonPropertyName("provider_token")]
+        public string? ProviderToken { get; set; }
+
+        [JsonPropertyName("provider_email_token")]
+        public string? ProviderEmailToken { get; set; }
+
+        [JsonPropertyName("status")]
+        public string? Status { get; set; }
+
+        [JsonPropertyName("next_renewal_at")]
+        public DateTimeOffset? NextRenewalAt { get; set; }
+
+        [JsonPropertyName("cancelled_at")]
+        public DateTimeOffset? CancelledAt { get; set; }
+    }
+
     private sealed class ExistingEventLookupRow
     {
         [JsonPropertyName("subscription_id")]
@@ -2855,8 +3676,14 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         [JsonPropertyName("provider_payment_id")]
         public string? ProviderPaymentId { get; set; }
 
+        [JsonPropertyName("provider_transaction_id")]
+        public string? ProviderTransactionId { get; set; }
+
         [JsonPropertyName("provider_token")]
         public string? ProviderToken { get; set; }
+
+        [JsonPropertyName("source_system")]
+        public string? SourceSystem { get; set; }
 
         [JsonPropertyName("status")]
         public string? Status { get; set; }
@@ -2881,7 +3708,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string PlanName,
         string? Provider,
         string? ProviderPaymentId,
+        string? ProviderTransactionId,
         string? ProviderToken,
+        string? SourceSystem,
         string? Status);
 
     private sealed class PaymentRecoveryRow

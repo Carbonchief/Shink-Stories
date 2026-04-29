@@ -179,8 +179,8 @@
             </button>
 
             <img class="signup-created-popup-image"
-                 src="/media/imported/misc/2024/09/404_Rammetjie.png"
-                 alt="Rammetjie"
+                 src="/branding/Whatsapp_Eendjie.png"
+                 alt="Eendjie"
                  width="220"
                  height="220"
                  loading="lazy"
@@ -383,36 +383,32 @@
         SelectedPlan = plan;
     }
 
-    private async Task<string> GetRedirectTargetForAuthenticatedUserAsync(AuthenticationState authState)
+    private Task<string> GetRedirectTargetForAuthenticatedUserAsync(AuthenticationState authState)
     {
         var safeReturnUrl = GetSafeNonCheckoutReturnUrl();
         if (safeReturnUrl is not null)
         {
-            return safeReturnUrl;
+            return Task.FromResult(safeReturnUrl);
         }
 
         var selectedPlanCheckoutPath = GetSelectedPlanCheckoutPath();
         if (selectedPlanCheckoutPath is not null)
         {
-            return selectedPlanCheckoutPath;
+            return Task.FromResult(selectedPlanCheckoutPath);
         }
 
-        var user = authState.User;
-        var email = user.FindFirst(ClaimTypes.Email)?.Value
-                    ?? user.Identity?.Name;
-        var hasPaidSubscription = await SubscriptionLedgerService.HasActivePaidSubscriptionAsync(email);
-        return hasPaidSubscription ? "/luister" : "/gratis";
+        return Task.FromResult("/luister");
     }
 
     private string GetRedirectTarget(string? apiRedirectPath = null) =>
         GetSelectedPlanCheckoutPath()
         ?? GetSafeNonCheckoutReturnUrl()
         ?? GetSafePostAuthPath(apiRedirectPath)
-        ?? "/gratis";
+        ?? "/luister";
 
     private async Task RedirectToTargetAsync(string target)
     {
-        var safeTarget = string.IsNullOrWhiteSpace(target) ? "/gratis" : target;
+        var safeTarget = string.IsNullOrWhiteSpace(target) ? "/luister" : target;
 
         try
         {

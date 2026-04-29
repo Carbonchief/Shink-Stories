@@ -8,6 +8,12 @@ public interface ISubscriptionLedgerService
     Task<bool> HasActivePaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default);
     Task<bool> HasActiveSubscriptionForTierAsync(string? email, string? tierCode, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<string>> GetActiveTierCodesAsync(string? email, CancellationToken cancellationToken = default);
+    Task<CurrentPaidSubscription?> GetCurrentPaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default);
+    Task<PaidSubscriptionAttention> GetPaidSubscriptionAttentionAsync(string? email, CancellationToken cancellationToken = default);
+    Task<SubscriptionRepairResult> TryRepairPaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default);
+    Task<SubscriptionFreeTierTransferResult> TransferPaidSubscriptionToGratisAsync(string? email, CancellationToken cancellationToken = default);
+    Task<SubscriptionCancelResult> CancelPaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default);
+    Task<AccountClosureResult> CloseAccountAsync(string? email, CancellationToken cancellationToken = default);
     Task<SubscriberProfile?> GetSubscriberProfileAsync(string? email, CancellationToken cancellationToken = default);
     Task<bool> UpsertSubscriberProfileAsync(
         string? email,
@@ -40,6 +46,35 @@ public interface ISubscriptionLedgerService
 }
 
 public sealed record SubscriptionPersistResult(bool IsSuccess, string? ErrorMessage = null, string? SubscriptionId = null);
+public sealed record CurrentPaidSubscription(
+    string SubscriptionId,
+    string TierCode,
+    string? Provider,
+    DateTimeOffset? NextRenewalAtUtc,
+    DateTimeOffset? CancelledAtUtc,
+    bool IsCancellationScheduled);
+public sealed record PaidSubscriptionAttention(
+    bool RequiresAttention,
+    string? Reason = null,
+    string? SubscriptionId = null,
+    string? TierCode = null,
+    string? PlanSlug = null,
+    string? Provider = null,
+    bool CanAttemptAutomaticRetry = false);
+public sealed record SubscriptionRepairResult(
+    bool IsRecovered,
+    string? PlanSlug = null,
+    string? ErrorMessage = null);
+public sealed record SubscriptionFreeTierTransferResult(
+    bool IsSuccess,
+    string? ErrorMessage = null,
+    int CancelledPaidSubscriptions = 0);
+public sealed record SubscriptionCancelResult(
+    bool IsSuccess,
+    string? ErrorMessage = null,
+    DateTimeOffset? AccessEndsAtUtc = null,
+    int CancelledSubscriptions = 0);
+public sealed record AccountClosureResult(bool IsSuccess, string? ErrorMessage = null);
 public sealed record SubscriberProfile(
     string Email,
     string? FirstName,

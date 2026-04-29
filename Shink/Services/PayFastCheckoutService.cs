@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 using Shink.Components.Content;
@@ -176,6 +177,92 @@ public sealed partial class PayFastCheckoutService(HttpClient httpClient, IOptio
         return string.Equals(body, "VALID", StringComparison.OrdinalIgnoreCase);
     }
 
+    public async Task<PayFastSubscriptionCancelResult> CancelSubscriptionAsync(
+        string? subscriptionToken,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.MerchantId) ||
+            string.IsNullOrWhiteSpace(_options.ApiBaseUrl))
+        {
+            return new PayFastSubscriptionCancelResult(false, ErrorMessage: "PayFast is nog nie volledig opgestel nie.");
+        }
+
+        if (string.IsNullOrWhiteSpace(subscriptionToken))
+        {
+            return new PayFastSubscriptionCancelResult(false, ErrorMessage: "PayFast intekening-token ontbreek.");
+        }
+
+        if (!Uri.TryCreate(_options.ApiBaseUrl, UriKind.Absolute, out var apiBaseUri))
+        {
+            return new PayFastSubscriptionCancelResult(false, ErrorMessage: "PayFast API URL is ongeldig.");
+        }
+
+        var normalizedToken = subscriptionToken.Trim();
+        var endpoint = $"subscriptions/{Uri.EscapeDataString(normalizedToken)}/cancel";
+        if (ShouldUseSandboxApi())
+        {
+            endpoint = $"{endpoint}?testing=true";
+        }
+
+        var timestamp = DateTimeOffset.Now.ToString("yyyy-MM-ddTHH:mm:sszzz", CultureInfo.InvariantCulture);
+        var signatureFields = new List<KeyValuePair<string, string>>
+        {
+            new("merchant-id", _options.MerchantId.Trim()),
+            new("version", "v1"),
+            new("timestamp", timestamp)
+        };
+
+        var signature = GenerateSignature(signatureFields, _options.Passphrase);
+        using var request = new HttpRequestMessage(HttpMethod.Put, new Uri(apiBaseUri, endpoint));
+        request.Headers.TryAddWithoutValidation("merchant-id", _options.MerchantId.Trim());
+        request.Headers.TryAddWithoutValidation("version", "v1");
+        request.Headers.TryAddWithoutValidation("timestamp", timestamp);
+        request.Headers.TryAddWithoutValidation("signature", signature);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return new PayFastSubscriptionCancelResult(
+                false,
+                ErrorMessage: $"PayFast kon nie die intekening kanselleer nie (HTTP {(int)response.StatusCode}).",
+                RawPayload: body);
+        }
+
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return new PayFastSubscriptionCancelResult(true, RawPayload: body);
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            var status = TryReadString(root, "status");
+            var success = string.Equals(status, "success", StringComparison.OrdinalIgnoreCase) ||
+                          string.Equals(status, "true", StringComparison.OrdinalIgnoreCase) ||
+                          root.TryGetProperty("success", out var successNode) &&
+                          successNode.ValueKind is JsonValueKind.True;
+            if (success)
+            {
+                return new PayFastSubscriptionCancelResult(true, RawPayload: body);
+            }
+
+            var message = TryReadString(root, "message") ??
+                          TryReadNestedString(root, "data", "message") ??
+                          TryReadNestedString(root, "data", "response") ??
+                          "PayFast kon nie die intekening kanselleer nie.";
+            return new PayFastSubscriptionCancelResult(false, ErrorMessage: message, RawPayload: body);
+        }
+        catch (JsonException)
+        {
+            return new PayFastSubscriptionCancelResult(
+                false,
+                ErrorMessage: "PayFast kansellasie-antwoord kon nie gelees word nie.",
+                RawPayload: body);
+        }
+    }
+
     private static List<KeyValuePair<string, string>> BuildItnFields(IFormCollection formCollection) =>
         formCollection
             .Where(item => !string.Equals(item.Key, "signature", StringComparison.OrdinalIgnoreCase))
@@ -294,9 +381,48 @@ public sealed partial class PayFastCheckoutService(HttpClient httpClient, IOptio
 
     private static string HtmlEncode(string? value) =>
         System.Net.WebUtility.HtmlEncode(value ?? string.Empty);
+
+    private bool ShouldUseSandboxApi() =>
+        _options.UseSandboxApi ||
+        _options.ProcessUrl.Contains("sandbox.payfast.co.za", StringComparison.OrdinalIgnoreCase) ||
+        _options.ValidateUrl.Contains("sandbox.payfast.co.za", StringComparison.OrdinalIgnoreCase);
+
+    private static string? TryReadString(JsonElement element, string propertyName)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(propertyName, out var node))
+        {
+            return null;
+        }
+
+        return node.ValueKind switch
+        {
+            JsonValueKind.String => node.GetString(),
+            JsonValueKind.Number => node.GetRawText(),
+            JsonValueKind.True => "true",
+            JsonValueKind.False => "false",
+            _ => null
+        };
+    }
+
+    private static string? TryReadNestedString(JsonElement element, string firstProperty, string secondProperty)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(firstProperty, out var nested))
+        {
+            return null;
+        }
+
+        return TryReadString(nested, secondProperty);
+    }
 }
 
 public sealed record PayFastCheckoutForm(
     string ActionUrl,
     IReadOnlyList<KeyValuePair<string, string>> Fields,
     string PaymentId);
+
+public sealed record PayFastSubscriptionCancelResult(
+    bool IsSuccess,
+    string? ErrorMessage = null,
+    string? RawPayload = null);

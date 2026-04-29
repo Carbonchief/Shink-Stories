@@ -138,7 +138,7 @@
                 .Concat(freeStoriesTask.Result.Select(story => new SearchCandidate(
                     Title: story.Title,
                     Description: story.Description,
-                    Url: $"/gratis/{Uri.EscapeDataString(story.Slug)}",
+                    Url: $"/luister/{Uri.EscapeDataString(story.Slug)}",
                     Kind: "Gratis storie",
                     Keywords: "gratis luister kinders afrikaans oudiostorie",
                     IsSitePage: false)))
@@ -188,7 +188,7 @@
         new(
             Title: "Gratis stories",
             Description: "Drie gratis Afrikaanse stories vir jou gesin.",
-            Url: "/gratis",
+            Url: "/luister",
             Kind: "Bladsy",
             Keywords: "gratis luister probeer stories",
             IsSitePage: true),

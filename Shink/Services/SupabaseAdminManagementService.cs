@@ -21,6 +21,7 @@ public sealed partial class SupabaseAdminManagementService(
     IAuthSessionService authSessionService,
     ISubscriptionPaymentRecoveryEmailService subscriptionPaymentRecoveryEmailService,
     PaystackCheckoutService paystackCheckoutService,
+    PayFastCheckoutService payFastCheckoutService,
     ILogger<SupabaseAdminManagementService> logger) : IAdminManagementService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -35,6 +36,7 @@ public sealed partial class SupabaseAdminManagementService(
     private readonly IAuthSessionService _authSessionService = authSessionService;
     private readonly ISubscriptionPaymentRecoveryEmailService _subscriptionPaymentRecoveryEmailService = subscriptionPaymentRecoveryEmailService;
     private readonly PaystackCheckoutService _paystackCheckoutService = paystackCheckoutService;
+    private readonly PayFastCheckoutService _payFastCheckoutService = payFastCheckoutService;
     private readonly ILogger<SupabaseAdminManagementService> _logger = logger;
 
     public async Task<bool> IsAdminAsync(string? email, CancellationToken cancellationToken = default)
@@ -609,6 +611,123 @@ public sealed partial class SupabaseAdminManagementService(
         return new AdminOperationResult(true, EntityId: request.SubscriptionId);
     }
 
+    public async Task<AdminOperationResult> CancelSubscriberPaidSubscriptionAsync(
+        string? adminEmail,
+        AdminSubscriberPaidSubscriptionCancelRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var context = await TryCreateAdminOperationContextAsync(adminEmail, cancellationToken);
+        if (context is null)
+        {
+            return new AdminOperationResult(false, "Jy het nie admin toegang nie.");
+        }
+
+        var subscriber = await FetchSubscriberRecordByIdAsync(context, request.SubscriberId, cancellationToken);
+        if (subscriber is null)
+        {
+            return new AdminOperationResult(false, "Kies asseblief 'n geldige intekenaar.");
+        }
+
+        var subscriptions = await FetchSubscriberSubscriptionsAsync(context, request.SubscriberId, cancellationToken);
+        var subscription = subscriptions.FirstOrDefault(item => item.SubscriptionId == request.SubscriptionId);
+        if (subscription is null)
+        {
+            return new AdminOperationResult(false, "Kies asseblief 'n geldige intekening.");
+        }
+
+        var nowUtc = DateTimeOffset.UtcNow;
+        if (!IsAdminCancellablePaidSubscription(subscription, nowUtc))
+        {
+            return new AdminOperationResult(false, "Net aktiewe Paystack- of PayFast-intekeninge kan hier gekanselleer word.");
+        }
+
+        var paystackSubscriptionCode = PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
+            subscription.Provider,
+            subscription.SourceSystem,
+            subscription.ProviderPaymentId,
+            subscription.ProviderTransactionId);
+        string? providerEmailToken = null;
+        if (!string.IsNullOrWhiteSpace(paystackSubscriptionCode))
+        {
+            var disableResult = await _paystackCheckoutService.DisableSubscriptionAsync(
+                paystackSubscriptionCode,
+                subscription.ProviderEmailToken,
+                cancellationToken);
+            if (!disableResult.IsSuccess)
+            {
+                return new AdminOperationResult(
+                    false,
+                    disableResult.ErrorMessage ?? "Paystack kon nie die intekening kanselleer nie.");
+            }
+
+            providerEmailToken = disableResult.EmailToken;
+        }
+        else if (string.Equals(subscription.Provider, "payfast", StringComparison.OrdinalIgnoreCase))
+        {
+            var cancelResult = await _payFastCheckoutService.CancelSubscriptionAsync(
+                subscription.ProviderToken,
+                cancellationToken);
+            if (!cancelResult.IsSuccess)
+            {
+                return new AdminOperationResult(
+                    false,
+                    cancelResult.ErrorMessage ?? "PayFast kon nie die intekening kanselleer nie.");
+            }
+        }
+        else
+        {
+            return new AdminOperationResult(false, "Intekeningkode of token ontbreek.");
+        }
+
+        var accessEndsAtUtc = subscription.NextRenewalAt is not null && subscription.NextRenewalAt.Value > nowUtc
+            ? subscription.NextRenewalAt.Value
+            : nowUtc;
+
+        var escapedSubscriptionId = Uri.EscapeDataString(request.SubscriptionId.ToString("D"));
+        var escapedSubscriberId = Uri.EscapeDataString(request.SubscriberId.ToString("D"));
+        var uri = new Uri(
+            context.BaseUri,
+            $"rest/v1/subscriptions?subscription_id=eq.{escapedSubscriptionId}&subscriber_id=eq.{escapedSubscriberId}");
+        var payload = new Dictionary<string, object?>
+        {
+            ["status"] = "active",
+            ["cancelled_at"] = accessEndsAtUtc.UtcDateTime
+        };
+        if (!string.IsNullOrWhiteSpace(providerEmailToken))
+        {
+            payload["provider_email_token"] = NormalizeOptionalText(providerEmailToken, 160);
+        }
+
+        using var cancelRequest = CreateJsonRequest(new HttpMethod("PATCH"), uri, context.ApiKey, payload, "return=minimal");
+        using var cancelResponse = await _httpClient.SendAsync(cancelRequest, cancellationToken);
+        if (!cancelResponse.IsSuccessStatusCode)
+        {
+            var responseBody = await cancelResponse.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Admin paid subscription cancel failed. subscription_id={SubscriptionId} Status={StatusCode} Body={Body}",
+                request.SubscriptionId,
+                (int)cancelResponse.StatusCode,
+                responseBody);
+            return new AdminOperationResult(false, "Kon nie betaalde intekening nou kanselleer nie.");
+        }
+
+        await WriteSubscriberAuditAsync(
+            context,
+            request.SubscriberId,
+            "subscription.cancelled_by_admin",
+            NormalizeOptionalText(request.Reason, 400),
+            new
+            {
+                subscription_id = request.SubscriptionId,
+                tier_code = subscription.TierCode,
+                provider = subscription.Provider,
+                access_ends_at = accessEndsAtUtc.UtcDateTime
+            },
+            cancellationToken);
+
+        return new AdminOperationResult(true, EntityId: request.SubscriptionId);
+    }
+
     public async Task<AdminOperationResult> SendSubscriberPasswordResetAsync(
         string? adminEmail,
         Guid subscriberId,
@@ -832,11 +951,15 @@ public sealed partial class SupabaseAdminManagementService(
         var plan = PaymentPlanCatalog.FindByTierCode(subscription.TierCode);
         var planName = plan?.Name ?? subscription.TierCode ?? "Schink Stories";
 
-        if (string.Equals(subscription.Provider, "paystack", StringComparison.OrdinalIgnoreCase) &&
-            !string.IsNullOrWhiteSpace(subscription.ProviderPaymentId))
+        var paystackSubscriptionCode = PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
+            subscription.Provider,
+            subscription.SourceSystem,
+            subscription.ProviderPaymentId,
+            subscription.ProviderTransactionId);
+        if (!string.IsNullOrWhiteSpace(paystackSubscriptionCode))
         {
             var updateLink = await _paystackCheckoutService.GenerateSubscriptionUpdateLinkAsync(
-                subscription.ProviderPaymentId,
+                paystackSubscriptionCode,
                 cancellationToken);
             if (updateLink.IsSuccess && !string.IsNullOrWhiteSpace(updateLink.Link))
             {
@@ -2131,7 +2254,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             context.BaseUri,
             "rest/v1/subscriptions" +
-            "?select=subscription_id,subscriber_id,tier_code,provider,source_system,status,subscribed_at,next_renewal_at,cancelled_at,provider_payment_id,provider_transaction_id" +
+            "?select=subscription_id,subscriber_id,tier_code,provider,source_system,status,subscribed_at,next_renewal_at,cancelled_at,provider_payment_id,provider_token,provider_email_token,provider_transaction_id" +
             $"&subscriber_id=eq.{escapedSubscriberId}&order=subscribed_at.desc&limit=100");
         return await FetchRowsAsync<SubscriptionRow>(uri, context.ApiKey, cancellationToken);
     }
@@ -3945,6 +4068,7 @@ public sealed partial class SupabaseAdminManagementService(
             row.CancelledAt,
             NormalizeOptionalText(row.ProviderPaymentId, 160),
             NormalizeOptionalText(row.ProviderTransactionId, 160),
+            !string.IsNullOrWhiteSpace(row.ProviderToken),
             isAdminOverride,
             !isAdminOverride);
     }
@@ -3987,6 +4111,36 @@ public sealed partial class SupabaseAdminManagementService(
         }
 
         return true;
+    }
+
+    private static bool IsAdminCancellablePaidSubscription(SubscriptionRow subscription, DateTimeOffset nowUtc)
+    {
+        if (!IsActiveSubscription(subscription, nowUtc))
+        {
+            return false;
+        }
+
+        if (string.Equals(subscription.SourceSystem, "admin_override", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (string.Equals(subscription.TierCode, "gratis", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
+                subscription.Provider,
+                subscription.SourceSystem,
+                subscription.ProviderPaymentId,
+                subscription.ProviderTransactionId) is not null)
+        {
+            return true;
+        }
+
+        return string.Equals(subscription.Provider, "payfast", StringComparison.OrdinalIgnoreCase) &&
+               !string.IsNullOrWhiteSpace(subscription.ProviderToken);
     }
 
     private static string? NormalizeOptionalText(string? value, int maxLength)
@@ -4385,6 +4539,12 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("provider_payment_id")]
         public string? ProviderPaymentId { get; set; }
+
+        [JsonPropertyName("provider_token")]
+        public string? ProviderToken { get; set; }
+
+        [JsonPropertyName("provider_email_token")]
+        public string? ProviderEmailToken { get; set; }
 
         [JsonPropertyName("provider_transaction_id")]
         public string? ProviderTransactionId { get; set; }

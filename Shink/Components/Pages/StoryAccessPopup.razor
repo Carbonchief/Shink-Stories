@@ -6,12 +6,15 @@
                  aria-modal="true"
                  aria-labelledby="story-access-popup-title"
                  @onclick:stopPropagation="true">
-            <button type="button"
-                    class="story-access-popup-close"
-                    @onclick="HandleCloseAsync"
-                    aria-label="Maak toe">
-                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
-            </button>
+            @if (ShowCloseButton)
+            {
+                <button type="button"
+                        class="story-access-popup-close"
+                        @onclick="HandleCloseAsync"
+                        aria-label="Maak toe">
+                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                </button>
+            }
 
             <img class="story-access-popup-image"
                  src="@ImageSrc"
@@ -39,14 +42,36 @@
             </p>
 
             <div class="story-access-popup-actions">
-                <a class="story-access-popup-button story-access-popup-button-primary" href="@PrimaryActionHref">
-                    @PrimaryActionText
-                </a>
+                @if (PrimaryActionUsesPost)
+                {
+                    <form method="post" action="@PrimaryActionHref" data-enhance="false">
+                        <button type="submit" class="story-access-popup-button story-access-popup-button-primary">
+                            @PrimaryActionText
+                        </button>
+                    </form>
+                }
+                else
+                {
+                    <a class="story-access-popup-button story-access-popup-button-primary" href="@PrimaryActionHref">
+                        @PrimaryActionText
+                    </a>
+                }
                 @if (!string.IsNullOrWhiteSpace(PlanActionHref))
                 {
-                    <a class="story-access-popup-button story-access-popup-button-secondary" href="@PlanActionHref">
-                        @PlanActionText
-                    </a>
+                    @if (PlanActionUsesPost)
+                    {
+                        <form method="post" action="@PlanActionHref" data-enhance="false">
+                            <button type="submit" class="story-access-popup-button story-access-popup-button-secondary">
+                                @PlanActionText
+                            </button>
+                        </form>
+                    }
+                    else
+                    {
+                        <a class="story-access-popup-button story-access-popup-button-secondary" href="@PlanActionHref">
+                            @PlanActionText
+                        </a>
+                    }
                 }
             </div>
         </section>
@@ -64,10 +89,16 @@
     public string PrimaryActionText { get; set; } = "👉 Kry toegang";
 
     [Parameter]
+    public bool PrimaryActionUsesPost { get; set; }
+
+    [Parameter]
     public string PlanActionHref { get; set; } = "/opsies";
 
     [Parameter]
     public string PlanActionText { get; set; } = "👉 Kies 'n plan";
+
+    [Parameter]
+    public bool PlanActionUsesPost { get; set; }
 
     [Parameter]
     public string ImageSrc { get; set; } = "/media/imported/misc/2024/09/404_Rammetjie.png";
@@ -83,6 +114,9 @@
 
     [Parameter]
     public bool ShowSubtitleLockIcon { get; set; } = true;
+
+    [Parameter]
+    public bool ShowCloseButton { get; set; } = true;
 
     [Parameter]
     public string Message { get; set; } = "Kry toegang tot die volle storiewêreld - alle stories, enige tyd.";

@@ -9,6 +9,7 @@
 @implements IAsyncDisposable
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ISubscriptionLedgerService SubscriptionLedgerService
+@inject IAuthSessionService AuthSessionService
 @inject IJSRuntime JS
 @inject NavigationManager NavigationManager
 
@@ -77,8 +78,16 @@
             }
             else if (HasActivePaidSubscription)
             {
-                <h2>Jou volle toegang is aktief</h2>
-                <p>Jy is tans ingeteken en kan direk na al jou stories teruggaan.</p>
+                @if (IsCancellationScheduled)
+                {
+                    <h2>Jou volle toegang loop nog</h2>
+                    <p>Jou betaalde toegang bly aktief tot @FormatDate(CurrentPaidSubscription?.CancelledAtUtc). Daarna skuif jy terug na gratis toegang.</p>
+                }
+                else
+                {
+                    <h2>Jou volle toegang is aktief</h2>
+                    <p>Jy is tans ingeteken en kan direk na al jou stories teruggaan.</p>
+                }
 
                 @if (!string.IsNullOrWhiteSpace(UserEmail))
                 {
@@ -231,8 +240,16 @@
                     <p class="billing-section-kicker">Toegang</p>
                     @if (HasActivePaidSubscription)
                     {
-                        <h2>Jou betaalde intekening is aktief</h2>
-                        <p>Jy het tans toegang tot betaalde stories. Dankie dat jy deel is van Schink Stories.</p>
+                        @if (IsCancellationScheduled)
+                        {
+                            <h2>Jou betaalde intekening is gekanselleer</h2>
+                            <p>Jy hou volle toegang tot @FormatDate(CurrentPaidSubscription?.CancelledAtUtc). Daarna bly jou gratis stories beskikbaar.</p>
+                        }
+                        else
+                        {
+                            <h2>Jou betaalde intekening is aktief</h2>
+                            <p>Jy het tans toegang tot betaalde stories. Dankie dat jy deel is van Schink Stories.</p>
+                        }
                     }
                     else
                     {
@@ -246,7 +263,14 @@
                     {
                         <li>Volle toegang tot die betaalde stories en reekse.</li>
                         <li>Jou profielbesonderhede en betalings bly op een plek beskikbaar.</li>
-                        <li>Jy kan steeds enige tyd na plan opsies teruggaan.</li>
+                        @if (IsCancellationScheduled)
+                        {
+                            <li>Jou betaalde toegang eindig eers op @FormatDate(CurrentPaidSubscription?.CancelledAtUtc).</li>
+                        }
+                        else
+                        {
+                            <li>Jy kan jou intekening kanselleer en jou reeds betaalde tyd uitluister.</li>
+                        }
                     }
                     else
                     {
@@ -261,11 +285,20 @@
                     {
                         <a class="btn btn-warning btn-lg billing-primary-btn" href="/luister">Gaan na alle stories</a>
                         <a class="btn btn-outline-secondary btn-lg billing-secondary-btn" href="/opsies">Sien plan opsies</a>
+                        @if (!IsCancellationScheduled)
+                        {
+                            <button type="button"
+                                    class="btn btn-outline-danger btn-lg billing-danger-btn"
+                                    disabled="@IsCancellingSubscription"
+                                    @onclick="OpenCancelSubscriptionModal">
+                                Kanselleer intekening
+                            </button>
+                        }
                     }
                     else
                     {
                         <a class="btn btn-warning btn-lg billing-primary-btn" href="/opsies">Kies 'n plan</a>
-                        <a class="btn btn-outline-secondary btn-lg billing-secondary-btn" href="/gratis">Gaan na gratis stories</a>
+                        <a class="btn btn-outline-secondary btn-lg billing-secondary-btn" href="/luister">Gaan na gratis stories</a>
                     }
                 </div>
             </aside>
@@ -355,6 +388,124 @@
             </div>
         }
 
+        @if (IsCancelSubscriptionModalOpen)
+        {
+            <div class="billing-modal-backdrop" @onclick="CloseCancelSubscriptionModal">
+                <div class="billing-modal"
+                     role="dialog"
+                     aria-modal="true"
+                     aria-labelledby="billing-cancel-modal-title"
+                     @onclick:stopPropagation="true">
+                    <div class="billing-modal-header">
+                        <div class="billing-modal-heading">
+                            <p class="billing-section-kicker">Kanselleer intekening</p>
+                            <h2 id="billing-cancel-modal-title">Kanselleer jou betaalde intekening?</h2>
+                            <p>
+                                Ons stop die volgende betaling nou. Jou betaalde toegang bly aktief tot die einde van die tyd waarvoor jy reeds betaal het.
+                            </p>
+                        </div>
+
+                        <button type="button"
+                                class="billing-modal-close"
+                                aria-label="Maak toe"
+                                @onclick="CloseCancelSubscriptionModal">
+                            ×
+                        </button>
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(AccountActionStatusMessage))
+                    {
+                        <div class="alert @(AccountActionSucceeded ? "alert-success" : "alert-danger") billing-profile-status billing-modal-status"
+                             role="@(AccountActionSucceeded ? "status" : "alert")"
+                             aria-live="polite">
+                            @AccountActionStatusMessage
+                        </div>
+                    }
+
+                    <div class="billing-form-actions d-flex flex-wrap gap-2">
+                        <button type="button"
+                                class="btn btn-outline-danger btn-lg billing-danger-btn"
+                                disabled="@IsCancellingSubscription"
+                                @onclick="CancelSubscriptionAsync">
+                            @(IsCancellingSubscription ? "Kanselleer..." : "Ja, kanselleer intekening")
+                        </button>
+                        <button type="button"
+                                class="btn btn-outline-secondary btn-lg billing-secondary-btn"
+                                disabled="@IsCancellingSubscription"
+                                @onclick="CloseCancelSubscriptionModal">
+                            Hou intekening
+                        </button>
+                    </div>
+                </div>
+            </div>
+        }
+
+        @if (IsCloseAccountModalOpen)
+        {
+            <div class="billing-modal-backdrop" @onclick="CloseCloseAccountModal">
+                <div class="billing-modal"
+                     role="dialog"
+                     aria-modal="true"
+                     aria-labelledby="billing-close-account-modal-title"
+                     @onclick:stopPropagation="true">
+                    <div class="billing-modal-header">
+                        <div class="billing-modal-heading">
+                            <p class="billing-section-kicker">Sluit rekening</p>
+                            <h2 id="billing-close-account-modal-title">Sluit jou Schink Stories rekening?</h2>
+                            <p>
+                                Jou rekening word gedeaktiveer en jy word afgeteken. Kanselleer eers enige aktiewe betaalde intekening sodat toekomstige betalings stop.
+                            </p>
+                        </div>
+
+                        <button type="button"
+                                class="billing-modal-close"
+                                aria-label="Maak toe"
+                                @onclick="CloseCloseAccountModal">
+                            ×
+                        </button>
+                    </div>
+
+                    @if (HasActivePaidSubscription && !IsCancellationScheduled)
+                    {
+                        <div class="alert alert-danger billing-profile-status" role="alert">
+                            Kanselleer asseblief eers jou betaalde intekening. Daarna kan jy jou rekening sluit.
+                        </div>
+
+                        <div class="billing-form-actions d-flex flex-wrap gap-2">
+                            <button type="button"
+                                    class="btn btn-outline-danger btn-lg billing-danger-btn"
+                                    disabled="@IsCancellingSubscription"
+                                    @onclick="OpenCancelSubscriptionModal">
+                                Kanselleer intekening
+                            </button>
+                            <button type="button"
+                                    class="btn btn-outline-secondary btn-lg billing-secondary-btn"
+                                    @onclick="CloseCloseAccountModal">
+                                Hou rekening oop
+                            </button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="billing-form-actions d-flex flex-wrap gap-2">
+                            <button type="button"
+                                    class="btn btn-outline-danger btn-lg billing-danger-btn"
+                                    disabled="@IsClosingAccount"
+                                    @onclick="CloseAccountAsync">
+                                @(IsClosingAccount ? "Sluit..." : "Ja, sluit rekening")
+                            </button>
+                            <button type="button"
+                                    class="btn btn-outline-secondary btn-lg billing-secondary-btn"
+                                    disabled="@IsClosingAccount"
+                                    @onclick="CloseCloseAccountModal">
+                                Hou rekening oop
+                            </button>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+
         <section class="billing-plans" aria-label="Betaal planne">
             <div class="billing-section-heading">
                 <p class="billing-section-kicker">Plan keuses</p>
@@ -373,6 +524,10 @@
                         {
                             <p class="billing-save-badge">2 maande gratis</p>
                         }
+                        else
+                        {
+                            <p class="billing-save-badge billing-save-badge-placeholder" aria-hidden="true">2 maande gratis</p>
+                        }
                         <p class="billing-description">@plan.ItemDescription</p>
                         <div class="billing-plan-actions">
                             <a class="btn btn-warning billing-primary-btn" href="@($"/betaal/{plan.Slug}")">Kies hierdie plan</a>
@@ -380,6 +535,32 @@
                     </article>
                 }
             </div>
+        </section>
+
+        <section class="billing-panel billing-danger-card" aria-label="Sluit rekening">
+            <div class="billing-panel-heading">
+                <p class="billing-section-kicker">Rekening</p>
+                <h2>Sluit jou rekening</h2>
+                <p>Gebruik hierdie opsie net as jy nie meer jou Schink Stories rekening wil gebruik nie.</p>
+            </div>
+
+            <div class="billing-status-actions d-grid gap-2">
+                <button type="button"
+                        class="btn btn-outline-danger btn-lg billing-danger-btn"
+                        disabled="@IsClosingAccount"
+                        @onclick="OpenCloseAccountModal">
+                    Sluit rekening
+                </button>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(AccountActionStatusMessage))
+            {
+                <div class="alert @(AccountActionSucceeded ? "alert-success" : "alert-danger") billing-profile-status"
+                     role="@(AccountActionSucceeded ? "status" : "alert")"
+                     aria-live="polite">
+                    @AccountActionStatusMessage
+                </div>
+            }
         </section>
     }
 </section>
@@ -390,21 +571,29 @@
     private bool IsRedirectingToLogin { get; set; }
     private bool IsAuthenticatedUser { get; set; }
     private bool HasActivePaidSubscription { get; set; }
+    private CurrentPaidSubscription? CurrentPaidSubscription { get; set; }
     private bool IsCompletingEmailChange { get; set; }
     private bool IsEmailChangeModalOpen { get; set; }
+    private bool IsCancelSubscriptionModalOpen { get; set; }
+    private bool IsCloseAccountModalOpen { get; set; }
     private string UserEmail { get; set; } = string.Empty;
     private ProfileFormModel ProfileForm { get; set; } = new();
     private EmailChangeFormModel EmailChangeForm { get; set; } = new();
     private EditContext EmailChangeEditContext { get; set; } = default!;
     private bool IsSavingProfile { get; set; }
     private bool IsSubmittingEmailChange { get; set; }
+    private bool IsCancellingSubscription { get; set; }
+    private bool IsClosingAccount { get; set; }
     private bool ProfileSaveSucceeded { get; set; }
     private bool EmailChangeStatusIsSuccess { get; set; }
     private bool EmailChangeCallbackIsSuccess { get; set; }
+    private bool AccountActionSucceeded { get; set; }
     private string? ProfileStatusMessage { get; set; }
     private string? EmailChangeStatusMessage { get; set; }
     private string? EmailChangeCallbackMessage { get; set; }
+    private string? AccountActionStatusMessage { get; set; }
     private IJSObjectReference? _authModule;
+    private bool IsCancellationScheduled => CurrentPaidSubscription?.IsCancellationScheduled == true;
 
     [SupplyParameterFromQuery(Name = "emailChange")]
     public string? EmailChange { get; set; }
@@ -449,10 +638,12 @@
                         ?? string.Empty;
 
             var hasActivePaidSubscriptionTask = SubscriptionLedgerService.HasActivePaidSubscriptionAsync(UserEmail);
+            var currentPaidSubscriptionTask = SubscriptionLedgerService.GetCurrentPaidSubscriptionAsync(UserEmail);
             var subscriberProfileTask = SubscriptionLedgerService.GetSubscriberProfileAsync(UserEmail);
-            await Task.WhenAll(hasActivePaidSubscriptionTask, subscriberProfileTask);
+            await Task.WhenAll(hasActivePaidSubscriptionTask, currentPaidSubscriptionTask, subscriberProfileTask);
 
             HasActivePaidSubscription = hasActivePaidSubscriptionTask.Result;
+            CurrentPaidSubscription = currentPaidSubscriptionTask.Result;
             HydrateProfileForm(subscriberProfileTask.Result, authState.User);
 
             if (string.Equals(EmailChange, "success", StringComparison.OrdinalIgnoreCase))
@@ -465,6 +656,7 @@
         catch
         {
             HasActivePaidSubscription = false;
+            CurrentPaidSubscription = null;
             HydrateProfileForm(profile: null, authState.User);
         }
         finally
@@ -578,6 +770,123 @@
     {
         IsEmailChangeModalOpen = false;
         EmailChangeForm.CurrentPassword = string.Empty;
+    }
+
+    private void OpenCancelSubscriptionModal()
+    {
+        AccountActionStatusMessage = null;
+        IsCloseAccountModalOpen = false;
+        IsCancelSubscriptionModalOpen = true;
+    }
+
+    private void CloseCancelSubscriptionModal()
+    {
+        if (IsCancellingSubscription)
+        {
+            return;
+        }
+
+        IsCancelSubscriptionModalOpen = false;
+    }
+
+    private void OpenCloseAccountModal()
+    {
+        AccountActionStatusMessage = null;
+        IsCloseAccountModalOpen = true;
+    }
+
+    private void CloseCloseAccountModal()
+    {
+        if (IsClosingAccount)
+        {
+            return;
+        }
+
+        IsCloseAccountModalOpen = false;
+    }
+
+    private async Task CancelSubscriptionAsync()
+    {
+        if (IsCancellingSubscription || string.IsNullOrWhiteSpace(UserEmail))
+        {
+            return;
+        }
+
+        IsCancellingSubscription = true;
+        AccountActionSucceeded = false;
+        AccountActionStatusMessage = null;
+        await ShowSubmittingStateAsync();
+
+        try
+        {
+            var result = await SubscriptionLedgerService.CancelPaidSubscriptionAsync(UserEmail);
+            AccountActionSucceeded = result.IsSuccess;
+            if (!result.IsSuccess)
+            {
+                AccountActionStatusMessage = result.ErrorMessage ?? "Kon nie jou intekening nou kanselleer nie. Probeer asseblief weer.";
+                return;
+            }
+
+            IsCancelSubscriptionModalOpen = false;
+            HasActivePaidSubscription = await SubscriptionLedgerService.HasActivePaidSubscriptionAsync(UserEmail);
+            CurrentPaidSubscription = await SubscriptionLedgerService.GetCurrentPaidSubscriptionAsync(UserEmail);
+            AccountActionStatusMessage = result.AccessEndsAtUtc is null
+                ? "Jou intekening is gekanselleer. Jou gratis toegang bly beskikbaar."
+                : $"Jou intekening is gekanselleer. Jou betaalde toegang bly aktief tot {FormatDate(result.AccessEndsAtUtc)}.";
+        }
+        catch
+        {
+            AccountActionSucceeded = false;
+            AccountActionStatusMessage = "Kon nie jou intekening nou kanselleer nie. Probeer asseblief weer.";
+        }
+        finally
+        {
+            IsCancellingSubscription = false;
+        }
+    }
+
+    private async Task CloseAccountAsync()
+    {
+        if (IsClosingAccount || string.IsNullOrWhiteSpace(UserEmail))
+        {
+            return;
+        }
+
+        if (HasActivePaidSubscription && !IsCancellationScheduled)
+        {
+            AccountActionSucceeded = false;
+            AccountActionStatusMessage = "Kanselleer asseblief eers jou betaalde intekening voordat jy jou rekening sluit.";
+            return;
+        }
+
+        IsClosingAccount = true;
+        AccountActionSucceeded = false;
+        AccountActionStatusMessage = null;
+        await ShowSubmittingStateAsync();
+
+        try
+        {
+            var result = await SubscriptionLedgerService.CloseAccountAsync(UserEmail);
+            if (!result.IsSuccess)
+            {
+                AccountActionSucceeded = false;
+                AccountActionStatusMessage = result.ErrorMessage ?? "Kon nie jou rekening nou sluit nie. Probeer asseblief weer.";
+                return;
+            }
+
+            AccountActionSucceeded = true;
+            await AuthSessionService.RevokeAllSessionsAsync(UserEmail);
+            NavigationManager.NavigateTo("/teken-uit", forceLoad: true);
+        }
+        catch
+        {
+            AccountActionSucceeded = false;
+            AccountActionStatusMessage = "Kon nie jou rekening nou sluit nie. Probeer asseblief weer.";
+        }
+        finally
+        {
+            IsClosingAccount = false;
+        }
     }
 
     private async Task HandleEmailChangeCallbackAsync()
@@ -734,6 +1043,17 @@
     {
         var culture = CultureInfo.GetCultureInfo("en-ZA");
         return $"R {amount.ToString("0.00", culture)}";
+    }
+
+    private static string FormatDate(DateTimeOffset? value)
+    {
+        if (value is null)
+        {
+            return "die einde van jou betaalde periode";
+        }
+
+        var culture = CultureInfo.GetCultureInfo("af-ZA");
+        return value.Value.ToLocalTime().ToString("d MMMM yyyy", culture);
     }
 
     public async ValueTask DisposeAsync()

@@ -12,7 +12,7 @@ public sealed class PaystackOptions
 
     public string ChargeAuthorizationUrl { get; set; } = "https://api.paystack.co/transaction/charge_authorization";
 
-    public string CallbackUrlPath { get; set; } = "/opsies";
+    public string CallbackUrlPath { get; set; } = "/luister";
 
     public string WebhookUrlPath { get; set; } = "/api/paystack/webhook";
 

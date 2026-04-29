@@ -18,14 +18,38 @@
     animation: winkel-reveal 560ms ease-out forwards;
 }
 
+.winkel-page-logo {
+    display: flex;
+    justify-content: center;
+    padding-top: 0.4rem;
+}
+
+.winkel-page-logo img {
+    width: min(100%, 15rem);
+    height: auto;
+}
+
+.winkel-shopping-form {
+    display: grid;
+    gap: 2rem;
+    margin: 0;
+}
+
+.winkel-shopping-form > * {
+    opacity: 0;
+    transform: translateY(18px);
+    animation: winkel-reveal 560ms ease-out forwards;
+}
+
 .winkel-page > *:nth-child(1) { animation-delay: 30ms; }
 .winkel-page > *:nth-child(2) { animation-delay: 90ms; }
 .winkel-page > *:nth-child(3) { animation-delay: 150ms; }
 .winkel-page > *:nth-child(4) { animation-delay: 210ms; }
 .winkel-page > *:nth-child(5) { animation-delay: 270ms; }
+.winkel-shopping-form > *:nth-child(1) { animation-delay: 90ms; }
+.winkel-shopping-form > *:nth-child(2) { animation-delay: 150ms; }
 
 .winkel-payment-status,
-.winkel-hero,
 .winkel-story-block,
 .winkel-order-section {
     border: 1px solid var(--winkel-line);
@@ -62,7 +86,6 @@
         linear-gradient(135deg, rgba(255, 239, 231, 0.98) 0%, rgba(255, 248, 244, 0.98) 100%);
 }
 
-.winkel-hero,
 .winkel-story-block,
 .winkel-order-section {
     display: grid;
@@ -70,42 +93,34 @@
     padding: clamp(1.4rem, 2.6vw, 2.3rem);
 }
 
-.winkel-hero {
-    grid-template-columns: minmax(0, 1.15fr) minmax(300px, 0.85fr);
+.winkel-story-block {
+    grid-template-columns: minmax(260px, 0.9fr) minmax(0, 1.1fr);
     align-items: center;
 }
 
-.winkel-hero-copy,
 .winkel-order-copy {
     display: grid;
     gap: 1rem;
 }
 
-.winkel-eyebrow,
 .winkel-section-kicker,
 .winkel-order-panel-kicker {
     margin: 0;
-    font-size: 0.78rem;
+    font-size: 0.95rem;
     font-weight: 800;
-    letter-spacing: 0.22em;
+    letter-spacing: 0.28em;
+    line-height: 1.45;
     text-transform: uppercase;
     color: var(--winkel-accent-deep);
 }
 
-.winkel-hero h1,
-.winkel-story-copy h2,
 .winkel-products-header h2,
+.winkel-story-copy h2,
 .winkel-order-copy h2 {
     margin: 0;
-    font-size: clamp(2rem, 4vw, 3.45rem);
     line-height: 1.05;
-    letter-spacing: -0.03em;
-}
-
-.winkel-story-copy h2,
-.winkel-products-header h2,
-.winkel-order-copy h2 {
-    font-size: clamp(1.6rem, 3vw, 2.4rem);
+    letter-spacing: 0;
+    font-size: 2.35rem;
 }
 
 .winkel-intro,
@@ -121,14 +136,6 @@
     color: var(--winkel-muted);
 }
 
-.winkel-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.9rem;
-}
-
-.winkel-cta,
-.winkel-product-link,
 .winkel-submit {
     display: inline-flex;
     align-items: center;
@@ -141,14 +148,10 @@
     transition: transform 180ms ease, box-shadow 180ms ease, background-color 180ms ease, border-color 180ms ease;
 }
 
-.winkel-cta:hover,
-.winkel-product-link:hover,
 .winkel-submit:hover {
     transform: translateY(-1px);
 }
 
-.winkel-cta-primary,
-.winkel-product-link,
 .winkel-submit {
     border: none;
     color: #fffefb;
@@ -156,24 +159,16 @@
     box-shadow: 0 16px 36px rgba(184, 92, 37, 0.24);
 }
 
-.winkel-cta-secondary {
-    border: 1px solid rgba(167, 74, 31, 0.18);
-    color: var(--winkel-accent-deep);
-    background: rgba(255, 255, 255, 0.72);
-}
-
-.winkel-cta:focus-visible,
-.winkel-product-link:focus-visible,
 .winkel-submit:focus-visible,
+.winkel-quantity-button:focus-visible,
+.winkel-product-quantity input:focus-visible,
 .winkel-field input:focus-visible,
 .winkel-field select:focus-visible,
-.winkel-field textarea:focus-visible,
-.winkel-choice-quantity select:focus-visible {
+.winkel-field textarea:focus-visible {
     outline: 3px solid rgba(216, 111, 52, 0.22);
     outline-offset: 2px;
 }
 
-.winkel-highlights,
 .winkel-order-notes,
 .winkel-order-list {
     margin: 0;
@@ -182,48 +177,17 @@
     gap: 0.65rem;
 }
 
-.winkel-highlights li {
-    color: var(--winkel-ink);
-}
-
-.winkel-hero-media,
 .winkel-story-media {
     display: flex;
     justify-content: center;
 }
 
-.winkel-hero-photo-shell {
-    display: grid;
-    gap: 0.85rem;
-}
-
-.winkel-hero-photo-shell img,
 .winkel-story-media img {
     width: min(100%, 32rem);
     height: auto;
     border-radius: 28px;
     box-shadow: 0 26px 60px rgba(72, 48, 23, 0.18);
     background: linear-gradient(180deg, #fff8f0 0%, #f9e9d8 100%);
-}
-
-.winkel-hero-photo-shell img {
-    animation: winkel-float 12s ease-in-out 1s infinite;
-}
-
-.winkel-story-media img {
-    animation: winkel-float 12s ease-in-out 1.4s infinite;
-}
-
-.winkel-hero-caption {
-    margin: 0;
-    text-align: center;
-    color: var(--winkel-muted);
-    font-size: 0.94rem;
-}
-
-.winkel-story-block {
-    grid-template-columns: minmax(260px, 0.9fr) minmax(0, 1.1fr);
-    align-items: center;
 }
 
 .winkel-story-copy {
@@ -240,6 +204,8 @@
     display: grid;
     gap: 0.8rem;
     max-width: 46rem;
+    margin-inline: auto;
+    text-align: center;
 }
 
 .winkel-grid {
@@ -279,8 +245,9 @@
 .winkel-product-body {
     display: grid;
     gap: 0.65rem;
+    grid-template-rows: auto auto auto 1fr auto;
     padding: 1.15rem 1.15rem 1.25rem;
-    align-content: start;
+    align-content: stretch;
 }
 
 .winkel-product-type {
@@ -310,6 +277,66 @@
     font-size: 0.96rem;
     line-height: 1.65;
     color: var(--winkel-muted);
+}
+
+.winkel-product-quantity {
+    display: grid;
+    grid-template-columns: 2.75rem minmax(3rem, 1fr) 2.75rem;
+    gap: 0.45rem;
+    align-items: center;
+}
+
+.winkel-product-quantity label {
+    display: block;
+    min-width: 0;
+}
+
+.winkel-product-quantity input {
+    width: 100%;
+    min-height: 2.75rem;
+    padding: 0.5rem;
+    border: 1px solid rgba(35, 52, 40, 0.12);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.96);
+    color: var(--winkel-ink);
+    font: inherit;
+    font-weight: 800;
+    text-align: center;
+    -moz-appearance: textfield;
+}
+
+.winkel-product-quantity input::-webkit-outer-spin-button,
+.winkel-product-quantity input::-webkit-inner-spin-button {
+    margin: 0;
+    -webkit-appearance: none;
+}
+
+.winkel-quantity-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.75rem;
+    border: 1px solid rgba(167, 74, 31, 0.18);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.82);
+    color: var(--winkel-accent-deep);
+    cursor: pointer;
+    font: inherit;
+    font-size: 1.2rem;
+    font-weight: 800;
+    line-height: 1;
+    transition: transform 180ms ease, border-color 180ms ease, background-color 180ms ease, opacity 180ms ease;
+}
+
+.winkel-quantity-button:hover:not(:disabled) {
+    transform: translateY(-1px);
+    border-color: rgba(167, 74, 31, 0.28);
+    background: rgba(255, 250, 244, 0.96);
+}
+
+.winkel-quantity-button:disabled {
+    cursor: default;
+    opacity: 0.42;
 }
 
 .is-suurlemoentjie {
@@ -376,97 +403,6 @@
 .winkel-order-form {
     display: grid;
     gap: 1.2rem;
-}
-
-.winkel-choice-grid {
-    margin: 0;
-    padding: 0;
-    border: none;
-    display: grid;
-    gap: 0.8rem;
-}
-
-.winkel-choice-grid legend {
-    padding: 0;
-    font-weight: 800;
-    font-size: 1rem;
-    color: var(--winkel-ink);
-}
-
-.winkel-choice-options {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.8rem;
-}
-
-.winkel-choice-card {
-    display: block;
-}
-
-.winkel-choice-card-body {
-    display: grid;
-    gap: 1rem;
-    min-height: 100%;
-    padding: 1rem;
-    border: 1px solid rgba(35, 52, 40, 0.1);
-    border-radius: 18px;
-    background: rgba(255, 252, 247, 0.95);
-    transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease, background-color 180ms ease;
-}
-
-.winkel-choice-card:hover .winkel-choice-card-body {
-    transform: translateY(-1px);
-    border-color: rgba(167, 74, 31, 0.18);
-}
-
-.winkel-choice-copy {
-    display: grid;
-    gap: 0.35rem;
-}
-
-.winkel-choice-name {
-    font-weight: 800;
-    color: var(--winkel-ink);
-}
-
-.winkel-choice-blurb {
-    color: var(--winkel-muted);
-    line-height: 1.55;
-    font-size: 0.94rem;
-}
-
-.winkel-choice-meta {
-    display: flex;
-    align-items: end;
-    justify-content: space-between;
-    gap: 1rem;
-}
-
-.winkel-choice-price {
-    color: var(--winkel-accent-deep);
-    font-weight: 700;
-}
-
-.winkel-choice-quantity {
-    display: grid;
-    gap: 0.35rem;
-    min-width: 8rem;
-}
-
-.winkel-choice-quantity span {
-    font-size: 0.85rem;
-    font-weight: 700;
-    color: var(--winkel-ink);
-}
-
-.winkel-choice-quantity select {
-    min-height: 3rem;
-    padding: 0.75rem 0.9rem;
-    border: 1px solid rgba(35, 52, 40, 0.12);
-    border-radius: 14px;
-    background: rgba(255, 255, 255, 0.96);
-    color: var(--winkel-ink);
-    font: inherit;
 }
 
 .winkel-form-grid {
@@ -550,30 +486,17 @@
     }
 }
 
-@keyframes winkel-float {
-    0%, 100% {
-        transform: translateY(0);
-    }
-
-    50% {
-        transform: translateY(-8px);
-    }
-}
-
 @media (prefers-reduced-motion: reduce) {
     .winkel-page > *,
-    .winkel-hero-photo-shell img,
-    .winkel-story-media img {
+    .winkel-shopping-form > * {
         animation: none;
         opacity: 1;
         transform: none;
     }
 
-    .winkel-cta,
-    .winkel-product-link,
     .winkel-submit,
     .winkel-product-media img,
-    .winkel-choice-card-body {
+    .winkel-quantity-button {
         transition: none;
     }
 }
@@ -585,13 +508,11 @@
 }
 
 @media (max-width: 980px) {
-    .winkel-hero,
     .winkel-story-block,
     .winkel-order-section {
         grid-template-columns: 1fr;
     }
 
-    .winkel-hero-photo-shell img,
     .winkel-story-media img {
         width: min(100%, 28rem);
     }
@@ -602,36 +523,29 @@
         padding: 1rem;
     }
 
-    .winkel-actions,
-    .winkel-choice-options,
+    .winkel-page-logo img {
+        width: min(100%, 12.5rem);
+    }
+
+    .winkel-products-header h2,
+    .winkel-story-copy h2,
+    .winkel-order-copy h2 {
+        font-size: 1.85rem;
+        line-height: 1.12;
+    }
+
     .winkel-form-grid,
     .winkel-grid {
         grid-template-columns: 1fr;
     }
 
-    .winkel-actions {
-        display: grid;
-    }
-
-    .winkel-cta,
-    .winkel-product-link,
     .winkel-submit {
         width: 100%;
     }
 
-    .winkel-hero,
     .winkel-story-block,
     .winkel-order-section {
         padding: 1.15rem;
         border-radius: 24px;
-    }
-
-    .winkel-choice-meta {
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    .winkel-choice-quantity {
-        min-width: 0;
     }
 }

@@ -657,9 +657,7 @@ h2 {
     width: min(100%, 1120px);
     margin-top: 1.35rem;
     padding: 1.2rem 0 1.1rem;
-    border-radius: 26px;
     background: transparent;
-    box-shadow: 0 18px 38px rgba(33, 42, 47, 0.1);
 }
 
 .stories-carousel-section-ranked h2 {
@@ -1326,6 +1324,12 @@ h2 {
 
     97% {
         transform: translateX(-50%) rotate(0.8deg);
+    }
+}
+
+@media (max-width: 1100px) {
+    .home-whatsapp-join-card::before {
+        transform: translate(0, -36%);
     }
 }
 
@@ -2014,7 +2018,6 @@ h2 {
 @media (max-width: 620px) {
     .stories-carousel-section-ranked {
         width: calc(100% - 1rem);
-        border-radius: 20px;
         padding: 0.9rem 0 0.95rem;
     }
 
@@ -2052,7 +2055,7 @@ h2 {
         height: 150px;
         top: 0;
         right: 0;
-        transform: translate(34%, -38%);
+        transform: translate(0, -38%);
     }
 
     .home-whatsapp-join-card::after {
@@ -2105,6 +2108,7 @@ h2 {
     }
 
     .join-promo {
+        width: calc(100% - 1.5rem);
         border-radius: 18px;
         padding: 0.85rem 0.7rem 0.7rem;
     }
@@ -2124,29 +2128,29 @@ h2 {
 
     .home-social-proof {
         margin-bottom: 0.95rem;
-        padding-inline: 0.55rem;
+        padding-inline: 0.75rem;
     }
 
     .home-social-proof-grid {
-        grid-template-columns: 1fr;
-        gap: 0.05rem;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.25rem;
     }
 
     .home-social-proof-item {
-        width: min(100%, 330px);
-        margin-block: -0.42rem;
+        width: 100%;
+        margin-block: 0;
+    }
+
+    .home-social-proof-item:nth-child(3) {
+        display: none;
     }
 
     .home-social-proof-copy {
-        font-size: clamp(0.66rem, 2.82vw, 0.9rem);
+        font-size: clamp(0.54rem, 2.2vw, 0.72rem);
     }
 
     .home-social-proof-number {
-        font-size: clamp(1.48rem, 7.15vw, 2.18rem);
-    }
-
-    .home-social-proof-copy-static {
-        font-size: clamp(0.98rem, 4.35vw, 1.3rem);
+        font-size: clamp(1.1rem, 5vw, 1.55rem);
     }
 
     .hero-logo {

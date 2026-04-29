@@ -15,6 +15,7 @@ public sealed partial class WordPressMigrationService(
     HttpClient httpClient,
     IOptions<WordPressOptions> wordPressOptions,
     IOptions<SupabaseOptions> supabaseOptions,
+    PaystackCheckoutService paystackCheckoutService,
     ISubscriberAvatarStorageService subscriberAvatarStorageService,
     ILogger<WordPressMigrationService> logger) : IWordPressMigrationService
 {
@@ -35,6 +36,7 @@ public sealed partial class WordPressMigrationService(
     private readonly HttpClient _httpClient = httpClient;
     private readonly WordPressOptions _wordPressOptions = wordPressOptions.Value;
     private readonly SupabaseOptions _supabaseOptions = supabaseOptions.Value;
+    private readonly PaystackCheckoutService _paystackCheckoutService = paystackCheckoutService;
     private readonly ISubscriberAvatarStorageService _subscriberAvatarStorageService = subscriberAvatarStorageService;
     private readonly ILogger<WordPressMigrationService> _logger = logger;
 
@@ -139,6 +141,7 @@ public sealed partial class WordPressMigrationService(
             }
 
             var activeEntitlements = BuildCurrentEntitlements(wordPressUsers, membershipPeriods, membershipOrders, subscriptions);
+            activeEntitlements = await EnrichPaystackEntitlementsAsync(activeEntitlements, cancellationToken);
             var upsertedCurrentEntitlements = await UpsertCurrentEntitlementsAsync(
                 baseUri,
                 activeEntitlements,
@@ -148,6 +151,13 @@ public sealed partial class WordPressMigrationService(
                 baseUri,
                 activeEntitlements,
                 cancellationToken);
+            var reconciledNativePaystackTokens = await ReconcileNativePaystackRetryTokensAsync(baseUri, cancellationToken);
+            if (reconciledNativePaystackTokens > 0)
+            {
+                _logger.LogInformation(
+                    "Reconciled Paystack retry tokens onto {Count} native Shink subscription rows from imported WordPress data.",
+                    reconciledNativePaystackTokens);
+            }
 
             var backfilledAuthSubscribers = await BackfillAuthUsersWithoutSubscribersAsync(
                 baseUri,
@@ -201,6 +211,7 @@ public sealed partial class WordPressMigrationService(
         }
 
         var currentEntitlements = await FetchImportedCurrentEntitlementsAsync(baseUri, importedUser.Email, cancellationToken);
+        currentEntitlements = await EnrichPaystackEntitlementsAsync(currentEntitlements, cancellationToken);
         await UpsertCurrentEntitlementsAsync(
             baseUri,
             currentEntitlements.Select(entitlement => entitlement with { Email = importedUser.Email }).ToList(),
@@ -214,6 +225,7 @@ public sealed partial class WordPressMigrationService(
             subscriberId,
             currentEntitlements,
             cancellationToken);
+        await ReconcileNativePaystackRetryTokensAsync(baseUri, cancellationToken);
         return true;
     }
 
@@ -826,6 +838,7 @@ public sealed partial class WordPressMigrationService(
                 provider_payment_id = entitlement.ProviderPaymentId,
                 provider_transaction_id = entitlement.ProviderTransactionId,
                 provider_token = entitlement.ProviderToken,
+                provider_email_token = entitlement.ProviderEmailToken,
                 status = "active",
                 subscribed_at = entitlement.SubscribedAt?.UtcDateTime ?? DateTime.UtcNow,
                 next_renewal_at = entitlement.NextRenewalAt?.UtcDateTime,
@@ -1009,9 +1022,155 @@ public sealed partial class WordPressMigrationService(
                 ProviderPaymentId: row.ProviderPaymentId!.Trim(),
                 ProviderTransactionId: NullIfWhiteSpace(row.ProviderTransactionId),
                 ProviderToken: NullIfWhiteSpace(row.ProviderToken),
+                ProviderEmailToken: null,
                 SubscribedAt: row.SubscribedAt,
                 NextRenewalAt: row.NextRenewalAt))
             .ToList();
+    }
+
+    private async Task<int> ReconcileNativePaystackRetryTokensAsync(Uri baseUri, CancellationToken cancellationToken)
+    {
+        using var request = CreateSupabaseJsonRequest(
+            HttpMethod.Post,
+            new Uri(baseUri, "rest/v1/rpc/reconcile_native_paystack_retry_tokens"),
+            new { });
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Native Paystack retry token reconciliation failed. Status={StatusCode} Body={Body}",
+                (int)response.StatusCode,
+                body);
+            return 0;
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var rows = await JsonSerializer.DeserializeAsync<List<UpdatedSubscriptionIdRow>>(stream, cancellationToken: cancellationToken) ?? [];
+        return rows.Count;
+    }
+
+    private async Task<List<CurrentEntitlement>> EnrichPaystackEntitlementsAsync(
+        IReadOnlyList<CurrentEntitlement> entitlements,
+        CancellationToken cancellationToken)
+    {
+        if (entitlements.Count == 0)
+        {
+            return [];
+        }
+
+        var enriched = new List<CurrentEntitlement>(entitlements.Count);
+        var lastRequestAtUtc = DateTimeOffset.MinValue;
+
+        foreach (var entitlement in entitlements)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (!string.Equals(entitlement.Provider, "paystack", StringComparison.OrdinalIgnoreCase))
+            {
+                enriched.Add(entitlement);
+                continue;
+            }
+
+            var subscriptionCode = PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
+                entitlement.Provider,
+                "wordpress_pmpro",
+                entitlement.ProviderPaymentId,
+                entitlement.ProviderTransactionId);
+            var transactionReference = NullIfWhiteSpace(entitlement.ProviderTransactionId);
+            var authorizationCode = NullIfWhiteSpace(entitlement.ProviderToken);
+            string? emailToken = NullIfWhiteSpace(entitlement.ProviderEmailToken);
+            string? resolvedTransactionId = transactionReference;
+
+            if (subscriptionCode is not null)
+            {
+                await DelayForPaystackRateLimitAsync(lastRequestAtUtc, cancellationToken);
+                lastRequestAtUtc = DateTimeOffset.UtcNow;
+
+                var subscription = await _paystackCheckoutService.GetSubscriptionAsync(subscriptionCode, cancellationToken);
+                if (subscription.IsSuccess)
+                {
+                    authorizationCode = NullIfWhiteSpace(subscription.AuthorizationCode) ?? authorizationCode;
+                    emailToken = NullIfWhiteSpace(subscription.EmailToken) ?? emailToken;
+                    resolvedTransactionId = NullIfWhiteSpace(subscription.SubscriptionCode) ?? resolvedTransactionId;
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "Paystack subscription lookup failed for imported WordPress entitlement. email={Email} payment_id={ProviderPaymentId} transaction_id={ProviderTransactionId} message={Message}",
+                        entitlement.Email,
+                        entitlement.ProviderPaymentId,
+                        entitlement.ProviderTransactionId,
+                        subscription.ErrorMessage);
+                }
+            }
+            else if (!string.IsNullOrWhiteSpace(transactionReference))
+            {
+                await DelayForPaystackRateLimitAsync(lastRequestAtUtc, cancellationToken);
+                lastRequestAtUtc = DateTimeOffset.UtcNow;
+
+                var verification = await _paystackCheckoutService.VerifyTransactionAsync(transactionReference, cancellationToken);
+                if (verification.IsSuccess)
+                {
+                    authorizationCode = NullIfWhiteSpace(verification.AuthorizationCode) ?? authorizationCode;
+                    emailToken = NullIfWhiteSpace(verification.EmailToken) ?? emailToken;
+                    resolvedTransactionId = NullIfWhiteSpace(verification.SubscriptionCode)
+                        ?? resolvedTransactionId;
+
+                    var verifiedSubscriptionCode = PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
+                        entitlement.Provider,
+                        "wordpress_pmpro",
+                        entitlement.ProviderPaymentId,
+                        resolvedTransactionId);
+                    if (verifiedSubscriptionCode is not null && string.IsNullOrWhiteSpace(emailToken))
+                    {
+                        await DelayForPaystackRateLimitAsync(lastRequestAtUtc, cancellationToken);
+                        lastRequestAtUtc = DateTimeOffset.UtcNow;
+
+                        var subscription = await _paystackCheckoutService.GetSubscriptionAsync(verifiedSubscriptionCode, cancellationToken);
+                        if (subscription.IsSuccess)
+                        {
+                            authorizationCode = NullIfWhiteSpace(subscription.AuthorizationCode) ?? authorizationCode;
+                            emailToken = NullIfWhiteSpace(subscription.EmailToken) ?? emailToken;
+                            resolvedTransactionId = NullIfWhiteSpace(subscription.SubscriptionCode) ?? resolvedTransactionId;
+                        }
+                    }
+                }
+                else
+                {
+                    _logger.LogWarning(
+                        "Paystack transaction verify failed for imported WordPress entitlement. email={Email} payment_id={ProviderPaymentId} transaction_id={ProviderTransactionId} message={Message}",
+                        entitlement.Email,
+                        entitlement.ProviderPaymentId,
+                        entitlement.ProviderTransactionId,
+                        verification.ErrorMessage);
+                }
+            }
+
+            enriched.Add(entitlement with
+            {
+                ProviderTransactionId = resolvedTransactionId,
+                ProviderToken = authorizationCode,
+                ProviderEmailToken = emailToken
+            });
+        }
+
+        return enriched;
+    }
+
+    private static async Task DelayForPaystackRateLimitAsync(DateTimeOffset lastRequestAtUtc, CancellationToken cancellationToken)
+    {
+        if (lastRequestAtUtc == DateTimeOffset.MinValue)
+        {
+            return;
+        }
+
+        var elapsed = DateTimeOffset.UtcNow - lastRequestAtUtc;
+        var minimumSpacing = TimeSpan.FromMilliseconds(350);
+        if (elapsed < minimumSpacing)
+        {
+            await Task.Delay(minimumSpacing - elapsed, cancellationToken);
+        }
     }
 
     private async Task<int> BackfillAuthUsersWithoutSubscribersAsync(
@@ -1226,17 +1385,21 @@ public sealed partial class WordPressMigrationService(
                 activeSubscriptionsByUserAndLevel.TryGetValue(key, out var subscription);
                 successfulOrdersByUserAndLevel.TryGetValue(key, out var order);
                 var provider = NormalizeProvider(subscription?.Gateway ?? order?.Gateway ?? "free");
-                var providerTransactionId =
-                    NullIfWhiteSpace(subscription?.SubscriptionTransactionId) ??
-                    NullIfWhiteSpace(order?.PaymentTransactionId) ??
-                    NullIfWhiteSpace(order?.SubscriptionTransactionId);
+                var providerTransactionId = PaystackSubscriptionCodeResolver.ResolveImportedProviderTransactionId(
+                    provider,
+                    subscription?.SubscriptionTransactionId,
+                    order?.SubscriptionTransactionId,
+                    order?.PaymentTransactionId);
                 return new CurrentEntitlement(
                     Email: period.Email ?? string.Empty,
                     TierCode: period.TierCode!,
                     Provider: provider,
                     ProviderPaymentId: $"wp-pmpro-current-{period.MembershipPeriodId.ToString(CultureInfo.InvariantCulture)}",
                     ProviderTransactionId: providerTransactionId,
-                    ProviderToken: null,
+                    ProviderToken: string.Equals(provider, "payfast", StringComparison.OrdinalIgnoreCase)
+                        ? providerTransactionId
+                        : null,
+                    ProviderEmailToken: null,
                     SubscribedAt: WordPressImportDateConverter.ResolveSubscribedAt(
                         userRegisteredById.GetValueOrDefault(period.WordPressUserId),
                         earliestMembershipStartByUserAndLevel.GetValueOrDefault(key),
@@ -1775,6 +1938,7 @@ public sealed partial class WordPressMigrationService(
         string ProviderPaymentId,
         string? ProviderTransactionId,
         string? ProviderToken,
+        string? ProviderEmailToken,
         DateTimeOffset? SubscribedAt,
         DateTimeOffset? NextRenewalAt);
 
@@ -1913,6 +2077,12 @@ public sealed partial class WordPressMigrationService(
     {
         [JsonPropertyName("subscription_id")]
         public string? SubscriptionId { get; set; }
+    }
+
+    private sealed class UpdatedSubscriptionIdRow
+    {
+        [JsonPropertyName("updated_subscription_id")]
+        public string? UpdatedSubscriptionId { get; set; }
     }
 
     private sealed class ImportedSubscriptionLookupRow

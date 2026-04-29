@@ -282,29 +282,25 @@
         await Task.Yield();
     }
 
-    private async Task<string> GetRedirectTargetForAuthenticatedUserAsync(AuthenticationState authState)
+    private Task<string> GetRedirectTargetForAuthenticatedUserAsync(AuthenticationState authState)
     {
         var safeReturnUrl = GetSafeReturnUrl(ReturnUrl);
         if (safeReturnUrl is not null)
         {
-            return safeReturnUrl;
+            return Task.FromResult(safeReturnUrl);
         }
 
-        var user = authState.User;
-        var email = user.FindFirst(ClaimTypes.Email)?.Value
-                    ?? user.Identity?.Name;
-        var hasPaidSubscription = await SubscriptionLedgerService.HasActivePaidSubscriptionAsync(email);
-        return hasPaidSubscription ? "/luister" : "/gratis";
+        return Task.FromResult("/luister");
     }
 
     private string GetRedirectTarget(string? apiRedirectPath = null) =>
         GetSafeReturnUrl(ReturnUrl)
         ?? GetSafePostAuthPath(apiRedirectPath)
-        ?? "/gratis";
+        ?? "/luister";
 
     private async Task RedirectToTargetAsync(string target)
     {
-        var safeTarget = string.IsNullOrWhiteSpace(target) ? "/gratis" : target;
+        var safeTarget = string.IsNullOrWhiteSpace(target) ? "/luister" : target;
 
         try
         {

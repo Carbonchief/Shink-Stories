@@ -23,6 +23,11 @@ public static class StoryAccessPolicy
 
         if (string.Equals(source, "luister", StringComparison.OrdinalIgnoreCase))
         {
+            if (story is not null && string.Equals(story.AccessLevel, "free", StringComparison.OrdinalIgnoreCase))
+            {
+                return StoryAccessRequirement.Free;
+            }
+
             if (story is not null && IsStoryCornerStory(story))
             {
                 return StoryAccessRequirement.StoryCornerOrAllStories;

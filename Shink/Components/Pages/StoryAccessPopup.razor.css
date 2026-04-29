@@ -116,6 +116,10 @@
     gap: 0.65rem;
 }
 
+.story-access-popup-actions form {
+    margin: 0;
+}
+
 .story-access-popup-button {
     display: inline-flex;
     justify-content: center;
@@ -128,6 +132,8 @@
     font-weight: 700;
     line-height: 1.1;
     color: #ffffff;
+    border: 0;
+    cursor: pointer;
     transition: transform 120ms ease, filter 120ms ease;
 }
 

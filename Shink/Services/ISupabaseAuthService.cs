@@ -12,6 +12,9 @@ public interface ISupabaseAuthService
         string email,
         string redirectTo,
         CancellationToken cancellationToken = default);
+    Task<SupabaseRecoverySessionResult> ExchangeRecoveryTokenHashAsync(
+        string tokenHash,
+        CancellationToken cancellationToken = default);
     Task<SupabasePasswordResetResult> UpdatePasswordAsync(
         string accessToken,
         string refreshToken,
@@ -58,6 +61,23 @@ public sealed record SupabasePasswordResetResult(bool IsSuccess, string? UserEma
     public static SupabasePasswordResetResult Success(string? userEmail = null) => new(true, userEmail, null);
 
     public static SupabasePasswordResetResult Failure(string errorMessage) => new(false, null, errorMessage);
+}
+
+public sealed record SupabaseRecoverySessionResult(
+    bool IsSuccess,
+    string? AccessToken,
+    string? RefreshToken,
+    string? UserEmail,
+    string? ErrorMessage)
+{
+    public static SupabaseRecoverySessionResult Success(
+        string accessToken,
+        string? refreshToken,
+        string? userEmail) =>
+        new(true, accessToken, refreshToken, userEmail, null);
+
+    public static SupabaseRecoverySessionResult Failure(string errorMessage) =>
+        new(false, null, null, null, errorMessage);
 }
 
 public sealed record SupabaseEmailChangeResult(bool IsSuccess, string? UserEmail, string? ErrorMessage)

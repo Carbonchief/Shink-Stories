@@ -491,27 +491,6 @@ else
             ? authState.User.FindFirst(ClaimTypes.Email)?.Value ?? authState.User.Identity?.Name
             : null;
 
-        if (authState.User.Identity?.IsAuthenticated != true)
-        {
-            IsRedirectingToOpsies = true;
-            CurrentStory = await StoryCatalogService.FindLuisterBySlugAsync(Slug);
-            AudioUrl = null;
-            LuisterStories = Array.Empty<StoryItem>();
-            PublishedCharacters = Array.Empty<StoryCharacterItem>();
-            CharacterUnlockStates = new Dictionary<Guid, bool>();
-            FavoriteStorySlugs.Clear();
-            FavoriteStoryBusySlugs.Clear();
-            ResolveAdjacentStories();
-            IsManualFullscreenFocus = false;
-
-            PendingLockedStoryPath = GetCurrentPathAndQuery();
-            ShowStoryAccessPopup = !isSocialPreviewRequest;
-            IsStoryLoading = false;
-
-            return;
-        }
-
-        IsRedirectingToOpsies = false;
         var luisterStoriesTask = StoryCatalogService.GetLuisterStoriesAsync();
         var currentStoryTask = StoryCatalogService.FindLuisterBySlugAsync(Slug);
         var charactersTask = TryLoadPublishedCharactersAsync();
@@ -525,8 +504,26 @@ else
             PublishedCharacters,
             unlockProgressTask.Result.ProgressLookup,
             unlockProgressTask.Result.ProfileListenLookup);
-        if (CurrentStory is not null &&
-            !await HasAccessToStoryAsync(authState.User, CurrentStory))
+
+        var canAccessCurrentStory = CurrentStory is not null && await HasAccessToStoryAsync(authState.User, CurrentStory);
+        if (authState.User.Identity?.IsAuthenticated != true && !canAccessCurrentStory)
+        {
+            IsRedirectingToOpsies = true;
+            AudioUrl = null;
+            FavoriteStorySlugs.Clear();
+            FavoriteStoryBusySlugs.Clear();
+            ResolveAdjacentStories();
+            IsManualFullscreenFocus = false;
+
+            PendingLockedStoryPath = GetCurrentPathAndQuery();
+            ShowStoryAccessPopup = !isSocialPreviewRequest;
+            IsStoryLoading = false;
+
+            return;
+        }
+
+        IsRedirectingToOpsies = false;
+        if (CurrentStory is not null && !canAccessCurrentStory)
         {
             IsRedirectingToOpsies = true;
             CurrentStory = null;

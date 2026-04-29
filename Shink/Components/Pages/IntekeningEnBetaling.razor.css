@@ -236,6 +236,15 @@
     background: linear-gradient(180deg, #ffffff 0%, #fbf8f1 100%);
 }
 
+.billing-danger-card {
+    display: grid;
+    gap: 1rem;
+    background:
+        radial-gradient(110% 140% at 100% 0%, rgba(156, 54, 40, 0.08), transparent 56%),
+        linear-gradient(180deg, #ffffff 0%, #fff8f6 100%);
+    border-color: rgba(156, 54, 40, 0.18);
+}
+
 .billing-status-card.is-active {
     border-color: rgba(31, 112, 65, 0.2);
 }
@@ -433,10 +442,29 @@
     border-color: #b9c4bf;
 }
 
+.billing-danger-btn {
+    min-height: 50px;
+    border-radius: 14px;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding-inline: 1rem;
+}
+
+.billing-danger-btn:hover,
+.billing-danger-btn:focus-visible {
+    color: #ffffff;
+}
+
 .billing-profile-status {
     margin: 0;
     border-radius: 14px;
     font-weight: 700;
+}
+
+.billing-modal-status {
+    margin-bottom: 1rem;
 }
 
 .billing-status-list {
@@ -592,6 +620,10 @@
     border: 1px solid rgba(171, 93, 21, 0.2);
 }
 
+.billing-save-badge-placeholder {
+    visibility: hidden;
+}
+
 .billing-description {
     margin: 0;
     color: #5b6971;
@@ -648,6 +680,13 @@ body.schink-night-mode .billing-profile-card {
 body.schink-night-mode .billing-status-card {
     background:
         radial-gradient(100% 120% at 100% 0%, rgba(242, 168, 77, 0.08), transparent 58%),
+        linear-gradient(180deg, rgba(23, 32, 39, 0.97) 0%, rgba(17, 25, 31, 0.97) 100%);
+}
+
+body.schink-night-mode .billing-danger-card {
+    border-color: rgba(246, 122, 98, 0.24);
+    background:
+        radial-gradient(100% 120% at 100% 0%, rgba(246, 122, 98, 0.1), transparent 58%),
         linear-gradient(180deg, rgba(23, 32, 39, 0.97) 0%, rgba(17, 25, 31, 0.97) 100%);
 }
 
@@ -734,6 +773,18 @@ body.schink-night-mode .billing-secondary-btn:focus-visible {
     color: #ffffff;
     background: rgba(255, 255, 255, 0.1);
     border-color: rgba(242, 168, 77, 0.55);
+}
+
+body.schink-night-mode .billing-danger-btn {
+    color: #ffd8d2;
+    border-color: rgba(246, 122, 98, 0.42);
+}
+
+body.schink-night-mode .billing-danger-btn:hover,
+body.schink-night-mode .billing-danger-btn:focus-visible {
+    color: #ffffff;
+    background: rgba(156, 54, 40, 0.55);
+    border-color: rgba(246, 122, 98, 0.72);
 }
 
 body.schink-night-mode .billing-modal-backdrop {
