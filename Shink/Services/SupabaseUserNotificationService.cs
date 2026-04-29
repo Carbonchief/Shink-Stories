@@ -534,7 +534,6 @@ public sealed class SupabaseUserNotificationService(
             var normalizedSlug = request.Slug.Trim().ToLowerInvariant();
             var normalizedTitle = request.Title.Trim();
             var imagePath = ResolveBlogNotificationImagePath(request);
-            var body = BuildPublishedBlogNotificationBody(request);
             var href = BuildPublishedBlogNotificationHref(normalizedSlug);
             var sourceKey = BuildPublishedBlogSourceKey(request.PostId);
 
@@ -544,8 +543,8 @@ public sealed class SupabaseUserNotificationService(
                     subscriber_id = subscriberId,
                     notification_type = "blog_published",
                     source_key = sourceKey,
-                    title = "Nuwe blog plasing",
-                    body,
+                    title = normalizedTitle,
+                    body = (string?)null,
                     image_path = imagePath,
                     image_alt = $"Hoofprent vir {normalizedTitle}",
                     href,
@@ -1052,11 +1051,6 @@ public sealed class SupabaseUserNotificationService(
 
     private static string BuildPublishedStorySourceKey(Guid storyId) =>
         $"story-published-{storyId:N}";
-
-    private static string BuildPublishedBlogNotificationBody(PublishedBlogNotificationRequest request)
-    {
-        return request.Title.Trim();
-    }
 
     private static string BuildPublishedStoryNotificationBody(PublishedStoryNotificationRequest request)
     {

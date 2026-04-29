@@ -1337,6 +1337,30 @@
 }
 
 @media (hover: none) and (pointer: coarse) and (orientation: landscape) {
+    .story-player-page:not(.manual-fullscreen-focus) {
+        padding-inline: max(0.7rem, env(safe-area-inset-left)) max(0.7rem, env(safe-area-inset-right));
+    }
+
+    .story-player-page:not(.manual-fullscreen-focus) .story-player-content {
+        gap: 0.5rem;
+        --story-player-viewport-reserve: 9.5rem;
+    }
+
+    .story-player-page:not(.manual-fullscreen-focus) .story-cover-wrap {
+        width: min(100%, 760px);
+        max-width: calc(100vw - 1.4rem);
+        max-height: clamp(190px, calc(100svh - var(--story-player-viewport-reserve)), 360px);
+    }
+
+    .story-player-page:not(.manual-fullscreen-focus) .story-cover {
+        width: 100%;
+        height: auto;
+        max-height: clamp(190px, calc(100svh - var(--story-player-viewport-reserve)), 360px);
+        aspect-ratio: 40 / 27;
+        object-fit: cover;
+        object-position: center bottom;
+    }
+
     .story-player-page.manual-fullscreen-focus .story-cover {
         animation: none;
         transform: none;
