@@ -904,12 +904,38 @@ else
         var trimmed = value.Trim();
         if (Uri.TryCreate(trimmed, UriKind.Absolute, out var absoluteUri))
         {
-            var pathAndQuery = absoluteUri.PathAndQuery;
-            return string.IsNullOrWhiteSpace(pathAndQuery) ? "/karakters" : pathAndQuery;
+            trimmed = absoluteUri.PathAndQuery;
         }
 
-        return trimmed.StartsWith("/", StringComparison.Ordinal) ? trimmed : $"/{trimmed.TrimStart('/')}";
+        if (!trimmed.StartsWith("/", StringComparison.Ordinal))
+        {
+            trimmed = $"/{trimmed.TrimStart('/')}";
+        }
+
+        if (trimmed.Equals("/karakters", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("/karakters?", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("/karakters#", StringComparison.OrdinalIgnoreCase))
+        {
+            return trimmed;
+        }
+
+        var pathOnly = trimmed.Split('?', '#')[0].Trim('/');
+        var segments = pathOnly.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (segments.Length >= 2 &&
+            IsCharacterPopupRouteSegment(segments[0]) &&
+            !string.IsNullOrWhiteSpace(segments[1]))
+        {
+            return $"/karakters?karakter={Uri.EscapeDataString(segments[1])}";
+        }
+
+        return "/karakters";
     }
+
+    private static bool IsCharacterPopupRouteSegment(string value) =>
+        value.Equals("karakter", StringComparison.OrdinalIgnoreCase) ||
+        value.Equals("karakters", StringComparison.OrdinalIgnoreCase) ||
+        value.Equals("character", StringComparison.OrdinalIgnoreCase) ||
+        value.Equals("characters", StringComparison.OrdinalIgnoreCase);
 
     private static string? NormalizePopupPath(string? value)
     {

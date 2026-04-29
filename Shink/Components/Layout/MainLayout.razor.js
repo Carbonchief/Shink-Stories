@@ -601,6 +601,43 @@ function buildNotificationTypeMeta(notificationType) {
     }
 }
 
+function normalizeNotificationHref(notification) {
+    const href = notification && typeof notification.href === "string" && notification.href.length > 0
+        ? notification.href.trim()
+        : "";
+    if (!href) {
+        return null;
+    }
+
+    if (normalizeNotificationType(notification.type) !== "character_unlock") {
+        return href;
+    }
+
+    let path = href;
+    try {
+        const parsedUrl = new URL(href, window.location.origin);
+        path = `${parsedUrl.pathname}${parsedUrl.search}${parsedUrl.hash}`;
+    } catch {
+        path = href;
+    }
+
+    if (!path.startsWith("/")) {
+        path = `/${path.replace(/^\/+/, "")}`;
+    }
+
+    if (path === "/karakters" || path.startsWith("/karakters?") || path.startsWith("/karakters#")) {
+        return path;
+    }
+
+    const segments = path.split(/[?#]/)[0].split("/").filter(Boolean);
+    const route = segments[0] ? segments[0].toLowerCase() : "";
+    if ((route === "karakter" || route === "karakters" || route === "character" || route === "characters") && segments[1]) {
+        return `/karakters?karakter=${encodeURIComponent(segments[1])}`;
+    }
+
+    return "/karakters";
+}
+
 function renderNotificationItems(parts, notifications, fallbackMessage) {
     const safeNotifications = Array.isArray(notifications) ? notifications : [];
     const state = getNotificationCenterState(parts.centerRoot);
@@ -617,9 +654,7 @@ function renderNotificationItems(parts, notifications, fallbackMessage) {
         const notificationId = notification && typeof notification.id === "string"
             ? notification.id
             : "";
-        const href = notification && typeof notification.href === "string" && notification.href.length > 0
-            ? notification.href
-            : null;
+        const href = normalizeNotificationHref(notification);
         const shell = document.createElement("div");
         const isRemovingItem = state.removingNotificationIds instanceof Set
             ? state.removingNotificationIds.has(notificationId)

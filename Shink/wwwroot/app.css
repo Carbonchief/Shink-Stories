@@ -239,8 +239,32 @@ body.schink-night-mode .site-search-input {
     color: #f3f0e8;
 }
 
+body.schink-night-mode .luister-search-form {
+    background: #121a20;
+    border-color: rgba(242, 168, 77, 0.62);
+    box-shadow: 0 14px 28px rgba(0, 0, 0, 0.38);
+}
+
+body.schink-night-mode .luister-search-icon,
+body.schink-night-mode .luister-search-loader {
+    color: #f3f0e8;
+}
+
+body.schink-night-mode .luister-search-input {
+    color: #f3f0e8;
+}
+
 body.schink-night-mode .site-search-input::placeholder {
     color: #aab5b9;
+}
+
+body.schink-night-mode .luister-search-input::placeholder {
+    color: #aab5b9;
+}
+
+body.schink-night-mode .luister-search-spinner {
+    border-color: rgba(243, 240, 232, 0.24);
+    border-top-color: #f3f0e8;
 }
 
 body.schink-night-mode .is-search-active .site-search-form {

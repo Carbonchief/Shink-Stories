@@ -1123,10 +1123,63 @@ public sealed class SupabaseUserNotificationService(
             row.Body,
             row.ImagePath,
             row.ImageAlt,
-            row.Href,
+            NormalizeNotificationHref(row.NotificationType, row.Href),
             row.CreatedAtUtc ?? DateTimeOffset.UtcNow,
             row.ReadAtUtc is not null,
             row.ClearedAtUtc is not null);
+
+    private static string? NormalizeNotificationHref(string? notificationType, string? href)
+    {
+        if (string.Equals(notificationType, "character_unlock", StringComparison.OrdinalIgnoreCase))
+        {
+            return NormalizeCharacterUnlockHref(href);
+        }
+
+        return href;
+    }
+
+    private static string NormalizeCharacterUnlockHref(string? href)
+    {
+        if (string.IsNullOrWhiteSpace(href))
+        {
+            return "/karakters";
+        }
+
+        var trimmed = href.Trim();
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var absoluteUri))
+        {
+            trimmed = absoluteUri.PathAndQuery;
+        }
+
+        if (!trimmed.StartsWith("/", StringComparison.Ordinal))
+        {
+            trimmed = $"/{trimmed.TrimStart('/')}";
+        }
+
+        if (trimmed.Equals("/karakters", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("/karakters?", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("/karakters#", StringComparison.OrdinalIgnoreCase))
+        {
+            return trimmed;
+        }
+
+        var pathOnly = trimmed.Split('?', '#')[0].Trim('/');
+        var segments = pathOnly.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (segments.Length >= 2 &&
+            IsCharacterRouteSegment(segments[0]) &&
+            !string.IsNullOrWhiteSpace(segments[1]))
+        {
+            return $"/karakters?karakter={Uri.EscapeDataString(segments[1])}";
+        }
+
+        return "/karakters";
+    }
+
+    private static bool IsCharacterRouteSegment(string value) =>
+        value.Equals("karakter", StringComparison.OrdinalIgnoreCase) ||
+        value.Equals("karakters", StringComparison.OrdinalIgnoreCase) ||
+        value.Equals("character", StringComparison.OrdinalIgnoreCase) ||
+        value.Equals("characters", StringComparison.OrdinalIgnoreCase);
 
     private static bool TryParseContentRangeCount(HttpResponseMessage response, out int count)
     {
