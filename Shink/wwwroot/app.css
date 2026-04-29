@@ -1269,6 +1269,87 @@ body.schink-night-mode .site-shell .site-main .review-card {
     box-shadow: 0 22px 52px rgba(0, 0, 0, 0.34);
 }
 
+body.schink-night-mode .perfect-plan-section {
+    --perfect-plan-highlight: #ffd39b;
+    --perfect-plan-surface: rgba(22, 31, 37, 0.96);
+    --perfect-plan-surface-soft: rgba(18, 28, 34, 0.94);
+    --perfect-plan-night-ink: #f7f1e7;
+    --perfect-plan-night-muted: #c6d0ca;
+    --perfect-plan-night-line: rgba(247, 241, 231, 0.16);
+    color: var(--perfect-plan-night-ink);
+}
+
+body.schink-night-mode .site-shell .site-main .perfect-plan-header h2,
+body.schink-night-mode .site-shell .site-main .perfect-plan-card h3,
+body.schink-night-mode .site-shell .site-main .perfect-plan-option-price-line strong {
+    color: var(--perfect-plan-night-ink);
+}
+
+body.schink-night-mode .site-shell .site-main .perfect-plan-header p,
+body.schink-night-mode .site-shell .site-main .perfect-plan-list li,
+body.schink-night-mode .site-shell .site-main .perfect-plan-option-caption,
+body.schink-night-mode .site-shell .site-main .perfect-plan-option-price-line span {
+    color: var(--perfect-plan-night-muted);
+}
+
+body.schink-night-mode .site-shell .site-main .perfect-plan-card {
+    border-color: var(--perfect-plan-night-line);
+    background:
+        radial-gradient(circle at top right, rgba(255, 211, 155, 0.14), transparent 34%),
+        linear-gradient(180deg, rgba(24, 35, 42, 0.98) 0%, rgba(17, 26, 32, 0.98) 100%);
+    color: var(--perfect-plan-night-ink);
+    box-shadow: 0 24px 58px rgba(0, 0, 0, 0.34);
+}
+
+body.schink-night-mode .site-shell .site-main .perfect-plan-card.is-featured {
+    border-color: rgba(255, 211, 155, 0.42);
+    box-shadow: 0 24px 58px rgba(0, 0, 0, 0.34), 0 0 0 1px rgba(255, 211, 155, 0.12);
+}
+
+body.schink-night-mode .site-shell .site-main .perfect-plan-list li::before {
+    color: var(--perfect-plan-highlight);
+}
+
+body.schink-night-mode .site-shell .site-main .perfect-plan-option,
+body.schink-night-mode .site-shell .site-main .perfect-plan-select {
+    border-color: rgba(247, 241, 231, 0.18);
+    background: var(--perfect-plan-surface-soft);
+    color: var(--perfect-plan-night-ink);
+    box-shadow: none;
+}
+
+body.schink-night-mode .site-shell .site-main .perfect-plan-option:hover,
+body.schink-night-mode .site-shell .site-main .perfect-plan-select:hover,
+body.schink-night-mode .site-shell .site-main .perfect-plan-select:focus-visible {
+    border-color: rgba(255, 211, 155, 0.48);
+    background: rgba(43, 57, 62, 0.96);
+    color: var(--perfect-plan-night-ink);
+}
+
+body.schink-night-mode .site-shell .site-main .perfect-plan-option.is-selected,
+body.schink-night-mode .site-shell .site-main .perfect-plan-select.is-linked-selected {
+    border-color: rgba(255, 211, 155, 0.58);
+    background: linear-gradient(180deg, rgba(92, 62, 34, 0.9) 0%, rgba(65, 48, 33, 0.94) 100%);
+    box-shadow: 0 12px 24px rgba(0, 0, 0, 0.24);
+}
+
+body.schink-night-mode .site-shell .site-main .perfect-plan-badge,
+body.schink-night-mode .site-shell .site-main .perfect-plan-option-save-badge {
+    border-color: rgba(255, 211, 155, 0.46);
+    background: rgba(138, 79, 0, 0.98);
+    color: #ffffff;
+}
+
+body.schink-night-mode .site-shell .site-main .perfect-plan-option-indicator,
+body.schink-night-mode .site-shell .site-main .perfect-plan-option.is-selected .perfect-plan-option-indicator {
+    border-color: rgba(255, 211, 155, 0.66);
+    background: #f7f1e7;
+}
+
+body.schink-night-mode .site-shell .site-main .perfect-plan-option.is-selected .perfect-plan-option-indicator::after {
+    background: #d67f12;
+}
+
 body.schink-night-mode .site-shell .site-main .about-card h2,
 body.schink-night-mode .site-shell .site-main .about-block h2,
 body.schink-night-mode .site-shell .site-main .about-title-block h1,
