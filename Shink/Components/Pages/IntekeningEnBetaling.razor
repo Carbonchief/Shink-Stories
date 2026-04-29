@@ -288,7 +288,7 @@
                         @if (!IsCancellationScheduled)
                         {
                             <button type="button"
-                                    class="btn btn-outline-danger btn-lg billing-danger-btn"
+                                    class="btn btn-outline-secondary btn-lg billing-danger-btn"
                                     disabled="@IsCancellingSubscription"
                                     @onclick="OpenCancelSubscriptionModal">
                                 Kanselleer intekening
@@ -424,7 +424,7 @@
 
                     <div class="billing-form-actions d-flex flex-wrap gap-2">
                         <button type="button"
-                                class="btn btn-outline-danger btn-lg billing-danger-btn"
+                                class="btn btn-outline-secondary btn-lg billing-danger-btn"
                                 disabled="@IsCancellingSubscription"
                                 @onclick="CancelSubscriptionAsync">
                             @(IsCancellingSubscription ? "Kanselleer..." : "Ja, kanselleer intekening")
@@ -473,7 +473,7 @@
 
                         <div class="billing-form-actions d-flex flex-wrap gap-2">
                             <button type="button"
-                                    class="btn btn-outline-danger btn-lg billing-danger-btn"
+                                    class="btn btn-outline-secondary btn-lg billing-danger-btn"
                                     disabled="@IsCancellingSubscription"
                                     @onclick="OpenCancelSubscriptionModal">
                                 Kanselleer intekening
@@ -489,7 +489,7 @@
                     {
                         <div class="billing-form-actions d-flex flex-wrap gap-2">
                             <button type="button"
-                                    class="btn btn-outline-danger btn-lg billing-danger-btn"
+                                    class="btn btn-outline-secondary btn-lg billing-danger-btn"
                                     disabled="@IsClosingAccount"
                                     @onclick="CloseAccountAsync">
                                 @(IsClosingAccount ? "Sluit..." : "Ja, sluit rekening")
@@ -546,7 +546,7 @@
 
             <div class="billing-status-actions d-grid gap-2">
                 <button type="button"
-                        class="btn btn-outline-danger btn-lg billing-danger-btn"
+                        class="btn btn-outline-secondary btn-lg billing-danger-btn"
                         disabled="@IsClosingAccount"
                         @onclick="OpenCloseAccountModal">
                     Sluit rekening

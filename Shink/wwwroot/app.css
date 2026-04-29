@@ -1392,6 +1392,11 @@ body.schink-night-mode .site-shell .site-main .home-faq-item p {
     color: var(--home-faq-night-muted);
 }
 
+body.schink-night-mode .site-shell.home-route .contact-section {
+    --home-footer-night-bg: #222222;
+    background: linear-gradient(180deg, transparent 0%, transparent calc(100% - 2.5rem), var(--home-footer-night-bg) calc(100% - 2.5rem), var(--home-footer-night-bg) 100%);
+}
+
 body.schink-night-mode .site-shell .site-main .about-card h2,
 body.schink-night-mode .site-shell .site-main .about-block h2,
 body.schink-night-mode .site-shell .site-main .about-title-block h1,
