@@ -455,9 +455,9 @@
 
 .billing-danger-btn:hover,
 .billing-danger-btn:focus-visible {
-    color: #4f5f66;
-    background: #f4f1e9;
-    border-color: #b9c4bf;
+    color: #5f6b73;
+    background: #ffffff;
+    border-color: #cad5d1;
 }
 
 .billing-profile-status {
@@ -786,9 +786,9 @@ body.schink-night-mode .billing-danger-btn {
 
 body.schink-night-mode .billing-danger-btn:hover,
 body.schink-night-mode .billing-danger-btn:focus-visible {
-    color: #f3f0e8;
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(234, 229, 216, 0.3);
+    color: #c5d0d4;
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(234, 229, 216, 0.22);
 }
 
 body.schink-night-mode .billing-modal-backdrop {

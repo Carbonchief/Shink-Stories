@@ -23,8 +23,10 @@ public class IntekeningDangerActionStyleTests
 
         StringAssert.Contains(css, ".billing-danger-card {\n    display: grid;\n    gap: 1rem;\n    background: linear-gradient(180deg, #ffffff 0%, #f8fbfb 100%);\n    border-color: rgba(33, 95, 104, 0.12);");
         StringAssert.Contains(css, ".billing-danger-btn {\n    min-height: 50px;");
+        StringAssert.Contains(css, ".billing-danger-btn:hover,\n.billing-danger-btn:focus-visible {\n    color: #5f6b73;\n    background: #ffffff;");
         StringAssert.Contains(css, "body.schink-night-mode .billing-danger-card {\n    border-color: rgba(234, 229, 216, 0.14);");
         StringAssert.Contains(css, "body.schink-night-mode .billing-danger-btn {\n    color: #c5d0d4;");
+        StringAssert.Contains(css, "body.schink-night-mode .billing-danger-btn:hover,\nbody.schink-night-mode .billing-danger-btn:focus-visible {\n    color: #c5d0d4;\n    background: rgba(255, 255, 255, 0.05);");
         Assert.IsFalse(css.Contains("rgba(246, 122, 98, 0.42)", StringComparison.Ordinal));
         Assert.IsFalse(css.Contains("rgba(156, 54, 40, 0.55)", StringComparison.Ordinal));
     }
