@@ -24,6 +24,7 @@ const string AdminRoleName = "admin";
 const string GooglePkceCookieName = "shink.auth.google.pkce";
 const string GooglePkceProtectorPurpose = "Shink.Auth.GooglePkce.v1";
 const string EmailChangeStateProtectorPurpose = "Shink.Auth.EmailChange.v1";
+const string LongLivedImageCacheControl = "public, max-age=2592000, stale-while-revalidate=86400";
 
 var builder = WebApplication.CreateBuilder(args);
 var postHogSettings = PostHogSettings.FromConfiguration(builder.Configuration);
@@ -405,7 +406,16 @@ app.Use(async (httpContext, next) =>
 });
 
 // Fallback serving from physical wwwroot to avoid manifest drift issues during publish.
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = static context =>
+    {
+        if (IsStaticImageResponse(context.Context.Response.ContentType, context.File.Name))
+        {
+            ApplyImageCacheHeaders(context.Context.Response);
+        }
+    }
+});
 
 app.Use(async (httpContext, next) =>
 {
@@ -3048,7 +3058,7 @@ static void ForwardConditionalImageHeader(
 
 static void ApplyImageProxyCacheHeaders(HttpContext httpContext, HttpResponseMessage upstreamResponse)
 {
-    httpContext.Response.Headers.CacheControl = "public, max-age=2592000, stale-while-revalidate=86400";
+    ApplyImageCacheHeaders(httpContext.Response);
 
     if (upstreamResponse.Headers.ETag is not null)
     {
@@ -3059,6 +3069,36 @@ static void ApplyImageProxyCacheHeaders(HttpContext httpContext, HttpResponseMes
     {
         httpContext.Response.Headers.LastModified = upstreamResponse.Content.Headers.LastModified.Value.ToString("R", CultureInfo.InvariantCulture);
     }
+}
+
+static void ApplyImageCacheHeaders(HttpResponse response)
+{
+    response.Headers.CacheControl = LongLivedImageCacheControl;
+}
+
+static bool IsStaticImageResponse(string? contentType, string? fileName)
+{
+    if (!string.IsNullOrWhiteSpace(contentType) &&
+        contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+    {
+        return true;
+    }
+
+    return IsImagePath(fileName);
+}
+
+static bool IsImagePath(string? path)
+{
+    if (string.IsNullOrWhiteSpace(path))
+    {
+        return false;
+    }
+
+    return Path.GetExtension(path).ToLowerInvariant() switch
+    {
+        ".avif" or ".gif" or ".ico" or ".jpeg" or ".jpg" or ".png" or ".svg" or ".webp" => true,
+        _ => false
+    };
 }
 
 static async Task<IResult> ProxyAudioFromOriginAsync(

@@ -1605,6 +1605,13 @@
     color: rgba(241, 244, 248, 0.88);
 }
 
+#main-site-nav .night-mode-toggle.nav-panel-link,
+#showcase-site-nav .night-mode-toggle.nav-panel-link,
+#story-site-nav .night-mode-toggle.nav-panel-link {
+    width: calc(100% + 1rem + 2px);
+    max-width: none;
+}
+
 .night-mode-toggle-icon {
     flex: 0 0 auto;
     display: inline-flex;
