@@ -260,48 +260,55 @@ else
 
             @if (HasStoryCharacters(CurrentStory))
             {
+                var storyCharacterTiles = ResolveStoryCharacterTiles(CurrentStory);
+                var visualCharacterTiles = storyCharacterTiles.Where(character => !character.IsTextOnly).ToArray();
+                var textOnlyCharacterTiles = storyCharacterTiles.Where(character => character.IsTextOnly).ToArray();
+
                 <div class="story-summary-block">
                     <h2>Karakters in die storie</h2>
-                    <div class="story-character-list" aria-label="Karakters in die storie">
-                        @foreach (var character in ResolveStoryCharacterTiles(CurrentStory))
-                        {
-                            @if (!string.IsNullOrWhiteSpace(character.ProfileHref))
+                    @if (visualCharacterTiles.Length > 0)
+                    {
+                        <div class="story-character-list" aria-label="Karakters in die storie">
+                            @foreach (var character in visualCharacterTiles)
                             {
-                                <a class="story-character-item story-character-link"
-                                   href="@character.ProfileHref"
-                                   aria-label="Maak @character.DisplayName se karakterprofiel oop">
-                                    <img class="story-character-image"
-                                         src="@character.ImagePath"
-                                         alt="Illustrasie van @character.DisplayName"
-                                         loading="lazy"
-                                         decoding="async"
-                                         onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
-                                    <span class="story-character-name">@character.DisplayName</span>
-                                </a>
-                            }
-                            else
-                            {
-                                <span class="story-character-item">
-                                    @if (!string.IsNullOrWhiteSpace(character.ImagePath))
-                                    {
+                                @if (!string.IsNullOrWhiteSpace(character.ProfileHref))
+                                {
+                                    <a class="story-character-item story-character-link"
+                                       href="@character.ProfileHref"
+                                       aria-label="Maak @character.DisplayName se karakterprofiel oop">
+                                        <img class="story-character-image"
+                                             src="@character.ImagePath"
+                                             alt="Illustrasie van @character.DisplayName"
+                                             loading="lazy"
+                                             decoding="async"
+                                             onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                                        <span class="story-character-name">@character.DisplayName</span>
+                                    </a>
+                                }
+                                else
+                                {
+                                    <span class="story-character-item">
                                         <img class="story-character-image"
                                              src="@character.ImagePath"
                                              alt="@character.ImageAlt"
                                              loading="lazy"
                                              decoding="async"
                                              onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
-                                    }
-                                    else
-                                    {
-                                        <span class="story-character-image story-character-image-fallback" aria-hidden="true">
-                                            <i class="fa-solid fa-user" aria-hidden="true"></i>
-                                        </span>
-                                    }
-                                    <span class="story-character-name">@character.DisplayName</span>
-                                </span>
+                                        <span class="story-character-name">@character.DisplayName</span>
+                                    </span>
+                                }
                             }
-                        }
-                    </div>
+                        </div>
+                    }
+                    @if (textOnlyCharacterTiles.Length > 0)
+                    {
+                        <div class="story-character-text-list" aria-label="Karakters sonder prente">
+                            @foreach (var character in textOnlyCharacterTiles)
+                            {
+                                <span class="story-character-text-name">@character.DisplayName</span>
+                            }
+                        </div>
+                    }
                 </div>
             }
 
@@ -1027,7 +1034,7 @@ else
 
         if (matchedCharacter is null)
         {
-            return new StoryCharacterTile(displayName, null, null, null);
+            return new StoryCharacterTile(displayName, null, null, null, true);
         }
 
         var isUnlocked = CharacterUnlockStates.TryGetValue(matchedCharacter.CharacterId, out var unlocked) && unlocked;
@@ -1042,7 +1049,10 @@ else
             resolvedDisplayName,
             resolvedImagePath,
             imageAlt,
-            isUnlocked ? $"/karakters?karakter={Uri.EscapeDataString(matchedCharacter.Slug)}" : null);
+            isUnlocked && !string.IsNullOrWhiteSpace(resolvedImagePath)
+                ? $"/karakters?karakter={Uri.EscapeDataString(matchedCharacter.Slug)}"
+                : null,
+            string.IsNullOrWhiteSpace(resolvedImagePath));
     }
 
     private static string NormalizeCharacterToken(string value)
@@ -1122,7 +1132,8 @@ else
         string DisplayName,
         string? ImagePath,
         string? ImageAlt,
-        string? ProfileHref);
+        string? ProfileHref,
+        bool IsTextOnly);
 
     private sealed record CharacterUnlockProgress(
         IReadOnlyDictionary<string, UserStoryProgressItem> ProgressLookup,

@@ -35,6 +35,22 @@ public class AdminSubscriberManagementMigrationTests
         StringAssert.Contains(sql, "public.subscriptions");
     }
 
+    [TestMethod]
+    public void Migration_PreventsWordPressImportFromRevivingLocallyCancelledEntitlements()
+    {
+        var migrationPath = FindRepositoryFile(
+            "Shink",
+            "Database",
+            "migrations",
+            "20260429_wordpress_import_respects_cancelled_entitlements.sql");
+        var sql = File.ReadAllText(migrationPath);
+
+        StringAssert.Contains(sql, "import_wordpress_current_subscriptions");
+        StringAssert.Contains(sql, "subscriptions.source_system = 'wordpress_pmpro'");
+        StringAssert.Contains(sql, "subscriptions.status = 'cancelled'");
+        StringAssert.Contains(sql, "subscriptions.cancelled_at is not null");
+    }
+
     private static string FindRepositoryFile(params string[] pathParts)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

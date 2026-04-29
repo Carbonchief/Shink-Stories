@@ -114,6 +114,13 @@
     color: var(--winkel-accent-deep);
 }
 
+.winkel-products-header .winkel-section-kicker {
+    font-size: 0.78rem;
+    letter-spacing: 0.22em;
+    line-height: normal;
+    color: #a74a1f;
+}
+
 .winkel-products-header h2,
 .winkel-story-copy h2,
 .winkel-order-copy h2 {

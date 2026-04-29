@@ -3751,18 +3751,9 @@ static string BuildStoreItemSummary(IReadOnlyList<StoreOrderItemDraft> items) =>
 
 static string BuildStoreOrderReference(string productSlug)
 {
-    var safeProductSlug = string.Concat(
-        (productSlug ?? string.Empty)
-            .Trim()
-            .ToLowerInvariant()
-            .Where(character => char.IsAsciiLetterOrDigit(character) || character == '-'));
-
-    if (string.IsNullOrWhiteSpace(safeProductSlug))
-    {
-        safeProductSlug = "winkel";
-    }
-
-    return $"winkel-{safeProductSlug}-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{Guid.NewGuid():N}";
+    var now = DateTimeOffset.UtcNow;
+    var uniqueSuffix = Guid.NewGuid().ToString("N", CultureInfo.InvariantCulture)[..6].ToUpperInvariant();
+    return $"W{now:yyMMddHHmmss}{uniqueSuffix}";
 }
 
 static async Task<IResult> HandlePaystackWebhookAsync(

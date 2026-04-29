@@ -528,6 +528,16 @@
     margin: 0;
 }
 
+.story-character-text-list {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.55rem 0.7rem;
+    width: 100%;
+    margin: 0.7rem auto 0;
+    text-align: center;
+}
+
 .story-character-item {
     display: flex;
     flex: 0 0 calc((100% - 1.5rem) / 3);
@@ -582,10 +592,29 @@
     color: inherit;
 }
 
+.story-character-text-name {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.25rem;
+    padding: 0.35rem 1rem 0.4rem;
+    border: 1px solid rgba(212, 176, 117, 0.58);
+    border-radius: 999px;
+    background: rgba(64, 58, 48, 0.72);
+    color: #f6f1ea;
+    font-size: 0.95rem;
+    line-height: 1.25;
+    text-align: center;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.035);
+}
+
 .story-summary-tags {
     display: flex;
     flex-wrap: wrap;
+    justify-content: center;
     gap: 0.55rem;
+    width: 100%;
+    text-align: center;
 }
 
 .story-summary-tag {

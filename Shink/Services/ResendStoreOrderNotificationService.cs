@@ -168,8 +168,8 @@ public sealed class ResendStoreOrderNotificationService(
             ["ORDER_ITEMS_HTML"] = BuildOrderItemsHtml(order),
             ["ORDER_ITEMS_TEXT"] = BuildOrderItemsText(order),
             ["ORDER_TOTAL"] = FormatZar(order.TotalPriceZar),
-            ["DELIVERY_ADDRESS_HTML"] = HtmlEncoder.Default.Encode(BuildDeliveryAddress(order)),
-            ["DELIVERY_ADDRESS_TEXT"] = BuildDeliveryAddress(order)
+            ["DELIVERY_ADDRESS_HTML"] = BuildDeliveryCopyHtml(order),
+            ["DELIVERY_ADDRESS_TEXT"] = BuildDeliveryCopyText(order)
         };
 
     private static string BuildOrderItemsHtml(StoreOrderRecord order)
@@ -215,6 +215,27 @@ public sealed class ResendStoreOrderNotificationService(
             .Select(part => part!.Trim());
 
         return string.Join(", ", parts);
+    }
+
+    private static string BuildDeliveryCopyText(StoreOrderRecord order)
+    {
+        var address = BuildDeliveryAddress(order);
+        var pudoNote = "Ons stuur jou bestelling na 'n PUDO locker so naby as moontlik aan die adres wat jy ingevul het.";
+
+        return string.IsNullOrWhiteSpace(address)
+            ? pudoNote
+            : $"{address}\n\n{pudoNote}";
+    }
+
+    private static string BuildDeliveryCopyHtml(StoreOrderRecord order)
+    {
+        var address = BuildDeliveryAddress(order);
+        var pudoNote = "Ons stuur jou bestelling na 'n PUDO locker so naby as moontlik aan die adres wat jy ingevul het.";
+        var encodedNote = HtmlEncoder.Default.Encode(pudoNote);
+
+        return string.IsNullOrWhiteSpace(address)
+            ? encodedNote
+            : $"{HtmlEncoder.Default.Encode(address)}<br /><br />{encodedNote}";
     }
 
     private static string FormatZar(decimal value) =>
