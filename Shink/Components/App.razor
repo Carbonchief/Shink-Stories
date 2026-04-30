@@ -1,4 +1,5 @@
 @using Microsoft.AspNetCore.Components.Authorization
+@using System.Security.Claims
 @using Shink.Services
 @implements IDisposable
 @inject IConfiguration Configuration
@@ -25,7 +26,7 @@
     <HeadOutlet />
 </head>
 
-<body data-posthog-api-key="@PostHogProjectApiKey" data-posthog-host-url="@PostHogHostUrl">
+<body data-posthog-api-key="@PostHogProjectApiKey" data-posthog-host-url="@PostHogHostUrl" data-posthog-user-email="@PostHogUserEmail">
     <section id="unsupported-browser-fallback" class="unsupported-browser-fallback" hidden aria-live="polite">
         <div class="unsupported-browser-card">
             <img class="unsupported-browser-logo" src="/branding/schink-logo-text.png" alt="Schink Stories" />
@@ -115,6 +116,7 @@
 
     private string? PostHogProjectApiKey => PostHogSettings.ProjectApiKey;
     private string? PostHogHostUrl => PostHogSettings.HostUrl;
+    private string? PostHogUserEmail => GetAuthenticatedUserEmail();
     private bool IsKaraktersRoute => string.Equals(GetCurrentRoutePath(), "/karakters", StringComparison.OrdinalIgnoreCase);
 
     protected override void OnInitialized()
@@ -136,6 +138,21 @@
         return string.IsNullOrWhiteSpace(path)
             ? "/"
             : "/" + path.TrimStart('/');
+    }
+
+    private string? GetAuthenticatedUserEmail()
+    {
+        var user = HttpContextAccessor.HttpContext?.User;
+        if (user?.Identity?.IsAuthenticated != true)
+        {
+            return null;
+        }
+
+        var email = user.FindFirst(ClaimTypes.Email)?.Value
+                    ?? user.Identity?.Name;
+        return string.IsNullOrWhiteSpace(email)
+            ? null
+            : email.Trim().ToLowerInvariant();
     }
 
     private void RecoverKaraktersRoute()

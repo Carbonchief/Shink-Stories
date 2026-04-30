@@ -2107,7 +2107,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         }
 
         var paystackPlanCode = TryReadNestedString(data, "plan", "plan_code")
-            ?? TryReadString(data, "plan_code");
+            ?? TryReadString(data, "plan_code")
+            ?? TryReadString(data, "plan");
 
         if (!string.IsNullOrWhiteSpace(paystackPlanCode))
         {

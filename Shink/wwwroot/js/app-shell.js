@@ -35,9 +35,35 @@
                 capture_pageview: true,
                 capture_pageleave: true
             });
+            identifyPostHogUser();
         };
 
         document.head.appendChild(script);
+    }
+
+    function identifyPostHogUser() {
+        if (!window.posthog || typeof window.posthog.identify !== "function") {
+            return;
+        }
+
+        var body = document.body;
+        if (!body) {
+            return;
+        }
+
+        var email = body.getAttribute("data-posthog-user-email");
+        if (!email) {
+            return;
+        }
+
+        var normalizedEmail = email.trim().toLowerCase();
+        if (!normalizedEmail) {
+            return;
+        }
+
+        window.posthog.identify(normalizedEmail, {
+            email: normalizedEmail
+        });
     }
 
     function initializeBrowserShell() {

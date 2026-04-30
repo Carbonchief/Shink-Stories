@@ -39,6 +39,21 @@ public class PaystackWebhookHardeningTests
         StringAssert.Contains(legacyRouteBlock, "HandlePaystackWebhookAsync(");
     }
 
+    [TestMethod]
+    public void PaystackSubscriptionCreateCanResolveDirectPlanCode()
+    {
+        var ledgerService = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseSubscriptionLedgerService.cs"));
+        var resolverStart = ledgerService.IndexOf("private async Task<PaymentPlan?> ResolvePaystackPlanAsync", StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(0, resolverStart, "The Paystack plan resolver must exist.");
+
+        var resolverEnd = ledgerService.IndexOf("private async Task<string?> ResolveTierCodeByPaystackPlanCodeAsync", resolverStart, StringComparison.Ordinal);
+        Assert.IsGreaterThan(resolverStart, resolverEnd, "The Paystack plan resolver block could not be isolated.");
+
+        var resolverBlock = ledgerService[resolverStart..resolverEnd];
+        StringAssert.Contains(resolverBlock, "TryReadNestedString(data, \"plan\", \"plan_code\")");
+        StringAssert.Contains(resolverBlock, "TryReadString(data, \"plan\")");
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var parts = new[]

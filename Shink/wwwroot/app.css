@@ -633,6 +633,152 @@ body.schink-night-mode .resources-download-link {
     color: var(--resources-accent-deep);
 }
 
+body.schink-night-mode .site-main .opsies-page {
+    --opsies-ink: #f7f1e7;
+    --opsies-muted: #c6d0ca;
+    --opsies-line: rgba(247, 241, 231, 0.16);
+    --opsies-accent: #f0a45b;
+    --opsies-accent-deep: #ffd39b;
+    --opsies-bubble-warm: rgba(240, 164, 91, 0.12);
+    --opsies-bubble-green: rgba(144, 175, 158, 0.08);
+    color: var(--opsies-ink);
+    background: transparent;
+}
+
+body.schink-night-mode .site-main .opsies-page-logo-image {
+    filter: drop-shadow(0 16px 24px rgba(0, 0, 0, 0.34));
+}
+
+body.schink-night-mode .site-main .opsies-payment-status,
+body.schink-night-mode .site-main .opsies-plan-shell,
+body.schink-night-mode .site-main .opsies-compare,
+body.schink-night-mode .site-main .opsies-faq,
+body.schink-night-mode .site-main .opsies-testimonials {
+    border-color: var(--opsies-line);
+    background:
+        radial-gradient(circle at top right, rgba(240, 164, 91, 0.18), transparent 36%),
+        linear-gradient(180deg, rgba(24, 35, 42, 0.98) 0%, rgba(17, 26, 32, 0.98) 100%);
+    box-shadow: 0 24px 62px rgba(0, 0, 0, 0.34);
+}
+
+body.schink-night-mode .site-main .opsies-eyebrow,
+body.schink-night-mode .site-main .opsies-section-kicker,
+body.schink-night-mode .site-main .opsie-badge,
+body.schink-night-mode .site-main .opsie-selected-indicator,
+body.schink-night-mode .site-main .opsies-review-stars {
+    color: var(--opsies-accent-deep);
+}
+
+body.schink-night-mode .site-main .opsies-hero-copy h1,
+body.schink-night-mode .site-main .opsies-section-heading h2,
+body.schink-night-mode .site-main .opsie-card h2,
+body.schink-night-mode .site-main .opsie-price,
+body.schink-night-mode .site-main .opsie-detail strong,
+body.schink-night-mode .site-main .opsie-plan-option,
+body.schink-night-mode .site-main .opsie-plan-option-price,
+body.schink-night-mode .site-main .opsie-card ul,
+body.schink-night-mode .site-main .opsie-card li,
+body.schink-night-mode .site-main .opsies-compare-table thead th,
+body.schink-night-mode .site-main .opsies-compare-table th[scope="row"],
+body.schink-night-mode .site-main .opsies-faq-item summary,
+body.schink-night-mode .site-main .opsies-review-author {
+    color: var(--opsies-ink);
+}
+
+body.schink-night-mode .site-main .opsies-hero-lead,
+body.schink-night-mode .site-main .opsies-section-heading p:last-child,
+body.schink-night-mode .site-main .opsies-hero-point span,
+body.schink-night-mode .site-main .opsie-summary,
+body.schink-night-mode .site-main .opsie-detail,
+body.schink-night-mode .site-main .opsie-note,
+body.schink-night-mode .site-main .opsie-price span,
+body.schink-night-mode .site-main .opsie-plan-option-period,
+body.schink-night-mode .site-main .opsie-plan-option-note,
+body.schink-night-mode .site-main .opsies-review-card blockquote,
+body.schink-night-mode .site-main .opsies-review-role,
+body.schink-night-mode .site-main .opsies-faq-item p {
+    color: var(--opsies-muted);
+}
+
+body.schink-night-mode .site-main .opsies-section-heading h2,
+body.schink-night-mode .site-main .opsie-head,
+body.schink-night-mode .site-main .opsie-plan-option,
+body.schink-night-mode .site-main .opsie-note,
+body.schink-night-mode .site-main .opsies-compare-scroll,
+body.schink-night-mode .site-main .opsies-faq-item,
+body.schink-night-mode .site-main .opsies-review-card {
+    border-color: rgba(247, 241, 231, 0.16);
+    background: rgba(30, 43, 51, 0.92);
+}
+
+body.schink-night-mode .site-main .opsie-card {
+    border-color: rgba(247, 241, 231, 0.14);
+    background:
+        radial-gradient(circle at top right, rgba(240, 164, 91, 0.12), transparent 46%),
+        rgba(22, 31, 37, 0.96);
+    box-shadow: 0 22px 52px rgba(0, 0, 0, 0.34);
+}
+
+body.schink-night-mode .site-main .opsie-card::before {
+    background: linear-gradient(90deg, rgba(240, 164, 91, 0.92) 0%, rgba(144, 175, 158, 0.84) 100%);
+}
+
+body.schink-night-mode .site-main .opsie-card.featured,
+body.schink-night-mode .site-main .opsie-card-selected {
+    border-color: rgba(255, 211, 155, 0.3);
+    box-shadow: 0 24px 58px rgba(0, 0, 0, 0.38);
+}
+
+body.schink-night-mode .site-main .opsie-badge,
+body.schink-night-mode .site-main .opsie-pill,
+body.schink-night-mode .site-main .opsie-save-badge,
+body.schink-night-mode .site-main .opsie-selected-indicator {
+    border-color: rgba(255, 211, 155, 0.26);
+    background: rgba(82, 55, 32, 0.72);
+}
+
+body.schink-night-mode .site-main .opsie-pill,
+body.schink-night-mode .site-main .opsie-pill-value,
+body.schink-night-mode .site-main .opsie-save-badge {
+    color: var(--opsies-accent-deep);
+}
+
+body.schink-night-mode .site-main .opsie-plan-option:hover,
+body.schink-night-mode .site-main .opsie-plan-option.is-selected {
+    border-color: rgba(255, 211, 155, 0.28);
+    background: rgba(82, 55, 32, 0.72);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+}
+
+body.schink-night-mode .site-main .opsie-plan-option-marker {
+    border-color: rgba(255, 211, 155, 0.46);
+    background: rgba(247, 241, 231, 0.12);
+}
+
+body.schink-night-mode .site-main .opsies-compare-table th,
+body.schink-night-mode .site-main .opsies-compare-table td {
+    border-bottom-color: rgba(247, 241, 231, 0.14);
+}
+
+body.schink-night-mode .site-main .opsies-compare-table thead th,
+body.schink-night-mode .site-main .opsies-compare-table th[scope="row"] {
+    background: rgba(30, 43, 51, 0.92);
+}
+
+body.schink-night-mode .site-main .opsies-compare-plan {
+    color: var(--opsies-muted);
+}
+
+body.schink-night-mode .site-main .opsies-compare-plan.is-selected {
+    background: rgba(82, 55, 32, 0.72);
+    color: var(--opsies-accent-deep);
+}
+
+body.schink-night-mode .site-main .opsies-faq-item summary::before {
+    border-color: rgba(255, 211, 155, 0.38);
+    color: var(--opsies-accent-deep);
+}
+
 body.schink-night-mode .blog-page {
     --blog-ink: #f7f1e7;
     --blog-muted: #c6d0ca;

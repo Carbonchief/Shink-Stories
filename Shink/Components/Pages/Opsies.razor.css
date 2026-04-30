@@ -128,7 +128,7 @@
 .opsies-hero-copy h1 {
     margin: 0 auto;
     width: fit-content;
-    max-width: min(100%, 18ch);
+    max-width: min(100%, 27ch);
     padding: 0;
     border: 0;
     border-radius: 0;
@@ -137,6 +137,7 @@
     font-size: clamp(1.76rem, 3.2vw, 2.72rem);
     line-height: 1.05;
     letter-spacing: -0.02em;
+    text-wrap: balance;
 }
 
 .opsies-hero-lead,
@@ -762,7 +763,8 @@
     }
 
     .opsies-hero-copy h1 {
-        max-width: min(100%, 22ch);
+        max-width: min(100%, 28ch);
+        font-size: clamp(1.68rem, 3.8vw, 2.35rem);
     }
 
     .opsies-hero-points {
