@@ -60,6 +60,7 @@ public sealed partial class WordPressMigrationService(
             var membershipPeriods = await LoadMembershipPeriodsAsync(membershipLevels, cancellationToken);
             var membershipOrders = await LoadMembershipOrdersAsync(membershipLevels, cancellationToken);
             var subscriptions = await LoadSubscriptionsAsync(membershipLevels, cancellationToken);
+            var discountCodeAccessKeys = await LoadDiscountCodeAccessKeysAsync(cancellationToken);
 
             var subscriberRows = await FetchSubscriberRowsAsync(baseUri, cancellationToken);
             var existingSubscribersByEmail = subscriberRows
@@ -140,7 +141,7 @@ public sealed partial class WordPressMigrationService(
                 importedSubscriptions += await ImportWordPressSubscriptionsBatchAsync(baseUri, batch, cancellationToken);
             }
 
-            var activeEntitlements = BuildCurrentEntitlements(wordPressUsers, membershipPeriods, membershipOrders, subscriptions);
+            var activeEntitlements = BuildCurrentEntitlements(wordPressUsers, membershipPeriods, membershipOrders, subscriptions, discountCodeAccessKeys);
             activeEntitlements = await EnrichPaystackEntitlementsAsync(activeEntitlements, cancellationToken);
             var upsertedCurrentEntitlements = await UpsertCurrentEntitlementsAsync(
                 baseUri,
@@ -638,6 +639,37 @@ public sealed partial class WordPressMigrationService(
         }
 
         return rows;
+    }
+
+    private async Task<HashSet<string>> LoadDiscountCodeAccessKeysAsync(CancellationToken cancellationToken)
+    {
+        await using var connection = await OpenWordPressConnectionAsync(cancellationToken);
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"""
+            select distinct
+                dcu.user_id,
+                o.membership_id
+            from {Table("pmpro_discount_codes_uses")} dcu
+            inner join {Table("pmpro_membership_orders")} o on o.id = dcu.order_id
+            where dcu.user_id is not null
+              and o.membership_id is not null;
+            """;
+
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var wordPressUserId = ReadInt64(reader, "user_id");
+            var membershipLevelId = ReadInt32(reader, "membership_id");
+            if (wordPressUserId <= 0 || membershipLevelId <= 0)
+            {
+                continue;
+            }
+
+            keys.Add(BuildUserLevelKey(wordPressUserId, membershipLevelId));
+        }
+
+        return keys;
     }
 
     private async Task<Dictionary<long, Dictionary<string, string>>> LoadOrderMetaAsync(CancellationToken cancellationToken)
@@ -1320,14 +1352,16 @@ public sealed partial class WordPressMigrationService(
         IReadOnlyList<CanonicalWordPressUser> wordPressUsers,
         IReadOnlyList<WordPressMembershipPeriod> membershipPeriods,
         IReadOnlyList<WordPressMembershipOrder> membershipOrders,
-        IReadOnlyList<WordPressSubscription> subscriptions)
+        IReadOnlyList<WordPressSubscription> subscriptions,
+        IReadOnlySet<string> discountCodeAccessKeys)
     {
+        var now = DateTimeOffset.UtcNow;
         var userRegisteredById = wordPressUsers.ToDictionary(
             user => user.WordPressUserId,
             user => user.UserRegistered);
 
         var earliestMembershipStartByUserAndLevel = membershipPeriods
-            .GroupBy(period => $"{period.WordPressUserId}:{period.MembershipLevelId}", StringComparer.OrdinalIgnoreCase)
+            .GroupBy(period => BuildUserLevelKey(period.WordPressUserId, period.MembershipLevelId), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 group => group.Key,
                 group => group
@@ -1340,7 +1374,7 @@ public sealed partial class WordPressMigrationService(
                 StringComparer.OrdinalIgnoreCase);
 
         var earliestMembershipModifiedByUserAndLevel = membershipPeriods
-            .GroupBy(period => $"{period.WordPressUserId}:{period.MembershipLevelId}", StringComparer.OrdinalIgnoreCase)
+            .GroupBy(period => BuildUserLevelKey(period.WordPressUserId, period.MembershipLevelId), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 group => group.Key,
                 group => group
@@ -1354,7 +1388,7 @@ public sealed partial class WordPressMigrationService(
 
         var earliestSuccessfulOrderTimestampByUserAndLevel = membershipOrders
             .Where(order => string.Equals(order.Status, "success", StringComparison.OrdinalIgnoreCase))
-            .GroupBy(order => $"{order.WordPressUserId}:{order.MembershipLevelId}", StringComparer.OrdinalIgnoreCase)
+            .GroupBy(order => BuildUserLevelKey(order.WordPressUserId, order.MembershipLevelId), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 group => group.Key,
                 group => group
@@ -1367,7 +1401,7 @@ public sealed partial class WordPressMigrationService(
                 StringComparer.OrdinalIgnoreCase);
 
         var earliestSubscriptionStartByUserAndLevel = subscriptions
-            .GroupBy(subscription => $"{subscription.WordPressUserId}:{subscription.MembershipLevelId}", StringComparer.OrdinalIgnoreCase)
+            .GroupBy(subscription => BuildUserLevelKey(subscription.WordPressUserId, subscription.MembershipLevelId), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 group => group.Key,
                 group => group
@@ -1380,7 +1414,7 @@ public sealed partial class WordPressMigrationService(
                 StringComparer.OrdinalIgnoreCase);
 
         var earliestSubscriptionModifiedByUserAndLevel = subscriptions
-            .GroupBy(subscription => $"{subscription.WordPressUserId}:{subscription.MembershipLevelId}", StringComparer.OrdinalIgnoreCase)
+            .GroupBy(subscription => BuildUserLevelKey(subscription.WordPressUserId, subscription.MembershipLevelId), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 group => group.Key,
                 group => group
@@ -1394,7 +1428,7 @@ public sealed partial class WordPressMigrationService(
 
         var successfulOrdersByUserAndLevel = membershipOrders
             .Where(order => string.Equals(order.Status, "success", StringComparison.OrdinalIgnoreCase))
-            .GroupBy(order => $"{order.WordPressUserId}:{order.MembershipLevelId}", StringComparer.OrdinalIgnoreCase)
+            .GroupBy(order => BuildUserLevelKey(order.WordPressUserId, order.MembershipLevelId), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 group => group.Key,
                 group => group
@@ -1405,7 +1439,7 @@ public sealed partial class WordPressMigrationService(
 
         var activeSubscriptionsByUserAndLevel = subscriptions
             .Where(subscription => string.Equals(subscription.Status, "active", StringComparison.OrdinalIgnoreCase))
-            .GroupBy(subscription => $"{subscription.WordPressUserId}:{subscription.MembershipLevelId}", StringComparer.OrdinalIgnoreCase)
+            .GroupBy(subscription => BuildUserLevelKey(subscription.WordPressUserId, subscription.MembershipLevelId), StringComparer.OrdinalIgnoreCase)
             .ToDictionary(
                 group => group.Key,
                 group => group
@@ -1415,11 +1449,13 @@ public sealed partial class WordPressMigrationService(
                 StringComparer.OrdinalIgnoreCase);
 
         return membershipPeriods
-            .Where(period => string.Equals(period.Status, "active", StringComparison.OrdinalIgnoreCase))
+            .Where(period =>
+                string.Equals(period.Status, "active", StringComparison.OrdinalIgnoreCase) ||
+                HasFutureDiscountCodeAccess(period, discountCodeAccessKeys, now))
             .Where(period => !string.IsNullOrWhiteSpace(period.TierCode))
             .Select(period =>
             {
-                var key = $"{period.WordPressUserId}:{period.MembershipLevelId}";
+                var key = BuildUserLevelKey(period.WordPressUserId, period.MembershipLevelId);
                 activeSubscriptionsByUserAndLevel.TryGetValue(key, out var subscription);
                 successfulOrdersByUserAndLevel.TryGetValue(key, out var order);
                 var provider = NormalizeProvider(subscription?.Gateway ?? order?.Gateway ?? "free");
@@ -1450,6 +1486,27 @@ public sealed partial class WordPressMigrationService(
             .Where(entitlement => !string.IsNullOrWhiteSpace(entitlement.Email))
             .ToList();
     }
+
+    private static bool HasFutureDiscountCodeAccess(
+        WordPressMembershipPeriod period,
+        IReadOnlySet<string> discountCodeAccessKeys,
+        DateTimeOffset now)
+    {
+        if (!period.EndDate.HasValue || period.EndDate.Value <= now)
+        {
+            return false;
+        }
+
+        if (period.CodeId.HasValue)
+        {
+            return true;
+        }
+
+        return discountCodeAccessKeys.Contains(BuildUserLevelKey(period.WordPressUserId, period.MembershipLevelId));
+    }
+
+    private static string BuildUserLevelKey(long wordPressUserId, int membershipLevelId) =>
+        $"{wordPressUserId}:{membershipLevelId}";
 
     private static WordPressUserImportRow BuildWordPressUserImportRow(CanonicalWordPressUser user) => new(
         WordPressUserId: user.WordPressUserId,
