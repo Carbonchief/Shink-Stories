@@ -13,6 +13,8 @@ public static class StoryAccessPolicy
     public const string StoryCornerMonthlyTierCode = "story_corner_monthly";
     public const string AllStoriesMonthlyTierCode = "all_stories_monthly";
     public const string AllStoriesYearlyTierCode = "all_stories_yearly";
+    public const string GratisPlaylistSlug = "gratis-stories";
+    public const string StoryCornerPlaylistSlug = "storie-hoekie";
 
     public static StoryAccessRequirement ResolveRequirement(string? source, StoryItem? story)
     {
@@ -126,9 +128,25 @@ public static class StoryAccessPolicy
             return false;
         }
 
+        if (story.PlaylistSlugs is { Count: > 0 })
+        {
+            return ContainsStoryCornerPlaylistSlug(story.PlaylistSlugs);
+        }
+
         return ContainsStoryCornerMarker(story.AudioFileName) ||
                ContainsStoryCornerMarker(story.Title) ||
                ContainsStoryCornerMarker(story.Slug);
+    }
+
+    private static bool ContainsStoryCornerPlaylistSlug(IReadOnlyList<string>? playlistSlugs)
+    {
+        if (playlistSlugs is null || playlistSlugs.Count == 0)
+        {
+            return false;
+        }
+
+        return playlistSlugs.Any(slug =>
+            string.Equals(slug?.Trim(), StoryCornerPlaylistSlug, StringComparison.OrdinalIgnoreCase));
     }
 
     private static bool ContainsStoryCornerMarker(string? value)

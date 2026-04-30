@@ -96,29 +96,41 @@
 
         <div class="opsies-grid" aria-label="Plan opsies">
 
-            @if (ShouldShowStoryCornerPlanOption)
-            {
-                <article class="@GetPlanCardClass("opsie-card featured opsie-monthly", "storie-hoekie-maandeliks")">
-                    <div class="opsie-head">
-                        <p class="opsie-badge">MAANDELIKS</p>
-                        <p class="opsie-summary">Vir gesinne wat met een geliefde reeks wil begin</p>
-                        <h2>Storie Hoekie</h2>
-                        <p class="opsie-price">R 55.00 <span>per maand.</span></p>
-                    </div>
-                    @if (IsSelectedPlan("storie-hoekie-maandeliks"))
+            <article class="@GetPlanCardClass("opsie-card featured opsie-monthly", "storie-hoekie-maandeliks", IsStoryCornerPlanUnavailable)">
+                <div class="opsie-head">
+                    <p class="opsie-badge">MAANDELIKS</p>
+                    <p class="opsie-summary">Vir gesinne wat met een geliefde reeks wil begin</p>
+                    <h2>Storie Hoekie</h2>
+                    <p class="opsie-price">R 55.00 <span>per maand.</span></p>
+                </div>
+                @if (IsSelectedPlan("storie-hoekie-maandeliks"))
+                {
+                    <p class="opsie-selected-indicator">Gekose plan</p>
+                }
+                <p class="opsie-detail">Geniet toegang tot stories uit die gewilde Storie Hoekie reeks.</p>
+                <ul>
+                    <li>Toegang tot die volledige Storie Hoekie reeks</li>
+                    <li>Maklike maand-tot-maand intekening</li>
+                    <li>Ideaal as jy met een reeks wil begin</li>
+                </ul>
+                @if (StoryCornerPlanMessage is not null)
+                {
+                    <p class="opsie-disabled-message">@StoryCornerPlanMessage</p>
+                }
+                <p class="opsie-note">'n Netjiese beginpunt vir ouers wat 'n kleiner maandopsie soek.</p>
+                @if (IsStoryCornerPlanUnavailable)
+                {
+                    <span class="opsie-btn opsie-btn-disabled" aria-disabled="true">@StoryCornerDisabledButtonText</span>
+                    @if (CanEnableStoryCornerPlan)
                     {
-                        <p class="opsie-selected-indicator">Gekose plan</p>
+                        <button type="button" class="opsie-enable-btn" @onclick="EnableStoryCornerPlan">Wys Storie Hoekie opsie</button>
                     }
-                    <p class="opsie-detail">Geniet toegang tot stories uit die gewilde Storie Hoekie reeks.</p>
-                    <ul>
-                        <li>Toegang tot die volledige Storie Hoekie reeks</li>
-                        <li>Maklike maand-tot-maand intekening</li>
-                        <li>Ideaal as jy met een reeks wil begin</li>
-                    </ul>
-                    <p class="opsie-note">'n Netjiese beginpunt vir ouers wat 'n kleiner maandopsie soek.</p>
-                    <a href='@BuildPlanSignUpHref("storie-hoekie-maandeliks", SafeStoryReturnPath)' class="opsie-btn">@(IsSelectedPlan("storie-hoekie-maandeliks") ? "Gaan voort" : "Kies hierdie plan")</a>
-                </article>
-            }
+                }
+                else
+                {
+                    <a href='@BuildPlanSignUpHref("storie-hoekie-maandeliks", StoryCornerCheckoutReturnPath)' class="opsie-btn">@(IsSelectedPlan("storie-hoekie-maandeliks") ? "Gaan voort" : "Kies hierdie plan")</a>
+                }
+            </article>
 
             @if (ShouldShowAllStoriesPlanOptions)
             {
@@ -193,10 +205,7 @@
                 <thead>
                     <tr>
                         <th scope="col">Kenmerk</th>
-                        @if (ShouldShowStoryCornerPlanOption)
-                        {
-                            <th scope="col" class="@GetCompareColumnClass("storie-hoekie-maandeliks")">Storie Hoekie</th>
-                        }
+                        <th scope="col" class="@GetCompareColumnClass("storie-hoekie-maandeliks")">Storie Hoekie</th>
                         <th scope="col" class="@GetCompareColumnClass("schink-stories-maandeliks")">Schink Stories Maandeliks</th>
                         <th scope="col" class="@GetCompareColumnClass("schink-stories-jaarliks")">Schink Stories Jaarliks</th>
                     </tr>
@@ -204,64 +213,43 @@
                 <tbody>
                     <tr>
                         <th scope="row">Prys</th>
-                        @if (ShouldShowStoryCornerPlanOption)
-                        {
-                            <td class="@GetCompareColumnClass("storie-hoekie-maandeliks")">R55 per maand</td>
-                        }
+                        <td class="@GetCompareColumnClass("storie-hoekie-maandeliks")">R55 per maand</td>
                         <td class="@GetCompareColumnClass("schink-stories-maandeliks")">R79 per maand</td>
                         <td class="@GetCompareColumnClass("schink-stories-jaarliks")">R790 per jaar</td>
                     </tr>
                     <tr>
                         <th scope="row">Toegang</th>
-                        @if (ShouldShowStoryCornerPlanOption)
-                        {
-                            <td class="@GetCompareColumnClass("storie-hoekie-maandeliks")">Storie Hoekie-reeks</td>
-                        }
+                        <td class="@GetCompareColumnClass("storie-hoekie-maandeliks")">Storie Hoekie-reeks</td>
                         <td class="@GetCompareColumnClass("schink-stories-maandeliks")">Alle stories en reekse</td>
                         <td class="@GetCompareColumnClass("schink-stories-jaarliks")">Alle stories en reekse</td>
                     </tr>
                     <tr>
                         <th scope="row">Nuwe stories</th>
-                        @if (ShouldShowStoryCornerPlanOption)
-                        {
-                            <td class="@GetCompareColumnClass("storie-hoekie-maandeliks")">In Storie Hoekie-reeks</td>
-                        }
+                        <td class="@GetCompareColumnClass("storie-hoekie-maandeliks")">In Storie Hoekie-reeks</td>
                         <td class="@GetCompareColumnClass("schink-stories-maandeliks")">Ja, elke maand</td>
                         <td class="@GetCompareColumnClass("schink-stories-jaarliks")">Ja, elke maand</td>
                     </tr>
                     <tr>
                         <th scope="row">Hulpbronne</th>
-                        @if (ShouldShowStoryCornerPlanOption)
-                        {
-                            <td class="@GetCompareColumnClass("storie-hoekie-maandeliks")">Basiese toegang</td>
-                        }
+                        <td class="@GetCompareColumnClass("storie-hoekie-maandeliks")">Basiese toegang</td>
                         <td class="@GetCompareColumnClass("schink-stories-maandeliks")">Vol toegang</td>
                         <td class="@GetCompareColumnClass("schink-stories-jaarliks")">Vol toegang</td>
                     </tr>
                     <tr>
                         <th scope="row">Advertensies</th>
-                        @if (ShouldShowStoryCornerPlanOption)
-                        {
-                            <td class="@GetCompareColumnClass("storie-hoekie-maandeliks")">Geen advertensies</td>
-                        }
+                        <td class="@GetCompareColumnClass("storie-hoekie-maandeliks")">Geen advertensies</td>
                         <td class="@GetCompareColumnClass("schink-stories-maandeliks")">Geen advertensies</td>
                         <td class="@GetCompareColumnClass("schink-stories-jaarliks")">Geen advertensies</td>
                     </tr>
                     <tr>
                         <th scope="row">Besparing</th>
-                        @if (ShouldShowStoryCornerPlanOption)
-                        {
-                            <td class="@GetCompareColumnClass("storie-hoekie-maandeliks")">NVT</td>
-                        }
+                        <td class="@GetCompareColumnClass("storie-hoekie-maandeliks")">NVT</td>
                         <td class="@GetCompareColumnClass("schink-stories-maandeliks")">NVT</td>
                         <td class="@GetCompareColumnClass("schink-stories-jaarliks")">2 maande gratis</td>
                     </tr>
                     <tr>
                         <th scope="row">Beste vir</th>
-                        @if (ShouldShowStoryCornerPlanOption)
-                        {
-                            <td class="@GetCompareColumnClass("storie-hoekie-maandeliks")">Begin met een reeks</td>
-                        }
+                        <td class="@GetCompareColumnClass("storie-hoekie-maandeliks")">Begin met een reeks</td>
                         <td class="@GetCompareColumnClass("schink-stories-maandeliks")">Volle toegang per maand</td>
                         <td class="@GetCompareColumnClass("schink-stories-jaarliks")">Volle toegang vir 'n jaar</td>
                     </tr>
@@ -403,6 +391,8 @@
     private StoryItem? RequestedStory { get; set; }
     private StoryAccessRequirement RequiredAccess { get; set; } = StoryAccessRequirement.Unknown;
     private string? SelectedPlanSlug { get; set; }
+    private bool HasActiveStoryCornerPlan { get; set; }
+    private bool IsStoryCornerPlanForceEnabled { get; set; }
 
     private bool ShouldShowAllStoriesPlanOptions => true;
 
@@ -410,8 +400,30 @@
         ? "schink-stories-jaarliks"
         : "schink-stories-maandeliks";
 
-    private bool ShouldShowStoryCornerPlanOption =>
+    private bool IsStoryCornerPlanCompatibleWithRequestedStory =>
         RequiredAccess is not StoryAccessRequirement.AllStoriesOnly;
+
+    private bool CanEnableStoryCornerPlan =>
+        !HasActiveStoryCornerPlan &&
+        !IsStoryCornerPlanCompatibleWithRequestedStory &&
+        !IsStoryCornerPlanForceEnabled;
+
+    private bool IsStoryCornerPlanUnavailable =>
+        HasActiveStoryCornerPlan ||
+        (!IsStoryCornerPlanCompatibleWithRequestedStory && !IsStoryCornerPlanForceEnabled);
+
+    private string? StoryCornerCheckoutReturnPath =>
+        IsStoryCornerPlanCompatibleWithRequestedStory ? SafeStoryReturnPath : null;
+
+    private string? StoryCornerPlanMessage =>
+        HasActiveStoryCornerPlan
+            ? "Jy is reeds op hierdie plan."
+            : IsStoryCornerPlanCompatibleWithRequestedStory
+                ? null
+                : "Hierdie storie is nie deel van Storie Hoekie nie. Kies Schink Stories vir toegang tot hierdie storie, of wys Storie Hoekie as jy net daardie beperkte plan wil kies.";
+
+    private string StoryCornerDisabledButtonText =>
+        HasActiveStoryCornerPlan ? "Huidige plan" : "Nie beskikbaar vir hierdie storie nie";
 
     private string OpsiesCanonicalUrl => NavigationManager.ToAbsoluteUri("/opsies").ToString();
     private bool IsPaymentSuccess => string.Equals(PaymentStatus, "sukses", StringComparison.OrdinalIgnoreCase);
@@ -443,6 +455,7 @@
         RequiredAccess = ResolveRequiredAccess(SafeStoryReturnPath, RequestedStory);
         SelectedPlanSlug = ResolveSelectedPlanSlug();
         IsYearlyAllStoriesPlan = string.Equals(SelectedPlanSlug, "schink-stories-jaarliks", StringComparison.OrdinalIgnoreCase);
+        HasActiveStoryCornerPlan = false;
 
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         IsUserAuthenticated = authState.User.Identity?.IsAuthenticated == true;
@@ -453,6 +466,10 @@
 
         var userEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
                         ?? authState.User.Identity?.Name;
+
+        HasActiveStoryCornerPlan = await SubscriptionLedgerService.HasActiveSubscriptionForTierAsync(
+            userEmail,
+            StoryAccessPolicy.StoryCornerMonthlyTierCode);
 
         if (string.IsNullOrWhiteSpace(SafeStoryReturnPath))
         {
@@ -569,6 +586,16 @@
         SelectedPlanSlug = CurrentAllStoriesPlanSlug;
     }
 
+    private void EnableStoryCornerPlan()
+    {
+        if (HasActiveStoryCornerPlan)
+        {
+            return;
+        }
+
+        IsStoryCornerPlanForceEnabled = true;
+    }
+
     private static string BuildPlanSignUpHref(string planSlug, string? safeStoryReturnPath)
     {
         if (string.IsNullOrWhiteSpace(planSlug))
@@ -612,14 +639,20 @@
             ? "opsies-compare-plan is-selected"
             : "opsies-compare-plan";
 
-    private string GetPlanCardClass(string baseClass, string planSlug)
+    private string GetPlanCardClass(string baseClass, string planSlug, bool isUnavailable = false)
     {
-        if (!IsSelectedPlan(planSlug))
+        var cardClass = baseClass;
+        if (IsSelectedPlan(planSlug))
         {
-            return baseClass;
+            cardClass = $"{cardClass} opsie-card-selected";
         }
 
-        return $"{baseClass} opsie-card-selected";
+        if (isUnavailable)
+        {
+            cardClass = $"{cardClass} opsie-card-disabled";
+        }
+
+        return cardClass;
     }
 
     private static string? GetSafeReturnUrl(string? returnUrl)

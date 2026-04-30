@@ -49,24 +49,26 @@ public sealed class SupabaseStoryCatalogService(
 
     public async Task<IReadOnlyList<StoryItem>> GetFreeStoriesAsync(CancellationToken cancellationToken = default)
     {
-        var rows = await GetPublishedRowsAsync(cancellationToken);
-        return rows
+        var snapshot = await GetCatalogSnapshotAsync(cancellationToken);
+        var playlistSlugsByStoryId = BuildPlaylistSlugLookup(snapshot.PlaylistRows, snapshot.PlaylistItemRows);
+        return snapshot.StoryRows
             .Where(row => string.Equals(row.AccessLevel, "free", StringComparison.OrdinalIgnoreCase))
             .OrderBy(row => row.SortOrder)
             .ThenBy(row => row.Title, StringComparer.OrdinalIgnoreCase)
-            .Select(MapToStoryItem)
+            .Select(row => MapToStoryItem(row, ResolvePlaylistSlugs(row.StoryId, playlistSlugsByStoryId)))
             .ToArray();
     }
 
     public async Task<IReadOnlyList<StoryItem>> GetLuisterStoriesAsync(CancellationToken cancellationToken = default)
     {
-        var rows = await GetPublishedRowsAsync(cancellationToken);
-        return rows
+        var snapshot = await GetCatalogSnapshotAsync(cancellationToken);
+        var playlistSlugsByStoryId = BuildPlaylistSlugLookup(snapshot.PlaylistRows, snapshot.PlaylistItemRows);
+        return snapshot.StoryRows
             .Where(IsLuisterStoryRow)
             .OrderByDescending(row => row.PublishedAt)
             .ThenBy(row => row.SortOrder)
             .ThenBy(row => row.Title, StringComparer.OrdinalIgnoreCase)
-            .Select(MapToStoryItem)
+            .Select(row => MapToStoryItem(row, ResolvePlaylistSlugs(row.StoryId, playlistSlugsByStoryId)))
             .ToArray();
     }
 
@@ -126,12 +128,13 @@ public sealed class SupabaseStoryCatalogService(
             return null;
         }
 
-        var rows = await GetPublishedRowsAsync(cancellationToken);
-        var row = rows.FirstOrDefault(candidate =>
+        var snapshot = await GetCatalogSnapshotAsync(cancellationToken);
+        var row = snapshot.StoryRows.FirstOrDefault(candidate =>
             string.Equals(candidate.AccessLevel, "free", StringComparison.OrdinalIgnoreCase) &&
             string.Equals(candidate.Slug, slug, StringComparison.OrdinalIgnoreCase));
 
-        return row is null ? null : MapToStoryItem(row);
+        var playlistSlugsByStoryId = BuildPlaylistSlugLookup(snapshot.PlaylistRows, snapshot.PlaylistItemRows);
+        return row is null ? null : MapToStoryItem(row, ResolvePlaylistSlugs(row.StoryId, playlistSlugsByStoryId));
     }
 
     public async Task<StoryItem?> FindLuisterBySlugAsync(string? slug, CancellationToken cancellationToken = default)
@@ -141,12 +144,13 @@ public sealed class SupabaseStoryCatalogService(
             return null;
         }
 
-        var rows = await GetPublishedRowsAsync(cancellationToken);
-        var row = rows.FirstOrDefault(candidate =>
+        var snapshot = await GetCatalogSnapshotAsync(cancellationToken);
+        var row = snapshot.StoryRows.FirstOrDefault(candidate =>
             IsLuisterStoryRow(candidate) &&
             string.Equals(candidate.Slug, slug, StringComparison.OrdinalIgnoreCase));
 
-        return row is null ? null : MapToStoryItem(row);
+        var playlistSlugsByStoryId = BuildPlaylistSlugLookup(snapshot.PlaylistRows, snapshot.PlaylistItemRows);
+        return row is null ? null : MapToStoryItem(row, ResolvePlaylistSlugs(row.StoryId, playlistSlugsByStoryId));
     }
 
     public async Task<StoryItem?> FindAnyBySlugAsync(string? slug, CancellationToken cancellationToken = default)
@@ -156,11 +160,12 @@ public sealed class SupabaseStoryCatalogService(
             return null;
         }
 
-        var rows = await GetPublishedRowsAsync(cancellationToken);
-        var row = rows.FirstOrDefault(candidate =>
+        var snapshot = await GetCatalogSnapshotAsync(cancellationToken);
+        var row = snapshot.StoryRows.FirstOrDefault(candidate =>
             string.Equals(candidate.Slug, slug, StringComparison.OrdinalIgnoreCase));
 
-        return row is null ? null : MapToStoryItem(row);
+        var playlistSlugsByStoryId = BuildPlaylistSlugLookup(snapshot.PlaylistRows, snapshot.PlaylistItemRows);
+        return row is null ? null : MapToStoryItem(row, ResolvePlaylistSlugs(row.StoryId, playlistSlugsByStoryId));
     }
 
     private async Task<IReadOnlyList<StoryCatalogRow>> GetPublishedRowsAsync(CancellationToken cancellationToken)
@@ -396,6 +401,7 @@ public sealed class SupabaseStoryCatalogService(
         }
 
         var favouriteStorySlugs = await FetchUserFavouriteStorySlugsAsync(normalizedEmail, cancellationToken);
+        var playlistSlugsByStoryId = BuildPlaylistSlugLookup(snapshot.PlaylistRows, snapshot.PlaylistItemRows);
         var luisterStoriesBySlug = snapshot.StoryRows
             .Where(IsLuisterStoryRow)
             .Where(row => !string.IsNullOrWhiteSpace(row.Slug))
@@ -406,7 +412,9 @@ public sealed class SupabaseStoryCatalogService(
             .Where(slug => !string.IsNullOrWhiteSpace(slug))
             .Select(slug => slug.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Select(slug => luisterStoriesBySlug.TryGetValue(slug, out var row) ? MapToStoryItem(row) : null)
+            .Select(slug => luisterStoriesBySlug.TryGetValue(slug, out var row)
+                ? MapToStoryItem(row, ResolvePlaylistSlugs(row.StoryId, playlistSlugsByStoryId))
+                : null)
             .Where(story => story is not null)
             .Cast<StoryItem>();
 
@@ -726,7 +734,7 @@ public sealed class SupabaseStoryCatalogService(
         return metadata.GetRawText().Contains("soundbite", StringComparison.OrdinalIgnoreCase);
     }
 
-    private static StoryItem MapToStoryItem(StoryCatalogRow row)
+    private static StoryItem MapToStoryItem(StoryCatalogRow row, IReadOnlyList<string>? playlistSlugs = null)
     {
         var title = row.Title.Trim();
         var storyDetails = ReadStoryDetails(row.Metadata);
@@ -765,8 +773,49 @@ public sealed class SupabaseStoryCatalogService(
             ConversationQuestions: storyDetails.ConversationQuestions,
             Characters: storyDetails.Characters,
             YouTubeUrl: string.IsNullOrWhiteSpace(row.YouTubeUrl) ? null : row.YouTubeUrl.Trim(),
-            DurationSeconds: row.DurationSeconds);
+            DurationSeconds: row.DurationSeconds,
+            PlaylistSlugs: playlistSlugs);
     }
+
+    private static IReadOnlyDictionary<Guid, IReadOnlyList<string>> BuildPlaylistSlugLookup(
+        IReadOnlyList<StoryPlaylistRow> playlistRows,
+        IReadOnlyList<StoryPlaylistItemRow> playlistItemRows)
+    {
+        if (playlistRows.Count == 0 || playlistItemRows.Count == 0)
+        {
+            return new Dictionary<Guid, IReadOnlyList<string>>();
+        }
+
+        var playlistSlugById = playlistRows
+            .Where(row => row.IsEnabled)
+            .Where(row => row.PlaylistId != Guid.Empty)
+            .Where(row => !string.IsNullOrWhiteSpace(row.Slug))
+            .GroupBy(row => row.PlaylistId)
+            .ToDictionary(group => group.Key, group => group.First().Slug.Trim());
+
+        if (playlistSlugById.Count == 0)
+        {
+            return new Dictionary<Guid, IReadOnlyList<string>>();
+        }
+
+        return playlistItemRows
+            .Where(item => playlistSlugById.ContainsKey(item.PlaylistId))
+            .GroupBy(item => item.StoryId)
+            .ToDictionary(
+                group => group.Key,
+                group => (IReadOnlyList<string>)group
+                    .Select(item => playlistSlugById[item.PlaylistId])
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(slug => slug, StringComparer.OrdinalIgnoreCase)
+                    .ToArray());
+    }
+
+    private static IReadOnlyList<string>? ResolvePlaylistSlugs(
+        Guid storyId,
+        IReadOnlyDictionary<Guid, IReadOnlyList<string>> playlistSlugsByStoryId) =>
+        playlistSlugsByStoryId.TryGetValue(storyId, out var playlistSlugs) && playlistSlugs.Count > 0
+            ? playlistSlugs
+            : null;
 
     private static StoryDetails ReadStoryDetails(JsonElement metadata)
     {
@@ -866,6 +915,7 @@ public sealed class SupabaseStoryCatalogService(
         var playlistItemsByPlaylistId = normalizedItemRows
             .GroupBy(item => item.PlaylistId)
             .ToDictionary(group => group.Key, group => group.ToArray());
+        var playlistSlugsByStoryId = BuildPlaylistSlugLookup(enabledPlaylistRows, normalizedItemRows);
 
         var assignedStoryIds = new HashSet<Guid>();
         var playlists = new List<StoryPlaylist>();
@@ -902,7 +952,7 @@ public sealed class SupabaseStoryCatalogService(
                     continue;
                 }
 
-                mappedStories.Add(MapToStoryItem(storyRow));
+                mappedStories.Add(MapToStoryItem(storyRow, ResolvePlaylistSlugs(storyRow.StoryId, playlistSlugsByStoryId)));
                 assignedStoryIds.Add(storyRow.StoryId);
             }
 
@@ -945,7 +995,7 @@ public sealed class SupabaseStoryCatalogService(
             .OrderByDescending(row => row.PublishedAt)
             .ThenBy(row => row.SortOrder)
             .ThenBy(row => row.Title, StringComparer.OrdinalIgnoreCase)
-            .Select(MapToStoryItem)
+            .Select(row => MapToStoryItem(row))
             .ToArray();
 
         if (unassignedStories.Length > 0)
@@ -1005,7 +1055,9 @@ public sealed class SupabaseStoryCatalogService(
                 Title: "Gratis stories",
                 Description: "Dis op die huis!",
                 SortOrder: 10,
-                Stories: freeRows.Select(MapToStoryItem).ToArray(),
+                Stories: freeRows
+                    .Select(row => MapToStoryItem(row, [StoryAccessPolicy.GratisPlaylistSlug]))
+                    .ToArray(),
                 ShowOnHome: true,
                 ShowcaseStorySlug: freeRows.Select(row => row.Slug.Trim()).FirstOrDefault()));
 
@@ -1020,7 +1072,7 @@ public sealed class SupabaseStoryCatalogService(
                 Title: "Top 10 nuutste stories",
                 Description: "Kry 'n voorsmakie van ons nuutste uitgawes.",
                 SortOrder: 20,
-                Stories: newestRows.Select(MapToStoryItem).ToArray(),
+                Stories: newestRows.Select(row => MapToStoryItem(row)).ToArray(),
                 ShowOnHome: false,
                 ShowcaseStorySlug: newestRows.Select(row => row.Slug.Trim()).FirstOrDefault()));
 
@@ -1035,7 +1087,7 @@ public sealed class SupabaseStoryCatalogService(
                 Title: "Stories vir Kleuters",
                 Description: "Verken stories spesiaal vir kleuters.",
                 SortOrder: 30,
-                Stories: kleuterRows.Select(MapToStoryItem).ToArray(),
+                Stories: kleuterRows.Select(row => MapToStoryItem(row)).ToArray(),
                 ShowOnHome: false,
                 ShowcaseStorySlug: kleuterRows.Select(row => row.Slug.Trim()).FirstOrDefault()));
 
@@ -1058,7 +1110,7 @@ public sealed class SupabaseStoryCatalogService(
                 Title: "Bybelstories",
                 Description: "Luister na ons Bybelstories vir kinders.",
                 SortOrder: 40,
-                Stories: bibleRows.Select(MapToStoryItem).ToArray(),
+                Stories: bibleRows.Select(row => MapToStoryItem(row)).ToArray(),
                 ShowOnHome: false,
                 ShowcaseStorySlug: bibleRows.Select(row => row.Slug.Trim()).FirstOrDefault()));
 
@@ -1079,7 +1131,7 @@ public sealed class SupabaseStoryCatalogService(
                 Title: "Alle stories",
                 Description: "Stories wat nie in ander playlists is nie.",
                 SortOrder: 50,
-                Stories: unassignedRows.Select(MapToStoryItem).ToArray(),
+                Stories: unassignedRows.Select(row => MapToStoryItem(row)).ToArray(),
                 ShowOnHome: false,
                 ShowcaseStorySlug: unassignedRows.Select(row => row.Slug.Trim()).FirstOrDefault()));
         }

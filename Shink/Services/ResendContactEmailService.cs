@@ -138,7 +138,7 @@ public sealed class ResendContactEmailService(
             return $"{billingUri.Scheme}://{billingUri.Authority}";
         }
 
-        return "https://schink.prioritybit.co.za";
+        return "https://www.schink.co.za";
     }
 
     private static string BuildContactAutoReplyIdempotencyKey(ContactFormSubmission submission)

@@ -1884,6 +1884,18 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         }
         catch (JsonException)
         {
+            await InsertPaymentWebhookFailureAsync(
+                baseUri,
+                apiKey,
+                provider: "paystack",
+                eventType: "unknown",
+                eventStatus: null,
+                providerPaymentId: null,
+                providerTransactionId: null,
+                failureStage: "payload-parse",
+                errorMessage: "Paystack payload is not valid JSON.",
+                payload: DeserializePayloadObject(payloadJson),
+                cancellationToken);
             return new SubscriptionPersistResult(false, "Paystack payload is not valid JSON.");
         }
 
@@ -1892,6 +1904,18 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             var root = document.RootElement;
             if (root.ValueKind != JsonValueKind.Object)
             {
+                await InsertPaymentWebhookFailureAsync(
+                    baseUri,
+                    apiKey,
+                    provider: "paystack",
+                    eventType: "unknown",
+                    eventStatus: null,
+                    providerPaymentId: null,
+                    providerTransactionId: null,
+                    failureStage: "payload-root",
+                    errorMessage: "Paystack payload root is invalid.",
+                    payload: DeserializePayloadObject(payloadJson),
+                    cancellationToken);
                 return new SubscriptionPersistResult(false, "Paystack payload root is invalid.");
             }
 
@@ -1924,6 +1948,18 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 var upsertResult = await UpsertActivePaystackSubscriptionAsync(baseUri, apiKey, data, nowUtc, cancellationToken);
                 if (!upsertResult.IsSuccess)
                 {
+                    await InsertPaymentWebhookFailureAsync(
+                        baseUri,
+                        apiKey,
+                        provider: "paystack",
+                        eventType,
+                        eventStatus,
+                        providerPaymentId,
+                        providerTransactionId,
+                        failureStage: "subscription-upsert",
+                        errorMessage: upsertResult.ErrorMessage ?? "Paystack subscription could not be persisted.",
+                        payload: DeserializePayloadObject(payloadJson),
+                        cancellationToken);
                     await TrySendAdminOpsAlertAsync(
                         alertKey: $"paystack-upsert-failed/{providerPaymentId}/{providerTransactionId}/{eventType}",
                         severity: "error",
@@ -2040,6 +2076,18 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
             if (!eventInserted.IsSuccess)
             {
+                await InsertPaymentWebhookFailureAsync(
+                    baseUri,
+                    apiKey,
+                    provider: "paystack",
+                    eventType,
+                    eventStatus,
+                    providerPaymentId,
+                    providerTransactionId,
+                    failureStage: "event-insert",
+                    errorMessage: "Could not persist Paystack event.",
+                    payload: normalizedPayload,
+                    cancellationToken);
                 await TrySendAdminOpsAlertAsync(
                     alertKey: $"paystack-event-insert-failed/{providerPaymentId}/{providerTransactionId}/{eventType}",
                     severity: "error",
@@ -3029,6 +3077,49 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         }
 
         return new EventInsertResult(true, true);
+    }
+
+    private async Task InsertPaymentWebhookFailureAsync(
+        Uri baseUri,
+        string apiKey,
+        string provider,
+        string eventType,
+        string? eventStatus,
+        string? providerPaymentId,
+        string? providerTransactionId,
+        string failureStage,
+        string errorMessage,
+        object payload,
+        CancellationToken cancellationToken)
+    {
+        var failurePayload = new
+        {
+            provider,
+            event_type = string.IsNullOrWhiteSpace(eventType) ? "unknown" : eventType,
+            event_status = string.IsNullOrWhiteSpace(eventStatus) ? null : eventStatus,
+            provider_payment_id = string.IsNullOrWhiteSpace(providerPaymentId) ? null : providerPaymentId,
+            provider_transaction_id = string.IsNullOrWhiteSpace(providerTransactionId) ? null : providerTransactionId,
+            failure_stage = failureStage,
+            error_message = errorMessage,
+            payload
+        };
+
+        var uri = new Uri(baseUri, "rest/v1/payment_webhook_failures");
+        using var request = CreateJsonRequest(HttpMethod.Post, uri, apiKey, failurePayload, "return=minimal");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Supabase payment webhook failure insert failed. provider={Provider} event_type={EventType} stage={FailureStage} Status={StatusCode} Body={Body}",
+            provider,
+            eventType,
+            failureStage,
+            (int)response.StatusCode,
+            body);
     }
 
     private async Task<ExistingEventLookupRow?> TryGetExistingSubscriptionEventAsync(

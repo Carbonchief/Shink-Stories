@@ -29,6 +29,63 @@ public class GratisToLuisterRoutingTests
     }
 
     [TestMethod]
+    public void LuisterTreatsStorieHoekiePlaylistStoriesAsStoryCornerStories()
+    {
+        var story = new StoryItem(
+            Slug: "tiekie-tik-tik-tok",
+            Title: "Tiekie Tik Tik Tok",
+            Description: "Subscriber story",
+            ImageFileName: "cover.jpg",
+            AudioFileName: "Schink-_Stories_03_Tiekie_Tik_Tik_Tok.mp3",
+            AccessLevel: "subscriber",
+            PlaylistSlugs: ["storie-hoekie"]);
+
+        Assert.AreEqual(StoryAccessRequirement.StoryCornerOrAllStories, StoryAccessPolicy.ResolveRequirement("luister", story));
+    }
+
+    [TestMethod]
+    public void LuisterTreatsNonLimitedPlaylistStoriesAsAllStoriesOnly()
+    {
+        var story = new StoryItem(
+            Slug: "bybel-storie",
+            Title: "Bybel Storie",
+            Description: "Subscriber story",
+            ImageFileName: "cover.jpg",
+            AudioFileName: "Schink-_Stories_Bybel.mp3",
+            AccessLevel: "subscriber",
+            PlaylistSlugs: ["bybelstories"]);
+
+        Assert.AreEqual(StoryAccessRequirement.AllStoriesOnly, StoryAccessPolicy.ResolveRequirement("luister", story));
+    }
+
+    [TestMethod]
+    public void LuisterUsesPlaylistMembershipOverLegacyStorieHoekieFilenameMarkers()
+    {
+        var story = new StoryItem(
+            Slug: "non-storie-hoekie-story",
+            Title: "Non Storie Hoekie Story",
+            Description: "Subscriber story",
+            ImageFileName: "cover.jpg",
+            AudioFileName: "imported/stories/Storie_Hoekie_marker_in_old_filename.mp3",
+            AccessLevel: "subscriber",
+            PlaylistSlugs: ["bybelstories"]);
+
+        Assert.AreEqual(StoryAccessRequirement.AllStoriesOnly, StoryAccessPolicy.ResolveRequirement("luister", story));
+    }
+
+    [TestMethod]
+    public void OpsiesAlwaysRendersStorieHoekieCardWithDisabledState()
+    {
+        var opsies = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Opsies.razor"));
+
+        Assert.IsFalse(opsies.Contains("@if (ShouldShowStoryCornerPlanOption)", StringComparison.Ordinal));
+        StringAssert.Contains(opsies, "IsStoryCornerPlanUnavailable");
+        StringAssert.Contains(opsies, "EnableStoryCornerPlan");
+        StringAssert.Contains(opsies, "Jy is reeds op hierdie plan");
+        StringAssert.Contains(opsies, "Hierdie storie is nie deel van Storie Hoekie");
+    }
+
+    [TestMethod]
     public void GratisRoutesRedirectToLuisterRoutes()
     {
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));

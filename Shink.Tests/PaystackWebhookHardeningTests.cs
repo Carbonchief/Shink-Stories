@@ -54,6 +54,21 @@ public class PaystackWebhookHardeningTests
         StringAssert.Contains(resolverBlock, "TryReadString(data, \"plan\")");
     }
 
+    [TestMethod]
+    public void FailedPaystackWebhookAttemptsAreLoggedWithPayloadBeforeAlerting()
+    {
+        var ledgerService = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseSubscriptionLedgerService.cs"));
+        StringAssert.Contains(ledgerService, "InsertPaymentWebhookFailureAsync(");
+        StringAssert.Contains(ledgerService, "rest/v1/payment_webhook_failures");
+        StringAssert.Contains(ledgerService, "failureStage: \"subscription-upsert\"");
+        StringAssert.Contains(ledgerService, "payload: DeserializePayloadObject(payloadJson)");
+
+        var migration = File.ReadAllText(GetRepoPath("Shink", "Database", "migrations", "20260430_failed_payment_webhook_payload_logs.sql"));
+        StringAssert.Contains(migration, "create table if not exists public.payment_webhook_failures");
+        StringAssert.Contains(migration, "payload jsonb not null");
+        StringAssert.Contains(migration, "alter table public.payment_webhook_failures enable row level security");
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var parts = new[]

@@ -276,12 +276,12 @@ public sealed class ResendSubscriptionNotificationEmailService(
     private string ResolveBillingUrl() =>
         Uri.TryCreate(_options.BillingManageUrl, UriKind.Absolute, out var billingUri)
             ? billingUri.ToString()
-            : "https://schink.prioritybit.co.za/intekening-en-betaling";
+            : "https://www.schink.co.za/intekening-en-betaling";
 
     private string ResolveAdminUrl() =>
         Uri.TryCreate(ResolveBillingUrl(), UriKind.Absolute, out var billingUri)
             ? new Uri(billingUri, "/admin").ToString()
-            : "https://schink.prioritybit.co.za/admin";
+            : "https://www.schink.co.za/admin";
 
     private static string Html(string value) =>
         HtmlEncoder.Default.Encode(value);

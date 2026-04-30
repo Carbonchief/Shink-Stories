@@ -610,7 +610,7 @@ public sealed class SupabaseAbandonedCartRecoveryService(
     {
         var fallbackBaseUrl = Uri.TryCreate(baseUrl, UriKind.Absolute, out var parsedBaseUrl)
             ? parsedBaseUrl
-            : new Uri("https://schink.prioritybit.co.za");
+            : new Uri("https://www.schink.co.za");
         return new Uri(
             fallbackBaseUrl,
             $"/betaalherinneringe/stop?id={Uri.EscapeDataString(recoveryId)}&token={Uri.EscapeDataString(token)}").ToString();
@@ -620,7 +620,7 @@ public sealed class SupabaseAbandonedCartRecoveryService(
     {
         var fallbackBaseUrl = Uri.TryCreate(baseUrl, UriKind.Absolute, out var parsedBaseUrl)
             ? parsedBaseUrl
-            : new Uri("https://schink.prioritybit.co.za");
+            : new Uri("https://www.schink.co.za");
         return new Uri(
             fallbackBaseUrl,
             $"/betaalherinneringe/gaan?id={Uri.EscapeDataString(recoveryId)}&token={Uri.EscapeDataString(token)}").ToString();
