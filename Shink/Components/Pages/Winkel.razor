@@ -152,12 +152,26 @@
 
                             <label class="winkel-field">
                                 <span>Poskode</span>
-                                <input type="text" name="poskode" maxlength="20" autocomplete="postal-code" required />
+                                <input type="text" name="poskode" maxlength="20" autocomplete="postal-code" data-winkel-address-postal-code required />
                             </label>
 
                             <label class="winkel-field winkel-field-full">
                                 <span>Adres lyn 1</span>
-                                <input type="text" name="adresLyn1" maxlength="250" autocomplete="address-line1" required />
+                                <input id="winkel-address-line-1"
+                                       type="text"
+                                       name="adresLyn1"
+                                       maxlength="250"
+                                       autocomplete="address-line1"
+                                       aria-autocomplete="list"
+                                       aria-controls="winkel-address-suggestions"
+                                       aria-expanded="false"
+                                       data-winkel-address-input
+                                       required />
+                                <div id="winkel-address-suggestions"
+                                     class="winkel-address-suggestions"
+                                     data-winkel-address-suggestions
+                                     role="listbox"
+                                     hidden></div>
                             </label>
 
                             <label class="winkel-field winkel-field-full">
@@ -167,12 +181,12 @@
 
                             <label class="winkel-field">
                                 <span>Voorstad <em>(opsioneel)</em></span>
-                                <input type="text" name="voorstad" maxlength="120" autocomplete="address-level3" />
+                                <input type="text" name="voorstad" maxlength="120" autocomplete="address-level3" data-winkel-address-suburb />
                             </label>
 
                             <label class="winkel-field">
                                 <span>Stad / Dorp</span>
-                                <input type="text" name="stad" maxlength="120" autocomplete="address-level2" required />
+                                <input type="text" name="stad" maxlength="120" autocomplete="address-level2" data-winkel-address-city required />
                             </label>
 
                             <label class="winkel-field winkel-field-full">

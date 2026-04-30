@@ -126,13 +126,21 @@ public sealed class SupabaseAuthService(
                 FullName: string.IsNullOrWhiteSpace(normalizedDisplayName) ? null : normalizedDisplayName,
                 MobileNumber: profileData.MobileNumber?.Trim());
 
+        if (TryBuildAdminUsersEndpoint(out _))
+        {
+            return await TryCreateConfirmedUserWithAdminApiAsync(
+                email,
+                password,
+                signUpMetadata,
+                cancellationToken);
+        }
+
         var signupResult = await ExecuteAuthRequestAsync(
             signupEndpoint,
             new SupabasePasswordSignUpRequest(email, password, signUpMetadata),
             failureFallbackMessage: "Kon nie nou registreer nie. Probeer asseblief weer.",
             requestActionName: "sign-up",
             cancellationToken);
-
         if (!signupResult.IsSuccess)
         {
             if (ShouldFallbackToAdminCreateUser(signupResult.ErrorMessage))
@@ -737,13 +745,13 @@ public sealed class SupabaseAuthService(
             {
                 var responseEmail = ReadUserEmail(responseBody);
                 _logger.LogInformation(
-                    "Supabase admin create user fallback succeeded after confirmation email failure for {Email}.",
+                    "Supabase admin create confirmed user succeeded for {Email}.",
                     email);
                 return SupabaseSignInResult.Success(responseEmail ?? email);
             }
 
-            var errorMessage = ReadErrorMessage(responseBody)
-                ?? "Registrasie kon nie voltooi word nie. Probeer asseblief weer.";
+            var errorMessage = NormalizeSupabaseMessage(ReadErrorMessage(responseBody)
+                ?? "Registrasie kon nie voltooi word nie. Probeer asseblief weer.");
             _logger.LogWarning(
                 "Supabase admin create user fallback rejected: {StatusCode} {Message}",
                 (int)response.StatusCode,

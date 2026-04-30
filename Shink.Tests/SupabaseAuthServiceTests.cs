@@ -65,13 +65,51 @@ public class SupabaseAuthServiceTests
             result.ErrorMessage);
     }
 
-    private static SupabaseAuthService CreateService(HttpClient httpClient) =>
+    [TestMethod]
+    public async Task SignUpWithPasswordAsync_WhenServiceRoleConfigured_CreatesConfirmedUser()
+    {
+        string? requestBody = null;
+        var handler = new RecordingHandler(request =>
+        {
+            Assert.AreEqual(HttpMethod.Post, request.Method);
+            Assert.AreEqual("https://example.supabase.co/auth/v1/admin/users", request.RequestUri?.ToString());
+            Assert.AreEqual("service-role-key", request.Headers.Authorization?.Parameter);
+            requestBody = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """
+                    {
+                      "email": "ouer@example.com"
+                    }
+                    """,
+                    Encoding.UTF8,
+                    "application/json")
+            };
+        });
+        using var httpClient = new HttpClient(handler);
+        var service = CreateService(httpClient, serviceRoleKey: "service-role-key");
+
+        var result = await service.SignUpWithPasswordAsync(
+            "ouer@example.com",
+            "password123",
+            new SignUpProfileData("Ouer", "Een", "Ouer Een", "0821234567"));
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.AreEqual("ouer@example.com", result.UserEmail);
+        StringAssert.Contains(requestBody!, "\"email_confirm\":true");
+        StringAssert.Contains(requestBody!, "\"email\":\"ouer@example.com\"");
+        StringAssert.Contains(requestBody!, "\"firstName\":\"Ouer\"");
+    }
+
+    private static SupabaseAuthService CreateService(HttpClient httpClient, string serviceRoleKey = "") =>
         new(
             httpClient,
             Options.Create(new SupabaseOptions
             {
                 Url = "https://example.supabase.co/",
-                AnonKey = "anon-key"
+                AnonKey = "anon-key",
+                ServiceRoleKey = serviceRoleKey
             }),
             new EmptyWordPressMigrationService(),
             new WordPressPasswordVerifier(),

@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
 using MudBlazor.Services;
 using Shink.Components;
@@ -201,6 +202,17 @@ builder.Services.AddRateLimiter(options =>
         {
             PermitLimit = 12,
             Window = TimeSpan.FromMinutes(10),
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
+    });
+    options.AddPolicy("store-address-autocomplete", httpContext =>
+    {
+        var clientId = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown-client";
+        return RateLimitPartition.GetFixedWindowLimiter($"store-address:{clientId}", _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 120,
+            Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0,
             AutoReplenishment = true
         });
@@ -1210,6 +1222,79 @@ app.MapPost("/winkel/koop/paystack", async (
 })
 .DisableAntiforgery()
 .RequireRateLimiting("store-checkout");
+
+app.MapGet("/api/winkel/address-autocomplete", async (
+    string? q,
+    int? limit,
+    IConfiguration configuration,
+    IHttpClientFactory httpClientFactory,
+    IMemoryCache memoryCache,
+    HttpContext httpContext,
+    ILogger<Program> logger) =>
+{
+    var query = (q ?? string.Empty).Trim();
+    if (query.Length < 3)
+    {
+        return Results.Ok(new WinkelAddressAutocompleteResponse(query, []));
+    }
+
+    var apiKey = configuration["GeoApify:ApiKey"];
+    if (string.IsNullOrWhiteSpace(apiKey))
+    {
+        logger.LogWarning("Geoapify address autocomplete skipped: GeoApify:ApiKey is not configured.");
+        return Results.Ok(new WinkelAddressAutocompleteResponse(query, []));
+    }
+
+    var resultLimit = Math.Clamp(limit ?? 5, 1, 8);
+    var cacheKey = $"winkel-address-autocomplete:{query.ToLowerInvariant()}:{resultLimit}";
+    if (memoryCache.TryGetValue<WinkelAddressAutocompleteResponse>(cacheKey, out var cachedResponse) &&
+        cachedResponse is not null)
+    {
+        return Results.Ok(cachedResponse);
+    }
+
+    var requestUri = QueryHelpers.AddQueryString(
+        "https://api.geoapify.com/v1/geocode/autocomplete",
+        new Dictionary<string, string?>
+        {
+            ["text"] = query,
+            ["format"] = "json",
+            ["filter"] = "countrycode:za",
+            ["limit"] = resultLimit.ToString(CultureInfo.InvariantCulture),
+            ["apiKey"] = apiKey
+        });
+
+    try
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, requestUri);
+        request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+
+        var httpClient = httpClientFactory.CreateClient();
+        using var response = await httpClient.SendAsync(request, httpContext.RequestAborted);
+        if (!response.IsSuccessStatusCode)
+        {
+            logger.LogWarning("Geoapify address autocomplete failed. Status={StatusCode}", (int)response.StatusCode);
+            return Results.Ok(new WinkelAddressAutocompleteResponse(query, []));
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(httpContext.RequestAborted);
+        using var document = await JsonDocument.ParseAsync(stream, cancellationToken: httpContext.RequestAborted);
+        var suggestions = MapGeoapifyAddressSuggestions(document.RootElement)
+            .Take(resultLimit)
+            .ToArray();
+        var autocompleteResponse = new WinkelAddressAutocompleteResponse(query, suggestions);
+        memoryCache.Set(cacheKey, autocompleteResponse, TimeSpan.FromMinutes(15));
+
+        return Results.Ok(autocompleteResponse);
+    }
+    catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+    {
+        logger.LogWarning(exception, "Geoapify address autocomplete request failed unexpectedly.");
+        return Results.Ok(new WinkelAddressAutocompleteResponse(query, []));
+    }
+})
+.RequireRateLimiting("store-address-autocomplete")
+.DisableAntiforgery();
 
 app.MapGet("/winkel/paystack/callback", async (
     string? reference,
@@ -5130,6 +5215,98 @@ static Dictionary<string, string[]> ValidateContactRequest(ContactApiRequest req
     return errors;
 }
 
+static IReadOnlyList<WinkelAddressSuggestion> MapGeoapifyAddressSuggestions(JsonElement root)
+{
+    if (!root.TryGetProperty("results", out var resultsElement) ||
+        resultsElement.ValueKind != JsonValueKind.Array)
+    {
+        return Array.Empty<WinkelAddressSuggestion>();
+    }
+
+    var suggestions = new List<WinkelAddressSuggestion>();
+    var seenLabels = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    foreach (var resultElement in resultsElement.EnumerateArray())
+    {
+        if (resultElement.ValueKind != JsonValueKind.Object)
+        {
+            continue;
+        }
+
+        var label = ReadJsonString(resultElement, "formatted");
+        var addressLine1 = ReadJsonString(resultElement, "address_line1");
+        if (string.IsNullOrWhiteSpace(addressLine1))
+        {
+            addressLine1 = BuildStreetAddressLine(
+                ReadJsonString(resultElement, "housenumber"),
+                ReadJsonString(resultElement, "street"),
+                ReadJsonString(resultElement, "name"));
+        }
+
+        var city = FirstNonEmpty(
+            ReadJsonString(resultElement, "city"),
+            ReadJsonString(resultElement, "town"),
+            ReadJsonString(resultElement, "village"),
+            ReadJsonString(resultElement, "municipality"),
+            ReadJsonString(resultElement, "county"));
+        var suburb = FirstNonEmpty(
+            ReadJsonString(resultElement, "suburb"),
+            ReadJsonString(resultElement, "district"),
+            ReadJsonString(resultElement, "city_district"),
+            ReadJsonString(resultElement, "neighbourhood"),
+            ReadJsonString(resultElement, "quarter"));
+        var postalCode = ReadJsonString(resultElement, "postcode");
+
+        if (string.IsNullOrWhiteSpace(label))
+        {
+            label = string.Join(", ", new[] { addressLine1, suburb, city, postalCode }
+                .Where(static value => !string.IsNullOrWhiteSpace(value)));
+        }
+
+        if (string.IsNullOrWhiteSpace(label) ||
+            !seenLabels.Add(label))
+        {
+            continue;
+        }
+
+        suggestions.Add(new WinkelAddressSuggestion(
+            Label: label,
+            AddressLine1: addressLine1,
+            AddressLine2: null,
+            Suburb: suburb,
+            City: city,
+            PostalCode: postalCode));
+    }
+
+    return suggestions;
+}
+
+static string? ReadJsonString(JsonElement element, string propertyName)
+{
+    if (!element.TryGetProperty(propertyName, out var propertyElement) ||
+        propertyElement.ValueKind != JsonValueKind.String)
+    {
+        return null;
+    }
+
+    var value = propertyElement.GetString()?.Trim();
+    return string.IsNullOrWhiteSpace(value) ? null : value;
+}
+
+static string? BuildStreetAddressLine(string? houseNumber, string? street, string? name)
+{
+    if (!string.IsNullOrWhiteSpace(street))
+    {
+        return string.IsNullOrWhiteSpace(houseNumber)
+            ? street
+            : $"{houseNumber} {street}";
+    }
+
+    return string.IsNullOrWhiteSpace(name) ? null : name;
+}
+
+static string? FirstNonEmpty(params string?[] values) =>
+    values.FirstOrDefault(static value => !string.IsNullOrWhiteSpace(value));
+
 static bool IsValidEmail(string value)
 {
     try
@@ -5260,6 +5437,14 @@ sealed record SearchSiteResult(
     string Kind,
     string ThumbnailPath,
     int Score);
+sealed record WinkelAddressAutocompleteResponse(string Query, IReadOnlyList<WinkelAddressSuggestion> Results);
+sealed record WinkelAddressSuggestion(
+    string Label,
+    string? AddressLine1,
+    string? AddressLine2,
+    string? Suburb,
+    string? City,
+    string? PostalCode);
 sealed record MobileFavoriteMutationRequest(bool IsFavorite, string? Source, string? PlaylistSlug);
 sealed record MobileSessionResponse(
     bool IsSignedIn,
