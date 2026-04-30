@@ -500,6 +500,264 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
         Assert.AreEqual(JsonValueKind.String, patchPayload.GetProperty("disabled_at").ValueKind);
     }
 
+    [TestMethod]
+    public async Task TryRepairPaidSubscriptionAsync_TreatsPaystackQueuedChargeAsPending()
+    {
+        var paystackChargeCalls = 0;
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                        "email": "ouer@example.com",
+                        "disabled_at": null
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "tier_code": "all_stories_yearly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "wp-pmpro-current-2681",
+                        "provider_transaction_id": "EFE7D68193",
+                        "provider_token": "AUTH_retry",
+                        "next_renewal_at": null,
+                        "cancelled_at": null,
+                        "status": "active"
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/transaction/charge_authorization")
+            {
+                paystackChargeCalls++;
+                return JsonResponse(
+                    """
+                    {
+                      "status": true,
+                      "data": {
+                        "id": 6095474321,
+                        "status": "queued",
+                        "amount": 79000,
+                        "currency": "ZAR",
+                        "reference": "repair-20260430150911-22222222-2222-2222-2222-222222222222",
+                        "paid_at": "2026-04-30T15:09:11.000Z"
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.TryRepairPaidSubscriptionAsync("ouer@example.com");
+
+        Assert.IsFalse(result.IsRecovered);
+        Assert.IsTrue(result.IsPending);
+        Assert.AreEqual("schink-stories-jaarliks", result.PlanSlug);
+        Assert.AreEqual(1, paystackChargeCalls);
+        Assert.AreEqual(0, handler.SubscriptionPatchPayloads.Count);
+    }
+
+    [TestMethod]
+    public async Task TryRepairPaidSubscriptionAsync_TreatsDuplicateRepairReferenceAsPending()
+    {
+        var repairReferences = new List<string>();
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                        "email": "ouer@example.com",
+                        "disabled_at": null
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "tier_code": "all_stories_yearly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "wp-pmpro-current-2681",
+                        "provider_transaction_id": "EFE7D68193",
+                        "provider_token": "AUTH_retry",
+                        "next_renewal_at": null,
+                        "cancelled_at": null,
+                        "status": "active"
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/transaction/charge_authorization")
+            {
+                var payload = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+                using var document = JsonDocument.Parse(payload);
+                var reference = document.RootElement.GetProperty("reference").GetString()!;
+                repairReferences.Add(reference);
+
+                return JsonResponse(
+                    $$"""
+                    {
+                      "status": false,
+                      "message": "Duplicate transaction reference",
+                      "data": {
+                        "status": "failed",
+                        "reference": "{{reference}}"
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var firstResult = await service.TryRepairPaidSubscriptionAsync("ouer@example.com");
+        var secondResult = await service.TryRepairPaidSubscriptionAsync("ouer@example.com");
+
+        Assert.IsTrue(firstResult.IsPending);
+        Assert.IsTrue(secondResult.IsPending);
+        Assert.AreEqual(2, repairReferences.Count);
+        Assert.AreEqual(repairReferences[0], repairReferences[1]);
+        Assert.AreEqual(0, handler.SubscriptionPatchPayloads.Count);
+    }
+
+    [TestMethod]
+    public async Task TryRepairPaidSubscriptionAsync_ReusesRecentQueuedRepairInsteadOfChargingAgain()
+    {
+        var paystackChargeCalls = 0;
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                        "email": "ouer@example.com",
+                        "disabled_at": null
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "tier_code": "all_stories_yearly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "wp-pmpro-current-2681",
+                        "provider_transaction_id": "EFE7D68193",
+                        "provider_token": "AUTH_retry",
+                        "next_renewal_at": null,
+                        "cancelled_at": null,
+                        "status": "active"
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "event_status": "queued",
+                        "provider_transaction_id": "6095474321",
+                        "received_at": "2099-01-01T00:00:00Z",
+                        "payload": {
+                          "data": {
+                            "status": "queued",
+                            "reference": "repair-20990101000000-22222222-2222-2222-2222-222222222222",
+                            "metadata": {
+                              "source": "subscription_authorization_retry"
+                            }
+                          }
+                        }
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/transaction/charge_authorization")
+            {
+                paystackChargeCalls++;
+                return JsonResponse("""{ "status": true, "data": { "status": "queued" } }""");
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.TryRepairPaidSubscriptionAsync("ouer@example.com");
+
+        Assert.IsFalse(result.IsRecovered);
+        Assert.IsTrue(result.IsPending);
+        Assert.AreEqual("schink-stories-jaarliks", result.PlanSlug);
+        Assert.AreEqual(0, paystackChargeCalls);
+    }
+
     private static SupabaseSubscriptionLedgerService CreateService(RecordingHandler handler)
     {
         var httpClient = new HttpClient(handler)

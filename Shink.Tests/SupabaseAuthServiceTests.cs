@@ -124,7 +124,7 @@ public class SupabaseAuthServiceTests
     private sealed class EmptyWordPressMigrationService : IWordPressMigrationService
     {
         public Task<WordPressSyncResult> SyncAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(new WordPressSyncResult(0, 0, 0, 0, 0, 0, 0, 0, 0, []));
+            Task.FromResult(new WordPressSyncResult(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, []));
 
         public Task<bool> SyncImportedUserProfileAndAccessAsync(string? email, CancellationToken cancellationToken = default) =>
             Task.FromResult(false);

@@ -45,12 +45,12 @@ public sealed partial class WordPressMigrationService(
         var errors = new List<string>();
         if (!TryBuildSupabaseBaseUri(out var baseUri) || string.IsNullOrWhiteSpace(_supabaseOptions.ServiceRoleKey))
         {
-            return new WordPressSyncResult(0, 0, 0, 0, 0, 0, 0, 0, 0, ["Supabase ServiceRoleKey or URL is not configured."]);
+            return new WordPressSyncResult(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ["Supabase ServiceRoleKey or URL is not configured."]);
         }
 
         if (!TryValidateWordPressConfiguration(out var configurationError))
         {
-            return new WordPressSyncResult(0, 0, 0, 0, 0, 0, 0, 0, 0, [configurationError!]);
+            return new WordPressSyncResult(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, [configurationError!]);
         }
 
         try
@@ -61,6 +61,13 @@ public sealed partial class WordPressMigrationService(
             var membershipOrders = await LoadMembershipOrdersAsync(membershipLevels, cancellationToken);
             var subscriptions = await LoadSubscriptionsAsync(membershipLevels, cancellationToken);
             var discountCodeAccessKeys = await LoadDiscountCodeAccessKeysAsync(cancellationToken);
+            var discountCodes = await LoadDiscountCodesAsync(membershipLevels, cancellationToken);
+            var groupDiscountCodes = await LoadGroupDiscountCodesAsync(cancellationToken);
+            var groupDiscountCodesByOrderId = groupDiscountCodes
+                .Where(groupCode => groupCode.OrderId > 0)
+                .GroupBy(groupCode => groupCode.OrderId)
+                .ToDictionary(group => group.Key, group => group.First());
+            var discountCodeUses = await LoadDiscountCodeUsesAsync(membershipLevels, groupDiscountCodesByOrderId, cancellationToken);
 
             var subscriberRows = await FetchSubscriberRowsAsync(baseUri, cancellationToken);
             var existingSubscribersByEmail = subscriberRows
@@ -141,6 +148,24 @@ public sealed partial class WordPressMigrationService(
                 importedSubscriptions += await ImportWordPressSubscriptionsBatchAsync(baseUri, batch, cancellationToken);
             }
 
+            var importedDiscountCodes = 0;
+            foreach (var batch in Batch(BuildDiscountCodeImportRows(discountCodes, groupDiscountCodes), 250))
+            {
+                importedDiscountCodes += await ImportWordPressSubscriptionDiscountCodesBatchAsync(baseUri, batch, cancellationToken);
+            }
+
+            var importedDiscountCodeTiers = 0;
+            foreach (var batch in Batch(BuildDiscountCodeTierImportRows(discountCodes, groupDiscountCodes), 500))
+            {
+                importedDiscountCodeTiers += await ImportWordPressSubscriptionDiscountCodeTiersBatchAsync(baseUri, batch, cancellationToken);
+            }
+
+            var importedDiscountCodeRedemptions = 0;
+            foreach (var batch in Batch(BuildDiscountCodeRedemptionImportRows(discountCodeUses), 500))
+            {
+                importedDiscountCodeRedemptions += await ImportWordPressSubscriptionDiscountCodeRedemptionsBatchAsync(baseUri, batch, cancellationToken);
+            }
+
             var activeEntitlements = BuildCurrentEntitlements(wordPressUsers, membershipPeriods, membershipOrders, subscriptions, discountCodeAccessKeys);
             activeEntitlements = await EnrichPaystackEntitlementsAsync(activeEntitlements, cancellationToken);
             var upsertedCurrentEntitlements = await UpsertCurrentEntitlementsAsync(
@@ -148,11 +173,21 @@ public sealed partial class WordPressMigrationService(
                 activeEntitlements,
                 subscriberIdsByEmail,
                 cancellationToken);
+            var reactivatedCurrentEntitlements = await ReactivateCancelledImportedEntitlementsAsync(
+                baseUri,
+                activeEntitlements,
+                cancellationToken);
             var cancelledCurrentEntitlements = await CancelStaleImportedEntitlementsAsync(
                 baseUri,
                 activeEntitlements,
                 cancellationToken);
             var reconciledNativePaystackTokens = await ReconcileNativePaystackRetryTokensAsync(baseUri, cancellationToken);
+            if (reactivatedCurrentEntitlements > 0)
+            {
+                _logger.LogInformation(
+                    "Reactivated {Count} imported WordPress runtime subscriptions that should still be active.",
+                    reactivatedCurrentEntitlements);
+            }
             if (reconciledNativePaystackTokens > 0)
             {
                 _logger.LogInformation(
@@ -172,6 +207,9 @@ public sealed partial class WordPressMigrationService(
                 UpsertedMembershipPeriods: importedMembershipPeriods,
                 UpsertedMembershipOrders: importedMembershipOrders,
                 UpsertedSubscriptions: importedSubscriptions,
+                ImportedDiscountCodes: importedDiscountCodes,
+                ImportedDiscountCodeTiers: importedDiscountCodeTiers,
+                ImportedDiscountCodeRedemptions: importedDiscountCodeRedemptions,
                 UpsertedCurrentEntitlements: upsertedCurrentEntitlements,
                 CancelledCurrentEntitlements: cancelledCurrentEntitlements,
                 BackfilledAuthSubscribers: backfilledAuthSubscribers,
@@ -181,7 +219,7 @@ public sealed partial class WordPressMigrationService(
         {
             _logger.LogError(exception, "WordPress sync failed unexpectedly.");
             errors.Add(exception.Message);
-            return new WordPressSyncResult(0, 0, 0, 0, 0, 0, 0, 0, 0, errors);
+            return new WordPressSyncResult(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, errors);
         }
     }
 
@@ -220,6 +258,10 @@ public sealed partial class WordPressMigrationService(
             {
                 [importedUser.Email] = subscriberId
             },
+            cancellationToken);
+        await ReactivateCancelledImportedEntitlementsAsync(
+            baseUri,
+            currentEntitlements,
             cancellationToken);
         await CancelStaleImportedEntitlementsForSubscriberAsync(
             baseUri,
@@ -1080,6 +1122,55 @@ public sealed partial class WordPressMigrationService(
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         var rows = await JsonSerializer.DeserializeAsync<List<UpdatedSubscriptionIdRow>>(stream, cancellationToken: cancellationToken) ?? [];
         return rows.Count;
+    }
+
+    private async Task<int> ReactivateCancelledImportedEntitlementsAsync(
+        Uri baseUri,
+        IReadOnlyList<CurrentEntitlement> entitlements,
+        CancellationToken cancellationToken)
+    {
+        var payload = entitlements
+            .Where(entitlement =>
+                !string.IsNullOrWhiteSpace(entitlement.Provider) &&
+                !string.IsNullOrWhiteSpace(entitlement.ProviderPaymentId))
+            .Select(entitlement => new
+            {
+                provider = NormalizeProvider(entitlement.Provider),
+                provider_payment_id = entitlement.ProviderPaymentId.Trim(),
+                next_renewal_at = entitlement.NextRenewalAt?.UtcDateTime,
+                source_system = "wordpress_pmpro"
+            })
+            .Distinct()
+            .ToList();
+        if (payload.Count == 0)
+        {
+            return 0;
+        }
+
+        var reactivatedCount = 0;
+        foreach (var batch in Batch(payload, 250))
+        {
+            using var request = CreateSupabaseJsonRequest(
+                HttpMethod.Post,
+                new Uri(baseUri, "rest/v1/rpc/reactivate_wordpress_current_subscriptions"),
+                new { payload = batch });
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning(
+                    "Supabase imported subscription reactivation failed. Status={StatusCode} Body={Body}",
+                    (int)response.StatusCode,
+                    body);
+                continue;
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var rows = await JsonSerializer.DeserializeAsync<List<UpdatedSubscriptionIdRow>>(stream, cancellationToken: cancellationToken) ?? [];
+            reactivatedCount += rows.Count;
+        }
+
+        return reactivatedCount;
     }
 
     private async Task<List<CurrentEntitlement>> EnrichPaystackEntitlementsAsync(

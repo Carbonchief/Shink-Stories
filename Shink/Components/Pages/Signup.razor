@@ -159,6 +159,20 @@
                 <p class="membership-total">Totaal om vandag te betaal: <strong>@FormatPlanAmount(SelectedPlan)</strong></p>
             }
 
+            <div class="signup-field signup-field-full signup-discount-code-field">
+                <label class="form-label" for="signup-discount-code">Kode of voucher</label>
+                <InputText id="signup-discount-code"
+                           class="form-control"
+                           autocomplete="off"
+                           placeholder="Voer jou kode in"
+                           aria-label="Kode of voucher"
+                           @bind-Value="SignUpForm.DiscountCode" />
+                <ValidationMessage class="invalid-feedback d-block" For="@(() => SignUpForm.DiscountCode)" />
+                <p class="signup-discount-code-help">
+                    As jou kode geldig is, slaan ons PayFast vir nou oor en aktiveer jou toegang direk.
+                </p>
+            </div>
+
         </aside>
     </div>
 </section>
@@ -269,7 +283,9 @@
                 DisplayName: SignUpForm.DisplayName.Trim(),
                 Email: SignUpForm.Email.Trim(),
                 MobileNumber: SignUpForm.MobileNumber.Trim(),
-                Password: SignUpForm.Password);
+                Password: SignUpForm.Password,
+                SelectedTierCode: SelectedPlan?.TierCode,
+                DiscountCode: SignUpForm.DiscountCode.Trim());
 
             var response = await authModule.InvokeAsync<AuthBrowserResponse>("postAuthJson", "/api/auth/signup", payload);
             if (response.Ok)
@@ -277,7 +293,7 @@
                 SignUpSucceeded = true;
                 StatusMessage = response.Message ?? "Welkom! Jou rekening is geskep en jy is nou ingeteken.";
                 ResetForm();
-                await RedirectToTargetAsync(GetRedirectTarget(response.RedirectPath));
+                await RedirectToTargetAsync(GetRedirectTarget(response.RedirectPath, response.CodeApplied));
                 return;
             }
 
@@ -317,7 +333,8 @@
                     "signup-email",
                     "signup-mobile-number",
                     "signup-password",
-                    "signup-password-confirm"
+                    "signup-password-confirm",
+                    "signup-discount-code"
                 });
 
             if (values.TryGetValue("signup-first-name", out var firstNameValue))
@@ -353,6 +370,11 @@
             if (values.TryGetValue("signup-password-confirm", out var confirmPasswordValue))
             {
                 SignUpForm.ConfirmPassword = confirmPasswordValue ?? string.Empty;
+            }
+
+            if (values.TryGetValue("signup-discount-code", out var discountCodeValue))
+            {
+                SignUpForm.DiscountCode = discountCodeValue?.Trim() ?? string.Empty;
             }
         }
         catch
@@ -400,8 +422,9 @@
         return Task.FromResult("/luister");
     }
 
-    private string GetRedirectTarget(string? apiRedirectPath = null) =>
-        GetSelectedPlanCheckoutPath()
+    private string GetRedirectTarget(string? apiRedirectPath = null, bool codeApplied = false) =>
+        (codeApplied ? GetSafePostAuthPath(apiRedirectPath) : null)
+        ?? GetSelectedPlanCheckoutPath()
         ?? GetSafeNonCheckoutReturnUrl()
         ?? GetSafePostAuthPath(apiRedirectPath)
         ?? "/luister";
@@ -756,9 +779,11 @@
         string DisplayName,
         string Email,
         string MobileNumber,
-        string Password);
+        string Password,
+        string? SelectedTierCode,
+        string? DiscountCode);
 
-    private sealed record AuthBrowserResponse(bool Ok, int Status, string? Message, string? RedirectPath);
+    private sealed record AuthBrowserResponse(bool Ok, int Status, string? Message, string? RedirectPath, bool CodeApplied);
 
     private sealed class SignUpFormModel
     {
@@ -788,5 +813,8 @@
         [Required(ErrorMessage = "Bevestig asseblief jou wagwoord.")]
         [Compare(nameof(Password), ErrorMessage = "Wagwoorde stem nie ooreen nie.")]
         public string ConfirmPassword { get; set; } = string.Empty;
+
+        [StringLength(80, ErrorMessage = "Jou kode mag nie langer as 80 karakters wees nie.")]
+        public string DiscountCode { get; set; } = string.Empty;
     }
 }

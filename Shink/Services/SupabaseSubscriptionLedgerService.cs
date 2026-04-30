@@ -20,6 +20,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     private const string GratisTierCode = "gratis";
     private const string GratisProvider = "paystack";
     private const string GratisPlanSlug = "gratis";
+    private static readonly TimeSpan AccountRepairAttemptWindow = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan AuthorizationRetryDelay = TimeSpan.FromDays(1);
     private static readonly TimeSpan PaymentRecoveryGracePeriod = TimeSpan.FromDays(4);
 
@@ -141,6 +142,18 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         var nowUtc = DateTimeOffset.UtcNow;
         var providerPaymentId = ResolveProviderPaymentIdForEvent(subscription);
+        var recentRepairResult = await TryResolveRecentAccountRepairResultAsync(
+            candidate.Context.BaseUri,
+            candidate.Context.ApiKey,
+            subscription.SubscriptionId,
+            plan.Slug,
+            nowUtc,
+            cancellationToken);
+        if (recentRepairResult is not null)
+        {
+            return recentRepairResult;
+        }
+
         var reference = BuildAccountRepairReference(subscription.SubscriptionId);
         var chargeResult = await _paystackCheckoutService.ChargeAuthorizationAsync(
             plan,
@@ -170,6 +183,12 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             eventStatus: chargeResult.IsSuccess ? "success" : chargeResult.TransactionStatus ?? "failed",
             payload: eventPayload,
             cancellationToken);
+
+        if (IsPendingPaystackStatus(chargeResult.TransactionStatus) ||
+            IsDuplicatePaystackReferenceFailure(chargeResult))
+        {
+            return new SubscriptionRepairResult(false, plan.Slug, IsPending: true);
+        }
 
         if (!chargeResult.IsSuccess)
         {
@@ -201,6 +220,61 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             cancellationToken);
 
         return new SubscriptionRepairResult(true, plan.Slug);
+    }
+
+    private async Task<SubscriptionRepairResult?> TryResolveRecentAccountRepairResultAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriptionId,
+        string planSlug,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var cutoffUtc = nowUtc.Subtract(AccountRepairAttemptWindow);
+        var filters = string.Join(
+            "&",
+            $"subscription_id=eq.{Uri.EscapeDataString(subscriptionId)}",
+            "provider=eq.paystack",
+            "event_type=eq.paystack.authorization_retry",
+            $"received_at=gt.{Uri.EscapeDataString(cutoffUtc.UtcDateTime.ToString("O"))}",
+            "select=event_status,provider_transaction_id,received_at,payload",
+            "order=received_at.desc",
+            "limit=10");
+        var uri = new Uri(baseUri, $"rest/v1/subscription_events?{filters}");
+
+        try
+        {
+            using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var rows = await JsonSerializer.DeserializeAsync<List<AccountRepairEventRow>>(stream, cancellationToken: cancellationToken)
+                ?? [];
+            foreach (var row in rows.Where(IsAccountRepairEvent))
+            {
+                var status = ResolveAccountRepairEventStatus(row);
+                if (IsPendingPaystackStatus(status))
+                {
+                    return new SubscriptionRepairResult(false, planSlug, IsPending: true);
+                }
+
+                if (IsSuccessfulPaystackStatus(status))
+                {
+                    return new SubscriptionRepairResult(true, planSlug);
+                }
+            }
+        }
+        catch (Exception exception) when (!cancellationToken.IsCancellationRequested &&
+                                         exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(exception, "Recent account repair lookup failed. subscription_id={SubscriptionId}", subscriptionId);
+        }
+
+        return null;
     }
 
     public async Task<SubscriptionFreeTierTransferResult> TransferPaidSubscriptionToGratisAsync(
@@ -1161,7 +1235,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             var escapedSubscriberId = Uri.EscapeDataString(subscriberId);
             var subscriptionsUri = new Uri(
                 baseUri,
-                $"rest/v1/subscriptions?select=status,next_renewal_at,cancelled_at,tier_code&subscriber_id=eq.{escapedSubscriberId}&status=eq.active&order=subscribed_at.desc&limit=25");
+                $"rest/v1/subscriptions?select=status,next_renewal_at,cancelled_at,tier_code,source_system&subscriber_id=eq.{escapedSubscriberId}&status=eq.active&order=subscribed_at.desc&limit=25");
 
             using var subscriptionsRequest = CreateRequest(HttpMethod.Get, subscriptionsUri, apiKey);
             using var subscriptionsResponse = await _httpClient.SendAsync(subscriptionsRequest, cancellationToken);
@@ -1352,11 +1426,25 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             .FirstOrDefault();
     }
 
-    private static bool IsUsablePaidSubscription(SelfServiceSubscriptionRow row, DateTimeOffset nowUtc) =>
-        string.Equals(row.Status, "active", StringComparison.OrdinalIgnoreCase) &&
-        row.CancelledAt is null &&
-        row.NextRenewalAt is not null &&
-        row.NextRenewalAt > nowUtc;
+    private static bool IsUsablePaidSubscription(SelfServiceSubscriptionRow row, DateTimeOffset nowUtc)
+    {
+        if (!string.Equals(row.Status, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (row.CancelledAt is not null)
+        {
+            return false;
+        }
+
+        if (HasOpenEndedImportedPaidAccess(row))
+        {
+            return true;
+        }
+
+        return row.NextRenewalAt is not null && row.NextRenewalAt > nowUtc;
+    }
 
     private static string? ResolvePaidSubscriptionAttentionReason(
         SelfServiceSubscriptionRow row,
@@ -1381,6 +1469,11 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         if (row.CancelledAt is not null && row.CancelledAt <= nowUtc)
         {
             return "cancelled";
+        }
+
+        if (HasOpenEndedImportedPaidAccess(row))
+        {
+            return null;
         }
 
         if (row.NextRenewalAt is null)
@@ -1521,6 +1614,11 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             return false;
         }
 
+        if (HasOpenEndedImportedPaidAccess(row.TierCode, row.SourceSystem, row.Status, row.CancelledAt, row.NextRenewalAt))
+        {
+            return true;
+        }
+
         if (!string.Equals(row.TierCode, GratisTierCode, StringComparison.OrdinalIgnoreCase) &&
             row.NextRenewalAt is null)
         {
@@ -1547,6 +1645,11 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             return false;
         }
 
+        if (HasOpenEndedImportedPaidAccess(row))
+        {
+            return true;
+        }
+
         if (!string.Equals(row.TierCode, GratisTierCode, StringComparison.OrdinalIgnoreCase) &&
             row.NextRenewalAt is null)
         {
@@ -1555,6 +1658,22 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         return true;
     }
+
+    private static bool HasOpenEndedImportedPaidAccess(SelfServiceSubscriptionRow row) =>
+        HasOpenEndedImportedPaidAccess(row.TierCode, row.SourceSystem, row.Status, row.CancelledAt, row.NextRenewalAt);
+
+    private static bool HasOpenEndedImportedPaidAccess(
+        string? tierCode,
+        string? sourceSystem,
+        string? status,
+        DateTimeOffset? cancelledAt,
+        DateTimeOffset? nextRenewalAt) =>
+        !string.Equals(tierCode, GratisTierCode, StringComparison.OrdinalIgnoreCase) &&
+        (string.Equals(sourceSystem, "wordpress_pmpro", StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(sourceSystem, "discount_code", StringComparison.OrdinalIgnoreCase)) &&
+        string.Equals(status, "active", StringComparison.OrdinalIgnoreCase) &&
+        cancelledAt is null &&
+        nextRenewalAt is null;
 
     private static bool IsLocallyCancellableSubscription(SelfServiceSubscriptionRow row)
     {
@@ -3316,7 +3435,18 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             safeSubscriptionId = Guid.NewGuid().ToString("N");
         }
 
-        return $"repair-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{safeSubscriptionId}";
+        var nowUtc = DateTimeOffset.UtcNow;
+        var bucketMinute = nowUtc.Minute - nowUtc.Minute % (int)AccountRepairAttemptWindow.TotalMinutes;
+        var bucketUtc = new DateTimeOffset(
+            nowUtc.Year,
+            nowUtc.Month,
+            nowUtc.Day,
+            nowUtc.Hour,
+            bucketMinute,
+            0,
+            TimeSpan.Zero);
+
+        return $"repair-{bucketUtc:yyyyMMddHHmm}-{safeSubscriptionId}";
     }
 
     private static object DeserializePayloadObject(string payloadJson)
@@ -3449,6 +3579,46 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string.Equals(status, "success", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(status, "successful", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(status, "paid", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsPendingPaystackStatus(string? status) =>
+        string.Equals(status, "queued", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(status, "pending", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(status, "ongoing", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsDuplicatePaystackReferenceFailure(PaystackAuthorizationChargeResult chargeResult) =>
+        ContainsDuplicateReference(chargeResult.ErrorMessage) ||
+        ContainsDuplicateReference(chargeResult.RawPayload);
+
+    private static bool ContainsDuplicateReference(string? value) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        value.Contains("duplicate", StringComparison.OrdinalIgnoreCase) &&
+        value.Contains("reference", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsAccountRepairEvent(AccountRepairEventRow row)
+    {
+        if (row.Payload.ValueKind != JsonValueKind.Object)
+        {
+            return false;
+        }
+
+        var metadataSource = TryReadNestedString(row.Payload, "data", "metadata", "source") ??
+                             TryReadNestedString(row.Payload, "metadata", "source");
+        if (string.Equals(metadataSource, "subscription_authorization_retry", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        var reference = TryReadNestedString(row.Payload, "data", "reference") ??
+                        TryReadString(row.Payload, "reference") ??
+                        row.ProviderTransactionId;
+        return !string.IsNullOrWhiteSpace(reference) &&
+               reference.StartsWith("repair-", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? ResolveAccountRepairEventStatus(AccountRepairEventRow row) =>
+        row.EventStatus ??
+        TryReadNestedString(row.Payload, "data", "status") ??
+        TryReadString(row.Payload, "status");
 
     private static string? NormalizeMobileNumber(string? value)
     {
@@ -3660,6 +3830,21 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         public string? SubscriptionId { get; set; }
     }
 
+    private sealed class AccountRepairEventRow
+    {
+        [JsonPropertyName("event_status")]
+        public string? EventStatus { get; set; }
+
+        [JsonPropertyName("provider_transaction_id")]
+        public string? ProviderTransactionId { get; set; }
+
+        [JsonPropertyName("received_at")]
+        public DateTimeOffset? ReceivedAt { get; set; }
+
+        [JsonPropertyName("payload")]
+        public JsonElement Payload { get; set; }
+    }
+
     private sealed class PaymentRecoverySubscriptionRow
     {
         [JsonPropertyName("subscription_id")]
@@ -3775,6 +3960,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         [JsonPropertyName("tier_code")]
         public string? TierCode { get; set; }
+
+        [JsonPropertyName("source_system")]
+        public string? SourceSystem { get; set; }
     }
 
     private sealed class SubscriberProfileRow

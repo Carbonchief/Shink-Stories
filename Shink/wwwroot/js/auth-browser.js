@@ -190,14 +190,15 @@ async function readJsonPayload(response) {
             const redirectPath = typeof payload.redirectPath === "string" && payload.redirectPath.trim() !== ""
                 ? payload.redirectPath
                 : null;
+            const codeApplied = payload.codeApplied === true;
 
-            return { message, redirectPath };
+            return { message, redirectPath, codeApplied };
         }
     } catch {
         // Ignore non-JSON responses.
     }
 
-    return { message: null, redirectPath: null };
+    return { message: null, redirectPath: null, codeApplied: false };
 }
 
 export async function postAuthJson(endpoint, body) {
@@ -221,14 +222,16 @@ export async function postAuthJson(endpoint, body) {
             ok: response.ok,
             status: response.status,
             message: payload.message,
-            redirectPath: payload.redirectPath
+            redirectPath: payload.redirectPath,
+            codeApplied: payload.codeApplied === true
         };
     } catch {
         return {
             ok: false,
             status: 0,
             message: null,
-            redirectPath: null
+            redirectPath: null,
+            codeApplied: false
         };
     }
 }

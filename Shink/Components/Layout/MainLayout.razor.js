@@ -126,6 +126,9 @@ function startNightModeDelegates() {
         event.preventDefault();
         const shouldEnable = !document.body?.classList.contains(NIGHT_MODE_BODY_CLASS);
         setNightModeEnabled(shouldEnable, { persist: true });
+
+        const controlsContainer = toggle.closest(".nav-controls, .guest-controls");
+        closeNavMenuInContainer(controlsContainer);
     });
 
     nightModeDelegatesStarted = true;

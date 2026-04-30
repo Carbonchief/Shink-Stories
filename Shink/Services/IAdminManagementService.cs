@@ -134,6 +134,29 @@ public interface IAdminManagementService
         string? adminEmail,
         CancellationToken cancellationToken = default);
 
+    Task<AdminSubscriptionSettingsSnapshot> GetSubscriptionSettingsAsync(
+        string? adminEmail,
+        CancellationToken cancellationToken = default);
+
+    Task<AdminOperationResult> SaveSubscriptionSettingsAsync(
+        string? adminEmail,
+        AdminSubscriptionSettingsUpdateRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<AdminOperationResult> SaveSubscriptionTypeAsync(
+        string? adminEmail,
+        AdminSubscriptionTypeSaveRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<AdminOperationResult> SaveSubscriptionDiscountCodeAsync(
+        string? adminEmail,
+        AdminSubscriptionDiscountCodeSaveRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<AdminOperationResult> ImportWordPressSubscriptionDiscountCodesAsync(
+        string? adminEmail,
+        CancellationToken cancellationToken = default);
+
     Task<AdminSubscriberReportsSnapshot> GetSubscriberReportsAsync(
         string? adminEmail,
         CancellationToken cancellationToken = default);
@@ -493,6 +516,102 @@ public sealed record AdminStoreProductSaveRequest(
     decimal UnitPriceZar,
     int SortOrder,
     bool IsEnabled);
+
+public sealed record AdminSubscriptionSettingsSnapshot(
+    bool SignupCodeBypassEnabled,
+    IReadOnlyList<AdminSubscriptionTypeRecord> SubscriptionTypes,
+    IReadOnlyList<AdminSubscriptionDiscountCodeRecord> DiscountCodes);
+
+public sealed record AdminSubscriptionSettingsUpdateRequest(
+    bool SignupCodeBypassEnabled);
+
+public sealed record AdminSubscriptionTypeRecord(
+    string TierCode,
+    string DisplayName,
+    string? Description,
+    int BillingPeriodMonths,
+    decimal PriceZar,
+    string PayFastPlanSlug,
+    string? PaystackPlanCode,
+    bool IsActive);
+
+public sealed record AdminSubscriptionTypeSaveRequest(
+    string TierCode,
+    string DisplayName,
+    string? Description,
+    int BillingPeriodMonths,
+    decimal PriceZar,
+    string PayFastPlanSlug,
+    string? PaystackPlanCode,
+    bool IsActive);
+
+public sealed record AdminSubscriptionDiscountCodeRecord(
+    Guid DiscountCodeId,
+    string Code,
+    string? DisplayName,
+    string? Description,
+    bool IsGroupCode,
+    Guid? ParentDiscountCodeId,
+    string? ParentCode,
+    DateTimeOffset? StartsAt,
+    DateTimeOffset? ExpiresAt,
+    int MaxUses,
+    bool OneUsePerUser,
+    bool BypassPayment,
+    bool IsActive,
+    string SourceSystem,
+    int UsedCount,
+    int GroupCodeCount,
+    IReadOnlyList<AdminSubscriptionDiscountCodeTierRecord> TierMappings,
+    IReadOnlyList<AdminSubscriptionDiscountCodeUseRecord> Uses);
+
+public sealed record AdminSubscriptionDiscountCodeTierRecord(
+    string TierCode,
+    string TierName,
+    decimal InitialPaymentZar,
+    decimal BillingAmountZar,
+    int CycleNumber,
+    string? CyclePeriod,
+    int? BillingLimit,
+    decimal TrialAmountZar,
+    int TrialLimit,
+    int? ExpirationNumber,
+    string? ExpirationPeriod);
+
+public sealed record AdminSubscriptionDiscountCodeUseRecord(
+    Guid? RedemptionId,
+    string Email,
+    string? TierCode,
+    DateTimeOffset RedeemedAt,
+    DateTimeOffset? AccessEndsAt,
+    string SourceSystem);
+
+public sealed record AdminSubscriptionDiscountCodeSaveRequest(
+    Guid? DiscountCodeId,
+    string Code,
+    string? DisplayName,
+    string? Description,
+    bool IsGroupCode,
+    Guid? ParentDiscountCodeId,
+    DateTimeOffset? StartsAt,
+    DateTimeOffset? ExpiresAt,
+    int MaxUses,
+    bool OneUsePerUser,
+    bool BypassPayment,
+    bool IsActive,
+    IReadOnlyList<AdminSubscriptionDiscountCodeTierSaveItem> TierMappings);
+
+public sealed record AdminSubscriptionDiscountCodeTierSaveItem(
+    string TierCode,
+    decimal InitialPaymentZar,
+    decimal BillingAmountZar,
+    int CycleNumber,
+    string? CyclePeriod,
+    int? BillingLimit,
+    decimal TrialAmountZar,
+    int TrialLimit,
+    int? ExpirationNumber,
+    string? ExpirationPeriod);
 
 public sealed record AdminStoryAnalyticsSummary(
     [property: JsonPropertyName("total_views")] int TotalViews,

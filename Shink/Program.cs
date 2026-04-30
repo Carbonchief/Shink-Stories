@@ -447,6 +447,12 @@ app.Use(async (httpContext, next) =>
     await next();
 });
 
+app.MapGet("/healthz", (HttpContext httpContext) =>
+{
+    httpContext.Response.Headers.CacheControl = "no-store";
+    return Results.Text("ok", "text/plain; charset=utf-8");
+});
+
 app.MapGet("/media/image", async (
     string? src,
     IHttpClientFactory httpClientFactory,
@@ -739,6 +745,7 @@ app.MapGet("/betaalherinneringe/gaan", async (
     string? id,
     string? token,
     IAbandonedCartRecoveryService abandonedCartRecoveryService,
+    ISubscriptionLedgerService subscriptionLedgerService,
     IStoreOrderService storeOrderService,
     PaystackCheckoutService paystackCheckoutService,
     PayFastCheckoutService payFastCheckoutService,
@@ -762,6 +769,34 @@ app.MapGet("/betaalherinneringe/gaan", async (
         if (plan is null)
         {
             return Results.Redirect("/opsies");
+        }
+
+        var hasActiveTierSubscription = await subscriptionLedgerService.HasActiveSubscriptionForTierAsync(
+            recovery.CustomerEmail,
+            plan.TierCode,
+            httpContext.RequestAborted);
+        if (hasActiveTierSubscription)
+        {
+            await abandonedCartRecoveryService.ResolveSubscriptionRecoveriesAsync(
+                recovery.CustomerEmail,
+                plan.TierCode,
+                "duplicate_suppressed",
+                httpContext.RequestAborted);
+
+            logger.LogInformation(
+                "Blocked duplicate abandoned-cart checkout for active tier. recovery_id={RecoveryId} tier={TierCode} email={Email}",
+                recovery.RecoveryId,
+                plan.TierCode,
+                recovery.CustomerEmail);
+
+            var duplicateRedirectPath = QueryHelpers.AddQueryString(
+                "/opsies",
+                new Dictionary<string, string?>
+                {
+                    ["betaling"] = "reeds-ingeteken",
+                    ["tier"] = plan.TierCode
+                });
+            return Results.Redirect(duplicateRedirectPath);
         }
 
         if (string.Equals(recovery.Provider, "paystack", StringComparison.OrdinalIgnoreCase))
@@ -922,6 +957,7 @@ app.MapPost("/rekening/skuif-na-gratis", async (
 app.MapPost("/rekening/herstel-intekening", async (
     ISubscriptionLedgerService subscriptionLedgerService,
     PaystackCheckoutService paystackCheckoutService,
+    IMemoryCache memoryCache,
     HttpContext httpContext,
     ILogger<Program> logger) =>
 {
@@ -932,12 +968,43 @@ app.MapPost("/rekening/herstel-intekening", async (
 
     var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
                        ?? httpContext.User.Identity?.Name;
-    var repairResult = await subscriptionLedgerService.TryRepairPaidSubscriptionAsync(
-        signedInEmail,
-        httpContext.RequestAborted);
+    if (string.IsNullOrWhiteSpace(signedInEmail))
+    {
+        return Results.Redirect($"/teken-in?returnUrl={Uri.EscapeDataString("/luister")}");
+    }
+
+    var repairCacheKey = $"subscription-repair:{signedInEmail.Trim().ToLowerInvariant()}";
+    if (memoryCache.TryGetValue(repairCacheKey, out _))
+    {
+        return Results.Redirect(QueryHelpers.AddQueryString("/intekening-en-betaling", "rekening", "herstel-besig"));
+    }
+
+    memoryCache.Set(repairCacheKey, true, TimeSpan.FromMinutes(10));
+    SubscriptionRepairResult repairResult;
+    try
+    {
+        repairResult = await subscriptionLedgerService.TryRepairPaidSubscriptionAsync(
+            signedInEmail,
+            httpContext.RequestAborted);
+    }
+    catch
+    {
+        memoryCache.Remove(repairCacheKey);
+        throw;
+    }
+
+    if (!repairResult.IsPending)
+    {
+        memoryCache.Remove(repairCacheKey);
+    }
+
     if (repairResult.IsRecovered)
     {
         return Results.Redirect(QueryHelpers.AddQueryString("/luister", "rekening", "hersteld"));
+    }
+    if (repairResult.IsPending)
+    {
+        return Results.Redirect(QueryHelpers.AddQueryString("/intekening-en-betaling", "rekening", "herstel-besig"));
     }
 
     var plan = PaymentPlanCatalog.FindBySlug(repairResult.PlanSlug);
@@ -2013,13 +2080,31 @@ app.MapPost("/api/auth/signup", async (
         DisplayName = request.DisplayName?.Trim() ?? string.Empty,
         Email = request.Email?.Trim() ?? string.Empty,
         MobileNumber = request.MobileNumber?.Trim() ?? string.Empty,
-        Password = request.Password ?? string.Empty
+        Password = request.Password ?? string.Empty,
+        SelectedTierCode = request.SelectedTierCode?.Trim(),
+        DiscountCode = request.DiscountCode?.Trim()
     };
 
     var validationError = ValidateSignUpRequest(request);
     if (validationError is not null)
     {
         return Results.BadRequest(new { message = validationError });
+    }
+
+    var discountCodeApplied = false;
+    if (!string.IsNullOrWhiteSpace(request.DiscountCode))
+    {
+        var preview = await subscriptionLedgerService.PreviewSignupDiscountCodeAsync(
+            request.DiscountCode,
+            request.SelectedTierCode,
+            httpContext.RequestAborted);
+        if (!preview.IsValid)
+        {
+            return Results.BadRequest(new
+            {
+                message = preview.ErrorMessage ?? "Die kode kon nie gevalideer word nie."
+            });
+        }
     }
 
     var signUpResult = await supabaseAuthService.SignUpWithPasswordAsync(
@@ -2064,6 +2149,26 @@ app.MapPost("/api/auth/signup", async (
         request.MobileNumber,
         cancellationToken: httpContext.RequestAborted);
 
+    if (!string.IsNullOrWhiteSpace(request.DiscountCode))
+    {
+        var applyResult = await subscriptionLedgerService.ApplySignupDiscountCodeAsync(
+            signedInEmail,
+            request.DiscountCode,
+            request.SelectedTierCode,
+            httpContext.RequestAborted);
+        if (!applyResult.IsSuccess)
+        {
+            return Results.Json(
+                new
+                {
+                    message = applyResult.ErrorMessage ?? "Jou rekening is geskep, maar ons kon nie die kode nou toepas nie."
+                },
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        discountCodeApplied = true;
+    }
+
     var signInCookieResult = await SignInUserAsync(httpContext, signedInEmail, authSessionService, adminManagementService, subscriptionLedgerService, httpContext.RequestServices.GetRequiredService<IWordPressMigrationService>());
     if (!signInCookieResult.IsSuccess)
     {
@@ -2076,14 +2181,17 @@ app.MapPost("/api/auth/signup", async (
     return Results.Ok(new
     {
         message =
-            profileStored && gratisProvisioned
-                ? "Welkom! Jou rekening is geskep en jy is nou ingeteken."
-                : profileStored
-                    ? "Welkom! Jou rekening is geskep en jy is nou ingeteken. Ons kon nie jou gratis toegang nou aktiveer nie, maar jy kan steeds probeer luister."
-                    : gratisProvisioned
-                        ? "Welkom! Jou rekening is geskep en jy is nou ingeteken. Ons kon nie al jou profielbesonderhede nou stoor nie."
-                        : "Welkom! Jou rekening is geskep en jy is nou ingeteken. Ons kon nie al jou profiel- en gratis toegangbesonderhede nou voltooi nie.",
-        redirectPath
+            discountCodeApplied
+                ? "Welkom! Jou rekening is geskep, jou kode is toegepas en jy is nou ingeteken."
+                : profileStored && gratisProvisioned
+                    ? "Welkom! Jou rekening is geskep en jy is nou ingeteken."
+                    : profileStored
+                        ? "Welkom! Jou rekening is geskep en jy is nou ingeteken. Ons kon nie jou gratis toegang nou aktiveer nie, maar jy kan steeds probeer luister."
+                        : gratisProvisioned
+                            ? "Welkom! Jou rekening is geskep en jy is nou ingeteken. Ons kon nie al jou profielbesonderhede nou stoor nie."
+                            : "Welkom! Jou rekening is geskep en jy is nou ingeteken. Ons kon nie al jou profiel- en gratis toegangbesonderhede nou voltooi nie.",
+        redirectPath,
+        codeApplied = discountCodeApplied
     });
 }).RequireRateLimiting("auth-submit").DisableAntiforgery();
 
@@ -2783,13 +2891,16 @@ if (args.Any(argument => string.Equals(argument, "--sync-wordpress-users", Strin
     var result = await migrationService.SyncAsync();
 
     app.Logger.LogInformation(
-        "WordPress sync finished. users={ImportedUsers} subscribers={UpsertedSubscribers} avatars={UploadedAvatars} periods={UpsertedMembershipPeriods} orders={UpsertedMembershipOrders} subscriptions={UpsertedSubscriptions} active={UpsertedCurrentEntitlements} cancelled={CancelledCurrentEntitlements} auth_backfill={BackfilledAuthSubscribers} errors={ErrorCount}",
+        "WordPress sync finished. users={ImportedUsers} subscribers={UpsertedSubscribers} avatars={UploadedAvatars} periods={UpsertedMembershipPeriods} orders={UpsertedMembershipOrders} subscriptions={UpsertedSubscriptions} discount_codes={ImportedDiscountCodes} discount_code_tiers={ImportedDiscountCodeTiers} discount_code_redemptions={ImportedDiscountCodeRedemptions} active={UpsertedCurrentEntitlements} cancelled={CancelledCurrentEntitlements} auth_backfill={BackfilledAuthSubscribers} errors={ErrorCount}",
         result.ImportedUsers,
         result.UpsertedSubscribers,
         result.UploadedAvatars,
         result.UpsertedMembershipPeriods,
         result.UpsertedMembershipOrders,
         result.UpsertedSubscriptions,
+        result.ImportedDiscountCodes,
+        result.ImportedDiscountCodeTiers,
+        result.ImportedDiscountCodeRedemptions,
         result.UpsertedCurrentEntitlements,
         result.CancelledCurrentEntitlements,
         result.BackfilledAuthSubscribers,
@@ -4834,6 +4945,17 @@ static string? ValidateSignUpRequest(AuthSignUpApiRequest request)
         return "Gebruik asseblief 'n geldige selfoonnommer.";
     }
 
+    if (!string.IsNullOrWhiteSpace(request.SelectedTierCode) &&
+        (request.SelectedTierCode.Length > 80 || !Regex.IsMatch(request.SelectedTierCode, "^[A-Za-z0-9_]+$")))
+    {
+        return "Kies asseblief 'n geldige intekeningsoort.";
+    }
+
+    if (!string.IsNullOrWhiteSpace(request.DiscountCode) && request.DiscountCode.Length > 80)
+    {
+        return "Jou kode mag nie langer as 80 karakters wees nie.";
+    }
+
     return ValidateSignInRequest(request.Email, request.Password);
 }
 
@@ -5415,7 +5537,9 @@ sealed record AuthSignUpApiRequest(
     string? DisplayName,
     string? Email,
     string? MobileNumber,
-    string? Password);
+    string? Password,
+    string? SelectedTierCode,
+    string? DiscountCode);
 sealed record StoryViewTrackApiRequest(string? StoryPath, string? Source, string? ReferrerPath);
 sealed record StoryListenTrackApiRequest(
     string? StoryPath,

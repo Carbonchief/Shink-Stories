@@ -1,0 +1,93 @@
+.admin-settings-grid {
+    display: grid;
+    gap: 1rem;
+}
+
+.admin-settings-card {
+    display: grid;
+    gap: 0.9rem;
+    padding: 1rem;
+    border: 1px solid rgba(34, 34, 34, 0.12);
+    border-radius: 1rem;
+    background: #fff;
+}
+
+.admin-settings-card h3,
+.admin-settings-card h4 {
+    margin: 0;
+}
+
+.admin-settings-card p {
+    margin: 0;
+    color: rgba(34, 34, 34, 0.72);
+}
+
+.admin-settings-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.admin-settings-table-card {
+    overflow-x: auto;
+}
+
+.admin-settings-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 760px;
+}
+
+.admin-settings-table th,
+.admin-settings-table td {
+    padding: 0.75rem;
+    border-bottom: 1px solid rgba(34, 34, 34, 0.08);
+    vertical-align: top;
+    text-align: left;
+}
+
+.admin-settings-table tbody tr.is-selected {
+    background: rgba(69, 186, 173, 0.08);
+}
+
+.admin-code-editor-card {
+    margin-top: 1rem;
+}
+
+.admin-code-editor-head,
+.admin-code-tier-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: start;
+}
+
+.admin-code-editor-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 0.9rem;
+}
+
+.admin-code-tier-section,
+.admin-code-uses-section {
+    display: grid;
+    gap: 0.9rem;
+}
+
+.admin-code-tier-row {
+    display: grid;
+    grid-template-columns: minmax(180px, 1.5fr) minmax(120px, 0.7fr) minmax(160px, 0.8fr) auto;
+    gap: 0.75rem;
+    align-items: start;
+}
+
+.admin-code-editor-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+@media (max-width: 900px) {
+    .admin-code-tier-row {
+        grid-template-columns: 1fr;
+    }
+}

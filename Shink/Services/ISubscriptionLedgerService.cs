@@ -39,6 +39,15 @@ public interface ISubscriptionLedgerService
         string? email,
         DateTimeOffset lastLoginAtUtc,
         CancellationToken cancellationToken = default);
+    Task<SubscriptionCodeSignupPreviewResult> PreviewSignupDiscountCodeAsync(
+        string? code,
+        string? selectedTierCode,
+        CancellationToken cancellationToken = default);
+    Task<SubscriptionCodeApplicationResult> ApplySignupDiscountCodeAsync(
+        string? email,
+        string? code,
+        string? selectedTierCode,
+        CancellationToken cancellationToken = default);
     Task<SubscriberEmailChangeResult> ChangeSubscriberEmailAsync(
         string? currentEmail,
         string? newEmail,
@@ -64,7 +73,8 @@ public sealed record PaidSubscriptionAttention(
 public sealed record SubscriptionRepairResult(
     bool IsRecovered,
     string? PlanSlug = null,
-    string? ErrorMessage = null);
+    string? ErrorMessage = null,
+    bool IsPending = false);
 public sealed record SubscriptionFreeTierTransferResult(
     bool IsSuccess,
     string? ErrorMessage = null,
@@ -84,4 +94,21 @@ public sealed record SubscriberProfile(
     string? ProfileImageUrl,
     string? ProfileImageObjectKey,
     string? ProfileImageContentType);
+public sealed record SubscriptionCodeSignupPreviewResult(
+    bool IsValid,
+    string? ErrorMessage = null,
+    string? ResolvedTierCode = null,
+    string? ResolvedTierName = null,
+    DateTimeOffset? AccessEndsAtUtc = null,
+    DateTimeOffset? CodeExpiresAtUtc = null,
+    bool BypassesPayment = false,
+    IReadOnlyList<SubscriptionCodeTierOption>? TierOptions = null);
+public sealed record SubscriptionCodeTierOption(
+    string TierCode,
+    string DisplayName);
+public sealed record SubscriptionCodeApplicationResult(
+    bool IsSuccess,
+    string? ErrorMessage = null,
+    string? TierCode = null,
+    DateTimeOffset? AccessEndsAtUtc = null);
 public sealed record SubscriberEmailChangeResult(bool IsSuccess, string? ErrorMessage = null);

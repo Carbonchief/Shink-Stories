@@ -23,6 +23,25 @@ public class AccountMenuSourceTests
         Assert.DoesNotContain("Hulp sentrum", dropdownMarkup);
     }
 
+    [TestMethod]
+    public void NightModeToggle_ClosesContainingNavigationMenu()
+    {
+        var script = File.ReadAllText(GetRepoPath("Shink", "Components", "Layout", "MainLayout.razor.js"));
+        var handlerStart = script.IndexOf("function startNightModeDelegates()", StringComparison.Ordinal);
+
+        Assert.IsGreaterThanOrEqualTo(0, handlerStart, "Could not find the night mode delegate.");
+
+        var handlerEnd = script.IndexOf("nightModeDelegatesStarted = true;", handlerStart, StringComparison.Ordinal);
+
+        Assert.IsTrue(handlerEnd > handlerStart, "Could not find the end of the night mode delegate.");
+
+        var handlerScript = script[handlerStart..handlerEnd];
+
+        Assert.Contains("setNightModeEnabled(shouldEnable, { persist: true });", handlerScript);
+        Assert.Contains("const controlsContainer = toggle.closest(\".nav-controls, .guest-controls\");", handlerScript);
+        Assert.Contains("closeNavMenuInContainer(controlsContainer);", handlerScript);
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var testsDirectory = Path.GetDirectoryName(GetSourceFilePath())!;

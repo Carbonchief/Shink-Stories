@@ -1,0 +1,695 @@
+@using System.Globalization
+@inject IAdminManagementService AdminManagementService
+@inject ILogger<AdminSettingsPanel> Logger
+@inject ISnackbar Snackbar
+
+@if (IsLoading)
+{
+    <section class="admin-section">
+        <div class="admin-section-head">
+            <div>
+                <h2>@T("Instellings", "Settings")</h2>
+                <p>@T("Laai intekening- en kode-instellings...", "Loading subscription and code settings...")</p>
+            </div>
+        </div>
+    </section>
+}
+else
+{
+    @if (!string.IsNullOrWhiteSpace(StatusMessage))
+    {
+        <p class="admin-feedback is-success">@StatusMessage</p>
+    }
+    else if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <p class="admin-feedback is-error">@ErrorMessage</p>
+    }
+
+    <section class="admin-section">
+        <div class="admin-section-head">
+            <div>
+                <h2>@T("Algemene instellings", "General settings")</h2>
+                <p>@T("Beheer hoe intekeningkodes op die webwerf werk.", "Control how subscription codes work on the site.")</p>
+            </div>
+            <MudButton Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       OnClick="ReloadAsync"
+                       Disabled="@IsSavingSettings">
+                @T("Verfris", "Refresh")
+            </MudButton>
+        </div>
+
+        <div class="admin-settings-grid">
+            <div class="admin-settings-card">
+                <h3>@T("Kode-betaling omseil", "Code payment bypass")</h3>
+                <p>@T("Laat geldige kodes toe om PayFast te omseil en toegang direk te aktiveer op die teken-op blad.", "Allow valid codes to bypass PayFast and activate access directly on the signup page.")</p>
+                <MudSwitch T="bool" @bind-Value="SignupCodeBypassEnabled" Color="Color.Primary" />
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           OnClick="SaveSettingsAsync"
+                           Disabled="@IsSavingSettings">
+                    @T("Stoor instellings", "Save settings")
+                </MudButton>
+            </div>
+        </div>
+    </section>
+
+    <section class="admin-section">
+        <div class="admin-section-head">
+            <div>
+                <h2>@T("Intekeningsoorte", "Subscription types")</h2>
+                <p>@T("Werk die planne by wat kodes en betalings gebruik.", "Update the plans that codes and payments use.")</p>
+            </div>
+        </div>
+
+        <div class="admin-settings-card admin-settings-table-card">
+            <table class="admin-settings-table">
+                <thead>
+                    <tr>
+                        <th>@T("Kode", "Code")</th>
+                        <th>@T("Naam", "Name")</th>
+                        <th>@T("Maande", "Months")</th>
+                        <th>@T("Prys", "Price")</th>
+                        <th>@T("PayFast slug", "PayFast slug")</th>
+                        <th>@T("Paystack code", "Paystack code")</th>
+                        <th>@T("Aktief", "Active")</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var tier in SubscriptionTypeEditors)
+                    {
+                        <tr>
+                            <td>@tier.TierCode</td>
+                            <td>
+                                <MudTextField T="string" @bind-Value="tier.DisplayName" Variant="Variant.Outlined" />
+                            </td>
+                            <td>
+                                <MudNumericField T="int" @bind-Value="tier.BillingPeriodMonths" Variant="Variant.Outlined" Min="1" />
+                            </td>
+                            <td>
+                                <MudNumericField T="decimal" @bind-Value="tier.PriceZar" Variant="Variant.Outlined" Min="0" Step="1" />
+                            </td>
+                            <td>
+                                <MudTextField T="string" @bind-Value="tier.PayFastPlanSlug" Variant="Variant.Outlined" />
+                            </td>
+                            <td>
+                                <MudTextField T="string" @bind-Value="tier.PaystackPlanCode" Variant="Variant.Outlined" />
+                            </td>
+                            <td>
+                                <MudSwitch T="bool" @bind-Value="tier.IsActive" Color="Color.Primary" />
+                            </td>
+                            <td>
+                                <MudButton Variant="Variant.Text"
+                                           Color="Color.Primary"
+                                           OnClick="() => SaveSubscriptionTypeAsync(tier)"
+                                           Disabled="@IsSavingSubscriptionType">
+                                    @T("Stoor", "Save")
+                                </MudButton>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section class="admin-section">
+        <div class="admin-section-head">
+            <div>
+                <h2>@T("Kodes", "Codes")</h2>
+                <p>@T("Bestuur nuwe kodes, ingevoerde WordPress kodes, groepkodes en vorige gebruike.", "Manage new codes, imported WordPress codes, group codes, and previous uses.")</p>
+            </div>
+            <div class="admin-settings-actions">
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           OnClick="StartNewCode">
+                    @T("Nuwe kode", "New code")
+                </MudButton>
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Secondary"
+                           OnClick="ImportWordPressCodesAsync"
+                           Disabled="@IsImportingWordPressCodes">
+                    @T("Voer uit WordPress in", "Import from WordPress")
+                </MudButton>
+            </div>
+        </div>
+
+        <div class="admin-settings-card">
+            <MudTextField T="string"
+                          @bind-Value="DiscountCodeSearch"
+                          Placeholder='@T("Soek kode, ouer kode of e-pos", "Search code, parent code, or email")'
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Immediate="true" />
+        </div>
+
+        <div class="admin-settings-card admin-settings-table-card">
+            <table class="admin-settings-table">
+                <thead>
+                    <tr>
+                        <th>@T("Kode", "Code")</th>
+                        <th>@T("Tipe", "Type")</th>
+                        <th>@T("Ouer", "Parent")</th>
+                        <th>@T("Intekeningsoorte", "Subscription types")</th>
+                        <th>@T("Gebruik", "Use")</th>
+                        <th>@T("Verval", "Expires")</th>
+                        <th>@T("Status", "Status")</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var code in FilteredDiscountCodes)
+                    {
+                        <tr class="@(DiscountCodeEditor?.DiscountCodeId == code.DiscountCodeId ? "is-selected" : null)">
+                            <td>@(string.IsNullOrWhiteSpace(code.Code) ? "-" : code.Code)</td>
+                            <td>@(code.IsGroupCode ? T("Groepkode", "Group code") : T("Hoofkode", "Parent code"))</td>
+                            <td>@(string.IsNullOrWhiteSpace(code.ParentCode) ? "-" : code.ParentCode)</td>
+                            <td>@string.Join(", ", code.TierMappings.Select(mapping => mapping.TierName))</td>
+                            <td>@($"{code.UsedCount}{(code.MaxUses > 0 ? $" / {code.MaxUses}" : string.Empty)}")</td>
+                            <td>@FormatDate(code.ExpiresAt)</td>
+                            <td>@(code.IsActive ? T("Aktief", "Active") : T("Onaktief", "Inactive"))</td>
+                            <td>
+                                <MudButton Variant="Variant.Text"
+                                           Color="Color.Primary"
+                                           OnClick="() => EditCode(code)">
+                                    @T("Wysig", "Edit")
+                                </MudButton>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (DiscountCodeEditor is not null)
+        {
+            <div class="admin-settings-card admin-code-editor-card">
+                <div class="admin-code-editor-head">
+                    <div>
+                        <h3>@(DiscountCodeEditor.DiscountCodeId is null ? T("Nuwe kode", "New code") : T("Wysig kode", "Edit code"))</h3>
+                        <p>@T("Stel die kode se toegang, geldigheid en plan-koppeling op.", "Configure the code's access, validity, and plan mapping.")</p>
+                    </div>
+                    <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="ClearCodeEditor">
+                        @T("Maak toe", "Close")
+                    </MudButton>
+                </div>
+
+                <div class="admin-code-editor-grid">
+                    <MudTextField T="string" Label="@T("Kode", "Code")" @bind-Value="DiscountCodeEditor.Code" Variant="Variant.Outlined" />
+                    <MudTextField T="string" Label="@T("Vertoonnaam", "Display name")" @bind-Value="DiscountCodeEditor.DisplayName" Variant="Variant.Outlined" />
+                    <MudTextField T="string" Label="@T("Beskrywing", "Description")" @bind-Value="DiscountCodeEditor.Description" Variant="Variant.Outlined" />
+                    <MudSelect T="bool" Label="@T("Tipe", "Type")" @bind-Value="DiscountCodeEditor.IsGroupCode" Variant="Variant.Outlined">
+                        <MudSelectItem Value="@false">@T("Hoofkode", "Parent code")</MudSelectItem>
+                        <MudSelectItem Value="@true">@T("Groepkode", "Group code")</MudSelectItem>
+                    </MudSelect>
+                    <MudSelect T="Guid?" Label="@T("Ouer kode", "Parent code")" @bind-Value="DiscountCodeEditor.ParentDiscountCodeId" Variant="Variant.Outlined" Disabled="@(!DiscountCodeEditor.IsGroupCode)">
+                        <MudSelectItem Value="@((Guid?)null)">@T("Geen", "None")</MudSelectItem>
+                        @foreach (var parentCode in ParentCodeOptions)
+                        {
+                            <MudSelectItem Value="@parentCode.DiscountCodeId">@parentCode.Code</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudNumericField T="int" Label="@T("Maksimum gebruike (0 = onbeperk)", "Maximum uses (0 = unlimited)")" @bind-Value="DiscountCodeEditor.MaxUses" Variant="Variant.Outlined" Min="0" />
+                    <MudDatePicker Label="@T("Begin datum", "Start date")" Date="DiscountCodeEditor.StartsOn" DateChanged="OnCodeStartsOnChanged" Variant="Variant.Outlined" />
+                    <MudDatePicker Label="@T("Verval datum", "Expiry date")" Date="DiscountCodeEditor.ExpiresOn" DateChanged="OnCodeExpiresOnChanged" Variant="Variant.Outlined" />
+                    <MudSwitch T="bool" @bind-Value="DiscountCodeEditor.OneUsePerUser" Color="Color.Primary" Label="@T("Een keer per gebruiker", "One use per user")" />
+                    <MudSwitch T="bool" @bind-Value="DiscountCodeEditor.BypassPayment" Color="Color.Primary" Label="@T("Omseil betaling", "Bypass payment")" />
+                    <MudSwitch T="bool" @bind-Value="DiscountCodeEditor.IsActive" Color="Color.Primary" Label="@T("Aktief", "Active")" />
+                </div>
+
+                <div class="admin-code-tier-section">
+                    <div class="admin-code-tier-head">
+                        <h4>@T("Plan-koppeling", "Plan mapping")</h4>
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="AddTierMapping">
+                            @T("Voeg plan by", "Add plan")
+                        </MudButton>
+                    </div>
+                    @foreach (var tier in DiscountCodeEditor.TierMappings)
+                    {
+                        <div class="admin-code-tier-row">
+                            <MudSelect T="string" Label="@T("Intekeningsoort", "Subscription type")" @bind-Value="tier.TierCode" Variant="Variant.Outlined">
+                                @foreach (var option in SubscriptionTypeEditors.Where(option => option.IsActive))
+                                {
+                                    <MudSelectItem Value="@option.TierCode">@option.DisplayName</MudSelectItem>
+                                }
+                            </MudSelect>
+                            <MudNumericField T="int?" Label="@T("Verval getal", "Expiry number")" @bind-Value="tier.ExpirationNumber" Variant="Variant.Outlined" Min="0" />
+                            <MudSelect T="string" Label="@T("Verval periode", "Expiry period")" @bind-Value="tier.ExpirationPeriod" Variant="Variant.Outlined">
+                                <MudSelectItem Value="@string.Empty">@T("Geen", "None")</MudSelectItem>
+                                <MudSelectItem Value="@("day")">@T("Dag", "Day")</MudSelectItem>
+                                <MudSelectItem Value="@("week")">@T("Week", "Week")</MudSelectItem>
+                                <MudSelectItem Value="@("month")">@T("Maand", "Month")</MudSelectItem>
+                                <MudSelectItem Value="@("year")">@T("Jaar", "Year")</MudSelectItem>
+                            </MudSelect>
+                            <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="() => RemoveTierMapping(tier)">
+                                @T("Verwyder", "Remove")
+                            </MudButton>
+                        </div>
+                    }
+                </div>
+
+                <div class="admin-code-editor-actions">
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               OnClick="SaveCodeAsync"
+                               Disabled="@IsSavingCode">
+                        @T("Stoor kode", "Save code")
+                    </MudButton>
+                </div>
+
+                @if (DiscountCodeEditor.Uses.Count > 0)
+                {
+                    <div class="admin-code-uses-section">
+                        <h4>@T("Vorige gebruike", "Previous uses")</h4>
+                        <table class="admin-settings-table">
+                            <thead>
+                                <tr>
+                                    <th>@T("E-pos", "Email")</th>
+                                    <th>@T("Plan", "Plan")</th>
+                                    <th>@T("Gebruik op", "Used on")</th>
+                                    <th>@T("Toegang eindig", "Access ends")</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var use in DiscountCodeEditor.Uses)
+                                {
+                                    <tr>
+                                        <td>@use.Email</td>
+                                        <td>@(string.IsNullOrWhiteSpace(use.TierCode) ? "-" : use.TierCode)</td>
+                                        <td>@FormatDate(use.RedeemedAt)</td>
+                                        <td>@FormatDate(use.AccessEndsAt)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        }
+    </section>
+}
+
+@code {
+    [Parameter] public string? AdminEmail { get; set; }
+    [Parameter] public string LanguageCode { get; set; } = "af";
+
+    private bool IsLoading { get; set; } = true;
+    private bool IsSavingSettings { get; set; }
+    private bool IsSavingSubscriptionType { get; set; }
+    private bool IsSavingCode { get; set; }
+    private bool IsImportingWordPressCodes { get; set; }
+    private string? ErrorMessage { get; set; }
+    private string? StatusMessage { get; set; }
+    private bool SignupCodeBypassEnabled { get; set; }
+    private List<EditableSubscriptionType> SubscriptionTypeEditors { get; set; } = [];
+    private List<AdminSubscriptionDiscountCodeRecord> DiscountCodes { get; set; } = [];
+    private EditableDiscountCode? DiscountCodeEditor { get; set; }
+    private string DiscountCodeSearch { get; set; } = string.Empty;
+    private string? LoadedAdminEmail { get; set; }
+
+    private IReadOnlyList<AdminSubscriptionDiscountCodeRecord> FilteredDiscountCodes =>
+        string.IsNullOrWhiteSpace(DiscountCodeSearch)
+            ? DiscountCodes
+            : DiscountCodes
+                .Where(code =>
+                    ContainsIgnoreCase(code.Code, DiscountCodeSearch) ||
+                    ContainsIgnoreCase(code.ParentCode, DiscountCodeSearch) ||
+                    code.Uses.Any(use => ContainsIgnoreCase(use.Email, DiscountCodeSearch)))
+                .ToArray();
+
+    private IReadOnlyList<AdminSubscriptionDiscountCodeRecord> ParentCodeOptions =>
+        DiscountCodes
+            .Where(code => !code.IsGroupCode)
+            .OrderBy(code => code.Code, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (string.Equals(LoadedAdminEmail, AdminEmail, StringComparison.OrdinalIgnoreCase) && !IsLoading)
+        {
+            return;
+        }
+
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrWhiteSpace(AdminEmail))
+        {
+            return;
+        }
+
+        IsLoading = true;
+        ClearMessages();
+
+        try
+        {
+            var snapshot = await AdminManagementService.GetSubscriptionSettingsAsync(AdminEmail);
+            SignupCodeBypassEnabled = snapshot.SignupCodeBypassEnabled;
+            SubscriptionTypeEditors = snapshot.SubscriptionTypes.Select(EditableSubscriptionType.From).ToList();
+            DiscountCodes = snapshot.DiscountCodes.ToList();
+            if (DiscountCodeEditor?.DiscountCodeId is Guid selectedId)
+            {
+                var selectedCode = DiscountCodes.FirstOrDefault(code => code.DiscountCodeId == selectedId);
+                if (selectedCode is not null)
+                {
+                    DiscountCodeEditor = EditableDiscountCode.From(selectedCode);
+                }
+            }
+
+            LoadedAdminEmail = AdminEmail;
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Admin settings load failed.");
+            SetError(T("Kon nie instellings nou laai nie.", "Could not load settings right now."));
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private async Task ReloadAsync() => await LoadAsync();
+
+    private async Task SaveSettingsAsync()
+    {
+        if (string.IsNullOrWhiteSpace(AdminEmail))
+        {
+            return;
+        }
+
+        IsSavingSettings = true;
+        ClearMessages();
+        try
+        {
+            var result = await AdminManagementService.SaveSubscriptionSettingsAsync(
+                AdminEmail,
+                new AdminSubscriptionSettingsUpdateRequest(SignupCodeBypassEnabled));
+            if (result.IsSuccess)
+            {
+                SetStatus(T("Instellings is gestoor.", "Settings were saved."));
+                Snackbar.Add(StatusMessage!, Severity.Success);
+            }
+            else
+            {
+                SetError(result.ErrorMessage ?? T("Kon nie instellings nou stoor nie.", "Could not save settings right now."));
+            }
+        }
+        finally
+        {
+            IsSavingSettings = false;
+        }
+    }
+
+    private async Task SaveSubscriptionTypeAsync(EditableSubscriptionType tier)
+    {
+        if (string.IsNullOrWhiteSpace(AdminEmail))
+        {
+            return;
+        }
+
+        IsSavingSubscriptionType = true;
+        ClearMessages();
+        try
+        {
+            var result = await AdminManagementService.SaveSubscriptionTypeAsync(
+                AdminEmail,
+                new AdminSubscriptionTypeSaveRequest(
+                    tier.TierCode,
+                    tier.DisplayName,
+                    tier.Description,
+                    tier.BillingPeriodMonths,
+                    tier.PriceZar,
+                    tier.PayFastPlanSlug,
+                    tier.PaystackPlanCode,
+                    tier.IsActive));
+            if (result.IsSuccess)
+            {
+                SetStatus(T("Intekeningsoort is gestoor.", "Subscription type was saved."));
+                Snackbar.Add(StatusMessage!, Severity.Success);
+                await LoadAsync();
+            }
+            else
+            {
+                SetError(result.ErrorMessage ?? T("Kon nie intekeningsoort nou stoor nie.", "Could not save the subscription type right now."));
+            }
+        }
+        finally
+        {
+            IsSavingSubscriptionType = false;
+        }
+    }
+
+    private void StartNewCode()
+    {
+        ClearMessages();
+        DiscountCodeEditor = EditableDiscountCode.New();
+    }
+
+    private void EditCode(AdminSubscriptionDiscountCodeRecord code)
+    {
+        ClearMessages();
+        DiscountCodeEditor = EditableDiscountCode.From(code);
+    }
+
+    private void ClearCodeEditor()
+    {
+        DiscountCodeEditor = null;
+    }
+
+    private void AddTierMapping()
+    {
+        DiscountCodeEditor?.TierMappings.Add(new EditableDiscountCodeTier());
+    }
+
+    private void RemoveTierMapping(EditableDiscountCodeTier tier)
+    {
+        DiscountCodeEditor?.TierMappings.Remove(tier);
+    }
+
+    private void OnCodeStartsOnChanged(DateTime? value)
+    {
+        if (DiscountCodeEditor is not null)
+        {
+            DiscountCodeEditor.StartsOn = value;
+        }
+    }
+
+    private void OnCodeExpiresOnChanged(DateTime? value)
+    {
+        if (DiscountCodeEditor is not null)
+        {
+            DiscountCodeEditor.ExpiresOn = value;
+        }
+    }
+
+    private async Task SaveCodeAsync()
+    {
+        if (string.IsNullOrWhiteSpace(AdminEmail) || DiscountCodeEditor is null)
+        {
+            return;
+        }
+
+        IsSavingCode = true;
+        ClearMessages();
+        try
+        {
+            var result = await AdminManagementService.SaveSubscriptionDiscountCodeAsync(
+                AdminEmail,
+                new AdminSubscriptionDiscountCodeSaveRequest(
+                    DiscountCodeEditor.DiscountCodeId,
+                    DiscountCodeEditor.Code,
+                    DiscountCodeEditor.DisplayName,
+                    DiscountCodeEditor.Description,
+                    DiscountCodeEditor.IsGroupCode,
+                    DiscountCodeEditor.ParentDiscountCodeId,
+                    ToDateTimeOffset(DiscountCodeEditor.StartsOn),
+                    ToDateTimeOffset(DiscountCodeEditor.ExpiresOn),
+                    DiscountCodeEditor.MaxUses,
+                    DiscountCodeEditor.OneUsePerUser,
+                    DiscountCodeEditor.BypassPayment,
+                    DiscountCodeEditor.IsActive,
+                    DiscountCodeEditor.TierMappings.Select(tier => new AdminSubscriptionDiscountCodeTierSaveItem(
+                        tier.TierCode,
+                        0,
+                        0,
+                        0,
+                        null,
+                        null,
+                        0,
+                        0,
+                        tier.ExpirationNumber,
+                        string.IsNullOrWhiteSpace(tier.ExpirationPeriod) ? null : tier.ExpirationPeriod)).ToArray()));
+
+            if (result.IsSuccess)
+            {
+                SetStatus(T("Kode is gestoor.", "Code was saved."));
+                Snackbar.Add(StatusMessage!, Severity.Success);
+                await LoadAsync();
+                if (result.EntityId is Guid entityId && entityId != Guid.Empty)
+                {
+                    var selected = DiscountCodes.FirstOrDefault(code => code.DiscountCodeId == entityId);
+                    if (selected is not null)
+                    {
+                        DiscountCodeEditor = EditableDiscountCode.From(selected);
+                    }
+                }
+            }
+            else
+            {
+                SetError(result.ErrorMessage ?? T("Kon nie kode nou stoor nie.", "Could not save the code right now."));
+            }
+        }
+        finally
+        {
+            IsSavingCode = false;
+        }
+    }
+
+    private async Task ImportWordPressCodesAsync()
+    {
+        if (string.IsNullOrWhiteSpace(AdminEmail))
+        {
+            return;
+        }
+
+        IsImportingWordPressCodes = true;
+        ClearMessages();
+        try
+        {
+            var result = await AdminManagementService.ImportWordPressSubscriptionDiscountCodesAsync(AdminEmail);
+            if (result.IsSuccess)
+            {
+                SetStatus(T("WordPress kodes is ingevoer en verfris.", "WordPress codes were imported and refreshed."));
+                Snackbar.Add(StatusMessage!, Severity.Success);
+                await LoadAsync();
+            }
+            else
+            {
+                SetError(result.ErrorMessage ?? T("Kon nie WordPress kodes nou invoer nie.", "Could not import WordPress codes right now."));
+            }
+        }
+        finally
+        {
+            IsImportingWordPressCodes = false;
+        }
+    }
+
+    private static DateTimeOffset? ToDateTimeOffset(DateTime? value) =>
+        value.HasValue
+            ? new DateTimeOffset(DateTime.SpecifyKind(value.Value.Date, DateTimeKind.Utc))
+            : null;
+
+    private string FormatDate(DateTimeOffset? value) =>
+        value.HasValue
+            ? value.Value.ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            : "-";
+
+    private bool IsEnglish => string.Equals(LanguageCode, "en", StringComparison.OrdinalIgnoreCase);
+
+    private string T(string afrikaans, string english) => IsEnglish ? english : afrikaans;
+
+    private void ClearMessages()
+    {
+        ErrorMessage = null;
+        StatusMessage = null;
+    }
+
+    private void SetError(string message)
+    {
+        StatusMessage = null;
+        ErrorMessage = message;
+    }
+
+    private void SetStatus(string message)
+    {
+        ErrorMessage = null;
+        StatusMessage = message;
+    }
+
+    private static bool ContainsIgnoreCase(string? source, string search) =>
+        !string.IsNullOrWhiteSpace(source) &&
+        source.Contains(search, StringComparison.OrdinalIgnoreCase);
+
+    private sealed class EditableSubscriptionType
+    {
+        public string TierCode { get; set; } = string.Empty;
+        public string DisplayName { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public int BillingPeriodMonths { get; set; }
+        public decimal PriceZar { get; set; }
+        public string PayFastPlanSlug { get; set; } = string.Empty;
+        public string? PaystackPlanCode { get; set; }
+        public bool IsActive { get; set; }
+
+        public static EditableSubscriptionType From(AdminSubscriptionTypeRecord row) => new()
+        {
+            TierCode = row.TierCode,
+            DisplayName = row.DisplayName,
+            Description = row.Description,
+            BillingPeriodMonths = row.BillingPeriodMonths,
+            PriceZar = row.PriceZar,
+            PayFastPlanSlug = row.PayFastPlanSlug,
+            PaystackPlanCode = row.PaystackPlanCode,
+            IsActive = row.IsActive
+        };
+    }
+
+    private sealed class EditableDiscountCode
+    {
+        public Guid? DiscountCodeId { get; set; }
+        public string Code { get; set; } = string.Empty;
+        public string? DisplayName { get; set; }
+        public string? Description { get; set; }
+        public bool IsGroupCode { get; set; }
+        public Guid? ParentDiscountCodeId { get; set; }
+        public DateTime? StartsOn { get; set; }
+        public DateTime? ExpiresOn { get; set; }
+        public int MaxUses { get; set; }
+        public bool OneUsePerUser { get; set; }
+        public bool BypassPayment { get; set; } = true;
+        public bool IsActive { get; set; } = true;
+        public List<EditableDiscountCodeTier> TierMappings { get; set; } = [];
+        public IReadOnlyList<AdminSubscriptionDiscountCodeUseRecord> Uses { get; set; } = [];
+
+        public static EditableDiscountCode New() => new()
+        {
+            TierMappings = [new EditableDiscountCodeTier()]
+        };
+
+        public static EditableDiscountCode From(AdminSubscriptionDiscountCodeRecord row) => new()
+        {
+            DiscountCodeId = row.DiscountCodeId,
+            Code = row.Code,
+            DisplayName = row.DisplayName,
+            Description = row.Description,
+            IsGroupCode = row.IsGroupCode,
+            ParentDiscountCodeId = row.ParentDiscountCodeId,
+            StartsOn = row.StartsAt?.UtcDateTime.Date,
+            ExpiresOn = row.ExpiresAt?.UtcDateTime.Date,
+            MaxUses = row.MaxUses,
+            OneUsePerUser = row.OneUsePerUser,
+            BypassPayment = row.BypassPayment,
+            IsActive = row.IsActive,
+            TierMappings = row.TierMappings.Select(mapping => EditableDiscountCodeTier.From(mapping)).ToList(),
+            Uses = row.Uses
+        };
+    }
+
+    private sealed class EditableDiscountCodeTier
+    {
+        public string TierCode { get; set; } = string.Empty;
+        public int? ExpirationNumber { get; set; }
+        public string? ExpirationPeriod { get; set; }
+
+        public static EditableDiscountCodeTier From(AdminSubscriptionDiscountCodeTierRecord row) => new()
+        {
+            TierCode = row.TierCode,
+            ExpirationNumber = row.ExpirationNumber,
+            ExpirationPeriod = row.ExpirationPeriod?.ToLowerInvariant()
+        };
+    }
+}

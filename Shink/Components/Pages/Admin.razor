@@ -1195,6 +1195,10 @@
                 <AdminBlogPanel CurrentLanguageCode="@CurrentLanguageCode" />
             </MudTabPanel>
 
+            <MudTabPanel Text='@T("Instellings", "Settings")'>
+                <AdminSettingsPanel AdminEmail="CurrentAdminEmail" LanguageCode="CurrentLanguageCode" />
+            </MudTabPanel>
+
             <MudTabPanel Text='@T("Analitika", "Analytics")'>
                 <section class="admin-section admin-analytics-section">
                     <div class="admin-section-head">
