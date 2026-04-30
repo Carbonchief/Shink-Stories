@@ -4011,6 +4011,10 @@ static async Task<IResult> HandlePaystackWebhookAsync(
 
         if (!string.IsNullOrWhiteSpace(subscriptionRecoveryReference))
         {
+            await paystackCheckoutService.MarkCheckoutSessionStatusAsync(
+                subscriptionRecoveryReference,
+                "paid",
+                httpContext.RequestAborted);
             await abandonedCartRecoveryService.ResolveByCheckoutReferenceAsync(
                 "subscription",
                 subscriptionRecoveryReference,

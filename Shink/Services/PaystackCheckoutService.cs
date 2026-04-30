@@ -1,17 +1,24 @@
 using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Options;
 using Shink.Components.Content;
 
 namespace Shink.Services;
 
-public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<PaystackOptions> options)
+public sealed class PaystackCheckoutService(
+    HttpClient httpClient,
+    IOptions<PaystackOptions> options,
+    IOptions<SupabaseOptions>? supabaseOptions = null)
 {
+    private static readonly TimeSpan CheckoutSessionTtl = TimeSpan.FromMinutes(60);
     private readonly HttpClient _httpClient = httpClient;
     private readonly PaystackOptions _options = options.Value;
+    private readonly SupabaseOptions? _supabaseOptions = supabaseOptions?.Value;
 
     public bool IsConfigured =>
         !string.IsNullOrWhiteSpace(_options.SecretKey) &&
@@ -43,7 +50,6 @@ public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<Pays
                 ErrorMessage: $"Paystack plan code ontbreek vir tier '{plan.TierCode}'.");
         }
 
-        var reference = BuildReference(plan.Slug);
         var callbackQuery = $"betaling=sukses&provider=paystack&plan={Uri.EscapeDataString(plan.Slug)}";
         if (!string.IsNullOrWhiteSpace(returnUrl))
         {
@@ -51,6 +57,14 @@ public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<Pays
         }
 
         var callbackUrl = BuildAbsoluteUrl(httpContext, _options.CallbackUrlPath, callbackQuery);
+        var amountInCents = (long)Math.Round(plan.Amount * 100m, MidpointRounding.AwayFromZero);
+        var reusableSession = await TryGetReusableCheckoutSessionAsync(plan, email, amountInCents, callbackUrl, cancellationToken);
+        if (reusableSession is not null)
+        {
+            return reusableSession;
+        }
+
+        var reference = BuildReference(plan.Slug);
         var metadata = new Dictionary<string, object?>
         {
             ["plan_slug"] = plan.Slug,
@@ -62,7 +76,7 @@ public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<Pays
 
         return await InitializeTransactionAsync(
             email,
-            (long)Math.Round(plan.Amount * 100m, MidpointRounding.AwayFromZero),
+            amountInCents,
             reference,
             callbackUrl,
             metadata,
@@ -95,7 +109,6 @@ public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<Pays
                 ErrorMessage: $"Paystack plan code ontbreek vir tier '{plan.TierCode}'.");
         }
 
-        var reference = BuildReference(plan.Slug);
         var callbackQuery = $"betaling=sukses&provider=paystack&plan={Uri.EscapeDataString(plan.Slug)}";
         if (!string.IsNullOrWhiteSpace(returnUrl))
         {
@@ -103,6 +116,14 @@ public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<Pays
         }
 
         var callbackUrl = BuildAbsoluteUrl(httpContext, _options.CallbackUrlPath, callbackQuery);
+        var amountInCents = (long)Math.Round(plan.Amount * 100m, MidpointRounding.AwayFromZero);
+        var reusableSession = await TryGetReusableCheckoutSessionAsync(plan, email, amountInCents, callbackUrl, cancellationToken);
+        if (reusableSession is not null)
+        {
+            return reusableSession;
+        }
+
+        var reference = BuildReference(plan.Slug);
         var metadata = new Dictionary<string, object?>
         {
             ["plan_slug"] = plan.Slug,
@@ -114,7 +135,7 @@ public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<Pays
 
         return await InitializeTransactionAsync(
             email,
-            (long)Math.Round(plan.Amount * 100m, MidpointRounding.AwayFromZero),
+            amountInCents,
             reference,
             callbackUrl,
             metadata,
@@ -150,9 +171,16 @@ public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<Pays
                 ErrorMessage: $"Paystack plan code ontbreek vir tier '{plan.TierCode}'.");
         }
 
-        var reference = BuildReference(plan.Slug);
         var callbackQuery = $"betaling=sukses&provider=paystack&plan={Uri.EscapeDataString(plan.Slug)}";
         var callbackUrl = BuildAbsoluteUrl(publicBaseUri.ToString(), _options.CallbackUrlPath, callbackQuery);
+        var amountInCents = (long)Math.Round(plan.Amount * 100m, MidpointRounding.AwayFromZero);
+        var reusableSession = await TryGetReusableCheckoutSessionAsync(plan, email, amountInCents, callbackUrl, cancellationToken);
+        if (reusableSession is not null)
+        {
+            return reusableSession;
+        }
+
+        var reference = BuildReference(plan.Slug);
         var metadata = new Dictionary<string, object?>
         {
             ["plan_slug"] = plan.Slug,
@@ -165,12 +193,50 @@ public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<Pays
 
         return await InitializeTransactionAsync(
             email,
-            (long)Math.Round(plan.Amount * 100m, MidpointRounding.AwayFromZero),
+            amountInCents,
             reference,
             callbackUrl,
             metadata,
             planCode,
             cancellationToken);
+    }
+
+    public async Task MarkCheckoutSessionStatusAsync(
+        string? reference,
+        string status,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(reference) ||
+            string.IsNullOrWhiteSpace(status) ||
+            !TryBuildSupabaseBaseUri(out var baseUri, out var apiKey))
+        {
+            return;
+        }
+
+        var normalizedStatus = status.Trim().ToLowerInvariant();
+        if (normalizedStatus is not "pending" and not "paid" and not "expired" and not "cancelled" and not "failed")
+        {
+            return;
+        }
+
+        var uri = new Uri(
+            baseUri,
+            $"rest/v1/paystack_checkout_sessions?provider=eq.paystack&reference=eq.{Uri.EscapeDataString(reference.Trim())}");
+        using var request = CreateSupabaseRequest(HttpMethod.Patch, uri, apiKey);
+        request.Content = JsonContent.Create(new
+        {
+            status = normalizedStatus,
+            updated_at = DateTimeOffset.UtcNow.UtcDateTime
+        });
+        request.Headers.TryAddWithoutValidation("Prefer", "return=minimal");
+
+        try
+        {
+            using var _ = await _httpClient.SendAsync(request, cancellationToken);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+        {
+        }
     }
 
     public string? BuildCheckoutPageUrl(PaymentPlan plan)
@@ -660,15 +726,215 @@ public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<Pays
                 return new PaystackCheckoutInitResult(false, ErrorMessage: message);
             }
 
-            return new PaystackCheckoutInitResult(
+            var result = new PaystackCheckoutInitResult(
                 true,
                 AuthorizationUrl: authorizationUrl,
                 Reference: parsedReference);
+            await StoreCheckoutSessionAsync(
+                email,
+                amountInCents,
+                parsedReference,
+                authorizationUrl,
+                callbackUrl,
+                metadata,
+                cancellationToken);
+            return result;
         }
         catch (JsonException)
         {
             return new PaystackCheckoutInitResult(false, ErrorMessage: "Paystack checkout antwoord kon nie gelees word nie.");
         }
+    }
+
+    private async Task<PaystackCheckoutInitResult?> TryGetReusableCheckoutSessionAsync(
+        PaymentPlan plan,
+        string email,
+        long amountInCents,
+        string callbackUrl,
+        CancellationToken cancellationToken)
+    {
+        if (!plan.IsSubscription ||
+            !TryBuildSupabaseBaseUri(out var baseUri, out var apiKey))
+        {
+            return null;
+        }
+
+        var nowUtc = DateTimeOffset.UtcNow;
+        var filter = string.Join(
+            "&",
+            "select=reference,authorization_url,expires_at",
+            "provider=eq.paystack",
+            "checkout_kind=eq.subscription",
+            "status=eq.pending",
+            $"customer_email=eq.{Uri.EscapeDataString(NormalizeEmail(email))}",
+            $"tier_code=eq.{Uri.EscapeDataString(plan.TierCode)}",
+            $"amount_in_cents=eq.{amountInCents}",
+            "currency=eq.ZAR",
+            $"callback_url=eq.{Uri.EscapeDataString(callbackUrl)}",
+            $"expires_at=gt.{Uri.EscapeDataString(nowUtc.UtcDateTime.ToString("O"))}",
+            "order=created_at.desc",
+            "limit=1");
+        var uri = new Uri(baseUri, $"rest/v1/paystack_checkout_sessions?{filter}");
+
+        try
+        {
+            using var request = CreateSupabaseRequest(HttpMethod.Get, uri, apiKey);
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var sessions = await JsonSerializer.DeserializeAsync<List<PaystackCheckoutSessionRow>>(stream, cancellationToken: cancellationToken)
+                ?? [];
+            var session = sessions.FirstOrDefault();
+            if (session is null ||
+                string.IsNullOrWhiteSpace(session.Reference) ||
+                string.IsNullOrWhiteSpace(session.AuthorizationUrl) ||
+                session.ExpiresAt <= nowUtc)
+            {
+                return null;
+            }
+
+            return new PaystackCheckoutInitResult(
+                true,
+                AuthorizationUrl: session.AuthorizationUrl,
+                Reference: session.Reference);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            return null;
+        }
+    }
+
+    private async Task StoreCheckoutSessionAsync(
+        string email,
+        long amountInCents,
+        string reference,
+        string authorizationUrl,
+        string callbackUrl,
+        Dictionary<string, object?> metadata,
+        CancellationToken cancellationToken)
+    {
+        if (!TryReadMetadataString(metadata, "plan_slug", out var planSlug) ||
+            !TryReadMetadataString(metadata, "tier_code", out var tierCode) ||
+            !TryBuildSupabaseBaseUri(out var baseUri, out var apiKey))
+        {
+            return;
+        }
+
+        var nowUtc = DateTimeOffset.UtcNow;
+        await ExpireStaleCheckoutSessionsAsync(
+            baseUri,
+            apiKey,
+            email,
+            tierCode,
+            amountInCents,
+            callbackUrl,
+            nowUtc,
+            cancellationToken);
+
+        var uri = new Uri(baseUri, "rest/v1/paystack_checkout_sessions");
+        using var request = CreateSupabaseRequest(HttpMethod.Post, uri, apiKey);
+        request.Content = JsonContent.Create(new
+        {
+            provider = "paystack",
+            checkout_kind = "subscription",
+            customer_email = NormalizeEmail(email),
+            plan_slug = planSlug,
+            tier_code = tierCode,
+            amount_in_cents = amountInCents,
+            currency = "ZAR",
+            callback_url = callbackUrl,
+            reference,
+            authorization_url = authorizationUrl,
+            status = "pending",
+            expires_at = nowUtc.Add(CheckoutSessionTtl).UtcDateTime,
+            metadata
+        });
+        request.Headers.TryAddWithoutValidation("Prefer", "return=minimal");
+
+        try
+        {
+            using var _ = await _httpClient.SendAsync(request, cancellationToken);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+        {
+        }
+    }
+
+    private async Task ExpireStaleCheckoutSessionsAsync(
+        Uri baseUri,
+        string apiKey,
+        string email,
+        string tierCode,
+        long amountInCents,
+        string callbackUrl,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var filter = string.Join(
+            "&",
+            "provider=eq.paystack",
+            "checkout_kind=eq.subscription",
+            "status=eq.pending",
+            $"customer_email=eq.{Uri.EscapeDataString(NormalizeEmail(email))}",
+            $"tier_code=eq.{Uri.EscapeDataString(tierCode)}",
+            $"amount_in_cents=eq.{amountInCents}",
+            "currency=eq.ZAR",
+            $"callback_url=eq.{Uri.EscapeDataString(callbackUrl)}",
+            $"expires_at=lt.{Uri.EscapeDataString(nowUtc.UtcDateTime.ToString("O"))}");
+        var uri = new Uri(baseUri, $"rest/v1/paystack_checkout_sessions?{filter}");
+        using var request = CreateSupabaseRequest(HttpMethod.Patch, uri, apiKey);
+        request.Content = JsonContent.Create(new
+        {
+            status = "expired",
+            updated_at = nowUtc.UtcDateTime
+        });
+        request.Headers.TryAddWithoutValidation("Prefer", "return=minimal");
+
+        try
+        {
+            using var _ = await _httpClient.SendAsync(request, cancellationToken);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+        {
+        }
+    }
+
+    private bool TryBuildSupabaseBaseUri(out Uri baseUri, out string apiKey)
+    {
+        baseUri = default!;
+        apiKey = _supabaseOptions?.ServiceRoleKey ?? string.Empty;
+        return _supabaseOptions is not null &&
+               !string.IsNullOrWhiteSpace(apiKey) &&
+               Uri.TryCreate(_supabaseOptions.Url, UriKind.Absolute, out baseUri!);
+    }
+
+    private static HttpRequestMessage CreateSupabaseRequest(HttpMethod method, Uri uri, string apiKey)
+    {
+        var request = new HttpRequestMessage(method, uri);
+        request.Headers.TryAddWithoutValidation("apikey", apiKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        return request;
+    }
+
+    private static string NormalizeEmail(string email) =>
+        email.Trim().ToLowerInvariant();
+
+    private static bool TryReadMetadataString(Dictionary<string, object?> values, string key, out string value)
+    {
+        value = string.Empty;
+        if (!values.TryGetValue(key, out var rawValue) ||
+            rawValue is not string rawText ||
+            string.IsNullOrWhiteSpace(rawText))
+        {
+            return false;
+        }
+
+        value = rawText.Trim();
+        return true;
     }
 
     private string BuildAbsoluteUrl(HttpContext httpContext, string path, string? queryString)
@@ -926,6 +1192,18 @@ public sealed class PaystackCheckoutService(HttpClient httpClient, IOptions<Pays
         string.Equals(status, "success", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(status, "successful", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(status, "paid", StringComparison.OrdinalIgnoreCase);
+
+    private sealed class PaystackCheckoutSessionRow
+    {
+        [JsonPropertyName("reference")]
+        public string? Reference { get; set; }
+
+        [JsonPropertyName("authorization_url")]
+        public string? AuthorizationUrl { get; set; }
+
+        [JsonPropertyName("expires_at")]
+        public DateTimeOffset ExpiresAt { get; set; }
+    }
 }
 
 public sealed record PaystackCheckoutInitResult(

@@ -859,15 +859,9 @@ public sealed partial class WordPressMigrationService(
         IReadOnlyDictionary<string, string> subscriberIdsByEmail,
         CancellationToken cancellationToken)
     {
-        var locallyCancelledImportedEntitlements = await FetchLocallyCancelledImportedEntitlementKeysAsync(
-            baseUri,
-            entitlements,
-            cancellationToken);
-
         var payload = entitlements
             .Where(entitlement => !string.IsNullOrWhiteSpace(entitlement.Email))
             .Where(entitlement => subscriberIdsByEmail.ContainsKey(entitlement.Email))
-            .Where(entitlement => !locallyCancelledImportedEntitlements.Contains(BuildProviderPaymentKey(entitlement.Provider, entitlement.ProviderPaymentId)))
             .Select(entitlement => new
             {
                 subscriber_id = subscriberIdsByEmail[entitlement.Email],
@@ -913,38 +907,6 @@ public sealed partial class WordPressMigrationService(
         }
 
         return upsertedCount;
-    }
-
-    private async Task<HashSet<string>> FetchLocallyCancelledImportedEntitlementKeysAsync(
-        Uri baseUri,
-        IReadOnlyList<CurrentEntitlement> entitlements,
-        CancellationToken cancellationToken)
-    {
-        var desiredKeys = entitlements
-            .Select(entitlement => BuildProviderPaymentKey(entitlement.Provider, entitlement.ProviderPaymentId))
-            .Where(key => !string.IsNullOrWhiteSpace(key))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (desiredKeys.Count == 0)
-        {
-            return [];
-        }
-
-        var uri = new Uri(
-            baseUri,
-            "rest/v1/subscriptions?select=provider,provider_payment_id&source_system=eq.wordpress_pmpro&status=eq.cancelled&cancelled_at=not.is.null&limit=10000");
-        using var request = CreateSupabaseRequest(HttpMethod.Get, uri);
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
-        if (!response.IsSuccessStatusCode)
-        {
-            return [];
-        }
-
-        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-        var rows = await JsonSerializer.DeserializeAsync<List<ImportedSubscriptionLookupRow>>(stream, cancellationToken: cancellationToken) ?? [];
-        return rows
-            .Select(row => BuildProviderPaymentKey(row.Provider, row.ProviderPaymentId))
-            .Where(desiredKeys.Contains)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 
     private async Task<int> CancelStaleImportedEntitlementsAsync(

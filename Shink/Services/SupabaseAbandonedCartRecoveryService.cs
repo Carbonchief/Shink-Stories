@@ -17,6 +17,10 @@ public sealed class SupabaseAbandonedCartRecoveryService(
 {
     private const string SubscriptionSourceType = "subscription";
     private const string StoreOrderSourceType = "store_order";
+    private const string GratisTierCode = "gratis";
+    private const string StoryCornerTierCode = "story_corner_monthly";
+    private const string AllStoriesMonthlyTierCode = "all_stories_monthly";
+    private const string AllStoriesYearlyTierCode = "all_stories_yearly";
     private static readonly TimeSpan FirstDelay = TimeSpan.FromHours(1);
     private static readonly TimeSpan SecondDelay = TimeSpan.FromHours(24);
     private static readonly TimeSpan FinalDelay = TimeSpan.FromDays(7);
@@ -49,6 +53,30 @@ public sealed class SupabaseAbandonedCartRecoveryService(
 
         var apiKey = ResolveApiKey();
         var nowUtc = DateTimeOffset.UtcNow;
+        var activeSubscription = await GetActiveSubscriptionRecoveryBlockerAsync(baseUri, apiKey, request, nowUtc, cancellationToken);
+        if (activeSubscription is not null)
+        {
+            _logger.LogInformation(
+                "Abandoned cart recovery email sequence skipped because the customer already has active paid access. source_type={SourceType} source_key={SourceKey} active_tier_code={ActiveTierCode} customer_email={CustomerEmail}",
+                request.SourceType,
+                request.SourceKey,
+                activeSubscription.TierCode,
+                request.CustomerEmail.Trim().ToLowerInvariant());
+            return;
+        }
+
+        var existingRecovery = await GetActiveSimilarRecoveryAsync(baseUri, apiKey, request, cancellationToken);
+        if (existingRecovery is not null)
+        {
+            _logger.LogInformation(
+                "Abandoned cart recovery email sequence skipped because an active similar recovery already exists. existing_recovery_id={RecoveryId} source_type={SourceType} source_key={SourceKey} customer_email={CustomerEmail}",
+                existingRecovery.RecoveryId,
+                request.SourceType,
+                request.SourceKey,
+                request.CustomerEmail.Trim().ToLowerInvariant());
+            return;
+        }
+
         var token = CreateOptOutToken();
         var recovery = await CreateRecoveryAsync(baseUri, apiKey, request, token, nowUtc, cancellationToken);
         if (recovery is null)
@@ -119,9 +147,10 @@ public sealed class SupabaseAbandonedCartRecoveryService(
         var filter = string.Join(
             "&",
             $"source_type=eq.{SubscriptionSourceType}",
-            $"source_key=eq.{Uri.EscapeDataString(tierCode.Trim())}",
             $"customer_email=eq.{Uri.EscapeDataString(customerEmail.Trim().ToLowerInvariant())}");
-        var recoveries = await GetActiveRecoveriesAsync(baseUri, apiKey, filter, cancellationToken);
+        var recoveries = (await GetActiveRecoveriesAsync(baseUri, apiKey, filter, cancellationToken))
+            .Where(recovery => IsRecoveryResolvedByPurchasedTier(tierCode.Trim(), recovery.SourceKey))
+            .ToArray();
         await ResolveRecoveriesAsync(baseUri, apiKey, recoveries, resolution, cancellationToken);
     }
 
@@ -243,6 +272,112 @@ public sealed class SupabaseAbandonedCartRecoveryService(
         var rows = await JsonSerializer.DeserializeAsync<List<AbandonedRecoveryRow>>(stream, cancellationToken: cancellationToken)
             ?? [];
         return rows.FirstOrDefault();
+    }
+
+    private async Task<ActiveSubscriptionRow?> GetActiveSubscriptionRecoveryBlockerAsync(
+        Uri baseUri,
+        string apiKey,
+        AbandonedCartRecoveryStartRequest request,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        if (!string.Equals(request.SourceType.Trim(), SubscriptionSourceType, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var normalizedRequestedTier = request.SourceKey.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedRequestedTier) ||
+            string.Equals(normalizedRequestedTier, GratisTierCode, StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var normalizedEmail = request.CustomerEmail.Trim().ToLowerInvariant();
+        var escapedEmail = Uri.EscapeDataString(normalizedEmail);
+        var subscriberLookupUri = new Uri(
+            baseUri,
+            $"rest/v1/subscribers?select=subscriber_id,disabled_at&email=eq.{escapedEmail}&limit=1");
+
+        try
+        {
+            using var subscriberRequest = CreateRequest(HttpMethod.Get, subscriberLookupUri, apiKey);
+            using var subscriberResponse = await _httpClient.SendAsync(subscriberRequest, cancellationToken);
+            if (!subscriberResponse.IsSuccessStatusCode)
+            {
+                var body = await subscriberResponse.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning(
+                    "Abandoned cart recovery active-access subscriber lookup failed. customer_email={CustomerEmail} status={StatusCode} body={Body}",
+                    normalizedEmail,
+                    (int)subscriberResponse.StatusCode,
+                    body);
+                return null;
+            }
+
+            await using var subscriberStream = await subscriberResponse.Content.ReadAsStreamAsync(cancellationToken);
+            var subscribers = await JsonSerializer.DeserializeAsync<List<SubscriberLookupRow>>(subscriberStream, cancellationToken: cancellationToken)
+                ?? [];
+            var subscriber = subscribers.FirstOrDefault();
+            if (subscriber is null ||
+                string.IsNullOrWhiteSpace(subscriber.SubscriberId) ||
+                subscriber.DisabledAt is not null)
+            {
+                return null;
+            }
+
+            var escapedSubscriberId = Uri.EscapeDataString(subscriber.SubscriberId);
+            var subscriptionsUri = new Uri(
+                baseUri,
+                $"rest/v1/subscriptions?select=status,next_renewal_at,cancelled_at,tier_code&subscriber_id=eq.{escapedSubscriberId}&status=eq.active&order=subscribed_at.desc&limit=25");
+
+            using var subscriptionsRequest = CreateRequest(HttpMethod.Get, subscriptionsUri, apiKey);
+            using var subscriptionsResponse = await _httpClient.SendAsync(subscriptionsRequest, cancellationToken);
+            if (!subscriptionsResponse.IsSuccessStatusCode)
+            {
+                var body = await subscriptionsResponse.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning(
+                    "Abandoned cart recovery active-access subscription lookup failed. subscriber_id={SubscriberId} status={StatusCode} body={Body}",
+                    subscriber.SubscriberId,
+                    (int)subscriptionsResponse.StatusCode,
+                    body);
+                return null;
+            }
+
+            await using var subscriptionsStream = await subscriptionsResponse.Content.ReadAsStreamAsync(cancellationToken);
+            var subscriptions = await JsonSerializer.DeserializeAsync<List<ActiveSubscriptionRow>>(subscriptionsStream, cancellationToken: cancellationToken)
+                ?? [];
+
+            return subscriptions.FirstOrDefault(subscription =>
+                IsCurrentlyActivePaidSubscription(subscription, nowUtc) &&
+                IsRecoveryBlockedByActiveTier(normalizedRequestedTier, subscription.TierCode));
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(
+                exception,
+                "Abandoned cart recovery active-access lookup failed unexpectedly. customer_email={CustomerEmail}",
+                normalizedEmail);
+            return null;
+        }
+    }
+
+    private async Task<AbandonedRecoveryRow?> GetActiveSimilarRecoveryAsync(
+        Uri baseUri,
+        string apiKey,
+        AbandonedCartRecoveryStartRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.Equals(request.SourceType.Trim(), StoreOrderSourceType, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var filter = string.Join(
+            "&",
+            $"source_type=eq.{Uri.EscapeDataString(request.SourceType.Trim())}",
+            $"customer_email=eq.{Uri.EscapeDataString(request.CustomerEmail.Trim().ToLowerInvariant())}");
+
+        return (await GetActiveRecoveriesAsync(baseUri, apiKey, filter, cancellationToken)).FirstOrDefault();
     }
 
     private async Task<RecoveryEmailIds?> ScheduleEmailsAsync(
@@ -531,6 +666,84 @@ public sealed class SupabaseAbandonedCartRecoveryService(
 
         var trimmed = value.Trim();
         return trimmed.Length > maxLength ? trimmed[..maxLength] : trimmed;
+    }
+
+    private static bool IsCurrentlyActivePaidSubscription(ActiveSubscriptionRow row, DateTimeOffset nowUtc)
+    {
+        if (!string.Equals(row.Status, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (string.Equals(row.TierCode, GratisTierCode, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (row.CancelledAt is not null && row.CancelledAt <= nowUtc)
+        {
+            return false;
+        }
+
+        if (row.NextRenewalAt is not null && row.NextRenewalAt < nowUtc)
+        {
+            return false;
+        }
+
+        return row.NextRenewalAt is not null;
+    }
+
+    private static bool IsRecoveryBlockedByActiveTier(string requestedTierCode, string? activeTierCode)
+    {
+        if (string.IsNullOrWhiteSpace(activeTierCode))
+        {
+            return false;
+        }
+
+        if (string.Equals(activeTierCode, requestedTierCode, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return string.Equals(requestedTierCode, StoryCornerTierCode, StringComparison.OrdinalIgnoreCase) &&
+               (string.Equals(activeTierCode, AllStoriesMonthlyTierCode, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(activeTierCode, AllStoriesYearlyTierCode, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool IsRecoveryResolvedByPurchasedTier(string purchasedTierCode, string recoveryTierCode)
+    {
+        if (string.Equals(recoveryTierCode, purchasedTierCode, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return string.Equals(recoveryTierCode, StoryCornerTierCode, StringComparison.OrdinalIgnoreCase) &&
+               (string.Equals(purchasedTierCode, AllStoriesMonthlyTierCode, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(purchasedTierCode, AllStoriesYearlyTierCode, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private sealed class SubscriberLookupRow
+    {
+        [JsonPropertyName("subscriber_id")]
+        public string? SubscriberId { get; set; }
+
+        [JsonPropertyName("disabled_at")]
+        public DateTimeOffset? DisabledAt { get; set; }
+    }
+
+    private sealed class ActiveSubscriptionRow
+    {
+        [JsonPropertyName("status")]
+        public string Status { get; set; } = string.Empty;
+
+        [JsonPropertyName("next_renewal_at")]
+        public DateTimeOffset? NextRenewalAt { get; set; }
+
+        [JsonPropertyName("cancelled_at")]
+        public DateTimeOffset? CancelledAt { get; set; }
+
+        [JsonPropertyName("tier_code")]
+        public string? TierCode { get; set; }
     }
 
     private sealed class AbandonedRecoveryRow
