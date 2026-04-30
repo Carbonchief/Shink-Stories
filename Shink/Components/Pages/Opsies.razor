@@ -29,6 +29,10 @@
     <meta name="twitter:description" content="Kies jou Schink Stories opsie en begin luister na veilige Afrikaanse stories." />
     <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/branding/Schink_Stories_Logo_turqoise.png").ToString()" />
     <meta name="twitter:image:alt" content="Schink Stories logo" />
+    @if (PaymentSuccessAutoRedirectPath is not null)
+    {
+        <meta http-equiv="refresh" content="@($"5;url={PaymentSuccessAutoRedirectPath}")" />
+    }
     <JsonLdScript Json="@OpsiesJsonLd" />
 </HeadContent>
 
@@ -44,7 +48,7 @@
     @if (string.Equals(PaymentStatus, "sukses", StringComparison.OrdinalIgnoreCase))
     {
         <p class="opsies-payment-status opsies-payment-success" role="status" aria-live="polite">
-            Dankie! Jou betaling is ontvang. Ons bevestig dit nou op ons kant.
+            Dankie! Jou betaling is ontvang. Ons neem jou oor 5 sekondes na die luisterblad.
         </p>
     }
     else if (string.Equals(PaymentStatus, "gekanselleer", StringComparison.OrdinalIgnoreCase))
@@ -410,6 +414,10 @@
         RequiredAccess is not StoryAccessRequirement.AllStoriesOnly;
 
     private string OpsiesCanonicalUrl => NavigationManager.ToAbsoluteUri("/opsies").ToString();
+    private bool IsPaymentSuccess => string.Equals(PaymentStatus, "sukses", StringComparison.OrdinalIgnoreCase);
+    private string? PaymentSuccessAutoRedirectPath => IsPaymentSuccess
+        ? GetSafeReturnUrl(ReturnUrl) ?? "/luister"
+        : null;
 
     private MarkupString OpsiesJsonLd => new(JsonSerializer.Serialize(new Dictionary<string, object?>
     {
