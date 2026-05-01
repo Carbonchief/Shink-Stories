@@ -2175,26 +2175,50 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         DateTimeOffset nowUtc,
         CancellationToken cancellationToken)
     {
-        var email = formCollection["email_address"].ToString().Trim();
         var mPaymentId = formCollection["m_payment_id"].ToString().Trim();
         var pfPaymentId = formCollection["pf_payment_id"].ToString().Trim();
         var token = formCollection["token"].ToString().Trim();
-        var planSlug = ResolvePayFastPlanSlug(formCollection);
-        var plan = PaymentPlanCatalog.FindBySlug(planSlug);
-
-        if (string.IsNullOrWhiteSpace(email))
-        {
-            return new SubscriptionPersistResult(false, "No subscriber email was present in the PayFast ITN payload.");
-        }
 
         if (string.IsNullOrWhiteSpace(mPaymentId))
         {
             return new SubscriptionPersistResult(false, "No merchant payment id was present in the PayFast ITN payload.");
         }
 
+        var existingContext = await TryGetSubscriptionContextByProviderPaymentIdAsync(
+            baseUri,
+            apiKey,
+            provider: "payfast",
+            mPaymentId,
+            cancellationToken);
+        var email = formCollection["email_address"].ToString().Trim();
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            email = existingContext?.Email?.Trim() ?? string.Empty;
+        }
+
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return new SubscriptionPersistResult(false, "No subscriber email was present in the PayFast ITN payload.");
+        }
+
+        var planSlug = ResolvePayFastPlanSlug(formCollection);
+        var plan = PaymentPlanCatalog.FindBySlug(planSlug) ??
+                   PaymentPlanCatalog.FindByTierCode(existingContext?.TierCode);
         if (plan is null)
         {
             return new SubscriptionPersistResult(false, "Could not resolve subscription plan from PayFast payload.");
+        }
+
+        var amountValidation = await ValidatePayFastAmountAsync(
+            baseUri,
+            apiKey,
+            formCollection,
+            plan,
+            existingContext,
+            cancellationToken);
+        if (!amountValidation.IsSuccess)
+        {
+            return new SubscriptionPersistResult(false, amountValidation.ErrorMessage);
         }
 
         var subscriberId = await UpsertSubscriberAsync(
@@ -2229,7 +2253,10 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             providerEmailToken: null,
             subscribedAtUtc: nowUtc,
             nextRenewalAtUtc,
-            cancellationToken);
+            cancellationToken,
+            billingAmountZar: amountValidation.BillingAmountZar,
+            billingPeriodMonths: plan.BillingPeriodMonths,
+            billingAmountSource: amountValidation.BillingAmountSource);
 
         if (subscriptionId is null)
         {
@@ -2237,6 +2264,118 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         }
 
         return new SubscriptionPersistResult(true, null, subscriptionId);
+    }
+
+    private async Task<PayFastAmountValidationResult> ValidatePayFastAmountAsync(
+        Uri baseUri,
+        string apiKey,
+        IFormCollection formCollection,
+        PaymentPlan plan,
+        PaymentRecoverySubscriptionContext? existingContext,
+        CancellationToken cancellationToken)
+    {
+        var grossAmount = TryReadPayFastAmountGross(formCollection);
+        var mPaymentId = formCollection["m_payment_id"].ToString().Trim();
+        var pfPaymentId = formCollection["pf_payment_id"].ToString().Trim();
+        var paymentStatus = formCollection["payment_status"].ToString().Trim();
+        if (grossAmount is null)
+        {
+            const string message = "PayFast amount_gross was missing or invalid.";
+            await InsertPaymentWebhookFailureAsync(
+                baseUri,
+                apiKey,
+                provider: "payfast",
+                eventType: "payfast_itn",
+                eventStatus: paymentStatus,
+                providerPaymentId: mPaymentId,
+                providerTransactionId: pfPaymentId,
+                failureStage: "amount-validation",
+                errorMessage: message,
+                payload: SerializePayFastPayload(formCollection),
+                cancellationToken: cancellationToken);
+            return new PayFastAmountValidationResult(false, ErrorMessage: message);
+        }
+
+        if (existingContext?.BillingAmountZar is decimal storedAmount)
+        {
+            if (!ArePayFastAmountsEqual(storedAmount, grossAmount.Value))
+            {
+                var message = $"PayFast amount mismatch. Expected {storedAmount:0.00}; received {grossAmount.Value:0.00}.";
+                await InsertPaymentWebhookFailureAsync(
+                    baseUri,
+                    apiKey,
+                    provider: "payfast",
+                    eventType: "payfast_itn",
+                    eventStatus: paymentStatus,
+                    providerPaymentId: mPaymentId,
+                    providerTransactionId: pfPaymentId,
+                    failureStage: "amount-validation",
+                    errorMessage: message,
+                    payload: SerializePayFastPayload(formCollection),
+                    cancellationToken: cancellationToken);
+                return new PayFastAmountValidationResult(false, ErrorMessage: message);
+            }
+
+            return new PayFastAmountValidationResult(true, storedAmount, existingContext.BillingAmountSource ?? "payfast_itn");
+        }
+
+        if (existingContext is not null)
+        {
+            return new PayFastAmountValidationResult(true, grossAmount, "payfast_itn");
+        }
+
+        if (!ArePayFastAmountsEqual(plan.Amount, grossAmount.Value))
+        {
+            var message = $"PayFast amount mismatch. Expected {plan.Amount:0.00}; received {grossAmount.Value:0.00}.";
+            await InsertPaymentWebhookFailureAsync(
+                baseUri,
+                apiKey,
+                provider: "payfast",
+                eventType: "payfast_itn",
+                eventStatus: paymentStatus,
+                providerPaymentId: mPaymentId,
+                providerTransactionId: pfPaymentId,
+                failureStage: "amount-validation",
+                errorMessage: message,
+                payload: SerializePayFastPayload(formCollection),
+                cancellationToken: cancellationToken);
+            return new PayFastAmountValidationResult(false, ErrorMessage: message);
+        }
+
+        return new PayFastAmountValidationResult(true, grossAmount, "checkout");
+    }
+
+    public async Task RecordPayFastWebhookFailureAsync(
+        IFormCollection? formCollection,
+        string failureStage,
+        string errorMessage,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            _logger.LogWarning("PayFast webhook failure could not be logged because Supabase URL is not configured.");
+            return;
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            _logger.LogWarning("PayFast webhook failure could not be logged because Supabase ServiceRoleKey is not configured.");
+            return;
+        }
+
+        await InsertPaymentWebhookFailureAsync(
+            baseUri,
+            apiKey,
+            provider: "payfast",
+            eventType: "payfast_itn",
+            eventStatus: formCollection?["payment_status"].ToString().Trim(),
+            providerPaymentId: formCollection?["m_payment_id"].ToString().Trim(),
+            providerTransactionId: formCollection?["pf_payment_id"].ToString().Trim(),
+            failureStage,
+            errorMessage,
+            payload: SerializePayFastPayload(formCollection),
+            cancellationToken: cancellationToken);
     }
 
     private async Task<PaystackUpsertResult> UpsertActivePaystackSubscriptionAsync(
@@ -2553,7 +2692,10 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string? providerEmailToken,
         DateTimeOffset subscribedAtUtc,
         DateTimeOffset? nextRenewalAtUtc,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        decimal? billingAmountZar = null,
+        int? billingPeriodMonths = null,
+        string? billingAmountSource = null)
     {
         var payload = new
         {
@@ -2567,7 +2709,10 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             status = "active",
             subscribed_at = subscribedAtUtc.UtcDateTime,
             next_renewal_at = nextRenewalAtUtc?.UtcDateTime,
-            cancelled_at = (DateTime?)null
+            cancelled_at = (DateTime?)null,
+            billing_amount_zar = billingAmountZar,
+            billing_period_months = billingPeriodMonths,
+            billing_amount_source = billingAmountSource
         };
 
         var uri = new Uri(baseUri, "rest/v1/subscriptions?on_conflict=provider,provider_payment_id&select=subscription_id");
@@ -2741,7 +2886,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var escapedPaymentId = Uri.EscapeDataString(providerPaymentId);
         var uri = new Uri(
             baseUri,
-            $"rest/v1/subscriptions?provider=eq.{escapedProvider}&provider_payment_id=eq.{escapedPaymentId}&select=subscription_id,subscriber_id,tier_code,provider,provider_payment_id,provider_transaction_id,provider_token,source_system,status&limit=1");
+            $"rest/v1/subscriptions?provider=eq.{escapedProvider}&provider_payment_id=eq.{escapedPaymentId}&select=subscription_id,subscriber_id,tier_code,provider,provider_payment_id,provider_transaction_id,provider_token,source_system,status,billing_amount_zar,billing_period_months,billing_amount_source&limit=1");
         using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -2791,7 +2936,10 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             row.ProviderTransactionId,
             row.ProviderToken,
             row.SourceSystem,
-            row.Status);
+            row.Status,
+            row.BillingAmountZar,
+            row.BillingPeriodMonths,
+            row.BillingAmountSource);
     }
 
     private async Task<PaymentRecoverySubscriptionContext?> TryGetSubscriptionContextByProviderTransactionIdAsync(
@@ -2810,7 +2958,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var escapedTransactionId = Uri.EscapeDataString(providerTransactionId);
         var uri = new Uri(
             baseUri,
-            $"rest/v1/subscriptions?provider=eq.{escapedProvider}&provider_transaction_id=eq.{escapedTransactionId}&select=subscription_id,subscriber_id,tier_code,provider,provider_payment_id,provider_transaction_id,provider_token,source_system,status&limit=1");
+            $"rest/v1/subscriptions?provider=eq.{escapedProvider}&provider_transaction_id=eq.{escapedTransactionId}&select=subscription_id,subscriber_id,tier_code,provider,provider_payment_id,provider_transaction_id,provider_token,source_system,status,billing_amount_zar,billing_period_months,billing_amount_source&limit=1");
         using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -2860,7 +3008,10 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             row.ProviderTransactionId,
             row.ProviderToken,
             row.SourceSystem,
-            row.Status);
+            row.Status,
+            row.BillingAmountZar,
+            row.BillingPeriodMonths,
+            row.BillingAmountSource);
     }
 
     private async Task<PaymentRecoverySubscriptionContext?> TryGetSubscriptionContextByIdAsync(
@@ -2877,7 +3028,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var escapedSubscriptionId = Uri.EscapeDataString(subscriptionId);
         var uri = new Uri(
             baseUri,
-            $"rest/v1/subscriptions?subscription_id=eq.{escapedSubscriptionId}&select=subscription_id,subscriber_id,tier_code,provider,provider_payment_id,provider_transaction_id,provider_token,source_system,status&limit=1");
+            $"rest/v1/subscriptions?subscription_id=eq.{escapedSubscriptionId}&select=subscription_id,subscriber_id,tier_code,provider,provider_payment_id,provider_transaction_id,provider_token,source_system,status,billing_amount_zar,billing_period_months,billing_amount_source&limit=1");
         using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -2926,7 +3077,10 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             row.ProviderTransactionId,
             row.ProviderToken,
             row.SourceSystem,
-            row.Status);
+            row.Status,
+            row.BillingAmountZar,
+            row.BillingPeriodMonths,
+            row.BillingAmountSource);
     }
 
     private async Task<string?> GetSubscriberEmailByIdAsync(
@@ -3740,6 +3894,36 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         }
     }
 
+    private static object SerializePayFastPayload(IFormCollection? formCollection)
+    {
+        if (formCollection is null)
+        {
+            return new Dictionary<string, string>
+            {
+                ["raw"] = "request did not contain form data"
+            };
+        }
+
+        return formCollection.ToDictionary(field => field.Key, field => field.Value.ToString());
+    }
+
+    private static decimal? TryReadPayFastAmountGross(IFormCollection formCollection)
+    {
+        var value = formCollection["amount_gross"].ToString().Trim();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)
+            ? Math.Round(parsed, 2, MidpointRounding.AwayFromZero)
+            : null;
+    }
+
+    private static bool ArePayFastAmountsEqual(decimal expected, decimal actual) =>
+        Math.Abs(Math.Round(expected, 2, MidpointRounding.AwayFromZero) -
+                 Math.Round(actual, 2, MidpointRounding.AwayFromZero)) <= 0.01m;
+
     private static string? ResolvePaystackProviderPaymentId(JsonElement data)
     {
         if (data.ValueKind != JsonValueKind.Object)
@@ -4117,6 +4301,12 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string? ProviderPaymentId = null,
         string? ProviderTransactionId = null);
 
+    private sealed record PayFastAmountValidationResult(
+        bool IsSuccess,
+        decimal? BillingAmountZar = null,
+        string? BillingAmountSource = null,
+        string? ErrorMessage = null);
+
     private sealed record EventInsertResult(bool IsSuccess, bool WasInserted);
 
     private sealed record SelfServiceSubscriptionContext(
@@ -4225,6 +4415,15 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         [JsonPropertyName("status")]
         public string? Status { get; set; }
+
+        [JsonPropertyName("billing_amount_zar")]
+        public decimal? BillingAmountZar { get; set; }
+
+        [JsonPropertyName("billing_period_months")]
+        public int? BillingPeriodMonths { get; set; }
+
+        [JsonPropertyName("billing_amount_source")]
+        public string? BillingAmountSource { get; set; }
     }
 
     private sealed class PaymentRecoverySubscriberRow
@@ -4249,7 +4448,10 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string? ProviderTransactionId,
         string? ProviderToken,
         string? SourceSystem,
-        string? Status);
+        string? Status,
+        decimal? BillingAmountZar,
+        int? BillingPeriodMonths,
+        string? BillingAmountSource);
 
     private sealed class PaymentRecoveryRow
     {

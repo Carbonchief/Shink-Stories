@@ -1477,6 +1477,11 @@ app.MapPost("/api/payfast/notify", async (
     if (!httpContext.Request.HasFormContentType)
     {
         logger.LogWarning("PayFast ITN rejected: invalid content type.");
+        await subscriptionLedgerService.RecordPayFastWebhookFailureAsync(
+            formCollection: null,
+            failureStage: "request-content-type",
+            errorMessage: "PayFast ITN request did not contain form data.",
+            cancellationToken: httpContext.RequestAborted);
         return Results.Ok();
     }
 
@@ -1501,6 +1506,11 @@ app.MapPost("/api/payfast/notify", async (
             "PayFast ITN failed validation. pf_payment_id={PayFastPaymentId}, m_payment_id={MerchantPaymentId}",
             form["pf_payment_id"].ToString(),
             form["m_payment_id"].ToString());
+        await subscriptionLedgerService.RecordPayFastWebhookFailureAsync(
+            form,
+            failureStage: ResolvePayFastValidationFailureStage(signatureValid, serverConfirmed),
+            errorMessage: $"PayFast ITN validation failed. signature_valid={signatureValid}; server_confirmed={serverConfirmed}.",
+            cancellationToken: httpContext.RequestAborted);
     }
     else
     {
@@ -1511,6 +1521,11 @@ app.MapPost("/api/payfast/notify", async (
                 "PayFast subscription persistence failed. Error={Error} m_payment_id={MerchantPaymentId}",
                 persistResult.ErrorMessage,
                 form["m_payment_id"].ToString());
+            await subscriptionLedgerService.RecordPayFastWebhookFailureAsync(
+                form,
+                failureStage: "subscription-persist",
+                errorMessage: persistResult.ErrorMessage ?? "PayFast subscription could not be persisted.",
+                cancellationToken: httpContext.RequestAborted);
         }
         else
         {
@@ -4147,6 +4162,18 @@ static async Task<IResult> HandlePaystackWebhookAsync(
 
     // Acknowledge only after signature validation and durable persistence.
     return Results.Ok();
+}
+
+static string ResolvePayFastValidationFailureStage(bool signatureValid, bool serverConfirmed)
+{
+    if (!signatureValid && !serverConfirmed)
+    {
+        return "validation";
+    }
+
+    return signatureValid
+        ? "server-confirmation"
+        : "signature-validation";
 }
 
 static string BuildStorePageRedirectPath(
