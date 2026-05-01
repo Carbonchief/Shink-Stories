@@ -1,58 +1,102 @@
 @page "/Error"
+@page "/Error/{StatusCode:int}"
 @page "/error"
+@page "/error/{StatusCode:int}"
+@layout MainLayout
 @using System.Diagnostics
 @inject NavigationManager NavigationManager
 
-<PageTitle>Fout | Schink Stories</PageTitle>
+<PageTitle>@PageTitleText</PageTitle>
 <HeadContent>
-    <meta name="description" content="Daar was 'n probleem met die versoek op Schink Stories." />
+    <meta name="description" content="@MetaDescription" />
     <meta name="robots" content="noindex, nofollow, noarchive, nosnippet" />
-    <link rel="canonical" href="@NavigationManager.ToAbsoluteUri("/error").ToString()" />
+    <link rel="canonical" href="@NavigationManager.ToAbsoluteUri(CanonicalUrl).ToString()" />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Fout | Schink Stories" />
-    <meta property="og:description" content="Daar was 'n probleem met die versoek op Schink Stories." />
-    <meta property="og:url" content="@NavigationManager.ToAbsoluteUri("/error").ToString()" />
-    <meta property="og:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
-    <meta property="og:image:secure_url" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
+    <meta property="og:title" content="@PageTitleText" />
+    <meta property="og:description" content="@MetaDescription" />
+    <meta property="og:url" content="@NavigationManager.ToAbsoluteUri(CanonicalUrl).ToString()" />
+    <meta property="og:image" content="@NavigationManager.ToAbsoluteUri("/media/imported/misc/2024/09/404_Rammetjie.png").ToString()" />
+    <meta property="og:image:secure_url" content="@NavigationManager.ToAbsoluteUri("/media/imported/misc/2024/09/404_Rammetjie.png").ToString()" />
     <meta property="og:image:type" content="image/png" />
-    <meta property="og:image:width" content="512" />
-    <meta property="og:image:height" content="512" />
-    <meta property="og:image:alt" content="Schink Stories logo" />
+    <meta property="og:image:width" content="955" />
+    <meta property="og:image:height" content="1280" />
+    <meta property="og:image:alt" content="Rammetjie met sterre" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Fout | Schink Stories" />
-    <meta name="twitter:description" content="Daar was 'n probleem met die versoek op Schink Stories." />
-    <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
-    <meta name="twitter:image:alt" content="Schink Stories logo" />
+    <meta name="twitter:title" content="@PageTitleText" />
+    <meta name="twitter:description" content="@MetaDescription" />
+    <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/media/imported/misc/2024/09/404_Rammetjie.png").ToString()" />
+    <meta name="twitter:image:alt" content="Rammetjie met sterre" />
 </HeadContent>
 
-<h1 class="text-danger">Error.</h1>
-<h2 class="text-danger">An error occurred while processing your request.</h2>
+<section class="error-shell" aria-labelledby="error-heading">
+    <img class="error-image"
+         src="/media/imported/misc/2024/09/404_Rammetjie.png"
+         alt="Illustrasie vir 'n vriendelike foutblad"
+         width="420"
+         height="420"
+         loading="eager"
+         fetchpriority="high"
+         decoding="async" />
 
-@if (ShowRequestId)
-{
-    <p>
-        <strong>Request ID:</strong> <code>@RequestId</code>
-    </p>
-}
+    <div class="error-copy">
+        <p class="error-kicker">@KickerText</p>
+        <h1 id="error-heading">@PageHeading</h1>
+        <p>@PageBodyText</p>
 
-<h3>Development Mode</h3>
-<p>
-    Swapping to <strong>Development</strong> environment will display more detailed information about the error that occurred.
-</p>
-<p>
-    <strong>The Development environment shouldn't be enabled for deployed applications.</strong>
-    It can result in displaying sensitive information from exceptions to end users.
-    For local debugging, enable the <strong>Development</strong> environment by setting the <strong>ASPNETCORE_ENVIRONMENT</strong> environment variable to <strong>Development</strong>
-    and restarting the app.
-</p>
+        @if (ShowRequestId)
+        {
+            <p class="error-request-id">
+                <strong>Aanvraagnommer:</strong> <code>@RequestId</code>
+            </p>
+        }
+        else if (IsServerError)
+        {
+            <p class="error-request-id-note">
+                Probeer weer later of kontak ons met hierdie bladsy as die fout aanhou.
+            </p>
+        }
+
+        <a class="error-home-btn" href="/">KEER TERUG NA DIE TUISBLAD</a>
+    </div>
+</section>
 
 @code{
     [CascadingParameter]
     private HttpContext? HttpContext { get; set; }
 
+    [Parameter]
+    public int? StatusCode { get; set; }
+
+    private int ResolvedStatusCode { get; set; } = 500;
     private string? RequestId { get; set; }
     private bool ShowRequestId => !string.IsNullOrEmpty(RequestId);
+    private bool IsServerError => ResolvedStatusCode == 500;
 
-    protected override void OnInitialized() =>
+    private string KickerText => IsServerError ? "500 - Bedienersfout" : "Oeps, blad nie gevind nie";
+    private string PageTitleText => $"{ResolvedStatusCode} Fout | Schink Stories";
+    private string MetaDescription => IsServerError
+        ? "Die bladsy kon nie verwerk word nie. Ons werk reeds aan 'n regstelling."
+        : "Die blad waarna jy soek bestaan nie op Schink Stories nie.";
+    private string CanonicalUrl => $"/error/{ResolvedStatusCode}";
+    private string PageHeading => IsServerError
+        ? "Oeps, iets het skeefgeloop"
+        : "Oeps, blad nie gevind nie";
+    private string PageBodyText => IsServerError
+        ? "Ons vra om verskoning. Die bediener het 'n fout teëgekom. Probeer die bladsy weer, of gaan terug huis toe."
+        : "Die blad waarna jy gesoek het, bestaan nie op hierdie pad nie.";
+
+    protected override void OnInitialized()
+    {
+        var responseStatus = HttpContext?.Response?.StatusCode;
+        if (StatusCode is 404 or 500)
+        {
+            ResolvedStatusCode = StatusCode.Value;
+        }
+        else if (responseStatus is 404 or 500)
+        {
+            ResolvedStatusCode = responseStatus.Value;
+        }
+
         RequestId = Activity.Current?.Id ?? HttpContext?.TraceIdentifier;
+    }
 }

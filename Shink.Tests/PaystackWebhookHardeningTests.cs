@@ -55,6 +55,26 @@ public class PaystackWebhookHardeningTests
     }
 
     [TestMethod]
+    public void PaystackSubscriptionCreateCanFallbackToPlanAmountAndInterval()
+    {
+        var ledgerService = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseSubscriptionLedgerService.cs"));
+        var resolverStart = ledgerService.IndexOf("private async Task<PaymentPlan?> ResolvePaystackPlanAsync", StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(0, resolverStart, "The Paystack plan resolver must exist.");
+
+        var resolverEnd = ledgerService.IndexOf("private async Task<string?> ResolveTierCodeByPaystackPlanCodeAsync", resolverStart, StringComparison.Ordinal);
+        Assert.IsGreaterThan(resolverStart, resolverEnd, "The Paystack plan resolver block could not be isolated.");
+
+        var resolverBlock = ledgerService[resolverStart..resolverEnd];
+        StringAssert.Contains(resolverBlock, "ResolvePaystackPlanByAmountAndInterval(data)");
+
+        StringAssert.Contains(ledgerService, "private static PaymentPlan? ResolvePaystackPlanByAmountAndInterval(JsonElement data)");
+        StringAssert.Contains(ledgerService, "TryReadNestedDecimal(data, \"plan\", \"amount\")");
+        StringAssert.Contains(ledgerService, "TryReadNestedString(data, \"plan\", \"interval\")");
+        StringAssert.Contains(ledgerService, "\"monthly\"");
+        StringAssert.Contains(ledgerService, "\"annually\"");
+    }
+
+    [TestMethod]
     public void FailedPaystackWebhookAttemptsAreLoggedWithPayloadBeforeAlerting()
     {
         var ledgerService = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseSubscriptionLedgerService.cs"));

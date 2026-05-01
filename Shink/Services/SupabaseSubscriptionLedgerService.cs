@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -2287,11 +2288,52 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             }
         }
 
+        var planFromPaystackDetails = ResolvePaystackPlanByAmountAndInterval(data);
+        if (planFromPaystackDetails is not null)
+        {
+            return planFromPaystackDetails;
+        }
+
         var inferredPlanSlug = ResolvePlanSlugFromPaymentIdentifier(
             TryReadNestedString(data, "metadata", "subscription_key") ??
             TryReadString(data, "reference"));
 
         return PaymentPlanCatalog.FindBySlug(inferredPlanSlug);
+    }
+
+    private static PaymentPlan? ResolvePaystackPlanByAmountAndInterval(JsonElement data)
+    {
+        var amountInCents = TryReadNestedDecimal(data, "plan", "amount")
+            ?? TryReadStringAsDecimal(data, "amount");
+        var interval = TryReadNestedString(data, "plan", "interval");
+        if (amountInCents is null || string.IsNullOrWhiteSpace(interval))
+        {
+            return null;
+        }
+
+        var matches = PaymentPlanCatalog.All
+            .Where(plan =>
+                plan.IsSubscription &&
+                PaystackAmountMatches(plan, amountInCents.Value) &&
+                PaystackIntervalMatches(plan, interval))
+            .Take(2)
+            .ToArray();
+
+        return matches.Length == 1 ? matches[0] : null;
+    }
+
+    private static bool PaystackAmountMatches(PaymentPlan plan, decimal amountInCents) =>
+        decimal.Round(plan.Amount * 100m, 0, MidpointRounding.AwayFromZero) == decimal.Round(amountInCents, 0, MidpointRounding.AwayFromZero);
+
+    private static bool PaystackIntervalMatches(PaymentPlan plan, string interval)
+    {
+        var normalizedInterval = interval.Trim().ToLowerInvariant();
+        return normalizedInterval switch
+        {
+            "monthly" => plan.BillingPeriodMonths == 1,
+            "annually" or "annual" or "yearly" => plan.BillingPeriodMonths == 12,
+            _ => false
+        };
     }
 
     private async Task<string?> ResolveTierCodeByPaystackPlanCodeAsync(
@@ -3844,6 +3886,55 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             JsonValueKind.False => "false",
             _ => null
         };
+    }
+
+    private static decimal? TryReadNestedDecimal(JsonElement element, params string[] path)
+    {
+        if (path.Length == 0)
+        {
+            return null;
+        }
+
+        var current = element;
+        foreach (var segment in path)
+        {
+            if (current.ValueKind != JsonValueKind.Object ||
+                !current.TryGetProperty(segment, out var next))
+            {
+                return null;
+            }
+
+            current = next;
+        }
+
+        return TryConvertJsonDecimal(current);
+    }
+
+    private static decimal? TryReadStringAsDecimal(JsonElement element, string propertyName)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(propertyName, out var node))
+        {
+            return null;
+        }
+
+        return TryConvertJsonDecimal(node);
+    }
+
+    private static decimal? TryConvertJsonDecimal(JsonElement node)
+    {
+        if (node.ValueKind == JsonValueKind.Number && node.TryGetDecimal(out var number))
+        {
+            return number;
+        }
+
+        if (node.ValueKind == JsonValueKind.String &&
+            decimal.TryParse(node.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed))
+        {
+            return parsed;
+        }
+
+        return null;
     }
 
     [GeneratedRegex("-\\d{14}-[0-9a-fA-F]{32}$", RegexOptions.CultureInvariant)]
