@@ -89,6 +89,38 @@ public class PaystackWebhookHardeningTests
         StringAssert.Contains(migration, "alter table public.payment_webhook_failures enable row level security");
     }
 
+    [TestMethod]
+    public void PaystackInvoiceUpdateCanRefreshExistingSubscription()
+    {
+        var ledgerService = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseSubscriptionLedgerService.cs"));
+
+        StringAssert.Contains(ledgerService, "string.Equals(eventType, \"invoice.update\", StringComparison.OrdinalIgnoreCase)");
+        StringAssert.Contains(ledgerService, "TryReadNestedString(data, \"subscription\", \"next_payment_date\")");
+        StringAssert.Contains(ledgerService, "TryReadNestedString(data, \"transaction\", \"reference\")");
+    }
+
+    [TestMethod]
+    public void PaystackInvoiceChargeSuccessLinksToExistingSubscription()
+    {
+        var ledgerService = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseSubscriptionLedgerService.cs"));
+
+        StringAssert.Contains(ledgerService, "IsPaystackInvoiceChargeSuccess(eventType, data)");
+        StringAssert.Contains(ledgerService, "TryGetSubscriptionContextByProviderTransactionIdAsync");
+        StringAssert.Contains(ledgerService, "providerPaymentId = paystackContext.ProviderPaymentId");
+    }
+
+    [TestMethod]
+    public void PaystackNotRenewSchedulesCancellationWithoutEndingAccessImmediately()
+    {
+        var ledgerService = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseSubscriptionLedgerService.cs"));
+
+        StringAssert.Contains(ledgerService, "string.Equals(eventType, \"subscription.not_renew\", StringComparison.OrdinalIgnoreCase)");
+        StringAssert.Contains(ledgerService, "string.Equals(eventStatus, \"non-renewing\", StringComparison.OrdinalIgnoreCase)");
+        StringAssert.Contains(ledgerService, "ScheduleSubscriptionCancellationAsync(");
+        StringAssert.Contains(ledgerService, "TryReadString(data, \"next_payment_date\")");
+        StringAssert.Contains(ledgerService, "failureStage: \"subscription-cancellation-schedule\"");
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var parts = new[]
