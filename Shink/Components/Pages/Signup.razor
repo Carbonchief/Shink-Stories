@@ -42,6 +42,9 @@
         <p class="d-inline" >Voltooi jou besonderhede en begin met veilige Afrikaanse storietyd.</p>
     </header>
 
+    <EditForm FormName="signup-form" class="signup-checkout-form" EditContext="FormEditContext" OnSubmit="HandleSignUpSubmitAsync" aria-busy="@IsSubmitting">
+        <DataAnnotationsValidator />
+
     <div class="signup-checkout-grid">
         <article class="signup-card signup-card-form">
             <header class="signup-card-header">
@@ -50,9 +53,7 @@
                 <p class="signup-required-note"><span class="required-indicator" aria-hidden="true">*</span> dui verpligte velde aan.</p>
             </header>
 
-            <EditForm FormName="signup-form" class="signup-form" EditContext="FormEditContext" OnSubmit="HandleSignUpSubmitAsync" aria-busy="@IsSubmitting">
-                <DataAnnotationsValidator />
-
+            <div class="signup-form">
                 <div class="signup-grid">
                     <div class="signup-field">
                         <label class="form-label" for="signup-first-name">Voornaam <span class="required-indicator" aria-hidden="true">*</span></label>
@@ -118,7 +119,7 @@
                         @StatusMessage
                     </p>
                 }
-            </EditForm>
+            </div>
         </article>
 
         <aside class="signup-card signup-card-membership" aria-label="Jou lidmaatskap">
@@ -175,6 +176,7 @@
 
         </aside>
     </div>
+    </EditForm>
 </section>
 
 @if (ShowAccountCreatedPopup)
