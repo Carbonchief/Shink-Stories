@@ -1,25 +1,44 @@
 .admin-settings-grid {
+    --admin-settings-surface: #172631;
+    --admin-settings-surface-soft: #1d3040;
+    --admin-settings-input: #10202c;
+    --admin-settings-text: #eaf1f8;
+    --admin-settings-muted: #b8c7d4;
+    --admin-settings-border: rgba(145, 169, 188, 0.34);
+    --admin-settings-border-strong: rgba(187, 209, 224, 0.5);
+    --admin-settings-accent: #8dc66f;
     display: grid;
     gap: 1rem;
 }
 
 .admin-settings-card {
+    --admin-settings-surface: #172631;
+    --admin-settings-surface-soft: #1d3040;
+    --admin-settings-input: #10202c;
+    --admin-settings-text: #eaf1f8;
+    --admin-settings-muted: #b8c7d4;
+    --admin-settings-border: rgba(145, 169, 188, 0.34);
+    --admin-settings-border-strong: rgba(187, 209, 224, 0.5);
+    --admin-settings-accent: #8dc66f;
     display: grid;
     gap: 0.9rem;
     padding: 1rem;
-    border: 1px solid rgba(34, 34, 34, 0.12);
+    border: 1px solid var(--admin-settings-border);
     border-radius: 1rem;
-    background: #fff;
+    background: var(--admin-settings-surface);
+    color: var(--admin-settings-text);
+    box-shadow: 0 18px 42px rgba(5, 12, 18, 0.24);
 }
 
 .admin-settings-card h3,
 .admin-settings-card h4 {
     margin: 0;
+    color: var(--admin-settings-text);
 }
 
 .admin-settings-card p {
     margin: 0;
-    color: rgba(34, 34, 34, 0.72);
+    color: var(--admin-settings-muted);
 }
 
 .admin-settings-actions {
@@ -36,18 +55,29 @@
     width: 100%;
     border-collapse: collapse;
     min-width: 760px;
+    color: var(--admin-settings-text);
 }
 
 .admin-settings-table th,
 .admin-settings-table td {
     padding: 0.75rem;
-    border-bottom: 1px solid rgba(34, 34, 34, 0.08);
+    border-bottom: 1px solid var(--admin-settings-border);
     vertical-align: top;
     text-align: left;
 }
 
+.admin-settings-table th {
+    color: var(--admin-settings-text);
+    background: var(--admin-settings-surface-soft);
+    font-weight: 800;
+}
+
+.admin-settings-table td {
+    color: var(--admin-settings-muted);
+}
+
 .admin-settings-table tbody tr.is-selected {
-    background: rgba(69, 186, 173, 0.08);
+    background: rgba(141, 198, 111, 0.14);
 }
 
 .admin-code-editor-card {
@@ -84,6 +114,74 @@
 .admin-code-editor-actions {
     display: flex;
     justify-content: flex-end;
+}
+
+::deep .mud-input-control {
+    color: var(--admin-settings-text, #eaf1f8);
+}
+
+::deep .mud-input,
+::deep .mud-input-slot,
+::deep .mud-input-control-input-container,
+::deep .mud-select {
+    color: var(--admin-settings-text, #eaf1f8) !important;
+}
+
+::deep .mud-input-root {
+    background: var(--admin-settings-input, #10202c);
+    color: var(--admin-settings-text, #eaf1f8) !important;
+}
+
+::deep .mud-input-root input,
+::deep .mud-input-root textarea,
+::deep .mud-select .mud-input-slot,
+::deep .mud-picker input {
+    color: var(--admin-settings-text, #eaf1f8) !important;
+    -webkit-text-fill-color: var(--admin-settings-text, #eaf1f8);
+}
+
+::deep .mud-input-root input::placeholder {
+    color: var(--admin-settings-muted, #b8c7d4) !important;
+    opacity: 1;
+}
+
+::deep .mud-input-label,
+::deep .mud-input-helper-text,
+::deep .mud-typography {
+    color: var(--admin-settings-muted, #b8c7d4) !important;
+}
+
+::deep .mud-input-outlined-border {
+    border-color: var(--admin-settings-border-strong, rgba(187, 209, 224, 0.5)) !important;
+}
+
+::deep .mud-input-root:hover .mud-input-outlined-border,
+::deep .mud-input-root.mud-input-focused .mud-input-outlined-border {
+    border-color: var(--admin-settings-accent, #8dc66f) !important;
+}
+
+::deep .mud-switch-label,
+::deep .mud-switch-span {
+    color: var(--admin-settings-text, #eaf1f8) !important;
+}
+
+::deep .mud-button-root {
+    font-weight: 800;
+}
+
+::deep .mud-button-root.mud-button-outlined {
+    border-color: var(--admin-settings-border-strong, rgba(187, 209, 224, 0.5));
+    color: var(--admin-settings-text, #eaf1f8);
+}
+
+::deep .mud-button-root.mud-button-text {
+    color: #9bd7ff;
+}
+
+::deep .mud-button-root:disabled {
+    color: rgba(234, 241, 248, 0.62) !important;
+    background: rgba(234, 241, 248, 0.08) !important;
+    border-color: rgba(234, 241, 248, 0.16) !important;
 }
 
 @media (max-width: 900px) {

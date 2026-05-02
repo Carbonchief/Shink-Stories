@@ -21,6 +21,18 @@ public class SignupSourceTests
         StringAssert.Contains(signup, "For=\"@(() => SignUpForm.DiscountCode)\"");
     }
 
+    [TestMethod]
+    public void SignupDiscountCodeHelpUsesPaystackCopyAndHasSpacing()
+    {
+        var signup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Signup.razor"));
+        var css = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Signup.razor.css"));
+
+        StringAssert.Contains(signup, "As jou kode geldig is, slaan ons PayStack vir nou oor en aktiveer jou toegang direk.");
+        Assert.IsFalse(signup.Contains("slaan ons PayFast vir nou oor", StringComparison.Ordinal));
+        StringAssert.Contains(css, ".signup-discount-code-field");
+        StringAssert.Contains(css, "margin-top: 1rem;");
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var parts = new[]

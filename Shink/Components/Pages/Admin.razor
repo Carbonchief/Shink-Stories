@@ -115,25 +115,6 @@
             <MudTabPanel Text='@T("Intekenaars", "Subscribers")'>
                 <section class="admin-section">
                     <div class="admin-section-head admin-subscriber-section-head">
-                        <div class="admin-subscriber-submenu">
-                            <span class="admin-subscriber-submenu-label">@T("Verslagtipes", "Report types")</span>
-                            <div class="admin-subscriber-submenu-links"
-                                 role="navigation"
-                                 aria-label='@T("Intekenaar verslagtipes", "Subscriber report types")'>
-                                @foreach (var subscriberView in SubscriberViews)
-                                {
-                                    var isActiveSubscriberView = ActiveSubscriberView == subscriberView;
-                                    <button type="button"
-                                            class='@($"admin-subscriber-submenu-link{(isActiveSubscriberView ? " is-active" : string.Empty)}")'
-                                            @onclick='() => SelectSubscriberViewAsync(subscriberView)'
-                                            aria-pressed="@isActiveSubscriberView"
-                                            title="@GetSubscriberViewLabel(subscriberView)">
-                                        @GetSubscriberViewLabel(subscriberView)
-                                    </button>
-                                }
-                            </div>
-                        </div>
-
                         @if (IsShowingSubscriberGrid)
                         {
                             <div class="admin-search">
@@ -1214,15 +1195,185 @@
                                    Variant="Variant.Outlined"
                                    Color="Color.Primary"
                                    OnClick="RefreshAnalyticsAsync"
-                                   Disabled="IsRefreshingAnalytics"
+                                   Disabled="@(IsRefreshingAnalytics || IsRefreshingSubscriberReports)"
                                    aria-label='@T("Verfris analitika", "Refresh analytics")'
                                    title='@T("Verfris analitika", "Refresh analytics")'>
                             <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
                             <span class="admin-btn-text">
-                                @(IsRefreshingAnalytics ? T("Verfris...", "Refreshing...") : T("Verfris", "Refresh"))
+                                @((IsRefreshingAnalytics || IsRefreshingSubscriberReports) ? T("Verfris...", "Refreshing...") : T("Verfris", "Refresh"))
                             </span>
                         </MudButton>
                     </div>
+
+                    @{
+                        var todaySubscriberMetric = GetSubscriberMetric("today");
+                        var monthlySubscriberMetric = GetSubscriberMetric("this_month");
+                        var yearlySubscriberMetric = GetSubscriberMetric("this_year");
+                        var todaySubscriberSales = GetSubscriberSalesMetric("today");
+                        var monthlySubscriberSales = GetSubscriberSalesMetric("this_month");
+                        var yearlySubscriberSales = GetSubscriberSalesMetric("this_year");
+                        var allTimeSubscriberSales = GetSubscriberSalesMetric("all_time");
+                        var pastThirtyDaysSubscriberRecoveries = GetSubscriberRecoveryMetric("past_30_days");
+                        var allTimeSubscriberRecoveries = GetSubscriberRecoveryMetric("all_time");
+                    }
+
+                    <section class="admin-subscriber-analytics-section admin-analytics-panel admin-analytics-panel-wide">
+                        <div class="admin-analytics-panel-head">
+                            <div>
+                                <h3>@T("Intekenaar analitika", "Subscriber analytics")</h3>
+                                <p>
+                                    @T(
+                                        "Nuwe intekenaars, gekanselleerde intekeninge, aktiewe lede en betalingseinligting uit die intekenaarverslae.",
+                                        "New subscribers, cancelled subscriptions, active members, and payment signals from the subscriber reports.")
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="admin-analytics-grid">
+                            <article class="admin-analytics-card">
+                                <p class="admin-analytics-label">@T("Nuwe intekenaars vandag", "New subscribers today")</p>
+                                <p class="admin-analytics-value">@FormatAnalyticsNumber(todaySubscriberMetric.Signups)</p>
+                                <div class="admin-analytics-meta">
+                                    <span>@T("Gekanselleerde intekeninge", "Cancelled subscriptions")</span>
+                                    <strong>@FormatAnalyticsNumber(todaySubscriberMetric.Cancellations)</strong>
+                                </div>
+                            </article>
+
+                            <article class="admin-analytics-card">
+                                <p class="admin-analytics-label">@T("Nuwe intekenaars hierdie maand", "New subscribers this month")</p>
+                                <p class="admin-analytics-value">@FormatAnalyticsNumber(monthlySubscriberMetric.Signups)</p>
+                                <div class="admin-analytics-meta">
+                                    <span>@T("Gekanselleerde intekeninge", "Cancelled subscriptions")</span>
+                                    <strong>@FormatAnalyticsNumber(monthlySubscriberMetric.Cancellations)</strong>
+                                </div>
+                            </article>
+
+                            <article class="admin-analytics-card">
+                                <p class="admin-analytics-label">@T("Nuwe intekenaars hierdie jaar", "New subscribers this year")</p>
+                                <p class="admin-analytics-value">@FormatAnalyticsNumber(yearlySubscriberMetric.Signups)</p>
+                                <div class="admin-analytics-meta">
+                                    <span>@T("Gekanselleerde intekeninge", "Cancelled subscriptions")</span>
+                                    <strong>@FormatAnalyticsNumber(yearlySubscriberMetric.Cancellations)</strong>
+                                </div>
+                            </article>
+
+                            <article class="admin-analytics-card">
+                                <p class="admin-analytics-label">@T("Aktiewe lede", "Active members")</p>
+                                <p class="admin-analytics-value">@FormatAnalyticsNumber(ActiveSubscriberAnalyticsTotal)</p>
+                                <div class="admin-analytics-meta">
+                                    <span>@T("Inkomste hierdie maand", "Revenue this month")</span>
+                                    <strong>@FormatCurrency(monthlySubscriberSales.RevenueZar)</strong>
+                                </div>
+                                <div class="admin-analytics-meta">
+                                    <span>@T("Herwinde bestellings (30 dae)", "Recovered orders (30 days)")</span>
+                                    <strong>@FormatAnalyticsNumber(pastThirtyDaysSubscriberRecoveries.RecoveredOrders)</strong>
+                                </div>
+                            </article>
+                        </div>
+
+                        <div class="admin-report-table-wrap">
+                            <table class="admin-report-table admin-subscriber-analytics-table">
+                                <thead>
+                                    <tr>
+                                        <th>@T("Periode", "Period")</th>
+                                        <th>@T("Nuwe intekenaars", "New subscribers")</th>
+                                        <th>@T("Gekanselleerde intekeninge", "Cancelled subscriptions")</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var metric in SubscriberAnalyticsPeriodHighlights)
+                                    {
+                                        <tr>
+                                            <td>@GetSubscriberPeriodLabel(metric.PeriodKey)</td>
+                                            <td>@FormatAnalyticsNumber(metric.Signups)</td>
+                                            <td>@FormatAnalyticsNumber(metric.Cancellations)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <section class="admin-revenue-analytics-section admin-analytics-panel admin-analytics-panel-wide">
+                        <div class="admin-analytics-panel-head">
+                            <div>
+                                <h3>@T("Inkomste analitika", "Revenue analytics")</h3>
+                                <p>
+                                    @T(
+                                        "Intekeningverkope, aangetekende inkomste en herwinde inkomste volgens die huidige betaal- en hersteldata.",
+                                        "Subscription sales, recorded revenue, and recovered revenue from the current payment and recovery data.")
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="admin-analytics-grid">
+                            <article class="admin-analytics-card">
+                                <p class="admin-analytics-label">@T("Vandag", "Today")</p>
+                                <p class="admin-analytics-value">@FormatCurrency(todaySubscriberSales.RevenueZar)</p>
+                                <div class="admin-analytics-meta">
+                                    <span>@T("Verkope", "Sales")</span>
+                                    <strong>@FormatAnalyticsNumber(todaySubscriberSales.SalesCount)</strong>
+                                </div>
+                            </article>
+
+                            <article class="admin-analytics-card">
+                                <p class="admin-analytics-label">@T("Hierdie maand", "This month")</p>
+                                <p class="admin-analytics-value">@FormatCurrency(monthlySubscriberSales.RevenueZar)</p>
+                                <div class="admin-analytics-meta">
+                                    <span>@T("Verkope", "Sales")</span>
+                                    <strong>@FormatAnalyticsNumber(monthlySubscriberSales.SalesCount)</strong>
+                                </div>
+                                <div class="admin-analytics-meta">
+                                    <span>@T("Herwin 30 dae", "Recovered 30 days")</span>
+                                    <strong>@FormatCurrency(pastThirtyDaysSubscriberRecoveries.RecoveredRevenueZar)</strong>
+                                </div>
+                            </article>
+
+                            <article class="admin-analytics-card">
+                                <p class="admin-analytics-label">@T("Hierdie jaar", "This year")</p>
+                                <p class="admin-analytics-value">@FormatCurrency(yearlySubscriberSales.RevenueZar)</p>
+                                <div class="admin-analytics-meta">
+                                    <span>@T("Verkope", "Sales")</span>
+                                    <strong>@FormatAnalyticsNumber(yearlySubscriberSales.SalesCount)</strong>
+                                </div>
+                            </article>
+
+                            <article class="admin-analytics-card">
+                                <p class="admin-analytics-label">@T("Alles", "All time")</p>
+                                <p class="admin-analytics-value">@FormatCurrency(allTimeSubscriberSales.RevenueZar)</p>
+                                <div class="admin-analytics-meta">
+                                    <span>@T("Verkope", "Sales")</span>
+                                    <strong>@FormatAnalyticsNumber(allTimeSubscriberSales.SalesCount)</strong>
+                                </div>
+                                <div class="admin-analytics-meta">
+                                    <span>@T("Herwin totaal", "Recovered total")</span>
+                                    <strong>@FormatCurrency(allTimeSubscriberRecoveries.RecoveredRevenueZar)</strong>
+                                </div>
+                            </article>
+                        </div>
+
+                        <div class="admin-report-table-wrap">
+                            <table class="admin-report-table admin-revenue-analytics-table">
+                                <thead>
+                                    <tr>
+                                        <th>@T("Periode", "Period")</th>
+                                        <th>@T("Verkope", "Sales")</th>
+                                        <th>@T("Inkomste", "Revenue")</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var metric in RevenueAnalyticsPeriodHighlights)
+                                    {
+                                        <tr>
+                                            <td>@GetSubscriberPeriodLabel(metric.PeriodKey)</td>
+                                            <td>@FormatAnalyticsNumber(metric.SalesCount)</td>
+                                            <td>@FormatCurrency(metric.RevenueZar)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
 
                     @if (!HasAnalyticsData)
                     {
@@ -2461,12 +2612,7 @@
     private bool IsShowingSubscriberGrid => ActiveSubscriberView == SubscriberAdminView.AllSubscribers;
     private IReadOnlyList<SubscriberAdminView> SubscriberViews { get; } =
     [
-        SubscriberAdminView.AllSubscribers,
-        SubscriberAdminView.MembershipStats,
-        SubscriberAdminView.ActiveMembersPerLevel,
-        SubscriberAdminView.SalesAndRevenue,
-        SubscriberAdminView.AbandonedCartRecoveries,
-        SubscriberAdminView.VisitsViewsAndLogins
+        SubscriberAdminView.AllSubscribers
     ];
     private string[] ActiveMembersPerLevelChartLabels =>
         SubscriberReports.ActiveMembersPerLevel
@@ -2511,6 +2657,24 @@
         Analytics.StorySummary.TotalListenEvents > 0 ||
         Analytics.StorySummary.TotalFavorites > 0 ||
         Analytics.CharacterSummary.TotalAudioPlays > 0;
+
+    private int ActiveSubscriberAnalyticsTotal =>
+        SubscriberReports.ActiveMembersPerLevel.Sum(metric => metric.ActiveMembers);
+
+    private IReadOnlyList<AdminMembershipStatsMetric> SubscriberAnalyticsPeriodHighlights =>
+        [
+            GetSubscriberMetric("today"),
+            GetSubscriberMetric("this_month"),
+            GetSubscriberMetric("this_year")
+        ];
+
+    private IReadOnlyList<AdminSalesRevenueMetric> RevenueAnalyticsPeriodHighlights =>
+        [
+            GetSubscriberSalesMetric("today"),
+            GetSubscriberSalesMetric("this_month"),
+            GetSubscriberSalesMetric("this_year"),
+            GetSubscriberSalesMetric("all_time")
+        ];
 
     private bool HasActiveSubscriberColumnFilters => SubscriberColumnFilters.HasActiveFilters;
     private bool HasActiveStoryColumnFilters => StoryColumnFilters.HasActiveFilters;
@@ -3025,10 +3189,14 @@
     private async Task RefreshAnalyticsAsync()
     {
         IsRefreshingAnalytics = true;
+        IsRefreshingSubscriberReports = true;
+
+        var analyticsTask = AdminManagementService.GetAnalyticsAsync(CurrentAdminEmail);
+        var subscriberReportsTask = GetAnalyticsSubscriberReportsAsync();
 
         try
         {
-            Analytics = await AdminManagementService.GetAnalyticsAsync(CurrentAdminEmail);
+            Analytics = await analyticsTask;
         }
         catch (Exception exception)
         {
@@ -3036,10 +3204,22 @@
             Analytics = AdminAnalyticsSnapshot.Empty;
             SetError(T("Kon nie analitika nou laai nie.", "Could not load analytics right now."));
         }
-        finally
+
+        try
         {
-            IsRefreshingAnalytics = false;
+            SubscriberReports = await subscriberReportsTask;
+            HasLoadedSubscriberReports = true;
         }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to refresh subscriber analytics.");
+            SubscriberReports = AdminSubscriberReportsSnapshot.Empty;
+            HasLoadedSubscriberReports = false;
+            SetError(T("Kon nie intekenaar analitika nou laai nie.", "Could not load subscriber analytics right now."));
+        }
+
+        IsRefreshingAnalytics = false;
+        IsRefreshingSubscriberReports = false;
     }
 
     private string GetSubscriberRowClass(AdminSubscriberRecord subscriber, int rowNumber)
@@ -5439,7 +5619,7 @@
 
         try
         {
-            SubscriberReports = await AdminManagementService.GetSubscriberReportsAsync(CurrentAdminEmail);
+            SubscriberReports = await GetAnalyticsSubscriberReportsAsync();
             HasLoadedSubscriberReports = true;
         }
         catch (Exception exception)
@@ -5454,6 +5634,24 @@
             IsRefreshingSubscriberReports = false;
         }
     }
+
+    private Task<AdminSubscriberReportsSnapshot> GetAnalyticsSubscriberReportsAsync() =>
+        AdminManagementService.GetSubscriberReportsAsync(CurrentAdminEmail);
+
+    private AdminMembershipStatsMetric GetSubscriberMetric(string periodKey) =>
+        SubscriberReports.MembershipStats.FirstOrDefault(metric =>
+            string.Equals(metric.PeriodKey, periodKey, StringComparison.OrdinalIgnoreCase))
+        ?? new AdminMembershipStatsMetric(periodKey, 0, 0);
+
+    private AdminSalesRevenueMetric GetSubscriberSalesMetric(string periodKey) =>
+        SubscriberReports.SalesAndRevenue.FirstOrDefault(metric =>
+            string.Equals(metric.PeriodKey, periodKey, StringComparison.OrdinalIgnoreCase))
+        ?? new AdminSalesRevenueMetric(periodKey, 0, 0m);
+
+    private AdminRecoveryMetric GetSubscriberRecoveryMetric(string periodKey) =>
+        SubscriberReports.AbandonedCartRecoveries.FirstOrDefault(metric =>
+            string.Equals(metric.PeriodKey, periodKey, StringComparison.OrdinalIgnoreCase))
+        ?? new AdminRecoveryMetric(periodKey, 0m, 0, 0);
 
     private bool HasSubscriberReportData(SubscriberAdminView subscriberView) =>
         subscriberView switch

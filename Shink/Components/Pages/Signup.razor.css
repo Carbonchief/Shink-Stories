@@ -558,6 +558,10 @@
     color: #9ae6af;
 }
 
+.signup-discount-code-field {
+    margin-top: 1rem;
+}
+
 .membership-total {
     margin: 0.88rem 0 0;
     padding-top: 0.72rem;

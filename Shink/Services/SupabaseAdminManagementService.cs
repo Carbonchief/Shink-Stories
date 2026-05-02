@@ -3074,7 +3074,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/subscriptions" +
-            "?select=subscription_id,subscriber_id,tier_code,provider,source_system,status,subscribed_at,next_renewal_at,cancelled_at,provider_payment_id,provider_transaction_id" +
+            "?select=subscription_id,subscriber_id,tier_code,provider,source_system,status,subscribed_at,next_renewal_at,cancelled_at,billing_amount_zar,provider_payment_id,provider_transaction_id" +
             "&order=subscribed_at.desc" +
             "&limit=10000");
 
@@ -3612,7 +3612,7 @@ public sealed partial class SupabaseAdminManagementService(
                 StringComparer.OrdinalIgnoreCase);
 
         return new AdminSubscriberReportsSnapshot(
-            MembershipStats: BuildMembershipStatsMetrics(wordPressSubscriberReports, subscriptions),
+            MembershipStats: BuildMembershipStatsMetrics(subscriptions),
             ActiveMembersPerLevel: BuildTierDistributionMetrics(wordPressSubscriberReports, subscriptions, tierDetails),
             SalesAndRevenue: BuildSalesRevenueMetrics(wordPressSubscriberReports, subscriptions, tierDetails),
             AbandonedCartRecoveries: BuildRecoveryMetrics(subscriptions, tierDetails, recoveries, abandonedCartRecoveries),
@@ -3620,46 +3620,30 @@ public sealed partial class SupabaseAdminManagementService(
     }
 
     private static IReadOnlyList<AdminMembershipStatsMetric> BuildMembershipStatsMetrics(
-        WordPressSubscriberReportsRpcSnapshot? wordPressSubscriberReports,
         IReadOnlyList<SubscriptionRow> subscriptions)
     {
-        if (wordPressSubscriberReports is { HasWordPressData: true })
-        {
-            var metrics = (wordPressSubscriberReports.MembershipStats ?? [])
-                .Where(metric => !string.IsNullOrWhiteSpace(metric.PeriodKey))
-                .ToDictionary(metric => metric.PeriodKey!.Trim(), StringComparer.OrdinalIgnoreCase);
-
-            return
-            [
-                CreateWordPressMembershipStatsMetric(metrics, "today"),
-                CreateWordPressMembershipStatsMetric(metrics, "this_month"),
-                CreateWordPressMembershipStatsMetric(metrics, "this_year"),
-                CreateWordPressMembershipStatsMetric(metrics, "all_time")
-            ];
-        }
-
-        var activeOrCompletedSignups = subscriptions
-            .Where(IsSignupMetricEligible)
+        var currentSubscriberSubscriptions = subscriptions
+            .Where(IsSubscriberCountMetricEligible)
             .ToArray();
 
         return
         [
             new AdminMembershipStatsMetric(
                 "today",
-                CountByLocalPeriod(activeOrCompletedSignups.Select(subscription => subscription.SubscribedAt), SubscriberPeriod.Today),
-                CountByLocalPeriod(subscriptions.Select(subscription => subscription.CancelledAt), SubscriberPeriod.Today)),
+                CountNewSubscribersByLocalPeriod(currentSubscriberSubscriptions, SubscriberPeriod.Today),
+                CountCancelledSubscriptionsByLocalPeriod(currentSubscriberSubscriptions, SubscriberPeriod.Today)),
             new AdminMembershipStatsMetric(
                 "this_month",
-                CountByLocalPeriod(activeOrCompletedSignups.Select(subscription => subscription.SubscribedAt), SubscriberPeriod.ThisMonth),
-                CountByLocalPeriod(subscriptions.Select(subscription => subscription.CancelledAt), SubscriberPeriod.ThisMonth)),
+                CountNewSubscribersByLocalPeriod(currentSubscriberSubscriptions, SubscriberPeriod.ThisMonth),
+                CountCancelledSubscriptionsByLocalPeriod(currentSubscriberSubscriptions, SubscriberPeriod.ThisMonth)),
             new AdminMembershipStatsMetric(
                 "this_year",
-                CountByLocalPeriod(activeOrCompletedSignups.Select(subscription => subscription.SubscribedAt), SubscriberPeriod.ThisYear),
-                CountByLocalPeriod(subscriptions.Select(subscription => subscription.CancelledAt), SubscriberPeriod.ThisYear)),
+                CountNewSubscribersByLocalPeriod(currentSubscriberSubscriptions, SubscriberPeriod.ThisYear),
+                CountCancelledSubscriptionsByLocalPeriod(currentSubscriberSubscriptions, SubscriberPeriod.ThisYear)),
             new AdminMembershipStatsMetric(
                 "all_time",
-                CountByLocalPeriod(activeOrCompletedSignups.Select(subscription => subscription.SubscribedAt), SubscriberPeriod.AllTime),
-                CountByLocalPeriod(subscriptions.Select(subscription => subscription.CancelledAt), SubscriberPeriod.AllTime))
+                CountNewSubscribersByLocalPeriod(currentSubscriberSubscriptions, SubscriberPeriod.AllTime),
+                CountCancelledSubscriptionsByLocalPeriod(currentSubscriberSubscriptions, SubscriberPeriod.AllTime))
         ];
     }
 
@@ -3743,26 +3727,15 @@ public sealed partial class SupabaseAdminManagementService(
         IReadOnlyList<SubscriptionRow> subscriptions,
         IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails)
     {
-        if (wordPressSubscriberReports is { HasWordPressData: true })
-        {
-            var metrics = (wordPressSubscriberReports.SalesAndRevenue ?? [])
-                .Where(metric => !string.IsNullOrWhiteSpace(metric.PeriodKey))
-                .ToDictionary(metric => metric.PeriodKey!.Trim(), StringComparer.OrdinalIgnoreCase);
-
-            return
-            [
-                CreateWordPressSalesRevenueMetric(metrics, "today"),
-                CreateWordPressSalesRevenueMetric(metrics, "this_month"),
-                CreateWordPressSalesRevenueMetric(metrics, "this_year"),
-                CreateWordPressSalesRevenueMetric(metrics, "all_time")
-            ];
-        }
+        _ = wordPressSubscriberReports;
+        _ = tierDetails;
 
         var eligibleSales = subscriptions
             .Where(IsRevenueMetricEligible)
             .Select(subscription => new SubscriberSaleMetricCandidate(
                 subscription.SubscribedAt,
-                ResolveTierPrice(subscription.TierCode, tierDetails)))
+                subscription.BillingAmountZar ?? 0m))
+            .Where(metric => metric.Price > 0m)
             .ToArray();
 
         return
@@ -3950,6 +3923,23 @@ public sealed partial class SupabaseAdminManagementService(
     private static int CountByLocalPeriod(IEnumerable<DateTimeOffset> values, SubscriberPeriod period) =>
         values.Count(value => IsInLocalPeriod(value, period));
 
+    private static int CountNewSubscribersByLocalPeriod(
+        IReadOnlyList<SubscriptionRow> subscriptions,
+        SubscriberPeriod period) =>
+        subscriptions
+            .Where(subscription => subscription.SubscribedAt is not null)
+            .GroupBy(subscription => subscription.SubscriberId)
+            .Select(group => group
+                .Select(subscription => subscription.SubscribedAt)
+                .Where(subscribedAt => subscribedAt is not null)
+                .Min())
+            .Count(subscribedAt => IsInLocalPeriod(subscribedAt, period));
+
+    private static int CountCancelledSubscriptionsByLocalPeriod(
+        IReadOnlyList<SubscriptionRow> subscriptions,
+        SubscriberPeriod period) =>
+        subscriptions.Count(subscription => IsInLocalPeriod(subscription.CancelledAt, period));
+
     private static bool IsInLocalPeriod(DateTimeOffset? value, SubscriberPeriod period)
     {
         if (value is null)
@@ -3985,12 +3975,18 @@ public sealed partial class SupabaseAdminManagementService(
         return value.AddDays(-daysSinceMonday);
     }
 
-    private static bool IsSignupMetricEligible(SubscriptionRow subscription) =>
+    private static bool IsSubscriberCountMetricEligible(SubscriptionRow subscription) =>
+        subscription.SubscriberId != Guid.Empty &&
         !string.Equals(subscription.Status, "failed", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(subscription.SourceSystem, "wordpress_pmpro", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(subscription.SourceSystem, "admin_override", StringComparison.OrdinalIgnoreCase) &&
         subscription.SubscribedAt is not null;
 
     private static bool IsRevenueMetricEligible(SubscriptionRow subscription) =>
         subscription.SubscribedAt is not null &&
+        !string.Equals(subscription.Status, "failed", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(subscription.SourceSystem, "wordpress_pmpro", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(subscription.SourceSystem, "admin_override", StringComparison.OrdinalIgnoreCase) &&
         (string.Equals(subscription.Status, "active", StringComparison.OrdinalIgnoreCase) ||
          string.Equals(subscription.Status, "cancelled", StringComparison.OrdinalIgnoreCase));
 
@@ -4555,6 +4551,9 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("cancelled_at")]
         public DateTimeOffset? CancelledAt { get; set; }
+
+        [JsonPropertyName("billing_amount_zar")]
+        public decimal? BillingAmountZar { get; set; }
 
         [JsonPropertyName("provider_payment_id")]
         public string? ProviderPaymentId { get; set; }

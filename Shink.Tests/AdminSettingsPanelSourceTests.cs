@@ -1,0 +1,37 @@
+using System.Runtime.CompilerServices;
+using Microsoft.VisualStudio.TestTools.UnitTesting;
+
+namespace Shink.Tests;
+
+[TestClass]
+public class AdminSettingsPanelSourceTests
+{
+    [TestMethod]
+    public void SettingsPanelUsesReadableDarkAdminStyles()
+    {
+        var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "AdminSettingsPanel.razor"));
+        var css = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "AdminSettingsPanel.razor.css"));
+
+        StringAssert.Contains(markup, "PayStack te omseil");
+        Assert.IsFalse(markup.Contains("PayFast te omseil", StringComparison.Ordinal));
+        StringAssert.Contains(css, "--admin-settings-surface: #172631");
+        StringAssert.Contains(css, "--admin-settings-text: #eaf1f8");
+        StringAssert.Contains(css, ".admin-settings-card");
+        StringAssert.Contains(css, ".admin-settings-table th");
+        StringAssert.Contains(css, "::deep .mud-input-control");
+        StringAssert.Contains(css, "::deep .mud-button-root");
+    }
+
+    private static string GetRepoPath(params string[] segments)
+    {
+        var parts = new[]
+        {
+            Path.GetDirectoryName(GetSourceFilePath())!,
+            ".."
+        }.Concat(segments).ToArray();
+
+        return Path.GetFullPath(Path.Combine(parts));
+    }
+
+    private static string GetSourceFilePath([CallerFilePath] string path = "") => path;
+}

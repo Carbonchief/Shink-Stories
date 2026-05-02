@@ -112,7 +112,8 @@ body.schink-night-mode .site-shell.luister-route .site-main {
 
 body.schink-night-mode .site-shell.store-route,
 body.schink-night-mode .site-shell.about-route,
-body.schink-night-mode .site-shell.about-route.store-route {
+body.schink-night-mode .site-shell.about-route.store-route,
+body.schink-night-mode .site-shell.opsies-route.store-route {
     background: linear-gradient(180deg, #141b20 0%, #11171b 100%);
 }
 

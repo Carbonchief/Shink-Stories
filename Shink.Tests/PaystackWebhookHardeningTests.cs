@@ -75,6 +75,26 @@ public class PaystackWebhookHardeningTests
     }
 
     [TestMethod]
+    public void PaystackSubscriptionCreateStoresBillingAmountForRevenueAnalytics()
+    {
+        var ledgerService = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseSubscriptionLedgerService.cs"));
+        var upsertStart = ledgerService.IndexOf("private async Task<PaystackUpsertResult> UpsertActivePaystackSubscriptionAsync", StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(0, upsertStart, "The Paystack upsert helper must exist.");
+
+        var upsertEnd = ledgerService.IndexOf("private async Task<PaymentPlan?> ResolvePaystackPlanAsync", upsertStart, StringComparison.Ordinal);
+        Assert.IsGreaterThan(upsertStart, upsertEnd, "The Paystack upsert helper block could not be isolated.");
+
+        var upsertBlock = ledgerService[upsertStart..upsertEnd];
+        StringAssert.Contains(upsertBlock, "ResolvePaystackBillingAmountZar(data, plan)");
+        StringAssert.Contains(upsertBlock, "billingAmountZar: billingAmountZar");
+        StringAssert.Contains(upsertBlock, "billingPeriodMonths: plan.BillingPeriodMonths");
+        StringAssert.Contains(upsertBlock, "billingAmountSource: \"paystack_payload\"");
+
+        StringAssert.Contains(ledgerService, "private static decimal ResolvePaystackBillingAmountZar(JsonElement data, PaymentPlan plan)");
+        StringAssert.Contains(ledgerService, "TryReadStringAsDecimal(data, \"amount\")");
+    }
+
+    [TestMethod]
     public void FailedPaystackWebhookAttemptsAreLoggedWithPayloadBeforeAlerting()
     {
         var ledgerService = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseSubscriptionLedgerService.cs"));
@@ -87,6 +107,18 @@ public class PaystackWebhookHardeningTests
         StringAssert.Contains(migration, "create table if not exists public.payment_webhook_failures");
         StringAssert.Contains(migration, "payload jsonb not null");
         StringAssert.Contains(migration, "alter table public.payment_webhook_failures enable row level security");
+    }
+
+    [TestMethod]
+    public void PaystackBillingAmountBackfillMigrationExists()
+    {
+        var migration = File.ReadAllText(GetRepoPath("Shink", "Database", "migrations", "20260502_paystack_subscription_revenue_backfill.sql"));
+
+        StringAssert.Contains(migration, "billing_amount_zar");
+        StringAssert.Contains(migration, "paystack_payload");
+        StringAssert.Contains(migration, "subscription_events");
+        StringAssert.Contains(migration, "provider = 'paystack'");
+        StringAssert.Contains(migration, "coalesce(subscription.billing_amount_zar, 0) = 0");
     }
 
     [TestMethod]

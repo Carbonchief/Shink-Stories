@@ -2445,6 +2445,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             TryReadString(data, "transaction_date")) ?? nowUtc;
 
         var nextRenewalAtUtc = ResolvePaystackNextRenewalAt(data, subscribedAtUtc, plan);
+        var billingAmountZar = ResolvePaystackBillingAmountZar(data, plan);
         var subscriptionId = await UpsertSubscriptionAsync(
             baseUri,
             apiKey,
@@ -2457,7 +2458,10 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             providerEmailToken: providerEmailToken,
             subscribedAtUtc: subscribedAtUtc,
             nextRenewalAtUtc: nextRenewalAtUtc,
-            cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken,
+            billingAmountZar: billingAmountZar,
+            billingPeriodMonths: plan.BillingPeriodMonths,
+            billingAmountSource: "paystack_payload");
 
         if (subscriptionId is null)
         {
@@ -2537,6 +2541,18 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
     private static bool PaystackAmountMatches(PaymentPlan plan, decimal amountInCents) =>
         decimal.Round(plan.Amount * 100m, 0, MidpointRounding.AwayFromZero) == decimal.Round(amountInCents, 0, MidpointRounding.AwayFromZero);
+
+    private static decimal ResolvePaystackBillingAmountZar(JsonElement data, PaymentPlan plan)
+    {
+        var amountInCents = TryReadStringAsDecimal(data, "amount") ??
+                            TryReadNestedDecimal(data, "plan", "amount");
+        if (amountInCents is > 0m)
+        {
+            return decimal.Round(amountInCents.Value / 100m, 2, MidpointRounding.AwayFromZero);
+        }
+
+        return decimal.Round(Math.Max(0m, plan.Amount), 2, MidpointRounding.AwayFromZero);
+    }
 
     private static bool PaystackIntervalMatches(PaymentPlan plan, string interval)
     {

@@ -767,6 +767,156 @@
     outline-offset: 2px;
 }
 
+body.schink-night-mode .opsies-page {
+    --opsies-ink: #f7f1e7;
+    --opsies-muted: #c6d0ca;
+    --opsies-line: rgba(247, 241, 231, 0.16);
+    --opsies-accent: #f0a45b;
+    --opsies-accent-deep: #ffd39b;
+    --opsies-bubble-warm: rgba(240, 164, 91, 0.12);
+    --opsies-bubble-green: rgba(144, 175, 158, 0.08);
+    color-scheme: dark;
+    color: var(--opsies-ink);
+    background: transparent;
+}
+
+body.schink-night-mode .opsies-payment-status,
+body.schink-night-mode .opsies-plan-shell,
+body.schink-night-mode .opsies-compare,
+body.schink-night-mode .opsies-faq,
+body.schink-night-mode .opsies-testimonials {
+    border-color: var(--opsies-line);
+    background:
+        radial-gradient(circle at top right, rgba(240, 164, 91, 0.16), transparent 38%),
+        radial-gradient(circle at bottom left, rgba(144, 175, 158, 0.1), transparent 42%),
+        linear-gradient(180deg, rgba(24, 35, 42, 0.98) 0%, rgba(17, 26, 32, 0.98) 100%);
+    box-shadow: 0 24px 62px rgba(0, 0, 0, 0.34);
+}
+
+body.schink-night-mode .opsies-hero {
+    background: transparent;
+    box-shadow: none;
+}
+
+body.schink-night-mode .opsies-hero-copy h1,
+body.schink-night-mode .opsies-section-heading h2,
+body.schink-night-mode .opsie-card h2,
+body.schink-night-mode .opsie-price,
+body.schink-night-mode .opsie-detail strong,
+body.schink-night-mode .opsie-plan-option,
+body.schink-night-mode .opsie-plan-option-price,
+body.schink-night-mode .opsie-card ul,
+body.schink-night-mode .opsie-card li,
+body.schink-night-mode .opsies-compare-table thead th,
+body.schink-night-mode .opsies-compare-table th[scope="row"],
+body.schink-night-mode .opsies-faq-item summary,
+body.schink-night-mode .opsies-review-author {
+    color: var(--opsies-ink);
+}
+
+body.schink-night-mode .opsies-hero-lead,
+body.schink-night-mode .opsies-section-heading p:last-child,
+body.schink-night-mode .opsies-hero-point span,
+body.schink-night-mode .opsie-summary,
+body.schink-night-mode .opsie-detail,
+body.schink-night-mode .opsie-note,
+body.schink-night-mode .opsie-price span,
+body.schink-night-mode .opsie-plan-option-period,
+body.schink-night-mode .opsie-plan-option-note,
+body.schink-night-mode .opsies-review-card blockquote,
+body.schink-night-mode .opsies-review-role,
+body.schink-night-mode .opsies-faq-item p {
+    color: var(--opsies-muted);
+}
+
+body.schink-night-mode .opsies-eyebrow,
+body.schink-night-mode .opsies-section-kicker,
+body.schink-night-mode .opsie-badge,
+body.schink-night-mode .opsie-selected-indicator,
+body.schink-night-mode .opsies-review-stars {
+    color: var(--opsies-accent-deep);
+}
+
+body.schink-night-mode .opsies-hero-point,
+body.schink-night-mode .opsies-section-heading h2,
+body.schink-night-mode .opsie-head,
+body.schink-night-mode .opsie-plan-option,
+body.schink-night-mode .opsie-note,
+body.schink-night-mode .opsies-compare-scroll,
+body.schink-night-mode .opsies-faq-item,
+body.schink-night-mode .opsies-review-card {
+    border-color: rgba(247, 241, 231, 0.16);
+    background: rgba(30, 43, 51, 0.92);
+}
+
+body.schink-night-mode .opsie-card {
+    border-color: rgba(247, 241, 231, 0.14);
+    background:
+        radial-gradient(circle at top right, rgba(240, 164, 91, 0.12), transparent 46%),
+        rgba(22, 31, 37, 0.96);
+    box-shadow: 0 22px 52px rgba(0, 0, 0, 0.34);
+}
+
+body.schink-night-mode .opsie-card::before {
+    background: linear-gradient(90deg, rgba(240, 164, 91, 0.92) 0%, rgba(144, 175, 158, 0.84) 100%);
+}
+
+body.schink-night-mode .opsie-card.featured,
+body.schink-night-mode .opsie-card-selected {
+    border-color: rgba(255, 211, 155, 0.3);
+    box-shadow: 0 24px 58px rgba(0, 0, 0, 0.38);
+}
+
+body.schink-night-mode .opsie-badge,
+body.schink-night-mode .opsie-pill,
+body.schink-night-mode .opsie-save-badge,
+body.schink-night-mode .opsie-selected-indicator {
+    border-color: rgba(255, 211, 155, 0.26);
+    background: rgba(82, 55, 32, 0.72);
+}
+
+body.schink-night-mode .opsie-pill,
+body.schink-night-mode .opsie-pill-value,
+body.schink-night-mode .opsie-save-badge {
+    color: var(--opsies-accent-deep);
+}
+
+body.schink-night-mode .opsie-plan-option:hover,
+body.schink-night-mode .opsie-plan-option.is-selected {
+    border-color: rgba(255, 211, 155, 0.28);
+    background: rgba(82, 55, 32, 0.72);
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+}
+
+body.schink-night-mode .opsie-plan-option-marker {
+    border-color: rgba(255, 211, 155, 0.46);
+    background: rgba(247, 241, 231, 0.12);
+}
+
+body.schink-night-mode .opsies-compare-table th,
+body.schink-night-mode .opsies-compare-table td {
+    border-bottom-color: rgba(247, 241, 231, 0.14);
+}
+
+body.schink-night-mode .opsies-compare-table thead th,
+body.schink-night-mode .opsies-compare-table th[scope="row"] {
+    background: rgba(30, 43, 51, 0.92);
+}
+
+body.schink-night-mode .opsies-compare-plan {
+    color: var(--opsies-muted);
+}
+
+body.schink-night-mode .opsies-compare-plan.is-selected {
+    background: rgba(82, 55, 32, 0.72);
+    color: var(--opsies-accent-deep);
+}
+
+body.schink-night-mode .opsies-faq-item summary::before {
+    border-color: rgba(255, 211, 155, 0.38);
+    color: var(--opsies-accent-deep);
+}
+
 @keyframes opsies-reveal {
     from {
         opacity: 0;
