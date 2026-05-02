@@ -212,7 +212,7 @@ public sealed partial class PayFastCheckoutService(HttpClient httpClient, IOptio
             new("timestamp", timestamp)
         };
 
-        var signature = GenerateSignature(signatureFields, _options.Passphrase);
+        var signature = GenerateApiSignature(signatureFields, _options.Passphrase);
         using var request = new HttpRequestMessage(HttpMethod.Put, new Uri(apiBaseUri, endpoint));
         request.Headers.TryAddWithoutValidation("merchant-id", _options.MerchantId.Trim());
         request.Headers.TryAddWithoutValidation("version", "v1");
@@ -340,6 +340,35 @@ public sealed partial class PayFastCheckoutService(HttpClient httpClient, IOptio
         var payloadBytes = Encoding.UTF8.GetBytes(payload);
         var hash = MD5.HashData(payloadBytes);
         return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    private static string GenerateApiSignature(IEnumerable<KeyValuePair<string, string>> fields, string? passphrase)
+    {
+        var apiFields = fields
+            .Where(field => !string.Equals(field.Key, "signature", StringComparison.OrdinalIgnoreCase))
+            .Where(field => !string.IsNullOrWhiteSpace(field.Value))
+            .ToList();
+
+        if (!string.IsNullOrWhiteSpace(passphrase))
+        {
+            apiFields.Add(new KeyValuePair<string, string>("passphrase", passphrase));
+        }
+
+        var payload = BuildApiSignaturePayload(apiFields.OrderBy(field => field.Key, StringComparer.OrdinalIgnoreCase));
+        var payloadBytes = Encoding.UTF8.GetBytes(payload);
+        var hash = MD5.HashData(payloadBytes);
+        return Convert.ToHexString(hash).ToLowerInvariant();
+    }
+
+    private static string BuildApiSignaturePayload(IEnumerable<KeyValuePair<string, string>> fields) =>
+        string.Join(
+            '&',
+            fields.Select(field => $"{field.Key}={PayFastApiEncode(field.Value ?? string.Empty)}"));
+
+    private static string PayFastApiEncode(string value)
+    {
+        var encoded = Uri.EscapeDataString(value.Trim()).Replace("%20", "+", StringComparison.Ordinal);
+        return PercentEncodingRegex().Replace(encoded, match => match.Value.ToUpperInvariant());
     }
 
     private static string BuildSignaturePayload(IEnumerable<KeyValuePair<string, string>> fields, string? passphrase, bool includeEmptyValues = false)

@@ -73,6 +73,30 @@ public class PayFastWebhookHardeningTests
         StringAssert.Contains(migration, "payfast_itn");
     }
 
+    [TestMethod]
+    public void StatusCodeErrorRouteIsNotDuplicatedByCase()
+    {
+        var errorPage = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Error.razor"));
+        var routes = errorPage
+            .Split('\n')
+            .Select(line => line.Trim())
+            .Where(line => line.StartsWith("@page ", StringComparison.Ordinal))
+            .Select(line => line["@page ".Length..].Trim().Trim('"'))
+            .ToList();
+
+        var duplicateRoutes = routes
+            .GroupBy(route => route, StringComparer.OrdinalIgnoreCase)
+            .Where(group => group.Count() > 1)
+            .Select(group => group.Key)
+            .ToList();
+
+        CollectionAssert.AreEqual(
+            Array.Empty<string>(),
+            duplicateRoutes,
+            "Case-variant error routes cause ASP.NET Core endpoint ambiguity when status code pages re-execute /error/{status}.");
+        CollectionAssert.Contains(routes, "/error/{StatusCode:int}");
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var parts = new[]

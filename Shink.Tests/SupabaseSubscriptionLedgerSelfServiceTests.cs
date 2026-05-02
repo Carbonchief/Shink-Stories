@@ -1,4 +1,5 @@
 using System.Net;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -459,6 +460,10 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
         Assert.IsNotNull(handler.PayFastCancelRequest);
         Assert.AreEqual("merchant-id", handler.PayFastCancelRequest!.Headers.First().Key);
         Assert.IsTrue(handler.PayFastCancelRequest.Headers.ContainsKey("signature"));
+        var timestamp = handler.PayFastCancelRequest.Headers["timestamp"];
+        var expectedSignaturePayload = $"merchant-id=10000100&passphrase=passphrase&timestamp={Uri.EscapeDataString(timestamp)}&version=v1";
+        var expectedSignature = Convert.ToHexString(MD5.HashData(Encoding.UTF8.GetBytes(expectedSignaturePayload))).ToLowerInvariant();
+        Assert.AreEqual(expectedSignature, handler.PayFastCancelRequest.Headers["signature"]);
 
         var patchPayload = JsonSerializer.Deserialize<JsonElement>(handler.SubscriptionPatchPayload!);
         Assert.AreEqual("active", patchPayload.GetProperty("status").GetString());
