@@ -1227,7 +1227,41 @@
                                         "New subscribers, cancelled subscriptions, active members, and payment signals from the subscriber reports.")
                                 </p>
                             </div>
+                            <div class="admin-analytics-panel-head-controls">
+                                <label class="admin-header-filter-label" for="subscriber-analytics-period">
+                                    @T("Tydreeks", "Time series")
+                                </label>
+                                <select id="subscriber-analytics-period"
+                                        class="admin-header-filter-select admin-subscriber-analytics-period-select"
+                                        @bind="SelectedSubscriberTrendPeriod">
+                                    <option value="@SubscriberTrendPeriodDay">
+                                        @T("Dag", "Day")
+                                    </option>
+                                    <option value="@SubscriberTrendPeriodMonth">
+                                        @T("Maand", "Month")
+                                    </option>
+                                    <option value="@SubscriberTrendPeriodYear">
+                                        @T("Jaar", "Year")
+                                    </option>
+                                </select>
+                            </div>
                         </div>
+
+                        @if (CurrentSubscriberTrendMetrics.Count > 0)
+                        {
+                            <div class="admin-subscriber-analytics-chart-shell">
+                                <MudChart T="double"
+                                          ChartType="ChartType.Bar"
+                                          ChartSeries="SubscriberTrendChartSeries"
+                                          ChartLabels="SubscriberTrendChartLabels" />
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="admin-analytics-footnote">
+                                @T("Nog geen intekenaar-trend beskikbaar vir hierdie periode.", "No subscriber trend data available for this period.")
+                            </p>
+                        }
 
                         <div class="admin-analytics-grid">
                             <article class="admin-analytics-card">
@@ -1292,6 +1326,56 @@
                                 </tbody>
                             </table>
                         </div>
+
+                        <section class="admin-analytics-panel">
+                            <div class="admin-analytics-panel-head">
+                                <div>
+                                    <h3>@T("Per vlak", "By subscription tier")</h3>
+                                    <p>@T("Aktiewe lede en persentasie per intekenvlak.", "Active members and percentage by subscription tier.")</p>
+                                </div>
+                            </div>
+
+                            @if (ActiveMembersPerLevelChartLabels.Length > 0 && ActiveMembersPerLevelChartSeries.Count > 0)
+                            {
+                                <div class="admin-subscriber-analytics-chart-shell">
+                                    <MudChart T="double"
+                                              ChartType="ChartType.Pie"
+                                              ChartSeries="ActiveMembersPerLevelChartSeries"
+                                              ChartLabels="ActiveMembersPerLevelChartLabels"
+                                              ChartOptions="ActiveMembersPerLevelPieChartOptions"
+                                              Width="100%"
+                                              Height="320px" />
+                                </div>
+
+                                <div class="admin-report-table-wrap">
+                                    <table class="admin-report-table">
+                                        <thead>
+                                            <tr>
+                                                <th>@T("Vlak", "Tier")</th>
+                                                <th>@T("Aktiewe lede", "Active members")</th>
+                                                <th>@T("Persentasie", "Percentage")</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var metric in SubscriberReports.ActiveMembersPerLevel)
+                                            {
+                                                <tr>
+                                                    <td>@metric.TierName</td>
+                                                    <td>@FormatAnalyticsNumber(metric.ActiveMembers)</td>
+                                                    <td>@FormatReportPercentage(metric.Percentage)</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            }
+                            else
+                            {
+                                <p class="admin-analytics-footnote">
+                                    @T("Nog geen aktiewe lede per vlak beskikbaar nie.", "No active members by tier available yet.")
+                                </p>
+                            }
+                        </section>
                     </section>
 
                     <section class="admin-revenue-analytics-section admin-analytics-panel admin-analytics-panel-wide">
@@ -2523,6 +2607,9 @@
     private const string EditPlaylistLogoInputId = "admin-edit-playlist-logo";
     private const string EditPlaylistBackdropInputId = "admin-edit-playlist-backdrop";
     private const string EditPlaylistShowcaseInputId = "admin-edit-playlist-showcase";
+    private const string SubscriberTrendPeriodDay = "day";
+    private const string SubscriberTrendPeriodMonth = "month";
+    private const string SubscriberTrendPeriodYear = "year";
 
     private bool IsSavingSubscriber { get; set; }
     private bool IsSavingStory { get; set; }
@@ -2597,6 +2684,7 @@
     private AdminAnalyticsSnapshot Analytics { get; set; } = AdminAnalyticsSnapshot.Empty;
     private AdminSubscriberReportsSnapshot SubscriberReports { get; set; } = AdminSubscriberReportsSnapshot.Empty;
     private bool HasLoadedSubscriberReports { get; set; }
+    private string SelectedSubscriberTrendPeriod { get; set; } = SubscriberTrendPeriodDay;
     private AdminSubscriberColumnFilters SubscriberColumnFilters { get; } = new();
     private AdminStoryColumnFilters StoryColumnFilters { get; } = new();
     private AdminPlaylistColumnFilters PlaylistColumnFilters { get; } = new();
@@ -2618,6 +2706,31 @@
         SubscriberReports.ActiveMembersPerLevel
             .Select(metric => metric.TierName)
             .ToArray();
+    private IReadOnlyList<AdminSubscriberTrendMetric> CurrentSubscriberTrendMetrics =>
+        SubscriberReports.MembershipTrend
+            .Where(metric => string.Equals(metric.PeriodType, SelectedSubscriberTrendPeriod, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+    private string[] SubscriberTrendChartLabels =>
+        CurrentSubscriberTrendMetrics
+            .Select(metric => metric.PeriodLabel)
+            .ToArray();
+    private List<ChartSeries<double>> SubscriberTrendChartSeries =>
+        [
+            new ChartSeries<double>
+            {
+                Name = T("Nuwe intekenaars", "New subscribers"),
+                Data = CurrentSubscriberTrendMetrics
+                    .Select(metric => (double)metric.Signups)
+                    .ToArray()
+            },
+            new ChartSeries<double>
+            {
+                Name = T("Gekanselleerde intekeninge", "Cancelled subscriptions"),
+                Data = CurrentSubscriberTrendMetrics
+                    .Select(metric => (double)metric.Cancellations)
+                    .ToArray()
+            }
+        ];
     private List<ChartSeries<double>> ActiveMembersPerLevelChartSeries =>
         [
             new ChartSeries<double>

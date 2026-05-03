@@ -81,6 +81,32 @@ public class AdminAnalyticsSourceTests
     }
 
     [TestMethod]
+    public void SubscriberTrendExcludesImportedGratisBatch()
+    {
+        var now = DateTimeOffset.Now.AddMinutes(-5);
+        var validSubscriberId = Guid.NewGuid();
+        var importedSubscriberId = Guid.NewGuid();
+        var rows = CreateSubscriptionRows(
+            CreateSubscriptionRow(validSubscriberId, "shink_app", "active", now, null),
+            CreateSubscriptionRow(validSubscriberId, "shink_app", "active", now.AddMinutes(-2), null),
+            CreateSubscriptionRow(importedSubscriberId, "shink_app", "active", now, null, tierCode: "gratis", providerPaymentId: "gratis-20260430"),
+            CreateSubscriptionRow(Guid.NewGuid(), "admin_override", "active", now, null, tierCode: "gratis", providerPaymentId: "gratis-user-1"),
+            CreateSubscriptionRow(Guid.NewGuid(), "wordpress_pmpro", "active", now, null, tierCode: "gratis", providerPaymentId: "gratis-user-2"));
+
+        var metrics = InvokeBuildMembershipTrendMetrics(rows);
+        var today = metrics.Single(metric => metric.PeriodType == "day" && metric.PeriodKey == now.Date.ToString("yyyy-MM-dd"));
+
+        Assert.AreEqual(1, today.Signups);
+        Assert.AreEqual(0, today.Cancellations);
+
+        var stats = InvokeBuildMembershipStatsMetrics(rows);
+        var todayStats = stats.Single(metric => metric.PeriodKey == "today");
+
+        Assert.AreEqual(1, todayStats.Signups);
+        Assert.AreEqual(0, todayStats.Cancellations);
+    }
+
+    [TestMethod]
     public void RevenueAnalyticsUsesRecordedLedgerAmountsOnly()
     {
         var now = DateTimeOffset.Now.AddMinutes(-5);
@@ -125,6 +151,18 @@ public class AdminAnalyticsSourceTests
         return ((IEnumerable<AdminMembershipStatsMetric>)result).ToArray();
     }
 
+    private static IReadOnlyList<AdminSubscriberTrendMetric> InvokeBuildMembershipTrendMetrics(object rows)
+    {
+        var method = typeof(SupabaseAdminManagementService).GetMethod(
+            "BuildMembershipTrendMetrics",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.IsNotNull(method);
+        var result = method.Invoke(null, [rows]);
+        Assert.IsNotNull(result);
+        return ((IEnumerable<AdminSubscriberTrendMetric>)result).ToArray();
+    }
+
     private static IReadOnlyList<AdminSalesRevenueMetric> InvokeBuildSalesRevenueMetrics(object wordpressSnapshot, object rows)
     {
         var method = typeof(SupabaseAdminManagementService).GetMethod(
@@ -156,7 +194,9 @@ public class AdminAnalyticsSourceTests
         string status,
         DateTimeOffset? subscribedAt,
         DateTimeOffset? cancelledAt,
-        decimal? billingAmountZar = null)
+        decimal? billingAmountZar = null,
+        string? tierCode = null,
+        string? providerPaymentId = null)
     {
         var rowType = GetSubscriptionRowType();
         var row = Activator.CreateInstance(rowType)!;
@@ -167,6 +207,8 @@ public class AdminAnalyticsSourceTests
         SetProperty(row, "SubscribedAt", subscribedAt);
         SetProperty(row, "CancelledAt", cancelledAt);
         SetProperty(row, "BillingAmountZar", billingAmountZar);
+        SetProperty(row, "TierCode", tierCode);
+        SetProperty(row, "ProviderPaymentId", providerPaymentId);
         return row;
     }
 

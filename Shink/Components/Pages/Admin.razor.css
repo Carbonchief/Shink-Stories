@@ -1579,10 +1579,28 @@
     gap: 0.45rem;
 }
 
+.admin-analytics-panel-head-controls {
+    display: grid;
+    gap: 0.25rem;
+    min-width: 170px;
+}
+
 .admin-analytics-panel-head p {
     margin: 0.25rem 0 0;
     color: var(--admin-muted);
     font-size: 0.9rem;
+}
+
+.admin-subscriber-analytics-period-select {
+    min-width: 150px;
+}
+
+.admin-subscriber-analytics-chart-shell {
+    margin-top: 0.35rem;
+    border: 1px solid var(--admin-border);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--admin-surface) 72%, transparent);
+    padding: 0.7rem;
 }
 
 .admin-activity-list,

@@ -696,6 +696,7 @@ public sealed record AdminAnalyticsSnapshot(
 
 public sealed record AdminSubscriberReportsSnapshot(
     IReadOnlyList<AdminMembershipStatsMetric> MembershipStats,
+    IReadOnlyList<AdminSubscriberTrendMetric> MembershipTrend,
     IReadOnlyList<AdminTierDistributionMetric> ActiveMembersPerLevel,
     IReadOnlyList<AdminSalesRevenueMetric> SalesAndRevenue,
     IReadOnlyList<AdminRecoveryMetric> AbandonedCartRecoveries,
@@ -703,6 +704,7 @@ public sealed record AdminSubscriberReportsSnapshot(
 {
     public static AdminSubscriberReportsSnapshot Empty { get; } = new(
         MembershipStats: [],
+        MembershipTrend: [],
         ActiveMembersPerLevel: [],
         SalesAndRevenue: [],
         AbandonedCartRecoveries: [],
@@ -711,6 +713,13 @@ public sealed record AdminSubscriberReportsSnapshot(
 
 public sealed record AdminMembershipStatsMetric(
     string PeriodKey,
+    int Signups,
+    int Cancellations);
+
+public sealed record AdminSubscriberTrendMetric(
+    string PeriodType,
+    string PeriodKey,
+    string PeriodLabel,
     int Signups,
     int Cancellations);
 

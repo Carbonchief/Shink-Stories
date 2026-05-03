@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -3613,6 +3614,7 @@ public sealed partial class SupabaseAdminManagementService(
 
         return new AdminSubscriberReportsSnapshot(
             MembershipStats: BuildMembershipStatsMetrics(subscriptions),
+            MembershipTrend: BuildMembershipTrendMetrics(subscriptions),
             ActiveMembersPerLevel: BuildTierDistributionMetrics(wordPressSubscriberReports, subscriptions, tierDetails),
             SalesAndRevenue: BuildSalesRevenueMetrics(wordPressSubscriberReports, subscriptions, tierDetails),
             AbandonedCartRecoveries: BuildRecoveryMetrics(subscriptions, tierDetails, recoveries, abandonedCartRecoveries),
@@ -3645,6 +3647,140 @@ public sealed partial class SupabaseAdminManagementService(
                 CountNewSubscribersByLocalPeriod(currentSubscriberSubscriptions, SubscriberPeriod.AllTime),
                 CountCancelledSubscriptionsByLocalPeriod(currentSubscriberSubscriptions, SubscriberPeriod.AllTime))
         ];
+    }
+
+    private static IReadOnlyList<AdminSubscriberTrendMetric> BuildMembershipTrendMetrics(
+        IReadOnlyList<SubscriptionRow> subscriptions)
+    {
+        var eligibleSubscriptions = subscriptions
+            .Where(IsSubscriberCountMetricEligible)
+            .ToArray();
+
+        if (eligibleSubscriptions.Length == 0)
+        {
+            return Array.Empty<AdminSubscriberTrendMetric>();
+        }
+
+        var firstSignupDateBySubscriber = eligibleSubscriptions
+            .Where(subscription => subscription.SubscriberId != Guid.Empty && subscription.SubscribedAt is not null)
+            .GroupBy(subscription => subscription.SubscriberId)
+            .Select(group => group
+                .Where(subscription => subscription.SubscribedAt is not null)
+                .Select(subscription => subscription.SubscribedAt!.Value.ToLocalTime())
+                .Min())
+            .ToArray();
+
+        var signupCountByDate = firstSignupDateBySubscriber
+            .GroupBy(value => value.Date)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var firstCancellationDateBySubscriber = eligibleSubscriptions
+            .Where(subscription => subscription.CancelledAt is not null)
+            .GroupBy(subscription => subscription.SubscriberId)
+            .Select(group =>
+                group
+                    .Where(subscription => subscription.CancelledAt is not null)
+                    .Select(subscription => subscription.CancelledAt!.Value.ToLocalTime())
+                    .Max())
+            .Select(dateTime => dateTime.Date)
+            .ToArray();
+
+        var cancellationCountByDate = firstCancellationDateBySubscriber
+            .GroupBy(value => value)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var signupCountByMonth = firstSignupDateBySubscriber
+            .GroupBy(value => value.ToString("yyyy-MM", CultureInfo.InvariantCulture))
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var cancellationCountByMonth = firstCancellationDateBySubscriber
+            .GroupBy(value => value.ToString("yyyy-MM", CultureInfo.InvariantCulture))
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var signupCountByYear = firstSignupDateBySubscriber
+            .GroupBy(value => value.Year)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var cancellationCountByYear = firstCancellationDateBySubscriber
+            .GroupBy(value => value.Year)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var nowLocal = DateTime.Now;
+        var dayStart = nowLocal.Date.AddDays(-6);
+        var monthStart = new DateTime(nowLocal.Year, nowLocal.Month, 1).AddMonths(-11);
+        var yearStart = nowLocal.Year - 5;
+        var monthEnd = new DateTime(nowLocal.Year, nowLocal.Month, 1);
+
+        return
+        [
+            ..GetDayTrendSeries(dayStart, nowLocal.Date, signupCountByDate, cancellationCountByDate),
+            ..GetMonthTrendSeries(monthStart, monthEnd, signupCountByMonth, cancellationCountByMonth),
+            ..GetYearTrendSeries(yearStart, nowLocal.Year, signupCountByYear, cancellationCountByYear)
+        ];
+    }
+
+    private static IReadOnlyList<AdminSubscriberTrendMetric> GetDayTrendSeries(
+        DateTime dayStart,
+        DateTime dayEnd,
+        IReadOnlyDictionary<DateTime, int> signupsByDate,
+        IReadOnlyDictionary<DateTime, int> cancellationsByDate)
+    {
+        var metrics = new List<AdminSubscriberTrendMetric>(7);
+
+        for (var date = dayStart; date <= dayEnd; date = date.AddDays(1))
+        {
+            var periodKey = date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            metrics.Add(new AdminSubscriberTrendMetric(
+                "day",
+                periodKey,
+                date.ToString("dd/MM", CultureInfo.InvariantCulture),
+                signupsByDate.GetValueOrDefault(date),
+                cancellationsByDate.GetValueOrDefault(date)));
+        }
+
+        return metrics;
+    }
+
+    private static IReadOnlyList<AdminSubscriberTrendMetric> GetMonthTrendSeries(
+        DateTime monthStart,
+        DateTime monthEnd,
+        IReadOnlyDictionary<string, int> signupsByMonth,
+        IReadOnlyDictionary<string, int> cancellationsByMonth)
+    {
+        var metrics = new List<AdminSubscriberTrendMetric>(12);
+        for (var month = monthStart; month <= monthEnd; month = month.AddMonths(1))
+        {
+            var periodKey = month.ToString("yyyy-MM", CultureInfo.InvariantCulture);
+            metrics.Add(new AdminSubscriberTrendMetric(
+                "month",
+                periodKey,
+                month.ToString("MM/yy", CultureInfo.InvariantCulture),
+                signupsByMonth.GetValueOrDefault(periodKey),
+                cancellationsByMonth.GetValueOrDefault(periodKey)));
+        }
+
+        return metrics;
+    }
+
+    private static IReadOnlyList<AdminSubscriberTrendMetric> GetYearTrendSeries(
+        int yearStart,
+        int endYear,
+        IReadOnlyDictionary<int, int> signupsByYear,
+        IReadOnlyDictionary<int, int> cancellationsByYear)
+    {
+        var metrics = new List<AdminSubscriberTrendMetric>(Math.Max(0, endYear - yearStart + 1));
+        for (var year = yearStart; year <= endYear; year++)
+        {
+            var periodKey = year.ToString(CultureInfo.InvariantCulture);
+            metrics.Add(new AdminSubscriberTrendMetric(
+                "year",
+                periodKey,
+                periodKey,
+                signupsByYear.GetValueOrDefault(year),
+                cancellationsByYear.GetValueOrDefault(year)));
+        }
+
+        return metrics;
     }
 
     private static IReadOnlyList<AdminTierDistributionMetric> BuildTierDistributionMetrics(
@@ -3980,7 +4116,14 @@ public sealed partial class SupabaseAdminManagementService(
         !string.Equals(subscription.Status, "failed", StringComparison.OrdinalIgnoreCase) &&
         !string.Equals(subscription.SourceSystem, "wordpress_pmpro", StringComparison.OrdinalIgnoreCase) &&
         !string.Equals(subscription.SourceSystem, "admin_override", StringComparison.OrdinalIgnoreCase) &&
+        !IsLegacyImportedGratisSubscription(subscription) &&
         subscription.SubscribedAt is not null;
+
+    private static bool IsLegacyImportedGratisSubscription(SubscriptionRow subscription) =>
+        string.Equals(subscription.SourceSystem, "shink_app", StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(subscription.TierCode, "gratis", StringComparison.OrdinalIgnoreCase) &&
+        !string.IsNullOrWhiteSpace(subscription.ProviderPaymentId) &&
+        subscription.ProviderPaymentId!.StartsWith("gratis-", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsRevenueMetricEligible(SubscriptionRow subscription) =>
         subscription.SubscribedAt is not null &&
