@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup>
+    <RestoreUseStaticGraphEvaluation>true</RestoreUseStaticGraphEvaluation>
+    <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
+    <CreateHardLinksForCopyFilesToOutputDirectoryIfPossible>true</CreateHardLinksForCopyFilesToOutputDirectoryIfPossible>
+    <SkipCopyUnchangedFiles>true</SkipCopyUnchangedFiles>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug' and '$(CI)' != 'true' and '$(ContinuousIntegrationBuild)' != 'true'">
+    <RunAnalyzers>false</RunAnalyzers>
+  </PropertyGroup>
+</Project>
