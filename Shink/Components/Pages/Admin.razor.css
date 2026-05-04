@@ -988,6 +988,10 @@
     min-height: 360px;
 }
 
+.admin-analytics-tabs {
+    min-height: 0;
+}
+
 .admin-detail-tabs ::deep .mud-tabs-toolbar,
 .admin-detail-tabs ::deep .mud-tabs-tabbar,
 .admin-detail-tabs ::deep .mud-tabs-tabbar-inner,
@@ -1603,6 +1607,23 @@
     padding: 0.7rem;
 }
 
+.admin-subscriber-analytics-summary-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.95fr);
+    align-items: start;
+    gap: 0.85rem;
+}
+
+.admin-subscriber-analytics-visual,
+.admin-subscriber-analytics-cards {
+    min-width: 0;
+}
+
+.admin-subscriber-analytics-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-content: start;
+}
+
 .admin-activity-list,
 .admin-character-analytics-list {
     display: grid;
@@ -1829,6 +1850,14 @@
     }
 
     .admin-analytics-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-subscriber-analytics-summary-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-subscriber-analytics-cards {
         grid-template-columns: 1fr;
     }
 

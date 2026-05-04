@@ -86,7 +86,7 @@ else
 
         <div class="blog-post-content-shell">
             <div class="blog-post-content">
-                <div class="blog-post-body">@((MarkupString)CurrentPost.ContentHtml)</div>
+                <div class="blog-post-body">@((MarkupString)NormalizeRenderedBlogHtml(CurrentPost.ContentHtml))</div>
             </div>
         </div>
 
@@ -288,6 +288,20 @@ else
 
     private static string? ResolveBrowserImageUrl(string? imageUrl) =>
         string.IsNullOrWhiteSpace(imageUrl) ? null : StoryItem.RewriteImagePathForBrowser(imageUrl);
+
+    private static string NormalizeRenderedBlogHtml(string? html)
+    {
+        if (string.IsNullOrWhiteSpace(html))
+        {
+            return string.Empty;
+        }
+
+        return html
+            .Replace("&nbsp;", " ", StringComparison.OrdinalIgnoreCase)
+            .Replace("&#160;", " ", StringComparison.OrdinalIgnoreCase)
+            .Replace("&#xA0;", " ", StringComparison.OrdinalIgnoreCase)
+            .Replace('\u00A0', ' ');
+    }
 
     private static string BuildBlogUrl(string? categorySlug, string? tagSlug)
     {

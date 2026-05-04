@@ -869,11 +869,26 @@ body.schink-night-mode .blog-post-state {
     color: #f7f1e7;
 }
 
+body.schink-night-mode .blog-post-hero,
+body.schink-night-mode .blog-post-state {
+    border-color: rgba(247, 241, 231, 0.16);
+    background:
+        radial-gradient(circle at top right, rgba(240, 164, 91, 0.18), transparent 36%),
+        linear-gradient(180deg, rgba(24, 35, 42, 0.98) 0%, rgba(17, 26, 32, 0.98) 100%);
+    box-shadow: 0 24px 62px rgba(0, 0, 0, 0.34);
+}
+
 body.schink-night-mode .blog-post-back,
 body.schink-night-mode .blog-post-related-head a,
 body.schink-night-mode .blog-post-body a,
 body.schink-night-mode .blog-post-related-body h3 a {
     color: #ffd39b;
+}
+
+body.schink-night-mode .blog-post-back,
+body.schink-night-mode .blog-post-related-head a {
+    border-color: rgba(247, 241, 231, 0.16);
+    background: rgba(30, 43, 51, 0.92);
 }
 
 body.schink-night-mode .blog-post-meta,

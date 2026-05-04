@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using System.Collections;
 using System.Reflection;
+using System.Text.Json;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shink.Services;
 
@@ -23,7 +24,12 @@ public class AdminAnalyticsSourceTests
         StringAssert.Contains(admin, "New subscribers today");
         StringAssert.Contains(admin, "Cancelled subscriptions");
         StringAssert.Contains(admin, "GetAnalyticsSubscriberReportsAsync");
+        StringAssert.Contains(admin, "admin-analytics-tabs");
+        StringAssert.Contains(admin, "@T(\"Inkomste\", \"Revenue\")");
+        StringAssert.Contains(admin, "@T(\"Gebruik\", \"Usage\")");
         StringAssert.Contains(admin, "SubscriberAdminView.AllSubscribers");
+        StringAssert.Contains(admin, "admin-subscriber-analytics-summary-layout");
+        StringAssert.Contains(admin, "admin-subscriber-analytics-cards");
 
         var subscriberViewsStart = admin.IndexOf("private IReadOnlyList<SubscriberAdminView> SubscriberViews", StringComparison.Ordinal);
         Assert.AreNotEqual(-1, subscriberViewsStart);
@@ -57,6 +63,9 @@ public class AdminAnalyticsSourceTests
         StringAssert.Contains(css, "align-items: start;");
         StringAssert.Contains(css, ".admin-analytics-panel");
         StringAssert.Contains(css, "align-content: start;");
+        StringAssert.Contains(css, ".admin-analytics-tabs");
+        StringAssert.Contains(css, ".admin-subscriber-analytics-summary-layout");
+        StringAssert.Contains(css, ".admin-subscriber-analytics-cards");
     }
 
     [TestMethod]
@@ -118,12 +127,38 @@ public class AdminAnalyticsSourceTests
             CreateSubscriptionRow(Guid.NewGuid(), "admin_override", "active", now, null, 500m),
             CreateSubscriptionRow(Guid.NewGuid(), "shink_app", "failed", now, null, 600m));
         var wordpressSnapshot = CreateWordPressRevenueSnapshot("today", 99, 9999m);
+        var revenueEvents = CreateRevenueEvents();
 
-        var metrics = InvokeBuildSalesRevenueMetrics(wordpressSnapshot, rows);
+        var metrics = InvokeBuildSalesRevenueMetrics(wordpressSnapshot, rows, revenueEvents);
         var today = metrics.Single(metric => metric.PeriodKey == "today");
 
         Assert.AreEqual(2, today.SalesCount);
         Assert.AreEqual(148.45m, today.RevenueZar);
+    }
+
+    [TestMethod]
+    public void RevenueAnalyticsUsesPaystackChargeEventsWhenRecentRowsHaveNoRecordedAmounts()
+    {
+        var now = DateTimeOffset.Now.AddMinutes(-5);
+        var olderThanEventCoverage = now.AddDays(-10);
+        var rows = CreateSubscriptionRows(
+            CreateSubscriptionRow(Guid.NewGuid(), "shink_app", "active", now, null, null, tierCode: "all_stories_monthly", providerPaymentId: "SUB_live_1", provider: "paystack"),
+            CreateSubscriptionRow(Guid.NewGuid(), "shink_app", "active", now, null, null, tierCode: "all_stories_monthly", providerPaymentId: "checkout-live-1", provider: "paystack"),
+            CreateSubscriptionRow(Guid.NewGuid(), "shink_app", "active", now.AddMinutes(-30), null, 149m, tierCode: "all_stories_monthly", providerPaymentId: "payfast-live-1", provider: "payfast"),
+            CreateSubscriptionRow(Guid.NewGuid(), "shink_app", "active", olderThanEventCoverage, null, 79m, tierCode: "all_stories_monthly", providerPaymentId: "historic-paystack-1", provider: "paystack"));
+        var wordpressSnapshot = CreateWordPressRevenueSnapshot("today", 99, 9999m);
+        var revenueEvents = CreateRevenueEvents(
+            CreateRevenueEvent(now, 7900),
+            CreateRevenueEvent(now.AddMinutes(-20), 5500));
+
+        var metrics = InvokeBuildSalesRevenueMetrics(wordpressSnapshot, rows, revenueEvents);
+        var today = metrics.Single(metric => metric.PeriodKey == "today");
+        var allTime = metrics.Single(metric => metric.PeriodKey == "all_time");
+
+        Assert.AreEqual(3, today.SalesCount);
+        Assert.AreEqual(283m, today.RevenueZar);
+        Assert.AreEqual(4, allTime.SalesCount);
+        Assert.AreEqual(362m, allTime.RevenueZar);
     }
 
     private static string GetRepoPath(params string[] segments)
@@ -163,7 +198,7 @@ public class AdminAnalyticsSourceTests
         return ((IEnumerable<AdminSubscriberTrendMetric>)result).ToArray();
     }
 
-    private static IReadOnlyList<AdminSalesRevenueMetric> InvokeBuildSalesRevenueMetrics(object wordpressSnapshot, object rows)
+    private static IReadOnlyList<AdminSalesRevenueMetric> InvokeBuildSalesRevenueMetrics(object wordpressSnapshot, object rows, object revenueEvents)
     {
         var method = typeof(SupabaseAdminManagementService).GetMethod(
             "BuildSalesRevenueMetrics",
@@ -171,7 +206,7 @@ public class AdminAnalyticsSourceTests
 
         Assert.IsNotNull(method);
         var tierDetails = CreateEmptyTierDetails();
-        var result = method.Invoke(null, [wordpressSnapshot, rows, tierDetails]);
+        var result = method.Invoke(null, [wordpressSnapshot, rows, tierDetails, revenueEvents]);
         Assert.IsNotNull(result);
         return ((IEnumerable<AdminSalesRevenueMetric>)result).ToArray();
     }
@@ -196,13 +231,15 @@ public class AdminAnalyticsSourceTests
         DateTimeOffset? cancelledAt,
         decimal? billingAmountZar = null,
         string? tierCode = null,
-        string? providerPaymentId = null)
+        string? providerPaymentId = null,
+        string? provider = null)
     {
         var rowType = GetSubscriptionRowType();
         var row = Activator.CreateInstance(rowType)!;
         SetProperty(row, "SubscriptionId", Guid.NewGuid());
         SetProperty(row, "SubscriberId", subscriberId);
         SetProperty(row, "SourceSystem", sourceSystem);
+        SetProperty(row, "Provider", provider);
         SetProperty(row, "Status", status);
         SetProperty(row, "SubscribedAt", subscribedAt);
         SetProperty(row, "CancelledAt", cancelledAt);
@@ -216,6 +253,50 @@ public class AdminAnalyticsSourceTests
     {
         var type = typeof(SupabaseAdminManagementService).GetNestedType(
             "SubscriptionRow",
+            BindingFlags.NonPublic);
+
+        Assert.IsNotNull(type);
+        return type;
+    }
+
+    private static object CreateRevenueEvents(params object[] rows)
+    {
+        var rowType = GetRevenueEventRowType();
+        var list = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(rowType))!;
+        foreach (var row in rows)
+        {
+            list.Add(row);
+        }
+
+        return list;
+    }
+
+    private static object CreateRevenueEvent(DateTimeOffset receivedAt, decimal amountInCents)
+    {
+        var rowType = GetRevenueEventRowType();
+        var row = Activator.CreateInstance(rowType)!;
+        SetProperty(row, "Provider", "paystack");
+        SetProperty(row, "EventType", "charge.success");
+        SetProperty(row, "EventStatus", "success");
+        SetProperty(row, "ReceivedAt", receivedAt);
+        SetProperty(
+            row,
+            "Payload",
+            JsonSerializer.Deserialize<JsonElement>($$"""
+            {
+              "data": {
+                "amount": {{amountInCents}},
+                "paid_at": "{{receivedAt:O}}"
+              }
+            }
+            """));
+        return row;
+    }
+
+    private static Type GetRevenueEventRowType()
+    {
+        var type = typeof(SupabaseAdminManagementService).GetNestedType(
+            "RevenueEventRow",
             BindingFlags.NonPublic);
 
         Assert.IsNotNull(type);

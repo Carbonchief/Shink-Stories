@@ -2095,6 +2095,7 @@ public sealed partial class SupabaseAdminManagementService(
 
         var wordPressSubscriberReportsTask = FetchWordPressSubscriberReportsAsync(baseUri, apiKey, cancellationToken);
         var subscriptionsTask = FetchSubscriptionsAsync(baseUri, apiKey, cancellationToken);
+        var paystackRevenueEventsTask = FetchPaystackRevenueEventsAsync(baseUri, apiKey, cancellationToken);
         var subscriptionTiersTask = FetchSubscriptionTiersAsync(baseUri, apiKey, cancellationToken);
         var recoveriesTask = FetchSubscriptionRecoveriesAsync(baseUri, apiKey, cancellationToken);
         var abandonedCartRecoveriesTask = FetchAbandonedCartRecoveriesAsync(baseUri, apiKey, cancellationToken);
@@ -2105,6 +2106,7 @@ public sealed partial class SupabaseAdminManagementService(
         await Task.WhenAll(
             wordPressSubscriberReportsTask,
             subscriptionsTask,
+            paystackRevenueEventsTask,
             subscriptionTiersTask,
             recoveriesTask,
             abandonedCartRecoveriesTask,
@@ -2124,6 +2126,7 @@ public sealed partial class SupabaseAdminManagementService(
         return BuildSubscriberReportsSnapshot(
             wordPressSubscriberReports,
             subscriptionsTask.Result,
+            paystackRevenueEventsTask.Result,
             subscriptionTiersTask.Result,
             recoveriesTask.Result,
             abandonedCartRecoveriesTask.Result,
@@ -3082,6 +3085,20 @@ public sealed partial class SupabaseAdminManagementService(
         return await FetchRowsAsync<SubscriptionRow>(uri, apiKey, cancellationToken);
     }
 
+    private async Task<IReadOnlyList<RevenueEventRow>> FetchPaystackRevenueEventsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    {
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/subscription_events" +
+            "?select=provider,event_type,event_status,received_at,payload" +
+            "&provider=eq.paystack" +
+            "&event_type=eq.charge.success" +
+            "&order=received_at.desc" +
+            "&limit=50000");
+
+        return await FetchRowsAsync<RevenueEventRow>(uri, apiKey, cancellationToken);
+    }
+
     private async Task<WordPressSubscriberReportsRpcSnapshot?> FetchWordPressSubscriberReportsAsync(
         Uri baseUri,
         string apiKey,
@@ -3597,6 +3614,7 @@ public sealed partial class SupabaseAdminManagementService(
     private static AdminSubscriberReportsSnapshot BuildSubscriberReportsSnapshot(
         WordPressSubscriberReportsRpcSnapshot? wordPressSubscriberReports,
         IReadOnlyList<SubscriptionRow> subscriptions,
+        IReadOnlyList<RevenueEventRow> revenueEvents,
         IReadOnlyList<SubscriptionTierRow> subscriptionTiers,
         IReadOnlyList<SubscriptionRecoveryRow> recoveries,
         IReadOnlyList<AbandonedCartRecoveryRow> abandonedCartRecoveries,
@@ -3616,7 +3634,7 @@ public sealed partial class SupabaseAdminManagementService(
             MembershipStats: BuildMembershipStatsMetrics(subscriptions),
             MembershipTrend: BuildMembershipTrendMetrics(subscriptions),
             ActiveMembersPerLevel: BuildTierDistributionMetrics(wordPressSubscriberReports, subscriptions, tierDetails),
-            SalesAndRevenue: BuildSalesRevenueMetrics(wordPressSubscriberReports, subscriptions, tierDetails),
+            SalesAndRevenue: BuildSalesRevenueMetrics(wordPressSubscriberReports, subscriptions, tierDetails, revenueEvents),
             AbandonedCartRecoveries: BuildRecoveryMetrics(subscriptions, tierDetails, recoveries, abandonedCartRecoveries),
             VisitsViewsAndLogins: BuildVisitsViewsLoginsMetrics(authSessions, storyViews, storyListenSessions));
     }
@@ -3861,17 +3879,30 @@ public sealed partial class SupabaseAdminManagementService(
     private static IReadOnlyList<AdminSalesRevenueMetric> BuildSalesRevenueMetrics(
         WordPressSubscriberReportsRpcSnapshot? wordPressSubscriberReports,
         IReadOnlyList<SubscriptionRow> subscriptions,
-        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails)
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
+        IReadOnlyList<RevenueEventRow> revenueEvents)
     {
         _ = wordPressSubscriberReports;
         _ = tierDetails;
 
+        var paystackRevenueEvents = revenueEvents
+            .Where(IsPaystackRevenueEventEligible)
+            .Select(BuildRevenueCandidate)
+            .Where(metric => metric.Price > 0m && metric.SubscribedAt is not null)
+            .ToArray();
+
+        var earliestPaystackEventDate = paystackRevenueEvents
+            .Select(metric => metric.SubscribedAt?.ToLocalTime().Date)
+            .Where(date => date is not null)
+            .Min();
+
         var eligibleSales = subscriptions
-            .Where(IsRevenueMetricEligible)
+            .Where(subscription => IsRevenueMetricEligible(subscription, earliestPaystackEventDate))
             .Select(subscription => new SubscriberSaleMetricCandidate(
                 subscription.SubscribedAt,
                 subscription.BillingAmountZar ?? 0m))
             .Where(metric => metric.Price > 0m)
+            .Concat(paystackRevenueEvents)
             .ToArray();
 
         return
@@ -3959,6 +3990,27 @@ public sealed partial class SupabaseAdminManagementService(
             matchingSales.Length,
             decimal.Round(matchingSales.Sum(item => item.Price), 2, MidpointRounding.AwayFromZero));
     }
+
+    private static SubscriberSaleMetricCandidate BuildRevenueCandidate(RevenueEventRow row)
+    {
+        var occurredAt = ResolveRevenueEventOccurredAt(row);
+        var amountInCents = TryReadNestedDecimal(row.Payload, "data", "amount") ??
+                            TryReadNestedDecimal(row.Payload, "data", "plan", "amount") ??
+                            TryReadStringAsDecimal(row.Payload, "amount");
+        var price = amountInCents is > 0m
+            ? decimal.Round(amountInCents.Value / 100m, 2, MidpointRounding.AwayFromZero)
+            : 0m;
+
+        return new SubscriberSaleMetricCandidate(occurredAt, price);
+    }
+
+    private static DateTimeOffset? ResolveRevenueEventOccurredAt(RevenueEventRow row) =>
+        TryParseDateTimeOffset(
+            TryReadNestedString(row.Payload, "data", "paid_at") ??
+            TryReadNestedString(row.Payload, "data", "paidAt") ??
+            TryReadNestedString(row.Payload, "data", "transaction_date") ??
+            TryReadString(row.Payload, "paid_at")) ??
+        row.ReceivedAt;
 
     private static AdminRecoveryMetric BuildRecoveryMetric(
         string periodKey,
@@ -4125,13 +4177,142 @@ public sealed partial class SupabaseAdminManagementService(
         !string.IsNullOrWhiteSpace(subscription.ProviderPaymentId) &&
         subscription.ProviderPaymentId!.StartsWith("gratis-", StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsRevenueMetricEligible(SubscriptionRow subscription) =>
+    private static bool IsRevenueMetricEligible(SubscriptionRow subscription, DateTime? earliestPaystackEventDate = null) =>
         subscription.SubscribedAt is not null &&
         !string.Equals(subscription.Status, "failed", StringComparison.OrdinalIgnoreCase) &&
         !string.Equals(subscription.SourceSystem, "wordpress_pmpro", StringComparison.OrdinalIgnoreCase) &&
         !string.Equals(subscription.SourceSystem, "admin_override", StringComparison.OrdinalIgnoreCase) &&
+        !ShouldUsePaystackRevenueEventSource(subscription, earliestPaystackEventDate) &&
         (string.Equals(subscription.Status, "active", StringComparison.OrdinalIgnoreCase) ||
          string.Equals(subscription.Status, "cancelled", StringComparison.OrdinalIgnoreCase));
+
+    private static bool IsPaystackRevenueEventEligible(RevenueEventRow row) =>
+        string.Equals(row.Provider, "paystack", StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(row.EventType, "charge.success", StringComparison.OrdinalIgnoreCase) &&
+        IsSuccessfulRevenueEventStatus(row.EventStatus);
+
+    private static bool IsSuccessfulRevenueEventStatus(string? status) =>
+        string.IsNullOrWhiteSpace(status) ||
+        string.Equals(status, "success", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(status, "successful", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(status, "paid", StringComparison.OrdinalIgnoreCase);
+
+    private static bool ShouldUsePaystackRevenueEventSource(SubscriptionRow subscription, DateTime? earliestPaystackEventDate)
+    {
+        if (!string.Equals(subscription.Provider, "paystack", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (subscription.SubscribedAt is null)
+        {
+            return true;
+        }
+
+        return earliestPaystackEventDate is null ||
+               subscription.SubscribedAt.Value.ToLocalTime().Date >= earliestPaystackEventDate.Value;
+    }
+
+    private static string? TryReadNestedString(JsonElement element, params string[] path)
+    {
+        if (path.Length == 0)
+        {
+            return null;
+        }
+
+        var current = element;
+        foreach (var segment in path)
+        {
+            if (current.ValueKind != JsonValueKind.Object ||
+                !current.TryGetProperty(segment, out var next))
+            {
+                return null;
+            }
+
+            current = next;
+        }
+
+        return current.ValueKind switch
+        {
+            JsonValueKind.String => current.GetString(),
+            JsonValueKind.Number => current.GetRawText(),
+            JsonValueKind.True => bool.TrueString.ToLowerInvariant(),
+            JsonValueKind.False => bool.FalseString.ToLowerInvariant(),
+            _ => null
+        };
+    }
+
+    private static string? TryReadString(JsonElement element, string propertyName)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(propertyName, out var node))
+        {
+            return null;
+        }
+
+        return node.ValueKind switch
+        {
+            JsonValueKind.String => node.GetString(),
+            JsonValueKind.Number => node.GetRawText(),
+            JsonValueKind.True => bool.TrueString.ToLowerInvariant(),
+            JsonValueKind.False => bool.FalseString.ToLowerInvariant(),
+            _ => null
+        };
+    }
+
+    private static decimal? TryReadNestedDecimal(JsonElement element, params string[] path)
+    {
+        if (path.Length == 0)
+        {
+            return null;
+        }
+
+        var current = element;
+        foreach (var segment in path)
+        {
+            if (current.ValueKind != JsonValueKind.Object ||
+                !current.TryGetProperty(segment, out var next))
+            {
+                return null;
+            }
+
+            current = next;
+        }
+
+        return TryConvertJsonDecimal(current);
+    }
+
+    private static decimal? TryReadStringAsDecimal(JsonElement element, string propertyName)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(propertyName, out var node))
+        {
+            return null;
+        }
+
+        return TryConvertJsonDecimal(node);
+    }
+
+    private static decimal? TryConvertJsonDecimal(JsonElement node)
+    {
+        if (node.ValueKind == JsonValueKind.Number && node.TryGetDecimal(out var number))
+        {
+            return number;
+        }
+
+        if (node.ValueKind == JsonValueKind.String &&
+            decimal.TryParse(node.GetString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed))
+        {
+            return parsed;
+        }
+
+        return null;
+    }
+
+    private static DateTimeOffset? TryParseDateTimeOffset(string? value) =>
+        DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var parsed)
+            ? parsed
+            : null;
 
     private static decimal ResolveTierPrice(string? tierCode, IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails)
     {
@@ -4772,6 +4953,24 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("revenue")]
         public decimal Revenue { get; set; }
+    }
+
+    private sealed class RevenueEventRow
+    {
+        [JsonPropertyName("provider")]
+        public string? Provider { get; set; }
+
+        [JsonPropertyName("event_type")]
+        public string? EventType { get; set; }
+
+        [JsonPropertyName("event_status")]
+        public string? EventStatus { get; set; }
+
+        [JsonPropertyName("received_at")]
+        public DateTimeOffset ReceivedAt { get; set; }
+
+        [JsonPropertyName("payload")]
+        public JsonElement Payload { get; set; }
     }
 
     private sealed class SubscriptionRecoveryRow

@@ -25,7 +25,7 @@ public sealed partial class BlogContentRenderer : IBlogContentRenderer
             ? normalizedContent
             : Markdown.ToHtml(normalizedContent, MarkdownPipeline);
 
-        return _sanitizer.Sanitize(rendered);
+        return NormalizeRenderedHtmlWhitespace(_sanitizer.Sanitize(rendered));
     }
 
     public string ConvertToPlainText(string? markdown)
@@ -101,6 +101,20 @@ public sealed partial class BlogContentRenderer : IBlogContentRenderer
             .Replace("\r\n", "\n", StringComparison.Ordinal)
             .Trim()
         ?? string.Empty;
+
+    private static string NormalizeRenderedHtmlWhitespace(string html)
+    {
+        if (string.IsNullOrWhiteSpace(html))
+        {
+            return string.Empty;
+        }
+
+        return html
+            .Replace("&nbsp;", " ", StringComparison.OrdinalIgnoreCase)
+            .Replace("&#160;", " ", StringComparison.OrdinalIgnoreCase)
+            .Replace("&#xA0;", " ", StringComparison.OrdinalIgnoreCase)
+            .Replace('\u00A0', ' ');
+    }
 
     private static string CollapseWhitespace(string value) =>
         WhitespaceRegex().Replace(value, " ").Trim();

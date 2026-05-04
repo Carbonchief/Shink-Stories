@@ -1,5 +1,8 @@
 @using System.Globalization
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
 @inject IAdminManagementService AdminManagementService
+@inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ILogger<AdminSettingsPanel> Logger
 @inject ISnackbar Snackbar
 
@@ -326,27 +329,44 @@ else
 
     protected override async Task OnParametersSetAsync()
     {
-        if (string.Equals(LoadedAdminEmail, AdminEmail, StringComparison.OrdinalIgnoreCase) && !IsLoading)
+        var effectiveAdminEmail = await ResolveAdminEmailAsync();
+        if (string.IsNullOrWhiteSpace(effectiveAdminEmail))
+        {
+            IsLoading = false;
+            SetError(T(
+                "Kon nie jou admin rekening vir hierdie paneel bepaal nie.",
+                "Could not resolve your admin account for this panel."));
+            return;
+        }
+
+        if (string.Equals(LoadedAdminEmail, effectiveAdminEmail, StringComparison.OrdinalIgnoreCase) && !IsLoading)
         {
             return;
         }
 
-        await LoadAsync();
+        await LoadAsync(effectiveAdminEmail);
     }
 
-    private async Task LoadAsync()
+    private async Task<string?> ResolveAdminEmailAsync()
     {
         if (string.IsNullOrWhiteSpace(AdminEmail))
         {
-            return;
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            return authState.User.FindFirst(ClaimTypes.Email)?.Value
+                   ?? authState.User.Identity?.Name;
         }
 
+        return AdminEmail;
+    }
+
+    private async Task LoadAsync(string effectiveAdminEmail)
+    {
         IsLoading = true;
         ClearMessages();
 
         try
         {
-            var snapshot = await AdminManagementService.GetSubscriptionSettingsAsync(AdminEmail);
+            var snapshot = await AdminManagementService.GetSubscriptionSettingsAsync(effectiveAdminEmail);
             SignupCodeBypassEnabled = snapshot.SignupCodeBypassEnabled;
             SubscriptionTypeEditors = snapshot.SubscriptionTypes.Select(EditableSubscriptionType.From).ToList();
             DiscountCodes = snapshot.DiscountCodes.ToList();
@@ -359,7 +379,7 @@ else
                 }
             }
 
-            LoadedAdminEmail = AdminEmail;
+            LoadedAdminEmail = effectiveAdminEmail;
         }
         catch (Exception exception)
         {
@@ -372,12 +392,28 @@ else
         }
     }
 
-    private async Task ReloadAsync() => await LoadAsync();
+    private async Task ReloadAsync()
+    {
+        var effectiveAdminEmail = await ResolveAdminEmailAsync();
+        if (string.IsNullOrWhiteSpace(effectiveAdminEmail))
+        {
+            SetError(T(
+                "Kon nie jou admin rekening vir hierdie paneel bepaal nie.",
+                "Could not resolve your admin account for this panel."));
+            return;
+        }
+
+        await LoadAsync(effectiveAdminEmail);
+    }
 
     private async Task SaveSettingsAsync()
     {
-        if (string.IsNullOrWhiteSpace(AdminEmail))
+        var effectiveAdminEmail = await ResolveAdminEmailAsync();
+        if (string.IsNullOrWhiteSpace(effectiveAdminEmail))
         {
+            SetError(T(
+                "Kon nie jou admin rekening vir hierdie paneel bepaal nie.",
+                "Could not resolve your admin account for this panel."));
             return;
         }
 
@@ -386,7 +422,7 @@ else
         try
         {
             var result = await AdminManagementService.SaveSubscriptionSettingsAsync(
-                AdminEmail,
+                effectiveAdminEmail,
                 new AdminSubscriptionSettingsUpdateRequest(SignupCodeBypassEnabled));
             if (result.IsSuccess)
             {
@@ -406,8 +442,12 @@ else
 
     private async Task SaveSubscriptionTypeAsync(EditableSubscriptionType tier)
     {
-        if (string.IsNullOrWhiteSpace(AdminEmail))
+        var effectiveAdminEmail = await ResolveAdminEmailAsync();
+        if (string.IsNullOrWhiteSpace(effectiveAdminEmail))
         {
+            SetError(T(
+                "Kon nie jou admin rekening vir hierdie paneel bepaal nie.",
+                "Could not resolve your admin account for this panel."));
             return;
         }
 
@@ -416,7 +456,7 @@ else
         try
         {
             var result = await AdminManagementService.SaveSubscriptionTypeAsync(
-                AdminEmail,
+                effectiveAdminEmail,
                 new AdminSubscriptionTypeSaveRequest(
                     tier.TierCode,
                     tier.DisplayName,
@@ -430,7 +470,7 @@ else
             {
                 SetStatus(T("Intekeningsoort is gestoor.", "Subscription type was saved."));
                 Snackbar.Add(StatusMessage!, Severity.Success);
-                await LoadAsync();
+                await LoadAsync(effectiveAdminEmail);
             }
             else
             {
@@ -488,8 +528,15 @@ else
 
     private async Task SaveCodeAsync()
     {
-        if (string.IsNullOrWhiteSpace(AdminEmail) || DiscountCodeEditor is null)
+        var effectiveAdminEmail = await ResolveAdminEmailAsync();
+        if (string.IsNullOrWhiteSpace(effectiveAdminEmail) || DiscountCodeEditor is null)
         {
+            if (DiscountCodeEditor is not null)
+            {
+                SetError(T(
+                    "Kon nie jou admin rekening vir hierdie paneel bepaal nie.",
+                    "Could not resolve your admin account for this panel."));
+            }
             return;
         }
 
@@ -498,7 +545,7 @@ else
         try
         {
             var result = await AdminManagementService.SaveSubscriptionDiscountCodeAsync(
-                AdminEmail,
+                effectiveAdminEmail,
                 new AdminSubscriptionDiscountCodeSaveRequest(
                     DiscountCodeEditor.DiscountCodeId,
                     DiscountCodeEditor.Code,
@@ -528,7 +575,7 @@ else
             {
                 SetStatus(T("Kode is gestoor.", "Code was saved."));
                 Snackbar.Add(StatusMessage!, Severity.Success);
-                await LoadAsync();
+                await LoadAsync(effectiveAdminEmail);
                 if (result.EntityId is Guid entityId && entityId != Guid.Empty)
                 {
                     var selected = DiscountCodes.FirstOrDefault(code => code.DiscountCodeId == entityId);
@@ -551,8 +598,12 @@ else
 
     private async Task ImportWordPressCodesAsync()
     {
-        if (string.IsNullOrWhiteSpace(AdminEmail))
+        var effectiveAdminEmail = await ResolveAdminEmailAsync();
+        if (string.IsNullOrWhiteSpace(effectiveAdminEmail))
         {
+            SetError(T(
+                "Kon nie jou admin rekening vir hierdie paneel bepaal nie.",
+                "Could not resolve your admin account for this panel."));
             return;
         }
 
@@ -560,12 +611,12 @@ else
         ClearMessages();
         try
         {
-            var result = await AdminManagementService.ImportWordPressSubscriptionDiscountCodesAsync(AdminEmail);
+            var result = await AdminManagementService.ImportWordPressSubscriptionDiscountCodesAsync(effectiveAdminEmail);
             if (result.IsSuccess)
             {
                 SetStatus(T("WordPress kodes is ingevoer en verfris.", "WordPress codes were imported and refreshed."));
                 Snackbar.Add(StatusMessage!, Severity.Success);
-                await LoadAsync();
+                await LoadAsync(effectiveAdminEmail);
             }
             else
             {

@@ -738,7 +738,8 @@
         get
         {
             var relativePath = GetCurrentRelativePathWithoutQuery();
-            return string.Equals(relativePath, "blog", StringComparison.OrdinalIgnoreCase);
+            return string.Equals(relativePath, "blog", StringComparison.OrdinalIgnoreCase) ||
+                   relativePath.StartsWith("blog/", StringComparison.OrdinalIgnoreCase);
         }
     }
 

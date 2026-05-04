@@ -22,6 +22,18 @@ public class AdminSettingsPanelSourceTests
         StringAssert.Contains(css, "::deep .mud-button-root");
     }
 
+    [TestMethod]
+    public void SettingsPanelFallsBackToAuthenticatedAdminWhenParentEmailIsMissing()
+    {
+        var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "AdminSettingsPanel.razor"));
+
+        StringAssert.Contains(markup, "@inject AuthenticationStateProvider AuthenticationStateProvider");
+        StringAssert.Contains(markup, "ResolveAdminEmailAsync");
+        StringAssert.Contains(markup, "AuthenticationStateProvider.GetAuthenticationStateAsync()");
+        StringAssert.Contains(markup, "authState.User.FindFirst(ClaimTypes.Email)?.Value");
+        StringAssert.Contains(markup, "await LoadAsync(effectiveAdminEmail);");
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var parts = new[]

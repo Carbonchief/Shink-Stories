@@ -1184,11 +1184,11 @@
                 <section class="admin-section admin-analytics-section">
                     <div class="admin-section-head">
                         <div class="admin-analytics-copy">
-                            <h2>@T("Gebruiksanalitika", "Usage analytics")</h2>
+                            <h2>@T("Analitika", "Analytics")</h2>
                             <p class="admin-form-note">
                                 @T(
-                                    "Hier wys ons die storie-kyke, luistersessies, gunstelinge en karakter-profiel klankspeelaksies wat tans reeds nagespoor word.",
-                                    "This shows the story views, listen sessions, favorites, and character profile audio plays that are currently being tracked.")
+                                    "Hier wys ons intekenaar-, inkomste- en gebruiksanalitika wat tans reeds nagespoor word.",
+                                    "This shows the subscriber, revenue, and usage analytics that are currently being tracked.")
                             </p>
                         </div>
                         <MudButton Class="admin-mobile-cta"
@@ -1217,448 +1217,460 @@
                         var allTimeSubscriberRecoveries = GetSubscriberRecoveryMetric("all_time");
                     }
 
-                    <section class="admin-subscriber-analytics-section admin-analytics-panel admin-analytics-panel-wide">
-                        <div class="admin-analytics-panel-head">
-                            <div>
-                                <h3>@T("Intekenaar analitika", "Subscriber analytics")</h3>
-                                <p>
-                                    @T(
-                                        "Nuwe intekenaars, gekanselleerde intekeninge, aktiewe lede en betalingseinligting uit die intekenaarverslae.",
-                                        "New subscribers, cancelled subscriptions, active members, and payment signals from the subscriber reports.")
-                                </p>
-                            </div>
-                            <div class="admin-analytics-panel-head-controls">
-                                <label class="admin-header-filter-label" for="subscriber-analytics-period">
-                                    @T("Tydreeks", "Time series")
-                                </label>
-                                <select id="subscriber-analytics-period"
-                                        class="admin-header-filter-select admin-subscriber-analytics-period-select"
-                                        @bind="SelectedSubscriberTrendPeriod">
-                                    <option value="@SubscriberTrendPeriodDay">
-                                        @T("Dag", "Day")
-                                    </option>
-                                    <option value="@SubscriberTrendPeriodMonth">
-                                        @T("Maand", "Month")
-                                    </option>
-                                    <option value="@SubscriberTrendPeriodYear">
-                                        @T("Jaar", "Year")
-                                    </option>
-                                </select>
-                            </div>
-                        </div>
-
-                        @if (CurrentSubscriberTrendMetrics.Count > 0)
-                        {
-                            <div class="admin-subscriber-analytics-chart-shell">
-                                <MudChart T="double"
-                                          ChartType="ChartType.Bar"
-                                          ChartSeries="SubscriberTrendChartSeries"
-                                          ChartLabels="SubscriberTrendChartLabels" />
-                            </div>
-                        }
-                        else
-                        {
-                            <p class="admin-analytics-footnote">
-                                @T("Nog geen intekenaar-trend beskikbaar vir hierdie periode.", "No subscriber trend data available for this period.")
-                            </p>
-                        }
-
-                        <div class="admin-analytics-grid">
-                            <article class="admin-analytics-card">
-                                <p class="admin-analytics-label">@T("Nuwe intekenaars vandag", "New subscribers today")</p>
-                                <p class="admin-analytics-value">@FormatAnalyticsNumber(todaySubscriberMetric.Signups)</p>
-                                <div class="admin-analytics-meta">
-                                    <span>@T("Gekanselleerde intekeninge", "Cancelled subscriptions")</span>
-                                    <strong>@FormatAnalyticsNumber(todaySubscriberMetric.Cancellations)</strong>
+                    <MudTabs Class="admin-detail-tabs admin-analytics-tabs" Rounded="true">
+                        <MudTabPanel Text='@T("Intekenaars", "Subscribers")'>
+                            <section class="admin-subscriber-analytics-section admin-analytics-panel admin-analytics-panel-wide">
+                                <div class="admin-analytics-panel-head">
+                                    <div>
+                                        <h3>@T("Intekenaar analitika", "Subscriber analytics")</h3>
+                                        <p>
+                                            @T(
+                                                "Nuwe intekenaars, gekanselleerde intekeninge, aktiewe lede en betalingseinligting uit die intekenaarverslae.",
+                                                "New subscribers, cancelled subscriptions, active members, and payment signals from the subscriber reports.")
+                                        </p>
+                                    </div>
+                                    <div class="admin-analytics-panel-head-controls">
+                                        <label class="admin-header-filter-label" for="subscriber-analytics-period">
+                                            @T("Tydreeks", "Time series")
+                                        </label>
+                                        <select id="subscriber-analytics-period"
+                                                class="admin-header-filter-select admin-subscriber-analytics-period-select"
+                                                @bind="SelectedSubscriberTrendPeriod">
+                                            <option value="@SubscriberTrendPeriodDay">
+                                                @T("Dag", "Day")
+                                            </option>
+                                            <option value="@SubscriberTrendPeriodMonth">
+                                                @T("Maand", "Month")
+                                            </option>
+                                            <option value="@SubscriberTrendPeriodYear">
+                                                @T("Jaar", "Year")
+                                            </option>
+                                        </select>
+                                    </div>
                                 </div>
-                            </article>
 
-                            <article class="admin-analytics-card">
-                                <p class="admin-analytics-label">@T("Nuwe intekenaars hierdie maand", "New subscribers this month")</p>
-                                <p class="admin-analytics-value">@FormatAnalyticsNumber(monthlySubscriberMetric.Signups)</p>
-                                <div class="admin-analytics-meta">
-                                    <span>@T("Gekanselleerde intekeninge", "Cancelled subscriptions")</span>
-                                    <strong>@FormatAnalyticsNumber(monthlySubscriberMetric.Cancellations)</strong>
-                                </div>
-                            </article>
+                                <div class="admin-subscriber-analytics-summary-layout">
+                                    <div class="admin-subscriber-analytics-visual">
+                                        @if (CurrentSubscriberTrendMetrics.Count > 0)
+                                        {
+                                            <div class="admin-subscriber-analytics-chart-shell">
+                                                <MudChart T="double"
+                                                          ChartType="ChartType.Bar"
+                                                          ChartSeries="SubscriberTrendChartSeries"
+                                                          ChartLabels="SubscriberTrendChartLabels" />
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <p class="admin-analytics-footnote">
+                                                @T("Nog geen intekenaar-trend beskikbaar vir hierdie periode.", "No subscriber trend data available for this period.")
+                                            </p>
+                                        }
+                                    </div>
 
-                            <article class="admin-analytics-card">
-                                <p class="admin-analytics-label">@T("Nuwe intekenaars hierdie jaar", "New subscribers this year")</p>
-                                <p class="admin-analytics-value">@FormatAnalyticsNumber(yearlySubscriberMetric.Signups)</p>
-                                <div class="admin-analytics-meta">
-                                    <span>@T("Gekanselleerde intekeninge", "Cancelled subscriptions")</span>
-                                    <strong>@FormatAnalyticsNumber(yearlySubscriberMetric.Cancellations)</strong>
-                                </div>
-                            </article>
+                                    <div class="admin-analytics-grid admin-subscriber-analytics-cards">
+                                        <article class="admin-analytics-card">
+                                            <p class="admin-analytics-label">@T("Nuwe intekenaars vandag", "New subscribers today")</p>
+                                            <p class="admin-analytics-value">@FormatAnalyticsNumber(todaySubscriberMetric.Signups)</p>
+                                            <div class="admin-analytics-meta">
+                                                <span>@T("Gekanselleerde intekeninge", "Cancelled subscriptions")</span>
+                                                <strong>@FormatAnalyticsNumber(todaySubscriberMetric.Cancellations)</strong>
+                                            </div>
+                                        </article>
 
-                            <article class="admin-analytics-card">
-                                <p class="admin-analytics-label">@T("Aktiewe lede", "Active members")</p>
-                                <p class="admin-analytics-value">@FormatAnalyticsNumber(ActiveSubscriberAnalyticsTotal)</p>
-                                <div class="admin-analytics-meta">
-                                    <span>@T("Inkomste hierdie maand", "Revenue this month")</span>
-                                    <strong>@FormatCurrency(monthlySubscriberSales.RevenueZar)</strong>
-                                </div>
-                                <div class="admin-analytics-meta">
-                                    <span>@T("Herwinde bestellings (30 dae)", "Recovered orders (30 days)")</span>
-                                    <strong>@FormatAnalyticsNumber(pastThirtyDaysSubscriberRecoveries.RecoveredOrders)</strong>
-                                </div>
-                            </article>
-                        </div>
+                                        <article class="admin-analytics-card">
+                                            <p class="admin-analytics-label">@T("Nuwe intekenaars hierdie maand", "New subscribers this month")</p>
+                                            <p class="admin-analytics-value">@FormatAnalyticsNumber(monthlySubscriberMetric.Signups)</p>
+                                            <div class="admin-analytics-meta">
+                                                <span>@T("Gekanselleerde intekeninge", "Cancelled subscriptions")</span>
+                                                <strong>@FormatAnalyticsNumber(monthlySubscriberMetric.Cancellations)</strong>
+                                            </div>
+                                        </article>
 
-                        <div class="admin-report-table-wrap">
-                            <table class="admin-report-table admin-subscriber-analytics-table">
-                                <thead>
-                                    <tr>
-                                        <th>@T("Periode", "Period")</th>
-                                        <th>@T("Nuwe intekenaars", "New subscribers")</th>
-                                        <th>@T("Gekanselleerde intekeninge", "Cancelled subscriptions")</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var metric in SubscriberAnalyticsPeriodHighlights)
-                                    {
-                                        <tr>
-                                            <td>@GetSubscriberPeriodLabel(metric.PeriodKey)</td>
-                                            <td>@FormatAnalyticsNumber(metric.Signups)</td>
-                                            <td>@FormatAnalyticsNumber(metric.Cancellations)</td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
+                                        <article class="admin-analytics-card">
+                                            <p class="admin-analytics-label">@T("Nuwe intekenaars hierdie jaar", "New subscribers this year")</p>
+                                            <p class="admin-analytics-value">@FormatAnalyticsNumber(yearlySubscriberMetric.Signups)</p>
+                                            <div class="admin-analytics-meta">
+                                                <span>@T("Gekanselleerde intekeninge", "Cancelled subscriptions")</span>
+                                                <strong>@FormatAnalyticsNumber(yearlySubscriberMetric.Cancellations)</strong>
+                                            </div>
+                                        </article>
 
-                        <section class="admin-analytics-panel">
-                            <div class="admin-analytics-panel-head">
-                                <div>
-                                    <h3>@T("Per vlak", "By subscription tier")</h3>
-                                    <p>@T("Aktiewe lede en persentasie per intekenvlak.", "Active members and percentage by subscription tier.")</p>
-                                </div>
-                            </div>
-
-                            @if (ActiveMembersPerLevelChartLabels.Length > 0 && ActiveMembersPerLevelChartSeries.Count > 0)
-                            {
-                                <div class="admin-subscriber-analytics-chart-shell">
-                                    <MudChart T="double"
-                                              ChartType="ChartType.Pie"
-                                              ChartSeries="ActiveMembersPerLevelChartSeries"
-                                              ChartLabels="ActiveMembersPerLevelChartLabels"
-                                              ChartOptions="ActiveMembersPerLevelPieChartOptions"
-                                              Width="100%"
-                                              Height="320px" />
+                                        <article class="admin-analytics-card">
+                                            <p class="admin-analytics-label">@T("Aktiewe lede", "Active members")</p>
+                                            <p class="admin-analytics-value">@FormatAnalyticsNumber(ActiveSubscriberAnalyticsTotal)</p>
+                                            <div class="admin-analytics-meta">
+                                                <span>@T("Inkomste hierdie maand", "Revenue this month")</span>
+                                                <strong>@FormatCurrency(monthlySubscriberSales.RevenueZar)</strong>
+                                            </div>
+                                            <div class="admin-analytics-meta">
+                                                <span>@T("Herwinde bestellings (30 dae)", "Recovered orders (30 days)")</span>
+                                                <strong>@FormatAnalyticsNumber(pastThirtyDaysSubscriberRecoveries.RecoveredOrders)</strong>
+                                            </div>
+                                        </article>
+                                    </div>
                                 </div>
 
                                 <div class="admin-report-table-wrap">
-                                    <table class="admin-report-table">
+                                    <table class="admin-report-table admin-subscriber-analytics-table">
                                         <thead>
                                             <tr>
-                                                <th>@T("Vlak", "Tier")</th>
-                                                <th>@T("Aktiewe lede", "Active members")</th>
-                                                <th>@T("Persentasie", "Percentage")</th>
+                                                <th>@T("Periode", "Period")</th>
+                                                <th>@T("Nuwe intekenaars", "New subscribers")</th>
+                                                <th>@T("Gekanselleerde intekeninge", "Cancelled subscriptions")</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            @foreach (var metric in SubscriberReports.ActiveMembersPerLevel)
+                                            @foreach (var metric in SubscriberAnalyticsPeriodHighlights)
                                             {
                                                 <tr>
-                                                    <td>@metric.TierName</td>
-                                                    <td>@FormatAnalyticsNumber(metric.ActiveMembers)</td>
-                                                    <td>@FormatReportPercentage(metric.Percentage)</td>
+                                                    <td>@GetSubscriberPeriodLabel(metric.PeriodKey)</td>
+                                                    <td>@FormatAnalyticsNumber(metric.Signups)</td>
+                                                    <td>@FormatAnalyticsNumber(metric.Cancellations)</td>
                                                 </tr>
                                             }
                                         </tbody>
                                     </table>
                                 </div>
+
+                                <section class="admin-analytics-panel">
+                                    <div class="admin-analytics-panel-head">
+                                        <div>
+                                            <h3>@T("Per vlak", "By subscription tier")</h3>
+                                            <p>@T("Aktiewe lede en persentasie per intekenvlak.", "Active members and percentage by subscription tier.")</p>
+                                        </div>
+                                    </div>
+
+                                    @if (ActiveMembersPerLevelChartLabels.Length > 0 && ActiveMembersPerLevelChartSeries.Count > 0)
+                                    {
+                                        <div class="admin-subscriber-analytics-chart-shell">
+                                            <MudChart T="double"
+                                                      ChartType="ChartType.Pie"
+                                                      ChartSeries="ActiveMembersPerLevelChartSeries"
+                                                      ChartLabels="ActiveMembersPerLevelChartLabels"
+                                                      ChartOptions="ActiveMembersPerLevelPieChartOptions"
+                                                      Width="100%"
+                                                      Height="320px" />
+                                        </div>
+
+                                        <div class="admin-report-table-wrap">
+                                            <table class="admin-report-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>@T("Vlak", "Tier")</th>
+                                                        <th>@T("Aktiewe lede", "Active members")</th>
+                                                        <th>@T("Persentasie", "Percentage")</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var metric in SubscriberReports.ActiveMembersPerLevel)
+                                                    {
+                                                        <tr>
+                                                            <td>@metric.TierName</td>
+                                                            <td>@FormatAnalyticsNumber(metric.ActiveMembers)</td>
+                                                            <td>@FormatReportPercentage(metric.Percentage)</td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <p class="admin-analytics-footnote">
+                                            @T("Nog geen aktiewe lede per vlak beskikbaar nie.", "No active members by tier available yet.")
+                                        </p>
+                                    }
+                                </section>
+                            </section>
+                        </MudTabPanel>
+
+                        <MudTabPanel Text='@T("Inkomste", "Revenue")'>
+                            <section class="admin-revenue-analytics-section admin-analytics-panel admin-analytics-panel-wide">
+                                <div class="admin-analytics-panel-head">
+                                    <div>
+                                        <h3>@T("Inkomste analitika", "Revenue analytics")</h3>
+                                        <p>
+                                            @T(
+                                                "Intekeningverkope, aangetekende inkomste en herwinde inkomste volgens die huidige betaal- en hersteldata.",
+                                                "Subscription sales, recorded revenue, and recovered revenue from the current payment and recovery data.")
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div class="admin-analytics-grid">
+                                    <article class="admin-analytics-card">
+                                        <p class="admin-analytics-label">@T("Vandag", "Today")</p>
+                                        <p class="admin-analytics-value">@FormatCurrency(todaySubscriberSales.RevenueZar)</p>
+                                        <div class="admin-analytics-meta">
+                                            <span>@T("Verkope", "Sales")</span>
+                                            <strong>@FormatAnalyticsNumber(todaySubscriberSales.SalesCount)</strong>
+                                        </div>
+                                    </article>
+
+                                    <article class="admin-analytics-card">
+                                        <p class="admin-analytics-label">@T("Hierdie maand", "This month")</p>
+                                        <p class="admin-analytics-value">@FormatCurrency(monthlySubscriberSales.RevenueZar)</p>
+                                        <div class="admin-analytics-meta">
+                                            <span>@T("Verkope", "Sales")</span>
+                                            <strong>@FormatAnalyticsNumber(monthlySubscriberSales.SalesCount)</strong>
+                                        </div>
+                                        <div class="admin-analytics-meta">
+                                            <span>@T("Herwin 30 dae", "Recovered 30 days")</span>
+                                            <strong>@FormatCurrency(pastThirtyDaysSubscriberRecoveries.RecoveredRevenueZar)</strong>
+                                        </div>
+                                    </article>
+
+                                    <article class="admin-analytics-card">
+                                        <p class="admin-analytics-label">@T("Hierdie jaar", "This year")</p>
+                                        <p class="admin-analytics-value">@FormatCurrency(yearlySubscriberSales.RevenueZar)</p>
+                                        <div class="admin-analytics-meta">
+                                            <span>@T("Verkope", "Sales")</span>
+                                            <strong>@FormatAnalyticsNumber(yearlySubscriberSales.SalesCount)</strong>
+                                        </div>
+                                    </article>
+
+                                    <article class="admin-analytics-card">
+                                        <p class="admin-analytics-label">@T("Alles", "All time")</p>
+                                        <p class="admin-analytics-value">@FormatCurrency(allTimeSubscriberSales.RevenueZar)</p>
+                                        <div class="admin-analytics-meta">
+                                            <span>@T("Verkope", "Sales")</span>
+                                            <strong>@FormatAnalyticsNumber(allTimeSubscriberSales.SalesCount)</strong>
+                                        </div>
+                                        <div class="admin-analytics-meta">
+                                            <span>@T("Herwin totaal", "Recovered total")</span>
+                                            <strong>@FormatCurrency(allTimeSubscriberRecoveries.RecoveredRevenueZar)</strong>
+                                        </div>
+                                    </article>
+                                </div>
+
+                                <div class="admin-report-table-wrap">
+                                    <table class="admin-report-table admin-revenue-analytics-table">
+                                        <thead>
+                                            <tr>
+                                                <th>@T("Periode", "Period")</th>
+                                                <th>@T("Verkope", "Sales")</th>
+                                                <th>@T("Inkomste", "Revenue")</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var metric in RevenueAnalyticsPeriodHighlights)
+                                            {
+                                                <tr>
+                                                    <td>@GetSubscriberPeriodLabel(metric.PeriodKey)</td>
+                                                    <td>@FormatAnalyticsNumber(metric.SalesCount)</td>
+                                                    <td>@FormatCurrency(metric.RevenueZar)</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </section>
+                        </MudTabPanel>
+
+                        <MudTabPanel Text='@T("Gebruik", "Usage")'>
+                            @if (!HasAnalyticsData)
+                            {
+                                <section class="admin-state">
+                                    <h2>@T("Nog geen analitika beskikbaar nie", "No analytics available yet")</h2>
+                                    <p>
+                                        @T(
+                                            "Sodra stories of karakterprofiele gebruik word, sal die nagespoorde data hier verskyn.",
+                                            "As stories or character profiles get used, the tracked data will appear here.")
+                                    </p>
+                                </section>
                             }
                             else
                             {
-                                <p class="admin-analytics-footnote">
-                                    @T("Nog geen aktiewe lede per vlak beskikbaar nie.", "No active members by tier available yet.")
-                                </p>
-                            }
-                        </section>
-                    </section>
+                                <div class="admin-analytics-grid">
+                                    <article class="admin-analytics-card">
+                                        <p class="admin-analytics-label">@T("Storie-kyke", "Story views")</p>
+                                        <p class="admin-analytics-value">@FormatAnalyticsNumber(Analytics.StorySummary.TotalViews)</p>
+                                        <div class="admin-analytics-meta">
+                                            <span>@T("Unieke kykers", "Unique viewers")</span>
+                                            <strong>@FormatAnalyticsNumber(Analytics.StorySummary.UniqueViewers)</strong>
+                                        </div>
+                                        <div class="admin-analytics-meta">
+                                            <span>@T("Stories met kyke", "Stories with views")</span>
+                                            <strong>@FormatAnalyticsNumber(Analytics.StorySummary.UniqueViewedStories)</strong>
+                                        </div>
+                                        <p class="admin-analytics-footnote">
+                                            @T("Laaste kyk", "Last view"): @FormatAdminDateTime(Analytics.StorySummary.LastViewAt)
+                                        </p>
+                                    </article>
 
-                    <section class="admin-revenue-analytics-section admin-analytics-panel admin-analytics-panel-wide">
-                        <div class="admin-analytics-panel-head">
-                            <div>
-                                <h3>@T("Inkomste analitika", "Revenue analytics")</h3>
-                                <p>
-                                    @T(
-                                        "Intekeningverkope, aangetekende inkomste en herwinde inkomste volgens die huidige betaal- en hersteldata.",
-                                        "Subscription sales, recorded revenue, and recovered revenue from the current payment and recovery data.")
-                                </p>
-                            </div>
-                        </div>
+                                    <article class="admin-analytics-card">
+                                        <p class="admin-analytics-label">@T("Luistersessies", "Listen sessions")</p>
+                                        <p class="admin-analytics-value">@FormatAnalyticsNumber(Analytics.StorySummary.TotalListenSessions)</p>
+                                        <div class="admin-analytics-meta">
+                                            <span>@T("Luister-events", "Listen events")</span>
+                                            <strong>@FormatAnalyticsNumber(Analytics.StorySummary.TotalListenEvents)</strong>
+                                        </div>
+                                        <div class="admin-analytics-meta">
+                                            <span>@T("Unieke luisteraars", "Unique listeners")</span>
+                                            <strong>@FormatAnalyticsNumber(Analytics.StorySummary.UniqueListeners)</strong>
+                                        </div>
+                                        <p class="admin-analytics-footnote">
+                                            @T("Laaste luister", "Last listen"): @FormatAdminDateTime(Analytics.StorySummary.LastListenAt)
+                                        </p>
+                                    </article>
 
-                        <div class="admin-analytics-grid">
-                            <article class="admin-analytics-card">
-                                <p class="admin-analytics-label">@T("Vandag", "Today")</p>
-                                <p class="admin-analytics-value">@FormatCurrency(todaySubscriberSales.RevenueZar)</p>
-                                <div class="admin-analytics-meta">
-                                    <span>@T("Verkope", "Sales")</span>
-                                    <strong>@FormatAnalyticsNumber(todaySubscriberSales.SalesCount)</strong>
-                                </div>
-                            </article>
+                                    <article class="admin-analytics-card">
+                                        <p class="admin-analytics-label">@T("Totale luistertyd", "Total listening time")</p>
+                                        <p class="admin-analytics-value">@FormatAnalyticsDuration(Analytics.StorySummary.TotalListenedSeconds)</p>
+                                        <div class="admin-analytics-meta">
+                                            <span>@T("Gemiddeld per sessie", "Average per session")</span>
+                                            <strong>@FormatAnalyticsDuration(Analytics.StorySummary.AverageListenedSecondsPerSession)</strong>
+                                        </div>
+                                        <div class="admin-analytics-meta">
+                                            <span>@T("Stories wat geluister is", "Stories listened to")</span>
+                                            <strong>@FormatAnalyticsNumber(Analytics.StorySummary.UniqueListenedStories)</strong>
+                                        </div>
+                                        <p class="admin-analytics-footnote">
+                                            @T("Laas verfris", "Last refreshed"): @FormatAdminDateTime(Analytics.GeneratedAt)
+                                        </p>
+                                    </article>
 
-                            <article class="admin-analytics-card">
-                                <p class="admin-analytics-label">@T("Hierdie maand", "This month")</p>
-                                <p class="admin-analytics-value">@FormatCurrency(monthlySubscriberSales.RevenueZar)</p>
-                                <div class="admin-analytics-meta">
-                                    <span>@T("Verkope", "Sales")</span>
-                                    <strong>@FormatAnalyticsNumber(monthlySubscriberSales.SalesCount)</strong>
-                                </div>
-                                <div class="admin-analytics-meta">
-                                    <span>@T("Herwin 30 dae", "Recovered 30 days")</span>
-                                    <strong>@FormatCurrency(pastThirtyDaysSubscriberRecoveries.RecoveredRevenueZar)</strong>
-                                </div>
-                            </article>
+                                    <article class="admin-analytics-card">
+                                        <p class="admin-analytics-label">@T("Gunstelinge", "Favorites")</p>
+                                        <p class="admin-analytics-value">@FormatAnalyticsNumber(Analytics.StorySummary.TotalFavorites)</p>
+                                        <div class="admin-analytics-meta">
+                                            <span>@T("Unieke mense", "Unique people")</span>
+                                            <strong>@FormatAnalyticsNumber(Analytics.StorySummary.UniqueFavoriters)</strong>
+                                        </div>
+                                        <div class="admin-analytics-meta">
+                                            <span>@T("Bron", "Source")</span>
+                                            <strong>@T("Luister", "Luister")</strong>
+                                        </div>
+                                        <p class="admin-analytics-footnote">
+                                            @T("Laaste gunsteling", "Last favorite"): @FormatAdminDateTime(Analytics.StorySummary.LastFavoriteAt)
+                                        </p>
+                                    </article>
 
-                            <article class="admin-analytics-card">
-                                <p class="admin-analytics-label">@T("Hierdie jaar", "This year")</p>
-                                <p class="admin-analytics-value">@FormatCurrency(yearlySubscriberSales.RevenueZar)</p>
-                                <div class="admin-analytics-meta">
-                                    <span>@T("Verkope", "Sales")</span>
-                                    <strong>@FormatAnalyticsNumber(yearlySubscriberSales.SalesCount)</strong>
-                                </div>
-                            </article>
-
-                            <article class="admin-analytics-card">
-                                <p class="admin-analytics-label">@T("Alles", "All time")</p>
-                                <p class="admin-analytics-value">@FormatCurrency(allTimeSubscriberSales.RevenueZar)</p>
-                                <div class="admin-analytics-meta">
-                                    <span>@T("Verkope", "Sales")</span>
-                                    <strong>@FormatAnalyticsNumber(allTimeSubscriberSales.SalesCount)</strong>
-                                </div>
-                                <div class="admin-analytics-meta">
-                                    <span>@T("Herwin totaal", "Recovered total")</span>
-                                    <strong>@FormatCurrency(allTimeSubscriberRecoveries.RecoveredRevenueZar)</strong>
-                                </div>
-                            </article>
-                        </div>
-
-                        <div class="admin-report-table-wrap">
-                            <table class="admin-report-table admin-revenue-analytics-table">
-                                <thead>
-                                    <tr>
-                                        <th>@T("Periode", "Period")</th>
-                                        <th>@T("Verkope", "Sales")</th>
-                                        <th>@T("Inkomste", "Revenue")</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    @foreach (var metric in RevenueAnalyticsPeriodHighlights)
-                                    {
-                                        <tr>
-                                            <td>@GetSubscriberPeriodLabel(metric.PeriodKey)</td>
-                                            <td>@FormatAnalyticsNumber(metric.SalesCount)</td>
-                                            <td>@FormatCurrency(metric.RevenueZar)</td>
-                                        </tr>
-                                    }
-                                </tbody>
-                            </table>
-                        </div>
-                    </section>
-
-                    @if (!HasAnalyticsData)
-                    {
-                        <section class="admin-state">
-                            <h2>@T("Nog geen analitika beskikbaar nie", "No analytics available yet")</h2>
-                            <p>
-                                @T(
-                                    "Sodra stories of karakterprofiele gebruik word, sal die nagespoorde data hier verskyn.",
-                                    "As stories or character profiles get used, the tracked data will appear here.")
-                            </p>
-                        </section>
-                    }
-                    else
-                    {
-                        <div class="admin-analytics-grid">
-                            <article class="admin-analytics-card">
-                                <p class="admin-analytics-label">@T("Storie-kyke", "Story views")</p>
-                                <p class="admin-analytics-value">@FormatAnalyticsNumber(Analytics.StorySummary.TotalViews)</p>
-                                <div class="admin-analytics-meta">
-                                    <span>@T("Unieke kykers", "Unique viewers")</span>
-                                    <strong>@FormatAnalyticsNumber(Analytics.StorySummary.UniqueViewers)</strong>
-                                </div>
-                                <div class="admin-analytics-meta">
-                                    <span>@T("Stories met kyke", "Stories with views")</span>
-                                    <strong>@FormatAnalyticsNumber(Analytics.StorySummary.UniqueViewedStories)</strong>
-                                </div>
-                                <p class="admin-analytics-footnote">
-                                    @T("Laaste kyk", "Last view"): @FormatAdminDateTime(Analytics.StorySummary.LastViewAt)
-                                </p>
-                            </article>
-
-                            <article class="admin-analytics-card">
-                                <p class="admin-analytics-label">@T("Luistersessies", "Listen sessions")</p>
-                                <p class="admin-analytics-value">@FormatAnalyticsNumber(Analytics.StorySummary.TotalListenSessions)</p>
-                                <div class="admin-analytics-meta">
-                                    <span>@T("Luister-events", "Listen events")</span>
-                                    <strong>@FormatAnalyticsNumber(Analytics.StorySummary.TotalListenEvents)</strong>
-                                </div>
-                                <div class="admin-analytics-meta">
-                                    <span>@T("Unieke luisteraars", "Unique listeners")</span>
-                                    <strong>@FormatAnalyticsNumber(Analytics.StorySummary.UniqueListeners)</strong>
-                                </div>
-                                <p class="admin-analytics-footnote">
-                                    @T("Laaste luister", "Last listen"): @FormatAdminDateTime(Analytics.StorySummary.LastListenAt)
-                                </p>
-                            </article>
-
-                            <article class="admin-analytics-card">
-                                <p class="admin-analytics-label">@T("Totale luistertyd", "Total listening time")</p>
-                                <p class="admin-analytics-value">@FormatAnalyticsDuration(Analytics.StorySummary.TotalListenedSeconds)</p>
-                                <div class="admin-analytics-meta">
-                                    <span>@T("Gemiddeld per sessie", "Average per session")</span>
-                                    <strong>@FormatAnalyticsDuration(Analytics.StorySummary.AverageListenedSecondsPerSession)</strong>
-                                </div>
-                                <div class="admin-analytics-meta">
-                                    <span>@T("Stories wat geluister is", "Stories listened to")</span>
-                                    <strong>@FormatAnalyticsNumber(Analytics.StorySummary.UniqueListenedStories)</strong>
-                                </div>
-                                <p class="admin-analytics-footnote">
-                                    @T("Laas verfris", "Last refreshed"): @FormatAdminDateTime(Analytics.GeneratedAt)
-                                </p>
-                            </article>
-
-                            <article class="admin-analytics-card">
-                                <p class="admin-analytics-label">@T("Gunstelinge", "Favorites")</p>
-                                <p class="admin-analytics-value">@FormatAnalyticsNumber(Analytics.StorySummary.TotalFavorites)</p>
-                                <div class="admin-analytics-meta">
-                                    <span>@T("Unieke mense", "Unique people")</span>
-                                    <strong>@FormatAnalyticsNumber(Analytics.StorySummary.UniqueFavoriters)</strong>
-                                </div>
-                                <div class="admin-analytics-meta">
-                                    <span>@T("Bron", "Source")</span>
-                                    <strong>@T("Luister", "Luister")</strong>
-                                </div>
-                                <p class="admin-analytics-footnote">
-                                    @T("Laaste gunsteling", "Last favorite"): @FormatAdminDateTime(Analytics.StorySummary.LastFavoriteAt)
-                                </p>
-                            </article>
-
-                            <article class="admin-analytics-card">
-                                <p class="admin-analytics-label">@T("Karakter-klankspelings", "Character audio plays")</p>
-                                <p class="admin-analytics-value">@FormatAnalyticsNumber(Analytics.CharacterSummary.TotalAudioPlays)</p>
-                                <div class="admin-analytics-meta">
-                                    <span>@T("Unieke karakters", "Unique characters")</span>
-                                    <strong>@FormatAnalyticsNumber(Analytics.CharacterSummary.UniqueCharacters)</strong>
-                                </div>
-                                <div class="admin-analytics-meta">
-                                    <span>@T("Unieke intekenaars", "Unique subscribers")</span>
-                                    <strong>@FormatAnalyticsNumber(Analytics.CharacterSummary.UniqueSubscribers)</strong>
-                                </div>
-                                <p class="admin-analytics-footnote">
-                                    @T("Laaste klankspeling", "Last audio play"): @FormatAdminDateTime(Analytics.CharacterSummary.LastAudioPlayAt)
-                                </p>
-                            </article>
-                        </div>
-
-                        <div class="admin-analytics-layout">
-                            <section class="admin-analytics-panel">
-                                <div class="admin-analytics-panel-head">
-                                    <div>
-                                        <h3>@T("Laaste 14 dae", "Last 14 days")</h3>
-                                        <p>@T("Dag-vir-dag gebruik vir die events wat ons reeds log.", "Day-by-day usage for the events we already log.")</p>
-                                    </div>
+                                    <article class="admin-analytics-card">
+                                        <p class="admin-analytics-label">@T("Karakter-klankspelings", "Character audio plays")</p>
+                                        <p class="admin-analytics-value">@FormatAnalyticsNumber(Analytics.CharacterSummary.TotalAudioPlays)</p>
+                                        <div class="admin-analytics-meta">
+                                            <span>@T("Unieke karakters", "Unique characters")</span>
+                                            <strong>@FormatAnalyticsNumber(Analytics.CharacterSummary.UniqueCharacters)</strong>
+                                        </div>
+                                        <div class="admin-analytics-meta">
+                                            <span>@T("Unieke intekenaars", "Unique subscribers")</span>
+                                            <strong>@FormatAnalyticsNumber(Analytics.CharacterSummary.UniqueSubscribers)</strong>
+                                        </div>
+                                        <p class="admin-analytics-footnote">
+                                            @T("Laaste klankspeling", "Last audio play"): @FormatAdminDateTime(Analytics.CharacterSummary.LastAudioPlayAt)
+                                        </p>
+                                    </article>
                                 </div>
 
-                                <div class="admin-activity-list">
-                                    @foreach (var activity in Analytics.DailyActivity)
-                                    {
-                                        <article class="admin-activity-row">
-                                            <div class="admin-activity-date">
-                                                <strong>@FormatAnalyticsDay(activity.ActivityDate)</strong>
+                                <div class="admin-analytics-layout">
+                                    <section class="admin-analytics-panel">
+                                        <div class="admin-analytics-panel-head">
+                                            <div>
+                                                <h3>@T("Laaste 14 dae", "Last 14 days")</h3>
+                                                <p>@T("Dag-vir-dag gebruik vir die events wat ons reeds log.", "Day-by-day usage for the events we already log.")</p>
                                             </div>
-                                            <div class="admin-activity-metrics">
-                                                <span>@T("Kyke", "Views"): @FormatAnalyticsNumber(activity.TotalViews)</span>
-                                                <span>@T("Sessies", "Sessions"): @FormatAnalyticsNumber(activity.TotalListenSessions)</span>
-                                                <span>@T("Luistertyd", "Listening time"): @FormatAnalyticsDuration(activity.TotalListenedSeconds)</span>
-                                                <span>@T("Gunstelinge", "Favorites"): @FormatAnalyticsNumber(activity.TotalFavorites)</span>
+                                        </div>
+
+                                        <div class="admin-activity-list">
+                                            @foreach (var activity in Analytics.DailyActivity)
+                                            {
+                                                <article class="admin-activity-row">
+                                                    <div class="admin-activity-date">
+                                                        <strong>@FormatAnalyticsDay(activity.ActivityDate)</strong>
+                                                    </div>
+                                                    <div class="admin-activity-metrics">
+                                                        <span>@T("Kyke", "Views"): @FormatAnalyticsNumber(activity.TotalViews)</span>
+                                                        <span>@T("Sessies", "Sessions"): @FormatAnalyticsNumber(activity.TotalListenSessions)</span>
+                                                        <span>@T("Luistertyd", "Listening time"): @FormatAnalyticsDuration(activity.TotalListenedSeconds)</span>
+                                                        <span>@T("Gunstelinge", "Favorites"): @FormatAnalyticsNumber(activity.TotalFavorites)</span>
+                                                    </div>
+                                                </article>
+                                            }
+                                        </div>
+                                    </section>
+
+                                    <section class="admin-analytics-panel">
+                                        <div class="admin-analytics-panel-head">
+                                            <div>
+                                                <h3>@T("Top karakters", "Top characters")</h3>
+                                                <p>@T("Karakterprofiele waarvan die klank die meeste gespeel is.", "Character profiles whose audio has been played the most.")</p>
                                             </div>
-                                        </article>
-                                    }
-                                </div>
-                            </section>
+                                        </div>
 
-                            <section class="admin-analytics-panel">
-                                <div class="admin-analytics-panel-head">
-                                    <div>
-                                        <h3>@T("Top karakters", "Top characters")</h3>
-                                        <p>@T("Karakterprofiele waarvan die klank die meeste gespeel is.", "Character profiles whose audio has been played the most.")</p>
-                                    </div>
-                                </div>
-
-                                @if (Analytics.TopCharacters.Count == 0)
-                                {
-                                    <p class="admin-form-note">@T("Nog geen karakter-klankspelings nie.", "No character audio plays yet.")</p>
-                                }
-                                else
-                                {
-                                    <div class="admin-character-analytics-list">
-                                        @foreach (var character in Analytics.TopCharacters)
+                                        @if (Analytics.TopCharacters.Count == 0)
                                         {
-                                            <article class="admin-character-analytics-item">
-                                                <div>
-                                                    <strong>@character.DisplayName</strong>
-                                                    <span>@character.CharacterSlug</span>
-                                                </div>
-                                                <div class="admin-character-analytics-stats">
-                                                    <span>@T("Spelings", "Plays"): @FormatAnalyticsNumber(character.TotalAudioPlays)</span>
-                                                    <span>@T("Mense", "People"): @FormatAnalyticsNumber(character.UniqueSubscribers)</span>
-                                                    <span>@T("Laaste", "Last"): @FormatAdminDateTime(character.LastActivityAt)</span>
-                                                </div>
-                                            </article>
+                                            <p class="admin-form-note">@T("Nog geen karakter-klankspelings nie.", "No character audio plays yet.")</p>
                                         }
-                                    </div>
-                                }
-                            </section>
-
-                            <section class="admin-analytics-panel admin-analytics-panel-wide">
-                                <div class="admin-analytics-panel-head">
-                                    <div>
-                                        <h3>@T("Top stories", "Top stories")</h3>
-                                        <p>@T("Gerangskik volgens luistertyd, en dan kyke en gunstelinge.", "Ranked by listening time, then views and favorites.")</p>
-                                    </div>
-                                </div>
-
-                                <MudTable T="AdminAnalyticsTopStoryRecord"
-                                          Class="admin-grid"
-                                          Items="Analytics.TopStories"
-                                          RowsPerPage="10"
-                                          Dense="true"
-                                          Hover="true"
-                                          Bordered="true"
-                                          Elevation="0"
-                                          Breakpoint="Breakpoint.Md">
-                                    <HeaderContent>
-                                        <MudTh>@T("Titel", "Title")</MudTh>
-                                        <MudTh>@T("Kyke", "Views")</MudTh>
-                                        <MudTh>@T("Sessies", "Sessions")</MudTh>
-                                        <MudTh>@T("Luistertyd", "Listening time")</MudTh>
-                                        <MudTh>@T("Gunstelinge", "Favorites")</MudTh>
-                                        <MudTh>@T("Laaste aktiwiteit", "Last activity")</MudTh>
-                                    </HeaderContent>
-                                    <RowTemplate>
-                                        <MudTd DataLabel='@T("Titel", "Title")'>
-                                            <div class="admin-analytics-story-cell">
-                                                <strong>@context.Title</strong>
-                                                <span>@context.StorySlug</span>
+                                        else
+                                        {
+                                            <div class="admin-character-analytics-list">
+                                                @foreach (var character in Analytics.TopCharacters)
+                                                {
+                                                    <article class="admin-character-analytics-item">
+                                                        <div>
+                                                            <strong>@character.DisplayName</strong>
+                                                            <span>@character.CharacterSlug</span>
+                                                        </div>
+                                                        <div class="admin-character-analytics-stats">
+                                                            <span>@T("Spelings", "Plays"): @FormatAnalyticsNumber(character.TotalAudioPlays)</span>
+                                                            <span>@T("Mense", "People"): @FormatAnalyticsNumber(character.UniqueSubscribers)</span>
+                                                            <span>@T("Laaste", "Last"): @FormatAdminDateTime(character.LastActivityAt)</span>
+                                                        </div>
+                                                    </article>
+                                                }
                                             </div>
-                                        </MudTd>
-                                        <MudTd DataLabel='@T("Kyke", "Views")'>@FormatAnalyticsNumber(context.TotalViews)</MudTd>
-                                        <MudTd DataLabel='@T("Sessies", "Sessions")'>@FormatAnalyticsNumber(context.TotalListenSessions)</MudTd>
-                                        <MudTd DataLabel='@T("Luistertyd", "Listening time")'>@FormatAnalyticsDuration(context.TotalListenedSeconds)</MudTd>
-                                        <MudTd DataLabel='@T("Gunstelinge", "Favorites")'>@FormatAnalyticsNumber(context.TotalFavorites)</MudTd>
-                                        <MudTd DataLabel='@T("Laaste aktiwiteit", "Last activity")'>@FormatAdminDateTime(context.LastActivityAt)</MudTd>
-                                    </RowTemplate>
-                                    <NoRecordsContent>
-                                        <MudText Typo="Typo.body2">@T("Nog geen storie-analitika nie.", "No story analytics yet.")</MudText>
-                                    </NoRecordsContent>
-                                </MudTable>
-                            </section>
-                        </div>
-                    }
+                                        }
+                                    </section>
+
+                                    <section class="admin-analytics-panel admin-analytics-panel-wide">
+                                        <div class="admin-analytics-panel-head">
+                                            <div>
+                                                <h3>@T("Top stories", "Top stories")</h3>
+                                                <p>@T("Gerangskik volgens luistertyd, en dan kyke en gunstelinge.", "Ranked by listening time, then views and favorites.")</p>
+                                            </div>
+                                        </div>
+
+                                        <MudTable T="AdminAnalyticsTopStoryRecord"
+                                                  Class="admin-grid"
+                                                  Items="Analytics.TopStories"
+                                                  RowsPerPage="10"
+                                                  Dense="true"
+                                                  Hover="true"
+                                                  Bordered="true"
+                                                  Elevation="0"
+                                                  Breakpoint="Breakpoint.Md">
+                                            <HeaderContent>
+                                                <MudTh>@T("Titel", "Title")</MudTh>
+                                                <MudTh>@T("Kyke", "Views")</MudTh>
+                                                <MudTh>@T("Sessies", "Sessions")</MudTh>
+                                                <MudTh>@T("Luistertyd", "Listening time")</MudTh>
+                                                <MudTh>@T("Gunstelinge", "Favorites")</MudTh>
+                                                <MudTh>@T("Laaste aktiwiteit", "Last activity")</MudTh>
+                                            </HeaderContent>
+                                            <RowTemplate>
+                                                <MudTd DataLabel='@T("Titel", "Title")'>
+                                                    <div class="admin-analytics-story-cell">
+                                                        <strong>@context.Title</strong>
+                                                        <span>@context.StorySlug</span>
+                                                    </div>
+                                                </MudTd>
+                                                <MudTd DataLabel='@T("Kyke", "Views")'>@FormatAnalyticsNumber(context.TotalViews)</MudTd>
+                                                <MudTd DataLabel='@T("Sessies", "Sessions")'>@FormatAnalyticsNumber(context.TotalListenSessions)</MudTd>
+                                                <MudTd DataLabel='@T("Luistertyd", "Listening time")'>@FormatAnalyticsDuration(context.TotalListenedSeconds)</MudTd>
+                                                <MudTd DataLabel='@T("Gunstelinge", "Favorites")'>@FormatAnalyticsNumber(context.TotalFavorites)</MudTd>
+                                                <MudTd DataLabel='@T("Laaste aktiwiteit", "Last activity")'>@FormatAdminDateTime(context.LastActivityAt)</MudTd>
+                                            </RowTemplate>
+                                            <NoRecordsContent>
+                                                <MudText Typo="Typo.body2">@T("Nog geen storie-analitika nie.", "No story analytics yet.")</MudText>
+                                            </NoRecordsContent>
+                                        </MudTable>
+                                    </section>
+                                </div>
+                            }
+                        </MudTabPanel>
+                    </MudTabs>
                 </section>
             </MudTabPanel>
 

@@ -590,7 +590,15 @@
 
 .blog-admin-preview-body :global(ul),
 .blog-admin-preview-body :global(ol) {
-    padding-left: 1.3rem;
+    margin: 1rem 0;
+    padding-inline-start: 0;
+    list-style-position: inside;
+}
+
+.blog-admin-preview-body :global(li) {
+    margin: 0.35rem 0;
+    padding-inline-start: 0.3rem;
+    overflow-wrap: anywhere;
 }
 
 .blog-admin-preview-body :global(pre),
