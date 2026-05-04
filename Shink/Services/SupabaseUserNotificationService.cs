@@ -17,6 +17,7 @@ public sealed class SupabaseUserNotificationService(
     IStoryTrackingService storyTrackingService,
     ILogger<SupabaseUserNotificationService> logger) : IUserNotificationService
 {
+    private const string CharacterUnlockSourceKeyPrefix = "character-unlocked-";
     private const string SubscriberCachePrefix = "user-notifications:subscriber:";
     private static readonly TimeSpan SubscriberCacheDuration = TimeSpan.FromMinutes(10);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -695,53 +696,103 @@ public sealed class SupabaseUserNotificationService(
                 progressLookup,
                 profileListenLookup);
 
-            var unlockedCharacters = characters
-                .Where(character => unlockStateLookup.TryGetValue(character.CharacterId, out var isUnlocked) && isUnlocked)
-                .ToArray();
-            if (unlockedCharacters.Length == 0)
-            {
-                return new NotificationSyncResult(0);
-            }
-
-            var candidateSourceKeys = unlockedCharacters
-                .Select(BuildCharacterUnlockSourceKey)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-
-            var existingSourceKeys = await GetExistingSourceKeysAsync(
+            var trackedUnlockStates = await GetCharacterUnlockStatesAsync(
                 baseUri,
                 apiKey,
                 subscriberId,
-                candidateSourceKeys,
+                cancellationToken);
+            var historicalUnlockCounts = await GetCharacterUnlockNotificationCountsAsync(
+                baseUri,
+                apiKey,
+                subscriberId,
                 cancellationToken);
 
-            var notificationsToInsert = unlockedCharacters
-                .Where(character => !existingSourceKeys.Contains(BuildCharacterUnlockSourceKey(character)))
-                .Select(character => new
-                {
-                    subscriber_id = subscriberId,
-                    notification_type = "character_unlock",
-                    source_key = BuildCharacterUnlockSourceKey(character),
-                    title = "Nuwe karakter oopgesluit",
-                    body = $"{character.DisplayName} is nou beskikbaar. Tik om die karakterprofiel te sien.",
-                    image_path = ResolveNotificationImagePath(character),
-                    image_alt = $"Illustrasie van {character.DisplayName}",
-                    href = $"/karakters?karakter={Uri.EscapeDataString(character.Slug)}",
-                    metadata = new
-                    {
-                        character_id = character.CharacterId,
-                        character_slug = character.Slug,
-                        character_name = character.DisplayName
-                    }
-                })
-                .ToArray();
+            var notificationsToInsert = new List<object>();
+            var stateUpdates = new List<object>();
+            var nowUtc = DateTimeOffset.UtcNow;
 
-            if (notificationsToInsert.Length == 0)
+            foreach (var character in characters)
             {
-                return new NotificationSyncResult(0);
+                var isUnlocked = unlockStateLookup.TryGetValue(character.CharacterId, out var unlocked) && unlocked;
+                historicalUnlockCounts.TryGetValue(character.CharacterId, out var historicalUnlockCount);
+
+                if (trackedUnlockStates.TryGetValue(character.CharacterId, out var trackedState))
+                {
+                    var trackedUnlockCount = Math.Max(trackedState.UnlockCount, historicalUnlockCount);
+                    if (trackedState.IsUnlocked == isUnlocked)
+                    {
+                        if (trackedState.UnlockCount != trackedUnlockCount)
+                        {
+                            stateUpdates.Add(BuildCharacterUnlockStatePayload(
+                                subscriberId,
+                                character.CharacterId,
+                                isUnlocked,
+                                trackedUnlockCount,
+                                nowUtc));
+                        }
+
+                        continue;
+                    }
+
+                    if (isUnlocked)
+                    {
+                        var nextUnlockCount = trackedUnlockCount + 1;
+                        notificationsToInsert.Add(BuildCharacterUnlockNotificationPayload(subscriberId, character, nextUnlockCount));
+                        stateUpdates.Add(BuildCharacterUnlockStatePayload(
+                            subscriberId,
+                            character.CharacterId,
+                            true,
+                            nextUnlockCount,
+                            nowUtc));
+                    }
+                    else
+                    {
+                        stateUpdates.Add(BuildCharacterUnlockStatePayload(
+                            subscriberId,
+                            character.CharacterId,
+                            false,
+                            trackedUnlockCount,
+                            nowUtc));
+                    }
+
+                    continue;
+                }
+
+                if (isUnlocked)
+                {
+                    if (historicalUnlockCount > 0)
+                    {
+                        stateUpdates.Add(BuildCharacterUnlockStatePayload(
+                            subscriberId,
+                            character.CharacterId,
+                            true,
+                            historicalUnlockCount,
+                            nowUtc));
+                    }
+                    else
+                    {
+                        notificationsToInsert.Add(BuildCharacterUnlockNotificationPayload(subscriberId, character, 1));
+                        stateUpdates.Add(BuildCharacterUnlockStatePayload(
+                            subscriberId,
+                            character.CharacterId,
+                            true,
+                            1,
+                            nowUtc));
+                    }
+                }
+                else if (historicalUnlockCount > 0)
+                {
+                    stateUpdates.Add(BuildCharacterUnlockStatePayload(
+                        subscriberId,
+                        character.CharacterId,
+                        false,
+                        historicalUnlockCount,
+                        nowUtc));
+                }
             }
 
-            var insertedCount = await InsertNotificationsAsync(baseUri, apiKey, notificationsToInsert, cancellationToken);
+            var insertedCount = await InsertNotificationsAsync(baseUri, apiKey, [.. notificationsToInsert], cancellationToken);
+            await UpsertCharacterUnlockStatesAsync(baseUri, apiKey, [.. stateUpdates], cancellationToken);
             return new NotificationSyncResult(insertedCount);
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
@@ -790,26 +841,18 @@ public sealed class SupabaseUserNotificationService(
         return insertedRows.Count(row => row.NotificationId != Guid.Empty);
     }
 
-    private async Task<HashSet<string>> GetExistingSourceKeysAsync(
+    private async Task<Dictionary<Guid, CharacterUnlockTrackedState>> GetCharacterUnlockStatesAsync(
         Uri baseUri,
         string apiKey,
         string subscriberId,
-        IReadOnlyList<string> sourceKeys,
         CancellationToken cancellationToken)
     {
-        if (sourceKeys.Count == 0)
-        {
-            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        }
-
         var escapedSubscriberId = Uri.EscapeDataString(subscriberId);
-        var joinedSourceKeys = string.Join(',', sourceKeys);
         var requestUri = new Uri(
             baseUri,
-            "rest/v1/subscriber_notifications" +
-            "?select=source_key" +
-            $"&subscriber_id=eq.{escapedSubscriberId}" +
-            $"&source_key=in.({joinedSourceKeys})");
+            "rest/v1/subscriber_character_unlock_states" +
+            "?select=character_id,is_unlocked,unlock_count" +
+            $"&subscriber_id=eq.{escapedSubscriberId}");
 
         using var request = CreateRequest(HttpMethod.Get, requestUri, apiKey);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
@@ -819,23 +862,112 @@ public sealed class SupabaseUserNotificationService(
             {
                 var body = await response.Content.ReadAsStringAsync(cancellationToken);
                 _logger.LogWarning(
-                    "Supabase notifications source key lookup failed. Status={StatusCode} Body={Body}",
+                    "Supabase character unlock state lookup failed. Status={StatusCode} Body={Body}",
                     (int)response.StatusCode,
                     body);
             }
 
-            return new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            return new Dictionary<Guid, CharacterUnlockTrackedState>();
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var rows = await JsonSerializer.DeserializeAsync<List<CharacterUnlockStateRow>>(stream, JsonOptions, cancellationToken)
+            ?? [];
+
+        return rows
+            .Where(row => row.CharacterId != Guid.Empty)
+            .GroupBy(row => row.CharacterId)
+            .ToDictionary(
+                group => group.Key,
+                group =>
+                {
+                    var row = group.Last();
+                    return new CharacterUnlockTrackedState(row.IsUnlocked, Math.Max(0, row.UnlockCount));
+                });
+    }
+
+    private async Task<Dictionary<Guid, int>> GetCharacterUnlockNotificationCountsAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriberId,
+        CancellationToken cancellationToken)
+    {
+        var escapedSubscriberId = Uri.EscapeDataString(subscriberId);
+        var requestUri = new Uri(
+            baseUri,
+            "rest/v1/subscriber_notifications" +
+            "?select=source_key" +
+            $"&subscriber_id=eq.{escapedSubscriberId}" +
+            "&notification_type=eq.character_unlock" +
+            "&limit=5000");
+
+        using var request = CreateRequest(HttpMethod.Get, requestUri, apiKey);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            if (response.StatusCode != HttpStatusCode.NotFound)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning(
+                    "Supabase character unlock notification history lookup failed. Status={StatusCode} Body={Body}",
+                    (int)response.StatusCode,
+                    body);
+            }
+
+            return new Dictionary<Guid, int>();
         }
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         var rows = await JsonSerializer.DeserializeAsync<List<NotificationSourceKeyRow>>(stream, JsonOptions, cancellationToken)
             ?? [];
 
-        return rows
-            .Select(row => row.SourceKey)
-            .Where(static sourceKey => !string.IsNullOrWhiteSpace(sourceKey))
-            .Cast<string>()
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var counts = new Dictionary<Guid, int>();
+        foreach (var row in rows)
+        {
+            if (!TryParseCharacterUnlockSourceKey(row.SourceKey, out var characterId, out var unlockCount))
+            {
+                continue;
+            }
+
+            counts[characterId] = counts.TryGetValue(characterId, out var existingCount)
+                ? Math.Max(existingCount, unlockCount)
+                : unlockCount;
+        }
+
+        return counts;
+    }
+
+    private async Task UpsertCharacterUnlockStatesAsync(
+        Uri baseUri,
+        string apiKey,
+        object[] states,
+        CancellationToken cancellationToken)
+    {
+        if (states.Length == 0)
+        {
+            return;
+        }
+
+        var requestUri = new Uri(
+            baseUri,
+            "rest/v1/subscriber_character_unlock_states" +
+            "?on_conflict=subscriber_id,character_id");
+
+        using var request = CreateJsonRequest(
+            HttpMethod.Post,
+            requestUri,
+            apiKey,
+            states,
+            "resolution=merge-duplicates,return=minimal");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Supabase character unlock state upsert failed. Status={StatusCode} Body={Body}",
+                (int)response.StatusCode,
+                body);
+        }
     }
 
     private async Task<int> GetNotificationCountAsync(
@@ -1115,8 +1247,93 @@ public sealed class SupabaseUserNotificationService(
             ? string.Empty
             : value.Trim().ToLowerInvariant();
 
-    private static string BuildCharacterUnlockSourceKey(StoryCharacterItem character) =>
-        $"character-unlocked-{character.CharacterId:N}";
+    private static object BuildCharacterUnlockNotificationPayload(
+        string subscriberId,
+        StoryCharacterItem character,
+        int unlockCount) =>
+        new
+        {
+            subscriber_id = subscriberId,
+            notification_type = "character_unlock",
+            source_key = BuildCharacterUnlockSourceKey(character.CharacterId, unlockCount),
+            title = "Nuwe karakter oopgesluit",
+            body = $"{character.DisplayName} is nou beskikbaar. Tik om die karakterprofiel te sien.",
+            image_path = ResolveNotificationImagePath(character),
+            image_alt = $"Illustrasie van {character.DisplayName}",
+            href = $"/karakters?karakter={Uri.EscapeDataString(character.Slug)}",
+            metadata = new
+            {
+                character_id = character.CharacterId,
+                character_slug = character.Slug,
+                character_name = character.DisplayName,
+                unlock_count = unlockCount
+            }
+        };
+
+    private static object BuildCharacterUnlockStatePayload(
+        string subscriberId,
+        Guid characterId,
+        bool isUnlocked,
+        int unlockCount,
+        DateTimeOffset updatedAtUtc) =>
+        new
+        {
+            subscriber_id = subscriberId,
+            character_id = characterId,
+            is_unlocked = isUnlocked,
+            unlock_count = Math.Max(0, unlockCount),
+            updated_at = updatedAtUtc
+        };
+
+    private static string BuildCharacterUnlockSourceKey(Guid characterId, int unlockCount)
+    {
+        var normalizedUnlockCount = Math.Max(1, unlockCount);
+        return $"{CharacterUnlockSourceKeyPrefix}{characterId:N}-{normalizedUnlockCount}";
+    }
+
+    private static bool TryParseCharacterUnlockSourceKey(string? sourceKey, out Guid characterId, out int unlockCount)
+    {
+        characterId = Guid.Empty;
+        unlockCount = 0;
+
+        if (string.IsNullOrWhiteSpace(sourceKey))
+        {
+            return false;
+        }
+
+        var trimmed = sourceKey.Trim();
+        if (!trimmed.StartsWith(CharacterUnlockSourceKeyPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var remainder = trimmed[CharacterUnlockSourceKeyPrefix.Length..];
+        if (remainder.Length < 32)
+        {
+            return false;
+        }
+
+        var dashIndex = remainder.IndexOf('-');
+        var characterIdPart = dashIndex >= 0
+            ? remainder[..dashIndex]
+            : remainder;
+        if (!Guid.TryParseExact(characterIdPart, "N", out characterId))
+        {
+            return false;
+        }
+
+        unlockCount = 1;
+        if (dashIndex >= 0)
+        {
+            var countPart = remainder[(dashIndex + 1)..];
+            if (int.TryParse(countPart, out var parsedCount) && parsedCount > 0)
+            {
+                unlockCount = parsedCount;
+            }
+        }
+
+        return true;
+    }
 
     private static string BuildPublishedBlogSourceKey(Guid postId) =>
         $"blog-published-{postId:N}";
@@ -1348,6 +1565,22 @@ public sealed class SupabaseUserNotificationService(
         [JsonPropertyName("source_key")]
         public string? SourceKey { get; init; }
     }
+
+    private sealed class CharacterUnlockStateRow
+    {
+        [JsonPropertyName("character_id")]
+        public Guid CharacterId { get; init; }
+
+        [JsonPropertyName("is_unlocked")]
+        public bool IsUnlocked { get; init; }
+
+        [JsonPropertyName("unlock_count")]
+        public int UnlockCount { get; init; }
+    }
+
+    private sealed record CharacterUnlockTrackedState(
+        bool IsUnlocked,
+        int UnlockCount);
 
     private sealed class NotificationRow
     {
