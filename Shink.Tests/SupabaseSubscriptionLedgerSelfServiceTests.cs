@@ -592,6 +592,93 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     }
 
     [TestMethod]
+    public async Task TryRepairPaidSubscriptionAsync_UsesStoredLegacyBillingAmountForPaystackRetry()
+    {
+        long? chargedAmountInCents = null;
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                        "email": "ouer@example.com",
+                        "disabled_at": null
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                StringAssert.Contains(request.RequestUri!.Query, "billing_amount_zar");
+
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "SUB_legacy_monthly",
+                        "provider_transaction_id": "TRX_legacy_monthly",
+                        "provider_token": "AUTH_retry",
+                        "next_renewal_at": null,
+                        "cancelled_at": null,
+                        "status": "active",
+                        "billing_amount_zar": 49.00
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/transaction/charge_authorization")
+            {
+                var payload = JsonDocument.Parse(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult()).RootElement;
+                chargedAmountInCents = payload.GetProperty("amount").GetInt64();
+
+                return JsonResponse(
+                    """
+                    {
+                      "status": false,
+                      "message": "Card declined",
+                      "data": {
+                        "status": "failed",
+                        "reference": "repair-legacy-monthly"
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.TryRepairPaidSubscriptionAsync("ouer@example.com");
+
+        Assert.IsFalse(result.IsRecovered);
+        Assert.IsFalse(result.IsPending);
+        Assert.AreEqual("schink-stories-maandeliks", result.PlanSlug);
+        Assert.AreEqual(4900L, chargedAmountInCents);
+    }
+
+    [TestMethod]
     public async Task TryRepairPaidSubscriptionAsync_TreatsDuplicateRepairReferenceAsPending()
     {
         var repairReferences = new List<string>();

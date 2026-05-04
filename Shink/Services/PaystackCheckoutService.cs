@@ -394,6 +394,7 @@ public sealed class PaystackCheckoutService(
         string reference,
         string? subscriptionId = null,
         string? providerPaymentId = null,
+        decimal? billingAmountZarOverride = null,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(_options.SecretKey) ||
@@ -412,12 +413,17 @@ public sealed class PaystackCheckoutService(
             return new PaystackAuthorizationChargeResult(false, ErrorMessage: "Paystack authorization code ontbreek.");
         }
 
+        var billingAmountZar = billingAmountZarOverride is > 0m
+            ? decimal.Round(billingAmountZarOverride.Value, 2, MidpointRounding.AwayFromZero)
+            : decimal.Round(plan.Amount, 2, MidpointRounding.AwayFromZero);
+
         var metadata = new Dictionary<string, object?>
         {
             ["source"] = "subscription_authorization_retry",
             ["plan_slug"] = plan.Slug,
             ["tier_code"] = plan.TierCode,
             ["billing_period_months"] = plan.BillingPeriodMonths,
+            ["billing_amount_zar"] = billingAmountZar,
             ["subscription_id"] = subscriptionId,
             ["provider_payment_id"] = providerPaymentId
         };
@@ -425,7 +431,7 @@ public sealed class PaystackCheckoutService(
         var payload = new Dictionary<string, object?>
         {
             ["email"] = email,
-            ["amount"] = (long)Math.Round(plan.Amount * 100m, MidpointRounding.AwayFromZero),
+            ["amount"] = (long)Math.Round(billingAmountZar * 100m, MidpointRounding.AwayFromZero),
             ["authorization_code"] = authorizationCode.Trim(),
             ["reference"] = reference,
             ["currency"] = "ZAR",

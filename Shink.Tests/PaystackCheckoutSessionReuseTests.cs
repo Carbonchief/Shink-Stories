@@ -145,6 +145,46 @@ public sealed class PaystackCheckoutSessionReuseTests
     }
 
     [TestMethod]
+    public async Task ChargeAuthorizationAsync_UsesStoredBillingAmountWhenProvided()
+    {
+        long? chargedAmountInCents = null;
+        var handler = new RecordingHandler(request =>
+        {
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/transaction/charge_authorization")
+            {
+                var payload = JsonDocument.Parse(request.Content!.ReadAsStringAsync().Result).RootElement;
+                chargedAmountInCents = payload.GetProperty("amount").GetInt64();
+
+                return JsonResponse(
+                    """
+                    {
+                      "status": true,
+                      "data": {
+                        "status": "queued",
+                        "reference": "retry-reference"
+                      }
+                    }
+                    """);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+        });
+
+        var service = CreateService(new HttpClient(handler));
+
+        var result = await service.ChargeAuthorizationAsync(
+            PaymentPlanCatalog.FindBySlug("schink-stories-maandeliks")!,
+            "ouer@example.com",
+            "AUTH_retry",
+            "retry-reference",
+            billingAmountZarOverride: 49.00m);
+
+        Assert.IsFalse(result.IsSuccess);
+        Assert.AreEqual(4900L, chargedAmountInCents);
+    }
+
+    [TestMethod]
     public void PaystackCheckoutSessionMigration_CreatesRlsProtectedSessionTable()
     {
         var migration = File.ReadAllText(GetRepoPath(

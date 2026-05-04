@@ -52,11 +52,74 @@ jobs:
     permissions:
       id-token: write
       contents: read
+      actions: read
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check whether publish is needed
+        id: publish_check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const relevantPrefixes = [
+              'Shink/',
+              'Directory.Build.props',
+              'Directory.Build.targets',
+              'global.json',
+              'Shink/Shink.csproj',
+            ];
+
+            const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'master_schink.yml',
+              branch: 'master',
+              status: 'completed',
+              per_page: 100,
+            });
+
+            const latestPublishRun = runs
+              .filter((run) => ['schedule', 'workflow_dispatch'].includes(run.event) && run.conclusion === 'success')
+              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+
+            if (!latestPublishRun) {
+              core.setOutput('should_publish', 'true');
+              core.setOutput('reason', 'no previous successful publish run');
+              return;
+            }
+
+            if (latestPublishRun.head_sha === context.sha) {
+              core.setOutput('should_publish', 'false');
+              core.setOutput('reason', 'same commit already published');
+              return;
+            }
+
+            const compare = await github.rest.repos.compareCommits({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              base: latestPublishRun.head_sha,
+              head: context.sha,
+            });
+
+            const changedFiles = compare.data.files?.map((file) => file.filename) ?? [];
+            const hasRelevantChanges = changedFiles.some((file) =>
+              relevantPrefixes.some((prefix) => file === prefix || file.startsWith(prefix))
+            );
+
+            core.setOutput('should_publish', hasRelevantChanges ? 'true' : 'false');
+            core.setOutput(
+              'reason',
+              hasRelevantChanges ? 'relevant files changed since last publish' : 'no relevant files changed since last publish'
+            );
+
+      - name: Stop when publish is not needed
+        if: steps.publish_check.outputs.should_publish != 'true'
+        run: |
+          echo "Skipping publish: ${{ steps.publish_check.outputs.reason }}"
+
       - name: Set up .NET
+        if: steps.publish_check.outputs.should_publish == 'true'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
@@ -64,12 +127,15 @@ jobs:
           cache-dependency-path: Shink/Shink.csproj
 
       - name: Restore
+        if: steps.publish_check.outputs.should_publish == 'true'
         run: dotnet restore ${{ env.PROJECT_PATH }} -m
 
       - name: Publish
+        if: steps.publish_check.outputs.should_publish == 'true'
         run: dotnet publish ${{ env.PROJECT_PATH }} -c Release --no-restore -m -p:RunAnalyzers=false -o ${{ env.PUBLISH_DIR }}
 
       - name: Login to Azure
+        if: steps.publish_check.outputs.should_publish == 'true'
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_382E49E8F4F44C09B8B1643442569987 }}
@@ -77,6 +143,7 @@ jobs:
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_527F5D2CBC94404AB0EB40F3F327EF21 }}
 
       - name: Deploy to Azure Web App
+        if: steps.publish_check.outputs.should_publish == 'true'
         uses: azure/webapps-deploy@v3
         with:
           app-name: ${{ env.AZURE_WEBAPP_NAME }}

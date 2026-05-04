@@ -163,6 +163,9 @@ public sealed class PaystackAuthorizationRetryBatchService(
             }
 
             var reference = BuildRetryReference(candidate.Subscription.SubscriptionId);
+            var retryBillingAmountZar = candidate.Subscription.BillingAmountZar is > 0m
+                ? decimal.Round(candidate.Subscription.BillingAmountZar.Value, 2, MidpointRounding.AwayFromZero)
+                : decimal.Round(candidate.Plan.Amount, 2, MidpointRounding.AwayFromZero);
 
             await DelayForPaystackAsync(cancellationToken);
             var chargeResult = await _paystackCheckoutService.ChargeAuthorizationAsync(
@@ -172,6 +175,7 @@ public sealed class PaystackAuthorizationRetryBatchService(
                 reference,
                 candidate.Subscription.SubscriptionId,
                 candidate.ChargeKey,
+                candidate.Subscription.BillingAmountZar,
                 cancellationToken);
 
             if (chargeResult.Reference is not null || reference is not null)
@@ -236,7 +240,7 @@ public sealed class PaystackAuthorizationRetryBatchService(
             var failurePayload = BuildEventPayload(
                 reference: verifyResult?.Reference ?? chargeResult.Reference ?? reference,
                 customerEmail: candidate.Subscriber.Email!,
-                amountInCents: verifyResult?.AmountInCents ?? (long)Math.Round(candidate.Plan.Amount * 100m, MidpointRounding.AwayFromZero),
+                amountInCents: verifyResult?.AmountInCents ?? (long)Math.Round(retryBillingAmountZar * 100m, MidpointRounding.AwayFromZero),
                 currency: verifyResult?.Currency ?? "ZAR",
                 gatewayResponse: verifyResult?.GatewayResponse ?? chargeResult.ErrorMessage,
                 transactionStatus: verifyResult?.TransactionStatus ?? chargeResult.TransactionStatus,
@@ -280,7 +284,7 @@ public sealed class PaystackAuthorizationRetryBatchService(
         var escapedNow = Uri.EscapeDataString(DateTimeOffset.UtcNow.UtcDateTime.ToString("O"));
         var uri = new Uri(
             baseUri,
-            $"rest/v1/subscriptions?provider=eq.paystack&status=not.eq.cancelled&or=(status.eq.failed,next_renewal_at.lt.{escapedNow})&select=subscription_id,subscriber_id,tier_code,provider_payment_id,provider_transaction_id,provider_token,provider_email_token,source_system,status,next_renewal_at,updated_at&order=updated_at.desc&limit=2000");
+            $"rest/v1/subscriptions?provider=eq.paystack&status=not.eq.cancelled&or=(status.eq.failed,next_renewal_at.lt.{escapedNow})&select=subscription_id,subscriber_id,tier_code,provider_payment_id,provider_transaction_id,provider_token,provider_email_token,source_system,status,next_renewal_at,updated_at,billing_amount_zar&order=updated_at.desc&limit=2000");
         using var request = CreateSupabaseRequest(HttpMethod.Get, uri);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -616,6 +620,9 @@ public sealed class PaystackAuthorizationRetryBatchService(
 
         [JsonPropertyName("updated_at")]
         public DateTimeOffset? UpdatedAt { get; set; }
+
+        [JsonPropertyName("billing_amount_zar")]
+        public decimal? BillingAmountZar { get; set; }
     }
 
     private sealed class SubscriberRow

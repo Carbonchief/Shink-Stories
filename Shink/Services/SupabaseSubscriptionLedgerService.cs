@@ -163,6 +163,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             reference,
             subscription.SubscriptionId,
             providerPaymentId,
+            subscription.BillingAmountZar,
             cancellationToken);
 
         var eventPayload = string.IsNullOrWhiteSpace(chargeResult.RawPayload)
@@ -1069,6 +1070,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             reference,
             subscriptionContext.SubscriptionId,
             providerPaymentId,
+            subscriptionContext.BillingAmountZar,
             cancellationToken);
 
         var eventPayload = string.IsNullOrWhiteSpace(chargeResult.RawPayload)
@@ -1361,7 +1363,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var subscriptionsUri = new Uri(
             baseUri,
             "rest/v1/subscriptions" +
-            "?select=subscription_id,tier_code,provider,source_system,provider_payment_id,provider_transaction_id,provider_token,provider_email_token,next_renewal_at,cancelled_at,status" +
+            "?select=subscription_id,tier_code,provider,source_system,provider_payment_id,provider_transaction_id,provider_token,provider_email_token,next_renewal_at,cancelled_at,status,billing_amount_zar,billing_period_months,billing_amount_source" +
             $"&subscriber_id=eq.{escapedSubscriberId}&status=eq.active&order=subscribed_at.desc&limit=25");
 
         using var request = CreateRequest(HttpMethod.Get, subscriptionsUri, apiKey);
@@ -4380,6 +4382,15 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         [JsonPropertyName("cancelled_at")]
         public DateTimeOffset? CancelledAt { get; set; }
+
+        [JsonPropertyName("billing_amount_zar")]
+        public decimal? BillingAmountZar { get; set; }
+
+        [JsonPropertyName("billing_period_months")]
+        public int? BillingPeriodMonths { get; set; }
+
+        [JsonPropertyName("billing_amount_source")]
+        public string? BillingAmountSource { get; set; }
     }
 
     private sealed class ExistingEventLookupRow
