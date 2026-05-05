@@ -1,3 +1,24 @@
+.admin-section {
+    --admin-bg: #10161e;
+    --admin-surface: #16212d;
+    --admin-surface-soft: #1b2836;
+    --admin-border: #304457;
+    --admin-border-strong: #3f5a72;
+    --admin-text: #eaf1f8;
+    --admin-muted: #b4c0ce;
+    --admin-row-hover: #25384a;
+    --admin-selected-row: #2f4f68;
+    --admin-input-bg: #1d2d3d;
+    --admin-input-border: #49657d;
+    border: 1px solid var(--admin-border);
+    border-radius: 16px;
+    background: var(--admin-surface);
+    padding: 1rem;
+    display: grid;
+    gap: 1rem;
+    color: var(--admin-text);
+}
+
 .admin-section-head {
     display: flex;
     flex-wrap: wrap;
@@ -16,6 +37,52 @@
     gap: 0.6rem;
     margin-inline-start: auto;
     width: 100%;
+}
+
+.admin-btn,
+.admin-btn:disabled,
+.admin-btn.admin-btn-secondary {
+    border: 0;
+    border-radius: 999px;
+    padding: 0.72rem 1rem;
+    min-height: 44px;
+    background: #8dc66f;
+    color: #102914;
+    font-weight: 800;
+    cursor: pointer;
+    transition: transform 0.16s ease, filter 0.16s ease;
+}
+
+.admin-btn:hover,
+.admin-btn:focus-visible {
+    transform: translateY(-1px);
+    filter: brightness(1.02);
+}
+
+.admin-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.76;
+    transform: none;
+}
+
+.admin-btn.admin-btn-secondary {
+    background: #2f4f68;
+    color: #f4f8fb;
+}
+
+.admin-icon-btn {
+    width: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.admin-icon-btn i {
+    font-size: 0.95rem;
+    line-height: 1;
 }
 
 .blog-admin-new-action-btn {
@@ -81,11 +148,26 @@
     border-radius: 999px;
     padding: 0.72rem 1rem;
     min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
     background: #8dc66f;
     color: #102914;
     font-weight: 800;
     cursor: pointer;
     transition: transform 0.16s ease, filter 0.16s ease;
+}
+
+.blog-admin-btn.admin-icon-only {
+    width: 44px;
+    min-width: 44px;
+    gap: 0;
+    padding-inline: 0;
+}
+
+.blog-admin-btn.admin-icon-only span {
+    display: none;
 }
 
 .blog-admin-btn:hover,

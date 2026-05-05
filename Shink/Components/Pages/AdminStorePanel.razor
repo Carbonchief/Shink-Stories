@@ -12,14 +12,24 @@
 
 <section class="admin-section store-admin-section">
     <div class="admin-section-head">
-        <div class="store-admin-actions">
+        <div class="admin-search store-admin-actions">
             <input class="store-admin-search"
                    type="search"
                    @bind="ProductSearch"
                    @bind:event="oninput"
                    placeholder="@T("Soek naam of slug", "Search name or slug")" />
 
-            <MudButton Class="store-admin-icon-btn"
+            <MudButton Class="admin-btn admin-btn-secondary admin-icon-btn store-admin-icon-btn"
+                       Variant="Variant.Outlined"
+                       Color="Color.Primary"
+                       OnClick="BeginCreateProduct"
+                       aria-label='@T("Nuwe produk", "New product")'
+                       title='@T("Nuwe produk", "New product")'>
+                <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                <span class="sr-only">@T("Nuwe produk", "New product")</span>
+            </MudButton>
+
+            <MudButton Class="admin-btn admin-btn-secondary admin-icon-btn store-admin-icon-btn"
                        Variant="Variant.Outlined"
                        Color="Color.Primary"
                        OnClick="ReloadAsync"
@@ -28,16 +38,6 @@
                        title='@T("Herlaai", "Refresh")'>
                 <i class="fa-solid fa-arrows-rotate" aria-hidden="true"></i>
                 <span class="sr-only">@T("Herlaai", "Refresh")</span>
-            </MudButton>
-
-            <MudButton Class="store-admin-icon-btn"
-                       Variant="Variant.Outlined"
-                       Color="Color.Primary"
-                       OnClick="BeginCreateProduct"
-                       aria-label='@T("Nuwe produk", "New product")'
-                       title='@T("Nuwe produk", "New product")'>
-                <i class="fa-solid fa-plus" aria-hidden="true"></i>
-                <span class="sr-only">@T("Nuwe produk", "New product")</span>
             </MudButton>
         </div>
     </div>
@@ -115,25 +115,34 @@
                             @if (!IsNewProduct)
                             {
                                 <button type="button"
-                                        class="store-admin-btn store-admin-btn-danger"
+                                        class="store-admin-btn store-admin-btn-danger admin-icon-only"
                                         disabled="@IsSaving"
-                                        @onclick="DeleteProductAsync">
-                                    @T("Verwyder", "Delete")
+                                        @onclick="DeleteProductAsync"
+                                        aria-label='@T("Verwyder produk", "Delete product")'
+                                        title='@T("Verwyder produk", "Delete product")'>
+                                    <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                                    <span>@T("Verwyder", "Delete")</span>
                                 </button>
                             }
 
                             <button type="button"
-                                    class="store-admin-btn store-admin-btn-secondary"
+                                    class="store-admin-btn store-admin-btn-secondary admin-icon-only"
                                     disabled="@IsSaving"
-                                    @onclick="CancelEditAsync">
-                                @T("Kanselleer", "Cancel")
+                                    @onclick="CancelEditAsync"
+                                    aria-label='@T("Kanselleer", "Cancel")'
+                                    title='@T("Kanselleer", "Cancel")'>
+                                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                                <span>@T("Kanselleer", "Cancel")</span>
                             </button>
 
                             <button type="button"
-                                    class="store-admin-btn store-admin-btn-primary"
+                                    class="store-admin-btn store-admin-btn-primary admin-icon-only"
                                     disabled="@IsSaving"
-                                    @onclick="SaveProductAsync">
-                                @(IsSaving ? T("Stoor...", "Saving...") : T("Stoor produk", "Save product"))
+                                    @onclick="SaveProductAsync"
+                                    aria-label='@T("Stoor produk", "Save product")'
+                                    title='@T("Stoor produk", "Save product")'>
+                                <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                                <span>@(IsSaving ? T("Stoor...", "Saving...") : T("Stoor produk", "Save product"))</span>
                             </button>
                         </div>
                     </div>

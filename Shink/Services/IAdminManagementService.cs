@@ -646,6 +646,23 @@ public sealed record AdminAnalyticsTopStoryRecord(
     [property: JsonPropertyName("total_favorites")] int TotalFavorites,
     [property: JsonPropertyName("last_activity_at")] DateTimeOffset? LastActivityAt);
 
+public sealed record AdminAnalyticsStoryDetailRecord(
+    [property: JsonPropertyName("story_slug")] string StorySlug,
+    [property: JsonPropertyName("title")] string Title,
+    [property: JsonPropertyName("total_views")] int TotalViews,
+    [property: JsonPropertyName("unique_viewers")] int UniqueViewers,
+    [property: JsonPropertyName("last_view_at")] DateTimeOffset? LastViewAt,
+    [property: JsonPropertyName("total_listen_events")] int TotalListenEvents,
+    [property: JsonPropertyName("unique_listeners")] int UniqueListeners,
+    [property: JsonPropertyName("total_listen_sessions")] int TotalListenSessions,
+    [property: JsonPropertyName("total_listened_seconds")] decimal TotalListenedSeconds,
+    [property: JsonPropertyName("average_listened_seconds_per_session")] decimal AverageListenedSecondsPerSession,
+    [property: JsonPropertyName("last_listen_at")] DateTimeOffset? LastListenAt,
+    [property: JsonPropertyName("total_favorites")] int TotalFavorites,
+    [property: JsonPropertyName("unique_favoriters")] int UniqueFavoriters,
+    [property: JsonPropertyName("last_favorite_at")] DateTimeOffset? LastFavoriteAt,
+    [property: JsonPropertyName("last_activity_at")] DateTimeOffset? LastActivityAt);
+
 public sealed record AdminCharacterAnalyticsSummary(
     [property: JsonPropertyName("total_audio_plays")] int TotalAudioPlays,
     [property: JsonPropertyName("unique_subscribers")] int UniqueSubscribers,
@@ -664,6 +681,7 @@ public sealed record AdminAnalyticsSnapshot(
     [property: JsonPropertyName("story_summary")] AdminStoryAnalyticsSummary StorySummary,
     [property: JsonPropertyName("daily_activity")] IReadOnlyList<AdminAnalyticsDailyActivityPoint> DailyActivity,
     [property: JsonPropertyName("top_stories")] IReadOnlyList<AdminAnalyticsTopStoryRecord> TopStories,
+    [property: JsonPropertyName("story_analytics")] IReadOnlyList<AdminAnalyticsStoryDetailRecord> StoryAnalytics,
     [property: JsonPropertyName("character_summary")] AdminCharacterAnalyticsSummary CharacterSummary,
     [property: JsonPropertyName("top_characters")] IReadOnlyList<AdminAnalyticsTopCharacterRecord> TopCharacters)
 {
@@ -686,6 +704,7 @@ public sealed record AdminAnalyticsSnapshot(
             LastFavoriteAt: null),
         DailyActivity: [],
         TopStories: [],
+        StoryAnalytics: [],
         CharacterSummary: new AdminCharacterAnalyticsSummary(
             TotalAudioPlays: 0,
             UniqueSubscribers: 0,
@@ -698,7 +717,9 @@ public sealed record AdminSubscriberReportsSnapshot(
     IReadOnlyList<AdminMembershipStatsMetric> MembershipStats,
     IReadOnlyList<AdminSubscriberTrendMetric> MembershipTrend,
     IReadOnlyList<AdminTierDistributionMetric> ActiveMembersPerLevel,
+    IReadOnlyList<AdminSubscriberMembershipDetailRecord> MembershipDetails,
     IReadOnlyList<AdminSalesRevenueMetric> SalesAndRevenue,
+    IReadOnlyList<AdminSalesRevenueDetailRecord> SalesDetails,
     IReadOnlyList<AdminRecoveryMetric> AbandonedCartRecoveries,
     IReadOnlyList<AdminVisitsViewsLoginsMetric> VisitsViewsAndLogins)
 {
@@ -706,7 +727,9 @@ public sealed record AdminSubscriberReportsSnapshot(
         MembershipStats: [],
         MembershipTrend: [],
         ActiveMembersPerLevel: [],
+        MembershipDetails: [],
         SalesAndRevenue: [],
+        SalesDetails: [],
         AbandonedCartRecoveries: [],
         VisitsViewsAndLogins: []);
 }
@@ -724,15 +747,37 @@ public sealed record AdminSubscriberTrendMetric(
     int Cancellations);
 
 public sealed record AdminTierDistributionMetric(
+    string PeriodKey,
     string TierCode,
     string TierName,
     int ActiveMembers,
     decimal Percentage);
 
+public sealed record AdminSubscriberMembershipDetailRecord(
+    Guid SubscriberId,
+    string Email,
+    string DisplayName,
+    string TierCode,
+    string TierName,
+    string Provider,
+    string SourceSystem,
+    string Status,
+    DateTimeOffset SubscribedAt,
+    DateTimeOffset? CancelledAt);
+
 public sealed record AdminSalesRevenueMetric(
     string PeriodKey,
     int SalesCount,
     decimal RevenueZar);
+
+public sealed record AdminSalesRevenueDetailRecord(
+    DateTimeOffset SoldAt,
+    decimal RevenueZar,
+    string TierCode,
+    string TierName,
+    string Provider,
+    string SourceSystem,
+    string Reference);
 
 public sealed record AdminRecoveryMetric(
     string PeriodKey,

@@ -30,7 +30,7 @@
                 <option value="scheduled">@T("Geskeduleer", "Scheduled")</option>
             </select>
 
-            <MudButton Class="blog-admin-new-action-btn"
+            <MudButton Class="admin-btn admin-btn-secondary admin-icon-btn blog-admin-new-action-btn"
                        Variant="Variant.Outlined"
                        Color="Color.Primary"
                        OnClick="BeginCreatePost"
@@ -39,7 +39,7 @@
                 <i class="fa-solid fa-plus" aria-hidden="true"></i>
             </MudButton>
 
-            <MudButton Class="admin-btn admin-btn-secondary admin-icon-btn"
+            <MudButton Class="admin-btn admin-btn-secondary admin-icon-btn blog-admin-refresh-action-btn"
                        Variant="Variant.Outlined"
                        Color="Color.Primary"
                        OnClick="() => ReloadAsync()"
@@ -120,25 +120,41 @@
                                 <button type="button"
                                         class="blog-admin-btn blog-admin-btn-secondary"
                                         @onclick="TogglePublishedStateAsync"
-                                        disabled="@IsSaving">
-                                    @(Editor.IsPublished
-                                        ? T("Ontpubliseer", "Unpublish")
-                                        : T("Publiseer nou", "Publish now"))
+                                        disabled="@IsSaving"
+                                        aria-label='@(Editor.IsPublished ? T("Ontpubliseer", "Unpublish") : T("Publiseer nou", "Publish now"))'
+                                        title='@(Editor.IsPublished ? T("Ontpubliseer", "Unpublish") : T("Publiseer nou", "Publish now"))'>
+                                    @if (Editor.IsPublished)
+                                    {
+                                        <i class="fa-solid fa-eye-slash" aria-hidden="true"></i>
+                                    }
+                                    else
+                                    {
+                                        <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
+                                    }
+                                    <span>@(Editor.IsPublished
+                                            ? T("Ontpubliseer", "Unpublish")
+                                            : T("Publiseer nou", "Publish now"))</span>
                                 </button>
 
                                 <button type="button"
-                                        class="blog-admin-btn blog-admin-btn-danger"
+                                        class="blog-admin-btn blog-admin-btn-danger admin-icon-only"
                                         @onclick="DeletePostAsync"
-                                        disabled="@IsDeleting">
-                                    @(IsDeleting ? T("Verwyder...", "Deleting...") : T("Verwyder", "Delete"))
+                                        disabled="@IsDeleting"
+                                        aria-label='@T("Verwyder", "Delete")'
+                                        title='@T("Verwyder", "Delete")'>
+                                    <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                                    <span>@(IsDeleting ? T("Verwyder...", "Deleting...") : T("Verwyder", "Delete"))</span>
                                 </button>
                             }
 
                             <button type="button"
-                                    class="blog-admin-btn"
+                                    class="blog-admin-btn admin-icon-only"
                                     @onclick="SavePostAsync"
-                                    disabled="@IsSaving">
-                                @(IsSaving ? T("Stoor...", "Saving...") : T("Stoor blog", "Save post"))
+                                    disabled="@IsSaving"
+                                    aria-label='@T("Stoor blog", "Save post")'
+                                    title='@T("Stoor blog", "Save post")'>
+                                <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                                <span>@(IsSaving ? T("Stoor...", "Saving...") : T("Stoor blog", "Save post"))</span>
                             </button>
                         </div>
                     </div>

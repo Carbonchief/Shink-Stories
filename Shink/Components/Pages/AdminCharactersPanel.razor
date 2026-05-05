@@ -100,17 +100,20 @@
                                     @onclick="() => SelectCharacter(character)">
                                 <span class="characters-admin-grid-thumb-wrap">
                                     <img class="characters-admin-grid-thumb"
-                                         src="@ResolveCharacterListPreviewPath(character)"
+                                         src="@ResolveCharacterAdminThumbnailPath(character)"
                                          alt=""
+                                         width="192"
+                                         height="192"
                                          loading="lazy"
                                          decoding="async"
+                                         fetchpriority="low"
                                          onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
                                     <span class="characters-admin-grid-badge">@BuildStatusLabel(character.Status)</span>
                                 </span>
 
                                 <span class="characters-admin-grid-copy">
                                     <span class="characters-admin-grid-title">@character.DisplayName</span>
-                                    <span class="characters-admin-grid-meta">@character.Slug · @BuildCharacterCategoryLabel(character.CharacterCategory)</span>
+                                    <span class="characters-admin-grid-meta">@BuildCharacterCategoryLabel(character.CharacterCategory)</span>
                                 </span>
                             </button>
                         }
@@ -126,14 +129,17 @@
                                 @onclick="() => SelectCharacter(character)">
                             <span class="characters-admin-list-copy">
                                 <span class="characters-admin-list-title">@character.DisplayName</span>
-                                <span class="characters-admin-list-meta">@character.Slug · @BuildCharacterCategoryLabel(character.CharacterCategory)</span>
+                                <span class="characters-admin-list-meta">@BuildCharacterCategoryLabel(character.CharacterCategory)</span>
                                 <span class="characters-admin-list-status">@BuildStatusLabel(character.Status)</span>
                             </span>
                             <img class="characters-admin-list-preview"
-                                 src="@ResolveCharacterListPreviewPath(character)"
+                                 src="@ResolveCharacterAdminThumbnailPath(character)"
                                  alt=""
+                                 width="56"
+                                 height="56"
                                  loading="lazy"
                                  decoding="async"
+                                 fetchpriority="low"
                                  onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
                         </button>
                     }
@@ -1517,6 +1523,28 @@
             : !string.IsNullOrWhiteSpace(character.MysteryImagePath)
                 ? ResolveBrowserImagePath(character.MysteryImagePath)
                 : "/branding/schink-logo-green.png";
+
+    private static string ResolveCharacterAdminThumbnailPath(AdminCharacterRecord character)
+    {
+        var previewPath = ResolveCharacterListPreviewPath(character);
+        const string characterAssetPrefix = "/branding/characters/";
+
+        if (!previewPath.StartsWith(characterAssetPrefix, StringComparison.OrdinalIgnoreCase) ||
+            previewPath.Contains("/thumbs/", StringComparison.OrdinalIgnoreCase))
+        {
+            return previewPath;
+        }
+
+        var fileNameStart = previewPath.LastIndexOf('/') + 1;
+        var extensionStart = previewPath.LastIndexOf('.');
+        if (fileNameStart <= 0 || extensionStart <= fileNameStart)
+        {
+            return previewPath;
+        }
+
+        var slug = previewPath[fileNameStart..extensionStart];
+        return $"{characterAssetPrefix}thumbs/{slug}.webp";
+    }
 
     private static string ResolveBrowserImagePath(string? imagePath) =>
         string.IsNullOrWhiteSpace(imagePath)

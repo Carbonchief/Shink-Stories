@@ -34,11 +34,15 @@ else
                 <h2>@T("Algemene instellings", "General settings")</h2>
                 <p>@T("Beheer hoe intekeningkodes op die webwerf werk.", "Control how subscription codes work on the site.")</p>
             </div>
-            <MudButton Variant="Variant.Outlined"
+            <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                       Variant="Variant.Outlined"
                        Color="Color.Primary"
                        OnClick="ReloadAsync"
-                       Disabled="@IsSavingSettings">
-                @T("Verfris", "Refresh")
+                       Disabled="@IsSavingSettings"
+                       aria-label='@T("Verfris instellings", "Refresh settings")'
+                       title='@T("Verfris instellings", "Refresh settings")'>
+                <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
+                <span class="admin-btn-text">@T("Verfris", "Refresh")</span>
             </MudButton>
         </div>
 
@@ -46,12 +50,28 @@ else
             <div class="admin-settings-card">
                 <h3>@T("Kode-betaling omseil", "Code payment bypass")</h3>
                 <p>@T("Laat geldige kodes toe om PayStack te omseil en toegang direk te aktiveer op die teken-op blad.", "Allow valid codes to bypass PayStack and activate access directly on the signup page.")</p>
-                <MudSwitch T="bool" @bind-Value="SignupCodeBypassEnabled" Color="Color.Primary" />
-                <MudButton Variant="Variant.Filled"
+                <div class="admin-settings-toggle-row">
+                    <MudSwitch T="bool"
+                               @bind-Value="SignupCodeBypassEnabled"
+                               Color="Color.Primary"
+                               aria-label='@T("Kode-betaling omseil", "Code payment bypass")' />
+                    <span class="admin-settings-toggle-state @(SignupCodeBypassEnabled ? "is-enabled" : "is-disabled")">
+                        @BuildSignupCodeBypassStateLabel()
+                    </span>
+                </div>
+                <p class="admin-settings-toggle-note">
+                    @(SignupCodeBypassEnabled
+                        ? T("Tans aktief: geldige kodes kan toegang onmiddellik aktiveer sonder PayStack.", "Currently active: valid codes can activate access immediately without PayStack.")
+                        : T("Tans afgeskakel: gebruikers moet steeds deur die gewone betaling vloei gaan.", "Currently disabled: users must still go through the normal payment flow."))
+                </p>
+                <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only admin-settings-compact-save"
+                           Variant="Variant.Text"
                            Color="Color.Primary"
                            OnClick="SaveSettingsAsync"
-                           Disabled="@IsSavingSettings">
-                    @T("Stoor instellings", "Save settings")
+                           Disabled="@IsSavingSettings"
+                           aria-label='@T("Stoor instellings", "Save settings")'
+                           title='@T("Stoor instellings", "Save settings")'>
+                    <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
                 </MudButton>
             </div>
         </div>
@@ -100,14 +120,26 @@ else
                                 <MudTextField T="string" @bind-Value="tier.PaystackPlanCode" Variant="Variant.Outlined" />
                             </td>
                             <td>
-                                <MudSwitch T="bool" @bind-Value="tier.IsActive" Color="Color.Primary" />
+                                <div class="admin-settings-table-toggle">
+                                    <MudSwitch T="bool"
+                                               @bind-Value="tier.IsActive"
+                                               Color="Color.Primary"
+                                               aria-label='@T("Intekeningsoort aktief", "Subscription type active")' />
+                                    <span class="admin-settings-toggle-state @(tier.IsActive ? "is-enabled" : "is-disabled")">
+                                        @BuildTierActiveStateLabel(tier.IsActive)
+                                    </span>
+                                </div>
                             </td>
                             <td>
-                                <MudButton Variant="Variant.Text"
+                                <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                           Variant="Variant.Text"
                                            Color="Color.Primary"
                                            OnClick="() => SaveSubscriptionTypeAsync(tier)"
-                                           Disabled="@IsSavingSubscriptionType">
-                                    @T("Stoor", "Save")
+                                           Disabled="@IsSavingSubscriptionType"
+                                           aria-label='@T("Stoor intekeningsoort", "Save subscription type")'
+                                           title='@T("Stoor intekeningsoort", "Save subscription type")'>
+                                    <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                                    <span class="admin-btn-text">@T("Stoor", "Save")</span>
                                 </MudButton>
                             </td>
                         </tr>
@@ -121,19 +153,27 @@ else
         <div class="admin-section-head">
             <div>
                 <h2>@T("Kodes", "Codes")</h2>
-                <p>@T("Bestuur nuwe kodes, ingevoerde WordPress kodes, groepkodes en vorige gebruike.", "Manage new codes, imported WordPress codes, group codes, and previous uses.")</p>
+                <p>@T("Bestuur hoofkodes hier en maak elke kode oop om sy subkodes te sien.", "Manage parent codes here and open each code to view its subcodes.")</p>
             </div>
             <div class="admin-settings-actions">
-                <MudButton Variant="Variant.Outlined"
+                <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                           Variant="Variant.Outlined"
                            Color="Color.Primary"
-                           OnClick="StartNewCode">
-                    @T("Nuwe kode", "New code")
+                           OnClick="StartNewCode"
+                           aria-label='@T("Nuwe kode", "New code")'
+                           title='@T("Nuwe kode", "New code")'>
+                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                    <span class="admin-btn-text">@T("Nuwe kode", "New code")</span>
                 </MudButton>
-                <MudButton Variant="Variant.Outlined"
+                <MudButton Class="admin-icon-btn admin-action-btn"
+                           Variant="Variant.Outlined"
                            Color="Color.Secondary"
                            OnClick="ImportWordPressCodesAsync"
-                           Disabled="@IsImportingWordPressCodes">
-                    @T("Voer uit WordPress in", "Import from WordPress")
+                           Disabled="@IsImportingWordPressCodes"
+                           aria-label='@T("Voer uit WordPress in", "Import from WordPress")'
+                           title='@T("Voer uit WordPress in", "Import from WordPress")'>
+                    <i class="fa-solid fa-file-import" aria-hidden="true"></i>
+                    <span class="admin-btn-text">@T("Voer uit WordPress in", "Import from WordPress")</span>
                 </MudButton>
             </div>
         </div>
@@ -141,7 +181,7 @@ else
         <div class="admin-settings-card">
             <MudTextField T="string"
                           @bind-Value="DiscountCodeSearch"
-                          Placeholder='@T("Soek kode, ouer kode of e-pos", "Search code, parent code, or email")'
+                          Placeholder='@T("Soek hoofkode, subkode of e-pos", "Search parent code, subcode, or email")'
                           Variant="Variant.Outlined"
                           Margin="Margin.Dense"
                           Immediate="true" />
@@ -152,143 +192,286 @@ else
                 <thead>
                     <tr>
                         <th>@T("Kode", "Code")</th>
-                        <th>@T("Tipe", "Type")</th>
-                        <th>@T("Ouer", "Parent")</th>
                         <th>@T("Intekeningsoorte", "Subscription types")</th>
                         <th>@T("Gebruik", "Use")</th>
                         <th>@T("Verval", "Expires")</th>
                         <th>@T("Status", "Status")</th>
-                        <th></th>
+                        <th>@T("Subkodes", "Subcodes")</th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var code in FilteredDiscountCodes)
+                    @foreach (var code in FilteredParentDiscountCodes)
                     {
-                        <tr class="@(DiscountCodeEditor?.DiscountCodeId == code.DiscountCodeId ? "is-selected" : null)">
-                            <td>@(string.IsNullOrWhiteSpace(code.Code) ? "-" : code.Code)</td>
-                            <td>@(code.IsGroupCode ? T("Groepkode", "Group code") : T("Hoofkode", "Parent code"))</td>
-                            <td>@(string.IsNullOrWhiteSpace(code.ParentCode) ? "-" : code.ParentCode)</td>
+                        <tr class="@(SelectedParentCodeId == code.DiscountCodeId ? "is-selected" : null)">
+                            <td>
+                                <button type="button"
+                                        class="admin-code-list-button"
+                                        @onclick="() => OpenCodeDialog(code)">
+                                    @(string.IsNullOrWhiteSpace(code.Code) ? "-" : code.Code)
+                                </button>
+                            </td>
                             <td>@string.Join(", ", code.TierMappings.Select(mapping => mapping.TierName))</td>
                             <td>@($"{code.UsedCount}{(code.MaxUses > 0 ? $" / {code.MaxUses}" : string.Empty)}")</td>
                             <td>@FormatDate(code.ExpiresAt)</td>
                             <td>@(code.IsActive ? T("Aktief", "Active") : T("Onaktief", "Inactive"))</td>
-                            <td>
-                                <MudButton Variant="Variant.Text"
-                                           Color="Color.Primary"
-                                           OnClick="() => EditCode(code)">
-                                    @T("Wysig", "Edit")
-                                </MudButton>
-                            </td>
+                            <td><span class="admin-subcode-summary">@FormatSubcodeCount(code.GroupCodeCount)</span></td>
                         </tr>
                     }
                 </tbody>
             </table>
         </div>
 
-        @if (DiscountCodeEditor is not null)
+        @if (DiscountCodeEditor is not null && IsCodeDialogOpen)
         {
-            <div class="admin-settings-card admin-code-editor-card">
-                <div class="admin-code-editor-head">
-                    <div>
-                        <h3>@(DiscountCodeEditor.DiscountCodeId is null ? T("Nuwe kode", "New code") : T("Wysig kode", "Edit code"))</h3>
-                        <p>@T("Stel die kode se toegang, geldigheid en plan-koppeling op.", "Configure the code's access, validity, and plan mapping.")</p>
-                    </div>
-                    <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="ClearCodeEditor">
-                        @T("Maak toe", "Close")
-                    </MudButton>
-                </div>
-
-                <div class="admin-code-editor-grid">
-                    <MudTextField T="string" Label="@T("Kode", "Code")" @bind-Value="DiscountCodeEditor.Code" Variant="Variant.Outlined" />
-                    <MudTextField T="string" Label="@T("Vertoonnaam", "Display name")" @bind-Value="DiscountCodeEditor.DisplayName" Variant="Variant.Outlined" />
-                    <MudTextField T="string" Label="@T("Beskrywing", "Description")" @bind-Value="DiscountCodeEditor.Description" Variant="Variant.Outlined" />
-                    <MudSelect T="bool" Label="@T("Tipe", "Type")" @bind-Value="DiscountCodeEditor.IsGroupCode" Variant="Variant.Outlined">
-                        <MudSelectItem Value="@false">@T("Hoofkode", "Parent code")</MudSelectItem>
-                        <MudSelectItem Value="@true">@T("Groepkode", "Group code")</MudSelectItem>
-                    </MudSelect>
-                    <MudSelect T="Guid?" Label="@T("Ouer kode", "Parent code")" @bind-Value="DiscountCodeEditor.ParentDiscountCodeId" Variant="Variant.Outlined" Disabled="@(!DiscountCodeEditor.IsGroupCode)">
-                        <MudSelectItem Value="@((Guid?)null)">@T("Geen", "None")</MudSelectItem>
-                        @foreach (var parentCode in ParentCodeOptions)
-                        {
-                            <MudSelectItem Value="@parentCode.DiscountCodeId">@parentCode.Code</MudSelectItem>
-                        }
-                    </MudSelect>
-                    <MudNumericField T="int" Label="@T("Maksimum gebruike (0 = onbeperk)", "Maximum uses (0 = unlimited)")" @bind-Value="DiscountCodeEditor.MaxUses" Variant="Variant.Outlined" Min="0" />
-                    <MudDatePicker Label="@T("Begin datum", "Start date")" Date="DiscountCodeEditor.StartsOn" DateChanged="OnCodeStartsOnChanged" Variant="Variant.Outlined" />
-                    <MudDatePicker Label="@T("Verval datum", "Expiry date")" Date="DiscountCodeEditor.ExpiresOn" DateChanged="OnCodeExpiresOnChanged" Variant="Variant.Outlined" />
-                    <MudSwitch T="bool" @bind-Value="DiscountCodeEditor.OneUsePerUser" Color="Color.Primary" Label="@T("Een keer per gebruiker", "One use per user")" />
-                    <MudSwitch T="bool" @bind-Value="DiscountCodeEditor.BypassPayment" Color="Color.Primary" Label="@T("Omseil betaling", "Bypass payment")" />
-                    <MudSwitch T="bool" @bind-Value="DiscountCodeEditor.IsActive" Color="Color.Primary" Label="@T("Aktief", "Active")" />
-                </div>
-
-                <div class="admin-code-tier-section">
-                    <div class="admin-code-tier-head">
-                        <h4>@T("Plan-koppeling", "Plan mapping")</h4>
-                        <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="AddTierMapping">
-                            @T("Voeg plan by", "Add plan")
-                        </MudButton>
-                    </div>
-                    @foreach (var tier in DiscountCodeEditor.TierMappings)
-                    {
-                        <div class="admin-code-tier-row">
-                            <MudSelect T="string" Label="@T("Intekeningsoort", "Subscription type")" @bind-Value="tier.TierCode" Variant="Variant.Outlined">
-                                @foreach (var option in SubscriptionTypeEditors.Where(option => option.IsActive))
-                                {
-                                    <MudSelectItem Value="@option.TierCode">@option.DisplayName</MudSelectItem>
-                                }
-                            </MudSelect>
-                            <MudNumericField T="int?" Label="@T("Verval getal", "Expiry number")" @bind-Value="tier.ExpirationNumber" Variant="Variant.Outlined" Min="0" />
-                            <MudSelect T="string" Label="@T("Verval periode", "Expiry period")" @bind-Value="tier.ExpirationPeriod" Variant="Variant.Outlined">
-                                <MudSelectItem Value="@string.Empty">@T("Geen", "None")</MudSelectItem>
-                                <MudSelectItem Value="@("day")">@T("Dag", "Day")</MudSelectItem>
-                                <MudSelectItem Value="@("week")">@T("Week", "Week")</MudSelectItem>
-                                <MudSelectItem Value="@("month")">@T("Maand", "Month")</MudSelectItem>
-                                <MudSelectItem Value="@("year")">@T("Jaar", "Year")</MudSelectItem>
-                            </MudSelect>
-                            <MudButton Variant="Variant.Text" Color="Color.Error" OnClick="() => RemoveTierMapping(tier)">
-                                @T("Verwyder", "Remove")
-                            </MudButton>
+            <MudDialog Visible="IsCodeDialogOpen"
+                       VisibleChanged="OnCodeDialogVisibleChanged"
+                       Class="admin-settings-dialog"
+                       ContentClass="admin-settings-dialog-content"
+                       Gutters="false"
+                       Options="CodeDialogOptions">
+                <DialogContent>
+                    <div class="admin-settings-card admin-code-editor-card admin-settings-dialog-surface">
+                        <div class="admin-code-editor-head">
+                            <div>
+                                <h3>@BuildCodeDialogTitle()</h3>
+                                <p>@BuildCodeDialogSubtitle()</p>
+                            </div>
+                            <div class="admin-settings-actions">
+                                <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                           Variant="Variant.Filled"
+                                           Color="Color.Primary"
+                                           ButtonType="ButtonType.Button"
+                                           OnClick="SaveCodeAsync"
+                                           Disabled="@IsSavingCode"
+                                           aria-label='@T("Stoor kode", "Save code")'
+                                           title='@T("Stoor kode", "Save code")'>
+                                    <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                                </MudButton>
+                                <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                           Variant="Variant.Text"
+                                           Color="Color.Default"
+                                           ButtonType="ButtonType.Button"
+                                           ClickPropagation="false"
+                                           OnClick="CloseCodeDialog"
+                                           aria-label='@T("Maak toe", "Close")'
+                                           title='@T("Maak toe", "Close")'>
+                                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                                </MudButton>
+                            </div>
                         </div>
-                    }
-                </div>
 
-                <div class="admin-code-editor-actions">
-                    <MudButton Variant="Variant.Filled"
-                               Color="Color.Primary"
-                               OnClick="SaveCodeAsync"
-                               Disabled="@IsSavingCode">
-                        @T("Stoor kode", "Save code")
-                    </MudButton>
-                </div>
+                        @if (SelectedParentCode is not null)
+                        {
+                            <details class="admin-code-section-disclosure">
+                                <summary class="admin-code-section-summary">
+                                    <span class="admin-code-section-title">
+                                        <i class="fa-solid fa-chevron-right admin-code-section-caret" aria-hidden="true"></i>
+                                        <span>@T("Subkodes", "Subcodes")</span>
+                                    </span>
+                                    <span class="admin-code-section-meta">@FormatSubcodeCount(SelectedParentCodeSubcodes.Count)</span>
+                                </summary>
+                                <div class="admin-code-section-body">
+                                    <div class="admin-settings-card admin-subcode-summary-card">
+                                        <div>
+                                            <h4>@T("Subkodes", "Subcodes")</h4>
+                                            <p>@FormatSubcodeCount(SelectedParentCodeSubcodes.Count)</p>
+                                        </div>
+                                        <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                                   Variant="Variant.Outlined"
+                                                   Color="Color.Primary"
+                                                   OnClick="StartNewSubcode"
+                                                   aria-label='@T("Nuwe subkode", "New subcode")'
+                                                   title='@T("Nuwe subkode", "New subcode")'>
+                                            <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                                            <span class="admin-btn-text">@T("Nuwe subkode", "New subcode")</span>
+                                        </MudButton>
+                                    </div>
+                                </div>
+                            </details>
+                        }
 
-                @if (DiscountCodeEditor.Uses.Count > 0)
-                {
-                    <div class="admin-code-uses-section">
-                        <h4>@T("Vorige gebruike", "Previous uses")</h4>
-                        <table class="admin-settings-table">
-                            <thead>
-                                <tr>
-                                    <th>@T("E-pos", "Email")</th>
-                                    <th>@T("Plan", "Plan")</th>
-                                    <th>@T("Gebruik op", "Used on")</th>
-                                    <th>@T("Toegang eindig", "Access ends")</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @foreach (var use in DiscountCodeEditor.Uses)
+                        <details class="admin-code-section-disclosure" open>
+                            <summary class="admin-code-section-summary">
+                                <span class="admin-code-section-title">
+                                    <i class="fa-solid fa-chevron-right admin-code-section-caret" aria-hidden="true"></i>
+                                    <span>@T("Kode besonderhede", "Code details")</span>
+                                </span>
+                            </summary>
+                            <div class="admin-code-section-body">
+                                <div class="admin-code-editor-grid">
+                                    <MudTextField T="string" Label="@T("Kode", "Code")" @bind-Value="DiscountCodeEditor.Code" Variant="Variant.Outlined" />
+                                    <MudTextField T="string" Label="@T("Vertoonnaam", "Display name")" @bind-Value="DiscountCodeEditor.DisplayName" Variant="Variant.Outlined" />
+                                    <MudTextField T="string" Label="@T("Beskrywing", "Description")" @bind-Value="DiscountCodeEditor.Description" Variant="Variant.Outlined" />
+                                    @if (DiscountCodeEditor.IsGroupCode && SelectedParentCode is not null)
+                                    {
+                                        <MudTextField T="string"
+                                                      Label="@T("Ouer kode", "Parent code")"
+                                                      Value="@SelectedParentCode.Code"
+                                                      ReadOnly="true"
+                                                      Variant="Variant.Outlined" />
+                                    }
+                                    <MudNumericField T="int" Label="@T("Maksimum gebruike (0 = onbeperk)", "Maximum uses (0 = unlimited)")" @bind-Value="DiscountCodeEditor.MaxUses" Variant="Variant.Outlined" Min="0" />
+                                    <MudDatePicker Label="@T("Begin datum", "Start date")" Date="DiscountCodeEditor.StartsOn" DateChanged="OnCodeStartsOnChanged" Variant="Variant.Outlined" />
+                                    <MudDatePicker Label="@T("Verval datum", "Expiry date")" Date="DiscountCodeEditor.ExpiresOn" DateChanged="OnCodeExpiresOnChanged" Variant="Variant.Outlined" />
+                                    <MudSwitch T="bool" @bind-Value="DiscountCodeEditor.OneUsePerUser" Color="Color.Primary" Label="@T("Een keer per gebruiker", "One use per user")" />
+                                    <MudSwitch T="bool" @bind-Value="DiscountCodeEditor.BypassPayment" Color="Color.Primary" Label="@T("Omseil betaling", "Bypass payment")" />
+                                    <div class="admin-settings-table-toggle">
+                                        <MudSwitch T="bool"
+                                                   @bind-Value="DiscountCodeEditor.IsActive"
+                                                   Color="Color.Primary"
+                                                   aria-label='@T("Kode aktief", "Code active")' />
+                                        <span class="admin-settings-toggle-state @(DiscountCodeEditor.IsActive ? "is-enabled" : "is-disabled")">
+                                            @BuildCodeActiveStateLabel()
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </details>
+
+                        <details class="admin-code-section-disclosure" open>
+                            <summary class="admin-code-section-summary">
+                                <span class="admin-code-section-title">
+                                    <i class="fa-solid fa-chevron-right admin-code-section-caret" aria-hidden="true"></i>
+                                    <span>@T("Plan-koppeling", "Plan mapping")</span>
+                                </span>
+                                <span class="admin-code-section-meta">@DiscountCodeEditor.TierMappings.Count</span>
+                            </summary>
+                            <div class="admin-code-section-body admin-code-tier-section">
+                                <div class="admin-code-tier-head">
+                                    <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                               Variant="Variant.Text"
+                                               Color="Color.Primary"
+                                               OnClick="AddTierMapping"
+                                               aria-label='@T("Voeg plan by", "Add plan")'
+                                               title='@T("Voeg plan by", "Add plan")'>
+                                        <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                                        <span class="admin-btn-text">@T("Voeg plan by", "Add plan")</span>
+                                    </MudButton>
+                                </div>
+                                @foreach (var tier in DiscountCodeEditor.TierMappings)
                                 {
-                                    <tr>
-                                        <td>@use.Email</td>
-                                        <td>@(string.IsNullOrWhiteSpace(use.TierCode) ? "-" : use.TierCode)</td>
-                                        <td>@FormatDate(use.RedeemedAt)</td>
-                                        <td>@FormatDate(use.AccessEndsAt)</td>
-                                    </tr>
+                                    <div class="admin-code-tier-row">
+                                        <MudSelect T="string" Label="@T("Intekeningsoort", "Subscription type")" @bind-Value="tier.TierCode" Variant="Variant.Outlined">
+                                            @foreach (var option in SubscriptionTypeEditors.Where(option => option.IsActive))
+                                            {
+                                                <MudSelectItem Value="@option.TierCode">@option.DisplayName</MudSelectItem>
+                                            }
+                                        </MudSelect>
+                                        <MudNumericField T="int?" Label="@T("Verval getal", "Expiry number")" @bind-Value="tier.ExpirationNumber" Variant="Variant.Outlined" Min="0" />
+                                        <MudSelect T="string" Label="@T("Verval periode", "Expiry period")" @bind-Value="tier.ExpirationPeriod" Variant="Variant.Outlined">
+                                            <MudSelectItem Value="@string.Empty">@T("Geen", "None")</MudSelectItem>
+                                            <MudSelectItem Value="@("day")">@T("Dag", "Day")</MudSelectItem>
+                                            <MudSelectItem Value="@("week")">@T("Week", "Week")</MudSelectItem>
+                                            <MudSelectItem Value="@("month")">@T("Maand", "Month")</MudSelectItem>
+                                            <MudSelectItem Value="@("year")">@T("Jaar", "Year")</MudSelectItem>
+                                        </MudSelect>
+                                        <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                                   Variant="Variant.Text"
+                                                   Color="Color.Error"
+                                                   OnClick="() => RemoveTierMapping(tier)"
+                                                   aria-label='@T("Verwyder plan-koppeling", "Remove plan mapping")'
+                                                   title='@T("Verwyder plan-koppeling", "Remove plan mapping")'>
+                                            <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                                            <span class="admin-btn-text">@T("Verwyder", "Remove")</span>
+                                        </MudButton>
+                                    </div>
                                 }
-                            </tbody>
-                        </table>
+                            </div>
+                        </details>
+
+                        @if (SelectedParentCode is not null)
+                        {
+                            <details class="admin-code-section-disclosure">
+                                <summary class="admin-code-section-summary">
+                                    <span class="admin-code-section-title">
+                                        <i class="fa-solid fa-chevron-right admin-code-section-caret" aria-hidden="true"></i>
+                                        <span>@T("Subkode lys", "Subcode list")</span>
+                                    </span>
+                                    <span class="admin-code-section-meta">@FormatSubcodeCount(SelectedParentCodeSubcodes.Count)</span>
+                                </summary>
+                                <div class="admin-code-section-body admin-code-uses-section">
+                                    <div class="admin-code-tier-head">
+                                        <p>@T("Klik 'n subkode om dit te wysig sonder om die hoofkode lys vol te maak.", "Open a subcode here without cluttering the parent code list.")</p>
+                                    </div>
+                                    <table class="admin-settings-table admin-subcode-table">
+                                        <thead>
+                                            <tr>
+                                                <th>@T("Kode", "Code")</th>
+                                                <th>@T("Intekeningsoorte", "Subscription types")</th>
+                                                <th>@T("Gebruikers", "Users")</th>
+                                                <th>@T("Gebruik", "Use")</th>
+                                                <th>@T("Verval", "Expires")</th>
+                                                <th>@T("Status", "Status")</th>
+                                                <th></th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var subcode in SelectedParentCodeSubcodes)
+                                            {
+                                                <tr class="@(DiscountCodeEditor.DiscountCodeId == subcode.DiscountCodeId ? "is-selected" : null)">
+                                                    <td>@subcode.Code</td>
+                                                    <td>@string.Join(", ", subcode.TierMappings.Select(mapping => mapping.TierName))</td>
+                                                    <td class="admin-subcode-users">@FormatSubcodeUsers(subcode)</td>
+                                                    <td>@($"{subcode.UsedCount}{(subcode.MaxUses > 0 ? $" / {subcode.MaxUses}" : string.Empty)}")</td>
+                                                    <td>@FormatDate(subcode.ExpiresAt)</td>
+                                                    <td>@(subcode.IsActive ? T("Aktief", "Active") : T("Onaktief", "Inactive"))</td>
+                                                    <td>
+                                                        <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                                                   Variant="Variant.Text"
+                                                                   Color="Color.Primary"
+                                                                   OnClick="() => EditSubcode(subcode)"
+                                                                   aria-label='@T("Wysig subkode", "Edit subcode")'
+                                                                   title='@T("Wysig subkode", "Edit subcode")'>
+                                                            <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
+                                                            <span class="admin-btn-text">@T("Wysig", "Edit")</span>
+                                                        </MudButton>
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </details>
+                        }
+
+                        @if (DiscountCodeEditor.Uses.Count > 0)
+                        {
+                            <details class="admin-code-section-disclosure">
+                                <summary class="admin-code-section-summary">
+                                    <span class="admin-code-section-title">
+                                        <i class="fa-solid fa-chevron-right admin-code-section-caret" aria-hidden="true"></i>
+                                        <span>@T("Vorige gebruike", "Previous uses")</span>
+                                    </span>
+                                    <span class="admin-code-section-meta">@DiscountCodeEditor.Uses.Count</span>
+                                </summary>
+                                <div class="admin-code-section-body admin-code-uses-section">
+                                    <table class="admin-settings-table">
+                                        <thead>
+                                            <tr>
+                                                <th>@T("E-pos", "Email")</th>
+                                                <th>@T("Plan", "Plan")</th>
+                                                <th>@T("Gebruik op", "Used on")</th>
+                                                <th>@T("Toegang eindig", "Access ends")</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            @foreach (var use in DiscountCodeEditor.Uses)
+                                            {
+                                                <tr>
+                                                    <td>@use.Email</td>
+                                                    <td>@(string.IsNullOrWhiteSpace(use.TierCode) ? "-" : use.TierCode)</td>
+                                                    <td>@FormatDate(use.RedeemedAt)</td>
+                                                    <td>@FormatDate(use.AccessEndsAt)</td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </details>
+                        }
                     </div>
-                }
-            </div>
+                </DialogContent>
+            </MudDialog>
         }
     </section>
 }
@@ -307,25 +490,140 @@ else
     private bool SignupCodeBypassEnabled { get; set; }
     private List<EditableSubscriptionType> SubscriptionTypeEditors { get; set; } = [];
     private List<AdminSubscriptionDiscountCodeRecord> DiscountCodes { get; set; } = [];
+    private bool IsCodeDialogOpen { get; set; }
+    private Guid? SelectedParentCodeId { get; set; }
     private EditableDiscountCode? DiscountCodeEditor { get; set; }
     private string DiscountCodeSearch { get; set; } = string.Empty;
     private string? LoadedAdminEmail { get; set; }
+    private static readonly DialogOptions CodeDialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Large,
+        FullWidth = true,
+        NoHeader = true,
+        CloseButton = false,
+        Position = DialogPosition.TopCenter
+    };
 
-    private IReadOnlyList<AdminSubscriptionDiscountCodeRecord> FilteredDiscountCodes =>
-        string.IsNullOrWhiteSpace(DiscountCodeSearch)
-            ? DiscountCodes
-            : DiscountCodes
-                .Where(code =>
-                    ContainsIgnoreCase(code.Code, DiscountCodeSearch) ||
-                    ContainsIgnoreCase(code.ParentCode, DiscountCodeSearch) ||
-                    code.Uses.Any(use => ContainsIgnoreCase(use.Email, DiscountCodeSearch)))
-                .ToArray();
-
-    private IReadOnlyList<AdminSubscriptionDiscountCodeRecord> ParentCodeOptions =>
+    private IReadOnlyList<AdminSubscriptionDiscountCodeRecord> ParentDiscountCodes =>
         DiscountCodes
             .Where(code => !code.IsGroupCode)
             .OrderBy(code => code.Code, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+
+    private IReadOnlyList<AdminSubscriptionDiscountCodeRecord> FilteredParentDiscountCodes =>
+        string.IsNullOrWhiteSpace(DiscountCodeSearch)
+            ? ParentDiscountCodes
+            : ParentDiscountCodes
+                .Where(MatchesParentCodeSearch)
+                .ToArray();
+
+    private AdminSubscriptionDiscountCodeRecord? SelectedParentCode =>
+        SelectedParentCodeId is Guid selectedId
+            ? ParentDiscountCodes.FirstOrDefault(code => code.DiscountCodeId == selectedId)
+            : null;
+
+    private IReadOnlyList<AdminSubscriptionDiscountCodeRecord> SelectedParentCodeSubcodes =>
+        SelectedParentCodeId is Guid selectedId
+            ? DiscountCodes
+                .Where(code => code.IsGroupCode && code.ParentDiscountCodeId == selectedId)
+                .OrderBy(code => code.Code, StringComparer.OrdinalIgnoreCase)
+                .ToArray()
+            : [];
+
+    private bool MatchesParentCodeSearch(AdminSubscriptionDiscountCodeRecord code)
+    {
+        if (ContainsIgnoreCase(code.Code, DiscountCodeSearch) ||
+            ContainsIgnoreCase(code.DisplayName, DiscountCodeSearch) ||
+            code.Uses.Any(use => ContainsIgnoreCase(use.Email, DiscountCodeSearch)))
+        {
+            return true;
+        }
+
+        return GetSubcodesForParent(code.DiscountCodeId).Any(subcode =>
+            ContainsIgnoreCase(subcode.Code, DiscountCodeSearch) ||
+            ContainsIgnoreCase(subcode.DisplayName, DiscountCodeSearch) ||
+            subcode.Uses.Any(use => ContainsIgnoreCase(use.Email, DiscountCodeSearch)));
+    }
+
+    private IReadOnlyList<AdminSubscriptionDiscountCodeRecord> GetSubcodesForParent(Guid parentCodeId) =>
+        DiscountCodes
+            .Where(code => code.IsGroupCode && code.ParentDiscountCodeId == parentCodeId)
+            .OrderBy(code => code.Code, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    private string FormatSubcodeCount(int count) =>
+        IsEnglish
+            ? count == 1 ? "1 subcode" : $"{count} subcodes"
+            : count == 1 ? "1 subkode" : $"{count} subkodes";
+
+    private string FormatSubcodeUsers(AdminSubscriptionDiscountCodeRecord subcode)
+    {
+        var emails = subcode.Uses
+            .Select(use => use.Email?.Trim().ToLowerInvariant())
+            .Where(email => !string.IsNullOrWhiteSpace(email))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (emails.Length == 0)
+        {
+            return T("Nog geen gebruikers nie", "No users yet");
+        }
+
+        return string.Join(", ", emails);
+    }
+
+    private string BuildSignupCodeBypassStateLabel() =>
+        SignupCodeBypassEnabled
+            ? T("Aktief", "Active")
+            : T("Afgeskakel", "Disabled");
+
+    private string BuildTierActiveStateLabel(bool isActive) =>
+        isActive
+            ? T("Aktief", "Active")
+            : T("Onaktief", "Inactive");
+
+    private string BuildCodeActiveStateLabel() =>
+        DiscountCodeEditor?.IsActive == true
+            ? T("Aktief", "Active")
+            : T("Onaktief", "Inactive");
+
+    private string BuildCodeDialogTitle()
+    {
+        if (DiscountCodeEditor is null)
+        {
+            return string.Empty;
+        }
+
+        if (DiscountCodeEditor.IsGroupCode)
+        {
+            return DiscountCodeEditor.DiscountCodeId is null
+                ? T("Nuwe subkode", "New subcode")
+                : T("Wysig subkode", "Edit subcode");
+        }
+
+        return DiscountCodeEditor.DiscountCodeId is null
+            ? T("Nuwe hoofkode", "New parent code")
+            : T("Wysig hoofkode", "Edit parent code");
+    }
+
+    private string BuildCodeDialogSubtitle()
+    {
+        if (DiscountCodeEditor is null)
+        {
+            return string.Empty;
+        }
+
+        if (DiscountCodeEditor.IsGroupCode && SelectedParentCode is not null)
+        {
+            return IsEnglish
+                ? $"Linked to parent code {SelectedParentCode.Code}."
+                : $"Gekoppel aan hoofkode {SelectedParentCode.Code}.";
+        }
+
+        return T(
+            "Stel die kode se toegang, geldigheid en plan-koppeling op.",
+            "Configure the code's access, validity, and plan mapping.");
+    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -486,18 +784,54 @@ else
     private void StartNewCode()
     {
         ClearMessages();
-        DiscountCodeEditor = EditableDiscountCode.New();
+        SelectedParentCodeId = null;
+        DiscountCodeEditor = EditableDiscountCode.NewParent();
+        IsCodeDialogOpen = true;
     }
 
-    private void EditCode(AdminSubscriptionDiscountCodeRecord code)
+    private void OpenCodeDialog(AdminSubscriptionDiscountCodeRecord code)
     {
         ClearMessages();
+        SelectedParentCodeId = code.DiscountCodeId;
         DiscountCodeEditor = EditableDiscountCode.From(code);
+        IsCodeDialogOpen = true;
     }
 
-    private void ClearCodeEditor()
+    private Task OnCodeDialogVisibleChanged(bool visible)
     {
+        if (visible)
+        {
+            IsCodeDialogOpen = true;
+            return Task.CompletedTask;
+        }
+
+        CloseCodeDialog();
+        return Task.CompletedTask;
+    }
+
+    private void CloseCodeDialog()
+    {
+        IsCodeDialogOpen = false;
+        SelectedParentCodeId = null;
         DiscountCodeEditor = null;
+    }
+
+    private void StartNewSubcode()
+    {
+        if (SelectedParentCodeId is not Guid parentCodeId)
+        {
+            return;
+        }
+
+        ClearMessages();
+        DiscountCodeEditor = EditableDiscountCode.NewSubcode(parentCodeId);
+    }
+
+    private void EditSubcode(AdminSubscriptionDiscountCodeRecord subcode)
+    {
+        ClearMessages();
+        SelectedParentCodeId = subcode.ParentDiscountCodeId;
+        DiscountCodeEditor = EditableDiscountCode.From(subcode);
     }
 
     private void AddTierMapping()
@@ -544,6 +878,10 @@ else
         ClearMessages();
         try
         {
+            var editingSubcode = DiscountCodeEditor.IsGroupCode;
+            var parentCodeId = editingSubcode
+                ? DiscountCodeEditor.ParentDiscountCodeId ?? SelectedParentCodeId
+                : null;
             var result = await AdminManagementService.SaveSubscriptionDiscountCodeAsync(
                 effectiveAdminEmail,
                 new AdminSubscriptionDiscountCodeSaveRequest(
@@ -551,8 +889,8 @@ else
                     DiscountCodeEditor.Code,
                     DiscountCodeEditor.DisplayName,
                     DiscountCodeEditor.Description,
-                    DiscountCodeEditor.IsGroupCode,
-                    DiscountCodeEditor.ParentDiscountCodeId,
+                    editingSubcode,
+                    parentCodeId,
                     ToDateTimeOffset(DiscountCodeEditor.StartsOn),
                     ToDateTimeOffset(DiscountCodeEditor.ExpiresOn),
                     DiscountCodeEditor.MaxUses,
@@ -581,8 +919,15 @@ else
                     var selected = DiscountCodes.FirstOrDefault(code => code.DiscountCodeId == entityId);
                     if (selected is not null)
                     {
+                        SelectedParentCodeId = selected.IsGroupCode
+                            ? selected.ParentDiscountCodeId
+                            : selected.DiscountCodeId;
                         DiscountCodeEditor = EditableDiscountCode.From(selected);
                     }
+                }
+                else if (!editingSubcode && DiscountCodeEditor?.DiscountCodeId is Guid savedParentId)
+                {
+                    SelectedParentCodeId = savedParentId;
                 }
             }
             else
@@ -706,8 +1051,16 @@ else
         public List<EditableDiscountCodeTier> TierMappings { get; set; } = [];
         public IReadOnlyList<AdminSubscriptionDiscountCodeUseRecord> Uses { get; set; } = [];
 
-        public static EditableDiscountCode New() => new()
+        public static EditableDiscountCode NewParent() => new()
         {
+            IsGroupCode = false,
+            TierMappings = [new EditableDiscountCodeTier()]
+        };
+
+        public static EditableDiscountCode NewSubcode(Guid parentDiscountCodeId) => new()
+        {
+            IsGroupCode = true,
+            ParentDiscountCodeId = parentDiscountCodeId,
             TierMappings = [new EditableDiscountCodeTier()]
         };
 

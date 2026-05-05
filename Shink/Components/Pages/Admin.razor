@@ -127,7 +127,7 @@
                                                   Immediate="true" />
                                 </div>
                                 <div class="admin-search-actions">
-                                    <MudButton Class="admin-icon-btn admin-mobile-cta"
+                                    <MudButton Class="admin-icon-btn admin-mobile-cta admin-icon-only"
                                                Variant="Variant.Filled"
                                                Color="Color.Secondary"
                                                OnClick="StartNewSubscriber"
@@ -136,7 +136,7 @@
                                         <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
                                         <span class="admin-btn-text">@T("Nuwe intekenaar", "New subscriber")</span>
                                     </MudButton>
-                                    <MudButton Class="admin-icon-btn admin-mobile-cta"
+                                    <MudButton Class="admin-icon-btn admin-mobile-cta admin-icon-only"
                                                Variant="Variant.Filled"
                                                Color="Color.Primary"
                                                OnClick="SearchSubscribersAsync"
@@ -146,7 +146,7 @@
                                         <span class="admin-btn-text">@T("Soek", "Search")</span>
                                         <span class="sr-only">@T("Soek intekenaars", "Search subscribers")</span>
                                     </MudButton>
-                                    <MudButton Class="admin-icon-btn admin-mobile-cta"
+                                    <MudButton Class="admin-icon-btn admin-mobile-cta admin-icon-only"
                                                Variant="Variant.Text"
                                                Color="Color.Default"
                                                Disabled="@(!HasActiveSubscriberColumnFilters)"
@@ -157,7 +157,7 @@
                                         <span class="admin-btn-text">@T("Maak filters skoon", "Clear filters")</span>
                                         <span class="sr-only">@T("Maak intekenaarfilters skoon", "Clear subscriber filters")</span>
                                     </MudButton>
-                                    <MudButton Class="admin-icon-btn admin-mobile-cta"
+                                    <MudButton Class="admin-icon-btn admin-mobile-cta admin-icon-only"
                                                Variant="Variant.Outlined"
                                                Color="Color.Primary"
                                                OnClick="ReloadSubscribersAsync"
@@ -182,20 +182,50 @@
                             {
                                 <div class="admin-bulk-toolbar" role="region" aria-label='@T("Gekose intekenaar aksies", "Selected subscriber actions")'>
                                     <span>@T($"{SelectedSubscriberIds.Count} gekies", $"{SelectedSubscriberIds.Count} selected")</span>
-                                    <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick="ExportSelectedSubscribersAsync">
-                                        @T("Voer gekies uit", "Export selected")
+                                    <MudButton Class="admin-icon-btn admin-action-btn"
+                                               Variant="Variant.Text"
+                                               Color="Color.Primary"
+                                               OnClick="ExportSelectedSubscribersAsync"
+                                               aria-label='@T("Voer gekose intekenaars uit", "Export selected subscribers")'
+                                               title='@T("Voer gekose intekenaars uit", "Export selected subscribers")'>
+                                        <i class="fa-solid fa-file-csv" aria-hidden="true"></i>
+                                        <span class="admin-btn-text">@T("Voer gekies uit", "Export selected")</span>
                                     </MudButton>
-                                    <MudButton Variant="Variant.Text" Color="Color.Warning" OnClick='() => RunSelectedSubscriberBulkActionAsync(AdminSubscriberBulkAction.Disable)'>
-                                        @T("Deaktiveer", "Disable")
+                                    <MudButton Class="admin-icon-btn admin-action-btn"
+                                               Variant="Variant.Text"
+                                               Color="Color.Warning"
+                                               OnClick='() => RunSelectedSubscriberBulkActionAsync(AdminSubscriberBulkAction.Disable)'
+                                               aria-label='@T("Deaktiveer gekose intekenaars", "Disable selected subscribers")'
+                                               title='@T("Deaktiveer gekose intekenaars", "Disable selected subscribers")'>
+                                        <i class="fa-solid fa-user-slash" aria-hidden="true"></i>
+                                        <span class="admin-btn-text">@T("Deaktiveer", "Disable")</span>
                                     </MudButton>
-                                    <MudButton Variant="Variant.Text" Color="Color.Success" OnClick='() => RunSelectedSubscriberBulkActionAsync(AdminSubscriberBulkAction.Enable)'>
-                                        @T("Heraktiveer", "Enable")
+                                    <MudButton Class="admin-icon-btn admin-action-btn"
+                                               Variant="Variant.Text"
+                                               Color="Color.Success"
+                                               OnClick='() => RunSelectedSubscriberBulkActionAsync(AdminSubscriberBulkAction.Enable)'
+                                               aria-label='@T("Heraktiveer gekose intekenaars", "Enable selected subscribers")'
+                                               title='@T("Heraktiveer gekose intekenaars", "Enable selected subscribers")'>
+                                        <i class="fa-solid fa-user-check" aria-hidden="true"></i>
+                                        <span class="admin-btn-text">@T("Heraktiveer", "Enable")</span>
                                     </MudButton>
-                                    <MudButton Variant="Variant.Text" Color="Color.Primary" OnClick='() => RunSelectedSubscriberBulkActionAsync(AdminSubscriberBulkAction.SendPasswordReset)'>
-                                        @T("Stuur herstel", "Send reset")
+                                    <MudButton Class="admin-icon-btn admin-action-btn"
+                                               Variant="Variant.Text"
+                                               Color="Color.Primary"
+                                               OnClick='() => RunSelectedSubscriberBulkActionAsync(AdminSubscriberBulkAction.SendPasswordReset)'
+                                               aria-label='@T("Stuur wagwoordherstel aan gekose intekenaars", "Send password reset to selected subscribers")'
+                                               title='@T("Stuur wagwoordherstel aan gekose intekenaars", "Send password reset to selected subscribers")'>
+                                        <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
+                                        <span class="admin-btn-text">@T("Stuur herstel", "Send reset")</span>
                                     </MudButton>
-                                    <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="ClearSubscriberSelection">
-                                        @T("Maak keuse skoon", "Clear selection")
+                                    <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                               Variant="Variant.Text"
+                                               Color="Color.Default"
+                                               OnClick="ClearSubscriberSelection"
+                                               aria-label='@T("Maak gekose intekenaars skoon", "Clear selected subscribers")'
+                                               title='@T("Maak gekose intekenaars skoon", "Clear selected subscribers")'>
+                                        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                                        <span class="admin-btn-text">@T("Maak keuse skoon", "Clear selection")</span>
                                     </MudButton>
                                 </div>
                             }
@@ -508,7 +538,7 @@
                                 <h2>@GetSubscriberViewLabel(ActiveSubscriberView)</h2>
                                 <p class="admin-form-note">@GetSubscriberViewDescription(ActiveSubscriberView)</p>
                             </div>
-                            <MudButton Class="admin-mobile-cta"
+                            <MudButton Class="admin-icon-btn admin-action-btn admin-mobile-cta admin-icon-only"
                                        Variant="Variant.Outlined"
                                        Color="Color.Primary"
                                        OnClick="RefreshSubscriberReportsAsync"
@@ -562,7 +592,7 @@
                         else if (ActiveSubscriberView == SubscriberAdminView.ActiveMembersPerLevel)
                         {
                             <div class="admin-report-cards">
-                                @foreach (var metric in SubscriberReports.ActiveMembersPerLevel)
+                                @foreach (var metric in CurrentTierDistributionMetrics)
                                 {
                                     <article class="admin-report-card">
                                         <p class="admin-report-card-label">@metric.TierName</p>
@@ -610,7 +640,7 @@
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                @foreach (var metric in SubscriberReports.ActiveMembersPerLevel)
+                                                @foreach (var metric in CurrentTierDistributionMetrics)
                                                 {
                                                     <tr>
                                                         <td>@metric.TierName</td>
@@ -1191,7 +1221,7 @@
                                     "This shows the subscriber, revenue, and usage analytics that are currently being tracked.")
                             </p>
                         </div>
-                        <MudButton Class="admin-mobile-cta"
+                        <MudButton Class="admin-icon-btn admin-action-btn admin-mobile-cta admin-icon-only"
                                    Variant="Variant.Outlined"
                                    Color="Color.Primary"
                                    OnClick="RefreshAnalyticsAsync"
@@ -1269,32 +1299,44 @@
                                     </div>
 
                                     <div class="admin-analytics-grid admin-subscriber-analytics-cards">
-                                        <article class="admin-analytics-card">
-                                            <p class="admin-analytics-label">@T("Nuwe intekenaars vandag", "New subscribers today")</p>
-                                            <p class="admin-analytics-value">@FormatAnalyticsNumber(todaySubscriberMetric.Signups)</p>
-                                            <div class="admin-analytics-meta">
+                                        <button type="button"
+                                                class="admin-analytics-card admin-revenue-drilldown-card @(IsSelectedSubscriberDrilldownPeriod("today") ? "is-selected" : null)"
+                                                @onclick='() => SetSubscriberDrilldownPeriod("today")'>
+                                            <div class="admin-subscriber-kpi-main">
+                                                <p class="admin-analytics-label">@T("Nuwe intekenaars vandag", "New subscribers today")</p>
+                                                <p class="admin-analytics-value">@FormatAnalyticsNumber(todaySubscriberMetric.Signups)</p>
+                                            </div>
+                                            <div class="admin-subscriber-kpi-secondary">
                                                 <span>@T("Gekanselleerde intekeninge", "Cancelled subscriptions")</span>
                                                 <strong>@FormatAnalyticsNumber(todaySubscriberMetric.Cancellations)</strong>
                                             </div>
-                                        </article>
+                                        </button>
 
-                                        <article class="admin-analytics-card">
-                                            <p class="admin-analytics-label">@T("Nuwe intekenaars hierdie maand", "New subscribers this month")</p>
-                                            <p class="admin-analytics-value">@FormatAnalyticsNumber(monthlySubscriberMetric.Signups)</p>
-                                            <div class="admin-analytics-meta">
+                                        <button type="button"
+                                                class="admin-analytics-card admin-revenue-drilldown-card @(IsSelectedSubscriberDrilldownPeriod("this_month") ? "is-selected" : null)"
+                                                @onclick='() => SetSubscriberDrilldownPeriod("this_month")'>
+                                            <div class="admin-subscriber-kpi-main">
+                                                <p class="admin-analytics-label">@T("Nuwe intekenaars hierdie maand", "New subscribers this month")</p>
+                                                <p class="admin-analytics-value">@FormatAnalyticsNumber(monthlySubscriberMetric.Signups)</p>
+                                            </div>
+                                            <div class="admin-subscriber-kpi-secondary">
                                                 <span>@T("Gekanselleerde intekeninge", "Cancelled subscriptions")</span>
                                                 <strong>@FormatAnalyticsNumber(monthlySubscriberMetric.Cancellations)</strong>
                                             </div>
-                                        </article>
+                                        </button>
 
-                                        <article class="admin-analytics-card">
-                                            <p class="admin-analytics-label">@T("Nuwe intekenaars hierdie jaar", "New subscribers this year")</p>
-                                            <p class="admin-analytics-value">@FormatAnalyticsNumber(yearlySubscriberMetric.Signups)</p>
-                                            <div class="admin-analytics-meta">
+                                        <button type="button"
+                                                class="admin-analytics-card admin-revenue-drilldown-card @(IsSelectedSubscriberDrilldownPeriod("this_year") ? "is-selected" : null)"
+                                                @onclick='() => SetSubscriberDrilldownPeriod("this_year")'>
+                                            <div class="admin-subscriber-kpi-main">
+                                                <p class="admin-analytics-label">@T("Nuwe intekenaars hierdie jaar", "New subscribers this year")</p>
+                                                <p class="admin-analytics-value">@FormatAnalyticsNumber(yearlySubscriberMetric.Signups)</p>
+                                            </div>
+                                            <div class="admin-subscriber-kpi-secondary">
                                                 <span>@T("Gekanselleerde intekeninge", "Cancelled subscriptions")</span>
                                                 <strong>@FormatAnalyticsNumber(yearlySubscriberMetric.Cancellations)</strong>
                                             </div>
-                                        </article>
+                                        </button>
 
                                         <article class="admin-analytics-card">
                                             <p class="admin-analytics-label">@T("Aktiewe lede", "Active members")</p>
@@ -1311,33 +1353,86 @@
                                     </div>
                                 </div>
 
-                                <div class="admin-report-table-wrap">
-                                    <table class="admin-report-table admin-subscriber-analytics-table">
-                                        <thead>
-                                            <tr>
-                                                <th>@T("Periode", "Period")</th>
-                                                <th>@T("Nuwe intekenaars", "New subscribers")</th>
-                                                <th>@T("Gekanselleerde intekeninge", "Cancelled subscriptions")</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            @foreach (var metric in SubscriberAnalyticsPeriodHighlights)
-                                            {
-                                                <tr>
-                                                    <td>@GetSubscriberPeriodLabel(metric.PeriodKey)</td>
-                                                    <td>@FormatAnalyticsNumber(metric.Signups)</td>
-                                                    <td>@FormatAnalyticsNumber(metric.Cancellations)</td>
-                                                </tr>
-                                            }
-                                        </tbody>
-                                    </table>
-                                </div>
+                                <section class="admin-revenue-drilldown">
+                                    <div class="admin-analytics-panel-head">
+                                        <div class="admin-revenue-drilldown-title">
+                                            <h3>@T("Intekenaar detail", "Subscriber detail")</h3>
+                                            <p>@BuildSubscriberDrilldownPeriodSummary()</p>
+                                        </div>
+                                        <div class="admin-revenue-drilldown-controls">
+                                            <label class="admin-header-filter-label" for="subscriber-detail-period">
+                                                @T("Detail periode", "Detail period")
+                                            </label>
+                                            <select id="subscriber-detail-period"
+                                                    class="admin-header-filter-select admin-subscriber-analytics-period-select"
+                                                    @bind="SelectedSubscriberDrilldownPeriod">
+                                                @foreach (var metric in SubscriberAnalyticsPeriodHighlights)
+                                                {
+                                                    <option value="@metric.PeriodKey">@BuildSubscriberDrilldownOptionLabel(metric)</option>
+                                                }
+                                            </select>
+                                            <span class="admin-story-stats-filter-summary">
+                                                @T($"{FilteredSubscriberMembershipDetails.Count} intekenaars in hierdie grid", $"{FilteredSubscriberMembershipDetails.Count} subscribers in this grid")
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <MudTable T="AdminSubscriberMembershipDetailRecord"
+                                              Class="admin-grid"
+                                              Items="FilteredSubscriberMembershipDetails"
+                                              RowsPerPage="25"
+                                              Dense="true"
+                                              Hover="true"
+                                              Bordered="true"
+                                              Elevation="0"
+                                              Breakpoint="Breakpoint.Md">
+                                        <HeaderContent>
+                                            <MudTh>@T("Intekenaar", "Subscriber")</MudTh>
+                                            <MudTh>@T("Vlak", "Tier")</MudTh>
+                                            <MudTh>@T("Bron", "Source")</MudTh>
+                                            <MudTh>@T("Ingeteken", "Subscribed")</MudTh>
+                                            <MudTh>@T("Status", "Status")</MudTh>
+                                        </HeaderContent>
+                                        <RowTemplate>
+                                            <MudTd DataLabel='@T("Intekenaar", "Subscriber")'>
+                                                <strong>@context.DisplayName</strong>
+                                                <span>@context.Email</span>
+                                            </MudTd>
+                                            <MudTd DataLabel='@T("Vlak", "Tier")'>@context.TierName</MudTd>
+                                            <MudTd DataLabel='@T("Bron", "Source")'>@context.Provider / @context.SourceSystem</MudTd>
+                                            <MudTd DataLabel='@T("Ingeteken", "Subscribed")'>@FormatAdminDate(context.SubscribedAt)</MudTd>
+                                            <MudTd DataLabel='@T("Status", "Status")'>@context.Status</MudTd>
+                                        </RowTemplate>
+                                        <NoRecordsContent>
+                                            <p class="admin-analytics-footnote">
+                                                @T("Geen intekenaars vir hierdie periode nie.", "No subscribers for this period.")
+                                            </p>
+                                        </NoRecordsContent>
+                                        <PagerContent>
+                                            <MudTablePager />
+                                        </PagerContent>
+                                    </MudTable>
+                                </section>
 
                                 <section class="admin-analytics-panel">
                                     <div class="admin-analytics-panel-head">
                                         <div>
                                             <h3>@T("Per vlak", "By subscription tier")</h3>
                                             <p>@T("Aktiewe lede en persentasie per intekenvlak.", "Active members and percentage by subscription tier.")</p>
+                                        </div>
+                                        <div class="admin-analytics-panel-head-controls">
+                                            <label class="admin-header-filter-label" for="tier-distribution-period">
+                                                @T("Periode", "Period")
+                                            </label>
+                                            <select id="tier-distribution-period"
+                                                    class="admin-header-filter-select admin-subscriber-analytics-period-select"
+                                                    @onchange="@(args => SetTierDistributionPeriod(args.Value?.ToString() ?? "all_time"))"
+                                                    value="@SelectedTierDistributionPeriod">
+                                                @foreach (var metric in SubscriberAnalyticsPeriodHighlights)
+                                                {
+                                                    <option value="@metric.PeriodKey">@GetSubscriberPeriodLabel(metric.PeriodKey)</option>
+                                                }
+                                            </select>
                                         </div>
                                     </div>
 
@@ -1363,7 +1458,7 @@
                                                     </tr>
                                                 </thead>
                                                 <tbody>
-                                                    @foreach (var metric in SubscriberReports.ActiveMembersPerLevel)
+                                                    @foreach (var metric in CurrentTierDistributionMetrics)
                                                     {
                                                         <tr>
                                                             <td>@metric.TierName</td>
@@ -1398,17 +1493,21 @@
                                     </div>
                                 </div>
 
-                                <div class="admin-analytics-grid">
-                                    <article class="admin-analytics-card">
+                                <div class="admin-analytics-grid admin-usage-summary-grid">
+                                    <button type="button"
+                                            class="admin-analytics-card admin-revenue-drilldown-card @(IsSelectedRevenueDrilldownPeriod("today") ? "is-selected" : null)"
+                                            @onclick='() => SetRevenueDrilldownPeriod("today")'>
                                         <p class="admin-analytics-label">@T("Vandag", "Today")</p>
                                         <p class="admin-analytics-value">@FormatCurrency(todaySubscriberSales.RevenueZar)</p>
                                         <div class="admin-analytics-meta">
                                             <span>@T("Verkope", "Sales")</span>
                                             <strong>@FormatAnalyticsNumber(todaySubscriberSales.SalesCount)</strong>
                                         </div>
-                                    </article>
+                                    </button>
 
-                                    <article class="admin-analytics-card">
+                                    <button type="button"
+                                            class="admin-analytics-card admin-revenue-drilldown-card @(IsSelectedRevenueDrilldownPeriod("this_month") ? "is-selected" : null)"
+                                            @onclick='() => SetRevenueDrilldownPeriod("this_month")'>
                                         <p class="admin-analytics-label">@T("Hierdie maand", "This month")</p>
                                         <p class="admin-analytics-value">@FormatCurrency(monthlySubscriberSales.RevenueZar)</p>
                                         <div class="admin-analytics-meta">
@@ -1419,18 +1518,22 @@
                                             <span>@T("Herwin 30 dae", "Recovered 30 days")</span>
                                             <strong>@FormatCurrency(pastThirtyDaysSubscriberRecoveries.RecoveredRevenueZar)</strong>
                                         </div>
-                                    </article>
+                                    </button>
 
-                                    <article class="admin-analytics-card">
+                                    <button type="button"
+                                            class="admin-analytics-card admin-revenue-drilldown-card @(IsSelectedRevenueDrilldownPeriod("this_year") ? "is-selected" : null)"
+                                            @onclick='() => SetRevenueDrilldownPeriod("this_year")'>
                                         <p class="admin-analytics-label">@T("Hierdie jaar", "This year")</p>
                                         <p class="admin-analytics-value">@FormatCurrency(yearlySubscriberSales.RevenueZar)</p>
                                         <div class="admin-analytics-meta">
                                             <span>@T("Verkope", "Sales")</span>
                                             <strong>@FormatAnalyticsNumber(yearlySubscriberSales.SalesCount)</strong>
                                         </div>
-                                    </article>
+                                    </button>
 
-                                    <article class="admin-analytics-card">
+                                    <button type="button"
+                                            class="admin-analytics-card admin-revenue-drilldown-card @(IsSelectedRevenueDrilldownPeriod("all_time") ? "is-selected" : null)"
+                                            @onclick='() => SetRevenueDrilldownPeriod("all_time")'>
                                         <p class="admin-analytics-label">@T("Alles", "All time")</p>
                                         <p class="admin-analytics-value">@FormatCurrency(allTimeSubscriberSales.RevenueZar)</p>
                                         <div class="admin-analytics-meta">
@@ -1441,7 +1544,7 @@
                                             <span>@T("Herwin totaal", "Recovered total")</span>
                                             <strong>@FormatCurrency(allTimeSubscriberRecoveries.RecoveredRevenueZar)</strong>
                                         </div>
-                                    </article>
+                                    </button>
                                 </div>
 
                                 <div class="admin-report-table-wrap">
@@ -1451,20 +1554,76 @@
                                                 <th>@T("Periode", "Period")</th>
                                                 <th>@T("Verkope", "Sales")</th>
                                                 <th>@T("Inkomste", "Revenue")</th>
+                                                <th></th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             @foreach (var metric in RevenueAnalyticsPeriodHighlights)
                                             {
-                                                <tr>
+                                                <tr class="@(IsSelectedRevenueDrilldownPeriod(metric.PeriodKey) ? "is-selected" : null)">
                                                     <td>@GetSubscriberPeriodLabel(metric.PeriodKey)</td>
                                                     <td>@FormatAnalyticsNumber(metric.SalesCount)</td>
                                                     <td>@FormatCurrency(metric.RevenueZar)</td>
+                                                    <td>
+                                                        <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                                                   Variant="Variant.Text"
+                                                                   Color="Color.Primary"
+                                                                   OnClick="() => SetRevenueDrilldownPeriod(metric.PeriodKey)"
+                                                                   aria-label='@T("Wys verkope", "Show sales")'
+                                                                   title='@T("Wys verkope", "Show sales")'>
+                                                            <i class="fa-solid fa-table-list" aria-hidden="true"></i>
+                                                        </MudButton>
+                                                    </td>
                                                 </tr>
                                             }
                                         </tbody>
                                     </table>
                                 </div>
+
+                                <section class="admin-revenue-drilldown">
+                                    <div class="admin-analytics-panel-head">
+                                        <div>
+                                            <h3>@T("Verkope detail", "Sales detail")</h3>
+                                            <p>@GetSubscriberPeriodLabel(SelectedRevenueDrilldownPeriod)</p>
+                                        </div>
+                                        <div class="admin-story-stats-filter-summary">
+                                            @FormatAnalyticsNumber(FilteredRevenueSalesDetails.Count) @T("verkope", "sales")
+                                        </div>
+                                    </div>
+
+                                    <MudTable T="AdminSalesRevenueDetailRecord"
+                                              Class="admin-grid"
+                                              Items="FilteredRevenueSalesDetails"
+                                              RowsPerPage="25"
+                                              Dense="true"
+                                              Hover="true"
+                                              Bordered="true"
+                                              Elevation="0"
+                                              Breakpoint="Breakpoint.Md">
+                                        <HeaderContent>
+                                            <MudTh>@T("Datum", "Date")</MudTh>
+                                            <MudTh>@T("Plan", "Plan")</MudTh>
+                                            <MudTh>@T("Bron", "Source")</MudTh>
+                                            <MudTh>@T("Verwysing", "Reference")</MudTh>
+                                            <MudTh>@T("Inkomste", "Revenue")</MudTh>
+                                        </HeaderContent>
+                                        <RowTemplate>
+                                            <MudTd DataLabel='@T("Datum", "Date")'>@FormatAdminDateTime(context.SoldAt)</MudTd>
+                                            <MudTd DataLabel='@T("Plan", "Plan")'>
+                                                <div class="admin-analytics-story-cell">
+                                                    <strong>@context.TierName</strong>
+                                                    <span>@context.TierCode</span>
+                                                </div>
+                                            </MudTd>
+                                            <MudTd DataLabel='@T("Bron", "Source")'>@($"{context.Provider} / {context.SourceSystem}")</MudTd>
+                                            <MudTd DataLabel='@T("Verwysing", "Reference")'>@context.Reference</MudTd>
+                                            <MudTd DataLabel='@T("Inkomste", "Revenue")'>@FormatCurrency(context.RevenueZar)</MudTd>
+                                        </RowTemplate>
+                                        <NoRecordsContent>
+                                            <MudText Typo="Typo.body2">@T("Geen verkope vir hierdie periode nie.", "No sales for this period.")</MudText>
+                                        </NoRecordsContent>
+                                    </MudTable>
+                                </section>
                             </section>
                         </MudTabPanel>
 
@@ -1568,83 +1727,223 @@
                                     <section class="admin-analytics-panel">
                                         <div class="admin-analytics-panel-head">
                                             <div>
-                                                <h3>@T("Laaste 14 dae", "Last 14 days")</h3>
-                                                <p>@T("Dag-vir-dag gebruik vir die events wat ons reeds log.", "Day-by-day usage for the events we already log.")</p>
+                                                <h3>@T("Gebruik oor tyd", "Usage over time")</h3>
+                                                <p>@T("Kyke, sessies, luistertyd en gunstelinge vir die gekose periode.", "Views, sessions, listening time, and favorites for the selected period.")</p>
+                                            </div>
+                                            <div class="admin-analytics-panel-head-controls">
+                                                <label class="admin-header-filter-label" for="usage-activity-period">
+                                                    @T("Periode", "Period")
+                                                </label>
+                                                <select id="usage-activity-period"
+                                                        class="admin-header-filter-select admin-subscriber-analytics-period-select"
+                                                        @bind="SelectedUsageActivityPeriod">
+                                                    <option value="@UsageActivityPeriodToday">@T("Vandag", "Today")</option>
+                                                    <option value="@UsageActivityPeriodYesterday">@T("Gister", "Yesterday")</option>
+                                                    <option value="@UsageActivityPeriodLast7">@T("Laaste 7 dae", "Last 7 days")</option>
+                                                    <option value="@UsageActivityPeriodLast14">@T("Laaste 14 dae", "Last 14 days")</option>
+                                                    <option value="@UsageActivityPeriodLast30">@T("Laaste 30 dae", "Last 30 days")</option>
+                                                </select>
                                             </div>
                                         </div>
 
-                                        <div class="admin-activity-list">
-                                            @foreach (var activity in Analytics.DailyActivity)
-                                            {
-                                                <article class="admin-activity-row">
-                                                    <div class="admin-activity-date">
-                                                        <strong>@FormatAnalyticsDay(activity.ActivityDate)</strong>
-                                                    </div>
-                                                    <div class="admin-activity-metrics">
-                                                        <span>@T("Kyke", "Views"): @FormatAnalyticsNumber(activity.TotalViews)</span>
-                                                        <span>@T("Sessies", "Sessions"): @FormatAnalyticsNumber(activity.TotalListenSessions)</span>
-                                                        <span>@T("Luistertyd", "Listening time"): @FormatAnalyticsDuration(activity.TotalListenedSeconds)</span>
-                                                        <span>@T("Gunstelinge", "Favorites"): @FormatAnalyticsNumber(activity.TotalFavorites)</span>
-                                                    </div>
-                                                </article>
-                                            }
-                                        </div>
+                                        @if (CurrentUsageActivityPoints.Count > 0)
+                                        {
+                                            <div class="admin-usage-activity-chart-shell">
+                                                <MudChart T="double"
+                                                          ChartType="ChartType.Line"
+                                                          ChartSeries="UsageActivityChartSeries"
+                                                          ChartLabels="UsageActivityChartLabels" />
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <p class="admin-analytics-footnote">
+                                                @T("Nog geen gebruik vir hierdie periode nie.", "No usage for this period yet.")
+                                            </p>
+                                        }
                                     </section>
 
                                     <section class="admin-analytics-panel">
                                         <div class="admin-analytics-panel-head">
                                             <div>
-                                                <h3>@T("Top karakters", "Top characters")</h3>
-                                                <p>@T("Karakterprofiele waarvan die klank die meeste gespeel is.", "Character profiles whose audio has been played the most.")</p>
+                                                <h3>@T("Karakter statistieke", "Character stats")</h3>
+                                                <p>@T("Soek deur alle karakterprofiele en hul klankspeling-statistieke.", "Search all character profiles and their audio play stats.")</p>
                                             </div>
                                         </div>
 
-                                        @if (Analytics.TopCharacters.Count == 0)
-                                        {
-                                            <p class="admin-form-note">@T("Nog geen karakter-klankspelings nie.", "No character audio plays yet.")</p>
-                                        }
-                                        else
-                                        {
-                                            <div class="admin-character-analytics-list">
-                                                @foreach (var character in Analytics.TopCharacters)
-                                                {
-                                                    <article class="admin-character-analytics-item">
-                                                        <div>
-                                                            <strong>@character.DisplayName</strong>
-                                                            <span>@character.CharacterSlug</span>
+                                        <div class="admin-character-stats-filters">
+                                            <MudTextField T="string"
+                                                          @bind-Value="CharacterStatsSearch"
+                                                          Placeholder='@T("Soek naam of slug", "Search name or slug")'
+                                                          Variant="Variant.Outlined"
+                                                          Margin="Margin.Dense"
+                                                          Immediate="true" />
+                                        </div>
+
+                                        <div class="admin-character-stats-scroll">
+                                            <MudTable T="AdminAnalyticsTopCharacterRecord"
+                                                      Class="admin-grid admin-character-stats-table"
+                                                      Items="FilteredAnalyticsCharacters"
+                                                      Dense="true"
+                                                      Hover="true"
+                                                      Bordered="true"
+                                                      Elevation="0"
+                                                      Breakpoint="Breakpoint.Md">
+                                                <HeaderContent>
+                                                    <MudTh>@T("Karakter", "Character")</MudTh>
+                                                    <MudTh>@T("Spelings", "Plays")</MudTh>
+                                                    <MudTh>@T("Mense", "People")</MudTh>
+                                                    <MudTh>@T("Laaste aktiwiteit", "Last activity")</MudTh>
+                                                </HeaderContent>
+                                                <RowTemplate>
+                                                    <MudTd DataLabel='@T("Karakter", "Character")'>
+                                                        <div class="admin-analytics-story-cell">
+                                                            <strong>@context.DisplayName</strong>
+                                                            <span>@context.CharacterSlug</span>
                                                         </div>
-                                                        <div class="admin-character-analytics-stats">
-                                                            <span>@T("Spelings", "Plays"): @FormatAnalyticsNumber(character.TotalAudioPlays)</span>
-                                                            <span>@T("Mense", "People"): @FormatAnalyticsNumber(character.UniqueSubscribers)</span>
-                                                            <span>@T("Laaste", "Last"): @FormatAdminDateTime(character.LastActivityAt)</span>
-                                                        </div>
-                                                    </article>
-                                                }
-                                            </div>
-                                        }
+                                                    </MudTd>
+                                                    <MudTd DataLabel='@T("Spelings", "Plays")'>@FormatAnalyticsNumber(context.TotalAudioPlays)</MudTd>
+                                                    <MudTd DataLabel='@T("Mense", "People")'>@FormatAnalyticsNumber(context.UniqueSubscribers)</MudTd>
+                                                    <MudTd DataLabel='@T("Laaste aktiwiteit", "Last activity")'>@FormatAdminDateTime(context.LastActivityAt)</MudTd>
+                                                </RowTemplate>
+                                                <NoRecordsContent>
+                                                    <MudText Typo="Typo.body2">@T("Geen karakter-statistieke pas by jou soektog nie.", "No character stats match your search.")</MudText>
+                                                </NoRecordsContent>
+                                            </MudTable>
+                                        </div>
                                     </section>
 
                                     <section class="admin-analytics-panel admin-analytics-panel-wide">
                                         <div class="admin-analytics-panel-head">
                                             <div>
-                                                <h3>@T("Top stories", "Top stories")</h3>
-                                                <p>@T("Gerangskik volgens luistertyd, en dan kyke en gunstelinge.", "Ranked by listening time, then views and favorites.")</p>
+                                                <h3>@T("Storie statistieke", "Story stats")</h3>
+                                                <p>@T("Soek en filter alle stories volgens hul laaste analitika-aktiwiteit.", "Search and filter all stories by their latest analytics activity.")</p>
+                                            </div>
+                                            <div class="admin-story-stats-filter-summary">
+                                                @FormatAnalyticsNumber(FilteredAnalyticsStoryDetails.Count) @T("stories", "stories")
                                             </div>
                                         </div>
 
-                                        <MudTable T="AdminAnalyticsTopStoryRecord"
+                                        <div class="admin-story-stats-filters">
+                                            <MudTextField T="string"
+                                                          @bind-Value="StoryStatsSearch"
+                                                          Placeholder='@T("Soek titel of slug", "Search title or slug")'
+                                                          Variant="Variant.Outlined"
+                                                          Margin="Margin.Dense"
+                                                          Immediate="true" />
+                                            <div class="admin-story-stats-preset-filter">
+                                                <label class="admin-header-filter-label" for="story-stats-quick-date">
+                                                    @T("Vinnige datum", "Quick date")
+                                                </label>
+                                                <select id="story-stats-quick-date"
+                                                        class="admin-header-filter-select admin-story-stats-preset-select"
+                                                        value="@SelectedStoryStatsQuickDatePeriod"
+                                                        @onchange="OnStoryStatsQuickDateChanged">
+                                                    <option value="@StoryStatsQuickDateAll">@T("Alle datums", "All dates")</option>
+                                                    <option value="@StoryStatsQuickDateToday">@T("Vandag", "Today")</option>
+                                                    <option value="@StoryStatsQuickDateYesterday">@T("Gister", "Yesterday")</option>
+                                                    <option value="@StoryStatsQuickDateLast7">@T("Laaste 7 dae", "Last 7 days")</option>
+                                                    <option value="@StoryStatsQuickDateLast30">@T("Laaste 30 dae", "Last 30 days")</option>
+                                                    <option value="@StoryStatsQuickDateThisMonth">@T("Hierdie maand", "This month")</option>
+                                                    <option value="@StoryStatsQuickDateCustom">@T("Pasgemaak", "Custom")</option>
+                                                </select>
+                                            </div>
+                                            <MudDatePicker Label='@T("Van datum", "From date")'
+                                                           Date="StoryStatsFromDate"
+                                                           DateChanged="OnStoryStatsFromDateChanged"
+                                                           Variant="Variant.Outlined"
+                                                           Margin="Margin.Dense" />
+                                            <MudDatePicker Label='@T("Tot datum", "To date")'
+                                                           Date="StoryStatsToDate"
+                                                           DateChanged="OnStoryStatsToDateChanged"
+                                                           Variant="Variant.Outlined"
+                                                           Margin="Margin.Dense" />
+                                            <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                                       Variant="Variant.Text"
+                                                       Color="Color.Default"
+                                                       Disabled="@(!HasStoryStatsFilters)"
+                                                       OnClick="ClearStoryStatsFilters"
+                                                       aria-label='@T("Maak storie-statistiek filters skoon", "Clear story stats filters")'
+                                                       title='@T("Maak storie-statistiek filters skoon", "Clear story stats filters")'>
+                                                <i class="fa-solid fa-filter-circle-xmark" aria-hidden="true"></i>
+                                                <span class="admin-btn-text">@T("Maak filters skoon", "Clear filters")</span>
+                                            </MudButton>
+                                        </div>
+
+                                        @if (SelectedAnalyticsStory is { } selectedAnalyticsStory)
+                                        {
+                                            <section class="admin-story-analytics-drilldown">
+                                                <div class="admin-story-analytics-drilldown-head">
+                                                    <div>
+                                                        <h4>@T("Storie detail", "Story detail")</h4>
+                                                        <p>@selectedAnalyticsStory.Title</p>
+                                                        <span>@selectedAnalyticsStory.StorySlug</span>
+                                                    </div>
+                                                    <div class="admin-story-analytics-last">
+                                                        <span>@T("Laaste aktiwiteit", "Last activity")</span>
+                                                        <strong>@FormatAdminDateTime(selectedAnalyticsStory.LastActivityAt)</strong>
+                                                    </div>
+                                                </div>
+                                                <div class="admin-analytics-grid admin-story-analytics-grid">
+                                                    <article class="admin-analytics-card">
+                                                        <p class="admin-analytics-label">@T("Kyke", "Views")</p>
+                                                        <p class="admin-analytics-value">@FormatAnalyticsNumber(selectedAnalyticsStory.TotalViews)</p>
+                                                        <div class="admin-analytics-meta">
+                                                            <span>@T("Unieke kykers", "Unique viewers")</span>
+                                                            <strong>@FormatAnalyticsNumber(selectedAnalyticsStory.UniqueViewers)</strong>
+                                                        </div>
+                                                        <p class="admin-analytics-footnote">@T("Laaste kyk", "Last view"): @FormatAdminDateTime(selectedAnalyticsStory.LastViewAt)</p>
+                                                    </article>
+                                                    <article class="admin-analytics-card">
+                                                        <p class="admin-analytics-label">@T("Luistersessies", "Listen sessions")</p>
+                                                        <p class="admin-analytics-value">@FormatAnalyticsNumber(selectedAnalyticsStory.TotalListenSessions)</p>
+                                                        <div class="admin-analytics-meta">
+                                                            <span>@T("Luister-events", "Listen events")</span>
+                                                            <strong>@FormatAnalyticsNumber(selectedAnalyticsStory.TotalListenEvents)</strong>
+                                                        </div>
+                                                        <div class="admin-analytics-meta">
+                                                            <span>@T("Unieke luisteraars", "Unique listeners")</span>
+                                                            <strong>@FormatAnalyticsNumber(selectedAnalyticsStory.UniqueListeners)</strong>
+                                                        </div>
+                                                        <p class="admin-analytics-footnote">@T("Laaste luister", "Last listen"): @FormatAdminDateTime(selectedAnalyticsStory.LastListenAt)</p>
+                                                    </article>
+                                                    <article class="admin-analytics-card">
+                                                        <p class="admin-analytics-label">@T("Luistertyd", "Listening time")</p>
+                                                        <p class="admin-analytics-value">@FormatAnalyticsDuration(selectedAnalyticsStory.TotalListenedSeconds)</p>
+                                                        <div class="admin-analytics-meta">
+                                                            <span>@T("Gemiddeld per sessie", "Average per session")</span>
+                                                            <strong>@FormatAnalyticsDuration(selectedAnalyticsStory.AverageListenedSecondsPerSession)</strong>
+                                                        </div>
+                                                    </article>
+                                                    <article class="admin-analytics-card">
+                                                        <p class="admin-analytics-label">@T("Gunstelinge", "Favorites")</p>
+                                                        <p class="admin-analytics-value">@FormatAnalyticsNumber(selectedAnalyticsStory.TotalFavorites)</p>
+                                                        <div class="admin-analytics-meta">
+                                                            <span>@T("Unieke mense", "Unique people")</span>
+                                                            <strong>@FormatAnalyticsNumber(selectedAnalyticsStory.UniqueFavoriters)</strong>
+                                                        </div>
+                                                        <p class="admin-analytics-footnote">@T("Laaste gunsteling", "Last favorite"): @FormatAdminDateTime(selectedAnalyticsStory.LastFavoriteAt)</p>
+                                                    </article>
+                                                </div>
+                                            </section>
+                                        }
+
+                                        <MudTable T="AdminAnalyticsStoryDetailRecord"
                                                   Class="admin-grid"
-                                                  Items="Analytics.TopStories"
-                                                  RowsPerPage="10"
+                                                  Items="FilteredAnalyticsStoryDetails"
+                                                  RowsPerPage="25"
                                                   Dense="true"
                                                   Hover="true"
                                                   Bordered="true"
                                                   Elevation="0"
+                                                  OnRowClick="OnAnalyticsStoryRowClick"
                                                   Breakpoint="Breakpoint.Md">
                                             <HeaderContent>
                                                 <MudTh>@T("Titel", "Title")</MudTh>
                                                 <MudTh>@T("Kyke", "Views")</MudTh>
+                                                <MudTh>@T("Kykers", "Viewers")</MudTh>
                                                 <MudTh>@T("Sessies", "Sessions")</MudTh>
+                                                <MudTh>@T("Luister-events", "Listen events")</MudTh>
                                                 <MudTh>@T("Luistertyd", "Listening time")</MudTh>
                                                 <MudTh>@T("Gunstelinge", "Favorites")</MudTh>
                                                 <MudTh>@T("Laaste aktiwiteit", "Last activity")</MudTh>
@@ -1653,11 +1952,12 @@
                                                 <MudTd DataLabel='@T("Titel", "Title")'>
                                                     <div class="admin-analytics-story-cell">
                                                         <strong>@context.Title</strong>
-                                                        <span>@context.StorySlug</span>
                                                     </div>
                                                 </MudTd>
                                                 <MudTd DataLabel='@T("Kyke", "Views")'>@FormatAnalyticsNumber(context.TotalViews)</MudTd>
+                                                <MudTd DataLabel='@T("Kykers", "Viewers")'>@FormatAnalyticsNumber(context.UniqueViewers)</MudTd>
                                                 <MudTd DataLabel='@T("Sessies", "Sessions")'>@FormatAnalyticsNumber(context.TotalListenSessions)</MudTd>
+                                                <MudTd DataLabel='@T("Luister-events", "Listen events")'>@FormatAnalyticsNumber(context.TotalListenEvents)</MudTd>
                                                 <MudTd DataLabel='@T("Luistertyd", "Listening time")'>@FormatAnalyticsDuration(context.TotalListenedSeconds)</MudTd>
                                                 <MudTd DataLabel='@T("Gunstelinge", "Favorites")'>@FormatAnalyticsNumber(context.TotalFavorites)</MudTd>
                                                 <MudTd DataLabel='@T("Laaste aktiwiteit", "Last activity")'>@FormatAdminDateTime(context.LastActivityAt)</MudTd>
@@ -1736,17 +2036,25 @@
                                                       @bind-Value="SubscriberDisableReason"
                                                       Variant="Variant.Outlined"
                                                       Margin="Margin.Dense" />
-                                        <MudButton Variant="Variant.Outlined"
+                                        <MudButton Class="admin-icon-btn admin-action-btn"
+                                                   Variant="Variant.Outlined"
                                                    Color="@(SubscriberEditor.DisabledAt is null ? Color.Warning : Color.Success)"
                                                    Disabled="@IsSavingSubscriberAction"
-                                                   OnClick="ToggleSubscriberDisabledAsync">
-                                            @(SubscriberEditor.DisabledAt is null ? T("Sluit rekening", "Close account") : T("Heraktiveer rekening", "Reactivate account"))
+                                                   OnClick="ToggleSubscriberDisabledAsync"
+                                                   aria-label='@(SubscriberEditor.DisabledAt is null ? T("Sluit rekening", "Close account") : T("Heraktiveer rekening", "Reactivate account"))'
+                                                   title='@(SubscriberEditor.DisabledAt is null ? T("Sluit rekening", "Close account") : T("Heraktiveer rekening", "Reactivate account"))'>
+                                            <i class="fa-solid @(SubscriberEditor.DisabledAt is null ? "fa-user-slash" : "fa-user-check")" aria-hidden="true"></i>
+                                            <span class="admin-btn-text">@(SubscriberEditor.DisabledAt is null ? T("Sluit rekening", "Close account") : T("Heraktiveer rekening", "Reactivate account"))</span>
                                         </MudButton>
-                                        <MudButton Variant="Variant.Outlined"
+                                        <MudButton Class="admin-icon-btn admin-action-btn"
+                                                   Variant="Variant.Outlined"
                                                    Color="Color.Primary"
                                                    Disabled="@IsSavingSubscriberAction"
-                                                   OnClick="SendSubscriberPasswordResetAsync">
-                                            @T("Stuur wagwoordherstel", "Send password reset")
+                                                   OnClick="SendSubscriberPasswordResetAsync"
+                                                   aria-label='@T("Stuur wagwoordherstel", "Send password reset")'
+                                                   title='@T("Stuur wagwoordherstel", "Send password reset")'>
+                                            <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
+                                            <span class="admin-btn-text">@T("Stuur wagwoordherstel", "Send password reset")</span>
                                         </MudButton>
                                     </div>
                                 }
@@ -1782,11 +2090,15 @@
                                                           @bind-Value="SubscriberPaidSubscriptionCancelReason"
                                                           Variant="Variant.Outlined"
                                                           Margin="Margin.Dense" />
-                                            <MudButton Variant="Variant.Outlined"
+                                            <MudButton Class="admin-icon-btn admin-action-btn"
+                                                       Variant="Variant.Outlined"
                                                        Color="Color.Warning"
                                                        Disabled="@IsSavingSubscriberAction"
-                                                       OnClick="CancelSelectedPaidSubscriptionAsync">
-                                                @T("Kanselleer betaalde intekening", "Cancel paid subscription")
+                                                       OnClick="CancelSelectedPaidSubscriptionAsync"
+                                                       aria-label='@T("Kanselleer betaalde intekening", "Cancel paid subscription")'
+                                                       title='@T("Kanselleer betaalde intekening", "Cancel paid subscription")'>
+                                                <i class="fa-solid fa-ban" aria-hidden="true"></i>
+                                                <span class="admin-btn-text">@T("Kanselleer betaalde intekening", "Cancel paid subscription")</span>
                                             </MudButton>
                                         </div>
                                     }
@@ -1815,11 +2127,15 @@
                                                       @bind-Value="ManualAccessReason"
                                                       Variant="Variant.Outlined"
                                                       Margin="Margin.Dense" />
-                                        <MudButton Variant="Variant.Filled"
+                                        <MudButton Class="admin-icon-btn admin-action-btn"
+                                                   Variant="Variant.Filled"
                                                    Color="Color.Primary"
                                                    Disabled="@IsSavingSubscriberAction"
-                                                   OnClick="GrantSubscriberAccessAsync">
-                                            @T("Gee handmatige toegang", "Grant manual access")
+                                                   OnClick="GrantSubscriberAccessAsync"
+                                                   aria-label='@T("Gee handmatige toegang", "Grant manual access")'
+                                                   title='@T("Gee handmatige toegang", "Grant manual access")'>
+                                            <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                                            <span class="admin-btn-text">@T("Gee handmatige toegang", "Grant manual access")</span>
                                         </MudButton>
                                         @if (SubscriberDetail?.Subscriptions.Any(subscription => subscription.IsAdminOverride && string.Equals(subscription.Status, "active", StringComparison.OrdinalIgnoreCase)) == true)
                                         {
@@ -1838,11 +2154,15 @@
                                                           @bind-Value="SubscriberAccessCancelReason"
                                                           Variant="Variant.Outlined"
                                                           Margin="Margin.Dense" />
-                                            <MudButton Variant="Variant.Outlined"
+                                            <MudButton Class="admin-icon-btn admin-action-btn"
+                                                       Variant="Variant.Outlined"
                                                        Color="Color.Warning"
                                                        Disabled="@IsSavingSubscriberAction"
-                                                       OnClick="CancelSelectedSubscriberAccessAsync">
-                                                @T("Kanselleer handmatige toegang", "Cancel manual access")
+                                                       OnClick="CancelSelectedSubscriberAccessAsync"
+                                                       aria-label='@T("Kanselleer handmatige toegang", "Cancel manual access")'
+                                                       title='@T("Kanselleer handmatige toegang", "Cancel manual access")'>
+                                                <i class="fa-solid fa-ban" aria-hidden="true"></i>
+                                                <span class="admin-btn-text">@T("Kanselleer handmatige toegang", "Cancel manual access")</span>
                                             </MudButton>
                                         }
                                     </div>
@@ -1857,11 +2177,15 @@
                                                 "Hierdie intekenaar het 'n mislukte intekening. Stuur 'n herstel-e-pos met die vinnigste Paystack-skakel om kaartbesonderhede by te werk of weer in te teken.",
                                                 "This subscriber has a failed subscription. Send a recovery email with the fastest Paystack link to update card details or resubscribe.")
                                         </p>
-                                        <MudButton Variant="Variant.Filled"
+                                        <MudButton Class="admin-icon-btn admin-action-btn"
+                                                   Variant="Variant.Filled"
                                                    Color="Color.Warning"
                                                    Disabled="@IsSavingSubscriberAction"
-                                                   OnClick="SendSubscriberSubscriptionRecoveryEmailAsync">
-                                            @T("Stuur intekening-herstel", "Send subscription recovery")
+                                                   OnClick="SendSubscriberSubscriptionRecoveryEmailAsync"
+                                                   aria-label='@T("Stuur intekening-herstel", "Send subscription recovery")'
+                                                   title='@T("Stuur intekening-herstel", "Send subscription recovery")'>
+                                            <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
+                                            <span class="admin-btn-text">@T("Stuur intekening-herstel", "Send subscription recovery")</span>
                                         </MudButton>
                                     </div>
                                 }
@@ -1871,11 +2195,15 @@
                                 @RenderSubscriberActivity()
                             </MudTabPanel>
                             <MudTabPanel Text='@T("Herstel", "Recoveries")'>
-                                <MudButton Variant="Variant.Outlined"
+                                <MudButton Class="admin-icon-btn admin-action-btn"
+                                           Variant="Variant.Outlined"
                                            Color="Color.Primary"
                                            Disabled="@IsSavingSubscriberAction"
-                                           OnClick="ResendSubscriberRecoveryEmailAsync">
-                                    @T("Stuur aktiewe herstel-e-pos weer", "Resend active recovery email")
+                                           OnClick="ResendSubscriberRecoveryEmailAsync"
+                                           aria-label='@T("Stuur aktiewe herstel-e-pos weer", "Resend active recovery email")'
+                                           title='@T("Stuur aktiewe herstel-e-pos weer", "Resend active recovery email")'>
+                                    <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
+                                    <span class="admin-btn-text">@T("Stuur aktiewe herstel-e-pos weer", "Resend active recovery email")</span>
                                 </MudButton>
                                 @RenderSubscriberRecoveries()
                             </MudTabPanel>
@@ -1884,17 +2212,24 @@
                 </DialogContent>
                 <DialogActions>
                     <div class="admin-dialog-actions-row">
-                        <MudButton Variant="Variant.Text"
+                        <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                   Variant="Variant.Text"
                                    Color="Color.Default"
-                                   OnClick="CloseSubscriberDialogAsync">
-                            @T("Sluit", "Close")
+                                   OnClick="CloseSubscriberDialogAsync"
+                                   aria-label='@T("Sluit", "Close")'
+                                   title='@T("Sluit", "Close")'>
+                            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                            <span class="admin-btn-text">@T("Sluit", "Close")</span>
                         </MudButton>
-                        <MudButton Variant="Variant.Filled"
+                        <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only admin-btn"
+                                   Variant="Variant.Filled"
                                    Color="Color.Primary"
-                                   Class="admin-btn"
                                    Disabled="@IsSavingSubscriber"
-                                   OnClick="SaveSubscriberAsync">
-                            @(IsSavingSubscriber ? T("Stoor...", "Saving...") : SubscriberEditor.IsNew ? T("Skep intekenaar", "Create subscriber") : T("Stoor intekenaar", "Save subscriber"))
+                                   OnClick="SaveSubscriberAsync"
+                                   aria-label='@(SubscriberEditor.IsNew ? T("Skep intekenaar", "Create subscriber") : T("Stoor intekenaar", "Save subscriber"))'
+                                   title='@(SubscriberEditor.IsNew ? T("Skep intekenaar", "Create subscriber") : T("Stoor intekenaar", "Save subscriber"))'>
+                            <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                            <span class="admin-btn-text">@(IsSavingSubscriber ? T("Stoor...", "Saving...") : SubscriberEditor.IsNew ? T("Skep intekenaar", "Create subscriber") : T("Stoor intekenaar", "Save subscriber"))</span>
                         </MudButton>
                     </div>
                 </DialogActions>
@@ -2008,17 +2343,24 @@
                 </DialogContent>
                 <DialogActions>
                     <div class="admin-dialog-actions-row">
-                        <MudButton Variant="Variant.Text"
+                        <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                   Variant="Variant.Text"
                                    Color="Color.Default"
-                                   OnClick="CloseNewStoryDialogAsync">
-                            @T("Sluit", "Close")
+                                   OnClick="CloseNewStoryDialogAsync"
+                                   aria-label='@T("Sluit", "Close")'
+                                   title='@T("Sluit", "Close")'>
+                            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                            <span class="admin-btn-text">@T("Sluit", "Close")</span>
                         </MudButton>
-                        <MudButton Variant="Variant.Filled"
+                        <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only admin-btn"
+                                   Variant="Variant.Filled"
                                    Color="Color.Primary"
-                                   Class="admin-btn"
                                    Disabled="@IsCreatingStory"
-                                   OnClick="SaveNewStoryAsync">
-                            @(IsCreatingStory ? T("Laai op...", "Uploading...") : T("Skep storie", "Create story"))
+                                   OnClick="SaveNewStoryAsync"
+                                   aria-label='@T("Skep storie", "Create story")'
+                                   title='@T("Skep storie", "Create story")'>
+                            <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                            <span class="admin-btn-text">@(IsCreatingStory ? T("Laai op...", "Uploading...") : T("Skep storie", "Create story"))</span>
                         </MudButton>
                     </div>
                 </DialogActions>
@@ -2236,17 +2578,24 @@
                 </DialogContent>
                 <DialogActions>
                     <div class="admin-dialog-actions-row">
-                        <MudButton Variant="Variant.Text"
+                        <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                   Variant="Variant.Text"
                                    Color="Color.Default"
-                                   OnClick="CloseStoryDialogAsync">
-                            @T("Sluit", "Close")
+                                   OnClick="CloseStoryDialogAsync"
+                                   aria-label='@T("Sluit", "Close")'
+                                   title='@T("Sluit", "Close")'>
+                            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                            <span class="admin-btn-text">@T("Sluit", "Close")</span>
                         </MudButton>
-                        <MudButton Variant="Variant.Filled"
+                        <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only admin-btn"
+                                   Variant="Variant.Filled"
                                    Color="Color.Primary"
-                                   Class="admin-btn"
                                    Disabled="@IsSavingStory"
-                                   OnClick="SaveStoryAsync">
-                            @(IsSavingStory ? T("Stoor...", "Saving...") : T("Stoor storie", "Save story"))
+                                   OnClick="SaveStoryAsync"
+                                   aria-label='@T("Stoor storie", "Save story")'
+                                   title='@T("Stoor storie", "Save story")'>
+                            <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                            <span class="admin-btn-text">@(IsSavingStory ? T("Stoor...", "Saving...") : T("Stoor storie", "Save story"))</span>
                         </MudButton>
                     </div>
                 </DialogActions>
@@ -2457,12 +2806,15 @@
                                         </p>
                                     }
                                 </div>
-                                <MudButton Variant="Variant.Filled"
+                                <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only admin-btn"
+                                           Variant="Variant.Filled"
                                            Color="Color.Primary"
-                                           Class="admin-btn"
                                            Disabled="@IsSavingPlaylist"
-                                           OnClick="SavePlaylistAsync">
-                                    @(IsSavingPlaylist ? T("Stoor...", "Saving...") : T("Stoor playlist", "Save playlist"))
+                                           OnClick="SavePlaylistAsync"
+                                           aria-label='@T("Stoor playlist", "Save playlist")'
+                                           title='@T("Stoor playlist", "Save playlist")'>
+                                    <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                                    <span class="admin-btn-text">@(IsSavingPlaylist ? T("Stoor...", "Saving...") : T("Stoor playlist", "Save playlist"))</span>
                                 </MudButton>
                             </div>
                         </MudTabPanel>
@@ -2573,12 +2925,15 @@
                                         </NoRecordsContent>
                                     </MudTable>
 
-                                    <MudButton Variant="Variant.Filled"
+                                    <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only admin-btn"
+                                               Variant="Variant.Filled"
                                                Color="Color.Primary"
-                                               Class="admin-btn"
                                                Disabled="@IsSavingPlaylistStories"
-                                               OnClick="SavePlaylistStoriesAsync">
-                                        @(IsSavingPlaylistStories ? T("Stoor...", "Saving...") : T("Stoor playlist stories", "Save playlist stories"))
+                                               OnClick="SavePlaylistStoriesAsync"
+                                               aria-label='@T("Stoor playlist stories", "Save playlist stories")'
+                                               title='@T("Stoor playlist stories", "Save playlist stories")'>
+                                        <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                                        <span class="admin-btn-text">@(IsSavingPlaylistStories ? T("Stoor...", "Saving...") : T("Stoor playlist stories", "Save playlist stories"))</span>
                                     </MudButton>
                                 </div>
                             }
@@ -2594,10 +2949,14 @@
                 </DialogContent>
                 <DialogActions>
                     <div class="admin-dialog-actions-row">
-                        <MudButton Variant="Variant.Text"
+                        <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                   Variant="Variant.Text"
                                    Color="Color.Default"
-                                   OnClick="ClosePlaylistDialogAsync">
-                            @T("Sluit", "Close")
+                                   OnClick="ClosePlaylistDialogAsync"
+                                   aria-label='@T("Sluit", "Close")'
+                                   title='@T("Sluit", "Close")'>
+                            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                            <span class="admin-btn-text">@T("Sluit", "Close")</span>
                         </MudButton>
                     </div>
                 </DialogActions>
@@ -2628,6 +2987,18 @@
     private const string SubscriberTrendPeriodDay = "day";
     private const string SubscriberTrendPeriodMonth = "month";
     private const string SubscriberTrendPeriodYear = "year";
+    private const string UsageActivityPeriodToday = "today";
+    private const string UsageActivityPeriodYesterday = "yesterday";
+    private const string UsageActivityPeriodLast7 = "last_7";
+    private const string UsageActivityPeriodLast14 = "last_14";
+    private const string UsageActivityPeriodLast30 = "last_30";
+    private const string StoryStatsQuickDateAll = "all";
+    private const string StoryStatsQuickDateToday = "today";
+    private const string StoryStatsQuickDateYesterday = "yesterday";
+    private const string StoryStatsQuickDateLast7 = "last_7";
+    private const string StoryStatsQuickDateLast30 = "last_30";
+    private const string StoryStatsQuickDateThisMonth = "this_month";
+    private const string StoryStatsQuickDateCustom = "custom";
 
     private bool IsSavingSubscriber { get; set; }
     private bool IsSavingStory { get; set; }
@@ -2703,6 +3074,16 @@
     private AdminSubscriberReportsSnapshot SubscriberReports { get; set; } = AdminSubscriberReportsSnapshot.Empty;
     private bool HasLoadedSubscriberReports { get; set; }
     private string SelectedSubscriberTrendPeriod { get; set; } = SubscriberTrendPeriodDay;
+    private string SelectedRevenueDrilldownPeriod { get; set; } = "today";
+    private string SelectedUsageActivityPeriod { get; set; } = UsageActivityPeriodLast14;
+    private string SelectedAnalyticsStorySlug { get; set; } = string.Empty;
+    private string StoryStatsSearch { get; set; } = string.Empty;
+    private string CharacterStatsSearch { get; set; } = string.Empty;
+    private string SelectedStoryStatsQuickDatePeriod { get; set; } = StoryStatsQuickDateAll;
+    private DateTime? StoryStatsFromDate { get; set; }
+    private DateTime? StoryStatsToDate { get; set; }
+    private string SelectedSubscriberDrilldownPeriod { get; set; } = "today";
+    private string SelectedTierDistributionPeriod { get; set; } = "all_time";
     private AdminSubscriberColumnFilters SubscriberColumnFilters { get; } = new();
     private AdminStoryColumnFilters StoryColumnFilters { get; } = new();
     private AdminPlaylistColumnFilters PlaylistColumnFilters { get; } = new();
@@ -2720,8 +3101,12 @@
     [
         SubscriberAdminView.AllSubscribers
     ];
-    private string[] ActiveMembersPerLevelChartLabels =>
+    private IReadOnlyList<AdminTierDistributionMetric> CurrentTierDistributionMetrics =>
         SubscriberReports.ActiveMembersPerLevel
+            .Where(metric => string.Equals(metric.PeriodKey, SelectedTierDistributionPeriod, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+    private string[] ActiveMembersPerLevelChartLabels =>
+        CurrentTierDistributionMetrics
             .Select(metric => metric.TierName)
             .ToArray();
     private IReadOnlyList<AdminSubscriberTrendMetric> CurrentSubscriberTrendMetrics =>
@@ -2749,16 +3134,65 @@
                     .ToArray()
             }
         ];
+    private IReadOnlyList<AdminAnalyticsDailyActivityPoint> CurrentUsageActivityPoints =>
+        Analytics.DailyActivity
+            .Where(IsUsageActivityPointInSelectedPeriod)
+            .OrderBy(point => point.ActivityDate)
+            .ToArray();
+
+    private string[] UsageActivityChartLabels =>
+        CurrentUsageActivityPoints
+            .Select(point => FormatAnalyticsDay(point.ActivityDate))
+            .ToArray();
+
+    private List<ChartSeries<double>> UsageActivityChartSeries =>
+        [
+            new ChartSeries<double>
+            {
+                Name = T("Kyke", "Views"),
+                Data = CurrentUsageActivityPoints
+                    .Select(point => (double)point.TotalViews)
+                    .ToArray()
+            },
+            new ChartSeries<double>
+            {
+                Name = T("Sessies", "Sessions"),
+                Data = CurrentUsageActivityPoints
+                    .Select(point => (double)point.TotalListenSessions)
+                    .ToArray()
+            },
+            new ChartSeries<double>
+            {
+                Name = T("Luistertyd (min)", "Listening time (min)"),
+                Data = CurrentUsageActivityPoints
+                    .Select(point => decimal.ToDouble(Math.Round(point.TotalListenedSeconds / 60m, 2)))
+                    .ToArray()
+            },
+            new ChartSeries<double>
+            {
+                Name = T("Gunstelinge", "Favorites"),
+                Data = CurrentUsageActivityPoints
+                    .Select(point => (double)point.TotalFavorites)
+                    .ToArray()
+            }
+        ];
     private List<ChartSeries<double>> ActiveMembersPerLevelChartSeries =>
         [
             new ChartSeries<double>
             {
                 Name = T("Aktiewe lede", "Active members"),
-                Data = SubscriberReports.ActiveMembersPerLevel
+                Data = CurrentTierDistributionMetrics
                     .Select(metric => (double)metric.ActiveMembers)
                     .ToArray()
             }
         ];
+
+    private IReadOnlyList<AdminAnalyticsTopCharacterRecord> FilteredAnalyticsCharacters =>
+        Analytics.TopCharacters
+            .Where(DoesAnalyticsCharacterMatchSearch)
+            .OrderByDescending(character => character.TotalAudioPlays)
+            .ThenBy(character => character.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
 
     private MudTable<AdminSubscriberRecord>? SubscribersTable { get; set; }
     private EditableSubscriber? SubscriberEditor { get; set; }
@@ -2789,15 +3223,186 @@
         Analytics.StorySummary.TotalFavorites > 0 ||
         Analytics.CharacterSummary.TotalAudioPlays > 0;
 
+    private IReadOnlyList<AdminAnalyticsStoryDetailRecord> AnalyticsStoryDetails =>
+        BuildAnalyticsStoryDetails();
+
+    private AdminAnalyticsStoryDetailRecord? SelectedAnalyticsStory =>
+        FilteredAnalyticsStoryDetails.FirstOrDefault(story =>
+            string.Equals(story.StorySlug, SelectedAnalyticsStorySlug, StringComparison.OrdinalIgnoreCase)) ??
+        FilteredAnalyticsStoryDetails.FirstOrDefault();
+
+    private IReadOnlyList<AdminAnalyticsStoryDetailRecord> FilteredAnalyticsStoryDetails =>
+        AnalyticsStoryDetails
+            .Where(DoesAnalyticsStoryMatchSearch)
+            .Where(DoesAnalyticsStoryMatchDateFilters)
+            .ToArray();
+
+    private bool HasStoryStatsFilters =>
+        !string.IsNullOrWhiteSpace(StoryStatsSearch) ||
+        StoryStatsFromDate is not null ||
+        StoryStatsToDate is not null;
+
+    private IReadOnlyList<AdminAnalyticsStoryDetailRecord> BuildAnalyticsStoryDetails()
+    {
+        var analyticsBySlug = new Dictionary<string, AdminAnalyticsStoryDetailRecord>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var story in (Analytics.StoryAnalytics ?? []).Where(story => !string.IsNullOrWhiteSpace(story.StorySlug)))
+        {
+            analyticsBySlug[story.StorySlug] = story;
+        }
+
+        foreach (var story in (Analytics.TopStories ?? []).Where(story => !string.IsNullOrWhiteSpace(story.StorySlug)))
+        {
+            analyticsBySlug.TryAdd(story.StorySlug, new AdminAnalyticsStoryDetailRecord(
+                StorySlug: story.StorySlug,
+                Title: story.Title,
+                TotalViews: story.TotalViews,
+                UniqueViewers: story.UniqueViewers,
+                LastViewAt: null,
+                TotalListenEvents: 0,
+                UniqueListeners: 0,
+                TotalListenSessions: story.TotalListenSessions,
+                TotalListenedSeconds: story.TotalListenedSeconds,
+                AverageListenedSecondsPerSession: 0,
+                LastListenAt: null,
+                TotalFavorites: story.TotalFavorites,
+                UniqueFavoriters: 0,
+                LastFavoriteAt: null,
+                LastActivityAt: story.LastActivityAt));
+        }
+
+        if (Stories.Count == 0)
+        {
+            return analyticsBySlug.Values
+                .OrderBy(story => story.Title, StringComparer.CurrentCultureIgnoreCase)
+                .ToArray();
+        }
+
+        var catalogSlugs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var storyDetails = new List<AdminAnalyticsStoryDetailRecord>(Stories.Count + analyticsBySlug.Count);
+
+        foreach (var story in Stories.OrderBy(story => story.Title, StringComparer.CurrentCultureIgnoreCase))
+        {
+            catalogSlugs.Add(story.Slug);
+
+            if (analyticsBySlug.TryGetValue(story.Slug, out var analyticsStory))
+            {
+                storyDetails.Add(analyticsStory with { Title = story.Title });
+                continue;
+            }
+
+            storyDetails.Add(CreateEmptyAnalyticsStoryDetail(story.Slug, story.Title));
+        }
+
+        storyDetails.AddRange(analyticsBySlug.Values
+            .Where(story => !catalogSlugs.Contains(story.StorySlug))
+            .OrderBy(story => story.Title, StringComparer.CurrentCultureIgnoreCase));
+
+        return storyDetails.ToArray();
+    }
+
+    private static AdminAnalyticsStoryDetailRecord CreateEmptyAnalyticsStoryDetail(string storySlug, string title) =>
+        new(
+            StorySlug: storySlug,
+            Title: title,
+            TotalViews: 0,
+            UniqueViewers: 0,
+            LastViewAt: null,
+            TotalListenEvents: 0,
+            UniqueListeners: 0,
+            TotalListenSessions: 0,
+            TotalListenedSeconds: 0,
+            AverageListenedSecondsPerSession: 0,
+            LastListenAt: null,
+            TotalFavorites: 0,
+            UniqueFavoriters: 0,
+            LastFavoriteAt: null,
+            LastActivityAt: null);
+
+    private bool IsUsageActivityPointInSelectedPeriod(AdminAnalyticsDailyActivityPoint point)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        return SelectedUsageActivityPeriod switch
+        {
+            UsageActivityPeriodToday => point.ActivityDate == today,
+            UsageActivityPeriodYesterday => point.ActivityDate == today.AddDays(-1),
+            UsageActivityPeriodLast7 => point.ActivityDate >= today.AddDays(-6) && point.ActivityDate <= today,
+            UsageActivityPeriodLast30 => point.ActivityDate >= today.AddDays(-29) && point.ActivityDate <= today,
+            _ => point.ActivityDate >= today.AddDays(-13) && point.ActivityDate <= today
+        };
+    }
+
+    private bool DoesAnalyticsStoryMatchSearch(AdminAnalyticsStoryDetailRecord story)
+    {
+        if (string.IsNullOrWhiteSpace(StoryStatsSearch))
+        {
+            return true;
+        }
+
+        var search = StoryStatsSearch.Trim();
+        return story.Title.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+            story.StorySlug.Contains(search, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool DoesAnalyticsCharacterMatchSearch(AdminAnalyticsTopCharacterRecord character)
+    {
+        if (string.IsNullOrWhiteSpace(CharacterStatsSearch))
+        {
+            return true;
+        }
+
+        var search = CharacterStatsSearch.Trim();
+        return character.DisplayName.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+            character.CharacterSlug.Contains(search, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool DoesAnalyticsStoryMatchDateFilters(AdminAnalyticsStoryDetailRecord story)
+    {
+        if (StoryStatsFromDate is null && StoryStatsToDate is null)
+        {
+            return true;
+        }
+
+        var activityDate = GetAnalyticsStoryActivityDate(story);
+        if (activityDate is null)
+        {
+            return false;
+        }
+
+        if (StoryStatsFromDate?.Date is DateTime fromDate && activityDate.Value < fromDate)
+        {
+            return false;
+        }
+
+        if (StoryStatsToDate?.Date is DateTime toDate && activityDate.Value > toDate)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static DateTime? GetAnalyticsStoryActivityDate(AdminAnalyticsStoryDetailRecord story) =>
+        (story.LastActivityAt ?? story.LastListenAt ?? story.LastViewAt ?? story.LastFavoriteAt)?.LocalDateTime.Date;
+
     private int ActiveSubscriberAnalyticsTotal =>
-        SubscriberReports.ActiveMembersPerLevel.Sum(metric => metric.ActiveMembers);
+        SubscriberReports.ActiveMembersPerLevel
+            .Where(metric => string.Equals(metric.PeriodKey, "all_time", StringComparison.OrdinalIgnoreCase))
+            .Sum(metric => metric.ActiveMembers);
 
     private IReadOnlyList<AdminMembershipStatsMetric> SubscriberAnalyticsPeriodHighlights =>
         [
             GetSubscriberMetric("today"),
             GetSubscriberMetric("this_month"),
-            GetSubscriberMetric("this_year")
+            GetSubscriberMetric("this_year"),
+            GetSubscriberMetric("all_time")
         ];
+
+    private IReadOnlyList<AdminSubscriberMembershipDetailRecord> FilteredSubscriberMembershipDetails =>
+        SubscriberReports.MembershipDetails
+            .Where(IsSubscriberMembershipDetailInSelectedPeriod)
+            .OrderByDescending(detail => detail.SubscribedAt)
+            .ToArray();
 
     private IReadOnlyList<AdminSalesRevenueMetric> RevenueAnalyticsPeriodHighlights =>
         [
@@ -2806,6 +3411,12 @@
             GetSubscriberSalesMetric("this_year"),
             GetSubscriberSalesMetric("all_time")
         ];
+
+    private IReadOnlyList<AdminSalesRevenueDetailRecord> FilteredRevenueSalesDetails =>
+        SubscriberReports.SalesDetails
+            .Where(IsRevenueDetailInSelectedPeriod)
+            .OrderByDescending(detail => detail.SoldAt)
+            .ToArray();
 
     private bool HasActiveSubscriberColumnFilters => SubscriberColumnFilters.HasActiveFilters;
     private bool HasActiveStoryColumnFilters => StoryColumnFilters.HasActiveFilters;
@@ -3328,11 +3939,13 @@
         try
         {
             Analytics = await analyticsTask;
+            EnsureSelectedAnalyticsStory();
         }
         catch (Exception exception)
         {
             Logger.LogError(exception, "Failed to refresh admin analytics.");
             Analytics = AdminAnalyticsSnapshot.Empty;
+            SelectedAnalyticsStorySlug = string.Empty;
             SetError(T("Kon nie analitika nou laai nie.", "Could not load analytics right now."));
         }
 
@@ -3351,6 +3964,85 @@
 
         IsRefreshingAnalytics = false;
         IsRefreshingSubscriberReports = false;
+    }
+
+    private void OnSelectedAnalyticsStoryChanged(ChangeEventArgs args)
+    {
+        SelectedAnalyticsStorySlug = args.Value?.ToString()?.Trim() ?? string.Empty;
+        EnsureSelectedAnalyticsStory();
+    }
+
+    private void OnStoryStatsFromDateChanged(DateTime? value)
+    {
+        SelectedStoryStatsQuickDatePeriod = StoryStatsQuickDateCustom;
+        StoryStatsFromDate = value?.Date;
+        EnsureSelectedAnalyticsStory();
+    }
+
+    private void OnStoryStatsToDateChanged(DateTime? value)
+    {
+        SelectedStoryStatsQuickDatePeriod = StoryStatsQuickDateCustom;
+        StoryStatsToDate = value?.Date;
+        EnsureSelectedAnalyticsStory();
+    }
+
+    private void OnStoryStatsQuickDateChanged(ChangeEventArgs args)
+    {
+        ApplyStoryStatsQuickDatePeriod(args.Value?.ToString() ?? StoryStatsQuickDateAll);
+        EnsureSelectedAnalyticsStory();
+    }
+
+    private void ApplyStoryStatsQuickDatePeriod(string period)
+    {
+        SelectedStoryStatsQuickDatePeriod = string.IsNullOrWhiteSpace(period)
+            ? StoryStatsQuickDateAll
+            : period;
+
+        var today = DateTime.Today;
+        (StoryStatsFromDate, StoryStatsToDate) = SelectedStoryStatsQuickDatePeriod switch
+        {
+            StoryStatsQuickDateToday => (today, today),
+            StoryStatsQuickDateYesterday => (today.AddDays(-1), today.AddDays(-1)),
+            StoryStatsQuickDateLast7 => (today.AddDays(-6), today),
+            StoryStatsQuickDateLast30 => (today.AddDays(-29), today),
+            StoryStatsQuickDateThisMonth => (new DateTime(today.Year, today.Month, 1), today),
+            StoryStatsQuickDateCustom => (StoryStatsFromDate, StoryStatsToDate),
+            _ => (null, null)
+        };
+    }
+
+    private void ClearStoryStatsFilters()
+    {
+        StoryStatsSearch = string.Empty;
+        SelectedStoryStatsQuickDatePeriod = StoryStatsQuickDateAll;
+        StoryStatsFromDate = null;
+        StoryStatsToDate = null;
+        EnsureSelectedAnalyticsStory();
+    }
+
+    private void OnAnalyticsStoryRowClick(TableRowClickEventArgs<AdminAnalyticsStoryDetailRecord> args)
+    {
+        if (!string.IsNullOrWhiteSpace(args.Item?.StorySlug))
+        {
+            SelectedAnalyticsStorySlug = args.Item.StorySlug;
+        }
+    }
+
+    private void EnsureSelectedAnalyticsStory()
+    {
+        if (FilteredAnalyticsStoryDetails.Count == 0)
+        {
+            SelectedAnalyticsStorySlug = string.Empty;
+            return;
+        }
+
+        if (FilteredAnalyticsStoryDetails.Any(story =>
+                string.Equals(story.StorySlug, SelectedAnalyticsStorySlug, StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        SelectedAnalyticsStorySlug = FilteredAnalyticsStoryDetails[0].StorySlug;
     }
 
     private string GetSubscriberRowClass(AdminSubscriberRecord subscriber, int rowNumber)
@@ -5774,10 +6466,97 @@
             string.Equals(metric.PeriodKey, periodKey, StringComparison.OrdinalIgnoreCase))
         ?? new AdminMembershipStatsMetric(periodKey, 0, 0);
 
+    private void SetSubscriberDrilldownPeriod(string periodKey)
+    {
+        if (!string.IsNullOrWhiteSpace(periodKey))
+        {
+            SelectedSubscriberDrilldownPeriod = periodKey;
+        }
+    }
+
+    private bool IsSelectedSubscriberDrilldownPeriod(string periodKey) =>
+        string.Equals(SelectedSubscriberDrilldownPeriod, periodKey, StringComparison.OrdinalIgnoreCase);
+
+    private string BuildSubscriberDrilldownOptionLabel(AdminMembershipStatsMetric metric) =>
+        T(
+            $"{GetSubscriberPeriodLabel(metric.PeriodKey)} - {FormatAnalyticsNumber(metric.Signups)} nuwe, {FormatAnalyticsNumber(metric.Cancellations)} gekanselleer",
+            $"{GetSubscriberPeriodLabel(metric.PeriodKey)} - {FormatAnalyticsNumber(metric.Signups)} new, {FormatAnalyticsNumber(metric.Cancellations)} cancelled");
+
+    private string BuildSubscriberDrilldownPeriodSummary()
+    {
+        var metric = GetSubscriberMetric(SelectedSubscriberDrilldownPeriod);
+        return T(
+            $"Wys intekenaars vir {GetSubscriberPeriodLabel(SelectedSubscriberDrilldownPeriod)} ({GetCurrentPeriodRangeLabel(SelectedSubscriberDrilldownPeriod)}): {FormatAnalyticsNumber(metric.Signups)} nuwe en {FormatAnalyticsNumber(metric.Cancellations)} gekanselleer.",
+            $"Showing subscribers for {GetSubscriberPeriodLabel(SelectedSubscriberDrilldownPeriod)} ({GetCurrentPeriodRangeLabel(SelectedSubscriberDrilldownPeriod)}): {FormatAnalyticsNumber(metric.Signups)} new and {FormatAnalyticsNumber(metric.Cancellations)} cancelled.");
+    }
+
+    private string GetCurrentPeriodRangeLabel(string periodKey)
+    {
+        var today = DateTime.Now.Date;
+        return periodKey switch
+        {
+            "today" => today.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture),
+            "this_month" => $"{new DateTime(today.Year, today.Month, 1).ToString("yyyy/MM/dd", CultureInfo.InvariantCulture)} - {today.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture)}",
+            "this_year" => $"{new DateTime(today.Year, 1, 1).ToString("yyyy/MM/dd", CultureInfo.InvariantCulture)} - {today.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture)}",
+            "all_time" => T("alle beskikbare data", "all available data"),
+            _ => GetSubscriberPeriodLabel(periodKey)
+        };
+    }
+
+    private bool IsSubscriberMembershipDetailInSelectedPeriod(AdminSubscriberMembershipDetailRecord detail) =>
+        SelectedSubscriberDrilldownPeriod switch
+        {
+            "today" => IsAdminDateInCurrentPeriod(detail.SubscribedAt, "today"),
+            "this_month" => IsAdminDateInCurrentPeriod(detail.SubscribedAt, "this_month"),
+            "this_year" => IsAdminDateInCurrentPeriod(detail.SubscribedAt, "this_year"),
+            _ => true
+        };
+
+    private void SetTierDistributionPeriod(string periodKey)
+    {
+        if (!string.IsNullOrWhiteSpace(periodKey))
+        {
+            SelectedTierDistributionPeriod = periodKey;
+        }
+    }
+
     private AdminSalesRevenueMetric GetSubscriberSalesMetric(string periodKey) =>
         SubscriberReports.SalesAndRevenue.FirstOrDefault(metric =>
             string.Equals(metric.PeriodKey, periodKey, StringComparison.OrdinalIgnoreCase))
         ?? new AdminSalesRevenueMetric(periodKey, 0, 0m);
+
+    private void SetRevenueDrilldownPeriod(string periodKey)
+    {
+        if (!string.IsNullOrWhiteSpace(periodKey))
+        {
+            SelectedRevenueDrilldownPeriod = periodKey;
+        }
+    }
+
+    private bool IsSelectedRevenueDrilldownPeriod(string periodKey) =>
+        string.Equals(SelectedRevenueDrilldownPeriod, periodKey, StringComparison.OrdinalIgnoreCase);
+
+    private bool IsRevenueDetailInSelectedPeriod(AdminSalesRevenueDetailRecord detail) =>
+        SelectedRevenueDrilldownPeriod switch
+        {
+            "today" => IsAdminDateInCurrentPeriod(detail.SoldAt, "today"),
+            "this_month" => IsAdminDateInCurrentPeriod(detail.SoldAt, "this_month"),
+            "this_year" => IsAdminDateInCurrentPeriod(detail.SoldAt, "this_year"),
+            _ => true
+        };
+
+    private static bool IsAdminDateInCurrentPeriod(DateTimeOffset value, string periodKey)
+    {
+        var localDate = value.ToLocalTime().Date;
+        var today = DateTime.Now.Date;
+        return periodKey switch
+        {
+            "today" => localDate == today,
+            "this_month" => localDate >= new DateTime(today.Year, today.Month, 1) && localDate <= today,
+            "this_year" => localDate >= new DateTime(today.Year, 1, 1) && localDate <= today,
+            _ => true
+        };
+    }
 
     private AdminRecoveryMetric GetSubscriberRecoveryMetric(string periodKey) =>
         SubscriberReports.AbandonedCartRecoveries.FirstOrDefault(metric =>

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Globalization;
 using Shink.Mobile.Models;
 using Shink.Mobile.Services;
 
@@ -107,7 +108,8 @@ public sealed class StoryDetailPage : ContentPage
             }
             else if (!string.IsNullOrWhiteSpace(detail.AudioUrl))
             {
-                _content.Children.Add(BuildAudioPlayer(detail.AudioUrl));
+                _ = _apiClient.TrackStoryViewAsync(detail.Story.Slug, detail.Story.Source);
+                _content.Children.Add(BuildAudioPlayer(detail));
             }
 
             if (_sessionState.Current.IsSignedIn)
@@ -165,32 +167,176 @@ public sealed class StoryDetailPage : ContentPage
         }
     }
 
-    private static View BuildAudioPlayer(string audioUrl)
+    private View BuildAudioPlayer(MobileStoryDetailResponse detail)
     {
-        var encoded = WebUtility.HtmlEncode(audioUrl);
+        var encoded = WebUtility.HtmlEncode(detail.AudioUrl ?? string.Empty);
+        var trackingSessionId = Guid.NewGuid();
+        var webView = new WebView
+        {
+            HeightRequest = 120,
+            Source = new HtmlWebViewSource
+            {
+                Html = $$"""
+                <html>
+                <body style="margin:0;padding:16px;font-family:-apple-system;background:#ffffff;">
+                  <audio id="story-audio" controls controlslist="nodownload noplaybackrate" style="width:100%;">
+                    <source src="{{encoded}}" />
+                  </audio>
+                  <script>
+                    (function () {
+                      const audio = document.getElementById("story-audio");
+                      const thresholdSeconds = 12;
+                      const maxDeltaSeconds = 30;
+                      const maxEventSeconds = 600;
+                      const minEventSeconds = 0.2;
+                      let pendingSeconds = 0;
+                      let lastTickAt = null;
+
+                      function captureDelta() {
+                        if (lastTickAt === null) {
+                          return;
+                        }
+
+                        const now = Date.now();
+                        const elapsed = (now - lastTickAt) / 1000;
+                        lastTickAt = now;
+                        if (!Number.isFinite(elapsed) || elapsed <= 0 || elapsed > maxDeltaSeconds) {
+                          return;
+                        }
+
+                        pendingSeconds += elapsed;
+                      }
+
+                      function flush(eventType, force) {
+                        if (!force && pendingSeconds < thresholdSeconds) {
+                          return;
+                        }
+
+                        if (pendingSeconds < minEventSeconds) {
+                          return;
+                        }
+
+                        const listenedSeconds = Math.min(pendingSeconds, maxEventSeconds);
+                        pendingSeconds = 0;
+                        const positionSeconds = Number.isFinite(audio.currentTime) ? audio.currentTime : "";
+                        const durationSeconds = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration : "";
+                        const query = new URLSearchParams({
+                          eventType: eventType,
+                          listenedSeconds: listenedSeconds.toFixed(3),
+                          positionSeconds: positionSeconds === "" ? "" : positionSeconds.toFixed(3),
+                          durationSeconds: durationSeconds === "" ? "" : durationSeconds.toFixed(3),
+                          isCompleted: String(eventType === "ended")
+                        });
+                        window.location.href = "schink-track://listen?" + query.toString();
+                      }
+
+                      audio.addEventListener("play", function () {
+                        lastTickAt = Date.now();
+                      });
+                      audio.addEventListener("pause", function () {
+                        captureDelta();
+                        flush("pause", true);
+                        lastTickAt = null;
+                      });
+                      audio.addEventListener("timeupdate", function () {
+                        if (!audio.paused) {
+                          captureDelta();
+                          flush("progress", false);
+                        }
+                      });
+                      audio.addEventListener("ended", function () {
+                        captureDelta();
+                        flush("ended", true);
+                        lastTickAt = null;
+                      });
+                      document.addEventListener("visibilitychange", function () {
+                        if (document.visibilityState === "hidden") {
+                          captureDelta();
+                          flush("visibilityhidden", true);
+                          lastTickAt = null;
+                        } else if (!audio.paused) {
+                          lastTickAt = Date.now();
+                        }
+                      });
+                    })();
+                  </script>
+                </body>
+                </html>
+                """
+            }
+        };
+
+        webView.Navigating += (_, args) =>
+        {
+            if (!Uri.TryCreate(args.Url, UriKind.Absolute, out var uri) ||
+                !string.Equals(uri.Scheme, "schink-track", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            args.Cancel = true;
+            if (!string.Equals(uri.Host, "listen", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            _ = TrackMobileListenAsync(detail, trackingSessionId, uri);
+        };
+
         return new Border
         {
             BackgroundColor = Colors.White,
             StrokeThickness = 0,
             StrokeShape = new RoundRectangle { CornerRadius = 24 },
             HeightRequest = 140,
-            Content = new WebView
-            {
-                HeightRequest = 120,
-                Source = new HtmlWebViewSource
-                {
-                    Html = $$"""
-                    <html>
-                    <body style="margin:0;padding:16px;font-family:-apple-system;background:#ffffff;">
-                      <audio controls controlslist="nodownload noplaybackrate" style="width:100%;">
-                        <source src="{{encoded}}" />
-                      </audio>
-                    </body>
-                    </html>
-                    """
-                }
-            }
+            Content = webView
         };
+    }
+
+    private Task TrackMobileListenAsync(MobileStoryDetailResponse detail, Guid trackingSessionId, Uri trackingUri)
+    {
+        var query = ParseQuery(trackingUri.Query);
+        var eventType = query.TryGetValue("eventType", out var eventTypeValue) && !string.IsNullOrWhiteSpace(eventTypeValue)
+            ? eventTypeValue
+            : "progress";
+        var listenedSeconds = ParseDecimal(query, "listenedSeconds") ?? 0;
+        var positionSeconds = ParseDecimal(query, "positionSeconds");
+        var durationSeconds = ParseDecimal(query, "durationSeconds");
+        var isCompleted = query.TryGetValue("isCompleted", out var completedValue) &&
+            bool.TryParse(completedValue, out var completed) &&
+            completed;
+
+        return _apiClient.TrackStoryListenAsync(
+            detail.Story.Slug,
+            detail.Story.Source,
+            trackingSessionId,
+            eventType,
+            listenedSeconds,
+            positionSeconds,
+            durationSeconds,
+            isCompleted);
+    }
+
+    private static decimal? ParseDecimal(IReadOnlyDictionary<string, string> query, string key)
+    {
+        return query.TryGetValue(key, out var value) &&
+            decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : null;
+    }
+
+    private static IReadOnlyDictionary<string, string> ParseQuery(string query)
+    {
+        var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var pair in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var separatorIndex = pair.IndexOf('=', StringComparison.Ordinal);
+            var key = separatorIndex >= 0 ? pair[..separatorIndex] : pair;
+            var value = separatorIndex >= 0 ? pair[(separatorIndex + 1)..] : string.Empty;
+            values[Uri.UnescapeDataString(key)] = Uri.UnescapeDataString(value.Replace("+", " ", StringComparison.Ordinal));
+        }
+
+        return values;
     }
 
     private View BuildPreviousNext(MobileStoryDetailResponse detail)

@@ -2094,6 +2094,7 @@ public sealed partial class SupabaseAdminManagementService(
         }
 
         var wordPressSubscriberReportsTask = FetchWordPressSubscriberReportsAsync(baseUri, apiKey, cancellationToken);
+        var subscribersTask = FetchSubscribersAsync(baseUri, apiKey, cancellationToken);
         var subscriptionsTask = FetchSubscriptionsAsync(baseUri, apiKey, cancellationToken);
         var paystackRevenueEventsTask = FetchPaystackRevenueEventsAsync(baseUri, apiKey, cancellationToken);
         var subscriptionTiersTask = FetchSubscriptionTiersAsync(baseUri, apiKey, cancellationToken);
@@ -2105,6 +2106,7 @@ public sealed partial class SupabaseAdminManagementService(
 
         await Task.WhenAll(
             wordPressSubscriberReportsTask,
+            subscribersTask,
             subscriptionsTask,
             paystackRevenueEventsTask,
             subscriptionTiersTask,
@@ -2125,6 +2127,7 @@ public sealed partial class SupabaseAdminManagementService(
 
         return BuildSubscriberReportsSnapshot(
             wordPressSubscriberReports,
+            subscribersTask.Result,
             subscriptionsTask.Result,
             paystackRevenueEventsTask.Result,
             subscriptionTiersTask.Result,
@@ -3613,6 +3616,7 @@ public sealed partial class SupabaseAdminManagementService(
 
     private static AdminSubscriberReportsSnapshot BuildSubscriberReportsSnapshot(
         WordPressSubscriberReportsRpcSnapshot? wordPressSubscriberReports,
+        IReadOnlyList<SubscriberRow> subscribers,
         IReadOnlyList<SubscriptionRow> subscriptions,
         IReadOnlyList<RevenueEventRow> revenueEvents,
         IReadOnlyList<SubscriptionTierRow> subscriptionTiers,
@@ -3634,7 +3638,9 @@ public sealed partial class SupabaseAdminManagementService(
             MembershipStats: BuildMembershipStatsMetrics(subscriptions),
             MembershipTrend: BuildMembershipTrendMetrics(subscriptions),
             ActiveMembersPerLevel: BuildTierDistributionMetrics(wordPressSubscriberReports, subscriptions, tierDetails),
+            MembershipDetails: BuildSubscriberMembershipDetails(subscribers, subscriptions, tierDetails),
             SalesAndRevenue: BuildSalesRevenueMetrics(wordPressSubscriberReports, subscriptions, tierDetails, revenueEvents),
+            SalesDetails: BuildSalesRevenueDetails(subscriptions, tierDetails, revenueEvents),
             AbandonedCartRecoveries: BuildRecoveryMetrics(subscriptions, tierDetails, recoveries, abandonedCartRecoveries),
             VisitsViewsAndLogins: BuildVisitsViewsLoginsMetrics(authSessions, storyViews, storyListenSessions));
     }
@@ -3806,6 +3812,8 @@ public sealed partial class SupabaseAdminManagementService(
         IReadOnlyList<SubscriptionRow> subscriptions,
         IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails)
     {
+        var metrics = new List<AdminTierDistributionMetric>();
+
         if (wordPressSubscriberReports is { HasWordPressData: true })
         {
             var wordPressGrouped = (wordPressSubscriberReports.ActiveMembersPerLevel ?? [])
@@ -3827,28 +3835,54 @@ public sealed partial class SupabaseAdminManagementService(
                 .ToArray();
 
             var wordPressTotalActiveMembers = wordPressGrouped.Sum(item => item.ActiveMembers);
-            if (wordPressTotalActiveMembers <= 0)
+            if (wordPressTotalActiveMembers > 0)
             {
-                return [];
+                metrics.AddRange(wordPressGrouped
+                    .Select(item => new AdminTierDistributionMetric(
+                        "all_time",
+                        item.TierCode,
+                        item.TierName,
+                        item.ActiveMembers,
+                        decimal.Round(item.ActiveMembers * 100m / wordPressTotalActiveMembers, 1, MidpointRounding.AwayFromZero))));
             }
-
-            return wordPressGrouped
-                .Select(item => new AdminTierDistributionMetric(
-                    item.TierCode,
-                    item.TierName,
-                    item.ActiveMembers,
-                    decimal.Round(item.ActiveMembers * 100m / wordPressTotalActiveMembers, 1, MidpointRounding.AwayFromZero)))
-                .ToArray();
+        }
+        else
+        {
+            metrics.AddRange(BuildTierDistributionMetricsForPeriod(
+                "all_time",
+                subscriptions
+                    .Where(subscription => !string.IsNullOrWhiteSpace(subscription.TierCode))
+                    .Where(subscription => IsActiveSubscription(subscription, DateTimeOffset.UtcNow)),
+                tierDetails));
         }
 
-        var nowUtc = DateTimeOffset.UtcNow;
+        metrics.AddRange(BuildTierDistributionMetricsForPeriod(
+            "today",
+            GetFirstSubscriberSignupSubscriptions(subscriptions).Where(subscription => IsInLocalPeriod(subscription.SubscribedAt, SubscriberPeriod.Today)),
+            tierDetails));
+        metrics.AddRange(BuildTierDistributionMetricsForPeriod(
+            "this_month",
+            GetFirstSubscriberSignupSubscriptions(subscriptions).Where(subscription => IsInLocalPeriod(subscription.SubscribedAt, SubscriberPeriod.ThisMonth)),
+            tierDetails));
+        metrics.AddRange(BuildTierDistributionMetricsForPeriod(
+            "this_year",
+            GetFirstSubscriberSignupSubscriptions(subscriptions).Where(subscription => IsInLocalPeriod(subscription.SubscribedAt, SubscriberPeriod.ThisYear)),
+            tierDetails));
+
+        return metrics.ToArray();
+    }
+
+    private static IReadOnlyList<AdminTierDistributionMetric> BuildTierDistributionMetricsForPeriod(
+        string periodKey,
+        IEnumerable<SubscriptionRow> subscriptions,
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails)
+    {
         var grouped = subscriptions
             .Where(subscription => !string.IsNullOrWhiteSpace(subscription.TierCode))
-            .Where(subscription => IsActiveSubscription(subscription, nowUtc))
             .GroupBy(subscription => subscription.TierCode!.Trim(), StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
-                var activeMembers = group.Count();
+                var activeMembers = group.Select(subscription => subscription.SubscriberId).Distinct().Count();
                 var tier = tierDetails.TryGetValue(group.Key, out var detail) ? detail : null;
                 return new
                 {
@@ -3857,6 +3891,7 @@ public sealed partial class SupabaseAdminManagementService(
                     ActiveMembers = activeMembers
                 };
             })
+            .Where(item => item.ActiveMembers > 0)
             .OrderByDescending(item => item.ActiveMembers)
             .ThenBy(item => item.TierName, StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -3869,12 +3904,67 @@ public sealed partial class SupabaseAdminManagementService(
 
         return grouped
             .Select(item => new AdminTierDistributionMetric(
+                periodKey,
                 item.TierCode,
                 item.TierName,
                 item.ActiveMembers,
                 decimal.Round(item.ActiveMembers * 100m / totalActiveMembers, 1, MidpointRounding.AwayFromZero)))
             .ToArray();
     }
+
+    private static IReadOnlyList<AdminSubscriberMembershipDetailRecord> BuildSubscriberMembershipDetails(
+        IReadOnlyList<SubscriberRow> subscribers,
+        IReadOnlyList<SubscriptionRow> subscriptions,
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails)
+    {
+        var subscribersById = subscribers
+            .Where(subscriber => subscriber.SubscriberId != Guid.Empty)
+            .GroupBy(subscriber => subscriber.SubscriberId)
+            .ToDictionary(group => group.Key, group => group.First());
+
+        return GetFirstSubscriberSignupSubscriptions(subscriptions)
+            .Where(subscription => subscription.SubscribedAt is not null)
+            .Select(subscription =>
+            {
+                subscribersById.TryGetValue(subscription.SubscriberId, out var subscriber);
+                var tierCode = NormalizeOptionalText(subscription.TierCode, 80) ?? "-";
+                var tier = tierDetails.TryGetValue(tierCode, out var detail) ? detail : null;
+                var email = NormalizeOptionalText(subscriber?.Email, 254) ?? "-";
+                var displayName = NormalizeOptionalText(subscriber?.DisplayName, 120);
+                if (string.IsNullOrWhiteSpace(displayName))
+                {
+                    displayName = string.Join(" ", new[]
+                    {
+                        NormalizeOptionalText(subscriber?.FirstName, 80),
+                        NormalizeOptionalText(subscriber?.LastName, 80)
+                    }.Where(part => !string.IsNullOrWhiteSpace(part)));
+                }
+
+                return new AdminSubscriberMembershipDetailRecord(
+                    subscription.SubscriberId,
+                    email,
+                    string.IsNullOrWhiteSpace(displayName) ? email : displayName,
+                    tierCode,
+                    NormalizeTierDisplayName(tierCode, tier?.DisplayName),
+                    NormalizeOptionalText(subscription.Provider, 40) ?? "-",
+                    NormalizeOptionalText(subscription.SourceSystem, 40) ?? "-",
+                    NormalizeOptionalText(subscription.Status, 40) ?? "-",
+                    subscription.SubscribedAt!.Value,
+                    subscription.CancelledAt);
+            })
+            .OrderByDescending(detail => detail.SubscribedAt)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<SubscriptionRow> GetFirstSubscriberSignupSubscriptions(IReadOnlyList<SubscriptionRow> subscriptions) =>
+        subscriptions
+            .Where(IsSubscriberCountMetricEligible)
+            .Where(subscription => subscription.SubscribedAt is not null)
+            .GroupBy(subscription => subscription.SubscriberId)
+            .Select(group => group
+                .OrderBy(subscription => subscription.SubscribedAt)
+                .First())
+            .ToArray();
 
     private static IReadOnlyList<AdminSalesRevenueMetric> BuildSalesRevenueMetrics(
         WordPressSubscriberReportsRpcSnapshot? wordPressSubscriberReports,
@@ -3885,6 +3975,39 @@ public sealed partial class SupabaseAdminManagementService(
         _ = wordPressSubscriberReports;
         _ = tierDetails;
 
+        var eligibleSales = BuildEligibleSalesRevenueCandidates(subscriptions, tierDetails, revenueEvents);
+
+        return
+        [
+            BuildSalesRevenueMetric("today", eligibleSales, SubscriberPeriod.Today),
+            BuildSalesRevenueMetric("this_month", eligibleSales, SubscriberPeriod.ThisMonth),
+            BuildSalesRevenueMetric("this_year", eligibleSales, SubscriberPeriod.ThisYear),
+            BuildSalesRevenueMetric("all_time", eligibleSales, SubscriberPeriod.AllTime)
+        ];
+    }
+
+    private static IReadOnlyList<AdminSalesRevenueDetailRecord> BuildSalesRevenueDetails(
+        IReadOnlyList<SubscriptionRow> subscriptions,
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
+        IReadOnlyList<RevenueEventRow> revenueEvents) =>
+        BuildEligibleSalesRevenueCandidates(subscriptions, tierDetails, revenueEvents)
+            .Where(candidate => candidate.SubscribedAt is not null)
+            .OrderByDescending(candidate => candidate.SubscribedAt)
+            .Select(candidate => new AdminSalesRevenueDetailRecord(
+                candidate.SubscribedAt!.Value,
+                decimal.Round(candidate.Price, 2, MidpointRounding.AwayFromZero),
+                candidate.TierCode,
+                candidate.TierName,
+                candidate.Provider,
+                candidate.SourceSystem,
+                candidate.Reference))
+            .ToArray();
+
+    private static IReadOnlyList<SubscriberSaleMetricCandidate> BuildEligibleSalesRevenueCandidates(
+        IReadOnlyList<SubscriptionRow> subscriptions,
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
+        IReadOnlyList<RevenueEventRow> revenueEvents)
+    {
         var paystackRevenueEvents = revenueEvents
             .Where(IsPaystackRevenueEventEligible)
             .Select(BuildRevenueCandidate)
@@ -3896,22 +4019,12 @@ public sealed partial class SupabaseAdminManagementService(
             .Where(date => date is not null)
             .Min();
 
-        var eligibleSales = subscriptions
+        return subscriptions
             .Where(subscription => IsRevenueMetricEligible(subscription, earliestPaystackEventDate))
-            .Select(subscription => new SubscriberSaleMetricCandidate(
-                subscription.SubscribedAt,
-                subscription.BillingAmountZar ?? 0m))
+            .Select(subscription => BuildSubscriptionRevenueCandidate(subscription, tierDetails))
             .Where(metric => metric.Price > 0m)
             .Concat(paystackRevenueEvents)
             .ToArray();
-
-        return
-        [
-            BuildSalesRevenueMetric("today", eligibleSales, SubscriberPeriod.Today),
-            BuildSalesRevenueMetric("this_month", eligibleSales, SubscriberPeriod.ThisMonth),
-            BuildSalesRevenueMetric("this_year", eligibleSales, SubscriberPeriod.ThisYear),
-            BuildSalesRevenueMetric("all_time", eligibleSales, SubscriberPeriod.AllTime)
-        ];
     }
 
     private static IReadOnlyList<AdminRecoveryMetric> BuildRecoveryMetrics(
@@ -4001,7 +4114,45 @@ public sealed partial class SupabaseAdminManagementService(
             ? decimal.Round(amountInCents.Value / 100m, 2, MidpointRounding.AwayFromZero)
             : 0m;
 
-        return new SubscriberSaleMetricCandidate(occurredAt, price);
+        var reference = NormalizeOptionalText(
+                TryReadNestedString(row.Payload, "data", "reference") ??
+                TryReadNestedString(row.Payload, "data", "id") ??
+                TryReadString(row.Payload, "reference"),
+                160) ??
+            "-";
+        var tierCode = NormalizeOptionalText(TryReadNestedString(row.Payload, "data", "plan", "plan_code"), 80) ?? "-";
+        var tierName = NormalizeOptionalText(TryReadNestedString(row.Payload, "data", "plan", "name"), 120) ?? tierCode;
+
+        return new SubscriberSaleMetricCandidate(
+            occurredAt,
+            price,
+            tierCode,
+            tierName,
+            NormalizeOptionalText(row.Provider, 40) ?? "paystack",
+            "paystack_event",
+            reference);
+    }
+
+    private static SubscriberSaleMetricCandidate BuildSubscriptionRevenueCandidate(
+        SubscriptionRow subscription,
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails)
+    {
+        var tierCode = NormalizeOptionalText(subscription.TierCode, 80) ?? "-";
+        var tierName = tierDetails.TryGetValue(tierCode, out var tier)
+            ? NormalizeOptionalText(tier.DisplayName, 120) ?? tierCode
+            : tierCode;
+        var reference = NormalizeOptionalText(subscription.ProviderTransactionId, 160) ??
+                        NormalizeOptionalText(subscription.ProviderPaymentId, 160) ??
+                        subscription.SubscriptionId.ToString("D");
+
+        return new SubscriberSaleMetricCandidate(
+            subscription.SubscribedAt,
+            subscription.BillingAmountZar ?? 0m,
+            tierCode,
+            tierName,
+            NormalizeOptionalText(subscription.Provider, 40) ?? "-",
+            NormalizeOptionalText(subscription.SourceSystem, 40) ?? "-",
+            reference);
     }
 
     private static DateTimeOffset? ResolveRevenueEventOccurredAt(RevenueEventRow row) =>
@@ -5230,7 +5381,12 @@ public sealed partial class SupabaseAdminManagementService(
 
     private sealed record SubscriberSaleMetricCandidate(
         DateTimeOffset? SubscribedAt,
-        decimal Price);
+        decimal Price,
+        string TierCode,
+        string TierName,
+        string Provider,
+        string SourceSystem,
+        string Reference);
 
     private sealed class SubscriptionTierLookupRow
     {

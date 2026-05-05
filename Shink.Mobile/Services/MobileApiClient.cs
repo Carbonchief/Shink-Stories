@@ -148,6 +148,65 @@ public sealed class MobileApiClient
         return result?.IsFavorite ?? false;
     }
 
+    public async Task TrackStoryViewAsync(string slug, string source, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await PostAsync<TrackingResponse>(
+                $"/api/stories/{Uri.EscapeDataString(slug)}/view",
+                new
+                {
+                    storyPath = BuildMobileStoryPath(slug, source),
+                    source,
+                    referrerPath = "/mobile"
+                },
+                cancellationToken);
+        }
+        catch
+        {
+            // Tracking must not block mobile playback or page rendering.
+        }
+    }
+
+    public async Task TrackStoryListenAsync(
+        string slug,
+        string source,
+        Guid sessionId,
+        string eventType,
+        decimal listenedSeconds,
+        decimal? positionSeconds,
+        decimal? durationSeconds,
+        bool isCompleted,
+        CancellationToken cancellationToken = default)
+    {
+        if (listenedSeconds <= 0)
+        {
+            return;
+        }
+
+        try
+        {
+            await PostAsync<TrackingResponse>(
+                $"/api/stories/{Uri.EscapeDataString(slug)}/listen",
+                new
+                {
+                    storyPath = BuildMobileStoryPath(slug, source),
+                    source,
+                    sessionId = sessionId.ToString(),
+                    eventType,
+                    listenedSeconds,
+                    positionSeconds,
+                    durationSeconds,
+                    isCompleted
+                },
+                cancellationToken);
+        }
+        catch
+        {
+            // Tracking must not block mobile playback or page rendering.
+        }
+    }
+
     private async Task<T?> GetAsync<T>(string path, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, BuildUri(path));
@@ -176,6 +235,9 @@ public sealed class MobileApiClient
 
     private Uri BuildUri(string path) => new($"{_settings.BaseUrl.TrimEnd('/')}{path}", UriKind.Absolute);
 
+    private static string BuildMobileStoryPath(string slug, string source) =>
+        $"/mobile/{Uri.EscapeDataString(source)}/{Uri.EscapeDataString(slug)}";
+
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         if (response.IsSuccessStatusCode)
@@ -190,4 +252,5 @@ public sealed class MobileApiClient
     }
 
     private sealed record FavoriteResponse(bool IsFavorite);
+    private sealed record TrackingResponse(bool Tracked);
 }

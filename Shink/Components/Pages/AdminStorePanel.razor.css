@@ -21,9 +21,68 @@
 
 .admin-section-head {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: flex-end;
+    gap: 0.6rem;
+    min-height: 48px;
     width: 100%;
+}
+
+.admin-search {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 0.6rem;
+    justify-content: flex-end;
+    margin-inline-start: auto;
+    width: 100%;
+}
+
+.admin-btn,
+.admin-btn:disabled,
+.admin-btn.admin-btn-secondary {
+    border: 0;
+    border-radius: 999px;
+    padding: 0.72rem 1rem;
+    min-height: 44px;
+    background: #8dc66f;
+    color: #102914;
+    font-weight: 800;
+    cursor: pointer;
+    transition: transform 0.16s ease, filter 0.16s ease;
+}
+
+.admin-btn:hover,
+.admin-btn:focus-visible {
+    transform: translateY(-1px);
+    filter: brightness(1.02);
+}
+
+.admin-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.76;
+    transform: none;
+}
+
+.admin-btn.admin-btn-secondary {
+    background: #2f4f68;
+    color: #f4f8fb;
+}
+
+.admin-icon-btn {
+    width: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.admin-icon-btn i {
+    font-size: 0.95rem;
+    line-height: 1;
 }
 
 .store-admin-actions {
@@ -37,12 +96,14 @@
 
 .store-admin-search {
     flex: 1 1 auto;
-    min-width: 180px;
-    border-radius: 10px;
+    min-width: 200px;
+    min-height: 40px;
+    border-radius: 12px;
     border: 1px solid var(--admin-input-border);
     background: var(--admin-input-bg);
     color: var(--admin-text);
-    padding: 0.58rem 0.72rem;
+    padding: 0.7rem 0.8rem;
+    font: inherit;
 }
 
 .store-admin-icon-btn {
@@ -220,8 +281,23 @@
     border-radius: 999px;
     padding: 0.58rem 0.9rem;
     min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
     font-weight: 700;
     cursor: pointer;
+}
+
+.store-admin-btn.admin-icon-only {
+    width: 40px;
+    min-width: 40px;
+    gap: 0;
+    padding-inline: 0;
+}
+
+.store-admin-btn.admin-icon-only span {
+    display: none;
 }
 
 .store-admin-btn:disabled {

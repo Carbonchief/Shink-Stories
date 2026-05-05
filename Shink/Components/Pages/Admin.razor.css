@@ -490,10 +490,6 @@
     min-width: 560px;
 }
 
-.admin-subscriber-analytics-table {
-    min-width: 420px;
-}
-
 .admin-revenue-analytics-table {
     min-width: 420px;
 }
@@ -600,7 +596,29 @@
     line-height: 1;
 }
 
+.admin-action-btn {
+    width: auto;
+    min-width: 0;
+    gap: 0.5rem;
+    padding-inline: 0.9rem;
+}
+
+.admin-action-btn.admin-icon-only {
+    width: 40px;
+    min-width: 40px;
+    gap: 0;
+    padding-inline: 0;
+}
+
+.admin-action-btn .admin-btn-text {
+    display: inline;
+}
+
 .admin-btn-text {
+    display: none;
+}
+
+.admin-icon-only .admin-btn-text {
     display: none;
 }
 
@@ -1506,6 +1524,25 @@
     gap: 0.75rem;
 }
 
+.admin-usage-summary-grid {
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    align-items: stretch;
+    gap: 0.95rem;
+    margin-bottom: 1rem;
+}
+
+.admin-usage-summary-grid .admin-analytics-card {
+    display: grid;
+    align-content: start;
+    min-height: 180px;
+    height: 100%;
+}
+
+.admin-usage-summary-grid .admin-analytics-footnote {
+    align-self: end;
+    margin-top: auto;
+}
+
 .admin-subscriber-analytics-section,
 .admin-revenue-analytics-section {
     display: grid;
@@ -1518,6 +1555,50 @@
     border-radius: 14px;
     background: var(--admin-surface-soft);
     padding: 0.85rem;
+}
+
+.admin-revenue-drilldown-card {
+    appearance: none;
+    width: 100%;
+    border: 1px solid var(--admin-border);
+    background: var(--admin-surface-soft);
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    text-align: left;
+}
+
+.admin-revenue-drilldown-card.is-selected {
+    border-color: rgba(141, 198, 111, 0.72);
+    box-shadow: 0 0 0 1px rgba(141, 198, 111, 0.28);
+}
+
+.admin-revenue-drilldown {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.admin-revenue-drilldown-title {
+    display: grid;
+    gap: 0.25rem;
+    min-width: min(100%, 320px);
+}
+
+.admin-revenue-drilldown-title p {
+    margin: 0;
+    color: var(--admin-muted);
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.admin-revenue-drilldown-controls {
+    display: grid;
+    gap: 0.35rem;
+    min-width: min(100%, 260px);
+}
+
+.admin-revenue-drilldown-controls .admin-story-stats-filter-summary {
+    display: block;
 }
 
 .admin-analytics-label {
@@ -1561,8 +1642,8 @@
 .admin-analytics-layout {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    align-items: start;
-    gap: 0.75rem;
+    align-items: stretch;
+    gap: 1rem;
 }
 
 .admin-analytics-panel {
@@ -1599,6 +1680,116 @@
     min-width: 150px;
 }
 
+.admin-story-analytics-select {
+    display: block;
+    min-width: 220px;
+    max-width: min(100%, 320px);
+    background-color: var(--admin-input-bg);
+    color: var(--admin-text);
+}
+
+.admin-story-analytics-select option {
+    background: var(--admin-surface);
+    color: var(--admin-text);
+}
+
+.admin-story-stats-filter-summary {
+    color: var(--admin-muted);
+    font-size: 0.9rem;
+    font-weight: 700;
+}
+
+.admin-story-stats-filters {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) minmax(150px, 180px) minmax(150px, 190px) minmax(150px, 190px) auto;
+    align-items: start;
+    gap: 0.65rem;
+}
+
+.admin-story-stats-preset-filter {
+    display: grid;
+    gap: 0.25rem;
+}
+
+.admin-story-stats-preset-select {
+    width: 100%;
+}
+
+.admin-character-stats-filters {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr);
+    gap: 0.65rem;
+}
+
+.admin-character-stats-scroll {
+    max-height: 330px;
+    overflow-y: auto;
+    overflow-x: auto;
+    min-height: 0;
+    padding-right: 0.2rem;
+}
+
+.admin-character-stats-table {
+    min-width: 620px;
+}
+
+.admin-character-stats-table ::deep .mud-table-pagination {
+    display: none;
+}
+
+.admin-usage-activity-chart-shell {
+    border: 1px solid var(--admin-border);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--admin-surface) 72%, transparent);
+    padding: 0.7rem;
+    min-height: 280px;
+}
+
+.admin-story-analytics-drilldown {
+    display: grid;
+    gap: 0.75rem;
+    border: 1px solid var(--admin-border);
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--admin-surface) 72%, transparent);
+    padding: 0.8rem;
+}
+
+.admin-story-analytics-drilldown-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.admin-story-analytics-drilldown-head h4 {
+    margin: 0;
+    color: var(--admin-text);
+    font-size: 1rem;
+}
+
+.admin-story-analytics-drilldown-head p {
+    margin: 0.2rem 0 0;
+    color: var(--admin-text);
+    font-weight: 700;
+}
+
+.admin-story-analytics-drilldown-head span,
+.admin-story-analytics-last span {
+    color: var(--admin-muted);
+    font-size: 0.82rem;
+}
+
+.admin-story-analytics-last {
+    display: grid;
+    gap: 0.15rem;
+    text-align: right;
+}
+
+.admin-story-analytics-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .admin-subscriber-analytics-chart-shell {
     margin-top: 0.35rem;
     border: 1px solid var(--admin-border);
@@ -1622,6 +1813,44 @@
 .admin-subscriber-analytics-cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-content: start;
+}
+
+.admin-subscriber-analytics-cards .admin-revenue-drilldown-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(116px, 0.74fr);
+    align-items: center;
+    gap: 0.8rem;
+    min-height: 88px;
+}
+
+.admin-subscriber-kpi-main {
+    min-width: 0;
+}
+
+.admin-subscriber-kpi-main .admin-analytics-value {
+    margin: 0.35rem 0 0;
+}
+
+.admin-subscriber-kpi-secondary {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+    padding-left: 0.75rem;
+    border-left: 1px solid color-mix(in srgb, var(--admin-border) 76%, transparent);
+}
+
+.admin-subscriber-kpi-secondary span {
+    color: var(--admin-muted);
+    font-size: 0.9rem;
+    line-height: 1.25;
+}
+
+.admin-subscriber-kpi-secondary strong {
+    color: var(--admin-text);
+    font-size: 1rem;
+    line-height: 1;
 }
 
 .admin-activity-list,
@@ -1861,6 +2090,39 @@
         grid-template-columns: 1fr;
     }
 
+    .admin-subscriber-analytics-cards .admin-revenue-drilldown-card {
+        grid-template-columns: 1fr;
+        align-items: start;
+    }
+
+    .admin-subscriber-kpi-secondary {
+        padding-left: 0;
+        padding-top: 0.65rem;
+        border-left: 0;
+        border-top: 1px solid color-mix(in srgb, var(--admin-border) 76%, transparent);
+    }
+
+    .admin-story-analytics-select {
+        width: 100%;
+        max-width: none;
+    }
+
+    .admin-story-stats-filters {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-character-stats-filters {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-story-analytics-last {
+        text-align: left;
+    }
+
+    .admin-story-analytics-grid {
+        grid-template-columns: 1fr;
+    }
+
     .admin-mobile-cta {
         width: 100%;
         min-width: 0;
@@ -1871,6 +2133,17 @@
 
     .admin-mobile-cta .admin-btn-text {
         display: inline;
+    }
+
+    .admin-mobile-cta.admin-icon-only {
+        width: 40px;
+        min-width: 40px;
+        gap: 0;
+        padding-inline: 0;
+    }
+
+    .admin-mobile-cta.admin-icon-only .admin-btn-text {
+        display: none;
     }
 
     .admin-grid ::deep .mud-sm-table .mud-table-cell {

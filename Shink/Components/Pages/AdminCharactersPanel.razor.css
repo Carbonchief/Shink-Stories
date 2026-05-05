@@ -361,11 +361,14 @@
 .characters-admin-list-preview {
     width: 56px;
     height: 56px;
-    object-fit: cover;
+    aspect-ratio: 1 / 1;
+    object-fit: contain;
+    object-position: center;
     border-radius: 12px;
     border: 1px solid var(--admin-border);
     background: #0f1821;
     justify-self: end;
+    display: block;
 }
 
 .characters-admin-grid-item {
@@ -395,16 +398,21 @@
 
 .characters-admin-grid-thumb-wrap {
     position: relative;
-    display: block;
+    display: grid;
+    place-items: center;
+    aspect-ratio: 1 / 1;
+    overflow: hidden;
+    border-radius: 12px;
+    border: 1px solid var(--admin-border);
+    background: #0f1821;
 }
 
 .characters-admin-grid-thumb {
     width: 100%;
-    aspect-ratio: 1 / 1;
-    object-fit: cover;
-    border-radius: 12px;
-    border: 1px solid var(--admin-border);
-    background: #0f1821;
+    height: 100%;
+    object-fit: contain;
+    object-position: center;
+    display: block;
 }
 
 .characters-admin-grid-badge {
@@ -656,15 +664,21 @@
 
 .characters-admin-image-preview {
     position: relative;
+    display: grid;
+    place-items: center;
+    aspect-ratio: 1 / 1;
+    overflow: hidden;
+    border-radius: 16px;
+    border: 1px solid var(--admin-border);
+    background: #0f1821;
 }
 
 .characters-admin-image-panel img {
     width: 100%;
-    aspect-ratio: 1 / 1;
-    object-fit: cover;
-    border-radius: 16px;
-    border: 1px solid var(--admin-border);
-    background: #0f1821;
+    height: 100%;
+    object-fit: contain;
+    object-position: center;
+    display: block;
 }
 
 .characters-admin-image-remove {

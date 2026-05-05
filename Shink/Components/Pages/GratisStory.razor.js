@@ -798,6 +798,55 @@ function buildStoryTrackingState(audioElement) {
     };
 }
 
+function trackingStateMatchesAudio(trackingState, audioElement) {
+    if (!trackingState) {
+        return false;
+    }
+
+    const slug = (audioElement.dataset.storySlug || "").trim().toLowerCase();
+    const storyPath = window.location.pathname || "/";
+    return trackingState.slug === slug &&
+        trackingState.storyPath === storyPath &&
+        trackingState.source === resolveStorySource(storyPath);
+}
+
+function getStoryTrackingState(audioElement) {
+    const trackingState = storyTrackingStateCache.get(audioElement);
+    return trackingStateMatchesAudio(trackingState, audioElement)
+        ? trackingState
+        : null;
+}
+
+function refreshStoryTrackingState(audioElement, shouldTrackView) {
+    const currentState = storyTrackingStateCache.get(audioElement);
+    if (trackingStateMatchesAudio(currentState, audioElement)) {
+        return currentState;
+    }
+
+    if (currentState) {
+        captureListenDelta(currentState);
+        flushStoryListen(audioElement, currentState, "pause", true, false);
+        stopListenTimer(currentState);
+    }
+
+    const nextState = buildStoryTrackingState(audioElement);
+    if (!nextState) {
+        storyTrackingStateCache.delete(audioElement);
+        return null;
+    }
+
+    storyTrackingStateCache.set(audioElement, nextState);
+    if (shouldTrackView) {
+        trackStoryView(nextState);
+    }
+
+    if (!audioElement.paused) {
+        startListenTimer(nextState);
+    }
+
+    return nextState;
+}
+
 async function postStoryTracking(slug, endpointSuffix, payload, useKeepalive) {
     try {
         const response = await fetch(`${STORY_TRACKING_ENDPOINT_PREFIX}${encodeURIComponent(slug)}/${endpointSuffix}`, {
@@ -1094,6 +1143,7 @@ function bindAudioEvents(audioElement, dotNetRef) {
     if (boundAudios.has(audioElement)) {
         if (declaredSource && declaredSource !== lastDeclaredSource) {
             lastBoundAudioSource.set(audioElement, declaredSource);
+            refreshStoryTrackingState(audioElement, true);
             const shouldAutoplay = shouldAutoplayOnSourceChange(audioElement);
             if (shouldAutoplay) {
                 queueAutoplayAfterSourceChange(audioElement);
@@ -1106,6 +1156,9 @@ function bindAudioEvents(audioElement, dotNetRef) {
             }
         } else if (!declaredSource && lastDeclaredSource) {
             lastBoundAudioSource.set(audioElement, "");
+            refreshStoryTrackingState(audioElement, false);
+        } else {
+            refreshStoryTrackingState(audioElement, true);
         }
 
         updateMediaMetadata(audioElement);
@@ -1124,11 +1177,7 @@ function bindAudioEvents(audioElement, dotNetRef) {
 
     const customPlayerElements = getCustomPlayerElements(audioElement);
     const playerCapabilities = detectPlayerCapabilities(audioElement);
-    const trackingState = buildStoryTrackingState(audioElement);
-    if (trackingState) {
-        storyTrackingStateCache.set(audioElement, trackingState);
-        trackStoryView(trackingState);
-    }
+    refreshStoryTrackingState(audioElement, true);
 
     if (customPlayerElements?.container instanceof HTMLElement) {
         customPlayerElements.container.classList.add("story-player-enhanced");
@@ -1384,6 +1433,7 @@ function bindAudioEvents(audioElement, dotNetRef) {
         updateAll();
     });
     audioElement.addEventListener("play", () => {
+        const trackingState = getStoryTrackingState(audioElement) ?? refreshStoryTrackingState(audioElement, true);
         if (trackingState) {
             trackStoryView(trackingState);
             startListenTimer(trackingState);
@@ -1392,6 +1442,7 @@ function bindAudioEvents(audioElement, dotNetRef) {
         updateAll();
     });
     audioElement.addEventListener("pause", () => {
+        const trackingState = getStoryTrackingState(audioElement);
         if (trackingState) {
             captureListenDelta(trackingState);
             flushStoryListen(audioElement, trackingState, "pause", true, false);
@@ -1402,6 +1453,7 @@ function bindAudioEvents(audioElement, dotNetRef) {
         saveStoryProgress(audioElement);
     });
     audioElement.addEventListener("timeupdate", () => {
+        const trackingState = getStoryTrackingState(audioElement);
         if (trackingState && !audioElement.paused) {
             captureListenDelta(trackingState);
             flushStoryListen(audioElement, trackingState, "progress", false, false);
@@ -1421,6 +1473,7 @@ function bindAudioEvents(audioElement, dotNetRef) {
         saveStoryProgress(audioElement);
     });
     audioElement.addEventListener("ended", () => {
+        const trackingState = getStoryTrackingState(audioElement);
         if (trackingState) {
             captureListenDelta(trackingState);
             flushStoryListen(audioElement, trackingState, "ended", true, false);
@@ -1449,6 +1502,7 @@ function bindAudioEvents(audioElement, dotNetRef) {
 
     document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "hidden") {
+            const trackingState = getStoryTrackingState(audioElement);
             if (trackingState) {
                 captureListenDelta(trackingState);
                 flushStoryListen(audioElement, trackingState, "visibilityhidden", true, true);
@@ -1460,12 +1514,14 @@ function bindAudioEvents(audioElement, dotNetRef) {
             return;
         }
 
+        const trackingState = getStoryTrackingState(audioElement);
         if (trackingState && !audioElement.paused) {
             startListenTimer(trackingState);
         }
     });
 
     window.addEventListener("pagehide", () => {
+        const trackingState = getStoryTrackingState(audioElement);
         if (trackingState) {
             captureListenDelta(trackingState);
             flushStoryListen(audioElement, trackingState, "pagehide", true, true);

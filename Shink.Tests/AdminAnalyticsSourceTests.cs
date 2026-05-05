@@ -14,6 +14,7 @@ public class AdminAnalyticsSourceTests
     public void AnalyticsTabShowsSubscriberAnalyticsAndLoadsSubscriberReports()
     {
         var admin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
+        var service = File.ReadAllText(GetRepoPath("Shink", "Services", "IAdminManagementService.cs"));
 
         StringAssert.Contains(admin, "admin-subscriber-analytics-section");
         StringAssert.Contains(admin, "SubscriberReports.MembershipStats");
@@ -30,6 +31,24 @@ public class AdminAnalyticsSourceTests
         StringAssert.Contains(admin, "SubscriberAdminView.AllSubscribers");
         StringAssert.Contains(admin, "admin-subscriber-analytics-summary-layout");
         StringAssert.Contains(admin, "admin-subscriber-analytics-cards");
+        StringAssert.Contains(admin, "SelectedSubscriberDrilldownPeriod");
+        StringAssert.Contains(admin, "FilteredSubscriberMembershipDetails");
+        StringAssert.Contains(admin, "IsSubscriberMembershipDetailInSelectedPeriod");
+        StringAssert.Contains(admin, "SetSubscriberDrilldownPeriod");
+        StringAssert.Contains(admin, "Items=\"FilteredSubscriberMembershipDetails\"");
+        StringAssert.Contains(admin, "@T(\"Intekenaar detail\", \"Subscriber detail\")");
+        StringAssert.Contains(admin, "id=\"subscriber-detail-period\"");
+        StringAssert.Contains(admin, "BuildSubscriberDrilldownPeriodSummary()");
+        StringAssert.Contains(admin, "BuildSubscriberDrilldownOptionLabel(metric)");
+        StringAssert.Contains(admin, "SelectedTierDistributionPeriod");
+        StringAssert.Contains(admin, "CurrentTierDistributionMetrics");
+        StringAssert.Contains(admin, "SetTierDistributionPeriod");
+        StringAssert.Contains(admin, "ChartSeries=\"ActiveMembersPerLevelChartSeries\"");
+        Assert.IsFalse(admin.Contains("admin-subscriber-analytics-table", StringComparison.Ordinal));
+        StringAssert.Contains(service, "AdminSubscriberMembershipDetailRecord");
+        StringAssert.Contains(service, "MembershipDetails");
+        StringAssert.Contains(service, "AdminTierDistributionMetric");
+        StringAssert.Contains(service, "PeriodKey");
 
         var subscriberViewsStart = admin.IndexOf("private IReadOnlyList<SubscriberAdminView> SubscriberViews", StringComparison.Ordinal);
         Assert.AreNotEqual(-1, subscriberViewsStart);
@@ -43,15 +62,87 @@ public class AdminAnalyticsSourceTests
     public void AnalyticsTabShowsRevenueAnalytics()
     {
         var admin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
+        var service = File.ReadAllText(GetRepoPath("Shink", "Services", "IAdminManagementService.cs"));
 
         StringAssert.Contains(admin, "admin-revenue-analytics-section");
         StringAssert.Contains(admin, "GetSubscriberSalesMetric(\"today\")");
         StringAssert.Contains(admin, "GetSubscriberSalesMetric(\"this_month\")");
         StringAssert.Contains(admin, "GetSubscriberSalesMetric(\"this_year\")");
         StringAssert.Contains(admin, "GetSubscriberSalesMetric(\"all_time\")");
+        StringAssert.Contains(admin, "SelectedRevenueDrilldownPeriod");
+        StringAssert.Contains(admin, "FilteredRevenueSalesDetails");
+        StringAssert.Contains(admin, "IsRevenueDetailInSelectedPeriod");
+        StringAssert.Contains(admin, "SetRevenueDrilldownPeriod");
+        StringAssert.Contains(admin, "Items=\"FilteredRevenueSalesDetails\"");
+        StringAssert.Contains(admin, "@T(\"Verkope detail\", \"Sales detail\")");
         StringAssert.Contains(admin, "RevenueZar");
         StringAssert.Contains(admin, "SalesCount");
         StringAssert.Contains(admin, "RecoveredRevenueZar");
+        StringAssert.Contains(service, "AdminSalesRevenueDetailRecord");
+        StringAssert.Contains(service, "SalesDetails");
+    }
+
+    [TestMethod]
+    public void UsageAnalyticsTabShowsStoryDrilldown()
+    {
+        var admin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
+        var service = File.ReadAllText(GetRepoPath("Shink", "Services", "IAdminManagementService.cs"));
+        var migration = File.ReadAllText(GetRepoPath("Shink", "Database", "migrations", "20260505_admin_story_analytics_drilldown.sql"));
+
+        StringAssert.Contains(admin, "SelectedAnalyticsStorySlug");
+        StringAssert.Contains(admin, "SelectedAnalyticsStory");
+        StringAssert.Contains(admin, "@T(\"Storie statistieke\", \"Story stats\")");
+        StringAssert.Contains(admin, "@T(\"Storie detail\", \"Story detail\")");
+        StringAssert.Contains(admin, "StoryStatsSearch");
+        StringAssert.Contains(admin, "SelectedStoryStatsQuickDatePeriod");
+        StringAssert.Contains(admin, "id=\"story-stats-quick-date\"");
+        StringAssert.Contains(admin, "OnStoryStatsQuickDateChanged");
+        StringAssert.Contains(admin, "ApplyStoryStatsQuickDatePeriod");
+        StringAssert.Contains(admin, "StoryStatsQuickDateLast7");
+        StringAssert.Contains(admin, "StoryStatsQuickDateLast30");
+        StringAssert.Contains(admin, "StoryStatsFromDate");
+        StringAssert.Contains(admin, "StoryStatsToDate");
+        StringAssert.Contains(admin, "FilteredAnalyticsStoryDetails");
+        StringAssert.Contains(admin, "DoesAnalyticsStoryMatchDateFilters");
+        StringAssert.Contains(admin, "Immediate=\"true\"");
+        StringAssert.Contains(admin, "Items=\"FilteredAnalyticsStoryDetails\"");
+        Assert.IsFalse(admin.Contains("Items=\"Analytics.TopStories\"", StringComparison.Ordinal));
+        StringAssert.Contains(admin, "SelectedUsageActivityPeriod");
+        StringAssert.Contains(admin, "UsageActivityPeriodToday");
+        StringAssert.Contains(admin, "UsageActivityPeriodYesterday");
+        StringAssert.Contains(admin, "UsageActivityPeriodLast7");
+        StringAssert.Contains(admin, "UsageActivityPeriodLast30");
+        StringAssert.Contains(admin, "UsageActivityChartSeries");
+        StringAssert.Contains(admin, "UsageActivityChartLabels");
+        StringAssert.Contains(admin, "ChartType=\"ChartType.Line\"");
+        StringAssert.Contains(admin, "@T(\"Gebruik oor tyd\", \"Usage over time\")");
+        StringAssert.Contains(admin, "@T(\"Karakter statistieke\", \"Character stats\")");
+        StringAssert.Contains(admin, "CharacterStatsSearch");
+        StringAssert.Contains(admin, "FilteredAnalyticsCharacters");
+        StringAssert.Contains(admin, "Items=\"FilteredAnalyticsCharacters\"");
+        StringAssert.Contains(admin, "admin-character-stats-scroll");
+        StringAssert.Contains(admin, "admin-character-stats-table");
+        Assert.IsFalse(admin.Contains("RowsPerPage=\"10\"", StringComparison.Ordinal));
+        StringAssert.Contains(admin, "Immediate=\"true\"");
+        Assert.IsFalse(admin.Contains("@T(\"Top karakters\", \"Top characters\")", StringComparison.Ordinal));
+        StringAssert.Contains(admin, "Analytics.StoryAnalytics");
+        StringAssert.Contains(admin, "BuildAnalyticsStoryDetails");
+        StringAssert.Contains(admin, "(Analytics.TopStories ?? []).Where");
+        StringAssert.Contains(admin, "Stories.OrderBy(story => story.Title,");
+        StringAssert.Contains(admin, "CreateEmptyAnalyticsStoryDetail");
+
+        StringAssert.Contains(service, "AdminAnalyticsStoryDetailRecord");
+        StringAssert.Contains(service, "StoryAnalytics");
+        StringAssert.Contains(service, "average_listened_seconds_per_session");
+        StringAssert.Contains(service, "last_listen_at");
+
+        StringAssert.Contains(migration, "'story_analytics'");
+        StringAssert.Contains(migration, "story_analytics as (");
+        StringAssert.Contains(migration, "'unique_listeners'");
+        StringAssert.Contains(migration, "interval '29 days'");
+        StringAssert.Contains(migration, "character_play_stats as (");
+        StringAssert.Contains(migration, "from public.story_characters as c");
+        Assert.IsFalse(migration.Contains("limit 5", StringComparison.OrdinalIgnoreCase));
     }
 
     [TestMethod]
@@ -64,8 +155,14 @@ public class AdminAnalyticsSourceTests
         StringAssert.Contains(css, ".admin-analytics-panel");
         StringAssert.Contains(css, "align-content: start;");
         StringAssert.Contains(css, ".admin-analytics-tabs");
+        StringAssert.Contains(css, ".admin-usage-summary-grid");
+        StringAssert.Contains(css, "align-items: stretch;");
+        StringAssert.Contains(css, "margin-bottom: 1rem;");
         StringAssert.Contains(css, ".admin-subscriber-analytics-summary-layout");
         StringAssert.Contains(css, ".admin-subscriber-analytics-cards");
+        StringAssert.Contains(css, ".admin-subscriber-kpi-main");
+        StringAssert.Contains(css, ".admin-subscriber-kpi-secondary");
+        StringAssert.Contains(css, "grid-template-columns: minmax(0, 1fr) minmax(116px, 0.74fr);");
     }
 
     [TestMethod]
