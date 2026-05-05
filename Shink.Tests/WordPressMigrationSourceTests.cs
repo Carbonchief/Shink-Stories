@@ -27,6 +27,19 @@ public class WordPressMigrationSourceTests
         StringAssert.Contains(source, "period.EndDate.Value <= now");
     }
 
+    [TestMethod]
+    public void NativePaystackSubscriptionsSuppressDuplicateImportedEntitlements()
+    {
+        var sourcePath = FindRepositoryFile("Shink", "Services", "WordPressMigrationService.cs");
+        var source = File.ReadAllText(sourcePath);
+
+        StringAssert.Contains(source, "FilterNativeSubscriptionDuplicatesAsync");
+        StringAssert.Contains(source, "source_system=eq.shink_app&status=eq.active");
+        StringAssert.Contains(source, "provider_transaction_id");
+        StringAssert.Contains(source, "provider_email_token");
+        StringAssert.Contains(source, "BuildSubscriptionMatchKeys");
+    }
+
     private static string FindRepositoryFile(params string[] pathParts)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

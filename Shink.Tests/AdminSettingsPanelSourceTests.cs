@@ -34,6 +34,15 @@ public class AdminSettingsPanelSourceTests
         StringAssert.Contains(markup, "await LoadAsync(effectiveAdminEmail);");
     }
 
+    [TestMethod]
+    public void AdminPagePassesLiveSettingsPanelParameters()
+    {
+        var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
+
+        StringAssert.Contains(markup, "<AdminSettingsPanel AdminEmail=\"@CurrentAdminEmail\" LanguageCode=\"@CurrentLanguageCode\" />");
+        Assert.IsFalse(markup.Contains("<AdminSettingsPanel AdminEmail=\"CurrentAdminEmail\" LanguageCode=\"CurrentLanguageCode\" />", StringComparison.Ordinal));
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var parts = new[]

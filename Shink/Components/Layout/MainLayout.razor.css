@@ -1444,6 +1444,12 @@
     color: #55606e;
     font-size: 0.84rem;
     line-height: 1.38;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    text-overflow: ellipsis;
 }
 
 .notification-list ::deep .notification-item-date {

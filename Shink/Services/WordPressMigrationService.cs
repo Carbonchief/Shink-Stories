@@ -168,6 +168,11 @@ public sealed partial class WordPressMigrationService(
 
             var activeEntitlements = BuildCurrentEntitlements(wordPressUsers, membershipPeriods, membershipOrders, subscriptions, discountCodeAccessKeys);
             activeEntitlements = await EnrichPaystackEntitlementsAsync(activeEntitlements, cancellationToken);
+            activeEntitlements = await FilterNativeSubscriptionDuplicatesAsync(
+                baseUri,
+                activeEntitlements,
+                subscriberIdsByEmail,
+                cancellationToken);
             var upsertedCurrentEntitlements = await UpsertCurrentEntitlementsAsync(
                 baseUri,
                 activeEntitlements,
@@ -251,6 +256,14 @@ public sealed partial class WordPressMigrationService(
 
         var currentEntitlements = await FetchImportedCurrentEntitlementsAsync(baseUri, importedUser.Email, cancellationToken);
         currentEntitlements = await EnrichPaystackEntitlementsAsync(currentEntitlements, cancellationToken);
+        currentEntitlements = await FilterNativeSubscriptionDuplicatesAsync(
+            baseUri,
+            currentEntitlements,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                [importedUser.Email] = subscriberId
+            },
+            cancellationToken);
         await UpsertCurrentEntitlementsAsync(
             baseUri,
             currentEntitlements.Select(entitlement => entitlement with { Email = importedUser.Email }).ToList(),
@@ -1062,6 +1075,133 @@ public sealed partial class WordPressMigrationService(
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         return await JsonSerializer.DeserializeAsync<List<ImportedSubscriptionLookupRow>>(stream, cancellationToken: cancellationToken) ?? [];
+    }
+
+    private async Task<List<CurrentEntitlement>> FilterNativeSubscriptionDuplicatesAsync(
+        Uri baseUri,
+        IReadOnlyList<CurrentEntitlement> entitlements,
+        IReadOnlyDictionary<string, string> subscriberIdsByEmail,
+        CancellationToken cancellationToken)
+    {
+        if (entitlements.Count == 0 || subscriberIdsByEmail.Count == 0)
+        {
+            return entitlements.ToList();
+        }
+
+        var subscriberIds = subscriberIdsByEmail.Values
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (subscriberIds.Length == 0)
+        {
+            return entitlements.ToList();
+        }
+
+        var nativeSubscriptionsBySubscriberId = await FetchActiveNativeSubscriptionsBySubscriberIdAsync(
+            baseUri,
+            subscriberIds,
+            cancellationToken);
+        if (nativeSubscriptionsBySubscriberId.Count == 0)
+        {
+            return entitlements.ToList();
+        }
+
+        var filtered = entitlements
+            .Where(entitlement =>
+            {
+                if (!subscriberIdsByEmail.TryGetValue(entitlement.Email, out var subscriberId) ||
+                    string.IsNullOrWhiteSpace(subscriberId))
+                {
+                    return true;
+                }
+
+                return !nativeSubscriptionsBySubscriberId.TryGetValue(subscriberId, out var nativeSubscriptions) ||
+                       !HasMatchingNativeSubscription(entitlement, nativeSubscriptions);
+            })
+            .ToList();
+
+        var suppressedCount = entitlements.Count - filtered.Count;
+        if (suppressedCount > 0)
+        {
+            _logger.LogInformation(
+                "Suppressed {Count} imported WordPress entitlements because matching native subscriptions already exist.",
+                suppressedCount);
+        }
+
+        return filtered;
+    }
+
+    private async Task<Dictionary<string, List<NativeSubscriptionLookupRow>>> FetchActiveNativeSubscriptionsBySubscriberIdAsync(
+        Uri baseUri,
+        IReadOnlyList<string> subscriberIds,
+        CancellationToken cancellationToken)
+    {
+        var normalizedSubscriberIds = subscriberIds
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (normalizedSubscriberIds.Length == 0)
+        {
+            return new Dictionary<string, List<NativeSubscriptionLookupRow>>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var inClause = string.Join(',', normalizedSubscriberIds.Select(value => $"\"{value.Replace("\"", "\\\"")}\""));
+        var uri = new Uri(
+            baseUri,
+            $"rest/v1/subscriptions?select=subscriber_id,tier_code,provider,provider_payment_id,provider_transaction_id,provider_token,provider_email_token&subscriber_id=in.({inClause})&source_system=eq.shink_app&status=eq.active&limit=5000");
+        using var request = CreateSupabaseRequest(HttpMethod.Get, uri);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Native subscription lookup for WordPress entitlement filtering failed. Status={StatusCode} Body={Body}",
+                (int)response.StatusCode,
+                body);
+            return new Dictionary<string, List<NativeSubscriptionLookupRow>>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var rows = await JsonSerializer.DeserializeAsync<List<NativeSubscriptionLookupRow>>(stream, cancellationToken: cancellationToken) ?? [];
+        return rows
+            .Where(row => !string.IsNullOrWhiteSpace(row.SubscriberId))
+            .GroupBy(row => row.SubscriberId!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static bool HasMatchingNativeSubscription(
+        CurrentEntitlement entitlement,
+        IReadOnlyList<NativeSubscriptionLookupRow> nativeSubscriptions)
+    {
+        if (nativeSubscriptions.Count == 0)
+        {
+            return false;
+        }
+
+        return nativeSubscriptions.Any(nativeSubscription =>
+            string.Equals(nativeSubscription.TierCode, entitlement.TierCode, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(nativeSubscription.Provider, entitlement.Provider, StringComparison.OrdinalIgnoreCase) &&
+            BuildSubscriptionMatchKeys(entitlement.ProviderPaymentId, entitlement.ProviderTransactionId, entitlement.ProviderToken)
+                .Overlaps(BuildSubscriptionMatchKeys(
+                    nativeSubscription.ProviderPaymentId,
+                    nativeSubscription.ProviderTransactionId,
+                    nativeSubscription.ProviderToken,
+                    nativeSubscription.ProviderEmailToken)));
+    }
+
+    private static HashSet<string> BuildSubscriptionMatchKeys(params string?[] values)
+    {
+        var keys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var value in values)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                keys.Add(value.Trim());
+            }
+        }
+
+        return keys;
     }
 
     private async Task<List<CurrentEntitlement>> FetchImportedCurrentEntitlementsAsync(
@@ -2240,6 +2380,30 @@ public sealed partial class WordPressMigrationService(
 
         [JsonPropertyName("provider_payment_id")]
         public string? ProviderPaymentId { get; set; }
+    }
+
+    private sealed class NativeSubscriptionLookupRow
+    {
+        [JsonPropertyName("subscriber_id")]
+        public string? SubscriberId { get; set; }
+
+        [JsonPropertyName("tier_code")]
+        public string? TierCode { get; set; }
+
+        [JsonPropertyName("provider")]
+        public string? Provider { get; set; }
+
+        [JsonPropertyName("provider_payment_id")]
+        public string? ProviderPaymentId { get; set; }
+
+        [JsonPropertyName("provider_transaction_id")]
+        public string? ProviderTransactionId { get; set; }
+
+        [JsonPropertyName("provider_token")]
+        public string? ProviderToken { get; set; }
+
+        [JsonPropertyName("provider_email_token")]
+        public string? ProviderEmailToken { get; set; }
     }
 
     private sealed class CurrentEntitlementRpcRow
