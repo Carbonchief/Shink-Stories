@@ -1363,7 +1363,7 @@ public sealed class SupabaseUserNotificationService(
     {
         if (!string.IsNullOrWhiteSpace(request.FeaturedImageUrl))
         {
-            return request.FeaturedImageUrl.Trim();
+            return NormalizeNotificationImagePath(request.FeaturedImageUrl);
         }
 
         return "/branding/schink-logo-green.png";
@@ -1373,12 +1373,12 @@ public sealed class SupabaseUserNotificationService(
     {
         if (!string.IsNullOrWhiteSpace(request.ThumbnailImagePath))
         {
-            return request.ThumbnailImagePath.Trim();
+            return NormalizeNotificationImagePath(request.ThumbnailImagePath);
         }
 
         if (!string.IsNullOrWhiteSpace(request.CoverImagePath))
         {
-            return request.CoverImagePath.Trim();
+            return NormalizeNotificationImagePath(request.CoverImagePath);
         }
 
         return "/branding/schink-logo-green.png";
@@ -1388,7 +1388,7 @@ public sealed class SupabaseUserNotificationService(
     {
         if (!string.IsNullOrWhiteSpace(request.PreviewImageUrl))
         {
-            return request.PreviewImageUrl.Trim();
+            return NormalizeNotificationImagePath(request.PreviewImageUrl);
         }
 
         return "/branding/schink-logo-green.png";
@@ -1420,13 +1420,46 @@ public sealed class SupabaseUserNotificationService(
         return "/branding/schink-logo-green.png";
     }
 
+    private static string NormalizeNotificationImagePath(string? imagePath)
+    {
+        if (string.IsNullOrWhiteSpace(imagePath))
+        {
+            return "/branding/schink-logo-green.png";
+        }
+
+        var normalized = imagePath.Trim();
+        if (normalized.StartsWith("~/", StringComparison.Ordinal))
+        {
+            normalized = $"/{normalized[2..]}";
+        }
+
+        if (normalized.StartsWith("/", StringComparison.Ordinal))
+        {
+            return normalized;
+        }
+
+        if (Uri.TryCreate(normalized, UriKind.Absolute, out var absoluteUri) &&
+            (string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)))
+        {
+            if (string.Equals(absoluteUri.Host, "media.prioritybit.co.za", StringComparison.OrdinalIgnoreCase))
+            {
+                return $"/media/image?src={Uri.EscapeDataString(absoluteUri.ToString())}";
+            }
+
+            return absoluteUri.ToString();
+        }
+
+        return normalized;
+    }
+
     private static UserAppNotificationItem MapNotification(NotificationRow row) =>
         new(
             row.NotificationId,
             row.NotificationType ?? string.Empty,
             row.Title ?? string.Empty,
             row.Body,
-            row.ImagePath,
+            NormalizeNotificationImagePath(row.ImagePath),
             row.ImageAlt,
             NormalizeNotificationHref(row.NotificationType, row.Href),
             row.CreatedAtUtc ?? DateTimeOffset.UtcNow,
