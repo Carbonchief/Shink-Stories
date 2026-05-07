@@ -684,11 +684,26 @@ function shouldAutoplayOnSourceChange(audioElement) {
 function queueAutoplayAfterSourceChange(audioElement) {
     audioElement.dataset.autoplayRequested = "false";
 
-    const handleCanPlay = () => {
+    let hasAttemptedPlay = false;
+    const tryPlay = () => {
+        if (hasAttemptedPlay) {
+            return;
+        }
+
+        hasAttemptedPlay = true;
+        audioElement.removeEventListener("loadeddata", tryPlay);
+        audioElement.removeEventListener("canplay", tryPlay);
         playAudioSafely(audioElement);
     };
 
-    audioElement.addEventListener("canplay", handleCanPlay, { once: true });
+    audioElement.addEventListener("loadeddata", tryPlay, { once: true });
+    audioElement.addEventListener("canplay", tryPlay, { once: true });
+
+    window.setTimeout(() => {
+        if (audioElement.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+            tryPlay();
+        }
+    }, 0);
 }
 
 function shouldAutoplayNextTrack(audioElement) {
