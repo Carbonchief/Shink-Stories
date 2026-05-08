@@ -6,6 +6,7 @@
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ISubscriptionLedgerService SubscriptionLedgerService
+@inject ISchoolManagementService SchoolManagementService
 
 <div class="site-shell @(IsStoryRoute ? "story-route" : null) @(IsHomeRoute ? "home-route" : null) @(IsLuisterRoute ? "luister-route" : null) @(IsMeerOorOnsRoute ? "about-route" : null) @(IsOpsiesRoute ? "opsies-route" : null) @((IsWinkelRoute || IsBlogRoute || IsResourcesRoute || IsMeerOorOnsRoute || IsOpsiesRoute) ? "store-route" : null) @(IsAdminRoute ? "admin-route" : null) @(IsFloatingPlaylistRoute ? "playlist-nav-route" : null) @(IsLuisterPlaylistShowcaseRoute ? "playlist-showcase-route" : null)">
     <a class="skip-link" href="#main-content">Spring na inhoud</a>
@@ -327,6 +328,13 @@
                                         <i class="fa-solid fa-credit-card" aria-hidden="true"></i>
                                         <span>Intekening en betaling</span>
                                     </a>
+                                    @if (HasSchoolOption)
+                                    {
+                                        <a href="/skool-admin" class="account-link">
+                                            <i class="fa-solid fa-school" aria-hidden="true"></i>
+                                            <span>Skool admin</span>
+                                        </a>
+                                    }
                                     <div class="account-divider" role="presentation"></div>
                                     <a href="/teken-uit" class="account-signout">
                                         <span>Teken uit</span>
@@ -622,6 +630,7 @@
 
 @code {
     private PaidSubscriptionAttention SubscriptionAttention { get; set; } = new(false);
+    private bool HasSchoolOption { get; set; }
 
     private RenderFragment NightModeToggle => @<button type="button"
                                                        class="night-mode-toggle nav-panel-link"
@@ -658,6 +667,15 @@
         catch
         {
             SubscriptionAttention = new PaidSubscriptionAttention(false);
+        }
+
+        try
+        {
+            HasSchoolOption = await SchoolManagementService.HasSchoolAdminAccessAsync(email);
+        }
+        catch
+        {
+            HasSchoolOption = false;
         }
     }
 
@@ -758,7 +776,8 @@
         get
         {
             var relativePath = GetCurrentRelativePathWithoutQuery();
-            return string.Equals(relativePath, "opsies", StringComparison.OrdinalIgnoreCase);
+            return string.Equals(relativePath, "opsies", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(relativePath, "skoolopsies", StringComparison.OrdinalIgnoreCase);
         }
     }
 

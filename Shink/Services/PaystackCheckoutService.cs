@@ -56,7 +56,7 @@ public sealed class PaystackCheckoutService(
             callbackQuery = $"{callbackQuery}&returnUrl={Uri.EscapeDataString(returnUrl)}";
         }
 
-        var callbackUrl = BuildAbsoluteUrl(httpContext, _options.CallbackUrlPath, callbackQuery);
+        var callbackUrl = BuildAbsoluteUrl(httpContext, ResolveCallbackPath(returnUrl), callbackQuery);
         var amountInCents = (long)Math.Round(plan.Amount * 100m, MidpointRounding.AwayFromZero);
         var reusableSession = await TryGetReusableCheckoutSessionAsync(plan, email, amountInCents, callbackUrl, cancellationToken);
         if (reusableSession is not null)
@@ -115,7 +115,7 @@ public sealed class PaystackCheckoutService(
             callbackQuery = $"{callbackQuery}&returnUrl={Uri.EscapeDataString(returnUrl)}";
         }
 
-        var callbackUrl = BuildAbsoluteUrl(httpContext, _options.CallbackUrlPath, callbackQuery);
+        var callbackUrl = BuildAbsoluteUrl(httpContext, ResolveCallbackPath(returnUrl), callbackQuery);
         var amountInCents = (long)Math.Round(plan.Amount * 100m, MidpointRounding.AwayFromZero);
         var reusableSession = await TryGetReusableCheckoutSessionAsync(plan, email, amountInCents, callbackUrl, cancellationToken);
         if (reusableSession is not null)
@@ -1124,6 +1124,16 @@ public sealed class PaystackCheckoutService(
                 ErrorMessage: "Paystack intekeningantwoord kon nie gelees word nie.",
                 RawPayload: body);
         }
+    }
+
+    private string ResolveCallbackPath(string? returnUrl)
+    {
+        if (string.Equals(returnUrl?.Trim(), "/skool-admin", StringComparison.OrdinalIgnoreCase))
+        {
+            return "/skool-admin";
+        }
+
+        return _options.CallbackUrlPath;
     }
 
     private async Task<PaystackSubscriptionDisableResult> FetchSubscriptionEmailTokenAsync(

@@ -1,10 +1,14 @@
 @page "/blog/{Slug}"
 @using System.Globalization
+@using System.Security.Claims
 @using System.Text.Json
 @using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.WebUtilities
 @inject IBlogCatalogService BlogCatalogService
 @inject IBlogContentRenderer BlogContentRenderer
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IEngagementTrackingService EngagementTrackingService
 @inject IHttpContextAccessor HttpContextAccessor
 @inject NavigationManager NavigationManager
 
@@ -227,6 +231,44 @@ else
 
         ReadingTimeMinutes = BlogContentRenderer.EstimateReadingTimeMinutes(CurrentPost.ContentMarkdown);
         RelatedPosts = BuildRelatedPosts(CurrentPost, postsTask.Result);
+        await TrackBlogPostVisitAsync(CurrentPost);
+    }
+
+    private async Task TrackBlogPostVisitAsync(BlogPostDetail post)
+    {
+        try
+        {
+            var email = await ResolveSignedInEmailAsync();
+            var path = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+            if (!path.StartsWith("blog/", StringComparison.OrdinalIgnoreCase))
+            {
+                path = $"blog/{post.Slug}";
+            }
+
+            _ = await EngagementTrackingService.RecordBlogVisitAsync(
+                email,
+                post.PostId,
+                post.Slug,
+                $"/{path}",
+                CancellationToken.None);
+        }
+        catch
+        {
+            // Tracking should not block page rendering.
+        }
+    }
+
+    private async Task<string?> ResolveSignedInEmailAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (!(user.Identity?.IsAuthenticated ?? false))
+        {
+            return null;
+        }
+
+        return user.FindFirst(ClaimTypes.Email)?.Value
+               ?? user.Identity?.Name;
     }
 
     private static IReadOnlyList<BlogPostListItem> BuildRelatedPosts(

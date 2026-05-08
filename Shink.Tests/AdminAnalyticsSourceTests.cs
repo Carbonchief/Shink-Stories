@@ -146,6 +146,29 @@ public class AdminAnalyticsSourceTests
     }
 
     [TestMethod]
+    public void ResourceAndBlogAnalyticsExposePerItemBreakdowns()
+    {
+        var admin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
+        var service = File.ReadAllText(GetRepoPath("Shink", "Services", "IAdminManagementService.cs"));
+        var migration = File.ReadAllText(GetRepoPath("Shink", "Database", "migrations", "20260506_admin_analytics_item_page_breakdowns.sql"));
+
+        StringAssert.Contains(admin, "@T(\"Afslae per hulpbron\", \"Downloads per resource\")");
+        StringAssert.Contains(admin, "Analytics.ResourceDownloadSummary.Items");
+        StringAssert.Contains(admin, "@T(\"Besoeke per blog-blad\", \"Visits per blog page\")");
+        StringAssert.Contains(admin, "Analytics.BlogVisitSummary.Pages");
+
+        StringAssert.Contains(service, "AdminAnalyticsResourceDownloadItemRecord");
+        StringAssert.Contains(service, "AdminAnalyticsBlogVisitPageRecord");
+        StringAssert.Contains(service, "[property: JsonPropertyName(\"items\")]");
+        StringAssert.Contains(service, "[property: JsonPropertyName(\"pages\")]");
+
+        StringAssert.Contains(migration, "resource_download_items as (");
+        StringAssert.Contains(migration, "'{resource_download_summary,items}'");
+        StringAssert.Contains(migration, "blog_visit_pages as (");
+        StringAssert.Contains(migration, "'{blog_visit_summary,pages}'");
+    }
+
+    [TestMethod]
     public void AnalyticsPanelsDoNotStretchSparseSections()
     {
         var css = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor.css"));

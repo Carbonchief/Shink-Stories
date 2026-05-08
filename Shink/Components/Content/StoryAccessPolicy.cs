@@ -13,8 +13,20 @@ public static class StoryAccessPolicy
     public const string StoryCornerMonthlyTierCode = "story_corner_monthly";
     public const string AllStoriesMonthlyTierCode = "all_stories_monthly";
     public const string AllStoriesYearlyTierCode = "all_stories_yearly";
+    public const string SchoolSmallYearlyTierCode = "school_small_yearly";
+    public const string SchoolMediumYearlyTierCode = "school_medium_yearly";
+    public const string SchoolLargeYearlyTierCode = "school_large_yearly";
     public const string GratisPlaylistSlug = "gratis-stories";
     public const string StoryCornerPlaylistSlug = "storie-hoekie";
+
+    public static IReadOnlyList<string> AllStoriesTierCodes { get; } =
+    [
+        AllStoriesMonthlyTierCode,
+        AllStoriesYearlyTierCode,
+        SchoolSmallYearlyTierCode,
+        SchoolMediumYearlyTierCode,
+        SchoolLargeYearlyTierCode
+    ];
 
     public static StoryAccessRequirement ResolveRequirement(string? source, StoryItem? story)
     {
@@ -47,13 +59,11 @@ public static class StoryAccessPolicy
             StoryAccessRequirement.StoryCornerOrAllStories =>
             [
                 StoryCornerMonthlyTierCode,
-                AllStoriesMonthlyTierCode,
-                AllStoriesYearlyTierCode
+                ..AllStoriesTierCodes
             ],
             StoryAccessRequirement.AllStoriesOnly =>
             [
-                AllStoriesMonthlyTierCode,
-                AllStoriesYearlyTierCode
+                ..AllStoriesTierCodes
             ],
             _ => Array.Empty<string>()
         };

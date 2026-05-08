@@ -545,7 +545,7 @@ public sealed class SupabaseUserNotificationService(
                     notification_type = "blog_published",
                     source_key = sourceKey,
                     title = normalizedTitle,
-                    body = (string?)null,
+                    body = normalizedTitle,
                     image_path = imagePath,
                     image_alt = $"Hoofprent vir {normalizedTitle}",
                     href,

@@ -258,6 +258,17 @@
         </div>
     </section>
 
+    <section class="opsies-school-cta" aria-labelledby="opsies-school-title">
+        <div>
+            <p class="opsies-section-kicker">Vir skole</p>
+            <h2 id="opsies-school-title">Het julle klaskamer-toegang nodig?</h2>
+            <p>
+                Skoolopsies gee onderwysers volle toegang tot stories, aktiwiteite en 'n dashboard om klaskamer slots te bestuur.
+            </p>
+        </div>
+        <a class="opsie-btn opsies-school-btn" href="/skoolopsies">Sien skoolopsies</a>
+    </section>
+
     <section class="opsies-faq" aria-labelledby="opsies-faq-title">
         <div class="opsies-section-heading">
             <p class="opsies-section-kicker">Algemene vrae</p>
@@ -670,6 +681,11 @@
             normalizedReturnUrl.StartsWith("/opsies", StringComparison.OrdinalIgnoreCase))
         {
             return null;
+        }
+
+        if (string.Equals(normalizedReturnUrl, "/skool-admin", StringComparison.OrdinalIgnoreCase))
+        {
+            return "/skool-admin";
         }
 
         return normalizedReturnUrl;

@@ -1206,10 +1206,6 @@
                 <AdminBlogPanel CurrentLanguageCode="@CurrentLanguageCode" />
             </MudTabPanel>
 
-            <MudTabPanel Text='@T("Instellings", "Settings")'>
-                <AdminSettingsPanel AdminEmail="@CurrentAdminEmail" LanguageCode="@CurrentLanguageCode" />
-            </MudTabPanel>
-
             <MudTabPanel Text='@T("Analitika", "Analytics")'>
                 <section class="admin-section admin-analytics-section">
                     <div class="admin-section-head">
@@ -1339,7 +1335,7 @@
                                         </button>
 
                                         <article class="admin-analytics-card">
-                                            <p class="admin-analytics-label">@T("Aktiewe lede", "Active members")</p>
+                                            <p class="admin-analytics-label">@T("Live aktiewe intekenaars", "Live active subscribers")</p>
                                             <p class="admin-analytics-value">@FormatAnalyticsNumber(ActiveSubscriberAnalyticsTotal)</p>
                                             <div class="admin-analytics-meta">
                                                 <span>@T("Inkomste hierdie maand", "Revenue this month")</span>
@@ -1546,6 +1542,38 @@
                                         </div>
                                     </button>
                                 </div>
+
+                                <section class="admin-report-analytics-layout">
+                                    <article class="admin-report-panel">
+                                        <div class="admin-analytics-panel-head">
+                                            <div>
+                                                <h3>@T("Verkope samestelling", "Sales mix")</h3>
+                                                <p>@T("Balkgrafiek vir nuwe, recurring en jaarlikse verkope (gebaseer op huidige snapshot-data).", "Bar chart for new, recurring, and yearly sales (from the current snapshot data).")</p>
+                                            </div>
+                                        </div>
+                                        <div class="admin-report-chart-shell">
+                                            <MudChart T="double"
+                                                      ChartType="ChartType.Bar"
+                                                      ChartSeries="RevenueCompositionChartSeries"
+                                                      ChartLabels="RevenueCompositionChartLabels" />
+                                        </div>
+                                    </article>
+
+                                    <article class="admin-report-panel">
+                                        <div class="admin-analytics-panel-head">
+                                            <div>
+                                                <h3>@T("Maand vergelyking", "Monthly comparison")</h3>
+                                                <p>@T("Lyn grafiek wat hierdie maand langs vorige maand en dieselfde maand verlede jaar plaas.", "Line chart that places this month alongside last month and the same month last year.")</p>
+                                            </div>
+                                        </div>
+                                        <div class="admin-report-chart-shell">
+                                            <MudChart T="double"
+                                                      ChartType="ChartType.Line"
+                                                      ChartSeries="RevenueComparisonChartSeries"
+                                                      ChartLabels="RevenueComparisonChartLabels" />
+                                        </div>
+                                    </article>
+                                </section>
 
                                 <div class="admin-report-table-wrap">
                                     <table class="admin-report-table admin-revenue-analytics-table">
@@ -1813,6 +1841,62 @@
                                         </div>
                                     </section>
 
+                                    <section class="admin-analytics-panel">
+                                        <div class="admin-analytics-panel-head">
+                                            <div>
+                                                <h3>@T("Top 10 voltooiing", "Top 10 completion")</h3>
+                                                <p>@T("Stories gerangskik volgens completion %, met luister-sessie tellings as tie-breaker.", "Stories ranked by completion %, with listen-session counts as tie-breaker.")</p>
+                                            </div>
+                                        </div>
+
+                                        @if (TopCompletionStories.Count > 0)
+                                        {
+                                            <div class="admin-report-table-wrap">
+                                                <table class="admin-report-table">
+                                                    <thead>
+                                                        <tr>
+                                                            <th>@T("Storie", "Story")</th>
+                                                            <th>@T("Completion", "Completion")</th>
+                                                            <th>@T("Luister sessies", "Listen sessions")</th>
+                                                            <th></th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        @foreach (var story in TopCompletionStories)
+                                                        {
+                                                            <tr>
+                                                                <td>
+                                                                    <div class="admin-analytics-story-cell">
+                                                                        <strong>@story.Title</strong>
+                                                                        <span>@story.StorySlug</span>
+                                                                    </div>
+                                                                </td>
+                                                                <td>@FormatCompletionPercent(story.CompletionRatePercent)</td>
+                                                                <td>@FormatAnalyticsNumber(story.TotalListenSessions)</td>
+                                                                <td>
+                                                                    <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                                                               Variant="Variant.Text"
+                                                                               Color="Color.Primary"
+                                                                               OnClick='() => SelectAnalyticsStory(story.StorySlug)'
+                                                                               aria-label='@T("Wys storie detail", "Show story detail")'
+                                                                               title='@T("Wys storie detail", "Show story detail")'>
+                                                                        <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+                                                                    </MudButton>
+                                                                </td>
+                                                            </tr>
+                                                        }
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <p class="admin-analytics-footnote">
+                                                @T("Nog geen completion-data beskikbaar nie.", "No completion data available yet.")
+                                            </p>
+                                        }
+                                    </section>
+
                                     <section class="admin-analytics-panel admin-analytics-panel-wide">
                                         <div class="admin-analytics-panel-head">
                                             <div>
@@ -1970,8 +2054,146 @@
                                 </div>
                             }
                         </MudTabPanel>
+
+                        <MudTabPanel Text='@T("Hulpbron aflaaie", "Resource downloads")'>
+                            <section class="admin-analytics-panel admin-analytics-panel-wide">
+                                <div class="admin-analytics-panel-head">
+                                    <div>
+                                        <h3>@T("Hulpbron aflaaie", "Resource downloads")</h3>
+                                        <p>@T("Moniteer hoeveel hulpbronne afgelaai is vanuit die beveiligde dokumentroete.", "Monitor how many resources were downloaded from the secured document route.")</p>
+                                    </div>
+                                </div>
+
+                                <div class="admin-analytics-grid admin-usage-summary-grid">
+                                    <article class="admin-analytics-card">
+                                        <p class="admin-analytics-label">@T("Totale aflaaie", "Total downloads")</p>
+                                        <p class="admin-analytics-value">@FormatAnalyticsNumber(Analytics.ResourceDownloadSummary.TotalDownloads)</p>
+                                        <div class="admin-analytics-meta">
+                                            <span>@T("Laaste 30 dae", "Last 30 days")</span>
+                                            <strong>@FormatAnalyticsNumber(Analytics.ResourceDownloadSummary.DownloadsLast30Days)</strong>
+                                        </div>
+                                        <p class="admin-analytics-footnote">@T("Laaste aflaai", "Last download"): @FormatAdminDateTime(Analytics.ResourceDownloadSummary.LastDownloadAt)</p>
+                                    </article>
+                                </div>
+
+                                <section class="admin-report-chart-card">
+                                    <div class="admin-analytics-copy">
+                                        <h3>@T("Afslae per hulpbron", "Downloads per resource")</h3>
+                                        <p>@T("Elke item hieronder wys hoeveel keer daardie spesifieke hulpbron afgelaai is.", "Each item below shows how many times that specific resource was downloaded.")</p>
+                                    </div>
+                                    @if (Analytics.ResourceDownloadSummary.Items.Count == 0)
+                                    {
+                                        <p class="admin-analytics-footnote">@T("Nog geen hulpbron-aflaaie aangeteken nie.", "No resource downloads tracked yet.")</p>
+                                    }
+                                    else
+                                    {
+                                        <div class="admin-report-table-wrap">
+                                            <table class="admin-report-table admin-resource-download-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>@T("Hulpbron", "Resource")</th>
+                                                        <th>@T("Totale aflaaie", "Total downloads")</th>
+                                                        <th>@T("Laaste 30 dae", "Last 30 days")</th>
+                                                        <th>@T("Laaste aflaai", "Last download")</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                @foreach (var item in Analytics.ResourceDownloadSummary.Items)
+                                                {
+                                                    <tr>
+                                                        <td>
+                                                            <div class="admin-analytics-story-cell">
+                                                                <strong>@item.Title</strong>
+                                                                <span>@item.ResourceSlug</span>
+                                                            </div>
+                                                        </td>
+                                                        <td>@FormatAnalyticsNumber(item.TotalDownloads)</td>
+                                                        <td>@FormatAnalyticsNumber(item.DownloadsLast30Days)</td>
+                                                        <td>@FormatAdminDateTime(item.LastDownloadAt)</td>
+                                                    </tr>
+                                                }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    }
+                                </section>
+                            </section>
+                        </MudTabPanel>
+
+                        <MudTabPanel Text='@T("Blog", "Blog")'>
+                            <section class="admin-analytics-panel admin-analytics-panel-wide">
+                                <div class="admin-analytics-panel-head">
+                                    <div>
+                                        <h3>@T("Blog besoeke", "Blog visits")</h3>
+                                        <p>@T("As blog-besoek logging beskikbaar is, wys hierdie blokkie die huidige besoekvolume.", "When blog-visit logging is available, this section shows the current visit volume.")</p>
+                                    </div>
+                                </div>
+
+                                <div class="admin-analytics-grid admin-usage-summary-grid">
+                                    <article class="admin-analytics-card">
+                                        <p class="admin-analytics-label">@T("Totale besoeke", "Total visits")</p>
+                                        <p class="admin-analytics-value">@FormatAnalyticsNumber(Analytics.BlogVisitSummary.TotalVisits)</p>
+                                        <div class="admin-analytics-meta">
+                                            <span>@T("Laaste 30 dae", "Last 30 days")</span>
+                                            <strong>@FormatAnalyticsNumber(Analytics.BlogVisitSummary.VisitsLast30Days)</strong>
+                                        </div>
+                                        <div class="admin-analytics-meta">
+                                            <span>@T("Post-besoeke", "Post visits")</span>
+                                            <strong>@FormatAnalyticsNumber(Analytics.BlogVisitSummary.PostVisits)</strong>
+                                        </div>
+                                        <p class="admin-analytics-footnote">@T("Laaste besoek", "Last visit"): @FormatAdminDateTime(Analytics.BlogVisitSummary.LastVisitAt)</p>
+                                    </article>
+                                </div>
+
+                                <section class="admin-report-chart-card">
+                                    <div class="admin-analytics-copy">
+                                        <h3>@T("Besoeke per blog-blad", "Visits per blog page")</h3>
+                                        <p>@T("Elke blog-pad wys sy eie besoektelling.", "Each blog path shows its own visit count.")</p>
+                                    </div>
+                                    @if (Analytics.BlogVisitSummary.Pages.Count == 0)
+                                    {
+                                        <p class="admin-analytics-footnote">@T("Nog geen blog-besoeke aangeteken nie.", "No blog visits tracked yet.")</p>
+                                    }
+                                    else
+                                    {
+                                        <div class="admin-report-table-wrap">
+                                            <table class="admin-report-table admin-blog-visit-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>@T("Blog-blad", "Blog page")</th>
+                                                        <th>@T("Totale besoeke", "Total visits")</th>
+                                                        <th>@T("Laaste 30 dae", "Last 30 days")</th>
+                                                        <th>@T("Laaste besoek", "Last visit")</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                @foreach (var pageVisit in Analytics.BlogVisitSummary.Pages)
+                                                {
+                                                    <tr>
+                                                        <td>
+                                                            <div class="admin-analytics-story-cell">
+                                                                <strong>@pageVisit.PageTitle</strong>
+                                                                <span>@pageVisit.PagePath</span>
+                                                            </div>
+                                                        </td>
+                                                        <td>@FormatAnalyticsNumber(pageVisit.TotalVisits)</td>
+                                                        <td>@FormatAnalyticsNumber(pageVisit.VisitsLast30Days)</td>
+                                                        <td>@FormatAdminDateTime(pageVisit.LastVisitAt)</td>
+                                                    </tr>
+                                                }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    }
+                                </section>
+                            </section>
+                        </MudTabPanel>
                     </MudTabs>
                 </section>
+            </MudTabPanel>
+
+            <MudTabPanel Text='@T("Instellings", "Settings")'>
+                <AdminSettingsPanel AdminEmail="@CurrentAdminEmail" LanguageCode="@CurrentLanguageCode" />
             </MudTabPanel>
 
         </MudTabs>
@@ -3176,6 +3398,48 @@
                     .ToArray()
             }
         ];
+
+    private string[] RevenueCompositionChartLabels =>
+        [
+            T("Nuwe", "New"),
+            T("Recurring", "Recurring"),
+            T("Jaar", "Year")
+        ];
+
+    private List<ChartSeries<double>> RevenueCompositionChartSeries =>
+        [
+            new ChartSeries<double>
+            {
+                Name = T("Verkope", "Sales"),
+                Data = new double[]
+                {
+                    ThisMonthNewSalesCount,
+                    ThisMonthRecurringSalesCount,
+                    ThisYearSalesCount
+                }
+            }
+        ];
+
+    private string[] RevenueComparisonChartLabels =>
+        [
+            SameMonthLastYearStart.ToString("MMM yy", CultureInfo.InvariantCulture),
+            PreviousMonthStart.ToString("MMM yy", CultureInfo.InvariantCulture),
+            CurrentMonthStart.ToString("MMM yy", CultureInfo.InvariantCulture)
+        ];
+
+    private List<ChartSeries<double>> RevenueComparisonChartSeries =>
+        [
+            new ChartSeries<double>
+            {
+                Name = T("Inkomste (R)", "Revenue (R)"),
+                Data = new[]
+                {
+                    decimal.ToDouble(GetRevenueForMonth(SameMonthLastYearStart)),
+                    decimal.ToDouble(GetRevenueForMonth(PreviousMonthStart)),
+                    decimal.ToDouble(GetRevenueForMonth(CurrentMonthStart))
+                }
+            }
+        ];
     private List<ChartSeries<double>> ActiveMembersPerLevelChartSeries =>
         [
             new ChartSeries<double>
@@ -3192,6 +3456,13 @@
             .Where(DoesAnalyticsCharacterMatchSearch)
             .OrderByDescending(character => character.TotalAudioPlays)
             .ThenBy(character => character.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
+
+    private IReadOnlyList<AdminAnalyticsTopCompletionStoryRecord> TopCompletionStories =>
+        (Analytics.TopCompletionStories ?? [])
+            .OrderByDescending(story => story.CompletionRatePercent)
+            .ThenByDescending(story => story.TotalListenSessions)
+            .ThenBy(story => story.Title, StringComparer.CurrentCultureIgnoreCase)
             .ToArray();
 
     private MudTable<AdminSubscriberRecord>? SubscribersTable { get; set; }
@@ -3411,6 +3682,13 @@
             GetSubscriberSalesMetric("this_year"),
             GetSubscriberSalesMetric("all_time")
         ];
+
+    private int ThisMonthNewSalesCount => GetSubscriberMetric("this_month").Signups;
+    private int ThisMonthRecurringSalesCount => Math.Max(0, GetSubscriberSalesMetric("this_month").SalesCount - ThisMonthNewSalesCount);
+    private int ThisYearSalesCount => Math.Max(0, GetSubscriberSalesMetric("this_year").SalesCount);
+    private DateTime CurrentMonthStart => new(DateTime.Now.Year, DateTime.Now.Month, 1);
+    private DateTime PreviousMonthStart => CurrentMonthStart.AddMonths(-1);
+    private DateTime SameMonthLastYearStart => CurrentMonthStart.AddYears(-1);
 
     private IReadOnlyList<AdminSalesRevenueDetailRecord> FilteredRevenueSalesDetails =>
         SubscriberReports.SalesDetails
@@ -4026,6 +4304,17 @@
         {
             SelectedAnalyticsStorySlug = args.Item.StorySlug;
         }
+    }
+
+    private void SelectAnalyticsStory(string storySlug)
+    {
+        if (string.IsNullOrWhiteSpace(storySlug))
+        {
+            return;
+        }
+
+        SelectedAnalyticsStorySlug = storySlug.Trim();
+        EnsureSelectedAnalyticsStory();
     }
 
     private void EnsureSelectedAnalyticsStory()
@@ -6545,6 +6834,21 @@
             _ => true
         };
 
+    private decimal GetRevenueForMonth(DateTime monthStartLocal)
+    {
+        var monthEndLocal = monthStartLocal.AddMonths(1);
+        return decimal.Round(
+            SubscriberReports.SalesDetails
+                .Where(detail =>
+                {
+                    var soldLocal = detail.SoldAt.ToLocalTime().DateTime;
+                    return soldLocal >= monthStartLocal && soldLocal < monthEndLocal;
+                })
+                .Sum(detail => detail.RevenueZar),
+            2,
+            MidpointRounding.AwayFromZero);
+    }
+
     private static bool IsAdminDateInCurrentPeriod(DateTimeOffset value, string periodKey)
     {
         var localDate = value.ToLocalTime().Date;
@@ -7602,6 +7906,9 @@
         $"R {value.ToString("N2", GetAdminCulture())}";
 
     private string FormatReportPercentage(decimal value) =>
+        $"{value.ToString("N1", GetAdminCulture())}%";
+
+    private string FormatCompletionPercent(decimal value) =>
         $"{value.ToString("N1", GetAdminCulture())}%";
 
     private string FormatAnalyticsDay(DateOnly value) =>

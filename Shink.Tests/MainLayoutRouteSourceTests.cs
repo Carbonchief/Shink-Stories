@@ -11,7 +11,7 @@ public class MainLayoutRouteSourceTests
     {
         var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Layout", "MainLayout.razor"));
 
-        StringAssert.Contains(markup, "relativePath.StartsWith(\"blog\", StringComparison.OrdinalIgnoreCase)");
+        StringAssert.Contains(markup, "relativePath.StartsWith(\"blog/\", StringComparison.OrdinalIgnoreCase)");
     }
 
     [TestMethod]

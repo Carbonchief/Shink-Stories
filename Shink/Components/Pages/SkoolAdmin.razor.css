@@ -1,0 +1,336 @@
+.school-admin-page {
+    --school-admin-ink: #233428;
+    --school-admin-muted: #5f7064;
+    --school-admin-line: rgba(35, 52, 40, 0.12);
+    --school-admin-accent: #d86f34;
+    width: min(1160px, 100%);
+    margin-inline: auto;
+    padding: clamp(1.4rem, 2vw, 2.2rem);
+    display: grid;
+    gap: 1rem;
+    color: var(--school-admin-ink);
+}
+
+.school-admin-hero,
+.school-admin-state,
+.school-admin-card,
+.school-admin-panel,
+.school-admin-feedback {
+    border: 1px solid var(--school-admin-line);
+    border-radius: 24px;
+    background: #ffffff;
+    box-shadow: 0 18px 46px rgba(36, 50, 42, 0.07);
+}
+
+.school-admin-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1rem;
+    align-items: center;
+    padding: clamp(1.2rem, 2.6vw, 2rem);
+    background:
+        radial-gradient(circle at top right, rgba(216, 111, 52, 0.055), transparent 38%),
+        radial-gradient(circle at bottom left, rgba(64, 141, 147, 0.045), transparent 42%),
+        #ffffff;
+}
+
+.school-admin-kicker,
+.school-admin-label {
+    margin: 0;
+    color: #a74a1f;
+    font-size: 0.76rem;
+    font-weight: 800;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+.school-admin-hero h1,
+.school-admin-state h2,
+.school-admin-school-card h2,
+.school-admin-panel-head h2 {
+    margin: 0;
+    color: var(--school-admin-ink);
+    line-height: 1.1;
+}
+
+.school-admin-hero p,
+.school-admin-state p,
+.school-admin-card span,
+.school-admin-card p,
+.school-admin-panel-head p,
+.school-admin-toggle-row span,
+.school-admin-seat span,
+.school-admin-empty {
+    margin: 0;
+    color: var(--school-admin-muted);
+    line-height: 1.55;
+}
+
+.school-admin-secondary-link,
+.school-admin-btn {
+    min-height: 2.7rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 999px;
+    padding: 0.64rem 1rem;
+    background: linear-gradient(135deg, var(--school-admin-accent), #a74a1f);
+    color: #ffffff;
+    font: inherit;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-decoration: none;
+    text-transform: uppercase;
+    cursor: pointer;
+}
+
+.school-admin-secondary-link {
+    border: 1px solid rgba(35, 52, 40, 0.12);
+    background: #ffffff;
+    color: var(--school-admin-ink);
+}
+
+.school-admin-btn:disabled {
+    background: #eef0f2;
+    color: #7a848b;
+    cursor: not-allowed;
+}
+
+.school-admin-state {
+    display: grid;
+    justify-items: start;
+    gap: 0.75rem;
+    padding: 1.2rem;
+}
+
+.school-admin-feedback {
+    margin: 0;
+    padding: 0.85rem 1rem;
+    font-weight: 700;
+}
+
+.school-admin-feedback.is-success {
+    border-color: rgba(41, 114, 71, 0.22);
+    background: rgba(228, 247, 235, 0.98);
+    color: #1f5d38;
+}
+
+.school-admin-feedback.is-error {
+    border-color: rgba(183, 86, 56, 0.2);
+    background: rgba(255, 239, 231, 0.98);
+    color: #91451f;
+}
+
+.school-admin-overview {
+    display: grid;
+    grid-template-columns: 1.3fr repeat(3, minmax(0, 1fr));
+    gap: 0.9rem;
+}
+
+.school-admin-card {
+    display: grid;
+    align-content: start;
+    gap: 0.34rem;
+    padding: 1rem;
+}
+
+.school-admin-card strong {
+    color: var(--school-admin-ink);
+    font-size: clamp(1.35rem, 2.5vw, 2rem);
+    line-height: 1;
+}
+
+.school-admin-grid {
+    display: grid;
+    grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr);
+    gap: 1rem;
+    align-items: start;
+}
+
+.school-admin-panel {
+    display: grid;
+    gap: 1rem;
+    padding: 1rem;
+}
+
+.school-admin-panel-head,
+.school-admin-form {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.school-admin-form label {
+    color: var(--school-admin-ink);
+    font-weight: 800;
+}
+
+.school-admin-form input {
+    width: 100%;
+    min-height: 2.75rem;
+    border: 1px solid rgba(35, 52, 40, 0.14);
+    border-radius: 14px;
+    padding: 0.58rem 0.75rem;
+    color: var(--school-admin-ink);
+    background: #ffffff;
+    font: inherit;
+    box-sizing: border-box;
+}
+
+.school-admin-input-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.55rem;
+}
+
+.school-admin-toggle-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.8rem;
+    align-items: center;
+    padding: 0.85rem;
+    border: 1px solid rgba(35, 52, 40, 0.1);
+    border-radius: 18px;
+    background: rgba(255, 247, 234, 0.72);
+}
+
+.school-admin-toggle-row div {
+    display: grid;
+    gap: 0.22rem;
+}
+
+.school-admin-toggle {
+    min-height: 2.5rem;
+    border: 1px solid rgba(35, 52, 40, 0.16);
+    border-radius: 999px;
+    padding: 0.52rem 0.9rem;
+    background: #ffffff;
+    color: var(--school-admin-ink);
+    font: inherit;
+    font-weight: 800;
+    cursor: pointer;
+}
+
+.school-admin-toggle.is-on {
+    border-color: rgba(216, 111, 52, 0.35);
+    background: rgba(255, 239, 215, 0.92);
+    color: #a74a1f;
+}
+
+.school-admin-seat-list {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.school-admin-seat {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.8rem;
+    align-items: center;
+    padding: 0.85rem;
+    border: 1px solid rgba(35, 52, 40, 0.1);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.82);
+}
+
+.school-admin-seat > div:first-child {
+    display: grid;
+    gap: 0.12rem;
+    min-width: 0;
+}
+
+.school-admin-seat strong,
+.school-admin-toggle-row strong {
+    color: var(--school-admin-ink);
+}
+
+.school-admin-seat-meta {
+    display: flex;
+    gap: 0.4rem;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
+.school-admin-pill {
+    display: inline-flex;
+    align-items: center;
+    border-radius: 999px;
+    padding: 0.26rem 0.55rem;
+    background: rgba(64, 141, 147, 0.1);
+    color: #285f65;
+    font-size: 0.76rem;
+    font-weight: 800;
+}
+
+.school-admin-pill.is-slot {
+    background: rgba(216, 111, 52, 0.1);
+    color: #a74a1f;
+}
+
+.school-admin-icon-btn {
+    width: 2.2rem;
+    height: 2.2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(183, 86, 56, 0.18);
+    border-radius: 999px;
+    background: #ffffff;
+    color: #91451f;
+    cursor: pointer;
+}
+
+body.schink-night-mode .school-admin-page {
+    --school-admin-ink: #f7f1e7;
+    --school-admin-muted: #c6d0ca;
+    --school-admin-line: rgba(247, 241, 231, 0.16);
+}
+
+body.schink-night-mode .school-admin-hero,
+body.schink-night-mode .school-admin-state,
+body.schink-night-mode .school-admin-card,
+body.schink-night-mode .school-admin-panel {
+    background: linear-gradient(180deg, rgba(24, 35, 42, 0.98), rgba(17, 26, 32, 0.98));
+    box-shadow: 0 24px 62px rgba(0, 0, 0, 0.34);
+}
+
+body.schink-night-mode .school-admin-secondary-link,
+body.schink-night-mode .school-admin-form input,
+body.schink-night-mode .school-admin-toggle-row,
+body.schink-night-mode .school-admin-toggle,
+body.schink-night-mode .school-admin-seat,
+body.schink-night-mode .school-admin-icon-btn {
+    border-color: rgba(247, 241, 231, 0.16);
+    background: rgba(30, 43, 51, 0.92);
+    color: var(--school-admin-ink);
+}
+
+@media (max-width: 980px) {
+    .school-admin-overview,
+    .school-admin-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 720px) {
+    .school-admin-page {
+        padding: 0.5rem;
+    }
+
+    .school-admin-hero,
+    .school-admin-seat,
+    .school-admin-toggle-row,
+    .school-admin-input-row {
+        grid-template-columns: 1fr;
+    }
+
+    .school-admin-secondary-link,
+    .school-admin-btn {
+        width: 100%;
+    }
+
+    .school-admin-seat-meta {
+        justify-content: flex-start;
+    }
+}

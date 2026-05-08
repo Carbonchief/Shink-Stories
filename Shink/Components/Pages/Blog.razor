@@ -1,9 +1,13 @@
 @page "/blog"
 @using System.Globalization
+@using System.Security.Claims
 @using System.Text.Json
 @using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.WebUtilities
 @inject IBlogCatalogService BlogCatalogService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IEngagementTrackingService EngagementTrackingService
 @inject NavigationManager NavigationManager
 
 <PageTitle>@PageTitleText</PageTitle>
@@ -377,6 +381,45 @@
         {
             IsLoading = false;
         }
+
+        await TrackBlogVisitAsync();
+    }
+
+    private async Task TrackBlogVisitAsync()
+    {
+        try
+        {
+            var email = await ResolveSignedInEmailAsync();
+            var path = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+            if (!path.StartsWith("blog", StringComparison.OrdinalIgnoreCase))
+            {
+                path = string.IsNullOrWhiteSpace(path) ? "blog" : path;
+            }
+
+            _ = await EngagementTrackingService.RecordBlogVisitAsync(
+                email,
+                null,
+                null,
+                $"/{path}",
+                CancellationToken.None);
+        }
+        catch
+        {
+            // Tracking should not block page rendering.
+        }
+    }
+
+    private async Task<string?> ResolveSignedInEmailAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (!(user.Identity?.IsAuthenticated ?? false))
+        {
+            return null;
+        }
+
+        return user.FindFirst(ClaimTypes.Email)?.Value
+               ?? user.Identity?.Name;
     }
 
     private static IReadOnlyList<BlogPostListItem> ApplyFilters(

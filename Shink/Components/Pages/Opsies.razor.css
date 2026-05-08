@@ -649,6 +649,44 @@
     gap: 1.2rem;
 }
 
+.opsies-school-cta {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1rem;
+    align-items: center;
+    padding: clamp(1rem, 2.4vw, 1.5rem);
+    border: 1px solid rgba(64, 141, 147, 0.16);
+    border-radius: 24px;
+    background:
+        radial-gradient(circle at top right, rgba(64, 141, 147, 0.07), transparent 40%),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(255, 247, 234, 0.86));
+    box-shadow: 0 18px 44px rgba(36, 50, 42, 0.07);
+}
+
+.opsies-school-cta h2,
+.opsies-school-cta p {
+    margin: 0;
+}
+
+.opsies-school-cta h2 {
+    margin-top: 0.35rem;
+    color: var(--opsies-ink);
+    font-size: clamp(1.2rem, 2vw, 1.68rem);
+    line-height: 1.12;
+}
+
+.opsies-school-cta p:last-child {
+    margin-top: 0.35rem;
+    color: var(--opsies-muted);
+    line-height: 1.55;
+}
+
+.opsies-school-btn {
+    width: auto;
+    min-width: 13rem;
+    margin-top: 0;
+}
+
 .opsies-faq-list {
     display: grid;
     gap: 0.68rem;
@@ -783,6 +821,7 @@ body.schink-night-mode .opsies-page {
 body.schink-night-mode .opsies-payment-status,
 body.schink-night-mode .opsies-plan-shell,
 body.schink-night-mode .opsies-compare,
+body.schink-night-mode .opsies-school-cta,
 body.schink-night-mode .opsies-faq,
 body.schink-night-mode .opsies-testimonials {
     border-color: var(--opsies-line);
@@ -800,6 +839,7 @@ body.schink-night-mode .opsies-hero {
 
 body.schink-night-mode .opsies-hero-copy h1,
 body.schink-night-mode .opsies-section-heading h2,
+body.schink-night-mode .opsies-school-cta h2,
 body.schink-night-mode .opsie-card h2,
 body.schink-night-mode .opsie-price,
 body.schink-night-mode .opsie-detail strong,
@@ -816,6 +856,7 @@ body.schink-night-mode .opsies-review-author {
 
 body.schink-night-mode .opsies-hero-lead,
 body.schink-night-mode .opsies-section-heading p:last-child,
+body.schink-night-mode .opsies-school-cta p:last-child,
 body.schink-night-mode .opsies-hero-point span,
 body.schink-night-mode .opsie-summary,
 body.schink-night-mode .opsie-detail,
@@ -976,6 +1017,14 @@ body.schink-night-mode .opsies-faq-item summary::before {
     .opsies-review-grid {
         grid-template-columns: 1fr;
     }
+
+    .opsies-school-cta {
+        grid-template-columns: 1fr;
+    }
+
+    .opsies-school-btn {
+        width: 100%;
+    }
 }
 
 @media (max-width: 720px) {
@@ -996,6 +1045,7 @@ body.schink-night-mode .opsies-faq-item summary::before {
     .opsies-hero,
     .opsies-plan-shell,
     .opsies-compare,
+    .opsies-school-cta,
     .opsies-faq,
     .opsies-testimonials,
     .opsie-card {

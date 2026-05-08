@@ -1,0 +1,264 @@
+@page "/skool-admin"
+@rendermode InteractiveServer
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ISchoolManagementService SchoolManagementService
+@inject NavigationManager NavigationManager
+
+<PageTitle>Schink Stories | Skool admin</PageTitle>
+<HeadContent>
+    <meta name="robots" content="noindex, nofollow" />
+</HeadContent>
+
+<section class="school-admin-page">
+    <header class="school-admin-hero">
+        <div>
+            <p class="school-admin-kicker">Skool admin</p>
+            <h1>Bestuur julle Schink Stories klaskamer slots.</h1>
+            <p>Nooi onderwysers, sien beskikbare slots en hou julle skooltoegang netjies op een plek.</p>
+        </div>
+        <a class="school-admin-secondary-link" href="/skoolopsies">Skoolopsies</a>
+    </header>
+
+    @if (IsLoading)
+    {
+        <section class="school-admin-state">
+            <h2>Laai skool dashboard...</h2>
+        </section>
+    }
+    else if (!IsAuthenticated)
+    {
+        <section class="school-admin-state">
+            <h2>Teken eers in.</h2>
+            <p>Jy moet ingeteken wees om 'n skool dashboard te bestuur.</p>
+            <a class="school-admin-btn" href="@LoginHref">Teken in</a>
+        </section>
+    }
+    else if (Dashboard is null || !Dashboard.HasSchoolAccess || Dashboard.Account is null)
+    {
+        <section class="school-admin-state">
+            <h2>Geen aktiewe skoolopsie gevind nie.</h2>
+            <p>Kies eers 'n skoolpakket. Sodra betaling voltooi is, skep ons die dashboard outomaties vir die skool admin.</p>
+            <a class="school-admin-btn" href="/skoolopsies">Kies 'n skoolopsie</a>
+        </section>
+    }
+    else
+    {
+        @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+        {
+            <p class="school-admin-feedback is-error">@ErrorMessage</p>
+        }
+        else if (!string.IsNullOrWhiteSpace(StatusMessage))
+        {
+            <p class="school-admin-feedback is-success">@StatusMessage</p>
+        }
+
+        <section class="school-admin-overview">
+            <article class="school-admin-card school-admin-school-card">
+                <p class="school-admin-label">Skool</p>
+                <h2>@Dashboard.Account.SchoolName</h2>
+                <p>@Dashboard.Account.PlanName · @Dashboard.Account.SlotLimit slots</p>
+            </article>
+            <article class="school-admin-card">
+                <p class="school-admin-label">Slots gebruik</p>
+                <strong>@Dashboard.UsedSlots / @Dashboard.SlotLimit</strong>
+                <span>@Dashboard.AvailableSlots beskikbaar</span>
+            </article>
+            <article class="school-admin-card">
+                <p class="school-admin-label">Uitnodigings</p>
+                <strong>@Dashboard.InvitedSeats</strong>
+                <span>@Dashboard.AcceptedSeats aktief</span>
+            </article>
+            <article class="school-admin-card">
+                <p class="school-admin-label">Admin slot</p>
+                <strong>@(Dashboard.Account.AdminUsesSlot ? "Gebruik" : "Bestuur net")</strong>
+                <span>@CurrentAdminEmail</span>
+            </article>
+        </section>
+
+        <section class="school-admin-grid">
+            <article class="school-admin-panel">
+                <div class="school-admin-panel-head">
+                    <h2>Vinnige aksies</h2>
+                    <p>Hou die skoolnaam en onderwyser slots op datum.</p>
+                </div>
+
+                <div class="school-admin-form">
+                    <label for="school-name">Skoolnaam</label>
+                    <div class="school-admin-input-row">
+                        <input id="school-name" @bind="SchoolNameDraft" maxlength="120" />
+                        <button type="button" class="school-admin-btn" @onclick="SaveSchoolNameAsync">Stoor</button>
+                    </div>
+                </div>
+
+                <div class="school-admin-toggle-row">
+                    <div>
+                        <strong>Ek gebruik self 'n klaskamer slot</strong>
+                        <span>Kies af as jy net die skool wil bestuur en nie 'n slot moet opneem nie.</span>
+                    </div>
+                    <button type="button"
+                            class="school-admin-toggle @(Dashboard.Account.AdminUsesSlot ? "is-on" : null)"
+                            aria-pressed="@Dashboard.Account.AdminUsesSlot"
+                            @onclick="ToggleAdminSeatUsageAsync">
+                        @(Dashboard.Account.AdminUsesSlot ? "Gebruik slot" : "Bestuur net")
+                    </button>
+                </div>
+
+                <div class="school-admin-form">
+                    <label for="teacher-email">Nooi onderwyser</label>
+                    <input id="teacher-email" type="email" @bind="InviteEmail" placeholder="onderwyser@skool.co.za" />
+                    <input type="text" @bind="InviteDisplayName" placeholder="Naam opsioneel" maxlength="120" />
+                    <button type="button" class="school-admin-btn" disabled="@(!CanInviteTeacher)" @onclick="InviteTeacherAsync">
+                        Nooi onderwyser
+                    </button>
+                </div>
+            </article>
+
+            <article class="school-admin-panel">
+                <div class="school-admin-panel-head">
+                    <h2>Slots</h2>
+                    <p>Uitnodigings kry toegang tot die skool se Schink Stories pakket.</p>
+                </div>
+
+                @if (Dashboard.Seats.Count == 0)
+                {
+                    <p class="school-admin-empty">Nog geen slots is toegeken nie.</p>
+                }
+                else
+                {
+                    <div class="school-admin-seat-list">
+                        @foreach (var seat in Dashboard.Seats)
+                        {
+                            <div class="school-admin-seat">
+                                <div>
+                                    <strong>@BuildSeatName(seat)</strong>
+                                    <span>@seat.Email</span>
+                                </div>
+                                <div class="school-admin-seat-meta">
+                                    <span class="school-admin-pill">@BuildSeatStatus(seat)</span>
+                                    @if (seat.CountsTowardSlot)
+                                    {
+                                        <span class="school-admin-pill is-slot">Slot</span>
+                                    }
+                                    @if (!string.Equals(seat.Role, "school_admin", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <button type="button" class="school-admin-icon-btn" title="Verwyder slot" aria-label="Verwyder slot" @onclick="() => RemoveSeatAsync(seat.SchoolSeatId)">
+                                            <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                                        </button>
+                                    }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </article>
+        </section>
+    }
+</section>
+
+@code {
+    private bool IsLoading { get; set; } = true;
+    private bool IsAuthenticated { get; set; }
+    private string? CurrentAdminEmail { get; set; }
+    private SchoolDashboardSnapshot? Dashboard { get; set; }
+    private string? SchoolNameDraft { get; set; }
+    private string? InviteEmail { get; set; }
+    private string? InviteDisplayName { get; set; }
+    private string? ErrorMessage { get; set; }
+    private string? StatusMessage { get; set; }
+
+    private string LoginHref => $"/teken-in?returnUrl={Uri.EscapeDataString("/skool-admin")}";
+    private bool CanInviteTeacher => Dashboard?.AvailableSlots > 0 && !string.IsNullOrWhiteSpace(InviteEmail);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDashboardAsync();
+    }
+
+    private async Task LoadDashboardAsync()
+    {
+        IsLoading = true;
+        ErrorMessage = null;
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        IsAuthenticated = authState.User.Identity?.IsAuthenticated == true;
+        CurrentAdminEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value ?? authState.User.Identity?.Name;
+        if (IsAuthenticated)
+        {
+            Dashboard = await SchoolManagementService.GetDashboardAsync(CurrentAdminEmail);
+            SchoolNameDraft = Dashboard.Account?.SchoolName;
+        }
+
+        IsLoading = false;
+    }
+
+    private async Task SaveSchoolNameAsync()
+    {
+        ClearMessages();
+        var result = await SchoolManagementService.UpdateSchoolNameAsync(CurrentAdminEmail, SchoolNameDraft);
+        await HandleResultAsync(result, "Skoolnaam is gestoor.");
+    }
+
+    private async Task ToggleAdminSeatUsageAsync()
+    {
+        if (Dashboard?.Account is null)
+        {
+            return;
+        }
+
+        ClearMessages();
+        var result = await SchoolManagementService.UpdateAdminSeatUsageAsync(CurrentAdminEmail, !Dashboard.Account.AdminUsesSlot);
+        await HandleResultAsync(result, "Admin slot-keuse is gestoor.");
+    }
+
+    private async Task InviteTeacherAsync()
+    {
+        ClearMessages();
+        var result = await SchoolManagementService.InviteTeacherAsync(
+            CurrentAdminEmail,
+            new SchoolInviteTeacherRequest(InviteEmail, InviteDisplayName));
+        if (result.IsSuccess)
+        {
+            InviteEmail = null;
+            InviteDisplayName = null;
+        }
+
+        await HandleResultAsync(result, "Onderwyser is by die skool slots gevoeg.");
+    }
+
+    private async Task RemoveSeatAsync(Guid seatId)
+    {
+        ClearMessages();
+        var result = await SchoolManagementService.RemoveSeatAsync(CurrentAdminEmail, seatId);
+        await HandleResultAsync(result, "Slot is verwyder.");
+    }
+
+    private async Task HandleResultAsync(SchoolOperationResult result, string successMessage)
+    {
+        if (!result.IsSuccess)
+        {
+            ErrorMessage = result.ErrorMessage ?? "Die aksie kon nie nou voltooi word nie.";
+            return;
+        }
+
+        StatusMessage = successMessage;
+        Dashboard = await SchoolManagementService.GetDashboardAsync(CurrentAdminEmail);
+        SchoolNameDraft = Dashboard.Account?.SchoolName;
+    }
+
+    private void ClearMessages()
+    {
+        ErrorMessage = null;
+        StatusMessage = null;
+    }
+
+    private static string BuildSeatName(SchoolSeatRecord seat) =>
+        !string.IsNullOrWhiteSpace(seat.DisplayName) ? seat.DisplayName : seat.Email;
+
+    private static string BuildSeatStatus(SchoolSeatRecord seat) =>
+        string.Equals(seat.Role, "school_admin", StringComparison.OrdinalIgnoreCase)
+            ? "Skool admin"
+            : string.Equals(seat.Status, "accepted", StringComparison.OrdinalIgnoreCase)
+                ? "Aktief"
+                : "Uitgenooi";
+}

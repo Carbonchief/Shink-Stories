@@ -134,9 +134,11 @@ builder.Services.AddHttpClient<ISubscriptionNotificationEmailService, ResendSubs
 builder.Services.AddHttpClient<ISubscriptionPaymentRecoveryEmailService, ResendSubscriptionPaymentRecoveryEmailService>();
 builder.Services.AddHttpClient<IAbandonedCartRecoveryService, SupabaseAbandonedCartRecoveryService>();
 builder.Services.AddHttpClient<IStoryTrackingService, SupabaseStoryTrackingService>();
+builder.Services.AddHttpClient<IEngagementTrackingService, SupabaseEngagementTrackingService>();
 builder.Services.AddHttpClient<IStoryFavoriteService, SupabaseStoryFavoriteService>();
 builder.Services.AddHttpClient<IResourceCatalogService, SupabaseResourceCatalogService>();
 builder.Services.AddHttpClient<IAdminManagementService, SupabaseAdminManagementService>();
+builder.Services.AddHttpClient<ISchoolManagementService, SupabaseSchoolManagementService>();
 builder.Services.AddHttpClient<IWordPressMigrationService, WordPressMigrationService>();
 builder.Services.AddHttpClient<IResourceDocumentPreviewBackfillService, SupabaseResourceDocumentPreviewBackfillService>();
 builder.Services.AddHttpClient<ICharacterCatalogService, SupabaseCharacterService>();
@@ -600,6 +602,7 @@ app.MapGet("/media/resources/{resourceDocumentId:guid}", async (
     Guid resourceDocumentId,
     IResourceCatalogService resourceCatalogService,
     ISubscriptionLedgerService subscriptionLedgerService,
+    IEngagementTrackingService engagementTrackingService,
     IResourceDocumentStorageService resourceDocumentStorageService,
     HttpContext httpContext) =>
 {
@@ -625,19 +628,17 @@ app.MapGet("/media/resources/{resourceDocumentId:guid}", async (
     if (!string.IsNullOrWhiteSpace(requiredTierCode))
     {
         bool hasRequiredTier;
-        if (string.Equals(requiredTierCode, StoryAccessPolicy.AllStoriesMonthlyTierCode, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(requiredTierCode, StoryAccessPolicy.AllStoriesYearlyTierCode, StringComparison.OrdinalIgnoreCase))
+        if (StoryAccessPolicy.AllStoriesTierCodes.Any(tierCode =>
+                string.Equals(requiredTierCode, tierCode, StringComparison.OrdinalIgnoreCase)))
         {
-            var hasAllStoriesMonthlyTask = subscriptionLedgerService.HasActiveSubscriptionForTierAsync(
-                signedInEmail,
-                StoryAccessPolicy.AllStoriesMonthlyTierCode,
-                httpContext.RequestAborted);
-            var hasAllStoriesYearlyTask = subscriptionLedgerService.HasActiveSubscriptionForTierAsync(
-                signedInEmail,
-                StoryAccessPolicy.AllStoriesYearlyTierCode,
-                httpContext.RequestAborted);
-            await Task.WhenAll(hasAllStoriesMonthlyTask, hasAllStoriesYearlyTask);
-            hasRequiredTier = hasAllStoriesMonthlyTask.Result || hasAllStoriesYearlyTask.Result;
+            var allStoriesChecks = StoryAccessPolicy.AllStoriesTierCodes
+                .Select(tierCode => subscriptionLedgerService.HasActiveSubscriptionForTierAsync(
+                    signedInEmail,
+                    tierCode,
+                    httpContext.RequestAborted))
+                .ToArray();
+            var allStoriesResults = await Task.WhenAll(allStoriesChecks);
+            hasRequiredTier = allStoriesResults.Any(result => result);
         }
         else
         {
@@ -667,6 +668,12 @@ app.MapGet("/media/resources/{resourceDocumentId:guid}", async (
     httpContext.Response.Headers.Expires = "0";
     httpContext.Response.Headers["X-Robots-Tag"] = "noindex, nofollow";
     httpContext.Response.Headers.ContentDisposition = $"inline; filename*=UTF-8''{Uri.EscapeDataString(document.DownloadFileName)}";
+
+    await engagementTrackingService.RecordResourceDownloadAsync(
+        signedInEmail,
+        document.ResourceDocumentId,
+        httpContext.Request.Path.Value,
+        httpContext.RequestAborted);
 
     return Results.File(resourceStream.Content, resourceStream.ContentType, lastModified: resourceStream.LastModified ?? document.LastModified);
 });
@@ -1063,7 +1070,7 @@ app.MapGet("/betaal/{planSlug}", async (
         return Results.NotFound();
     }
 
-    var safeReturnUrl = GetSafeStoryReturnUrl(returnUrl);
+    var safeReturnUrl = GetSafeCheckoutReturnUrl(returnUrl, plan);
 
     var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
                        ?? httpContext.User.Identity?.Name;
@@ -3559,6 +3566,25 @@ static string? GetSafeStoryReturnUrl(string? returnUrl)
 
     return StoryAccessPolicy.TryParseStoryPath(normalized, out _, out _)
         ? normalized
+        : null;
+}
+
+static string? GetSafeCheckoutReturnUrl(string? returnUrl, PaymentPlan plan)
+{
+    var storyReturnUrl = GetSafeStoryReturnUrl(returnUrl);
+    if (!string.IsNullOrWhiteSpace(storyReturnUrl))
+    {
+        return storyReturnUrl;
+    }
+
+    var normalized = NormalizeReturnPathCandidate(returnUrl);
+    if (!plan.IsSchoolPlan || string.IsNullOrWhiteSpace(normalized))
+    {
+        return null;
+    }
+
+    return string.Equals(normalized, "/skool-admin", StringComparison.OrdinalIgnoreCase)
+        ? "/skool-admin"
         : null;
 }
 

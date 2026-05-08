@@ -1,0 +1,186 @@
+@page "/skoolopsies"
+@rendermode InteractiveServer
+@using System.Text.Json
+@using Microsoft.AspNetCore.WebUtilities
+@using Shink.Components.Content
+@inject NavigationManager NavigationManager
+
+<PageTitle>Schink Stories | Skoolopsies</PageTitle>
+<HeadContent>
+    <link rel="canonical" href="@SkoolOpsiesCanonicalUrl" />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Schink Stories | Skoolopsies" />
+    <meta property="og:description" content="Jaarlikse Schink Stories pakkette vir skole, klaskamers en grondslagfase luistertyd." />
+    <meta property="og:url" content="@SkoolOpsiesCanonicalUrl" />
+    <meta property="og:image" content="@NavigationManager.ToAbsoluteUri("/branding/Schink_Stories_Logo_turqoise.png").ToString()" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Schink Stories | Skoolopsies" />
+    <meta name="twitter:description" content="Jaarlikse Schink Stories pakkette vir skole, klaskamers en grondslagfase luistertyd." />
+    <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/branding/Schink_Stories_Logo_turqoise.png").ToString()" />
+    <JsonLdScript Json="@SkoolOpsiesJsonLd" />
+</HeadContent>
+
+<section class="skoolopsies-page">
+    <div class="skoolopsies-logo">
+        <img src="/branding/Schink_Stories_Logo_turqoise.png"
+             alt="Schink Stories"
+             class="skoolopsies-logo-image"
+             loading="eager"
+             decoding="async" />
+    </div>
+
+    <section class="skoolopsies-hero">
+        <div class="skoolopsies-hero-copy">
+            <p class="skoolopsies-eyebrow">Skoolopsies</p>
+            <h1>'n Gesonde skermtyd-alternatief vir die klaskamer.</h1>
+            <p>
+                Schink Stories help grondslagfase onderwysers om skermtyd te vervang met aktiewe luister,
+                taalontwikkeling en rustige storietyd wat maklik in die skooldag pas.
+            </p>
+            <div class="skoolopsies-hero-actions">
+                <a class="skoolopsies-btn" href="#skool-pakkette">Sien pakkette</a>
+                <a class="skoolopsies-btn skoolopsies-btn-secondary" href="/opsies">Gesinsopsies</a>
+            </div>
+        </div>
+        <aside class="skoolopsies-hero-panel" aria-label="Geskik vir skole">
+            <strong>Grondslagfase</strong>
+            <span>Graad RR tot Graad 3</span>
+            <span>Ouderdomme 5-8</span>
+        </aside>
+    </section>
+
+    <section class="skoolopsies-band">
+        <div class="skoolopsies-section-heading">
+            <p class="skoolopsies-section-kicker">Die behoefte</p>
+            <h2>Oorstimulasie maak luister en fokus moeiliker.</h2>
+            <p>
+                Jong kinders word gereeld blootgestel aan vinnige visuele inhoud wat min kognitiewe inspanning vra.
+                In die klaskamer wys dit as korter aandagspan, swakker luistervermoe en minder spontane verbeelding.
+            </p>
+        </div>
+        <div class="skoolopsies-feature-grid">
+            <article>
+                <i class="fa-solid fa-ear-listen" aria-hidden="true"></i>
+                <h3>Luisterbegrip</h3>
+                <p>Stories bou die vaardigheid om hoofgedagtes, volgorde en betekenis te volg.</p>
+            </article>
+            <article>
+                <i class="fa-solid fa-brain" aria-hidden="true"></i>
+                <h3>Aktiewe verbeelding</h3>
+                <p>Leerders vorm self die storiewereld, eerder as om passief na beelde te kyk.</p>
+            </article>
+            <article>
+                <i class="fa-solid fa-seedling" aria-hidden="true"></i>
+                <h3>Rustige roetine</h3>
+                <p>10-15 minute help met oorgange, regulering en voorbereiding vir taalwerk.</p>
+            </article>
+        </div>
+    </section>
+
+    <section class="skoolopsies-band skoolopsies-split">
+        <div class="skoolopsies-section-heading">
+            <p class="skoolopsies-section-kicker">Waarom oudio werk</p>
+            <h2>Die kind se brein doen die bouwerk.</h2>
+            <p>
+                Waar skerms verbeelding kan vervang, herstel oudio dit. Kinders moet luister, verbindings maak
+                en die narratief internaliseer. Dit ontwikkel fokus, taal en begrip op 'n lae-stimulus manier.
+            </p>
+        </div>
+        <div class="skoolopsies-use-list">
+            <div>
+                <strong>Na pouse</strong>
+                <span>Bring die klas se tempo af en herfokus leerders.</span>
+            </div>
+            <div>
+                <strong>Tussen aktiwiteite</strong>
+                <span>Gebruik storietyd as 'n eenvoudige oorgang sonder ekstra voorbereiding.</span>
+            </div>
+            <div>
+                <strong>Voor taalwerk</strong>
+                <span>Aktiveer luistermodus voordat leerders met begrip en woordeskat werk.</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="skoolopsies-band" id="skool-pakkette">
+        <div class="skoolopsies-section-heading">
+            <p class="skoolopsies-section-kicker">Pakkette vir skole</p>
+            <h2>Kies die skoolopsie wat by julle klaskamers pas.</h2>
+            <p>
+                Alle pakkette sluit volle toegang tot die platform, aktiwiteite, ondersteuning en gereelde
+                inhoudsopdaterings in. Elke skool ontvang ook 'n promosiekode vir ouers.
+            </p>
+        </div>
+
+        <div class="skoolopsies-plan-grid" aria-label="Skoolpakkette">
+            @foreach (var plan in SchoolPlans)
+            {
+                <article class="skoolopsies-plan-card">
+                    <div class="skoolopsies-plan-head">
+                        <p class="skoolopsies-plan-badge">@plan.Name.Replace("Skool ", string.Empty)</p>
+                        <h3>@plan.Name</h3>
+                        <p class="skoolopsies-price">R @FormatRand(plan.Amount) <span>per jaar</span></p>
+                    </div>
+                    <ul>
+                        <li>@plan.SchoolSlotLimit klaskamer slots</li>
+                        <li>Volle toegang tot alle stories en reekse</li>
+                        <li>Aflaaibare aktiwiteite en hulpbronne</li>
+                        <li>Skool admin dashboard vir uitnodigings</li>
+                    </ul>
+                    <a class="skoolopsies-btn" href="@BuildSchoolPlanSignUpHref(plan)">Kies hierdie skoolopsie</a>
+                </article>
+            }
+        </div>
+    </section>
+
+    <section class="skoolopsies-band">
+        <div class="skoolopsies-section-heading">
+            <p class="skoolopsies-section-kicker">Implementering</p>
+            <h2>Eenvoudig, ondersteun en lae risiko.</h2>
+            <p>
+                Geen spesiale toerusting of tegniese opleiding is nodig nie. Skole kan dadelik begin en dit
+                in kort segmente toets sonder om die skooldag te ontwrig.
+            </p>
+        </div>
+        <div class="skoolopsies-proof">
+            <blockquote>
+                Aan die begin was dit moeilik; my klas was gewoond aan skerms. Vandag sien ek duidelik die verskil in hul luister, taal en konsentrasie.
+            </blockquote>
+            <p>Graad 1-onderwyseres, Gauteng</p>
+        </div>
+    </section>
+</section>
+
+@code {
+    private static IReadOnlyList<PaymentPlan> SchoolPlans => PaymentPlanCatalog.SchoolPlans;
+    private string SkoolOpsiesCanonicalUrl => NavigationManager.ToAbsoluteUri("/skoolopsies").ToString();
+
+    private MarkupString SkoolOpsiesJsonLd => new(JsonSerializer.Serialize(new Dictionary<string, object?>
+    {
+        ["@context"] = "https://schema.org",
+        ["@type"] = "WebPage",
+        ["name"] = "Schink Stories | Skoolopsies",
+        ["description"] = "Jaarlikse Schink Stories pakkette vir skole, klaskamers en grondslagfase luistertyd.",
+        ["url"] = SkoolOpsiesCanonicalUrl,
+        ["inLanguage"] = "af-ZA"
+    }));
+
+    private static string BuildSchoolPlanSignUpHref(PaymentPlan plan)
+    {
+        var checkoutPath = QueryHelpers.AddQueryString(
+            $"/betaal/{Uri.EscapeDataString(plan.Slug)}",
+            "returnUrl",
+            "/skool-admin");
+
+        var signUpQuery = new Dictionary<string, string?>
+        {
+            ["plan"] = plan.Slug,
+            ["returnUrl"] = checkoutPath
+        };
+
+        return QueryHelpers.AddQueryString("/teken-op", signUpQuery);
+    }
+
+    private static string FormatRand(decimal amount) =>
+        amount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture).Replace(",", " ");
+}

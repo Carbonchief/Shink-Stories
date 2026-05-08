@@ -646,6 +646,15 @@ public sealed record AdminAnalyticsTopStoryRecord(
     [property: JsonPropertyName("total_favorites")] int TotalFavorites,
     [property: JsonPropertyName("last_activity_at")] DateTimeOffset? LastActivityAt);
 
+public sealed record AdminAnalyticsTopCompletionStoryRecord(
+    [property: JsonPropertyName("story_slug")] string StorySlug,
+    [property: JsonPropertyName("title")] string Title,
+    [property: JsonPropertyName("total_listen_sessions")] int TotalListenSessions,
+    [property: JsonPropertyName("completed_listen_sessions")] int CompletedListenSessions,
+    [property: JsonPropertyName("completion_rate_percent")] decimal CompletionRatePercent,
+    [property: JsonPropertyName("total_listened_seconds")] decimal TotalListenedSeconds,
+    [property: JsonPropertyName("last_activity_at")] DateTimeOffset? LastActivityAt);
+
 public sealed record AdminAnalyticsStoryDetailRecord(
     [property: JsonPropertyName("story_slug")] string StorySlug,
     [property: JsonPropertyName("title")] string Title,
@@ -676,14 +685,45 @@ public sealed record AdminAnalyticsTopCharacterRecord(
     [property: JsonPropertyName("unique_subscribers")] int UniqueSubscribers,
     [property: JsonPropertyName("last_activity_at")] DateTimeOffset? LastActivityAt);
 
+public sealed record AdminAnalyticsResourceDownloadSummary(
+    [property: JsonPropertyName("total_downloads")] int TotalDownloads,
+    [property: JsonPropertyName("downloads_last_30_days")] int DownloadsLast30Days,
+    [property: JsonPropertyName("last_download_at")] DateTimeOffset? LastDownloadAt,
+    [property: JsonPropertyName("items")] IReadOnlyList<AdminAnalyticsResourceDownloadItemRecord> Items);
+
+public sealed record AdminAnalyticsResourceDownloadItemRecord(
+    [property: JsonPropertyName("resource_document_id")] Guid ResourceDocumentId,
+    [property: JsonPropertyName("resource_slug")] string ResourceSlug,
+    [property: JsonPropertyName("title")] string Title,
+    [property: JsonPropertyName("total_downloads")] int TotalDownloads,
+    [property: JsonPropertyName("downloads_last_30_days")] int DownloadsLast30Days,
+    [property: JsonPropertyName("last_download_at")] DateTimeOffset? LastDownloadAt);
+
+public sealed record AdminAnalyticsBlogVisitSummary(
+    [property: JsonPropertyName("total_visits")] int TotalVisits,
+    [property: JsonPropertyName("visits_last_30_days")] int VisitsLast30Days,
+    [property: JsonPropertyName("post_visits")] int PostVisits,
+    [property: JsonPropertyName("last_visit_at")] DateTimeOffset? LastVisitAt,
+    [property: JsonPropertyName("pages")] IReadOnlyList<AdminAnalyticsBlogVisitPageRecord> Pages);
+
+public sealed record AdminAnalyticsBlogVisitPageRecord(
+    [property: JsonPropertyName("page_path")] string PagePath,
+    [property: JsonPropertyName("page_title")] string PageTitle,
+    [property: JsonPropertyName("total_visits")] int TotalVisits,
+    [property: JsonPropertyName("visits_last_30_days")] int VisitsLast30Days,
+    [property: JsonPropertyName("last_visit_at")] DateTimeOffset? LastVisitAt);
+
 public sealed record AdminAnalyticsSnapshot(
     [property: JsonPropertyName("generated_at")] DateTimeOffset? GeneratedAt,
     [property: JsonPropertyName("story_summary")] AdminStoryAnalyticsSummary StorySummary,
     [property: JsonPropertyName("daily_activity")] IReadOnlyList<AdminAnalyticsDailyActivityPoint> DailyActivity,
     [property: JsonPropertyName("top_stories")] IReadOnlyList<AdminAnalyticsTopStoryRecord> TopStories,
+    [property: JsonPropertyName("top_completion_stories")] IReadOnlyList<AdminAnalyticsTopCompletionStoryRecord> TopCompletionStories,
     [property: JsonPropertyName("story_analytics")] IReadOnlyList<AdminAnalyticsStoryDetailRecord> StoryAnalytics,
     [property: JsonPropertyName("character_summary")] AdminCharacterAnalyticsSummary CharacterSummary,
-    [property: JsonPropertyName("top_characters")] IReadOnlyList<AdminAnalyticsTopCharacterRecord> TopCharacters)
+    [property: JsonPropertyName("top_characters")] IReadOnlyList<AdminAnalyticsTopCharacterRecord> TopCharacters,
+    [property: JsonPropertyName("resource_download_summary")] AdminAnalyticsResourceDownloadSummary ResourceDownloadSummary,
+    [property: JsonPropertyName("blog_visit_summary")] AdminAnalyticsBlogVisitSummary BlogVisitSummary)
 {
     public static AdminAnalyticsSnapshot Empty { get; } = new(
         GeneratedAt: null,
@@ -704,13 +744,25 @@ public sealed record AdminAnalyticsSnapshot(
             LastFavoriteAt: null),
         DailyActivity: [],
         TopStories: [],
+        TopCompletionStories: [],
         StoryAnalytics: [],
         CharacterSummary: new AdminCharacterAnalyticsSummary(
             TotalAudioPlays: 0,
             UniqueSubscribers: 0,
             UniqueCharacters: 0,
             LastAudioPlayAt: null),
-        TopCharacters: []);
+        TopCharacters: [],
+        ResourceDownloadSummary: new AdminAnalyticsResourceDownloadSummary(
+            TotalDownloads: 0,
+            DownloadsLast30Days: 0,
+            LastDownloadAt: null,
+            Items: []),
+        BlogVisitSummary: new AdminAnalyticsBlogVisitSummary(
+            TotalVisits: 0,
+            VisitsLast30Days: 0,
+            PostVisits: 0,
+            LastVisitAt: null,
+            Pages: []));
 }
 
 public sealed record AdminSubscriberReportsSnapshot(

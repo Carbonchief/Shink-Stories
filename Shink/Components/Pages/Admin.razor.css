@@ -11,15 +11,20 @@
     --admin-selected-row: #2f4f68;
     --admin-input-bg: #1d2d3d;
     --admin-input-border: #49657d;
+    --admin-page-inline-pad: clamp(0.75rem, 1.8vw, 1.5rem);
 
     width: 100%;
     max-width: none;
-    padding-inline: clamp(0.75rem, 1.8vw, 1.5rem);
+    padding-inline-start: max(var(--admin-page-inline-pad), calc(env(safe-area-inset-left, 0px) + var(--admin-page-inline-pad)));
+    padding-inline-end: max(var(--admin-page-inline-pad), calc(env(safe-area-inset-right, 0px) + var(--admin-page-inline-pad)));
     box-sizing: border-box;
     margin-inline: auto;
     display: grid;
     gap: 1rem;
     color: var(--admin-text);
+    max-width: 100%;
+    overflow-x: hidden;
+    overflow-x: clip;
 }
 
 .admin-hero {
@@ -133,6 +138,27 @@
 
 .admin-tabs-shell {
     display: grid;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.admin-tabs {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.admin-tabs-shell ::deep .mud-tabs,
+.admin-tabs-shell ::deep .mud-tabs-toolbar,
+.admin-tabs-shell ::deep .mud-tabs-tabbar,
+.admin-tabs-shell ::deep .mud-tabs-tabbar-inner,
+.admin-tabs-shell ::deep .mud-tabs-scroll-wrapper,
+.admin-tabs-shell ::deep .mud-tabs-tabbar-content,
+.admin-tabs-shell ::deep .mud-tabs-panels,
+.admin-tabs-shell ::deep .mud-tab-panel {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
 }
 
 .admin-tabs-shell ::deep .mud-tabs-tabbar {
@@ -140,6 +166,8 @@
     border-radius: 14px;
     background: var(--admin-surface);
     padding: 0.2rem;
+    overflow-x: auto;
+    overflow-y: hidden;
 }
 
 .admin-tabs-shell ::deep .mud-tabs-toolbar,
@@ -226,6 +254,11 @@
 
 .admin-tabs-shell ::deep .mud-tabs-panels {
     margin-top: 0.65rem;
+    overflow-x: hidden;
+}
+
+.admin-tabs-shell ::deep .mud-tab-panel {
+    overflow-x: hidden;
 }
 
 .admin-dialog-tabs ::deep .mud-tab.mud-tab-active,
@@ -1983,6 +2016,9 @@
 @media (max-width: 760px) {
     .admin-page {
         gap: 0.8rem;
+        --admin-page-inline-pad: 0.75rem;
+        padding-inline-start: max(var(--admin-page-inline-pad), calc(env(safe-area-inset-left, 0px) + var(--admin-page-inline-pad)));
+        padding-inline-end: max(var(--admin-page-inline-pad), calc(env(safe-area-inset-right, 0px) + var(--admin-page-inline-pad)));
     }
 
     .admin-hero,
@@ -2000,16 +2036,35 @@
 
     .admin-language {
         width: 100%;
+        min-width: 0;
+    }
+
+    .admin-language ::deep .mud-input-control {
+        width: 100%;
+        min-width: 0;
     }
 
     .admin-tabs ::deep .mud-tabs-tabbar {
         overflow-x: auto;
         scrollbar-width: thin;
         overscroll-behavior-x: contain;
+        max-width: 100%;
+        width: 100%;
+        box-sizing: border-box;
     }
 
     .admin-tabs ::deep .mud-tab {
         min-width: max-content;
+    }
+
+    .admin-tabs ::deep .mud-tabs-tabbar-inner,
+    .admin-tabs ::deep .mud-tabs-scroll-wrapper,
+    .admin-tabs ::deep .mud-tabs-tabbar-content,
+    .admin-tabs ::deep .mud-tabs-panels,
+    .admin-tabs ::deep .mud-tab-panel {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
     }
 
     .admin-form-grid {
@@ -2050,6 +2105,10 @@
     .admin-search-field,
     .admin-search-actions {
         width: 100%;
+    }
+
+    .admin-search-field {
+        min-width: 0;
     }
 
     .admin-search-actions {

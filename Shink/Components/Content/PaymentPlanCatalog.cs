@@ -9,9 +9,11 @@ public sealed record PaymentPlan(
     decimal Amount,
     bool IsSubscription,
     int BillingPeriodMonths,
-    int BillingFrequency)
+    int BillingFrequency,
+    int? SchoolSlotLimit = null)
 {
     public string AmountDisplay => Amount.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+    public bool IsSchoolPlan => SchoolSlotLimit.HasValue;
 }
 
 public static class PaymentPlanCatalog
@@ -47,8 +49,44 @@ public static class PaymentPlanCatalog
             Amount: 790.00m,
             IsSubscription: true,
             BillingPeriodMonths: 12,
-            BillingFrequency: 6)
+            BillingFrequency: 6),
+        new(
+            Slug: "skool-klein-jaarliks",
+            Name: "Skool Klein",
+            TierCode: "school_small_yearly",
+            ItemName: "Schink Stories Skool Klein",
+            ItemDescription: "Jaarlikse skooltoegang vir 4 klaskamers.",
+            Amount: 6250.00m,
+            IsSubscription: false,
+            BillingPeriodMonths: 12,
+            BillingFrequency: 6,
+            SchoolSlotLimit: 4),
+        new(
+            Slug: "skool-medium-jaarliks",
+            Name: "Skool Medium",
+            TierCode: "school_medium_yearly",
+            ItemName: "Schink Stories Skool Medium",
+            ItemDescription: "Jaarlikse skooltoegang vir 6 klaskamers.",
+            Amount: 8640.00m,
+            IsSubscription: false,
+            BillingPeriodMonths: 12,
+            BillingFrequency: 6,
+            SchoolSlotLimit: 6),
+        new(
+            Slug: "skool-groot-jaarliks",
+            Name: "Skool Groot",
+            TierCode: "school_large_yearly",
+            ItemName: "Schink Stories Skool Groot",
+            ItemDescription: "Jaarlikse skooltoegang vir 8 klaskamers.",
+            Amount: 11520.00m,
+            IsSubscription: false,
+            BillingPeriodMonths: 12,
+            BillingFrequency: 6,
+            SchoolSlotLimit: 8)
     ];
+
+    public static IReadOnlyList<PaymentPlan> SchoolPlans { get; } =
+        All.Where(plan => plan.IsSchoolPlan).ToArray();
 
     public static PaymentPlan? FindBySlug(string? slug) =>
         All.FirstOrDefault(plan => string.Equals(plan.Slug, slug, StringComparison.OrdinalIgnoreCase));
