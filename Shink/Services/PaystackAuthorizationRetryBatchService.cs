@@ -460,8 +460,10 @@ public sealed class PaystackAuthorizationRetryBatchService(
 
     private bool TryBuildSupabaseBaseUri(out Uri baseUri)
     {
-        if (Uri.TryCreate((_supabaseOptions.Url ?? string.Empty).TrimEnd('/') + "/", UriKind.Absolute, out baseUri))
+        if (Uri.TryCreate((_supabaseOptions.Url ?? string.Empty).TrimEnd('/') + "/", UriKind.Absolute, out var parsedBaseUri) &&
+            parsedBaseUri is not null)
         {
+            baseUri = parsedBaseUri;
             return true;
         }
 
