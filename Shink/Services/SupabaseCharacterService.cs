@@ -43,7 +43,7 @@ public sealed partial class SupabaseCharacterService(
         var apiKey = ResolveReadApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase characters lookup skipped: AnonKey is not configured.");
+            _logger.LogWarning("Supabase characters lookup skipped: PublishableKey is not configured.");
             return Array.Empty<StoryCharacterItem>();
         }
 
@@ -139,7 +139,7 @@ public sealed partial class SupabaseCharacterService(
             return Array.Empty<AdminCharacterRecord>();
         }
 
-        var apiKey = ResolveServiceRoleKey();
+        var apiKey = ResolveSecretKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             return Array.Empty<AdminCharacterRecord>();
@@ -210,10 +210,10 @@ public sealed partial class SupabaseCharacterService(
             return false;
         }
 
-        var apiKey = ResolveServiceRoleKey();
+        var apiKey = ResolveSecretKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Character profile listen tracking skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Character profile listen tracking skipped: SecretKey is not configured.");
             return false;
         }
 
@@ -279,10 +279,10 @@ public sealed partial class SupabaseCharacterService(
             return Array.Empty<UserCharacterProfileListenItem>();
         }
 
-        var apiKey = ResolveServiceRoleKey();
+        var apiKey = ResolveSecretKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Character profile listen lookup skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Character profile listen lookup skipped: SecretKey is not configured.");
             return Array.Empty<UserCharacterProfileListenItem>();
         }
 
@@ -357,10 +357,10 @@ public sealed partial class SupabaseCharacterService(
             return new AdminOperationResult(false, "Supabase URL is nog nie opgestel nie.");
         }
 
-        var apiKey = ResolveServiceRoleKey();
+        var apiKey = ResolveSecretKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+            return new AdminOperationResult(false, "Supabase SecretKey is nog nie opgestel nie.");
         }
 
         var normalizedDisplayName = NormalizeOptionalText(request.DisplayName, 140);
@@ -578,10 +578,10 @@ public sealed partial class SupabaseCharacterService(
             return false;
         }
 
-        var apiKey = ResolveServiceRoleKey();
+        var apiKey = ResolveSecretKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Character admin lookup skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Character admin lookup skipped: SecretKey is not configured.");
             return false;
         }
 
@@ -645,14 +645,14 @@ public sealed partial class SupabaseCharacterService(
     }
 
     private string? ResolveReadApiKey() =>
-        string.IsNullOrWhiteSpace(_options.AnonKey)
+        string.IsNullOrWhiteSpace(_options.PublishableKey)
             ? null
-            : _options.AnonKey.Trim();
+            : _options.PublishableKey.Trim();
 
-    private string? ResolveServiceRoleKey() =>
-        string.IsNullOrWhiteSpace(_options.ServiceRoleKey)
+    private string? ResolveSecretKey() =>
+        string.IsNullOrWhiteSpace(_options.SecretKey)
             ? null
-            : _options.ServiceRoleKey.Trim();
+            : _options.SecretKey.Trim();
 
     private static string? NormalizeOptionalText(string? value, int maxLength)
     {

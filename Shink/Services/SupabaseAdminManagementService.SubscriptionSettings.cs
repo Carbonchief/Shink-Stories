@@ -159,7 +159,7 @@ public sealed partial class SupabaseAdminManagementService
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+            return new AdminOperationResult(false, "Supabase SecretKey is nog nie opgestel nie.");
         }
 
         var payload = new[]
@@ -210,7 +210,7 @@ public sealed partial class SupabaseAdminManagementService
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+            return new AdminOperationResult(false, "Supabase SecretKey is nog nie opgestel nie.");
         }
 
         var normalizedTierCode = NormalizeSubscriptionTierCode(request.TierCode);
@@ -296,7 +296,7 @@ public sealed partial class SupabaseAdminManagementService
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+            return new AdminOperationResult(false, "Supabase SecretKey is nog nie opgestel nie.");
         }
 
         var normalizedCode = NormalizeOptionalText(request.Code, 80);

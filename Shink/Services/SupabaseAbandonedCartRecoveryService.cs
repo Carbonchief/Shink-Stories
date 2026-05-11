@@ -571,7 +571,7 @@ public sealed class SupabaseAbandonedCartRecoveryService(
 
     private bool IsSupabaseConfigured() =>
         !string.IsNullOrWhiteSpace(_supabaseOptions.Url) &&
-        !string.IsNullOrWhiteSpace(_supabaseOptions.ServiceRoleKey);
+        !string.IsNullOrWhiteSpace(_supabaseOptions.SecretKey);
 
     private bool IsResendConfigured()
     {
@@ -655,7 +655,7 @@ public sealed class SupabaseAbandonedCartRecoveryService(
         return Uri.TryCreate(_supabaseOptions.Url, UriKind.Absolute, out baseUri!);
     }
 
-    private string ResolveApiKey() => _supabaseOptions.ServiceRoleKey;
+    private string ResolveApiKey() => _supabaseOptions.SecretKey;
 
     private static string? NormalizeOptionalText(string? value, int maxLength)
     {

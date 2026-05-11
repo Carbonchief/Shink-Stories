@@ -35,7 +35,7 @@ public sealed class SupabaseResourceDocumentPreviewBackfillService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return new ResourceDocumentPreviewBackfillResult(0, 0, ["Supabase ServiceRoleKey is not configured."]);
+            return new ResourceDocumentPreviewBackfillResult(0, 0, ["Supabase SecretKey is not configured."]);
         }
 
         var resourceTypesUri = new Uri(
@@ -269,7 +269,7 @@ public sealed class SupabaseResourceDocumentPreviewBackfillService(
         return true;
     }
 
-    private string ResolveApiKey() => _options.ServiceRoleKey;
+    private string ResolveApiKey() => _options.SecretKey;
 
     private sealed class ResourceTypeRow
     {

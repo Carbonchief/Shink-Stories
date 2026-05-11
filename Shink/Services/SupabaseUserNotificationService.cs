@@ -53,7 +53,7 @@ public sealed class SupabaseUserNotificationService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase notifications lookup skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Supabase notifications lookup skipped: SecretKey is not configured.");
             return EmptyNotificationPageResult;
         }
 
@@ -154,7 +154,7 @@ public sealed class SupabaseUserNotificationService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase notifications mark-read skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Supabase notifications mark-read skipped: SecretKey is not configured.");
             return 0;
         }
 
@@ -226,7 +226,7 @@ public sealed class SupabaseUserNotificationService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase notification mark-read skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Supabase notification mark-read skipped: SecretKey is not configured.");
             return false;
         }
 
@@ -299,7 +299,7 @@ public sealed class SupabaseUserNotificationService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase notifications clear skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Supabase notifications clear skipped: SecretKey is not configured.");
             return 0;
         }
 
@@ -372,7 +372,7 @@ public sealed class SupabaseUserNotificationService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase notification clear skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Supabase notification clear skipped: SecretKey is not configured.");
             return false;
         }
 
@@ -448,7 +448,7 @@ public sealed class SupabaseUserNotificationService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase story notification sync skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Supabase story notification sync skipped: SecretKey is not configured.");
             return 0;
         }
 
@@ -520,7 +520,7 @@ public sealed class SupabaseUserNotificationService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase blog notification sync skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Supabase blog notification sync skipped: SecretKey is not configured.");
             return 0;
         }
 
@@ -588,7 +588,7 @@ public sealed class SupabaseUserNotificationService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase resource notification sync skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Supabase resource notification sync skipped: SecretKey is not configured.");
             return 0;
         }
 
@@ -659,7 +659,7 @@ public sealed class SupabaseUserNotificationService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase notifications sync skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Supabase notifications sync skipped: SecretKey is not configured.");
             return new NotificationSyncResult(0);
         }
 
@@ -1240,7 +1240,7 @@ public sealed class SupabaseUserNotificationService(
         return true;
     }
 
-    private string ResolveApiKey() => _options.ServiceRoleKey;
+    private string ResolveApiKey() => _options.SecretKey;
 
     private static string NormalizeOptionalSlug(string? value) =>
         string.IsNullOrWhiteSpace(value)

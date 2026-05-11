@@ -147,7 +147,7 @@ public sealed class SupabaseResourceCatalogService(
         var apiKey = ResolveReadApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase resources lookup skipped: AnonKey is not configured.");
+            _logger.LogWarning("Supabase resources lookup skipped: PublishableKey is not configured.");
             return Array.Empty<ResourceTypeCatalog>();
         }
 
@@ -260,7 +260,7 @@ public sealed class SupabaseResourceCatalogService(
         return true;
     }
 
-    private string ResolveReadApiKey() => _options.AnonKey;
+    private string ResolveReadApiKey() => _options.PublishableKey;
 
     private async Task<ResourceDocumentAccessRow?> FetchEnabledDocumentAsync(
         Uri baseUri,

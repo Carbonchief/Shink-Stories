@@ -68,7 +68,7 @@ public sealed partial class SupabaseBlogService(
             return new AdminBlogDashboardData([], [], []);
         }
 
-        var apiKey = ResolveServiceRoleKey();
+        var apiKey = ResolveSecretKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             return new AdminBlogDashboardData([], [], []);
@@ -171,10 +171,10 @@ public sealed partial class SupabaseBlogService(
             return new AdminOperationResult(false, "Supabase URL is nog nie opgestel nie.");
         }
 
-        var apiKey = ResolveServiceRoleKey();
+        var apiKey = ResolveSecretKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+            return new AdminOperationResult(false, "Supabase SecretKey is nog nie opgestel nie.");
         }
 
         var normalizedTitle = NormalizeOptionalText(request.Title, 180);
@@ -344,10 +344,10 @@ public sealed partial class SupabaseBlogService(
             return new AdminOperationResult(false, "Supabase URL is nog nie opgestel nie.");
         }
 
-        var apiKey = ResolveServiceRoleKey();
+        var apiKey = ResolveSecretKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+            return new AdminOperationResult(false, "Supabase SecretKey is nog nie opgestel nie.");
         }
 
         try
@@ -416,7 +416,7 @@ public sealed partial class SupabaseBlogService(
         var apiKey = ResolveReadApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase blog lookup skipped: AnonKey is not configured.");
+            _logger.LogWarning("Supabase blog lookup skipped: PublishableKey is not configured.");
             return Array.Empty<BlogPostDetail>();
         }
 
@@ -806,7 +806,7 @@ public sealed partial class SupabaseBlogService(
             return false;
         }
 
-        var apiKey = ResolveServiceRoleKey();
+        var apiKey = ResolveSecretKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             return false;
@@ -884,14 +884,14 @@ public sealed partial class SupabaseBlogService(
     }
 
     private string? ResolveReadApiKey() =>
-        string.IsNullOrWhiteSpace(_options.AnonKey)
+        string.IsNullOrWhiteSpace(_options.PublishableKey)
             ? null
-            : _options.AnonKey.Trim();
+            : _options.PublishableKey.Trim();
 
-    private string? ResolveServiceRoleKey() =>
-        string.IsNullOrWhiteSpace(_options.ServiceRoleKey)
+    private string? ResolveSecretKey() =>
+        string.IsNullOrWhiteSpace(_options.SecretKey)
             ? null
-            : _options.ServiceRoleKey.Trim();
+            : _options.SecretKey.Trim();
 
     private void InvalidatePublishedBlogCache()
     {

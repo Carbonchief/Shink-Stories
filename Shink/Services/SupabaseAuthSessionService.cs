@@ -53,7 +53,7 @@ public sealed class SupabaseAuthSessionService(
                 SessionId: Guid.Empty,
                 MaxConcurrentSessions: ResolveDefaultMaxConcurrentSessions(),
                 SessionLifetimeDays: ResolveSessionLifetimeDays(),
-                ErrorMessage: "Sessiebeheer is nog nie opgestel nie. Stel asseblief Supabase ServiceRoleKey op.");
+                ErrorMessage: "Sessiebeheer is nog nie opgestel nie. Stel asseblief Supabase SecretKey op.");
         }
 
         var normalizedEmail = email.Trim().ToLowerInvariant();
@@ -179,7 +179,7 @@ public sealed class SupabaseAuthSessionService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Auth session validation skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Auth session validation skipped: SecretKey is not configured.");
             return AuthSessionValidationState.Unknown;
         }
 
@@ -496,7 +496,7 @@ public sealed class SupabaseAuthSessionService(
 
     private string? ResolveApiKey()
     {
-        var apiKey = _supabaseOptions.ServiceRoleKey?.Trim();
+        var apiKey = _supabaseOptions.SecretKey?.Trim();
         return string.IsNullOrWhiteSpace(apiKey) ? null : apiKey;
     }
 

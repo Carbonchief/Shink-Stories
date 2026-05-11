@@ -217,7 +217,7 @@ public sealed class SupabaseStoryCatalogService(
         var apiKey = ResolveReadApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase stories lookup skipped: AnonKey is not configured.");
+            _logger.LogWarning("Supabase stories lookup skipped: PublishableKey is not configured.");
             var fallbackRows = BuildLegacyFallbackRows();
             return new StoryCatalogSnapshot(
                 StoryRows: fallbackRows,
@@ -461,7 +461,7 @@ public sealed class SupabaseStoryCatalogService(
             return Array.Empty<string>();
         }
 
-        var apiKey = ResolveServiceRoleKey();
+        var apiKey = ResolveSecretKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
             return Array.Empty<string>();
@@ -614,9 +614,9 @@ public sealed class SupabaseStoryCatalogService(
         return true;
     }
 
-    private string ResolveReadApiKey() => _options.AnonKey;
+    private string ResolveReadApiKey() => _options.PublishableKey;
 
-    private string ResolveServiceRoleKey() => _options.ServiceRoleKey;
+    private string ResolveSecretKey() => _options.SecretKey;
 
     private static string? NormalizeUserEmail(string? value)
     {

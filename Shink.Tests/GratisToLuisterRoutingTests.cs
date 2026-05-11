@@ -90,8 +90,10 @@ public class GratisToLuisterRoutingTests
     {
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
 
-        StringAssert.Contains(program, "app.MapGet(\"/gratis\"");
-        StringAssert.Contains(program, "Results.Redirect(\"/luister\"");
+        StringAssert.Contains(program, "static bool IsGratisPath(PathString path)");
+        StringAssert.Contains(program, "string.Equals(value, \"/gratis\", StringComparison.OrdinalIgnoreCase)");
+        StringAssert.Contains(program, "static string ResolveGratisRedirectPath(PathString path, QueryString queryString)");
+        StringAssert.Contains(program, "? \"/luister\"");
         StringAssert.Contains(program, "app.MapGet(\"/gratis/{slug}\"");
         StringAssert.Contains(program, "$\"/luister/{Uri.EscapeDataString(slug.Trim())}\"");
     }

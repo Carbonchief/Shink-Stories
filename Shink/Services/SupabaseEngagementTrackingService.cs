@@ -40,7 +40,7 @@ public sealed class SupabaseEngagementTrackingService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase resource download tracking skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Supabase resource download tracking skipped: SecretKey is not configured.");
             return false;
         }
 
@@ -84,7 +84,7 @@ public sealed class SupabaseEngagementTrackingService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase blog visit tracking skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Supabase blog visit tracking skipped: SecretKey is not configured.");
             return false;
         }
 
@@ -240,9 +240,9 @@ public sealed class SupabaseEngagementTrackingService(
     }
 
     private string? ResolveApiKey() =>
-        string.IsNullOrWhiteSpace(_options.ServiceRoleKey)
-            ? _options.AnonKey
-            : _options.ServiceRoleKey;
+        string.IsNullOrWhiteSpace(_options.SecretKey)
+            ? null
+            : _options.SecretKey;
 
     private static string? ReadFirstStringProperty(string json, string propertyName)
     {

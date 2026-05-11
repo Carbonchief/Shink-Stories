@@ -43,9 +43,9 @@ public sealed partial class WordPressMigrationService(
     public async Task<WordPressSyncResult> SyncAsync(CancellationToken cancellationToken = default)
     {
         var errors = new List<string>();
-        if (!TryBuildSupabaseBaseUri(out var baseUri) || string.IsNullOrWhiteSpace(_supabaseOptions.ServiceRoleKey))
+        if (!TryBuildSupabaseBaseUri(out var baseUri) || string.IsNullOrWhiteSpace(_supabaseOptions.SecretKey))
         {
-            return new WordPressSyncResult(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ["Supabase ServiceRoleKey or URL is not configured."]);
+            return new WordPressSyncResult(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, ["Supabase SecretKey or URL is not configured."]);
         }
 
         if (!TryValidateWordPressConfiguration(out var configurationError))
@@ -1944,7 +1944,7 @@ public sealed partial class WordPressMigrationService(
     private bool TryBuildSupabaseBaseUri(out Uri baseUri)
     {
         baseUri = default!;
-        if (string.IsNullOrWhiteSpace(_supabaseOptions.Url) || string.IsNullOrWhiteSpace(_supabaseOptions.ServiceRoleKey))
+        if (string.IsNullOrWhiteSpace(_supabaseOptions.Url) || string.IsNullOrWhiteSpace(_supabaseOptions.SecretKey))
         {
             return false;
         }
@@ -1964,8 +1964,8 @@ public sealed partial class WordPressMigrationService(
     private HttpRequestMessage CreateSupabaseRequest(HttpMethod method, Uri uri)
     {
         var request = new HttpRequestMessage(method, uri);
-        request.Headers.TryAddWithoutValidation("apikey", _supabaseOptions.ServiceRoleKey);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _supabaseOptions.ServiceRoleKey);
+        request.Headers.TryAddWithoutValidation("apikey", _supabaseOptions.SecretKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _supabaseOptions.SecretKey);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         return request;
     }

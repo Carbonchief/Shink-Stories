@@ -28,9 +28,9 @@ if ! command -v sips >/dev/null 2>&1; then
   exit 1
 fi
 
-API_KEY="$(jq -r '.Supabase.ServiceRoleKey' appsettings.Development.json)"
+API_KEY="$(jq -r '.Supabase.SecretKey' appsettings.Development.json)"
 if [[ -z "$API_KEY" || "$API_KEY" == "null" ]]; then
-  echo "Supabase service role key not found in appsettings.Development.json." >&2
+  echo "Supabase secret key not found in appsettings.Development.json." >&2
   exit 1
 fi
 

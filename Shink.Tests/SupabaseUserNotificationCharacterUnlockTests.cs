@@ -180,7 +180,7 @@ public class SupabaseUserNotificationCharacterUnlockTests
             Options.Create(new SupabaseOptions
             {
                 Url = "https://example.supabase.co/",
-                ServiceRoleKey = "service-role-key"
+                SecretKey = "secret-key"
             }),
             memoryCache,
             new StubCharacterCatalogService(characters),

@@ -31,7 +31,7 @@ public sealed class SupabaseAuthService(
 
         if (!TryBuildTokenEndpoint(out var tokenEndpoint))
         {
-            return SupabaseSignInResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en anon key op.");
+            return SupabaseSignInResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en publishable key op.");
         }
 
         var signInResult = await ExecuteAuthRequestAsync(
@@ -106,7 +106,7 @@ public sealed class SupabaseAuthService(
 
         if (!TryBuildSignupEndpoint(out var signupEndpoint))
         {
-            return SupabaseSignInResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en anon key op.");
+            return SupabaseSignInResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en publishable key op.");
         }
 
         var normalizedDisplayName = profileData?.DisplayName?.Trim();
@@ -180,15 +180,15 @@ public sealed class SupabaseAuthService(
 
         if (!TryBuildRecoverEndpoint(out var recoverEndpoint))
         {
-            return SupabasePasswordResetResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en anon key op.");
+            return SupabasePasswordResetResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en publishable key op.");
         }
 
         using var request = new HttpRequestMessage(HttpMethod.Post, recoverEndpoint)
         {
             Content = JsonContent.Create(new SupabasePasswordRecoveryRequest(email, redirectTo))
         };
-        request.Headers.TryAddWithoutValidation("apikey", _options.AnonKey);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.AnonKey);
+        request.Headers.TryAddWithoutValidation("apikey", _options.PublishableKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.PublishableKey);
 
         HttpResponseMessage response;
         try
@@ -229,15 +229,15 @@ public sealed class SupabaseAuthService(
 
         if (!TryBuildVerifyEndpoint(out var verifyEndpoint))
         {
-            return SupabaseRecoverySessionResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en anon key op.");
+            return SupabaseRecoverySessionResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en publishable key op.");
         }
 
         using var request = new HttpRequestMessage(HttpMethod.Post, verifyEndpoint)
         {
             Content = JsonContent.Create(new SupabaseTokenHashVerifyRequest("recovery", tokenHash.Trim()))
         };
-        request.Headers.TryAddWithoutValidation("apikey", _options.AnonKey);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.AnonKey);
+        request.Headers.TryAddWithoutValidation("apikey", _options.PublishableKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.PublishableKey);
 
         HttpResponseMessage response;
         try
@@ -294,7 +294,7 @@ public sealed class SupabaseAuthService(
         if (!TryBuildUserEndpoint(out var userEndpoint) ||
             !TryBuildRefreshTokenEndpoint(out var refreshTokenEndpoint))
         {
-            return SupabasePasswordResetResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en anon key op.");
+            return SupabasePasswordResetResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en publishable key op.");
         }
 
         var updateResult = await TryUpdatePasswordAsync(
@@ -357,7 +357,7 @@ public sealed class SupabaseAuthService(
         if (!TryBuildTokenEndpoint(out var tokenEndpoint) ||
             !TryBuildUserEndpoint(out var userEndpoint))
         {
-            return SupabaseEmailChangeResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en anon key op.");
+            return SupabaseEmailChangeResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en publishable key op.");
         }
 
         var authenticatedSession = await TryAuthenticateSessionAsync(
@@ -397,7 +397,7 @@ public sealed class SupabaseAuthService(
         if (!TryBuildUserEndpoint(out var userEndpoint) ||
             !TryBuildRefreshTokenEndpoint(out var refreshTokenEndpoint))
         {
-            return SupabaseSessionUserResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en anon key op.");
+            return SupabaseSessionUserResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en publishable key op.");
         }
 
         var resolveResult = await TryGetAuthenticatedUserAsync(
@@ -449,7 +449,7 @@ public sealed class SupabaseAuthService(
         var supabaseClient = await CreateSupabaseClientAsync(cancellationToken);
         if (supabaseClient is null)
         {
-            return SupabaseOAuthStartResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en anon key op.");
+            return SupabaseOAuthStartResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en publishable key op.");
         }
 
         try
@@ -491,7 +491,7 @@ public sealed class SupabaseAuthService(
         var supabaseClient = await CreateSupabaseClientAsync(cancellationToken);
         if (supabaseClient is null)
         {
-            return SupabaseOAuthExchangeResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en anon key op.");
+            return SupabaseOAuthExchangeResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en publishable key op.");
         }
 
         try
@@ -518,7 +518,7 @@ public sealed class SupabaseAuthService(
         var supabaseClient = await CreateSupabaseClientAsync(cancellationToken);
         if (supabaseClient is null)
         {
-            return SupabaseOAuthExchangeResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en anon key op.");
+            return SupabaseOAuthExchangeResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en publishable key op.");
         }
 
         try
@@ -544,8 +544,8 @@ public sealed class SupabaseAuthService(
         {
             Content = JsonContent.Create(requestPayload)
         };
-        request.Headers.TryAddWithoutValidation("apikey", _options.AnonKey);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.AnonKey);
+        request.Headers.TryAddWithoutValidation("apikey", _options.PublishableKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.PublishableKey);
 
         HttpResponseMessage response;
         try
@@ -577,7 +577,7 @@ public sealed class SupabaseAuthService(
     private bool TryBuildTokenEndpoint(out Uri tokenEndpoint)
     {
         tokenEndpoint = default!;
-        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.AnonKey))
+        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.PublishableKey))
         {
             return false;
         }
@@ -595,7 +595,7 @@ public sealed class SupabaseAuthService(
     private bool TryBuildSignupEndpoint(out Uri signupEndpoint)
     {
         signupEndpoint = default!;
-        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.AnonKey))
+        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.PublishableKey))
         {
             return false;
         }
@@ -613,7 +613,7 @@ public sealed class SupabaseAuthService(
     private bool TryBuildRecoverEndpoint(out Uri recoverEndpoint)
     {
         recoverEndpoint = default!;
-        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.AnonKey))
+        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.PublishableKey))
         {
             return false;
         }
@@ -631,7 +631,7 @@ public sealed class SupabaseAuthService(
     private bool TryBuildVerifyEndpoint(out Uri verifyEndpoint)
     {
         verifyEndpoint = default!;
-        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.AnonKey))
+        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.PublishableKey))
         {
             return false;
         }
@@ -649,7 +649,7 @@ public sealed class SupabaseAuthService(
     private bool TryBuildUserEndpoint(out Uri userEndpoint)
     {
         userEndpoint = default!;
-        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.AnonKey))
+        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.PublishableKey))
         {
             return false;
         }
@@ -667,7 +667,7 @@ public sealed class SupabaseAuthService(
     private bool TryBuildRefreshTokenEndpoint(out Uri refreshTokenEndpoint)
     {
         refreshTokenEndpoint = default!;
-        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.AnonKey))
+        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.PublishableKey))
         {
             return false;
         }
@@ -685,7 +685,7 @@ public sealed class SupabaseAuthService(
     private bool TryBuildAdminUsersEndpoint(out Uri adminUsersEndpoint)
     {
         adminUsersEndpoint = default!;
-        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.ServiceRoleKey))
+        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.SecretKey))
         {
             return false;
         }
@@ -709,7 +709,7 @@ public sealed class SupabaseAuthService(
         if (!TryBuildAdminUsersEndpoint(out var adminUsersEndpoint))
         {
             _logger.LogWarning(
-                "Supabase admin signup fallback skipped because ServiceRoleKey or URL is not configured.");
+                "Supabase admin signup fallback skipped because SecretKey or URL is not configured.");
             return SupabaseSignInResult.Failure(
                 "Registrasie kon nie voltooi nie omdat bevestigings-e-pos tans nie beskikbaar is nie.");
         }
@@ -722,8 +722,8 @@ public sealed class SupabaseAuthService(
                 EmailConfirm: true,
                 UserMetadata: metadata))
         };
-        request.Headers.TryAddWithoutValidation("apikey", _options.ServiceRoleKey);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ServiceRoleKey);
+        request.Headers.TryAddWithoutValidation("apikey", _options.SecretKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.SecretKey);
 
         HttpResponseMessage response;
         try
@@ -770,7 +770,7 @@ public sealed class SupabaseAuthService(
         {
             Content = JsonContent.Create(new SupabasePasswordUpdateRequest(newPassword))
         };
-        request.Headers.TryAddWithoutValidation("apikey", _options.AnonKey);
+        request.Headers.TryAddWithoutValidation("apikey", _options.PublishableKey);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
         HttpResponseMessage response;
@@ -815,8 +815,8 @@ public sealed class SupabaseAuthService(
         {
             Content = JsonContent.Create(new SupabasePasswordSignInRequest(email, password))
         };
-        request.Headers.TryAddWithoutValidation("apikey", _options.AnonKey);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.AnonKey);
+        request.Headers.TryAddWithoutValidation("apikey", _options.PublishableKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.PublishableKey);
 
         HttpResponseMessage response;
         try
@@ -866,7 +866,7 @@ public sealed class SupabaseAuthService(
         {
             Content = JsonContent.Create(new SupabaseEmailUpdateRequest(newEmail))
         };
-        request.Headers.TryAddWithoutValidation("apikey", _options.AnonKey);
+        request.Headers.TryAddWithoutValidation("apikey", _options.PublishableKey);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
         HttpResponseMessage response;
@@ -903,7 +903,7 @@ public sealed class SupabaseAuthService(
         CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, userEndpoint);
-        request.Headers.TryAddWithoutValidation("apikey", _options.AnonKey);
+        request.Headers.TryAddWithoutValidation("apikey", _options.PublishableKey);
         request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
         HttpResponseMessage response;
@@ -947,8 +947,8 @@ public sealed class SupabaseAuthService(
         {
             Content = JsonContent.Create(new SupabaseRefreshTokenRequest(refreshToken))
         };
-        request.Headers.TryAddWithoutValidation("apikey", _options.AnonKey);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.AnonKey);
+        request.Headers.TryAddWithoutValidation("apikey", _options.PublishableKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.PublishableKey);
 
         HttpResponseMessage response;
         try
@@ -1172,7 +1172,7 @@ public sealed class SupabaseAuthService(
 
     private async Task<global::Supabase.Client?> CreateSupabaseClientAsync(CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.AnonKey))
+        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.PublishableKey))
         {
             return null;
         }
@@ -1185,7 +1185,7 @@ public sealed class SupabaseAuthService(
 
         var client = new global::Supabase.Client(
             _options.Url,
-            _options.AnonKey,
+            _options.PublishableKey,
             new global::Supabase.SupabaseOptions
             {
                 AutoConnectRealtime = false,

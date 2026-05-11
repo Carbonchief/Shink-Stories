@@ -26,7 +26,7 @@ public sealed class SupabaseStoreOrderService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Store order create skipped: Supabase ServiceRoleKey is not configured.");
+            _logger.LogWarning("Store order create skipped: Supabase SecretKey is not configured.");
             return new StoreOrderCreateResult(false, ErrorMessage: "Die winkel is nog nie volledig opgestel nie.");
         }
 
@@ -354,7 +354,7 @@ public sealed class SupabaseStoreOrderService(
         return true;
     }
 
-    private string ResolveApiKey() => _options.ServiceRoleKey;
+    private string ResolveApiKey() => _options.SecretKey;
 
     private static StoreOrderRecord MapRecord(StoreOrderRow row) =>
         new(

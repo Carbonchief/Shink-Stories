@@ -26,7 +26,7 @@ public sealed class PaystackAuthorizationRetryBatchService(
         int? maxAttempts = null,
         CancellationToken cancellationToken = default)
     {
-        if (!TryBuildSupabaseBaseUri(out var baseUri) || string.IsNullOrWhiteSpace(_supabaseOptions.ServiceRoleKey))
+        if (!TryBuildSupabaseBaseUri(out var baseUri) || string.IsNullOrWhiteSpace(_supabaseOptions.SecretKey))
         {
             return new PaystackAuthorizationRetryBatchResult(
                 TotalProblematicChargeKeys: 0,
@@ -38,7 +38,7 @@ public sealed class PaystackAuthorizationRetryBatchService(
                 SkippedMissingTokenCount: 0,
                 SkippedNotActionableLiveCount: 0,
                 SkippedMissingEmailOrPlanCount: 0,
-                Errors: ["Supabase ServiceRoleKey or URL is not configured."],
+                Errors: ["Supabase SecretKey or URL is not configured."],
                 Attempts: []);
         }
 
@@ -472,8 +472,8 @@ public sealed class PaystackAuthorizationRetryBatchService(
     private HttpRequestMessage CreateSupabaseRequest(HttpMethod method, Uri uri)
     {
         var request = new HttpRequestMessage(method, uri);
-        request.Headers.Add("apikey", _supabaseOptions.ServiceRoleKey);
-        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _supabaseOptions.ServiceRoleKey);
+        request.Headers.Add("apikey", _supabaseOptions.SecretKey);
+        request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _supabaseOptions.SecretKey);
         request.Headers.Accept.Add(new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
         return request;
     }

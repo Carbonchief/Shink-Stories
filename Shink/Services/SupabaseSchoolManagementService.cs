@@ -504,7 +504,7 @@ public sealed class SupabaseSchoolManagementService(
     private bool TryBuildSupabaseBaseUri(out Uri baseUri, out string apiKey)
     {
         baseUri = null!;
-        apiKey = _options.ServiceRoleKey;
+        apiKey = _options.SecretKey;
         if (string.IsNullOrWhiteSpace(apiKey) ||
             !Uri.TryCreate(_options.Url, UriKind.Absolute, out var parsedBaseUri))
         {

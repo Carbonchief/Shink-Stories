@@ -39,7 +39,7 @@ public sealed class SupabaseStoryTrackingService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase story view tracking skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Supabase story view tracking skipped: SecretKey is not configured.");
             return false;
         }
 
@@ -91,7 +91,7 @@ public sealed class SupabaseStoryTrackingService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase story listen tracking skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Supabase story listen tracking skipped: SecretKey is not configured.");
             return false;
         }
 
@@ -145,7 +145,7 @@ public sealed class SupabaseStoryTrackingService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase story progress lookup skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Supabase story progress lookup skipped: SecretKey is not configured.");
             return Array.Empty<UserStoryProgressItem>();
         }
 
@@ -331,7 +331,7 @@ public sealed class SupabaseStoryTrackingService(
         return true;
     }
 
-    private string ResolveApiKey() => _options.ServiceRoleKey;
+    private string ResolveApiKey() => _options.SecretKey;
 
     private static string? NormalizeOptionalText(string? value)
     {

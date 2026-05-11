@@ -620,7 +620,7 @@ public partial class AdminResourceTypesPanel : ComponentBase
             "Resource type slug is ongeldig." => T("Die hulpbron tipe slug is ongeldig.", "The resource type slug is invalid."),
             "Resource type naam is verpligtend." => T("Die hulpbron tipe naam is verpligtend.", "The resource type name is required."),
             "Supabase URL is nog nie opgestel nie." => T("Supabase URL is nog nie opgestel nie.", "Supabase URL is not configured yet."),
-            "Supabase ServiceRoleKey is nog nie opgestel nie." => T("Supabase ServiceRoleKey is nog nie opgestel nie.", "Supabase ServiceRoleKey is not configured yet."),
+            "Supabase SecretKey is nog nie opgestel nie." => T("Supabase SecretKey is nog nie opgestel nie.", "Supabase SecretKey is not configured yet."),
             "Resource type slug bestaan reeds." => T("Die hulpbron tipe slug bestaan reeds.", "The resource type slug already exists."),
             "Kon nie resource type skep nie." => T("Kon nie hulpbron tipe skep nie.", "Could not create the resource type."),
             "Kon nie resource type nou opdateer nie." => T("Kon nie hulpbron tipe nou opdateer nie.", "Could not update the resource type right now."),

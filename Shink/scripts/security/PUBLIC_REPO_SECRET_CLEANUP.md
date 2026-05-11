@@ -10,8 +10,8 @@ The committed `appsettings*.json` files are now sanitized. Set real values via e
 - `Resend__FromEmail`
 - `Resend__ToEmail`
 - `Supabase__Url`
-- `Supabase__AnonKey`
-- `Supabase__ServiceRoleKey`
+- `Supabase__PublishableKey`
+- `Supabase__SecretKey`
 - `PayFast__MerchantKey`
 - `PayFast__Passphrase`
 - `Paystack__SecretKey`
@@ -21,7 +21,7 @@ Example (PowerShell, current session):
 
 ```powershell
 $env:Resend__ApiKey = "<resend_key>"
-$env:Supabase__ServiceRoleKey = "<supabase_service_role_key>"
+$env:Supabase__SecretKey = "<supabase_secret_key>"
 ```
 
 ## 2) Rewrite git history to purge previously committed secrets
@@ -39,7 +39,7 @@ $replacementFile = Join-Path $env:TEMP "shink-replacements.txt"
 @'
 <OLD_RESEND_API_KEY>==>REDACTED_RESEND_API_KEY
 <OLD_SUPABASE_ANON_KEY>==>REDACTED_SUPABASE_ANON_KEY
-<OLD_SUPABASE_SERVICE_ROLE_KEY>==>REDACTED_SUPABASE_SERVICE_ROLE_KEY
+<OLD_SUPABASE_SECRET_KEY>==>REDACTED_SUPABASE_SECRET_KEY
 <OLD_PAYFAST_MERCHANT_KEY>==>REDACTED_PAYFAST_MERCHANT_KEY
 <OLD_PAYFAST_PASSPHRASE>==>REDACTED_PAYFAST_PASSPHRASE
 <OLD_PAYSTACK_SECRET_KEY>==>REDACTED_PAYSTACK_SECRET_KEY

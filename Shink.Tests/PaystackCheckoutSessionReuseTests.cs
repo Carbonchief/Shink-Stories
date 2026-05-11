@@ -216,7 +216,7 @@ public sealed class PaystackCheckoutSessionReuseTests
             Options.Create(new SupabaseOptions
             {
                 Url = "https://example.supabase.co/",
-                ServiceRoleKey = "service-role-key"
+                SecretKey = "secret-key"
             }));
 
     private static DefaultHttpContext CreateHttpContext()

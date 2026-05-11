@@ -169,7 +169,7 @@ public sealed class SupabaseErrorLogWorker(
     private async Task PersistAsync(AppErrorLogEntry entry, CancellationToken cancellationToken)
     {
         if (!TryBuildSupabaseBaseUri(out var baseUri) ||
-            string.IsNullOrWhiteSpace(_options.ServiceRoleKey))
+            string.IsNullOrWhiteSpace(_options.SecretKey))
         {
             return;
         }
@@ -200,8 +200,8 @@ public sealed class SupabaseErrorLogWorker(
             Content = new StringContent(JsonSerializer.Serialize(payload, JsonOptions), Encoding.UTF8, "application/json")
         };
 
-        request.Headers.TryAddWithoutValidation("apikey", _options.ServiceRoleKey);
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ServiceRoleKey);
+        request.Headers.TryAddWithoutValidation("apikey", _options.SecretKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.SecretKey);
         request.Headers.TryAddWithoutValidation("Prefer", "return=minimal");
 
         using var response = await _httpClientFactory

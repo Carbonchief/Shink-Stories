@@ -332,7 +332,7 @@ public class SupabaseAbandonedCartRecoveryServiceTests
             Options.Create(new SupabaseOptions
             {
                 Url = "https://example.supabase.co/",
-                ServiceRoleKey = "service-role-key"
+                SecretKey = "secret-key"
             }),
             Options.Create(new ResendOptions
             {

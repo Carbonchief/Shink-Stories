@@ -51,7 +51,7 @@ public sealed partial class SupabaseAdminManagementService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Admin lookup skipped: Supabase ServiceRoleKey is not configured.");
+            _logger.LogWarning("Admin lookup skipped: Supabase SecretKey is not configured.");
             return false;
         }
 
@@ -77,7 +77,7 @@ public sealed partial class SupabaseAdminManagementService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Admin email change skipped: Supabase ServiceRoleKey is not configured.");
+            _logger.LogWarning("Admin email change skipped: Supabase SecretKey is not configured.");
             return false;
         }
 
@@ -262,7 +262,7 @@ public sealed partial class SupabaseAdminManagementService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+            return new AdminOperationResult(false, "Supabase SecretKey is nog nie opgestel nie.");
         }
 
         var normalizedFirstName = NormalizeOptionalText(request.FirstName, 80);
@@ -1228,7 +1228,7 @@ public sealed partial class SupabaseAdminManagementService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+            return new AdminOperationResult(false, "Supabase SecretKey is nog nie opgestel nie.");
         }
 
         var existingStory = await FetchStoryByIdAsync(baseUri, apiKey, request.StoryId, cancellationToken);
@@ -1376,7 +1376,7 @@ public sealed partial class SupabaseAdminManagementService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+            return new AdminOperationResult(false, "Supabase SecretKey is nog nie opgestel nie.");
         }
 
         var payload = new Dictionary<string, object?>
@@ -1562,7 +1562,7 @@ public sealed partial class SupabaseAdminManagementService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+            return new AdminOperationResult(false, "Supabase SecretKey is nog nie opgestel nie.");
         }
 
         if (request.PlaylistId is null || request.PlaylistId == Guid.Empty)
@@ -1683,7 +1683,7 @@ public sealed partial class SupabaseAdminManagementService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+            return new AdminOperationResult(false, "Supabase SecretKey is nog nie opgestel nie.");
         }
 
         var normalizedIds = orderedPlaylistIds
@@ -1749,7 +1749,7 @@ public sealed partial class SupabaseAdminManagementService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+            return new AdminOperationResult(false, "Supabase SecretKey is nog nie opgestel nie.");
         }
 
         var existingPlaylist = await FetchPlaylistByIdAsync(baseUri, apiKey, playlistId, cancellationToken);
@@ -1923,7 +1923,7 @@ public sealed partial class SupabaseAdminManagementService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+            return new AdminOperationResult(false, "Supabase SecretKey is nog nie opgestel nie.");
         }
 
         var payload = new Dictionary<string, object?>
@@ -2022,7 +2022,7 @@ public sealed partial class SupabaseAdminManagementService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+            return new AdminOperationResult(false, "Supabase SecretKey is nog nie opgestel nie.");
         }
 
         var escapedStoreProductId = Uri.EscapeDataString(storeProductId.ToString("D"));
@@ -2622,7 +2622,7 @@ public sealed partial class SupabaseAdminManagementService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+            return new AdminOperationResult(false, "Supabase SecretKey is nog nie opgestel nie.");
         }
 
         var payload = new Dictionary<string, object?>
@@ -2709,7 +2709,7 @@ public sealed partial class SupabaseAdminManagementService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+            return new AdminOperationResult(false, "Supabase SecretKey is nog nie opgestel nie.");
         }
 
         var escapedResourceTypeId = Uri.EscapeDataString(resourceTypeId.ToString("D"));
@@ -2826,7 +2826,7 @@ public sealed partial class SupabaseAdminManagementService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+            return new AdminOperationResult(false, "Supabase SecretKey is nog nie opgestel nie.");
         }
 
         var normalizedFileName = Path.GetFileName(request.FileName?.Trim());
@@ -2975,7 +2975,7 @@ public sealed partial class SupabaseAdminManagementService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+            return new AdminOperationResult(false, "Supabase SecretKey is nog nie opgestel nie.");
         }
 
         var escapedResourceDocumentId = Uri.EscapeDataString(resourceDocumentId.ToString("D"));
@@ -3020,7 +3020,7 @@ public sealed partial class SupabaseAdminManagementService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return new AdminOperationResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+            return new AdminOperationResult(false, "Supabase SecretKey is nog nie opgestel nie.");
         }
 
         var normalizedRequiredTierCode = NormalizeOptionalText(request.RequiredTierCode, 64)?.ToLowerInvariant();
@@ -3491,7 +3491,7 @@ public sealed partial class SupabaseAdminManagementService(
         return true;
     }
 
-    private string ResolveApiKey() => _options.ServiceRoleKey;
+    private string ResolveApiKey() => _options.SecretKey;
 
     private void InvalidateStoryCatalogCache()
     {

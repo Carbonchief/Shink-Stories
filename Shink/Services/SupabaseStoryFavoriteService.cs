@@ -40,7 +40,7 @@ public sealed class SupabaseStoryFavoriteService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase story favorites lookup skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Supabase story favorites lookup skipped: SecretKey is not configured.");
             return Array.Empty<string>();
         }
 
@@ -126,7 +126,7 @@ public sealed class SupabaseStoryFavoriteService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase story favorites mutation skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Supabase story favorites mutation skipped: SecretKey is not configured.");
             return false;
         }
 
@@ -321,7 +321,7 @@ public sealed class SupabaseStoryFavoriteService(
         return true;
     }
 
-    private string ResolveApiKey() => _options.ServiceRoleKey;
+    private string ResolveApiKey() => _options.SecretKey;
 
     private static string? NormalizeStorySlug(string? storySlug)
     {

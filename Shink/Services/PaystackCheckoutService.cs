@@ -912,7 +912,7 @@ public sealed class PaystackCheckoutService(
     private bool TryBuildSupabaseBaseUri(out Uri baseUri, out string apiKey)
     {
         baseUri = default!;
-        apiKey = _supabaseOptions?.ServiceRoleKey ?? string.Empty;
+        apiKey = _supabaseOptions?.SecretKey ?? string.Empty;
         return _supabaseOptions is not null &&
                !string.IsNullOrWhiteSpace(apiKey) &&
                Uri.TryCreate(_supabaseOptions.Url, UriKind.Absolute, out baseUri!);

@@ -540,7 +540,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase subscriber profile lookup skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Supabase subscriber profile lookup skipped: SecretKey is not configured.");
             return null;
         }
 
@@ -615,7 +615,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase subscriber upsert skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Supabase subscriber upsert skipped: SecretKey is not configured.");
             return false;
         }
 
@@ -662,7 +662,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase subscriber last-login update skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Supabase subscriber last-login update skipped: SecretKey is not configured.");
             return false;
         }
 
@@ -709,8 +709,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase subscriber email change skipped: ServiceRoleKey is not configured.");
-            return new SubscriberEmailChangeResult(false, "Supabase ServiceRoleKey is nog nie opgestel nie.");
+            _logger.LogWarning("Supabase subscriber email change skipped: SecretKey is not configured.");
+            return new SubscriberEmailChangeResult(false, "Supabase SecretKey is nog nie opgestel nie.");
         }
 
         var normalizedCurrentEmail = currentEmail.Trim().ToLowerInvariant();
@@ -822,7 +822,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Gratis provisioning skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Gratis provisioning skipped: SecretKey is not configured.");
             return false;
         }
 
@@ -1208,7 +1208,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase subscription lookup skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Supabase subscription lookup skipped: SecretKey is not configured.");
             return [];
         }
 
@@ -1321,7 +1321,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase self-service account action skipped: ServiceRoleKey is not configured.");
+            _logger.LogWarning("Supabase self-service account action skipped: SecretKey is not configured.");
             return null;
         }
 
@@ -1718,7 +1718,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return new SubscriptionPersistResult(false, "Supabase ServiceRoleKey is not configured.");
+            return new SubscriptionPersistResult(false, "Supabase SecretKey is not configured.");
         }
 
         var nowUtc = DateTimeOffset.UtcNow;
@@ -1879,7 +1879,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return new SubscriptionPersistResult(false, "Supabase ServiceRoleKey is not configured.");
+            return new SubscriptionPersistResult(false, "Supabase SecretKey is not configured.");
         }
 
         if (string.IsNullOrWhiteSpace(payloadJson))
@@ -2450,7 +2450,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("PayFast webhook failure could not be logged because Supabase ServiceRoleKey is not configured.");
+            _logger.LogWarning("PayFast webhook failure could not be logged because Supabase SecretKey is not configured.");
             return;
         }
 
@@ -4097,7 +4097,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         return true;
     }
 
-    private string ResolveApiKey() => _options.ServiceRoleKey;
+    private string ResolveApiKey() => _options.SecretKey;
 
     private static string? ResolvePayFastPlanSlug(IFormCollection formCollection)
     {

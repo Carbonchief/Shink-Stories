@@ -95,7 +95,7 @@ public sealed class SupabaseStoreProductCatalogService(
         var apiKey = ResolveReadApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            _logger.LogWarning("Supabase store product lookup skipped: AnonKey is not configured.");
+            _logger.LogWarning("Supabase store product lookup skipped: PublishableKey is not configured.");
             return fallbackProducts;
         }
 
@@ -165,7 +165,7 @@ public sealed class SupabaseStoreProductCatalogService(
         return true;
     }
 
-    private string ResolveReadApiKey() => _options.AnonKey;
+    private string ResolveReadApiKey() => _options.PublishableKey;
 
     private static IReadOnlyList<StoreProduct> BuildFallbackProducts() =>
         StoreProductCatalog.All

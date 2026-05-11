@@ -142,7 +142,7 @@ public sealed partial class SupabaseSubscriptionLedgerService
         var apiKey = ResolveApiKey();
         if (string.IsNullOrWhiteSpace(apiKey))
         {
-            return new DiscountCodeSelectionResolution(false, ErrorMessage: "Supabase ServiceRoleKey is not configured.");
+            return new DiscountCodeSelectionResolution(false, ErrorMessage: "Supabase SecretKey is not configured.");
         }
 
         var bypassEnabled = await IsSignupCodeBypassEnabledAsync(baseUri, apiKey, cancellationToken);

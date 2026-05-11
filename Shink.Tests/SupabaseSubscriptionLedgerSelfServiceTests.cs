@@ -1473,7 +1473,7 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
             Options.Create(new SupabaseOptions
             {
                 Url = "https://example.supabase.co/",
-                ServiceRoleKey = "service-role-key"
+                SecretKey = "secret-key"
             }),
             recoveryEmailService ?? new NoopSubscriptionPaymentRecoveryEmailService(),
             new NoopSubscriptionNotificationEmailService(),

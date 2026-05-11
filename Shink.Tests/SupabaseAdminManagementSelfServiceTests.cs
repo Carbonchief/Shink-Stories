@@ -332,7 +332,7 @@ public class SupabaseAdminManagementSelfServiceTests
             Options.Create(new SupabaseOptions
             {
                 Url = "https://example.supabase.co/",
-                ServiceRoleKey = "service-role-key"
+                SecretKey = "secret-key"
             }),
             new MemoryCache(Options.Create(new MemoryCacheOptions())),
             userNotificationService ?? new NoopUserNotificationService(),

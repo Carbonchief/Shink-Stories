@@ -73,7 +73,7 @@ public class SupabaseAuthServiceTests
         {
             Assert.AreEqual(HttpMethod.Post, request.Method);
             Assert.AreEqual("https://example.supabase.co/auth/v1/admin/users", request.RequestUri?.ToString());
-            Assert.AreEqual("service-role-key", request.Headers.Authorization?.Parameter);
+            Assert.AreEqual("secret-key", request.Headers.Authorization?.Parameter);
             requestBody = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
@@ -88,7 +88,7 @@ public class SupabaseAuthServiceTests
             };
         });
         using var httpClient = new HttpClient(handler);
-        var service = CreateService(httpClient, serviceRoleKey: "service-role-key");
+        var service = CreateService(httpClient, secretKey: "secret-key");
 
         var result = await service.SignUpWithPasswordAsync(
             "ouer@example.com",
@@ -102,14 +102,14 @@ public class SupabaseAuthServiceTests
         StringAssert.Contains(requestBody!, "\"firstName\":\"Ouer\"");
     }
 
-    private static SupabaseAuthService CreateService(HttpClient httpClient, string serviceRoleKey = "") =>
+    private static SupabaseAuthService CreateService(HttpClient httpClient, string secretKey = "") =>
         new(
             httpClient,
             Options.Create(new SupabaseOptions
             {
                 Url = "https://example.supabase.co/",
-                AnonKey = "anon-key",
-                ServiceRoleKey = serviceRoleKey
+                PublishableKey = "publishable-key",
+                SecretKey = secretKey
             }),
             new EmptyWordPressMigrationService(),
             new WordPressPasswordVerifier(),
