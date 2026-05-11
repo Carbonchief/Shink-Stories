@@ -12,9 +12,9 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(nameof(StoryDetailPage), typeof(StoryDetailPage));
 
         var tabs = new TabBar();
-        tabs.Items.Add(CreateTab("Tuis", () => services.GetRequiredService<HomePage>()));
-        tabs.Items.Add(CreateTab("Gratis", () => services.GetRequiredService<GratisPage>()));
         tabs.Items.Add(CreateTab("Luister", () => services.GetRequiredService<LuisterPage>()));
+        tabs.Items.Add(CreateTab("Gratis", () => services.GetRequiredService<GratisPage>()));
+        tabs.Items.Add(CreateTab("Tuis", () => services.GetRequiredService<HomePage>()));
         tabs.Items.Add(CreateTab("Meer", () => services.GetRequiredService<AboutPage>()));
         tabs.Items.Add(CreateTab("Rekening", () => services.GetRequiredService<AccountPage>()));
         Items.Add(tabs);

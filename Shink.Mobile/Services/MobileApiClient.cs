@@ -9,7 +9,7 @@ namespace Shink.Mobile.Services;
 public sealed class MobileAppSettings
 {
     private const string BaseUrlPreferenceKey = "mobile_api_base_url";
-    private const string DefaultBaseUrl = "http://localhost:5262";
+    private const string DefaultBaseUrl = "https://www.schink.co.za";
 
     public string BaseUrl
     {
@@ -99,6 +99,17 @@ public sealed class MobileApiClient
         GetAsync<MobileStoryDetailResponse>(
             $"/api/mobile/stories/{Uri.EscapeDataString(slug)}?source={Uri.EscapeDataString(source)}",
             cancellationToken);
+
+    public string BuildAbsoluteUrl(string path)
+    {
+        if (Uri.TryCreate(path, UriKind.Absolute, out var absoluteUri))
+        {
+            return absoluteUri.ToString();
+        }
+
+        var normalizedPath = path.StartsWith("/", StringComparison.Ordinal) ? path : $"/{path}";
+        return $"{_settings.BaseUrl.TrimEnd('/')}{normalizedPath}";
+    }
 
     public async Task<(bool IsSuccess, string Message)> SignInAsync(string email, string password, CancellationToken cancellationToken = default)
     {

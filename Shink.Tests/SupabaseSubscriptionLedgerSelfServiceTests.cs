@@ -850,7 +850,597 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
         Assert.AreEqual(0, paystackChargeCalls);
     }
 
-    private static SupabaseSubscriptionLedgerService CreateService(RecordingHandler handler)
+    [TestMethod]
+    public async Task RecordPaystackEventAsync_FailedRecurringPaymentSeedsOriginalAmountForRetry()
+    {
+        var originalSubscriptionId = "22222222-2222-2222-2222-222222222222";
+        var originalProviderPaymentId = "SUB_pg02qbp0h6cb015";
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "subscription_id": "{{originalSubscriptionId}}",
+                        "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "{{originalProviderPaymentId}}",
+                        "provider_transaction_id": null,
+                        "provider_token": "AUTH_retry",
+                        "status": "active",
+                        "billing_amount_zar": null,
+                        "billing_period_months": null,
+                        "billing_amount_source": null
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "email": "ouer@example.com",
+                        "first_name": "Ouer",
+                        "display_name": "Ouer Een"
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_payment_recoveries")
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_payment_recoveries")
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "recovery_id": "d1fe972f-4421-460e-a3c2-744cb2c2ef96",
+                        "subscription_id": "{{originalSubscriptionId}}",
+                        "provider": "paystack",
+                        "provider_payment_id": "{{originalProviderPaymentId}}",
+                        "first_failed_at": "2026-05-06T20:00:14Z",
+                        "grace_ends_at": "2026-05-11T20:07:13Z",
+                        "authorization_retry_status": "pending"
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.RecordPaystackEventAsync(
+            $$"""
+            {
+              "event": "invoice.payment_failed",
+              "data": {
+                "id": 6099999999,
+                "status": "failed",
+                "amount": 5500,
+                "customer": {
+                  "email": "ouer@example.com"
+                },
+                "subscription": {
+                  "subscription_code": "{{originalProviderPaymentId}}"
+                }
+              }
+            }
+            """);
+
+        Assert.IsTrue(result.IsSuccess);
+        Assert.AreEqual(originalSubscriptionId, result.SubscriptionId);
+        Assert.IsTrue(
+            handler.SubscriptionPatchPayloads.Any(IsOriginalPaystackFailureAmountPatch),
+            "The failed Paystack amount should be stored so the automatic retry uses the original amount.");
+    }
+
+    [TestMethod]
+    public async Task RecordPaystackEventAsync_AuthorizationRetrySuccessResolvesOriginalRecovery()
+    {
+        var originalSubscriptionId = "22222222-2222-2222-2222-222222222222";
+        var originalProviderPaymentId = "SUB_pg02qbp0h6cb015";
+        var retryReference = "retry-20260507200713-d1fe972f-4421-460e-a3c2-744cb2c2ef96";
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "subscription_id": "{{originalSubscriptionId}}",
+                        "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "{{originalProviderPaymentId}}",
+                        "provider_transaction_id": "{{originalProviderPaymentId}}",
+                        "provider_token": "AUTH_retry",
+                        "status": "active",
+                        "billing_amount_zar": 79.00,
+                        "billing_period_months": 1,
+                        "billing_amount_source": "paystack_payload"
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "email": "ouer@example.com",
+                        "first_name": "Ouer",
+                        "display_name": "Ouer Een"
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "recovery_id": "d1fe972f-4421-460e-a3c2-744cb2c2ef96",
+                        "subscription_id": "{{originalSubscriptionId}}",
+                        "provider": "paystack",
+                        "provider_payment_id": "{{originalProviderPaymentId}}",
+                        "first_failed_at": "2026-05-06T20:00:14Z",
+                        "grace_ends_at": "2026-05-11T20:07:13Z",
+                        "authorization_retry_status": "failed",
+                        "authorization_retry_reference": "{{retryReference}}",
+                        "authorization_retry_error": "Transaction will be processed later.",
+                        "emails_scheduled_at": "2026-05-07T20:07:20Z",
+                        "immediate_email_id": "sent-email",
+                        "warning_email_id": "warning-email",
+                        "suspension_email_id": "suspension-email"
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath is "/rest/v1/subscriptions" or "/rest/v1/subscription_payment_recoveries")
+            {
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.RecordPaystackEventAsync(
+            $$"""
+            {
+              "event": "charge.success",
+              "data": {
+                "id": 6122688188,
+                "status": "success",
+                "reference": "{{retryReference}}",
+                "amount": 7900,
+                "paid_at": "2026-05-07T20:07:16Z",
+                "customer": {
+                  "email": "ouer@example.com"
+                },
+                "metadata": {
+                  "source": "subscription_authorization_retry",
+                  "subscription_id": "{{originalSubscriptionId}}",
+                  "provider_payment_id": "{{originalProviderPaymentId}}",
+                  "tier_code": "all_stories_monthly",
+                  "billing_period_months": 1
+                }
+              }
+            }
+            """);
+
+        Assert.IsTrue(result.IsSuccess);
+        Assert.AreEqual(originalSubscriptionId, result.SubscriptionId);
+        Assert.IsTrue(
+            handler.SubscriptionPatchPayloads.Any(payload =>
+                payload.Contains("\"status\":\"active\"", StringComparison.Ordinal) &&
+                payload.Contains("\"next_renewal_at\":\"2026-06-07T20:07:16Z\"", StringComparison.Ordinal)),
+            "The original subscription should be renewed from the retry success payload.");
+        Assert.IsTrue(
+            handler.PaymentRecoveryPatchPayloads.Any(payload =>
+                payload.Contains("\"authorization_retry_status\":\"succeeded\"", StringComparison.Ordinal) &&
+                payload.Contains($"\"authorization_retry_reference\":\"{retryReference}\"", StringComparison.Ordinal)),
+            "The original recovery row should record the async retry success.");
+        Assert.IsTrue(
+            handler.PaymentRecoveryPatchPayloads.Any(payload =>
+                payload.Contains("\"resolution\":\"recovered\"", StringComparison.Ordinal)),
+            "The original recovery row should be resolved as recovered.");
+        Assert.IsTrue(
+            handler.SubscriptionEventPayloads.Any(payload =>
+                payload.Contains($"\"provider_payment_id\":\"{originalProviderPaymentId}\"", StringComparison.Ordinal) &&
+                payload.Contains($"\"subscription_id\":\"{originalSubscriptionId}\"", StringComparison.Ordinal)),
+            "The success event should be linked to the original subscription, not a retry-reference subscription.");
+    }
+
+    [TestMethod]
+    public async Task RecordPaystackEventAsync_RecurringChargeSuccessWithAuthorizationTokenRenewsOriginalSubscription()
+    {
+        var originalSubscriptionId = "22222222-2222-2222-2222-222222222222";
+        var originalProviderPaymentId = "SUB_pg02qbp0h6cb015";
+        var recurringReference = "03c9fa42f55322c25d97b7c9a03976441c08e7987e467332";
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "subscription_id": "{{originalSubscriptionId}}",
+                        "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "{{originalProviderPaymentId}}",
+                        "provider_transaction_id": "{{recurringReference}}",
+                        "provider_token": "AUTH_retry",
+                        "status": "active",
+                        "billing_amount_zar": 79.00,
+                        "billing_period_months": 1,
+                        "billing_amount_source": "paystack_payload"
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "email": "ouer@example.com",
+                        "first_name": "Ouer",
+                        "display_name": "Ouer Een"
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.RecordPaystackEventAsync(
+            $$"""
+            {
+              "event": "charge.success",
+              "data": {
+                "id": 6130238443,
+                "status": "success",
+                "reference": "{{recurringReference}}",
+                "amount": 7900,
+                "paid_at": "2026-05-10T05:15:11Z",
+                "customer": {
+                  "email": "ouer@example.com"
+                },
+                "authorization": {
+                  "authorization_code": "AUTH_retry"
+                },
+                "plan": {
+                  "amount": 7900,
+                  "interval": "monthly"
+                }
+              }
+            }
+            """);
+
+        Assert.IsTrue(result.IsSuccess);
+        Assert.AreEqual(originalSubscriptionId, result.SubscriptionId);
+        Assert.IsTrue(
+            handler.SubscriptionPatchPayloads.Any(payload =>
+                payload.Contains("\"status\":\"active\"", StringComparison.Ordinal) &&
+                payload.Contains("\"next_renewal_at\":\"2026-06-10T05:15:11Z\"", StringComparison.Ordinal)),
+            "Recurring charge.success events should renew the existing subscription matched by Paystack authorization token.");
+        Assert.IsTrue(
+            handler.SubscriptionEventPayloads.Any(payload =>
+                payload.Contains($"\"provider_payment_id\":\"{originalProviderPaymentId}\"", StringComparison.Ordinal) &&
+                payload.Contains("\"provider_transaction_id\":\"6130238443\"", StringComparison.Ordinal) &&
+                payload.Contains($"\"subscription_id\":\"{originalSubscriptionId}\"", StringComparison.Ordinal)),
+            "The event should be captured against the original subscription, not a new payment-reference subscription.");
+    }
+
+    [TestMethod]
+    public async Task ProcessExpiredPaymentRecoveriesAsync_FailedFirstRetrySchedulesFollowUpBeforeWarningEmail()
+    {
+        var subscriptionId = "22222222-2222-2222-2222-222222222222";
+        var providerPaymentId = "SUB_pg02qbp0h6cb015";
+        var recoveryEmailService = new TrackingSubscriptionPaymentRecoveryEmailService();
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries") &&
+                request.RequestUri!.Query.Contains("authorization_retry_status=eq.pending", StringComparison.Ordinal))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "recovery_id": "recovery-one",
+                        "subscription_id": "{{subscriptionId}}",
+                        "provider": "paystack",
+                        "provider_payment_id": "{{providerPaymentId}}",
+                        "first_failed_at": "2026-05-06T20:00:14Z",
+                        "grace_ends_at": "2026-05-11T20:07:13Z",
+                        "authorization_retry_status": "pending",
+                        "authorization_retry_due_at": "2026-05-07T20:00:14Z"
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "subscription_id": "{{subscriptionId}}",
+                        "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "{{providerPaymentId}}",
+                        "provider_transaction_id": null,
+                        "provider_token": "AUTH_retry",
+                        "status": "active",
+                        "billing_amount_zar": 55.00,
+                        "billing_period_months": 1,
+                        "billing_amount_source": "paystack_payload"
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse("""[{ "email": "ouer@example.com", "first_name": "Ouer", "display_name": "Ouer Een" }]""");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/transaction/charge_authorization")
+            {
+                return JsonResponse(
+                    """
+                    {
+                      "status": true,
+                      "data": {
+                        "status": "failed",
+                        "reference": "retry-failed",
+                        "gateway_response": "Declined"
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath is "/rest/v1/subscriptions" or "/rest/v1/subscription_payment_recoveries")
+            {
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler, recoveryEmailService);
+
+        await service.ProcessExpiredPaymentRecoveriesAsync();
+
+        Assert.AreEqual(1, recoveryEmailService.ScheduledRequests.Count);
+        Assert.IsTrue(
+            handler.PaymentRecoveryPatchPayloads.Any(IsFollowUpAuthorizationRetryPatch),
+            "A failed first retry should schedule one more automatic retry before the warning email goes out.");
+        Assert.IsTrue(
+            handler.PaymentRecoveryPatchPayloads.Any(payload =>
+                payload.Contains("\"warning_email_id\":\"warning-email\"", StringComparison.Ordinal) &&
+                payload.Contains("\"suspension_email_id\":\"suspension-email\"", StringComparison.Ordinal)),
+            "The recovery email sequence should still be scheduled after the first retry fails.");
+    }
+
+    [TestMethod]
+    public async Task ProcessExpiredPaymentRecoveriesAsync_SuccessfulFollowUpRetryCancelsScheduledRecoveryEmails()
+    {
+        var subscriptionId = "22222222-2222-2222-2222-222222222222";
+        var providerPaymentId = "SUB_pg02qbp0h6cb015";
+        var recoveryEmailService = new TrackingSubscriptionPaymentRecoveryEmailService();
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries") &&
+                request.RequestUri!.Query.Contains("authorization_retry_status=eq.pending", StringComparison.Ordinal))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "recovery_id": "recovery-one",
+                        "subscription_id": "{{subscriptionId}}",
+                        "provider": "paystack",
+                        "provider_payment_id": "{{providerPaymentId}}",
+                        "first_failed_at": "2026-05-06T20:00:14Z",
+                        "grace_ends_at": "2026-05-11T20:07:13Z",
+                        "authorization_retry_status": "pending",
+                        "authorization_retry_due_at": "2026-05-08T20:00:14Z",
+                        "emails_scheduled_at": "2026-05-07T20:00:14Z",
+                        "immediate_email_id": "immediate-email",
+                        "warning_email_id": "warning-email",
+                        "suspension_email_id": "suspension-email"
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "subscription_id": "{{subscriptionId}}",
+                        "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "{{providerPaymentId}}",
+                        "provider_transaction_id": null,
+                        "provider_token": "AUTH_retry",
+                        "status": "active",
+                        "billing_amount_zar": 55.00,
+                        "billing_period_months": 1,
+                        "billing_amount_source": "paystack_payload"
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse("""[{ "email": "ouer@example.com", "first_name": "Ouer", "display_name": "Ouer Een" }]""");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/transaction/charge_authorization")
+            {
+                return JsonResponse(
+                    """
+                    {
+                      "status": true,
+                      "data": {
+                        "status": "success",
+                        "reference": "retry-succeeded",
+                        "id": 6122688188,
+                        "paid_at": "2026-05-08T20:00:14Z"
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath is "/rest/v1/subscriptions" or "/rest/v1/subscription_payment_recoveries")
+            {
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler, recoveryEmailService);
+
+        await service.ProcessExpiredPaymentRecoveriesAsync();
+
+        Assert.IsTrue(
+            recoveryEmailService.CancelledSequences.Any(sequence =>
+                sequence.WarningEmailId == "warning-email" &&
+                sequence.SuspensionEmailId == "suspension-email"),
+            "A successful follow-up retry should cancel the scheduled warning and suspension emails.");
+        Assert.IsTrue(
+            handler.PaymentRecoveryPatchPayloads.Any(payload =>
+                payload.Contains("\"authorization_retry_status\":\"succeeded\"", StringComparison.Ordinal)),
+            "The follow-up retry should mark the recovery retry as succeeded.");
+        Assert.IsTrue(
+            handler.PaymentRecoveryPatchPayloads.Any(payload =>
+                payload.Contains("\"resolution\":\"recovered\"", StringComparison.Ordinal)),
+            "The successful follow-up retry should resolve the recovery.");
+    }
+
+    private static SupabaseSubscriptionLedgerService CreateService(
+        RecordingHandler handler,
+        ISubscriptionPaymentRecoveryEmailService? recoveryEmailService = null)
     {
         var httpClient = new HttpClient(handler)
         {
@@ -885,7 +1475,7 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                 Url = "https://example.supabase.co/",
                 ServiceRoleKey = "service-role-key"
             }),
-            new NoopSubscriptionPaymentRecoveryEmailService(),
+            recoveryEmailService ?? new NoopSubscriptionPaymentRecoveryEmailService(),
             new NoopSubscriptionNotificationEmailService(),
             paystackService,
             payFastService,
@@ -896,6 +1486,33 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
         request.Method == HttpMethod.Get &&
         request.RequestUri?.Host == "example.supabase.co" &&
         request.RequestUri.AbsolutePath == path;
+
+    private static bool IsOriginalPaystackFailureAmountPatch(string payload)
+    {
+        using var document = JsonDocument.Parse(payload);
+        var root = document.RootElement;
+        return root.TryGetProperty("billing_amount_zar", out var amount) &&
+               amount.TryGetDecimal(out var parsedAmount) &&
+               parsedAmount == 55.00m &&
+               root.TryGetProperty("billing_period_months", out var period) &&
+               period.GetInt32() == 1 &&
+               root.TryGetProperty("billing_amount_source", out var source) &&
+               string.Equals(source.GetString(), "paystack_payload", StringComparison.Ordinal);
+    }
+
+    private static bool IsFollowUpAuthorizationRetryPatch(string payload)
+    {
+        using var document = JsonDocument.Parse(payload);
+        var root = document.RootElement;
+        return root.TryGetProperty("authorization_retry_status", out var status) &&
+               string.Equals(status.GetString(), "pending", StringComparison.Ordinal) &&
+               root.TryGetProperty("authorization_retry_reference", out var reference) &&
+               string.Equals(reference.GetString(), "retry-failed", StringComparison.Ordinal) &&
+               root.TryGetProperty("authorization_retry_error", out var error) &&
+               string.Equals(error.GetString(), "Declined", StringComparison.Ordinal) &&
+               root.TryGetProperty("authorization_retry_due_at", out var dueAt) &&
+               dueAt.ValueKind == JsonValueKind.String;
+    }
 
     private static HttpResponseMessage JsonResponse(string json) =>
         new(HttpStatusCode.OK)
@@ -908,6 +1525,8 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
         public string? PaystackDisablePayload { get; private set; }
         public string? SubscriptionPatchPayload { get; private set; }
         public List<string> SubscriptionPatchPayloads { get; } = [];
+        public List<string> PaymentRecoveryPatchPayloads { get; } = [];
+        public List<string> SubscriptionEventPayloads { get; } = [];
         public List<string> PaystackLookups { get; } = [];
         public PayFastCancelRequest? PayFastCancelRequest { get; private set; }
         public string? SubscriberPatchPayload { get; private set; }
@@ -931,6 +1550,24 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                 if (SubscriptionPatchPayload is not null)
                 {
                     SubscriptionPatchPayloads.Add(SubscriptionPatchPayload);
+                }
+            }
+            else if (request.Method == new HttpMethod("PATCH") &&
+                     request.RequestUri?.AbsolutePath == "/rest/v1/subscription_payment_recoveries")
+            {
+                var payload = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+                if (payload is not null)
+                {
+                    PaymentRecoveryPatchPayloads.Add(payload);
+                }
+            }
+            else if (request.Method == HttpMethod.Post &&
+                     request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                var payload = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+                if (payload is not null)
+                {
+                    SubscriptionEventPayloads.Add(payload);
                 }
             }
             else if (request.Method == new HttpMethod("PATCH") &&
@@ -969,6 +1606,35 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
             SubscriptionPaymentRecoveryEmailSequence sequence,
             CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
+    }
+
+    private sealed class TrackingSubscriptionPaymentRecoveryEmailService : ISubscriptionPaymentRecoveryEmailService
+    {
+        public List<SubscriptionPaymentRecoveryEmailRequest> ScheduledRequests { get; } = [];
+        public List<SubscriptionPaymentRecoveryEmailSequence> CancelledSequences { get; } = [];
+
+        public Task<SubscriptionPaymentRecoveryEmailSequence?> ScheduleSequenceAsync(
+            SubscriptionPaymentRecoveryEmailRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            ScheduledRequests.Add(request);
+            return Task.FromResult<SubscriptionPaymentRecoveryEmailSequence?>(
+                new("immediate-email", "warning-email", "suspension-email"));
+        }
+
+        public Task<string?> SendImmediateAsync(
+            SubscriptionPaymentRecoveryEmailRequest request,
+            string idempotencyKey,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult<string?>("immediate-email");
+
+        public Task CancelSequenceAsync(
+            SubscriptionPaymentRecoveryEmailSequence sequence,
+            CancellationToken cancellationToken = default)
+        {
+            CancelledSequences.Add(sequence);
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class NoopSubscriptionNotificationEmailService : ISubscriptionNotificationEmailService

@@ -5554,7 +5554,28 @@ static string ToAbsoluteUri(HttpContext httpContext, string? pathOrUrl)
         return absoluteUri.ToString();
     }
 
-    return UriHelper.BuildAbsolute(httpContext.Request.Scheme, httpContext.Request.Host, pathOrUrl);
+    var request = httpContext.Request;
+    var forwardedProto = request.Headers["X-Forwarded-Proto"].FirstOrDefault();
+    var forwardedHost = request.Headers["X-Forwarded-Host"].FirstOrDefault();
+
+    var scheme = !string.IsNullOrWhiteSpace(forwardedProto)
+        ? forwardedProto.Split(',')[0].Trim()
+        : request.Scheme;
+    if (string.IsNullOrWhiteSpace(scheme) || string.Equals(scheme, "file", StringComparison.OrdinalIgnoreCase))
+    {
+        scheme = "https";
+    }
+
+    var host = !string.IsNullOrWhiteSpace(forwardedHost)
+        ? forwardedHost.Split(',')[0].Trim()
+        : request.Host.Value;
+    if (string.IsNullOrWhiteSpace(host))
+    {
+        host = "www.schink.co.za";
+    }
+
+    var baseUrl = $"{scheme}://{host}{request.PathBase}".TrimEnd('/');
+    return $"{baseUrl}/{pathOrUrl.TrimStart('/')}";
 }
 
 static MobileStorySummaryResponse BuildMobileStorySummary(
