@@ -66,6 +66,7 @@ artifacts/
 downloads/
 
 # Local secrets / developer-only config
+/appsettings.Development.json
 appsettings.Local.json
 appsettings.local.json
 appsettings.*.local.json
@@ -74,6 +75,11 @@ appsettings.secrets.json
 .env
 .env.*
 !.env.example
+
+# Local verification/build output
+/obj_verify/
+/Shink/obj_verify/
+/Shink.Tests/obj_verify/
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt
