@@ -513,6 +513,12 @@ else
     private Task HandleStoryCardClickAsync(StoryItem story)
     {
         var storyPath = BuildStoryHref(story);
+        if (string.IsNullOrWhiteSpace(story.Slug))
+        {
+            NavigationManager.NavigateTo(storyPath);
+            return Task.CompletedTask;
+        }
+
         if (HasAccessToStory(story))
         {
             NavigationManager.NavigateTo(storyPath);
@@ -674,7 +680,12 @@ else
 
     private string BuildStoryHref(StoryItem story)
     {
-        var path = $"/luister/{Uri.EscapeDataString(story.Slug)}";
+        if (string.IsNullOrWhiteSpace(story.Slug))
+        {
+            return GetShowcasePath(CurrentPlaylist?.Slug ?? PlaylistSlug);
+        }
+
+        var path = $"/luister/{Uri.EscapeDataString(story.Slug.Trim())}";
         if (CurrentPlaylist is null)
         {
             return path;

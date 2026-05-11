@@ -403,6 +403,7 @@ else
     private IJSObjectReference? _mediaSessionModule;
     private DotNetObjectReference<LuisterStory>? _dotNetRef;
     private bool _mediaSessionModuleLoadFailed;
+    private bool _isDisposed;
     private bool IsManualFullscreenFocus { get; set; }
     private IReadOnlyList<StoryItem> LuisterStories { get; set; } = Array.Empty<StoryItem>();
     private IReadOnlyList<StoryCharacterItem> PublishedCharacters { get; set; } = Array.Empty<StoryCharacterItem>();
@@ -691,7 +692,7 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (CurrentStory is null || IsRedirectingToOpsies)
+        if (CurrentStory is null || IsRedirectingToOpsies || _isDisposed)
         {
             return;
         }
@@ -702,22 +703,43 @@ else
             return;
         }
 
-        _dotNetRef ??= DotNetObjectReference.Create(this);
         try
         {
-            await module.InvokeVoidAsync("initializeStoryMediaSession");
-            await module.InvokeVoidAsync("initializeStoryPlayerFullscreenExperience", _dotNetRef);
+            if (_isDisposed)
+            {
+                return;
+            }
 
-            if (!IsManualFullscreenFocus)
+            _dotNetRef ??= DotNetObjectReference.Create(this);
+            var dotNetRef = _dotNetRef;
+
+            await module.InvokeVoidAsync("initializeStoryMediaSession");
+
+            if (_isDisposed || dotNetRef is null)
+            {
+                return;
+            }
+
+            await module.InvokeVoidAsync("initializeStoryPlayerFullscreenExperience", dotNetRef);
+
+            if (!_isDisposed && !IsManualFullscreenFocus)
             {
                 var shouldResumeFullscreen = await module.InvokeAsync<bool>("consumePendingStoryPlayerFullscreenIntent");
-                if (shouldResumeFullscreen)
+                if (!_isDisposed && shouldResumeFullscreen)
                 {
                     IsManualFullscreenFocus = true;
                     await module.InvokeVoidAsync("setStoryPlayerFullscreenIntent", true);
                     await InvokeAsync(StateHasChanged);
                 }
             }
+        }
+        catch (JSDisconnectedException)
+        {
+            // Browser disconnected while the player UI was initializing.
+        }
+        catch (ObjectDisposedException)
+        {
+            // Navigation can dispose the DotNetObjectReference while a render callback is still in flight.
         }
         catch (JSException)
         {
@@ -744,11 +766,24 @@ else
             _mediaSessionModuleLoadFailed = true;
             IsManualFullscreenFocus = false;
         }
+        catch (JSDisconnectedException)
+        {
+            IsManualFullscreenFocus = false;
+        }
+        catch (ObjectDisposedException)
+        {
+            IsManualFullscreenFocus = false;
+        }
     }
 
     private async Task<IJSObjectReference?> TryGetStoryPlayerModuleAsync()
     {
         if (_mediaSessionModuleLoadFailed)
+        {
+            return null;
+        }
+
+        if (_isDisposed)
         {
             return null;
         }
@@ -769,6 +804,10 @@ else
             return null;
         }
         catch (JSDisconnectedException)
+        {
+            return null;
+        }
+        catch (ObjectDisposedException)
         {
             return null;
         }
@@ -815,7 +854,7 @@ else
     [JSInvokable]
     public Task HandleFullscreenExitedFromBrowser()
     {
-        if (!IsManualFullscreenFocus)
+        if (_isDisposed || !IsManualFullscreenFocus)
         {
             return Task.CompletedTask;
         }
@@ -826,6 +865,8 @@ else
 
     public async ValueTask DisposeAsync()
     {
+        _isDisposed = true;
+
         try
         {
             if (_mediaSessionModule is not null)
@@ -857,6 +898,7 @@ else
         finally
         {
             _dotNetRef?.Dispose();
+            _dotNetRef = null;
         }
     }
 

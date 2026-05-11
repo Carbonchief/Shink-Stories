@@ -2985,7 +2985,6 @@ if (args.Any(argument => string.Equals(argument, "--retry-overdue-paystack", Str
     return;
 }
 
-app.MapGet("/gratis", () => Results.Redirect("/luister"));
 app.MapGet("/gratis/{slug}", (string slug) =>
     string.IsNullOrWhiteSpace(slug)
         ? Results.Redirect("/luister")
