@@ -233,6 +233,94 @@ public class SupabaseAbandonedCartRecoveryServiceTests
     }
 
     [TestMethod]
+    public async Task StartSequenceAsync_CancelsScheduledEmailsWhenRecoveryWasResolvedBeforeEmailIdsWereStored()
+    {
+        var scheduledEmailCalls = 0;
+        var cancelCalls = 0;
+        var patchCalls = 0;
+        var handler = new RecordingHandler(request =>
+        {
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/abandoned_cart_recoveries")
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "recovery_id": "11111111-1111-1111-1111-111111111111",
+                        "source_type": "store_order",
+                        "source_key": "multi-item-order",
+                        "checkout_reference": "order-reference",
+                        "provider": "paystack",
+                        "customer_email": "ouer@example.com",
+                        "item_name": "Winkel bestelling",
+                        "item_summary": "1 item"
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.Host == "api.resend.com" &&
+                request.RequestUri.AbsolutePath.EndsWith("/cancel", StringComparison.Ordinal))
+            {
+                cancelCalls++;
+                return JsonResponse("""{"id":"cancelled-email-id"}""");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.Host == "api.resend.com")
+            {
+                scheduledEmailCalls++;
+                return JsonResponse($$"""{"id":"scheduled-email-{{scheduledEmailCalls}}"}""");
+            }
+
+            if (request.Method.Method == "PATCH" &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/abandoned_cart_recoveries")
+            {
+                patchCalls++;
+                StringAssert.Contains(request.RequestUri.Query, "select=recovery_id,resolved_at,resolution");
+                Assert.IsTrue(
+                    request.Headers.TryGetValues("Prefer", out var preferValues) &&
+                    preferValues.Contains("return=representation"));
+
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "recovery_id": "11111111-1111-1111-1111-111111111111",
+                        "resolved_at": "2026-05-11T18:10:47Z",
+                        "resolution": "paid"
+                      }
+                    ]
+                    """);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+        });
+
+        var service = CreateService(new HttpClient(handler));
+
+        await service.StartSequenceAsync(
+            new AbandonedCartRecoveryStartRequest(
+                SourceType: "store_order",
+                SourceKey: "multi-item-order",
+                CheckoutReference: "order-reference",
+                Provider: "paystack",
+                CustomerEmail: "Ouer@Example.com",
+                CustomerName: "Ouer",
+                ItemName: "Winkel bestelling",
+                ItemSummary: "1 item",
+                CartTotalZar: 150m,
+                CheckoutUrl: "https://checkout.example.com/order-reference",
+                OptOutBaseUrl: "https://schink.example.com"));
+
+        Assert.AreEqual(3, scheduledEmailCalls);
+        Assert.AreEqual(1, patchCalls);
+        Assert.AreEqual(3, cancelCalls);
+    }
+
+    [TestMethod]
     public async Task ResolveSubscriptionRecoveriesAsync_ResolvesCoveredRecoveriesForPurchasedTier()
     {
         var cancelCalls = 0;

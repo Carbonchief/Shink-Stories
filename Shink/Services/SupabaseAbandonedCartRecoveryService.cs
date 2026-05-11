@@ -93,7 +93,13 @@ public sealed class SupabaseAbandonedCartRecoveryService(
             return;
         }
 
-        await StoreScheduledEmailIdsAsync(baseUri, apiKey, recovery.RecoveryId, emailIds, nowUtc, cancellationToken);
+        var updatedRecovery = await StoreScheduledEmailIdsAsync(baseUri, apiKey, recovery.RecoveryId, emailIds, nowUtc, cancellationToken);
+        if (updatedRecovery?.ResolvedAt is not null)
+        {
+            await CancelScheduledEmailAsync(emailIds.FirstEmailId, cancellationToken);
+            await CancelScheduledEmailAsync(emailIds.SecondEmailId, cancellationToken);
+            await CancelScheduledEmailAsync(emailIds.FinalEmailId, cancellationToken);
+        }
     }
 
     public async Task ResolveByCheckoutReferenceAsync(
@@ -451,7 +457,7 @@ public sealed class SupabaseAbandonedCartRecoveryService(
         return JsonSerializer.Deserialize<ResendEmailResponse>(body);
     }
 
-    private async Task StoreScheduledEmailIdsAsync(
+    private async Task<AbandonedRecoveryRow?> StoreScheduledEmailIdsAsync(
         Uri baseUri,
         string apiKey,
         string recoveryId,
@@ -466,8 +472,8 @@ public sealed class SupabaseAbandonedCartRecoveryService(
             final_email_id = emailIds.FinalEmailId,
             updated_at = nowUtc.UtcDateTime
         };
-        var uri = new Uri(baseUri, $"rest/v1/abandoned_cart_recoveries?recovery_id=eq.{Uri.EscapeDataString(recoveryId)}");
-        using var request = CreateJsonRequest(new HttpMethod("PATCH"), uri, apiKey, payload, "return=minimal");
+        var uri = new Uri(baseUri, $"rest/v1/abandoned_cart_recoveries?recovery_id=eq.{Uri.EscapeDataString(recoveryId)}&select=recovery_id,resolved_at,resolution");
+        using var request = CreateJsonRequest(new HttpMethod("PATCH"), uri, apiKey, payload, "return=representation");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
@@ -477,7 +483,18 @@ public sealed class SupabaseAbandonedCartRecoveryService(
                 recoveryId,
                 (int)response.StatusCode,
                 body);
+            return null;
         }
+
+        if (response.StatusCode == System.Net.HttpStatusCode.NoContent)
+        {
+            return null;
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var rows = await JsonSerializer.DeserializeAsync<List<AbandonedRecoveryRow>>(stream, cancellationToken: cancellationToken)
+            ?? [];
+        return rows.FirstOrDefault();
     }
 
     private async Task<IReadOnlyList<AbandonedRecoveryRow>> GetActiveRecoveriesAsync(
@@ -786,6 +803,12 @@ public sealed class SupabaseAbandonedCartRecoveryService(
 
         [JsonPropertyName("final_email_id")]
         public string? FinalEmailId { get; set; }
+
+        [JsonPropertyName("resolved_at")]
+        public DateTimeOffset? ResolvedAt { get; set; }
+
+        [JsonPropertyName("resolution")]
+        public string? Resolution { get; set; }
     }
 
     private sealed record RecoveryEmailIds(

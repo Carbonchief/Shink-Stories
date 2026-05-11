@@ -76,6 +76,13 @@ appsettings.secrets.json
 .env.*
 !.env.example
 
+# Operational exports / reconciliation backups with customer or provider data
+/*reconciliation-backup*.json
+/*reconciliation-export*.json
+/*provider-export*.csv
+/*payment-export*.csv
+/*subscriber-export*.csv
+
 # Local verification/build output
 /obj_verify/
 /Shink/obj_verify/
