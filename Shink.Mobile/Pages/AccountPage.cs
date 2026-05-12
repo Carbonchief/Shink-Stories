@@ -19,6 +19,7 @@ public sealed class AccountPage : ContentPage
     private readonly Entry _signupEmailEntry;
     private readonly Entry _signupMobileEntry;
     private readonly Entry _signupPasswordEntry;
+    private bool _hasLoadedSession;
 
     public AccountPage(MobileApiClient apiClient, SessionState sessionState)
     {
@@ -84,6 +85,12 @@ public sealed class AccountPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+        if (_hasLoadedSession)
+        {
+            return;
+        }
+
+        _hasLoadedSession = true;
         await RefreshSessionAsync();
     }
 
@@ -165,7 +172,8 @@ public sealed class AccountPage : ContentPage
     {
         try
         {
-            await _apiClient.GetSessionAsync();
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            await _apiClient.GetSessionAsync(timeout.Token);
             ApplySessionState();
             _statusLabel.Text = message ?? (_sessionState.Current.IsSignedIn
                 ? "Jy is ingeteken."

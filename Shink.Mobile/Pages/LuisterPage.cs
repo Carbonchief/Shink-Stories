@@ -172,7 +172,7 @@ public sealed class LuisterPage : ContentPage
             Padding = 0,
             Content = new Image
             {
-                Source = _apiClient.BuildAbsoluteUrl("/branding/DIS_STORIETYD.png"),
+                Source = _apiClient.BuildImageUrl("/branding/DIS_STORIETYD.png"),
                 HeightRequest = 230,
                 Aspect = Aspect.AspectFit
             }
@@ -329,6 +329,7 @@ public sealed class LuisterPage : ContentPage
     private View BuildPlaylistCard(MobilePlaylist playlist)
     {
         var imageUrl = string.IsNullOrWhiteSpace(playlist.BackdropUrl) ? playlist.ArtworkUrl : playlist.BackdropUrl;
+        var resolvedImageUrl = _apiClient.BuildImageUrl(imageUrl);
         var card = new Border
         {
             WidthRequest = 250,
@@ -343,7 +344,7 @@ public sealed class LuisterPage : ContentPage
                 {
                     new Image
                     {
-                        Source = imageUrl,
+                        Source = resolvedImageUrl,
                         HeightRequest = 140,
                         Aspect = Aspect.AspectFill
                     },
@@ -396,7 +397,7 @@ public sealed class LuisterPage : ContentPage
         var row = new HorizontalStackLayout { Spacing = 14 };
         foreach (var story in playlist.Stories)
         {
-            var card = PageHelpers.BuildStoryCard(story, OpenStoryAsync, ToggleFavoriteAsync);
+            var card = PageHelpers.BuildStoryCard(story, _apiClient, OpenStoryAsync, ToggleFavoriteAsync);
             card.WidthRequest = 260;
             row.Children.Add(card);
         }

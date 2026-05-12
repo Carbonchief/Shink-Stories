@@ -1,4 +1,5 @@
 using Shink.Mobile.Models;
+using Shink.Mobile.Services;
 
 namespace Shink.Mobile.Pages;
 
@@ -6,12 +7,13 @@ internal static class PageHelpers
 {
     public static View BuildStoryCard(
         MobileStorySummary story,
+        MobileApiClient apiClient,
         Func<MobileStorySummary, Task> onTap,
         Func<MobileStorySummary, Task>? onFavoriteTap = null)
     {
         var image = new Image
         {
-            Source = story.ThumbnailUrl,
+            Source = apiClient.BuildImageUrl(story.ThumbnailUrl),
             Aspect = Aspect.AspectFill,
             HeightRequest = 180
         };

@@ -64,7 +64,7 @@ public sealed class StoryDetailPage : ContentPage
             Title = detail.Story.Title;
             _content.Children.Add(new Image
             {
-                Source = detail.Story.ImageUrl,
+                Source = _apiClient.BuildImageUrl(detail.Story.ImageUrl),
                 HeightRequest = 260,
                 Aspect = Aspect.AspectFit
             });
@@ -152,7 +152,7 @@ public sealed class StoryDetailPage : ContentPage
                 _content.Children.Add(PageHelpers.BuildSectionTitle("Ander stories"));
                 foreach (var story in detail.RelatedStories)
                 {
-                    _content.Children.Add(PageHelpers.BuildStoryCard(story, OpenRelatedStoryAsync));
+                    _content.Children.Add(PageHelpers.BuildStoryCard(story, _apiClient, OpenRelatedStoryAsync));
                 }
             }
         }

@@ -12,7 +12,9 @@ public static class MauiProgram
         builder
             .UseMauiApp<App>();
 
-        builder.Services.AddSingleton<MobileAppSettings>();
+        var mobileAppSettings = new MobileAppSettings();
+        mobileAppSettings.BaseUrl = ResolveMobileApiBaseUrl(mobileAppSettings.BaseUrl);
+        builder.Services.AddSingleton(mobileAppSettings);
         builder.Services.AddSingleton<SessionState>();
         builder.Services.AddSingleton<MobileApiClient>();
         builder.Services.AddSingleton<AppShell>();
@@ -29,4 +31,51 @@ public static class MauiProgram
 
         return builder.Build();
     }
+
+    private static string ResolveMobileApiBaseUrl(string configuredBaseUrl)
+    {
+        var normalizedConfigured = MobileAppSettings.NormalizeBaseUrl(configuredBaseUrl);
+        if (MobileAppSettings.IsValidMobileBaseUrl(normalizedConfigured))
+        {
+            return normalizedConfigured;
+        }
+
+        var overrideUrl = ResolveMobileApiBaseUrlFromWebProject();
+        if (!string.IsNullOrWhiteSpace(overrideUrl))
+        {
+            return overrideUrl;
+        }
+
+        return MobileAppSettings.DefaultBaseUrl;
+    }
+
+    private static string? ResolveMobileApiBaseUrlFromWebProject()
+    {
+        var webProjectUrl = Environment.GetEnvironmentVariable("MOBILE_WEB_API_BASE_URL");
+        if (TryNormalizeWebProjectUrl(webProjectUrl, out var normalizedUrl) &&
+            MobileAppSettings.IsValidMobileBaseUrl(normalizedUrl))
+        {
+            return normalizedUrl;
+        }
+
+        return null;
+    }
+
+    private static bool TryNormalizeWebProjectUrl(string? url, out string normalizedUrl)
+    {
+        normalizedUrl = string.Empty;
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return false;
+        }
+
+        if (!Uri.TryCreate(url.Trim(), UriKind.Absolute, out var parsedUrl))
+        {
+            return false;
+        }
+
+        normalizedUrl = parsedUrl.GetLeftPart(UriPartial.Authority).TrimEnd('/');
+        return true;
+    }
+
 }

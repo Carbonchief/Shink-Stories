@@ -568,25 +568,42 @@
                         else if (ActiveSubscriberView == SubscriberAdminView.MembershipStats)
                         {
                             <div class="admin-report-table-wrap">
-                                <table class="admin-report-table">
-                                    <thead>
-                                        <tr>
-                                            <th>@T("Periode", "Period")</th>
-                                            <th>@T("Intekeninge", "Signups")</th>
-                                            <th>@T("Kansellasies", "Cancellations")</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var metric in SubscriberReports.MembershipStats)
-                                        {
-                                            <tr>
-                                                <td>@GetSubscriberPeriodLabel(metric.PeriodKey)</td>
-                                                <td>@FormatAnalyticsNumber(metric.Signups)</td>
-                                                <td>@FormatAnalyticsNumber(metric.Cancellations)</td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                </table>
+                                <MudTable T="AdminMembershipStatsMetric"
+                                          Items="SubscriberReports.MembershipStats"
+                                          Class="admin-report-table"
+                                          SortLabel='@T("Sorteer volgens", "Sort by")'
+                                          RowsPerPage="100"
+                                          Dense="true"
+                                          Hover="true"
+                                          Bordered="true"
+                                          Elevation="0"
+                                          Breakpoint="Breakpoint.Md">
+                                    <HeaderContent>
+                                        <MudTh>
+                                            <MudTableSortLabel T="AdminMembershipStatsMetric"
+                                                               SortBy="new Func<AdminMembershipStatsMetric, object?>(metric => metric.PeriodKey)">
+                                                @T("Periode", "Period")
+                                            </MudTableSortLabel>
+                                        </MudTh>
+                                        <MudTh>
+                                            <MudTableSortLabel T="AdminMembershipStatsMetric"
+                                                               SortBy="new Func<AdminMembershipStatsMetric, object?>(metric => metric.Signups)">
+                                                @T("Intekeninge", "Signups")
+                                            </MudTableSortLabel>
+                                        </MudTh>
+                                        <MudTh>
+                                            <MudTableSortLabel T="AdminMembershipStatsMetric"
+                                                               SortBy="new Func<AdminMembershipStatsMetric, object?>(metric => metric.Cancellations)">
+                                                @T("Kansellasies", "Cancellations")
+                                            </MudTableSortLabel>
+                                        </MudTh>
+                                    </HeaderContent>
+                                    <RowTemplate>
+                                        <MudTd DataLabel='@T("Periode", "Period")'>@GetSubscriberPeriodLabel(context.PeriodKey)</MudTd>
+                                        <MudTd DataLabel='@T("Intekeninge", "Signups")'>@FormatAnalyticsNumber(context.Signups)</MudTd>
+                                        <MudTd DataLabel='@T("Kansellasies", "Cancellations")'>@FormatAnalyticsNumber(context.Cancellations)</MudTd>
+                                    </RowTemplate>
+                                </MudTable>
                             </div>
                         }
                         else if (ActiveSubscriberView == SubscriberAdminView.ActiveMembersPerLevel)
@@ -631,25 +648,42 @@
                                     </div>
 
                                     <div class="admin-report-table-wrap">
-                                        <table class="admin-report-table">
-                                            <thead>
-                                                <tr>
-                                                    <th>@T("Vlak", "Level")</th>
-                                                    <th>@T("Aktiewe lede", "Active members")</th>
-                                                    <th>@T("Persentasie", "Percentage")</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                @foreach (var metric in CurrentTierDistributionMetrics)
-                                                {
-                                                    <tr>
-                                                        <td>@metric.TierName</td>
-                                                        <td>@FormatAnalyticsNumber(metric.ActiveMembers)</td>
-                                                        <td>@FormatReportPercentage(metric.Percentage)</td>
-                                                    </tr>
-                                                }
-                                            </tbody>
-                                        </table>
+                                        <MudTable T="AdminTierDistributionMetric"
+                                                  Items="CurrentTierDistributionMetrics"
+                                                  Class="admin-report-table"
+                                                  SortLabel='@T("Sorteer volgens", "Sort by")'
+                                                  RowsPerPage="100"
+                                                  Dense="true"
+                                                  Hover="true"
+                                                  Bordered="true"
+                                                  Elevation="0"
+                                                  Breakpoint="Breakpoint.Md">
+                                            <HeaderContent>
+                                                <MudTh>
+                                                    <MudTableSortLabel T="AdminTierDistributionMetric"
+                                                                       SortBy="new Func<AdminTierDistributionMetric, object?>(metric => metric.TierName)">
+                                                        @T("Vlak", "Level")
+                                                    </MudTableSortLabel>
+                                                </MudTh>
+                                                <MudTh>
+                                                    <MudTableSortLabel T="AdminTierDistributionMetric"
+                                                                       SortBy="new Func<AdminTierDistributionMetric, object?>(metric => metric.ActiveMembers)">
+                                                        @T("Aktiewe lede", "Active members")
+                                                    </MudTableSortLabel>
+                                                </MudTh>
+                                                <MudTh>
+                                                    <MudTableSortLabel T="AdminTierDistributionMetric"
+                                                                       SortBy="new Func<AdminTierDistributionMetric, object?>(metric => metric.Percentage)">
+                                                        @T("Persentasie", "Percentage")
+                                                    </MudTableSortLabel>
+                                                </MudTh>
+                                            </HeaderContent>
+                                            <RowTemplate>
+                                                <MudTd DataLabel='@T("Vlak", "Level")'>@context.TierName</MudTd>
+                                                <MudTd DataLabel='@T("Aktiewe lede", "Active members")'>@FormatAnalyticsNumber(context.ActiveMembers)</MudTd>
+                                                <MudTd DataLabel='@T("Persentasie", "Percentage")'>@FormatReportPercentage(context.Percentage)</MudTd>
+                                            </RowTemplate>
+                                        </MudTable>
                                     </div>
                                 </section>
                             </div>
@@ -657,77 +691,138 @@
                         else if (ActiveSubscriberView == SubscriberAdminView.SalesAndRevenue)
                         {
                             <div class="admin-report-table-wrap">
-                                <table class="admin-report-table">
-                                    <thead>
-                                        <tr>
-                                            <th>@T("Periode", "Period")</th>
-                                            <th>@T("Verkope", "Sales")</th>
-                                            <th>@T("Inkomste", "Revenue")</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var metric in SubscriberReports.SalesAndRevenue)
-                                        {
-                                            <tr>
-                                                <td>@GetSubscriberPeriodLabel(metric.PeriodKey)</td>
-                                                <td>@FormatAnalyticsNumber(metric.SalesCount)</td>
-                                                <td>@FormatCurrency(metric.RevenueZar)</td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                </table>
+                                <MudTable T="AdminSalesRevenueMetric"
+                                          Items="SubscriberReports.SalesAndRevenue"
+                                          Class="admin-report-table"
+                                          SortLabel='@T("Sorteer volgens", "Sort by")'
+                                          RowsPerPage="100"
+                                          Dense="true"
+                                          Hover="true"
+                                          Bordered="true"
+                                          Elevation="0"
+                                          Breakpoint="Breakpoint.Md">
+                                    <HeaderContent>
+                                        <MudTh>
+                                            <MudTableSortLabel T="AdminSalesRevenueMetric"
+                                                               SortBy="new Func<AdminSalesRevenueMetric, object?>(metric => metric.PeriodKey)">
+                                                @T("Periode", "Period")
+                                            </MudTableSortLabel>
+                                        </MudTh>
+                                        <MudTh>
+                                            <MudTableSortLabel T="AdminSalesRevenueMetric"
+                                                               SortBy="new Func<AdminSalesRevenueMetric, object?>(metric => metric.SalesCount)">
+                                                @T("Verkope", "Sales")
+                                            </MudTableSortLabel>
+                                        </MudTh>
+                                        <MudTh>
+                                            <MudTableSortLabel T="AdminSalesRevenueMetric"
+                                                               SortBy="new Func<AdminSalesRevenueMetric, object?>(metric => metric.RevenueZar)">
+                                                @T("Inkomste", "Revenue")
+                                            </MudTableSortLabel>
+                                        </MudTh>
+                                    </HeaderContent>
+                                    <RowTemplate>
+                                        <MudTd DataLabel='@T("Periode", "Period")'>@GetSubscriberPeriodLabel(context.PeriodKey)</MudTd>
+                                        <MudTd DataLabel='@T("Verkope", "Sales")'>@FormatAnalyticsNumber(context.SalesCount)</MudTd>
+                                        <MudTd DataLabel='@T("Inkomste", "Revenue")'>@FormatCurrency(context.RevenueZar)</MudTd>
+                                    </RowTemplate>
+                                </MudTable>
                             </div>
                         }
                         else if (ActiveSubscriberView == SubscriberAdminView.AbandonedCartRecoveries)
                         {
                             <div class="admin-report-table-wrap">
-                                <table class="admin-report-table">
-                                    <thead>
-                                        <tr>
-                                            <th>@T("Periode", "Period")</th>
-                                            <th>@T("Herwinde inkomste", "Recovered revenue")</th>
-                                            <th>@T("Herwinde bestellings", "Recovered orders")</th>
-                                            <th>@T("Herstel pogings", "Recovery attempts")</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var metric in SubscriberReports.AbandonedCartRecoveries)
-                                        {
-                                            <tr>
-                                                <td>@GetSubscriberPeriodLabel(metric.PeriodKey)</td>
-                                                <td>@FormatCurrency(metric.RecoveredRevenueZar)</td>
-                                                <td>@FormatAnalyticsNumber(metric.RecoveredOrders)</td>
-                                                <td>@FormatAnalyticsNumber(metric.RecoveryAttempts)</td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                </table>
+                                <MudTable T="AdminRecoveryMetric"
+                                          Items="SubscriberReports.AbandonedCartRecoveries"
+                                          Class="admin-report-table"
+                                          SortLabel='@T("Sorteer volgens", "Sort by")'
+                                          RowsPerPage="100"
+                                          Dense="true"
+                                          Hover="true"
+                                          Bordered="true"
+                                          Elevation="0"
+                                          Breakpoint="Breakpoint.Md">
+                                    <HeaderContent>
+                                        <MudTh>
+                                            <MudTableSortLabel T="AdminRecoveryMetric"
+                                                               SortBy="new Func<AdminRecoveryMetric, object?>(metric => metric.PeriodKey)">
+                                                @T("Periode", "Period")
+                                            </MudTableSortLabel>
+                                        </MudTh>
+                                        <MudTh>
+                                            <MudTableSortLabel T="AdminRecoveryMetric"
+                                                               SortBy="new Func<AdminRecoveryMetric, object?>(metric => metric.RecoveredRevenueZar)">
+                                                @T("Herwinde inkomste", "Recovered revenue")
+                                            </MudTableSortLabel>
+                                        </MudTh>
+                                        <MudTh>
+                                            <MudTableSortLabel T="AdminRecoveryMetric"
+                                                               SortBy="new Func<AdminRecoveryMetric, object?>(metric => metric.RecoveredOrders)">
+                                                @T("Herwinde bestellings", "Recovered orders")
+                                            </MudTableSortLabel>
+                                        </MudTh>
+                                        <MudTh>
+                                            <MudTableSortLabel T="AdminRecoveryMetric"
+                                                               SortBy="new Func<AdminRecoveryMetric, object?>(metric => metric.RecoveryAttempts)">
+                                                @T("Herstel pogings", "Recovery attempts")
+                                            </MudTableSortLabel>
+                                        </MudTh>
+                                    </HeaderContent>
+                                    <RowTemplate>
+                                        <MudTd DataLabel='@T("Periode", "Period")'>@GetSubscriberPeriodLabel(context.PeriodKey)</MudTd>
+                                        <MudTd DataLabel='@T("Herwinde inkomste", "Recovered revenue")'>@FormatCurrency(context.RecoveredRevenueZar)</MudTd>
+                                        <MudTd DataLabel='@T("Herwinde bestellings", "Recovered orders")'>@FormatAnalyticsNumber(context.RecoveredOrders)</MudTd>
+                                        <MudTd DataLabel='@T("Herstel pogings", "Recovery attempts")'>@FormatAnalyticsNumber(context.RecoveryAttempts)</MudTd>
+                                    </RowTemplate>
+                                </MudTable>
                             </div>
                         }
                         else if (ActiveSubscriberView == SubscriberAdminView.VisitsViewsAndLogins)
                         {
                             <div class="admin-report-table-wrap">
-                                <table class="admin-report-table">
-                                    <thead>
-                                        <tr>
-                                            <th>@T("Periode", "Period")</th>
-                                            <th>@T("Besoeke", "Visits")</th>
-                                            <th>@T("Kyke", "Views")</th>
-                                            <th>@T("Aanmeldings", "Logins")</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach (var metric in SubscriberReports.VisitsViewsAndLogins)
-                                        {
-                                            <tr>
-                                                <td>@GetSubscriberPeriodLabel(metric.PeriodKey)</td>
-                                                <td>@FormatAnalyticsNumber(metric.Visits)</td>
-                                                <td>@FormatAnalyticsNumber(metric.Views)</td>
-                                                <td>@FormatAnalyticsNumber(metric.Logins)</td>
-                                            </tr>
-                                        }
-                                    </tbody>
-                                </table>
+                                <MudTable T="AdminVisitsViewsLoginsMetric"
+                                          Items="SubscriberReports.VisitsViewsAndLogins"
+                                          Class="admin-report-table"
+                                          SortLabel='@T("Sorteer volgens", "Sort by")'
+                                          RowsPerPage="100"
+                                          Dense="true"
+                                          Hover="true"
+                                          Bordered="true"
+                                          Elevation="0"
+                                          Breakpoint="Breakpoint.Md">
+                                    <HeaderContent>
+                                        <MudTh>
+                                            <MudTableSortLabel T="AdminVisitsViewsLoginsMetric"
+                                                               SortBy="new Func<AdminVisitsViewsLoginsMetric, object?>(metric => metric.PeriodKey)">
+                                                @T("Periode", "Period")
+                                            </MudTableSortLabel>
+                                        </MudTh>
+                                        <MudTh>
+                                            <MudTableSortLabel T="AdminVisitsViewsLoginsMetric"
+                                                               SortBy="new Func<AdminVisitsViewsLoginsMetric, object?>(metric => metric.Visits)">
+                                                @T("Besoeke", "Visits")
+                                            </MudTableSortLabel>
+                                        </MudTh>
+                                        <MudTh>
+                                            <MudTableSortLabel T="AdminVisitsViewsLoginsMetric"
+                                                               SortBy="new Func<AdminVisitsViewsLoginsMetric, object?>(metric => metric.Views)">
+                                                @T("Kyke", "Views")
+                                            </MudTableSortLabel>
+                                        </MudTh>
+                                        <MudTh>
+                                            <MudTableSortLabel T="AdminVisitsViewsLoginsMetric"
+                                                               SortBy="new Func<AdminVisitsViewsLoginsMetric, object?>(metric => metric.Logins)">
+                                                @T("Aanmeldings", "Logins")
+                                            </MudTableSortLabel>
+                                        </MudTh>
+                                    </HeaderContent>
+                                    <RowTemplate>
+                                        <MudTd DataLabel='@T("Periode", "Period")'>@GetSubscriberPeriodLabel(context.PeriodKey)</MudTd>
+                                        <MudTd DataLabel='@T("Besoeke", "Visits")'>@FormatAnalyticsNumber(context.Visits)</MudTd>
+                                        <MudTd DataLabel='@T("Kyke", "Views")'>@FormatAnalyticsNumber(context.Views)</MudTd>
+                                        <MudTd DataLabel='@T("Aanmeldings", "Logins")'>@FormatAnalyticsNumber(context.Logins)</MudTd>
+                                    </RowTemplate>
+                                </MudTable>
                             </div>
                         }
                     }
@@ -966,7 +1061,9 @@
                 <HeaderContent>
                     <MudTh>
                         <div class="admin-header-cell">
-                            <span class="admin-header-title">@T("Titel", "Title")</span>
+                            <MudTableSortLabel T="AdminPlaylistRecord" SortBy="new Func<AdminPlaylistRecord, object?>(playlist => playlist.Title)">
+                                @T("Titel", "Title")
+                            </MudTableSortLabel>
                             <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(PlaylistColumnFilters.TitleText) ? string.Empty : " is-active")}")'
                                      @onclick:stopPropagation="true">
                                 <summary class="admin-header-filter-toggle"
@@ -1003,7 +1100,9 @@
                     </MudTh>
                     <MudTh>
                         <div class="admin-header-cell">
-                            <span class="admin-header-title">@T("Aktief", "Active")</span>
+                            <MudTableSortLabel T="AdminPlaylistRecord" SortBy="new Func<AdminPlaylistRecord, object?>(playlist => playlist.IsEnabled)">
+                                @T("Aktief", "Active")
+                            </MudTableSortLabel>
                             <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(PlaylistColumnFilters.IsEnabled) ? string.Empty : " is-active")}")'
                                      @onclick:stopPropagation="true">
                                 <summary class="admin-header-filter-toggle"
@@ -1030,7 +1129,9 @@
                     </MudTh>
                     <MudTh>
                         <div class="admin-header-cell">
-                            <span class="admin-header-title">@T("Tuisblad", "Home")</span>
+                            <MudTableSortLabel T="AdminPlaylistRecord" SortBy="new Func<AdminPlaylistRecord, object?>(playlist => playlist.ShowOnHome)">
+                                @T("Tuisblad", "Home")
+                            </MudTableSortLabel>
                             <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(PlaylistColumnFilters.ShowOnHome) ? string.Empty : " is-active")}")'
                                      @onclick:stopPropagation="true">
                                 <summary class="admin-header-filter-toggle"
@@ -1057,7 +1158,9 @@
                     </MudTh>
                     <MudTh>
                         <div class="admin-header-cell">
-                            <span class="admin-header-title">@T("Showcase op Luister", "Showcase on Luister")</span>
+                            <MudTableSortLabel T="AdminPlaylistRecord" SortBy="new Func<AdminPlaylistRecord, object?>(playlist => playlist.ShowShowcaseImageOnLuisterPage)">
+                                @T("Showcase op Luister", "Showcase on Luister")
+                            </MudTableSortLabel>
                             <details class='@($"admin-header-filter{(string.IsNullOrWhiteSpace(PlaylistColumnFilters.ShowShowcase) ? string.Empty : " is-active")}")'
                                      @onclick:stopPropagation="true">
                                 <summary class="admin-header-filter-toggle"
@@ -1383,11 +1486,31 @@
                                               Elevation="0"
                                               Breakpoint="Breakpoint.Md">
                                         <HeaderContent>
-                                            <MudTh>@T("Intekenaar", "Subscriber")</MudTh>
-                                            <MudTh>@T("Vlak", "Tier")</MudTh>
-                                            <MudTh>@T("Bron", "Source")</MudTh>
-                                            <MudTh>@T("Ingeteken", "Subscribed")</MudTh>
-                                            <MudTh>@T("Status", "Status")</MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminSubscriberMembershipDetailRecord" SortBy="new Func<AdminSubscriberMembershipDetailRecord, object?>(record => record.DisplayName)">
+                                                    @T("Intekenaar", "Subscriber")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminSubscriberMembershipDetailRecord" SortBy="new Func<AdminSubscriberMembershipDetailRecord, object?>(record => record.TierName)">
+                                                    @T("Vlak", "Tier")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminSubscriberMembershipDetailRecord" SortBy='new Func<AdminSubscriberMembershipDetailRecord, object?>(record => record.Provider + " / " + record.SourceSystem)'>
+                                                    @T("Bron", "Source")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminSubscriberMembershipDetailRecord" SortBy="new Func<AdminSubscriberMembershipDetailRecord, object?>(record => record.SubscribedAt)">
+                                                    @T("Ingeteken", "Subscribed")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminSubscriberMembershipDetailRecord" SortBy="new Func<AdminSubscriberMembershipDetailRecord, object?>(record => record.Status)">
+                                                    @T("Status", "Status")
+                                                </MudTableSortLabel>
+                                            </MudTh>
                                         </HeaderContent>
                                         <RowTemplate>
                                             <MudTd DataLabel='@T("Intekenaar", "Subscriber")'>
@@ -1445,25 +1568,42 @@
                                         </div>
 
                                         <div class="admin-report-table-wrap">
-                                            <table class="admin-report-table">
-                                                <thead>
-                                                    <tr>
-                                                        <th>@T("Vlak", "Tier")</th>
-                                                        <th>@T("Aktiewe lede", "Active members")</th>
-                                                        <th>@T("Persentasie", "Percentage")</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    @foreach (var metric in CurrentTierDistributionMetrics)
-                                                    {
-                                                        <tr>
-                                                            <td>@metric.TierName</td>
-                                                            <td>@FormatAnalyticsNumber(metric.ActiveMembers)</td>
-                                                            <td>@FormatReportPercentage(metric.Percentage)</td>
-                                                        </tr>
-                                                    }
-                                                </tbody>
-                                            </table>
+                                            <MudTable T="AdminTierDistributionMetric"
+                                                      Items="CurrentTierDistributionMetrics"
+                                                      Class="admin-report-table"
+                                                      SortLabel='@T("Sorteer volgens", "Sort by")'
+                                                      RowsPerPage="100"
+                                                      Dense="true"
+                                                      Hover="true"
+                                                      Bordered="true"
+                                                      Elevation="0"
+                                                      Breakpoint="Breakpoint.Md">
+                                                <HeaderContent>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminTierDistributionMetric"
+                                                                           SortBy="new Func<AdminTierDistributionMetric, object?>(metric => metric.TierName)">
+                                                            @T("Vlak", "Level")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminTierDistributionMetric"
+                                                                           SortBy="new Func<AdminTierDistributionMetric, object?>(metric => metric.ActiveMembers)">
+                                                            @T("Aktiewe lede", "Active members")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminTierDistributionMetric"
+                                                                           SortBy="new Func<AdminTierDistributionMetric, object?>(metric => metric.Percentage)">
+                                                            @T("Persentasie", "Percentage")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                </HeaderContent>
+                                                <RowTemplate>
+                                                    <MudTd DataLabel='@T("Vlak", "Level")'>@context.TierName</MudTd>
+                                                    <MudTd DataLabel='@T("Aktiewe lede", "Active members")'>@FormatAnalyticsNumber(context.ActiveMembers)</MudTd>
+                                                    <MudTd DataLabel='@T("Persentasie", "Percentage")'>@FormatReportPercentage(context.Percentage)</MudTd>
+                                                </RowTemplate>
+                                            </MudTable>
                                         </div>
                                     }
                                     else
@@ -1575,38 +1715,56 @@
                                     </article>
                                 </section>
 
-                                <div class="admin-report-table-wrap">
-                                    <table class="admin-report-table admin-revenue-analytics-table">
-                                        <thead>
-                                            <tr>
-                                                <th>@T("Periode", "Period")</th>
-                                                <th>@T("Verkope", "Sales")</th>
-                                                <th>@T("Inkomste", "Revenue")</th>
-                                                <th></th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            @foreach (var metric in RevenueAnalyticsPeriodHighlights)
-                                            {
-                                                <tr class="@(IsSelectedRevenueDrilldownPeriod(metric.PeriodKey) ? "is-selected" : null)">
-                                                    <td>@GetSubscriberPeriodLabel(metric.PeriodKey)</td>
-                                                    <td>@FormatAnalyticsNumber(metric.SalesCount)</td>
-                                                    <td>@FormatCurrency(metric.RevenueZar)</td>
-                                                    <td>
+                                        <div class="admin-report-table-wrap">
+                                            <MudTable T="AdminSalesRevenueMetric"
+                                                      Items="RevenueAnalyticsPeriodHighlights"
+                                                      Class="admin-report-table admin-revenue-analytics-table"
+                                                      SortLabel='@T("Sorteer volgens", "Sort by")'
+                                                      RowsPerPage="100"
+                                                      Dense="true"
+                                                      Hover="true"
+                                                      Bordered="true"
+                                                      Elevation="0"
+                                                      Breakpoint="Breakpoint.Md"
+                                                      RowClassFunc="GetRevenueDrilldownPeriodRowClass">
+                                                <HeaderContent>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminSalesRevenueMetric"
+                                                                           SortBy="new Func<AdminSalesRevenueMetric, object?>(metric => metric.PeriodKey)">
+                                                            @T("Periode", "Period")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminSalesRevenueMetric"
+                                                                           SortBy="new Func<AdminSalesRevenueMetric, object?>(metric => metric.SalesCount)">
+                                                            @T("Verkope", "Sales")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminSalesRevenueMetric"
+                                                                           SortBy="new Func<AdminSalesRevenueMetric, object?>(metric => metric.RevenueZar)">
+                                                            @T("Inkomste", "Revenue")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                    <MudTh Class="admin-col-center">@T("Aksies", "Actions")</MudTh>
+                                                </HeaderContent>
+                                                <RowTemplate>
+                                                    <MudTd DataLabel='@T("Periode", "Period")'>@GetSubscriberPeriodLabel(context.PeriodKey)</MudTd>
+                                                    <MudTd DataLabel='@T("Verkope", "Sales")'>@FormatAnalyticsNumber(context.SalesCount)</MudTd>
+                                                    <MudTd DataLabel='@T("Inkomste", "Revenue")'>@FormatCurrency(context.RevenueZar)</MudTd>
+                                                    <MudTd DataLabel='@T("Aksies", "Actions")'>
                                                         <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
                                                                    Variant="Variant.Text"
                                                                    Color="Color.Primary"
-                                                                   OnClick="() => SetRevenueDrilldownPeriod(metric.PeriodKey)"
+                                                                   OnClick="() => SetRevenueDrilldownPeriod(context.PeriodKey)"
                                                                    aria-label='@T("Wys verkope", "Show sales")'
                                                                    title='@T("Wys verkope", "Show sales")'>
                                                             <i class="fa-solid fa-table-list" aria-hidden="true"></i>
                                                         </MudButton>
-                                                    </td>
-                                                </tr>
-                                            }
-                                        </tbody>
-                                    </table>
-                                </div>
+                                                    </MudTd>
+                                                </RowTemplate>
+                                            </MudTable>
+                                        </div>
 
                                 <section class="admin-revenue-drilldown">
                                     <div class="admin-analytics-panel-head">
@@ -1629,11 +1787,31 @@
                                               Elevation="0"
                                               Breakpoint="Breakpoint.Md">
                                         <HeaderContent>
-                                            <MudTh>@T("Datum", "Date")</MudTh>
-                                            <MudTh>@T("Plan", "Plan")</MudTh>
-                                            <MudTh>@T("Bron", "Source")</MudTh>
-                                            <MudTh>@T("Verwysing", "Reference")</MudTh>
-                                            <MudTh>@T("Inkomste", "Revenue")</MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminSalesRevenueDetailRecord" SortBy="new Func<AdminSalesRevenueDetailRecord, object?>(record => record.SoldAt)">
+                                                    @T("Datum", "Date")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminSalesRevenueDetailRecord" SortBy="new Func<AdminSalesRevenueDetailRecord, object?>(record => record.TierName)">
+                                                    @T("Plan", "Plan")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminSalesRevenueDetailRecord" SortBy='new Func<AdminSalesRevenueDetailRecord, object?>(record => record.Provider + " / " + record.SourceSystem)'>
+                                                    @T("Bron", "Source")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminSalesRevenueDetailRecord" SortBy="new Func<AdminSalesRevenueDetailRecord, object?>(record => record.Reference)">
+                                                    @T("Verwysing", "Reference")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminSalesRevenueDetailRecord" SortBy="new Func<AdminSalesRevenueDetailRecord, object?>(record => record.RevenueZar)">
+                                                    @T("Inkomste", "Revenue")
+                                                </MudTableSortLabel>
+                                            </MudTh>
                                         </HeaderContent>
                                         <RowTemplate>
                                             <MudTd DataLabel='@T("Datum", "Date")'>@FormatAdminDateTime(context.SoldAt)</MudTd>
@@ -1755,6 +1933,117 @@
                                     <section class="admin-analytics-panel">
                                         <div class="admin-analytics-panel-head">
                                             <div>
+                                                <h3>@T("Daaglikse log van gebruik ( Laaste 14dae )", "Daily usage log (Last 14 days)")</h3>
+                                                <p>@T("Hoeveel totale luistertyd, besoekers en inteken-gebruikers per storie in die laaste 14 dae.", "Total listening time, visitors, and signed-in users per story over the last 14 days.")</p>
+                                            </div>
+                                        </div>
+
+                                        @if (Last14UsageActivityPoints.Count > 0)
+                                        {
+                                            <div class="admin-activity-list">
+                                                @foreach (var activity in Last14UsageActivityPoints)
+                                                {
+                                                    <article class="admin-activity-row">
+                                                        <div class="admin-activity-date">
+                                                            <strong>@FormatAnalyticsDay(activity.ActivityDate)</strong>
+                                                        </div>
+                                                        <div class="admin-activity-metrics">
+                                                            <span>@T("Totale luistertyd", "Total listening time"): @FormatAnalyticsDuration(activity.TotalListenedSeconds)</span>
+                                                            <span>@T("Besoekers", "Visitors"): @FormatAnalyticsNumber(activity.TotalViews)</span>
+                                                            <span>@T("Ingeteken", "Signed in"): @FormatAnalyticsNumber(activity.TotalListenSessions)</span>
+                                                            <span>@T("Gunstelinge", "Favorites"): @FormatAnalyticsNumber(activity.TotalFavorites)</span>
+                                                        </div>
+                                                    </article>
+                                                }
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <p class="admin-analytics-footnote">
+                                                @T("Nog geen gebruik vir die laaste 14 dae nie.", "No usage for the last 14 days yet.")
+                                            </p>
+                                        }
+                                    </section>
+
+                                    <section class="admin-analytics-panel">
+                                        <div class="admin-analytics-panel-head">
+                                            <div>
+                                                <h3>@T("Storie gebruik (Laaste 14 dae)", "Story usage (Last 14 days)")</h3>
+                                                <p>@T("Storie-opsomming vir die laaste 14 dae: luistertyd, besoekers en inteken-gebruikers.", "Story-level summary for the last 14 days: listening time, visitors, and signed-in users.")</p>
+                                            </div>
+                                        </div>
+
+                                        @if (Last14StoryUsage.Count == 0)
+                                        {
+                                            <p class="admin-analytics-footnote">
+                                                @T("Geen storie-aktiwiteit vir die laaste 14 dae.", "No story activity in the last 14 days.")
+                                            </p>
+                                        }
+                                        else
+                                        {
+                                            <div class="admin-report-table-wrap">
+                                            <MudTable T="AdminAnalyticsStoryDetailRecord"
+                                                      Items="Last14StoryUsage"
+                                                      Class="admin-report-table"
+                                                      SortLabel='@T("Sorteer volgens", "Sort by")'
+                                                      RowsPerPage="100"
+                                                      Dense="true"
+                                                      Hover="true"
+                                                      Bordered="true"
+                                                      Elevation="0"
+                                                      Breakpoint="Breakpoint.Md">
+                                                <HeaderContent>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord"
+                                                                           SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.Title)">
+                                                            @T("Storie", "Story")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord"
+                                                                           SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.TotalListenedSeconds)">
+                                                            @T("Totale luistertyd", "Total listening time")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord"
+                                                                           SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.UniqueViewers)">
+                                                            @T("Besoekers", "Visitors")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord"
+                                                                           SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.UniqueListeners)">
+                                                            @T("Ingeteken", "Signed in")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord"
+                                                                           SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.LastActivityAt ?? DateTimeOffset.MinValue)">
+                                                            @T("Laaste aktiwiteit", "Last activity")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                </HeaderContent>
+                                                <RowTemplate>
+                                                    <MudTd DataLabel='@T("Storie", "Story")'>
+                                                        <div class="admin-analytics-story-cell">
+                                                            <strong>@context.Title</strong>
+                                                            <span>@context.StorySlug</span>
+                                                        </div>
+                                                    </MudTd>
+                                                    <MudTd DataLabel='@T("Totale luistertyd", "Total listening time")'>@FormatAnalyticsDuration(context.TotalListenedSeconds)</MudTd>
+                                                    <MudTd DataLabel='@T("Besoekers", "Visitors")'>@FormatAnalyticsNumber(context.UniqueViewers)</MudTd>
+                                                    <MudTd DataLabel='@T("Ingeteken", "Signed in")'>@FormatAnalyticsNumber(context.UniqueListeners)</MudTd>
+                                                    <MudTd DataLabel='@T("Laaste aktiwiteit", "Last activity")'>@FormatAdminDateTime(context.LastActivityAt)</MudTd>
+                                                </RowTemplate>
+                                            </MudTable>
+                                            </div>
+                                        }
+                                    </section>
+
+                                    <section class="admin-analytics-panel">
+                                        <div class="admin-analytics-panel-head">
+                                            <div>
                                                 <h3>@T("Gebruik oor tyd", "Usage over time")</h3>
                                                 <p>@T("Kyke, sessies, luistertyd en gunstelinge vir die gekose periode.", "Views, sessions, listening time, and favorites for the selected period.")</p>
                                             </div>
@@ -1818,10 +2107,26 @@
                                                       Elevation="0"
                                                       Breakpoint="Breakpoint.Md">
                                                 <HeaderContent>
-                                                    <MudTh>@T("Karakter", "Character")</MudTh>
-                                                    <MudTh>@T("Spelings", "Plays")</MudTh>
-                                                    <MudTh>@T("Mense", "People")</MudTh>
-                                                    <MudTh>@T("Laaste aktiwiteit", "Last activity")</MudTh>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminAnalyticsTopCharacterRecord" SortBy="new Func<AdminAnalyticsTopCharacterRecord, object?>(record => record.DisplayName)">
+                                                            @T("Karakter", "Character")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminAnalyticsTopCharacterRecord" SortBy="new Func<AdminAnalyticsTopCharacterRecord, object?>(record => record.TotalAudioPlays)">
+                                                            @T("Spelings", "Plays")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminAnalyticsTopCharacterRecord" SortBy="new Func<AdminAnalyticsTopCharacterRecord, object?>(record => record.UniqueSubscribers)">
+                                                            @T("Mense", "People")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminAnalyticsTopCharacterRecord" SortBy="new Func<AdminAnalyticsTopCharacterRecord, object?>(record => record.LastActivityAt)">
+                                                            @T("Laaste aktiwiteit", "Last activity")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
                                                 </HeaderContent>
                                                 <RowTemplate>
                                                     <MudTd DataLabel='@T("Karakter", "Character")'>
@@ -1852,41 +2157,58 @@
                                         @if (TopCompletionStories.Count > 0)
                                         {
                                             <div class="admin-report-table-wrap">
-                                                <table class="admin-report-table">
-                                                    <thead>
-                                                        <tr>
-                                                            <th>@T("Storie", "Story")</th>
-                                                            <th>@T("Completion", "Completion")</th>
-                                                            <th>@T("Luister sessies", "Listen sessions")</th>
-                                                            <th></th>
-                                                        </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        @foreach (var story in TopCompletionStories)
-                                                        {
-                                                            <tr>
-                                                                <td>
-                                                                    <div class="admin-analytics-story-cell">
-                                                                        <strong>@story.Title</strong>
-                                                                        <span>@story.StorySlug</span>
-                                                                    </div>
-                                                                </td>
-                                                                <td>@FormatCompletionPercent(story.CompletionRatePercent)</td>
-                                                                <td>@FormatAnalyticsNumber(story.TotalListenSessions)</td>
-                                                                <td>
-                                                                    <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
-                                                                               Variant="Variant.Text"
-                                                                               Color="Color.Primary"
-                                                                               OnClick='() => SelectAnalyticsStory(story.StorySlug)'
-                                                                               aria-label='@T("Wys storie detail", "Show story detail")'
-                                                                               title='@T("Wys storie detail", "Show story detail")'>
-                                                                        <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
-                                                                    </MudButton>
-                                                                </td>
-                                                            </tr>
-                                                        }
-                                                    </tbody>
-                                                </table>
+                                                <MudTable T="AdminAnalyticsTopCompletionStoryRecord"
+                                                          Items="TopCompletionStories"
+                                                          Class="admin-report-table"
+                                                          SortLabel='@T("Sorteer volgens", "Sort by")'
+                                                          RowsPerPage="100"
+                                                          Dense="true"
+                                                          Hover="true"
+                                                          Bordered="true"
+                                                          Elevation="0"
+                                                          Breakpoint="Breakpoint.Md">
+                                                    <HeaderContent>
+                                                        <MudTh>
+                                                            <MudTableSortLabel T="AdminAnalyticsTopCompletionStoryRecord"
+                                                                               SortBy="new Func<AdminAnalyticsTopCompletionStoryRecord, object?>(story => story.Title)">
+                                                                @T("Storie", "Story")
+                                                            </MudTableSortLabel>
+                                                        </MudTh>
+                                                        <MudTh>
+                                                            <MudTableSortLabel T="AdminAnalyticsTopCompletionStoryRecord"
+                                                                               SortBy="new Func<AdminAnalyticsTopCompletionStoryRecord, object?>(story => story.CompletionRatePercent)">
+                                                                @T("Completion", "Completion")
+                                                            </MudTableSortLabel>
+                                                        </MudTh>
+                                                        <MudTh>
+                                                            <MudTableSortLabel T="AdminAnalyticsTopCompletionStoryRecord"
+                                                                               SortBy="new Func<AdminAnalyticsTopCompletionStoryRecord, object?>(story => story.TotalListenSessions)">
+                                                                @T("Luister sessies", "Listen sessions")
+                                                            </MudTableSortLabel>
+                                                        </MudTh>
+                                                        <MudTh Class="admin-col-center">@T("Aksies", "Actions")</MudTh>
+                                                    </HeaderContent>
+                                                    <RowTemplate>
+                                                        <MudTd DataLabel='@T("Storie", "Story")'>
+                                                            <div class="admin-analytics-story-cell">
+                                                                <strong>@context.Title</strong>
+                                                                <span>@context.StorySlug</span>
+                                                            </div>
+                                                        </MudTd>
+                                                        <MudTd DataLabel='@T("Completion", "Completion")'>@FormatCompletionPercent(context.CompletionRatePercent)</MudTd>
+                                                        <MudTd DataLabel='@T("Luister sessies", "Listen sessions")'>@FormatAnalyticsNumber(context.TotalListenSessions)</MudTd>
+                                                        <MudTd Class="admin-col-center">
+                                                            <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                                                       Variant="Variant.Text"
+                                                                       Color="Color.Primary"
+                                                                       OnClick='() => SelectAnalyticsStory(context.StorySlug)'
+                                                                       aria-label='@T("Wys storie detail", "Show story detail")'
+                                                                       title='@T("Wys storie detail", "Show story detail")'>
+                                                                <i class="fa-solid fa-arrow-right" aria-hidden="true"></i>
+                                                            </MudButton>
+                                                        </MudTd>
+                                                    </RowTemplate>
+                                                </MudTable>
                                             </div>
                                         }
                                         else
@@ -2023,14 +2345,46 @@
                                                   OnRowClick="OnAnalyticsStoryRowClick"
                                                   Breakpoint="Breakpoint.Md">
                                             <HeaderContent>
-                                                <MudTh>@T("Titel", "Title")</MudTh>
-                                                <MudTh>@T("Kyke", "Views")</MudTh>
-                                                <MudTh>@T("Kykers", "Viewers")</MudTh>
-                                                <MudTh>@T("Sessies", "Sessions")</MudTh>
-                                                <MudTh>@T("Luister-events", "Listen events")</MudTh>
-                                                <MudTh>@T("Luistertyd", "Listening time")</MudTh>
-                                                <MudTh>@T("Gunstelinge", "Favorites")</MudTh>
-                                                <MudTh>@T("Laaste aktiwiteit", "Last activity")</MudTh>
+                                                <MudTh>
+                                                    <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord" SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.Title)">
+                                                        @T("Titel", "Title")
+                                                    </MudTableSortLabel>
+                                                </MudTh>
+                                                <MudTh>
+                                                    <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord" SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.TotalViews)">
+                                                        @T("Kyke", "Views")
+                                                    </MudTableSortLabel>
+                                                </MudTh>
+                                                <MudTh>
+                                                    <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord" SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.UniqueViewers)">
+                                                        @T("Kykers", "Viewers")
+                                                    </MudTableSortLabel>
+                                                </MudTh>
+                                                <MudTh>
+                                                    <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord" SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.TotalListenSessions)">
+                                                        @T("Sessies", "Sessions")
+                                                    </MudTableSortLabel>
+                                                </MudTh>
+                                                <MudTh>
+                                                    <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord" SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.TotalListenEvents)">
+                                                        @T("Luister-events", "Listen events")
+                                                    </MudTableSortLabel>
+                                                </MudTh>
+                                                <MudTh>
+                                                    <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord" SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.TotalListenedSeconds)">
+                                                        @T("Luistertyd", "Listening time")
+                                                    </MudTableSortLabel>
+                                                </MudTh>
+                                                <MudTh>
+                                                    <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord" SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.TotalFavorites)">
+                                                        @T("Gunstelinge", "Favorites")
+                                                    </MudTableSortLabel>
+                                                </MudTh>
+                                                <MudTh>
+                                                    <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord" SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.LastActivityAt)">
+                                                        @T("Laaste aktiwiteit", "Last activity")
+                                                    </MudTableSortLabel>
+                                                </MudTh>
                                             </HeaderContent>
                                             <RowTemplate>
                                                 <MudTd DataLabel='@T("Titel", "Title")'>
@@ -2088,32 +2442,54 @@
                                     else
                                     {
                                         <div class="admin-report-table-wrap">
-                                            <table class="admin-report-table admin-resource-download-table">
-                                                <thead>
-                                                    <tr>
-                                                        <th>@T("Hulpbron", "Resource")</th>
-                                                        <th>@T("Totale aflaaie", "Total downloads")</th>
-                                                        <th>@T("Laaste 30 dae", "Last 30 days")</th>
-                                                        <th>@T("Laaste aflaai", "Last download")</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                @foreach (var item in Analytics.ResourceDownloadSummary.Items)
-                                                {
-                                                    <tr>
-                                                        <td>
-                                                            <div class="admin-analytics-story-cell">
-                                                                <strong>@item.Title</strong>
-                                                                <span>@item.ResourceSlug</span>
-                                                            </div>
-                                                        </td>
-                                                        <td>@FormatAnalyticsNumber(item.TotalDownloads)</td>
-                                                        <td>@FormatAnalyticsNumber(item.DownloadsLast30Days)</td>
-                                                        <td>@FormatAdminDateTime(item.LastDownloadAt)</td>
-                                                    </tr>
-                                                }
-                                                </tbody>
-                                            </table>
+                                            <MudTable T="AdminAnalyticsResourceDownloadItemRecord"
+                                                      Items="Analytics.ResourceDownloadSummary.Items"
+                                                      Class="admin-report-table admin-resource-download-table"
+                                                      SortLabel='@T("Sorteer volgens", "Sort by")'
+                                                      RowsPerPage="100"
+                                                      Dense="true"
+                                                      Hover="true"
+                                                      Bordered="true"
+                                                      Elevation="0"
+                                                      Breakpoint="Breakpoint.Md">
+                                                <HeaderContent>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminAnalyticsResourceDownloadItemRecord"
+                                                                           SortBy="new Func<AdminAnalyticsResourceDownloadItemRecord, object?>(item => item.Title)">
+                                                            @T("Hulpbron", "Resource")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminAnalyticsResourceDownloadItemRecord"
+                                                                           SortBy="new Func<AdminAnalyticsResourceDownloadItemRecord, object?>(item => item.TotalDownloads)">
+                                                            @T("Totale aflaaie", "Total downloads")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminAnalyticsResourceDownloadItemRecord"
+                                                                           SortBy="new Func<AdminAnalyticsResourceDownloadItemRecord, object?>(item => item.DownloadsLast30Days)">
+                                                            @T("Laaste 30 dae", "Last 30 days")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminAnalyticsResourceDownloadItemRecord"
+                                                                           SortBy="new Func<AdminAnalyticsResourceDownloadItemRecord, object?>(item => item.LastDownloadAt ?? DateTimeOffset.MinValue)">
+                                                            @T("Laaste aflaai", "Last download")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                </HeaderContent>
+                                                <RowTemplate>
+                                                    <MudTd DataLabel='@T("Hulpbron", "Resource")'>
+                                                        <div class="admin-analytics-story-cell">
+                                                            <strong>@context.Title</strong>
+                                                            <span>@context.ResourceSlug</span>
+                                                        </div>
+                                                    </MudTd>
+                                                    <MudTd DataLabel='@T("Totale aflaaie", "Total downloads")'>@FormatAnalyticsNumber(context.TotalDownloads)</MudTd>
+                                                    <MudTd DataLabel='@T("Laaste 30 dae", "Last 30 days")'>@FormatAnalyticsNumber(context.DownloadsLast30Days)</MudTd>
+                                                    <MudTd DataLabel='@T("Laaste aflaai", "Last download")'>@FormatAdminDateTime(context.LastDownloadAt)</MudTd>
+                                                </RowTemplate>
+                                            </MudTable>
                                         </div>
                                     }
                                 </section>
@@ -2157,32 +2533,54 @@
                                     else
                                     {
                                         <div class="admin-report-table-wrap">
-                                            <table class="admin-report-table admin-blog-visit-table">
-                                                <thead>
-                                                    <tr>
-                                                        <th>@T("Blog-blad", "Blog page")</th>
-                                                        <th>@T("Totale besoeke", "Total visits")</th>
-                                                        <th>@T("Laaste 30 dae", "Last 30 days")</th>
-                                                        <th>@T("Laaste besoek", "Last visit")</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                @foreach (var pageVisit in Analytics.BlogVisitSummary.Pages)
-                                                {
-                                                    <tr>
-                                                        <td>
-                                                            <div class="admin-analytics-story-cell">
-                                                                <strong>@pageVisit.PageTitle</strong>
-                                                                <span>@pageVisit.PagePath</span>
-                                                            </div>
-                                                        </td>
-                                                        <td>@FormatAnalyticsNumber(pageVisit.TotalVisits)</td>
-                                                        <td>@FormatAnalyticsNumber(pageVisit.VisitsLast30Days)</td>
-                                                        <td>@FormatAdminDateTime(pageVisit.LastVisitAt)</td>
-                                                    </tr>
-                                                }
-                                                </tbody>
-                                            </table>
+                                            <MudTable T="AdminAnalyticsBlogVisitPageRecord"
+                                                      Items="Analytics.BlogVisitSummary.Pages"
+                                                      Class="admin-report-table admin-blog-visit-table"
+                                                      SortLabel='@T("Sorteer volgens", "Sort by")'
+                                                      RowsPerPage="100"
+                                                      Dense="true"
+                                                      Hover="true"
+                                                      Bordered="true"
+                                                      Elevation="0"
+                                                      Breakpoint="Breakpoint.Md">
+                                                <HeaderContent>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminAnalyticsBlogVisitPageRecord"
+                                                                           SortBy="new Func<AdminAnalyticsBlogVisitPageRecord, object?>(page => page.PageTitle)">
+                                                            @T("Blog-blad", "Blog page")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminAnalyticsBlogVisitPageRecord"
+                                                                           SortBy="new Func<AdminAnalyticsBlogVisitPageRecord, object?>(page => page.TotalVisits)">
+                                                            @T("Totale besoeke", "Total visits")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminAnalyticsBlogVisitPageRecord"
+                                                                           SortBy="new Func<AdminAnalyticsBlogVisitPageRecord, object?>(page => page.VisitsLast30Days)">
+                                                            @T("Laaste 30 dae", "Last 30 days")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminAnalyticsBlogVisitPageRecord"
+                                                                           SortBy="new Func<AdminAnalyticsBlogVisitPageRecord, object?>(page => page.LastVisitAt ?? DateTimeOffset.MinValue)">
+                                                            @T("Laaste besoek", "Last visit")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                </HeaderContent>
+                                                <RowTemplate>
+                                                    <MudTd DataLabel='@T("Blog-blad", "Blog page")'>
+                                                        <div class="admin-analytics-story-cell">
+                                                            <strong>@context.PageTitle</strong>
+                                                            <span>@context.PagePath</span>
+                                                        </div>
+                                                    </MudTd>
+                                                    <MudTd DataLabel='@T("Totale besoeke", "Total visits")'>@FormatAnalyticsNumber(context.TotalVisits)</MudTd>
+                                                    <MudTd DataLabel='@T("Laaste 30 dae", "Last 30 days")'>@FormatAnalyticsNumber(context.VisitsLast30Days)</MudTd>
+                                                    <MudTd DataLabel='@T("Laaste besoek", "Last visit")'>@FormatAdminDateTime(context.LastVisitAt)</MudTd>
+                                                </RowTemplate>
+                                            </MudTable>
                                         </div>
                                     }
                                 </section>
@@ -3087,10 +3485,26 @@
                                               Elevation="0"
                                               Breakpoint="Breakpoint.Sm">
                                         <HeaderContent>
-                                            <MudTh>#</MudTh>
-                                            <MudTh>@T("Titel", "Title")</MudTh>
-                                            <MudTh>Slug</MudTh>
-                                            <MudTh Class="admin-col-center">@T("Showcase", "Showcase")</MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="EditablePlaylistStoryItem" SortBy="new Func<EditablePlaylistStoryItem, object?>(story => story.SortOrder)">
+                                                    #
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="EditablePlaylistStoryItem" SortBy="new Func<EditablePlaylistStoryItem, object?>(story => story.StoryTitle)">
+                                                    @T("Titel", "Title")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="EditablePlaylistStoryItem" SortBy="new Func<EditablePlaylistStoryItem, object?>(story => story.StorySlug)">
+                                                    Slug
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh Class="admin-col-center">
+                                                <MudTableSortLabel T="EditablePlaylistStoryItem" SortBy="new Func<EditablePlaylistStoryItem, object?>(story => story.IsShowcase)">
+                                                    @T("Showcase", "Showcase")
+                                                </MudTableSortLabel>
+                                            </MudTh>
                                             <MudTh>@T("Aksies", "Actions")</MudTh>
                                         </HeaderContent>
                                         <RowTemplate>
@@ -3357,8 +3771,23 @@
             }
         ];
     private IReadOnlyList<AdminAnalyticsDailyActivityPoint> CurrentUsageActivityPoints =>
+        GetUsageActivityPoints(SelectedUsageActivityPeriod);
+
+    private IReadOnlyList<AdminAnalyticsDailyActivityPoint> Last14UsageActivityPoints =>
+        GetUsageActivityPoints(UsageActivityPeriodLast14)
+            .OrderByDescending(point => point.ActivityDate)
+            .ToArray();
+
+    private IReadOnlyList<AdminAnalyticsStoryDetailRecord> Last14StoryUsage =>
+        AnalyticsStoryDetails
+            .Where(story => IsStoryActivityInPeriod(story, UsageActivityPeriodLast14))
+            .OrderByDescending(story => story.TotalListenedSeconds)
+            .ThenBy(story => story.Title, StringComparer.CurrentCultureIgnoreCase)
+            .ToArray();
+
+    private IReadOnlyList<AdminAnalyticsDailyActivityPoint> GetUsageActivityPoints(string selectedUsageActivityPeriod) =>
         Analytics.DailyActivity
-            .Where(IsUsageActivityPointInSelectedPeriod)
+            .Where(point => IsUsageActivityPointInPeriod(point, selectedUsageActivityPeriod))
             .OrderBy(point => point.ActivityDate)
             .ToArray();
 
@@ -3590,16 +4019,39 @@
             LastFavoriteAt: null,
             LastActivityAt: null);
 
-    private bool IsUsageActivityPointInSelectedPeriod(AdminAnalyticsDailyActivityPoint point)
+    private bool IsUsageActivityPointInSelectedPeriod(AdminAnalyticsDailyActivityPoint point) =>
+        IsUsageActivityPointInPeriod(point, SelectedUsageActivityPeriod);
+
+    private bool IsUsageActivityPointInPeriod(AdminAnalyticsDailyActivityPoint point, string selectedUsageActivityPeriod)
     {
         var today = DateOnly.FromDateTime(DateTime.Today);
-        return SelectedUsageActivityPeriod switch
+        return selectedUsageActivityPeriod switch
         {
             UsageActivityPeriodToday => point.ActivityDate == today,
             UsageActivityPeriodYesterday => point.ActivityDate == today.AddDays(-1),
             UsageActivityPeriodLast7 => point.ActivityDate >= today.AddDays(-6) && point.ActivityDate <= today,
             UsageActivityPeriodLast30 => point.ActivityDate >= today.AddDays(-29) && point.ActivityDate <= today,
             _ => point.ActivityDate >= today.AddDays(-13) && point.ActivityDate <= today
+        };
+    }
+
+    private bool IsStoryActivityInPeriod(AdminAnalyticsStoryDetailRecord story, string selectedUsageActivityPeriod)
+    {
+        var activityDate = GetAnalyticsStoryActivityDate(story);
+        if (activityDate is null)
+        {
+            return false;
+        }
+
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var date = DateOnly.FromDateTime(activityDate.Value.Date);
+        return selectedUsageActivityPeriod switch
+        {
+            UsageActivityPeriodToday => date == today,
+            UsageActivityPeriodYesterday => date == today.AddDays(-1),
+            UsageActivityPeriodLast7 => date >= today.AddDays(-6) && date <= today,
+            UsageActivityPeriodLast30 => date >= today.AddDays(-29) && date <= today,
+            _ => date >= today.AddDays(-13) && date <= today
         };
     }
 
@@ -6824,6 +7276,9 @@
 
     private bool IsSelectedRevenueDrilldownPeriod(string periodKey) =>
         string.Equals(SelectedRevenueDrilldownPeriod, periodKey, StringComparison.OrdinalIgnoreCase);
+
+    private string GetRevenueDrilldownPeriodRowClass(AdminSalesRevenueMetric metric, int _)
+        => IsSelectedRevenueDrilldownPeriod(metric.PeriodKey) ? "is-selected" : null;
 
     private bool IsRevenueDetailInSelectedPeriod(AdminSalesRevenueDetailRecord detail) =>
         SelectedRevenueDrilldownPeriod switch

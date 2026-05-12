@@ -2130,6 +2130,7 @@ public sealed partial class SupabaseAdminManagementService(
             subscribersTask.Result,
             subscriptionsTask.Result,
             paystackRevenueEventsTask.Result,
+            BuildPaystackSubscriptionCreateIdentifiers(paystackRevenueEventsTask.Result),
             subscriptionTiersTask.Result,
             recoveriesTask.Result,
             abandonedCartRecoveriesTask.Result,
@@ -3093,9 +3094,9 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/subscription_events" +
-            "?select=provider,event_type,event_status,received_at,payload" +
+            "?select=provider,event_type,event_status,received_at,payload,provider_payment_id,provider_transaction_id" +
             "&provider=eq.paystack" +
-            "&event_type=eq.charge.success" +
+            "&event_type=in.(charge.success,subscription.create,subscription.disable)" +
             "&order=received_at.desc" +
             "&limit=50000");
 
@@ -3619,6 +3620,7 @@ public sealed partial class SupabaseAdminManagementService(
         IReadOnlyList<SubscriberRow> subscribers,
         IReadOnlyList<SubscriptionRow> subscriptions,
         IReadOnlyList<RevenueEventRow> revenueEvents,
+        IReadOnlySet<string> paystackSubscriptionCreateIdentifiers,
         IReadOnlyList<SubscriptionTierRow> subscriptionTiers,
         IReadOnlyList<SubscriptionRecoveryRow> recoveries,
         IReadOnlyList<AbandonedCartRecoveryRow> abandonedCartRecoveries,
@@ -3635,10 +3637,16 @@ public sealed partial class SupabaseAdminManagementService(
                 StringComparer.OrdinalIgnoreCase);
 
         return new AdminSubscriberReportsSnapshot(
-            MembershipStats: BuildMembershipStatsMetrics(subscriptions),
-            MembershipTrend: BuildMembershipTrendMetrics(subscriptions),
+            MembershipStats: BuildMembershipStatsMetrics(
+                subscriptions,
+                paystackSubscriptionCreateIdentifiers,
+                revenueEvents),
+            MembershipTrend: BuildMembershipTrendMetrics(
+                subscriptions,
+                paystackSubscriptionCreateIdentifiers,
+                revenueEvents),
             ActiveMembersPerLevel: BuildTierDistributionMetrics(wordPressSubscriberReports, subscriptions, tierDetails),
-            MembershipDetails: BuildSubscriberMembershipDetails(subscribers, subscriptions, tierDetails),
+            MembershipDetails: BuildSubscriberMembershipDetails(subscribers, subscriptions, tierDetails, paystackSubscriptionCreateIdentifiers),
             SalesAndRevenue: BuildSalesRevenueMetrics(wordPressSubscriberReports, subscriptions, tierDetails, revenueEvents),
             SalesDetails: BuildSalesRevenueDetails(subscriptions, tierDetails, revenueEvents),
             AbandonedCartRecoveries: BuildRecoveryMetrics(subscriptions, tierDetails, recoveries, abandonedCartRecoveries),
@@ -3646,46 +3654,62 @@ public sealed partial class SupabaseAdminManagementService(
     }
 
     private static IReadOnlyList<AdminMembershipStatsMetric> BuildMembershipStatsMetrics(
-        IReadOnlyList<SubscriptionRow> subscriptions)
+        IReadOnlyList<SubscriptionRow> subscriptions,
+        IReadOnlySet<string> paystackSubscriptionCreateIdentifiers,
+        IReadOnlyList<RevenueEventRow> revenueEvents)
     {
         var currentSubscriberSubscriptions = subscriptions
             .Where(IsSubscriberCountMetricEligible)
             .ToArray();
+        var currentNewSubscriberSubscriptions = currentSubscriberSubscriptions
+            .Where(subscription => IsNewSubscriberMetricEligible(subscription, paystackSubscriptionCreateIdentifiers))
+            .ToArray();
+        var cancellationDateBySubscriber = BuildCancellationDateBySubscriber(
+            currentSubscriberSubscriptions,
+            revenueEvents);
 
         return
         [
             new AdminMembershipStatsMetric(
                 "today",
-                CountNewSubscribersByLocalPeriod(currentSubscriberSubscriptions, SubscriberPeriod.Today),
-                CountCancelledSubscriptionsByLocalPeriod(currentSubscriberSubscriptions, SubscriberPeriod.Today)),
+                CountNewSubscribersByLocalPeriod(currentNewSubscriberSubscriptions, SubscriberPeriod.Today),
+                CountCancelledSubscriptionsByLocalPeriod(cancellationDateBySubscriber, SubscriberPeriod.Today)),
             new AdminMembershipStatsMetric(
                 "this_month",
-                CountNewSubscribersByLocalPeriod(currentSubscriberSubscriptions, SubscriberPeriod.ThisMonth),
-                CountCancelledSubscriptionsByLocalPeriod(currentSubscriberSubscriptions, SubscriberPeriod.ThisMonth)),
+                CountNewSubscribersByLocalPeriod(currentNewSubscriberSubscriptions, SubscriberPeriod.ThisMonth),
+                CountCancelledSubscriptionsByLocalPeriod(cancellationDateBySubscriber, SubscriberPeriod.ThisMonth)),
             new AdminMembershipStatsMetric(
                 "this_year",
-                CountNewSubscribersByLocalPeriod(currentSubscriberSubscriptions, SubscriberPeriod.ThisYear),
-                CountCancelledSubscriptionsByLocalPeriod(currentSubscriberSubscriptions, SubscriberPeriod.ThisYear)),
+                CountNewSubscribersByLocalPeriod(currentNewSubscriberSubscriptions, SubscriberPeriod.ThisYear),
+                CountCancelledSubscriptionsByLocalPeriod(cancellationDateBySubscriber, SubscriberPeriod.ThisYear)),
             new AdminMembershipStatsMetric(
                 "all_time",
-                CountNewSubscribersByLocalPeriod(currentSubscriberSubscriptions, SubscriberPeriod.AllTime),
-                CountCancelledSubscriptionsByLocalPeriod(currentSubscriberSubscriptions, SubscriberPeriod.AllTime))
+                CountNewSubscribersByLocalPeriod(currentNewSubscriberSubscriptions, SubscriberPeriod.AllTime),
+                CountCancelledSubscriptionsByLocalPeriod(cancellationDateBySubscriber, SubscriberPeriod.AllTime))
         ];
     }
 
     private static IReadOnlyList<AdminSubscriberTrendMetric> BuildMembershipTrendMetrics(
-        IReadOnlyList<SubscriptionRow> subscriptions)
+        IReadOnlyList<SubscriptionRow> subscriptions,
+        IReadOnlySet<string> paystackSubscriptionCreateIdentifiers,
+        IReadOnlyList<RevenueEventRow> revenueEvents)
     {
         var eligibleSubscriptions = subscriptions
             .Where(IsSubscriberCountMetricEligible)
             .ToArray();
+        var newSubscriberSubscriptions = eligibleSubscriptions
+            .Where(subscription => IsNewSubscriberMetricEligible(subscription, paystackSubscriptionCreateIdentifiers))
+            .ToArray();
+        var cancellationDateBySubscriber = BuildCancellationDateBySubscriber(
+            eligibleSubscriptions,
+            revenueEvents);
 
         if (eligibleSubscriptions.Length == 0)
         {
             return Array.Empty<AdminSubscriberTrendMetric>();
         }
 
-        var firstSignupDateBySubscriber = eligibleSubscriptions
+        var firstSignupDateBySubscriber = newSubscriberSubscriptions
             .Where(subscription => subscription.SubscriberId != Guid.Empty && subscription.SubscribedAt is not null)
             .GroupBy(subscription => subscription.SubscriberId)
             .Select(group => group
@@ -3698,15 +3722,8 @@ public sealed partial class SupabaseAdminManagementService(
             .GroupBy(value => value.Date)
             .ToDictionary(group => group.Key, group => group.Count());
 
-        var firstCancellationDateBySubscriber = eligibleSubscriptions
-            .Where(subscription => subscription.CancelledAt is not null)
-            .GroupBy(subscription => subscription.SubscriberId)
-            .Select(group =>
-                group
-                    .Where(subscription => subscription.CancelledAt is not null)
-                    .Select(subscription => subscription.CancelledAt!.Value.ToLocalTime())
-                    .Max())
-            .Select(dateTime => dateTime.Date)
+        var firstCancellationDateBySubscriber = cancellationDateBySubscriber
+            .Select(item => item.Value.ToLocalTime().Date)
             .ToArray();
 
         var cancellationCountByDate = firstCancellationDateBySubscriber
@@ -3915,7 +3932,8 @@ public sealed partial class SupabaseAdminManagementService(
     private static IReadOnlyList<AdminSubscriberMembershipDetailRecord> BuildSubscriberMembershipDetails(
         IReadOnlyList<SubscriberRow> subscribers,
         IReadOnlyList<SubscriptionRow> subscriptions,
-        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails)
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
+        IReadOnlySet<string> paystackSubscriptionCreateIdentifiers)
     {
         var subscribersById = subscribers
             .Where(subscriber => subscriber.SubscriberId != Guid.Empty)
@@ -3923,6 +3941,7 @@ public sealed partial class SupabaseAdminManagementService(
             .ToDictionary(group => group.Key, group => group.First());
 
         return GetFirstSubscriberSignupSubscriptions(subscriptions)
+            .Where(subscription => IsNewSubscriberMetricEligible(subscription, paystackSubscriptionCreateIdentifiers))
             .Where(subscription => subscription.SubscribedAt is not null)
             .Select(subscription =>
             {
@@ -4275,9 +4294,132 @@ public sealed partial class SupabaseAdminManagementService(
             .Count(subscribedAt => IsInLocalPeriod(subscribedAt, period));
 
     private static int CountCancelledSubscriptionsByLocalPeriod(
-        IReadOnlyList<SubscriptionRow> subscriptions,
+        IReadOnlyDictionary<Guid, DateTimeOffset> cancellationDateBySubscriber,
         SubscriberPeriod period) =>
-        subscriptions.Count(subscription => IsInLocalPeriod(subscription.CancelledAt, period));
+        cancellationDateBySubscriber
+            .Values
+            .Count(cancelledAt => IsInLocalPeriod(cancelledAt, period));
+
+    private static Dictionary<Guid, DateTimeOffset> BuildCancellationDateBySubscriber(
+        IReadOnlyList<SubscriptionRow> subscriptions,
+        IReadOnlyList<RevenueEventRow> revenueEvents)
+    {
+        var cancellationDateBySubscriber = new Dictionary<Guid, DateTimeOffset>();
+        var eligibleSubscriptions = subscriptions
+            .Where(IsSubscriberCountMetricEligible)
+            .ToArray();
+        var subscriptionIdLookup = BuildSubscriptionIdentifierLookup(eligibleSubscriptions);
+
+        foreach (var cancellationEvent in revenueEvents.Where(IsPaystackCancellationEvent))
+        {
+            foreach (var identifier in GetCancellationEventIdentifiers(cancellationEvent))
+            {
+                if (!subscriptionIdLookup.TryGetValue(identifier, out var subscriberIds))
+                {
+                    continue;
+                }
+
+                foreach (var subscriberId in subscriberIds)
+                {
+                    if (!cancellationDateBySubscriber.TryGetValue(subscriberId, out var cancellationDate) ||
+                        cancellationEvent.ReceivedAt > cancellationDate)
+                    {
+                        cancellationDateBySubscriber[subscriberId] = cancellationEvent.ReceivedAt;
+                    }
+                }
+            }
+        }
+
+        foreach (var subscription in eligibleSubscriptions)
+        {
+            if (!IsPaystackOrUnknownPaystackSubscription(subscription))
+            {
+                continue;
+            }
+
+            if (subscription.CancelledAt is null)
+            {
+                continue;
+            }
+
+            if (!cancellationDateBySubscriber.TryGetValue(subscription.SubscriberId, out var cancellationDate) ||
+                subscription.CancelledAt.Value > cancellationDate)
+            {
+                cancellationDateBySubscriber[subscription.SubscriberId] = subscription.CancelledAt.Value;
+            }
+        }
+
+        return cancellationDateBySubscriber;
+    }
+
+    private static bool IsPaystackOrUnknownPaystackSubscription(SubscriptionRow subscription) =>
+        string.IsNullOrWhiteSpace(subscription.Provider) ||
+        string.Equals(subscription.Provider, "paystack", StringComparison.OrdinalIgnoreCase);
+
+    private static Dictionary<string, HashSet<Guid>> BuildSubscriptionIdentifierLookup(
+        IReadOnlyList<SubscriptionRow> subscriptions)
+    {
+        var lookup = new Dictionary<string, HashSet<Guid>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var subscription in subscriptions)
+        {
+            AddSubscriptionIdentifierLookupValue(lookup, subscription.ProviderPaymentId, subscription.SubscriberId);
+            AddSubscriptionIdentifierLookupValue(lookup, subscription.ProviderTransactionId, subscription.SubscriberId);
+        }
+
+        return lookup;
+    }
+
+    private static void AddSubscriptionIdentifierLookupValue(
+        Dictionary<string, HashSet<Guid>> lookup,
+        string? identifier,
+        Guid subscriberId)
+    {
+        var normalizedIdentifier = NormalizeOptionalText(identifier, 160);
+        if (string.IsNullOrWhiteSpace(normalizedIdentifier))
+        {
+            return;
+        }
+
+        if (!lookup.TryGetValue(normalizedIdentifier, out var subscribers))
+        {
+            subscribers = [];
+            lookup[normalizedIdentifier] = subscribers;
+        }
+
+        subscribers.Add(subscriberId);
+    }
+
+    private static string[] GetCancellationEventIdentifiers(RevenueEventRow cancellationEvent)
+    {
+        var identifiers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        AddIfNotWhiteSpace(
+            identifiers,
+            NormalizeOptionalText(cancellationEvent.ProviderPaymentId, 160));
+        AddIfNotWhiteSpace(
+            identifiers,
+            NormalizeOptionalText(cancellationEvent.ProviderTransactionId, 160));
+        AddIfNotWhiteSpace(
+            identifiers,
+            NormalizeOptionalText(TryReadNestedString(cancellationEvent.Payload, "data", "subscription", "subscription_code"), 160));
+        AddIfNotWhiteSpace(
+            identifiers,
+            NormalizeOptionalText(TryReadNestedString(cancellationEvent.Payload, "data", "subscription_code"), 160));
+        AddIfNotWhiteSpace(
+            identifiers,
+            NormalizeOptionalText(TryReadNestedString(cancellationEvent.Payload, "data", "id"), 160));
+        AddIfNotWhiteSpace(
+            identifiers,
+            NormalizeOptionalText(TryReadString(cancellationEvent.Payload, "reference"), 160));
+
+        return [.. identifiers];
+    }
+
+    private static bool IsPaystackCancellationEvent(RevenueEventRow row) =>
+        string.Equals(row.Provider, "paystack", StringComparison.OrdinalIgnoreCase) &&
+        (string.Equals(row.EventType, "subscription.disable", StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(row.EventStatus, "cancelled", StringComparison.OrdinalIgnoreCase));
 
     private static bool IsInLocalPeriod(DateTimeOffset? value, SubscriberPeriod period)
     {
@@ -4321,6 +4463,98 @@ public sealed partial class SupabaseAdminManagementService(
         !string.Equals(subscription.SourceSystem, "admin_override", StringComparison.OrdinalIgnoreCase) &&
         !IsLegacyImportedGratisSubscription(subscription) &&
         subscription.SubscribedAt is not null;
+
+    private static bool IsNewSubscriberMetricEligible(
+        SubscriptionRow subscription,
+        IReadOnlySet<string> paystackSubscriptionCreateIdentifiers)
+    {
+        if (!IsSubscriberCountMetricEligible(subscription))
+        {
+            return false;
+        }
+
+        if (paystackSubscriptionCreateIdentifiers.Count == 0)
+        {
+            return false;
+        }
+
+        if (string.Equals(subscription.SourceSystem, "payfast", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (string.Equals(subscription.Provider, "payfast", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!string.IsNullOrWhiteSpace(subscription.Provider) &&
+            !string.Equals(subscription.Provider, "paystack", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!SubscriptionHasPaystackCreateSignature(subscription, paystackSubscriptionCreateIdentifiers))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private static bool SubscriptionHasPaystackCreateSignature(
+        SubscriptionRow subscription,
+        IReadOnlySet<string> paystackSubscriptionCreateIdentifiers)
+    {
+        var providerPaymentId = NormalizeOptionalText(subscription.ProviderPaymentId, 160);
+        if (!string.IsNullOrWhiteSpace(providerPaymentId) &&
+            paystackSubscriptionCreateIdentifiers.Contains(providerPaymentId))
+        {
+            return true;
+        }
+
+        var providerTransactionId = NormalizeOptionalText(subscription.ProviderTransactionId, 160);
+        return !string.IsNullOrWhiteSpace(providerTransactionId) &&
+               paystackSubscriptionCreateIdentifiers.Contains(providerTransactionId);
+    }
+
+    private static IReadOnlySet<string> BuildPaystackSubscriptionCreateIdentifiers(
+        IReadOnlyList<RevenueEventRow> revenueEvents)
+    {
+        var identifiers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var row in revenueEvents.Where(IsPaystackSubscriptionCreateEvent))
+        {
+            AddIfNotWhiteSpace(identifiers, NormalizeOptionalText(row.ProviderPaymentId, 160));
+            AddIfNotWhiteSpace(identifiers, NormalizeOptionalText(row.ProviderTransactionId, 160));
+            AddIfNotWhiteSpace(
+                identifiers,
+                NormalizeOptionalText(TryReadNestedString(row.Payload, "data", "subscription", "subscription_code"), 160));
+            AddIfNotWhiteSpace(
+                identifiers,
+                NormalizeOptionalText(TryReadNestedString(row.Payload, "data", "subscription_code"), 160));
+            AddIfNotWhiteSpace(
+                identifiers,
+                NormalizeOptionalText(TryReadNestedString(row.Payload, "data", "id"), 160));
+            AddIfNotWhiteSpace(identifiers, NormalizeOptionalText(TryReadString(row.Payload, "reference"), 160));
+        }
+
+        return identifiers;
+    }
+
+    private static bool IsPaystackSubscriptionCreateEvent(RevenueEventRow row) =>
+        string.Equals(row.Provider, "paystack", StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(row.EventType, "subscription.create", StringComparison.OrdinalIgnoreCase) &&
+        (IsSuccessfulRevenueEventStatus(row.EventStatus) ||
+         string.Equals(row.EventStatus, "active", StringComparison.OrdinalIgnoreCase));
+
+    private static void AddIfNotWhiteSpace(HashSet<string> values, string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            values.Add(value);
+        }
+    }
 
     private static bool IsLegacyImportedGratisSubscription(SubscriptionRow subscription) =>
         string.Equals(subscription.SourceSystem, "shink_app", StringComparison.OrdinalIgnoreCase) &&
@@ -5119,6 +5353,12 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("received_at")]
         public DateTimeOffset ReceivedAt { get; set; }
+
+        [JsonPropertyName("provider_payment_id")]
+        public string? ProviderPaymentId { get; set; }
+
+        [JsonPropertyName("provider_transaction_id")]
+        public string? ProviderTransactionId { get; set; }
 
         [JsonPropertyName("payload")]
         public JsonElement Payload { get; set; }

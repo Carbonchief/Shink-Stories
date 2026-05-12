@@ -1216,6 +1216,365 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     }
 
     [TestMethod]
+    public async Task RecordPaystackEventAsync_SubscriptionCreateCanonicalizesInitialChargeSuccessRow()
+    {
+        var originalSubscriptionId = "22222222-2222-2222-2222-222222222222";
+        var subscriptionCode = "SUB_x97u02ht01jysfp";
+        var checkoutReference = "storie-hoekie-maandeliks-20260511180929-6ae838fdc804411588d3d9e8b0836d13";
+        var canonicalized = false;
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                var query = request.RequestUri?.Query ?? string.Empty;
+                if (query.Contains($"provider_payment_id=eq.{Uri.EscapeDataString(subscriptionCode)}", StringComparison.Ordinal))
+                {
+                    return JsonResponse(
+                        canonicalized
+                            ? $$"""
+                               [
+                                 {
+                                   "subscription_id": "{{originalSubscriptionId}}",
+                                   "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                                   "tier_code": "story_corner_monthly",
+                                   "provider": "paystack",
+                                   "source_system": "shink_app",
+                                   "provider_payment_id": "{{subscriptionCode}}",
+                                   "provider_transaction_id": "6135862592",
+                                   "provider_token": "AUTH_signup",
+                                   "provider_email_token": "dyx4196k38od3k0",
+                                   "status": "active",
+                                   "billing_amount_zar": 55.00,
+                                   "billing_period_months": 1,
+                                   "billing_amount_source": "paystack_payload"
+                                 }
+                               ]
+                               """
+                            : "[]");
+                }
+
+                if (query.Contains("provider_token=eq.AUTH_signup", StringComparison.Ordinal) &&
+                    query.Contains("tier_code=eq.story_corner_monthly", StringComparison.Ordinal))
+                {
+                    return JsonResponse(
+                        $$"""
+                        [
+                          {
+                            "subscription_id": "{{originalSubscriptionId}}",
+                            "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                            "tier_code": "story_corner_monthly",
+                            "provider": "paystack",
+                            "source_system": "shink_app",
+                            "provider_payment_id": "{{checkoutReference}}",
+                            "provider_transaction_id": "6135862592",
+                            "provider_token": "AUTH_signup",
+                            "provider_email_token": null,
+                            "status": "active",
+                            "billing_amount_zar": 55.00,
+                            "billing_period_months": 1,
+                            "billing_amount_source": "paystack_payload"
+                          }
+                        ]
+                        """);
+                }
+
+                if (query.Contains($"provider_payment_id=eq.{Uri.EscapeDataString(checkoutReference)}", StringComparison.Ordinal))
+                {
+                    return JsonResponse(
+                        $$"""
+                        [
+                          {
+                            "subscription_id": "{{originalSubscriptionId}}",
+                            "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                            "tier_code": "story_corner_monthly",
+                            "provider": "paystack",
+                            "source_system": "shink_app",
+                            "provider_payment_id": "{{checkoutReference}}",
+                            "provider_transaction_id": "6135862592",
+                            "provider_token": "AUTH_signup",
+                            "provider_email_token": null,
+                            "status": "active",
+                            "billing_amount_zar": 55.00,
+                            "billing_period_months": 1,
+                            "billing_amount_source": "paystack_payload"
+                          }
+                        ]
+                        """);
+                }
+
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscribers")
+            {
+                return JsonResponse("""[{ "subscriber_id": "11111111-1111-1111-1111-111111111111" }]""");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                var query = request.RequestUri?.Query ?? string.Empty;
+                if (query.Contains("select=email", StringComparison.Ordinal))
+                {
+                    return JsonResponse("""[{ "email": "ouer@example.com" }]""");
+                }
+
+                return JsonResponse("""[{ "first_name": "Ouer", "display_name": "Ouer Een" }]""");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                if (request.Content?.ReadAsStringAsync().GetAwaiter().GetResult().Contains(checkoutReference, StringComparison.Ordinal) == true)
+                {
+                    return JsonResponse($$"""[{ "subscription_id": "{{originalSubscriptionId}}" }]""");
+                }
+
+                Assert.Fail("subscription.create should canonicalize the initial charge.success row instead of inserting a duplicate subscription.");
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                canonicalized = true;
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_payment_recoveries")
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var chargeSuccess = await service.RecordPaystackEventAsync(
+            $$"""
+            {
+              "event": "charge.success",
+              "data": {
+                "id": 6135862592,
+                "status": "success",
+                "reference": "{{checkoutReference}}",
+                "amount": 5500,
+                "paid_at": "2026-05-11T18:10:41Z",
+                "customer": {
+                  "email": "ouer@example.com"
+                },
+                "metadata": {
+                  "subscription_key": "{{checkoutReference}}",
+                  "tier_code": "story_corner_monthly"
+                },
+                "authorization": {
+                  "authorization_code": "AUTH_signup"
+                },
+                "plan": {
+                  "amount": 5500,
+                  "interval": "monthly"
+                }
+              }
+            }
+            """);
+
+        Assert.IsTrue(chargeSuccess.IsSuccess);
+        Assert.AreEqual(originalSubscriptionId, chargeSuccess.SubscriptionId);
+
+        var subscriptionCreate = await service.RecordPaystackEventAsync(
+            $$"""
+            {
+              "event": "subscription.create",
+              "data": {
+                "id": 1164259,
+                "status": "active",
+                "email_token": "dyx4196k38od3k0",
+                "next_payment_date": "2026-06-11T18:10:00.000Z",
+                "customer": {
+                  "email": "ouer@example.com"
+                },
+                "authorization": {
+                  "authorization_code": "AUTH_signup"
+                },
+                "subscription": {
+                  "subscription_code": "{{subscriptionCode}}"
+                },
+                "plan": {
+                  "amount": 5500,
+                  "interval": "monthly"
+                }
+              }
+            }
+            """);
+
+        Assert.IsTrue(subscriptionCreate.IsSuccess);
+        Assert.AreEqual(originalSubscriptionId, subscriptionCreate.SubscriptionId);
+        Assert.IsTrue(
+            handler.SubscriptionPatchPayloads.Any(payload =>
+                payload.Contains($"\"provider_payment_id\":\"{subscriptionCode}\"", StringComparison.Ordinal) &&
+                payload.Contains("\"provider_email_token\":\"dyx4196k38od3k0\"", StringComparison.Ordinal) &&
+                payload.Contains("\"billing_amount_zar\":55", StringComparison.Ordinal)),
+            "subscription.create should rewrite the original charge.success row onto the canonical Paystack subscription code.");
+        Assert.IsTrue(
+            handler.SubscriptionEventPayloads.Any(payload =>
+                payload.Contains($"\"provider_payment_id\":\"{subscriptionCode}\"", StringComparison.Ordinal) &&
+                payload.Contains($"\"subscription_id\":\"{originalSubscriptionId}\"", StringComparison.Ordinal)),
+            "The subscription.create event should be captured against the original subscription row.");
+    }
+
+    [TestMethod]
+    public async Task RecordPaystackEventAsync_RepairChargeSuccessReusesExistingSubscriptionRow()
+    {
+        var originalSubscriptionId = "0c6ff3c0-48ff-44fd-bc91-c449acb90ab0";
+        var originalProviderPaymentId = "wp-pmpro-current-2681";
+        var repairReference = "repair-20260430150912-0c6ff3c0-48ff-44fd-bc91-c449acb90ab0";
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                var query = request.RequestUri?.Query ?? string.Empty;
+                if (query.Contains($"provider_payment_id=eq.{Uri.EscapeDataString(repairReference)}", StringComparison.Ordinal))
+                {
+                    return JsonResponse("[]");
+                }
+
+                if (query.Contains("provider_token=eq.AUTH_retry", StringComparison.Ordinal) &&
+                    query.Contains("tier_code=eq.all_stories_yearly", StringComparison.Ordinal))
+                {
+                    return JsonResponse(
+                        $$"""
+                        [
+                          {
+                            "subscription_id": "{{originalSubscriptionId}}",
+                            "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                            "tier_code": "all_stories_yearly",
+                            "provider": "paystack",
+                            "source_system": "wordpress_pmpro",
+                            "provider_payment_id": "{{originalProviderPaymentId}}",
+                            "provider_transaction_id": "EFE7D68193",
+                            "provider_token": "AUTH_retry",
+                            "provider_email_token": null,
+                            "status": "active",
+                            "billing_amount_zar": null,
+                            "billing_period_months": null,
+                            "billing_amount_source": null
+                          }
+                        ]
+                        """);
+                }
+
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscribers")
+            {
+                return JsonResponse("""[{ "subscriber_id": "11111111-1111-1111-1111-111111111111" }]""");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                var query = request.RequestUri?.Query ?? string.Empty;
+                if (query.Contains("select=email", StringComparison.Ordinal))
+                {
+                    return JsonResponse("""[{ "email": "ouer@example.com" }]""");
+                }
+
+                return JsonResponse("""[{ "first_name": "Ouer", "display_name": "Ouer Een" }]""");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                Assert.Fail("repair charge.success should reuse the existing subscription row instead of inserting a repair-reference subscription.");
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_payment_recoveries")
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.RecordPaystackEventAsync(
+            $$"""
+            {
+              "event": "charge.success",
+              "data": {
+                "id": 6095474343,
+                "status": "success",
+                "reference": "{{repairReference}}",
+                "amount": 79000,
+                "paid_at": "2026-04-30T15:09:15Z",
+                "customer": {
+                  "email": "ouer@example.com"
+                },
+                "authorization": {
+                  "authorization_code": "AUTH_retry"
+                },
+                "metadata": {
+                  "plan_slug": "schink-stories-jaarliks",
+                  "tier_code": "all_stories_yearly",
+                  "billing_period_months": 12
+                },
+                "plan": {
+                  "amount": 79000,
+                  "interval": "annually"
+                }
+              }
+            }
+            """);
+
+        Assert.IsTrue(result.IsSuccess);
+        Assert.AreEqual(originalSubscriptionId, result.SubscriptionId);
+        Assert.IsTrue(
+            handler.SubscriptionPatchPayloads.Any(payload =>
+                payload.Contains("\"provider_transaction_id\":\"6095474343\"", StringComparison.Ordinal) &&
+                payload.Contains("\"billing_amount_zar\":790", StringComparison.Ordinal) &&
+                payload.Contains("\"billing_period_months\":12", StringComparison.Ordinal) &&
+                payload.Contains("\"next_renewal_at\":\"2027-04-30T15:09:15Z\"", StringComparison.Ordinal)),
+            "repair charge.success should renew the existing subscription row instead of creating a repair-reference row.");
+        Assert.IsTrue(
+            handler.SubscriptionEventPayloads.Any(payload =>
+                payload.Contains($"\"provider_payment_id\":\"{originalProviderPaymentId}\"", StringComparison.Ordinal) &&
+                payload.Contains($"\"subscription_id\":\"{originalSubscriptionId}\"", StringComparison.Ordinal)),
+            "The repair charge success event should be recorded against the original subscription.");
+    }
+
+    [TestMethod]
     public async Task ProcessExpiredPaymentRecoveriesAsync_FailedFirstRetrySchedulesFollowUpBeforeWarningEmail()
     {
         var subscriptionId = "22222222-2222-2222-2222-222222222222";

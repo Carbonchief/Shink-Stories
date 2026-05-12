@@ -195,14 +195,17 @@ public class AdminAnalyticsSourceTests
         var subscriberId = Guid.NewGuid();
         var cancelledSubscriberId = Guid.NewGuid();
         var rows = CreateSubscriptionRows(
-            CreateSubscriptionRow(subscriberId, "shink_app", "active", now, null),
+            CreateSubscriptionRow(subscriberId, "shink_app", "active", now, null, provider: "paystack", providerPaymentId: "paystack-new-today"),
             CreateSubscriptionRow(subscriberId, "shink_app", "active", now.AddMinutes(-1), null),
-            CreateSubscriptionRow(cancelledSubscriberId, "discount_code", "cancelled", now, now),
+            CreateSubscriptionRow(cancelledSubscriberId, "discount_code", "cancelled", now, now, provider: "paystack", providerPaymentId: "paystack-cancelled-today"),
             CreateSubscriptionRow(Guid.NewGuid(), "wordpress_pmpro", "active", now, now),
             CreateSubscriptionRow(Guid.NewGuid(), "admin_override", "active", now, now),
             CreateSubscriptionRow(Guid.NewGuid(), "shink_app", "failed", now, null));
+        var revenueEvents = CreateRevenueEvents(
+            CreateRevenueEvent(now, 0m, "subscription.create", providerPaymentId: "paystack-new-today"),
+            CreateRevenueEvent(now, 0m, "subscription.create", providerPaymentId: "paystack-cancelled-today"));
 
-        var metrics = InvokeBuildMembershipStatsMetrics(rows);
+        var metrics = InvokeBuildMembershipStatsMetrics(rows, revenueEvents);
         var today = metrics.Single(metric => metric.PeriodKey == "today");
 
         Assert.AreEqual(2, today.Signups);
@@ -216,23 +219,254 @@ public class AdminAnalyticsSourceTests
         var validSubscriberId = Guid.NewGuid();
         var importedSubscriberId = Guid.NewGuid();
         var rows = CreateSubscriptionRows(
-            CreateSubscriptionRow(validSubscriberId, "shink_app", "active", now, null),
+            CreateSubscriptionRow(validSubscriberId, "shink_app", "active", now, null, providerPaymentId: "paystack-valid-subscriber", provider: "paystack"),
             CreateSubscriptionRow(validSubscriberId, "shink_app", "active", now.AddMinutes(-2), null),
             CreateSubscriptionRow(importedSubscriberId, "shink_app", "active", now, null, tierCode: "gratis", providerPaymentId: "gratis-20260430"),
             CreateSubscriptionRow(Guid.NewGuid(), "admin_override", "active", now, null, tierCode: "gratis", providerPaymentId: "gratis-user-1"),
             CreateSubscriptionRow(Guid.NewGuid(), "wordpress_pmpro", "active", now, null, tierCode: "gratis", providerPaymentId: "gratis-user-2"));
+        var revenueEvents = CreateRevenueEvents(
+            CreateRevenueEvent(now, 0m, "subscription.create", providerPaymentId: "paystack-valid-subscriber"));
 
-        var metrics = InvokeBuildMembershipTrendMetrics(rows);
+        var metrics = InvokeBuildMembershipTrendMetrics(rows, revenueEvents);
         var today = metrics.Single(metric => metric.PeriodType == "day" && metric.PeriodKey == now.Date.ToString("yyyy-MM-dd"));
 
         Assert.AreEqual(1, today.Signups);
         Assert.AreEqual(0, today.Cancellations);
 
-        var stats = InvokeBuildMembershipStatsMetrics(rows);
+        var stats = InvokeBuildMembershipStatsMetrics(rows, revenueEvents);
         var todayStats = stats.Single(metric => metric.PeriodKey == "today");
 
         Assert.AreEqual(1, todayStats.Signups);
         Assert.AreEqual(0, todayStats.Cancellations);
+    }
+
+    [TestMethod]
+    public void SubscriberAnalyticsExcludesPayfastFromNewSubscriberCounts()
+    {
+        var now = DateTimeOffset.Now.AddMinutes(-5);
+        var paystackSubscriberId = Guid.NewGuid();
+        var payfastSubscriberId = Guid.NewGuid();
+        var payfastNullProviderSubscriberId = Guid.NewGuid();
+        var legacySubscriberId = Guid.NewGuid();
+        var cancelledPayfastSubscriberId = Guid.NewGuid();
+        var rows = CreateSubscriptionRows(
+            CreateSubscriptionRow(paystackSubscriberId, "shink_app", "active", now, null, provider: "paystack", providerPaymentId: "paystack-main-subscribe"),
+            CreateSubscriptionRow(payfastSubscriberId, "shink_app", "active", now, null, provider: "payfast"),
+            CreateSubscriptionRow(payfastNullProviderSubscriberId, "payfast", "active", now, null),
+            CreateSubscriptionRow(legacySubscriberId, "shink_app", "active", now, null, provider: "paystack", providerPaymentId: "paystack-legacy-subscribe"),
+            CreateSubscriptionRow(cancelledPayfastSubscriberId, "shink_app", "cancelled", now, now, provider: "payfast"));
+        var revenueEvents = CreateRevenueEvents(
+            CreateRevenueEvent(now, 0m, "subscription.create", providerPaymentId: "paystack-main-subscribe"),
+            CreateRevenueEvent(now, 0m, "subscription.create", providerPaymentId: "paystack-legacy-subscribe"));
+
+        var metrics = InvokeBuildMembershipStatsMetrics(rows, revenueEvents);
+        var today = metrics.Single(metric => metric.PeriodKey == "today");
+
+        Assert.AreEqual(2, today.Signups);
+        Assert.AreEqual(0, today.Cancellations);
+
+        var trend = InvokeBuildMembershipTrendMetrics(rows, revenueEvents);
+        var todayTrend = trend.Single(metric => metric.PeriodType == "day" && metric.PeriodKey == now.Date.ToString("yyyy-MM-dd"));
+
+        Assert.AreEqual(2, todayTrend.Signups);
+        Assert.AreEqual(0, todayTrend.Cancellations);
+    }
+
+    [TestMethod]
+    public void SubscriberCancellationCountsUsePaystackDisableWebhookEventsOnly()
+    {
+        var now = DateTimeOffset.Now.AddMinutes(-5);
+        var paystackSubscriberId = Guid.NewGuid();
+        var secondPaystackSubscriberId = Guid.NewGuid();
+        var payfastSubscriberId = Guid.NewGuid();
+        var rows = CreateSubscriptionRows(
+            CreateSubscriptionRow(
+                paystackSubscriberId,
+                "shink_app",
+                "active",
+                now,
+                now,
+                provider: "paystack",
+                providerPaymentId: "paystack-main-cancel"),
+            CreateSubscriptionRow(
+                secondPaystackSubscriberId,
+                "shink_app",
+                "active",
+                now,
+                now,
+                provider: "paystack",
+                providerTransactionId: "txn-second-cancel"),
+            CreateSubscriptionRow(
+                payfastSubscriberId,
+                "shink_app",
+                "cancelled",
+                now,
+                now,
+                provider: "payfast"));
+        var revenueEvents = CreateRevenueEvents(
+            CreateRevenueEvent(now, 0m, "subscription.create", providerPaymentId: "paystack-main-cancel"),
+            CreateRevenueEvent(now, 0m, "subscription.create", providerTransactionId: "txn-second-cancel"),
+            CreateRevenueEvent(now, 0m, "subscription.disable", providerPaymentId: "paystack-main-cancel"),
+            CreateRevenueEvent(now, 0m, "subscription.disable", providerTransactionId: "txn-second-cancel"),
+            CreateRevenueEvent(now, 0m, "subscription.disable", providerPaymentId: "paystack-main-cancel"));
+
+        var metrics = InvokeBuildMembershipStatsMetrics(rows, revenueEvents);
+        var today = metrics.Single(metric => metric.PeriodKey == "today");
+
+        Assert.AreEqual(2, today.Signups);
+        Assert.AreEqual(2, today.Cancellations);
+
+        var trend = InvokeBuildMembershipTrendMetrics(rows, revenueEvents);
+        var todayTrend = trend.Single(metric => metric.PeriodType == "day" && metric.PeriodKey == now.Date.ToString("yyyy-MM-dd"));
+
+        Assert.AreEqual(2, todayTrend.Signups);
+        Assert.AreEqual(2, todayTrend.Cancellations);
+    }
+
+    [TestMethod]
+    public void SubscriberAnalyticsCountsOnlyRowsWithPaystackSubscriptionCreateEvents()
+    {
+        var now = DateTimeOffset.Now.AddMinutes(-5);
+        var paystackWithCreateId = Guid.NewGuid();
+        var paystackWithoutCreateId = Guid.NewGuid();
+        var payfastSubscriberId = Guid.NewGuid();
+        var rows = CreateSubscriptionRows(
+            CreateSubscriptionRow(
+                paystackWithCreateId,
+                "shink_app",
+                "active",
+                now,
+                null,
+                provider: "paystack",
+                providerPaymentId: "sub_created"),
+            CreateSubscriptionRow(
+                paystackWithoutCreateId,
+                "shink_app",
+                "active",
+                now,
+                null,
+                provider: "paystack",
+                providerPaymentId: "sub_no_create"),
+            CreateSubscriptionRow(
+                payfastSubscriberId,
+                "shink_app",
+                "active",
+                now,
+                null,
+                provider: "payfast"));
+
+        var revenueEvents = CreateRevenueEvents(
+            CreateRevenueEvent(now, 0m, "subscription.create", providerPaymentId: "sub_created"));
+
+        var metrics = InvokeBuildMembershipStatsMetrics(rows, revenueEvents);
+        var today = metrics.Single(metric => metric.PeriodKey == "today");
+
+        Assert.AreEqual(1, today.Signups);
+        Assert.AreEqual(0, today.Cancellations);
+
+        var trend = InvokeBuildMembershipTrendMetrics(rows, revenueEvents);
+        var todayTrend = trend.Single(metric => metric.PeriodType == "day" && metric.PeriodKey == now.Date.ToString("yyyy-MM-dd"));
+
+        Assert.AreEqual(1, todayTrend.Signups);
+        Assert.AreEqual(0, todayTrend.Cancellations);
+    }
+
+    [TestMethod]
+    public void SubscriberAnalyticsCountsOnlyRowsWithActivePaystackSubscriptionCreateEvents()
+    {
+        var now = DateTimeOffset.Now.AddMinutes(-5);
+        var paystackSubscriberId = Guid.NewGuid();
+        var rows = CreateSubscriptionRows(
+            CreateSubscriptionRow(
+                paystackSubscriberId,
+                "shink_app",
+                "active",
+                now,
+                null,
+                provider: "paystack",
+                providerPaymentId: "sub_active_create"));
+
+        var revenueEvents = CreateRevenueEvents(
+            CreateRevenueEvent(now, 0m, "subscription.create", "sub_active_create", eventStatus: "active"));
+
+        var metrics = InvokeBuildMembershipStatsMetrics(rows, revenueEvents);
+        var today = metrics.Single(metric => metric.PeriodKey == "today");
+
+        Assert.AreEqual(1, today.Signups);
+    }
+
+    [TestMethod]
+    public void SubscriberMembershipDetailsExcludePayfastRows()
+    {
+        var now = DateTimeOffset.Now.AddMinutes(-5);
+        var paystackSubscriberId = Guid.NewGuid();
+        var payfastSubscriberId = Guid.NewGuid();
+        var payfastNullProviderSubscriberId = Guid.NewGuid();
+        var paystackNullProviderSubscriberId = Guid.NewGuid();
+        var rows = CreateSubscriptionRows(
+            CreateSubscriptionRow(paystackSubscriberId, "shink_app", "active", now, null, provider: "paystack", providerPaymentId: "paystack-list-1"),
+            CreateSubscriptionRow(payfastSubscriberId, "shink_app", "active", now, null, provider: "payfast"),
+            CreateSubscriptionRow(payfastNullProviderSubscriberId, "payfast", "active", now, null),
+            CreateSubscriptionRow(paystackNullProviderSubscriberId, "shink_app", "active", now, null, providerPaymentId: "paystack-list-2"),
+            CreateSubscriptionRow(Guid.NewGuid(), "wordpress_pmpro", "active", now, null));
+
+        var subscribers = CreateSubscriberRows(
+            CreateSubscriberRow(paystackSubscriberId, "paystack@shink.dev"),
+            CreateSubscriberRow(payfastSubscriberId, "payfast@shink.dev"),
+            CreateSubscriberRow(payfastNullProviderSubscriberId, "payfast-null@shink.dev"),
+            CreateSubscriberRow(paystackNullProviderSubscriberId, "paystack-null@shink.dev"),
+            CreateSubscriberRow(Guid.NewGuid(), "wordpress@shink.dev"));
+        var revenueEvents = CreateRevenueEvents(
+            CreateRevenueEvent(now, 0m, "subscription.create", providerPaymentId: "paystack-list-1"),
+            CreateRevenueEvent(now, 0m, "subscription.create", providerPaymentId: "paystack-list-2"));
+
+        var details = InvokeBuildSubscriberMembershipDetails(
+            subscribers,
+            rows,
+            CreateEmptyTierDetails(),
+            revenueEvents);
+
+        Assert.AreEqual(2, details.Count);
+        Assert.IsFalse(details.Any(detail => detail.Provider.Equals("payfast", StringComparison.OrdinalIgnoreCase)));
+    }
+
+    [TestMethod]
+    public void SubscriberMembershipDetailsIncludeOnlyPaystackSubscriptionCreateWebhookRows()
+    {
+        var now = DateTimeOffset.Now.AddMinutes(-5);
+        var paystackWithCreateId = Guid.NewGuid();
+        var paystackWithoutCreateId = Guid.NewGuid();
+        var rows = CreateSubscriptionRows(
+            CreateSubscriptionRow(
+                paystackWithCreateId,
+                "shink_app",
+                "active",
+                now,
+                null,
+                provider: "paystack",
+                providerPaymentId: "sub_created"),
+            CreateSubscriptionRow(
+                paystackWithoutCreateId,
+                "shink_app",
+                "active",
+                now,
+                null,
+                provider: "paystack",
+                providerPaymentId: "sub_no_create"));
+        var subscribers = CreateSubscriberRows(
+            CreateSubscriberRow(paystackWithCreateId, "paystack@shink.dev"),
+            CreateSubscriberRow(paystackWithoutCreateId, "missing-event@shink.dev"));
+        var revenueEvents = CreateRevenueEvents(
+            CreateRevenueEvent(now, 0m, "subscription.create", providerPaymentId: "sub_created"));
+
+        var details = InvokeBuildSubscriberMembershipDetails(
+            subscribers,
+            rows,
+            CreateEmptyTierDetails(),
+            revenueEvents);
+
+        Assert.AreEqual(1, details.Count);
+        Assert.AreEqual("paystack@shink.dev", details.Single().Email);
     }
 
     [TestMethod]
@@ -294,26 +528,34 @@ public class AdminAnalyticsSourceTests
 
     private static string GetSourceFilePath([CallerFilePath] string path = "") => path;
 
-    private static IReadOnlyList<AdminMembershipStatsMetric> InvokeBuildMembershipStatsMetrics(object rows)
+    private static IReadOnlyList<AdminMembershipStatsMetric> InvokeBuildMembershipStatsMetrics(
+        object rows,
+        object? revenueEvents = null)
     {
         var method = typeof(SupabaseAdminManagementService).GetMethod(
             "BuildMembershipStatsMetrics",
             BindingFlags.NonPublic | BindingFlags.Static);
 
         Assert.IsNotNull(method);
-        var result = method.Invoke(null, [rows]);
+        var events = revenueEvents ?? CreateRevenueEvents();
+        var paystackCreateIdentifiers = BuildPaystackSubscriptionCreateIdentifiers(events);
+        var result = method.Invoke(null, [rows, paystackCreateIdentifiers, events]);
         Assert.IsNotNull(result);
         return ((IEnumerable<AdminMembershipStatsMetric>)result).ToArray();
     }
 
-    private static IReadOnlyList<AdminSubscriberTrendMetric> InvokeBuildMembershipTrendMetrics(object rows)
+    private static IReadOnlyList<AdminSubscriberTrendMetric> InvokeBuildMembershipTrendMetrics(
+        object rows,
+        object? revenueEvents = null)
     {
         var method = typeof(SupabaseAdminManagementService).GetMethod(
             "BuildMembershipTrendMetrics",
             BindingFlags.NonPublic | BindingFlags.Static);
 
         Assert.IsNotNull(method);
-        var result = method.Invoke(null, [rows]);
+        var events = revenueEvents ?? CreateRevenueEvents();
+        var paystackCreateIdentifiers = BuildPaystackSubscriptionCreateIdentifiers(events);
+        var result = method.Invoke(null, [rows, paystackCreateIdentifiers, events]);
         Assert.IsNotNull(result);
         return ((IEnumerable<AdminSubscriberTrendMetric>)result).ToArray();
     }
@@ -331,9 +573,51 @@ public class AdminAnalyticsSourceTests
         return ((IEnumerable<AdminSalesRevenueMetric>)result).ToArray();
     }
 
+    private static IReadOnlyList<AdminSubscriberMembershipDetailRecord> InvokeBuildSubscriberMembershipDetails(
+        object subscribers,
+        object rows,
+        object tierDetails,
+        object? revenueEvents = null)
+    {
+        var method = typeof(SupabaseAdminManagementService).GetMethod(
+            "BuildSubscriberMembershipDetails",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.IsNotNull(method);
+        var events = revenueEvents ?? CreateRevenueEvents();
+        var paystackCreateIdentifiers = BuildPaystackSubscriptionCreateIdentifiers(events);
+        var result = method.Invoke(null, [subscribers, rows, tierDetails, paystackCreateIdentifiers]);
+        Assert.IsNotNull(result);
+        return ((IEnumerable<AdminSubscriberMembershipDetailRecord>)result).ToArray();
+    }
+
+    private static object BuildPaystackSubscriptionCreateIdentifiers(object revenueEvents)
+    {
+        var method = typeof(SupabaseAdminManagementService).GetMethod(
+            "BuildPaystackSubscriptionCreateIdentifiers",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.IsNotNull(method);
+        var result = method.Invoke(null, [revenueEvents]);
+        Assert.IsNotNull(result);
+        return result;
+    }
+
     private static object CreateSubscriptionRows(params object[] rows)
     {
         var rowType = GetSubscriptionRowType();
+        var list = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(rowType))!;
+        foreach (var row in rows)
+        {
+            list.Add(row);
+        }
+
+        return list;
+    }
+
+    private static object CreateSubscriberRows(params object[] rows)
+    {
+        var rowType = GetSubscriberRowType();
         var list = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(rowType))!;
         foreach (var row in rows)
         {
@@ -352,7 +636,8 @@ public class AdminAnalyticsSourceTests
         decimal? billingAmountZar = null,
         string? tierCode = null,
         string? providerPaymentId = null,
-        string? provider = null)
+        string? provider = null,
+        string? providerTransactionId = null)
     {
         var rowType = GetSubscriptionRowType();
         var row = Activator.CreateInstance(rowType)!;
@@ -366,6 +651,26 @@ public class AdminAnalyticsSourceTests
         SetProperty(row, "BillingAmountZar", billingAmountZar);
         SetProperty(row, "TierCode", tierCode);
         SetProperty(row, "ProviderPaymentId", providerPaymentId);
+        SetProperty(row, "ProviderTransactionId", providerTransactionId);
+        return row;
+    }
+
+    private static object CreateSubscriberRow(Guid subscriberId, string email)
+    {
+        var rowType = GetSubscriberRowType();
+        var row = Activator.CreateInstance(rowType)!;
+        SetProperty(row, "SubscriberId", subscriberId);
+        SetProperty(row, "Email", email);
+        SetProperty(row, "FirstName", null);
+        SetProperty(row, "LastName", null);
+        SetProperty(row, "DisplayName", null);
+        SetProperty(row, "MobileNumber", null);
+        SetProperty(row, "ProfileImageUrl", null);
+        SetProperty(row, "CreatedAt", DateTimeOffset.Now);
+        SetProperty(row, "UpdatedAt", DateTimeOffset.Now);
+        SetProperty(row, "DisabledAt", null);
+        SetProperty(row, "DisabledByAdminEmail", null);
+        SetProperty(row, "DisabledReason", null);
         return row;
     }
 
@@ -373,6 +678,16 @@ public class AdminAnalyticsSourceTests
     {
         var type = typeof(SupabaseAdminManagementService).GetNestedType(
             "SubscriptionRow",
+            BindingFlags.NonPublic);
+
+        Assert.IsNotNull(type);
+        return type;
+    }
+
+    private static Type GetSubscriberRowType()
+    {
+        var type = typeof(SupabaseAdminManagementService).GetNestedType(
+            "SubscriberRow",
             BindingFlags.NonPublic);
 
         Assert.IsNotNull(type);
@@ -391,14 +706,22 @@ public class AdminAnalyticsSourceTests
         return list;
     }
 
-    private static object CreateRevenueEvent(DateTimeOffset receivedAt, decimal amountInCents)
+    private static object CreateRevenueEvent(
+        DateTimeOffset receivedAt,
+        decimal amountInCents,
+        string eventType = "charge.success",
+        string? providerPaymentId = null,
+        string? providerTransactionId = null,
+        string eventStatus = "success")
     {
         var rowType = GetRevenueEventRowType();
         var row = Activator.CreateInstance(rowType)!;
         SetProperty(row, "Provider", "paystack");
-        SetProperty(row, "EventType", "charge.success");
-        SetProperty(row, "EventStatus", "success");
+        SetProperty(row, "EventType", eventType);
+        SetProperty(row, "EventStatus", eventStatus);
         SetProperty(row, "ReceivedAt", receivedAt);
+        SetProperty(row, "ProviderPaymentId", providerPaymentId);
+        SetProperty(row, "ProviderTransactionId", providerTransactionId);
         SetProperty(
             row,
             "Payload",

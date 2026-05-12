@@ -58,7 +58,7 @@ public sealed class HomePage : ContentPage
 
             foreach (var story in home.FreeStories)
             {
-                _content.Children.Add(PageHelpers.BuildStoryCard(story, OpenStoryAsync));
+                _content.Children.Add(PageHelpers.BuildStoryCard(story, _apiClient, OpenStoryAsync));
             }
         }
         catch (Exception ex)
@@ -85,8 +85,8 @@ public sealed class HomePage : ContentPage
                 Spacing = 14,
                 Children =
                 {
-                    new Image { Source = home.LogoImageUrl, HeightRequest = 84, Aspect = Aspect.AspectFit },
-                    new Image { Source = home.HeroImageUrl, HeightRequest = 220, Aspect = Aspect.AspectFit },
+                    new Image { Source = _apiClient.BuildImageUrl(home.LogoImageUrl), HeightRequest = 84, Aspect = Aspect.AspectFit },
+                    new Image { Source = _apiClient.BuildImageUrl(home.HeroImageUrl), HeightRequest = 220, Aspect = Aspect.AspectFit },
                     new Label
                     {
                         Text = home.HeroTitle,
@@ -125,7 +125,7 @@ public sealed class HomePage : ContentPage
                     Spacing = 10,
                     Children =
                     {
-                        new Image { Source = item.ImageUrl, HeightRequest = 120, Aspect = Aspect.AspectFill },
+                        new Image { Source = _apiClient.BuildImageUrl(item.ImageUrl), HeightRequest = 120, Aspect = Aspect.AspectFill },
                         new Label
                         {
                             Text = item.Title,

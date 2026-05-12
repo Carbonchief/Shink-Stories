@@ -57,7 +57,7 @@ public sealed class GratisPage : ContentPage
 
             foreach (var story in response.Stories)
             {
-                _content.Children.Add(PageHelpers.BuildStoryCard(story, OpenStoryAsync));
+                _content.Children.Add(PageHelpers.BuildStoryCard(story, _apiClient, OpenStoryAsync));
             }
         }
         catch (Exception ex)

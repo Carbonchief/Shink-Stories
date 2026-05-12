@@ -86,66 +86,89 @@ else
         </div>
 
         <div class="admin-settings-card admin-settings-table-card">
-            <table class="admin-settings-table">
-                <thead>
-                    <tr>
-                        <th>@T("Kode", "Code")</th>
-                        <th>@T("Naam", "Name")</th>
-                        <th>@T("Maande", "Months")</th>
-                        <th>@T("Prys", "Price")</th>
-                        <th>@T("PayFast slug", "PayFast slug")</th>
-                        <th>@T("Paystack code", "Paystack code")</th>
-                        <th>@T("Aktief", "Active")</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var tier in SubscriptionTypeEditors)
-                    {
-                        <tr>
-                            <td>@tier.TierCode</td>
-                            <td>
-                                <MudTextField T="string" @bind-Value="tier.DisplayName" Variant="Variant.Outlined" />
-                            </td>
-                            <td>
-                                <MudNumericField T="int" @bind-Value="tier.BillingPeriodMonths" Variant="Variant.Outlined" Min="1" />
-                            </td>
-                            <td>
-                                <MudNumericField T="decimal" @bind-Value="tier.PriceZar" Variant="Variant.Outlined" Min="0" Step="1" />
-                            </td>
-                            <td>
-                                <MudTextField T="string" @bind-Value="tier.PayFastPlanSlug" Variant="Variant.Outlined" />
-                            </td>
-                            <td>
-                                <MudTextField T="string" @bind-Value="tier.PaystackPlanCode" Variant="Variant.Outlined" />
-                            </td>
-                            <td>
-                                <div class="admin-settings-table-toggle">
-                                    <MudSwitch T="bool"
-                                               @bind-Value="tier.IsActive"
-                                               Color="Color.Primary"
-                                               aria-label='@T("Intekeningsoort aktief", "Subscription type active")' />
-                                    <span class="admin-settings-toggle-state @(tier.IsActive ? "is-enabled" : "is-disabled")">
-                                        @BuildTierActiveStateLabel(tier.IsActive)
-                                    </span>
-                                </div>
-                            </td>
-                            <td>
-                                <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
-                                           Variant="Variant.Text"
-                                           Color="Color.Primary"
-                                           OnClick="() => SaveSubscriptionTypeAsync(tier)"
-                                           Disabled="@IsSavingSubscriptionType"
-                                           aria-label='@T("Stoor intekeningsoort", "Save subscription type")'
-                                           title='@T("Stoor intekeningsoort", "Save subscription type")'>
-                                    <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
-                                    <span class="admin-btn-text">@T("Stoor", "Save")</span>
-                                </MudButton>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+            <MudTable T="EditableSubscriptionType"
+                      Items="SubscriptionTypeEditors"
+                      Class="admin-settings-table">
+                <HeaderContent>
+                    <MudTh>
+                        <MudTableSortLabel T="EditableSubscriptionType" SortBy="new Func<EditableSubscriptionType, object?>(tier => tier.TierCode)">
+                            @T("Kode", "Code")
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="EditableSubscriptionType" SortBy="new Func<EditableSubscriptionType, object?>(tier => tier.DisplayName)">
+                            @T("Naam", "Name")
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="EditableSubscriptionType" SortBy="new Func<EditableSubscriptionType, object?>(tier => tier.BillingPeriodMonths)">
+                            @T("Maande", "Months")
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="EditableSubscriptionType" SortBy="new Func<EditableSubscriptionType, object?>(tier => tier.PriceZar)">
+                            @T("Prys", "Price")
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="EditableSubscriptionType" SortBy="new Func<EditableSubscriptionType, object?>(tier => tier.PayFastPlanSlug)">
+                            @T("PayFast slug", "PayFast slug")
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="EditableSubscriptionType" SortBy="new Func<EditableSubscriptionType, object?>(tier => tier.PaystackPlanCode)">
+                            @T("Paystack code", "Paystack code")
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="EditableSubscriptionType" SortBy="new Func<EditableSubscriptionType, object?>(tier => tier.IsActive)">
+                            @T("Aktief", "Active")
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh />
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="@T("Kode", "Code")">@context.TierCode</MudTd>
+                    <MudTd DataLabel="@T("Naam", "Name")">
+                        <MudTextField T="string" @bind-Value="@context.DisplayName" Variant="Variant.Outlined" />
+                    </MudTd>
+                    <MudTd DataLabel="@T("Maande", "Months")">
+                        <MudNumericField T="int" @bind-Value="@context.BillingPeriodMonths" Variant="Variant.Outlined" Min="1" />
+                    </MudTd>
+                    <MudTd DataLabel="@T("Prys", "Price")">
+                        <MudNumericField T="decimal" @bind-Value="@context.PriceZar" Variant="Variant.Outlined" Min="0" Step="1" />
+                    </MudTd>
+                    <MudTd DataLabel="@T("PayFast slug", "PayFast slug")">
+                        <MudTextField T="string" @bind-Value="@context.PayFastPlanSlug" Variant="Variant.Outlined" />
+                    </MudTd>
+                    <MudTd DataLabel="@T("Paystack code", "Paystack code")">
+                        <MudTextField T="string" @bind-Value="@context.PaystackPlanCode" Variant="Variant.Outlined" />
+                    </MudTd>
+                    <MudTd DataLabel="@T("Aktief", "Active")">
+                        <div class="admin-settings-table-toggle">
+                            <MudSwitch T="bool"
+                                       @bind-Value="@context.IsActive"
+                                       Color="Color.Primary"
+                                       aria-label='@T("Intekeningsoort aktief", "Subscription type active")' />
+                            <span class="admin-settings-toggle-state @(context.IsActive ? "is-enabled" : "is-disabled")">
+                                @BuildTierActiveStateLabel(context.IsActive)
+                            </span>
+                        </div>
+                    </MudTd>
+                    <MudTd>
+                        <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                   Variant="Variant.Text"
+                                   Color="Color.Primary"
+                                   OnClick="() => SaveSubscriptionTypeAsync(context)"
+                                   Disabled="@IsSavingSubscriptionType"
+                                   aria-label='@T("Stoor intekeningsoort", "Save subscription type")'
+                                   title='@T("Stoor intekeningsoort", "Save subscription type")'>
+                            <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                            <span class="admin-btn-text">@T("Stoor", "Save")</span>
+                        </MudButton>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
         </div>
     </section>
 
@@ -188,37 +211,67 @@ else
         </div>
 
         <div class="admin-settings-card admin-settings-table-card">
-            <table class="admin-settings-table">
-                <thead>
-                    <tr>
-                        <th>@T("Kode", "Code")</th>
-                        <th>@T("Intekeningsoorte", "Subscription types")</th>
-                        <th>@T("Gebruik", "Use")</th>
-                        <th>@T("Verval", "Expires")</th>
-                        <th>@T("Status", "Status")</th>
-                        <th>@T("Subkodes", "Subcodes")</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var code in FilteredParentDiscountCodes)
-                    {
-                        <tr class="@(SelectedParentCodeId == code.DiscountCodeId ? "is-selected" : null)">
-                            <td>
-                                <button type="button"
-                                        class="admin-code-list-button"
-                                        @onclick="() => OpenCodeDialog(code)">
-                                    @(string.IsNullOrWhiteSpace(code.Code) ? "-" : code.Code)
-                                </button>
-                            </td>
-                            <td>@string.Join(", ", code.TierMappings.Select(mapping => mapping.TierName))</td>
-                            <td>@($"{code.UsedCount}{(code.MaxUses > 0 ? $" / {code.MaxUses}" : string.Empty)}")</td>
-                            <td>@FormatDate(code.ExpiresAt)</td>
-                            <td>@(code.IsActive ? T("Aktief", "Active") : T("Onaktief", "Inactive"))</td>
-                            <td><span class="admin-subcode-summary">@FormatSubcodeCount(code.GroupCodeCount)</span></td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+            <MudTable T="AdminSubscriptionDiscountCodeRecord"
+                      Items="FilteredParentDiscountCodes"
+                       RowClassFunc="GetParentDiscountCodeRowClass"
+                      Class="admin-settings-table">
+                <HeaderContent>
+                    <MudTh>
+                        <MudTableSortLabel T="AdminSubscriptionDiscountCodeRecord" SortBy="new Func<AdminSubscriptionDiscountCodeRecord, object?>(code => code.Code)">
+                            @T("Kode", "Code")
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="AdminSubscriptionDiscountCodeRecord" SortBy="new Func<AdminSubscriptionDiscountCodeRecord, object?>(code => code.TierMappings.Count)">
+                            @T("Intekeningsoorte", "Subscription types")
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="AdminSubscriptionDiscountCodeRecord" SortBy="new Func<AdminSubscriptionDiscountCodeRecord, object?>(code => code.UsedCount)">
+                            @T("Gebruik", "Use")
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="AdminSubscriptionDiscountCodeRecord" SortBy="new Func<AdminSubscriptionDiscountCodeRecord, object?>(code => code.ExpiresAt ?? DateTimeOffset.MinValue)">
+                            @T("Verval", "Expires")
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="AdminSubscriptionDiscountCodeRecord" SortBy="new Func<AdminSubscriptionDiscountCodeRecord, object?>(code => code.IsActive)">
+                            @T("Status", "Status")
+                        </MudTableSortLabel>
+                    </MudTh>
+                    <MudTh>
+                        <MudTableSortLabel T="AdminSubscriptionDiscountCodeRecord" SortBy="new Func<AdminSubscriptionDiscountCodeRecord, object?>(code => code.GroupCodeCount)">
+                            @T("Subkodes", "Subcodes")
+                        </MudTableSortLabel>
+                    </MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="@T("Kode", "Code")">
+                        <button type="button"
+                                class="admin-code-list-button"
+                                @onclick="() => OpenCodeDialog(context)">
+                            @(string.IsNullOrWhiteSpace(context.Code) ? "-" : context.Code)
+                        </button>
+                    </MudTd>
+                    <MudTd DataLabel="@T("Intekeningsoorte", "Subscription types")">
+                        @string.Join(", ", context.TierMappings.Select(mapping => mapping.TierName))
+                    </MudTd>
+                    <MudTd DataLabel="@T("Gebruik", "Use")">
+                        @($"{context.UsedCount}{(context.MaxUses > 0 ? $" / {context.MaxUses}" : string.Empty)}")
+                    </MudTd>
+                    <MudTd DataLabel="@T("Verval", "Expires")">
+                        @FormatDate(context.ExpiresAt)
+                    </MudTd>
+                    <MudTd DataLabel="@T("Status", "Status")">
+                        @(context.IsActive ? T("Aktief", "Active") : T("Onaktief", "Inactive"))
+                    </MudTd>
+                    <MudTd DataLabel="@T("Subkodes", "Subcodes")">
+                        <span class="admin-subcode-summary">@FormatSubcodeCount(context.GroupCodeCount)</span>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
         </div>
 
         @if (DiscountCodeEditor is not null && IsCodeDialogOpen)
@@ -393,43 +446,73 @@ else
                                     <div class="admin-code-tier-head">
                                         <p>@T("Klik 'n subkode om dit te wysig sonder om die hoofkode lys vol te maak.", "Open a subcode here without cluttering the parent code list.")</p>
                                     </div>
-                                    <table class="admin-settings-table admin-subcode-table">
-                                        <thead>
-                                            <tr>
-                                                <th>@T("Kode", "Code")</th>
-                                                <th>@T("Intekeningsoorte", "Subscription types")</th>
-                                                <th>@T("Gebruikers", "Users")</th>
-                                                <th>@T("Gebruik", "Use")</th>
-                                                <th>@T("Verval", "Expires")</th>
-                                                <th>@T("Status", "Status")</th>
-                                                <th></th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            @foreach (var subcode in SelectedParentCodeSubcodes)
-                                            {
-                                                <tr class="@(DiscountCodeEditor.DiscountCodeId == subcode.DiscountCodeId ? "is-selected" : null)">
-                                                    <td>@subcode.Code</td>
-                                                    <td>@string.Join(", ", subcode.TierMappings.Select(mapping => mapping.TierName))</td>
-                                                    <td class="admin-subcode-users">@FormatSubcodeUsers(subcode)</td>
-                                                    <td>@($"{subcode.UsedCount}{(subcode.MaxUses > 0 ? $" / {subcode.MaxUses}" : string.Empty)}")</td>
-                                                    <td>@FormatDate(subcode.ExpiresAt)</td>
-                                                    <td>@(subcode.IsActive ? T("Aktief", "Active") : T("Onaktief", "Inactive"))</td>
-                                                    <td>
-                                                        <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
-                                                                   Variant="Variant.Text"
-                                                                   Color="Color.Primary"
-                                                                   OnClick="() => EditSubcode(subcode)"
-                                                                   aria-label='@T("Wysig subkode", "Edit subcode")'
-                                                                   title='@T("Wysig subkode", "Edit subcode")'>
-                                                            <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
-                                                            <span class="admin-btn-text">@T("Wysig", "Edit")</span>
-                                                        </MudButton>
-                                                    </td>
-                                                </tr>
-                                            }
-                                        </tbody>
-                                    </table>
+                                    <MudTable T="AdminSubscriptionDiscountCodeRecord"
+                                              Items="SelectedParentCodeSubcodes"
+                                               RowClassFunc="GetSubcodeRowClass"
+                                              Class="admin-settings-table admin-subcode-table">
+                                        <HeaderContent>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminSubscriptionDiscountCodeRecord" SortBy="new Func<AdminSubscriptionDiscountCodeRecord, object?>(subcode => subcode.Code)">
+                                                    @T("Kode", "Code")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                        <MudTableSortLabel T="AdminSubscriptionDiscountCodeRecord" SortBy="new Func<AdminSubscriptionDiscountCodeRecord, object?>(subcode => subcode.TierMappings.Count)">
+                                                    @T("Intekeningsoorte", "Subscription types")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminSubscriptionDiscountCodeRecord" SortBy="new Func<AdminSubscriptionDiscountCodeRecord, object?>(subcode => FormatSubcodeUsers(subcode))">
+                                                    @T("Gebruikers", "Users")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminSubscriptionDiscountCodeRecord" SortBy="new Func<AdminSubscriptionDiscountCodeRecord, object?>(subcode => subcode.UsedCount)">
+                                                    @T("Gebruik", "Use")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminSubscriptionDiscountCodeRecord" SortBy="new Func<AdminSubscriptionDiscountCodeRecord, object?>(subcode => subcode.ExpiresAt ?? DateTimeOffset.MinValue)">
+                                                    @T("Verval", "Expires")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminSubscriptionDiscountCodeRecord" SortBy="new Func<AdminSubscriptionDiscountCodeRecord, object?>(subcode => subcode.IsActive)">
+                                                    @T("Status", "Status")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh />
+                                        </HeaderContent>
+                                        <RowTemplate>
+                                            <MudTd DataLabel="@T("Kode", "Code")">@context.Code</MudTd>
+                                            <MudTd DataLabel="@T("Intekeningsoorte", "Subscription types")">
+                                                @string.Join(", ", context.TierMappings.Select(mapping => mapping.TierName))
+                                            </MudTd>
+                                            <MudTd DataLabel="@T("Gebruikers", "Users")" Class="admin-subcode-users">
+                                                @FormatSubcodeUsers(context)
+                                            </MudTd>
+                                            <MudTd DataLabel="@T("Gebruik", "Use")">
+                                                @($"{context.UsedCount}{(context.MaxUses > 0 ? $" / {context.MaxUses}" : string.Empty)}")
+                                            </MudTd>
+                                            <MudTd DataLabel="@T("Verval", "Expires")">
+                                                @FormatDate(context.ExpiresAt)
+                                            </MudTd>
+                                            <MudTd DataLabel="@T("Status", "Status")">
+                                                @(context.IsActive ? T("Aktief", "Active") : T("Onaktief", "Inactive"))
+                                            </MudTd>
+                                            <MudTd>
+                                                <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                                           Variant="Variant.Text"
+                                                           Color="Color.Primary"
+                                                           OnClick="() => EditSubcode(context)"
+                                                           aria-label='@T("Wysig subkode", "Edit subcode")'
+                                                           title='@T("Wysig subkode", "Edit subcode")'>
+                                                    <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
+                                                    <span class="admin-btn-text">@T("Wysig", "Edit")</span>
+                                                </MudButton>
+                                            </MudTd>
+                                        </RowTemplate>
+                                    </MudTable>
                                 </div>
                             </details>
                         }
@@ -445,27 +528,46 @@ else
                                     <span class="admin-code-section-meta">@DiscountCodeEditor.Uses.Count</span>
                                 </summary>
                                 <div class="admin-code-section-body admin-code-uses-section">
-                                    <table class="admin-settings-table">
-                                        <thead>
-                                            <tr>
-                                                <th>@T("E-pos", "Email")</th>
-                                                <th>@T("Plan", "Plan")</th>
-                                                <th>@T("Gebruik op", "Used on")</th>
-                                                <th>@T("Toegang eindig", "Access ends")</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            @foreach (var use in DiscountCodeEditor.Uses)
-                                            {
-                                                <tr>
-                                                    <td>@use.Email</td>
-                                                    <td>@(string.IsNullOrWhiteSpace(use.TierCode) ? "-" : use.TierCode)</td>
-                                                    <td>@FormatDate(use.RedeemedAt)</td>
-                                                    <td>@FormatDate(use.AccessEndsAt)</td>
-                                                </tr>
-                                            }
-                                        </tbody>
-                                    </table>
+                                    <MudTable T="AdminSubscriptionDiscountCodeUseRecord"
+                                              Items="DiscountCodeEditor.Uses"
+                                              Class="admin-settings-table">
+                                        <HeaderContent>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminSubscriptionDiscountCodeUseRecord" SortBy="new Func<AdminSubscriptionDiscountCodeUseRecord, object?>(use => use.Email)">
+                                                    @T("E-pos", "Email")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminSubscriptionDiscountCodeUseRecord" SortBy="new Func<AdminSubscriptionDiscountCodeUseRecord, object?>(GetDiscountCodeUseTierCodeSortBy)">
+                                                    @T("Plan", "Plan")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                        <MudTableSortLabel T="AdminSubscriptionDiscountCodeUseRecord" SortBy="new Func<AdminSubscriptionDiscountCodeUseRecord, object?>(use => use.RedeemedAt)">
+                                                    @T("Gebruik op", "Used on")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminSubscriptionDiscountCodeUseRecord" SortBy="new Func<AdminSubscriptionDiscountCodeUseRecord, object?>(use => use.AccessEndsAt)">
+                                                    @T("Toegang eindig", "Access ends")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                        </HeaderContent>
+                                        <RowTemplate>
+                                            <MudTd DataLabel="@T("E-pos", "Email")">
+                                                @context.Email
+                                            </MudTd>
+                                            <MudTd DataLabel="@T("Plan", "Plan")">
+                                                @(string.IsNullOrWhiteSpace(context.TierCode) ? "-" : context.TierCode)
+                                            </MudTd>
+                                            <MudTd DataLabel="@T("Gebruik op", "Used on")">
+                                                @FormatDate(context.RedeemedAt)
+                                            </MudTd>
+                                            <MudTd DataLabel="@T("Toegang eindig", "Access ends")">
+                                                @FormatDate(context.AccessEndsAt)
+                                            </MudTd>
+                                        </RowTemplate>
+                                    </MudTable>
                                 </div>
                             </details>
                         }
@@ -530,6 +632,9 @@ else
                 .ToArray()
             : [];
 
+    private string GetParentDiscountCodeRowClass(AdminSubscriptionDiscountCodeRecord code, int _)
+        => code.DiscountCodeId == SelectedParentCodeId ? "is-selected" : null;
+
     private bool MatchesParentCodeSearch(AdminSubscriptionDiscountCodeRecord code)
     {
         if (ContainsIgnoreCase(code.Code, DiscountCodeSearch) ||
@@ -551,16 +656,19 @@ else
             .OrderBy(code => code.Code, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
+    private string GetSubcodeRowClass(AdminSubscriptionDiscountCodeRecord subcode, int _)
+        => subcode.DiscountCodeId == DiscountCodeEditor?.DiscountCodeId ? "is-selected" : null;
+
     private string FormatSubcodeCount(int count) =>
         IsEnglish
             ? count == 1 ? "1 subcode" : $"{count} subcodes"
             : count == 1 ? "1 subkode" : $"{count} subkodes";
 
-    private string FormatSubcodeUsers(AdminSubscriptionDiscountCodeRecord subcode)
-    {
-        var emails = subcode.Uses
-            .Select(use => use.Email?.Trim().ToLowerInvariant())
-            .Where(email => !string.IsNullOrWhiteSpace(email))
+        private string FormatSubcodeUsers(AdminSubscriptionDiscountCodeRecord subcode)
+        {
+            var emails = subcode.Uses
+                .Select(use => use.Email?.Trim().ToLowerInvariant())
+                .Where(email => !string.IsNullOrWhiteSpace(email))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
@@ -572,10 +680,13 @@ else
         return string.Join(", ", emails);
     }
 
-    private string BuildSignupCodeBypassStateLabel() =>
-        SignupCodeBypassEnabled
-            ? T("Aktief", "Active")
-            : T("Afgeskakel", "Disabled");
+        private string BuildSignupCodeBypassStateLabel() =>
+            SignupCodeBypassEnabled
+                ? T("Aktief", "Active")
+                : T("Afgeskakel", "Disabled");
+
+        private static string GetDiscountCodeUseTierCodeSortBy(AdminSubscriptionDiscountCodeUseRecord use) =>
+            string.IsNullOrWhiteSpace(use.TierCode) ? "-" : use.TierCode;
 
     private string BuildTierActiveStateLabel(bool isActive) =>
         isActive

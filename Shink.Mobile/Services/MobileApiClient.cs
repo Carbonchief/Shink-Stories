@@ -9,18 +9,41 @@ namespace Shink.Mobile.Services;
 public sealed class MobileAppSettings
 {
     private const string BaseUrlPreferenceKey = "mobile_api_base_url";
-    private const string DefaultBaseUrl = "https://www.schink.co.za";
+    public const string DefaultBaseUrl = "https://www.schink.co.za";
 
     public string BaseUrl
     {
         get => Preferences.Get(BaseUrlPreferenceKey, DefaultBaseUrl);
-        set => Preferences.Set(BaseUrlPreferenceKey, NormalizeBaseUrl(value));
+        set
+        {
+            var normalized = NormalizeBaseUrl(value);
+            Preferences.Set(BaseUrlPreferenceKey, IsValidMobileBaseUrl(normalized) ? normalized : DefaultBaseUrl);
+        }
     }
 
     public static string NormalizeBaseUrl(string? value)
     {
         var candidate = string.IsNullOrWhiteSpace(value) ? DefaultBaseUrl : value.Trim();
         return candidate.TrimEnd('/');
+    }
+
+    public static bool IsValidMobileBaseUrl(string? url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var parsedUrl))
+        {
+            return false;
+        }
+
+        if (parsedUrl.Scheme is not "http" and not "https" || !parsedUrl.IsWellFormedOriginalString())
+        {
+            return false;
+        }
+
+        return parsedUrl.Host switch
+        {
+            "localhost" or "127.0.0.1" => false,
+            _ => true
+        };
     }
 }
 
@@ -242,6 +265,28 @@ public sealed class MobileApiClient
         }
 
         return await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
+    }
+
+    public string BuildImageUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return string.Empty;
+        }
+
+        var trimmedUrl = url.Trim();
+        if (trimmedUrl.StartsWith("//", StringComparison.Ordinal))
+        {
+            trimmedUrl = $"https:{trimmedUrl}";
+        }
+
+        if (Uri.TryCreate(trimmedUrl, UriKind.Absolute, out var parsed) &&
+            (parsed.Scheme is "http" or "https"))
+        {
+            return parsed.ToString();
+        }
+
+        return BuildAbsoluteUrl(trimmedUrl);
     }
 
     private Uri BuildUri(string path) => new($"{_settings.BaseUrl.TrimEnd('/')}{path}", UriKind.Absolute);

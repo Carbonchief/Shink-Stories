@@ -59,7 +59,7 @@ public sealed class AboutPage : ContentPage
                         Spacing = 12,
                         Children =
                         {
-                            new Image { Source = block.ImageUrl, HeightRequest = 220, Aspect = Aspect.AspectFit },
+                            new Image { Source = _apiClient.BuildImageUrl(block.ImageUrl), HeightRequest = 220, Aspect = Aspect.AspectFit },
                             new Label
                             {
                                 Text = block.Title,

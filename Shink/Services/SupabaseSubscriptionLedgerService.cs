@@ -2081,7 +2081,12 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 }
 
                 subscriptionId = upsertResult.SubscriptionId;
-                providerPaymentId ??= upsertResult.ProviderPaymentId;
+
+                if (!string.IsNullOrWhiteSpace(upsertResult.ProviderPaymentId))
+                {
+                    providerPaymentId = upsertResult.ProviderPaymentId;
+                }
+
                 providerTransactionId ??= upsertResult.ProviderTransactionId;
 
                 if (!string.IsNullOrWhiteSpace(providerPaymentId))
@@ -2535,6 +2540,95 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         var nextRenewalAtUtc = ResolvePaystackNextRenewalAt(data, subscribedAtUtc, plan);
         var billingAmountZar = ResolvePaystackBillingAmountZar(data, plan);
+        if (!IsPaystackRecurringSubscriptionCode(providerPaymentId) &&
+            providerPaymentId.StartsWith("repair-", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(providerToken))
+        {
+            var repairTarget = await TryGetPaystackRepairTargetAsync(
+                baseUri,
+                apiKey,
+                subscriberId,
+                plan.TierCode,
+                providerToken,
+                providerPaymentId,
+                cancellationToken);
+            if (repairTarget is not null)
+            {
+                var reconciled = await ReconcilePaystackRepairSuccessByIdAsync(
+                    baseUri,
+                    apiKey,
+                    repairTarget.SubscriptionId,
+                    providerTransactionId,
+                    providerToken,
+                    providerEmailToken,
+                    nextRenewalAtUtc,
+                    billingAmountZar,
+                    plan.BillingPeriodMonths,
+                    "paystack_payload",
+                    cancellationToken);
+                if (reconciled)
+                {
+                    return new PaystackUpsertResult(
+                        true,
+                        null,
+                        repairTarget.SubscriptionId,
+                        repairTarget.ProviderPaymentId,
+                        providerTransactionId);
+                }
+            }
+        }
+
+        if (IsPaystackRecurringSubscriptionCode(providerPaymentId) &&
+            !string.IsNullOrWhiteSpace(providerToken))
+        {
+            var canonicalContext = await TryGetSubscriptionContextByProviderPaymentIdAsync(
+                baseUri,
+                apiKey,
+                provider: "paystack",
+                providerPaymentId,
+                cancellationToken);
+            if (canonicalContext is null)
+            {
+                var duplicateCandidate = await TryGetPaystackCanonicalizationCandidateAsync(
+                    baseUri,
+                    apiKey,
+                    subscriberId,
+                    plan.TierCode,
+                    providerToken,
+                    providerPaymentId,
+                    cancellationToken);
+                if (duplicateCandidate is not null)
+                {
+                    var canonicalized = await CanonicalizePaystackSubscriptionByIdAsync(
+                        baseUri,
+                        apiKey,
+                        duplicateCandidate.SubscriptionId,
+                        providerPaymentId,
+                        string.IsNullOrWhiteSpace(duplicateCandidate.ProviderTransactionId)
+                            ? providerTransactionId
+                            : duplicateCandidate.ProviderTransactionId,
+                        providerToken,
+                        providerEmailToken,
+                        nextRenewalAtUtc,
+                        billingAmountZar,
+                        plan.BillingPeriodMonths,
+                        "paystack_payload",
+                        cancellationToken);
+                    if (canonicalized)
+                    {
+                        return new PaystackUpsertResult(
+                            true,
+                            null,
+                            duplicateCandidate.SubscriptionId,
+                            providerPaymentId,
+                            string.IsNullOrWhiteSpace(duplicateCandidate.ProviderTransactionId)
+                                ? providerTransactionId
+                                : duplicateCandidate.ProviderTransactionId);
+                    }
+                }
+            }
+        }
+
         var subscriptionId = await UpsertSubscriptionAsync(
             baseUri,
             apiKey,
@@ -3257,6 +3351,289 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             row.BillingAmountZar,
             row.BillingPeriodMonths,
             row.BillingAmountSource);
+    }
+
+    private async Task<PaymentRecoverySubscriptionContext?> TryGetPaystackCanonicalizationCandidateAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriberId,
+        string tierCode,
+        string providerToken,
+        string canonicalProviderPaymentId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(subscriberId) ||
+            string.IsNullOrWhiteSpace(tierCode) ||
+            string.IsNullOrWhiteSpace(providerToken) ||
+            string.IsNullOrWhiteSpace(canonicalProviderPaymentId))
+        {
+            return null;
+        }
+
+        var escapedSubscriberId = Uri.EscapeDataString(subscriberId);
+        var escapedTierCode = Uri.EscapeDataString(tierCode);
+        var escapedProviderToken = Uri.EscapeDataString(providerToken);
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/subscriptions" +
+            "?provider=eq.paystack" +
+            $"&subscriber_id=eq.{escapedSubscriberId}" +
+            $"&tier_code=eq.{escapedTierCode}" +
+            $"&provider_token=eq.{escapedProviderToken}" +
+            "&source_system=eq.shink_app" +
+            "&status=eq.active" +
+            "&select=subscription_id,subscriber_id,tier_code,provider,provider_payment_id,provider_transaction_id,provider_token,provider_email_token,source_system,status,billing_amount_zar,billing_period_months,billing_amount_source" +
+            "&order=subscribed_at.desc&limit=10");
+        using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Supabase paystack canonicalization candidate lookup failed. subscriber_id={SubscriberId} tier={TierCode} Status={StatusCode} Body={Body}",
+                subscriberId,
+                tierCode,
+                (int)response.StatusCode,
+                body);
+            return null;
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var rows = await JsonSerializer.DeserializeAsync<List<PaymentRecoverySubscriptionRow>>(stream, cancellationToken: cancellationToken)
+            ?? [];
+        var candidate = rows.FirstOrDefault(row =>
+            !string.IsNullOrWhiteSpace(row.SubscriptionId) &&
+            !string.IsNullOrWhiteSpace(row.SubscriberId) &&
+            !string.Equals(row.ProviderPaymentId, canonicalProviderPaymentId, StringComparison.Ordinal) &&
+            !IsPaystackRecurringSubscriptionCode(row.ProviderPaymentId));
+        if (candidate is null)
+        {
+            return null;
+        }
+
+        var subscriberEmail = await GetSubscriberEmailByIdAsync(baseUri, apiKey, candidate.SubscriberId!, cancellationToken);
+        if (string.IsNullOrWhiteSpace(subscriberEmail))
+        {
+            return null;
+        }
+
+        var subscriberProfile = await GetSubscriberNamesByIdAsync(baseUri, apiKey, candidate.SubscriberId!, cancellationToken);
+        var planName = PaymentPlanCatalog.FindByTierCode(candidate.TierCode)?.Name
+                       ?? candidate.TierCode
+                       ?? "Schink Stories";
+
+        return new PaymentRecoverySubscriptionContext(
+            candidate.SubscriptionId!,
+            candidate.SubscriberId!,
+            subscriberEmail,
+            subscriberProfile?.FirstName,
+            subscriberProfile?.DisplayName,
+            candidate.TierCode,
+            planName,
+            candidate.Provider,
+            candidate.ProviderPaymentId,
+            candidate.ProviderTransactionId,
+            candidate.ProviderToken,
+            candidate.SourceSystem,
+            candidate.Status,
+            candidate.BillingAmountZar,
+            candidate.BillingPeriodMonths,
+            candidate.BillingAmountSource);
+    }
+
+    private async Task<PaymentRecoverySubscriptionContext?> TryGetPaystackRepairTargetAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriberId,
+        string tierCode,
+        string providerToken,
+        string repairReference,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(subscriberId) ||
+            string.IsNullOrWhiteSpace(tierCode) ||
+            string.IsNullOrWhiteSpace(providerToken) ||
+            string.IsNullOrWhiteSpace(repairReference))
+        {
+            return null;
+        }
+
+        var escapedSubscriberId = Uri.EscapeDataString(subscriberId);
+        var escapedTierCode = Uri.EscapeDataString(tierCode);
+        var escapedProviderToken = Uri.EscapeDataString(providerToken);
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/subscriptions" +
+            "?provider=eq.paystack" +
+            $"&subscriber_id=eq.{escapedSubscriberId}" +
+            $"&tier_code=eq.{escapedTierCode}" +
+            $"&provider_token=eq.{escapedProviderToken}" +
+            "&status=eq.active" +
+            "&select=subscription_id,subscriber_id,tier_code,provider,provider_payment_id,provider_transaction_id,provider_token,provider_email_token,source_system,status,billing_amount_zar,billing_period_months,billing_amount_source" +
+            "&order=subscribed_at.desc&limit=25");
+        using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Supabase paystack repair target lookup failed. subscriber_id={SubscriberId} tier={TierCode} Status={StatusCode} Body={Body}",
+                subscriberId,
+                tierCode,
+                (int)response.StatusCode,
+                body);
+            return null;
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var rows = await JsonSerializer.DeserializeAsync<List<PaymentRecoverySubscriptionRow>>(stream, cancellationToken: cancellationToken)
+            ?? [];
+        var candidate = rows.FirstOrDefault(row =>
+            !string.IsNullOrWhiteSpace(row.SubscriptionId) &&
+            !string.IsNullOrWhiteSpace(row.SubscriberId) &&
+            !string.Equals(row.ProviderPaymentId, repairReference, StringComparison.Ordinal) &&
+            !string.IsNullOrWhiteSpace(row.ProviderPaymentId) &&
+            !row.ProviderPaymentId.StartsWith("repair-", StringComparison.OrdinalIgnoreCase));
+        if (candidate is null)
+        {
+            return null;
+        }
+
+        var subscriberEmail = await GetSubscriberEmailByIdAsync(baseUri, apiKey, candidate.SubscriberId!, cancellationToken);
+        if (string.IsNullOrWhiteSpace(subscriberEmail))
+        {
+            return null;
+        }
+
+        var subscriberProfile = await GetSubscriberNamesByIdAsync(baseUri, apiKey, candidate.SubscriberId!, cancellationToken);
+        var planName = PaymentPlanCatalog.FindByTierCode(candidate.TierCode)?.Name
+                       ?? candidate.TierCode
+                       ?? "Schink Stories";
+
+        return new PaymentRecoverySubscriptionContext(
+            candidate.SubscriptionId!,
+            candidate.SubscriberId!,
+            subscriberEmail,
+            subscriberProfile?.FirstName,
+            subscriberProfile?.DisplayName,
+            candidate.TierCode,
+            planName,
+            candidate.Provider,
+            candidate.ProviderPaymentId,
+            candidate.ProviderTransactionId,
+            candidate.ProviderToken,
+            candidate.SourceSystem,
+            candidate.Status,
+            candidate.BillingAmountZar,
+            candidate.BillingPeriodMonths,
+            candidate.BillingAmountSource);
+    }
+
+    private async Task<bool> CanonicalizePaystackSubscriptionByIdAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriptionId,
+        string providerPaymentId,
+        string? providerTransactionId,
+        string? providerToken,
+        string? providerEmailToken,
+        DateTimeOffset nextRenewalAtUtc,
+        decimal billingAmountZar,
+        int billingPeriodMonths,
+        string billingAmountSource,
+        CancellationToken cancellationToken)
+    {
+        var escapedSubscriptionId = Uri.EscapeDataString(subscriptionId);
+        var uri = new Uri(baseUri, $"rest/v1/subscriptions?subscription_id=eq.{escapedSubscriptionId}");
+        var payload = new Dictionary<string, object?>
+        {
+            ["provider_payment_id"] = providerPaymentId,
+            ["provider_token"] = string.IsNullOrWhiteSpace(providerToken) ? null : providerToken,
+            ["provider_email_token"] = string.IsNullOrWhiteSpace(providerEmailToken) ? null : providerEmailToken,
+            ["status"] = "active",
+            ["cancelled_at"] = null,
+            ["next_renewal_at"] = nextRenewalAtUtc.UtcDateTime,
+            ["billing_amount_zar"] = billingAmountZar,
+            ["billing_period_months"] = billingPeriodMonths,
+            ["billing_amount_source"] = billingAmountSource
+        };
+        if (!string.IsNullOrWhiteSpace(providerTransactionId))
+        {
+            payload["provider_transaction_id"] = providerTransactionId;
+        }
+
+        using var request = CreateJsonRequest(
+            new HttpMethod("PATCH"),
+            uri,
+            apiKey,
+            payload,
+            "return=minimal");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return true;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Supabase paystack canonicalization patch failed. subscription_id={SubscriptionId} provider_payment_id={ProviderPaymentId} Status={StatusCode} Body={Body}",
+            subscriptionId,
+            providerPaymentId,
+            (int)response.StatusCode,
+            body);
+        return false;
+    }
+
+    private async Task<bool> ReconcilePaystackRepairSuccessByIdAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriptionId,
+        string? providerTransactionId,
+        string? providerToken,
+        string? providerEmailToken,
+        DateTimeOffset nextRenewalAtUtc,
+        decimal billingAmountZar,
+        int billingPeriodMonths,
+        string billingAmountSource,
+        CancellationToken cancellationToken)
+    {
+        var escapedSubscriptionId = Uri.EscapeDataString(subscriptionId);
+        var uri = new Uri(baseUri, $"rest/v1/subscriptions?subscription_id=eq.{escapedSubscriptionId}");
+        var payload = new Dictionary<string, object?>
+        {
+            ["provider_token"] = string.IsNullOrWhiteSpace(providerToken) ? null : providerToken,
+            ["provider_email_token"] = string.IsNullOrWhiteSpace(providerEmailToken) ? null : providerEmailToken,
+            ["status"] = "active",
+            ["cancelled_at"] = null,
+            ["next_renewal_at"] = nextRenewalAtUtc.UtcDateTime,
+            ["billing_amount_zar"] = billingAmountZar,
+            ["billing_period_months"] = billingPeriodMonths,
+            ["billing_amount_source"] = billingAmountSource
+        };
+        if (!string.IsNullOrWhiteSpace(providerTransactionId))
+        {
+            payload["provider_transaction_id"] = providerTransactionId;
+        }
+
+        using var request = CreateJsonRequest(
+            new HttpMethod("PATCH"),
+            uri,
+            apiKey,
+            payload,
+            "return=minimal");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return true;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Supabase paystack repair reconciliation failed. subscription_id={SubscriptionId} Status={StatusCode} Body={Body}",
+            subscriptionId,
+            (int)response.StatusCode,
+            body);
+        return false;
     }
 
     private async Task<PaymentRecoverySubscriptionContext?> TryGetSubscriptionContextByIdAsync(
