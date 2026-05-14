@@ -110,6 +110,49 @@ public class PaystackWebhookHardeningTests
     }
 
     [TestMethod]
+    public void PaystackWebhookRejectedHitsAreRecordedBeforeReturningFailure()
+    {
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+        var webhookStart = program.IndexOf("static async Task<IResult> HandlePaystackWebhookAsync", StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(0, webhookStart, "The Paystack webhook route must exist.");
+
+        var webhookEnd = program.IndexOf("static string BuildStorePageRedirectPath", webhookStart, StringComparison.Ordinal);
+        Assert.IsGreaterThan(webhookStart, webhookEnd, "The Paystack webhook handler block could not be isolated.");
+
+        var webhookBlock = program[webhookStart..webhookEnd];
+        AssertCallOrder(
+            webhookBlock,
+            "RecordPaystackWebhookFailureAsync(",
+            "return Results.BadRequest();",
+            "Empty Paystack webhook hits must be recorded before returning 400.");
+        AssertCallOrder(
+            webhookBlock,
+            "failureStage: \"signature-validation\"",
+            "return Results.Unauthorized();",
+            "Invalid Paystack signatures must be recorded before returning 401.");
+        AssertCallOrder(
+            webhookBlock,
+            "failureStage: \"store-persist\"",
+            "title: \"Paystack store webhook persistence failed\"",
+            "Store Paystack persistence failures must be recorded before returning 500.");
+
+        var ledgerInterface = File.ReadAllText(GetRepoPath("Shink", "Services", "ISubscriptionLedgerService.cs"));
+        StringAssert.Contains(ledgerInterface, "RecordPaystackWebhookFailureAsync(");
+
+        var ledgerService = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseSubscriptionLedgerService.cs"));
+        StringAssert.Contains(ledgerService, "public async Task RecordPaystackWebhookFailureAsync(");
+        StringAssert.Contains(ledgerService, "provider: \"paystack\"");
+        StringAssert.Contains(ledgerService, "payload: SerializePaystackPayload(payloadJson)");
+    }
+
+    private static void AssertCallOrder(string source, string first, string second, string message)
+    {
+        var firstIndex = source.IndexOf(first, StringComparison.Ordinal);
+        var secondIndex = source.IndexOf(second, StringComparison.Ordinal);
+        Assert.IsTrue(firstIndex >= 0 && secondIndex > firstIndex, message);
+    }
+
+    [TestMethod]
     public void PaystackBillingAmountBackfillMigrationExists()
     {
         var migration = File.ReadAllText(GetRepoPath("Shink", "Database", "migrations", "20260502_paystack_subscription_revenue_backfill.sql"));

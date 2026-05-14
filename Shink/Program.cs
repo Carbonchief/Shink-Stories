@@ -4169,6 +4169,11 @@ static async Task<IResult> HandlePaystackWebhookAsync(
     if (string.IsNullOrWhiteSpace(payload))
     {
         logger.LogWarning("Paystack webhook ignored: empty payload.");
+        await subscriptionLedgerService.RecordPaystackWebhookFailureAsync(
+            payload,
+            failureStage: "request-empty",
+            errorMessage: "Paystack webhook request body was empty.",
+            httpContext.RequestAborted);
         return Results.BadRequest();
     }
 
@@ -4177,6 +4182,11 @@ static async Task<IResult> HandlePaystackWebhookAsync(
     if (!signatureValid)
     {
         logger.LogWarning("Paystack webhook rejected: invalid signature.");
+        await subscriptionLedgerService.RecordPaystackWebhookFailureAsync(
+            payload,
+            failureStage: "signature-validation",
+            errorMessage: "Paystack webhook signature validation failed.",
+            httpContext.RequestAborted);
         return Results.Unauthorized();
     }
 
@@ -4188,6 +4198,11 @@ static async Task<IResult> HandlePaystackWebhookAsync(
             logger.LogWarning(
                 "Paystack store persistence failed. Error={Error}",
                 storePersistResult.ErrorMessage);
+            await subscriptionLedgerService.RecordPaystackWebhookFailureAsync(
+                payload,
+                failureStage: "store-persist",
+                errorMessage: storePersistResult.ErrorMessage ?? "Paystack store webhook could not be persisted.",
+                httpContext.RequestAborted);
 
             return Results.Problem(
                 title: "Paystack store webhook persistence failed",

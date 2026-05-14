@@ -2477,6 +2477,40 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             cancellationToken: cancellationToken);
     }
 
+    public async Task RecordPaystackWebhookFailureAsync(
+        string? payloadJson,
+        string failureStage,
+        string errorMessage,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            _logger.LogWarning("Paystack webhook failure could not be logged because Supabase URL is not configured.");
+            return;
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            _logger.LogWarning("Paystack webhook failure could not be logged because Supabase SecretKey is not configured.");
+            return;
+        }
+
+        var (eventType, eventStatus, providerPaymentId, providerTransactionId) = ResolvePaystackFailureMetadata(payloadJson);
+        await InsertPaymentWebhookFailureAsync(
+            baseUri,
+            apiKey,
+            provider: "paystack",
+            eventType,
+            eventStatus,
+            providerPaymentId,
+            providerTransactionId,
+            failureStage,
+            errorMessage,
+            payload: SerializePaystackPayload(payloadJson),
+            cancellationToken: cancellationToken);
+    }
+
     private async Task<PaystackUpsertResult> UpsertActivePaystackSubscriptionAsync(
         Uri baseUri,
         string apiKey,
@@ -4569,6 +4603,52 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         }
 
         return formCollection.ToDictionary(field => field.Key, field => field.Value.ToString());
+    }
+
+    private static object SerializePaystackPayload(string? payloadJson)
+    {
+        if (string.IsNullOrWhiteSpace(payloadJson))
+        {
+            return new Dictionary<string, string>
+            {
+                ["raw"] = "request body was empty"
+            };
+        }
+
+        return DeserializePayloadObject(payloadJson);
+    }
+
+    private static (string EventType, string? EventStatus, string? ProviderPaymentId, string? ProviderTransactionId) ResolvePaystackFailureMetadata(string? payloadJson)
+    {
+        if (string.IsNullOrWhiteSpace(payloadJson))
+        {
+            return ("unknown", null, null, null);
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(payloadJson);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                return ("unknown", null, null, null);
+            }
+
+            var eventType = TryReadString(root, "event") ?? "unknown";
+            var data = root.TryGetProperty("data", out var dataNode) && dataNode.ValueKind == JsonValueKind.Object
+                ? dataNode
+                : default;
+
+            return (
+                eventType,
+                TryReadString(data, "status"),
+                ResolvePaystackProviderPaymentId(data),
+                ResolvePaystackProviderTransactionId(data));
+        }
+        catch (JsonException)
+        {
+            return ("unknown", null, null, null);
+        }
     }
 
     private static decimal? TryReadPayFastAmountGross(IFormCollection formCollection)
