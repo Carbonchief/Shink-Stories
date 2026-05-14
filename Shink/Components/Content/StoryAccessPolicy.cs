@@ -28,6 +28,14 @@ public static class StoryAccessPolicy
         SchoolLargeYearlyTierCode
     ];
 
+    public static bool GrantsAllStoriesAccess(string? tierCode) =>
+        !string.IsNullOrWhiteSpace(tierCode) &&
+        AllStoriesTierCodes.Any(allStoriesTierCode =>
+            string.Equals(allStoriesTierCode, tierCode.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    public static bool HasAllStoriesAccess(IEnumerable<string>? tierCodes) =>
+        tierCodes?.Any(GrantsAllStoriesAccess) == true;
+
     public static StoryAccessRequirement ResolveRequirement(string? source, StoryItem? story)
     {
         if (string.Equals(source, "gratis", StringComparison.OrdinalIgnoreCase))

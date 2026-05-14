@@ -1,7 +1,8 @@
 @page "/skool-admin"
-@rendermode InteractiveServer
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Web
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ISchoolManagementService SchoolManagementService
 @inject NavigationManager NavigationManager
@@ -12,15 +13,6 @@
 </HeadContent>
 
 <section class="school-admin-page">
-    <header class="school-admin-hero">
-        <div>
-            <p class="school-admin-kicker">Skool admin</p>
-            <h1>Bestuur julle Schink Stories klaskamer slots.</h1>
-            <p>Nooi onderwysers, sien beskikbare slots en hou julle skooltoegang netjies op een plek.</p>
-        </div>
-        <a class="school-admin-secondary-link" href="/skoolopsies">Skoolopsies</a>
-    </header>
-
     @if (IsLoading)
     {
         <section class="school-admin-state">
@@ -58,10 +50,10 @@
             <article class="school-admin-card school-admin-school-card">
                 <p class="school-admin-label">Skool</p>
                 <h2>@Dashboard.Account.SchoolName</h2>
-                <p>@Dashboard.Account.PlanName · @Dashboard.Account.SlotLimit slots</p>
+                <p>@Dashboard.Account.PlanName · @Dashboard.Account.SlotLimit plekke</p>
             </article>
             <article class="school-admin-card">
-                <p class="school-admin-label">Slots gebruik</p>
+                <p class="school-admin-label">Plekke gebruik</p>
                 <strong>@Dashboard.UsedSlots / @Dashboard.SlotLimit</strong>
                 <span>@Dashboard.AvailableSlots beskikbaar</span>
             </article>
@@ -71,9 +63,9 @@
                 <span>@Dashboard.AcceptedSeats aktief</span>
             </article>
             <article class="school-admin-card">
-                <p class="school-admin-label">Admin slot</p>
+                <p class="school-admin-label">Admin plek</p>
                 <strong>@(Dashboard.Account.AdminUsesSlot ? "Gebruik" : "Bestuur net")</strong>
-                <span>@CurrentAdminEmail</span>
+                <span class="school-admin-truncate" title="@CurrentAdminEmail">@CurrentAdminEmail</span>
             </article>
         </section>
 
@@ -81,27 +73,29 @@
             <article class="school-admin-panel">
                 <div class="school-admin-panel-head">
                     <h2>Vinnige aksies</h2>
-                    <p>Hou die skoolnaam en onderwyser slots op datum.</p>
+                    <p>Hou die skoolnaam en onderwyserplekke op datum.</p>
                 </div>
 
                 <div class="school-admin-form">
                     <label for="school-name">Skoolnaam</label>
                     <div class="school-admin-input-row">
                         <input id="school-name" @bind="SchoolNameDraft" maxlength="120" />
-                        <button type="button" class="school-admin-btn" @onclick="SaveSchoolNameAsync">Stoor</button>
+                        <button type="button" class="school-admin-icon-btn school-admin-save-btn" title="Stoor skoolnaam" aria-label="Stoor skoolnaam" @onclick="SaveSchoolNameAsync">
+                            <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                        </button>
                     </div>
                 </div>
 
                 <div class="school-admin-toggle-row">
                     <div>
-                        <strong>Ek gebruik self 'n klaskamer slot</strong>
-                        <span>Kies af as jy net die skool wil bestuur en nie 'n slot moet opneem nie.</span>
+                        <strong>Ek gebruik self 'n klaskamerplek</strong>
+                        <span>@(Dashboard.Account.AdminUsesSlot ? "Jy neem tans een plek op." : "Jy bestuur tans net die skool en neem nie 'n plek op nie.")</span>
                     </div>
                     <button type="button"
                             class="school-admin-toggle @(Dashboard.Account.AdminUsesSlot ? "is-on" : null)"
                             aria-pressed="@Dashboard.Account.AdminUsesSlot"
                             @onclick="ToggleAdminSeatUsageAsync">
-                        @(Dashboard.Account.AdminUsesSlot ? "Gebruik slot" : "Bestuur net")
+                        @(Dashboard.Account.AdminUsesSlot ? "Verwyder my plek" : "Neem 'n plek")
                     </button>
                 </div>
 
@@ -117,33 +111,33 @@
 
             <article class="school-admin-panel">
                 <div class="school-admin-panel-head">
-                    <h2>Slots</h2>
+                    <h2>Plekke</h2>
                     <p>Uitnodigings kry toegang tot die skool se Schink Stories pakket.</p>
                 </div>
 
                 @if (Dashboard.Seats.Count == 0)
                 {
-                    <p class="school-admin-empty">Nog geen slots is toegeken nie.</p>
+                    <p class="school-admin-empty">Nog geen plekke is toegeken nie.</p>
                 }
                 else
                 {
                     <div class="school-admin-seat-list">
                         @foreach (var seat in Dashboard.Seats)
                         {
-                            <div class="school-admin-seat">
+                            <div class="school-admin-seat"
+                                 role="button"
+                                 tabindex="0"
+                                 title="Wys plek-statistiek"
+                                 @onclick="() => OpenSeatStatsAsync(seat)"
+                                 @onkeydown="args => HandleSeatKeyDownAsync(args, seat)">
                                 <div>
                                     <strong>@BuildSeatName(seat)</strong>
                                     <span>@seat.Email</span>
                                 </div>
                                 <div class="school-admin-seat-meta">
-                                    <span class="school-admin-pill">@BuildSeatStatus(seat)</span>
-                                    @if (seat.CountsTowardSlot)
-                                    {
-                                        <span class="school-admin-pill is-slot">Slot</span>
-                                    }
                                     @if (!string.Equals(seat.Role, "school_admin", StringComparison.OrdinalIgnoreCase))
                                     {
-                                        <button type="button" class="school-admin-icon-btn" title="Verwyder slot" aria-label="Verwyder slot" @onclick="() => RemoveSeatAsync(seat.SchoolSeatId)">
+                                        <button type="button" class="school-admin-icon-btn" title="Verwyder plek" aria-label="Verwyder plek" @onclick="() => RemoveSeatAsync(seat.SchoolSeatId)" @onclick:stopPropagation="true">
                                             <i class="fa-solid fa-trash" aria-hidden="true"></i>
                                         </button>
                                     }
@@ -157,6 +151,106 @@
     }
 </section>
 
+@if (StatsModalSeat is not null)
+{
+    <div class="school-admin-modal-backdrop" role="presentation" @onclick="CloseSeatStats">
+        <section class="school-admin-modal" role="dialog" aria-modal="true" aria-labelledby="school-seat-stats-title" @onclick:stopPropagation="true">
+            <header class="school-admin-modal-head">
+                <div class="school-admin-modal-title">
+                    <p class="school-admin-label">Plek-statistiek</p>
+                    <h2 id="school-seat-stats-title">@BuildSeatName(StatsModalSeat)</h2>
+                    <span>@StatsModalSeat.Email</span>
+                    @if (!IsStatsLoading && SeatStats is not null)
+                    {
+                        <dl class="school-admin-modal-meta" aria-label="Plek besonderhede">
+                            <div>
+                                <dt>Status</dt>
+                                <dd>@BuildSeatStatus(SeatStats.Seat)</dd>
+                            </div>
+                            <div>
+                                <dt>Rekening</dt>
+                                <dd>@(SeatStats.HasSubscriberAccount ? "Gekoppel" : "Nog nie geregistreer")</dd>
+                            </div>
+                            <div>
+                                <dt>Toegang eindig</dt>
+                                <dd>@FormatDate(SeatStats.AccessExpiresAt)</dd>
+                            </div>
+                        </dl>
+                    }
+                </div>
+                <button type="button" class="school-admin-icon-btn" title="Maak toe" aria-label="Maak statistiek toe" @onclick="CloseSeatStats">
+                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                </button>
+            </header>
+
+            @if (IsStatsLoading)
+            {
+                <div class="school-admin-modal-loading" role="status" aria-live="polite">
+                    <span class="school-admin-spinner" aria-hidden="true"></span>
+                    <span class="sr-only">Laai statistiek...</span>
+                </div>
+            }
+            else if (!string.IsNullOrWhiteSpace(StatsErrorMessage))
+            {
+                <p class="school-admin-feedback is-error">@StatsErrorMessage</p>
+            }
+            else if (SeatStats is null)
+            {
+                <p class="school-admin-empty">Geen statistiek beskikbaar nie.</p>
+            }
+            else
+            {
+                <div class="school-admin-stats-grid">
+                    <article>
+                        <span>Stories oopgemaak</span>
+                        <strong>@SeatStats.TotalViews</strong>
+                    </article>
+                    <article>
+                        <span>Unieke stories</span>
+                        <strong>@Math.Max(SeatStats.UniqueViewedStories, SeatStats.UniqueListenedStories)</strong>
+                    </article>
+                    <article>
+                        <span>Luistersessies</span>
+                        <strong>@SeatStats.TotalListenSessions</strong>
+                    </article>
+                    <article>
+                        <span>Luistertyd</span>
+                        <strong>@FormatDuration(SeatStats.TotalListenedSeconds)</strong>
+                    </article>
+                </div>
+
+                <div class="school-admin-modal-section">
+                    <p class="school-admin-label">Laaste aktiwiteit</p>
+                    <strong>@FormatDateTime(SeatStats.LastActivityAt)</strong>
+                </div>
+
+                <div class="school-admin-modal-section">
+                    <p class="school-admin-label">Onlangse stories</p>
+                    @if (SeatStats.RecentStories.Count == 0)
+                    {
+                        <p class="school-admin-empty">Nog geen storie-aktiwiteit vir hierdie plek nie.</p>
+                    }
+                    else
+                    {
+                        <div class="school-admin-recent-list">
+                            @foreach (var story in SeatStats.RecentStories)
+                            {
+                                <div class="school-admin-recent-item">
+                                    <div>
+                                        <strong>@story.StoryTitle</strong>
+                                        <span>@FormatDateTime(story.LastActivityAt)</span>
+                                    </div>
+                                    <span>@FormatViewCount(story.Views) · @FormatDuration(story.ListenedSeconds)</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </section>
+    </div>
+}
+
 @code {
     private bool IsLoading { get; set; } = true;
     private bool IsAuthenticated { get; set; }
@@ -167,6 +261,10 @@
     private string? InviteDisplayName { get; set; }
     private string? ErrorMessage { get; set; }
     private string? StatusMessage { get; set; }
+    private SchoolSeatRecord? StatsModalSeat { get; set; }
+    private SchoolSeatStatsSnapshot? SeatStats { get; set; }
+    private bool IsStatsLoading { get; set; }
+    private string? StatsErrorMessage { get; set; }
 
     private string LoginHref => $"/teken-in?returnUrl={Uri.EscapeDataString("/skool-admin")}";
     private bool CanInviteTeacher => Dashboard?.AvailableSlots > 0 && !string.IsNullOrWhiteSpace(InviteEmail);
@@ -208,7 +306,7 @@
 
         ClearMessages();
         var result = await SchoolManagementService.UpdateAdminSeatUsageAsync(CurrentAdminEmail, !Dashboard.Account.AdminUsesSlot);
-        await HandleResultAsync(result, "Admin slot-keuse is gestoor.");
+        await HandleResultAsync(result, "Admin plek-keuse is gestoor.");
     }
 
     private async Task InviteTeacherAsync()
@@ -223,14 +321,51 @@
             InviteDisplayName = null;
         }
 
-        await HandleResultAsync(result, "Onderwyser is by die skool slots gevoeg.");
+        await HandleResultAsync(result, "Onderwyser is by die skoolplekke gevoeg.");
     }
 
     private async Task RemoveSeatAsync(Guid seatId)
     {
         ClearMessages();
         var result = await SchoolManagementService.RemoveSeatAsync(CurrentAdminEmail, seatId);
-        await HandleResultAsync(result, "Slot is verwyder.");
+        await HandleResultAsync(result, "Plek is verwyder.");
+    }
+
+    private async Task OpenSeatStatsAsync(SchoolSeatRecord seat)
+    {
+        StatsModalSeat = seat;
+        SeatStats = null;
+        StatsErrorMessage = null;
+        IsStatsLoading = true;
+
+        var stats = await SchoolManagementService.GetSeatStatsAsync(CurrentAdminEmail, seat.SchoolSeatId);
+        if (stats is null)
+        {
+            StatsErrorMessage = "Kon nie hierdie plek se statistiek laai nie.";
+        }
+        else
+        {
+            SeatStats = stats;
+        }
+
+        IsStatsLoading = false;
+    }
+
+    private async Task HandleSeatKeyDownAsync(KeyboardEventArgs args, SchoolSeatRecord seat)
+    {
+        if (string.Equals(args.Key, "Enter", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(args.Key, " ", StringComparison.Ordinal))
+        {
+            await OpenSeatStatsAsync(seat);
+        }
+    }
+
+    private void CloseSeatStats()
+    {
+        StatsModalSeat = null;
+        SeatStats = null;
+        StatsErrorMessage = null;
+        IsStatsLoading = false;
     }
 
     private async Task HandleResultAsync(SchoolOperationResult result, string successMessage)
@@ -261,4 +396,31 @@
             : string.Equals(seat.Status, "accepted", StringComparison.OrdinalIgnoreCase)
                 ? "Aktief"
                 : "Uitgenooi";
+
+    private static string FormatDate(DateTimeOffset? value) =>
+        value is null ? "Onbekend" : value.Value.ToLocalTime().ToString("yyyy-MM-dd");
+
+    private static string FormatDateTime(DateTimeOffset? value) =>
+        value is null ? "Nog geen aktiwiteit" : value.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm");
+
+    private static string FormatViewCount(int views) =>
+        views == 1 ? "1 kyk" : $"{views} kyke";
+
+    private static string FormatDuration(decimal seconds)
+    {
+        if (seconds <= 0)
+        {
+            return "0 min";
+        }
+
+        var totalMinutes = (int)Math.Round(seconds / 60m, MidpointRounding.AwayFromZero);
+        if (totalMinutes < 60)
+        {
+            return $"{Math.Max(1, totalMinutes)} min";
+        }
+
+        var hours = totalMinutes / 60;
+        var minutes = totalMinutes % 60;
+        return minutes == 0 ? $"{hours} u" : $"{hours} u {minutes} min";
+    }
 }

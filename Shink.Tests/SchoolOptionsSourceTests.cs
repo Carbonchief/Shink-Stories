@@ -66,12 +66,79 @@ public class SchoolOptionsSourceTests
 
         StringAssert.Contains(skoolAdmin, "@page \"/skool-admin\"");
         StringAssert.Contains(skoolAdmin, "Nooi onderwyser");
-        StringAssert.Contains(skoolAdmin, "Slots gebruik");
-        StringAssert.Contains(skoolAdmin, "Ek gebruik self 'n klaskamer slot");
+        StringAssert.Contains(skoolAdmin, "Plekke gebruik");
+        StringAssert.Contains(skoolAdmin, "Ek gebruik self 'n klaskamerplek");
         StringAssert.Contains(service, "InviteTeacherAsync");
         StringAssert.Contains(service, "UpdateAdminSeatUsageAsync");
         StringAssert.Contains(program, "GetSafeCheckoutReturnUrl(returnUrl, plan)");
         StringAssert.Contains(paystack, "ResolveCallbackPath(returnUrl)");
+    }
+
+    [TestMethod]
+    public void SkoolAdminStatsUsesStoryTitlesInsteadOfSlugs()
+    {
+        var skoolAdmin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "SkoolAdmin.razor"));
+        var service = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseSchoolManagementService.cs"));
+        var contract = File.ReadAllText(GetRepoPath("Shink", "Services", "ISchoolManagementService.cs"));
+
+        StringAssert.Contains(skoolAdmin, "@story.StoryTitle");
+        Assert.IsFalse(skoolAdmin.Contains("@story.StorySlug</strong>", StringComparison.Ordinal));
+        StringAssert.Contains(service, "FetchStoryTitlesBySlugAsync");
+        StringAssert.Contains(service, "?select=slug,title");
+        StringAssert.Contains(contract, "string StoryTitle");
+    }
+
+    [TestMethod]
+    public void SkoolAdminStatsLoadingUsesCenteredSpinner()
+    {
+        var skoolAdmin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "SkoolAdmin.razor"));
+        var css = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "SkoolAdmin.razor.css"));
+
+        StringAssert.Contains(skoolAdmin, "school-admin-modal-loading");
+        StringAssert.Contains(skoolAdmin, "school-admin-spinner");
+        Assert.IsFalse(skoolAdmin.Contains("<p class=\"school-admin-empty\">Laai statistiek...</p>", StringComparison.Ordinal));
+        StringAssert.Contains(css, ".school-admin-modal-loading");
+        StringAssert.Contains(css, "place-items: center;");
+        StringAssert.Contains(css, "@keyframes school-admin-spin");
+    }
+
+    [TestMethod]
+    public void SkoolAdminStatsHeaderShowsSeatDetails()
+    {
+        var skoolAdmin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "SkoolAdmin.razor"));
+        var css = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "SkoolAdmin.razor.css"));
+
+        StringAssert.Contains(skoolAdmin, "school-admin-modal-meta");
+        StringAssert.Contains(skoolAdmin, "<dt>Status</dt>");
+        StringAssert.Contains(skoolAdmin, "<dt>Rekening</dt>");
+        StringAssert.Contains(skoolAdmin, "<dt>Toegang eindig</dt>");
+        StringAssert.Contains(css, ".school-admin-modal-meta");
+        StringAssert.Contains(css, "align-items: baseline;");
+        StringAssert.Contains(css, "repeat(auto-fit, minmax(150px, 1fr))");
+    }
+
+    [TestMethod]
+    public void SkoolAdminDoesNotRenderTopHero()
+    {
+        var skoolAdmin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "SkoolAdmin.razor"));
+        var css = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "SkoolAdmin.razor.css"));
+
+        Assert.IsFalse(skoolAdmin.Contains("school-admin-hero", StringComparison.Ordinal));
+        Assert.IsFalse(skoolAdmin.Contains("Hulpbron_blad_01.png", StringComparison.Ordinal));
+        Assert.IsFalse(css.Contains("school-admin-hero", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void SkoolAdminLongEmailUsesEllipsis()
+    {
+        var skoolAdmin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "SkoolAdmin.razor"));
+        var css = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "SkoolAdmin.razor.css"));
+
+        StringAssert.Contains(skoolAdmin, "class=\"school-admin-truncate\"");
+        StringAssert.Contains(skoolAdmin, "title=\"@CurrentAdminEmail\"");
+        StringAssert.Contains(css, ".school-admin-truncate");
+        StringAssert.Contains(css, "text-overflow: ellipsis;");
+        StringAssert.Contains(css, "white-space: nowrap;");
     }
 
     [TestMethod]

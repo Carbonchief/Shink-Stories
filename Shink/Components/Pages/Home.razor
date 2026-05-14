@@ -746,9 +746,7 @@ else
         var activeTierCodeSet = activeTierCodes.ToHashSet(StringComparer.OrdinalIgnoreCase);
         var hasGratis = activeTierCodeSet.Contains("gratis");
         var hasStoryCorner = activeTierCodeSet.Contains(StoryAccessPolicy.StoryCornerMonthlyTierCode);
-        var hasAllStories =
-            activeTierCodeSet.Contains(StoryAccessPolicy.AllStoriesMonthlyTierCode) ||
-            activeTierCodeSet.Contains(StoryAccessPolicy.AllStoriesYearlyTierCode);
+        var hasAllStories = StoryAccessPolicy.HasAllStoriesAccess(activeTierCodeSet);
 
         return new LuisterAccessProfile(
             HasGratisOrPaid: hasGratis || hasStoryCorner || hasAllStories,

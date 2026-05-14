@@ -562,14 +562,10 @@ public partial class AdminResourceTypesPanel : ComponentBase
     private static string? NormalizeDocumentTierCodeForAccess(string? tierCode)
     {
         var normalizedTierCode = NormalizeOptionalText(tierCode, 64)?.ToLowerInvariant();
-        return IsAllStoriesTierCode(normalizedTierCode)
+        return StoryAccessPolicy.GrantsAllStoriesAccess(normalizedTierCode)
             ? AllStoriesResourceTierCode
             : normalizedTierCode;
     }
-
-    private static bool IsAllStoriesTierCode(string? tierCode) =>
-        string.Equals(tierCode, StoryAccessPolicy.AllStoriesMonthlyTierCode, StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(tierCode, StoryAccessPolicy.AllStoriesYearlyTierCode, StringComparison.OrdinalIgnoreCase);
 
     private static string FormatFileSize(long sizeBytes)
     {

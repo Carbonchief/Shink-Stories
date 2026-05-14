@@ -322,8 +322,7 @@
 
         if (string.Equals(normalizedRequiredTierCode, StoryAccessPolicy.AllStoriesMonthlyTierCode, StringComparison.OrdinalIgnoreCase))
         {
-            return ActiveTierCodes.Contains(StoryAccessPolicy.AllStoriesMonthlyTierCode) ||
-                   ActiveTierCodes.Contains(StoryAccessPolicy.AllStoriesYearlyTierCode);
+            return StoryAccessPolicy.HasAllStoriesAccess(ActiveTierCodes);
         }
 
         return ActiveTierCodes.Contains(normalizedRequiredTierCode);
@@ -350,7 +349,7 @@
     private static string? NormalizeDocumentTierCode(string? tierCode)
     {
         var normalizedTierCode = tierCode?.Trim().ToLowerInvariant();
-        return string.Equals(normalizedTierCode, StoryAccessPolicy.AllStoriesYearlyTierCode, StringComparison.OrdinalIgnoreCase)
+        return StoryAccessPolicy.GrantsAllStoriesAccess(normalizedTierCode)
             ? StoryAccessPolicy.AllStoriesMonthlyTierCode
             : normalizedTierCode;
     }

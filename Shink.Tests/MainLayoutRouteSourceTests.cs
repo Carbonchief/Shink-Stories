@@ -15,6 +15,15 @@ public class MainLayoutRouteSourceTests
     }
 
     [TestMethod]
+    public void MainLayout_SkoolAdminUsesStoreRouteBackground()
+    {
+        var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Layout", "MainLayout.razor"));
+
+        StringAssert.Contains(markup, "IsResourcesRoute || IsMeerOorOnsRoute || IsOpsiesRoute || IsSkoolAdminRoute");
+        StringAssert.Contains(markup, "string.Equals(relativePath, \"skool-admin\", StringComparison.OrdinalIgnoreCase)");
+    }
+
+    [TestMethod]
     public void MainLayout_NotificationBodyIsClampedToThreeLines()
     {
         var css = File.ReadAllText(GetRepoPath("Shink", "Components", "Layout", "MainLayout.razor.css"));

@@ -557,15 +557,13 @@ else
             return new LuisterAccessProfile(false, false);
         }
 
-        var storyCornerTask = SubscriptionLedgerService.HasActiveSubscriptionForTierAsync(email, StoryAccessPolicy.StoryCornerMonthlyTierCode);
-        var allStoriesMonthlyTask = SubscriptionLedgerService.HasActiveSubscriptionForTierAsync(email, StoryAccessPolicy.AllStoriesMonthlyTierCode);
-        var allStoriesYearlyTask = SubscriptionLedgerService.HasActiveSubscriptionForTierAsync(email, StoryAccessPolicy.AllStoriesYearlyTierCode);
+        var activeTierCodes = await SubscriptionLedgerService.GetActiveTierCodesAsync(email);
+        var activeTierCodeSet = activeTierCodes.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var hasStoryCorner = activeTierCodeSet.Contains(StoryAccessPolicy.StoryCornerMonthlyTierCode);
+        var hasAllStories = StoryAccessPolicy.HasAllStoriesAccess(activeTierCodeSet);
 
-        await Task.WhenAll(storyCornerTask, allStoriesMonthlyTask, allStoriesYearlyTask);
-
-        var hasAllStories = allStoriesMonthlyTask.Result || allStoriesYearlyTask.Result;
         return new LuisterAccessProfile(
-            HasStoryCornerOrAll: storyCornerTask.Result || hasAllStories,
+            HasStoryCornerOrAll: hasStoryCorner || hasAllStories,
             HasAllStories: hasAllStories);
     }
 

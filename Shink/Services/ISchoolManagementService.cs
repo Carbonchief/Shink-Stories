@@ -8,6 +8,7 @@ public interface ISchoolManagementService
     Task<SchoolOperationResult> UpdateAdminSeatUsageAsync(string? adminEmail, bool adminUsesSlot, CancellationToken cancellationToken = default);
     Task<SchoolOperationResult> InviteTeacherAsync(string? adminEmail, SchoolInviteTeacherRequest request, CancellationToken cancellationToken = default);
     Task<SchoolOperationResult> RemoveSeatAsync(string? adminEmail, Guid seatId, CancellationToken cancellationToken = default);
+    Task<SchoolSeatStatsSnapshot?> GetSeatStatsAsync(string? adminEmail, Guid seatId, CancellationToken cancellationToken = default);
 }
 
 public sealed record SchoolOperationResult(bool IsSuccess, string? ErrorMessage = null, Guid? EntityId = null);
@@ -50,6 +51,25 @@ public sealed record SchoolSeatRecord(
     DateTimeOffset InvitedAt,
     DateTimeOffset? AcceptedAt,
     DateTimeOffset? RemovedAt);
+
+public sealed record SchoolSeatStatsSnapshot(
+    SchoolSeatRecord Seat,
+    bool HasSubscriberAccount,
+    DateTimeOffset? AccessExpiresAt,
+    int TotalViews,
+    int UniqueViewedStories,
+    int TotalListenSessions,
+    decimal TotalListenedSeconds,
+    int UniqueListenedStories,
+    DateTimeOffset? LastActivityAt,
+    IReadOnlyList<SchoolSeatStoryActivityRecord> RecentStories);
+
+public sealed record SchoolSeatStoryActivityRecord(
+    string StorySlug,
+    string StoryTitle,
+    int Views,
+    decimal ListenedSeconds,
+    DateTimeOffset LastActivityAt);
 
 public sealed record SchoolPlanRecord(
     string Slug,

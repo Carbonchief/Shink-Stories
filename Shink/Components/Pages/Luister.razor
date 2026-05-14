@@ -700,17 +700,15 @@ else
             return new LuisterAccessProfile(false, false, false);
         }
 
-        var gratisTask = SubscriptionLedgerService.HasActiveSubscriptionForTierAsync(email, "gratis");
-        var storyCornerTask = SubscriptionLedgerService.HasActiveSubscriptionForTierAsync(email, StoryAccessPolicy.StoryCornerMonthlyTierCode);
-        var allStoriesMonthlyTask = SubscriptionLedgerService.HasActiveSubscriptionForTierAsync(email, StoryAccessPolicy.AllStoriesMonthlyTierCode);
-        var allStoriesYearlyTask = SubscriptionLedgerService.HasActiveSubscriptionForTierAsync(email, StoryAccessPolicy.AllStoriesYearlyTierCode);
+        var activeTierCodes = await SubscriptionLedgerService.GetActiveTierCodesAsync(email);
+        var activeTierCodeSet = activeTierCodes.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var hasGratis = activeTierCodeSet.Contains("gratis");
+        var hasStoryCorner = activeTierCodeSet.Contains(StoryAccessPolicy.StoryCornerMonthlyTierCode);
+        var hasAllStories = StoryAccessPolicy.HasAllStoriesAccess(activeTierCodeSet);
 
-        await Task.WhenAll(gratisTask, storyCornerTask, allStoriesMonthlyTask, allStoriesYearlyTask);
-
-        var hasAllStories = allStoriesMonthlyTask.Result || allStoriesYearlyTask.Result;
         return new LuisterAccessProfile(
-            HasGratisOrPaid: gratisTask.Result || storyCornerTask.Result || hasAllStories,
-            HasStoryCornerOrAll: storyCornerTask.Result || hasAllStories,
+            HasGratisOrPaid: hasGratis || hasStoryCorner || hasAllStories,
+            HasStoryCornerOrAll: hasStoryCorner || hasAllStories,
             HasAllStories: hasAllStories);
     }
 

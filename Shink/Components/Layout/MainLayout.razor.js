@@ -1496,7 +1496,11 @@ function startNavMenuDelegates() {
 }
 
 function wireHeaderSearch(searchForm) {
-    if (!(searchForm instanceof HTMLFormElement) || searchForm.dataset.searchWired === "true") {
+    if (!(searchForm instanceof HTMLFormElement)) {
+        return;
+    }
+
+    if (searchForm.dataset.searchWired === "true" && headerSearchState.has(searchForm)) {
         return;
     }
 
