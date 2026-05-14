@@ -40,6 +40,27 @@ public class WordPressMigrationSourceTests
         StringAssert.Contains(source, "BuildSubscriptionMatchKeys");
     }
 
+    [TestMethod]
+    public void CurrentEntitlementsCarryWordPressBillingAmount()
+    {
+        var sourcePath = FindRepositoryFile("Shink", "Services", "WordPressMigrationService.cs");
+        var source = File.ReadAllText(sourcePath);
+        var migrationPath = FindRepositoryFile(
+            "Shink",
+            "Database",
+            "migrations",
+            "20260514_wordpress_billing_amount_backfill.sql");
+        var migration = File.ReadAllText(migrationPath);
+
+        StringAssert.Contains(source, "ResolveImportedBillingAmount(subscription, period, order)");
+        StringAssert.Contains(source, "billing_amount_zar = entitlement.BillingAmountZar");
+        StringAssert.Contains(source, "billing_amount_source = entitlement.BillingAmountZar is > 0m ? \"wordpress_import\" : null");
+        StringAssert.Contains(migration, "billing_amount_zar");
+        StringAssert.Contains(migration, "wordpress_billing");
+        StringAssert.Contains(migration, "sub.provider_payment_id = wordpress_billing.provider_transaction_id");
+        StringAssert.Contains(migration, "sub.provider_transaction_id = wordpress_billing.provider_transaction_id");
+    }
+
     private static string FindRepositoryFile(params string[] pathParts)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

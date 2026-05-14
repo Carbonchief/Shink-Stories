@@ -169,6 +169,89 @@ public class SupabaseAbandonedCartRecoveryServiceTests
     }
 
     [TestMethod]
+    public async Task StartSequenceAsync_SkipsSubscriptionRecoveryWhenCustomerHasAnyActivePaidAccessWithoutRenewalDate()
+    {
+        var abandonedRecoveryLookupCalls = 0;
+        var resendCalls = 0;
+        var createRecoveryCalls = 0;
+        var handler = new RecordingHandler(request =>
+        {
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscribers")
+            {
+                StringAssert.Contains(request.RequestUri.Query, "email=eq.ouer%40example.com");
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                        "disabled_at": null
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                StringAssert.Contains(request.RequestUri.Query, "subscriber_id=eq.11111111-1111-1111-1111-111111111111");
+                StringAssert.Contains(request.RequestUri.Query, "status=eq.active");
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "status": "active",
+                        "tier_code": "all_stories_monthly",
+                        "next_renewal_at": null,
+                        "cancelled_at": null
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/abandoned_cart_recoveries")
+            {
+                abandonedRecoveryLookupCalls++;
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.Host == "api.resend.com")
+            {
+                resendCalls++;
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/abandoned_cart_recoveries")
+            {
+                createRecoveryCalls++;
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+        });
+
+        var service = CreateService(new HttpClient(handler));
+
+        await service.StartSequenceAsync(
+            new AbandonedCartRecoveryStartRequest(
+                SourceType: "subscription",
+                SourceKey: "all_stories_yearly",
+                CheckoutReference: "new-reference",
+                Provider: "paystack",
+                CustomerEmail: "Ouer@Example.com",
+                CustomerName: "Ouer",
+                ItemName: "Alle stories jaarliks",
+                ItemSummary: "Jaarliks",
+                CartTotalZar: 790m,
+                CheckoutUrl: "https://checkout.example.com/new-reference",
+                OptOutBaseUrl: "https://schink.example.com"));
+
+        Assert.AreEqual(0, abandonedRecoveryLookupCalls);
+        Assert.AreEqual(0, resendCalls);
+        Assert.AreEqual(0, createRecoveryCalls);
+    }
+
+    [TestMethod]
     public async Task StartSequenceAsync_AllowsWinkelSchedulingWhenActiveSimilarRecoveryExists()
     {
         var resendCalls = 0;

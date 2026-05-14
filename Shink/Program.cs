@@ -1474,6 +1474,81 @@ app.MapGet("/winkel/paystack/callback", async (
         orderReference: updateResult.Order.OrderReference));
 });
 
+app.MapGet("/betaal/paystack/callback", async (
+    string? reference,
+    string? trxref,
+    string? plan,
+    string? returnUrl,
+    PaystackCheckoutService paystackCheckoutService,
+    ISubscriptionLedgerService subscriptionLedgerService,
+    IAbandonedCartRecoveryService abandonedCartRecoveryService,
+    ILogger<Program> logger,
+    HttpContext httpContext) =>
+{
+    var resolvedReference = ResolveStorePaymentReference(reference, trxref, orderReference: null);
+    if (string.IsNullOrWhiteSpace(resolvedReference))
+    {
+        return Results.Redirect(BuildSubscriptionPaymentRedirectPath("misluk", plan, returnUrl));
+    }
+
+    var verifyResult = await paystackCheckoutService.VerifyTransactionAsync(resolvedReference, httpContext.RequestAborted);
+    if (!verifyResult.IsSuccess ||
+        !IsSuccessfulPaystackTransactionStatus(verifyResult.TransactionStatus) ||
+        string.IsNullOrWhiteSpace(verifyResult.RawPayload))
+    {
+        await paystackCheckoutService.MarkCheckoutSessionStatusAsync(
+            resolvedReference,
+            MapPaystackCheckoutSessionStatus(verifyResult.TransactionStatus),
+            httpContext.RequestAborted);
+
+        logger.LogWarning(
+            "Subscription Paystack callback verification did not confirm payment. reference={Reference} status={Status} error={Error}",
+            resolvedReference,
+            verifyResult.TransactionStatus,
+            verifyResult.ErrorMessage);
+
+        return Results.Redirect(BuildSubscriptionPaymentRedirectPath("verwerk", plan, returnUrl));
+    }
+
+    var payload = TryBuildPaystackChargeSuccessPayload(verifyResult.RawPayload);
+    if (payload is null)
+    {
+        logger.LogWarning("Subscription Paystack callback verify payload could not be converted. reference={Reference}", resolvedReference);
+        return Results.Redirect(BuildSubscriptionPaymentRedirectPath("verwerk", plan, returnUrl));
+    }
+
+    var persistResult = await subscriptionLedgerService.RecordPaystackEventAsync(payload, httpContext.RequestAborted);
+    if (!persistResult.IsSuccess)
+    {
+        logger.LogWarning(
+            "Subscription Paystack callback persistence failed. reference={Reference} error={Error}",
+            resolvedReference,
+            persistResult.ErrorMessage);
+
+        return Results.Redirect(BuildSubscriptionPaymentRedirectPath("verwerk", plan, returnUrl));
+    }
+
+    var paidReference = verifyResult.Reference ?? resolvedReference;
+    await paystackCheckoutService.MarkCheckoutSessionStatusAsync(
+        paidReference,
+        "paid",
+        httpContext.RequestAborted);
+    await abandonedCartRecoveryService.ResolveByCheckoutReferenceAsync(
+        "subscription",
+        paidReference,
+        "paid",
+        httpContext.RequestAborted);
+
+    var selectedPlan = PaymentPlanCatalog.FindBySlug(plan);
+    await abandonedCartRecoveryService.ResolveSubscriptionRecoveriesAsync(
+        verifyResult.CustomerEmail,
+        selectedPlan?.TierCode,
+        "paid",
+        httpContext.RequestAborted);
+
+    return Results.Redirect(ResolveSuccessfulSubscriptionPaymentReturnPath(plan, returnUrl));
+});
+
 app.MapPost("/api/payfast/notify", async (
     HttpContext httpContext,
     PayFastCheckoutService payFastCheckoutService,
@@ -2951,7 +3026,7 @@ if (args.Any(argument => string.Equals(argument, "--retry-overdue-paystack", Str
     var result = await retryService.RetryEligibleSubscriptionsAsync();
 
     app.Logger.LogInformation(
-        "Paystack overdue retry batch finished. problematic={ProblematicCount} retry_ready={RetryReadyCount} attempted={AttemptedCount} succeeded={SucceededCount} failed={FailedCount} skipped_recent={SkippedRecentCount} skipped_missing_token={SkippedMissingTokenCount} skipped_not_actionable={SkippedNotActionableCount} skipped_missing_data={SkippedMissingDataCount} errors={ErrorCount}",
+        "Paystack overdue retry batch finished. problematic={ProblematicCount} retry_ready={RetryReadyCount} attempted={AttemptedCount} succeeded={SucceededCount} failed={FailedCount} skipped_recent={SkippedRecentCount} skipped_missing_token={SkippedMissingTokenCount} skipped_not_actionable={SkippedNotActionableCount} skipped_missing_data={SkippedMissingDataCount} skipped_missing_billing_amount={SkippedMissingBillingAmountCount} errors={ErrorCount}",
         result.TotalProblematicChargeKeys,
         result.RetryReadyCandidates,
         result.AttemptedCount,
@@ -2961,6 +3036,7 @@ if (args.Any(argument => string.Equals(argument, "--retry-overdue-paystack", Str
         result.SkippedMissingTokenCount,
         result.SkippedNotActionableLiveCount,
         result.SkippedMissingEmailOrPlanCount,
+        result.SkippedMissingBillingAmountCount,
         result.Errors.Count);
 
     foreach (var attempt in result.Attempts.Take(50))
@@ -4231,6 +4307,103 @@ static string BuildStorePageRedirectPath(
     }
 
     return QueryHelpers.AddQueryString("/winkel", query);
+}
+
+static string BuildSubscriptionPaymentRedirectPath(
+    string paymentStatus,
+    string? planSlug,
+    string? returnUrl)
+{
+    var query = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["betaling"] = paymentStatus,
+        ["provider"] = "paystack"
+    };
+
+    var normalizedPlanSlug = NormalizeOptionalFormText(planSlug, 160);
+    if (!string.IsNullOrWhiteSpace(normalizedPlanSlug))
+    {
+        query["plan"] = normalizedPlanSlug;
+    }
+
+    var selectedPlan = PaymentPlanCatalog.FindBySlug(normalizedPlanSlug);
+    var safeReturnUrl = selectedPlan is null
+        ? GetSafeStoryReturnUrl(returnUrl)
+        : GetSafeCheckoutReturnUrl(returnUrl, selectedPlan);
+    if (!string.IsNullOrWhiteSpace(safeReturnUrl))
+    {
+        query["returnUrl"] = safeReturnUrl;
+    }
+
+    return QueryHelpers.AddQueryString("/opsies", query);
+}
+
+static string ResolveSuccessfulSubscriptionPaymentReturnPath(string? planSlug, string? returnUrl)
+{
+    var selectedPlan = PaymentPlanCatalog.FindBySlug(NormalizeOptionalFormText(planSlug, 160));
+    var safeReturnUrl = selectedPlan is null
+        ? GetSafeStoryReturnUrl(returnUrl)
+        : GetSafeCheckoutReturnUrl(returnUrl, selectedPlan);
+
+    return safeReturnUrl ?? "/luister";
+}
+
+static bool IsSuccessfulPaystackTransactionStatus(string? status) =>
+    string.Equals(status, "success", StringComparison.OrdinalIgnoreCase);
+
+static string MapPaystackCheckoutSessionStatus(string? transactionStatus)
+{
+    if (string.Equals(transactionStatus, "success", StringComparison.OrdinalIgnoreCase))
+    {
+        return "paid";
+    }
+
+    if (string.Equals(transactionStatus, "failed", StringComparison.OrdinalIgnoreCase))
+    {
+        return "failed";
+    }
+
+    if (string.Equals(transactionStatus, "abandoned", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(transactionStatus, "cancelled", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(transactionStatus, "canceled", StringComparison.OrdinalIgnoreCase))
+    {
+        return "cancelled";
+    }
+
+    return "pending";
+}
+
+static string? TryBuildPaystackChargeSuccessPayload(string verifyPayload)
+{
+    try
+    {
+        using var document = JsonDocument.Parse(verifyPayload);
+        var root = document.RootElement;
+        if (root.ValueKind != JsonValueKind.Object ||
+            !root.TryGetProperty("status", out var statusElement) ||
+            statusElement.ValueKind != JsonValueKind.True ||
+            !root.TryGetProperty("data", out var dataElement) ||
+            dataElement.ValueKind != JsonValueKind.Object)
+        {
+            return null;
+        }
+
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("event", "charge.success");
+            writer.WritePropertyName("data");
+            dataElement.WriteTo(writer);
+            writer.WriteEndObject();
+        }
+
+        return Encoding.UTF8.GetString(stream.ToArray());
+    }
+    catch (JsonException)
+    {
+        return null;
+    }
 }
 
 static string ResolveStorePaymentStatusQueryValue(string? paymentStatus) =>

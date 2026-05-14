@@ -707,7 +707,7 @@ public sealed class SupabaseAbandonedCartRecoveryService(
             return false;
         }
 
-        return row.NextRenewalAt is not null;
+        return true;
     }
 
     private static bool IsRecoveryBlockedByActiveTier(string requestedTierCode, string? activeTierCode)
@@ -717,14 +717,7 @@ public sealed class SupabaseAbandonedCartRecoveryService(
             return false;
         }
 
-        if (string.Equals(activeTierCode, requestedTierCode, StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        return string.Equals(requestedTierCode, StoryCornerTierCode, StringComparison.OrdinalIgnoreCase) &&
-               (string.Equals(activeTierCode, AllStoriesMonthlyTierCode, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(activeTierCode, AllStoriesYearlyTierCode, StringComparison.OrdinalIgnoreCase));
+        return !string.Equals(activeTierCode, GratisTierCode, StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsRecoveryResolvedByPurchasedTier(string purchasedTierCode, string recoveryTierCode)

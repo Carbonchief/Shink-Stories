@@ -63,6 +63,18 @@
             Jy het reeds 'n aktiewe intekening op hierdie plan. Kies asseblief 'n ander opsie.
         </p>
     }
+    else if (string.Equals(PaymentStatus, "verwerk", StringComparison.OrdinalIgnoreCase))
+    {
+        <p class="opsies-payment-status opsies-payment-blocked" role="status" aria-live="polite">
+            Ons verwerk nog jou betaling. Kyk asseblief oor 'n oomblik weer.
+        </p>
+    }
+    else if (string.Equals(PaymentStatus, "misluk", StringComparison.OrdinalIgnoreCase))
+    {
+        <p class="opsies-payment-status opsies-payment-cancelled" role="status" aria-live="polite">
+            Ons kon nie die betaling bevestig nie. Probeer asseblief weer.
+        </p>
+    }
 
     <section class="opsies-hero">
         <div class="opsies-hero-copy">

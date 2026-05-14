@@ -15,6 +15,8 @@ public sealed class PaystackCheckoutService(
     IOptions<PaystackOptions> options,
     IOptions<SupabaseOptions>? supabaseOptions = null)
 {
+    public const string SubscriptionCallbackPath = "/betaal/paystack/callback";
+
     private static readonly TimeSpan CheckoutSessionTtl = TimeSpan.FromMinutes(60);
     private readonly HttpClient _httpClient = httpClient;
     private readonly PaystackOptions _options = options.Value;
@@ -172,7 +174,7 @@ public sealed class PaystackCheckoutService(
         }
 
         var callbackQuery = $"betaling=sukses&provider=paystack&plan={Uri.EscapeDataString(plan.Slug)}";
-        var callbackUrl = BuildAbsoluteUrl(publicBaseUri.ToString(), _options.CallbackUrlPath, callbackQuery);
+        var callbackUrl = BuildAbsoluteUrl(publicBaseUri.ToString(), ResolveCallbackPath(returnUrl: null), callbackQuery);
         var amountInCents = (long)Math.Round(plan.Amount * 100m, MidpointRounding.AwayFromZero);
         var reusableSession = await TryGetReusableCheckoutSessionAsync(plan, email, amountInCents, callbackUrl, cancellationToken);
         if (reusableSession is not null)
@@ -1126,15 +1128,7 @@ public sealed class PaystackCheckoutService(
         }
     }
 
-    private string ResolveCallbackPath(string? returnUrl)
-    {
-        if (string.Equals(returnUrl?.Trim(), "/skool-admin", StringComparison.OrdinalIgnoreCase))
-        {
-            return "/skool-admin";
-        }
-
-        return _options.CallbackUrlPath;
-    }
+    private static string ResolveCallbackPath(string? returnUrl) => SubscriptionCallbackPath;
 
     private async Task<PaystackSubscriptionDisableResult> FetchSubscriptionEmailTokenAsync(
         string subscriptionCode,

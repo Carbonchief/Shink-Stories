@@ -40,7 +40,8 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                         "provider_token": "AUTH_retry",
                         "next_renewal_at": null,
                         "cancelled_at": null,
-                        "status": "active"
+                        "status": "active",
+                        "billing_amount_zar": 79.00
                       }
                     ]
                     """);
@@ -540,7 +541,8 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                         "provider_token": "AUTH_retry",
                         "next_renewal_at": null,
                         "cancelled_at": null,
-                        "status": "active"
+                        "status": "active",
+                        "billing_amount_zar": 790.00
                       }
                     ]
                     """);
@@ -713,7 +715,8 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                         "provider_token": "AUTH_retry",
                         "next_renewal_at": null,
                         "cancelled_at": null,
-                        "status": "active"
+                        "status": "active",
+                        "billing_amount_zar": 790.00
                       }
                     ]
                     """);
@@ -801,7 +804,8 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                         "provider_token": "AUTH_retry",
                         "next_renewal_at": null,
                         "cancelled_at": null,
-                        "status": "active"
+                        "status": "active",
+                        "billing_amount_zar": 790.00
                       }
                     ]
                     """);

@@ -164,7 +164,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             reference,
             subscription.SubscriptionId,
             providerPaymentId,
-            subscription.BillingAmountZar,
+            subscription.BillingAmountZar!.Value,
             cancellationToken);
 
         var eventPayload = string.IsNullOrWhiteSpace(chargeResult.RawPayload)
@@ -1043,11 +1043,14 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var plan = PaymentPlanCatalog.FindByTierCode(subscriptionContext.TierCode);
         if (!string.Equals(provider, "paystack", StringComparison.OrdinalIgnoreCase) ||
             string.IsNullOrWhiteSpace(subscriptionContext.ProviderToken) ||
+            subscriptionContext.BillingAmountZar is not > 0m ||
             plan is null)
         {
             var retryError = plan is null
                 ? "No local subscription plan matched this tier."
-                : "No Paystack authorization code is available for this subscription.";
+                : subscriptionContext.BillingAmountZar is not > 0m
+                    ? "No stored billing amount is available for this subscription."
+                    : "No Paystack authorization code is available for this subscription.";
             await SchedulePaymentRecoveryEmailsAsync(
                 baseUri,
                 apiKey,
@@ -1071,7 +1074,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             reference,
             subscriptionContext.SubscriptionId,
             providerPaymentId,
-            subscriptionContext.BillingAmountZar,
+            subscriptionContext.BillingAmountZar!.Value,
             cancellationToken);
 
         var eventPayload = string.IsNullOrWhiteSpace(chargeResult.RawPayload)
@@ -1502,7 +1505,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     private static bool CanAttemptAutomaticRetry(SelfServiceSubscriptionRow subscription, PaymentPlan plan) =>
         plan.IsSubscription &&
         string.Equals(subscription.Provider, "paystack", StringComparison.OrdinalIgnoreCase) &&
-        !string.IsNullOrWhiteSpace(subscription.ProviderToken);
+        !string.IsNullOrWhiteSpace(subscription.ProviderToken) &&
+        subscription.BillingAmountZar is > 0m;
 
     private static string ResolveProviderPaymentIdForEvent(SelfServiceSubscriptionRow subscription)
     {

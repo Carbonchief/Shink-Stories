@@ -38,6 +38,7 @@ public sealed class PaystackAuthorizationRetryBatchService(
                 SkippedMissingTokenCount: 0,
                 SkippedNotActionableLiveCount: 0,
                 SkippedMissingEmailOrPlanCount: 0,
+                SkippedMissingBillingAmountCount: 0,
                 Errors: ["Supabase SecretKey or URL is not configured."],
                 Attempts: []);
         }
@@ -73,6 +74,7 @@ public sealed class PaystackAuthorizationRetryBatchService(
         var skippedRecentRetryCount = 0;
         var skippedMissingTokenCount = 0;
         var skippedMissingEmailOrPlanCount = 0;
+        var skippedMissingBillingAmountCount = 0;
         var retryReadyCandidates = 0;
         var executableCandidates = new List<RetryCandidate>();
 
@@ -102,6 +104,12 @@ public sealed class PaystackAuthorizationRetryBatchService(
             if (plan is null)
             {
                 skippedMissingEmailOrPlanCount++;
+                continue;
+            }
+
+            if (candidate.BillingAmountZar is not > 0m)
+            {
+                skippedMissingBillingAmountCount++;
                 continue;
             }
 
@@ -163,9 +171,7 @@ public sealed class PaystackAuthorizationRetryBatchService(
             }
 
             var reference = BuildRetryReference(candidate.Subscription.SubscriptionId);
-            var retryBillingAmountZar = candidate.Subscription.BillingAmountZar is > 0m
-                ? decimal.Round(candidate.Subscription.BillingAmountZar.Value, 2, MidpointRounding.AwayFromZero)
-                : decimal.Round(candidate.Plan.Amount, 2, MidpointRounding.AwayFromZero);
+            var retryBillingAmountZar = decimal.Round(candidate.Subscription.BillingAmountZar!.Value, 2, MidpointRounding.AwayFromZero);
 
             await DelayForPaystackAsync(cancellationToken);
             var chargeResult = await _paystackCheckoutService.ChargeAuthorizationAsync(
@@ -175,7 +181,7 @@ public sealed class PaystackAuthorizationRetryBatchService(
                 reference,
                 candidate.Subscription.SubscriptionId,
                 candidate.ChargeKey,
-                candidate.Subscription.BillingAmountZar,
+                retryBillingAmountZar,
                 cancellationToken);
 
             if (chargeResult.Reference is not null || reference is not null)
@@ -275,6 +281,7 @@ public sealed class PaystackAuthorizationRetryBatchService(
             SkippedMissingTokenCount: skippedMissingTokenCount,
             SkippedNotActionableLiveCount: skippedNotActionableLiveCount,
             SkippedMissingEmailOrPlanCount: skippedMissingEmailOrPlanCount,
+            SkippedMissingBillingAmountCount: skippedMissingBillingAmountCount,
             Errors: errors,
             Attempts: attempts);
     }
@@ -668,6 +675,7 @@ public sealed record PaystackAuthorizationRetryBatchResult(
     int SkippedMissingTokenCount,
     int SkippedNotActionableLiveCount,
     int SkippedMissingEmailOrPlanCount,
+    int SkippedMissingBillingAmountCount,
     IReadOnlyList<string> Errors,
     IReadOnlyList<PaystackAuthorizationRetryAttemptResult> Attempts);
 

@@ -7,15 +7,21 @@ namespace Shink.Tests;
 public class PaystackCallbackRoutingTests
 {
     [TestMethod]
-    public void SubscriptionPaystackCallbackReturnsCustomersToLuister()
+    public void SubscriptionPaystackCallbackUsesVerifyingCallbackRoute()
     {
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+        var checkoutService = File.ReadAllText(GetRepoPath("Shink", "Services", "PaystackCheckoutService.cs"));
         var options = File.ReadAllText(GetRepoPath("Shink", "Services", "PaystackOptions.cs"));
         var appSettings = File.ReadAllText(GetRepoPath("Shink", "appsettings.json"));
         var developmentSettings = File.ReadAllText(GetRepoPath("appsettings.Development.json"));
 
-        StringAssert.Contains(options, "public string CallbackUrlPath { get; set; } = \"/luister\";");
-        StringAssert.Contains(appSettings, "\"CallbackUrlPath\": \"/luister\"");
-        StringAssert.Contains(developmentSettings, "\"CallbackUrlPath\": \"/luister\"");
+        StringAssert.Contains(program, "app.MapGet(\"/betaal/paystack/callback\"");
+        StringAssert.Contains(program, "VerifyTransactionAsync(resolvedReference");
+        StringAssert.Contains(program, "RecordPaystackEventAsync(payload");
+        StringAssert.Contains(checkoutService, "public const string SubscriptionCallbackPath = \"/betaal/paystack/callback\";");
+        StringAssert.Contains(options, "PaystackCheckoutService.SubscriptionCallbackPath");
+        StringAssert.Contains(appSettings, "\"CallbackUrlPath\": \"/betaal/paystack/callback\"");
+        StringAssert.Contains(developmentSettings, "\"CallbackUrlPath\": \"/betaal/paystack/callback\"");
     }
 
     private static string GetRepoPath(params string[] segments)

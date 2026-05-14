@@ -930,6 +930,9 @@ public sealed partial class WordPressMigrationService(
                 subscribed_at = entitlement.SubscribedAt?.UtcDateTime ?? DateTime.UtcNow,
                 next_renewal_at = entitlement.NextRenewalAt?.UtcDateTime,
                 cancelled_at = (DateTime?)null,
+                billing_amount_zar = entitlement.BillingAmountZar,
+                billing_period_months = entitlement.BillingPeriodMonths,
+                billing_amount_source = entitlement.BillingAmountZar is > 0m ? "wordpress_import" : null,
                 source_system = "wordpress_pmpro"
             })
             .ToList();
@@ -1238,7 +1241,9 @@ public sealed partial class WordPressMigrationService(
                 ProviderToken: NullIfWhiteSpace(row.ProviderToken),
                 ProviderEmailToken: null,
                 SubscribedAt: row.SubscribedAt,
-                NextRenewalAt: row.NextRenewalAt))
+                NextRenewalAt: row.NextRenewalAt,
+                BillingAmountZar: row.BillingAmountZar,
+                BillingPeriodMonths: row.BillingPeriodMonths))
             .ToList();
     }
 
@@ -1278,6 +1283,9 @@ public sealed partial class WordPressMigrationService(
                 provider = NormalizeProvider(entitlement.Provider),
                 provider_payment_id = entitlement.ProviderPaymentId.Trim(),
                 next_renewal_at = entitlement.NextRenewalAt?.UtcDateTime,
+                billing_amount_zar = entitlement.BillingAmountZar,
+                billing_period_months = entitlement.BillingPeriodMonths,
+                billing_amount_source = entitlement.BillingAmountZar is > 0m ? "wordpress_import" : null,
                 source_system = "wordpress_pmpro"
             })
             .Distinct()
@@ -1657,6 +1665,8 @@ public sealed partial class WordPressMigrationService(
                     subscription?.SubscriptionTransactionId,
                     order?.SubscriptionTransactionId,
                     order?.PaymentTransactionId);
+                var billingAmountZar = ResolveImportedBillingAmount(subscription, period, order);
+                var billingPeriodMonths = ResolveImportedBillingPeriodMonths(subscription, period);
                 return new CurrentEntitlement(
                     Email: period.Email ?? string.Empty,
                     TierCode: period.TierCode!,
@@ -1674,10 +1684,60 @@ public sealed partial class WordPressMigrationService(
                         earliestSuccessfulOrderTimestampByUserAndLevel.GetValueOrDefault(key),
                         earliestMembershipModifiedByUserAndLevel.GetValueOrDefault(key),
                         earliestSubscriptionModifiedByUserAndLevel.GetValueOrDefault(key)),
-                    NextRenewalAt: subscription?.NextPaymentDate ?? period.EndDate);
+                    NextRenewalAt: subscription?.NextPaymentDate ?? period.EndDate,
+                    BillingAmountZar: billingAmountZar,
+                    BillingPeriodMonths: billingPeriodMonths);
             })
             .Where(entitlement => !string.IsNullOrWhiteSpace(entitlement.Email))
             .ToList();
+    }
+
+    private static decimal? ResolveImportedBillingAmount(
+        WordPressSubscription? subscription,
+        WordPressMembershipPeriod period,
+        WordPressMembershipOrder? order)
+    {
+        if (subscription?.BillingAmount is > 0m)
+        {
+            return decimal.Round(subscription.BillingAmount.Value, 2, MidpointRounding.AwayFromZero);
+        }
+
+        if (period.BillingAmount is > 0m)
+        {
+            return decimal.Round(period.BillingAmount.Value, 2, MidpointRounding.AwayFromZero);
+        }
+
+        return TryParseMoney(order?.Total);
+    }
+
+    private static int? ResolveImportedBillingPeriodMonths(
+        WordPressSubscription? subscription,
+        WordPressMembershipPeriod period)
+    {
+        var cycleNumber = subscription?.CycleNumber ?? period.CycleNumber;
+        var cyclePeriod = subscription?.CyclePeriod ?? period.CyclePeriod;
+        if (cycleNumber is not > 0 || string.IsNullOrWhiteSpace(cyclePeriod))
+        {
+            return null;
+        }
+
+        return cyclePeriod.Trim().ToLowerInvariant() switch
+        {
+            "month" or "months" => cycleNumber.Value,
+            "year" or "years" => cycleNumber.Value * 12,
+            _ => null
+        };
+    }
+
+    private static decimal? TryParseMoney(string? value)
+    {
+        if (decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var parsed) &&
+            parsed > 0m)
+        {
+            return decimal.Round(parsed, 2, MidpointRounding.AwayFromZero);
+        }
+
+        return null;
     }
 
     private static bool HasFutureDiscountCodeAccess(
@@ -2228,7 +2288,9 @@ public sealed partial class WordPressMigrationService(
         string? ProviderToken,
         string? ProviderEmailToken,
         DateTimeOffset? SubscribedAt,
-        DateTimeOffset? NextRenewalAt);
+        DateTimeOffset? NextRenewalAt,
+        decimal? BillingAmountZar,
+        int? BillingPeriodMonths);
 
     private sealed record WordPressUserImportRow(
         [property: JsonPropertyName("wp_user_id")] long WordPressUserId,
@@ -2428,6 +2490,12 @@ public sealed partial class WordPressMigrationService(
 
         [JsonPropertyName("next_renewal_at")]
         public DateTimeOffset? NextRenewalAt { get; set; }
+
+        [JsonPropertyName("billing_amount_zar")]
+        public decimal? BillingAmountZar { get; set; }
+
+        [JsonPropertyName("billing_period_months")]
+        public int? BillingPeriodMonths { get; set; }
     }
 
     private sealed class WordPressImportedUserRow
