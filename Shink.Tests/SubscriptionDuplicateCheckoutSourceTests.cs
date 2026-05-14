@@ -79,6 +79,54 @@ public sealed class SubscriptionDuplicateCheckoutSourceTests
             "Pending Paystack repairs must return before the fresh-checkout fallback is resolved.");
     }
 
+    [TestMethod]
+    public void PaystackRetryRoutesPollPaystackBeforeStartingFreshCheckout()
+    {
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+
+        var paymentRouteBlock = ExtractBlock(
+            program,
+            "app.MapGet(\"/betaal/{planSlug}\"",
+            ".DisableAntiforgery();",
+            startOffset: program.IndexOf("app.MapGet(\"/betaal/{planSlug}\"", StringComparison.Ordinal));
+        AssertCallOrder(
+            paymentRouteBlock,
+            "TryRedirectRecoveredPaystackSubscriptionAsync(",
+            "InitializeCheckoutAsync(",
+            "The payment route must poll Paystack before initializing a fresh Paystack checkout.");
+
+        var abandonedRecoveryRouteBlock = ExtractBlock(
+            program,
+            "app.MapGet(\"/betaalherinneringe/gaan\"",
+            "app.MapPost(\"/rekening/skuif-na-gratis\"",
+            startOffset: program.IndexOf("app.MapGet(\"/betaalherinneringe/gaan\"", StringComparison.Ordinal));
+        AssertCallOrder(
+            abandonedRecoveryRouteBlock,
+            "TryRedirectRecoveredPaystackSubscriptionAsync(",
+            "InitializeCheckoutForEmailAsync(",
+            "The abandoned-cart retry route must poll Paystack before initializing a fresh Paystack checkout.");
+
+        var repairRouteBlock = ExtractBlock(
+            program,
+            "app.MapPost(\"/rekening/herstel-intekening\"",
+            ".DisableAntiforgery();",
+            startOffset: program.IndexOf("app.MapPost(\"/rekening/herstel-intekening\"", StringComparison.Ordinal));
+        AssertCallOrder(
+            repairRouteBlock,
+            "TryRedirectRecoveredPaystackSubscriptionAsync(",
+            "InitializeCheckoutAsync(",
+            "The subscription repair route must poll Paystack before initializing a fresh Paystack checkout.");
+    }
+
+    private static void AssertCallOrder(string source, string firstCall, string secondCall, string message)
+    {
+        var firstIndex = source.IndexOf(firstCall, StringComparison.Ordinal);
+        var secondIndex = source.IndexOf(secondCall, StringComparison.Ordinal);
+        Assert.IsTrue(
+            firstIndex >= 0 && secondIndex > firstIndex,
+            message);
+    }
+
     private static string ExtractBlock(string source, string startMarker, string endMarker, int startOffset = 0)
     {
         var start = source.IndexOf(startMarker, startOffset, StringComparison.Ordinal);

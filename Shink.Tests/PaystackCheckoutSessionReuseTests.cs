@@ -145,6 +145,85 @@ public sealed class PaystackCheckoutSessionReuseTests
     }
 
     [TestMethod]
+    public async Task TryRecoverPaidCheckoutSessionAsync_VerifiesPendingSessionBeforeStartingRetry()
+    {
+        var paystackVerifyCalls = 0;
+        var paystackInitializeCalls = 0;
+        var handler = new RecordingHandler(request =>
+        {
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/paystack_checkout_sessions")
+            {
+                var query = request.RequestUri.Query;
+                StringAssert.Contains(query, "customer_email=eq.ouer%40example.com");
+                StringAssert.Contains(query, "tier_code=eq.all_stories_monthly");
+                StringAssert.Contains(query, "status=eq.pending");
+                StringAssert.Contains(query, "order=created_at.desc");
+
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "reference": "schink-stories-maandeliks-existing",
+                        "authorization_url": "https://checkout.paystack.com/existing-session",
+                        "expires_at": "2026-05-14T12:00:00Z",
+                        "created_at": "2026-05-14T11:30:00Z"
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == "/transaction/verify/schink-stories-maandeliks-existing")
+            {
+                paystackVerifyCalls++;
+                return JsonResponse(
+                    """
+                    {
+                      "status": true,
+                      "data": {
+                        "status": "success",
+                        "reference": "schink-stories-maandeliks-existing",
+                        "amount": 5500,
+                        "currency": "ZAR",
+                        "customer": { "email": "ouer@example.com" },
+                        "metadata": {
+                          "plan_slug": "schink-stories-maandeliks",
+                          "tier_code": "all_stories_monthly",
+                          "is_subscription": "true",
+                          "subscription_key": "schink-stories-maandeliks-existing"
+                        }
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/transaction/initialize")
+            {
+                paystackInitializeCalls++;
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+        });
+
+        var service = CreateService(new HttpClient(handler));
+
+        var result = await service.TryRecoverPaidCheckoutSessionAsync(
+            PaymentPlanCatalog.FindBySlug("schink-stories-maandeliks")!,
+            "Ouer@Example.com",
+            CancellationToken.None);
+
+        Assert.IsTrue(result.IsRecovered);
+        Assert.AreEqual("schink-stories-maandeliks-existing", result.Reference);
+        Assert.AreEqual("success", result.TransactionStatus);
+        Assert.AreEqual("ouer@example.com", result.CustomerEmail);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(result.RawPayload));
+        Assert.AreEqual(1, paystackVerifyCalls);
+        Assert.AreEqual(0, paystackInitializeCalls);
+    }
+
+    [TestMethod]
     public async Task ChargeAuthorizationAsync_UsesStoredBillingAmountWhenProvided()
     {
         long? chargedAmountInCents = null;

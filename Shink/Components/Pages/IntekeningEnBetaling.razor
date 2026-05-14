@@ -514,7 +514,7 @@
             </div>
 
             <div class="billing-plan-grid">
-                @foreach (var plan in PaymentPlanCatalog.All)
+                @foreach (var plan in BillingPlanChoices)
                 {
                     <article class="billing-plan-card @(IsYearlyAllStoriesPlan(plan) ? "is-highlighted" : string.Empty)">
                         <p class="billing-plan-badge">@(plan.BillingPeriodMonths <= 1 ? "Maandeliks" : "Jaarliks")</p>
@@ -566,6 +566,9 @@
 </section>
 
 @code {
+    private static readonly IReadOnlyList<PaymentPlan> BillingPlanChoices =
+        PaymentPlanCatalog.All.Where(plan => !plan.IsSchoolPlan).ToArray();
+
     private string BillingCanonicalUrl => NavigationManager.ToAbsoluteUri("/intekening-en-betaling").ToString();
     private bool IsLoading { get; set; } = true;
     private bool IsRedirectingToLogin { get; set; }

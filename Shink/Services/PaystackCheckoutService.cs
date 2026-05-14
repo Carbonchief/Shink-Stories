@@ -203,6 +203,29 @@ public sealed class PaystackCheckoutService(
             cancellationToken);
     }
 
+    public async Task<PaystackCheckoutRecoveryResult> TryRecoverPaidCheckoutSessionAsync(
+        PaymentPlan plan,
+        string email,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsConfigured)
+        {
+            return new PaystackCheckoutRecoveryResult(false, ErrorMessage: "Paystack is nog nie volledig opgestel nie.");
+        }
+
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return new PaystackCheckoutRecoveryResult(false, ErrorMessage: "Kon nie 'n e-posadres vir betaling bepaal nie.");
+        }
+
+        var amountInCents = (long)Math.Round(plan.Amount * 100m, MidpointRounding.AwayFromZero);
+        return await TryRecoverPaidCheckoutSessionAsync(
+            plan,
+            email,
+            amountInCents,
+            cancellationToken);
+    }
+
     public async Task MarkCheckoutSessionStatusAsync(
         string? reference,
         string status,
@@ -816,6 +839,76 @@ public sealed class PaystackCheckoutService(
         }
     }
 
+    private async Task<PaystackCheckoutRecoveryResult> TryRecoverPaidCheckoutSessionAsync(
+        PaymentPlan plan,
+        string email,
+        long amountInCents,
+        CancellationToken cancellationToken)
+    {
+        if (!plan.IsSubscription ||
+            !TryBuildSupabaseBaseUri(out var baseUri, out var apiKey))
+        {
+            return new PaystackCheckoutRecoveryResult(false);
+        }
+
+        var filter = string.Join(
+            "&",
+            "select=reference,authorization_url,expires_at,created_at",
+            "provider=eq.paystack",
+            "checkout_kind=eq.subscription",
+            "status=eq.pending",
+            $"customer_email=eq.{Uri.EscapeDataString(NormalizeEmail(email))}",
+            $"tier_code=eq.{Uri.EscapeDataString(plan.TierCode)}",
+            $"amount_in_cents=eq.{amountInCents}",
+            "currency=eq.ZAR",
+            "order=created_at.desc",
+            "limit=5");
+        var uri = new Uri(baseUri, $"rest/v1/paystack_checkout_sessions?{filter}");
+
+        try
+        {
+            using var request = CreateSupabaseRequest(HttpMethod.Get, uri, apiKey);
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return new PaystackCheckoutRecoveryResult(false);
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var sessions = await JsonSerializer.DeserializeAsync<List<PaystackCheckoutSessionRow>>(stream, cancellationToken: cancellationToken)
+                ?? [];
+
+            foreach (var session in sessions.Where(candidate => !string.IsNullOrWhiteSpace(candidate.Reference)))
+            {
+                var reference = session.Reference!.Trim();
+                var verifyResult = await VerifyTransactionAsync(reference, cancellationToken);
+                if (verifyResult.IsSuccess &&
+                    IsSuccessfulPaystackStatus(verifyResult.TransactionStatus) &&
+                    !string.IsNullOrWhiteSpace(verifyResult.RawPayload))
+                {
+                    return new PaystackCheckoutRecoveryResult(
+                        true,
+                        Reference: verifyResult.Reference ?? reference,
+                        RawPayload: verifyResult.RawPayload,
+                        CustomerEmail: verifyResult.CustomerEmail,
+                        TransactionStatus: verifyResult.TransactionStatus);
+                }
+
+                var status = MapCheckoutSessionStatus(verifyResult.TransactionStatus);
+                if (status is "failed" or "cancelled")
+                {
+                    await MarkCheckoutSessionStatusAsync(reference, status, cancellationToken);
+                }
+            }
+
+            return new PaystackCheckoutRecoveryResult(false);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            return new PaystackCheckoutRecoveryResult(false);
+        }
+    }
+
     private async Task StoreCheckoutSessionAsync(
         string email,
         long amountInCents,
@@ -1203,6 +1296,28 @@ public sealed class PaystackCheckoutService(
         string.Equals(status, "successful", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(status, "paid", StringComparison.OrdinalIgnoreCase);
 
+    private static string MapCheckoutSessionStatus(string? transactionStatus)
+    {
+        if (IsSuccessfulPaystackStatus(transactionStatus))
+        {
+            return "paid";
+        }
+
+        if (string.Equals(transactionStatus, "failed", StringComparison.OrdinalIgnoreCase))
+        {
+            return "failed";
+        }
+
+        if (string.Equals(transactionStatus, "abandoned", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(transactionStatus, "cancelled", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(transactionStatus, "canceled", StringComparison.OrdinalIgnoreCase))
+        {
+            return "cancelled";
+        }
+
+        return "pending";
+    }
+
     private sealed class PaystackCheckoutSessionRow
     {
         [JsonPropertyName("reference")]
@@ -1220,6 +1335,14 @@ public sealed record PaystackCheckoutInitResult(
     bool IsSuccess,
     string? AuthorizationUrl = null,
     string? Reference = null,
+    string? ErrorMessage = null);
+
+public sealed record PaystackCheckoutRecoveryResult(
+    bool IsRecovered,
+    string? Reference = null,
+    string? RawPayload = null,
+    string? CustomerEmail = null,
+    string? TransactionStatus = null,
     string? ErrorMessage = null);
 
 public sealed record PaystackSubscriptionManageLinkResult(

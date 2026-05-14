@@ -48,6 +48,19 @@ public class IntekeningEnBetalingModalSourceTests
         StringAssert.Contains(css, "visibility: hidden");
     }
 
+    [TestMethod]
+    public void PlanCards_ExcludeSchoolPlansFromBillingQuickOptions()
+    {
+        var pagePath = FindRepositoryFile("Shink", "Components", "Pages", "IntekeningEnBetaling.razor");
+        var source = File.ReadAllText(pagePath);
+
+        StringAssert.Contains(source, "PaymentPlanCatalog.All.Where(plan => !plan.IsSchoolPlan)");
+        StringAssert.Contains(source, "@foreach (var plan in BillingPlanChoices)");
+        Assert.IsFalse(
+            source.Contains("@foreach (var plan in PaymentPlanCatalog.All)", StringComparison.Ordinal),
+            "The billing page should not render every catalog plan because that includes school options.");
+    }
+
     private static string ExtractBetween(string source, string start, string end)
     {
         var startIndex = source.IndexOf(start, StringComparison.Ordinal);

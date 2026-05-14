@@ -808,6 +808,20 @@ app.MapGet("/betaalherinneringe/gaan", async (
 
         if (string.Equals(recovery.Provider, "paystack", StringComparison.OrdinalIgnoreCase))
         {
+            var recoveredRedirect = await TryRedirectRecoveredPaystackSubscriptionAsync(
+                plan,
+                recovery.CustomerEmail,
+                returnUrl: null,
+                paystackCheckoutService,
+                subscriptionLedgerService,
+                abandonedCartRecoveryService,
+                logger,
+                httpContext);
+            if (recoveredRedirect is not null)
+            {
+                return recoveredRedirect;
+            }
+
             var checkoutResult = await paystackCheckoutService.InitializeCheckoutForEmailAsync(
                 plan,
                 recovery.CustomerEmail,
@@ -964,6 +978,7 @@ app.MapPost("/rekening/skuif-na-gratis", async (
 app.MapPost("/rekening/herstel-intekening", async (
     ISubscriptionLedgerService subscriptionLedgerService,
     PaystackCheckoutService paystackCheckoutService,
+    IAbandonedCartRecoveryService abandonedCartRecoveryService,
     IMemoryCache memoryCache,
     HttpContext httpContext,
     ILogger<Program> logger) =>
@@ -1023,6 +1038,21 @@ app.MapPost("/rekening/herstel-intekening", async (
             repairResult.PlanSlug,
             repairResult.ErrorMessage);
         return Results.Redirect(QueryHelpers.AddQueryString("/opsies", "rekening", "herstel-misluk"));
+    }
+
+    var recoveredRedirect = await TryRedirectRecoveredPaystackSubscriptionAsync(
+        plan,
+        signedInEmail,
+        returnUrl: "/luister",
+        paystackCheckoutService,
+        subscriptionLedgerService,
+        abandonedCartRecoveryService,
+        logger,
+        httpContext);
+    if (recoveredRedirect is not null)
+    {
+        memoryCache.Remove(repairCacheKey);
+        return recoveredRedirect;
     }
 
     var checkoutResult = await paystackCheckoutService.InitializeCheckoutAsync(
@@ -1120,6 +1150,20 @@ app.MapGet("/betaal/{planSlug}", async (
 
     if (string.Equals(selectedProvider, "paystack", StringComparison.OrdinalIgnoreCase))
     {
+        var recoveredRedirect = await TryRedirectRecoveredPaystackSubscriptionAsync(
+            plan,
+            signedInEmail ?? string.Empty,
+            safeReturnUrl,
+            paystackCheckoutService,
+            subscriptionLedgerService,
+            abandonedCartRecoveryService,
+            logger,
+            httpContext);
+        if (recoveredRedirect is not null)
+        {
+            return recoveredRedirect;
+        }
+
         var checkoutResult = await paystackCheckoutService.InitializeCheckoutAsync(plan, httpContext, safeReturnUrl, httpContext.RequestAborted);
         if (!checkoutResult.IsSuccess || string.IsNullOrWhiteSpace(checkoutResult.AuthorizationUrl))
         {
@@ -4336,6 +4380,90 @@ static string BuildSubscriptionPaymentRedirectPath(
     }
 
     return QueryHelpers.AddQueryString("/opsies", query);
+}
+
+static async Task<IResult?> TryRedirectRecoveredPaystackSubscriptionAsync(
+    PaymentPlan plan,
+    string customerEmail,
+    string? returnUrl,
+    PaystackCheckoutService paystackCheckoutService,
+    ISubscriptionLedgerService subscriptionLedgerService,
+    IAbandonedCartRecoveryService abandonedCartRecoveryService,
+    ILogger logger,
+    HttpContext httpContext)
+{
+    if (string.IsNullOrWhiteSpace(customerEmail))
+    {
+        return null;
+    }
+
+    var recoveryResult = await paystackCheckoutService.TryRecoverPaidCheckoutSessionAsync(
+        plan,
+        customerEmail,
+        httpContext.RequestAborted);
+    if (!recoveryResult.IsRecovered)
+    {
+        return null;
+    }
+
+    if (string.IsNullOrWhiteSpace(recoveryResult.RawPayload))
+    {
+        logger.LogWarning(
+            "Recovered Paystack checkout had no raw verify payload. plan={PlanSlug} reference={Reference} email={Email}",
+            plan.Slug,
+            recoveryResult.Reference,
+            customerEmail);
+        return Results.Redirect(BuildSubscriptionPaymentRedirectPath("verwerk", plan.Slug, returnUrl));
+    }
+
+    var payload = TryBuildPaystackChargeSuccessPayload(recoveryResult.RawPayload);
+    if (payload is null)
+    {
+        logger.LogWarning(
+            "Recovered Paystack checkout payload could not be converted. plan={PlanSlug} reference={Reference} email={Email}",
+            plan.Slug,
+            recoveryResult.Reference,
+            customerEmail);
+        return Results.Redirect(BuildSubscriptionPaymentRedirectPath("verwerk", plan.Slug, returnUrl));
+    }
+
+    var persistResult = await subscriptionLedgerService.RecordPaystackEventAsync(payload, httpContext.RequestAborted);
+    if (!persistResult.IsSuccess)
+    {
+        logger.LogWarning(
+            "Recovered Paystack checkout persistence failed. plan={PlanSlug} reference={Reference} email={Email} error={Error}",
+            plan.Slug,
+            recoveryResult.Reference,
+            customerEmail,
+            persistResult.ErrorMessage);
+        return Results.Redirect(BuildSubscriptionPaymentRedirectPath("verwerk", plan.Slug, returnUrl));
+    }
+
+    if (!string.IsNullOrWhiteSpace(recoveryResult.Reference))
+    {
+        await paystackCheckoutService.MarkCheckoutSessionStatusAsync(
+            recoveryResult.Reference,
+            "paid",
+            httpContext.RequestAborted);
+        await abandonedCartRecoveryService.ResolveByCheckoutReferenceAsync(
+            "subscription",
+            recoveryResult.Reference,
+            "paid",
+            httpContext.RequestAborted);
+    }
+
+    await abandonedCartRecoveryService.ResolveSubscriptionRecoveriesAsync(
+        recoveryResult.CustomerEmail ?? customerEmail,
+        plan.TierCode,
+        "paid",
+        httpContext.RequestAborted);
+
+    logger.LogInformation(
+        "Recovered paid Paystack checkout before retry. plan={PlanSlug} reference={Reference} email={Email}",
+        plan.Slug,
+        recoveryResult.Reference,
+        customerEmail);
+    return Results.Redirect(ResolveSuccessfulSubscriptionPaymentReturnPath(plan.Slug, returnUrl));
 }
 
 static string ResolveSuccessfulSubscriptionPaymentReturnPath(string? planSlug, string? returnUrl)
