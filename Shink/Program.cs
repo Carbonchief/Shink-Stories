@@ -802,8 +802,26 @@ app.MapGet("/betaalherinneringe/gaan", async (
                 {
                     ["betaling"] = "reeds-ingeteken",
                     ["tier"] = plan.TierCode
-                });
+            });
             return Results.Redirect(duplicateRedirectPath);
+        }
+
+        var hasPendingPaystackRepair = await subscriptionLedgerService.HasPendingPaystackRepairForTierAsync(
+            recovery.CustomerEmail,
+            plan.TierCode,
+            httpContext.RequestAborted);
+        if (hasPendingPaystackRepair)
+        {
+            logger.LogInformation(
+                "Blocked duplicate abandoned-cart checkout for pending Paystack repair. recovery_id={RecoveryId} tier={TierCode} email={Email}",
+                recovery.RecoveryId,
+                plan.TierCode,
+                recovery.CustomerEmail);
+
+            return Results.Redirect(QueryHelpers.AddQueryString(
+                "/intekening-en-betaling",
+                "rekening",
+                "herstel-besig"));
         }
 
         if (string.Equals(recovery.Provider, "paystack", StringComparison.OrdinalIgnoreCase))
@@ -1141,6 +1159,24 @@ app.MapGet("/betaal/{planSlug}", async (
         }
         var duplicateRedirectPath = QueryHelpers.AddQueryString("/opsies", duplicateRedirectQuery);
         return Results.Redirect(duplicateRedirectPath);
+    }
+
+    var hasPendingPaystackRepair = await subscriptionLedgerService.HasPendingPaystackRepairForTierAsync(
+        signedInEmail,
+        plan.TierCode,
+        httpContext.RequestAborted);
+    if (hasPendingPaystackRepair)
+    {
+        logger.LogInformation(
+            "Blocked duplicate checkout for pending Paystack repair. plan={PlanSlug} tier={TierCode} email={Email}",
+            plan.Slug,
+            plan.TierCode,
+            signedInEmail);
+
+        return Results.Redirect(QueryHelpers.AddQueryString(
+            "/intekening-en-betaling",
+            "rekening",
+            "herstel-besig"));
     }
 
     if (!TryResolvePaymentProvider(provider, out var selectedProvider))

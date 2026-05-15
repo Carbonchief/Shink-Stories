@@ -26,6 +26,26 @@ public sealed class SubscriptionDuplicateCheckoutSourceTests
     }
 
     [TestMethod]
+    public void PaymentRouteBlocksPendingPaystackRepairBeforeStartingProviderCheckout()
+    {
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+        var routeBlock = ExtractBlock(
+            program,
+            "app.MapGet(\"/betaal/{planSlug}\"",
+            ".DisableAntiforgery();",
+            startOffset: program.IndexOf("app.MapGet(\"/betaal/{planSlug}\"", StringComparison.Ordinal));
+
+        StringAssert.Contains(routeBlock, "HasPendingPaystackRepairForTierAsync(");
+        StringAssert.Contains(routeBlock, "\"herstel-besig\"");
+
+        var pendingRepairCheckIndex = routeBlock.IndexOf("HasPendingPaystackRepairForTierAsync(", StringComparison.Ordinal);
+        var paystackCheckoutIndex = routeBlock.IndexOf("InitializeCheckoutAsync(", StringComparison.Ordinal);
+        Assert.IsTrue(
+            pendingRepairCheckIndex >= 0 && paystackCheckoutIndex > pendingRepairCheckIndex,
+            "A pending Paystack repair charge must block a fresh checkout before Paystack can be initialized again.");
+    }
+
+    [TestMethod]
     public void AbandonedCartSubscriptionRecoveryBlocksDuplicateActiveTierBeforeStartingProviderCheckout()
     {
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
@@ -50,6 +70,36 @@ public sealed class SubscriptionDuplicateCheckoutSourceTests
         Assert.IsTrue(
             activeCheckIndex >= 0 && payFastCheckoutIndex > activeCheckIndex,
             "The duplicate subscription check must run before PayFast checkout is initialized.");
+    }
+
+    [TestMethod]
+    public void AbandonedCartSubscriptionRecoveryBlocksPendingPaystackRepairBeforeStartingProviderCheckout()
+    {
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+        var routeStart = program.IndexOf("app.MapGet(\"/betaalherinneringe/gaan\"", StringComparison.Ordinal);
+        var routeBlock = ExtractBlock(
+            program,
+            "app.MapGet(\"/betaalherinneringe/gaan\"",
+            "app.MapPost(\"/rekening/skuif-na-gratis\"",
+            startOffset: routeStart);
+
+        StringAssert.Contains(routeBlock, "HasPendingPaystackRepairForTierAsync(");
+        StringAssert.Contains(routeBlock, "\"herstel-besig\"");
+
+        var pendingRepairCheckIndex = routeBlock.IndexOf("HasPendingPaystackRepairForTierAsync(", StringComparison.Ordinal);
+        var paystackCheckoutIndex = routeBlock.IndexOf("InitializeCheckoutForEmailAsync(", StringComparison.Ordinal);
+        Assert.IsTrue(
+            pendingRepairCheckIndex >= 0 && paystackCheckoutIndex > pendingRepairCheckIndex,
+            "A pending Paystack repair charge must block abandoned-cart checkout before Paystack can be initialized again.");
+    }
+
+    [TestMethod]
+    public void PendingPaystackRepairCheckoutBlockUsesLongerWindowThanRepairIdempotency()
+    {
+        var ledgerService = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseSubscriptionLedgerService.cs"));
+
+        StringAssert.Contains(ledgerService, "PendingAccountRepairCheckoutBlockWindow = TimeSpan.FromHours(1)");
+        StringAssert.Contains(ledgerService, "nowUtc.Subtract(PendingAccountRepairCheckoutBlockWindow)");
     }
 
     [TestMethod]

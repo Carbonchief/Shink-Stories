@@ -22,6 +22,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     private const string GratisProvider = "paystack";
     private const string GratisPlanSlug = "gratis";
     private static readonly TimeSpan AccountRepairAttemptWindow = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan PendingAccountRepairCheckoutBlockWindow = TimeSpan.FromHours(1);
     private static readonly TimeSpan AuthorizationRetryDelay = TimeSpan.FromDays(1);
     private static readonly TimeSpan FollowUpAuthorizationRetryDelay = TimeSpan.FromHours(20);
     private static readonly TimeSpan PaymentRecoveryGracePeriod = TimeSpan.FromDays(4);
@@ -50,6 +51,62 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             tierCode,
             excludeGratisTier: false,
             cancellationToken);
+    }
+
+    public async Task<bool> HasPendingPaystackRepairForTierAsync(
+        string? email,
+        string? tierCode,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(tierCode))
+        {
+            return false;
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            _logger.LogWarning("Supabase pending Paystack repair lookup skipped: URL is not configured.");
+            return false;
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            _logger.LogWarning("Supabase pending Paystack repair lookup skipped: SecretKey is not configured.");
+            return false;
+        }
+
+        var subscriberId = await FindSubscriberIdByEmailAsync(
+            baseUri,
+            apiKey,
+            email.Trim().ToLowerInvariant(),
+            cancellationToken);
+        if (string.IsNullOrWhiteSpace(subscriberId))
+        {
+            return false;
+        }
+
+        var subscriptions = await GetPaystackRepairCandidateSubscriptionsForTierAsync(
+            baseUri,
+            apiKey,
+            subscriberId,
+            tierCode.Trim(),
+            cancellationToken);
+        foreach (var subscription in subscriptions)
+        {
+            if (!string.IsNullOrWhiteSpace(subscription.SubscriptionId) &&
+                await HasRecentPendingAccountRepairEventAsync(
+                    baseUri,
+                    apiKey,
+                    subscription.SubscriptionId,
+                    DateTimeOffset.UtcNow,
+                    cancellationToken))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public async Task<IReadOnlyList<string>> GetActiveTierCodesAsync(string? email, CancellationToken cancellationToken = default)
@@ -278,6 +335,107 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         }
 
         return null;
+    }
+
+    private async Task<IReadOnlyList<PendingRepairSubscriptionRow>> GetPaystackRepairCandidateSubscriptionsForTierAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriberId,
+        string tierCode,
+        CancellationToken cancellationToken)
+    {
+        var filters = string.Join(
+            "&",
+            $"subscriber_id=eq.{Uri.EscapeDataString(subscriberId)}",
+            $"tier_code=eq.{Uri.EscapeDataString(tierCode)}",
+            "provider=eq.paystack",
+            "status=eq.active",
+            "select=subscription_id",
+            "order=subscribed_at.desc",
+            "limit=25");
+        var uri = new Uri(baseUri, $"rest/v1/subscriptions?{filters}");
+
+        try
+        {
+            using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning(
+                    "Pending Paystack repair subscription lookup failed. subscriber_id={SubscriberId} tier={TierCode} Status={StatusCode} Body={Body}",
+                    subscriberId,
+                    tierCode,
+                    (int)response.StatusCode,
+                    body);
+                return [];
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            return await JsonSerializer.DeserializeAsync<List<PendingRepairSubscriptionRow>>(stream, cancellationToken: cancellationToken)
+                   ?? [];
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(
+                exception,
+                "Pending Paystack repair subscription lookup failed unexpectedly. subscriber_id={SubscriberId} tier={TierCode}",
+                subscriberId,
+                tierCode);
+            return [];
+        }
+    }
+
+    private async Task<bool> HasRecentPendingAccountRepairEventAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriptionId,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var cutoffUtc = nowUtc.Subtract(PendingAccountRepairCheckoutBlockWindow);
+        var filters = string.Join(
+            "&",
+            $"subscription_id=eq.{Uri.EscapeDataString(subscriptionId)}",
+            "provider=eq.paystack",
+            "event_type=eq.paystack.authorization_retry",
+            $"received_at=gt.{Uri.EscapeDataString(cutoffUtc.UtcDateTime.ToString("O"))}",
+            "select=event_status,provider_transaction_id,received_at,payload",
+            "order=received_at.desc",
+            "limit=10");
+        var uri = new Uri(baseUri, $"rest/v1/subscription_events?{filters}");
+
+        try
+        {
+            using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning(
+                    "Pending Paystack repair event lookup failed. subscription_id={SubscriptionId} Status={StatusCode} Body={Body}",
+                    subscriptionId,
+                    (int)response.StatusCode,
+                    body);
+                return false;
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var rows = await JsonSerializer.DeserializeAsync<List<AccountRepairEventRow>>(stream, cancellationToken: cancellationToken)
+                ?? [];
+            return rows
+                .Where(IsAccountRepairEvent)
+                .Select(ResolveAccountRepairEventStatus)
+                .Any(IsPendingPaystackStatus);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(
+                exception,
+                "Pending Paystack repair event lookup failed unexpectedly. subscription_id={SubscriptionId}",
+                subscriptionId);
+            return false;
+        }
     }
 
     public async Task<SubscriptionFreeTierTransferResult> TransferPaidSubscriptionToGratisAsync(
@@ -5164,6 +5322,12 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     }
 
     private sealed class ExistingEventLookupRow
+    {
+        [JsonPropertyName("subscription_id")]
+        public string? SubscriptionId { get; set; }
+    }
+
+    private sealed class PendingRepairSubscriptionRow
     {
         [JsonPropertyName("subscription_id")]
         public string? SubscriptionId { get; set; }
