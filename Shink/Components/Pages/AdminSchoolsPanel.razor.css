@@ -1,0 +1,222 @@
+.admin-schools-panel {
+    --school-border: rgba(0, 0, 0, 0.1);
+    --school-muted: rgba(34, 34, 34, 0.68);
+}
+
+.admin-schools-actions,
+.admin-schools-save-row {
+    display: flex;
+    gap: 0.65rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.admin-schools-layout {
+    display: grid;
+    grid-template-columns: minmax(280px, 0.85fr) minmax(320px, 1.15fr);
+    gap: 1rem;
+    align-items: start;
+}
+
+.admin-schools-card {
+    border: 1px solid var(--school-border);
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.06);
+    padding: 1rem;
+}
+
+.admin-schools-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.9rem;
+}
+
+.admin-schools-card-head h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 800;
+    color: #222;
+}
+
+.admin-schools-card-head span {
+    color: var(--school-muted);
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.admin-schools-empty {
+    color: var(--school-muted);
+    margin: 0;
+}
+
+.admin-schools-list {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.admin-schools-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.65rem 1rem;
+    width: 100%;
+    padding: 0.85rem;
+    border: 1px solid var(--school-border);
+    border-radius: 8px;
+    background: #faf8f2;
+    color: #222;
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+}
+
+.admin-schools-row:hover,
+.admin-schools-row.is-selected {
+    border-color: #0a8f93;
+    background: #f0fbfa;
+}
+
+.admin-schools-row:focus-visible {
+    outline: 3px solid rgba(10, 143, 147, 0.25);
+    outline-offset: 2px;
+}
+
+.admin-schools-row-main,
+.admin-schools-row-meta {
+    display: grid;
+    gap: 0.2rem;
+    min-width: 0;
+}
+
+.admin-schools-row-main strong,
+.admin-schools-row-main small,
+.admin-schools-row-meta span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.admin-schools-row-main strong {
+    font-size: 0.98rem;
+}
+
+.admin-schools-row-main small,
+.admin-schools-row-meta {
+    color: var(--school-muted);
+    font-size: 0.82rem;
+}
+
+.admin-schools-status {
+    align-self: start;
+    justify-self: end;
+    padding: 0.22rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.73rem;
+    font-weight: 800;
+}
+
+.admin-schools-status.is-active {
+    background: rgba(7, 120, 72, 0.12);
+    color: #077848;
+}
+
+.admin-schools-status.is-paused {
+    background: rgba(181, 111, 12, 0.14);
+    color: #8a5307;
+}
+
+.admin-schools-status.is-cancelled {
+    background: rgba(158, 37, 48, 0.13);
+    color: #8f1f2a;
+}
+
+.admin-schools-editor {
+    display: grid;
+    gap: 1rem;
+}
+
+.admin-schools-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.85rem;
+}
+
+.admin-schools-field,
+.admin-schools-toggle {
+    display: grid;
+    gap: 0.35rem;
+}
+
+.admin-schools-field span,
+.admin-schools-toggle strong {
+    color: #222;
+    font-size: 0.82rem;
+    font-weight: 800;
+}
+
+.admin-schools-field input,
+.admin-schools-field select {
+    width: 100%;
+    min-height: 44px;
+    border: 1px solid rgba(0, 0, 0, 0.16);
+    border-radius: 8px;
+    background: #fff;
+    color: #222;
+    padding: 0.65rem 0.75rem;
+    font: inherit;
+}
+
+.admin-schools-field input:focus,
+.admin-schools-field select:focus {
+    border-color: #0a8f93;
+    outline: 3px solid rgba(10, 143, 147, 0.18);
+}
+
+.admin-schools-toggle {
+    grid-column: 1 / -1;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    padding: 0.8rem;
+    border: 1px solid var(--school-border);
+    border-radius: 8px;
+    background: #faf8f2;
+}
+
+.admin-schools-toggle input {
+    width: 1.05rem;
+    height: 1.05rem;
+    accent-color: #0a8f93;
+}
+
+.admin-schools-toggle span {
+    display: grid;
+    gap: 0.18rem;
+}
+
+.admin-schools-toggle small {
+    color: var(--school-muted);
+    line-height: 1.35;
+}
+
+@media (max-width: 900px) {
+    .admin-schools-layout,
+    .admin-schools-form-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+@media (max-width: 560px) {
+    .admin-schools-card {
+        padding: 0.85rem;
+    }
+
+    .admin-schools-row {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-schools-status {
+        justify-self: start;
+    }
+}

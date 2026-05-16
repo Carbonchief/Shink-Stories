@@ -12,6 +12,8 @@ public sealed class PaystackOptions
 
     public string ChargeAuthorizationUrl { get; set; } = "https://api.paystack.co/transaction/charge_authorization";
 
+    public string SubscriptionUrl { get; set; } = "https://api.paystack.co/subscription";
+
     public string CallbackUrlPath { get; set; } = PaystackCheckoutService.SubscriptionCallbackPath;
 
     public string WebhookUrlPath { get; set; } = "/api/paystack/webhook";

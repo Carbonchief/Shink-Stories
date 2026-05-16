@@ -1,0 +1,400 @@
+@using System.Globalization
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Authorization
+@inject IAdminManagementService AdminManagementService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ILogger<AdminSchoolsPanel> Logger
+@inject ISnackbar Snackbar
+
+@if (IsLoading)
+{
+    <section class="admin-section">
+        <div class="admin-section-head">
+            <div>
+                <h2>@T("Skole", "Schools")</h2>
+                <p>@T("Laai skoolrekeninge...", "Loading school accounts...")</p>
+            </div>
+        </div>
+    </section>
+}
+else
+{
+    @if (!string.IsNullOrWhiteSpace(StatusMessage))
+    {
+        <p class="admin-feedback is-success">@StatusMessage</p>
+    }
+    else if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <p class="admin-feedback is-error">@ErrorMessage</p>
+    }
+
+    <section class="admin-section admin-schools-panel">
+        <div class="admin-section-head">
+            <div>
+                <h2>@T("Skole", "Schools")</h2>
+                <p>@T("Stel skoolrekeninge, pakkette en admin toegang op.", "Set up school accounts, packages, and admin access.")</p>
+            </div>
+            <div class="admin-schools-actions">
+                <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                           Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           OnClick="StartNewSchool"
+                           Disabled="@IsSaving"
+                           aria-label='@T("Nuwe skool", "New school")'
+                           title='@T("Nuwe skool", "New school")'>
+                    <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                    <span class="admin-btn-text">@T("Nuwe skool", "New school")</span>
+                </MudButton>
+                <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                           Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           OnClick="ReloadAsync"
+                           Disabled="@IsSaving"
+                           aria-label='@T("Verfris skole", "Refresh schools")'
+                           title='@T("Verfris skole", "Refresh schools")'>
+                    <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
+                    <span class="admin-btn-text">@T("Verfris", "Refresh")</span>
+                </MudButton>
+            </div>
+        </div>
+
+        <div class="admin-schools-layout">
+            <div class="admin-schools-card admin-schools-list-card">
+                <div class="admin-schools-card-head">
+                    <h3>@T("Skoolrekeninge", "School accounts")</h3>
+                    <span>@Snapshot.Schools.Count</span>
+                </div>
+
+                @if (Snapshot.Schools.Count == 0)
+                {
+                    <p class="admin-schools-empty">@T("Geen skole is nog opgestel nie.", "No schools have been set up yet.")</p>
+                }
+                else
+                {
+                    <div class="admin-schools-list" role="list">
+                        @foreach (var school in Snapshot.Schools)
+                        {
+                            <button type="button"
+                                    class="admin-schools-row @(IsSelected(school) ? "is-selected" : null)"
+                                    @onclick="() => SelectSchool(school)">
+                                <span class="admin-schools-row-main">
+                                    <strong>@school.SchoolName</strong>
+                                    <small>@school.AdminEmail</small>
+                                </span>
+                                <span class="admin-schools-row-meta">
+                                    <span>@school.PlanName</span>
+                                    <span>@BuildSeatSummary(school)</span>
+                                </span>
+                                <span class="admin-schools-status @BuildStatusClass(school.Status)">
+                                    @BuildStatusLabel(school.Status)
+                                </span>
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+
+            <EditForm Model="Editor" OnValidSubmit="SaveAsync" class="admin-schools-card admin-schools-editor">
+                <div class="admin-schools-card-head">
+                    <h3>@(Editor.SchoolAccountId.HasValue ? T("Wysig skool", "Edit school") : T("Nuwe skool", "New school"))</h3>
+                    @if (Editor.SchoolAccountId.HasValue)
+                    {
+                        <span>@T("Bestaande", "Existing")</span>
+                    }
+                </div>
+
+                <div class="admin-schools-form-grid">
+                    <label class="admin-schools-field">
+                        <span>@T("Skoolnaam", "School name")</span>
+                        <input @bind="Editor.SchoolName" maxlength="180" autocomplete="organization" />
+                    </label>
+
+                    <label class="admin-schools-field">
+                        <span>@T("Admin e-pos", "Admin email")</span>
+                        <input @bind="Editor.AdminEmail" type="email" maxlength="320" autocomplete="email" />
+                    </label>
+
+                    <label class="admin-schools-field">
+                        <span>@T("Plan", "Plan")</span>
+                        <select @bind="Editor.PlanTierCode">
+                            @foreach (var plan in Snapshot.Plans)
+                            {
+                                <option value="@plan.TierCode">@BuildPlanLabel(plan)</option>
+                            }
+                        </select>
+                    </label>
+
+                    <label class="admin-schools-field">
+                        <span>@T("Status", "Status")</span>
+                        <select @bind="Editor.Status">
+                            <option value="active">@T("Aktief", "Active")</option>
+                            <option value="paused">@T("Gepouseer", "Paused")</option>
+                            <option value="cancelled">@T("Gekanselleer", "Cancelled")</option>
+                        </select>
+                    </label>
+
+                    <label class="admin-schools-field">
+                        <span>@T("Toegang verval", "Access expires")</span>
+                        <input value="@Editor.AccessExpiresOn" @onchange="OnAccessExpiresOnChanged" type="date" />
+                    </label>
+
+                    <label class="admin-schools-toggle">
+                        <input @bind="Editor.AdminUsesSlot" type="checkbox" />
+                        <span>
+                            <strong>@T("Admin gebruik 'n plek", "Admin uses a seat")</strong>
+                            <small>@T("Tel die skool admin teen die beskikbare klaskamerplekke.", "Count the school admin against the available classroom seats.")</small>
+                        </span>
+                    </label>
+                </div>
+
+                <div class="admin-schools-save-row">
+                    <MudButton ButtonType="ButtonType.Submit"
+                               Class="admin-icon-btn admin-action-btn"
+                               Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Disabled="@IsSaving"
+                               aria-label='@T("Stoor skool", "Save school")'
+                               title='@T("Stoor skool", "Save school")'>
+                        <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                        <span>@(IsSaving ? T("Stoor...", "Saving...") : T("Stoor skool", "Save school"))</span>
+                    </MudButton>
+                </div>
+            </EditForm>
+        </div>
+    </section>
+}
+
+@code {
+    [Parameter]
+    public string? AdminEmail { get; set; }
+
+    [Parameter]
+    public string? LanguageCode { get; set; }
+
+    private AdminSchoolSetupSnapshot Snapshot { get; set; } = new([], []);
+    private EditableSchoolSetup Editor { get; set; } = EditableSchoolSetup.New(null);
+    private string? LoadedAdminEmail { get; set; }
+    private bool IsLoading { get; set; } = true;
+    private bool IsSaving { get; set; }
+    private string? StatusMessage { get; set; }
+    private string? ErrorMessage { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        var effectiveAdminEmail = await ResolveAdminEmailAsync();
+        if (!string.Equals(LoadedAdminEmail, effectiveAdminEmail, StringComparison.OrdinalIgnoreCase))
+        {
+            await LoadAsync(effectiveAdminEmail);
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        ClearMessages();
+        await LoadAsync(await ResolveAdminEmailAsync());
+    }
+
+    private async Task LoadAsync(string? effectiveAdminEmail)
+    {
+        IsLoading = true;
+        LoadedAdminEmail = effectiveAdminEmail;
+        try
+        {
+            Snapshot = await AdminManagementService.GetSchoolSetupsAsync(effectiveAdminEmail);
+            if (Snapshot.Schools.Count > 0)
+            {
+                SelectSchool(Snapshot.Schools[0]);
+            }
+            else
+            {
+                StartNewSchool();
+            }
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(exception, "Failed to load admin schools.");
+            SetError(T("Kon nie skole nou laai nie.", "Could not load schools right now."));
+            Snapshot = new AdminSchoolSetupSnapshot([], []);
+            StartNewSchool();
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        ClearMessages();
+        IsSaving = true;
+        try
+        {
+            var expiresAt = ParseDateInput(Editor.AccessExpiresOn);
+            var result = await AdminManagementService.SaveSchoolSetupAsync(
+                await ResolveAdminEmailAsync(),
+                new AdminSchoolSetupSaveRequest(
+                    Editor.SchoolAccountId,
+                    Editor.SchoolName,
+                    Editor.AdminEmail,
+                    Editor.PlanTierCode,
+                    Editor.AdminUsesSlot,
+                    Editor.Status,
+                    expiresAt));
+
+            if (!result.IsSuccess)
+            {
+                SetError(result.ErrorMessage ?? T("Kon nie die skool nou stoor nie.", "Could not save the school right now."));
+                return;
+            }
+
+            SetStatus(T("Skool is gestoor.", "School saved."));
+            Snackbar.Add(StatusMessage!, Severity.Success);
+            await LoadAsync(await ResolveAdminEmailAsync());
+            if (result.EntityId.HasValue)
+            {
+                var saved = Snapshot.Schools.FirstOrDefault(school => school.SchoolAccountId == result.EntityId.Value);
+                if (saved is not null)
+                {
+                    SelectSchool(saved);
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(exception, "Failed to save admin school.");
+            SetError(T("Kon nie die skool nou stoor nie.", "Could not save the school right now."));
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+
+    private void SelectSchool(AdminSchoolAccountRecord school)
+    {
+        Editor = EditableSchoolSetup.From(school, Snapshot.Plans.FirstOrDefault()?.TierCode);
+    }
+
+    private void StartNewSchool()
+    {
+        Editor = EditableSchoolSetup.New(Snapshot.Plans.FirstOrDefault()?.TierCode);
+    }
+
+    private void OnAccessExpiresOnChanged(ChangeEventArgs args)
+    {
+        Editor.AccessExpiresOn = args.Value?.ToString() ?? string.Empty;
+    }
+
+    private bool IsSelected(AdminSchoolAccountRecord school) =>
+        Editor.SchoolAccountId == school.SchoolAccountId;
+
+    private string BuildPlanLabel(AdminSchoolPlanOption plan) =>
+        $"{plan.Name} - {plan.SlotLimit} {T("plekke", "seats")} - R{plan.Amount:0}";
+
+    private string BuildSeatSummary(AdminSchoolAccountRecord school) =>
+        $"{school.ActiveSeatCount}/{school.SlotLimit} {T("plekke", "seats")}";
+
+    private string BuildStatusLabel(string? status) =>
+        status?.ToLowerInvariant() switch
+        {
+            "active" => T("Aktief", "Active"),
+            "paused" => T("Gepouseer", "Paused"),
+            "cancelled" => T("Gekanselleer", "Cancelled"),
+            _ => T("Onbekend", "Unknown")
+        };
+
+    private static string BuildStatusClass(string? status) =>
+        status?.ToLowerInvariant() switch
+        {
+            "active" => "is-active",
+            "paused" => "is-paused",
+            "cancelled" => "is-cancelled",
+            _ => "is-paused"
+        };
+
+    private DateTimeOffset? ParseDateInput(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return DateTime.TryParseExact(
+            value,
+            "yyyy-MM-dd",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var parsed)
+            ? new DateTimeOffset(parsed.Date, TimeZoneInfo.Local.GetUtcOffset(parsed.Date)).ToUniversalTime()
+            : null;
+    }
+
+    private static string FormatDateInput(DateTimeOffset? value) =>
+        value.HasValue
+            ? value.Value.ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+            : DateTimeOffset.UtcNow.AddYears(1).ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    private async Task<string?> ResolveAdminEmailAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(AdminEmail))
+        {
+            return AdminEmail;
+        }
+
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        return authState.User.FindFirst(ClaimTypes.Email)?.Value ??
+               authState.User.FindFirst("email")?.Value ??
+               authState.User.Identity?.Name;
+    }
+
+    private bool IsEnglish => string.Equals(LanguageCode, "en", StringComparison.OrdinalIgnoreCase);
+
+    private string T(string afrikaans, string english) => IsEnglish ? english : afrikaans;
+
+    private void ClearMessages()
+    {
+        ErrorMessage = null;
+        StatusMessage = null;
+    }
+
+    private void SetError(string message)
+    {
+        StatusMessage = null;
+        ErrorMessage = message;
+    }
+
+    private void SetStatus(string message)
+    {
+        ErrorMessage = null;
+        StatusMessage = message;
+    }
+
+    private sealed class EditableSchoolSetup
+    {
+        public Guid? SchoolAccountId { get; set; }
+        public string SchoolName { get; set; } = string.Empty;
+        public string AdminEmail { get; set; } = string.Empty;
+        public string PlanTierCode { get; set; } = string.Empty;
+        public bool AdminUsesSlot { get; set; }
+        public string Status { get; set; } = "active";
+        public string AccessExpiresOn { get; set; } = string.Empty;
+
+        public static EditableSchoolSetup New(string? defaultPlanTierCode) => new()
+        {
+            PlanTierCode = defaultPlanTierCode ?? string.Empty,
+            Status = "active",
+            AccessExpiresOn = FormatDateInput(null)
+        };
+
+        public static EditableSchoolSetup From(AdminSchoolAccountRecord school, string? defaultPlanTierCode) => new()
+        {
+            SchoolAccountId = school.SchoolAccountId,
+            SchoolName = school.SchoolName,
+            AdminEmail = school.AdminEmail,
+            PlanTierCode = string.IsNullOrWhiteSpace(school.PlanTierCode) ? defaultPlanTierCode ?? string.Empty : school.PlanTierCode,
+            AdminUsesSlot = school.AdminUsesSlot,
+            Status = string.IsNullOrWhiteSpace(school.Status) ? "active" : school.Status,
+            AccessExpiresOn = FormatDateInput(school.AccessExpiresAt)
+        };
+    }
+}

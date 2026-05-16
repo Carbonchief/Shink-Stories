@@ -63,6 +63,36 @@
             Jy het reeds 'n aktiewe intekening op hierdie plan. Kies asseblief 'n ander opsie.
         </p>
     }
+    else if (string.Equals(PaymentStatus, "reeds-betaald", StringComparison.OrdinalIgnoreCase))
+    {
+        <p class="opsies-payment-status opsies-payment-blocked" role="status" aria-live="polite">
+            Jy het reeds 'n aktiewe betaalde intekening. Bestuur eers jou huidige intekening voordat jy 'n ander plan begin.
+        </p>
+    }
+    else if (string.Equals(PaymentStatus, "plan-opgradeer", StringComparison.OrdinalIgnoreCase))
+    {
+        <p class="opsies-payment-status opsies-payment-success" role="status" aria-live="polite">
+            Jou plan is opgegradeer. Jou nuwe toegang is dadelik aktief.
+        </p>
+    }
+    else if (string.Equals(PaymentStatus, "plan-afgradeer", StringComparison.OrdinalIgnoreCase))
+    {
+        <p class="opsies-payment-status opsies-payment-success" role="status" aria-live="polite">
+            Jou afgradering is geskeduleer. Jou huidige toegang bly aktief tot die hernuwingsdatum.
+        </p>
+    }
+    else if (string.Equals(PaymentStatus, "plan-verander", StringComparison.OrdinalIgnoreCase))
+    {
+        <p class="opsies-payment-status opsies-payment-success" role="status" aria-live="polite">
+            Jou planverandering is geskeduleer.
+        </p>
+    }
+    else if (string.Equals(PaymentStatus, "plan-verander-misluk", StringComparison.OrdinalIgnoreCase))
+    {
+        <p class="opsies-payment-status opsies-payment-cancelled" role="status" aria-live="polite">
+            Ons kon nie jou plan nou verander nie. Probeer asseblief weer of kontak ons vir hulp.
+        </p>
+    }
     else if (string.Equals(PaymentStatus, "verwerk", StringComparison.OrdinalIgnoreCase))
     {
         <p class="opsies-payment-status opsies-payment-blocked" role="status" aria-live="polite">

@@ -806,6 +806,32 @@ app.MapGet("/betaalherinneringe/gaan", async (
             return Results.Redirect(duplicateRedirectPath);
         }
 
+        var hasActivePaidSubscription = await subscriptionLedgerService.HasActivePaidSubscriptionAsync(
+            recovery.CustomerEmail,
+            httpContext.RequestAborted);
+        if (hasActivePaidSubscription)
+        {
+            var planChangeResult = await subscriptionLedgerService.ChangePaidSubscriptionPlanAsync(
+                recovery.CustomerEmail,
+                plan.Slug,
+                httpContext.RequestAborted);
+            await abandonedCartRecoveryService.ResolveSubscriptionRecoveriesAsync(
+                recovery.CustomerEmail,
+                plan.TierCode,
+                planChangeResult.IsSuccess ? "paid_plan_changed" : "paid_plan_change_failed",
+                httpContext.RequestAborted);
+
+            logger.LogInformation(
+                "Handled abandoned-cart paid plan change. recovery_id={RecoveryId} tier={TierCode} email={Email} success={Success} change_type={ChangeType}",
+                recovery.RecoveryId,
+                plan.TierCode,
+                recovery.CustomerEmail,
+                planChangeResult.IsSuccess,
+                planChangeResult.ChangeType);
+
+            return Results.Redirect(BuildPlanChangeRedirectPath(planChangeResult, plan));
+        }
+
         var hasPendingPaystackRepair = await subscriptionLedgerService.HasPendingPaystackRepairForTierAsync(
             recovery.CustomerEmail,
             plan.TierCode,
@@ -1159,6 +1185,27 @@ app.MapGet("/betaal/{planSlug}", async (
         }
         var duplicateRedirectPath = QueryHelpers.AddQueryString("/opsies", duplicateRedirectQuery);
         return Results.Redirect(duplicateRedirectPath);
+    }
+
+    var hasActivePaidSubscription = await subscriptionLedgerService.HasActivePaidSubscriptionAsync(
+        signedInEmail,
+        httpContext.RequestAborted);
+    if (hasActivePaidSubscription)
+    {
+        var planChangeResult = await subscriptionLedgerService.ChangePaidSubscriptionPlanAsync(
+            signedInEmail,
+            plan.Slug,
+            httpContext.RequestAborted);
+
+        logger.LogInformation(
+            "Handled paid plan change from checkout route. plan={PlanSlug} tier={TierCode} email={Email} success={Success} change_type={ChangeType}",
+            plan.Slug,
+            plan.TierCode,
+            signedInEmail,
+            planChangeResult.IsSuccess,
+            planChangeResult.ChangeType);
+
+        return Results.Redirect(BuildPlanChangeRedirectPath(planChangeResult, plan, safeReturnUrl));
     }
 
     var hasPendingPaystackRepair = await subscriptionLedgerService.HasPendingPaystackRepairForTierAsync(
@@ -4428,6 +4475,34 @@ static string BuildSubscriptionPaymentRedirectPath(
     if (!string.IsNullOrWhiteSpace(safeReturnUrl))
     {
         query["returnUrl"] = safeReturnUrl;
+    }
+
+    return QueryHelpers.AddQueryString("/opsies", query);
+}
+
+static string BuildPlanChangeRedirectPath(
+    SubscriptionPlanChangeResult result,
+    PaymentPlan plan,
+    string? returnUrl = null)
+{
+    var paymentStatus = result.IsSuccess
+        ? result.ChangeType switch
+        {
+            "upgrade" => "plan-opgradeer",
+            "downgrade" => "plan-afgradeer",
+            _ => "plan-verander"
+        }
+        : "plan-verander-misluk";
+    var query = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["betaling"] = paymentStatus,
+        ["tier"] = plan.TierCode,
+        ["plan"] = plan.Slug
+    };
+
+    if (!string.IsNullOrWhiteSpace(returnUrl))
+    {
+        query["returnUrl"] = returnUrl;
     }
 
     return QueryHelpers.AddQueryString("/opsies", query);

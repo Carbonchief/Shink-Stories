@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Globalization;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -420,7 +421,8 @@ public sealed class PaystackCheckoutService(
         string? subscriptionId = null,
         string? providerPaymentId = null,
         decimal? billingAmountZarOverride = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlyDictionary<string, object?>? metadataOverrides = null)
     {
         if (string.IsNullOrWhiteSpace(_options.SecretKey) ||
             !Uri.TryCreate(_options.ChargeAuthorizationUrl, UriKind.Absolute, out var chargeUri))
@@ -452,6 +454,13 @@ public sealed class PaystackCheckoutService(
             ["subscription_id"] = subscriptionId,
             ["provider_payment_id"] = providerPaymentId
         };
+        if (metadataOverrides is not null)
+        {
+            foreach (var entry in metadataOverrides)
+            {
+                metadata[entry.Key] = entry.Value;
+            }
+        }
 
         var payload = new Dictionary<string, object?>
         {
@@ -524,6 +533,95 @@ public sealed class PaystackCheckoutService(
                 false,
                 Reference: reference,
                 ErrorMessage: "Paystack outomatiese herlaai antwoord kon nie gelees word nie.",
+                RawPayload: body);
+        }
+    }
+
+    public async Task<PaystackSubscriptionCreateResult> CreateSubscriptionAsync(
+        PaymentPlan plan,
+        string email,
+        string authorizationCode,
+        DateTimeOffset startDateUtc,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.SecretKey) ||
+            !Uri.TryCreate(_options.SubscriptionUrl, UriKind.Absolute, out var subscriptionUri))
+        {
+            return new PaystackSubscriptionCreateResult(false, ErrorMessage: "Paystack intekening-skep is nog nie volledig opgestel nie.");
+        }
+
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return new PaystackSubscriptionCreateResult(false, ErrorMessage: "Kon nie 'n e-posadres vir betaling bepaal nie.");
+        }
+
+        if (string.IsNullOrWhiteSpace(authorizationCode))
+        {
+            return new PaystackSubscriptionCreateResult(false, ErrorMessage: "Paystack authorization code ontbreek.");
+        }
+
+        var planCode = ResolvePlanCode(plan.TierCode);
+        if (string.IsNullOrWhiteSpace(planCode))
+        {
+            return new PaystackSubscriptionCreateResult(false, ErrorMessage: $"Paystack plan-kode ontbreek vir {plan.Name}.");
+        }
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["customer"] = email.Trim(),
+            ["plan"] = planCode,
+            ["authorization"] = authorizationCode.Trim(),
+            ["start_date"] = startDateUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture)
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, subscriptionUri)
+        {
+            Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.SecretKey);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return new PaystackSubscriptionCreateResult(
+                false,
+                ErrorMessage: $"Paystack kon nie die nuwe intekening skep nie (HTTP {(int)response.StatusCode}).",
+                RawPayload: body);
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            var status = root.TryGetProperty("status", out var statusNode) &&
+                         statusNode.ValueKind == JsonValueKind.True;
+            var dataNode = root.TryGetProperty("data", out var parsedData) &&
+                           parsedData.ValueKind == JsonValueKind.Object
+                ? parsedData
+                : default;
+            var subscriptionCode = TryReadString(dataNode, "subscription_code");
+            if (!status || string.IsNullOrWhiteSpace(subscriptionCode))
+            {
+                return new PaystackSubscriptionCreateResult(
+                    false,
+                    ErrorMessage: TryReadString(root, "message") ?? "Paystack het nie 'n nuwe intekeningkode teruggestuur nie.",
+                    RawPayload: body);
+            }
+
+            return new PaystackSubscriptionCreateResult(
+                true,
+                SubscriptionCode: subscriptionCode,
+                EmailToken: TryReadString(dataNode, "email_token"),
+                Status: TryReadString(dataNode, "status"),
+                NextPaymentDate: ParseDateTimeOffset(TryReadString(dataNode, "next_payment_date")),
+                RawPayload: body);
+        }
+        catch (JsonException)
+        {
+            return new PaystackSubscriptionCreateResult(
+                false,
+                ErrorMessage: "Paystack intekening-skep antwoord kon nie gelees word nie.",
                 RawPayload: body);
         }
     }
@@ -1353,6 +1451,15 @@ public sealed record PaystackSubscriptionManageLinkResult(
 public sealed record PaystackSubscriptionDisableResult(
     bool IsSuccess,
     string? EmailToken = null,
+    string? ErrorMessage = null,
+    string? RawPayload = null);
+
+public sealed record PaystackSubscriptionCreateResult(
+    bool IsSuccess,
+    string? SubscriptionCode = null,
+    string? EmailToken = null,
+    string? Status = null,
+    DateTimeOffset? NextPaymentDate = null,
     string? ErrorMessage = null,
     string? RawPayload = null);
 

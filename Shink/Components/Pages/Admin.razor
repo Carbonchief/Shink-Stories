@@ -1301,6 +1301,10 @@
                 <AdminResourceTypesPanel CurrentLanguageCode="@CurrentLanguageCode" />
             </MudTabPanel>
 
+            <MudTabPanel Text='@T("Skole", "Schools")'>
+                <AdminSchoolsPanel AdminEmail="@CurrentAdminEmail" LanguageCode="@CurrentLanguageCode" />
+            </MudTabPanel>
+
             <MudTabPanel Text='@T("Winkel", "Shop")'>
                 <AdminStorePanel CurrentLanguageCode="@CurrentLanguageCode" />
             </MudTabPanel>

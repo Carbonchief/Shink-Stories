@@ -13,6 +13,10 @@ public interface ISubscriptionLedgerService
     Task<IReadOnlyList<string>> GetActiveTierCodesAsync(string? email, CancellationToken cancellationToken = default);
     Task<CurrentPaidSubscription?> GetCurrentPaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default);
     Task<PaidSubscriptionAttention> GetPaidSubscriptionAttentionAsync(string? email, CancellationToken cancellationToken = default);
+    Task<SubscriptionPlanChangeResult> ChangePaidSubscriptionPlanAsync(
+        string? email,
+        string? targetPlanSlug,
+        CancellationToken cancellationToken = default);
     Task<SubscriptionRepairResult> TryRepairPaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default);
     Task<SubscriptionFreeTierTransferResult> TransferPaidSubscriptionToGratisAsync(string? email, CancellationToken cancellationToken = default);
     Task<SubscriptionCancelResult> CancelPaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default);
@@ -73,6 +77,13 @@ public sealed record PaidSubscriptionAttention(
     string? PlanSlug = null,
     string? Provider = null,
     bool CanAttemptAutomaticRetry = false);
+public sealed record SubscriptionPlanChangeResult(
+    bool IsSuccess,
+    string? PlanSlug = null,
+    string? ChangeType = null,
+    DateTimeOffset? EffectiveAtUtc = null,
+    decimal? ChargedAmountZar = null,
+    string? ErrorMessage = null);
 public sealed record SubscriptionRepairResult(
     bool IsRecovered,
     string? PlanSlug = null,

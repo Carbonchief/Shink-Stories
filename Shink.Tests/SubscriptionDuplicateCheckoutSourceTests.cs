@@ -26,6 +26,37 @@ public sealed class SubscriptionDuplicateCheckoutSourceTests
     }
 
     [TestMethod]
+    public void PaymentRouteChangesAnyActivePaidPlanBeforeStartingDifferentTierCheckout()
+    {
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+        var routeBlock = ExtractBlock(
+            program,
+            "app.MapGet(\"/betaal/{planSlug}\"",
+            ".DisableAntiforgery();",
+            startOffset: program.IndexOf("app.MapGet(\"/betaal/{planSlug}\"", StringComparison.Ordinal));
+
+        StringAssert.Contains(routeBlock, "HasActivePaidSubscriptionAsync(");
+        StringAssert.Contains(routeBlock, "ChangePaidSubscriptionPlanAsync(");
+        StringAssert.Contains(routeBlock, "BuildPlanChangeRedirectPath(");
+        StringAssert.Contains(program, "\"plan-opgradeer\"");
+        StringAssert.Contains(program, "\"plan-afgradeer\"");
+
+        var paidCheckIndex = routeBlock.IndexOf("HasActivePaidSubscriptionAsync(", StringComparison.Ordinal);
+        var planChangeIndex = routeBlock.IndexOf("ChangePaidSubscriptionPlanAsync(", StringComparison.Ordinal);
+        var pendingRepairCheckIndex = routeBlock.IndexOf("HasPendingPaystackRepairForTierAsync(", StringComparison.Ordinal);
+        var providerResolutionIndex = routeBlock.IndexOf("TryResolvePaymentProvider(", StringComparison.Ordinal);
+        Assert.IsTrue(
+            paidCheckIndex >= 0 && planChangeIndex > paidCheckIndex,
+            "The broader paid-subscription check must trigger a plan change before pending repair checks.");
+        Assert.IsTrue(
+            paidCheckIndex >= 0 && pendingRepairCheckIndex > paidCheckIndex,
+            "The broader paid-subscription check must run before pending repair checks.");
+        Assert.IsTrue(
+            paidCheckIndex >= 0 && providerResolutionIndex > paidCheckIndex,
+            "The broader paid-subscription check must run before any payment provider can start a new checkout.");
+    }
+
+    [TestMethod]
     public void PaymentRouteBlocksPendingPaystackRepairBeforeStartingProviderCheckout()
     {
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
@@ -70,6 +101,37 @@ public sealed class SubscriptionDuplicateCheckoutSourceTests
         Assert.IsTrue(
             activeCheckIndex >= 0 && payFastCheckoutIndex > activeCheckIndex,
             "The duplicate subscription check must run before PayFast checkout is initialized.");
+    }
+
+    [TestMethod]
+    public void AbandonedCartSubscriptionRecoveryChangesAnyActivePaidPlanBeforeStartingDifferentTierCheckout()
+    {
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+        var routeStart = program.IndexOf("app.MapGet(\"/betaalherinneringe/gaan\"", StringComparison.Ordinal);
+        var routeBlock = ExtractBlock(
+            program,
+            "app.MapGet(\"/betaalherinneringe/gaan\"",
+            "app.MapPost(\"/rekening/skuif-na-gratis\"",
+            startOffset: routeStart);
+
+        StringAssert.Contains(routeBlock, "HasActivePaidSubscriptionAsync(");
+        StringAssert.Contains(routeBlock, "ChangePaidSubscriptionPlanAsync(");
+        StringAssert.Contains(routeBlock, "BuildPlanChangeRedirectPath(");
+        StringAssert.Contains(routeBlock, "paid_plan_changed");
+
+        var paidCheckIndex = routeBlock.IndexOf("HasActivePaidSubscriptionAsync(", StringComparison.Ordinal);
+        var planChangeIndex = routeBlock.IndexOf("ChangePaidSubscriptionPlanAsync(", StringComparison.Ordinal);
+        var pendingRepairCheckIndex = routeBlock.IndexOf("HasPendingPaystackRepairForTierAsync(", StringComparison.Ordinal);
+        var paystackCheckoutIndex = routeBlock.IndexOf("InitializeCheckoutForEmailAsync(", StringComparison.Ordinal);
+        Assert.IsTrue(
+            paidCheckIndex >= 0 && planChangeIndex > paidCheckIndex,
+            "The broader paid-subscription check must trigger a plan change before pending repair checks.");
+        Assert.IsTrue(
+            paidCheckIndex >= 0 && pendingRepairCheckIndex > paidCheckIndex,
+            "The broader paid-subscription check must run before pending repair checks.");
+        Assert.IsTrue(
+            paidCheckIndex >= 0 && paystackCheckoutIndex > paidCheckIndex,
+            "The broader paid-subscription check must run before Paystack checkout is initialized.");
     }
 
     [TestMethod]

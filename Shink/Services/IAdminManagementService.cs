@@ -130,6 +130,15 @@ public interface IAdminManagementService
         Guid storeProductId,
         CancellationToken cancellationToken = default);
 
+    Task<AdminSchoolSetupSnapshot> GetSchoolSetupsAsync(
+        string? adminEmail,
+        CancellationToken cancellationToken = default);
+
+    Task<AdminOperationResult> SaveSchoolSetupAsync(
+        string? adminEmail,
+        AdminSchoolSetupSaveRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<AdminAnalyticsSnapshot> GetAnalyticsAsync(
         string? adminEmail,
         CancellationToken cancellationToken = default);
@@ -197,6 +206,41 @@ public interface IAdminManagementService
 }
 
 public sealed record AdminOperationResult(bool IsSuccess, string? ErrorMessage = null, Guid? EntityId = null);
+
+public sealed record AdminSchoolSetupSnapshot(
+    IReadOnlyList<AdminSchoolAccountRecord> Schools,
+    IReadOnlyList<AdminSchoolPlanOption> Plans);
+
+public sealed record AdminSchoolAccountRecord(
+    Guid SchoolAccountId,
+    string SchoolName,
+    string AdminEmail,
+    string PlanTierCode,
+    string PlanName,
+    int SlotLimit,
+    bool AdminUsesSlot,
+    string Status,
+    int ActiveSeatCount,
+    int InvitedSeatCount,
+    int AcceptedSeatCount,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt,
+    DateTimeOffset? AccessExpiresAt);
+
+public sealed record AdminSchoolPlanOption(
+    string TierCode,
+    string Name,
+    decimal Amount,
+    int SlotLimit);
+
+public sealed record AdminSchoolSetupSaveRequest(
+    Guid? SchoolAccountId,
+    string? SchoolName,
+    string? AdminEmail,
+    string? PlanTierCode,
+    bool AdminUsesSlot,
+    string? Status,
+    DateTimeOffset? AccessExpiresAt);
 
 public sealed record AdminSubscriberPageRequest(
     int PageIndex,
