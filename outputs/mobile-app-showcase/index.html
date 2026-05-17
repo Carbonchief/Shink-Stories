@@ -1,0 +1,1268 @@
+<!doctype html>
+<html lang="af">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Schink Stories Mobile App Showcase</title>
+  <style>
+    :root {
+      --ink: #14242b;
+      --muted: #657178;
+      --paper: #fffaf2;
+      --surface: rgba(255, 255, 255, 0.88);
+      --line: rgba(20, 36, 43, 0.11);
+      --nav: #0d2c39;
+      --nav-2: #071f2b;
+      --yellow: #ffc226;
+      --teal: #0b7c78;
+      --green: #55a77c;
+      --coral: #e95c4f;
+      --shadow: 0 24px 56px rgba(28, 34, 38, 0.18);
+      --soft-shadow: 0 10px 24px rgba(28, 34, 38, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background:
+        radial-gradient(circle at 9% 8%, rgba(255, 194, 38, 0.22), transparent 26rem),
+        radial-gradient(circle at 92% 4%, rgba(127, 202, 224, 0.25), transparent 27rem),
+        linear-gradient(180deg, #fff8ec 0%, #fffdf8 48%, #f2eadb 100%);
+    }
+
+    .showcase {
+      width: min(1760px, calc(100vw - 48px));
+      margin: 0 auto;
+      padding: 34px 0 56px;
+    }
+
+    .header {
+      display: grid;
+      grid-template-columns: 1fr minmax(360px, 520px);
+      align-items: end;
+      gap: 32px;
+      margin-bottom: 28px;
+    }
+
+    .brand {
+      width: 156px;
+      display: block;
+      margin-bottom: 22px;
+      filter: drop-shadow(0 8px 14px rgba(20, 36, 43, 0.12));
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin: 0;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      font-size: clamp(38px, 4vw, 72px);
+      line-height: 0.95;
+      max-width: 760px;
+    }
+
+    .header p {
+      font-size: 17px;
+      line-height: 1.5;
+      color: rgba(20, 36, 43, 0.68);
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 22px;
+    }
+
+    .chip {
+      border: 1px solid rgba(20, 36, 43, 0.12);
+      border-radius: 999px;
+      padding: 9px 14px;
+      background: rgba(255, 255, 255, 0.74);
+      font-size: 13px;
+      font-weight: 850;
+      box-shadow: 0 6px 12px rgba(20, 36, 43, 0.05);
+    }
+
+    .screen-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(280px, 1fr));
+      gap: 32px;
+      align-items: start;
+    }
+
+    .screen-card {
+      display: grid;
+      gap: 12px;
+      justify-items: center;
+    }
+
+    .caption {
+      font-size: 15px;
+      font-weight: 900;
+      color: rgba(20, 36, 43, 0.68);
+    }
+
+    .phone {
+      width: min(100%, 390px);
+      aspect-ratio: 390 / 844;
+      padding: 10px;
+      border-radius: 48px;
+      background: #101010;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .phone::before {
+      content: "";
+      position: absolute;
+      top: 17px;
+      left: 50%;
+      width: 112px;
+      height: 31px;
+      transform: translateX(-50%);
+      border-radius: 999px;
+      background: #080808;
+      z-index: 7;
+    }
+
+    .screen {
+      height: 100%;
+      border-radius: 38px;
+      overflow: hidden;
+      background: var(--paper);
+      position: relative;
+    }
+
+    .status {
+      position: absolute;
+      inset: 0 0 auto;
+      height: 58px;
+      z-index: 8;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      font-size: 15px;
+      font-weight: 850;
+      color: #0b1b22;
+      pointer-events: none;
+    }
+
+    .status.white {
+      color: #fff;
+      text-shadow: 0 2px 9px rgba(0, 0, 0, 0.35);
+    }
+
+    .signal {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+      font-size: 12px;
+    }
+
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: 0.9;
+    }
+
+    .battery {
+      width: 24px;
+      height: 11px;
+      border: 2px solid currentColor;
+      border-radius: 4px;
+      position: relative;
+    }
+
+    .battery::after {
+      content: "";
+      position: absolute;
+      right: -5px;
+      top: 2px;
+      width: 3px;
+      height: 5px;
+      border-radius: 0 2px 2px 0;
+      background: currentColor;
+    }
+
+    .topbar {
+      min-height: 88px;
+      padding: 60px 24px 14px;
+      display: grid;
+      grid-template-columns: 42px 1fr 42px;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .topbar h2 {
+      text-align: center;
+      font-size: 21px;
+      line-height: 1;
+    }
+
+    .topbar.left-title {
+      grid-template-columns: 1fr 42px 42px;
+    }
+
+    .topbar.left-title h2 {
+      text-align: left;
+      font-size: 32px;
+      line-height: 0.95;
+    }
+
+    .round-btn {
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      border: 1px solid rgba(20, 36, 43, 0.08);
+      background: rgba(255, 255, 255, 0.82);
+      display: grid;
+      place-items: center;
+      color: var(--ink);
+      box-shadow: 0 7px 14px rgba(20, 36, 43, 0.08);
+      font-weight: 950;
+      font-size: 12px;
+    }
+
+    .content {
+      height: calc(100% - 88px);
+      overflow: hidden;
+      padding: 0 24px 92px;
+    }
+
+    .no-nav .content {
+      height: calc(100% - 58px);
+      padding-bottom: 24px;
+    }
+
+    .bottom-nav {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 94px;
+      padding: 12px 32px 20px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      align-items: center;
+      background: linear-gradient(135deg, var(--nav), var(--nav-2));
+      color: #fff;
+      box-shadow: 0 -14px 26px rgba(8, 31, 43, 0.23);
+      z-index: 6;
+    }
+
+    .tab {
+      display: grid;
+      place-items: center;
+      gap: 5px;
+      color: rgba(255, 255, 255, 0.83);
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .tab.active {
+      color: var(--yellow);
+    }
+
+    .tab-icon {
+      width: 24px;
+      height: 24px;
+      border: 3px solid currentColor;
+      border-radius: 8px;
+      position: relative;
+    }
+
+    .tab-icon.listen {
+      border-radius: 50% 50% 8px 8px;
+      border-bottom-width: 7px;
+    }
+
+    .tab-icon.library {
+      border-radius: 4px;
+      transform: skewY(-7deg);
+    }
+
+    .login {
+      background: #7fc5e9;
+    }
+
+    .login-bg {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .login::after {
+      content: "";
+      position: absolute;
+      inset: 48% 0 0;
+      background: linear-gradient(180deg, transparent, rgba(9, 52, 57, 0.55));
+    }
+
+    .login-logo {
+      position: absolute;
+      z-index: 2;
+      top: 102px;
+      left: 42px;
+      right: 42px;
+      width: calc(100% - 84px);
+      filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.2));
+    }
+
+    .login-panel {
+      position: absolute;
+      left: 28px;
+      right: 28px;
+      bottom: 64px;
+      z-index: 3;
+      border-radius: 24px;
+      background: rgba(255, 252, 246, 0.93);
+      box-shadow: 0 20px 44px rgba(14, 44, 45, 0.25);
+      padding: 28px 22px 26px;
+      display: grid;
+      gap: 14px;
+    }
+
+    .field {
+      height: 54px;
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.82);
+      border: 1px solid rgba(20, 36, 43, 0.1);
+      display: grid;
+      grid-template-columns: 28px 1fr 24px;
+      align-items: center;
+      gap: 8px;
+      padding: 0 14px;
+      color: var(--muted);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    }
+
+    .field-icon {
+      width: 20px;
+      height: 16px;
+      border: 2px solid currentColor;
+      border-radius: 4px;
+    }
+
+    .field-icon.lock {
+      height: 18px;
+      border-radius: 4px;
+      position: relative;
+    }
+
+    .field-icon.lock::before {
+      content: "";
+      position: absolute;
+      top: -11px;
+      left: 4px;
+      width: 8px;
+      height: 10px;
+      border: 2px solid currentColor;
+      border-bottom: 0;
+      border-radius: 8px 8px 0 0;
+    }
+
+    .primary {
+      height: 56px;
+      border-radius: 14px;
+      display: grid;
+      place-items: center;
+      background: linear-gradient(180deg, #ffca35, #ffb612);
+      color: #101c22;
+      font-size: 18px;
+      font-weight: 950;
+      box-shadow: 0 14px 24px rgba(255, 181, 18, 0.28);
+    }
+
+    .link {
+      color: var(--teal);
+      text-align: center;
+      font-weight: 850;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    .thin-line {
+      height: 1px;
+      background: rgba(20, 36, 43, 0.09);
+      margin: 2px 12px;
+    }
+
+    .art-card {
+      border-radius: 17px;
+      overflow: hidden;
+      background: #fff;
+      border: 1px solid rgba(20, 36, 43, 0.08);
+      box-shadow: var(--soft-shadow);
+    }
+
+    .art-card img,
+    .hero-art img,
+    .cover img,
+    .thumb img,
+    .product img,
+    .character img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .logo-mark {
+      width: 138px;
+      height: auto;
+      margin: 0 auto 16px;
+      display: block;
+      filter: drop-shadow(0 6px 16px rgba(20, 36, 43, 0.16));
+    }
+
+    .hero-art {
+      height: 210px;
+      border-radius: 23px;
+      overflow: hidden;
+      background: #a6dff1;
+      box-shadow: var(--soft-shadow);
+    }
+
+    .hero-art.contain img,
+    .cover.contain img,
+    .thumb.contain img,
+    .product.contain img,
+    .character.contain img {
+      object-fit: contain;
+    }
+
+    .section-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 12px;
+      margin: 18px 0 12px;
+    }
+
+    .section-title h2 {
+      font-size: 25px;
+      line-height: 1;
+    }
+
+    .muted {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .search {
+      height: 42px;
+      border-radius: 13px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.85);
+      display: flex;
+      align-items: center;
+      padding: 0 14px;
+      color: rgba(20, 36, 43, 0.46);
+      font-weight: 850;
+      margin: 14px 0;
+    }
+
+    .cover {
+      height: 400px;
+      border-radius: 16px;
+      overflow: hidden;
+      background: #fff;
+      box-shadow: var(--soft-shadow);
+      border: 1px solid rgba(20, 36, 43, 0.08);
+    }
+
+    .player-title {
+      display: grid;
+      grid-template-columns: 1fr 42px;
+      align-items: center;
+      gap: 12px;
+      margin: 14px 0 10px;
+    }
+
+    .player-title h2 {
+      font-size: 21px;
+    }
+
+    .heart {
+      color: var(--coral);
+      font-size: 30px;
+      line-height: 1;
+      text-align: right;
+    }
+
+    .progress {
+      height: 6px;
+      border-radius: 999px;
+      background: rgba(20, 36, 43, 0.13);
+      position: relative;
+      overflow: visible;
+      margin: 16px 0 8px;
+    }
+
+    .progress span {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 38%;
+      border-radius: inherit;
+      background: var(--yellow);
+    }
+
+    .progress span::after {
+      content: "";
+      position: absolute;
+      right: -5px;
+      top: 50%;
+      width: 14px;
+      height: 14px;
+      transform: translateY(-50%);
+      border-radius: 50%;
+      background: var(--yellow);
+      box-shadow: 0 2px 5px rgba(20, 36, 43, 0.22);
+    }
+
+    .time-row,
+    .control-row,
+    .mini-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .time-row {
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 750;
+    }
+
+    .control-row {
+      margin: 28px 28px 22px;
+    }
+
+    .play {
+      width: 74px;
+      height: 74px;
+      border-radius: 50%;
+      background: linear-gradient(180deg, #ffc933, #ffb612);
+      display: grid;
+      place-items: center;
+      box-shadow: 0 14px 24px rgba(255, 181, 18, 0.28);
+    }
+
+    .pause-bars {
+      display: flex;
+      gap: 8px;
+    }
+
+    .pause-bars span {
+      width: 10px;
+      height: 30px;
+      background: #fff;
+      border-radius: 6px;
+    }
+
+    .skip {
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.86);
+      display: grid;
+      place-items: center;
+      font-weight: 950;
+      color: var(--ink);
+      border: 1px solid rgba(20, 36, 43, 0.08);
+      box-shadow: 0 6px 14px rgba(20, 36, 43, 0.08);
+    }
+
+    .mini-actions {
+      margin: 0 22px;
+    }
+
+    .mini {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: rgba(255, 255, 255, 0.78);
+      border: 1px solid rgba(20, 36, 43, 0.08);
+      color: var(--teal);
+      font-weight: 950;
+      box-shadow: 0 6px 13px rgba(20, 36, 43, 0.08);
+    }
+
+    .list {
+      display: grid;
+      gap: 14px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: 104px 1fr 38px;
+      align-items: center;
+      gap: 14px;
+      min-height: 112px;
+      padding: 10px;
+      border-radius: 15px;
+      background: var(--surface);
+      border: 1px solid rgba(20, 36, 43, 0.08);
+      box-shadow: var(--soft-shadow);
+    }
+
+    .row.compact {
+      grid-template-columns: 72px 1fr 38px;
+      min-height: 84px;
+      gap: 12px;
+    }
+
+    .thumb {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #fff;
+      border: 1px solid rgba(20, 36, 43, 0.07);
+    }
+
+    .row h3 {
+      font-size: 19px;
+      line-height: 1.08;
+      margin-bottom: 6px;
+    }
+
+    .row.compact h3 {
+      font-size: 16px;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      border-radius: 999px;
+      padding: 0 10px;
+      margin-top: 8px;
+      background: #c6e6d8;
+      color: #235a4c;
+      font-size: 12px;
+      font-weight: 850;
+    }
+
+    .pill.yellow {
+      background: #ffe098;
+      color: #8a5b00;
+    }
+
+    .pill.red {
+      background: #f7d3ce;
+      color: #983d34;
+    }
+
+    .action-stack {
+      display: grid;
+      gap: 12px;
+      justify-items: center;
+    }
+
+    .cloud {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(20, 36, 43, 0.08);
+      background: rgba(255, 255, 255, 0.82);
+      color: var(--teal);
+      font-size: 18px;
+      box-shadow: 0 5px 11px rgba(20, 36, 43, 0.09);
+    }
+
+    .cloud::before {
+      content: "";
+      width: 17px;
+      height: 12px;
+      border: 2px solid currentColor;
+      border-top-left-radius: 12px;
+      border-top-right-radius: 12px;
+      border-bottom: 0;
+    }
+
+    .queue {
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.82);
+      border: 1px solid rgba(20, 36, 43, 0.08);
+      position: relative;
+      box-shadow: 0 5px 11px rgba(20, 36, 43, 0.09);
+    }
+
+    .queue::before,
+    .queue::after {
+      content: "";
+      position: absolute;
+      left: 9px;
+      right: 9px;
+      height: 2px;
+      background: #101c22;
+      box-shadow: 0 7px 0 #101c22, 0 14px 0 #101c22;
+    }
+
+    .queue::before {
+      top: 9px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .tile,
+    .plan,
+    .resource,
+    .post,
+    .profile {
+      border-radius: 17px;
+      background: var(--surface);
+      border: 1px solid rgba(20, 36, 43, 0.08);
+      box-shadow: var(--soft-shadow);
+      overflow: hidden;
+    }
+
+    .tile {
+      min-height: 118px;
+      padding: 15px;
+      display: grid;
+      align-content: space-between;
+    }
+
+    .tile strong {
+      font-size: 17px;
+      line-height: 1.05;
+    }
+
+    .character-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+    }
+
+    .character {
+      min-height: 114px;
+      border-radius: 15px;
+      background: rgba(255, 255, 255, 0.86);
+      border: 1px solid rgba(20, 36, 43, 0.08);
+      display: grid;
+      align-content: space-between;
+      justify-items: center;
+      padding: 8px;
+      text-align: center;
+      box-shadow: 0 6px 14px rgba(20, 36, 43, 0.06);
+    }
+
+    .character img {
+      height: 70px;
+      object-fit: contain;
+    }
+
+    .character span {
+      font-size: 11px;
+      font-weight: 950;
+      line-height: 1.1;
+    }
+
+    .resource {
+      display: grid;
+      grid-template-columns: 78px 1fr auto;
+      align-items: center;
+      gap: 12px;
+      min-height: 88px;
+      padding: 10px;
+    }
+
+    .resource img {
+      width: 78px;
+      height: 62px;
+      object-fit: cover;
+      border-radius: 12px;
+    }
+
+    .product-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .product {
+      min-height: 188px;
+      border-radius: 17px;
+      background: var(--surface);
+      border: 1px solid rgba(20, 36, 43, 0.08);
+      padding: 10px;
+      display: grid;
+      align-content: space-between;
+      box-shadow: var(--soft-shadow);
+    }
+
+    .product img {
+      height: 118px;
+      object-fit: contain;
+      background: #fff;
+      border-radius: 13px;
+    }
+
+    .product h3 {
+      font-size: 16px;
+      margin-top: 9px;
+      line-height: 1.05;
+    }
+
+    .plan {
+      padding: 18px;
+      display: grid;
+      gap: 10px;
+    }
+
+    .plan h3 {
+      font-size: 23px;
+    }
+
+    .price {
+      font-size: 32px;
+      font-weight: 950;
+      line-height: 1;
+    }
+
+    .profile {
+      display: grid;
+      grid-template-columns: 56px 1fr;
+      align-items: center;
+      gap: 13px;
+      padding: 13px;
+    }
+
+    .avatar {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: #cfeade;
+      color: #2c805d;
+      display: grid;
+      place-items: center;
+      font-weight: 950;
+      font-size: 18px;
+    }
+
+    .post {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+    }
+
+    .post img {
+      width: 100%;
+      height: 132px;
+      object-fit: cover;
+      border-radius: 13px;
+    }
+
+    .about-photo {
+      height: 230px;
+      border-radius: 22px;
+      overflow: hidden;
+      box-shadow: var(--soft-shadow);
+    }
+
+    .about-photo img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .note {
+      margin-top: 30px;
+      padding: 16px 18px;
+      border-radius: 18px;
+      background: rgba(255, 255, 255, 0.74);
+      border: 1px solid rgba(20, 36, 43, 0.1);
+      color: rgba(20, 36, 43, 0.65);
+      line-height: 1.45;
+      font-size: 14px;
+    }
+
+    @media (max-width: 1380px) {
+      .screen-grid {
+        grid-template-columns: repeat(3, minmax(280px, 1fr));
+      }
+    }
+
+    @media (max-width: 980px) {
+      .header {
+        grid-template-columns: 1fr;
+      }
+
+      .screen-grid {
+        grid-template-columns: repeat(2, minmax(280px, 1fr));
+      }
+    }
+
+    @media (max-width: 680px) {
+      .showcase {
+        width: min(430px, calc(100vw - 28px));
+        padding-top: 24px;
+      }
+
+      .screen-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="showcase">
+    <header class="header">
+      <div>
+        <img class="brand" src="../../Shink/wwwroot/branding/schink-logo-text.png" alt="Schink">
+        <h1>Schink Stories Mobile App</h1>
+        <div class="chips">
+          <span class="chip">Teken in</span>
+          <span class="chip">Skep rekening</span>
+          <span class="chip">Tuis</span>
+          <span class="chip">Luister</span>
+          <span class="chip">Speellyste</span>
+          <span class="chip">Gratis</span>
+          <span class="chip">Karakters</span>
+          <span class="chip">Hulpbronne</span>
+          <span class="chip">Winkel</span>
+          <span class="chip">Opsies</span>
+          <span class="chip">Meer oor Ons</span>
+          <span class="chip">Blog</span>
+        </div>
+      </div>
+      <p>A cleaner app-native concept based on the style you liked: large original Schink artwork, warm panels, yellow playback actions, and a dark three-tab navigation model for the converted website experience.</p>
+    </header>
+
+    <section class="screen-grid" aria-label="Schink Stories app screens">
+      <article class="screen-card">
+        <div class="caption">01 Login</div>
+        <div class="phone">
+          <div class="screen login no-nav">
+            <div class="status white"><span>9:41</span><span class="signal"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="battery"></span></span></div>
+            <img class="login-bg" src="../../Shink/wwwroot/branding/Schink_Stories_01.png" alt="Schink Stories karakters">
+            <img class="login-logo" src="../../Shink/wwwroot/branding/Schink_Stories_Home_Banner_White.png" alt="Schink Stories">
+            <div class="login-panel">
+              <div class="field"><span class="field-icon"></span><span>E-pos</span><span></span></div>
+              <div class="field"><span class="field-icon lock"></span><span>Wagwoord</span><span>o</span></div>
+              <div class="primary">Meld aan</div>
+              <p class="link">Skep rekening</p>
+              <div class="thin-line"></div>
+              <p class="link" style="color: var(--muted);">Wagwoord vergeet?</p>
+            </div>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen-card">
+        <div class="caption">02 Tuis</div>
+        <div class="phone">
+          <div class="screen">
+            <div class="status"><span>9:41</span><span class="signal"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="battery"></span></span></div>
+            <div class="topbar left-title"><h2>Tuis</h2><div class="round-btn">Soek</div><div class="round-btn">LV</div></div>
+            <div class="content">
+              <div class="hero-art"><img src="../../Shink/wwwroot/branding/Schink_Stories_Char_Line_up.png" alt="Schink Stories karaktergroep"></div>
+              <div class="section-title"><div><h2>Dis storietyd</h2><p class="muted">Stories, karakters en hulpbronne.</p></div></div>
+              <div class="grid-2">
+                <div class="tile"><strong>Luister stories</strong><p class="muted">Begin by die nuutste speellyste.</p></div>
+                <div class="tile"><strong>Gratis stories</strong><p class="muted">Probeer voor julle inteken.</p></div>
+                <div class="tile"><strong>Karakters</strong><p class="muted">Ontsluit profiele deur te luister.</p></div>
+                <div class="tile"><strong>Hulpbronne</strong><p class="muted">PDF's vir na storietyd.</p></div>
+              </div>
+            </div>
+            <nav class="bottom-nav"><span class="tab active"><span class="tab-icon"></span>Tuis</span><span class="tab"><span class="tab-icon listen"></span>Luister</span><span class="tab"><span class="tab-icon library"></span>Biblioteek</span></nav>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen-card">
+        <div class="caption">03 Luister</div>
+        <div class="phone">
+          <div class="screen">
+            <div class="status"><span>9:41</span><span class="signal"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="battery"></span></span></div>
+            <div class="topbar"><div class="round-btn">v</div><h2>Luister</h2><div class="round-btn">...</div></div>
+            <div class="content">
+              <div class="cover"><img src="../../Shink/wwwroot/stories/thumbs/die-ware-wenner-thumb.jpg" alt="Die Ware Wenner"></div>
+              <div class="player-title"><h2>Die Ware Wenner</h2><div class="heart">♥</div></div>
+              <div class="progress"><span></span></div>
+              <div class="time-row"><span>04:32</span><span>12:48</span></div>
+              <div class="control-row"><div class="skip">15</div><div class="play"><div class="pause-bars"><span></span><span></span></div></div><div class="skip">15</div></div>
+              <div class="mini-actions"><div class="mini">≡</div><div class="mini">M</div><div class="mini">R</div></div>
+            </div>
+            <nav class="bottom-nav"><span class="tab"><span class="tab-icon"></span>Tuis</span><span class="tab active"><span class="tab-icon listen"></span>Luister</span><span class="tab"><span class="tab-icon library"></span>Biblioteek</span></nav>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen-card">
+        <div class="caption">04 My Speellys</div>
+        <div class="phone">
+          <div class="screen">
+            <div class="status"><span>9:41</span><span class="signal"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="battery"></span></span></div>
+            <div class="topbar left-title"><h2>My Speellys</h2><div class="round-btn">Af</div><div class="round-btn">Ry</div></div>
+            <div class="content">
+              <div class="list">
+                <div class="row"><div class="thumb"><img src="../../Shink/wwwroot/stories/thumbs/prinses-panda-thumb.jpg" alt="Prinses Panda"></div><div><h3>Prinses Panda</h3><p class="muted">11:35</p><span class="pill">Laas gespeel</span></div><div class="action-stack"><span class="cloud"></span><span class="queue"></span></div></div>
+                <div class="row"><div class="thumb"><img src="../../Shink/wwwroot/stories/thumbs/reenboog-robot-thumb.jpg" alt="Reenboog Robot"></div><div><h3>Reenboog Robot</h3><p class="muted">13:20</p><span class="pill yellow">Nuut</span></div><div class="action-stack"><span class="cloud"></span><span class="queue"></span></div></div>
+                <div class="row"><div class="thumb"><img src="../../Shink/wwwroot/stories/thumbs/llama-llama-pajama-llama-thumb.jpg" alt="Llama Llama Pajama Llama"></div><div><h3>Llama Llama Pajama Llama</h3><p class="muted">10:18</p><span class="pill">Laas gespeel</span></div><div class="action-stack"><span class="cloud"></span><span class="queue"></span></div></div>
+                <div class="row"><div class="thumb"><img src="../../Shink/wwwroot/stories/thumbs/suurlemoentjie-thumb.jpg" alt="Suurlemoentjie"></div><div><h3>Suurlemoentjie</h3><p class="muted">08:45</p><span class="pill yellow">Nuut</span></div><div class="action-stack"><span class="cloud"></span><span class="queue"></span></div></div>
+              </div>
+            </div>
+            <nav class="bottom-nav"><span class="tab"><span class="tab-icon"></span>Tuis</span><span class="tab"><span class="tab-icon listen"></span>Luister</span><span class="tab active"><span class="tab-icon library"></span>Biblioteek</span></nav>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen-card">
+        <div class="caption">05 Gratis</div>
+        <div class="phone">
+          <div class="screen">
+            <div class="status"><span>9:41</span><span class="signal"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="battery"></span></span></div>
+            <div class="topbar left-title"><h2>Gratis</h2><div class="round-btn">Soek</div><div class="round-btn">...</div></div>
+            <div class="content">
+              <div class="hero-art"><img src="../../Shink/wwwroot/stories/Schink_Stories_Gratis_Blad_Banner.webp" alt="Gratis stories"></div>
+              <div class="section-title"><div><h2>Begin hier</h2><p class="muted">Stories wat enige gesin dadelik kan speel.</p></div></div>
+              <div class="list">
+                <div class="row compact"><div class="thumb"><img src="../../Shink/wwwroot/stories/thumbs/eendjies-stap-in-n-ry-thumb.jpg" alt="Eendjies stap in 'n ry"></div><div><h3>Eendjies stap in 'n ry</h3><p class="muted">Gratis • 6 min</p></div><span class="pill yellow">Speel</span></div>
+                <div class="row compact"><div class="thumb"><img src="../../Shink/wwwroot/stories/thumbs/seekoei-sluit-sy-mond-toe-thumb.jpg" alt="Seekoei sluit sy mond toe"></div><div><h3>Seekoei sluit sy mond toe</h3><p class="muted">Gratis • 8 min</p></div><span class="pill yellow">Speel</span></div>
+                <div class="row compact"><div class="thumb"><img src="../../Shink/wwwroot/stories/thumbs/die-kwaaibok-se-klip-thumb.jpg" alt="Die Kwaaibok se Klip"></div><div><h3>Die Kwaaibok se Klip</h3><p class="muted">Gratis • 7 min</p></div><span class="pill yellow">Speel</span></div>
+              </div>
+            </div>
+            <nav class="bottom-nav"><span class="tab"><span class="tab-icon"></span>Tuis</span><span class="tab active"><span class="tab-icon listen"></span>Luister</span><span class="tab"><span class="tab-icon library"></span>Biblioteek</span></nav>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen-card">
+        <div class="caption">06 Story Detail</div>
+        <div class="phone">
+          <div class="screen">
+            <div class="status"><span>9:41</span><span class="signal"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="battery"></span></span></div>
+            <div class="topbar"><div class="round-btn">v</div><h2>Storie</h2><div class="round-btn">♥</div></div>
+            <div class="content">
+              <div class="cover contain"><img src="../../Shink/wwwroot/branding/Schink_Die_Ware_Wenner_Schink_Stories_600x600.png" alt="Die Ware Wenner"></div>
+              <div class="section-title"><div><h2>Die Ware Wenner</h2><p class="muted">Luister, hou as gunsteling of speel volskerm.</p></div></div>
+              <div class="grid-2"><div class="tile"><strong>Volskerm</strong><p class="muted">Groot speler vir kinders.</p></div><div class="tile"><strong>Gunsteling</strong><p class="muted">Stoor in My Stories.</p></div></div>
+            </div>
+            <nav class="bottom-nav"><span class="tab"><span class="tab-icon"></span>Tuis</span><span class="tab active"><span class="tab-icon listen"></span>Luister</span><span class="tab"><span class="tab-icon library"></span>Biblioteek</span></nav>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen-card">
+        <div class="caption">07 My Stories</div>
+        <div class="phone">
+          <div class="screen">
+            <div class="status"><span>9:41</span><span class="signal"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="battery"></span></span></div>
+            <div class="topbar left-title"><h2>My Stories</h2><div class="round-btn">Af</div><div class="round-btn">LV</div></div>
+            <div class="content">
+              <div class="grid-2"><div class="tile"><strong>18</strong><p class="muted">geluister</p></div><div class="tile"><strong>7</strong><p class="muted">gunstelinge</p></div></div>
+              <div class="section-title"><h2>Gaan voort</h2></div>
+              <div class="list">
+                <div class="row compact"><div class="thumb"><img src="../../Shink/wwwroot/stories/thumbs/llama-llama-pajama-llama-thumb.jpg" alt="Llama Llama Pajama Llama"></div><div><h3>Llama Llama Pajama Llama</h3><p class="muted">Laas gespeel gister</p></div><span class="pill">Aflyn</span></div>
+                <div class="row compact"><div class="thumb"><img src="../../Shink/wwwroot/stories/thumbs/reenboog-robot-thumb.jpg" alt="Reenboog Robot"></div><div><h3>Reenboog Robot</h3><p class="muted">Gunsteling</p></div><span class="pill yellow">Hart</span></div>
+                <div class="row compact"><div class="thumb"><img src="../../Shink/wwwroot/stories/thumbs/die-kwaai-grommel-grom-thumb.jpg" alt="Die Kwaai Grommel"></div><div><h3>Die Kwaai Grommel</h3><p class="muted">Nog 4 min oor</p></div><span class="pill yellow">Speel</span></div>
+              </div>
+            </div>
+            <nav class="bottom-nav"><span class="tab"><span class="tab-icon"></span>Tuis</span><span class="tab"><span class="tab-icon listen"></span>Luister</span><span class="tab active"><span class="tab-icon library"></span>Biblioteek</span></nav>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen-card">
+        <div class="caption">08 Karakters</div>
+        <div class="phone">
+          <div class="screen">
+            <div class="status"><span>9:41</span><span class="signal"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="battery"></span></span></div>
+            <div class="topbar left-title"><h2>Karakters</h2><div class="round-btn">23</div><div class="round-btn">Klank</div></div>
+            <div class="content">
+              <div class="hero-art"><img src="../../Shink/wwwroot/branding/Schink_Stories_Char_Line_up_02.png" alt="Schink Stories karaktergroep"></div>
+              <div class="section-title"><div><h2>Ontsluit deur te luister</h2><p class="muted">Tik 'n oop karakter vir stem en profiel.</p></div></div>
+              <div class="character-grid">
+                <div class="character"><img src="../../Shink/wwwroot/branding/characters/prinses-panda.png" alt="Prinses Panda"><span>Prinses Panda</span></div>
+                <div class="character"><img src="../../Shink/wwwroot/branding/characters/suurlemoentjie.png" alt="Suurlemoentjie"><span>Suurlemoentjie</span></div>
+                <div class="character"><img src="../../Shink/wwwroot/branding/characters/reenboog-robot.png" alt="Reenboog Robot"><span>Reenboog Robot</span></div>
+                <div class="character"><img src="../../Shink/wwwroot/branding/characters/lama-lama-pajama-lama.png" alt="Llama Llama"><span>Llama Llama</span></div>
+                <div class="character"><img src="../../Shink/wwwroot/branding/characters/grommel.png" alt="Grommel"><span>Grommel</span></div>
+                <div class="character"><img src="../../Shink/wwwroot/branding/characters/die-bang-soldaatjie-mystery.png" alt="Gesluit"><span>Gesluit</span></div>
+              </div>
+            </div>
+            <nav class="bottom-nav"><span class="tab"><span class="tab-icon"></span>Tuis</span><span class="tab"><span class="tab-icon listen"></span>Luister</span><span class="tab active"><span class="tab-icon library"></span>Biblioteek</span></nav>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen-card">
+        <div class="caption">09 Hulpbronne</div>
+        <div class="phone">
+          <div class="screen">
+            <div class="status"><span>9:41</span><span class="signal"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="battery"></span></span></div>
+            <div class="topbar left-title"><h2>Hulpbronne</h2><div class="round-btn">PDF</div><div class="round-btn">Af</div></div>
+            <div class="content">
+              <div class="hero-art"><img src="../../Shink/wwwroot/branding/Hulpbron_blad_01.png" alt="Hulpbronne"></div>
+              <div class="section-title"><div><h2>Druk, speel, gesels</h2><p class="muted">Aktiwiteite en storiekaarte.</p></div></div>
+              <div class="list">
+                <div class="resource"><img src="../../Shink/wwwroot/stories/thumbs/die-ware-wenner-thumb.jpg" alt="Die Ware Wenner"><div><h3>Storiekaart</h3><p class="muted">Die Ware Wenner</p></div><span class="pill">Oop</span></div>
+                <div class="resource"><img src="../../Shink/wwwroot/stories/thumbs/prinses-panda-thumb.jpg" alt="Prinses Panda"><div><h3>Aktiwiteit</h3><p class="muted">Prinses Panda</p></div><span class="pill yellow">Aflaai</span></div>
+                <div class="resource"><img src="../../Shink/wwwroot/stories/thumbs/reenboog-robot-thumb.jpg" alt="Reenboog Robot"><div><h3>Inkleurblad</h3><p class="muted">Reenboog Robot</p></div><span class="pill red">Plan</span></div>
+              </div>
+            </div>
+            <nav class="bottom-nav"><span class="tab"><span class="tab-icon"></span>Tuis</span><span class="tab"><span class="tab-icon listen"></span>Luister</span><span class="tab active"><span class="tab-icon library"></span>Biblioteek</span></nav>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen-card">
+        <div class="caption">10 Winkel</div>
+        <div class="phone">
+          <div class="screen">
+            <div class="status"><span>9:41</span><span class="signal"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="battery"></span></span></div>
+            <div class="topbar left-title"><h2>Winkel</h2><div class="round-btn">Sak</div><div class="round-btn">...</div></div>
+            <div class="content">
+              <div class="section-title"><div><h2>Storie-tjommies</h2><p class="muted">Karakters wat saam huis toe gaan.</p></div></div>
+              <div class="product-grid">
+                <div class="product"><img src="../../Shink/wwwroot/branding/winkel/storie-tjommie-panda.png" alt="Panda storie-tjommie"><h3>Panda</h3><p class="muted">Storie-tjommie</p></div>
+                <div class="product"><img src="../../Shink/wwwroot/branding/winkel/storie-tjommie-suurlemoentjie.png" alt="Suurlemoentjie storie-tjommie"><h3>Suurlemoentjie</h3><p class="muted">Storie-tjommie</p></div>
+                <div class="product"><img src="../../Shink/wwwroot/branding/winkel/storie-tjommie-lama-lama-pajama-lama.png" alt="Llama storie-tjommie"><h3>Llama Llama</h3><p class="muted">Storie-tjommie</p></div>
+                <div class="product"><img src="../../Shink/wwwroot/branding/winkel/storie-tjommie-georgie.png" alt="Georgie storie-tjommie"><h3>Georgie</h3><p class="muted">Storie-tjommie</p></div>
+              </div>
+            </div>
+            <nav class="bottom-nav"><span class="tab active"><span class="tab-icon"></span>Tuis</span><span class="tab"><span class="tab-icon listen"></span>Luister</span><span class="tab"><span class="tab-icon library"></span>Biblioteek</span></nav>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen-card">
+        <div class="caption">11 Opsies</div>
+        <div class="phone">
+          <div class="screen">
+            <div class="status"><span>9:41</span><span class="signal"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="battery"></span></span></div>
+            <div class="topbar left-title"><h2>Opsies</h2><div class="round-btn">i</div><div class="round-btn">LV</div></div>
+            <div class="content">
+              <div class="plan"><span class="pill yellow">Gewild</span><h3>Gesinsopsie</h3><p class="muted">Alle stories, speellyste, karakters en hulpbronne.</p><div class="price">R99 <span class="muted">/ maand</span></div><div class="primary">Kies plan</div></div>
+              <div class="section-title"><h2>Vergelyk</h2></div>
+              <div class="grid-2"><div class="tile"><strong>Gratis</strong><p class="muted">Beperkte stories.</p></div><div class="tile"><strong>Skool</strong><p class="muted">Klaskamer toegang.</p></div></div>
+            </div>
+            <nav class="bottom-nav"><span class="tab active"><span class="tab-icon"></span>Tuis</span><span class="tab"><span class="tab-icon listen"></span>Luister</span><span class="tab"><span class="tab-icon library"></span>Biblioteek</span></nav>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen-card">
+        <div class="caption">12 Rekening & Betaling</div>
+        <div class="phone">
+          <div class="screen">
+            <div class="status"><span>9:41</span><span class="signal"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="battery"></span></span></div>
+            <div class="topbar left-title"><h2>Rekening</h2><div class="round-btn">Stel</div><div class="round-btn">Uit</div></div>
+            <div class="content">
+              <div class="profile"><div class="avatar">LV</div><div><h3>Luan se gesin</h3><p class="muted">Premium plan • aktief</p></div></div>
+              <div class="section-title"><h2>Jou plan</h2></div>
+              <div class="plan"><span class="pill">Huidige plan</span><h3>Gesinsopsie</h3><p class="muted">Bestuur betaling, kwitansies en toegang.</p><div class="price">R99 <span class="muted">/ maand</span></div><div class="primary">Bestuur betaling</div></div>
+            </div>
+            <nav class="bottom-nav"><span class="tab active"><span class="tab-icon"></span>Tuis</span><span class="tab"><span class="tab-icon listen"></span>Luister</span><span class="tab"><span class="tab-icon library"></span>Biblioteek</span></nav>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen-card">
+        <div class="caption">13 Meer oor Ons</div>
+        <div class="phone">
+          <div class="screen">
+            <div class="status"><span>9:41</span><span class="signal"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="battery"></span></span></div>
+            <div class="topbar left-title"><h2>Meer oor Ons</h2><div class="round-btn">...</div><div class="round-btn">♥</div></div>
+            <div class="content">
+              <div class="about-photo"><img src="../../Shink/wwwroot/branding/Schink_Die_Ware_Wenner_Schink_Stories_600x600.png" alt="Die Ware Wenner Schink Stories"></div>
+              <div class="section-title"><div><h2>Wie ons is</h2><p class="muted">Stories vir ouer en kind, gebou rondom waardes.</p></div></div>
+              <div class="row compact"><div class="thumb contain"><img src="../../Shink/wwwroot/branding/Schwella.webp" alt="Schwella"></div><div><h3>Martin & Simone</h3><p class="muted">Die mense agter Schink Stories.</p></div><span class="pill yellow">Lees</span></div>
+              <div class="row compact" style="margin-top: 12px;"><div class="thumb contain"><img src="../../Shink/wwwroot/branding/Panda.webp" alt="Panda"></div><div><h3>Ons Belofte</h3><p class="muted">Veilige storietyd vir gesinne.</p></div><span class="pill">Oop</span></div>
+            </div>
+            <nav class="bottom-nav"><span class="tab active"><span class="tab-icon"></span>Tuis</span><span class="tab"><span class="tab-icon listen"></span>Luister</span><span class="tab"><span class="tab-icon library"></span>Biblioteek</span></nav>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen-card">
+        <div class="caption">14 Blog</div>
+        <div class="phone">
+          <div class="screen">
+            <div class="status"><span>9:41</span><span class="signal"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="battery"></span></span></div>
+            <div class="topbar left-title"><h2>Blog</h2><div class="round-btn">RSS</div><div class="round-btn">Soek</div></div>
+            <div class="content">
+              <div class="post"><img src="../../Shink/wwwroot/branding/Schink_Stories_Kom_Luister_Saam.webp" alt="Kom luister saam"><h3>Kom luister saam</h3><p class="muted">Nuus, storie-idees en praktiese wenke vir ouers.</p><span class="pill yellow">Lees meer</span></div>
+              <div class="post" style="margin-top: 12px;"><img src="../../Shink/wwwroot/branding/Kom_Luister_Saam.png" alt="Kom luister saam"><h3>Storietyd by die huis</h3><p class="muted">Hoe om luisterroetines maklik te maak.</p><span class="pill">Nuut</span></div>
+            </div>
+            <nav class="bottom-nav"><span class="tab active"><span class="tab-icon"></span>Tuis</span><span class="tab"><span class="tab-icon listen"></span>Luister</span><span class="tab"><span class="tab-icon library"></span>Biblioteek</span></nav>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen-card">
+        <div class="caption">15 Soek</div>
+        <div class="phone">
+          <div class="screen">
+            <div class="status"><span>9:41</span><span class="signal"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="battery"></span></span></div>
+            <div class="topbar left-title"><h2>Soek</h2><div class="round-btn">X</div><div class="round-btn">...</div></div>
+            <div class="content">
+              <div class="search">Soek stories, karakters of hulpbronne</div>
+              <div class="section-title"><h2>Resultate</h2></div>
+              <div class="list">
+                <div class="row compact"><div class="thumb"><img src="../../Shink/wwwroot/stories/thumbs/die-ware-wenner-thumb.jpg" alt="Die Ware Wenner"></div><div><h3>Die Ware Wenner</h3><p class="muted">Storie • Luister</p></div><span class="pill yellow">Speel</span></div>
+                <div class="row compact"><div class="thumb contain"><img src="../../Shink/wwwroot/branding/characters/prinses-panda.png" alt="Prinses Panda"></div><div><h3>Prinses Panda</h3><p class="muted">Karakter • Profiel</p></div><span class="pill">Oop</span></div>
+                <div class="row compact"><div class="thumb"><img src="../../Shink/wwwroot/stories/thumbs/reenboog-robot-thumb.jpg" alt="Reenboog Robot"></div><div><h3>Reenboog Robot</h3><p class="muted">Storie • Hulpbron</p></div><span class="pill red">Plan</span></div>
+              </div>
+            </div>
+            <nav class="bottom-nav"><span class="tab"><span class="tab-icon"></span>Tuis</span><span class="tab active"><span class="tab-icon listen"></span>Luister</span><span class="tab"><span class="tab-icon library"></span>Biblioteek</span></nav>
+          </div>
+        </div>
+      </article>
+
+      <article class="screen-card">
+        <div class="caption">16 Skep Rekening</div>
+        <div class="phone">
+          <div class="screen no-nav">
+            <div class="status"><span>9:41</span><span class="signal"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="battery"></span></span></div>
+            <div class="topbar left-title"><h2>Skep rekening</h2><div class="round-btn">X</div><div class="round-btn">?</div></div>
+            <div class="content" style="height: calc(100% - 88px); padding-bottom: 28px;">
+              <div class="hero-art"><img src="../../Shink/wwwroot/branding/Schink_Stories_Char_Line_up.png" alt="Schink Stories karaktergroep"></div>
+              <div class="section-title"><div><h2>Begin julle storietyd</h2><p class="muted">Kry toegang tot gratis stories, planne en jou gesin se biblioteek.</p></div></div>
+              <div class="list">
+                <div class="field"><span class="field-icon"></span><span>Naam en van</span><span></span></div>
+                <div class="field"><span class="field-icon"></span><span>E-pos</span><span></span></div>
+                <div class="field"><span class="field-icon lock"></span><span>Wagwoord</span><span>o</span></div>
+              </div>
+              <div class="primary" style="margin-top: 14px;">Skep rekening</div>
+              <p class="link" style="margin-top: 16px;">Ek het reeds 'n rekening</p>
+            </div>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <p class="note">All story covers, character art, product imagery and brand marks are loaded directly from the existing repository assets under <strong>Shink/wwwroot</strong>. The mockup restyles the app chrome only; the source media is not AI-regenerated or edited.</p>
+  </main>
+</body>
+</html>

@@ -14,6 +14,7 @@ public sealed class SupabaseStoryTrackingService(
     ILogger<SupabaseStoryTrackingService> logger) : IStoryTrackingService
 {
     private const string SubscriberCachePrefix = "story-tracking:subscriber:";
+    private const int ProgressPageSize = 1000;
     private static readonly TimeSpan SubscriberCacheDuration = TimeSpan.FromMinutes(10);
 
     private readonly HttpClient _httpClient = httpClient;
@@ -157,31 +158,7 @@ public sealed class SupabaseStoryTrackingService(
                 return Array.Empty<UserStoryProgressItem>();
             }
 
-            var escapedSubscriberId = Uri.EscapeDataString(subscriberId);
-            var requestUri = new Uri(
-                baseUri,
-                "rest/v1/story_listen_events" +
-                "?select=story_slug,story_path,session_id,event_type,listened_seconds,position_seconds,duration_seconds,occurred_at,metadata" +
-                $"&subscriber_id=eq.{escapedSubscriberId}" +
-                "&order=occurred_at.desc" +
-                "&limit=2500");
-
-            using var request = CreateRequest(HttpMethod.Get, requestUri, apiKey);
-            using var response = await _httpClient.SendAsync(request, cancellationToken);
-            if (!response.IsSuccessStatusCode)
-            {
-                var body = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning(
-                    "Supabase story progress lookup failed. Status={StatusCode} Body={Body}",
-                    (int)response.StatusCode,
-                    body);
-                return Array.Empty<UserStoryProgressItem>();
-            }
-
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            var rows = await JsonSerializer.DeserializeAsync<List<StoryListenEventRow>>(stream, cancellationToken: cancellationToken)
-                ?? [];
-
+            var rows = await GetAllStoryListenEventRowsAsync(baseUri, apiKey, subscriberId, cancellationToken);
             return BuildProgressItems(rows);
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
@@ -291,6 +268,50 @@ public sealed class SupabaseStoryTrackingService(
         }
 
         return true;
+    }
+
+    private async Task<List<StoryListenEventRow>> GetAllStoryListenEventRowsAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriberId,
+        CancellationToken cancellationToken)
+    {
+        var escapedSubscriberId = Uri.EscapeDataString(subscriberId);
+        var rows = new List<StoryListenEventRow>();
+
+        for (var offset = 0; ; offset += ProgressPageSize)
+        {
+            var requestUri = new Uri(
+                baseUri,
+                "rest/v1/story_listen_events" +
+                "?select=story_slug,story_path,session_id,event_type,listened_seconds,position_seconds,duration_seconds,occurred_at,metadata" +
+                $"&subscriber_id=eq.{escapedSubscriberId}" +
+                "&order=occurred_at.desc" +
+                $"&limit={ProgressPageSize}" +
+                $"&offset={offset}");
+
+            using var request = CreateRequest(HttpMethod.Get, requestUri, apiKey);
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning(
+                    "Supabase story progress lookup failed. Status={StatusCode} Body={Body}",
+                    (int)response.StatusCode,
+                    body);
+                return [];
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var pageRows = await JsonSerializer.DeserializeAsync<List<StoryListenEventRow>>(stream, cancellationToken: cancellationToken)
+                ?? [];
+            rows.AddRange(pageRows);
+
+            if (pageRows.Count < ProgressPageSize)
+            {
+                return rows;
+            }
+        }
     }
 
     private HttpRequestMessage CreateRequest(HttpMethod method, Uri uri, string apiKey)

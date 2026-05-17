@@ -17,6 +17,7 @@ public sealed partial class SupabaseCharacterService(
 {
     private const string PublishedCharactersCacheKey = "story-characters:published:v1";
     private const string SubscriberCachePrefix = "character-tracking:subscriber:";
+    private const int ProfileListenPageSize = 1000;
     private static readonly TimeSpan PublishedCharactersCacheDuration = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan SubscriberCacheDuration = TimeSpan.FromMinutes(10);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -294,31 +295,7 @@ public sealed partial class SupabaseCharacterService(
                 return Array.Empty<UserCharacterProfileListenItem>();
             }
 
-            var escapedSubscriberId = Uri.EscapeDataString(subscriberId);
-            var requestUri = new Uri(
-                baseUri,
-                "rest/v1/character_audio_plays" +
-                "?select=character_id,character_slug,occurred_at" +
-                $"&subscriber_id=eq.{escapedSubscriberId}" +
-                "&order=occurred_at.desc" +
-                "&limit=2500");
-
-            using var request = CreateRequest(HttpMethod.Get, requestUri, apiKey);
-            using var response = await _httpClient.SendAsync(request, cancellationToken);
-            if (!response.IsSuccessStatusCode)
-            {
-                var body = await response.Content.ReadAsStringAsync(cancellationToken);
-                _logger.LogWarning(
-                    "Character profile listen lookup failed. Status={StatusCode} Body={Body}",
-                    (int)response.StatusCode,
-                    body);
-                return Array.Empty<UserCharacterProfileListenItem>();
-            }
-
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            var rows = await JsonSerializer.DeserializeAsync<List<CharacterAudioPlayRow>>(stream, JsonOptions, cancellationToken)
-                ?? [];
-
+            var rows = await GetAllCharacterAudioPlayRowsAsync(baseUri, apiKey, subscriberId, cancellationToken);
             return rows
                 .Where(row => row.CharacterId != Guid.Empty)
                 .Where(row => !string.IsNullOrWhiteSpace(row.CharacterSlug))
@@ -339,6 +316,50 @@ public sealed partial class SupabaseCharacterService(
         {
             _logger.LogWarning(exception, "Character profile listen lookup failed unexpectedly.");
             return Array.Empty<UserCharacterProfileListenItem>();
+        }
+    }
+
+    private async Task<List<CharacterAudioPlayRow>> GetAllCharacterAudioPlayRowsAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriberId,
+        CancellationToken cancellationToken)
+    {
+        var escapedSubscriberId = Uri.EscapeDataString(subscriberId);
+        var rows = new List<CharacterAudioPlayRow>();
+
+        for (var offset = 0; ; offset += ProfileListenPageSize)
+        {
+            var requestUri = new Uri(
+                baseUri,
+                "rest/v1/character_audio_plays" +
+                "?select=character_id,character_slug,occurred_at" +
+                $"&subscriber_id=eq.{escapedSubscriberId}" +
+                "&order=occurred_at.desc" +
+                $"&limit={ProfileListenPageSize}" +
+                $"&offset={offset}");
+
+            using var request = CreateRequest(HttpMethod.Get, requestUri, apiKey);
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.LogWarning(
+                    "Character profile listen lookup failed. Status={StatusCode} Body={Body}",
+                    (int)response.StatusCode,
+                    body);
+                return [];
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var pageRows = await JsonSerializer.DeserializeAsync<List<CharacterAudioPlayRow>>(stream, JsonOptions, cancellationToken)
+                ?? [];
+            rows.AddRange(pageRows);
+
+            if (pageRows.Count < ProfileListenPageSize)
+            {
+                return rows;
+            }
         }
     }
 
