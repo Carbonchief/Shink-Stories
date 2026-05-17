@@ -43,6 +43,7 @@ const SEARCH_DEBOUNCE_MS = 160;
 const SEARCH_MAX_RESULTS = 8;
 const NIGHT_MODE_STORAGE_KEY = "schink:night-mode";
 const NIGHT_MODE_BODY_CLASS = "schink-night-mode";
+const HEADER_SEARCH_CONTROLLER_PROPERTY = "__schinkHeaderSearchController";
 const OPEN_LABEL = "Maak navigasie toe";
 const CLOSED_LABEL = "Maak navigasie oop";
 const NIGHT_MODE_ON_LABEL = "Skakel nagmodus af";
@@ -308,7 +309,7 @@ function closeHeaderSearchInContainer(container, options = {}) {
         return;
     }
 
-    const controller = headerSearchState.get(searchForm);
+    const controller = headerSearchState.get(searchForm) || searchForm[HEADER_SEARCH_CONTROLLER_PROPERTY];
     if (!controller || typeof controller.setSearchState !== "function") {
         container.classList.remove(SEARCH_ACTIVE_CLASS);
         return;
@@ -1500,10 +1501,6 @@ function wireHeaderSearch(searchForm) {
         return;
     }
 
-    if (searchForm.dataset.searchWired === "true" && headerSearchState.has(searchForm)) {
-        return;
-    }
-
     const searchToggle = searchForm.querySelector(SEARCH_TOGGLE_SELECTOR);
     const searchInput = searchForm.querySelector(SEARCH_INPUT_SELECTOR);
     const searchLoader = searchForm.querySelector(SEARCH_LOADER_SELECTOR);
@@ -1516,6 +1513,16 @@ function wireHeaderSearch(searchForm) {
         !(suggestionsPanel instanceof HTMLElement) ||
         !(suggestionsList instanceof HTMLElement) ||
         !(controlsContainer instanceof HTMLElement)) {
+        return;
+    }
+
+    const existingController = searchForm[HEADER_SEARCH_CONTROLLER_PROPERTY];
+    if (existingController &&
+        typeof existingController.setSearchState === "function" &&
+        existingController.searchToggle === searchToggle &&
+        existingController.searchInput === searchInput) {
+        headerSearchState.set(searchForm, existingController);
+        searchForm.dataset.searchWired = "true";
         return;
     }
 
@@ -1729,7 +1736,9 @@ function wireHeaderSearch(searchForm) {
         }
     };
 
-    headerSearchState.set(searchForm, { setSearchState });
+    const controller = { setSearchState, searchToggle, searchInput };
+    headerSearchState.set(searchForm, controller);
+    searchForm[HEADER_SEARCH_CONTROLLER_PROPERTY] = controller;
 
     setSearchState(false);
 
