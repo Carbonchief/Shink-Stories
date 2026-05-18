@@ -16,14 +16,14 @@
     @if (IsLoading)
     {
         <section class="school-admin-state">
-            <h2>Laai skool dashboard...</h2>
+            <h2>Laai skool bestuursportaal...</h2>
         </section>
     }
     else if (!IsAuthenticated)
     {
         <section class="school-admin-state">
             <h2>Teken eers in.</h2>
-            <p>Jy moet ingeteken wees om 'n skool dashboard te bestuur.</p>
+            <p>Jy moet ingeteken wees om 'n skool bestuursportaal te bestuur.</p>
             <a class="school-admin-btn" href="@LoginHref">Teken in</a>
         </section>
     }
@@ -31,7 +31,7 @@
     {
         <section class="school-admin-state">
             <h2>Geen aktiewe skoolopsie gevind nie.</h2>
-            <p>Kies eers 'n skoolpakket. Sodra betaling voltooi is, skep ons die dashboard outomaties vir die skool admin.</p>
+            <p>Kies eers 'n skoolpakket. Sodra betaling voltooi is, skep ons die bestuursportaal outomaties vir die skool admin.</p>
             <a class="school-admin-btn" href="/skoolopsies">Kies 'n skoolopsie</a>
         </section>
     }

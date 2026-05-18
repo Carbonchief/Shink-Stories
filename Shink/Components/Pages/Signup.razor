@@ -165,7 +165,7 @@
                 <InputText id="signup-discount-code"
                            class="form-control"
                            autocomplete="off"
-                           placeholder="Voer jou kode in"
+                           placeholder="Voer promosiekode in"
                            aria-label="Kode of voucher"
                            @bind-Value="SignUpForm.DiscountCode" />
                 <ValidationMessage class="invalid-feedback d-block" For="@(() => SignUpForm.DiscountCode)" />
@@ -232,13 +232,20 @@
     [SupplyParameterFromQuery(Name = "plan")]
     public string? Plan { get; set; }
 
+    [SupplyParameterFromQuery(Name = "source")]
+    public string? Source { get; set; }
+
     private bool IsSubmitting { get; set; }
     private bool SignUpSucceeded { get; set; }
     private bool ShowAccountCreatedPopup { get; set; }
+    private bool IsSchoolOptionsSignupFlow { get; set; }
     private string? StatusMessage { get; set; }
     private PaymentPlan? SelectedPlan { get; set; }
     private string SignInHref => BuildSignInHref(GetSafeReturnUrl(ReturnUrl), GetSelectedPlanCheckoutPath());
-    private IReadOnlyList<PaymentPlan> AvailablePlans => PaymentPlanCatalog.All;
+    private IReadOnlyList<PaymentPlan> AvailablePlans =>
+        IsSchoolOptionsSignupFlow ? PaymentPlanCatalog.SchoolPlans : HouseholdPlans;
+    private static IReadOnlyList<PaymentPlan> HouseholdPlans { get; } =
+        PaymentPlanCatalog.All.Where(plan => !plan.IsSchoolPlan).ToArray();
 
     protected override void OnInitialized()
     {
@@ -248,6 +255,7 @@
     protected override async Task OnParametersSetAsync()
     {
         SelectedPlan = ResolveSelectedPlan();
+        IsSchoolOptionsSignupFlow = IsSchoolOptionsSource(Source) || SelectedPlan?.IsSchoolPlan == true;
 
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         if (authState.User.Identity?.IsAuthenticated == true)
@@ -697,6 +705,9 @@
         var trimmed = value.Trim();
         return trimmed.Length == 0 ? null : trimmed;
     }
+
+    private static bool IsSchoolOptionsSource(string? source) =>
+        string.Equals(source?.Trim(), "skoolopsies", StringComparison.OrdinalIgnoreCase);
 
     private static string GetPlanBadge(PaymentPlan plan) =>
         plan.BillingPeriodMonths switch

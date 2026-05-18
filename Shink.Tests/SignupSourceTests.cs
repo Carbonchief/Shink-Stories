@@ -28,9 +28,26 @@ public class SignupSourceTests
         var css = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Signup.razor.css"));
 
         StringAssert.Contains(signup, "As jou kode geldig is, slaan ons PayStack vir nou oor en aktiveer jou toegang direk.");
+        StringAssert.Contains(signup, "placeholder=\"Voer promosiekode in\"");
+        Assert.IsFalse(signup.Contains("placeholder=\"Voer jou kode in\"", StringComparison.Ordinal));
         Assert.IsFalse(signup.Contains("slaan ons PayFast vir nou oor", StringComparison.Ordinal));
         StringAssert.Contains(css, ".signup-discount-code-field");
         StringAssert.Contains(css, "margin-top: 1rem;");
+    }
+
+    [TestMethod]
+    public void SignupMembershipSelectorSwitchesPlanListBySchoolSource()
+    {
+        var signup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Signup.razor"));
+
+        StringAssert.Contains(signup, "[SupplyParameterFromQuery(Name = \"source\")]");
+        StringAssert.Contains(signup, "IsSchoolOptionsSignupFlow ? PaymentPlanCatalog.SchoolPlans : HouseholdPlans");
+        StringAssert.Contains(signup, "IsSchoolOptionsSignupFlow = IsSchoolOptionsSource(Source) || SelectedPlan?.IsSchoolPlan == true;");
+        StringAssert.Contains(signup, "PaymentPlanCatalog.All.Where(plan => !plan.IsSchoolPlan).ToArray()");
+        StringAssert.Contains(signup, "@foreach (var plan in AvailablePlans)");
+        Assert.IsFalse(
+            signup.Contains("private IReadOnlyList<PaymentPlan> AvailablePlans => PaymentPlanCatalog.All;", StringComparison.Ordinal),
+            "The signup plan selector should not render every catalog plan because that mixes household and school options.");
     }
 
     private static string GetRepoPath(params string[] segments)

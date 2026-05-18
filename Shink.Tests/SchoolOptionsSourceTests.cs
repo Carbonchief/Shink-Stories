@@ -42,6 +42,8 @@ public class SchoolOptionsSourceTests
         Assert.IsTrue(faqIndex > schoolCtaIndex);
         StringAssert.Contains(opsies, "href=\"/skoolopsies\"");
         StringAssert.Contains(opsies, "Sien skoolopsies");
+        StringAssert.Contains(opsies, "'n bestuursportaal om klaskamerplekke te bestuur");
+        Assert.IsFalse(opsies.Contains("'n dashboard om klaskamerplekke te bestuur", StringComparison.OrdinalIgnoreCase));
     }
 
     [TestMethod]
@@ -54,6 +56,9 @@ public class SchoolOptionsSourceTests
         StringAssert.Contains(skoolOpsies, "Graad RR tot Graad 3");
         StringAssert.Contains(skoolOpsies, "10-15 minute");
         StringAssert.Contains(skoolOpsies, "Elke skool ontvang ook 'n promosiekode vir ouers.");
+        StringAssert.Contains(skoolOpsies, "Skool admin bestuursportaal vir uitnodigings");
+        Assert.IsFalse(skoolOpsies.Contains("Skool admin dashboard", StringComparison.OrdinalIgnoreCase));
+        StringAssert.Contains(skoolOpsies, "[\"source\"] = \"skoolopsies\"");
     }
 
     [TestMethod]
@@ -68,6 +73,8 @@ public class SchoolOptionsSourceTests
         StringAssert.Contains(skoolAdmin, "Nooi onderwyser");
         StringAssert.Contains(skoolAdmin, "Plekke gebruik");
         StringAssert.Contains(skoolAdmin, "Ek gebruik self 'n klaskamerplek");
+        StringAssert.Contains(skoolAdmin, "Laai skool bestuursportaal...");
+        Assert.IsFalse(skoolAdmin.Contains("skool dashboard", StringComparison.OrdinalIgnoreCase));
         StringAssert.Contains(service, "InviteTeacherAsync");
         StringAssert.Contains(service, "UpdateAdminSeatUsageAsync");
         StringAssert.Contains(program, "GetSafeCheckoutReturnUrl(returnUrl, plan)");
