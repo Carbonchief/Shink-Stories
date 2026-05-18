@@ -46,6 +46,8 @@ public class IntekeningEnBetalingModalSourceTests
         StringAssert.Contains(source, "aria-hidden=\"true\"");
         StringAssert.Contains(css, ".billing-save-badge-placeholder");
         StringAssert.Contains(css, "visibility: hidden");
+        StringAssert.Contains(css, "grid-template-rows: auto auto auto auto minmax(0, 1fr) auto");
+        StringAssert.Contains(css, "align-self: end");
     }
 
     [TestMethod]
