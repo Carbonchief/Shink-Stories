@@ -17,6 +17,7 @@
 @inject ISubscriptionLedgerService SubscriptionLedgerService
 @inject IStoryFavoriteService StoryFavoriteService
 @inject IHttpContextAccessor HttpContextAccessor
+@inject PersistentComponentState PersistentComponentState
 @implements IAsyncDisposable
 
 <PageTitle>@(CurrentStory is null ? "Storie nie gevind nie" : $"{CurrentStory.Title} | Schink Stories")</PageTitle>
@@ -37,7 +38,7 @@
     <JsonLdScript Json="@StoryPageJsonLd" />
 </HeadContent>
 
-@if (IsStoryLoading)
+@if (ShouldShowStoryLoading)
 {
     <section class="story-player-empty story-player-loading" aria-live="polite" aria-busy="true">
         <span class="story-loading-spinner" aria-hidden="true"></span>
@@ -386,6 +387,8 @@ else
                   OnClose="CloseStoryAccessPopupAsync" />
 
 @code {
+    private const string PersistedStoryStateKeyPrefix = "LuisterStory:";
+
     [Parameter]
     public string? Slug { get; set; }
 
@@ -404,6 +407,8 @@ else
     private DotNetObjectReference<LuisterStory>? _dotNetRef;
     private bool _mediaSessionModuleLoadFailed;
     private bool _isDisposed;
+    private bool _hasAttemptedPersistedStateRestore;
+    private PersistingComponentStateSubscription? _persistingSubscription;
     private bool IsManualFullscreenFocus { get; set; }
     private IReadOnlyList<StoryItem> LuisterStories { get; set; } = Array.Empty<StoryItem>();
     private IReadOnlyList<StoryCharacterItem> PublishedCharacters { get; set; } = Array.Empty<StoryCharacterItem>();
@@ -457,6 +462,8 @@ else
     private string ShareImageAlt =>
         CurrentStory is null ? "Schink Stories luister stories" : $"Voorblad van {CurrentStory.Title}";
 
+    private bool ShouldShowStoryLoading => IsStoryLoading && CurrentStory is null;
+
     private MarkupString StoryPageJsonLd => new(JsonSerializer.Serialize(new Dictionary<string, object?>
     {
         ["@context"] = "https://schema.org",
@@ -489,9 +496,15 @@ else
         }
     }));
 
+    protected override void OnInitialized()
+    {
+        _persistingSubscription = PersistentComponentState.RegisterOnPersisting(PersistStoryState);
+    }
+
     protected override async Task OnParametersSetAsync()
     {
-        IsStoryLoading = true;
+        TryRestorePersistedStoryState();
+        IsStoryLoading = CurrentStory is null;
         var isSocialPreviewRequest = SocialPreviewRequestDetector.IsSocialPreviewRequest(HttpContextAccessor.HttpContext);
         ShowStoryAccessPopup = false;
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
@@ -555,6 +568,57 @@ else
         IsManualFullscreenFocus = false;
         ShowStoryAccessPopup = false;
         IsStoryLoading = false;
+    }
+
+    private void TryRestorePersistedStoryState()
+    {
+        if (_hasAttemptedPersistedStateRestore)
+        {
+            return;
+        }
+
+        _hasAttemptedPersistedStateRestore = true;
+        var stateKey = BuildPersistedStoryStateKey(Slug);
+        if (string.IsNullOrWhiteSpace(stateKey) ||
+            !PersistentComponentState.TryTakeFromJson<PersistedLuisterStoryState>(stateKey, out var state) ||
+            state is null ||
+            state.CurrentStory is null)
+        {
+            return;
+        }
+
+        CurrentStory = state.CurrentStory;
+        AudioUrl = state.AudioUrl;
+        PreviousStory = state.PreviousStory;
+        NextStory = state.NextStory;
+        IsRedirectingToOpsies = state.IsRedirectingToOpsies;
+        PendingLockedStoryPath = string.IsNullOrWhiteSpace(state.PendingLockedStoryPath)
+            ? "/luister"
+            : state.PendingLockedStoryPath;
+        ShowStoryAccessPopup = state.ShowStoryAccessPopup;
+        IsStoryLoading = false;
+    }
+
+    private Task PersistStoryState()
+    {
+        var stateKey = BuildPersistedStoryStateKey(Slug);
+        if (string.IsNullOrWhiteSpace(stateKey) || CurrentStory is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        PersistentComponentState.PersistAsJson(
+            stateKey,
+            new PersistedLuisterStoryState(
+                CurrentStory,
+                AudioUrl,
+                PreviousStory,
+                NextStory,
+                IsRedirectingToOpsies,
+                PendingLockedStoryPath,
+                ShowStoryAccessPopup));
+
+        return Task.CompletedTask;
     }
 
     private bool IsStoryFavorite(string slug) => FavoriteStorySlugs.Contains(slug);
@@ -897,10 +961,30 @@ else
         }
         finally
         {
+            _persistingSubscription?.Dispose();
             _dotNetRef?.Dispose();
             _dotNetRef = null;
         }
     }
+
+    private static string? BuildPersistedStoryStateKey(string? slug)
+    {
+        if (string.IsNullOrWhiteSpace(slug))
+        {
+            return null;
+        }
+
+        return $"{PersistedStoryStateKeyPrefix}{slug.Trim().ToLowerInvariant()}";
+    }
+
+    private sealed record PersistedLuisterStoryState(
+        StoryItem CurrentStory,
+        string? AudioUrl,
+        StoryItem? PreviousStory,
+        StoryItem? NextStory,
+        bool IsRedirectingToOpsies,
+        string PendingLockedStoryPath,
+        bool ShowStoryAccessPopup);
 
     private static string GetImageMimeType(string fileName)
     {
