@@ -559,6 +559,11 @@
     box-shadow: 0 24px 42px rgba(171, 93, 21, 0.14);
 }
 
+.billing-plan-card.is-loading {
+    border-color: rgba(33, 95, 104, 0.34);
+    box-shadow: 0 24px 42px rgba(33, 95, 104, 0.12);
+}
+
 .billing-plan-card.is-highlighted::before {
     background: linear-gradient(90deg, #ab5d15 0%, color-mix(in srgb, #ab5d15 58%, white) 100%);
 }
@@ -639,6 +644,22 @@
 
 .billing-plan-actions .btn {
     width: 100%;
+}
+
+.billing-plan-select-btn {
+    gap: 0.5rem;
+    cursor: pointer;
+}
+
+.billing-plan-select-btn:disabled {
+    cursor: wait;
+}
+
+.billing-plan-button-spinner {
+    width: 1rem;
+    height: 1rem;
+    flex: 0 0 auto;
+    border-width: 0.16em;
 }
 
 body.schink-night-mode .billing-page::before {
@@ -821,6 +842,10 @@ body.schink-night-mode .billing-plan-badge {
 body.schink-night-mode .billing-plan-card.is-highlighted {
     border-color: rgba(242, 168, 77, 0.34);
     box-shadow: 0 24px 42px rgba(0, 0, 0, 0.3);
+}
+
+body.schink-night-mode .billing-plan-card.is-loading {
+    border-color: rgba(157, 221, 234, 0.34);
 }
 
 body.schink-night-mode .billing-plan-card.is-highlighted .billing-plan-badge,

@@ -29,6 +29,18 @@ public class GratisToLuisterRoutingTests
     }
 
     [TestMethod]
+    public void CatalogGratisStoriesAreMarkedAsFreeForSignedAudioAccess()
+    {
+        Assert.IsTrue(StoryCatalog.All.Count > 0);
+
+        foreach (var story in StoryCatalog.All)
+        {
+            Assert.AreEqual("free", story.AccessLevel, $"Gratis story {story.Slug} must stay free.");
+            Assert.AreEqual(StoryAccessRequirement.Free, StoryAccessPolicy.ResolveRequirement("luister", story));
+        }
+    }
+
+    [TestMethod]
     public void LuisterTreatsStorieHoekiePlaylistStoriesAsStoryCornerStories()
     {
         var story = new StoryItem(

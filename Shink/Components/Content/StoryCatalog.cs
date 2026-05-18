@@ -161,21 +161,24 @@ public static class StoryCatalog
             Description: "Wanneer suur woorde sag word, groei ware vriendskap.",
             ImageFileName: "Suurlemoentjie.jpeg",
             AudioFileName: "Suurlemoentjie.mpeg",
-            ThumbnailFileName: "Suurlemoentjie.jpeg"),
+            ThumbnailFileName: "Suurlemoentjie.jpeg",
+            AccessLevel: "free"),
         new(
             Slug: "die-kwaaibok-se-klip",
             Title: "Die Kwaaibok se Klip",
             Description: "Die kwaaibok se dag verander wanneer 'n klip en 'n groot les sy pad kruis.",
             ImageFileName: "Die Kwaaibok se Klip.jpeg",
             AudioFileName: "Die Kwaaibok se Klip.mpeg",
-            ThumbnailFileName: "Die Kwaaibok se Klip.jpeg"),
+            ThumbnailFileName: "Die Kwaaibok se Klip.jpeg",
+            AccessLevel: "free"),
         new(
             Slug: "seekoei-sluit-sy-mond-toe",
             Title: "Seekoei Sluit sy mond toe",
             Description: "Seekoei leer op 'n snaakse manier wanneer om te praat en wanneer om stil te bly.",
             ImageFileName: "Seekoei Sluit sy mond toe.jpeg",
             AudioFileName: "Seekoei Sluit sy mond toe.mpeg",
-            ThumbnailFileName: "Seekoei Sluit sy mond toe.jpeg")
+            ThumbnailFileName: "Seekoei Sluit sy mond toe.jpeg",
+            AccessLevel: "free")
     ];
 
     private static IReadOnlyList<StoryItem> NewestTop10Stories { get; } =

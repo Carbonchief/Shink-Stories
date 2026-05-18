@@ -61,6 +61,27 @@ public class IntekeningEnBetalingModalSourceTests
             "The billing page should not render every catalog plan because that includes school options.");
     }
 
+    [TestMethod]
+    public void PlanCards_DisableAllCheckoutButtonsWhileSelectedPlanLoads()
+    {
+        var pagePath = FindRepositoryFile("Shink", "Components", "Pages", "IntekeningEnBetaling.razor");
+        var cssPath = FindRepositoryFile("Shink", "Components", "Pages", "IntekeningEnBetaling.razor.css");
+        var source = File.ReadAllText(pagePath);
+        var css = File.ReadAllText(cssPath);
+
+        StringAssert.Contains(source, "PendingPlanSlug");
+        StringAssert.Contains(source, "IsPlanCheckoutPending");
+        StringAssert.Contains(source, "StartPlanCheckoutAsync(plan)");
+        StringAssert.Contains(source, "disabled=\"@IsPlanCheckoutPending\"");
+        StringAssert.Contains(source, "billing-plan-button-spinner");
+        StringAssert.Contains(source, "NavigationManager.NavigateTo($\"/betaal/{Uri.EscapeDataString(plan.Slug)}\")");
+        StringAssert.Contains(css, ".billing-plan-select-btn:disabled");
+        StringAssert.Contains(css, ".billing-plan-button-spinner");
+        Assert.IsFalse(
+            source.Contains("href=\"@($\"/betaal/{plan.Slug}\")\"", StringComparison.Ordinal),
+            "Plan cards should use a guarded button click so repeated checkout navigation cannot be spammed.");
+    }
+
     private static string ExtractBetween(string source, string start, string end)
     {
         var startIndex = source.IndexOf(start, StringComparison.Ordinal);

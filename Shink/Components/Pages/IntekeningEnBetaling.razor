@@ -516,7 +516,9 @@
             <div class="billing-plan-grid">
                 @foreach (var plan in BillingPlanChoices)
                 {
-                    <article class="billing-plan-card @(IsYearlyAllStoriesPlan(plan) ? "is-highlighted" : string.Empty)">
+                    var isPendingPlan = IsPendingPlan(plan);
+
+                    <article class="billing-plan-card @(IsYearlyAllStoriesPlan(plan) ? "is-highlighted" : string.Empty) @(isPendingPlan ? "is-loading" : string.Empty)">
                         <p class="billing-plan-badge">@(plan.BillingPeriodMonths <= 1 ? "Maandeliks" : "Jaarliks")</p>
                         <h3>@plan.Name</h3>
                         <p class="billing-price">@FormatRand(plan.Amount) <span>@ResolveBillingLabel(plan.BillingPeriodMonths)</span></p>
@@ -530,7 +532,21 @@
                         }
                         <p class="billing-description">@plan.ItemDescription</p>
                         <div class="billing-plan-actions">
-                            <a class="btn btn-warning billing-primary-btn" href="@($"/betaal/{plan.Slug}")">Kies hierdie plan</a>
+                            <button type="button"
+                                    class="btn btn-warning billing-primary-btn billing-plan-select-btn"
+                                    disabled="@IsPlanCheckoutPending"
+                                    aria-busy="@isPendingPlan"
+                                    @onclick="() => StartPlanCheckoutAsync(plan)">
+                                @if (isPendingPlan)
+                                {
+                                    <span class="spinner-border spinner-border-sm billing-plan-button-spinner" aria-hidden="true"></span>
+                                    <span>Maak betaalblad oop...</span>
+                                }
+                                else
+                                {
+                                    <span>Kies hierdie plan</span>
+                                }
+                            </button>
                         </div>
                     </article>
                 }
@@ -587,6 +603,8 @@
     private bool IsSubmittingEmailChange { get; set; }
     private bool IsCancellingSubscription { get; set; }
     private bool IsClosingAccount { get; set; }
+    private string? PendingPlanSlug { get; set; }
+    private bool IsPlanCheckoutPending => !string.IsNullOrWhiteSpace(PendingPlanSlug);
     private bool ProfileSaveSucceeded { get; set; }
     private bool EmailChangeStatusIsSuccess { get; set; }
     private bool EmailChangeCallbackIsSuccess { get; set; }
@@ -982,6 +1000,21 @@
         StateHasChanged();
         await Task.Yield();
     }
+
+    private async Task StartPlanCheckoutAsync(PaymentPlan plan)
+    {
+        if (IsPlanCheckoutPending || string.IsNullOrWhiteSpace(plan.Slug))
+        {
+            return;
+        }
+
+        PendingPlanSlug = plan.Slug;
+        await ShowSubmittingStateAsync();
+        NavigationManager.NavigateTo($"/betaal/{Uri.EscapeDataString(plan.Slug)}");
+    }
+
+    private bool IsPendingPlan(PaymentPlan plan) =>
+        string.Equals(PendingPlanSlug, plan.Slug, StringComparison.OrdinalIgnoreCase);
 
     private async Task RedirectToTargetAsync(string? target)
     {
