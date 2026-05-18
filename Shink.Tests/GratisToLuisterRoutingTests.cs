@@ -141,6 +141,17 @@ public class GratisToLuisterRoutingTests
         StringAssert.Contains(program, "return httpContext.User.Identity?.IsAuthenticated == true");
     }
 
+    [TestMethod]
+    public void SignedAudioEndpointAcceptsBareHttpsR2HostConfiguration()
+    {
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+
+        StringAssert.Contains(program, "static bool TryBuildHttpsPublicBaseUri(string? publicBaseUrl, out Uri publicBaseUri)");
+        StringAssert.Contains(program, "candidate = $\"https://{candidate.TrimStart('/')}\";");
+        StringAssert.Contains(program, "TryBuildHttpsPublicBaseUri(publicBaseUrl, out var baseUri)");
+        StringAssert.Contains(program, "TryBuildHttpsPublicBaseUri(options.PublicBaseUrl, out var publicBaseUri)");
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var parts = new[]

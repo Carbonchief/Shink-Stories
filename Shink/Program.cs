@@ -4903,19 +4903,12 @@ static bool TryResolveLocalAudioPath(string contentRootPath, string? audioObject
 static bool TryBuildR2AudioUri(string? publicBaseUrl, string? audioObjectKey, out Uri sourceUri)
 {
     sourceUri = default!;
-    if (string.IsNullOrWhiteSpace(publicBaseUrl) ||
-        string.IsNullOrWhiteSpace(audioObjectKey))
+    if (string.IsNullOrWhiteSpace(audioObjectKey))
     {
         return false;
     }
 
-    if (!Uri.TryCreate(publicBaseUrl.Trim(), UriKind.Absolute, out var baseUri) ||
-        baseUri is null)
-    {
-        return false;
-    }
-
-    if (!string.Equals(baseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+    if (!TryBuildHttpsPublicBaseUri(publicBaseUrl, out var baseUri))
     {
         return false;
     }
@@ -4954,6 +4947,37 @@ static bool TryBuildR2AudioUri(string? publicBaseUrl, string? audioObjectKey, ou
     return true;
 }
 
+static bool TryBuildHttpsPublicBaseUri(string? publicBaseUrl, out Uri publicBaseUri)
+{
+    publicBaseUri = default!;
+    if (string.IsNullOrWhiteSpace(publicBaseUrl))
+    {
+        return false;
+    }
+
+    var candidate = publicBaseUrl.Trim();
+    if (!candidate.Contains("://", StringComparison.Ordinal))
+    {
+        candidate = $"https://{candidate.TrimStart('/')}";
+    }
+
+    if (!candidate.EndsWith("/", StringComparison.Ordinal))
+    {
+        candidate = $"{candidate}/";
+    }
+
+    if (!Uri.TryCreate(candidate, UriKind.Absolute, out var parsedBaseUri) ||
+        parsedBaseUri is null ||
+        !string.Equals(parsedBaseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+        string.IsNullOrWhiteSpace(parsedBaseUri.Host))
+    {
+        return false;
+    }
+
+    publicBaseUri = parsedBaseUri;
+    return true;
+}
+
 static void LogCloudflareR2Configuration(WebApplication app)
 {
     var options = app.Services.GetRequiredService<IOptions<CloudflareR2Options>>().Value;
@@ -4970,8 +4994,7 @@ static void LogCloudflareR2Configuration(WebApplication app)
         logger.LogWarning("Cloudflare R2 upload credentials are incomplete. Admin media uploads to R2 will fail until AccountId, BucketName, AccessKeyId, and SecretAccessKey are configured.");
     }
 
-    if (!Uri.TryCreate(options.PublicBaseUrl, UriKind.Absolute, out var publicBaseUri) ||
-        !string.Equals(publicBaseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+    if (!TryBuildHttpsPublicBaseUri(options.PublicBaseUrl, out var publicBaseUri))
     {
         logger.LogWarning("Cloudflare R2 PublicBaseUrl is missing or invalid. Public story media playback and image delivery may fail.");
         return;
