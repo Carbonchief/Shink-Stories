@@ -98,7 +98,7 @@ public class GratisToLuisterRoutingTests
     }
 
     [TestMethod]
-    public void GratisRoutesRedirectToLuisterRoutes()
+    public void GratisPaidUserRedirectsAreHandledByMiddlewareWithoutDuplicateEndpoint()
     {
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
 
@@ -106,8 +106,10 @@ public class GratisToLuisterRoutingTests
         StringAssert.Contains(program, "string.Equals(value, \"/gratis\", StringComparison.OrdinalIgnoreCase)");
         StringAssert.Contains(program, "static string ResolveGratisRedirectPath(PathString path, QueryString queryString)");
         StringAssert.Contains(program, "? \"/luister\"");
-        StringAssert.Contains(program, "app.MapGet(\"/gratis/{slug}\"");
-        StringAssert.Contains(program, "$\"/luister/{Uri.EscapeDataString(slug.Trim())}\"");
+        StringAssert.Contains(program, "ResolveGratisRedirectPath(httpContext.Request.Path, httpContext.Request.QueryString)");
+        Assert.IsFalse(
+            program.Contains("app.MapGet(\"/gratis/{slug}\"", StringComparison.Ordinal),
+            "Do not map a minimal /gratis/{slug} endpoint because it conflicts with the Razor /gratis/{Slug} page.");
     }
 
     [TestMethod]

@@ -1010,7 +1010,7 @@
 
         PendingPlanSlug = plan.Slug;
         await ShowSubmittingStateAsync();
-        NavigationManager.NavigateTo($"/betaal/{Uri.EscapeDataString(plan.Slug)}");
+        NavigationManager.NavigateTo($"/betaal/{Uri.EscapeDataString(plan.Slug)}", forceLoad: true);
     }
 
     private bool IsPendingPlan(PaymentPlan plan) =>

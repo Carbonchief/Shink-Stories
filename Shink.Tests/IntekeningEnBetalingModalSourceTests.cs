@@ -76,7 +76,7 @@ public class IntekeningEnBetalingModalSourceTests
         StringAssert.Contains(source, "StartPlanCheckoutAsync(plan)");
         StringAssert.Contains(source, "disabled=\"@IsPlanCheckoutPending\"");
         StringAssert.Contains(source, "billing-plan-button-spinner");
-        StringAssert.Contains(source, "NavigationManager.NavigateTo($\"/betaal/{Uri.EscapeDataString(plan.Slug)}\")");
+        StringAssert.Contains(source, "NavigationManager.NavigateTo($\"/betaal/{Uri.EscapeDataString(plan.Slug)}\", forceLoad: true)");
         StringAssert.Contains(css, ".billing-plan-select-btn:disabled");
         StringAssert.Contains(css, ".billing-plan-button-spinner");
         Assert.IsFalse(

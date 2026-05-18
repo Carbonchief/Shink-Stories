@@ -3188,11 +3188,6 @@ if (args.Any(argument => string.Equals(argument, "--retry-overdue-paystack", Str
     return;
 }
 
-app.MapGet("/gratis/{slug}", (string slug) =>
-    string.IsNullOrWhiteSpace(slug)
-        ? Results.Redirect("/luister")
-        : Results.Redirect($"/luister/{Uri.EscapeDataString(slug.Trim())}"));
-
 app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
