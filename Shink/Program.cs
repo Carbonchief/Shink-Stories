@@ -3704,7 +3704,7 @@ static async Task<bool> HasRequiredStoryAccessAsync(
 {
     if (requirement == StoryAccessRequirement.Free)
     {
-        return await HasAnyActiveStorySubscriptionAsync(subscriptionLedgerService, email, cancellationToken);
+        return true;
     }
 
     if (!StoryAccessPolicy.RequiresPaidSubscription(requirement))
@@ -3729,22 +3729,6 @@ static async Task<bool> HasRequiredStoryAccessAsync(
 
     var results = await Task.WhenAll(checks);
     return results.Any(result => result);
-}
-
-static async Task<bool> HasAnyActiveStorySubscriptionAsync(
-    ISubscriptionLedgerService subscriptionLedgerService,
-    string? email,
-    CancellationToken cancellationToken = default)
-{
-    if (string.IsNullOrWhiteSpace(email))
-    {
-        return false;
-    }
-
-    var gratisTask = subscriptionLedgerService.HasActiveSubscriptionForTierAsync(email, "gratis", cancellationToken);
-    var paidTask = subscriptionLedgerService.HasActivePaidSubscriptionAsync(email, cancellationToken);
-    await Task.WhenAll(gratisTask, paidTask);
-    return gratisTask.Result || paidTask.Result;
 }
 
 static string? GetSafeStoryReturnUrl(string? returnUrl)

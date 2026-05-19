@@ -675,7 +675,7 @@ else
         var requirement = StoryAccessPolicy.ResolveRequirement("luister", story);
         return requirement switch
         {
-            StoryAccessRequirement.Free => IsSignedIn && AccessProfile.HasGratisOrPaid,
+            StoryAccessRequirement.Free => true,
             StoryAccessRequirement.StoryCornerOrAllStories => AccessProfile.HasStoryCornerOrAll,
             StoryAccessRequirement.AllStoriesOnly => AccessProfile.HasAllStories,
             _ => false

@@ -122,12 +122,17 @@ public class GratisToLuisterRoutingTests
     }
 
     [TestMethod]
-    public void LuisterStoryRequiresSubscriptionForFreeStories()
+    public void LuisterStoryAllowsFreeStoriesWithoutSubscription()
     {
         var luisterStory = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "LuisterStory.razor"));
+        var luister = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Luister.razor"));
 
         StringAssert.Contains(luisterStory, "if (requirement == StoryAccessRequirement.Free)");
-        StringAssert.Contains(luisterStory, "return await HasAnyActiveStorySubscriptionAsync(email);");
+        StringAssert.Contains(luisterStory, "return true;");
+        StringAssert.Contains(luister, "StoryAccessRequirement.Free => true");
+        Assert.IsFalse(
+            luisterStory.Contains("HasAnyActiveStorySubscriptionAsync", StringComparison.Ordinal),
+            "Free stories on /luister/{slug} should not require a gratis or paid subscription row.");
     }
 
     [TestMethod]
@@ -138,7 +143,23 @@ public class GratisToLuisterRoutingTests
         StringAssert.Contains(program, "ISubscriptionLedgerService subscriptionLedgerService");
         StringAssert.Contains(program, "var requirement = StoryAccessPolicy.ResolveRequirement(\"luister\", story);");
         StringAssert.Contains(program, "var hasStoryAccess = await HasRequiredStoryAccessAsync(");
+        StringAssert.Contains(program, "if (requirement == StoryAccessRequirement.Free)");
+        StringAssert.Contains(program, "return true;");
         StringAssert.Contains(program, "return httpContext.User.Identity?.IsAuthenticated == true");
+    }
+
+    [TestMethod]
+    public void GratisStoryPageDoesNotRedirectFreeStoriesAwayFromPlayback()
+    {
+        var gratisStory = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "GratisStory.razor"));
+
+        StringAssert.Contains(gratisStory, "AudioAccessService.CreateSignedAudioUrl(CurrentStory.Slug)");
+        Assert.IsFalse(
+            gratisStory.Contains("NavigateTo($\"/opsies?returnUrl={returnUrl}\")", StringComparison.Ordinal),
+            "The dedicated gratis player should render the signed free-story audio URL instead of redirecting away.");
+        Assert.IsFalse(
+            gratisStory.Contains("IsRedirectingToOpsies", StringComparison.Ordinal),
+            "The dedicated gratis player should not show the paid-options redirect state.");
     }
 
     [TestMethod]

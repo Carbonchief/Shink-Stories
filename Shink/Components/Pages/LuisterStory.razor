@@ -719,7 +719,7 @@ else
 
         if (requirement == StoryAccessRequirement.Free)
         {
-            return await HasAnyActiveStorySubscriptionAsync(email);
+            return true;
         }
 
         if (string.IsNullOrWhiteSpace(email))
@@ -739,19 +739,6 @@ else
 
         var tierResults = await Task.WhenAll(tierChecks);
         return tierResults.Any(result => result);
-    }
-
-    private async Task<bool> HasAnyActiveStorySubscriptionAsync(string? email)
-    {
-        if (string.IsNullOrWhiteSpace(email))
-        {
-            return false;
-        }
-
-        var gratisTask = SubscriptionLedgerService.HasActiveSubscriptionForTierAsync(email, "gratis");
-        var paidTask = SubscriptionLedgerService.HasActivePaidSubscriptionAsync(email);
-        await Task.WhenAll(gratisTask, paidTask);
-        return gratisTask.Result || paidTask.Result;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
