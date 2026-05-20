@@ -1,5 +1,8 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Shink.Components.Content;
+using Shink.Services;
+using System.Collections;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 
 namespace Shink.Tests;
@@ -38,6 +41,19 @@ public class GratisToLuisterRoutingTests
             Assert.AreEqual("free", story.AccessLevel, $"Gratis story {story.Slug} must stay free.");
             Assert.AreEqual(StoryAccessRequirement.Free, StoryAccessPolicy.ResolveRequirement("luister", story));
         }
+    }
+
+    [TestMethod]
+    public void LegacyFallbackServesGratisAudioFromR2()
+    {
+        var fallbackRows = InvokeLegacyFallbackRows();
+        var row = fallbackRows.FirstOrDefault(row =>
+            string.Equals(ReadStringProperty(row, "Slug"), "suurlemoentjie", StringComparison.OrdinalIgnoreCase));
+
+        Assert.IsNotNull(row, "Legacy fallback catalog should include Suurlemoentjie.");
+        Assert.AreEqual("free", ReadStringProperty(row, "AccessLevel"));
+        Assert.AreEqual("r2", ReadStringProperty(row, "AudioProvider"));
+        Assert.AreEqual("Suurlemoentjie.mpeg", ReadStringProperty(row, "AudioObjectKey"));
     }
 
     [TestMethod]
@@ -182,6 +198,28 @@ public class GratisToLuisterRoutingTests
         }.Concat(segments).ToArray();
 
         return Path.GetFullPath(Path.Combine(parts));
+    }
+
+    private static IReadOnlyList<object> InvokeLegacyFallbackRows()
+    {
+        var method = typeof(SupabaseStoryCatalogService).GetMethod(
+            "BuildLegacyFallbackRows",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.IsNotNull(method, "Could not find the legacy fallback catalog builder.");
+        var rows = method.Invoke(null, null);
+        Assert.IsNotNull(rows);
+        return ((IEnumerable)rows).Cast<object>().ToArray();
+    }
+
+    private static string? ReadStringProperty(object instance, string propertyName)
+    {
+        var property = instance.GetType().GetProperty(
+            propertyName,
+            BindingFlags.Public | BindingFlags.Instance);
+
+        Assert.IsNotNull(property, $"Could not find property {propertyName}.");
+        return property.GetValue(instance) as string;
     }
 
     private static string GetSourceFilePath([CallerFilePath] string path = "") => path;

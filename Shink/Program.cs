@@ -150,6 +150,7 @@ builder.Services.AddHttpClient<IBlogAdminService, SupabaseBlogService>();
 builder.Services.AddHttpClient<IUserNotificationService, SupabaseUserNotificationService>();
 builder.Services.AddSingleton<IContactFormProtectionService, ContactFormProtectionService>();
 builder.Services.AddHostedService<SubscriptionPaymentRecoveryWorker>();
+builder.Services.AddHostedService<AbandonedCartRecoveryCancellationWorker>();
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -1592,7 +1593,7 @@ app.MapGet("/winkel/paystack/callback", async (
             "store_order",
             updateResult.Order.OrderReference,
             "paid",
-            httpContext.RequestAborted);
+            CancellationToken.None);
     }
 
     return Results.Redirect(BuildStorePageRedirectPath(
@@ -1664,14 +1665,14 @@ app.MapGet("/betaal/paystack/callback", async (
         "subscription",
         paidReference,
         "paid",
-        httpContext.RequestAborted);
+        CancellationToken.None);
 
     var selectedPlan = PaymentPlanCatalog.FindBySlug(plan);
     await abandonedCartRecoveryService.ResolveSubscriptionRecoveriesAsync(
         verifyResult.CustomerEmail,
         selectedPlan?.TierCode,
         "paid",
-        httpContext.RequestAborted);
+        CancellationToken.None);
 
     return Results.Redirect(ResolveSuccessfulSubscriptionPaymentReturnPath(plan, returnUrl));
 });
@@ -1744,12 +1745,12 @@ app.MapPost("/api/payfast/notify", async (
                     "subscription",
                     form["m_payment_id"].ToString(),
                     "paid",
-                    httpContext.RequestAborted);
+                    CancellationToken.None);
                 await abandonedCartRecoveryService.ResolveSubscriptionRecoveriesAsync(
                     form["email_address"].ToString(),
                     form["custom_str2"].ToString(),
                     "paid",
-                    httpContext.RequestAborted);
+                    CancellationToken.None);
             }
 
             logger.LogInformation(
@@ -4286,7 +4287,7 @@ static async Task<IResult> HandlePaystackWebhookAsync(
                     "store_order",
                     storePersistResult.Order.OrderReference,
                     "paid",
-                    httpContext.RequestAborted);
+                    CancellationToken.None);
             }
 
             logger.LogInformation(
@@ -4367,15 +4368,15 @@ static async Task<IResult> HandlePaystackWebhookAsync(
                 "subscription",
                 subscriptionRecoveryReference,
                 "paid",
-                httpContext.RequestAborted);
+                CancellationToken.None);
         }
 
         var (subscriptionRecoveryEmail, subscriptionRecoveryTierCode) = ResolveSubscriptionCustomerFromPaystackPayload(payload);
         await abandonedCartRecoveryService.ResolveSubscriptionRecoveriesAsync(
-            subscriptionRecoveryEmail,
-            subscriptionRecoveryTierCode,
-            "paid",
-            httpContext.RequestAborted);
+        subscriptionRecoveryEmail,
+        subscriptionRecoveryTierCode,
+        "paid",
+        CancellationToken.None);
 
         logger.LogInformation(
             "Paystack subscription persisted. subscription_id={SubscriptionId}",
@@ -4554,14 +4555,14 @@ static async Task<IResult?> TryRedirectRecoveredPaystackSubscriptionAsync(
             "subscription",
             recoveryResult.Reference,
             "paid",
-            httpContext.RequestAborted);
+            CancellationToken.None);
     }
 
     await abandonedCartRecoveryService.ResolveSubscriptionRecoveriesAsync(
         recoveryResult.CustomerEmail ?? customerEmail,
         plan.TierCode,
         "paid",
-        httpContext.RequestAborted);
+        CancellationToken.None);
 
     logger.LogInformation(
         "Recovered paid Paystack checkout before retry. plan={PlanSlug} reference={Reference} email={Email}",

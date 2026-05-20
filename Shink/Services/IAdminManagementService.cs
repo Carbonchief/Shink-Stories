@@ -442,6 +442,7 @@ public sealed record AdminStoryRecord(
     string? Summary,
     string? Description,
     string? YouTubeUrl,
+    IReadOnlyList<AdminStoryTestQuestion> TestQuestions,
     string? CoverImagePath,
     string? ThumbnailImagePath,
     string AudioProvider,
@@ -462,6 +463,7 @@ public sealed record AdminStoryUpdateRequest(
     string? Summary,
     string? Description,
     string? YouTubeUrl,
+    IReadOnlyList<AdminStoryTestQuestion> TestQuestions,
     string? CoverImagePath,
     string? ThumbnailImagePath,
     string AudioProvider,
@@ -480,6 +482,7 @@ public sealed record AdminStoryCreateRequest(
     string? Summary,
     string? Description,
     string? YouTubeUrl,
+    IReadOnlyList<AdminStoryTestQuestion> TestQuestions,
     string? CoverImagePath,
     string? ThumbnailImagePath,
     string AudioBucket,
@@ -490,6 +493,12 @@ public sealed record AdminStoryCreateRequest(
     int SortOrder,
     DateTimeOffset? PublishedAt,
     int? DurationSeconds);
+
+public sealed record AdminStoryTestQuestion(
+    [property: JsonPropertyName("question")] string Question,
+    [property: JsonPropertyName("option_a")] string OptionA,
+    [property: JsonPropertyName("option_b")] string OptionB,
+    [property: JsonPropertyName("correct_option")] string CorrectOption);
 
 public sealed record AdminPlaylistRecord(
     Guid PlaylistId,
@@ -817,6 +826,7 @@ public sealed record AdminSubscriberReportsSnapshot(
     IReadOnlyList<AdminSalesRevenueMetric> SalesAndRevenue,
     IReadOnlyList<AdminSalesRevenueDetailRecord> SalesDetails,
     IReadOnlyList<AdminRecoveryMetric> AbandonedCartRecoveries,
+    IReadOnlyList<AdminRecoveredRevenueDetailRecord> RecoveredRevenueDetails,
     IReadOnlyList<AdminVisitsViewsLoginsMetric> VisitsViewsAndLogins)
 {
     public static AdminSubscriberReportsSnapshot Empty { get; } = new(
@@ -827,6 +837,7 @@ public sealed record AdminSubscriberReportsSnapshot(
         SalesAndRevenue: [],
         SalesDetails: [],
         AbandonedCartRecoveries: [],
+        RecoveredRevenueDetails: [],
         VisitsViewsAndLogins: []);
 }
 
@@ -880,6 +891,20 @@ public sealed record AdminRecoveryMetric(
     decimal RecoveredRevenueZar,
     int RecoveredOrders,
     int RecoveryAttempts);
+
+public sealed record AdminRecoveredRevenueDetailRecord(
+    DateTimeOffset RecoveredAt,
+    decimal RevenueZar,
+    string RecoverySource,
+    string Email,
+    string DisplayName,
+    string TierCode,
+    string TierName,
+    string Provider,
+    string SubscriptionStatus,
+    DateTimeOffset? NextPaymentAt,
+    string NextPaymentSource,
+    string Reference);
 
 public sealed record AdminVisitsViewsLoginsMetric(
     string PeriodKey,

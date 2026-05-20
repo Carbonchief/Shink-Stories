@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace Shink.Components.Content;
@@ -21,6 +22,7 @@ public sealed record StoryItem(
     IReadOnlyList<string>? ConversationQuestions = null,
     IReadOnlyList<string>? Characters = null,
     string? YouTubeUrl = null,
+    IReadOnlyList<StoryTestQuestion>? TestQuestions = null,
     decimal? DurationSeconds = null,
     IReadOnlyList<string>? PlaylistSlugs = null)
 {
@@ -111,6 +113,12 @@ public sealed record StoryItem(
     }
 }
 
+public sealed record StoryTestQuestion(
+    [property: JsonPropertyName("question")] string Question,
+    [property: JsonPropertyName("option_a")] string OptionA,
+    [property: JsonPropertyName("option_b")] string OptionB,
+    [property: JsonPropertyName("correct_option")] string CorrectOption);
+
 public sealed record StoryPreviewItem(
     string Title,
     string CoverPath,
@@ -162,6 +170,9 @@ public static class StoryCatalog
             ImageFileName: "Suurlemoentjie.jpeg",
             AudioFileName: "Suurlemoentjie.mpeg",
             ThumbnailFileName: "Suurlemoentjie.jpeg",
+            AudioProvider: "r2",
+            AudioBucket: "media.prioritybit.co.za",
+            AudioContentType: "audio/mpeg",
             AccessLevel: "free"),
         new(
             Slug: "die-kwaaibok-se-klip",
@@ -170,6 +181,9 @@ public static class StoryCatalog
             ImageFileName: "Die Kwaaibok se Klip.jpeg",
             AudioFileName: "Die Kwaaibok se Klip.mpeg",
             ThumbnailFileName: "Die Kwaaibok se Klip.jpeg",
+            AudioProvider: "r2",
+            AudioBucket: "media.prioritybit.co.za",
+            AudioContentType: "audio/mpeg",
             AccessLevel: "free"),
         new(
             Slug: "seekoei-sluit-sy-mond-toe",
@@ -178,6 +192,9 @@ public static class StoryCatalog
             ImageFileName: "Seekoei Sluit sy mond toe.jpeg",
             AudioFileName: "Seekoei Sluit sy mond toe.mpeg",
             ThumbnailFileName: "Seekoei Sluit sy mond toe.jpeg",
+            AudioProvider: "r2",
+            AudioBucket: "media.prioritybit.co.za",
+            AudioContentType: "audio/mpeg",
             AccessLevel: "free")
     ];
 
@@ -277,7 +294,7 @@ public static class StoryCatalog
 
     private static IReadOnlyList<StoryItem> BuildLuisterStories()
     {
-        var combinedStories = new List<StoryItem>(NewestTop10Stories);
+        var combinedStories = new List<StoryItem>(All.Concat(NewestTop10Stories));
         var knownSlugs = new HashSet<string>(
             NewestTop10Stories.Select(story => story.Slug)
                 .Concat(All.Select(story => story.Slug)),

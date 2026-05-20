@@ -327,6 +327,16 @@ else
                     </div>
                 </div>
             }
+
+            @if (HasStoryTestQuestions(CurrentStory))
+            {
+                <button type="button"
+                        class="story-test-open-btn"
+                        @onclick="OpenStoryTestModal">
+                    <i class="fa-solid fa-clipboard-question" aria-hidden="true"></i>
+                    <span>Doen die toets</span>
+                </button>
+            }
         </section>
 
         <section class="story-carousel-section" aria-label="Ander luister stories">
@@ -386,6 +396,65 @@ else
                   PlanActionHref="@StoryAccessPopupPlanHref"
                   OnClose="CloseStoryAccessPopupAsync" />
 
+@if (ShowStoryTestModal && CurrentStory is not null && HasStoryTestQuestions(CurrentStory))
+{
+    <div class="story-test-modal-backdrop" role="presentation" @onclick="CloseStoryTestModal">
+        <section class="story-test-modal"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="story-test-modal-title"
+                 @onclick:stopPropagation="true">
+            <header class="story-test-modal-head">
+                <div>
+                    <span class="story-test-eyebrow">Storie toets</span>
+                    <h2 id="story-test-modal-title">@CurrentStory.Title</h2>
+                </div>
+                <button type="button"
+                        class="story-test-close-btn"
+                        @onclick="CloseStoryTestModal"
+                        aria-label="Maak toets toe"
+                        title="Maak toe">
+                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                </button>
+            </header>
+
+            <div class="story-test-question-list">
+                @for (var index = 0; index < CurrentStory.TestQuestions!.Count; index++)
+                {
+                    var question = CurrentStory.TestQuestions[index];
+                    var selectedOption = GetSelectedStoryTestOption(index);
+                    <article class="story-test-question">
+                        <p class="story-test-question-count">Vraag @(index + 1) van @CurrentStory.TestQuestions.Count</p>
+                        <h3>@question.Question</h3>
+                        <div class="story-test-options" role="group" aria-label="@($"Antwoorde vir vraag {index + 1}")">
+                            <button type="button"
+                                    class='@BuildStoryTestOptionClass(question, selectedOption, "A")'
+                                    @onclick='@(() => SelectStoryTestOption(index, "A"))'
+                                    aria-pressed='@(selectedOption == "A")'>
+                                <span class="story-test-option-letter">A</span>
+                                <span>@question.OptionA</span>
+                            </button>
+                            <button type="button"
+                                    class='@BuildStoryTestOptionClass(question, selectedOption, "B")'
+                                    @onclick='@(() => SelectStoryTestOption(index, "B"))'
+                                    aria-pressed='@(selectedOption == "B")'>
+                                <span class="story-test-option-letter">B</span>
+                                <span>@question.OptionB</span>
+                            </button>
+                        </div>
+                        @if (!string.IsNullOrWhiteSpace(selectedOption))
+                        {
+                            <p class="story-test-result @(IsStoryTestAnswerCorrect(question, selectedOption) ? "is-correct" : "is-incorrect")">
+                                @(IsStoryTestAnswerCorrect(question, selectedOption) ? "Reg!" : "Probeer weer.")
+                            </p>
+                        }
+                    </article>
+                }
+            </div>
+        </section>
+    </div>
+}
+
 @code {
     private const string PersistedStoryStateKeyPrefix = "LuisterStory:";
 
@@ -421,7 +490,9 @@ else
     private bool IsStoryLoading { get; set; } = true;
     private string? SignedInEmail { get; set; }
     private bool ShowStoryAccessPopup { get; set; }
+    private bool ShowStoryTestModal { get; set; }
     private string PendingLockedStoryPath { get; set; } = "/luister";
+    private Dictionary<int, string> SelectedStoryTestOptions { get; } = new();
 
     private string? StoryArtworkUrl =>
         CurrentStory is null ? null : NavigationManager.ToAbsoluteUri(CurrentStory.ImagePath).ToString();
@@ -507,6 +578,8 @@ else
         IsStoryLoading = CurrentStory is null;
         var isSocialPreviewRequest = SocialPreviewRequestDetector.IsSocialPreviewRequest(HttpContextAccessor.HttpContext);
         ShowStoryAccessPopup = false;
+        ShowStoryTestModal = false;
+        SelectedStoryTestOptions.Clear();
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         SignedInEmail = authState.User.Identity?.IsAuthenticated == true
             ? authState.User.FindFirst(ClaimTypes.Email)?.Value ?? authState.User.Identity?.Name
@@ -680,6 +753,40 @@ else
         ShowStoryAccessPopup = false;
         return Task.CompletedTask;
     }
+
+    private void OpenStoryTestModal()
+    {
+        ShowStoryTestModal = true;
+    }
+
+    private void CloseStoryTestModal()
+    {
+        ShowStoryTestModal = false;
+    }
+
+    private void SelectStoryTestOption(int questionIndex, string option)
+    {
+        SelectedStoryTestOptions[questionIndex] = option;
+    }
+
+    private string? GetSelectedStoryTestOption(int questionIndex) =>
+        SelectedStoryTestOptions.TryGetValue(questionIndex, out var option) ? option : null;
+
+    private static string BuildStoryTestOptionClass(StoryTestQuestion question, string? selectedOption, string option)
+    {
+        var cssClass = "story-test-option";
+        if (!string.Equals(selectedOption, option, StringComparison.OrdinalIgnoreCase))
+        {
+            return cssClass;
+        }
+
+        return IsStoryTestAnswerCorrect(question, option)
+            ? $"{cssClass} is-selected is-correct"
+            : $"{cssClass} is-selected is-incorrect";
+    }
+
+    private static bool IsStoryTestAnswerCorrect(StoryTestQuestion question, string? selectedOption) =>
+        string.Equals(question.CorrectOption, selectedOption, StringComparison.OrdinalIgnoreCase);
 
     private async Task LoadFavoriteStorySlugsAsync()
     {
@@ -1087,6 +1194,9 @@ else
 
     private static bool HasStoryQuestions(StoryItem? story) =>
         story?.ConversationQuestions is { Count: > 0 };
+
+    private static bool HasStoryTestQuestions(StoryItem? story) =>
+        story?.TestQuestions is { Count: > 0 };
 
     private static bool HasStoryCharacters(StoryItem? story) =>
         story?.Characters is { Count: > 0 };

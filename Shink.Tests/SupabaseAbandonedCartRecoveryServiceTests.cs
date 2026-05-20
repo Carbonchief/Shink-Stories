@@ -362,21 +362,25 @@ public class SupabaseAbandonedCartRecoveryServiceTests
                 request.RequestUri?.AbsolutePath == "/rest/v1/abandoned_cart_recoveries")
             {
                 patchCalls++;
-                StringAssert.Contains(request.RequestUri.Query, "select=recovery_id,resolved_at,resolution");
-                Assert.IsTrue(
-                    request.Headers.TryGetValues("Prefer", out var preferValues) &&
-                    preferValues.Contains("return=representation"));
+                if (request.RequestUri.Query.Contains("select=recovery_id,resolved_at,resolution", StringComparison.Ordinal))
+                {
+                    Assert.IsTrue(
+                        request.Headers.TryGetValues("Prefer", out var preferValues) &&
+                        preferValues.Contains("return=representation"));
 
-                return JsonResponse(
-                    """
-                    [
-                      {
-                        "recovery_id": "11111111-1111-1111-1111-111111111111",
-                        "resolved_at": "2026-05-11T18:10:47Z",
-                        "resolution": "paid"
-                      }
-                    ]
-                    """);
+                    return JsonResponse(
+                        """
+                        [
+                          {
+                            "recovery_id": "11111111-1111-1111-1111-111111111111",
+                            "resolved_at": "2026-05-11T18:10:47Z",
+                            "resolution": "paid"
+                          }
+                        ]
+                        """);
+                }
+
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
             }
 
             return new HttpResponseMessage(HttpStatusCode.InternalServerError);
@@ -399,7 +403,7 @@ public class SupabaseAbandonedCartRecoveryServiceTests
                 OptOutBaseUrl: "https://schink.example.com"));
 
         Assert.AreEqual(3, scheduledEmailCalls);
-        Assert.AreEqual(1, patchCalls);
+        Assert.AreEqual(2, patchCalls);
         Assert.AreEqual(3, cancelCalls);
     }
 
@@ -408,6 +412,7 @@ public class SupabaseAbandonedCartRecoveryServiceTests
     {
         var cancelCalls = 0;
         var patchCalls = 0;
+        var resolvePatchBody = string.Empty;
         var handler = new RecordingHandler(request =>
         {
             if (request.Method == HttpMethod.Get &&
@@ -450,6 +455,7 @@ public class SupabaseAbandonedCartRecoveryServiceTests
                 request.RequestUri?.AbsolutePath == "/rest/v1/abandoned_cart_recoveries")
             {
                 patchCalls++;
+                resolvePatchBody = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? string.Empty;
                 return new HttpResponseMessage(HttpStatusCode.NoContent);
             }
 
@@ -465,6 +471,153 @@ public class SupabaseAbandonedCartRecoveryServiceTests
 
         Assert.AreEqual(3, cancelCalls);
         Assert.AreEqual(1, patchCalls);
+        StringAssert.Contains(resolvePatchBody, "\"first_email_cancel_status\":\"cancelled\"");
+        StringAssert.Contains(resolvePatchBody, "\"second_email_cancel_status\":\"cancelled\"");
+        StringAssert.Contains(resolvePatchBody, "\"final_email_cancel_status\":\"cancelled\"");
+    }
+
+    [TestMethod]
+    public async Task ResolveSubscriptionRecoveriesAsync_RecordsNotCancellableEmailsAndStillCancelsScheduledEmails()
+    {
+        var patchCalls = 0;
+        var resolvePatchBody = string.Empty;
+        var handler = new RecordingHandler(request =>
+        {
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/abandoned_cart_recoveries")
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "recovery_id": "11111111-1111-1111-1111-111111111111",
+                        "source_type": "subscription",
+                        "source_key": "all_stories_monthly",
+                        "checkout_reference": "checkout-reference",
+                        "provider": "paystack",
+                        "customer_email": "ouer@example.com",
+                        "item_name": "Alle stories",
+                        "item_summary": "Maandeliks",
+                        "first_email_id": "email-1",
+                        "second_email_id": "email-2",
+                        "final_email_id": "email-3"
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.Host == "api.resend.com" &&
+                request.RequestUri.AbsolutePath.EndsWith("/cancel", StringComparison.Ordinal))
+            {
+                Assert.AreEqual("Bearer", request.Headers.Authorization?.Scheme);
+                Assert.AreEqual("resend-key", request.Headers.Authorization?.Parameter);
+                Assert.IsTrue(
+                    request.RequestUri.AbsolutePath.StartsWith("/emails/email-", StringComparison.Ordinal) &&
+                    request.RequestUri.AbsolutePath.EndsWith("/cancel", StringComparison.Ordinal),
+                    "Scheduled email cancellation must call Resend's email cancel endpoint.");
+
+                return request.RequestUri.AbsolutePath.Contains("email-2", StringComparison.Ordinal)
+                    ? JsonResponse("""{"id":"cancelled-email-id"}""")
+                    : new HttpResponseMessage(HttpStatusCode.BadRequest)
+                    {
+                        Content = new StringContent("""{"message":"Email is not scheduled"}""", Encoding.UTF8, "application/json")
+                    };
+            }
+
+            if (request.Method.Method == "PATCH" &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/abandoned_cart_recoveries")
+            {
+                patchCalls++;
+                resolvePatchBody = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? string.Empty;
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+        });
+
+        var service = CreateService(new HttpClient(handler));
+
+        await service.ResolveSubscriptionRecoveriesAsync(
+            customerEmail: "Ouer@Example.com",
+            tierCode: "all_stories_monthly",
+            resolution: "paid");
+
+        Assert.AreEqual(1, patchCalls);
+        StringAssert.Contains(resolvePatchBody, "\"first_email_cancel_status\":\"not_cancellable\"");
+        StringAssert.Contains(resolvePatchBody, "\"first_email_cancel_error\":\"400:");
+        StringAssert.Contains(resolvePatchBody, "\"second_email_cancel_status\":\"cancelled\"");
+        StringAssert.Contains(resolvePatchBody, "\"final_email_cancel_status\":\"not_cancellable\"");
+        StringAssert.Contains(resolvePatchBody, "\"resolution\":\"paid\"");
+    }
+
+    [TestMethod]
+    public async Task CleanupResolvedScheduledEmailsAsync_CancelsResolvedRowsMissingCancelStatus()
+    {
+        var lookupCalls = 0;
+        var cancelCalls = 0;
+        var patchCalls = 0;
+        var cleanupPatchBody = string.Empty;
+        var handler = new RecordingHandler(request =>
+        {
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/abandoned_cart_recoveries")
+            {
+                lookupCalls++;
+                StringAssert.Contains(request.RequestUri.Query, "resolved_at=not.is.null");
+                StringAssert.Contains(request.RequestUri.Query, "first_email_cancel_status.is.null");
+
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "recovery_id": "11111111-1111-1111-1111-111111111111",
+                        "source_type": "subscription",
+                        "source_key": "all_stories_monthly",
+                        "checkout_reference": "checkout-reference",
+                        "provider": "paystack",
+                        "customer_email": "ouer@example.com",
+                        "item_name": "Alle stories",
+                        "item_summary": "Maandeliks",
+                        "first_email_id": "email-1",
+                        "second_email_id": "email-2",
+                        "final_email_id": "email-3",
+                        "resolved_at": "2026-05-18T17:47:23Z",
+                        "resolution": "paid"
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.Host == "api.resend.com" &&
+                request.RequestUri.AbsolutePath.EndsWith("/cancel", StringComparison.Ordinal))
+            {
+                cancelCalls++;
+                return JsonResponse("""{"id":"cancelled-email-id"}""");
+            }
+
+            if (request.Method.Method == "PATCH" &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/abandoned_cart_recoveries")
+            {
+                patchCalls++;
+                cleanupPatchBody = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? string.Empty;
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+        });
+
+        var service = CreateService(new HttpClient(handler));
+
+        await service.CleanupResolvedScheduledEmailsAsync();
+
+        Assert.AreEqual(1, lookupCalls);
+        Assert.AreEqual(3, cancelCalls);
+        Assert.AreEqual(1, patchCalls);
+        StringAssert.Contains(cleanupPatchBody, "\"first_email_cancel_status\":\"cancelled\"");
+        StringAssert.Contains(cleanupPatchBody, "\"second_email_cancel_status\":\"cancelled\"");
+        StringAssert.Contains(cleanupPatchBody, "\"final_email_cancel_status\":\"cancelled\"");
     }
 
     [TestMethod]
