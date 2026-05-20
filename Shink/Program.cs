@@ -521,6 +521,7 @@ app.MapGet("/media/audio/{slug}", async (
         {
             if (!TryBuildR2AudioUri(
                     cloudflareR2Options.Value.PublicBaseUrl,
+                    story.AudioBucket,
                     story.AudioFileName,
                     out var sourceUri))
             {
@@ -566,6 +567,7 @@ app.MapGet("/media/audio/{slug}", async (
     {
         if (!TryBuildR2AudioUri(
                 cloudflareR2Options.Value.PublicBaseUrl,
+                null,
                 characterClip.AudioObjectKey,
                 out var sourceUri))
         {
@@ -4885,7 +4887,7 @@ static bool TryResolveLocalAudioPath(string contentRootPath, string? audioObject
     return true;
 }
 
-static bool TryBuildR2AudioUri(string? publicBaseUrl, string? audioObjectKey, out Uri sourceUri)
+static bool TryBuildR2AudioUri(string? publicBaseUrl, string? audioBucket, string? audioObjectKey, out Uri sourceUri)
 {
     sourceUri = default!;
     if (string.IsNullOrWhiteSpace(audioObjectKey))
@@ -4893,7 +4895,7 @@ static bool TryBuildR2AudioUri(string? publicBaseUrl, string? audioObjectKey, ou
         return false;
     }
 
-    if (!TryBuildHttpsPublicBaseUri(publicBaseUrl, out var baseUri))
+    if (!TryBuildR2PublicBaseUri(publicBaseUrl, audioBucket, out var baseUri))
     {
         return false;
     }
@@ -4930,6 +4932,34 @@ static bool TryBuildR2AudioUri(string? publicBaseUrl, string? audioObjectKey, ou
     var encodedPath = string.Join('/', segments.Select(Uri.EscapeDataString));
     sourceUri = new Uri(baseUri, encodedPath);
     return true;
+}
+
+static bool TryBuildR2PublicBaseUri(string? publicBaseUrl, string? audioBucket, out Uri publicBaseUri)
+{
+    if (TryBuildR2BucketBaseUri(audioBucket, out publicBaseUri))
+    {
+        return true;
+    }
+
+    return TryBuildHttpsPublicBaseUri(publicBaseUrl, out publicBaseUri);
+}
+
+static bool TryBuildR2BucketBaseUri(string? audioBucket, out Uri publicBaseUri)
+{
+    publicBaseUri = default!;
+    if (string.IsNullOrWhiteSpace(audioBucket))
+    {
+        return false;
+    }
+
+    var candidate = audioBucket.Trim();
+    if (!candidate.Contains("://", StringComparison.Ordinal) &&
+        !candidate.Contains('.', StringComparison.Ordinal))
+    {
+        return false;
+    }
+
+    return TryBuildHttpsPublicBaseUri(candidate, out publicBaseUri);
 }
 
 static bool TryBuildHttpsPublicBaseUri(string? publicBaseUrl, out Uri publicBaseUri)

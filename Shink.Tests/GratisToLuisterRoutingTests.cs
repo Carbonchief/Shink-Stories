@@ -185,7 +185,9 @@ public class GratisToLuisterRoutingTests
 
         StringAssert.Contains(program, "static bool TryBuildHttpsPublicBaseUri(string? publicBaseUrl, out Uri publicBaseUri)");
         StringAssert.Contains(program, "candidate = $\"https://{candidate.TrimStart('/')}\";");
-        StringAssert.Contains(program, "TryBuildHttpsPublicBaseUri(publicBaseUrl, out var baseUri)");
+        StringAssert.Contains(program, "TryBuildR2PublicBaseUri(publicBaseUrl, audioBucket, out var baseUri)");
+        StringAssert.Contains(program, "TryBuildR2BucketBaseUri(audioBucket, out publicBaseUri)");
+        StringAssert.Contains(program, "story.AudioBucket");
         StringAssert.Contains(program, "TryBuildHttpsPublicBaseUri(options.PublicBaseUrl, out var publicBaseUri)");
     }
 
