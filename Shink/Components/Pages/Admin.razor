@@ -1410,7 +1410,7 @@
                                                 <p class="admin-analytics-value">@FormatAnalyticsNumber(todaySubscriberMetric.Signups)</p>
                                             </div>
                                             <div class="admin-subscriber-kpi-secondary">
-                                                <span>@T("Gekanselleerde intekeninge", "Cancelled subscriptions")</span>
+                                                <span>@T("Gekanselleer", "Cancelled")</span>
                                                 <strong>@FormatAnalyticsNumber(todaySubscriberMetric.Cancellations)</strong>
                                             </div>
                                         </button>
@@ -1423,7 +1423,7 @@
                                                 <p class="admin-analytics-value">@FormatAnalyticsNumber(monthlySubscriberMetric.Signups)</p>
                                             </div>
                                             <div class="admin-subscriber-kpi-secondary">
-                                                <span>@T("Gekanselleerde intekeninge", "Cancelled subscriptions")</span>
+                                                <span>@T("Gekanselleer", "Cancelled")</span>
                                                 <strong>@FormatAnalyticsNumber(monthlySubscriberMetric.Cancellations)</strong>
                                             </div>
                                         </button>
@@ -1436,7 +1436,7 @@
                                                 <p class="admin-analytics-value">@FormatAnalyticsNumber(yearlySubscriberMetric.Signups)</p>
                                             </div>
                                             <div class="admin-subscriber-kpi-secondary">
-                                                <span>@T("Gekanselleerde intekeninge", "Cancelled subscriptions")</span>
+                                                <span>@T("Gekanselleer", "Cancelled")</span>
                                                 <strong>@FormatAnalyticsNumber(yearlySubscriberMetric.Cancellations)</strong>
                                             </div>
                                         </button>
@@ -1832,10 +1832,91 @@
                                         <NoRecordsContent>
                                             <MudText Typo="Typo.body2">@T("Geen verkope vir hierdie periode nie.", "No sales for this period.")</MudText>
                                         </NoRecordsContent>
-                                    </MudTable>
-                                </section>
-                            </section>
-                        </MudTabPanel>
+	                                    </MudTable>
+	                                </section>
+
+	                                <section class="admin-revenue-drilldown">
+	                                    <div class="admin-analytics-panel-head">
+	                                        <div>
+	                                            <h3>@T("Herwinde inkomste detail", "Recovered revenue detail")</h3>
+	                                            <p>@T("Rekeninge wat uit herstelvloei betaal het, met die volgende betaaldatum waar dit gestoor is.", "Accounts that paid through recovery flows, with the next payment date where it is stored.")</p>
+	                                        </div>
+	                                        <div class="admin-story-stats-filter-summary">
+	                                            @FormatAnalyticsNumber(FilteredRecoveredRevenueDetails.Count) @T("herwinnings", "recoveries")
+	                                        </div>
+	                                    </div>
+
+	                                    <MudTable T="AdminRecoveredRevenueDetailRecord"
+	                                              Class="admin-grid"
+	                                              Items="FilteredRecoveredRevenueDetails"
+	                                              RowsPerPage="25"
+	                                              Dense="true"
+	                                              Hover="true"
+	                                              Bordered="true"
+	                                              Elevation="0"
+	                                              Breakpoint="Breakpoint.Md">
+	                                        <HeaderContent>
+	                                            <MudTh>
+	                                                <MudTableSortLabel T="AdminRecoveredRevenueDetailRecord" SortBy="new Func<AdminRecoveredRevenueDetailRecord, object?>(record => record.RecoveredAt)">
+	                                                    @T("Herwin op", "Recovered at")
+	                                                </MudTableSortLabel>
+	                                            </MudTh>
+	                                            <MudTh>
+	                                                <MudTableSortLabel T="AdminRecoveredRevenueDetailRecord" SortBy="new Func<AdminRecoveredRevenueDetailRecord, object?>(record => record.Email)">
+	                                                    @T("Rekening", "Account")
+	                                                </MudTableSortLabel>
+	                                            </MudTh>
+	                                            <MudTh>
+	                                                <MudTableSortLabel T="AdminRecoveredRevenueDetailRecord" SortBy="new Func<AdminRecoveredRevenueDetailRecord, object?>(record => record.TierName)">
+	                                                    @T("Plan", "Plan")
+	                                                </MudTableSortLabel>
+	                                            </MudTh>
+	                                            <MudTh>
+	                                                <MudTableSortLabel T="AdminRecoveredRevenueDetailRecord" SortBy='new Func<AdminRecoveredRevenueDetailRecord, object?>(record => record.RecoverySource + " / " + record.Provider)'>
+	                                                    @T("Bron", "Source")
+	                                                </MudTableSortLabel>
+	                                            </MudTh>
+	                                            <MudTh>
+	                                                <MudTableSortLabel T="AdminRecoveredRevenueDetailRecord" SortBy="new Func<AdminRecoveredRevenueDetailRecord, object?>(record => record.NextPaymentAt)">
+	                                                    @T("Volgende betaling", "Next payment")
+	                                                </MudTableSortLabel>
+	                                            </MudTh>
+	                                            <MudTh>
+	                                                <MudTableSortLabel T="AdminRecoveredRevenueDetailRecord" SortBy="new Func<AdminRecoveredRevenueDetailRecord, object?>(record => record.RevenueZar)">
+	                                                    @T("Inkomste", "Revenue")
+	                                                </MudTableSortLabel>
+	                                            </MudTh>
+	                                        </HeaderContent>
+	                                        <RowTemplate>
+	                                            <MudTd DataLabel='@T("Herwin op", "Recovered at")'>@FormatAdminDateTime(context.RecoveredAt)</MudTd>
+	                                            <MudTd DataLabel='@T("Rekening", "Account")'>
+	                                                <div class="admin-analytics-story-cell">
+	                                                    <strong>@context.Email</strong>
+	                                                    <span>@context.DisplayName</span>
+	                                                </div>
+	                                            </MudTd>
+	                                            <MudTd DataLabel='@T("Plan", "Plan")'>
+	                                                <div class="admin-analytics-story-cell">
+	                                                    <strong>@context.TierName</strong>
+	                                                    <span>@context.TierCode</span>
+	                                                </div>
+	                                            </MudTd>
+	                                            <MudTd DataLabel='@T("Bron", "Source")'>
+	                                                <div class="admin-analytics-story-cell">
+	                                                    <strong>@GetRecoveredRevenueSourceLabel(context.RecoverySource)</strong>
+	                                                    <span>@($"{context.Provider} / {context.SubscriptionStatus}")</span>
+	                                                </div>
+	                                            </MudTd>
+	                                            <MudTd DataLabel='@T("Volgende betaling", "Next payment")'>@FormatRecoveredRevenueNextPayment(context)</MudTd>
+	                                            <MudTd DataLabel='@T("Inkomste", "Revenue")'>@FormatCurrency(context.RevenueZar)</MudTd>
+	                                        </RowTemplate>
+	                                        <NoRecordsContent>
+	                                            <MudText Typo="Typo.body2">@T("Geen herwinde inkomste vir hierdie periode nie.", "No recovered revenue for this period.")</MudText>
+	                                        </NoRecordsContent>
+	                                    </MudTable>
+	                                </section>
+	                            </section>
+	                        </MudTabPanel>
 
                         <MudTabPanel Text='@T("Gebruik", "Usage")'>
                             @if (!HasAnalyticsData)
@@ -2917,6 +2998,69 @@
                                           @bind-Value="NewStoryEditor.YouTubeUrl"
                                           Variant="Variant.Outlined"
                                           Margin="Margin.Dense" />
+                            <section class="admin-story-test-editor admin-span-2">
+                                <div class="admin-story-test-head">
+                                    <div>
+                                        <h4>@T("Storie toets", "Story test")</h4>
+                                        <p>@T("Voeg A/B vrae by. As daar geen vrae is nie, wys ons nie die toets-knoppie op die storieblad nie.", "Add A/B questions. If there are no questions, we do not show the test button on the story page.")</p>
+                                    </div>
+                                    <MudButton Class="admin-icon-btn admin-action-btn"
+                                               Variant="Variant.Outlined"
+                                               Color="Color.Primary"
+                                               OnClick="AddNewStoryTestQuestion"
+                                               aria-label='@T("Voeg toetsvraag by", "Add test question")'
+                                               title='@T("Voeg toetsvraag by", "Add test question")'>
+                                        <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                                        <span class="admin-btn-text">@T("Voeg vraag by", "Add question")</span>
+                                    </MudButton>
+                                </div>
+                                @if (NewStoryEditor.TestQuestions.Count == 0)
+                                {
+                                    <p class="admin-form-note">@T("Geen toetsvrae is bygevoeg nie.", "No test questions have been added.")</p>
+                                }
+                                else
+                                {
+                                    @foreach (var question in NewStoryEditor.TestQuestions)
+                                    {
+                                        <div class="admin-story-test-row">
+                                            <MudTextField T="string"
+                                                          Class="admin-span-2"
+                                                          Label='@T("Vraag", "Question")'
+                                                          @bind-Value="question.Question"
+                                                          Variant="Variant.Outlined"
+                                                          Margin="Margin.Dense"
+                                                          Lines="2" />
+                                            <MudTextField T="string"
+                                                          Label='@T("Opsie A", "Option A")'
+                                                          @bind-Value="question.OptionA"
+                                                          Variant="Variant.Outlined"
+                                                          Margin="Margin.Dense" />
+                                            <MudTextField T="string"
+                                                          Label='@T("Opsie B", "Option B")'
+                                                          @bind-Value="question.OptionB"
+                                                          Variant="Variant.Outlined"
+                                                          Margin="Margin.Dense" />
+                                            <MudSelect T="string"
+                                                       Label='@T("Regte antwoord", "Correct answer")'
+                                                       @bind-Value="question.CorrectOption"
+                                                       Variant="Variant.Outlined"
+                                                       Margin="Margin.Dense">
+                                                <MudSelectItem Value="@("A")">A</MudSelectItem>
+                                                <MudSelectItem Value="@("B")">B</MudSelectItem>
+                                            </MudSelect>
+                                            <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                                       Variant="Variant.Text"
+                                                       Color="Color.Error"
+                                                       OnClick="@(() => RemoveNewStoryTestQuestion(question))"
+                                                       aria-label='@T("Verwyder toetsvraag", "Remove test question")'
+                                                       title='@T("Verwyder toetsvraag", "Remove test question")'>
+                                                <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                                                <span class="admin-btn-text">@T("Verwyder", "Remove")</span>
+                                            </MudButton>
+                                        </div>
+                                    }
+                                }
+                            </section>
 
                             <div class="admin-upload-card">
                                 <div class="admin-upload-head">
@@ -3012,6 +3156,8 @@
                     <MudText Typo="Typo.h6">@T("Wysig storie", "Edit story")</MudText>
                 </TitleContent>
                 <DialogContent>
+                    <MudTabs Class="admin-detail-tabs admin-story-editor-tabs" Rounded="true">
+                        <MudTabPanel Text='@T("Storie", "Story")'>
                     <div class="admin-form-grid">
                         <MudTextField T="string"
                                       Label='@T("Titel", "Title")'
@@ -3199,6 +3345,73 @@
                             </div>
                         </div>
                     </div>
+                        </MudTabPanel>
+                        <MudTabPanel Text='@T("Toets", "Test")'>
+                            <section class="admin-story-test-editor admin-story-test-tab">
+                                <div class="admin-story-test-head">
+                                    <div>
+                                        <h4>@T("Storie toets", "Story test")</h4>
+                                        <p>@T("A/B vrae vir die toets-knoppie onderaan die storie-opsomming.", "A/B questions for the test button at the bottom of the story summary.")</p>
+                                    </div>
+                                    <MudButton Class="admin-icon-btn admin-action-btn"
+                                               Variant="Variant.Outlined"
+                                               Color="Color.Primary"
+                                               OnClick="AddStoryTestQuestion"
+                                               aria-label='@T("Voeg toetsvraag by", "Add test question")'
+                                               title='@T("Voeg toetsvraag by", "Add test question")'>
+                                        <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                                        <span class="admin-btn-text">@T("Voeg vraag by", "Add question")</span>
+                                    </MudButton>
+                                </div>
+                                @if (StoryEditor.TestQuestions.Count == 0)
+                                {
+                                    <p class="admin-form-note">@T("Geen toetsvrae is bygevoeg nie.", "No test questions have been added.")</p>
+                                }
+                                else
+                                {
+                                    @foreach (var question in StoryEditor.TestQuestions)
+                                    {
+                                        <div class="admin-story-test-row">
+                                            <MudTextField T="string"
+                                                          Class="admin-span-2"
+                                                          Label='@T("Vraag", "Question")'
+                                                          @bind-Value="question.Question"
+                                                          Variant="Variant.Outlined"
+                                                          Margin="Margin.Dense"
+                                                          Lines="2" />
+                                            <MudTextField T="string"
+                                                          Label='@T("Opsie A", "Option A")'
+                                                          @bind-Value="question.OptionA"
+                                                          Variant="Variant.Outlined"
+                                                          Margin="Margin.Dense" />
+                                            <MudTextField T="string"
+                                                          Label='@T("Opsie B", "Option B")'
+                                                          @bind-Value="question.OptionB"
+                                                          Variant="Variant.Outlined"
+                                                          Margin="Margin.Dense" />
+                                            <MudSelect T="string"
+                                                       Label='@T("Regte antwoord", "Correct answer")'
+                                                       @bind-Value="question.CorrectOption"
+                                                       Variant="Variant.Outlined"
+                                                       Margin="Margin.Dense">
+                                                <MudSelectItem Value="@("A")">A</MudSelectItem>
+                                                <MudSelectItem Value="@("B")">B</MudSelectItem>
+                                            </MudSelect>
+                                            <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                                       Variant="Variant.Text"
+                                                       Color="Color.Error"
+                                                       OnClick="@(() => RemoveStoryTestQuestion(question))"
+                                                       aria-label='@T("Verwyder toetsvraag", "Remove test question")'
+                                                       title='@T("Verwyder toetsvraag", "Remove test question")'>
+                                                <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                                                <span class="admin-btn-text">@T("Verwyder", "Remove")</span>
+                                            </MudButton>
+                                        </div>
+                                    }
+                                }
+                            </section>
+                        </MudTabPanel>
+                    </MudTabs>
                 </DialogContent>
                 <DialogActions>
                     <div class="admin-dialog-actions-row">
@@ -4150,6 +4363,12 @@
         SubscriberReports.SalesDetails
             .Where(IsRevenueDetailInSelectedPeriod)
             .OrderByDescending(detail => detail.SoldAt)
+            .ToArray();
+
+    private IReadOnlyList<AdminRecoveredRevenueDetailRecord> FilteredRecoveredRevenueDetails =>
+        SubscriberReports.RecoveredRevenueDetails
+            .Where(IsRecoveredRevenueDetailInSelectedPeriod)
+            .OrderByDescending(detail => detail.RecoveredAt)
             .ToArray();
 
     private bool HasActiveSubscriberColumnFilters => SubscriberColumnFilters.HasActiveFilters;
@@ -5624,6 +5843,26 @@
         return Task.CompletedTask;
     }
 
+    private void AddNewStoryTestQuestion()
+    {
+        NewStoryEditor?.TestQuestions.Add(new EditableStoryTestQuestion());
+    }
+
+    private void RemoveNewStoryTestQuestion(EditableStoryTestQuestion question)
+    {
+        NewStoryEditor?.TestQuestions.Remove(question);
+    }
+
+    private void AddStoryTestQuestion()
+    {
+        StoryEditor?.TestQuestions.Add(new EditableStoryTestQuestion());
+    }
+
+    private void RemoveStoryTestQuestion(EditableStoryTestQuestion question)
+    {
+        StoryEditor?.TestQuestions.Remove(question);
+    }
+
     private async Task OnStoryCoverSelected(InputFileChangeEventArgs args)
     {
         if (StoryEditor is null)
@@ -5893,6 +6132,7 @@
                     Summary: summary,
                     Description: description,
                     YouTubeUrl: NewStoryEditor.YouTubeUrl,
+                    TestQuestions: BuildAdminStoryTestQuestions(NewStoryEditor.TestQuestions),
                     CoverImagePath: coverUpload.PublicUrl,
                     ThumbnailImagePath: thumbnailPath,
                     AudioBucket: audioUpload.Bucket,
@@ -6010,6 +6250,7 @@
                     Summary: StoryEditor.Summary,
                     Description: StoryEditor.Description,
                     YouTubeUrl: StoryEditor.YouTubeUrl,
+                    TestQuestions: BuildAdminStoryTestQuestions(StoryEditor.TestQuestions),
                     CoverImagePath: StoryEditor.CoverImagePath,
                     ThumbnailImagePath: StoryEditor.ThumbnailImagePath,
                     AudioProvider: StoryEditor.AudioProvider,
@@ -6612,6 +6853,29 @@
         {
             story.IsShowcase = story.StoryId == storyId;
         }
+    }
+
+    private static IReadOnlyList<AdminStoryTestQuestion> BuildAdminStoryTestQuestions(
+        IEnumerable<EditableStoryTestQuestion> questions)
+    {
+        return questions
+            .Select(question => new AdminStoryTestQuestion(
+                NormalizeDirtyText(question.Question) ?? string.Empty,
+                NormalizeDirtyText(question.OptionA) ?? string.Empty,
+                NormalizeDirtyText(question.OptionB) ?? string.Empty,
+                NormalizeStoryTestCorrectOption(question.CorrectOption)))
+            .Where(question =>
+                !string.IsNullOrWhiteSpace(question.Question) &&
+                !string.IsNullOrWhiteSpace(question.OptionA) &&
+                !string.IsNullOrWhiteSpace(question.OptionB) &&
+                !string.IsNullOrWhiteSpace(question.CorrectOption))
+            .ToArray();
+    }
+
+    private static string NormalizeStoryTestCorrectOption(string? value)
+    {
+        var normalized = value?.Trim().ToUpperInvariant();
+        return normalized is "A" or "B" ? normalized : "A";
     }
 
     private string? ValidateNewStoryDraft(NewStoryDraft draft)
@@ -7293,6 +7557,15 @@
             _ => true
         };
 
+    private bool IsRecoveredRevenueDetailInSelectedPeriod(AdminRecoveredRevenueDetailRecord detail) =>
+        SelectedRevenueDrilldownPeriod switch
+        {
+            "today" => IsAdminDateInCurrentPeriod(detail.RecoveredAt, "today"),
+            "this_month" => IsAdminDateInCurrentPeriod(detail.RecoveredAt, "this_month"),
+            "this_year" => IsAdminDateInCurrentPeriod(detail.RecoveredAt, "this_year"),
+            _ => true
+        };
+
     private decimal GetRevenueForMonth(DateTime monthStartLocal)
     {
         var monthEndLocal = monthStartLocal.AddMonths(1);
@@ -7704,6 +7977,27 @@
             _ => periodKey
         };
 
+    private string GetRecoveredRevenueSourceLabel(string source) =>
+        source switch
+        {
+            "subscription_payment" => T("Mislukte betaling herstel", "Failed payment recovery"),
+            "abandoned_subscription" => T("Verlate intekeningmandjie", "Abandoned subscription cart"),
+            "store_order" => T("Winkelbestelling", "Store order"),
+            _ => source
+        };
+
+    private string FormatRecoveredRevenueNextPayment(AdminRecoveredRevenueDetailRecord detail) =>
+        detail.NextPaymentAt is not null
+            ? FormatAdminDateTime(detail.NextPaymentAt)
+            : detail.NextPaymentSource switch
+            {
+                "not_applicable_store_order" => T("Nie van toepassing", "Not applicable"),
+                "not_stored_wordpress_import" => T("Nie gestoor vir WordPress-invoer nie", "Not stored for WordPress import"),
+                "no_subscription_match" => T("Geen intekening gekoppel nie", "No subscription matched"),
+                "not_scheduled" => T("Nog nie geskeduleer nie", "Not scheduled yet"),
+                _ => "-"
+            };
+
     private string T(string afrikaans, string english)
     {
         return CurrentLanguage == AdminLanguage.English
@@ -8058,6 +8352,7 @@
             Summary = NormalizeDirtyText(editor.Summary),
             Description = NormalizeDirtyText(editor.Description),
             YouTubeUrl = NormalizeDirtyText(editor.YouTubeUrl),
+            TestQuestions = BuildAdminStoryTestQuestions(editor.TestQuestions),
             CoverImagePath = NormalizeDirtyText(editor.CoverImagePath),
             ThumbnailImagePath = NormalizeDirtyText(editor.ThumbnailImagePath),
             CoverFile = BuildBrowserFileState(editor.CoverFile, editor.CoverFileName),
@@ -8083,6 +8378,7 @@
             Summary = NormalizeDirtyText(editor.Summary),
             Description = NormalizeDirtyText(editor.Description),
             YouTubeUrl = NormalizeDirtyText(editor.YouTubeUrl),
+            TestQuestions = BuildAdminStoryTestQuestions(editor.TestQuestions),
             AccessLevel = NormalizeDirtyText(editor.AccessLevel),
             editor.PublishNow,
             CoverFile = BuildBrowserFileState(editor.CoverFile, editor.CoverFileName),
@@ -8596,6 +8892,7 @@
         public string? Summary { get; set; }
         public string? Description { get; set; }
         public string? YouTubeUrl { get; set; }
+        public List<EditableStoryTestQuestion> TestQuestions { get; set; } = [];
         public string? CoverImagePath { get; set; }
         public string? ThumbnailImagePath { get; set; }
         public IBrowserFile? CoverFile { get; set; }
@@ -8624,6 +8921,7 @@
             Summary = story.Summary,
             Description = story.Description,
             YouTubeUrl = story.YouTubeUrl,
+            TestQuestions = story.TestQuestions.Select(EditableStoryTestQuestion.From).ToList(),
             CoverImagePath = story.CoverImagePath,
             ThumbnailImagePath = story.ThumbnailImagePath,
             AudioProvider = story.AudioProvider,
@@ -8644,6 +8942,7 @@
         public string? Summary { get; set; }
         public string? Description { get; set; }
         public string? YouTubeUrl { get; set; }
+        public List<EditableStoryTestQuestion> TestQuestions { get; set; } = [];
         public string AccessLevel { get; set; } = "subscriber";
         public bool PublishNow { get; set; } = true;
         public IBrowserFile? CoverFile { get; set; }
@@ -8652,6 +8951,22 @@
         public string? ThumbnailFileName { get; set; }
         public IBrowserFile? AudioFile { get; set; }
         public string? AudioFileName { get; set; }
+    }
+
+    private sealed class EditableStoryTestQuestion
+    {
+        public string Question { get; set; } = string.Empty;
+        public string OptionA { get; set; } = string.Empty;
+        public string OptionB { get; set; } = string.Empty;
+        public string CorrectOption { get; set; } = "A";
+
+        public static EditableStoryTestQuestion From(AdminStoryTestQuestion question) => new()
+        {
+            Question = question.Question,
+            OptionA = question.OptionA,
+            OptionB = question.OptionB,
+            CorrectOption = NormalizeStoryTestCorrectOption(question.CorrectOption)
+        };
     }
 
     private sealed class EditablePlaylist

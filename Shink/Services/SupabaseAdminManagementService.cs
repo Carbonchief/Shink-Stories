@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using System.Globalization;
 using System.Text;
@@ -1101,6 +1102,7 @@ public sealed partial class SupabaseAdminManagementService(
                 Summary: NormalizeOptionalText(row.Summary, 512),
                 Description: NormalizeOptionalText(row.Description, 4000),
                 YouTubeUrl: NormalizeOptionalText(row.YouTubeUrl, 2048),
+                TestQuestions: NormalizeStoryTestQuestions(row.TestQuestions),
                 CoverImagePath: NormalizeOptionalText(row.CoverImagePath, 1024),
                 ThumbnailImagePath: NormalizeOptionalText(row.ThumbnailImagePath, 1024),
                 AudioProvider: string.IsNullOrWhiteSpace(row.AudioProvider) ? "local" : row.AudioProvider.Trim().ToLowerInvariant(),
@@ -1183,6 +1185,7 @@ public sealed partial class SupabaseAdminManagementService(
         var normalizedSummary = NormalizeOptionalText(request.Summary, 512);
         var normalizedDescription = NormalizeOptionalText(request.Description, 4000);
         var normalizedYouTubeUrl = NormalizeYouTubeUrl(request.YouTubeUrl);
+        var normalizedTestQuestions = NormalizeStoryTestQuestions(request.TestQuestions);
         if (!string.IsNullOrWhiteSpace(request.YouTubeUrl) &&
             normalizedYouTubeUrl is null)
         {
@@ -1243,6 +1246,7 @@ public sealed partial class SupabaseAdminManagementService(
             ["summary"] = normalizedSummary,
             ["description"] = normalizedDescription,
             ["youtube_url"] = normalizedYouTubeUrl,
+            ["test_questions"] = normalizedTestQuestions.Count == 0 ? null : normalizedTestQuestions,
             ["cover_image_path"] = normalizedCoverImagePath,
             ["thumbnail_image_path"] = normalizedThumbnailPath,
             ["audio_provider"] = normalizedAudioProvider,
@@ -1282,6 +1286,46 @@ public sealed partial class SupabaseAdminManagementService(
         }
 
         var responseBody = await updateResponse.Content.ReadAsStringAsync(cancellationToken);
+        if (updateResponse.StatusCode == HttpStatusCode.BadRequest &&
+            responseBody.Contains("test_questions", StringComparison.OrdinalIgnoreCase))
+        {
+            if (normalizedTestQuestions.Count > 0)
+            {
+                return new AdminOperationResult(false, "Die databasis moet eers die test_questions migrasie kry voordat toetsvrae gestoor kan word.");
+            }
+
+            payload.Remove("test_questions");
+            using var compatibilityUpdateRequest = CreateJsonRequest(new HttpMethod("PATCH"), uri, apiKey, payload, "return=minimal");
+            using var compatibilityUpdateResponse = await _httpClient.SendAsync(compatibilityUpdateRequest, cancellationToken);
+            if (compatibilityUpdateResponse.IsSuccessStatusCode)
+            {
+                InvalidateStoryCatalogCache();
+                if (shouldCreatePublishedStoryNotifications)
+                {
+                    await _userNotificationService.CreatePublishedStoryNotificationsAsync(
+                        new PublishedStoryNotificationRequest(
+                            request.StoryId,
+                            normalizedSlug,
+                            normalizedTitle,
+                            normalizedAccessLevel,
+                            normalizedSummary,
+                            normalizedThumbnailPath,
+                            normalizedCoverImagePath),
+                        cancellationToken);
+                }
+
+                return new AdminOperationResult(true);
+            }
+
+            responseBody = await compatibilityUpdateResponse.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Story compatibility update failed. story_id={StoryId} Status={StatusCode} Body={Body}",
+                request.StoryId,
+                (int)compatibilityUpdateResponse.StatusCode,
+                responseBody);
+            return new AdminOperationResult(false, "Kon nie storie nou opdateer nie.");
+        }
+
         _logger.LogWarning(
             "Story update failed. story_id={StoryId} Status={StatusCode} Body={Body}",
             request.StoryId,
@@ -1338,6 +1382,7 @@ public sealed partial class SupabaseAdminManagementService(
         var normalizedSummary = NormalizeOptionalText(request.Summary, 512);
         var normalizedDescription = NormalizeOptionalText(request.Description, 4000);
         var normalizedYouTubeUrl = NormalizeYouTubeUrl(request.YouTubeUrl);
+        var normalizedTestQuestions = NormalizeStoryTestQuestions(request.TestQuestions);
         if (!string.IsNullOrWhiteSpace(request.YouTubeUrl) &&
             normalizedYouTubeUrl is null)
         {
@@ -1386,6 +1431,7 @@ public sealed partial class SupabaseAdminManagementService(
             ["summary"] = normalizedSummary,
             ["description"] = normalizedDescription,
             ["youtube_url"] = normalizedYouTubeUrl,
+            ["test_questions"] = normalizedTestQuestions.Count == 0 ? null : normalizedTestQuestions,
             ["cover_image_path"] = normalizedCoverImagePath,
             ["thumbnail_image_path"] = normalizedThumbnailPath,
             ["audio_provider"] = "r2",
@@ -1427,6 +1473,56 @@ public sealed partial class SupabaseAdminManagementService(
         }
 
         var createBody = await createResponse.Content.ReadAsStringAsync(cancellationToken);
+        if (createResponse.StatusCode == HttpStatusCode.BadRequest &&
+            createBody.Contains("test_questions", StringComparison.OrdinalIgnoreCase))
+        {
+            if (normalizedTestQuestions.Count > 0)
+            {
+                return new AdminOperationResult(false, "Die databasis moet eers die test_questions migrasie kry voordat toetsvrae gestoor kan word.");
+            }
+
+            payload.Remove("test_questions");
+            using var compatibilityCreateRequest = CreateJsonRequest(HttpMethod.Post, createUri, apiKey, payload, "return=representation");
+            using var compatibilityCreateResponse = await _httpClient.SendAsync(compatibilityCreateRequest, cancellationToken);
+            if (compatibilityCreateResponse.IsSuccessStatusCode)
+            {
+                var compatibilityResponseBody = await compatibilityCreateResponse.Content.ReadAsStringAsync(cancellationToken);
+                var createdStoryId = TryReadFirstGuidProperty(compatibilityResponseBody, "story_id");
+                InvalidateStoryCatalogCache();
+
+                if (createdStoryId.HasValue &&
+                    string.Equals(normalizedStatus, "published", StringComparison.OrdinalIgnoreCase))
+                {
+                    await _userNotificationService.CreatePublishedStoryNotificationsAsync(
+                        new PublishedStoryNotificationRequest(
+                            createdStoryId.Value,
+                            normalizedSlug,
+                            normalizedTitle,
+                            normalizedAccessLevel,
+                            normalizedSummary,
+                            normalizedThumbnailPath,
+                            normalizedCoverImagePath),
+                        cancellationToken);
+                }
+
+                return new AdminOperationResult(true, EntityId: createdStoryId);
+            }
+
+            createBody = await compatibilityCreateResponse.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Story compatibility create failed. slug={Slug} Status={StatusCode} Body={Body}",
+                normalizedSlug,
+                (int)compatibilityCreateResponse.StatusCode,
+                createBody);
+
+            if (ContainsDuplicateSlugViolation(createBody))
+            {
+                return new AdminOperationResult(false, "Storie slug bestaan reeds.");
+            }
+
+            return new AdminOperationResult(false, "Kon nie nuwe storie skep nie.");
+        }
+
         _logger.LogWarning(
             "Story create failed. slug={Slug} Status={StatusCode} Body={Body}",
             normalizedSlug,
@@ -3131,7 +3227,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/subscription_payment_recoveries" +
-            "?select=subscription_id,created_at,resolved_at,resolution" +
+            "?select=recovery_id,subscription_id,provider,provider_payment_id,created_at,resolved_at,resolution" +
             "&order=created_at.desc" +
             "&limit=50000");
 
@@ -3143,7 +3239,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/abandoned_cart_recoveries" +
-            "?select=source_type,source_key,cart_total_zar,created_at,resolved_at,resolution" +
+            "?select=recovery_id,source_type,source_key,checkout_reference,provider,customer_email,customer_name,item_name,cart_total_zar,created_at,resolved_at,resolution" +
             "&order=created_at.desc" +
             "&limit=50000");
 
@@ -3188,15 +3284,79 @@ public sealed partial class SupabaseAdminManagementService(
 
     private async Task<IReadOnlyList<StoryRow>> FetchStoriesAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
     {
+        const string storySelectWithTestQuestions =
+            "story_id,slug,title,summary,description,youtube_url,test_questions,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,access_level,status,sort_order,published_at,duration_seconds,updated_at";
+        const string storySelectWithoutTestQuestions =
+            "story_id,slug,title,summary,description,youtube_url,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,access_level,status,sort_order,published_at,duration_seconds,updated_at";
+
+        var rows = await FetchStoriesWithSelectAsync(
+            baseUri,
+            apiKey,
+            storySelectWithTestQuestions,
+            retryWithoutTestQuestionsOnMissingColumn: true,
+            cancellationToken);
+
+        if (rows is not null)
+        {
+            return rows;
+        }
+
+        return await FetchStoriesWithSelectAsync(
+                baseUri,
+                apiKey,
+                storySelectWithoutTestQuestions,
+                retryWithoutTestQuestionsOnMissingColumn: false,
+                cancellationToken) ??
+            Array.Empty<StoryRow>();
+    }
+
+    private async Task<IReadOnlyList<StoryRow>?> FetchStoriesWithSelectAsync(
+        Uri baseUri,
+        string apiKey,
+        string selectColumns,
+        bool retryWithoutTestQuestionsOnMissingColumn,
+        CancellationToken cancellationToken)
+    {
         var uri = new Uri(
             baseUri,
             "rest/v1/stories" +
-            "?select=story_id,slug,title,summary,description,youtube_url,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,access_level,status,sort_order,published_at,duration_seconds,updated_at" +
+            $"?select={selectColumns}" +
             "&order=updated_at.desc.nullslast" +
             "&order=sort_order.asc" +
             "&limit=2000");
 
-        return await FetchRowsAsync<StoryRow>(uri, apiKey, cancellationToken);
+        try
+        {
+            using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                if (retryWithoutTestQuestionsOnMissingColumn &&
+                    response.StatusCode == HttpStatusCode.BadRequest &&
+                    responseBody.Contains("test_questions", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogInformation("Admin stories lookup is retrying without test_questions because the column is not available yet.");
+                    return null;
+                }
+
+                _logger.LogWarning(
+                    "Supabase stories fetch failed. Status={StatusCode} Body={Body}",
+                    (int)response.StatusCode,
+                    responseBody);
+                return null;
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var rows = await JsonSerializer.DeserializeAsync<List<StoryRow>>(stream, JsonOptions, cancellationToken)
+                ?? [];
+            return rows;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(exception, "Supabase stories fetch failed unexpectedly.");
+            return null;
+        }
     }
 
     private async Task<StoryRow?> FetchStoryByIdAsync(
@@ -3650,6 +3810,7 @@ public sealed partial class SupabaseAdminManagementService(
             SalesAndRevenue: BuildSalesRevenueMetrics(wordPressSubscriberReports, subscriptions, tierDetails, revenueEvents),
             SalesDetails: BuildSalesRevenueDetails(subscriptions, tierDetails, revenueEvents),
             AbandonedCartRecoveries: BuildRecoveryMetrics(subscriptions, tierDetails, recoveries, abandonedCartRecoveries),
+            RecoveredRevenueDetails: BuildRecoveredRevenueDetails(subscribers, subscriptions, tierDetails, recoveries, abandonedCartRecoveries),
             VisitsViewsAndLogins: BuildVisitsViewsLoginsMetrics(authSessions, storyViews, storyListenSessions));
     }
 
@@ -4067,6 +4228,101 @@ public sealed partial class SupabaseAdminManagementService(
         ];
     }
 
+    private static IReadOnlyList<AdminRecoveredRevenueDetailRecord> BuildRecoveredRevenueDetails(
+        IReadOnlyList<SubscriberRow> subscribers,
+        IReadOnlyList<SubscriptionRow> subscriptions,
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
+        IReadOnlyList<SubscriptionRecoveryRow> recoveries,
+        IReadOnlyList<AbandonedCartRecoveryRow> abandonedCartRecoveries)
+    {
+        var subscribersById = subscribers
+            .Where(subscriber => subscriber.SubscriberId != Guid.Empty)
+            .GroupBy(subscriber => subscriber.SubscriberId)
+            .ToDictionary(group => group.Key, group => group.First());
+        var subscribersByEmail = subscribers
+            .Where(subscriber => !string.IsNullOrWhiteSpace(subscriber.Email))
+            .GroupBy(subscriber => subscriber.Email.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+        var subscriptionsById = subscriptions
+            .Where(subscription => subscription.SubscriptionId != Guid.Empty)
+            .GroupBy(subscription => subscription.SubscriptionId)
+            .ToDictionary(group => group.Key, group => group.First());
+        var subscriptionsBySubscriberId = subscriptions
+            .Where(subscription => subscription.SubscriberId != Guid.Empty)
+            .GroupBy(subscription => subscription.SubscriberId)
+            .ToDictionary(group => group.Key, group => (IReadOnlyList<SubscriptionRow>)group.ToArray());
+        var records = new List<AdminRecoveredRevenueDetailRecord>();
+
+        foreach (var recovery in recoveries
+                     .Where(recovery => string.Equals(recovery.Resolution, "recovered", StringComparison.OrdinalIgnoreCase))
+                     .Where(recovery => recovery.ResolvedAt is not null))
+        {
+            subscriptionsById.TryGetValue(recovery.SubscriptionId, out var subscription);
+            SubscriberRow? subscriber = null;
+            if (subscription is not null)
+            {
+                subscribersById.TryGetValue(subscription.SubscriberId, out subscriber);
+            }
+
+            var email = ResolveSubscriberEmail(subscriber);
+            var tierCode = NormalizeOptionalText(subscription?.TierCode, 80) ?? "-";
+            var tier = tierDetails.TryGetValue(tierCode, out var detail) ? detail : null;
+            var reference = NormalizeOptionalText(recovery.ProviderPaymentId, 160) ??
+                            (recovery.RecoveryId == Guid.Empty ? "-" : recovery.RecoveryId.ToString("D"));
+
+            records.Add(new AdminRecoveredRevenueDetailRecord(
+                recovery.ResolvedAt!.Value,
+                decimal.Round(ResolveSubscriptionRecoveredRevenue(subscription, tierDetails), 2, MidpointRounding.AwayFromZero),
+                "subscription_payment",
+                email,
+                ResolveSubscriberDisplayName(subscriber, email),
+                tierCode,
+                NormalizeTierDisplayName(tierCode, tier?.DisplayName),
+                NormalizeOptionalText(recovery.Provider, 40) ?? NormalizeOptionalText(subscription?.Provider, 40) ?? "-",
+                NormalizeOptionalText(subscription?.Status, 40) ?? "-",
+                subscription?.NextRenewalAt,
+                ResolveRecoveredRevenueNextPaymentSource(subscription, null),
+                reference));
+        }
+
+        foreach (var recovery in abandonedCartRecoveries
+                     .Where(recovery => string.Equals(recovery.Resolution, "paid", StringComparison.OrdinalIgnoreCase))
+                     .Where(recovery => recovery.ResolvedAt is not null))
+        {
+            var email = NormalizeOptionalText(recovery.CustomerEmail, 254) ?? "-";
+            subscribersByEmail.TryGetValue(email, out var subscriber);
+            var subscription = FindRecoveredAbandonedCartSubscription(recovery, subscriber, subscriptionsBySubscriberId);
+            var isStoreOrder = string.Equals(recovery.SourceType, "store_order", StringComparison.OrdinalIgnoreCase);
+            var tierCode = NormalizeOptionalText(subscription?.TierCode, 80) ??
+                           NormalizeOptionalText(recovery.SourceKey, 80) ??
+                           "-";
+            var tier = tierDetails.TryGetValue(tierCode, out var detail) ? detail : null;
+            var tierName = isStoreOrder
+                ? NormalizeOptionalText(recovery.ItemName, 120) ?? tierCode
+                : NormalizeTierDisplayName(tierCode, tier?.DisplayName);
+            var reference = NormalizeOptionalText(recovery.CheckoutReference, 160) ??
+                            (recovery.RecoveryId == Guid.Empty ? "-" : recovery.RecoveryId.ToString("D"));
+
+            records.Add(new AdminRecoveredRevenueDetailRecord(
+                recovery.ResolvedAt!.Value,
+                decimal.Round(ResolveAbandonedCartRecoveredRevenue(recovery, tierDetails), 2, MidpointRounding.AwayFromZero),
+                isStoreOrder ? "store_order" : "abandoned_subscription",
+                email,
+                ResolveSubscriberDisplayName(subscriber, email, recovery.CustomerName),
+                tierCode,
+                tierName,
+                NormalizeOptionalText(recovery.Provider, 40) ?? NormalizeOptionalText(subscription?.Provider, 40) ?? "-",
+                NormalizeOptionalText(subscription?.Status, 40) ?? "-",
+                isStoreOrder ? null : subscription?.NextRenewalAt,
+                ResolveRecoveredRevenueNextPaymentSource(subscription, recovery.SourceType),
+                reference));
+        }
+
+        return records
+            .OrderByDescending(record => record.RecoveredAt)
+            .ToArray();
+    }
+
     private static IReadOnlyList<AdminVisitsViewsLoginsMetric> BuildVisitsViewsLoginsMetrics(
         IReadOnlyList<AuthSessionMetricRow> authSessions,
         IReadOnlyList<StoryViewMetricRow> storyViews,
@@ -4225,6 +4481,94 @@ public sealed partial class SupabaseAdminManagementService(
         return string.Equals(recovery.SourceType, "subscription", StringComparison.OrdinalIgnoreCase)
             ? ResolveTierPrice(recovery.SourceKey, tierDetails)
             : 0m;
+    }
+
+    private static decimal ResolveSubscriptionRecoveredRevenue(
+        SubscriptionRow? subscription,
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails)
+    {
+        if (subscription is null)
+        {
+            return 0m;
+        }
+
+        return subscription.BillingAmountZar is > 0m
+            ? subscription.BillingAmountZar.Value
+            : ResolveTierPrice(subscription.TierCode, tierDetails);
+    }
+
+    private static SubscriptionRow? FindRecoveredAbandonedCartSubscription(
+        AbandonedCartRecoveryRow recovery,
+        SubscriberRow? subscriber,
+        IReadOnlyDictionary<Guid, IReadOnlyList<SubscriptionRow>> subscriptionsBySubscriberId)
+    {
+        if (subscriber is null ||
+            string.Equals(recovery.SourceType, "store_order", StringComparison.OrdinalIgnoreCase) ||
+            !subscriptionsBySubscriberId.TryGetValue(subscriber.SubscriberId, out var subscriberSubscriptions))
+        {
+            return null;
+        }
+
+        var sourceTierCode = NormalizeOptionalText(recovery.SourceKey, 80);
+        var targetDate = recovery.ResolvedAt ?? recovery.CreatedAt;
+        var nowUtc = DateTimeOffset.UtcNow;
+        var matchingTierSubscriptions = subscriberSubscriptions
+            .Where(subscription => string.IsNullOrWhiteSpace(sourceTierCode) ||
+                                   string.Equals(subscription.TierCode, sourceTierCode, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        var candidates = matchingTierSubscriptions.Length > 0
+            ? matchingTierSubscriptions
+            : subscriberSubscriptions;
+
+        return candidates
+            .OrderByDescending(subscription => IsActiveSubscription(subscription, nowUtc))
+            .ThenBy(subscription => subscription.SubscribedAt is null
+                ? double.MaxValue
+                : Math.Abs((subscription.SubscribedAt.Value - targetDate).TotalSeconds))
+            .ThenByDescending(subscription => subscription.NextRenewalAt is not null)
+            .ThenByDescending(subscription => subscription.SubscribedAt)
+            .FirstOrDefault();
+    }
+
+    private static string ResolveRecoveredRevenueNextPaymentSource(SubscriptionRow? subscription, string? recoverySourceType)
+    {
+        if (string.Equals(recoverySourceType, "store_order", StringComparison.OrdinalIgnoreCase))
+        {
+            return "not_applicable_store_order";
+        }
+
+        if (subscription is null)
+        {
+            return "no_subscription_match";
+        }
+
+        if (subscription.NextRenewalAt is not null)
+        {
+            return "subscriptions.next_renewal_at";
+        }
+
+        return string.Equals(subscription.SourceSystem, "wordpress_pmpro", StringComparison.OrdinalIgnoreCase)
+            ? "not_stored_wordpress_import"
+            : "not_scheduled";
+    }
+
+    private static string ResolveSubscriberEmail(SubscriberRow? subscriber) =>
+        NormalizeOptionalText(subscriber?.Email, 254) ?? "-";
+
+    private static string ResolveSubscriberDisplayName(SubscriberRow? subscriber, string fallbackEmail, string? fallbackName = null)
+    {
+        var displayName = NormalizeOptionalText(fallbackName, 120) ??
+                          NormalizeOptionalText(subscriber?.DisplayName, 120);
+        if (string.IsNullOrWhiteSpace(displayName))
+        {
+            displayName = string.Join(" ", new[]
+            {
+                NormalizeOptionalText(subscriber?.FirstName, 80),
+                NormalizeOptionalText(subscriber?.LastName, 80)
+            }.Where(part => !string.IsNullOrWhiteSpace(part)));
+        }
+
+        return string.IsNullOrWhiteSpace(displayName) ? fallbackEmail : displayName;
     }
 
     private async Task<WordPressSubscriberReportsRpcSnapshot?> TrySyncAndFetchWordPressSubscriberReportsAsync(
@@ -5043,6 +5387,40 @@ public sealed partial class SupabaseAdminManagementService(
         !string.IsNullOrWhiteSpace(value) &&
         value.Contains(query, StringComparison.OrdinalIgnoreCase);
 
+    private static IReadOnlyList<AdminStoryTestQuestion> NormalizeStoryTestQuestions(
+        IEnumerable<AdminStoryTestQuestion>? questions)
+    {
+        if (questions is null)
+        {
+            return Array.Empty<AdminStoryTestQuestion>();
+        }
+
+        var normalizedQuestions = new List<AdminStoryTestQuestion>();
+        foreach (var question in questions)
+        {
+            var normalizedQuestion = NormalizeOptionalText(question.Question, 300);
+            var normalizedOptionA = NormalizeOptionalText(question.OptionA, 180);
+            var normalizedOptionB = NormalizeOptionalText(question.OptionB, 180);
+            var normalizedCorrectOption = question.CorrectOption?.Trim().ToUpperInvariant();
+
+            if (string.IsNullOrWhiteSpace(normalizedQuestion) ||
+                string.IsNullOrWhiteSpace(normalizedOptionA) ||
+                string.IsNullOrWhiteSpace(normalizedOptionB) ||
+                normalizedCorrectOption is not ("A" or "B"))
+            {
+                continue;
+            }
+
+            normalizedQuestions.Add(new AdminStoryTestQuestion(
+                normalizedQuestion,
+                normalizedOptionA,
+                normalizedOptionB,
+                normalizedCorrectOption));
+        }
+
+        return normalizedQuestions;
+    }
+
     private static Guid? TryReadFirstGuidProperty(string? json, string propertyName)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -5366,8 +5744,17 @@ public sealed partial class SupabaseAdminManagementService(
 
     private sealed class SubscriptionRecoveryRow
     {
+        [JsonPropertyName("recovery_id")]
+        public Guid RecoveryId { get; set; }
+
         [JsonPropertyName("subscription_id")]
         public Guid SubscriptionId { get; set; }
+
+        [JsonPropertyName("provider")]
+        public string? Provider { get; set; }
+
+        [JsonPropertyName("provider_payment_id")]
+        public string? ProviderPaymentId { get; set; }
 
         [JsonPropertyName("created_at")]
         public DateTimeOffset CreatedAt { get; set; }
@@ -5571,11 +5958,29 @@ public sealed partial class SupabaseAdminManagementService(
 
     private sealed class AbandonedCartRecoveryRow
     {
+        [JsonPropertyName("recovery_id")]
+        public Guid RecoveryId { get; set; }
+
         [JsonPropertyName("source_type")]
         public string? SourceType { get; set; }
 
         [JsonPropertyName("source_key")]
         public string? SourceKey { get; set; }
+
+        [JsonPropertyName("checkout_reference")]
+        public string? CheckoutReference { get; set; }
+
+        [JsonPropertyName("provider")]
+        public string? Provider { get; set; }
+
+        [JsonPropertyName("customer_email")]
+        public string? CustomerEmail { get; set; }
+
+        [JsonPropertyName("customer_name")]
+        public string? CustomerName { get; set; }
+
+        [JsonPropertyName("item_name")]
+        public string? ItemName { get; set; }
 
         [JsonPropertyName("cart_total_zar")]
         public decimal? CartTotalZar { get; set; }
@@ -5653,6 +6058,9 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("youtube_url")]
         public string? YouTubeUrl { get; set; }
+
+        [JsonPropertyName("test_questions")]
+        public AdminStoryTestQuestion[]? TestQuestions { get; set; }
 
         [JsonPropertyName("cover_image_path")]
         public string? CoverImagePath { get; set; }

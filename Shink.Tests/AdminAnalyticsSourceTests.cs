@@ -71,15 +71,22 @@ public class AdminAnalyticsSourceTests
         StringAssert.Contains(admin, "GetSubscriberSalesMetric(\"all_time\")");
         StringAssert.Contains(admin, "SelectedRevenueDrilldownPeriod");
         StringAssert.Contains(admin, "FilteredRevenueSalesDetails");
+        StringAssert.Contains(admin, "FilteredRecoveredRevenueDetails");
         StringAssert.Contains(admin, "IsRevenueDetailInSelectedPeriod");
+        StringAssert.Contains(admin, "IsRecoveredRevenueDetailInSelectedPeriod");
         StringAssert.Contains(admin, "SetRevenueDrilldownPeriod");
         StringAssert.Contains(admin, "Items=\"FilteredRevenueSalesDetails\"");
+        StringAssert.Contains(admin, "Items=\"FilteredRecoveredRevenueDetails\"");
         StringAssert.Contains(admin, "@T(\"Verkope detail\", \"Sales detail\")");
+        StringAssert.Contains(admin, "@T(\"Herwinde inkomste detail\", \"Recovered revenue detail\")");
+        StringAssert.Contains(admin, "@T(\"Volgende betaling\", \"Next payment\")");
         StringAssert.Contains(admin, "RevenueZar");
         StringAssert.Contains(admin, "SalesCount");
         StringAssert.Contains(admin, "RecoveredRevenueZar");
         StringAssert.Contains(service, "AdminSalesRevenueDetailRecord");
+        StringAssert.Contains(service, "AdminRecoveredRevenueDetailRecord");
         StringAssert.Contains(service, "SalesDetails");
+        StringAssert.Contains(service, "RecoveredRevenueDetails");
     }
 
     [TestMethod]

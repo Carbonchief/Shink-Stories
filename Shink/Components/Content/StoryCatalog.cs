@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 
 namespace Shink.Components.Content;
@@ -21,6 +22,7 @@ public sealed record StoryItem(
     IReadOnlyList<string>? ConversationQuestions = null,
     IReadOnlyList<string>? Characters = null,
     string? YouTubeUrl = null,
+    IReadOnlyList<StoryTestQuestion>? TestQuestions = null,
     decimal? DurationSeconds = null,
     IReadOnlyList<string>? PlaylistSlugs = null)
 {
@@ -110,6 +112,12 @@ public sealed record StoryItem(
         return $"/stories/{string.Join('/', segments)}";
     }
 }
+
+public sealed record StoryTestQuestion(
+    [property: JsonPropertyName("question")] string Question,
+    [property: JsonPropertyName("option_a")] string OptionA,
+    [property: JsonPropertyName("option_b")] string OptionB,
+    [property: JsonPropertyName("correct_option")] string CorrectOption);
 
 public sealed record StoryPreviewItem(
     string Title,

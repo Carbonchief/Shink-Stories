@@ -21,9 +21,15 @@ public sealed class SupabaseAbandonedCartRecoveryService(
     private const string StoryCornerTierCode = "story_corner_monthly";
     private const string AllStoriesMonthlyTierCode = "all_stories_monthly";
     private const string AllStoriesYearlyTierCode = "all_stories_yearly";
+    private const string EmailCancelStatusCancelled = "cancelled";
+    private const string EmailCancelStatusFailed = "failed";
+    private const string EmailCancelStatusMissing = "missing";
+    private const string EmailCancelStatusNotCancellable = "not_cancellable";
+    private const int MaxCancelErrorLength = 900;
     private static readonly TimeSpan FirstDelay = TimeSpan.FromHours(1);
     private static readonly TimeSpan SecondDelay = TimeSpan.FromHours(24);
     private static readonly TimeSpan FinalDelay = TimeSpan.FromDays(7);
+    private static readonly TimeSpan ResolvedCleanupWindow = FinalDelay.Add(TimeSpan.FromDays(1));
 
     private readonly HttpClient _httpClient = httpClient;
     private readonly SupabaseOptions _supabaseOptions = supabaseOptions.Value;
@@ -96,9 +102,18 @@ public sealed class SupabaseAbandonedCartRecoveryService(
         var updatedRecovery = await StoreScheduledEmailIdsAsync(baseUri, apiKey, recovery.RecoveryId, emailIds, nowUtc, cancellationToken);
         if (updatedRecovery?.ResolvedAt is not null)
         {
-            await CancelScheduledEmailAsync(emailIds.FirstEmailId, cancellationToken);
-            await CancelScheduledEmailAsync(emailIds.SecondEmailId, cancellationToken);
-            await CancelScheduledEmailAsync(emailIds.FinalEmailId, cancellationToken);
+            updatedRecovery.FirstEmailId = emailIds.FirstEmailId;
+            updatedRecovery.SecondEmailId = emailIds.SecondEmailId;
+            updatedRecovery.FinalEmailId = emailIds.FinalEmailId;
+            var cancellationSummary = await CancelScheduledEmailsAsync(
+                updatedRecovery,
+                cancellationToken);
+            await StoreCancellationStatusesAsync(
+                baseUri,
+                apiKey,
+                recovery.RecoveryId,
+                cancellationSummary,
+                cancellationToken);
         }
     }
 
@@ -228,6 +243,39 @@ public sealed class SupabaseAbandonedCartRecoveryService(
             recovery.ItemName,
             recovery.ItemSummary,
             recovery.CartTotalZar);
+    }
+
+    public async Task CleanupResolvedScheduledEmailsAsync(CancellationToken cancellationToken = default)
+    {
+        if (!IsSupabaseConfigured() ||
+            !IsResendConfigured() ||
+            !TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return;
+        }
+
+        var apiKey = ResolveApiKey();
+        var cleanupSinceUtc = DateTimeOffset.UtcNow.Subtract(ResolvedCleanupWindow);
+        var escapedCleanupSince = Uri.EscapeDataString(cleanupSinceUtc.UtcDateTime.ToString("O"));
+        var filter = string.Join(
+            "&",
+            "resolved_at=not.is.null",
+            $"resolved_at=gte.{escapedCleanupSince}",
+            "or=(first_email_cancel_status.is.null,second_email_cancel_status.is.null,final_email_cancel_status.is.null)",
+            "order=resolved_at.asc",
+            "limit=100");
+
+        var recoveries = await GetRecoveriesAsync(baseUri, apiKey, filter, cancellationToken);
+        foreach (var recovery in recoveries)
+        {
+            var cancellationSummary = await CancelScheduledEmailsAsync(recovery, cancellationToken);
+            await StoreCancellationStatusesAsync(
+                baseUri,
+                apiKey,
+                recovery.RecoveryId,
+                cancellationSummary,
+                cancellationToken);
+        }
     }
 
     private async Task<AbandonedRecoveryRow?> CreateRecoveryAsync(
@@ -503,7 +551,20 @@ public sealed class SupabaseAbandonedCartRecoveryService(
         string filter,
         CancellationToken cancellationToken)
     {
-        var uri = new Uri(baseUri, $"rest/v1/abandoned_cart_recoveries?select=*&resolved_at=is.null&{filter}");
+        return await GetRecoveriesAsync(
+            baseUri,
+            apiKey,
+            $"resolved_at=is.null&{filter}",
+            cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<AbandonedRecoveryRow>> GetRecoveriesAsync(
+        Uri baseUri,
+        string apiKey,
+        string filter,
+        CancellationToken cancellationToken)
+    {
+        var uri = new Uri(baseUri, $"rest/v1/abandoned_cart_recoveries?select=*&{filter}");
         using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -530,34 +591,73 @@ public sealed class SupabaseAbandonedCartRecoveryService(
     {
         foreach (var recovery in recoveries)
         {
-            await CancelScheduledEmailAsync(recovery.FirstEmailId, cancellationToken);
-            await CancelScheduledEmailAsync(recovery.SecondEmailId, cancellationToken);
-            await CancelScheduledEmailAsync(recovery.FinalEmailId, cancellationToken);
-            await MarkResolvedAsync(baseUri, apiKey, recovery.RecoveryId, resolution, cancellationToken);
+            var cancellationSummary = await CancelScheduledEmailsAsync(recovery, cancellationToken);
+            await MarkResolvedAsync(baseUri, apiKey, recovery.RecoveryId, resolution, cancellationSummary, cancellationToken);
         }
     }
 
-    private async Task CancelScheduledEmailAsync(string? emailId, CancellationToken cancellationToken)
+    private async Task<EmailCancellationSummary> CancelScheduledEmailsAsync(
+        AbandonedRecoveryRow recovery,
+        CancellationToken cancellationToken) =>
+        new(
+            await CancelScheduledEmailAsync(recovery.FirstEmailId, recovery.FirstEmailCancelStatus, cancellationToken),
+            await CancelScheduledEmailAsync(recovery.SecondEmailId, recovery.SecondEmailCancelStatus, cancellationToken),
+            await CancelScheduledEmailAsync(recovery.FinalEmailId, recovery.FinalEmailCancelStatus, cancellationToken));
+
+    private async Task<EmailCancellationResult> CancelScheduledEmailAsync(
+        string? emailId,
+        string? existingCancelStatus,
+        CancellationToken cancellationToken)
     {
+        if (!string.IsNullOrWhiteSpace(existingCancelStatus))
+        {
+            return new EmailCancellationResult(existingCancelStatus.Trim(), null, null, ShouldPatch: false);
+        }
+
+        var attemptedAtUtc = DateTimeOffset.UtcNow;
         if (string.IsNullOrWhiteSpace(emailId))
         {
-            return;
+            return new EmailCancellationResult(EmailCancelStatusMissing, attemptedAtUtc, null);
         }
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, $"https://api.resend.com/emails/{Uri.EscapeDataString(emailId)}/cancel");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _resendOptions.ApiKey);
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
-        if (response.IsSuccessStatusCode || response.StatusCode == System.Net.HttpStatusCode.NotFound)
+        try
         {
-            return;
-        }
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"https://api.resend.com/emails/{Uri.EscapeDataString(emailId)}/cancel");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _resendOptions.ApiKey);
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                return new EmailCancellationResult(EmailCancelStatusCancelled, attemptedAtUtc, null);
+            }
 
-        var body = await response.Content.ReadAsStringAsync(cancellationToken);
-        _logger.LogWarning(
-            "Abandoned cart scheduled email cancel failed. email_id={EmailId} status={StatusCode} body={Body}",
-            emailId,
-            (int)response.StatusCode,
-            body);
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+            {
+                return new EmailCancellationResult(EmailCancelStatusMissing, attemptedAtUtc, TruncateCancelError(body));
+            }
+
+            var error = TruncateCancelError($"{(int)response.StatusCode}: {body}");
+            if (response.StatusCode == System.Net.HttpStatusCode.BadRequest &&
+                IsNotCancellableResendResponse(body))
+            {
+                return new EmailCancellationResult(EmailCancelStatusNotCancellable, attemptedAtUtc, error);
+            }
+
+            _logger.LogError(
+                "Abandoned cart scheduled email cancel failed. email_id={EmailId} status={StatusCode} body={Body}",
+                emailId,
+                (int)response.StatusCode,
+                body);
+            return new EmailCancellationResult(EmailCancelStatusFailed, attemptedAtUtc, error);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+        {
+            _logger.LogError(exception, "Abandoned cart scheduled email cancel failed unexpectedly. email_id={EmailId}", emailId);
+            return new EmailCancellationResult(
+                EmailCancelStatusFailed,
+                attemptedAtUtc,
+                TruncateCancelError(exception.Message));
+        }
     }
 
     private async Task MarkResolvedAsync(
@@ -565,13 +665,12 @@ public sealed class SupabaseAbandonedCartRecoveryService(
         string apiKey,
         string recoveryId,
         string resolution,
+        EmailCancellationSummary cancellationSummary,
         CancellationToken cancellationToken)
     {
-        var payload = new
-        {
-            resolved_at = DateTimeOffset.UtcNow.UtcDateTime,
-            resolution
-        };
+        var payload = BuildCancellationStatusPayload(cancellationSummary);
+        payload["resolved_at"] = DateTimeOffset.UtcNow.UtcDateTime;
+        payload["resolution"] = resolution;
         var uri = new Uri(baseUri, $"rest/v1/abandoned_cart_recoveries?recovery_id=eq.{Uri.EscapeDataString(recoveryId)}");
         using var request = CreateJsonRequest(new HttpMethod("PATCH"), uri, apiKey, payload, "return=minimal");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
@@ -584,6 +683,54 @@ public sealed class SupabaseAbandonedCartRecoveryService(
                 (int)response.StatusCode,
                 body);
         }
+    }
+
+    private async Task StoreCancellationStatusesAsync(
+        Uri baseUri,
+        string apiKey,
+        string recoveryId,
+        EmailCancellationSummary cancellationSummary,
+        CancellationToken cancellationToken)
+    {
+        var payload = BuildCancellationStatusPayload(cancellationSummary);
+        var uri = new Uri(baseUri, $"rest/v1/abandoned_cart_recoveries?recovery_id=eq.{Uri.EscapeDataString(recoveryId)}");
+        using var request = CreateJsonRequest(new HttpMethod("PATCH"), uri, apiKey, payload, "return=minimal");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogError(
+            "Abandoned cart recovery cancellation-status update failed. recovery_id={RecoveryId} status={StatusCode} body={Body}",
+            recoveryId,
+            (int)response.StatusCode,
+            body);
+    }
+
+    private static Dictionary<string, object?> BuildCancellationStatusPayload(EmailCancellationSummary summary)
+    {
+        var payload = new Dictionary<string, object?>(StringComparer.Ordinal);
+        AddCancellationStatus(payload, "first", summary.First);
+        AddCancellationStatus(payload, "second", summary.Second);
+        AddCancellationStatus(payload, "final", summary.Final);
+        return payload;
+    }
+
+    private static void AddCancellationStatus(
+        Dictionary<string, object?> payload,
+        string prefix,
+        EmailCancellationResult result)
+    {
+        if (!result.ShouldPatch)
+        {
+            return;
+        }
+
+        payload[$"{prefix}_email_cancel_status"] = result.Status;
+        payload[$"{prefix}_email_cancel_attempted_at"] = result.AttemptedAtUtc?.UtcDateTime;
+        payload[$"{prefix}_email_cancel_error"] = string.IsNullOrWhiteSpace(result.Error) ? null : result.Error;
     }
 
     private bool IsSupabaseConfigured() =>
@@ -684,6 +831,18 @@ public sealed class SupabaseAbandonedCartRecoveryService(
         var trimmed = value.Trim();
         return trimmed.Length > maxLength ? trimmed[..maxLength] : trimmed;
     }
+
+    private static string? TruncateCancelError(string? value) =>
+        NormalizeOptionalText(value, MaxCancelErrorLength);
+
+    private static bool IsNotCancellableResendResponse(string body) =>
+        body.Contains("not scheduled", StringComparison.OrdinalIgnoreCase) ||
+        body.Contains("cannot cancel", StringComparison.OrdinalIgnoreCase) ||
+        body.Contains("can't cancel", StringComparison.OrdinalIgnoreCase) ||
+        body.Contains("already sent", StringComparison.OrdinalIgnoreCase) ||
+        body.Contains("already been sent", StringComparison.OrdinalIgnoreCase) ||
+        body.Contains("already canceled", StringComparison.OrdinalIgnoreCase) ||
+        body.Contains("already cancelled", StringComparison.OrdinalIgnoreCase);
 
     private static bool IsCurrentlyActivePaidSubscription(ActiveSubscriptionRow row, DateTimeOffset nowUtc)
     {
@@ -797,6 +956,15 @@ public sealed class SupabaseAbandonedCartRecoveryService(
         [JsonPropertyName("final_email_id")]
         public string? FinalEmailId { get; set; }
 
+        [JsonPropertyName("first_email_cancel_status")]
+        public string? FirstEmailCancelStatus { get; set; }
+
+        [JsonPropertyName("second_email_cancel_status")]
+        public string? SecondEmailCancelStatus { get; set; }
+
+        [JsonPropertyName("final_email_cancel_status")]
+        public string? FinalEmailCancelStatus { get; set; }
+
         [JsonPropertyName("resolved_at")]
         public DateTimeOffset? ResolvedAt { get; set; }
 
@@ -808,6 +976,17 @@ public sealed class SupabaseAbandonedCartRecoveryService(
         string? FirstEmailId,
         string? SecondEmailId,
         string? FinalEmailId);
+
+    private sealed record EmailCancellationSummary(
+        EmailCancellationResult First,
+        EmailCancellationResult Second,
+        EmailCancellationResult Final);
+
+    private sealed record EmailCancellationResult(
+        string Status,
+        DateTimeOffset? AttemptedAtUtc,
+        string? Error,
+        bool ShouldPatch = true);
 
     private sealed record ResendEmailRequest(
         [property: JsonPropertyName("from")] string From,

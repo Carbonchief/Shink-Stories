@@ -27,6 +27,8 @@ public interface IAbandonedCartRecoveryService
         string recoveryId,
         string token,
         CancellationToken cancellationToken = default);
+
+    Task CleanupResolvedScheduledEmailsAsync(CancellationToken cancellationToken = default);
 }
 
 public sealed record AbandonedCartRecoveryStartRequest(

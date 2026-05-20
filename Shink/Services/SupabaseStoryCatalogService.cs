@@ -244,10 +244,43 @@ public sealed class SupabaseStoryCatalogService(
 
     private async Task<IReadOnlyList<StoryCatalogRow>> FetchPublishedRowsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
     {
+        const string storySelectWithTestQuestions =
+            "story_id,slug,title,summary,description,youtube_url,test_questions,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,access_level,status,sort_order,published_at,duration_seconds,tags,metadata";
+        const string storySelectWithoutTestQuestions =
+            "story_id,slug,title,summary,description,youtube_url,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,access_level,status,sort_order,published_at,duration_seconds,tags,metadata";
+
+        var rows = await FetchPublishedRowsWithSelectAsync(
+            baseUri,
+            apiKey,
+            storySelectWithTestQuestions,
+            retryWithoutTestQuestionsOnMissingColumn: true,
+            cancellationToken);
+
+        if (rows is not null)
+        {
+            return rows;
+        }
+
+        return await FetchPublishedRowsWithSelectAsync(
+                baseUri,
+                apiKey,
+                storySelectWithoutTestQuestions,
+                retryWithoutTestQuestionsOnMissingColumn: false,
+                cancellationToken) ??
+            BuildLegacyFallbackRows();
+    }
+
+    private async Task<IReadOnlyList<StoryCatalogRow>?> FetchPublishedRowsWithSelectAsync(
+        Uri baseUri,
+        string apiKey,
+        string selectColumns,
+        bool retryWithoutTestQuestionsOnMissingColumn,
+        CancellationToken cancellationToken)
+    {
         var requestUri = new Uri(
             baseUri,
             "rest/v1/stories" +
-            "?select=story_id,slug,title,summary,description,youtube_url,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,access_level,status,sort_order,published_at,duration_seconds,tags,metadata" +
+            $"?select={selectColumns}" +
             "&status=eq.published" +
             "&order=published_at.desc.nullslast" +
             "&order=sort_order.asc");
@@ -262,11 +295,19 @@ public sealed class SupabaseStoryCatalogService(
             if (!response.IsSuccessStatusCode)
             {
                 var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                if (retryWithoutTestQuestionsOnMissingColumn &&
+                    response.StatusCode == HttpStatusCode.BadRequest &&
+                    body.Contains("test_questions", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogInformation("Supabase stories lookup is retrying without test_questions because the column is not available yet.");
+                    return null;
+                }
+
                 _logger.LogWarning(
                     "Supabase stories lookup failed. Status={StatusCode} Body={Body}",
                     (int)response.StatusCode,
                     body);
-                return BuildLegacyFallbackRows();
+                return null;
             }
 
             await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -283,7 +324,7 @@ public sealed class SupabaseStoryCatalogService(
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
         {
             _logger.LogWarning(exception, "Supabase stories lookup failed unexpectedly. Falling back to legacy in-memory catalog.");
-            return BuildLegacyFallbackRows();
+            return null;
         }
     }
 
@@ -773,6 +814,7 @@ public sealed class SupabaseStoryCatalogService(
             ConversationQuestions: storyDetails.ConversationQuestions,
             Characters: storyDetails.Characters,
             YouTubeUrl: string.IsNullOrWhiteSpace(row.YouTubeUrl) ? null : row.YouTubeUrl.Trim(),
+            TestQuestions: ReadStoryTestQuestions(row.TestQuestions),
             DurationSeconds: row.DurationSeconds,
             PlaylistSlugs: playlistSlugs);
     }
@@ -878,6 +920,63 @@ public sealed class SupabaseStoryCatalogService(
         }
 
         return values.Count == 0 ? Array.Empty<string>() : values;
+    }
+
+    private static IReadOnlyList<StoryTestQuestion> ReadStoryTestQuestions(JsonElement node)
+    {
+        if (node.ValueKind is JsonValueKind.Undefined or JsonValueKind.Null)
+        {
+            return Array.Empty<StoryTestQuestion>();
+        }
+
+        if (node.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<StoryTestQuestion>();
+        }
+
+        var questions = new List<StoryTestQuestion>();
+        foreach (var item in node.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.Object)
+            {
+                continue;
+            }
+
+            var question = ReadJsonString(item, "question");
+            var optionA = ReadJsonString(item, "option_a");
+            var optionB = ReadJsonString(item, "option_b");
+            var correctOption = NormalizeStoryTestCorrectOption(ReadJsonString(item, "correct_option"));
+
+            if (string.IsNullOrWhiteSpace(question) ||
+                string.IsNullOrWhiteSpace(optionA) ||
+                string.IsNullOrWhiteSpace(optionB) ||
+                string.IsNullOrWhiteSpace(correctOption))
+            {
+                continue;
+            }
+
+            questions.Add(new StoryTestQuestion(question, optionA, optionB, correctOption));
+        }
+
+        return questions;
+    }
+
+    private static string? ReadJsonString(JsonElement node, string propertyName)
+    {
+        if (!node.TryGetProperty(propertyName, out var property) ||
+            property.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        var value = property.GetString();
+        return string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    }
+
+    private static string? NormalizeStoryTestCorrectOption(string? value)
+    {
+        var normalized = value?.Trim().ToUpperInvariant();
+        return normalized is "A" or "B" ? normalized : null;
     }
 
     private static IReadOnlyList<StoryPlaylist> BuildLuisterPlaylistsFromConfiguredTables(
@@ -1393,6 +1492,9 @@ public sealed class SupabaseStoryCatalogService(
 
         [JsonPropertyName("youtube_url")]
         public string? YouTubeUrl { get; set; }
+
+        [JsonPropertyName("test_questions")]
+        public JsonElement TestQuestions { get; set; }
 
         [JsonPropertyName("cover_image_path")]
         public string? CoverImagePath { get; set; }
