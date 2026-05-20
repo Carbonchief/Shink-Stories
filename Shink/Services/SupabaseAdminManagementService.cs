@@ -4293,8 +4293,8 @@ public sealed partial class SupabaseAdminManagementService(
             subscribersByEmail.TryGetValue(email, out var subscriber);
             var subscription = FindRecoveredAbandonedCartSubscription(recovery, subscriber, subscriptionsBySubscriberId);
             var isStoreOrder = string.Equals(recovery.SourceType, "store_order", StringComparison.OrdinalIgnoreCase);
-            var tierCode = NormalizeOptionalText(subscription?.TierCode, 80) ??
-                           NormalizeOptionalText(recovery.SourceKey, 80) ??
+            var tierCode = NormalizeOptionalText(recovery.SourceKey, 80) ??
+                           NormalizeOptionalText(subscription?.TierCode, 80) ??
                            "-";
             var tier = tierDetails.TryGetValue(tierCode, out var detail) ? detail : null;
             var tierName = isStoreOrder
@@ -4516,6 +4516,11 @@ public sealed partial class SupabaseAdminManagementService(
             .Where(subscription => string.IsNullOrWhiteSpace(sourceTierCode) ||
                                    string.Equals(subscription.TierCode, sourceTierCode, StringComparison.OrdinalIgnoreCase))
             .ToArray();
+        if (!string.IsNullOrWhiteSpace(sourceTierCode) && matchingTierSubscriptions.Length == 0)
+        {
+            return null;
+        }
+
         var candidates = matchingTierSubscriptions.Length > 0
             ? matchingTierSubscriptions
             : subscriberSubscriptions;
