@@ -171,7 +171,7 @@ public static class StoryCatalog
             AudioFileName: "Suurlemoentjie.mpeg",
             ThumbnailFileName: "Suurlemoentjie.jpeg",
             AudioProvider: "r2",
-            AudioBucket: "media.prioritybit.co.za",
+            AudioBucket: "pub-0696529d5a7d426882c0dcb881a7d08d.r2.dev",
             AudioContentType: "audio/mpeg",
             AccessLevel: "free"),
         new(
@@ -182,7 +182,7 @@ public static class StoryCatalog
             AudioFileName: "Die Kwaaibok se Klip.mpeg",
             ThumbnailFileName: "Die Kwaaibok se Klip.jpeg",
             AudioProvider: "r2",
-            AudioBucket: "media.prioritybit.co.za",
+            AudioBucket: "pub-0696529d5a7d426882c0dcb881a7d08d.r2.dev",
             AudioContentType: "audio/mpeg",
             AccessLevel: "free"),
         new(
@@ -193,7 +193,7 @@ public static class StoryCatalog
             AudioFileName: "Seekoei Sluit sy mond toe.mpeg",
             ThumbnailFileName: "Seekoei Sluit sy mond toe.jpeg",
             AudioProvider: "r2",
-            AudioBucket: "media.prioritybit.co.za",
+            AudioBucket: "pub-0696529d5a7d426882c0dcb881a7d08d.r2.dev",
             AudioContentType: "audio/mpeg",
             AccessLevel: "free")
     ];

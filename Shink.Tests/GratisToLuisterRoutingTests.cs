@@ -53,6 +53,7 @@ public class GratisToLuisterRoutingTests
         Assert.IsNotNull(row, "Legacy fallback catalog should include Suurlemoentjie.");
         Assert.AreEqual("free", ReadStringProperty(row, "AccessLevel"));
         Assert.AreEqual("r2", ReadStringProperty(row, "AudioProvider"));
+        Assert.AreEqual("pub-0696529d5a7d426882c0dcb881a7d08d.r2.dev", ReadStringProperty(row, "AudioBucket"));
         Assert.AreEqual("Suurlemoentjie.mpeg", ReadStringProperty(row, "AudioObjectKey"));
     }
 
