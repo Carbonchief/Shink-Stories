@@ -70,6 +70,13 @@ body {
     line-height: 1.5;
 }
 
+body.story-test-modal-open {
+    position: fixed;
+    width: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+}
+
 body.schink-night-mode {
     color-scheme: dark;
     --paper: #10161a;
@@ -1122,6 +1129,27 @@ body.schink-night-mode .luister-page-shell .luister-playlist-link {
     font-weight: 800;
 }
 
+.mud-dialog.admin-solid-dialog .mud-table-root {
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.mud-dialog.admin-solid-dialog .mud-table-head .mud-table-cell {
+    border-bottom: 1px solid rgba(63, 90, 114, 0.82);
+}
+
+.mud-dialog.admin-solid-dialog .mud-table-cell {
+    border-color: rgba(63, 90, 114, 0.82);
+}
+
+.mud-dialog.admin-solid-dialog .mud-table-cell:not(:last-child) {
+    border-right: 1px solid rgba(63, 90, 114, 0.72);
+}
+
+.mud-dialog.admin-solid-dialog tbody .mud-table-row:not(:last-child) > .mud-table-cell {
+    border-bottom: 1px solid rgba(63, 90, 114, 0.82);
+}
+
 .mud-dialog.admin-solid-dialog .admin-access-table-wrap {
     width: calc(100% + 1.7rem);
     margin-inline: -0.85rem;
@@ -1252,6 +1280,28 @@ body.schink-night-mode .luister-page-shell .luister-playlist-link {
 .mud-dialog.admin-solid-dialog .mud-input-outlined {
     background: #1d2d3d !important;
     border-radius: 10px;
+}
+
+.mud-dialog.admin-solid-dialog .mud-switch-base:not(.mud-checked) {
+    color: #e45d66 !important;
+}
+
+.mud-dialog.admin-solid-dialog .mud-switch-base.mud-checked {
+    color: #41c982 !important;
+}
+
+.mud-dialog.admin-solid-dialog .mud-switch-base:not(.mud-checked) + .mud-switch-track {
+    background-color: #e45d66 !important;
+    opacity: 0.34;
+}
+
+.mud-dialog.admin-solid-dialog .mud-switch-base.mud-checked + .mud-switch-track {
+    background-color: #41c982 !important;
+    opacity: 0.44;
+}
+
+.mud-dialog.admin-solid-dialog .mud-switch-base.mud-switch-disabled {
+    opacity: 0.72;
 }
 
 body.story-immersive-mode .site-shell.story-route .site-header,

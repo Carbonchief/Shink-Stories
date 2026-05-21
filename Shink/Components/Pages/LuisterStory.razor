@@ -421,36 +421,54 @@ else
             <div class="story-test-question-list">
                 @for (var index = 0; index < CurrentStory.TestQuestions!.Count; index++)
                 {
+                    var questionIndex = index;
                     var question = CurrentStory.TestQuestions[index];
-                    var selectedOption = GetSelectedStoryTestOption(index);
+                    var selectedOption = GetSelectedStoryTestOption(questionIndex);
                     <article class="story-test-question">
-                        <p class="story-test-question-count">Vraag @(index + 1) van @CurrentStory.TestQuestions.Count</p>
+                        <p class="story-test-question-count">Vraag @(questionIndex + 1)</p>
                         <h3>@question.Question</h3>
-                        <div class="story-test-options" role="group" aria-label="@($"Antwoorde vir vraag {index + 1}")">
+                        <div class="story-test-options" role="group" aria-label="@($"Antwoorde vir vraag {questionIndex + 1}")">
                             <button type="button"
-                                    class='@BuildStoryTestOptionClass(question, selectedOption, "A")'
-                                    @onclick='@(() => SelectStoryTestOption(index, "A"))'
+                                    class='@BuildStoryTestOptionClass(question, selectedOption, "A", IsStoryTestSubmitted)'
+                                    @onclick='@(() => SelectStoryTestOption(questionIndex, "A"))'
                                     aria-pressed='@(selectedOption == "A")'>
                                 <span class="story-test-option-letter">A</span>
                                 <span>@question.OptionA</span>
                             </button>
                             <button type="button"
-                                    class='@BuildStoryTestOptionClass(question, selectedOption, "B")'
-                                    @onclick='@(() => SelectStoryTestOption(index, "B"))'
+                                    class='@BuildStoryTestOptionClass(question, selectedOption, "B", IsStoryTestSubmitted)'
+                                    @onclick='@(() => SelectStoryTestOption(questionIndex, "B"))'
                                     aria-pressed='@(selectedOption == "B")'>
                                 <span class="story-test-option-letter">B</span>
                                 <span>@question.OptionB</span>
                             </button>
                         </div>
-                        @if (!string.IsNullOrWhiteSpace(selectedOption))
+                        @if (IsStoryTestSubmitted && !string.IsNullOrWhiteSpace(selectedOption))
                         {
                             <p class="story-test-result @(IsStoryTestAnswerCorrect(question, selectedOption) ? "is-correct" : "is-incorrect")">
-                                @(IsStoryTestAnswerCorrect(question, selectedOption) ? "Reg!" : "Probeer weer.")
+                                @(IsStoryTestAnswerCorrect(question, selectedOption) ? "Mooi so!" : "Goeie poging! Kyk, die regte antwoord is gemerk.")
                             </p>
                         }
                     </article>
                 }
             </div>
+            @if (IsStoryTestReadyToCheck(CurrentStory))
+            {
+                <div class="story-test-actions">
+                    @if (IsStoryTestSubmitted)
+                    {
+                        <p class="story-test-score" role="status">@BuildStoryTestScoreText(CurrentStory)</p>
+                    }
+                    else
+                    {
+                        <button type="button"
+                                class="story-test-check-btn"
+                                @onclick="CheckStoryTestAnswers">
+                            Kontroleer antwoorde
+                        </button>
+                    }
+                </div>
+            }
         </section>
     </div>
 }
@@ -477,6 +495,7 @@ else
     private bool _mediaSessionModuleLoadFailed;
     private bool _isDisposed;
     private bool _hasAttemptedPersistedStateRestore;
+    private bool _isStoryTestModalScrollLocked;
     private PersistingComponentStateSubscription? _persistingSubscription;
     private bool IsManualFullscreenFocus { get; set; }
     private IReadOnlyList<StoryItem> LuisterStories { get; set; } = Array.Empty<StoryItem>();
@@ -491,6 +510,7 @@ else
     private string? SignedInEmail { get; set; }
     private bool ShowStoryAccessPopup { get; set; }
     private bool ShowStoryTestModal { get; set; }
+    private bool IsStoryTestSubmitted { get; set; }
     private string PendingLockedStoryPath { get; set; } = "/luister";
     private Dictionary<int, string> SelectedStoryTestOptions { get; } = new();
 
@@ -579,6 +599,7 @@ else
         var isSocialPreviewRequest = SocialPreviewRequestDetector.IsSocialPreviewRequest(HttpContextAccessor.HttpContext);
         ShowStoryAccessPopup = false;
         ShowStoryTestModal = false;
+        IsStoryTestSubmitted = false;
         SelectedStoryTestOptions.Clear();
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         SignedInEmail = authState.User.Identity?.IsAuthenticated == true
@@ -754,35 +775,119 @@ else
         return Task.CompletedTask;
     }
 
-    private void OpenStoryTestModal()
+    private async Task OpenStoryTestModal()
     {
+        SelectedStoryTestOptions.Clear();
+        IsStoryTestSubmitted = false;
         ShowStoryTestModal = true;
+        await SetStoryTestModalScrollLockAsync(true);
     }
 
-    private void CloseStoryTestModal()
+    private async Task CloseStoryTestModal()
     {
         ShowStoryTestModal = false;
+        IsStoryTestSubmitted = false;
+        await SetStoryTestModalScrollLockAsync(false);
+    }
+
+    private async Task SetStoryTestModalScrollLockAsync(bool isLocked)
+    {
+        if (_isStoryTestModalScrollLocked == isLocked)
+        {
+            return;
+        }
+
+        var module = await TryGetStoryPlayerModuleAsync();
+        if (module is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await module.InvokeVoidAsync("setStoryTestModalScrollLock", isLocked);
+            _isStoryTestModalScrollLocked = isLocked;
+        }
+        catch (JSException)
+        {
+            if (!isLocked)
+            {
+                _isStoryTestModalScrollLocked = false;
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            if (!isLocked)
+            {
+                _isStoryTestModalScrollLocked = false;
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            if (!isLocked)
+            {
+                _isStoryTestModalScrollLocked = false;
+            }
+        }
     }
 
     private void SelectStoryTestOption(int questionIndex, string option)
     {
         SelectedStoryTestOptions[questionIndex] = option;
+        IsStoryTestSubmitted = false;
     }
 
     private string? GetSelectedStoryTestOption(int questionIndex) =>
         SelectedStoryTestOptions.TryGetValue(questionIndex, out var option) ? option : null;
 
-    private static string BuildStoryTestOptionClass(StoryTestQuestion question, string? selectedOption, string option)
+    private void CheckStoryTestAnswers()
+    {
+        IsStoryTestSubmitted = true;
+    }
+
+    private bool IsStoryTestReadyToCheck(StoryItem? story) =>
+        story?.TestQuestions is { Count: > 0 } questions &&
+        Enumerable.Range(0, questions.Count).All(index => !string.IsNullOrWhiteSpace(GetSelectedStoryTestOption(index)));
+
+    private string BuildStoryTestScoreText(StoryItem story)
+    {
+        if (story.TestQuestions is not { Count: > 0 })
+        {
+            return "Mooi probeer! Jy het 0 uit 0 reg.";
+        }
+
+        var correctAnswers = story.TestQuestions
+            .Select((question, index) => IsStoryTestAnswerCorrect(question, GetSelectedStoryTestOption(index)) ? 1 : 0)
+            .Sum();
+
+        if (correctAnswers == story.TestQuestions.Count)
+        {
+            return "Jippie! Jy het alles reg! Fantastiese werk.";
+        }
+
+        return $"Mooi probeer! Jy het {correctAnswers} uit {story.TestQuestions.Count} reg.";
+    }
+
+    private static string BuildStoryTestOptionClass(StoryTestQuestion question, string? selectedOption, string option, bool isSubmitted)
     {
         var cssClass = "story-test-option";
-        if (!string.Equals(selectedOption, option, StringComparison.OrdinalIgnoreCase))
+        var isSelected = string.Equals(selectedOption, option, StringComparison.OrdinalIgnoreCase);
+        if (isSelected)
+        {
+            cssClass = "story-test-option is-selected";
+        }
+
+        if (!isSubmitted)
         {
             return cssClass;
         }
 
-        return IsStoryTestAnswerCorrect(question, option)
-            ? $"{cssClass} is-selected is-correct"
-            : $"{cssClass} is-selected is-incorrect";
+        if (IsStoryTestAnswerCorrect(question, option))
+        {
+            return $"{cssClass} is-correct";
+        }
+
+        return isSelected ? $"{cssClass} is-incorrect" : cssClass;
     }
 
     private static bool IsStoryTestAnswerCorrect(StoryTestQuestion question, string? selectedOption) =>
@@ -1023,6 +1128,7 @@ else
 
     public async ValueTask DisposeAsync()
     {
+        await SetStoryTestModalScrollLockAsync(false);
         _isDisposed = true;
 
         try

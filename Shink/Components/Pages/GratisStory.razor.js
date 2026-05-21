@@ -41,6 +41,7 @@ const STORY_CAROUSEL_MOUSE_POINTER_ID = -1;
 const PENDING_FULLSCREEN_INTENT_KEY = "schink:pending-story-fullscreen-intent";
 const FULLSCREEN_CHROME_HIDDEN_CLASS = "fullscreen-controls-hidden";
 const FULLSCREEN_IDLE_TIMEOUT_MS = 2200;
+const STORY_TEST_MODAL_BODY_LOCK_CLASS = "story-test-modal-open";
 
 const boundAudios = new WeakSet();
 const fullscreenBindings = new WeakMap();
@@ -1765,6 +1766,33 @@ export function prepareStoryAudioForSourceSwap() {
     }
 
     persistAudioState(audioElement, "pause", false);
+}
+
+export function setStoryTestModalScrollLock(isLocked) {
+    if (!(document.body instanceof HTMLBodyElement)) {
+        return;
+    }
+
+    if (isLocked) {
+        if (document.body.classList.contains(STORY_TEST_MODAL_BODY_LOCK_CLASS)) {
+            return;
+        }
+
+        const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+        document.body.dataset.storyTestModalScrollY = String(scrollY);
+        document.body.style.top = `-${scrollY}px`;
+        document.body.classList.add(STORY_TEST_MODAL_BODY_LOCK_CLASS);
+        return;
+    }
+
+    const storedScrollY = Number.parseInt(document.body.dataset.storyTestModalScrollY || "0", 10);
+    document.body.classList.remove(STORY_TEST_MODAL_BODY_LOCK_CLASS);
+    document.body.style.top = "";
+    delete document.body.dataset.storyTestModalScrollY;
+
+    if (Number.isFinite(storedScrollY) && storedScrollY > 0) {
+        window.scrollTo(0, storedScrollY);
+    }
 }
 
 function applyImmersiveChromeState(storyPage) {

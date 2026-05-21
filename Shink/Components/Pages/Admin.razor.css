@@ -7,8 +7,11 @@
     --admin-text: #eaf1f8;
     --admin-muted: #b4c0ce;
     --admin-grid-header: #233547;
+    --admin-grid-line: color-mix(in srgb, var(--admin-border-strong) 68%, transparent);
     --admin-row-hover: #25384a;
     --admin-selected-row: #2f4f68;
+    --admin-toggle-on: #41c982;
+    --admin-toggle-off: #e45d66;
     --admin-input-bg: #1d2d3d;
     --admin-input-border: #49657d;
     --admin-page-inline-pad: clamp(0.75rem, 1.8vw, 1.5rem);
@@ -629,6 +632,11 @@
     line-height: 1;
 }
 
+.admin-danger-icon-btn {
+    color: #b42318;
+    border-color: rgba(180, 35, 24, 0.28);
+}
+
 .admin-action-btn {
     width: auto;
     min-width: 0;
@@ -655,6 +663,27 @@
     display: none;
 }
 
+.admin-page ::deep .mud-table-root {
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.admin-page ::deep .mud-table-head .mud-table-cell {
+    border-bottom: 1px solid var(--admin-grid-line);
+}
+
+.admin-page ::deep .mud-table-cell {
+    border-color: var(--admin-grid-line);
+}
+
+.admin-page ::deep .mud-table-cell:not(:last-child) {
+    border-right: 1px solid var(--admin-grid-line);
+}
+
+.admin-page ::deep tbody .mud-table-row:not(:last-child) > .mud-table-cell {
+    border-bottom: 1px solid var(--admin-grid-line);
+}
+
 .admin-grid {
     border: 1px solid var(--admin-border);
     border-radius: 12px;
@@ -670,6 +699,8 @@
 .admin-grid ::deep .mud-table-root {
     background: var(--admin-surface-soft);
     color: var(--admin-text);
+    border-collapse: separate;
+    border-spacing: 0;
     overflow: visible;
 }
 
@@ -692,7 +723,7 @@
 .admin-grid ::deep .mud-table-head .mud-table-cell {
     background: var(--admin-grid-header);
     color: #f6f9fc;
-    border-bottom: 1px solid var(--admin-border-strong);
+    border-bottom: 1px solid var(--admin-grid-line);
     font-weight: 700;
     overflow: visible;
 }
@@ -700,9 +731,17 @@
 .admin-grid ::deep .mud-table-cell {
     padding: 0.58rem 0.5rem;
     vertical-align: top;
-    border-color: color-mix(in srgb, var(--admin-border) 84%, transparent);
+    border-color: var(--admin-grid-line);
     white-space: normal;
     overflow-wrap: anywhere;
+}
+
+.admin-grid ::deep .mud-table-cell:not(:last-child) {
+    border-right: 1px solid var(--admin-grid-line);
+}
+
+.admin-grid ::deep tbody .mud-table-row:not(:last-child) > .mud-table-cell {
+    border-bottom: 1px solid var(--admin-grid-line);
 }
 
 .admin-grid ::deep .admin-search-highlight {
@@ -1192,6 +1231,92 @@
     border-left: 1px solid color-mix(in srgb, var(--admin-border) 52%, transparent);
 }
 
+.admin-playlist-order-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.85rem;
+    margin: 0.65rem 0;
+    padding: 0.7rem 0.8rem;
+    border: 1px solid color-mix(in srgb, var(--admin-border) 76%, transparent);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--admin-surface-soft) 84%, #000000 16%);
+}
+
+.admin-playlist-order-toolbar.is-dirty {
+    border-color: color-mix(in srgb, #f3a13f 74%, var(--admin-border));
+    background: color-mix(in srgb, #f3a13f 12%, var(--admin-surface-soft));
+}
+
+.admin-playlist-order-status {
+    margin: 0;
+    color: var(--admin-muted);
+    font-size: 0.88rem;
+    line-height: 1.35;
+}
+
+.admin-playlist-order-toolbar.is-dirty .admin-playlist-order-status {
+    color: #ffe6bf;
+}
+
+.admin-playlist-order-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.45rem;
+    flex: 0 0 auto;
+}
+
+.admin-playlist-order-control {
+    display: inline-grid;
+    grid-template-columns: 2.05rem minmax(2.2rem, auto) 2.05rem;
+    align-items: center;
+    gap: 0.25rem;
+    min-height: 2.2rem;
+    padding: 0.18rem;
+    border: 1px solid var(--admin-input-border);
+    border-radius: 999px;
+    background: var(--admin-input-bg);
+}
+
+.admin-playlist-order-control.admin-playlist-order-dirty {
+    border-color: #f3a13f;
+    background: color-mix(in srgb, #f3a13f 14%, var(--admin-input-bg));
+}
+
+.admin-playlist-order-move {
+    width: 2.05rem;
+    height: 2.05rem;
+    border: 0;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    color: var(--admin-text);
+    cursor: pointer;
+}
+
+.admin-playlist-order-move:hover:not(:disabled),
+.admin-playlist-order-move:focus-visible:not(:disabled) {
+    background: color-mix(in srgb, #f3a13f 20%, transparent);
+    color: #fff4d6;
+    outline: none;
+}
+
+.admin-playlist-order-move:disabled {
+    color: color-mix(in srgb, var(--admin-muted) 48%, transparent);
+    cursor: not-allowed;
+}
+
+.admin-playlist-order-position {
+    min-width: 2.2rem;
+    color: var(--admin-text);
+    font-weight: 800;
+    line-height: 1;
+    text-align: center;
+}
+
 .admin-playlist-checkbox {
     align-self: start;
 }
@@ -1211,7 +1336,8 @@
     gap: 0.55rem;
 }
 
-.admin-story-test-editor {
+.admin-story-test-editor,
+.admin-story-card-editor {
     display: grid;
     gap: 0.85rem;
     min-width: 0;
@@ -1221,10 +1347,74 @@
     background: var(--admin-surface-soft);
 }
 
-.admin-story-test-tab {
+.admin-story-test-tab,
+.admin-story-card-tab {
     padding: 0;
     border: 0;
     background: transparent;
+}
+
+.admin-story-card-editor {
+    gap: 1rem;
+}
+
+.admin-story-card-fields {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.8rem;
+    min-width: 0;
+}
+
+.admin-story-card-field {
+    display: grid;
+    gap: 0.42rem;
+    min-width: 0;
+    padding: 0.72rem;
+    border: 1px solid color-mix(in srgb, var(--admin-border) 74%, transparent);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--admin-surface-soft) 72%, #000000 28%);
+}
+
+.admin-story-card-field.is-synopsis {
+    grid-column: 1 / -1;
+}
+
+.admin-story-card-field-label {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.75rem;
+    min-width: 0;
+    color: var(--admin-text);
+    font-size: 0.92rem;
+    font-weight: 800;
+    line-height: 1.25;
+}
+
+.admin-story-card-field-label span,
+.admin-story-card-field-label small {
+    min-width: 0;
+}
+
+.admin-story-card-field-label small {
+    color: var(--admin-muted);
+    font-size: 0.78rem;
+    font-weight: 650;
+    text-align: right;
+}
+
+.admin-story-card-editor ::deep .mud-input-control {
+    margin: 0;
+}
+
+.admin-story-card-editor ::deep .mud-input-outlined {
+    background: var(--admin-input-bg);
+    border-radius: 10px;
+}
+
+.admin-story-card-editor ::deep textarea {
+    font-size: 0.95rem;
+    line-height: 1.36;
 }
 
 .admin-story-test-head {
@@ -1592,6 +1782,28 @@
 
 .admin-toggle-cell ::deep .mud-switch {
     margin: 0;
+}
+
+.admin-page ::deep .mud-switch-base:not(.mud-checked) {
+    color: var(--admin-toggle-off) !important;
+}
+
+.admin-page ::deep .mud-switch-base.mud-checked {
+    color: var(--admin-toggle-on) !important;
+}
+
+.admin-page ::deep .mud-switch-base:not(.mud-checked) + .mud-switch-track {
+    background-color: var(--admin-toggle-off) !important;
+    opacity: 0.34;
+}
+
+.admin-page ::deep .mud-switch-base.mud-checked + .mud-switch-track {
+    background-color: var(--admin-toggle-on) !important;
+    opacity: 0.44;
+}
+
+.admin-page ::deep .mud-switch-base.mud-switch-disabled {
+    opacity: 0.72;
 }
 
 .admin-analytics-copy {
@@ -2138,6 +2350,36 @@
 
     .admin-form-grid .admin-span-2 {
         grid-column: span 1;
+    }
+
+    .admin-playlist-order-toolbar {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .admin-playlist-order-actions {
+        justify-content: stretch;
+    }
+
+    .admin-playlist-order-actions ::deep .mud-button-root {
+        flex: 1 1 0;
+    }
+
+    .admin-story-card-fields {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-story-card-field.is-synopsis {
+        grid-column: span 1;
+    }
+
+    .admin-story-card-field-label {
+        display: grid;
+        gap: 0.16rem;
+    }
+
+    .admin-story-card-field-label small {
+        text-align: left;
     }
 
     .admin-upload-group {

@@ -51,10 +51,12 @@ else
                 <h3>@T("Kode-betaling omseil", "Code payment bypass")</h3>
                 <p>@T("Laat geldige kodes toe om PayStack te omseil en toegang direk te aktiveer op die teken-op blad.", "Allow valid codes to bypass PayStack and activate access directly on the signup page.")</p>
                 <div class="admin-settings-toggle-row">
-                    <MudSwitch T="bool"
-                               @bind-Value="SignupCodeBypassEnabled"
-                               Color="Color.Primary"
-                               aria-label='@T("Kode-betaling omseil", "Code payment bypass")' />
+                    <MudTooltip Text="@BuildSignupCodeBypassTooltip()" Placement="Placement.Top" Arrow="true">
+                        <MudSwitch T="bool"
+                                   @bind-Value="SignupCodeBypassEnabled"
+                                   Color="Color.Primary"
+                                   aria-label="@BuildSignupCodeBypassTooltip()" />
+                    </MudTooltip>
                     <span class="admin-settings-toggle-state @(SignupCodeBypassEnabled ? "is-enabled" : "is-disabled")">
                         @BuildSignupCodeBypassStateLabel()
                     </span>
@@ -146,10 +148,12 @@ else
                     </MudTd>
                     <MudTd DataLabel="@T("Aktief", "Active")">
                         <div class="admin-settings-table-toggle">
-                            <MudSwitch T="bool"
-                                       @bind-Value="@context.IsActive"
-                                       Color="Color.Primary"
-                                       aria-label='@T("Intekeningsoort aktief", "Subscription type active")' />
+                            <MudTooltip Text="@BuildTierActiveTooltip(context.IsActive)" Placement="Placement.Top" Arrow="true">
+                                <MudSwitch T="bool"
+                                           @bind-Value="@context.IsActive"
+                                           Color="Color.Primary"
+                                           aria-label="@BuildTierActiveTooltip(context.IsActive)" />
+                            </MudTooltip>
                             <span class="admin-settings-toggle-state @(context.IsActive ? "is-enabled" : "is-disabled")">
                                 @BuildTierActiveStateLabel(context.IsActive)
                             </span>
@@ -366,13 +370,19 @@ else
                                     <MudNumericField T="int" Label="@T("Maksimum gebruike (0 = onbeperk)", "Maximum uses (0 = unlimited)")" @bind-Value="DiscountCodeEditor.MaxUses" Variant="Variant.Outlined" Min="0" />
                                     <MudDatePicker Label="@T("Begin datum", "Start date")" Date="DiscountCodeEditor.StartsOn" DateChanged="OnCodeStartsOnChanged" Variant="Variant.Outlined" />
                                     <MudDatePicker Label="@T("Verval datum", "Expiry date")" Date="DiscountCodeEditor.ExpiresOn" DateChanged="OnCodeExpiresOnChanged" Variant="Variant.Outlined" />
-                                    <MudSwitch T="bool" @bind-Value="DiscountCodeEditor.OneUsePerUser" Color="Color.Primary" Label="@T("Een keer per gebruiker", "One use per user")" />
-                                    <MudSwitch T="bool" @bind-Value="DiscountCodeEditor.BypassPayment" Color="Color.Primary" Label="@T("Omseil betaling", "Bypass payment")" />
+                                    <MudTooltip Text="@BuildOneUsePerUserTooltip()" Placement="Placement.Top" Arrow="true">
+                                        <MudSwitch T="bool" @bind-Value="DiscountCodeEditor.OneUsePerUser" Color="Color.Primary" Label="@T("Een keer per gebruiker", "One use per user")" aria-label="@BuildOneUsePerUserTooltip()" />
+                                    </MudTooltip>
+                                    <MudTooltip Text="@BuildBypassPaymentTooltip()" Placement="Placement.Top" Arrow="true">
+                                        <MudSwitch T="bool" @bind-Value="DiscountCodeEditor.BypassPayment" Color="Color.Primary" Label="@T("Omseil betaling", "Bypass payment")" aria-label="@BuildBypassPaymentTooltip()" />
+                                    </MudTooltip>
                                     <div class="admin-settings-table-toggle">
-                                        <MudSwitch T="bool"
-                                                   @bind-Value="DiscountCodeEditor.IsActive"
-                                                   Color="Color.Primary"
-                                                   aria-label='@T("Kode aktief", "Code active")' />
+                                        <MudTooltip Text="@BuildCodeActiveTooltip()" Placement="Placement.Top" Arrow="true">
+                                            <MudSwitch T="bool"
+                                                       @bind-Value="DiscountCodeEditor.IsActive"
+                                                       Color="Color.Primary"
+                                                       aria-label="@BuildCodeActiveTooltip()" />
+                                        </MudTooltip>
                                         <span class="admin-settings-toggle-state @(DiscountCodeEditor.IsActive ? "is-enabled" : "is-disabled")">
                                             @BuildCodeActiveStateLabel()
                                         </span>
@@ -684,6 +694,21 @@ else
             SignupCodeBypassEnabled
                 ? T("Aktief", "Active")
                 : T("Afgeskakel", "Disabled");
+
+        private string BuildSignupCodeBypassTooltip() => BuildSettingsToggleTooltip(SignupCodeBypassEnabled);
+
+        private string BuildTierActiveTooltip(bool isActive) => BuildSettingsToggleTooltip(isActive);
+
+        private string BuildOneUsePerUserTooltip() => BuildSettingsToggleTooltip(DiscountCodeEditor?.OneUsePerUser == true);
+
+        private string BuildBypassPaymentTooltip() => BuildSettingsToggleTooltip(DiscountCodeEditor?.BypassPayment == true);
+
+        private string BuildCodeActiveTooltip() => BuildSettingsToggleTooltip(DiscountCodeEditor?.IsActive == true);
+
+        private string BuildSettingsToggleTooltip(bool isOn) =>
+            isOn
+                ? T("Aan - klik om af te skakel", "On - click to turn off")
+                : T("Af - klik om aan te skakel", "Off - click to turn on");
 
         private static string GetDiscountCodeUseTierCodeSortBy(AdminSubscriptionDiscountCodeUseRecord use) =>
             string.IsNullOrWhiteSpace(use.TierCode) ? "-" : use.TierCode;

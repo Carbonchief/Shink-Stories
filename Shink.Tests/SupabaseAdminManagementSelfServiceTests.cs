@@ -297,6 +297,103 @@ public class SupabaseAdminManagementSelfServiceTests
         Assert.AreEqual($"/media/resources/{resourceDocumentId:D}/preview", notificationService.PublishedResourceDocumentRequest.PreviewImageUrl);
     }
 
+    [TestMethod]
+    public async Task UpdateResourceDocumentAsync_PatchesMetadataWithoutPublishingNotification()
+    {
+        var resourceDocumentId = Guid.Parse("88888888-8888-8888-8888-888888888888");
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/admin_users"))
+            {
+                return JsonResponse("""[{ "email": "admin@example.com" }]""");
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/resource_documents" &&
+                request.RequestUri.Query.Contains($"resource_document_id=eq.{resourceDocumentId:D}", StringComparison.Ordinal))
+            {
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+        var notificationService = new RecordingUserNotificationService();
+        var service = CreateService(handler, notificationService);
+
+        var result = await service.UpdateResourceDocumentAsync(
+            "admin@example.com",
+            new AdminResourceDocumentUpdateRequest(
+                ResourceDocumentId: resourceDocumentId,
+                Slug: "nuwe-naam",
+                Title: "Nuwe Naam",
+                Description: "Opgedateerde beskrywing",
+                RequiredTierCode: null,
+                SortOrder: 25,
+                IsEnabled: false));
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.IsNull(notificationService.PublishedResourceDocumentRequest);
+        Assert.IsNotNull(handler.ResourceDocumentPatchPayload);
+
+        var patchPayload = JsonSerializer.Deserialize<JsonElement>(handler.ResourceDocumentPatchPayload!);
+        Assert.AreEqual("nuwe-naam", patchPayload.GetProperty("slug").GetString());
+        Assert.AreEqual("Nuwe Naam", patchPayload.GetProperty("title").GetString());
+        Assert.AreEqual("Opgedateerde beskrywing", patchPayload.GetProperty("description").GetString());
+        Assert.AreEqual(25, patchPayload.GetProperty("sort_order").GetInt32());
+        Assert.IsFalse(patchPayload.GetProperty("is_enabled").GetBoolean());
+        Assert.AreEqual(JsonValueKind.Null, patchPayload.GetProperty("required_tier_code").ValueKind);
+        Assert.IsTrue(patchPayload.TryGetProperty("document_updated_at", out _));
+    }
+
+    [TestMethod]
+    public async Task CreateStoryAsync_SkipsPublishedStoryNotificationWhenAdminDisablesIt()
+    {
+        var storyId = Guid.Parse("99999999-9999-9999-9999-999999999999");
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/admin_users"))
+            {
+                return JsonResponse("""[{ "email": "admin@example.com" }]""");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/stories")
+            {
+                return JsonResponse($$"""[{ "story_id": "{{storyId}}" }]""");
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+        var notificationService = new RecordingUserNotificationService();
+        var service = CreateService(handler, notificationService);
+
+        var result = await service.CreateStoryAsync(
+            "admin@example.com",
+            new AdminStoryCreateRequest(
+                Slug: "stil-gepubliseerde-storie",
+                Title: "Stil gepubliseerde storie",
+                Summary: "Kort opsomming",
+                Description: "Beskrywing",
+                YouTubeUrl: null,
+                TestQuestions: [],
+                CoverImagePath: "/stories/stil/cover.webp",
+                ThumbnailImagePath: "/stories/stil/thumb.webp",
+                AudioBucket: "stories",
+                AudioObjectKey: "stil-gepubliseerde-storie/audio.mp3",
+                AudioContentType: "audio/mpeg",
+                AccessLevel: "subscriber",
+                Status: "published",
+                SortOrder: 10,
+                PublishedAt: DateTimeOffset.UtcNow,
+                DurationSeconds: 60,
+                SummaryDetails: null,
+                SendPublishedNotification: false));
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.AreEqual(storyId, result.EntityId);
+        Assert.IsNull(notificationService.PublishedStoryRequest);
+    }
+
     private static SupabaseAdminManagementService CreateService(
         RecordingHandler handler,
         IUserNotificationService? userNotificationService = null)
@@ -362,6 +459,7 @@ public class SupabaseAdminManagementSelfServiceTests
         public string? PaystackDisablePayload { get; private set; }
         public PayFastCancelRequest? PayFastCancelRequest { get; private set; }
         public string? SubscriptionPatchPayload { get; private set; }
+        public string? ResourceDocumentPatchPayload { get; private set; }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -374,6 +472,11 @@ public class SupabaseAdminManagementSelfServiceTests
                      request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
             {
                 SubscriptionPatchPayload = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+            }
+            else if (request.Method == new HttpMethod("PATCH") &&
+                     request.RequestUri?.AbsolutePath == "/rest/v1/resource_documents")
+            {
+                ResourceDocumentPatchPayload = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
             }
             else if (request.Method == HttpMethod.Post &&
                      request.RequestUri?.AbsolutePath == "/rest/v1/subscriber_admin_audit")
@@ -434,6 +537,7 @@ public class SupabaseAdminManagementSelfServiceTests
 
     private sealed class RecordingUserNotificationService : IUserNotificationService
     {
+        public PublishedStoryNotificationRequest? PublishedStoryRequest { get; private set; }
         public PublishedResourceDocumentNotificationRequest? PublishedResourceDocumentRequest { get; private set; }
 
         public Task<UserNotificationPageResult> GetNotificationsAsync(
@@ -465,8 +569,11 @@ public class SupabaseAdminManagementSelfServiceTests
         public Task<int> CreatePublishedBlogNotificationsAsync(PublishedBlogNotificationRequest request, CancellationToken cancellationToken = default) =>
             Task.FromResult(0);
 
-        public Task<int> CreatePublishedStoryNotificationsAsync(PublishedStoryNotificationRequest request, CancellationToken cancellationToken = default) =>
-            Task.FromResult(0);
+        public Task<int> CreatePublishedStoryNotificationsAsync(PublishedStoryNotificationRequest request, CancellationToken cancellationToken = default)
+        {
+            PublishedStoryRequest = request;
+            return Task.FromResult(1);
+        }
 
         public Task<int> CreatePublishedResourceDocumentNotificationsAsync(PublishedResourceDocumentNotificationRequest request, CancellationToken cancellationToken = default)
         {

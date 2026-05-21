@@ -8,6 +8,8 @@
     --admin-muted: #b4c0ce;
     --admin-row-hover: #25384a;
     --admin-selected-row: #2f4f68;
+    --admin-toggle-on: #41c982;
+    --admin-toggle-off: #e45d66;
     --admin-input-bg: #1d2d3d;
     --admin-input-border: #49657d;
     border: 1px solid var(--admin-border);
@@ -213,9 +215,15 @@
 
 .admin-settings-table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     min-width: 760px;
     color: var(--admin-settings-text);
+}
+
+.admin-settings-table ::deep .mud-table-root {
+    border-collapse: separate;
+    border-spacing: 0;
 }
 
 .admin-settings-table th,
@@ -224,6 +232,23 @@
     border-bottom: 1px solid var(--admin-settings-border);
     vertical-align: top;
     text-align: left;
+}
+
+.admin-settings-table th + th,
+.admin-settings-table td + td {
+    border-left: 1px solid color-mix(in srgb, var(--admin-settings-border) 72%, transparent);
+}
+
+.admin-settings-table ::deep .mud-table-cell {
+    border-color: var(--admin-settings-border);
+}
+
+.admin-settings-table ::deep .mud-table-cell:not(:last-child) {
+    border-right: 1px solid color-mix(in srgb, var(--admin-settings-border) 72%, transparent);
+}
+
+.admin-settings-table ::deep tbody .mud-table-row:not(:last-child) > .mud-table-cell {
+    border-bottom: 1px solid var(--admin-settings-border);
 }
 
 .admin-settings-table th {
@@ -434,6 +459,28 @@
 ::deep .mud-switch-label,
 ::deep .mud-switch-span {
     color: var(--admin-settings-text, #eaf1f8) !important;
+}
+
+.admin-section ::deep .mud-switch-base:not(.mud-checked) {
+    color: var(--admin-toggle-off, #e45d66) !important;
+}
+
+.admin-section ::deep .mud-switch-base.mud-checked {
+    color: var(--admin-toggle-on, #41c982) !important;
+}
+
+.admin-section ::deep .mud-switch-base:not(.mud-checked) + .mud-switch-track {
+    background-color: var(--admin-toggle-off, #e45d66) !important;
+    opacity: 0.34;
+}
+
+.admin-section ::deep .mud-switch-base.mud-checked + .mud-switch-track {
+    background-color: var(--admin-toggle-on, #41c982) !important;
+    opacity: 0.44;
+}
+
+.admin-section ::deep .mud-switch-base.mud-switch-disabled {
+    opacity: 0.72;
 }
 
 ::deep .mud-button-root {

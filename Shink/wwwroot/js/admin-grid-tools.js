@@ -1,6 +1,7 @@
 const MIN_COLUMN_WIDTH = 88;
 const MAX_COLUMN_WIDTH = 720;
 const DESKTOP_MEDIA_QUERY = "(min-width: 900px)";
+let beforeUnloadHandler = null;
 
 export function enhanceSubscriberGrid(gridSelector, storageKey, resizeLabel, autofitTitle) {
   const grid = document.querySelector(gridSelector);
@@ -75,6 +76,29 @@ export function enhanceSubscriberGrid(gridSelector, storageKey, resizeLabel, aut
   });
 
   return true;
+}
+
+export function setBeforeUnloadGuard(enabled, message) {
+  if (beforeUnloadHandler) {
+    window.removeEventListener("beforeunload", beforeUnloadHandler);
+    beforeUnloadHandler = null;
+  }
+
+  if (!enabled) {
+    return;
+  }
+
+  const resolvedMessage =
+    typeof message === "string" && message.trim().length > 0
+      ? message.trim()
+      : "You have unsaved changes.";
+
+  beforeUnloadHandler = (event) => {
+    event.preventDefault();
+    event.returnValue = resolvedMessage;
+    return resolvedMessage;
+  };
+  window.addEventListener("beforeunload", beforeUnloadHandler);
 }
 
 export function downloadCsv(filename, csvText) {

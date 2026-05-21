@@ -1114,7 +1114,8 @@ public sealed partial class SupabaseAdminManagementService(
                 SortOrder: row.SortOrder,
                 PublishedAt: row.PublishedAt,
                 DurationSeconds: row.DurationSeconds,
-                UpdatedAt: row.UpdatedAt))
+                UpdatedAt: row.UpdatedAt,
+                SummaryDetails: ReadStorySummaryDetails(row.Metadata)))
             .OrderByDescending(row => row.UpdatedAt ?? row.PublishedAt ?? DateTimeOffset.MinValue)
             .ThenBy(row => row.SortOrder)
             .ThenBy(row => row.Title, StringComparer.OrdinalIgnoreCase)
@@ -1260,6 +1261,11 @@ public sealed partial class SupabaseAdminManagementService(
             ["duration_seconds"] = normalizedDurationSeconds
         };
 
+        if (request.SummaryDetails is not null)
+        {
+            payload["metadata"] = BuildStoryMetadataPayload(existingStory?.Metadata, request.SummaryDetails);
+        }
+
         var escapedStoryId = Uri.EscapeDataString(request.StoryId.ToString("D"));
         var uri = new Uri(baseUri, $"rest/v1/stories?story_id=eq.{escapedStoryId}");
 
@@ -1332,6 +1338,76 @@ public sealed partial class SupabaseAdminManagementService(
             (int)updateResponse.StatusCode,
             responseBody);
         return new AdminOperationResult(false, "Kon nie storie nou opdateer nie.");
+    }
+
+    public async Task<AdminOperationResult> SoftDeleteStoryAsync(
+        string? adminEmail,
+        Guid storyId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
+        {
+            return new AdminOperationResult(false, "Jy het nie admin toegang nie.");
+        }
+
+        if (storyId == Guid.Empty)
+        {
+            return new AdminOperationResult(false, "Kies asseblief 'n geldige storie.");
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return new AdminOperationResult(false, "Supabase URL is nog nie opgestel nie.");
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return new AdminOperationResult(false, "Supabase SecretKey is nog nie opgestel nie.");
+        }
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["status"] = "archived",
+            ["deleted_at"] = DateTimeOffset.UtcNow.UtcDateTime,
+            ["deleted_by_admin_email"] = NormalizeOptionalText(adminEmail, 320)
+        };
+
+        var escapedStoryId = Uri.EscapeDataString(storyId.ToString("D"));
+        var uri = new Uri(baseUri, $"rest/v1/stories?story_id=eq.{escapedStoryId}");
+
+        using var deleteRequest = CreateJsonRequest(new HttpMethod("PATCH"), uri, apiKey, payload, "return=minimal");
+        using var deleteResponse = await _httpClient.SendAsync(deleteRequest, cancellationToken);
+        if (deleteResponse.IsSuccessStatusCode)
+        {
+            InvalidateStoryCatalogCache();
+            return new AdminOperationResult(true);
+        }
+
+        var responseBody = await deleteResponse.Content.ReadAsStringAsync(cancellationToken);
+        if (deleteResponse.StatusCode == HttpStatusCode.BadRequest &&
+            (responseBody.Contains("deleted_at", StringComparison.OrdinalIgnoreCase) ||
+             responseBody.Contains("deleted_by_admin_email", StringComparison.OrdinalIgnoreCase)))
+        {
+            payload.Remove("deleted_at");
+            payload.Remove("deleted_by_admin_email");
+            using var compatibilityDeleteRequest = CreateJsonRequest(new HttpMethod("PATCH"), uri, apiKey, payload, "return=minimal");
+            using var compatibilityDeleteResponse = await _httpClient.SendAsync(compatibilityDeleteRequest, cancellationToken);
+            if (compatibilityDeleteResponse.IsSuccessStatusCode)
+            {
+                InvalidateStoryCatalogCache();
+                return new AdminOperationResult(true);
+            }
+
+            responseBody = await compatibilityDeleteResponse.Content.ReadAsStringAsync(cancellationToken);
+        }
+
+        _logger.LogWarning(
+            "Story soft delete failed. story_id={StoryId} Status={StatusCode} Body={Body}",
+            storyId,
+            (int)deleteResponse.StatusCode,
+            responseBody);
+        return new AdminOperationResult(false, "Kon nie storie nou soft delete nie.");
     }
 
     public async Task<AdminOperationResult> CreateStoryAsync(
@@ -1413,6 +1489,10 @@ public sealed partial class SupabaseAdminManagementService(
             return new AdminOperationResult(false, "R2 stories vereis beide bucket en object key.");
         }
 
+        var shouldCreatePublishedStoryNotifications = ShouldCreatePublishedStoryNotifications(
+            normalizedStatus,
+            request.SendPublishedNotification);
+
         if (!TryBuildSupabaseBaseUri(out var baseUri))
         {
             return new AdminOperationResult(false, "Supabase URL is nog nie opgestel nie.");
@@ -1445,6 +1525,11 @@ public sealed partial class SupabaseAdminManagementService(
             ["duration_seconds"] = normalizedDurationSeconds
         };
 
+        if (request.SummaryDetails is not null)
+        {
+            payload["metadata"] = BuildStoryMetadataPayload(null, request.SummaryDetails);
+        }
+
         var createUri = new Uri(baseUri, "rest/v1/stories?select=story_id");
         using var createRequest = CreateJsonRequest(HttpMethod.Post, createUri, apiKey, payload, "return=representation");
         using var createResponse = await _httpClient.SendAsync(createRequest, cancellationToken);
@@ -1455,7 +1540,7 @@ public sealed partial class SupabaseAdminManagementService(
             InvalidateStoryCatalogCache();
 
             if (createdStoryId.HasValue &&
-                string.Equals(normalizedStatus, "published", StringComparison.OrdinalIgnoreCase))
+                shouldCreatePublishedStoryNotifications)
             {
                 await _userNotificationService.CreatePublishedStoryNotificationsAsync(
                     new PublishedStoryNotificationRequest(
@@ -1491,7 +1576,7 @@ public sealed partial class SupabaseAdminManagementService(
                 InvalidateStoryCatalogCache();
 
                 if (createdStoryId.HasValue &&
-                    string.Equals(normalizedStatus, "published", StringComparison.OrdinalIgnoreCase))
+                    shouldCreatePublishedStoryNotifications)
                 {
                     await _userNotificationService.CreatePublishedStoryNotificationsAsync(
                         new PublishedStoryNotificationRequest(
@@ -3049,6 +3134,96 @@ public sealed partial class SupabaseAdminManagementService(
         return new AdminOperationResult(false, "Kon nie resource document skep nie.");
     }
 
+    public async Task<AdminOperationResult> UpdateResourceDocumentAsync(
+        string? adminEmail,
+        AdminResourceDocumentUpdateRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await TryResolveAdminContextAsync(adminEmail, cancellationToken))
+        {
+            return new AdminOperationResult(false, "Jy het nie admin toegang nie.");
+        }
+
+        if (request.ResourceDocumentId == Guid.Empty)
+        {
+            return new AdminOperationResult(false, "Kies asseblief 'n geldige resource document.");
+        }
+
+        var normalizedSlug = request.Slug?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (!StorySlugRegex().IsMatch(normalizedSlug))
+        {
+            return new AdminOperationResult(false, "Resource document slug is ongeldig.");
+        }
+
+        var normalizedTitle = request.Title?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(normalizedTitle))
+        {
+            return new AdminOperationResult(false, "Resource document titel is verpligtend.");
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return new AdminOperationResult(false, "Supabase URL is nog nie opgestel nie.");
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return new AdminOperationResult(false, "Supabase SecretKey is nog nie opgestel nie.");
+        }
+
+        var normalizedRequiredTierCode = NormalizeOptionalText(request.RequiredTierCode, 64)?.ToLowerInvariant();
+        if (!string.IsNullOrWhiteSpace(normalizedRequiredTierCode))
+        {
+            if (!TierCodeRegex().IsMatch(normalizedRequiredTierCode))
+            {
+                return new AdminOperationResult(false, "Resource document tier is ongeldig.");
+            }
+
+            var tierExists = await SubscriptionTierExistsAsync(baseUri, apiKey, normalizedRequiredTierCode, cancellationToken);
+            if (!tierExists)
+            {
+                return new AdminOperationResult(false, "Resource document tier bestaan nie.");
+            }
+        }
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["slug"] = normalizedSlug,
+            ["title"] = normalizedTitle,
+            ["description"] = NormalizeOptionalText(request.Description, 4000),
+            ["required_tier_code"] = normalizedRequiredTierCode,
+            ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
+            ["is_enabled"] = request.IsEnabled,
+            ["document_updated_at"] = DateTimeOffset.UtcNow
+        };
+
+        var escapedResourceDocumentId = Uri.EscapeDataString(request.ResourceDocumentId.ToString("D"));
+        var updateUri = new Uri(baseUri, $"rest/v1/resource_documents?resource_document_id=eq.{escapedResourceDocumentId}");
+        using var updateRequest = CreateJsonRequest(new HttpMethod("PATCH"), updateUri, apiKey, payload, "return=minimal");
+        using var updateResponse = await _httpClient.SendAsync(updateRequest, cancellationToken);
+        if (updateResponse.IsSuccessStatusCode)
+        {
+            InvalidateResourceCatalogCache();
+            return new AdminOperationResult(true, EntityId: request.ResourceDocumentId);
+        }
+
+        var updateBody = await updateResponse.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Resource document update failed. resource_document_id={ResourceDocumentId} slug={Slug} Status={StatusCode} Body={Body}",
+            request.ResourceDocumentId,
+            normalizedSlug,
+            (int)updateResponse.StatusCode,
+            updateBody);
+
+        if (ContainsDuplicateResourceDocumentSlugViolation(updateBody))
+        {
+            return new AdminOperationResult(false, "Resource document slug bestaan reeds.");
+        }
+
+        return new AdminOperationResult(false, "Kon nie resource document nou opdateer nie.");
+    }
+
     public async Task<AdminOperationResult> DeleteResourceDocumentAsync(
         string? adminEmail,
         Guid resourceDocumentId,
@@ -3285,9 +3460,9 @@ public sealed partial class SupabaseAdminManagementService(
     private async Task<IReadOnlyList<StoryRow>> FetchStoriesAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
     {
         const string storySelectWithTestQuestions =
-            "story_id,slug,title,summary,description,youtube_url,test_questions,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,access_level,status,sort_order,published_at,duration_seconds,updated_at";
+            "story_id,slug,title,summary,description,youtube_url,test_questions,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,access_level,status,sort_order,published_at,duration_seconds,updated_at,metadata";
         const string storySelectWithoutTestQuestions =
-            "story_id,slug,title,summary,description,youtube_url,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,access_level,status,sort_order,published_at,duration_seconds,updated_at";
+            "story_id,slug,title,summary,description,youtube_url,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,access_level,status,sort_order,published_at,duration_seconds,updated_at,metadata";
 
         var rows = await FetchStoriesWithSelectAsync(
             baseUri,
@@ -3374,7 +3549,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/stories" +
-            "?select=story_id,status,published_at" +
+            "?select=story_id,status,published_at,metadata" +
             $"&story_id=eq.{escapedStoryId}" +
             "&limit=1");
 
@@ -3570,6 +3745,10 @@ public sealed partial class SupabaseAdminManagementService(
         story is not null &&
         (story.PublishedAt.HasValue ||
          string.Equals(story.Status, "published", StringComparison.OrdinalIgnoreCase));
+
+    private static bool ShouldCreatePublishedStoryNotifications(string status, bool sendPublishedNotification) =>
+        sendPublishedNotification &&
+        string.Equals(status, "published", StringComparison.OrdinalIgnoreCase);
 
     private static string? NormalizeYouTubeUrl(string? value)
     {
@@ -5426,6 +5605,137 @@ public sealed partial class SupabaseAdminManagementService(
         return normalizedQuestions;
     }
 
+    private static AdminStorySummaryDetails ReadStorySummaryDetails(JsonElement metadata)
+    {
+        if (metadata.ValueKind != JsonValueKind.Object ||
+            !metadata.TryGetProperty("story_details", out var storyDetails) ||
+            storyDetails.ValueKind != JsonValueKind.Object)
+        {
+            return AdminStorySummaryDetails.Empty;
+        }
+
+        var values = ReadMetadataStringArray(storyDetails, "values");
+        if (values.Count == 0)
+        {
+            values = ReadMetadataStringArray(storyDetails, "value_tags");
+        }
+
+        return new AdminStorySummaryDetails(
+            Synopsis: ReadMetadataString(storyDetails, "synopsis"),
+            Lessons: ReadMetadataStringArray(storyDetails, "lessons"),
+            Values: values,
+            ConversationQuestions: ReadMetadataStringArray(storyDetails, "conversation_questions"),
+            Characters: ReadMetadataStringArray(storyDetails, "characters"));
+    }
+
+    private static Dictionary<string, object?> BuildStoryMetadataPayload(
+        JsonElement? existingMetadata,
+        AdminStorySummaryDetails details)
+    {
+        var metadata = new Dictionary<string, object?>(StringComparer.Ordinal);
+        if (existingMetadata is { ValueKind: JsonValueKind.Object } existing)
+        {
+            foreach (var property in existing.EnumerateObject())
+            {
+                if (!string.Equals(property.Name, "story_details", StringComparison.Ordinal))
+                {
+                    metadata[property.Name] = property.Value.Clone();
+                }
+            }
+        }
+
+        var storyDetails = BuildStoryDetailsPayload(details);
+        if (storyDetails.Count > 0)
+        {
+            metadata["story_details"] = storyDetails;
+        }
+
+        return metadata;
+    }
+
+    private static Dictionary<string, object?> BuildStoryDetailsPayload(AdminStorySummaryDetails details)
+    {
+        var payload = new Dictionary<string, object?>(StringComparer.Ordinal);
+        var synopsis = NormalizeOptionalText(details.Synopsis, 4000);
+        if (!string.IsNullOrWhiteSpace(synopsis))
+        {
+            payload["synopsis"] = synopsis;
+        }
+
+        AddStoryDetailsArray(payload, "lessons", details.Lessons, 500);
+        AddStoryDetailsArray(payload, "values", details.Values, 120);
+        AddStoryDetailsArray(payload, "conversation_questions", details.ConversationQuestions, 300);
+        AddStoryDetailsArray(payload, "characters", details.Characters, 120);
+        return payload;
+    }
+
+    private static void AddStoryDetailsArray(
+        IDictionary<string, object?> payload,
+        string key,
+        IEnumerable<string>? values,
+        int maxLength)
+    {
+        var normalizedValues = NormalizeStoryDetailsList(values, maxLength);
+        if (normalizedValues.Count > 0)
+        {
+            payload[key] = normalizedValues;
+        }
+    }
+
+    private static IReadOnlyList<string> NormalizeStoryDetailsList(IEnumerable<string>? values, int maxLength)
+    {
+        if (values is null)
+        {
+            return Array.Empty<string>();
+        }
+
+        return values
+            .Select(value => NormalizeOptionalText(value, maxLength))
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string? ReadMetadataString(JsonElement node, string propertyName)
+    {
+        if (node.ValueKind != JsonValueKind.Object ||
+            !node.TryGetProperty(propertyName, out var property) ||
+            property.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        return NormalizeOptionalText(property.GetString(), 4000);
+    }
+
+    private static IReadOnlyList<string> ReadMetadataStringArray(JsonElement node, string propertyName)
+    {
+        if (node.ValueKind != JsonValueKind.Object ||
+            !node.TryGetProperty(propertyName, out var property) ||
+            property.ValueKind != JsonValueKind.Array)
+        {
+            return Array.Empty<string>();
+        }
+
+        var values = new List<string>();
+        foreach (var item in property.EnumerateArray())
+        {
+            if (item.ValueKind != JsonValueKind.String)
+            {
+                continue;
+            }
+
+            var value = NormalizeOptionalText(item.GetString(), 500);
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                values.Add(value);
+            }
+        }
+
+        return values.Count == 0 ? Array.Empty<string>() : values;
+    }
+
     private static Guid? TryReadFirstGuidProperty(string? json, string propertyName)
     {
         if (string.IsNullOrWhiteSpace(json))
@@ -6102,6 +6412,9 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("updated_at")]
         public DateTimeOffset? UpdatedAt { get; set; }
+
+        [JsonPropertyName("metadata")]
+        public JsonElement Metadata { get; set; }
     }
 
     private sealed class PlaylistRow

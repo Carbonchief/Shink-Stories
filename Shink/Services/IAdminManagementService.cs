@@ -91,6 +91,11 @@ public interface IAdminManagementService
         AdminStoryUpdateRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<AdminOperationResult> SoftDeleteStoryAsync(
+        string? adminEmail,
+        Guid storyId,
+        CancellationToken cancellationToken = default);
+
     Task<AdminOperationResult> CreateStoryAsync(
         string? adminEmail,
         AdminStoryCreateRequest request,
@@ -192,6 +197,11 @@ public interface IAdminManagementService
     Task<AdminOperationResult> CreateResourceDocumentAsync(
         string? adminEmail,
         AdminResourceDocumentCreateRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<AdminOperationResult> UpdateResourceDocumentAsync(
+        string? adminEmail,
+        AdminResourceDocumentUpdateRequest request,
         CancellationToken cancellationToken = default);
 
     Task<AdminOperationResult> UpdateResourceDocumentAccessTierAsync(
@@ -454,7 +464,8 @@ public sealed record AdminStoryRecord(
     int SortOrder,
     DateTimeOffset? PublishedAt,
     int? DurationSeconds,
-    DateTimeOffset? UpdatedAt);
+    DateTimeOffset? UpdatedAt,
+    AdminStorySummaryDetails? SummaryDetails = null);
 
 public sealed record AdminStoryUpdateRequest(
     Guid StoryId,
@@ -474,7 +485,8 @@ public sealed record AdminStoryUpdateRequest(
     string Status,
     int SortOrder,
     DateTimeOffset? PublishedAt,
-    int? DurationSeconds);
+    int? DurationSeconds,
+    AdminStorySummaryDetails? SummaryDetails = null);
 
 public sealed record AdminStoryCreateRequest(
     string Slug,
@@ -492,7 +504,24 @@ public sealed record AdminStoryCreateRequest(
     string Status,
     int SortOrder,
     DateTimeOffset? PublishedAt,
-    int? DurationSeconds);
+    int? DurationSeconds,
+    AdminStorySummaryDetails? SummaryDetails = null,
+    bool SendPublishedNotification = true);
+
+public sealed record AdminStorySummaryDetails(
+    string? Synopsis,
+    IReadOnlyList<string> Lessons,
+    IReadOnlyList<string> Values,
+    IReadOnlyList<string> ConversationQuestions,
+    IReadOnlyList<string> Characters)
+{
+    public static AdminStorySummaryDetails Empty { get; } = new(
+        Synopsis: null,
+        Lessons: Array.Empty<string>(),
+        Values: Array.Empty<string>(),
+        ConversationQuestions: Array.Empty<string>(),
+        Characters: Array.Empty<string>());
+}
 
 public sealed record AdminStoryTestQuestion(
     [property: JsonPropertyName("question")] string Question,
@@ -966,6 +995,15 @@ public sealed record AdminResourceDocumentCreateRequest(
     string PreviewImageContentType,
     string PreviewImageBucket,
     string PreviewImageObjectKey,
+    string? RequiredTierCode,
+    int SortOrder,
+    bool IsEnabled);
+
+public sealed record AdminResourceDocumentUpdateRequest(
+    Guid ResourceDocumentId,
+    string Slug,
+    string Title,
+    string? Description,
     string? RequiredTierCode,
     int SortOrder,
     bool IsEnabled);

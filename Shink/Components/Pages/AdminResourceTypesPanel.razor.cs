@@ -44,8 +44,10 @@ public partial class AdminResourceTypesPanel : ComponentBase
     private bool IsLoading { get; set; } = true;
     private bool IsLoadingDocuments { get; set; }
     private bool IsSaving { get; set; }
+    private bool IsSavingDocument { get; set; }
     private bool IsDeleting { get; set; }
     private bool IsUploading { get; set; }
+    private EditableResourceDocument? EditingDocument { get; set; }
     private HashSet<Guid> DeletingDocumentIds { get; } = [];
     private HashSet<Guid> UpdatingDocumentTierIds { get; } = [];
 
@@ -95,6 +97,7 @@ public partial class AdminResourceTypesPanel : ComponentBase
                     : ResourceTypes.FirstOrDefault();
 
             Editor = selected is null ? null : EditableResourceType.From(selected);
+            EditingDocument = null;
             SelectedFiles = Array.Empty<IBrowserFile>();
 
             if (selected is not null)
@@ -157,6 +160,7 @@ public partial class AdminResourceTypesPanel : ComponentBase
         SelectedFiles = Array.Empty<IBrowserFile>();
         ResourceDocuments = Array.Empty<AdminResourceDocumentRecord>();
         DocumentSearch = null;
+        EditingDocument = null;
 
         var nextSortOrder = ResourceTypes.Count == 0
             ? 10
@@ -171,6 +175,7 @@ public partial class AdminResourceTypesPanel : ComponentBase
         StatusMessage = null;
         SelectedFiles = Array.Empty<IBrowserFile>();
         DocumentSearch = null;
+        EditingDocument = null;
         Editor = EditableResourceType.From(resourceType);
         await ReloadDocumentsAsync(resourceType.ResourceTypeId);
     }
@@ -250,6 +255,7 @@ public partial class AdminResourceTypesPanel : ComponentBase
             Editor = null;
             ResourceDocuments = Array.Empty<AdminResourceDocumentRecord>();
             SelectedFiles = Array.Empty<IBrowserFile>();
+            EditingDocument = null;
             await ReloadAsync();
             StatusMessage = T("Hulpbron tipe verwyder.", "Resource type deleted.");
         }
@@ -448,6 +454,76 @@ public partial class AdminResourceTypesPanel : ComponentBase
         }
     }
 
+    private void BeginEditDocument(AdminResourceDocumentRecord document)
+    {
+        ErrorMessage = null;
+        StatusMessage = null;
+        EditingDocument = EditableResourceDocument.From(document);
+    }
+
+    private void CancelEditingDocument()
+    {
+        EditingDocument = null;
+        ErrorMessage = null;
+        StatusMessage = null;
+    }
+
+    private async Task SaveEditingDocumentAsync()
+    {
+        if (EditingDocument is null || IsSavingDocument)
+        {
+            return;
+        }
+
+        var editingDocument = EditingDocument;
+        IsSavingDocument = true;
+        ErrorMessage = null;
+        StatusMessage = null;
+
+        try
+        {
+            var effectiveSlug = BuildEffectiveSlug(editingDocument.Slug, editingDocument.Title);
+            if (string.IsNullOrWhiteSpace(effectiveSlug))
+            {
+                ErrorMessage = T("Voeg asseblief eers 'n titel by.", "Please add a title first.");
+                return;
+            }
+
+            var normalizedTierCode = NormalizeDocumentTierCodeForAccess(editingDocument.RequiredTierCode);
+            var result = await AdminManagementService.UpdateResourceDocumentAsync(
+                SignedInEmail,
+                new AdminResourceDocumentUpdateRequest(
+                    ResourceDocumentId: editingDocument.ResourceDocumentId,
+                    Slug: effectiveSlug,
+                    Title: editingDocument.Title,
+                    Description: editingDocument.Description,
+                    RequiredTierCode: normalizedTierCode,
+                    SortOrder: editingDocument.SortOrder,
+                    IsEnabled: editingDocument.IsEnabled));
+
+            if (!result.IsSuccess)
+            {
+                ErrorMessage = TranslateServiceMessage(result.ErrorMessage) ??
+                               T("Kon nie hulpbron dokument nou stoor nie.", "Could not save the resource document right now.");
+                return;
+            }
+
+            var resourceTypeId = editingDocument.ResourceTypeId;
+            EditingDocument = null;
+            await ReloadAsync(resourceTypeId);
+            StatusMessage = T("Hulpbron dokument gestoor.", "Resource document saved.");
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to update resource document {ResourceDocumentId}.", editingDocument.ResourceDocumentId);
+            ErrorMessage = T("Kon nie hulpbron dokument nou stoor nie.", "Could not save the resource document right now.");
+        }
+        finally
+        {
+            IsSavingDocument = false;
+        }
+    }
+
     private IReadOnlyList<(string Value, string Label)> BuildDocumentTierOptions(AdminResourceDocumentRecord document)
     {
         var options = new List<(string Value, string Label)>
@@ -634,6 +710,7 @@ public partial class AdminResourceTypesPanel : ComponentBase
             "Kies asseblief 'n geldige resource document." => T("Kies asseblief 'n geldige hulpbron dokument.", "Please choose a valid resource document."),
             "Resource document tier is ongeldig." => T("Die hulpbron dokument se toegangsvlak is ongeldig.", "The resource document access tier is invalid."),
             "Resource document tier bestaan nie." => T("Die hulpbron dokument se toegangsvlak bestaan nie.", "The resource document access tier does not exist."),
+            "Kon nie resource document nou opdateer nie." => T("Kon nie hulpbron dokument nou stoor nie.", "Could not save the resource document right now."),
             "Kon nie resource document tier nou opdateer nie." => T("Kon nie hulpbron dokument se toegangsvlak nou opdateer nie.", "Could not update the resource document access tier right now."),
             "Kon nie resource document nou verwyder nie." => T("Kon nie hulpbron dokument nou verwyder nie.", "Could not delete the resource document right now."),
             _ => null
@@ -737,6 +814,31 @@ public partial class AdminResourceTypesPanel : ComponentBase
                 SortOrder = record.SortOrder,
                 IsEnabled = record.IsEnabled,
                 DocumentCount = record.DocumentCount
+            };
+    }
+
+    private sealed class EditableResourceDocument
+    {
+        public Guid ResourceDocumentId { get; set; }
+        public Guid ResourceTypeId { get; set; }
+        public string Slug { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public string? RequiredTierCode { get; set; }
+        public int SortOrder { get; set; }
+        public bool IsEnabled { get; set; } = true;
+
+        public static EditableResourceDocument From(AdminResourceDocumentRecord record) =>
+            new()
+            {
+                ResourceDocumentId = record.ResourceDocumentId,
+                ResourceTypeId = record.ResourceTypeId,
+                Slug = record.Slug,
+                Title = record.Title,
+                Description = record.Description,
+                RequiredTierCode = ResolveDocumentTierSelectionValue(record.RequiredTierCode),
+                SortOrder = record.SortOrder,
+                IsEnabled = record.IsEnabled
             };
     }
 }

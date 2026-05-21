@@ -8,6 +8,7 @@
 @using System.Text.Json
 @using Microsoft.Extensions.Options
 @using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Routing
 @using SixLabors.ImageSharp.Formats.Jpeg
 @using SixLabors.ImageSharp.Formats.Webp
 @using SixLabors.ImageSharp.Processing
@@ -124,7 +125,8 @@
                                                   Placeholder='@T("Soek e-pos of naam", "Search email or name")'
                                                   Variant="Variant.Outlined"
                                                   Margin="Margin.Dense"
-                                                  Immediate="true" />
+                                                  Immediate="true"
+                                                  OnKeyDown="HandleSubscriberSearchKeyDownAsync" />
                                 </div>
                                 <div class="admin-search-actions">
                                     <MudButton Class="admin-icon-btn admin-mobile-cta admin-icon-only"
@@ -999,6 +1001,15 @@
                                     <span class="sr-only">@T("Maak storie oop in nuwe oortjie", "Open story in new tab")</span>
                                 </a>
                             }
+                            <button type="button"
+                                    class="admin-icon-btn admin-danger-icon-btn"
+                                    @onclick="() => SoftDeleteStoryAsync(context)"
+                                    @onclick:stopPropagation="true"
+                                    aria-label='@T("Soft delete storie", "Soft delete story")'
+                                    title='@T("Soft delete storie", "Soft delete story")'>
+                                <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                                <span class="sr-only">@T("Soft delete storie", "Soft delete story")</span>
+                            </button>
                         </div>
                     </MudTd>
                 </RowTemplate>
@@ -1044,6 +1055,32 @@
                             <i class="fa-solid fa-plus" aria-hidden="true"></i>
                         </MudButton>
                     </div>
+                </div>
+            </div>
+
+            <div class='@($"admin-playlist-order-toolbar{(HasUnsavedPlaylistOrderChanges ? " is-dirty" : string.Empty)}")'>
+                <p class="admin-playlist-order-status">
+                    @(HasUnsavedPlaylistOrderChanges
+                        ? T("Playlist volgorde is verander. Stoor om dit toe te pas.", "Playlist order has changed. Save to apply it.")
+                        : T("Wysig die posisie nommers en stoor die volgorde wanneer jy klaar is.", "Edit the position numbers and save the order when you are done."))
+                </p>
+                <div class="admin-playlist-order-actions">
+                    <MudButton Variant="Variant.Text"
+                               Color="Color.Default"
+                               Disabled="@(!HasUnsavedPlaylistOrderChanges || IsSavingPlaylistsOrder)"
+                               OnClick="DiscardPlaylistOrderDraft"
+                               aria-label='@T("Kanselleer playlist volgorde veranderinge", "Discard playlist order changes")'
+                               title='@T("Kanselleer playlist volgorde veranderinge", "Discard playlist order changes")'>
+                        @T("Kanselleer", "Discard")
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Disabled="@(!HasUnsavedPlaylistOrderChanges || IsSavingPlaylistsOrder)"
+                               OnClick="SavePlaylistOrderDraftAsync"
+                               aria-label='@T("Stoor playlist volgorde", "Save playlist order")'
+                               title='@T("Stoor playlist volgorde", "Save playlist order")'>
+                        @T("Stoor volgorde", "Save order")
+                    </MudButton>
                 </div>
             </div>
 
@@ -1097,6 +1134,9 @@
                                 </div>
                             </details>
                         </div>
+                    </MudTh>
+                    <MudTh Class="admin-col-center">
+                        @T("Posisie", "Position")
                     </MudTh>
                     <MudTh>
                         <div class="admin-header-cell">
@@ -1189,7 +1229,6 @@
                 </HeaderContent>
                 <RowTemplate>
                     @{
-                        var playlistIndex = GetPlaylistIndex(context.PlaylistId);
                         var playlistPlayerPath = BuildAdminPlaylistPlayerPath(context);
                         var playlistShowcasePath = BuildAdminPlaylistShowcasePath(context);
                     }
@@ -1200,31 +1239,67 @@
                                 : context.Title,
                             PlaylistSearch)
                     </MudTd>
+                    <MudTd Class="admin-col-center" DataLabel='@T("Posisie", "Position")'>
+                        <div class='@($"admin-playlist-order-control{(IsPlaylistOrderDraftChanged(context.PlaylistId) ? " admin-playlist-order-dirty" : string.Empty)}")'
+                             @onclick:stopPropagation="true">
+                            <button type="button"
+                                    class="admin-playlist-order-move"
+                                    disabled="@(!CanMovePlaylistDraft(context.PlaylistId, -1) || IsSavingPlaylistsOrder)"
+                                    @onclick="() => MovePlaylistDraft(context.PlaylistId, -1)"
+                                    aria-label='@T("Skuif playlist op", "Move playlist up")'
+                                    title='@T("Skuif playlist op", "Move playlist up")'>
+                                <i class="fa-solid fa-arrow-up" aria-hidden="true"></i>
+                                <span class="sr-only">@T("Skuif playlist op", "Move playlist up")</span>
+                            </button>
+                            <span class="admin-playlist-order-position"
+                                  aria-label='@T("Playlist posisie", "Playlist position")'>
+                                @GetPlaylistDraftPosition(context.PlaylistId)
+                            </span>
+                            <button type="button"
+                                    class="admin-playlist-order-move"
+                                    disabled="@(!CanMovePlaylistDraft(context.PlaylistId, 1) || IsSavingPlaylistsOrder)"
+                                    @onclick="() => MovePlaylistDraft(context.PlaylistId, 1)"
+                                    aria-label='@T("Skuif playlist af", "Move playlist down")'
+                                    title='@T("Skuif playlist af", "Move playlist down")'>
+                                <i class="fa-solid fa-arrow-down" aria-hidden="true"></i>
+                                <span class="sr-only">@T("Skuif playlist af", "Move playlist down")</span>
+                            </button>
+                        </div>
+                    </MudTd>
                     <MudTd DataLabel='@T("Aktief", "Active")'>
                         <div class="admin-toggle-cell" @onclick:stopPropagation="true">
-                            <MudSwitch T="bool"
-                                       Value="@context.IsEnabled"
-                                       ValueChanged="@(value => TogglePlaylistEnabledAsync(context, value))"
-                                       Color="Color.Success"
-                                       Disabled="@(IsSavingPlaylistsOrder || IsSavingPlaylist || TogglingPlaylistIds.Contains(context.PlaylistId))" />
+                            <MudTooltip Text="@BuildPlaylistEnabledToggleTooltip(context)" Placement="Placement.Top" Arrow="true">
+                                <MudSwitch T="bool"
+                                           Value="@context.IsEnabled"
+                                           ValueChanged="@(value => TogglePlaylistEnabledAsync(context, value))"
+                                           Color="Color.Success"
+                                           Disabled="@(IsSavingPlaylistsOrder || IsSavingPlaylist || TogglingPlaylistIds.Contains(context.PlaylistId))"
+                                           aria-label="@BuildPlaylistEnabledToggleTooltip(context)" />
+                            </MudTooltip>
                         </div>
                     </MudTd>
                     <MudTd DataLabel='@T("Tuisblad", "Home")'>
                         <div class="admin-toggle-cell" @onclick:stopPropagation="true">
-                            <MudSwitch T="bool"
-                                       Value="@context.ShowOnHome"
-                                       ValueChanged="@(value => TogglePlaylistHomeAsync(context, value))"
-                                       Color="Color.Success"
-                                       Disabled="@(IsSavingPlaylistsOrder || IsSavingPlaylist || TogglingPlaylistIds.Contains(context.PlaylistId))" />
+                            <MudTooltip Text="@BuildPlaylistHomeToggleTooltip(context)" Placement="Placement.Top" Arrow="true">
+                                <MudSwitch T="bool"
+                                           Value="@context.ShowOnHome"
+                                           ValueChanged="@(value => TogglePlaylistHomeAsync(context, value))"
+                                           Color="Color.Success"
+                                           Disabled="@(IsSavingPlaylistsOrder || IsSavingPlaylist || TogglingPlaylistIds.Contains(context.PlaylistId))"
+                                           aria-label="@BuildPlaylistHomeToggleTooltip(context)" />
+                            </MudTooltip>
                         </div>
                     </MudTd>
                     <MudTd DataLabel='@T("Showcase op Luister", "Showcase on Luister")'>
                         <div class="admin-toggle-cell" @onclick:stopPropagation="true">
-                            <MudSwitch T="bool"
-                                       Value="@context.ShowShowcaseImageOnLuisterPage"
-                                       ValueChanged="@(value => TogglePlaylistShowcaseOnLuisterAsync(context, value))"
-                                       Color="Color.Success"
-                                       Disabled="@(IsSavingPlaylistsOrder || IsSavingPlaylist || TogglingPlaylistIds.Contains(context.PlaylistId))" />
+                            <MudTooltip Text="@BuildPlaylistShowcaseToggleTooltip(context)" Placement="Placement.Top" Arrow="true">
+                                <MudSwitch T="bool"
+                                           Value="@context.ShowShowcaseImageOnLuisterPage"
+                                           ValueChanged="@(value => TogglePlaylistShowcaseOnLuisterAsync(context, value))"
+                                           Color="Color.Success"
+                                           Disabled="@(IsSavingPlaylistsOrder || IsSavingPlaylist || TogglingPlaylistIds.Contains(context.PlaylistId))"
+                                           aria-label="@BuildPlaylistShowcaseToggleTooltip(context)" />
+                            </MudTooltip>
                         </div>
                     </MudTd>
                     <MudTd Class="admin-col-center" DataLabel='@T("Aksies", "Actions")'>
@@ -1255,26 +1330,6 @@
                                     <span class="sr-only">@T("Maak playlist showcase oop in nuwe oortjie", "Open playlist showcase in new tab")</span>
                                 </a>
                             }
-                            <button type="button"
-                                    class="admin-icon-btn"
-                                    @onclick="() => MovePlaylistAsync(context.PlaylistId, -1)"
-                                    @onclick:stopPropagation="true"
-                                    disabled="@(playlistIndex <= 0 || IsSavingPlaylistsOrder)"
-                                    aria-label='@T("Skuif playlist op", "Move playlist up")'
-                                    title='@T("Skuif playlist op", "Move playlist up")'>
-                                <i class="fa-solid fa-arrow-up" aria-hidden="true"></i>
-                                <span class="sr-only">@T("Skuif playlist op", "Move playlist up")</span>
-                            </button>
-                            <button type="button"
-                                    class="admin-icon-btn"
-                                    @onclick="() => MovePlaylistAsync(context.PlaylistId, 1)"
-                                    @onclick:stopPropagation="true"
-                                    disabled="@(playlistIndex < 0 || playlistIndex == Playlists.Count - 1 || IsSavingPlaylistsOrder)"
-                                    aria-label='@T("Skuif playlist af", "Move playlist down")'
-                                    title='@T("Skuif playlist af", "Move playlist down")'>
-                                <i class="fa-solid fa-arrow-down" aria-hidden="true"></i>
-                                <span class="sr-only">@T("Skuif playlist af", "Move playlist down")</span>
-                            </button>
                         </div>
                     </MudTd>
                 </RowTemplate>
@@ -2977,6 +3032,11 @@
                                          Class="admin-span-2"
                                          Label='@T("Publiseer onmiddellik", "Publish immediately")'
                                          @bind-Value="NewStoryEditor.PublishNow" />
+                            <MudCheckBox T="bool"
+                                         Class="admin-span-2"
+                                         Label='@T("Stuur publiseer-kennisgewing", "Send publish notification")'
+                                         Disabled="@(!NewStoryEditor.PublishNow)"
+                                         @bind-Value="NewStoryEditor.SendPublishedNotification" />
                             <MudTextField T="string"
                                           Class="admin-span-2"
                                           Label='@T("Opsomming", "Summary")'
@@ -2998,6 +3058,76 @@
                                           @bind-Value="NewStoryEditor.YouTubeUrl"
                                           Variant="Variant.Outlined"
                                           Margin="Margin.Dense" />
+                            <section class="admin-story-card-editor admin-span-2">
+                                <div class="admin-story-test-head">
+                                    <div>
+                                        <h4>@T("Storiekaart inhoud", "Story card content")</h4>
+                                        <p>@T("Skryf die sinopsis en elke lysitem op sy eie lyn.", "Write the synopsis and put each list item on its own line.")</p>
+                                    </div>
+                                </div>
+                                <div class="admin-story-card-fields">
+                                    <div class="admin-story-card-field is-synopsis">
+                                        <div class="admin-story-card-field-label">
+                                            <span>@T("Sinopsis", "Synopsis")</span>
+                                            <small>@T("Kort opsomming vir die kaart", "Short summary for the card")</small>
+                                        </div>
+                                        <MudTextField T="string"
+                                                      Placeholder='@T("Kort sinopsis", "Short synopsis")'
+                                                      @bind-Value="NewStoryEditor.Synopsis"
+                                                      Variant="Variant.Outlined"
+                                                      Margin="Margin.Dense"
+                                                      Lines="5" />
+                                    </div>
+                                    <div class="admin-story-card-field">
+                                        <div class="admin-story-card-field-label">
+                                            <span>@T("Waardes", "Values")</span>
+                                            <small>@T("Een waarde per lyn", "One value per line")</small>
+                                        </div>
+                                        <MudTextField T="string"
+                                                      Placeholder='@T("Een waarde per lyn", "One value per line")'
+                                                      @bind-Value="NewStoryEditor.ValuesText"
+                                                      Variant="Variant.Outlined"
+                                                      Margin="Margin.Dense"
+                                                      Lines="4" />
+                                    </div>
+                                    <div class="admin-story-card-field">
+                                        <div class="admin-story-card-field-label">
+                                            <span>@T("Lesse", "Lessons")</span>
+                                            <small>@T("Een les per lyn", "One lesson per line")</small>
+                                        </div>
+                                        <MudTextField T="string"
+                                                      Placeholder='@T("Een les per lyn", "One lesson per line")'
+                                                      @bind-Value="NewStoryEditor.LessonsText"
+                                                      Variant="Variant.Outlined"
+                                                      Margin="Margin.Dense"
+                                                      Lines="4" />
+                                    </div>
+                                    <div class="admin-story-card-field">
+                                        <div class="admin-story-card-field-label">
+                                            <span>@T("Geselsvrae", "Conversation questions")</span>
+                                            <small>@T("Een vraag per lyn", "One question per line")</small>
+                                        </div>
+                                        <MudTextField T="string"
+                                                      Placeholder='@T("Een vraag per lyn", "One question per line")'
+                                                      @bind-Value="NewStoryEditor.ConversationQuestionsText"
+                                                      Variant="Variant.Outlined"
+                                                      Margin="Margin.Dense"
+                                                      Lines="5" />
+                                    </div>
+                                    <div class="admin-story-card-field">
+                                        <div class="admin-story-card-field-label">
+                                            <span>@T("Karakters", "Characters")</span>
+                                            <small>@T("Een karakter per lyn", "One character per line")</small>
+                                        </div>
+                                        <MudTextField T="string"
+                                                      Placeholder='@T("Een karakter per lyn", "One character per line")'
+                                                      @bind-Value="NewStoryEditor.CharactersText"
+                                                      Variant="Variant.Outlined"
+                                                      Margin="Margin.Dense"
+                                                      Lines="5" />
+                                    </div>
+                                </div>
+                            </section>
                             <section class="admin-story-test-editor admin-span-2">
                                 <div class="admin-story-test-head">
                                     <div>
@@ -3345,6 +3475,78 @@
                             </div>
                         </div>
                     </div>
+                        </MudTabPanel>
+                        <MudTabPanel Text='@T("Storiekaart", "Story card")'>
+                            <section class="admin-story-card-editor admin-story-card-tab">
+                                <div class="admin-story-test-head">
+                                    <div>
+                                        <h4>@T("Storiekaart inhoud", "Story card content")</h4>
+                                        <p>@T("Skryf die sinopsis en elke lysitem op sy eie lyn.", "Write the synopsis and put each list item on its own line.")</p>
+                                    </div>
+                                </div>
+                                <div class="admin-story-card-fields">
+                                    <div class="admin-story-card-field is-synopsis">
+                                        <div class="admin-story-card-field-label">
+                                            <span>@T("Sinopsis", "Synopsis")</span>
+                                            <small>@T("Kort opsomming vir die kaart", "Short summary for the card")</small>
+                                        </div>
+                                        <MudTextField T="string"
+                                                      Placeholder='@T("Kort sinopsis", "Short synopsis")'
+                                                      @bind-Value="StoryEditor.Synopsis"
+                                                      Variant="Variant.Outlined"
+                                                      Margin="Margin.Dense"
+                                                      Lines="5" />
+                                    </div>
+                                    <div class="admin-story-card-field">
+                                        <div class="admin-story-card-field-label">
+                                            <span>@T("Waardes", "Values")</span>
+                                            <small>@T("Een waarde per lyn", "One value per line")</small>
+                                        </div>
+                                        <MudTextField T="string"
+                                                      Placeholder='@T("Een waarde per lyn", "One value per line")'
+                                                      @bind-Value="StoryEditor.ValuesText"
+                                                      Variant="Variant.Outlined"
+                                                      Margin="Margin.Dense"
+                                                      Lines="4" />
+                                    </div>
+                                    <div class="admin-story-card-field">
+                                        <div class="admin-story-card-field-label">
+                                            <span>@T("Lesse", "Lessons")</span>
+                                            <small>@T("Een les per lyn", "One lesson per line")</small>
+                                        </div>
+                                        <MudTextField T="string"
+                                                      Placeholder='@T("Een les per lyn", "One lesson per line")'
+                                                      @bind-Value="StoryEditor.LessonsText"
+                                                      Variant="Variant.Outlined"
+                                                      Margin="Margin.Dense"
+                                                      Lines="4" />
+                                    </div>
+                                    <div class="admin-story-card-field">
+                                        <div class="admin-story-card-field-label">
+                                            <span>@T("Geselsvrae", "Conversation questions")</span>
+                                            <small>@T("Een vraag per lyn", "One question per line")</small>
+                                        </div>
+                                        <MudTextField T="string"
+                                                      Placeholder='@T("Een vraag per lyn", "One question per line")'
+                                                      @bind-Value="StoryEditor.ConversationQuestionsText"
+                                                      Variant="Variant.Outlined"
+                                                      Margin="Margin.Dense"
+                                                      Lines="5" />
+                                    </div>
+                                    <div class="admin-story-card-field">
+                                        <div class="admin-story-card-field-label">
+                                            <span>@T("Karakters", "Characters")</span>
+                                            <small>@T("Een karakter per lyn", "One character per line")</small>
+                                        </div>
+                                        <MudTextField T="string"
+                                                      Placeholder='@T("Een karakter per lyn", "One character per line")'
+                                                      @bind-Value="StoryEditor.CharactersText"
+                                                      Variant="Variant.Outlined"
+                                                      Margin="Margin.Dense"
+                                                      Lines="5" />
+                                    </div>
+                                </div>
+                            </section>
                         </MudTabPanel>
                         <MudTabPanel Text='@T("Toets", "Test")'>
                             <section class="admin-story-test-editor admin-story-test-tab">
@@ -3733,9 +3935,12 @@
                                             <MudTd DataLabel="Slug">@context.StorySlug</MudTd>
                                             <MudTd Class="admin-col-center" DataLabel='@T("Showcase", "Showcase")'>
                                                 <div class="admin-toggle-cell" @onclick:stopPropagation="true">
-                                                    <MudCheckBox T="bool"
-                                                                 Value="@context.IsShowcase"
-                                                                 ValueChanged="@(value => TogglePlaylistStoryShowcase(context.StoryId, value))" />
+                                                    <MudTooltip Text="@BuildPlaylistStoryShowcaseToggleTooltip(context.IsShowcase)" Placement="Placement.Top" Arrow="true">
+                                                        <MudCheckBox T="bool"
+                                                                     Value="@context.IsShowcase"
+                                                                     ValueChanged="@(value => TogglePlaylistStoryShowcase(context.StoryId, value))"
+                                                                     aria-label="@BuildPlaylistStoryShowcaseToggleTooltip(context.IsShowcase)" />
+                                                    </MudTooltip>
                                                 </div>
                                             </MudTd>
                                             <MudTd DataLabel='@T("Aksies", "Actions")'>
@@ -3869,6 +4074,10 @@
     private bool IsEditModalOpening { get; set; }
     private bool ClearModalLoadingOnNextRender { get; set; }
     private HashSet<Guid> TogglingPlaylistIds { get; } = [];
+    private Dictionary<Guid, int> PlaylistOrderDraftPositions { get; } = [];
+    private string? SavedPlaylistOrderSignature { get; set; }
+    private bool PlaylistOrderBeforeUnloadGuardEnabled { get; set; }
+    private IDisposable? AdminLocationChangingRegistration { get; set; }
     private const long MaxImageUploadBytes = 10 * 1024 * 1024;
     private const long MaxAudioUploadBytes = 256L * 1024 * 1024;
     private const int GeneratedThumbnailMaxDimension = 640;
@@ -3942,8 +4151,16 @@
     private AdminPlaylistColumnFilters PlaylistColumnFilters { get; } = new();
     private IReadOnlyList<AdminStoryRecord> FilteredStories =>
         AdminGridFilterLogic.FilterStories(Stories, StorySearch, StoryColumnFilters);
+    private IReadOnlyList<AdminPlaylistRecord> OrderedPlaylistsForAdmin =>
+        Playlists
+            .OrderBy(playlist => GetPlaylistDraftPosition(playlist.PlaylistId))
+            .ThenBy(playlist => playlist.Title, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     private IReadOnlyList<AdminPlaylistRecord> FilteredPlaylists =>
-        AdminGridFilterLogic.FilterPlaylists(Playlists, PlaylistSearch, PlaylistColumnFilters);
+        AdminGridFilterLogic.FilterPlaylists(OrderedPlaylistsForAdmin, PlaylistSearch, PlaylistColumnFilters);
+    private bool HasUnsavedPlaylistOrderChanges =>
+        !string.IsNullOrWhiteSpace(SavedPlaylistOrderSignature) &&
+        !string.Equals(SavedPlaylistOrderSignature, BuildCurrentPlaylistOrderSignature(), StringComparison.Ordinal);
     private PieChartOptions ActiveMembersPerLevelPieChartOptions { get; } = new()
     {
         ShowValues = true
@@ -4402,6 +4619,8 @@
 
     protected override async Task OnInitializedAsync()
     {
+        AdminLocationChangingRegistration ??= NavigationManager.RegisterLocationChangingHandler(OnAdminLocationChanging);
+
         try
         {
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
@@ -4475,6 +4694,8 @@
             }
         }
 
+        await SyncPlaylistOrderBeforeUnloadGuardAsync();
+
         if (!SubscriberGridEnhancementPending)
         {
             if (!IsLoading &&
@@ -4519,6 +4740,20 @@
 
     public async ValueTask DisposeAsync()
     {
+        AdminLocationChangingRegistration?.Dispose();
+
+        if (AdminGridModule is not null && PlaylistOrderBeforeUnloadGuardEnabled)
+        {
+            try
+            {
+                await AdminGridModule.InvokeVoidAsync("setBeforeUnloadGuard", false, string.Empty);
+            }
+            catch (JSDisconnectedException)
+            {
+                // Ignore disconnects during teardown.
+            }
+        }
+
         if (AdminGridModule is not null)
         {
             try
@@ -4586,6 +4821,14 @@
 
     private async Task SearchSubscribersAsync() =>
         await RefreshSubscribersAsync(resetToFirstPage: true);
+
+    private async Task HandleSubscriberSearchKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (string.Equals(args.Key, "Enter", StringComparison.Ordinal))
+        {
+            await SearchSubscribersAsync();
+        }
+    }
 
     private async Task ReloadSubscribersAsync() =>
         await RefreshSubscribersAsync();
@@ -4844,6 +5087,7 @@
         {
             var targetPlaylistId = selectedPlaylistId ?? PlaylistEditor?.PlaylistId;
             Playlists = await AdminManagementService.GetPlaylistsAsync(CurrentAdminEmail);
+            ResetPlaylistOrderDraft();
 
             var selectedPlaylist = targetPlaylistId is not null
                 ? Playlists.FirstOrDefault(playlist => playlist.PlaylistId == targetPlaylistId.Value)
@@ -4872,6 +5116,8 @@
         {
             Logger.LogError(exception, "Failed to refresh playlists.");
             Playlists = Array.Empty<AdminPlaylistRecord>();
+            PlaylistOrderDraftPositions.Clear();
+            SavedPlaylistOrderSignature = null;
             PlaylistEditor = null;
             PlaylistStoryEditor = [];
             PlaylistEditorStateSignature = null;
@@ -6090,7 +6336,7 @@
 
             var coverFile = NewStoryEditor.CoverFile!;
             var audioFile = NewStoryEditor.AudioFile!;
-            var summary = AutofillStorySummary(NewStoryEditor.Summary, NewStoryEditor.Description);
+            var summary = AutofillStorySummary(NewStoryEditor.Synopsis ?? NewStoryEditor.Summary, NewStoryEditor.Description);
             var description = AutofillStoryDescription(NewStoryEditor.Description, summary);
 
             var coverUpload = await UploadImageWithFallbackAsync(
@@ -6142,7 +6388,9 @@
                     Status: NewStoryEditor.PublishNow ? "published" : "draft",
                     SortOrder: BuildNextStorySortOrder(allStories),
                     PublishedAt: NewStoryEditor.PublishNow ? DateTimeOffset.Now : null,
-                    DurationSeconds: null));
+                    DurationSeconds: null,
+                    SummaryDetails: BuildStorySummaryDetails(NewStoryEditor),
+                    SendPublishedNotification: NewStoryEditor.SendPublishedNotification));
 
             if (!result.IsSuccess)
             {
@@ -6241,13 +6489,14 @@
             }
 
             var publishedAt = ParseOptionalLocalDateTime(StoryEditor.PublishedAtLocal);
+            var storySummary = AutofillStorySummary(StoryEditor.Synopsis ?? StoryEditor.Summary, StoryEditor.Description);
             var result = await AdminManagementService.UpdateStoryAsync(
                 CurrentAdminEmail,
                 new AdminStoryUpdateRequest(
                     StoryId: StoryEditor.StoryId,
                     Slug: StoryEditor.Slug,
                     Title: StoryEditor.Title,
-                    Summary: StoryEditor.Summary,
+                    Summary: storySummary,
                     Description: StoryEditor.Description,
                     YouTubeUrl: StoryEditor.YouTubeUrl,
                     TestQuestions: BuildAdminStoryTestQuestions(StoryEditor.TestQuestions),
@@ -6261,7 +6510,8 @@
                     Status: StoryEditor.Status,
                     SortOrder: StoryEditor.SortOrder,
                     PublishedAt: publishedAt,
-                    DurationSeconds: StoryEditor.DurationSeconds));
+                    DurationSeconds: StoryEditor.DurationSeconds,
+                    SummaryDetails: BuildStorySummaryDetails(StoryEditor)));
 
             if (!HandleOperationResult(result, T("Storie is opgedateer.", "Story updated.")))
             {
@@ -6291,6 +6541,47 @@
         finally
         {
             IsSavingStory = false;
+        }
+    }
+
+    private async Task SoftDeleteStoryAsync(AdminStoryRecord story)
+    {
+        if (story.StoryId == Guid.Empty)
+        {
+            return;
+        }
+
+        var confirmed = await JSRuntime.InvokeAsync<bool>(
+            "confirm",
+            T(
+                "Soft delete hierdie storie? Die ry bly in die databasis, maar die storie word geargiveer.",
+                "Soft delete this story? The row stays in the database, but the story is archived."));
+        if (!confirmed)
+        {
+            return;
+        }
+
+        ClearFeedback();
+        try
+        {
+            var result = await AdminManagementService.SoftDeleteStoryAsync(CurrentAdminEmail, story.StoryId);
+            if (!HandleOperationResult(result, T("Storie is soft delete.", "Story soft deleted.")))
+            {
+                return;
+            }
+
+            await RefreshStoriesAsync();
+            if (StoryEditor?.StoryId == story.StoryId)
+            {
+                IsStoryDialogOpen = false;
+                StoryEditor = null;
+                StoryEditorStateSignature = null;
+            }
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to soft delete story. story_id={StoryId}", story.StoryId);
+            SetError(T("Kon nie storie nou soft delete nie.", "Could not soft delete story right now."));
         }
     }
 
@@ -6436,6 +6727,26 @@
             IsSavingPlaylist = false;
         }
     }
+
+    private string BuildPlaylistEnabledToggleTooltip(AdminPlaylistRecord playlist) =>
+        playlist.IsEnabled
+            ? T("Aktief - klik om af te skakel", "Active - click to turn off")
+            : T("Onaktief - klik om aan te skakel", "Inactive - click to turn on");
+
+    private string BuildPlaylistHomeToggleTooltip(AdminPlaylistRecord playlist) =>
+        playlist.ShowOnHome
+            ? T("Op tuisblad - klik om weg te steek", "On home page - click to hide")
+            : T("Nie op tuisblad nie - klik om te wys", "Not on home page - click to show");
+
+    private string BuildPlaylistShowcaseToggleTooltip(AdminPlaylistRecord playlist) =>
+        playlist.ShowShowcaseImageOnLuisterPage
+            ? T("Showcase op Luister - klik om weg te steek", "Showcase on Luister - click to hide")
+            : T("Nie op Luister showcase nie - klik om te wys", "Not on Luister showcase - click to show");
+
+    private string BuildPlaylistStoryShowcaseToggleTooltip(bool isShowcase) =>
+        isShowcase
+            ? T("Showcase storie - klik om te verwyder", "Showcase story - click to remove")
+            : T("Nie showcase storie nie - klik om by te voeg", "Not a showcase story - click to add");
 
     private async Task TogglePlaylistEnabledAsync(AdminPlaylistRecord playlist, bool isEnabled)
     {
@@ -6602,50 +6913,58 @@
         }
     }
 
-    private async Task MovePlaylistAsync(Guid playlistId, int direction)
+    private void MovePlaylistDraft(Guid playlistId, int direction)
     {
-        if (direction is 0)
+        var orderedIds = BuildPlaylistOrderSaveIds().ToList();
+        var currentIndex = orderedIds.IndexOf(playlistId);
+        var nextIndex = currentIndex + direction;
+        if (currentIndex < 0 || nextIndex < 0 || nextIndex >= orderedIds.Count)
         {
             return;
         }
 
-        var ordered = Playlists
-            .OrderBy(playlist => playlist.SortOrder)
-            .ThenBy(playlist => playlist.Title, StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        orderedIds.RemoveAt(currentIndex);
+        orderedIds.Insert(nextIndex, playlistId);
+        SetPlaylistOrderDraft(orderedIds);
+        ClearFeedback();
+    }
 
-        var currentIndex = ordered.FindIndex(playlist => playlist.PlaylistId == playlistId);
-        if (currentIndex < 0)
+    private bool CanMovePlaylistDraft(Guid playlistId, int direction)
+    {
+        if (playlistId == Guid.Empty || direction == 0)
+        {
+            return false;
+        }
+
+        var orderedIds = BuildPlaylistOrderSaveIds().ToList();
+        var currentIndex = orderedIds.IndexOf(playlistId);
+        var nextIndex = currentIndex + direction;
+        return currentIndex >= 0 && nextIndex >= 0 && nextIndex < orderedIds.Count;
+    }
+
+    private async Task SavePlaylistOrderDraftAsync()
+    {
+        if (!HasUnsavedPlaylistOrderChanges)
         {
             return;
         }
-
-        var targetIndex = currentIndex + direction;
-        if (targetIndex < 0 || targetIndex >= ordered.Count)
-        {
-            return;
-        }
-
-        (ordered[currentIndex], ordered[targetIndex]) = (ordered[targetIndex], ordered[currentIndex]);
 
         IsSavingPlaylistsOrder = true;
         ClearFeedback();
         try
         {
-            var result = await AdminManagementService.SavePlaylistOrderAsync(
-                CurrentAdminEmail,
-                ordered.Select(playlist => playlist.PlaylistId).ToArray());
-
+            var orderedPlaylistIds = BuildPlaylistOrderSaveIds();
+            var result = await AdminManagementService.SavePlaylistOrderAsync(CurrentAdminEmail, orderedPlaylistIds);
             if (!HandleOperationResult(result, T("Playlist volgorde is gestoor.", "Playlist order saved.")))
             {
                 return;
             }
 
-            await RefreshPlaylistsAsync(playlistId);
+            await RefreshPlaylistsAsync();
         }
         catch (Exception exception)
         {
-            Logger.LogError(exception, "Failed to move playlist. playlist_id={PlaylistId}", playlistId);
+            Logger.LogError(exception, "Failed to save playlist order draft.");
             SetError(T("Kon nie playlist volgorde nou stoor nie.", "Could not save playlist order right now."));
         }
         finally
@@ -6653,6 +6972,80 @@
             IsSavingPlaylistsOrder = false;
         }
     }
+
+    private void DiscardPlaylistOrderDraft()
+    {
+        ResetPlaylistOrderDraft();
+        ClearFeedback();
+    }
+
+    private void ResetPlaylistOrderDraft()
+    {
+        var orderedIds = Playlists
+            .OrderBy(playlist => playlist.SortOrder)
+            .ThenBy(playlist => playlist.Title, StringComparer.OrdinalIgnoreCase)
+            .Select(playlist => playlist.PlaylistId)
+            .ToArray();
+
+        SetPlaylistOrderDraft(orderedIds);
+        SavedPlaylistOrderSignature = BuildPlaylistOrderSignature(orderedIds);
+    }
+
+    private void SetPlaylistOrderDraft(IReadOnlyList<Guid> orderedPlaylistIds)
+    {
+        PlaylistOrderDraftPositions.Clear();
+        for (var index = 0; index < orderedPlaylistIds.Count; index++)
+        {
+            var playlistId = orderedPlaylistIds[index];
+            if (playlistId != Guid.Empty)
+            {
+                PlaylistOrderDraftPositions[playlistId] = index + 1;
+            }
+        }
+    }
+
+    private int GetPlaylistDraftPosition(Guid playlistId)
+    {
+        if (PlaylistOrderDraftPositions.TryGetValue(playlistId, out var position))
+        {
+            return position;
+        }
+
+        var fallbackPosition = Playlists
+            .OrderBy(playlist => playlist.SortOrder)
+            .ThenBy(playlist => playlist.Title, StringComparer.OrdinalIgnoreCase)
+            .Select((playlist, index) => new { playlist.PlaylistId, Position = index + 1 })
+            .FirstOrDefault(item => item.PlaylistId == playlistId)
+            ?.Position;
+
+        return fallbackPosition ?? 0;
+    }
+
+    private bool IsPlaylistOrderDraftChanged(Guid playlistId)
+    {
+        var savedPosition = Playlists
+            .OrderBy(playlist => playlist.SortOrder)
+            .ThenBy(playlist => playlist.Title, StringComparer.OrdinalIgnoreCase)
+            .Select((playlist, index) => new { playlist.PlaylistId, Position = index + 1 })
+            .FirstOrDefault(item => item.PlaylistId == playlistId)
+            ?.Position;
+
+        return savedPosition is not null &&
+               savedPosition.Value != GetPlaylistDraftPosition(playlistId);
+    }
+
+    private IReadOnlyList<Guid> BuildPlaylistOrderSaveIds() =>
+        Playlists
+            .OrderBy(playlist => GetPlaylistDraftPosition(playlist.PlaylistId))
+            .ThenBy(playlist => playlist.Title, StringComparer.OrdinalIgnoreCase)
+            .Select(playlist => playlist.PlaylistId)
+            .ToArray();
+
+    private string BuildCurrentPlaylistOrderSignature() =>
+        BuildPlaylistOrderSignature(BuildPlaylistOrderSaveIds());
+
+    private static string BuildPlaylistOrderSignature(IReadOnlyList<Guid> orderedPlaylistIds) =>
+        string.Join("|", orderedPlaylistIds.Select(id => id.ToString("D")));
 
     private void AddStoryToPlaylist()
     {
@@ -6871,6 +7264,42 @@
                 !string.IsNullOrWhiteSpace(question.CorrectOption))
             .ToArray();
     }
+
+    private static AdminStorySummaryDetails BuildStorySummaryDetails(EditableStory editor) =>
+        new(
+            Synopsis: NormalizeDirtyText(editor.Synopsis),
+            Lessons: SplitAdminMultilineList(editor.LessonsText),
+            Values: SplitAdminMultilineList(editor.ValuesText),
+            ConversationQuestions: SplitAdminMultilineList(editor.ConversationQuestionsText),
+            Characters: SplitAdminMultilineList(editor.CharactersText));
+
+    private static AdminStorySummaryDetails BuildStorySummaryDetails(NewStoryDraft editor) =>
+        new(
+            Synopsis: NormalizeDirtyText(editor.Synopsis),
+            Lessons: SplitAdminMultilineList(editor.LessonsText),
+            Values: SplitAdminMultilineList(editor.ValuesText),
+            ConversationQuestions: SplitAdminMultilineList(editor.ConversationQuestionsText),
+            Characters: SplitAdminMultilineList(editor.CharactersText));
+
+    private static IReadOnlyList<string> SplitAdminMultilineList(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return Array.Empty<string>();
+        }
+
+        return value
+            .Replace("\r\n", "\n", StringComparison.Ordinal)
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(item => !string.IsNullOrWhiteSpace(item))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static string? JoinAdminMultilineList(IReadOnlyList<string>? values) =>
+        values is null || values.Count == 0
+            ? null
+            : string.Join(Environment.NewLine, values.Where(value => !string.IsNullOrWhiteSpace(value)));
 
     private static string NormalizeStoryTestCorrectOption(string? value)
     {
@@ -7363,6 +7792,71 @@
         {
             Logger.LogWarning(exception, "Admin discard confirmation could not be displayed.");
             return false;
+        }
+    }
+
+    private async ValueTask OnAdminLocationChanging(LocationChangingContext context)
+    {
+        if (!HasUnsavedPlaylistOrderChanges)
+        {
+            return;
+        }
+
+        var confirmed = await ConfirmDiscardPlaylistOrderChangesAsync();
+        if (!confirmed)
+        {
+            context.PreventNavigation();
+        }
+    }
+
+    private async Task<bool> ConfirmDiscardPlaylistOrderChangesAsync()
+    {
+        if (!HasUnsavedPlaylistOrderChanges)
+        {
+            return true;
+        }
+
+        try
+        {
+            return await JSRuntime.InvokeAsync<bool>(
+                "confirm",
+                T(
+                    "Jy het playlist volgorde veranderinge wat nog nie gestoor is nie. Is jy seker jy wil weggaan en dit verloor?",
+                    "You have playlist order changes that have not been saved. Are you sure you want to leave and lose them?"));
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(exception, "Playlist order discard confirmation could not be displayed.");
+            return false;
+        }
+    }
+
+    private async Task SyncPlaylistOrderBeforeUnloadGuardAsync()
+    {
+        var shouldEnableGuard = HasUnsavedPlaylistOrderChanges;
+        if (PlaylistOrderBeforeUnloadGuardEnabled == shouldEnableGuard)
+        {
+            return;
+        }
+
+        try
+        {
+            var gridModule = await GetAdminGridModuleAsync();
+            await gridModule.InvokeVoidAsync(
+                "setBeforeUnloadGuard",
+                shouldEnableGuard,
+                T(
+                    "Jy het playlist volgorde veranderinge wat nog nie gestoor is nie.",
+                    "You have playlist order changes that have not been saved."));
+            PlaylistOrderBeforeUnloadGuardEnabled = shouldEnableGuard;
+        }
+        catch (JSDisconnectedException)
+        {
+            // Ignore disconnects during teardown/reconnect.
+        }
+        catch (Exception exception)
+        {
+            Logger.LogDebug(exception, "Playlist order beforeunload guard sync skipped.");
         }
     }
 
@@ -8351,6 +8845,11 @@
             Title = NormalizeDirtyText(editor.Title),
             Summary = NormalizeDirtyText(editor.Summary),
             Description = NormalizeDirtyText(editor.Description),
+            Synopsis = NormalizeDirtyText(editor.Synopsis),
+            LessonsText = NormalizeDirtyText(editor.LessonsText),
+            ValuesText = NormalizeDirtyText(editor.ValuesText),
+            ConversationQuestionsText = NormalizeDirtyText(editor.ConversationQuestionsText),
+            CharactersText = NormalizeDirtyText(editor.CharactersText),
             YouTubeUrl = NormalizeDirtyText(editor.YouTubeUrl),
             TestQuestions = BuildAdminStoryTestQuestions(editor.TestQuestions),
             CoverImagePath = NormalizeDirtyText(editor.CoverImagePath),
@@ -8377,6 +8876,11 @@
             Title = NormalizeDirtyText(editor.Title),
             Summary = NormalizeDirtyText(editor.Summary),
             Description = NormalizeDirtyText(editor.Description),
+            Synopsis = NormalizeDirtyText(editor.Synopsis),
+            LessonsText = NormalizeDirtyText(editor.LessonsText),
+            ValuesText = NormalizeDirtyText(editor.ValuesText),
+            ConversationQuestionsText = NormalizeDirtyText(editor.ConversationQuestionsText),
+            CharactersText = NormalizeDirtyText(editor.CharactersText),
             YouTubeUrl = NormalizeDirtyText(editor.YouTubeUrl),
             TestQuestions = BuildAdminStoryTestQuestions(editor.TestQuestions),
             AccessLevel = NormalizeDirtyText(editor.AccessLevel),
@@ -8891,6 +9395,11 @@
         public string Title { get; set; } = string.Empty;
         public string? Summary { get; set; }
         public string? Description { get; set; }
+        public string? Synopsis { get; set; }
+        public string? LessonsText { get; set; }
+        public string? ValuesText { get; set; }
+        public string? ConversationQuestionsText { get; set; }
+        public string? CharactersText { get; set; }
         public string? YouTubeUrl { get; set; }
         public List<EditableStoryTestQuestion> TestQuestions { get; set; } = [];
         public string? CoverImagePath { get; set; }
@@ -8920,6 +9429,11 @@
             Title = story.Title,
             Summary = story.Summary,
             Description = story.Description,
+            Synopsis = story.SummaryDetails?.Synopsis ?? story.Summary,
+            LessonsText = JoinAdminMultilineList(story.SummaryDetails?.Lessons),
+            ValuesText = JoinAdminMultilineList(story.SummaryDetails?.Values),
+            ConversationQuestionsText = JoinAdminMultilineList(story.SummaryDetails?.ConversationQuestions),
+            CharactersText = JoinAdminMultilineList(story.SummaryDetails?.Characters),
             YouTubeUrl = story.YouTubeUrl,
             TestQuestions = story.TestQuestions.Select(EditableStoryTestQuestion.From).ToList(),
             CoverImagePath = story.CoverImagePath,
@@ -8941,10 +9455,16 @@
         public string Title { get; set; } = string.Empty;
         public string? Summary { get; set; }
         public string? Description { get; set; }
+        public string? Synopsis { get; set; }
+        public string? LessonsText { get; set; }
+        public string? ValuesText { get; set; }
+        public string? ConversationQuestionsText { get; set; }
+        public string? CharactersText { get; set; }
         public string? YouTubeUrl { get; set; }
         public List<EditableStoryTestQuestion> TestQuestions { get; set; } = [];
         public string AccessLevel { get; set; } = "subscriber";
         public bool PublishNow { get; set; } = true;
+        public bool SendPublishedNotification { get; set; } = true;
         public IBrowserFile? CoverFile { get; set; }
         public string? CoverFileName { get; set; }
         public IBrowserFile? ThumbnailFile { get; set; }

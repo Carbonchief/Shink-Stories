@@ -303,7 +303,9 @@
                                     {
                                         var isDeletingDocument = DeletingDocumentIds.Contains(document.ResourceDocumentId);
                                         var isUpdatingDocumentTier = UpdatingDocumentTierIds.Contains(document.ResourceDocumentId);
-                                        var isDocumentBusy = isDeletingDocument || isUpdatingDocumentTier;
+                                        var isEditingDocument = EditingDocument?.ResourceDocumentId == document.ResourceDocumentId;
+                                        var isSavingThisDocument = isEditingDocument && IsSavingDocument;
+                                        var isDocumentBusy = isDeletingDocument || isUpdatingDocumentTier || isSavingThisDocument;
                                         <article class="resource-types-admin-document-item">
                                             <div class="resource-types-admin-document-copy">
                                                 <h5>@document.Title</h5>
@@ -330,6 +332,15 @@
                                                     <span class="sr-only">@(document.IsEnabled ? T("Aktief", "Enabled") : T("Af", "Disabled"))</span>
                                                 </span>
                                                 <button type="button"
+                                                        class="resource-types-admin-btn resource-types-admin-btn-secondary resource-types-admin-btn-icon"
+                                                        @onclick="() => BeginEditDocument(document)"
+                                                        disabled="@isDocumentBusy"
+                                                        aria-label='@T("Wysig dokument", "Edit document")'
+                                                        title='@T("Wysig dokument", "Edit document")'>
+                                                    <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
+                                                    <span class="sr-only">@T("Wysig dokument", "Edit document")</span>
+                                                </button>
+                                                <button type="button"
                                                         class="resource-types-admin-btn resource-types-admin-btn-danger resource-types-admin-btn-icon"
                                                         @onclick="() => DeleteDocumentAsync(document)"
                                                         disabled="@isDocumentBusy"
@@ -347,6 +358,69 @@
                                                     }
                                                 </button>
                                             </div>
+                                            @if (isEditingDocument && EditingDocument is not null)
+                                            {
+                                                <div class="resource-types-admin-document-edit-form">
+                                                    <label class="resource-types-admin-field">
+                                                        <span>@T("Titel", "Title")</span>
+                                                        <input type="text" @bind="EditingDocument.Title" disabled="@IsSavingDocument" />
+                                                    </label>
+
+                                                    <label class="resource-types-admin-field">
+                                                        <span>@T("Slug", "Slug")</span>
+                                                        <input type="text" @bind="EditingDocument.Slug" disabled="@IsSavingDocument" />
+                                                    </label>
+
+                                                    <label class="resource-types-admin-field resource-types-admin-document-edit-description">
+                                                        <span>@T("Beskrywing", "Description")</span>
+                                                        <textarea rows="3" @bind="EditingDocument.Description" disabled="@IsSavingDocument"></textarea>
+                                                    </label>
+
+                                                    <label class="resource-types-admin-field">
+                                                        <span>@T("Sorteer", "Sort order")</span>
+                                                        <input type="number" @bind="EditingDocument.SortOrder" disabled="@IsSavingDocument" />
+                                                    </label>
+
+                                                    <label class="resource-types-admin-document-tier-field">
+                                                        <span>@T("Toegangsvlak", "Access tier")</span>
+                                                        <select @bind="EditingDocument.RequiredTierCode" disabled="@IsSavingDocument">
+                                                            @foreach (var option in BuildDocumentTierOptions(document))
+                                                            {
+                                                                <option value="@option.Value">@option.Label</option>
+                                                            }
+                                                        </select>
+                                                    </label>
+
+                                                    <label class="resource-types-admin-checkbox">
+                                                        <input type="checkbox" @bind="EditingDocument.IsEnabled" disabled="@IsSavingDocument" />
+                                                        <span>@T("Wys op hulpbronne blad", "Show on resources page")</span>
+                                                    </label>
+
+                                                    <div class="resource-types-admin-document-edit-actions">
+                                                        <button type="button"
+                                                                class="resource-types-admin-btn resource-types-admin-btn-secondary"
+                                                                @onclick="CancelEditingDocument"
+                                                                disabled="@IsSavingDocument">
+                                                            @T("Kanselleer", "Cancel")
+                                                        </button>
+                                                        <button type="button"
+                                                                class="resource-types-admin-btn"
+                                                                @onclick="SaveEditingDocumentAsync"
+                                                                disabled="@IsSavingDocument">
+                                                            @if (IsSavingDocument)
+                                                            {
+                                                                <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+                                                                <span>@T("Stoor...", "Saving...")</span>
+                                                            }
+                                                            else
+                                                            {
+                                                                <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                                                                <span>@T("Stoor dokument", "Save document")</span>
+                                                            }
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            }
                                         </article>
                                     }
                                 </div>
