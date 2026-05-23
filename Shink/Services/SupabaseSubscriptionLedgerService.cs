@@ -420,6 +420,24 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             return new SubscriptionRepairResult(false, plan.Slug, IsPending: true);
         }
 
+        var paystackSubscriptionCode = PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
+            subscription.Provider,
+            subscription.SourceSystem,
+            subscription.ProviderPaymentId,
+            subscription.ProviderTransactionId);
+        var liveSubscriptionResult = await TryRefreshAccountRepairFromActivePaystackSubscriptionAsync(
+            candidate.Context.BaseUri,
+            candidate.Context.ApiKey,
+            subscription,
+            plan,
+            paystackSubscriptionCode,
+            nowUtc,
+            cancellationToken);
+        if (liveSubscriptionResult is not null)
+        {
+            return liveSubscriptionResult;
+        }
+
         var reference = BuildAccountRepairReference(subscription.SubscriptionId);
         var chargeResult = await _paystackCheckoutService.ChargeAuthorizationAsync(
             plan,
@@ -463,19 +481,25 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         }
 
         var nextRenewalAtUtc = (chargeResult.PaidAt ?? nowUtc).AddMonths(plan.BillingPeriodMonths);
-        var paystackSubscriptionCode = PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
-            subscription.Provider,
-            subscription.SourceSystem,
-            subscription.ProviderPaymentId,
-            subscription.ProviderTransactionId);
         if (!string.IsNullOrWhiteSpace(paystackSubscriptionCode))
         {
-            var subscriptionLookup = await _paystackCheckoutService.GetSubscriptionAsync(
-                paystackSubscriptionCode,
-                cancellationToken);
-            if (subscriptionLookup.IsSuccess && subscriptionLookup.NextPaymentDate is not null)
+            try
             {
-                nextRenewalAtUtc = subscriptionLookup.NextPaymentDate.Value;
+                var subscriptionLookup = await _paystackCheckoutService.GetSubscriptionAsync(
+                    paystackSubscriptionCode,
+                    cancellationToken);
+                if (subscriptionLookup.IsSuccess && subscriptionLookup.NextPaymentDate is not null)
+                {
+                    nextRenewalAtUtc = subscriptionLookup.NextPaymentDate.Value;
+                }
+            }
+            catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+            {
+                _logger.LogWarning(
+                    exception,
+                    "Paystack account repair renewal lookup failed after authorization charge. subscription_id={SubscriptionId} provider_payment_id={ProviderPaymentId}",
+                    subscription.SubscriptionId,
+                    paystackSubscriptionCode);
             }
         }
 
@@ -487,6 +511,105 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             cancellationToken);
 
         return new SubscriptionRepairResult(true, plan.Slug);
+    }
+
+    private async Task<SubscriptionRepairResult?> TryRefreshAccountRepairFromActivePaystackSubscriptionAsync(
+        Uri baseUri,
+        string apiKey,
+        SelfServiceSubscriptionRow subscription,
+        PaymentPlan plan,
+        string? paystackSubscriptionCode,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(paystackSubscriptionCode))
+        {
+            return null;
+        }
+
+        PaystackSubscriptionLookupResult liveSubscription;
+        try
+        {
+            liveSubscription = await _paystackCheckoutService.GetSubscriptionAsync(
+                paystackSubscriptionCode,
+                cancellationToken);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException)
+        {
+            _logger.LogWarning(
+                exception,
+                "Paystack account repair subscription refresh failed. subscription_id={SubscriptionId} provider_payment_id={ProviderPaymentId}",
+                subscription.SubscriptionId,
+                paystackSubscriptionCode);
+            return null;
+        }
+
+        if (!liveSubscription.IsSuccess ||
+            !string.Equals(liveSubscription.Status, "active", StringComparison.OrdinalIgnoreCase) ||
+            liveSubscription.NextPaymentDate is null ||
+            liveSubscription.NextPaymentDate <= nowUtc)
+        {
+            return null;
+        }
+
+        await MarkSubscriptionRecoveredByIdAsync(
+            baseUri,
+            apiKey,
+            subscription.SubscriptionId,
+            liveSubscription.NextPaymentDate.Value,
+            cancellationToken);
+        await ResolveActivePaymentRecoveryAfterAccountRepairAsync(
+            baseUri,
+            apiKey,
+            subscription.SubscriptionId,
+            nowUtc,
+            paystackSubscriptionCode,
+            cancellationToken);
+
+        return new SubscriptionRepairResult(true, plan.Slug);
+    }
+
+    private async Task ResolveActivePaymentRecoveryAfterAccountRepairAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriptionId,
+        DateTimeOffset resolvedAtUtc,
+        string recoveryReference,
+        CancellationToken cancellationToken)
+    {
+        var activeRecovery = await GetActivePaymentRecoveryAsync(
+            baseUri,
+            apiKey,
+            subscriptionId,
+            cancellationToken);
+        if (activeRecovery is null)
+        {
+            return;
+        }
+
+        await MarkPaymentRecoveryAuthorizationRetryAsync(
+            baseUri,
+            apiKey,
+            activeRecovery.RecoveryId,
+            resolvedAtUtc,
+            "succeeded",
+            recoveryReference,
+            null,
+            null,
+            cancellationToken);
+        await _subscriptionPaymentRecoveryEmailService.CancelSequenceAsync(
+            new SubscriptionPaymentRecoveryEmailSequence(
+                activeRecovery.ImmediateEmailId,
+                activeRecovery.WarningEmailId,
+                activeRecovery.SuspensionEmailId),
+            cancellationToken);
+        await ResolvePaymentRecoveryAsync(
+            baseUri,
+            apiKey,
+            activeRecovery.RecoveryId,
+            resolvedAtUtc,
+            "recovered",
+            cancellationToken);
     }
 
     private async Task<SubscriptionRepairResult?> TryResolveRecentAccountRepairResultAsync(

@@ -1176,6 +1176,334 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     }
 
     [TestMethod]
+    public async Task TryRepairPaidSubscriptionAsync_RefreshesActivePaystackSubscriptionInsteadOfChargingAgain()
+    {
+        var providerPaymentId = "SUB_upcoming_renewal";
+        var recoveryEmailService = new TrackingSubscriptionPaymentRecoveryEmailService();
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                        "email": "ouer@example.com",
+                        "disabled_at": null
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "{{providerPaymentId}}",
+                        "provider_transaction_id": null,
+                        "provider_token": "AUTH_retry",
+                        "next_renewal_at": null,
+                        "cancelled_at": null,
+                        "status": "active",
+                        "billing_amount_zar": 55.00
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "recovery_id": "recovery-one",
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "provider": "paystack",
+                        "provider_payment_id": "{{providerPaymentId}}",
+                        "first_failed_at": "2026-05-21T19:00:00Z",
+                        "grace_ends_at": "2026-05-25T19:00:00Z",
+                        "emails_scheduled_at": "2026-05-21T19:00:00Z",
+                        "immediate_email_id": "immediate-email",
+                        "warning_email_id": "warning-email",
+                        "suspension_email_id": "suspension-email"
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/paystack_checkout_sessions"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == $"/subscription/{providerPaymentId}")
+            {
+                return JsonResponse(
+                    $$"""
+                    {
+                      "status": true,
+                      "data": {
+                        "subscription_code": "{{providerPaymentId}}",
+                        "status": "active",
+                        "next_payment_date": "2099-06-21T19:38:00Z"
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/transaction/charge_authorization")
+            {
+                Assert.Fail("Account repair must not charge a saved authorization when Paystack already has an active upcoming renewal.");
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath is "/rest/v1/subscriptions" or "/rest/v1/subscription_payment_recoveries")
+            {
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler, recoveryEmailService);
+
+        var result = await service.TryRepairPaidSubscriptionAsync("ouer@example.com");
+
+        Assert.IsTrue(result.IsRecovered, result.ErrorMessage);
+        Assert.AreEqual("schink-stories-maandeliks", result.PlanSlug);
+        Assert.IsTrue(handler.PaystackLookups.Contains($"/subscription/{providerPaymentId}"));
+        Assert.AreEqual(0, handler.PaystackChargePayloads.Count);
+        Assert.IsTrue(
+            handler.SubscriptionPatchPayloads.Any(payload =>
+                payload.Contains("\"status\":\"active\"", StringComparison.Ordinal) &&
+                payload.Contains("\"next_renewal_at\":\"2099-06-21T19:38:00Z\"", StringComparison.Ordinal)),
+            "The account repair path should refresh local renewal state from Paystack instead of charging.");
+        Assert.IsTrue(
+            recoveryEmailService.CancelledSequences.Any(sequence =>
+                sequence.WarningEmailId == "warning-email" &&
+                sequence.SuspensionEmailId == "suspension-email"),
+            "Scheduled recovery emails should be cancelled when account repair confirms an active Paystack subscription.");
+        Assert.IsTrue(
+            handler.PaymentRecoveryPatchPayloads.Any(payload =>
+                payload.Contains("\"resolution\":\"recovered\"", StringComparison.Ordinal)),
+            "The active recovery row should be resolved once account repair refreshes from Paystack.");
+    }
+
+    [TestMethod]
+    public async Task TryRepairPaidSubscriptionAsync_FallsBackToRepairChargeWhenPaystackSubscriptionLookupFails()
+    {
+        var paystackChargeCalls = 0;
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                        "email": "ouer@example.com",
+                        "disabled_at": null
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "SUB_lookup_unavailable",
+                        "provider_transaction_id": null,
+                        "provider_token": "AUTH_retry",
+                        "next_renewal_at": null,
+                        "cancelled_at": null,
+                        "status": "active",
+                        "billing_amount_zar": 55.00
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/paystack_checkout_sessions"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == "/subscription/SUB_lookup_unavailable")
+            {
+                throw new HttpRequestException("Paystack unavailable");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/transaction/charge_authorization")
+            {
+                paystackChargeCalls++;
+                return JsonResponse(
+                    """
+                    {
+                      "status": false,
+                      "message": "Card declined",
+                      "data": {
+                        "status": "failed",
+                        "reference": "repair-lookup-unavailable"
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.TryRepairPaidSubscriptionAsync("ouer@example.com");
+
+        Assert.IsFalse(result.IsRecovered);
+        Assert.IsFalse(result.IsPending);
+        Assert.AreEqual("schink-stories-maandeliks", result.PlanSlug);
+        Assert.AreEqual(1, paystackChargeCalls);
+    }
+
+    [TestMethod]
+    public async Task TryRepairPaidSubscriptionAsync_RecoversAfterSuccessfulChargeWhenRenewalLookupFails()
+    {
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                        "email": "ouer@example.com",
+                        "disabled_at": null
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "SUB_lookup_unavailable",
+                        "provider_transaction_id": null,
+                        "provider_token": "AUTH_retry",
+                        "next_renewal_at": null,
+                        "cancelled_at": null,
+                        "status": "active",
+                        "billing_amount_zar": 55.00
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/paystack_checkout_sessions"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == "/subscription/SUB_lookup_unavailable")
+            {
+                throw new HttpRequestException("Paystack unavailable");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/transaction/charge_authorization")
+            {
+                return JsonResponse(
+                    """
+                    {
+                      "status": true,
+                      "data": {
+                        "id": 6095474321,
+                        "status": "success",
+                        "amount": 5500,
+                        "currency": "ZAR",
+                        "reference": "repair-lookup-unavailable",
+                        "paid_at": "2026-05-07T20:07:16Z"
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.TryRepairPaidSubscriptionAsync("ouer@example.com");
+
+        Assert.IsTrue(result.IsRecovered, result.ErrorMessage);
+        Assert.AreEqual("schink-stories-maandeliks", result.PlanSlug);
+        Assert.AreEqual(1, handler.PaystackChargePayloads.Count);
+        Assert.IsTrue(
+            handler.SubscriptionPatchPayloads.Any(payload =>
+                payload.Contains("\"status\":\"active\"", StringComparison.Ordinal) &&
+                payload.Contains("\"next_renewal_at\":\"2026-06-07T20:07:16Z\"", StringComparison.Ordinal)),
+            "A successful repair charge should still recover the account when Paystack renewal lookup is unavailable.");
+    }
+
+    [TestMethod]
     public async Task HasPendingPaystackRepairForTierAsync_BlocksFailedRepairSubscription()
     {
         var subscriptionQueryChecked = false;
