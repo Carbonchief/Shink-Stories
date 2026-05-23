@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Shink.Components.Content;
 
 namespace Shink.Services;
 
@@ -36,11 +37,19 @@ public sealed partial class SupabaseSubscriptionLedgerService
 
         return new SubscriptionCodeSignupPreviewResult(
             true,
+            Message: BuildDiscountPreviewMessage(resolution.Code, resolution.Mapping),
             ResolvedTierCode: resolution.Mapping.TierCode,
             ResolvedTierName: resolution.TierName,
             AccessEndsAtUtc: ResolveDiscountCodeAccessEndsAt(DateTimeOffset.UtcNow, resolution.Mapping),
             CodeExpiresAtUtc: resolution.Code.ExpiresAt,
             BypassesPayment: resolution.Code.BypassPayment,
+            DiscountKind: NormalizeStoredDiscountKind(resolution.Code.DiscountKind),
+            DiscountPercent: resolution.Code.DiscountPercent,
+            DiscountDuration: NormalizeStoredDiscountDuration(resolution.Code.DiscountDuration),
+            DiscountPaymentCount: resolution.Code.DiscountPaymentCount,
+            OriginalAmountZar: ResolveDiscountPreviewOriginalAmount(resolution.Code, resolution.Mapping),
+            DiscountedAmountZar: ResolveDiscountPreviewDiscountedAmount(resolution.Code, resolution.Mapping),
+            DurationDescription: BuildDiscountDurationDescription(resolution.Code),
             TierOptions: resolution.TierOptions);
     }
 
@@ -73,6 +82,11 @@ public sealed partial class SupabaseSubscriptionLedgerService
         if (!resolution.IsSuccess || resolution.Code is null || resolution.Mapping is null)
         {
             return new SubscriptionCodeApplicationResult(false, resolution.ErrorMessage ?? "Kode kon nie toegepas word nie.");
+        }
+
+        if (!string.Equals(NormalizeStoredDiscountKind(resolution.Code.DiscountKind), SubscriptionDiscountKinds.FreeAccess, StringComparison.Ordinal))
+        {
+            return new SubscriptionCodeApplicationResult(false, "Hierdie kode gee afslag op Paystack en kan nie gratis toegang aktiveer nie.");
         }
 
         var context = await TryResolveSelfServiceContextAsync(normalizedEmail, cancellationToken);
@@ -145,16 +159,20 @@ public sealed partial class SupabaseSubscriptionLedgerService
             return new DiscountCodeSelectionResolution(false, ErrorMessage: "Supabase SecretKey is not configured.");
         }
 
-        var bypassEnabled = await IsSignupCodeBypassEnabledAsync(baseUri, apiKey, cancellationToken);
-        if (!bypassEnabled)
-        {
-            return new DiscountCodeSelectionResolution(false, ErrorMessage: "Kodebetalings is tans afgeskakel.");
-        }
-
         var code = await FetchDiscountCodeByNormalizedCodeAsync(baseUri, apiKey, normalizedCode, cancellationToken);
         if (code is null)
         {
             return new DiscountCodeSelectionResolution(false, ErrorMessage: "Daardie kode bestaan nie of is nie beskikbaar nie.");
+        }
+
+        var discountKind = NormalizeStoredDiscountKind(code.DiscountKind);
+        if (string.Equals(discountKind, SubscriptionDiscountKinds.FreeAccess, StringComparison.Ordinal))
+        {
+            var bypassEnabled = await IsSignupCodeBypassEnabledAsync(baseUri, apiKey, cancellationToken);
+            if (!bypassEnabled)
+            {
+                return new DiscountCodeSelectionResolution(false, ErrorMessage: "Kodebetalings is tans afgeskakel.");
+            }
         }
 
         if (!code.IsActive)
@@ -172,9 +190,16 @@ public sealed partial class SupabaseSubscriptionLedgerService
             return new DiscountCodeSelectionResolution(false, ErrorMessage: "Hierdie kode het verval.");
         }
 
-        if (!code.BypassPayment)
+        if (string.Equals(discountKind, SubscriptionDiscountKinds.FreeAccess, StringComparison.Ordinal) &&
+            !code.BypassPayment)
         {
             return new DiscountCodeSelectionResolution(false, ErrorMessage: "Hierdie kode kan nie nou betaling omseil nie.");
+        }
+
+        if (string.Equals(discountKind, SubscriptionDiscountKinds.Percentage, StringComparison.Ordinal) &&
+            code.DiscountPercent is not (> 0m and <= 100m))
+        {
+            return new DiscountCodeSelectionResolution(false, ErrorMessage: "Hierdie afslagkode is nie volledig opgestel nie.");
         }
 
         var mappings = await FetchDiscountCodeTierMappingsAsync(baseUri, apiKey, code.DiscountCodeId, cancellationToken);
@@ -215,6 +240,18 @@ public sealed partial class SupabaseSubscriptionLedgerService
                 false,
                 ErrorMessage: "Kies asseblief 'n geldige intekeningsoort vir hierdie kode.",
                 TierOptions: tierOptions);
+        }
+
+        if (string.Equals(discountKind, SubscriptionDiscountKinds.Percentage, StringComparison.Ordinal))
+        {
+            var plan = PaymentPlanCatalog.FindByTierCode(resolvedMapping.TierCode);
+            if (plan is null || !plan.IsSubscription || plan.IsSchoolPlan || string.Equals(plan.TierCode, GratisTierCode, StringComparison.OrdinalIgnoreCase))
+            {
+                return new DiscountCodeSelectionResolution(
+                    false,
+                    ErrorMessage: "Hierdie afslagkode werk net op betaalde Paystack-intekenplanne.",
+                    TierOptions: tierOptions);
+            }
         }
 
         return new DiscountCodeSelectionResolution(
@@ -295,6 +332,74 @@ public sealed partial class SupabaseSubscriptionLedgerService
             _ => string.Empty
         };
 
+    private static string NormalizeStoredDiscountKind(string? value) =>
+        string.Equals(value, SubscriptionDiscountKinds.Percentage, StringComparison.OrdinalIgnoreCase)
+            ? SubscriptionDiscountKinds.Percentage
+            : SubscriptionDiscountKinds.FreeAccess;
+
+    private static string NormalizeStoredDiscountDuration(string? value) =>
+        string.Equals(value, SubscriptionDiscountDurations.FirstPayments, StringComparison.OrdinalIgnoreCase)
+            ? SubscriptionDiscountDurations.FirstPayments
+            : SubscriptionDiscountDurations.Lifetime;
+
+    private static decimal? ResolveDiscountPreviewOriginalAmount(DiscountCodeRow code, DiscountCodeTierMappingRow mapping)
+    {
+        if (!string.Equals(NormalizeStoredDiscountKind(code.DiscountKind), SubscriptionDiscountKinds.Percentage, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        return PaymentPlanCatalog.FindByTierCode(mapping.TierCode)?.Amount;
+    }
+
+    private static decimal? ResolveDiscountPreviewDiscountedAmount(DiscountCodeRow code, DiscountCodeTierMappingRow mapping)
+    {
+        var originalAmount = ResolveDiscountPreviewOriginalAmount(code, mapping);
+        return originalAmount is null || code.DiscountPercent is null
+            ? null
+            : CalculateDiscountedAmount(originalAmount.Value, code.DiscountPercent.Value);
+    }
+
+    internal static decimal CalculateDiscountedAmount(decimal originalAmount, decimal percent)
+    {
+        var discountMultiplier = Math.Max(0m, 100m - percent) / 100m;
+        return decimal.Round(Math.Max(0m, originalAmount) * discountMultiplier, 2, MidpointRounding.AwayFromZero);
+    }
+
+    private static string? BuildDiscountPreviewMessage(DiscountCodeRow code, DiscountCodeTierMappingRow mapping)
+    {
+        if (!string.Equals(NormalizeStoredDiscountKind(code.DiscountKind), SubscriptionDiscountKinds.Percentage, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var originalAmount = ResolveDiscountPreviewOriginalAmount(code, mapping);
+        var discountedAmount = ResolveDiscountPreviewDiscountedAmount(code, mapping);
+        return originalAmount is null || discountedAmount is null || code.DiscountPercent is null
+            ? null
+            : $"{code.DiscountPercent:0.##}% afslag: R{originalAmount:0.00} word R{discountedAmount:0.00}.";
+    }
+
+    private static string? BuildDiscountDurationDescription(DiscountCodeRow code)
+    {
+        if (!string.Equals(NormalizeStoredDiscountKind(code.DiscountKind), SubscriptionDiscountKinds.Percentage, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        return NormalizeStoredDiscountDuration(code.DiscountDuration) switch
+        {
+            SubscriptionDiscountDurations.FirstPayments => code.DiscountPaymentCount switch
+            {
+                1 => "Afslag geld vir die eerste betaling.",
+                2 => "Afslag geld vir die eerste 2 betalings.",
+                3 => "Afslag geld vir die eerste 3 betalings.",
+                _ => "Afslag geld vir die eerste betalings."
+            },
+            _ => "Afslag geld vir die volle leeftyd van die intekening."
+        };
+    }
+
     private async Task<bool> IsSignupCodeBypassEnabledAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
     {
         var uri = new Uri(
@@ -332,7 +437,7 @@ public sealed partial class SupabaseSubscriptionLedgerService
         var uri = new Uri(
             baseUri,
             "rest/v1/subscription_discount_codes" +
-            "?select=discount_code_id,code,normalized_code,starts_at,expires_at,max_uses,one_use_per_user,bypass_payment,is_active" +
+            "?select=discount_code_id,code,normalized_code,starts_at,expires_at,max_uses,one_use_per_user,bypass_payment,discount_kind,discount_percent,discount_duration,discount_payment_count,is_active" +
             $"&normalized_code=eq.{Uri.EscapeDataString(normalizedCode)}&limit=1");
         return (await FetchRowsAsync<DiscountCodeRow>(uri, apiKey, cancellationToken)).FirstOrDefault();
     }
@@ -470,7 +575,8 @@ public sealed partial class SupabaseSubscriptionLedgerService
         DateTimeOffset redeemedAtUtc,
         DateTimeOffset? accessEndsAtUtc,
         string? grantedSubscriptionId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool bypassedPayment = true)
     {
         var payload = new[]
         {
@@ -484,7 +590,7 @@ public sealed partial class SupabaseSubscriptionLedgerService
                 access_expires_at = accessEndsAtUtc?.UtcDateTime,
                 granted_subscription_id = string.IsNullOrWhiteSpace(grantedSubscriptionId) ? null : grantedSubscriptionId,
                 source_system = "shink_app",
-                bypassed_payment = true
+                bypassed_payment = bypassedPayment
             }
         };
 
@@ -564,6 +670,18 @@ public sealed partial class SupabaseSubscriptionLedgerService
 
         [JsonPropertyName("bypass_payment")]
         public bool BypassPayment { get; set; }
+
+        [JsonPropertyName("discount_kind")]
+        public string? DiscountKind { get; set; }
+
+        [JsonPropertyName("discount_percent")]
+        public decimal? DiscountPercent { get; set; }
+
+        [JsonPropertyName("discount_duration")]
+        public string? DiscountDuration { get; set; }
+
+        [JsonPropertyName("discount_payment_count")]
+        public int? DiscountPaymentCount { get; set; }
 
         [JsonPropertyName("is_active")]
         public bool IsActive { get; set; }

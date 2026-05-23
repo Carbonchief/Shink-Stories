@@ -27,12 +27,32 @@ public class SignupSourceTests
         var signup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Signup.razor"));
         var css = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Signup.razor.css"));
 
-        StringAssert.Contains(signup, "As jou kode geldig is, slaan ons PayStack vir nou oor en aktiveer jou toegang direk.");
+        StringAssert.Contains(signup, "As jou kode geldig is, wys ons die afslag voor jy met Paystack betaal.");
         StringAssert.Contains(signup, "placeholder=\"Voer promosiekode in\"");
         Assert.IsFalse(signup.Contains("placeholder=\"Voer jou kode in\"", StringComparison.Ordinal));
         Assert.IsFalse(signup.Contains("slaan ons PayFast vir nou oor", StringComparison.Ordinal));
         StringAssert.Contains(css, ".signup-discount-code-field");
+        StringAssert.Contains(css, ".signup-discount-preview");
         StringAssert.Contains(css, "margin-top: 1rem;");
+    }
+
+    [TestMethod]
+    public void SignupDiscountPreviewRevalidatesCodeAndShowsPriceChange()
+    {
+        var signup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Signup.razor"));
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+        var js = File.ReadAllText(GetRepoPath("Shink", "wwwroot", "js", "auth-browser.js"));
+
+        StringAssert.Contains(program, "/api/auth/signup/discount-preview");
+        StringAssert.Contains(signup, "PreviewDiscountCodeAsync");
+        StringAssert.Contains(signup, "await PreviewDiscountCodeAsync()");
+        StringAssert.Contains(signup, "DiscountPreview");
+        StringAssert.Contains(signup, "@GetSelectedPlanPriceDisplay()");
+        StringAssert.Contains(signup, "Gewone prys");
+        StringAssert.Contains(signup, "Afslag");
+        StringAssert.Contains(signup, "Jou prys");
+        StringAssert.Contains(signup, "RemoveDiscountCode");
+        StringAssert.Contains(js, "postJson");
     }
 
     [TestMethod]

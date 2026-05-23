@@ -140,6 +140,10 @@
                                 <strong>@FormatPlanAmount(plan)</strong>
                                 <span>@GetPlanBillingLabel(plan)</span>
                             </span>
+                            @if (IsSelectedPlan(plan) && HasValidPercentageDiscount)
+                            {
+                                <span class="membership-discounted-price">@GetSelectedPlanPriceDisplay()</span>
+                            }
                             @if (IsYearlyAllStoriesPlan(plan))
                             {
                                 <span class="membership-save-badge membership-save-badge-inline">Save 2 months</span>
@@ -157,7 +161,7 @@
 
             @if (SelectedPlan is not null)
             {
-                <p class="membership-total">Totaal om vandag te betaal: <strong>@FormatPlanAmount(SelectedPlan)</strong></p>
+                <p class="membership-total">Totaal om vandag te betaal: <strong>@GetSelectedPlanPriceDisplay()</strong></p>
             }
 
             <div class="signup-field signup-field-full signup-discount-code-field">
@@ -167,11 +171,48 @@
                            autocomplete="off"
                            placeholder="Voer promosiekode in"
                            aria-label="Kode of voucher"
-                           @bind-Value="SignUpForm.DiscountCode" />
+                           @bind-Value="SignUpForm.DiscountCode"
+                           @onblur="PreviewDiscountCodeAsync" />
                 <ValidationMessage class="invalid-feedback d-block" For="@(() => SignUpForm.DiscountCode)" />
                 <p class="signup-discount-code-help">
-                    As jou kode geldig is, slaan ons PayStack vir nou oor en aktiveer jou toegang direk.
+                    As jou kode geldig is, wys ons die afslag voor jy met Paystack betaal.
                 </p>
+                <div class="signup-discount-actions">
+                    <button type="button" class="signup-discount-apply" @onclick="PreviewDiscountCodeAsync" disabled="@IsPreviewingDiscount">
+                        @(IsPreviewingDiscount ? "Kontroleer..." : "Pas kode toe")
+                    </button>
+                    @if (!string.IsNullOrWhiteSpace(SignUpForm.DiscountCode))
+                    {
+                        <button type="button" class="signup-discount-remove" @onclick="RemoveDiscountCode">Verwyder</button>
+                    }
+                </div>
+                @if (DiscountPreview is not null)
+                {
+                    <div class="@GetDiscountPreviewClass()" role="status" aria-live="polite">
+                        @if (HasValidPercentageDiscount)
+                        {
+                            <dl class="signup-discount-preview-lines">
+                                <div>
+                                    <dt>Gewone prys</dt>
+                                    <dd>@FormatCurrency(DiscountPreview.OriginalAmountZar)</dd>
+                                </div>
+                                <div>
+                                    <dt>Afslag</dt>
+                                    <dd>@FormatDiscountLine()</dd>
+                                </div>
+                                <div>
+                                    <dt>Jou prys</dt>
+                                    <dd>@FormatCurrency(DiscountPreview.DiscountedAmountZar)</dd>
+                                </div>
+                            </dl>
+                            <p>@DiscountPreview.DurationDescription</p>
+                        }
+                        else
+                        {
+                            <p>@(DiscountPreview.Message ?? DiscountPreview.ErrorMessage ?? "Kode is nie geldig vir hierdie plan nie.")</p>
+                        }
+                    </div>
+                }
             </div>
 
         </aside>
@@ -239,8 +280,15 @@
     private bool SignUpSucceeded { get; set; }
     private bool ShowAccountCreatedPopup { get; set; }
     private bool IsSchoolOptionsSignupFlow { get; set; }
+    private bool IsPreviewingDiscount { get; set; }
     private string? StatusMessage { get; set; }
     private PaymentPlan? SelectedPlan { get; set; }
+    private SignupDiscountPreviewResponse? DiscountPreview { get; set; }
+    private bool HasValidPercentageDiscount =>
+        DiscountPreview?.IsValid == true &&
+        string.Equals(DiscountPreview.DiscountKind, SubscriptionDiscountKinds.Percentage, StringComparison.Ordinal) &&
+        DiscountPreview.DiscountedAmountZar is not null &&
+        DiscountPreview.OriginalAmountZar is not null;
     private string SignInHref => BuildSignInHref(GetSafeReturnUrl(ReturnUrl), GetSelectedPlanCheckoutPath());
     private IReadOnlyList<PaymentPlan> AvailablePlans =>
         IsSchoolOptionsSignupFlow ? PaymentPlanCatalog.SchoolPlans : HouseholdPlans;
@@ -397,6 +445,7 @@
     {
         SignUpForm = new SignUpFormModel();
         FormEditContext = new EditContext(SignUpForm);
+        DiscountPreview = null;
     }
 
     private void CloseAccountCreatedPopup()
@@ -404,15 +453,53 @@
         ShowAccountCreatedPopup = false;
     }
 
-    private void SelectPlan(PaymentPlan plan)
+    private async Task SelectPlan(PaymentPlan plan)
     {
         if (IsSelectedPlan(plan))
         {
             SelectedPlan = null;
+            DiscountPreview = null;
             return;
         }
 
         SelectedPlan = plan;
+        await PreviewDiscountCodeAsync();
+    }
+
+    private async Task PreviewDiscountCodeAsync()
+    {
+        await SyncSignUpInputsFromDomAsync();
+        if (string.IsNullOrWhiteSpace(SignUpForm.DiscountCode))
+        {
+            DiscountPreview = null;
+            return;
+        }
+
+        IsPreviewingDiscount = true;
+        try
+        {
+            var authModule = await EnsureAuthModuleAsync();
+            DiscountPreview = await authModule.InvokeAsync<SignupDiscountPreviewResponse>(
+                "postJson",
+                "/api/auth/signup/discount-preview",
+                new SignupDiscountPreviewRequest(SignUpForm.DiscountCode.Trim(), SelectedPlan?.TierCode));
+        }
+        catch
+        {
+            DiscountPreview = new SignupDiscountPreviewResponse(
+                IsValid: false,
+                Message: "Kon nie die kode nou kontroleer nie. Die prys bly onveranderd.");
+        }
+        finally
+        {
+            IsPreviewingDiscount = false;
+        }
+    }
+
+    private void RemoveDiscountCode()
+    {
+        SignUpForm.DiscountCode = string.Empty;
+        DiscountPreview = null;
     }
 
     private Task<string> GetRedirectTargetForAuthenticatedUserAsync(AuthenticationState authState)
@@ -476,9 +563,20 @@
 
         var checkoutPath = $"/betaal/{Uri.EscapeDataString(SelectedPlan.Slug)}";
         var requestedReturnPath = ResolveRequestedReturnPath();
-        return string.IsNullOrWhiteSpace(requestedReturnPath)
+        var query = new Dictionary<string, string?>();
+        if (!string.IsNullOrWhiteSpace(requestedReturnPath))
+        {
+            query["returnUrl"] = requestedReturnPath;
+        }
+
+        if (HasValidPercentageDiscount && !string.IsNullOrWhiteSpace(SignUpForm.DiscountCode))
+        {
+            query["discountCode"] = SignUpForm.DiscountCode.Trim();
+        }
+
+        return query.Count == 0
             ? checkoutPath
-            : QueryHelpers.AddQueryString(checkoutPath, "returnUrl", requestedReturnPath);
+            : QueryHelpers.AddQueryString(checkoutPath, query);
     }
 
     private async Task<IJSObjectReference> EnsureAuthModuleAsync()
@@ -731,6 +829,30 @@
     private static string FormatPlanAmount(PaymentPlan plan) =>
         $"R {plan.Amount:0.00}";
 
+    private string GetSelectedPlanPriceDisplay() =>
+        HasValidPercentageDiscount
+            ? FormatCurrency(DiscountPreview?.DiscountedAmountZar)
+            : SelectedPlan is null ? "Gratis" : FormatPlanAmount(SelectedPlan);
+
+    private static string FormatCurrency(decimal? amount) =>
+        amount is null ? "Onbekend" : amount.Value <= 0m ? "Gratis" : $"R {amount.Value:0.00}";
+
+    private string FormatDiscountLine()
+    {
+        if (!HasValidPercentageDiscount || DiscountPreview is null)
+        {
+            return "Geen";
+        }
+
+        var saved = Math.Max(0m, (DiscountPreview.OriginalAmountZar ?? 0m) - (DiscountPreview.DiscountedAmountZar ?? 0m));
+        return $"{DiscountPreview.DiscountPercent:0.##}% afslag (-{FormatCurrency(saved)})";
+    }
+
+    private string GetDiscountPreviewClass() =>
+        HasValidPercentageDiscount
+            ? "signup-discount-preview signup-discount-preview-valid"
+            : "signup-discount-preview signup-discount-preview-invalid";
+
     private static string GetPlanDescription(PaymentPlan plan) =>
         plan.TierCode switch
         {
@@ -795,6 +917,25 @@
         string Password,
         string? SelectedTierCode,
         string? DiscountCode);
+
+    private sealed record SignupDiscountPreviewRequest(
+        string? DiscountCode,
+        string? SelectedTierCode);
+
+    private sealed record SignupDiscountPreviewResponse(
+        bool IsValid,
+        string? Message = null,
+        string? ErrorMessage = null,
+        string? ResolvedTierCode = null,
+        string? ResolvedTierName = null,
+        bool BypassesPayment = false,
+        string DiscountKind = SubscriptionDiscountKinds.FreeAccess,
+        decimal? DiscountPercent = null,
+        string DiscountDuration = SubscriptionDiscountDurations.Lifetime,
+        int? DiscountPaymentCount = null,
+        decimal? OriginalAmountZar = null,
+        decimal? DiscountedAmountZar = null,
+        string? DurationDescription = null);
 
     private sealed record AuthBrowserResponse(bool Ok, int Status, string? Message, string? RedirectPath, bool CodeApplied);
 

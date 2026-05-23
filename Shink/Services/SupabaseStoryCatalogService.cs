@@ -20,6 +20,7 @@ public sealed class SupabaseStoryCatalogService(
     private static readonly TimeSpan CacheDuration = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan FavouritesCacheDuration = TimeSpan.FromSeconds(30);
     private const int SoundbiteMaxDurationSeconds = 60;
+    private const string SpeellysteSystemKey = "speellyste";
     private const string FavouritesSystemKey = "favourites";
     private static readonly string[] FavouriteTableNames = ["story_favorites", "story_favourites"];
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -674,6 +675,11 @@ public sealed class SupabaseStoryCatalogService(
         row.IsSystemPlaylist &&
         string.Equals(NormalizeSystemKey(row.SystemKey), FavouritesSystemKey, StringComparison.Ordinal);
 
+    private static bool IsSpeellysteSystemPlaylist(StoryPlaylistRow row) =>
+        row.IsEnabled &&
+        row.IsSystemPlaylist &&
+        string.Equals(NormalizeSystemKey(row.SystemKey), SpeellysteSystemKey, StringComparison.Ordinal);
+
     private static string? NormalizeSystemKey(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -1029,6 +1035,12 @@ public sealed class SupabaseStoryCatalogService(
                 continue;
             }
 
+            if (IsSpeellysteSystemPlaylist(playlistRow))
+            {
+                playlists.Add(BuildSpeellysteSystemPlaylist(playlistRow));
+                continue;
+            }
+
             if (string.Equals(playlistRow.Slug, "all-stories", StringComparison.OrdinalIgnoreCase))
             {
                 allStoriesConfig = playlistRow;
@@ -1126,6 +1138,23 @@ public sealed class SupabaseStoryCatalogService(
             .ThenBy(playlist => playlist.Title, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
+
+    private static StoryPlaylist BuildSpeellysteSystemPlaylist(StoryPlaylistRow playlistRow) =>
+        new(
+            Slug: string.IsNullOrWhiteSpace(playlistRow.Slug) ? SpeellysteSystemKey : playlistRow.Slug.Trim(),
+            Title: string.IsNullOrWhiteSpace(playlistRow.Title) ? "Speellyste" : playlistRow.Title.Trim(),
+            Description: NormalizeOptionalText(playlistRow.Description),
+            SortOrder: playlistRow.SortOrder,
+            Stories: Array.Empty<StoryItem>(),
+            ShowOnHome: false,
+            ShowShowcaseImageOnLuisterPage: false,
+            LogoImagePath: NormalizeOptionalText(playlistRow.LogoImagePath),
+            BackdropImagePath: NormalizeOptionalText(playlistRow.BackdropImagePath),
+            ShowcaseImagePath: NormalizeOptionalText(playlistRow.ShowcaseImagePath),
+            IncludeInSpeellysteCarousel: false,
+            IsSystemPlaylist: true,
+            SystemKey: SpeellysteSystemKey,
+            ShowcaseStorySlug: null);
 
     private static IReadOnlyList<StoryPlaylist> BuildDefaultLuisterPlaylists(IReadOnlyList<StoryCatalogRow> storyRows)
     {

@@ -88,7 +88,8 @@ public class PaystackWebhookHardeningTests
         StringAssert.Contains(upsertBlock, "ResolvePaystackBillingAmountZar(data, plan)");
         StringAssert.Contains(upsertBlock, "billingAmountZar: billingAmountZar");
         StringAssert.Contains(upsertBlock, "billingPeriodMonths: plan.BillingPeriodMonths");
-        StringAssert.Contains(upsertBlock, "billingAmountSource: \"paystack_payload\"");
+        StringAssert.Contains(upsertBlock, ": \"paystack_payload\"");
+        StringAssert.Contains(upsertBlock, "SubscriptionRecurringBillingModes.PaystackAuthorizationSchedule");
 
         StringAssert.Contains(ledgerService, "private static decimal ResolvePaystackBillingAmountZar(JsonElement data, PaymentPlan plan)");
         StringAssert.Contains(ledgerService, "TryReadStringAsDecimal(data, \"amount\")");

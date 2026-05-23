@@ -1,4 +1,5 @@
 using System.Net;
+using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Http;
@@ -264,6 +265,85 @@ public sealed class PaystackCheckoutSessionReuseTests
     }
 
     [TestMethod]
+    public async Task InitializeDiscountedAuthorizationCheckoutAsync_ChargesDiscountedAmountWithoutPlanCode()
+    {
+        JsonElement? initializePayload = null;
+        var handler = new RecordingHandler(request =>
+        {
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/paystack_checkout_sessions")
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method.Method == "PATCH" &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/paystack_checkout_sessions")
+            {
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/transaction/initialize")
+            {
+                initializePayload = JsonDocument.Parse(request.Content!.ReadAsStringAsync().Result).RootElement.Clone();
+
+                return JsonResponse(
+                    """
+                    {
+                      "status": true,
+                      "data": {
+                        "authorization_url": "https://checkout.paystack.com/discounted-session",
+                        "reference": "discounted-reference"
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/paystack_checkout_sessions")
+            {
+                var payload = JsonDocument.Parse(request.Content!.ReadAsStringAsync().Result).RootElement;
+                Assert.AreEqual("subscription_discount", payload.GetProperty("metadata").GetProperty("checkout_kind").GetString());
+                Assert.AreEqual("TENOFF", payload.GetProperty("metadata").GetProperty("discount_code").GetString());
+                return JsonResponse("[]");
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+        });
+
+        var service = CreateService(new HttpClient(handler));
+        var discount = new SubscriptionCodeSignupPreviewResult(
+            IsValid: true,
+            Message: null,
+            ResolvedTierCode: "all_stories_monthly",
+            BypassesPayment: false,
+            DiscountKind: SubscriptionDiscountKinds.Percentage,
+            DiscountPercent: 10m,
+            DiscountDuration: SubscriptionDiscountDurations.Lifetime,
+            DiscountPaymentCount: null,
+            OriginalAmountZar: 55m,
+            DiscountedAmountZar: 49.50m,
+            DurationDescription: "10% afslag vir die volle leeftyd van die intekening.");
+
+        var result = await service.InitializeDiscountedAuthorizationCheckoutAsync(
+            PaymentPlanCatalog.FindBySlug("schink-stories-maandeliks")!,
+            "TENOFF",
+            discount,
+            CreateHttpContext(),
+            returnUrl: "/luister");
+
+        Assert.IsTrue(result.IsSuccess);
+        Assert.AreEqual("https://checkout.paystack.com/discounted-session", result.AuthorizationUrl);
+        Assert.IsTrue(initializePayload.HasValue);
+        Assert.AreEqual(4950L, initializePayload.Value.GetProperty("amount").GetInt64());
+        Assert.IsFalse(initializePayload.Value.TryGetProperty("plan", out _), "Discounted authorization checkout must not send a Paystack plan code.");
+        Assert.AreEqual("subscription_discount", initializePayload.Value.GetProperty("metadata").GetProperty("checkout_kind").GetString());
+        Assert.AreEqual(55m, initializePayload.Value.GetProperty("metadata").GetProperty("original_amount_zar").GetDecimal());
+        Assert.AreEqual(49.50m, initializePayload.Value.GetProperty("metadata").GetProperty("discounted_amount_zar").GetDecimal());
+        Assert.AreEqual(true, initializePayload.Value.GetProperty("metadata").GetProperty("requires_reusable_authorization").GetBoolean());
+    }
+
+    [TestMethod]
     public void PaystackCheckoutSessionMigration_CreatesRlsProtectedSessionTable()
     {
         var migration = File.ReadAllText(GetRepoPath(
@@ -276,6 +356,48 @@ public sealed class PaystackCheckoutSessionReuseTests
         StringAssert.Contains(migration, "alter table public.paystack_checkout_sessions enable row level security");
         StringAssert.Contains(migration, "paystack_checkout_sessions_status_check");
         StringAssert.Contains(migration, "uq_paystack_checkout_sessions_pending_subscription");
+    }
+
+    [TestMethod]
+    public void PaystackPercentageDiscountMigration_AddsBillingScheduleAndAttemptGuards()
+    {
+        var migration = File.ReadAllText(GetRepoPath(
+            "Shink",
+            "Database",
+            "migrations",
+            "20260522_paystack_percentage_discount_codes.sql"));
+
+        StringAssert.Contains(migration, "discount_kind");
+        StringAssert.Contains(migration, "discount_percent");
+        StringAssert.Contains(migration, "discount_duration");
+        StringAssert.Contains(migration, "discount_payment_count");
+        StringAssert.Contains(migration, "recurring_billing_mode");
+        StringAssert.Contains(migration, "paystack_authorization_schedule");
+        StringAssert.Contains(migration, "discount_payments_used");
+        StringAssert.Contains(migration, "authorization_reusable");
+        StringAssert.Contains(migration, "create table if not exists public.subscription_recurring_charge_attempts");
+        StringAssert.Contains(migration, "unique (reference)");
+    }
+
+    [TestMethod]
+    public void PaystackAuthorizationScheduleWorker_IsDedicatedAndSkipsDuplicateAttemptReferences()
+    {
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+        var recoveryWorker = File.ReadAllText(GetRepoPath("Shink", "Services", "SubscriptionPaymentRecoveryWorker.cs"));
+        var billingWorker = File.ReadAllText(GetRepoPath("Shink", "Services", "PaystackAuthorizationSubscriptionBillingWorker.cs"));
+        var scheduleService = File.ReadAllText(GetRepoPath(
+            "Shink",
+            "Services",
+            "SupabaseSubscriptionLedgerService.PaystackAuthorizationSchedule.cs"));
+
+        StringAssert.Contains(program, "AddHostedService<PaystackAuthorizationSubscriptionBillingWorker>");
+        StringAssert.Contains(billingWorker, "ProcessPaystackAuthorizationScheduleAsync");
+        Assert.IsFalse(
+            recoveryWorker.Contains("ProcessPaystackAuthorizationScheduleAsync", StringComparison.Ordinal),
+            "Payment recovery worker must not also process recurring authorization charges.");
+        Assert.IsFalse(
+            scheduleService.Contains("HttpStatusCode.Conflict", StringComparison.Ordinal),
+            "Duplicate recurring charge attempt references must skip charging instead of being treated as inserted.");
     }
 
     private static PaystackCheckoutService CreateService(HttpClient httpClient) =>
@@ -303,6 +425,9 @@ public sealed class PaystackCheckoutSessionReuseTests
         var context = new DefaultHttpContext();
         context.Request.Scheme = "https";
         context.Request.Host = new HostString("schink.example.com");
+        context.User = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(ClaimTypes.Email, "ouer@example.com")],
+            "test"));
         return context;
     }
 

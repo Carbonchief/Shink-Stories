@@ -235,3 +235,39 @@ export async function postAuthJson(endpoint, body) {
         };
     }
 }
+
+export async function postJson(endpoint, body) {
+    try {
+        const request = {
+            method: "POST",
+            credentials: "same-origin"
+        };
+
+        if (body !== undefined) {
+            request.headers = {
+                "Content-Type": "application/json"
+            };
+            request.body = JSON.stringify(body);
+        }
+
+        const response = await fetch(endpoint, request);
+        let payload = {};
+        try {
+            const json = await response.json();
+            payload = isObject(json) ? json : {};
+        } catch {
+            payload = {};
+        }
+
+        return {
+            ok: response.ok,
+            status: response.status,
+            ...payload
+        };
+    } catch {
+        return {
+            ok: false,
+            status: 0
+        };
+    }
+}

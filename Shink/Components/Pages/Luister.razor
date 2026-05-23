@@ -104,54 +104,20 @@ else if (FilteredLuisterPlaylists.Count == 0)
 }
 else
 {
-    var speellysteCarouselPlaylists = GetSpeellysteCarouselPlaylists();
-
-    @if (speellysteCarouselPlaylists.Count > 0)
+    @foreach (var section in BuildOrderedLuisterSections())
     {
-        <section class="section-block stories-carousel-section luister-speellyste-section" aria-labelledby="luister-speellyste-heading">
-            <h2 id="luister-speellyste-heading">Speellyste</h2>
-            <div class="stories-carousel-shell">
-                <div class="stories-carousel luister-speellyste-carousel" role="list" aria-label="Speellyste">
-                    @for (var playlistIndex = 0; playlistIndex < speellysteCarouselPlaylists.Count; playlistIndex++)
-                    {
-                        var playlist = speellysteCarouselPlaylists[playlistIndex];
-                        var playlistTitle = GetPlaylistTitle(playlist);
-                        var playlistSlug = GetPlaylistSlug(playlist);
-                        var playlistShowcasePath = GetPlaylistShowcaseHref(playlistSlug);
-                        var playlistImagePath = GetPlaylistCarouselImagePath(playlist);
+        @if (section.Kind == LuisterSectionKind.Speellyste)
+        {
+            @RenderSpeellysteSection(section.SpeellystePlaylists)
+            continue;
+        }
 
-                        <article class="story-carousel-item luister-speellyste-item" role="listitem">
-                            <a class="story-carousel-link luister-speellyste-link"
-                               href="@playlistShowcasePath"
-                               data-enhance-nav="false"
-                               draggable="false"
-                               aria-label="Maak @playlistTitle se speellys showcase oop">
-                                <span class="story-carousel-cover luister-speellyste-cover">
-                                    <img class="story-carousel-image luister-speellyste-image"
-                                         src="@playlistImagePath"
-                                         sizes="(max-width: 620px) 76vw, (max-width: 980px) 46vw, 360px"
-                                         draggable="false"
-                                         alt="Voorblad vir @playlistTitle speellys"
-                                         width="1024"
-                                         height="576"
-                                         loading="lazy"
-                                         decoding="async" />
-                                    <span class="story-cover-play" aria-hidden="true">
-                                        <i class="story-cover-play-icon fa-solid fa-images" aria-hidden="true"></i>
-                                    </span>
-                                </span>
-                                <h3>@playlistTitle</h3>
-                            </a>
-                        </article>
-                    }
-                </div>
-            </div>
-        </section>
-    }
+        var playlist = section.Playlist;
+        if (playlist is null)
+        {
+            continue;
+        }
 
-    @for (var index = 0; index < FilteredLuisterPlaylists.Count; index++)
-    {
-        var playlist = FilteredLuisterPlaylists[index];
         var playlistSlug = GetPlaylistSlug(playlist);
         var playlistTitle = GetPlaylistTitle(playlist);
         var playlistStories = GetPlaylistStories(playlist);
@@ -498,10 +464,90 @@ else
     private static StoryItem? GetPlaylistShowcaseStory(StoryPlaylist playlist) =>
         playlist.PreferredStory;
 
+    private IReadOnlyList<LuisterSection> BuildOrderedLuisterSections()
+    {
+        var speellystePlaylists = GetSpeellysteCarouselPlaylists();
+        var speellysteConfig = LuisterPlaylists.FirstOrDefault(IsSpeellysteSystemPlaylist);
+        var sections = FilteredLuisterPlaylists
+            .Where(playlist => !IsSpeellysteSystemPlaylist(playlist))
+            .Select(playlist => new LuisterSection(
+                Kind: LuisterSectionKind.Playlist,
+                Playlist: playlist,
+                SpeellystePlaylists: Array.Empty<StoryPlaylist>(),
+                SortOrder: playlist.SortOrder,
+                Title: GetPlaylistTitle(playlist)))
+            .ToList();
+
+        if (speellystePlaylists.Count > 0)
+        {
+            sections.Add(new LuisterSection(
+                Kind: LuisterSectionKind.Speellyste,
+                Playlist: null,
+                SpeellystePlaylists: speellystePlaylists,
+                SortOrder: speellysteConfig?.SortOrder ?? int.MinValue,
+                Title: speellysteConfig is null ? "Speellyste" : GetPlaylistTitle(speellysteConfig)));
+        }
+
+        return sections
+            .OrderBy(section => section.SortOrder)
+            .ThenBy(section => section.Title, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private RenderFragment RenderSpeellysteSection(IReadOnlyList<StoryPlaylist> speellysteCarouselPlaylists) => @<text>
+        @if (speellysteCarouselPlaylists.Count > 0)
+        {
+            <section class="section-block stories-carousel-section luister-speellyste-section" aria-labelledby="luister-speellyste-heading">
+                <h2 id="luister-speellyste-heading">Speellyste</h2>
+                <div class="stories-carousel-shell">
+                    <div class="stories-carousel luister-speellyste-carousel" role="list" aria-label="Speellyste">
+                        @for (var playlistIndex = 0; playlistIndex < speellysteCarouselPlaylists.Count; playlistIndex++)
+                        {
+                            var playlist = speellysteCarouselPlaylists[playlistIndex];
+                            var playlistTitle = GetPlaylistTitle(playlist);
+                            var playlistSlug = GetPlaylistSlug(playlist);
+                            var playlistShowcasePath = GetPlaylistShowcaseHref(playlistSlug);
+                            var playlistImagePath = GetPlaylistCarouselImagePath(playlist);
+
+                            <article class="story-carousel-item luister-speellyste-item" role="listitem">
+                                <a class="story-carousel-link luister-speellyste-link"
+                                   href="@playlistShowcasePath"
+                                   data-enhance-nav="false"
+                                   draggable="false"
+                                   aria-label="Maak @playlistTitle se speellys showcase oop">
+                                    <span class="story-carousel-cover luister-speellyste-cover">
+                                        <img class="story-carousel-image luister-speellyste-image"
+                                             src="@playlistImagePath"
+                                             sizes="(max-width: 620px) 76vw, (max-width: 980px) 46vw, 360px"
+                                             draggable="false"
+                                             alt="Voorblad vir @playlistTitle speellys"
+                                             width="1024"
+                                             height="576"
+                                             loading="lazy"
+                                             decoding="async" />
+                                        <span class="story-cover-play" aria-hidden="true">
+                                            <i class="story-cover-play-icon fa-solid fa-images" aria-hidden="true"></i>
+                                        </span>
+                                    </span>
+                                    <h3>@playlistTitle</h3>
+                                </a>
+                            </article>
+                        }
+                    </div>
+                </div>
+            </section>
+        }
+    </text>;
+
     private IReadOnlyList<StoryPlaylist> GetSpeellysteCarouselPlaylists() =>
         FilteredLuisterPlaylists
+            .Where(playlist => !IsSpeellysteSystemPlaylist(playlist))
             .Where(playlist => playlist.IncludeInSpeellysteCarousel)
             .ToArray();
+
+    private static bool IsSpeellysteSystemPlaylist(StoryPlaylist playlist) =>
+        string.Equals(playlist.SystemKey, "speellyste", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(playlist.Slug, "speellyste", StringComparison.OrdinalIgnoreCase);
 
     private static string GetPlaylistCarouselImagePath(StoryPlaylist playlist)
     {
@@ -1011,6 +1057,19 @@ else
     }
 
     private sealed record LuisterAccessProfile(bool HasGratisOrPaid, bool HasStoryCornerOrAll, bool HasAllStories);
+
+    private enum LuisterSectionKind
+    {
+        Playlist,
+        Speellyste
+    }
+
+    private sealed record LuisterSection(
+        LuisterSectionKind Kind,
+        StoryPlaylist? Playlist,
+        IReadOnlyList<StoryPlaylist> SpeellystePlaylists,
+        int SortOrder,
+        string Title);
 
     private sealed record PendingCharacterUnlockPopupPayload(
         string? Type,

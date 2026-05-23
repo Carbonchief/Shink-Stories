@@ -1870,7 +1870,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var subscriptionsUri = new Uri(
             baseUri,
             "rest/v1/subscriptions" +
-            "?select=subscription_id,tier_code,provider,source_system,provider_payment_id,provider_transaction_id,provider_token,provider_email_token,next_renewal_at,cancelled_at,status,billing_amount_zar,billing_period_months,billing_amount_source" +
+            "?select=subscription_id,tier_code,provider,source_system,provider_payment_id,provider_transaction_id,provider_token,provider_email_token,next_renewal_at,cancelled_at,status,billing_amount_zar,billing_period_months,billing_amount_source,recurring_billing_mode" +
             $"&subscriber_id=eq.{escapedSubscriberId}&status=eq.active&order=subscribed_at.desc&limit=25");
 
         using var request = CreateRequest(HttpMethod.Get, subscriptionsUri, apiKey);
@@ -2190,6 +2190,11 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     {
         if (string.Equals(row.Provider, "paystack", StringComparison.OrdinalIgnoreCase))
         {
+            if (string.Equals(row.RecurringBillingMode, SubscriptionRecurringBillingModes.PaystackAuthorizationSchedule, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
             return PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
                        row.Provider,
                        row.SourceSystem,
@@ -3087,6 +3092,43 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         var nextRenewalAtUtc = ResolvePaystackNextRenewalAt(data, subscribedAtUtc, plan);
         var billingAmountZar = ResolvePaystackBillingAmountZar(data, plan);
+        var isDiscountedAuthorizationCheckout = IsPaystackDiscountedAuthorizationCheckout(data);
+        PaystackDiscountedSubscriptionTerms? discountTerms = null;
+        if (isDiscountedAuthorizationCheckout)
+        {
+            if (string.IsNullOrWhiteSpace(providerToken) ||
+                !string.Equals(TryReadNestedString(data, "authorization", "reusable"), "true", StringComparison.OrdinalIgnoreCase))
+            {
+                await TrySendAdminOpsAlertAsync(
+                    alertKey: $"paystack-discount-authorization-not-reusable/{providerPaymentId}/{providerTransactionId}",
+                    severity: "critical",
+                    title: "Discounted Paystack checkout missing reusable authorization",
+                    summary: $"Discounted Paystack checkout for {email} succeeded but did not return a reusable authorization.",
+                    details: $"Provider payment ID: {providerPaymentId}\nProvider transaction ID: {providerTransactionId}\nTier: {plan.TierCode}",
+                    eventReference: providerTransactionId ?? providerPaymentId,
+                    occurredAtUtc: nowUtc,
+                    cancellationToken);
+                return new PaystackUpsertResult(false, "Paystack did not return a reusable authorization for this discounted subscription.");
+            }
+
+            discountTerms = await ResolvePaystackDiscountedSubscriptionTermsAsync(
+                baseUri,
+                apiKey,
+                data,
+                plan,
+                cancellationToken);
+            if (discountTerms is null)
+            {
+                return new PaystackUpsertResult(false, "Could not resolve discount terms for Paystack discounted subscription.");
+            }
+
+            billingAmountZar = ResolveNextDiscountedSubscriptionBillingAmount(
+                plan.Amount,
+                discountTerms.DiscountPercent,
+                discountTerms.DiscountDuration,
+                discountTerms.DiscountPaymentCount,
+                discountPaymentsUsed: 1);
+        }
         if (!IsPaystackRecurringSubscriptionCode(providerPaymentId) &&
             providerPaymentId.StartsWith("repair-", StringComparison.OrdinalIgnoreCase) &&
             !string.IsNullOrWhiteSpace(providerToken))
@@ -3191,11 +3233,39 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             cancellationToken: cancellationToken,
             billingAmountZar: billingAmountZar,
             billingPeriodMonths: plan.BillingPeriodMonths,
-            billingAmountSource: "paystack_payload");
+            billingAmountSource: isDiscountedAuthorizationCheckout
+                ? SubscriptionRecurringBillingModes.PaystackAuthorizationSchedule
+                : "paystack_payload",
+            recurringBillingMode: isDiscountedAuthorizationCheckout
+                ? SubscriptionRecurringBillingModes.PaystackAuthorizationSchedule
+                : SubscriptionRecurringBillingModes.ProviderSubscription,
+            discountCodeId: discountTerms?.DiscountCodeId,
+            discountPercent: discountTerms?.DiscountPercent,
+            discountDuration: discountTerms?.DiscountDuration,
+            discountPaymentCount: discountTerms?.DiscountPaymentCount,
+            discountPaymentsUsed: isDiscountedAuthorizationCheckout ? 1 : 0,
+            undiscountedBillingAmountZar: isDiscountedAuthorizationCheckout ? plan.Amount : null,
+            authorizationReusable: isDiscountedAuthorizationCheckout ? true : null);
 
         if (subscriptionId is null)
         {
             return new PaystackUpsertResult(false, "Could not upsert Paystack subscription record.");
+        }
+
+        if (isDiscountedAuthorizationCheckout && discountTerms is not null)
+        {
+            await InsertDiscountCodeRedemptionAsync(
+                baseUri,
+                apiKey,
+                discountTerms.DiscountCodeId,
+                subscriberId,
+                email.Trim().ToLowerInvariant(),
+                plan.TierCode,
+                subscribedAtUtc,
+                accessEndsAtUtc: null,
+                grantedSubscriptionId: subscriptionId,
+                cancellationToken,
+                bypassedPayment: false);
         }
 
         return new PaystackUpsertResult(true, null, subscriptionId, providerPaymentId, providerTransactionId);
@@ -3281,6 +3351,70 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         }
 
         return decimal.Round(Math.Max(0m, plan.Amount), 2, MidpointRounding.AwayFromZero);
+    }
+
+    private static bool IsPaystackDiscountedAuthorizationCheckout(JsonElement data) =>
+        string.Equals(TryReadNestedString(data, "metadata", "checkout_kind"), "subscription_discount", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(TryReadNestedString(data, "metadata", "discount_kind"), SubscriptionDiscountKinds.Percentage, StringComparison.OrdinalIgnoreCase);
+
+    private async Task<PaystackDiscountedSubscriptionTerms?> ResolvePaystackDiscountedSubscriptionTermsAsync(
+        Uri baseUri,
+        string apiKey,
+        JsonElement data,
+        PaymentPlan plan,
+        CancellationToken cancellationToken)
+    {
+        var discountCodeText = TryReadNestedString(data, "metadata", "discount_code");
+        var normalizedCode = NormalizeDiscountCodeInput(discountCodeText);
+        if (normalizedCode is null)
+        {
+            return null;
+        }
+
+        var code = await FetchDiscountCodeByNormalizedCodeAsync(baseUri, apiKey, normalizedCode, cancellationToken);
+        if (code is null || code.DiscountCodeId == Guid.Empty)
+        {
+            return null;
+        }
+
+        var discountPercent = code.DiscountPercent ?? TryReadNestedDecimal(data, "metadata", "discount_percent");
+        if (discountPercent is not (> 0m and <= 100m))
+        {
+            return null;
+        }
+
+        var discountDuration = string.Equals(code.DiscountDuration, SubscriptionDiscountDurations.FirstPayments, StringComparison.OrdinalIgnoreCase) ||
+                               string.Equals(TryReadNestedString(data, "metadata", "discount_duration"), SubscriptionDiscountDurations.FirstPayments, StringComparison.OrdinalIgnoreCase)
+            ? SubscriptionDiscountDurations.FirstPayments
+            : SubscriptionDiscountDurations.Lifetime;
+        var metadataPaymentCount = TryReadNestedDecimal(data, "metadata", "discount_payment_count");
+        var discountPaymentCount = code.DiscountPaymentCount ?? (metadataPaymentCount is null ? null : (int?)decimal.ToInt32(metadataPaymentCount.Value));
+        if (string.Equals(discountDuration, SubscriptionDiscountDurations.FirstPayments, StringComparison.Ordinal) &&
+            discountPaymentCount is not (>= 1 and <= 3))
+        {
+            return null;
+        }
+
+        return new PaystackDiscountedSubscriptionTerms(
+            code.DiscountCodeId,
+            decimal.Round(discountPercent.Value, 2, MidpointRounding.AwayFromZero),
+            discountDuration,
+            discountPaymentCount,
+            decimal.Round(Math.Max(0m, plan.Amount), 2, MidpointRounding.AwayFromZero));
+    }
+
+    private static decimal ResolveNextDiscountedSubscriptionBillingAmount(
+        decimal originalAmount,
+        decimal discountPercent,
+        string discountDuration,
+        int? discountPaymentCount,
+        int discountPaymentsUsed)
+    {
+        var shouldDiscountNextPayment = !string.Equals(discountDuration, SubscriptionDiscountDurations.FirstPayments, StringComparison.OrdinalIgnoreCase) ||
+                                        (discountPaymentCount is int count && discountPaymentsUsed < count);
+        return shouldDiscountNextPayment
+            ? CalculateDiscountedAmount(originalAmount, discountPercent)
+            : decimal.Round(Math.Max(0m, originalAmount), 2, MidpointRounding.AwayFromZero);
     }
 
     private static decimal? ResolvePaystackEventAmountZar(JsonElement data)
@@ -3455,7 +3589,15 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         CancellationToken cancellationToken,
         decimal? billingAmountZar = null,
         int? billingPeriodMonths = null,
-        string? billingAmountSource = null)
+        string? billingAmountSource = null,
+        string recurringBillingMode = SubscriptionRecurringBillingModes.ProviderSubscription,
+        Guid? discountCodeId = null,
+        decimal? discountPercent = null,
+        string? discountDuration = null,
+        int? discountPaymentCount = null,
+        int discountPaymentsUsed = 0,
+        decimal? undiscountedBillingAmountZar = null,
+        bool? authorizationReusable = null)
     {
         var payload = new
         {
@@ -3472,7 +3614,15 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             cancelled_at = (DateTime?)null,
             billing_amount_zar = billingAmountZar,
             billing_period_months = billingPeriodMonths,
-            billing_amount_source = billingAmountSource
+            billing_amount_source = billingAmountSource,
+            recurring_billing_mode = recurringBillingMode,
+            discount_code_id = discountCodeId,
+            discount_percent = discountPercent,
+            discount_duration = discountDuration,
+            discount_payment_count = discountPaymentCount,
+            discount_payments_used = discountPaymentsUsed,
+            undiscounted_billing_amount_zar = undiscountedBillingAmountZar,
+            authorization_reusable = authorizationReusable
         };
 
         var uri = new Uri(baseUri, "rest/v1/subscriptions?on_conflict=provider,provider_payment_id&select=subscription_id");
@@ -5797,6 +5947,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         [JsonPropertyName("billing_amount_source")]
         public string? BillingAmountSource { get; set; }
+
+        [JsonPropertyName("recurring_billing_mode")]
+        public string? RecurringBillingMode { get; set; }
     }
 
     private sealed class ExistingEventLookupRow
@@ -5901,6 +6054,13 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     private sealed record LivePaystackPayment(
         string? Reference,
         DateTimeOffset? PaidAtUtc);
+
+    private sealed record PaystackDiscountedSubscriptionTerms(
+        Guid DiscountCodeId,
+        decimal DiscountPercent,
+        string DiscountDuration,
+        int? DiscountPaymentCount,
+        decimal OriginalBillingAmountZar);
 
     private sealed class PaymentRecoveryRow
     {

@@ -149,6 +149,7 @@ builder.Services.AddHttpClient<IBlogCatalogService, SupabaseBlogService>();
 builder.Services.AddHttpClient<IBlogAdminService, SupabaseBlogService>();
 builder.Services.AddHttpClient<IUserNotificationService, SupabaseUserNotificationService>();
 builder.Services.AddSingleton<IContactFormProtectionService, ContactFormProtectionService>();
+builder.Services.AddHostedService<PaystackAuthorizationSubscriptionBillingWorker>();
 builder.Services.AddHostedService<SubscriptionPaymentRecoveryWorker>();
 builder.Services.AddHostedService<AbandonedCartRecoveryCancellationWorker>();
 builder.Services.AddRateLimiter(options =>
@@ -1126,6 +1127,7 @@ app.MapPost("/rekening/herstel-intekening", async (
 app.MapGet("/betaal/{planSlug}", async (
     string planSlug,
     string? provider,
+    string? discountCode,
     string? returnUrl,
     PayFastCheckoutService payFastCheckoutService,
     PaystackCheckoutService paystackCheckoutService,
@@ -1234,8 +1236,62 @@ app.MapGet("/betaal/{planSlug}", async (
         return Results.BadRequest(new { message = "Ongeldige betaalverskaffer. Gebruik 'paystack' of 'payfast'." });
     }
 
+    if (!string.IsNullOrWhiteSpace(discountCode) &&
+        !string.Equals(selectedProvider, "paystack", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new { message = "Afslagkodes werk net met Paystack-betalings." });
+    }
+
     if (string.Equals(selectedProvider, "paystack", StringComparison.OrdinalIgnoreCase))
     {
+        if (!string.IsNullOrWhiteSpace(discountCode))
+        {
+            var discountPreview = await subscriptionLedgerService.PreviewSignupDiscountCodeAsync(
+                discountCode,
+                plan.TierCode,
+                httpContext.RequestAborted);
+            if (!discountPreview.IsValid ||
+                !string.Equals(discountPreview.DiscountKind, SubscriptionDiscountKinds.Percentage, StringComparison.Ordinal))
+            {
+                return Results.BadRequest(new { message = discountPreview.ErrorMessage ?? "Hierdie afslagkode is nie geldig vir die gekose plan nie." });
+            }
+
+            var discountedCheckoutResult = await paystackCheckoutService.InitializeDiscountedAuthorizationCheckoutAsync(
+                plan,
+                discountCode,
+                discountPreview,
+                httpContext,
+                safeReturnUrl,
+                httpContext.RequestAborted);
+            if (!discountedCheckoutResult.IsSuccess || string.IsNullOrWhiteSpace(discountedCheckoutResult.AuthorizationUrl))
+            {
+                return Results.Problem(
+                    title: "Kon nie afslagbetaling begin nie",
+                    detail: discountedCheckoutResult.ErrorMessage ?? "Paystack afslagcheckout kon nie begin nie.",
+                    statusCode: StatusCodes.Status500InternalServerError);
+            }
+
+            if (!string.IsNullOrWhiteSpace(discountedCheckoutResult.Reference))
+            {
+                await abandonedCartRecoveryService.StartSequenceAsync(
+                    new AbandonedCartRecoveryStartRequest(
+                        SourceType: "subscription",
+                        SourceKey: plan.TierCode,
+                        CheckoutReference: discountedCheckoutResult.Reference,
+                        Provider: "paystack",
+                        CustomerEmail: signedInEmail ?? string.Empty,
+                        CustomerName: signedInDisplayName,
+                        ItemName: plan.Name,
+                        ItemSummary: $"{plan.ItemDescription} Afslagkode: {discountCode.Trim()}",
+                        CartTotalZar: discountPreview.DiscountedAmountZar ?? plan.Amount,
+                        CheckoutUrl: discountedCheckoutResult.AuthorizationUrl,
+                        OptOutBaseUrl: requestBaseUrl),
+                    httpContext.RequestAborted);
+            }
+
+            return Results.Redirect(discountedCheckoutResult.AuthorizationUrl);
+        }
+
         var recoveredRedirect = await TryRedirectRecoveredPaystackSubscriptionAsync(
             plan,
             signedInEmail ?? string.Empty,
@@ -2319,17 +2375,18 @@ app.MapPost("/api/auth/signup", async (
     }
 
     var discountCodeApplied = false;
+    SubscriptionCodeSignupPreviewResult? discountPreview = null;
     if (!string.IsNullOrWhiteSpace(request.DiscountCode))
     {
-        var preview = await subscriptionLedgerService.PreviewSignupDiscountCodeAsync(
+        discountPreview = await subscriptionLedgerService.PreviewSignupDiscountCodeAsync(
             request.DiscountCode,
             request.SelectedTierCode,
             httpContext.RequestAborted);
-        if (!preview.IsValid)
+        if (!discountPreview.IsValid)
         {
             return Results.BadRequest(new
             {
-                message = preview.ErrorMessage ?? "Die kode kon nie gevalideer word nie."
+                message = discountPreview.ErrorMessage ?? "Die kode kon nie gevalideer word nie."
             });
         }
     }
@@ -2376,6 +2433,39 @@ app.MapPost("/api/auth/signup", async (
         request.MobileNumber,
         cancellationToken: httpContext.RequestAborted);
 
+    if (!string.IsNullOrWhiteSpace(request.DiscountCode) &&
+        string.Equals(discountPreview?.DiscountKind, SubscriptionDiscountKinds.Percentage, StringComparison.Ordinal))
+    {
+        var plan = PaymentPlanCatalog.FindByTierCode(discountPreview!.ResolvedTierCode);
+        if (plan is null)
+        {
+            return Results.BadRequest(new { message = "Kies asseblief 'n geldige betaalplan vir hierdie afslagkode." });
+        }
+
+        var checkoutPath = QueryHelpers.AddQueryString(
+            $"/betaal/{Uri.EscapeDataString(plan.Slug)}",
+            new Dictionary<string, string?>
+            {
+                ["provider"] = "paystack",
+                ["discountCode"] = request.DiscountCode
+            });
+
+        var discountSignInCookieResult = await SignInUserAsync(httpContext, signedInEmail, authSessionService, adminManagementService, subscriptionLedgerService, httpContext.RequestServices.GetRequiredService<IWordPressMigrationService>());
+        if (!discountSignInCookieResult.IsSuccess)
+        {
+            return Results.Json(
+                new { message = discountSignInCookieResult.ErrorMessage ?? "Jou rekening is geskep, maar ons kon nou nie jou afslagbetaling begin nie. Probeer asseblief weer teken in." },
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+
+        return Results.Ok(new
+        {
+            message = "Welkom! Jou rekening is geskep. Voltooi nou jou Paystack-betaling met die afslagkode.",
+            redirectPath = checkoutPath,
+            codeApplied = false
+        });
+    }
+
     if (!string.IsNullOrWhiteSpace(request.DiscountCode))
     {
         var applyResult = await subscriptionLedgerService.ApplySignupDiscountCodeAsync(
@@ -2419,6 +2509,34 @@ app.MapPost("/api/auth/signup", async (
                             : "Welkom! Jou rekening is geskep en jy is nou ingeteken. Ons kon nie al jou profiel- en gratis toegangbesonderhede nou voltooi nie.",
         redirectPath,
         codeApplied = discountCodeApplied
+    });
+}).RequireRateLimiting("auth-submit").DisableAntiforgery();
+
+app.MapPost("/api/auth/signup/discount-preview", async (
+    SignupDiscountPreviewApiRequest request,
+    ISubscriptionLedgerService subscriptionLedgerService,
+    HttpContext httpContext) =>
+{
+    var preview = await subscriptionLedgerService.PreviewSignupDiscountCodeAsync(
+        request.DiscountCode?.Trim(),
+        request.SelectedTierCode?.Trim(),
+        httpContext.RequestAborted);
+
+    return Results.Ok(new
+    {
+        isValid = preview.IsValid,
+        message = preview.Message ?? preview.ErrorMessage,
+        errorMessage = preview.ErrorMessage,
+        resolvedTierCode = preview.ResolvedTierCode,
+        resolvedTierName = preview.ResolvedTierName,
+        bypassesPayment = preview.BypassesPayment,
+        discountKind = preview.DiscountKind,
+        discountPercent = preview.DiscountPercent,
+        discountDuration = preview.DiscountDuration,
+        discountPaymentCount = preview.DiscountPaymentCount,
+        originalAmountZar = preview.OriginalAmountZar,
+        discountedAmountZar = preview.DiscountedAmountZar,
+        durationDescription = preview.DurationDescription
     });
 }).RequireRateLimiting("auth-submit").DisableAntiforgery();
 
@@ -6073,6 +6191,7 @@ sealed record AuthSignUpApiRequest(
     string? Password,
     string? SelectedTierCode,
     string? DiscountCode);
+sealed record SignupDiscountPreviewApiRequest(string? DiscountCode, string? SelectedTierCode);
 sealed record StoryViewTrackApiRequest(string? StoryPath, string? Source, string? ReferrerPath);
 sealed record StoryListenTrackApiRequest(
     string? StoryPath,

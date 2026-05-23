@@ -14,11 +14,11 @@ public class AdminSettingsPanelSourceTests
 
         StringAssert.Contains(markup, "PayStack te omseil");
         StringAssert.Contains(markup, "BuildSignupCodeBypassStateLabel()");
-        StringAssert.Contains(markup, "BuildTierActiveStateLabel(tier.IsActive)");
+        StringAssert.Contains(markup, "BuildTierActiveStateLabel(context.IsActive)");
         StringAssert.Contains(markup, "BuildCodeActiveStateLabel()");
         Assert.IsFalse(markup.Contains("Label=\"@BuildSignupCodeBypassStateLabel()\"", StringComparison.Ordinal));
         Assert.IsFalse(markup.Contains("Label=\"@BuildTierActiveStateLabel(tier.IsActive)\"", StringComparison.Ordinal));
-        Assert.IsFalse(markup.Contains("Label=\"@T(\"Aktief\", \"Active\")\"", StringComparison.Ordinal));
+        Assert.IsFalse(markup.Contains("<MudSwitch T=\"bool\" Label=\"@T(\"Aktief\", \"Active\")\"", StringComparison.Ordinal));
         Assert.IsFalse(markup.Contains("PayFast te omseil", StringComparison.Ordinal));
         StringAssert.Contains(css, "--admin-settings-surface: #172631");
         StringAssert.Contains(css, "--admin-settings-text: #eaf1f8");
@@ -61,12 +61,12 @@ public class AdminSettingsPanelSourceTests
         var css = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "AdminSettingsPanel.razor.css"));
 
         StringAssert.Contains(markup, "ParentDiscountCodes");
-        StringAssert.Contains(markup, "@foreach (var code in FilteredParentDiscountCodes)");
-        StringAssert.Contains(markup, "OpenCodeDialog(code)");
+        StringAssert.Contains(markup, "Items=\"FilteredParentDiscountCodes\"");
+        StringAssert.Contains(markup, "OpenCodeDialog(context)");
         StringAssert.Contains(markup, "<MudDialog Visible=\"IsCodeDialogOpen\"");
         StringAssert.Contains(markup, "SelectedParentCodeSubcodes");
         StringAssert.Contains(markup, "StartNewSubcode");
-        StringAssert.Contains(markup, "EditSubcode(subcode)");
+        StringAssert.Contains(markup, "EditSubcode(context)");
         StringAssert.Contains(markup, "@T(\"Gebruikers\", \"Users\")");
         StringAssert.Contains(markup, "FormatSubcodeUsers(subcode)");
         StringAssert.Contains(css, ".admin-subcode-summary");
@@ -77,6 +77,33 @@ public class AdminSettingsPanelSourceTests
         StringAssert.Contains(css, "overflow-y: auto;");
         StringAssert.Contains(css, "overscroll-behavior: contain;");
         Assert.IsFalse(markup.Contains("@foreach (var code in FilteredDiscountCodes)", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void DiscountCodeEditorSupportsBilingualPercentageCodesWithoutRemovingFreeVouchers()
+    {
+        var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "AdminSettingsPanel.razor"));
+        var service = File.ReadAllText(GetRepoPath("Shink", "Services", "IAdminManagementService.cs"));
+
+        StringAssert.Contains(markup, "@T(\"Kode tipe\", \"Code type\")");
+        StringAssert.Contains(markup, "@T(\"Gratis toegang\", \"Free access\")");
+        StringAssert.Contains(markup, "@T(\"Persentasie afslag\", \"Percentage discount\")");
+        StringAssert.Contains(markup, "@T(\"Afslag persentasie\", \"Discount percentage\")");
+        StringAssert.Contains(markup, "@T(\"Afslag duur\", \"Discount duration\")");
+        StringAssert.Contains(markup, "@T(\"Lewenslank\", \"Lifetime\")");
+        StringAssert.Contains(markup, "@T(\"Eerste 1 betaling\", \"First 1 payment\")");
+        StringAssert.Contains(markup, "@T(\"Eerste 2 betalings\", \"First 2 payments\")");
+        StringAssert.Contains(markup, "@T(\"Eerste 3 betalings\", \"First 3 payments\")");
+        StringAssert.Contains(markup, "DiscountCodeEditor.DiscountKind");
+        StringAssert.Contains(markup, "DiscountCodeEditor.DiscountPercent");
+        StringAssert.Contains(markup, "DiscountCodeEditor.DiscountDuration");
+        StringAssert.Contains(markup, "DiscountCodeEditor.DiscountPaymentCount");
+        StringAssert.Contains(markup, "DiscountCodeEditor.IsFreeAccessCode && DiscountCodeEditor.BypassPayment");
+
+        StringAssert.Contains(service, "string DiscountKind");
+        StringAssert.Contains(service, "decimal? DiscountPercent");
+        StringAssert.Contains(service, "string DiscountDuration");
+        StringAssert.Contains(service, "int? DiscountPaymentCount");
     }
 
     [TestMethod]

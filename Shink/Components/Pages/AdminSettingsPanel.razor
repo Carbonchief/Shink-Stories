@@ -359,6 +359,42 @@ else
                                     <MudTextField T="string" Label="@T("Kode", "Code")" @bind-Value="DiscountCodeEditor.Code" Variant="Variant.Outlined" />
                                     <MudTextField T="string" Label="@T("Vertoonnaam", "Display name")" @bind-Value="DiscountCodeEditor.DisplayName" Variant="Variant.Outlined" />
                                     <MudTextField T="string" Label="@T("Beskrywing", "Description")" @bind-Value="DiscountCodeEditor.Description" Variant="Variant.Outlined" />
+                                    <MudSelect T="string"
+                                               Label="@T("Kode tipe", "Code type")"
+                                               Value="@DiscountCodeEditor.DiscountKind"
+                                               ValueChanged="OnDiscountKindChanged"
+                                               Variant="Variant.Outlined">
+                                        <MudSelectItem Value="@SubscriptionDiscountKinds.FreeAccess">@T("Gratis toegang", "Free access")</MudSelectItem>
+                                        <MudSelectItem Value="@SubscriptionDiscountKinds.Percentage">@T("Persentasie afslag", "Percentage discount")</MudSelectItem>
+                                    </MudSelect>
+                                    @if (DiscountCodeEditor.IsPercentageCode)
+                                    {
+                                        <MudNumericField T="decimal?"
+                                                         Label="@T("Afslag persentasie", "Discount percentage")"
+                                                         @bind-Value="DiscountCodeEditor.DiscountPercent"
+                                                         Variant="Variant.Outlined"
+                                                         Min="0"
+                                                         Max="100" />
+                                        <MudSelect T="string"
+                                                   Label="@T("Afslag duur", "Discount duration")"
+                                                   Value="@DiscountCodeEditor.DiscountDuration"
+                                                   ValueChanged="OnDiscountDurationChanged"
+                                                   Variant="Variant.Outlined">
+                                            <MudSelectItem Value="@SubscriptionDiscountDurations.Lifetime">@T("Lewenslank", "Lifetime")</MudSelectItem>
+                                            <MudSelectItem Value="@SubscriptionDiscountDurations.FirstPayments">@T("Eerste betalings", "First payments")</MudSelectItem>
+                                        </MudSelect>
+                                        @if (DiscountCodeEditor.UsesFirstPaymentWindow)
+                                        {
+                                            <MudSelect T="int?"
+                                                       Label="@T("Afslag betalings", "Discount payments")"
+                                                       @bind-Value="DiscountCodeEditor.DiscountPaymentCount"
+                                                       Variant="Variant.Outlined">
+                                                <MudSelectItem Value="@((int?)1)">@T("Eerste 1 betaling", "First 1 payment")</MudSelectItem>
+                                                <MudSelectItem Value="@((int?)2)">@T("Eerste 2 betalings", "First 2 payments")</MudSelectItem>
+                                                <MudSelectItem Value="@((int?)3)">@T("Eerste 3 betalings", "First 3 payments")</MudSelectItem>
+                                            </MudSelect>
+                                        }
+                                    }
                                     @if (DiscountCodeEditor.IsGroupCode && SelectedParentCode is not null)
                                     {
                                         <MudTextField T="string"
@@ -373,9 +409,12 @@ else
                                     <MudTooltip Text="@BuildOneUsePerUserTooltip()" Placement="Placement.Top" Arrow="true">
                                         <MudSwitch T="bool" @bind-Value="DiscountCodeEditor.OneUsePerUser" Color="Color.Primary" Label="@T("Een keer per gebruiker", "One use per user")" aria-label="@BuildOneUsePerUserTooltip()" />
                                     </MudTooltip>
-                                    <MudTooltip Text="@BuildBypassPaymentTooltip()" Placement="Placement.Top" Arrow="true">
-                                        <MudSwitch T="bool" @bind-Value="DiscountCodeEditor.BypassPayment" Color="Color.Primary" Label="@T("Omseil betaling", "Bypass payment")" aria-label="@BuildBypassPaymentTooltip()" />
-                                    </MudTooltip>
+                                    @if (DiscountCodeEditor.IsFreeAccessCode)
+                                    {
+                                        <MudTooltip Text="@BuildBypassPaymentTooltip()" Placement="Placement.Top" Arrow="true">
+                                            <MudSwitch T="bool" @bind-Value="DiscountCodeEditor.BypassPayment" Color="Color.Primary" Label="@T("Omseil betaling", "Bypass payment")" aria-label="@BuildBypassPaymentTooltip()" />
+                                        </MudTooltip>
+                                    }
                                     <div class="admin-settings-table-toggle">
                                         <MudTooltip Text="@BuildCodeActiveTooltip()" Placement="Placement.Top" Arrow="true">
                                             <MudSwitch T="bool"
@@ -996,6 +1035,48 @@ else
         }
     }
 
+    private void OnDiscountKindChanged(string value)
+    {
+        if (DiscountCodeEditor is null)
+        {
+            return;
+        }
+
+        DiscountCodeEditor.DiscountKind = string.Equals(value, SubscriptionDiscountKinds.Percentage, StringComparison.Ordinal)
+            ? SubscriptionDiscountKinds.Percentage
+            : SubscriptionDiscountKinds.FreeAccess;
+        if (DiscountCodeEditor.IsPercentageCode)
+        {
+            DiscountCodeEditor.BypassPayment = false;
+            DiscountCodeEditor.DiscountPercent ??= 10m;
+            DiscountCodeEditor.DiscountDuration = string.IsNullOrWhiteSpace(DiscountCodeEditor.DiscountDuration)
+                ? SubscriptionDiscountDurations.Lifetime
+                : DiscountCodeEditor.DiscountDuration;
+        }
+        else
+        {
+            DiscountCodeEditor.BypassPayment = true;
+            DiscountCodeEditor.DiscountPercent = null;
+            DiscountCodeEditor.DiscountDuration = SubscriptionDiscountDurations.Lifetime;
+            DiscountCodeEditor.DiscountPaymentCount = null;
+        }
+    }
+
+    private void OnDiscountDurationChanged(string value)
+    {
+        if (DiscountCodeEditor is null)
+        {
+            return;
+        }
+
+        DiscountCodeEditor.DiscountDuration = string.Equals(value, SubscriptionDiscountDurations.FirstPayments, StringComparison.Ordinal)
+            ? SubscriptionDiscountDurations.FirstPayments
+            : SubscriptionDiscountDurations.Lifetime;
+        DiscountCodeEditor.DiscountPaymentCount = DiscountCodeEditor.UsesFirstPaymentWindow
+            ? DiscountCodeEditor.DiscountPaymentCount ?? 1
+            : null;
+    }
+
     private async Task SaveCodeAsync()
     {
         var effectiveAdminEmail = await ResolveAdminEmailAsync();
@@ -1025,13 +1106,17 @@ else
                     DiscountCodeEditor.Code,
                     DiscountCodeEditor.DisplayName,
                     DiscountCodeEditor.Description,
+                    DiscountCodeEditor.DiscountKind,
+                    DiscountCodeEditor.DiscountPercent,
+                    DiscountCodeEditor.DiscountDuration,
+                    DiscountCodeEditor.DiscountPaymentCount,
                     editingSubcode,
                     parentCodeId,
                     ToDateTimeOffset(DiscountCodeEditor.StartsOn),
                     ToDateTimeOffset(DiscountCodeEditor.ExpiresOn),
                     DiscountCodeEditor.MaxUses,
                     DiscountCodeEditor.OneUsePerUser,
-                    DiscountCodeEditor.BypassPayment,
+                    DiscountCodeEditor.IsFreeAccessCode && DiscountCodeEditor.BypassPayment,
                     DiscountCodeEditor.IsActive,
                     DiscountCodeEditor.TierMappings.Select(tier => new AdminSubscriptionDiscountCodeTierSaveItem(
                         tier.TierCode,
@@ -1178,14 +1263,21 @@ else
         public string? Description { get; set; }
         public bool IsGroupCode { get; set; }
         public Guid? ParentDiscountCodeId { get; set; }
+        public string DiscountKind { get; set; } = SubscriptionDiscountKinds.Percentage;
+        public decimal? DiscountPercent { get; set; } = 10m;
+        public string DiscountDuration { get; set; } = SubscriptionDiscountDurations.Lifetime;
+        public int? DiscountPaymentCount { get; set; }
         public DateTime? StartsOn { get; set; }
         public DateTime? ExpiresOn { get; set; }
         public int MaxUses { get; set; }
         public bool OneUsePerUser { get; set; }
-        public bool BypassPayment { get; set; } = true;
+        public bool BypassPayment { get; set; }
         public bool IsActive { get; set; } = true;
         public List<EditableDiscountCodeTier> TierMappings { get; set; } = [];
         public IReadOnlyList<AdminSubscriptionDiscountCodeUseRecord> Uses { get; set; } = [];
+        public bool IsPercentageCode => string.Equals(DiscountKind, SubscriptionDiscountKinds.Percentage, StringComparison.Ordinal);
+        public bool IsFreeAccessCode => !IsPercentageCode;
+        public bool UsesFirstPaymentWindow => string.Equals(DiscountDuration, SubscriptionDiscountDurations.FirstPayments, StringComparison.Ordinal);
 
         public static EditableDiscountCode NewParent() => new()
         {
@@ -1206,6 +1298,14 @@ else
             Code = row.Code,
             DisplayName = row.DisplayName,
             Description = row.Description,
+            DiscountKind = string.Equals(row.DiscountKind, SubscriptionDiscountKinds.Percentage, StringComparison.Ordinal)
+                ? SubscriptionDiscountKinds.Percentage
+                : SubscriptionDiscountKinds.FreeAccess,
+            DiscountPercent = row.DiscountPercent,
+            DiscountDuration = string.Equals(row.DiscountDuration, SubscriptionDiscountDurations.FirstPayments, StringComparison.Ordinal)
+                ? SubscriptionDiscountDurations.FirstPayments
+                : SubscriptionDiscountDurations.Lifetime,
+            DiscountPaymentCount = row.DiscountPaymentCount,
             IsGroupCode = row.IsGroupCode,
             ParentDiscountCodeId = row.ParentDiscountCodeId,
             StartsOn = row.StartsAt?.UtcDateTime.Date,

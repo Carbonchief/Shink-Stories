@@ -110,6 +110,10 @@ public sealed partial class SupabaseAdminManagementService
                     NormalizeOptionalText(row.Code, 80) ?? string.Empty,
                     NormalizeOptionalText(row.DisplayName, 120),
                     NormalizeOptionalText(row.Description, 1000),
+                    NormalizeDiscountKind(row.DiscountKind),
+                    row.DiscountPercent,
+                    NormalizeDiscountDuration(row.DiscountDuration),
+                    NormalizeDiscountPaymentCount(row.DiscountPaymentCount),
                     row.IsGroupCode,
                     row.ParentDiscountCodeId,
                     NormalizeOptionalText(parentRow?.Code, 80),
@@ -326,6 +330,36 @@ public sealed partial class SupabaseAdminManagementService
             return new AdminOperationResult(false, "Kies ten minste een intekeningsoort vir die kode.");
         }
 
+        var discountKind = NormalizeDiscountKind(request.DiscountKind);
+        var discountDuration = NormalizeDiscountDuration(request.DiscountDuration);
+        decimal? discountPercent = request.DiscountPercent is null
+            ? null
+            : decimal.Round(request.DiscountPercent.Value, 2, MidpointRounding.AwayFromZero);
+        var discountPaymentCount = NormalizeDiscountPaymentCount(request.DiscountPaymentCount);
+        var bypassPayment = string.Equals(discountKind, SubscriptionDiscountKinds.FreeAccess, StringComparison.Ordinal)
+            ? request.BypassPayment
+            : false;
+
+        if (string.Equals(discountKind, SubscriptionDiscountKinds.Percentage, StringComparison.Ordinal))
+        {
+            if (discountPercent is null or <= 0m or > 100m)
+            {
+                return new AdminOperationResult(false, "Afslag persentasie moet tussen 0 en 100 wees.");
+            }
+
+            if (string.Equals(discountDuration, SubscriptionDiscountDurations.FirstPayments, StringComparison.Ordinal) &&
+                discountPaymentCount is null)
+            {
+                return new AdminOperationResult(false, "Kies hoeveel betalings die afslag moet kry.");
+            }
+        }
+        else
+        {
+            discountPercent = null;
+            discountDuration = SubscriptionDiscountDurations.Lifetime;
+            discountPaymentCount = null;
+        }
+
         Guid discountCodeId;
         if (request.DiscountCodeId is Guid existingId && existingId != Guid.Empty)
         {
@@ -346,7 +380,11 @@ public sealed partial class SupabaseAdminManagementService
                     expires_at = request.ExpiresAt?.UtcDateTime,
                     max_uses = request.MaxUses,
                     one_use_per_user = request.OneUsePerUser,
-                    bypass_payment = request.BypassPayment,
+                    bypass_payment = bypassPayment,
+                    discount_kind = discountKind,
+                    discount_percent = discountPercent,
+                    discount_duration = discountDuration,
+                    discount_payment_count = discountPaymentCount,
                     is_active = request.IsActive
                 },
                 "return=minimal");
@@ -381,7 +419,11 @@ public sealed partial class SupabaseAdminManagementService
                         expires_at = request.ExpiresAt?.UtcDateTime,
                         max_uses = request.MaxUses,
                         one_use_per_user = request.OneUsePerUser,
-                        bypass_payment = request.BypassPayment,
+                        bypass_payment = bypassPayment,
+                        discount_kind = discountKind,
+                        discount_percent = discountPercent,
+                        discount_duration = discountDuration,
+                        discount_payment_count = discountPaymentCount,
                         is_active = request.IsActive,
                         source_system = "shink_app"
                     }
@@ -510,7 +552,7 @@ public sealed partial class SupabaseAdminManagementService
         var uri = new Uri(
             baseUri,
             "rest/v1/subscription_discount_codes" +
-            "?select=discount_code_id,code,display_name,description,is_group_code,parent_discount_code_id,starts_at,expires_at,max_uses,one_use_per_user,bypass_payment,is_active,source_system" +
+            "?select=discount_code_id,code,display_name,description,is_group_code,parent_discount_code_id,starts_at,expires_at,max_uses,one_use_per_user,bypass_payment,discount_kind,discount_percent,discount_duration,discount_payment_count,is_active,source_system" +
             "&order=is_group_code.asc" +
             "&order=code.asc" +
             "&limit=5000");
@@ -588,6 +630,19 @@ public sealed partial class SupabaseAdminManagementService
             : normalized;
     }
 
+    private static string NormalizeDiscountKind(string? value) =>
+        string.Equals(value, SubscriptionDiscountKinds.Percentage, StringComparison.OrdinalIgnoreCase)
+            ? SubscriptionDiscountKinds.Percentage
+            : SubscriptionDiscountKinds.FreeAccess;
+
+    private static string NormalizeDiscountDuration(string? value) =>
+        string.Equals(value, SubscriptionDiscountDurations.FirstPayments, StringComparison.OrdinalIgnoreCase)
+            ? SubscriptionDiscountDurations.FirstPayments
+            : SubscriptionDiscountDurations.Lifetime;
+
+    private static int? NormalizeDiscountPaymentCount(int? value) =>
+        value is >= 1 and <= 3 ? value : null;
+
     private sealed class SiteSettingRow
     {
         [JsonPropertyName("setting_key")]
@@ -658,6 +713,18 @@ public sealed partial class SupabaseAdminManagementService
 
         [JsonPropertyName("bypass_payment")]
         public bool BypassPayment { get; set; }
+
+        [JsonPropertyName("discount_kind")]
+        public string? DiscountKind { get; set; }
+
+        [JsonPropertyName("discount_percent")]
+        public decimal? DiscountPercent { get; set; }
+
+        [JsonPropertyName("discount_duration")]
+        public string? DiscountDuration { get; set; }
+
+        [JsonPropertyName("discount_payment_count")]
+        public int? DiscountPaymentCount { get; set; }
 
         [JsonPropertyName("is_active")]
         public bool IsActive { get; set; }

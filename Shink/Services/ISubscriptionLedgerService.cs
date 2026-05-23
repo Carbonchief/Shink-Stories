@@ -50,6 +50,7 @@ public interface ISubscriptionLedgerService
         string? code,
         string? selectedTierCode,
         CancellationToken cancellationToken = default);
+    Task ProcessPaystackAuthorizationScheduleAsync(CancellationToken cancellationToken = default);
     Task<SubscriptionCodeApplicationResult> ApplySignupDiscountCodeAsync(
         string? email,
         string? code,
@@ -111,11 +112,19 @@ public sealed record SubscriberProfile(
 public sealed record SubscriptionCodeSignupPreviewResult(
     bool IsValid,
     string? ErrorMessage = null,
+    string? Message = null,
     string? ResolvedTierCode = null,
     string? ResolvedTierName = null,
     DateTimeOffset? AccessEndsAtUtc = null,
     DateTimeOffset? CodeExpiresAtUtc = null,
     bool BypassesPayment = false,
+    string DiscountKind = SubscriptionDiscountKinds.FreeAccess,
+    decimal? DiscountPercent = null,
+    string DiscountDuration = SubscriptionDiscountDurations.Lifetime,
+    int? DiscountPaymentCount = null,
+    decimal? OriginalAmountZar = null,
+    decimal? DiscountedAmountZar = null,
+    string? DurationDescription = null,
     IReadOnlyList<SubscriptionCodeTierOption>? TierOptions = null);
 public sealed record SubscriptionCodeTierOption(
     string TierCode,
@@ -126,3 +135,21 @@ public sealed record SubscriptionCodeApplicationResult(
     string? TierCode = null,
     DateTimeOffset? AccessEndsAtUtc = null);
 public sealed record SubscriberEmailChangeResult(bool IsSuccess, string? ErrorMessage = null);
+
+public static class SubscriptionDiscountKinds
+{
+    public const string FreeAccess = "free_access";
+    public const string Percentage = "percentage";
+}
+
+public static class SubscriptionDiscountDurations
+{
+    public const string Lifetime = "lifetime";
+    public const string FirstPayments = "first_payments";
+}
+
+public static class SubscriptionRecurringBillingModes
+{
+    public const string ProviderSubscription = "provider_subscription";
+    public const string PaystackAuthorizationSchedule = "paystack_authorization_schedule";
+}

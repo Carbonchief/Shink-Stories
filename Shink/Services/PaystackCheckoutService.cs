@@ -146,6 +146,80 @@ public sealed class PaystackCheckoutService(
             cancellationToken);
     }
 
+    public async Task<PaystackCheckoutInitResult> InitializeDiscountedAuthorizationCheckoutAsync(
+        PaymentPlan plan,
+        string discountCode,
+        SubscriptionCodeSignupPreviewResult discount,
+        HttpContext httpContext,
+        string? returnUrl = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (!IsConfigured)
+        {
+            return new PaystackCheckoutInitResult(false, ErrorMessage: "Paystack is nog nie volledig opgestel nie.");
+        }
+
+        var email = GetBuyerEmail(httpContext.User);
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return new PaystackCheckoutInitResult(false, ErrorMessage: "Kon nie 'n e-posadres vir betaling bepaal nie.");
+        }
+
+        if (!plan.IsSubscription || plan.IsSchoolPlan)
+        {
+            return new PaystackCheckoutInitResult(false, ErrorMessage: "Afslagkodes werk net op betaalde intekenplanne.");
+        }
+
+        var discountedAmount = discount.DiscountedAmountZar ?? plan.Amount;
+        var originalAmount = discount.OriginalAmountZar ?? plan.Amount;
+        var amountInCents = (long)Math.Round(discountedAmount * 100m, MidpointRounding.AwayFromZero);
+        if (amountInCents <= 0)
+        {
+            return new PaystackCheckoutInitResult(false, ErrorMessage: "Afslagbedrag is ongeldig.");
+        }
+
+        var callbackQuery = $"betaling=sukses&provider=paystack&plan={Uri.EscapeDataString(plan.Slug)}&discountCode={Uri.EscapeDataString(discountCode.Trim())}";
+        if (!string.IsNullOrWhiteSpace(returnUrl))
+        {
+            callbackQuery = $"{callbackQuery}&returnUrl={Uri.EscapeDataString(returnUrl)}";
+        }
+
+        var callbackUrl = BuildAbsoluteUrl(httpContext, ResolveCallbackPath(returnUrl), callbackQuery);
+        var reusableSession = await TryGetReusableCheckoutSessionAsync(plan, email, amountInCents, callbackUrl, cancellationToken);
+        if (reusableSession is not null)
+        {
+            return reusableSession;
+        }
+
+        var reference = BuildReference($"{plan.Slug}-discount");
+        var metadata = new Dictionary<string, object?>
+        {
+            ["checkout_kind"] = "subscription_discount",
+            ["plan_slug"] = plan.Slug,
+            ["tier_code"] = plan.TierCode,
+            ["billing_period_months"] = plan.BillingPeriodMonths,
+            ["is_subscription"] = plan.IsSubscription,
+            ["subscription_key"] = reference,
+            ["discount_code"] = discountCode.Trim(),
+            ["discount_kind"] = SubscriptionDiscountKinds.Percentage,
+            ["discount_percent"] = discount.DiscountPercent,
+            ["discount_duration"] = discount.DiscountDuration,
+            ["discount_payment_count"] = discount.DiscountPaymentCount,
+            ["original_amount_zar"] = originalAmount,
+            ["discounted_amount_zar"] = discountedAmount,
+            ["requires_reusable_authorization"] = true
+        };
+
+        return await InitializeTransactionAsync(
+            email,
+            amountInCents,
+            reference,
+            callbackUrl,
+            metadata,
+            planCode: null,
+            cancellationToken);
+    }
+
     public async Task<PaystackCheckoutInitResult> InitializeCheckoutForEmailAsync(
         PaymentPlan plan,
         string email,
@@ -754,6 +828,7 @@ public sealed class PaystackCheckoutService(
                 ProviderTransactionId: TryReadString(dataNode, "id") ?? TryReadString(dataNode, "reference"),
                 AuthorizationCode: TryReadNestedString(dataNode, "authorization", "authorization_code")
                     ?? TryReadString(dataNode, "authorization_code"),
+                AuthorizationReusable: TryReadNestedBoolean(dataNode, "authorization", "reusable"),
                 SubscriptionCode: TryReadNestedString(dataNode, "subscription", "subscription_code")
                     ?? TryReadString(dataNode, "subscription_code"),
                 EmailToken: TryReadNestedString(dataNode, "subscription", "email_token")
@@ -1224,6 +1299,25 @@ public sealed class PaystackCheckoutService(
         return TryReadString(nested, secondProperty);
     }
 
+    private static bool? TryReadNestedBoolean(JsonElement element, string firstProperty, string secondProperty)
+    {
+        if (element.ValueKind != JsonValueKind.Object ||
+            !element.TryGetProperty(firstProperty, out var nested) ||
+            nested.ValueKind != JsonValueKind.Object ||
+            !nested.TryGetProperty(secondProperty, out var node))
+        {
+            return null;
+        }
+
+        return node.ValueKind switch
+        {
+            JsonValueKind.True => true,
+            JsonValueKind.False => false,
+            JsonValueKind.String when bool.TryParse(node.GetString(), out var parsed) => parsed,
+            _ => null
+        };
+    }
+
     private static long TryReadInt64(JsonElement element, string propertyName)
     {
         if (element.ValueKind != JsonValueKind.Object ||
@@ -1494,6 +1588,7 @@ public sealed record PaystackVerifyResult(
     string? CustomerEmail = null,
     string? ProviderTransactionId = null,
     string? AuthorizationCode = null,
+    bool? AuthorizationReusable = null,
     string? SubscriptionCode = null,
     string? EmailToken = null,
     string? CustomerCode = null,

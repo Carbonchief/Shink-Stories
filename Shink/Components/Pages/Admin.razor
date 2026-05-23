@@ -1233,11 +1233,7 @@
                         var playlistShowcasePath = BuildAdminPlaylistShowcasePath(context);
                     }
                     <MudTd DataLabel='@T("Titel", "Title")'>
-                        @HighlightSearchMatch(
-                            context.IsSystemPlaylist
-                                ? $"{context.Title} ({T("Sisteem", "System")})"
-                                : context.Title,
-                            PlaylistSearch)
+                        @HighlightSearchMatch(BuildPlaylistRowDisplayTitle(context), PlaylistSearch)
                     </MudTd>
                     <MudTd Class="admin-col-center" DataLabel='@T("Posisie", "Position")'>
                         <div class='@($"admin-playlist-order-control{(IsPlaylistOrderDraftChanged(context.PlaylistId) ? " admin-playlist-order-dirty" : string.Empty)}")'
@@ -1273,7 +1269,7 @@
                                            Value="@context.IsEnabled"
                                            ValueChanged="@(value => TogglePlaylistEnabledAsync(context, value))"
                                            Color="Color.Success"
-                                           Disabled="@(IsSavingPlaylistsOrder || IsSavingPlaylist || TogglingPlaylistIds.Contains(context.PlaylistId))"
+                                           Disabled="@(IsSpeellysteSystemPlaylist(context) || IsSavingPlaylistsOrder || IsSavingPlaylist || TogglingPlaylistIds.Contains(context.PlaylistId))"
                                            aria-label="@BuildPlaylistEnabledToggleTooltip(context)" />
                             </MudTooltip>
                         </div>
@@ -1285,7 +1281,7 @@
                                            Value="@context.ShowOnHome"
                                            ValueChanged="@(value => TogglePlaylistHomeAsync(context, value))"
                                            Color="Color.Success"
-                                           Disabled="@(IsSavingPlaylistsOrder || IsSavingPlaylist || TogglingPlaylistIds.Contains(context.PlaylistId))"
+                                           Disabled="@(IsSpeellysteSystemPlaylist(context) || IsSavingPlaylistsOrder || IsSavingPlaylist || TogglingPlaylistIds.Contains(context.PlaylistId))"
                                            aria-label="@BuildPlaylistHomeToggleTooltip(context)" />
                             </MudTooltip>
                         </div>
@@ -1297,14 +1293,18 @@
                                            Value="@context.ShowShowcaseImageOnLuisterPage"
                                            ValueChanged="@(value => TogglePlaylistShowcaseOnLuisterAsync(context, value))"
                                            Color="Color.Success"
-                                           Disabled="@(IsSavingPlaylistsOrder || IsSavingPlaylist || TogglingPlaylistIds.Contains(context.PlaylistId))"
+                                           Disabled="@(IsSpeellysteSystemPlaylist(context) || IsSavingPlaylistsOrder || IsSavingPlaylist || TogglingPlaylistIds.Contains(context.PlaylistId))"
                                            aria-label="@BuildPlaylistShowcaseToggleTooltip(context)" />
                             </MudTooltip>
                         </div>
                     </MudTd>
                     <MudTd Class="admin-col-center" DataLabel='@T("Aksies", "Actions")'>
                         <div class="admin-table-actions admin-playlist-actions">
-                            @if (!string.IsNullOrWhiteSpace(playlistPlayerPath))
+                            @if (IsSpeellysteSystemPlaylist(context))
+                            {
+                                <span class="admin-form-note">@BuildSpeellysteSystemPlaylistNotice()</span>
+                            }
+                            else if (!string.IsNullOrWhiteSpace(playlistPlayerPath))
                             {
                                 <a class="admin-icon-btn"
                                    href="@playlistPlayerPath"
@@ -1317,7 +1317,7 @@
                                     <span class="sr-only">@T("Maak playlist speler oop in nuwe oortjie", "Open playlist player in new tab")</span>
                                 </a>
                             }
-                            @if (!string.IsNullOrWhiteSpace(playlistShowcasePath))
+                            @if (!IsSpeellysteSystemPlaylist(context) && !string.IsNullOrWhiteSpace(playlistShowcasePath))
                             {
                                 <a class="admin-icon-btn"
                                    href="@playlistShowcasePath"
@@ -5321,6 +5321,12 @@
             return;
         }
 
+        if (IsSpeellysteSystemPlaylist(args.Item))
+        {
+            SetStatus(BuildSpeellysteSystemPlaylistNotice());
+            return;
+        }
+
         BeginEditModalOpen();
         await InvokeAsync(StateHasChanged);
         await SelectPlaylist(args.Item.PlaylistId);
@@ -6748,9 +6754,33 @@
             ? T("Showcase storie - klik om te verwyder", "Showcase story - click to remove")
             : T("Nie showcase storie nie - klik om by te voeg", "Not a showcase story - click to add");
 
+    private string BuildPlaylistRowDisplayTitle(AdminPlaylistRecord playlist)
+    {
+        if (IsSpeellysteSystemPlaylist(playlist))
+        {
+            return T("Speellyste (Sisteem)", "Speellyste section (System)");
+        }
+
+        return playlist.IsSystemPlaylist
+            ? $"{playlist.Title} ({T("Sisteem", "System")})"
+            : playlist.Title;
+    }
+
+    private string BuildSpeellysteSystemPlaylistNotice() =>
+        T(
+            "Hierdie ry beheer net waar die Speellyste blok op die Luister blad wys. Playlist items word deur die individuele playlists beheer.",
+            "This row only controls where the Speellyste block appears on the Luister page. Playlist items are managed by the individual playlists.");
+
+    private static bool IsSpeellysteSystemPlaylist(AdminPlaylistRecord playlist) =>
+        playlist.IsSystemPlaylist &&
+        (string.Equals(playlist.SystemKey, "speellyste", StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(playlist.Slug, "speellyste", StringComparison.OrdinalIgnoreCase));
+
     private async Task TogglePlaylistEnabledAsync(AdminPlaylistRecord playlist, bool isEnabled)
     {
-        if (playlist.PlaylistId == Guid.Empty || playlist.IsEnabled == isEnabled)
+        if (IsSpeellysteSystemPlaylist(playlist) ||
+            playlist.PlaylistId == Guid.Empty ||
+            playlist.IsEnabled == isEnabled)
         {
             return;
         }
@@ -6805,7 +6835,9 @@
 
     private async Task TogglePlaylistHomeAsync(AdminPlaylistRecord playlist, bool showOnHome)
     {
-        if (playlist.PlaylistId == Guid.Empty || playlist.ShowOnHome == showOnHome)
+        if (IsSpeellysteSystemPlaylist(playlist) ||
+            playlist.PlaylistId == Guid.Empty ||
+            playlist.ShowOnHome == showOnHome)
         {
             return;
         }
@@ -6860,7 +6892,9 @@
 
     private async Task TogglePlaylistShowcaseOnLuisterAsync(AdminPlaylistRecord playlist, bool showOnLuister)
     {
-        if (playlist.PlaylistId == Guid.Empty || playlist.ShowShowcaseImageOnLuisterPage == showOnLuister)
+        if (IsSpeellysteSystemPlaylist(playlist) ||
+            playlist.PlaylistId == Guid.Empty ||
+            playlist.ShowShowcaseImageOnLuisterPage == showOnLuister)
         {
             return;
         }
@@ -9323,6 +9357,11 @@
 
     private static string? BuildAdminPlaylistPlayerPath(AdminPlaylistRecord playlist)
     {
+        if (IsSpeellysteSystemPlaylist(playlist))
+        {
+            return null;
+        }
+
         if (string.IsNullOrWhiteSpace(playlist.Slug))
         {
             return null;
