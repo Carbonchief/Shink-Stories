@@ -442,6 +442,16 @@ else
                                 <span class="story-test-option-letter">B</span>
                                 <span>@question.OptionB</span>
                             </button>
+                            @if (HasStoryTestOptionC(question))
+                            {
+                                <button type="button"
+                                        class='@BuildStoryTestOptionClass(question, selectedOption, "C", IsStoryTestSubmitted)'
+                                        @onclick='@(() => SelectStoryTestOption(questionIndex, "C"))'
+                                        aria-pressed='@(selectedOption == "C")'>
+                                    <span class="story-test-option-letter">C</span>
+                                    <span>@question.OptionC</span>
+                                </button>
+                            }
                         </div>
                         @if (IsStoryTestSubmitted && !string.IsNullOrWhiteSpace(selectedOption))
                         {
@@ -892,6 +902,9 @@ else
 
     private static bool IsStoryTestAnswerCorrect(StoryTestQuestion question, string? selectedOption) =>
         string.Equals(question.CorrectOption, selectedOption, StringComparison.OrdinalIgnoreCase);
+
+    private static bool HasStoryTestOptionC(StoryTestQuestion question) =>
+        !string.IsNullOrWhiteSpace(question.OptionC);
 
     private async Task LoadFavoriteStorySlugsAsync()
     {

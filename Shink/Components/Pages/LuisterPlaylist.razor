@@ -69,7 +69,7 @@ else if (CurrentStory is null || AccessibleStories.Count == 0)
 }
 else
 {
-    <section class="playlist-page story-player-page @(IsManualFullscreenFocus ? "manual-fullscreen-focus" : null)">
+    <section class="playlist-page story-player-page @(IsManualFullscreenFocus ? "manual-fullscreen-focus" : null)" style="@BuildPlaylistAccentStyle(CurrentPlaylist)">
         <header class="playlist-header">
             <h1>@CurrentPlaylist.Title</h1>
             @if (!string.IsNullOrWhiteSpace(CurrentPlaylist.Description))
@@ -1248,6 +1248,43 @@ else
         string.IsNullOrWhiteSpace(playlistSlug)
             ? "/luister"
             : $"/luister/speellys/{Uri.EscapeDataString(playlistSlug.Trim())}";
+
+    private string? BuildPlaylistAccentStyle(StoryPlaylist? playlist)
+    {
+        var accentColorHex = NormalizePlaylistAccentColorHex(playlist?.AccentColorHex);
+        return string.IsNullOrWhiteSpace(accentColorHex)
+            ? null
+            : $"--playlist-accent-color: {accentColorHex};";
+    }
+
+    private string? NormalizePlaylistAccentColorHex(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var normalized = value.Trim();
+        if (normalized.Length == 6)
+        {
+            normalized = $"#{normalized}";
+        }
+
+        if (normalized.Length != 7 || normalized[0] != '#')
+        {
+            return null;
+        }
+
+        for (var index = 1; index < normalized.Length; index++)
+        {
+            if (!Uri.IsHexDigit(normalized[index]))
+            {
+                return null;
+            }
+        }
+
+        return normalized.ToUpperInvariant();
+    }
 
     private static string BuildPlaylistHref(string? playlistSlug, string? storySlug)
     {

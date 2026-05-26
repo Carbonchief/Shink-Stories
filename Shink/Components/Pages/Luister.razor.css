@@ -192,6 +192,10 @@ h1 {
     margin-top: 1.1rem;
 }
 
+.luister-stories-section {
+    --playlist-accent-color: var(--accent);
+}
+
 .luister-whatsapp-join {
     width: min(100%, 980px);
     margin: 1.5rem auto 2rem;
@@ -268,7 +272,7 @@ h1 {
     font-family: "Font Awesome 6 Free";
     font-weight: 900;
     font-size: 0.82em;
-    color: color-mix(in srgb, var(--accent) 78%, #2e3238);
+    color: color-mix(in srgb, var(--playlist-accent-color) 78%, #2e3238);
     transform: translateY(0.03em);
     transition: transform 0.18s ease;
 }
@@ -319,7 +323,9 @@ h1 {
     border-radius: 16px;
     aspect-ratio: 16 / 9;
     background: #111;
-    box-shadow: 0 12px 26px rgba(14, 18, 24, 0.24);
+    box-shadow:
+        0 12px 26px rgba(14, 18, 24, 0.24),
+        0 0 0 3px color-mix(in srgb, var(--playlist-accent-color) 68%, transparent);
 }
 
 .luister-playlist-showcase-image {
@@ -593,7 +599,7 @@ h1 {
     justify-content: center;
     font-size: 1.15rem;
     color: #1a1a1a;
-    background: color-mix(in srgb, var(--accent) 90%, white);
+    background: color-mix(in srgb, var(--playlist-accent-color) 90%, white);
     box-shadow: 0 7px 22px rgba(0, 0, 0, 0.3);
     padding-left: 0.16rem;
 }
@@ -697,6 +703,12 @@ h1 {
     }
 }
 
+@media (min-width: 981px) {
+    .luister-playlist-showcase {
+        width: min(100%, 936px);
+    }
+}
+
 @media (max-width: 980px) {
     .stories-carousel {
         grid-auto-columns: minmax(170px, 42vw);
@@ -762,6 +774,10 @@ h1 {
         margin-top: 1.25rem;
         margin-bottom: 1.7rem;
         padding-inline: 0.8rem;
+    }
+
+    .luister-playlist-showcase-cover {
+        aspect-ratio: 1 / 1;
     }
 }
 

@@ -118,66 +118,73 @@
                     <div class="admin-section-head admin-subscriber-section-head">
                         @if (IsShowingSubscriberGrid)
                         {
-                            <div class="admin-search">
-                                <div class="admin-search-field">
-                                    <MudTextField T="string"
-                                                  @bind-Value="SubscriberSearch"
-                                                  Placeholder='@T("Soek e-pos of naam", "Search email or name")'
-                                                  Variant="Variant.Outlined"
-                                                  Margin="Margin.Dense"
-                                                  Immediate="true"
-                                                  OnKeyDown="HandleSubscriberSearchKeyDownAsync" />
+                            <div class="admin-subscriber-toolbar">
+                                <div class="admin-subscriber-count" aria-live="polite">
+                                    @BuildSubscriberCountLabel()
                                 </div>
-                                <div class="admin-search-actions">
-                                    <MudButton Class="admin-icon-btn admin-mobile-cta admin-icon-only"
-                                               Variant="Variant.Filled"
-                                               Color="Color.Secondary"
-                                               OnClick="StartNewSubscriber"
-                                               aria-label='@T("Skep intekenaar", "Create subscriber")'
-                                               title='@T("Skep intekenaar", "Create subscriber")'>
-                                        <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
-                                        <span class="admin-btn-text">@T("Nuwe intekenaar", "New subscriber")</span>
-                                    </MudButton>
-                                    <MudButton Class="admin-icon-btn admin-mobile-cta admin-icon-only"
-                                               Variant="Variant.Filled"
-                                               Color="Color.Primary"
-                                               OnClick="SearchSubscribersAsync"
-                                               aria-label='@T("Soek intekenaars", "Search subscribers")'
-                                               title='@T("Soek intekenaars", "Search subscribers")'>
-                                        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                                        <span class="admin-btn-text">@T("Soek", "Search")</span>
-                                        <span class="sr-only">@T("Soek intekenaars", "Search subscribers")</span>
-                                    </MudButton>
-                                    <MudButton Class="admin-icon-btn admin-mobile-cta admin-icon-only"
-                                               Variant="Variant.Text"
-                                               Color="Color.Default"
-                                               Disabled="@(!HasActiveSubscriberColumnFilters)"
-                                               OnClick="ClearSubscriberColumnFiltersAsync"
-                                               aria-label='@T("Maak intekenaarfilters skoon", "Clear subscriber filters")'
-                                               title='@T("Maak intekenaarfilters skoon", "Clear subscriber filters")'>
-                                        <i class="fa-solid fa-filter-circle-xmark" aria-hidden="true"></i>
-                                        <span class="admin-btn-text">@T("Maak filters skoon", "Clear filters")</span>
-                                        <span class="sr-only">@T("Maak intekenaarfilters skoon", "Clear subscriber filters")</span>
-                                    </MudButton>
-                                    <MudButton Class="admin-icon-btn admin-mobile-cta admin-icon-only"
-                                               Variant="Variant.Outlined"
-                                               Color="Color.Primary"
-                                               OnClick="ReloadSubscribersAsync"
-                                               aria-label='@T("Verfris intekenaars", "Refresh subscribers")'
-                                               title='@T("Verfris intekenaars", "Refresh subscribers")'>
-                                        <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
-                                        <span class="admin-btn-text">@T("Verfris", "Refresh")</span>
-                                        <span class="sr-only">@T("Verfris intekenaars", "Refresh subscribers")</span>
-                                    </MudButton>
-                                    <MudButton Class="admin-icon-btn admin-mobile-cta"
-                                               Variant="Variant.Outlined"
-                                               Color="Color.Primary"
-                                               OnClick="ExportFilteredSubscribersAsync"
-                                               aria-label='@T("Voer gefilterde intekenaars uit", "Export filtered subscribers")'
-                                               title='@T("Voer gefilterde intekenaars uit", "Export filtered subscribers")'>
-                                        <i class="fa-solid fa-file-csv" aria-hidden="true"></i>
-                                        <span class="admin-btn-text">@T("Voer uit", "Export")</span>
-                                    </MudButton>
+                                <div class="admin-search">
+                                    <div class="admin-search-field">
+                                        <MudTextField T="string"
+                                                      @bind-Value="SubscriberSearch"
+                                                      Placeholder='@T("Soek e-pos of naam", "Search email or name")'
+                                                      Variant="Variant.Outlined"
+                                                      Margin="Margin.Dense"
+                                                      Immediate="true"
+                                                      DebounceInterval="300"
+                                                      OnDebounceIntervalElapsed="HandleSubscriberSearchDebouncedAsync"
+                                                      OnKeyDown="HandleSubscriberSearchKeyDownAsync" />
+                                    </div>
+                                    <div class="admin-search-actions">
+                                        <MudButton Class="admin-icon-btn admin-mobile-cta admin-icon-only"
+                                                   Variant="Variant.Filled"
+                                                   Color="Color.Secondary"
+                                                   OnClick="StartNewSubscriber"
+                                                   aria-label='@T("Skep intekenaar", "Create subscriber")'
+                                                   title='@T("Skep intekenaar", "Create subscriber")'>
+                                            <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
+                                            <span class="admin-btn-text">@T("Nuwe intekenaar", "New subscriber")</span>
+                                        </MudButton>
+                                        <MudButton Class="admin-icon-btn admin-mobile-cta admin-icon-only"
+                                                   Variant="Variant.Filled"
+                                                   Color="Color.Primary"
+                                                   OnClick="SearchSubscribersAsync"
+                                                   aria-label='@T("Soek intekenaars", "Search subscribers")'
+                                                   title='@T("Soek intekenaars", "Search subscribers")'>
+                                            <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                                            <span class="admin-btn-text">@T("Soek", "Search")</span>
+                                            <span class="sr-only">@T("Soek intekenaars", "Search subscribers")</span>
+                                        </MudButton>
+                                        <MudButton Class="admin-icon-btn admin-mobile-cta admin-icon-only"
+                                                   Variant="Variant.Text"
+                                                   Color="Color.Default"
+                                                   Disabled="@(!HasActiveSubscriberColumnFilters)"
+                                                   OnClick="ClearSubscriberColumnFiltersAsync"
+                                                   aria-label='@T("Maak intekenaarfilters skoon", "Clear subscriber filters")'
+                                                   title='@T("Maak intekenaarfilters skoon", "Clear subscriber filters")'>
+                                            <i class="fa-solid fa-filter-circle-xmark" aria-hidden="true"></i>
+                                            <span class="admin-btn-text">@T("Maak filters skoon", "Clear filters")</span>
+                                            <span class="sr-only">@T("Maak intekenaarfilters skoon", "Clear subscriber filters")</span>
+                                        </MudButton>
+                                        <MudButton Class="admin-icon-btn admin-mobile-cta admin-icon-only"
+                                                   Variant="Variant.Outlined"
+                                                   Color="Color.Primary"
+                                                   OnClick="ReloadSubscribersAsync"
+                                                   aria-label='@T("Verfris intekenaars", "Refresh subscribers")'
+                                                   title='@T("Verfris intekenaars", "Refresh subscribers")'>
+                                            <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
+                                            <span class="admin-btn-text">@T("Verfris", "Refresh")</span>
+                                            <span class="sr-only">@T("Verfris intekenaars", "Refresh subscribers")</span>
+                                        </MudButton>
+                                        <MudButton Class="admin-icon-btn admin-mobile-cta"
+                                                   Variant="Variant.Outlined"
+                                                   Color="Color.Primary"
+                                                   OnClick="ExportFilteredSubscribersAsync"
+                                                   aria-label='@T("Voer gefilterde intekenaars uit", "Export filtered subscribers")'
+                                                   title='@T("Voer gefilterde intekenaars uit", "Export filtered subscribers")'>
+                                            <i class="fa-solid fa-file-csv" aria-hidden="true"></i>
+                                            <span class="admin-btn-text">@T("Voer uit", "Export")</span>
+                                        </MudButton>
+                                    </div>
                                 </div>
                             </div>
                             @if (SelectedSubscriberIds.Count > 0)
@@ -469,14 +476,96 @@
                                     </div>
                                 </MudTh>
                                 <MudTh>
-                                    <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="subscribed_at">
-                                        @T("Ingeteken op", "Subscribed On")
-                                    </MudTableSortLabel>
+                                    <div class="admin-header-cell">
+                                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="subscribed_at">
+                                            @T("Ingeteken op", "Subscribed On")
+                                        </MudTableSortLabel>
+                                        <details class='@($"admin-header-filter{(SubscriberColumnFilters.SubscribedFrom is null && SubscriberColumnFilters.SubscribedTo is null ? string.Empty : " is-active")}")'
+                                                 @onclick:stopPropagation="true">
+                                            <summary class="admin-header-filter-toggle"
+                                                     @onclick:stopPropagation="true"
+                                                     title='@T("Filter ingeteken op", "Filter subscribed on")'>
+                                                <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                                                <span class="sr-only">@T("Filter ingeteken op", "Filter subscribed on")</span>
+                                            </summary>
+                                            <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
+                                                <label class="admin-header-filter-label" for="subscriber-filter-subscribed-from">
+                                                    @T("Van", "From")
+                                                </label>
+                                                <input id="subscriber-filter-subscribed-from"
+                                                       class="admin-header-filter-input"
+                                                       type="date"
+                                                       value="@SubscriberSubscribedFromFilterDraft"
+                                                       @oninput="(ChangeEventArgs args) => SubscriberSubscribedFromFilterDraft = ReadFilterValue(args)" />
+                                                <label class="admin-header-filter-label" for="subscriber-filter-subscribed-to">
+                                                    @T("Tot", "To")
+                                                </label>
+                                                <input id="subscriber-filter-subscribed-to"
+                                                       class="admin-header-filter-input"
+                                                       type="date"
+                                                       value="@SubscriberSubscribedToFilterDraft"
+                                                       @oninput="(ChangeEventArgs args) => SubscriberSubscribedToFilterDraft = ReadFilterValue(args)" />
+                                                <div class="admin-header-filter-actions-row">
+                                                    <button type="button"
+                                                            class="admin-header-filter-action"
+                                                            @onclick='() => ApplySubscriberDateFilterAsync("subscribed")'>
+                                                        @T("Pas toe", "Apply")
+                                                    </button>
+                                                    <button type="button"
+                                                            class="admin-header-filter-action is-secondary"
+                                                            @onclick='() => ClearSubscriberDateFilterAsync("subscribed")'>
+                                                        @T("Maak skoon", "Clear")
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </details>
+                                    </div>
                                 </MudTh>
                                 <MudTh>
-                                    <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="next_payment">
-                                        @T("Volgende betaling", "Next Payment")
-                                    </MudTableSortLabel>
+                                    <div class="admin-header-cell">
+                                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="next_payment">
+                                            @T("Volgende betaling", "Next Payment")
+                                        </MudTableSortLabel>
+                                        <details class='@($"admin-header-filter{(SubscriberColumnFilters.NextPaymentFrom is null && SubscriberColumnFilters.NextPaymentTo is null ? string.Empty : " is-active")}")'
+                                                 @onclick:stopPropagation="true">
+                                            <summary class="admin-header-filter-toggle"
+                                                     @onclick:stopPropagation="true"
+                                                     title='@T("Filter volgende betaling", "Filter next payment")'>
+                                                <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                                                <span class="sr-only">@T("Filter volgende betaling", "Filter next payment")</span>
+                                            </summary>
+                                            <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
+                                                <label class="admin-header-filter-label" for="subscriber-filter-next-payment-from">
+                                                    @T("Van", "From")
+                                                </label>
+                                                <input id="subscriber-filter-next-payment-from"
+                                                       class="admin-header-filter-input"
+                                                       type="date"
+                                                       value="@SubscriberNextPaymentFromFilterDraft"
+                                                       @oninput="(ChangeEventArgs args) => SubscriberNextPaymentFromFilterDraft = ReadFilterValue(args)" />
+                                                <label class="admin-header-filter-label" for="subscriber-filter-next-payment-to">
+                                                    @T("Tot", "To")
+                                                </label>
+                                                <input id="subscriber-filter-next-payment-to"
+                                                       class="admin-header-filter-input"
+                                                       type="date"
+                                                       value="@SubscriberNextPaymentToFilterDraft"
+                                                       @oninput="(ChangeEventArgs args) => SubscriberNextPaymentToFilterDraft = ReadFilterValue(args)" />
+                                                <div class="admin-header-filter-actions-row">
+                                                    <button type="button"
+                                                            class="admin-header-filter-action"
+                                                            @onclick='() => ApplySubscriberDateFilterAsync("next-payment")'>
+                                                        @T("Pas toe", "Apply")
+                                                    </button>
+                                                    <button type="button"
+                                                            class="admin-header-filter-action is-secondary"
+                                                            @onclick='() => ClearSubscriberDateFilterAsync("next-payment")'>
+                                                        @T("Maak skoon", "Clear")
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </details>
+                                    </div>
                                 </MudTh>
                             </HeaderContent>
                             <RowTemplate>
@@ -518,7 +607,7 @@
                                     </div>
                                 </MudTd>
                                 <MudTd DataLabel='@T("Selfoon", "Mobile")'>@HighlightSearchMatch(context.MobileNumber ?? "-", SubscriberSearch)</MudTd>
-                                <MudTd DataLabel='@T("Vlakke", "Tiers")'>@BuildTierSummary(context.ActiveTierCodes)</MudTd>
+                                <MudTd DataLabel='@T("Vlakke", "Tiers")'>@BuildTierSummary(context)</MudTd>
                                 <MudTd DataLabel='@T("Bron", "Source")'>@BuildSubscriptionSourceLabel(context.SubscriptionSourceSystem)</MudTd>
                                 <MudTd DataLabel='@T("Betaalverskaffer", "Payment Provider")'>@BuildPaymentProviderLabel(context.PaymentProvider)</MudTd>
                                 <MudTd DataLabel='@T("Status", "Status")'>@BuildSubscriptionStatusLabel(context)</MudTd>
@@ -2960,10 +3049,10 @@
                                            Color="Color.Primary"
                                            Disabled="@IsSavingSubscriberAction"
                                            OnClick="ResendSubscriberRecoveryEmailAsync"
-                                           aria-label='@T("Stuur aktiewe herstel-e-pos weer", "Resend active recovery email")'
-                                           title='@T("Stuur aktiewe herstel-e-pos weer", "Resend active recovery email")'>
+                                           aria-label='@T("Stuur herstel-e-pos", "Send recovery email")'
+                                           title='@T("Stuur herstel-e-pos", "Send recovery email")'>
                                     <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
-                                    <span class="admin-btn-text">@T("Stuur aktiewe herstel-e-pos weer", "Resend active recovery email")</span>
+                                    <span class="admin-btn-text">@T("Stuur herstel-e-pos", "Send recovery email")</span>
                                 </MudButton>
                                 @RenderSubscriberRecoveries()
                             </MudTabPanel>
@@ -3170,6 +3259,11 @@
                                                           @bind-Value="question.OptionB"
                                                           Variant="Variant.Outlined"
                                                           Margin="Margin.Dense" />
+                                            <MudTextField T="string"
+                                                          Label='@T("Opsie C (opsioneel)", "Option C (optional)")'
+                                                          @bind-Value="question.OptionC"
+                                                          Variant="Variant.Outlined"
+                                                          Margin="Margin.Dense" />
                                             <MudSelect T="string"
                                                        Label='@T("Regte antwoord", "Correct answer")'
                                                        @bind-Value="question.CorrectOption"
@@ -3177,6 +3271,7 @@
                                                        Margin="Margin.Dense">
                                                 <MudSelectItem Value="@("A")">A</MudSelectItem>
                                                 <MudSelectItem Value="@("B")">B</MudSelectItem>
+                                                <MudSelectItem Value="@("C")">C</MudSelectItem>
                                             </MudSelect>
                                             <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
                                                        Variant="Variant.Text"
@@ -3591,6 +3686,11 @@
                                                           @bind-Value="question.OptionB"
                                                           Variant="Variant.Outlined"
                                                           Margin="Margin.Dense" />
+                                            <MudTextField T="string"
+                                                          Label='@T("Opsie C (opsioneel)", "Option C (optional)")'
+                                                          @bind-Value="question.OptionC"
+                                                          Variant="Variant.Outlined"
+                                                          Margin="Margin.Dense" />
                                             <MudSelect T="string"
                                                        Label='@T("Regte antwoord", "Correct answer")'
                                                        @bind-Value="question.CorrectOption"
@@ -3598,6 +3698,7 @@
                                                        Margin="Margin.Dense">
                                                 <MudSelectItem Value="@("A")">A</MudSelectItem>
                                                 <MudSelectItem Value="@("B")">B</MudSelectItem>
+                                                <MudSelectItem Value="@("C")">C</MudSelectItem>
                                             </MudSelect>
                                             <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
                                                        Variant="Variant.Text"
@@ -3653,6 +3754,7 @@
             var playlistShowcasePreviewUrl = !string.IsNullOrWhiteSpace(PlaylistEditor.ShowcasePreviewDataUrl)
                 ? PlaylistEditor.ShowcasePreviewDataUrl
                 : ResolvePreviewImageUrl(PlaylistEditor.ShowcaseImagePath);
+            var playlistAccentPickerValue = ResolvePlaylistAccentPickerValue(PlaylistEditor.AccentColorHex);
 
             <MudDialog Visible="IsPlaylistDialogOpen"
                        VisibleChanged="OnPlaylistDialogVisibleChanged"
@@ -3696,6 +3798,27 @@
                                                   Variant="Variant.Outlined"
                                                   Margin="Margin.Dense"
                                                   Lines="3" />
+                                    <div class="admin-playlist-colour-field admin-span-2">
+                                        <label class="admin-playlist-colour-label" for="playlist-accent-color-picker">
+                                            @T("Luister kleur", "Luister color")
+                                        </label>
+                                        <input id="playlist-accent-color-picker"
+                                               class="admin-playlist-colour-picker"
+                                               type="color"
+                                               value="@playlistAccentPickerValue"
+                                               @oninput="OnPlaylistAccentColorPickerChanged"
+                                               aria-label='@T("Kies Luister kleur", "Choose Luister color")' />
+                                        <MudTextField T="string"
+                                                      Class="admin-playlist-colour-hex"
+                                                      Label='@T("Hex kode", "Hex code")'
+                                                      @bind-Value="PlaylistEditor.AccentColorHex"
+                                                      Placeholder="#FFAA00"
+                                                      Variant="Variant.Outlined"
+                                                      Margin="Margin.Dense" />
+                                        <span class="admin-playlist-colour-help">
+                                            @T("Gebruik 'n hex-kleurkode soos #FFAA00.", "Use a hex color code such as #FFAA00.")
+                                        </span>
+                                    </div>
                                     <MudCheckBox T="bool"
                                                  Class="admin-span-2 admin-playlist-checkbox"
                                                  Label='@T("Aktief", "Active")'
@@ -4100,12 +4223,18 @@
     };
 
     private string SubscriberSearch { get; set; } = string.Empty;
+    private string LastAppliedSubscriberSearch { get; set; } = string.Empty;
+    private int? SubscriberTotalCount { get; set; }
     private string StorySearch { get; set; } = string.Empty;
     private string PlaylistSearch { get; set; } = string.Empty;
     private string StoryToAddIdString { get; set; } = string.Empty;
     private string SubscriberTextFilterDraft { get; set; } = string.Empty;
     private string SubscriberMobileFilterDraft { get; set; } = string.Empty;
     private string SubscriberTierFilterDraft { get; set; } = string.Empty;
+    private string SubscriberSubscribedFromFilterDraft { get; set; } = string.Empty;
+    private string SubscriberSubscribedToFilterDraft { get; set; } = string.Empty;
+    private string SubscriberNextPaymentFromFilterDraft { get; set; } = string.Empty;
+    private string SubscriberNextPaymentToFilterDraft { get; set; } = string.Empty;
     private string StoryTitleFilterDraft { get; set; } = string.Empty;
     private string PlaylistTitleFilterDraft { get; set; } = string.Empty;
 
@@ -4819,8 +4948,26 @@
         IsLoading = false;
     }
 
-    private async Task SearchSubscribersAsync() =>
+    private async Task SearchSubscribersAsync()
+    {
+        LastAppliedSubscriberSearch = NormalizeSubscriberSearchForReload(SubscriberSearch);
+        await CloseAdminHeaderFiltersAsync();
         await RefreshSubscribersAsync(resetToFirstPage: true);
+    }
+
+    private async Task HandleSubscriberSearchDebouncedAsync(string value)
+    {
+        SubscriberSearch = value;
+        var normalizedSearch = NormalizeSubscriberSearchForReload(SubscriberSearch);
+        if (string.Equals(normalizedSearch, LastAppliedSubscriberSearch, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        LastAppliedSubscriberSearch = normalizedSearch;
+        await CloseAdminHeaderFiltersAsync();
+        await RefreshSubscribersAsync(resetToFirstPage: true);
+    }
 
     private async Task HandleSubscriberSearchKeyDownAsync(KeyboardEventArgs args)
     {
@@ -4832,6 +4979,9 @@
 
     private async Task ReloadSubscribersAsync() =>
         await RefreshSubscribersAsync();
+
+    private static string NormalizeSubscriberSearchForReload(string? search) =>
+        search?.Trim() ?? string.Empty;
 
     private async Task RefreshSubscribersAsync(bool resetToFirstPage = false)
     {
@@ -4862,6 +5012,7 @@
                 cancellationToken);
 
             Subscribers = page.Items;
+            SubscriberTotalCount = page.TotalCount;
             SelectedSubscriberIds.IntersectWith(Subscribers.Select(subscriber => subscriber.SubscriberId));
             SubscriberGridEnhancementPending = true;
 
@@ -4888,6 +5039,7 @@
         {
             Logger.LogError(exception, "Failed to refresh subscribers.");
             Subscribers = Array.Empty<AdminSubscriberRecord>();
+            SubscriberTotalCount = 0;
             SubscriberEditor = null;
             SubscriberEditorStateSignature = null;
             IsSubscriberDialogOpen = false;
@@ -4924,7 +5076,11 @@
             TierText: SubscriberColumnFilters.TierText,
             SourceSystem: SubscriberColumnFilters.SourceSystem,
             PaymentProvider: SubscriberColumnFilters.PaymentProvider,
-            SubscriptionStatus: SubscriberColumnFilters.SubscriptionStatus);
+            SubscriptionStatus: SubscriberColumnFilters.SubscriptionStatus,
+            SubscribedFrom: SubscriberColumnFilters.SubscribedFrom,
+            SubscribedTo: SubscriberColumnFilters.SubscribedTo,
+            NextPaymentFrom: SubscriberColumnFilters.NextPaymentFrom,
+            NextPaymentTo: SubscriberColumnFilters.NextPaymentTo);
     }
 
     private async Task ApplySubscriberTextFilterAsync(string filterKey)
@@ -4942,6 +5098,7 @@
                 break;
         }
 
+        await CloseAdminHeaderFiltersAsync();
         await RefreshSubscribersAsync(resetToFirstPage: true);
     }
 
@@ -4963,24 +5120,68 @@
                 break;
         }
 
+        await CloseAdminHeaderFiltersAsync();
+        await RefreshSubscribersAsync(resetToFirstPage: true);
+    }
+
+    private async Task ApplySubscriberDateFilterAsync(string filterKey)
+    {
+        switch (filterKey)
+        {
+            case "subscribed":
+                SubscriberColumnFilters.SubscribedFrom = ParseAdminDateFilter(SubscriberSubscribedFromFilterDraft);
+                SubscriberColumnFilters.SubscribedTo = ParseAdminDateFilter(SubscriberSubscribedToFilterDraft);
+                break;
+            case "next-payment":
+                SubscriberColumnFilters.NextPaymentFrom = ParseAdminDateFilter(SubscriberNextPaymentFromFilterDraft);
+                SubscriberColumnFilters.NextPaymentTo = ParseAdminDateFilter(SubscriberNextPaymentToFilterDraft);
+                break;
+        }
+
+        await CloseAdminHeaderFiltersAsync();
+        await RefreshSubscribersAsync(resetToFirstPage: true);
+    }
+
+    private async Task ClearSubscriberDateFilterAsync(string filterKey)
+    {
+        switch (filterKey)
+        {
+            case "subscribed":
+                SubscriberSubscribedFromFilterDraft = string.Empty;
+                SubscriberSubscribedToFilterDraft = string.Empty;
+                SubscriberColumnFilters.SubscribedFrom = null;
+                SubscriberColumnFilters.SubscribedTo = null;
+                break;
+            case "next-payment":
+                SubscriberNextPaymentFromFilterDraft = string.Empty;
+                SubscriberNextPaymentToFilterDraft = string.Empty;
+                SubscriberColumnFilters.NextPaymentFrom = null;
+                SubscriberColumnFilters.NextPaymentTo = null;
+                break;
+        }
+
+        await CloseAdminHeaderFiltersAsync();
         await RefreshSubscribersAsync(resetToFirstPage: true);
     }
 
     private async Task OnSubscriberSourceFilterChanged(ChangeEventArgs args)
     {
         SubscriberColumnFilters.SourceSystem = ReadFilterValue(args);
+        await CloseAdminHeaderFiltersAsync();
         await RefreshSubscribersAsync(resetToFirstPage: true);
     }
 
     private async Task OnSubscriberProviderFilterChanged(ChangeEventArgs args)
     {
         SubscriberColumnFilters.PaymentProvider = ReadFilterValue(args);
+        await CloseAdminHeaderFiltersAsync();
         await RefreshSubscribersAsync(resetToFirstPage: true);
     }
 
     private async Task OnSubscriberStatusFilterChanged(ChangeEventArgs args)
     {
         SubscriberColumnFilters.SubscriptionStatus = ReadFilterValue(args);
+        await CloseAdminHeaderFiltersAsync();
         await RefreshSubscribersAsync(resetToFirstPage: true);
     }
 
@@ -4990,66 +5191,99 @@
         SubscriberTextFilterDraft = string.Empty;
         SubscriberMobileFilterDraft = string.Empty;
         SubscriberTierFilterDraft = string.Empty;
+        SubscriberSubscribedFromFilterDraft = string.Empty;
+        SubscriberSubscribedToFilterDraft = string.Empty;
+        SubscriberNextPaymentFromFilterDraft = string.Empty;
+        SubscriberNextPaymentToFilterDraft = string.Empty;
+        await CloseAdminHeaderFiltersAsync();
         await RefreshSubscribersAsync(resetToFirstPage: true);
     }
 
-    private void ApplyStoryTitleFilter()
+    private async Task ApplyStoryTitleFilter()
     {
         StoryColumnFilters.TitleText = StoryTitleFilterDraft.Trim();
+        await CloseAdminHeaderFiltersAsync();
     }
 
-    private void ClearStoryTitleFilter()
+    private async Task ClearStoryTitleFilter()
     {
         StoryTitleFilterDraft = string.Empty;
         StoryColumnFilters.TitleText = string.Empty;
+        await CloseAdminHeaderFiltersAsync();
     }
 
-    private void OnStoryStatusFilterChanged(ChangeEventArgs args)
+    private async Task OnStoryStatusFilterChanged(ChangeEventArgs args)
     {
         StoryColumnFilters.Status = ReadFilterValue(args);
+        await CloseAdminHeaderFiltersAsync();
     }
 
-    private void OnStoryAccessFilterChanged(ChangeEventArgs args)
+    private async Task OnStoryAccessFilterChanged(ChangeEventArgs args)
     {
         StoryColumnFilters.AccessLevel = ReadFilterValue(args);
+        await CloseAdminHeaderFiltersAsync();
     }
 
-    private void ClearStoryColumnFilters()
+    private async Task ClearStoryColumnFilters()
     {
         StoryColumnFilters.Clear();
         StoryTitleFilterDraft = string.Empty;
+        await CloseAdminHeaderFiltersAsync();
     }
 
-    private void ApplyPlaylistTitleFilter()
+    private async Task ApplyPlaylistTitleFilter()
     {
         PlaylistColumnFilters.TitleText = PlaylistTitleFilterDraft.Trim();
+        await CloseAdminHeaderFiltersAsync();
     }
 
-    private void ClearPlaylistTitleFilter()
+    private async Task ClearPlaylistTitleFilter()
     {
         PlaylistTitleFilterDraft = string.Empty;
         PlaylistColumnFilters.TitleText = string.Empty;
+        await CloseAdminHeaderFiltersAsync();
     }
 
-    private void OnPlaylistEnabledFilterChanged(ChangeEventArgs args)
+    private async Task OnPlaylistEnabledFilterChanged(ChangeEventArgs args)
     {
         PlaylistColumnFilters.IsEnabled = ReadFilterValue(args);
+        await CloseAdminHeaderFiltersAsync();
     }
 
-    private void OnPlaylistHomeFilterChanged(ChangeEventArgs args)
+    private async Task OnPlaylistHomeFilterChanged(ChangeEventArgs args)
     {
         PlaylistColumnFilters.ShowOnHome = ReadFilterValue(args);
+        await CloseAdminHeaderFiltersAsync();
     }
 
-    private void OnPlaylistShowcaseFilterChanged(ChangeEventArgs args)
+    private async Task OnPlaylistShowcaseFilterChanged(ChangeEventArgs args)
     {
         PlaylistColumnFilters.ShowShowcase = ReadFilterValue(args);
+        await CloseAdminHeaderFiltersAsync();
     }
 
-    private void ClearPlaylistColumnFilters()
+    private async Task ClearPlaylistColumnFilters()
     {
         PlaylistColumnFilters.Clear();
         PlaylistTitleFilterDraft = string.Empty;
+        await CloseAdminHeaderFiltersAsync();
+    }
+
+    private async Task CloseAdminHeaderFiltersAsync()
+    {
+        try
+        {
+            var gridModule = await GetAdminGridModuleAsync();
+            await gridModule.InvokeVoidAsync("closeAdminHeaderFilters");
+        }
+        catch (JSDisconnectedException)
+        {
+            // Ignore disconnects during teardown/reconnect.
+        }
+        catch (Exception exception)
+        {
+            Logger.LogDebug(exception, "Admin header filters could not be closed.");
+        }
     }
 
     private async Task RefreshStoriesAsync(Guid? selectedStoryId = null)
@@ -5763,7 +5997,7 @@
         try
         {
             var result = await AdminManagementService.ResendSubscriberRecoveryEmailAsync(CurrentAdminEmail, SubscriberEditor.SubscriberId);
-            HandleOperationResult(result, T("Herstel-e-pos is weer geskeduleer.", "Recovery email rescheduled."));
+            HandleOperationResult(result, T("Herstel-e-pos is gestuur.", "Recovery email sent."));
             if (result.IsSuccess)
             {
                 await LoadSubscriberDetailAsync(SubscriberEditor.SubscriberId);
@@ -6206,6 +6440,16 @@
             ? null
             : await ReadImageFileAsDataUrlAsync(file);
         return;
+    }
+
+    private void OnPlaylistAccentColorPickerChanged(ChangeEventArgs args)
+    {
+        if (PlaylistEditor is null)
+        {
+            return;
+        }
+
+        PlaylistEditor.AccentColorHex = NormalizePlaylistAccentColorHex(args.Value?.ToString()) ?? args.Value?.ToString();
     }
 
     private bool CanRemoveStoryCoverImage() =>
@@ -6694,6 +6938,7 @@
                     PlaylistEditor.LogoImagePath,
                     PlaylistEditor.BackdropImagePath,
                     PlaylistEditor.ShowcaseImagePath,
+                    PlaylistEditor.AccentColorHex,
                     PlaylistEditor.SortOrder,
                     PlaylistEditor.MaxItems,
                     PlaylistEditor.IsEnabled,
@@ -6804,6 +7049,7 @@
                     playlist.LogoImagePath,
                     playlist.BackdropImagePath,
                     playlist.ShowcaseImagePath,
+                    playlist.AccentColorHex,
                     playlist.SortOrder,
                     playlist.MaxItems,
                     isEnabled,
@@ -6861,6 +7107,7 @@
                     playlist.LogoImagePath,
                     playlist.BackdropImagePath,
                     playlist.ShowcaseImagePath,
+                    playlist.AccentColorHex,
                     playlist.SortOrder,
                     playlist.MaxItems,
                     playlist.IsEnabled,
@@ -6918,6 +7165,7 @@
                     playlist.LogoImagePath,
                     playlist.BackdropImagePath,
                     playlist.ShowcaseImagePath,
+                    playlist.AccentColorHex,
                     playlist.SortOrder,
                     playlist.MaxItems,
                     playlist.IsEnabled,
@@ -7290,7 +7538,8 @@
                 NormalizeDirtyText(question.Question) ?? string.Empty,
                 NormalizeDirtyText(question.OptionA) ?? string.Empty,
                 NormalizeDirtyText(question.OptionB) ?? string.Empty,
-                NormalizeStoryTestCorrectOption(question.CorrectOption)))
+                NormalizeStoryTestCorrectOption(question.CorrectOption, question.OptionC),
+                NormalizeDirtyText(question.OptionC)))
             .Where(question =>
                 !string.IsNullOrWhiteSpace(question.Question) &&
                 !string.IsNullOrWhiteSpace(question.OptionA) &&
@@ -7335,9 +7584,14 @@
             ? null
             : string.Join(Environment.NewLine, values.Where(value => !string.IsNullOrWhiteSpace(value)));
 
-    private static string NormalizeStoryTestCorrectOption(string? value)
+    private static string NormalizeStoryTestCorrectOption(string? value, string? optionC = null)
     {
         var normalized = value?.Trim().ToUpperInvariant();
+        if (normalized is "C" && !string.IsNullOrWhiteSpace(optionC))
+        {
+            return "C";
+        }
+
         return normalized is "A" or "B" ? normalized : "A";
     }
 
@@ -8562,6 +8816,7 @@
             "Kon nie wagwoordherstel nou stuur nie." => "Could not send password reset right now.",
             "Daar is nie 'n aktiewe herstel-e-pos vir hierdie intekenaar nie." => "There is no active recovery email for this subscriber.",
             "Kon nie die herstel-intekening vind nie." => "Could not find the recovery subscription.",
+            "Kon nie 'n Paystack herstelkakel vir hierdie intekening skep nie." => "Could not create a Paystack recovery link for this subscription.",
             "Kon nie herstel-e-pos nou stuur nie." => "Could not send recovery email right now.",
             "Kies asseblief ten minste een intekenaar." => "Please select at least one subscriber.",
             "Onbekende grootmaataksie." => "Unknown bulk action.",
@@ -8578,6 +8833,7 @@
             "Kon nie storie nou opdateer nie." => "Could not update story right now.",
             "Playlist slug is ongeldig." => "Playlist slug is invalid.",
             "Playlist titel is verpligtend." => "Playlist title is required.",
+            "Gebruik asseblief 'n geldige hex-kleurkode soos #FFAA00." => "Please use a valid hex color code such as #FFAA00.",
             "Kon nie playlist skep nie." => "Could not create playlist.",
             "Kon nie playlist nou opdateer nie." => "Could not update playlist right now.",
             "Geen playlists is gekies vir ordening nie." => "No playlists were selected for ordering.",
@@ -8701,6 +8957,38 @@
             : $"/{candidate.TrimStart('/')}";
 
         return StoryItem.RewriteImagePathForBrowser(normalizedPath);
+    }
+
+    private string ResolvePlaylistAccentPickerValue(string? value) =>
+        NormalizePlaylistAccentColorHex(value) ?? "#408D93";
+
+    private string? NormalizePlaylistAccentColorHex(string? value)
+    {
+        var normalized = NormalizeDirtyText(value);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return null;
+        }
+
+        if (normalized.Length == 6)
+        {
+            normalized = $"#{normalized}";
+        }
+
+        if (normalized.Length != 7 || normalized[0] != '#')
+        {
+            return null;
+        }
+
+        for (var index = 1; index < normalized.Length; index++)
+        {
+            if (!Uri.IsHexDigit(normalized[index]))
+            {
+                return null;
+            }
+        }
+
+        return normalized.ToUpperInvariant();
     }
 
     private static DateTimeOffset? ParseOptionalLocalDateTime(string? value)
@@ -8938,6 +9226,7 @@
             LogoImagePath = NormalizeDirtyText(editor.LogoImagePath),
             BackdropImagePath = NormalizeDirtyText(editor.BackdropImagePath),
             ShowcaseImagePath = NormalizeDirtyText(editor.ShowcaseImagePath),
+            AccentColorHex = NormalizeDirtyText(editor.AccentColorHex),
             LogoFile = BuildBrowserFileState(editor.LogoFile, editor.LogoFileName),
             BackdropFile = BuildBrowserFileState(editor.BackdropFile, editor.BackdropFileName),
             ShowcaseFile = BuildBrowserFileState(editor.ShowcaseFile, editor.ShowcaseFileName),
@@ -9136,14 +9425,32 @@
         return $"{firstInitial}{lastInitial}".Trim();
     }
 
-    private string BuildTierSummary(IReadOnlyList<string>? tiers) =>
-        tiers is null || tiers.Count == 0 ? T("Geen", "None") : string.Join(", ", tiers);
+    private string BuildTierSummary(AdminSubscriberRecord subscriber)
+    {
+        var summary = AdminSubscriberManagementLogic.BuildSubscriberTierSummary(
+            subscriber.ActiveTierSummaries,
+            subscriber.ActiveTierCodes);
+
+        return string.Equals(summary, "Geen", StringComparison.Ordinal)
+            ? T("Geen", "None")
+            : summary;
+    }
 
     private static string BuildTierSortKey(IReadOnlyList<string>? tiers) =>
         tiers is null || tiers.Count == 0 ? string.Empty : string.Join(", ", tiers);
 
     private static string ReadFilterValue(ChangeEventArgs args) =>
         args.Value?.ToString()?.Trim() ?? string.Empty;
+
+    private static DateOnly? ParseAdminDateFilter(string? value) =>
+        DateOnly.TryParseExact(
+            value?.Trim(),
+            "yyyy-MM-dd",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.None,
+            out var parsed)
+            ? parsed
+            : null;
 
     private static MarkupString HighlightSearchMatch(string? value, string? searchTerm)
     {
@@ -9194,6 +9501,21 @@
 
     private string FormatAnalyticsNumber(int value) =>
         value.ToString("N0", GetAdminCulture());
+
+    private string BuildSubscriberCountLabel()
+    {
+        if (SubscriberTotalCount is null)
+        {
+            return T("Laai intekenaars...", "Loading subscribers...");
+        }
+
+        var count = SubscriberTotalCount.Value;
+        var noun = count == 1
+            ? T("intekenaar", "subscriber")
+            : T("intekenaars", "subscribers");
+
+        return $"{FormatAnalyticsNumber(count)} {noun}";
+    }
 
     private string FormatCurrency(decimal value) =>
         $"R {value.ToString("N2", GetAdminCulture())}";
@@ -9517,6 +9839,7 @@
         public string Question { get; set; } = string.Empty;
         public string OptionA { get; set; } = string.Empty;
         public string OptionB { get; set; } = string.Empty;
+        public string? OptionC { get; set; }
         public string CorrectOption { get; set; } = "A";
 
         public static EditableStoryTestQuestion From(AdminStoryTestQuestion question) => new()
@@ -9524,7 +9847,8 @@
             Question = question.Question,
             OptionA = question.OptionA,
             OptionB = question.OptionB,
-            CorrectOption = NormalizeStoryTestCorrectOption(question.CorrectOption)
+            OptionC = question.OptionC,
+            CorrectOption = NormalizeStoryTestCorrectOption(question.CorrectOption, question.OptionC)
         };
     }
 
@@ -9539,6 +9863,7 @@
         public string? LogoImagePath { get; set; }
         public string? BackdropImagePath { get; set; }
         public string? ShowcaseImagePath { get; set; }
+        public string? AccentColorHex { get; set; }
         public IBrowserFile? LogoFile { get; set; }
         public string? LogoFileName { get; set; }
         public string? LogoPreviewDataUrl { get; set; }
@@ -9572,6 +9897,7 @@
             ShowcaseImagePath = string.IsNullOrWhiteSpace(playlist.ShowcaseImagePath)
                 ? null
                 : playlist.ShowcaseImagePath,
+            AccentColorHex = playlist.AccentColorHex,
             SortOrder = playlist.SortOrder,
             MaxItems = playlist.MaxItems,
             IsEnabled = playlist.IsEnabled,

@@ -128,6 +128,123 @@ public class SupabaseAdminManagementSelfServiceTests
     }
 
     [TestMethod]
+    public async Task ResendSubscriberRecoveryEmailAsync_SendsImmediatePaystackRecoveryEmailWithoutSchedulingSequence()
+    {
+        var subscriberId = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var subscriptionId = Guid.Parse("22222222-2222-2222-2222-222222222222");
+        var recoveryId = Guid.Parse("33333333-3333-3333-3333-333333333333");
+        var recoveryEmailService = new TrackingSubscriptionPaymentRecoveryEmailService();
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/admin_users"))
+            {
+                return JsonResponse("""[{ "email": "admin@example.com" }]""");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                        "email": "ouer@example.com",
+                        "first_name": "Ouer",
+                        "last_name": "Toets",
+                        "display_name": "Ouer Toets",
+                        "mobile_number": null,
+                        "profile_image_url": null,
+                        "created_at": "2026-04-01T10:00:00Z",
+                        "updated_at": "2026-04-02T10:00:00Z",
+                        "disabled_at": null,
+                        "disabled_by_admin_email": null,
+                        "disabled_reason": null
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "subscription_id": "{{subscriptionId}}",
+                        "subscriber_id": "{{subscriberId}}",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "status": "active",
+                        "subscribed_at": "2026-05-01T10:00:00Z",
+                        "next_renewal_at": "2026-06-01T10:00:00Z",
+                        "cancelled_at": null,
+                        "provider_payment_id": "SUB_recovery",
+                        "provider_email_token": null,
+                        "provider_transaction_id": null
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "recovery_id": "{{recoveryId}}",
+                        "subscription_id": "{{subscriptionId}}",
+                        "provider": "paystack",
+                        "provider_payment_id": "SUB_recovery",
+                        "first_failed_at": "2026-05-20T10:00:00Z",
+                        "grace_ends_at": "2026-05-24T10:00:00Z",
+                        "created_at": "2026-05-20T10:00:00Z",
+                        "resolved_at": null,
+                        "resolution": null
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == "/subscription/SUB_recovery/manage/link")
+            {
+                return JsonResponse(
+                    """
+                    {
+                      "status": true,
+                      "data": {
+                        "link": "https://paystack.example/manage/SUB_recovery"
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriber_admin_audit")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler, subscriptionPaymentRecoveryEmailService: recoveryEmailService);
+
+        var result = await service.ResendSubscriberRecoveryEmailAsync("admin@example.com", subscriberId);
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.AreEqual(0, recoveryEmailService.ScheduledRequests.Count);
+        Assert.AreEqual(1, recoveryEmailService.ImmediateRequests.Count);
+        Assert.AreEqual("ouer@example.com", recoveryEmailService.ImmediateRequests[0].Email);
+        Assert.AreEqual("https://paystack.example/manage/SUB_recovery", recoveryEmailService.ImmediateRequests[0].RecoveryUrl);
+        Assert.AreEqual("Werk kaartbesonderhede by", recoveryEmailService.ImmediateRequests[0].RecoveryActionLabel);
+        StringAssert.Contains(handler.AuditPayload!, "\"action_key\":\"recovery.email_sent\"");
+        StringAssert.Contains(handler.AuditPayload!, recoveryId.ToString("D"));
+    }
+
+    [TestMethod]
     public async Task CancelSubscriberPaidSubscriptionAsync_CancelsPayFastTokenAndKeepsAccessUntilNextRenewal()
     {
         var subscriberId = Guid.Parse("11111111-1111-1111-1111-111111111111");
@@ -396,7 +513,8 @@ public class SupabaseAdminManagementSelfServiceTests
 
     private static SupabaseAdminManagementService CreateService(
         RecordingHandler handler,
-        IUserNotificationService? userNotificationService = null)
+        IUserNotificationService? userNotificationService = null,
+        ISubscriptionPaymentRecoveryEmailService? subscriptionPaymentRecoveryEmailService = null)
     {
         var httpClient = new HttpClient(handler)
         {
@@ -436,7 +554,7 @@ public class SupabaseAdminManagementSelfServiceTests
             new NoopWordPressMigrationService(),
             new NoopSupabaseAuthService(),
             new NoopAuthSessionService(),
-            new NoopSubscriptionPaymentRecoveryEmailService(),
+            subscriptionPaymentRecoveryEmailService ?? new NoopSubscriptionPaymentRecoveryEmailService(),
             paystackService,
             payFastService,
             NullLogger<SupabaseAdminManagementService>.Instance);
@@ -693,6 +811,35 @@ public class SupabaseAdminManagementSelfServiceTests
             string idempotencyKey,
             CancellationToken cancellationToken = default) =>
             Task.FromResult<string?>(null);
+
+        public Task CancelSequenceAsync(
+            SubscriptionPaymentRecoveryEmailSequence sequence,
+            CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
+
+    private sealed class TrackingSubscriptionPaymentRecoveryEmailService : ISubscriptionPaymentRecoveryEmailService
+    {
+        public List<SubscriptionPaymentRecoveryEmailRequest> ScheduledRequests { get; } = [];
+        public List<SubscriptionPaymentRecoveryEmailRequest> ImmediateRequests { get; } = [];
+
+        public Task<SubscriptionPaymentRecoveryEmailSequence?> ScheduleSequenceAsync(
+            SubscriptionPaymentRecoveryEmailRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            ScheduledRequests.Add(request);
+            return Task.FromResult<SubscriptionPaymentRecoveryEmailSequence?>(
+                new SubscriptionPaymentRecoveryEmailSequence("immediate", "warning", "suspension"));
+        }
+
+        public Task<string?> SendImmediateAsync(
+            SubscriptionPaymentRecoveryEmailRequest request,
+            string idempotencyKey,
+            CancellationToken cancellationToken = default)
+        {
+            ImmediateRequests.Add(request);
+            return Task.FromResult<string?>("email-immediate");
+        }
 
         public Task CancelSequenceAsync(
             SubscriptionPaymentRecoveryEmailSequence sequence,

@@ -334,7 +334,7 @@ public sealed class SupabaseStoryCatalogService(
         var requestUri = new Uri(
             baseUri,
             "rest/v1/story_playlists" +
-            "?select=playlist_id,slug,title,playlist_type,system_key,description,sort_order,max_items,is_enabled,show_on_home,include_in_speellyste_carousel,show_showcase_image_on_luister_page,logo_image_path,backdrop_image_path,showcase_image_path" +
+            "?select=playlist_id,slug,title,playlist_type,system_key,description,sort_order,max_items,is_enabled,show_on_home,include_in_speellyste_carousel,show_showcase_image_on_luister_page,logo_image_path,backdrop_image_path,showcase_image_path,accent_color_hex" +
             "&is_enabled=eq.true" +
             "&order=sort_order.asc" +
             "&order=title.asc");
@@ -475,6 +475,7 @@ public sealed class SupabaseStoryCatalogService(
             LogoImagePath: NormalizeOptionalText(favouritesConfig.LogoImagePath),
             BackdropImagePath: NormalizeOptionalText(favouritesConfig.BackdropImagePath),
             ShowcaseImagePath: NormalizeOptionalText(favouritesConfig.ShowcaseImagePath),
+            AccentColorHex: NormalizePlaylistAccentColorHex(favouritesConfig.AccentColorHex),
             IncludeInSpeellysteCarousel: favouritesConfig.IncludeInSpeellysteCarousel,
             IsSystemPlaylist: true,
             SystemKey: NormalizeSystemKey(favouritesConfig.SystemKey),
@@ -951,17 +952,25 @@ public sealed class SupabaseStoryCatalogService(
             var question = ReadJsonString(item, "question");
             var optionA = ReadJsonString(item, "option_a");
             var optionB = ReadJsonString(item, "option_b");
-            var correctOption = NormalizeStoryTestCorrectOption(ReadJsonString(item, "correct_option"));
+            var optionC = ReadJsonString(item, "option_c");
+            var normalizedCorrectOption = NormalizeStoryTestCorrectOption(ReadJsonString(item, "correct_option"));
 
             if (string.IsNullOrWhiteSpace(question) ||
                 string.IsNullOrWhiteSpace(optionA) ||
                 string.IsNullOrWhiteSpace(optionB) ||
-                string.IsNullOrWhiteSpace(correctOption))
+                normalizedCorrectOption is not ("A" or "B" or "C") ||
+                (string.Equals(normalizedCorrectOption, "C", StringComparison.Ordinal) &&
+                 string.IsNullOrWhiteSpace(optionC)))
             {
                 continue;
             }
 
-            questions.Add(new StoryTestQuestion(question, optionA, optionB, correctOption));
+            questions.Add(new StoryTestQuestion(
+                question,
+                optionA,
+                optionB,
+                normalizedCorrectOption,
+                string.IsNullOrWhiteSpace(optionC) ? null : optionC));
         }
 
         return questions;
@@ -982,7 +991,7 @@ public sealed class SupabaseStoryCatalogService(
     private static string? NormalizeStoryTestCorrectOption(string? value)
     {
         var normalized = value?.Trim().ToUpperInvariant();
-        return normalized is "A" or "B" ? normalized : null;
+        return normalized is "A" or "B" or "C" ? normalized : null;
     }
 
     private static IReadOnlyList<StoryPlaylist> BuildLuisterPlaylistsFromConfiguredTables(
@@ -1095,6 +1104,7 @@ public sealed class SupabaseStoryCatalogService(
                 LogoImagePath: NormalizeOptionalText(playlistRow.LogoImagePath),
                 BackdropImagePath: NormalizeOptionalText(playlistRow.BackdropImagePath),
                 ShowcaseImagePath: NormalizeOptionalText(playlistRow.ShowcaseImagePath),
+                AccentColorHex: NormalizePlaylistAccentColorHex(playlistRow.AccentColorHex),
                 IncludeInSpeellysteCarousel: playlistRow.IncludeInSpeellysteCarousel,
                 IsSystemPlaylist: playlistRow.IsSystemPlaylist,
                 SystemKey: NormalizeSystemKey(playlistRow.SystemKey),
@@ -1127,6 +1137,7 @@ public sealed class SupabaseStoryCatalogService(
                 LogoImagePath: NormalizeOptionalText(allStoriesConfig?.LogoImagePath),
                 BackdropImagePath: NormalizeOptionalText(allStoriesConfig?.BackdropImagePath),
                 ShowcaseImagePath: NormalizeOptionalText(allStoriesConfig?.ShowcaseImagePath),
+                AccentColorHex: NormalizePlaylistAccentColorHex(allStoriesConfig?.AccentColorHex),
                 IncludeInSpeellysteCarousel: allStoriesConfig?.IncludeInSpeellysteCarousel ?? false,
                 IsSystemPlaylist: allStoriesConfig?.IsSystemPlaylist ?? false,
                 SystemKey: NormalizeSystemKey(allStoriesConfig?.SystemKey),
@@ -1151,6 +1162,7 @@ public sealed class SupabaseStoryCatalogService(
             LogoImagePath: NormalizeOptionalText(playlistRow.LogoImagePath),
             BackdropImagePath: NormalizeOptionalText(playlistRow.BackdropImagePath),
             ShowcaseImagePath: NormalizeOptionalText(playlistRow.ShowcaseImagePath),
+            AccentColorHex: NormalizePlaylistAccentColorHex(playlistRow.AccentColorHex),
             IncludeInSpeellysteCarousel: false,
             IsSystemPlaylist: true,
             SystemKey: SpeellysteSystemKey,
@@ -1397,6 +1409,35 @@ public sealed class SupabaseStoryCatalogService(
         return value.Trim();
     }
 
+    private static string? NormalizePlaylistAccentColorHex(string? value)
+    {
+        var normalized = NormalizeOptionalText(value);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return null;
+        }
+
+        if (normalized.Length == 6)
+        {
+            normalized = $"#{normalized}";
+        }
+
+        if (normalized.Length != 7 || normalized[0] != '#')
+        {
+            return null;
+        }
+
+        for (var index = 1; index < normalized.Length; index++)
+        {
+            if (!Uri.IsHexDigit(normalized[index]))
+            {
+                return null;
+            }
+        }
+
+        return normalized.ToUpperInvariant();
+    }
+
     private static IReadOnlyList<StoryCatalogRow> BuildLegacyFallbackRows()
     {
         var previewOrderBySlug = StoryCatalog.NewestTop10
@@ -1611,6 +1652,9 @@ public sealed class SupabaseStoryCatalogService(
 
         [JsonPropertyName("showcase_image_path")]
         public string? ShowcaseImagePath { get; set; }
+
+        [JsonPropertyName("accent_color_hex")]
+        public string? AccentColorHex { get; set; }
 
         [JsonIgnore]
         public bool IsSystemPlaylist =>

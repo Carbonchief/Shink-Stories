@@ -82,6 +82,7 @@ public class AdminGridFilterLogicTests
                 null,
                 null,
                 null,
+                null,
                 1,
                 null,
                 true,
@@ -95,6 +96,7 @@ public class AdminGridFilterLogicTests
                 "subscriber-bedtime",
                 "Subscriber Bedtime",
                 false,
+                null,
                 null,
                 null,
                 null,
@@ -139,6 +141,7 @@ public class AdminGridFilterLogicTests
                 null,
                 null,
                 null,
+                null,
                 1,
                 null,
                 true,
@@ -152,6 +155,7 @@ public class AdminGridFilterLogicTests
                 "two",
                 "Two",
                 false,
+                null,
                 null,
                 null,
                 null,
@@ -173,5 +177,25 @@ public class AdminGridFilterLogicTests
             new AdminPlaylistColumnFilters());
 
         Assert.AreEqual(2, result.Count);
+    }
+
+    [TestMethod]
+    public void SubscriberColumnFilters_TreatDateRangesAsActiveFilters()
+    {
+        var filters = new AdminSubscriberColumnFilters
+        {
+            SubscribedFrom = new DateOnly(2026, 5, 1),
+            NextPaymentTo = new DateOnly(2026, 5, 31)
+        };
+
+        Assert.IsTrue(filters.HasActiveFilters);
+
+        filters.Clear();
+
+        Assert.IsFalse(filters.HasActiveFilters);
+        Assert.IsNull(filters.SubscribedFrom);
+        Assert.IsNull(filters.SubscribedTo);
+        Assert.IsNull(filters.NextPaymentFrom);
+        Assert.IsNull(filters.NextPaymentTo);
     }
 }

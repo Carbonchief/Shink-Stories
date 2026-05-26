@@ -263,7 +263,11 @@ public sealed record AdminSubscriberPageRequest(
     string? TierText = null,
     string? SourceSystem = null,
     string? PaymentProvider = null,
-    string? SubscriptionStatus = null);
+    string? SubscriptionStatus = null,
+    DateOnly? SubscribedFrom = null,
+    DateOnly? SubscribedTo = null,
+    DateOnly? NextPaymentFrom = null,
+    DateOnly? NextPaymentTo = null);
 
 public sealed record AdminSubscriberPageResult(
     IReadOnlyList<AdminSubscriberRecord> Items,
@@ -280,6 +284,7 @@ public sealed record AdminSubscriberRecord(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     IReadOnlyList<string> ActiveTierCodes,
+    IReadOnlyList<AdminSubscriberTierSummary> ActiveTierSummaries,
     string? PaymentProvider,
     string? SubscriptionSourceSystem,
     string? SubscriptionStatus,
@@ -289,6 +294,10 @@ public sealed record AdminSubscriberRecord(
     DateTimeOffset? DisabledAt = null,
     string? DisabledByAdminEmail = null,
     string? DisabledReason = null);
+
+public sealed record AdminSubscriberTierSummary(
+    string TierCode,
+    decimal? BillingAmountZar);
 
 public sealed record AdminSubscriberUpdateRequest(
     Guid SubscriberId,
@@ -527,7 +536,8 @@ public sealed record AdminStoryTestQuestion(
     [property: JsonPropertyName("question")] string Question,
     [property: JsonPropertyName("option_a")] string OptionA,
     [property: JsonPropertyName("option_b")] string OptionB,
-    [property: JsonPropertyName("correct_option")] string CorrectOption);
+    [property: JsonPropertyName("correct_option")] string CorrectOption,
+    [property: JsonPropertyName("option_c")] string? OptionC = null);
 
 public sealed record AdminPlaylistRecord(
     Guid PlaylistId,
@@ -539,6 +549,7 @@ public sealed record AdminPlaylistRecord(
     string? LogoImagePath,
     string? BackdropImagePath,
     string? ShowcaseImagePath,
+    string? AccentColorHex,
     int SortOrder,
     int? MaxItems,
     bool IsEnabled,
@@ -567,6 +578,7 @@ public sealed record AdminPlaylistUpdateRequest(
     string? LogoImagePath,
     string? BackdropImagePath,
     string? ShowcaseImagePath,
+    string? AccentColorHex,
     int SortOrder,
     int? MaxItems,
     bool IsEnabled,

@@ -178,7 +178,11 @@ public sealed partial class SupabaseAdminManagementService(
             p_tier_text = NormalizeSearchTerm(request.TierText),
             p_source = NormalizeSubscriberFilterToken(request.SourceSystem),
             p_provider = NormalizeSubscriberFilterToken(request.PaymentProvider),
-            p_status = NormalizeSubscriberFilterToken(request.SubscriptionStatus)
+            p_status = NormalizeSubscriberFilterToken(request.SubscriptionStatus),
+            p_subscribed_from = request.SubscribedFrom,
+            p_subscribed_to = request.SubscribedTo,
+            p_next_payment_from = request.NextPaymentFrom,
+            p_next_payment_to = request.NextPaymentTo
         };
 
         var response = await InvokeRpcAsync<AdminSubscriberPageRpcResponse>(
@@ -224,6 +228,18 @@ public sealed partial class SupabaseAdminManagementService(
                     .OrderBy(tier => tier, StringComparer.OrdinalIgnoreCase)
                     .ToArray()
                     ?? Array.Empty<string>(),
+                ActiveTierSummaries: disabledStates.GetValueOrDefault(item.SubscriberId)?.DisabledAt is not null
+                    ? Array.Empty<AdminSubscriberTierSummary>()
+                    : item.ActiveTierSummaries?
+                    .Where(summary => !string.IsNullOrWhiteSpace(summary.TierCode))
+                    .Select(summary => new AdminSubscriberTierSummary(
+                        summary.TierCode.Trim(),
+                        summary.BillingAmountZar))
+                    .GroupBy(summary => summary.TierCode, StringComparer.OrdinalIgnoreCase)
+                    .Select(group => group.First())
+                    .OrderBy(summary => summary.TierCode, StringComparer.OrdinalIgnoreCase)
+                    .ToArray()
+                    ?? Array.Empty<AdminSubscriberTierSummary>(),
                 PaymentProvider: NormalizeOptionalText(item.PaymentProvider, 40),
                 SubscriptionSourceSystem: NormalizeOptionalText(item.SubscriptionSourceSystem, 40),
                 SubscriptionStatus: disabledStates.GetValueOrDefault(item.SubscriberId)?.DisabledAt is not null
@@ -798,20 +814,34 @@ public sealed partial class SupabaseAdminManagementService(
             return new AdminOperationResult(false, "Kon nie die herstel-intekening vind nie.");
         }
 
-        var sequence = await _subscriptionPaymentRecoveryEmailService.ScheduleSequenceAsync(
+        var recoveryAction = await ResolveSubscriptionRecoveryActionAsync(
+            subscriber.Email,
+            subscription,
+            cancellationToken);
+        if (recoveryAction is null)
+        {
+            return new AdminOperationResult(false, "Kon nie 'n Paystack herstelkakel vir hierdie intekening skep nie.");
+        }
+
+        var nowUtc = DateTimeOffset.UtcNow;
+        var emailId = await _subscriptionPaymentRecoveryEmailService.SendImmediateAsync(
             new SubscriptionPaymentRecoveryEmailRequest(
                 activeRecovery.RecoveryId.ToString("D"),
                 subscription.SubscriptionId.ToString("D"),
                 subscriber.Email,
                 subscriber.FirstName,
                 subscriber.DisplayName,
-                subscription.TierCode ?? "Schink Stories",
-                subscription.Provider ?? "unknown",
-                activeRecovery.CreatedAt,
-                DateTimeOffset.UtcNow.AddDays(4)),
+                recoveryAction.PlanName,
+                subscription.Provider ?? activeRecovery.Provider ?? "paystack",
+                activeRecovery.FirstFailedAt ?? activeRecovery.CreatedAt,
+                activeRecovery.GraceEndsAt ?? nowUtc.AddDays(4),
+                recoveryAction.Url,
+                recoveryAction.ActionLabel,
+                recoveryAction.Context),
+            $"admin-active-recovery/{activeRecovery.RecoveryId:D}/{nowUtc:yyyyMMddHHmmss}",
             cancellationToken);
 
-        if (sequence is null)
+        if (string.IsNullOrWhiteSpace(emailId))
         {
             return new AdminOperationResult(false, "Kon nie herstel-e-pos nou stuur nie.");
         }
@@ -819,9 +849,15 @@ public sealed partial class SupabaseAdminManagementService(
         await WriteSubscriberAuditAsync(
             context,
             subscriberId,
-            "recovery.resent",
-            "Recovery email sequence resent from admin.",
-            new { recovery_id = activeRecovery.RecoveryId },
+            "recovery.email_sent",
+            "Recovery email sent from admin.",
+            new
+            {
+                recovery_id = activeRecovery.RecoveryId,
+                subscription_id = subscription.SubscriptionId,
+                recovery_action = recoveryAction.ActionKey,
+                email_id = emailId
+            },
             cancellationToken);
 
         return new AdminOperationResult(true, EntityId: subscriberId);
@@ -1699,6 +1735,7 @@ public sealed partial class SupabaseAdminManagementService(
                     LogoImagePath: NormalizePlaylistImagePath(row.LogoImagePath),
                     BackdropImagePath: NormalizePlaylistImagePath(row.BackdropImagePath),
                     ShowcaseImagePath: NormalizePlaylistImagePath(row.ShowcaseImagePath),
+                    AccentColorHex: NormalizePlaylistAccentColorHex(row.AccentColorHex),
                     SortOrder: row.SortOrder,
                     MaxItems: row.MaxItems is > 0 ? row.MaxItems : null,
                     IsEnabled: row.IsEnabled,
@@ -1735,6 +1772,13 @@ public sealed partial class SupabaseAdminManagementService(
             return new AdminOperationResult(false, "Playlist titel is verpligtend.");
         }
 
+        var normalizedAccentColorHex = NormalizePlaylistAccentColorHex(request.AccentColorHex);
+        if (!string.IsNullOrWhiteSpace(request.AccentColorHex) &&
+            string.IsNullOrWhiteSpace(normalizedAccentColorHex))
+        {
+            return new AdminOperationResult(false, "Gebruik asseblief 'n geldige hex-kleurkode soos #FFAA00.");
+        }
+
         if (!TryBuildSupabaseBaseUri(out var baseUri))
         {
             return new AdminOperationResult(false, "Supabase URL is nog nie opgestel nie.");
@@ -1756,6 +1800,7 @@ public sealed partial class SupabaseAdminManagementService(
                 ["logo_image_path"] = NormalizePlaylistImagePath(request.LogoImagePath),
                 ["backdrop_image_path"] = NormalizePlaylistImagePath(request.BackdropImagePath),
                 ["showcase_image_path"] = NormalizePlaylistImagePath(request.ShowcaseImagePath),
+                ["accent_color_hex"] = NormalizePlaylistAccentColorHex(request.AccentColorHex),
                 ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
                 ["max_items"] = request.MaxItems is > 0 ? request.MaxItems : null,
                 ["is_enabled"] = request.IsEnabled,
@@ -1800,6 +1845,7 @@ public sealed partial class SupabaseAdminManagementService(
                 ["logo_image_path"] = NormalizePlaylistImagePath(request.LogoImagePath),
                 ["backdrop_image_path"] = NormalizePlaylistImagePath(request.BackdropImagePath),
                 ["showcase_image_path"] = NormalizePlaylistImagePath(request.ShowcaseImagePath),
+                ["accent_color_hex"] = NormalizePlaylistAccentColorHex(request.AccentColorHex),
                 ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
                 ["is_enabled"] = request.IsEnabled,
                 ["show_on_home"] = request.ShowOnHome,
@@ -1814,6 +1860,7 @@ public sealed partial class SupabaseAdminManagementService(
                 ["logo_image_path"] = NormalizePlaylistImagePath(request.LogoImagePath),
                 ["backdrop_image_path"] = NormalizePlaylistImagePath(request.BackdropImagePath),
                 ["showcase_image_path"] = NormalizePlaylistImagePath(request.ShowcaseImagePath),
+                ["accent_color_hex"] = NormalizePlaylistAccentColorHex(request.AccentColorHex),
                 ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
                 ["max_items"] = request.MaxItems is > 0 ? request.MaxItems : null,
                 ["is_enabled"] = request.IsEnabled,
@@ -2641,7 +2688,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             context.BaseUri,
             "rest/v1/subscription_payment_recoveries" +
-            "?select=recovery_id,subscription_id,provider,provider_payment_id,created_at,resolved_at,resolution" +
+            "?select=recovery_id,subscription_id,provider,provider_payment_id,first_failed_at,grace_ends_at,created_at,resolved_at,resolution" +
             $"&subscription_id=in.({idFilter})&order=created_at.desc&limit=30");
         return await FetchRowsAsync<SubscriptionRecoveryDetailRow>(uri, context.ApiKey, cancellationToken);
     }
@@ -3564,7 +3611,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/story_playlists" +
-            "?select=playlist_id,slug,title,playlist_type,system_key,description,logo_image_path,backdrop_image_path,showcase_image_path,sort_order,max_items,is_enabled,show_on_home,include_in_speellyste_carousel,show_showcase_image_on_luister_page,updated_at" +
+            "?select=playlist_id,slug,title,playlist_type,system_key,description,logo_image_path,backdrop_image_path,showcase_image_path,accent_color_hex,sort_order,max_items,is_enabled,show_on_home,include_in_speellyste_carousel,show_showcase_image_on_luister_page,updated_at" +
             "&order=sort_order.asc" +
             "&order=title.asc" +
             "&limit=500");
@@ -3702,7 +3749,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/story_playlists" +
-            "?select=playlist_id,slug,title,playlist_type,system_key,description,logo_image_path,backdrop_image_path,showcase_image_path,sort_order,max_items,is_enabled,show_on_home,include_in_speellyste_carousel,show_showcase_image_on_luister_page,updated_at" +
+            "?select=playlist_id,slug,title,playlist_type,system_key,description,logo_image_path,backdrop_image_path,showcase_image_path,accent_color_hex,sort_order,max_items,is_enabled,show_on_home,include_in_speellyste_carousel,show_showcase_image_on_luister_page,updated_at" +
             $"&playlist_id=eq.{escapedPlaylistId}" +
             "&limit=1");
 
@@ -5290,6 +5337,7 @@ public sealed partial class SupabaseAdminManagementService(
             CreatedAt: row.CreatedAt,
             UpdatedAt: row.UpdatedAt,
             ActiveTierCodes: Array.Empty<string>(),
+            ActiveTierSummaries: Array.Empty<AdminSubscriberTierSummary>(),
             PaymentProvider: summary?.PaymentProvider,
             SubscriptionSourceSystem: summary?.SourceSystem,
             SubscriptionStatus: row.DisabledAt is not null ? "disabled" : summary?.Status,
@@ -5424,6 +5472,35 @@ public sealed partial class SupabaseAdminManagementService(
 
     private static string NormalizePlaylistImagePath(string? value) =>
         NormalizeOptionalText(value, 1024) ?? string.Empty;
+
+    private static string? NormalizePlaylistAccentColorHex(string? value)
+    {
+        var normalized = NormalizeOptionalText(value, 64);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return null;
+        }
+
+        if (normalized.Length == 6)
+        {
+            normalized = $"#{normalized}";
+        }
+
+        if (normalized.Length != 7 || normalized[0] != '#')
+        {
+            return null;
+        }
+
+        for (var index = 1; index < normalized.Length; index++)
+        {
+            if (!Uri.IsHexDigit(normalized[index]))
+            {
+                return null;
+            }
+        }
+
+        return normalized.ToUpperInvariant();
+    }
 
     private static string NormalizeStoreProductImagePath(string? value)
     {
@@ -5585,12 +5662,15 @@ public sealed partial class SupabaseAdminManagementService(
             var normalizedQuestion = NormalizeOptionalText(question.Question, 300);
             var normalizedOptionA = NormalizeOptionalText(question.OptionA, 180);
             var normalizedOptionB = NormalizeOptionalText(question.OptionB, 180);
+            var normalizedOptionC = NormalizeOptionalText(question.OptionC, 180);
             var normalizedCorrectOption = question.CorrectOption?.Trim().ToUpperInvariant();
 
             if (string.IsNullOrWhiteSpace(normalizedQuestion) ||
                 string.IsNullOrWhiteSpace(normalizedOptionA) ||
                 string.IsNullOrWhiteSpace(normalizedOptionB) ||
-                normalizedCorrectOption is not ("A" or "B"))
+                normalizedCorrectOption is not ("A" or "B" or "C") ||
+                (string.Equals(normalizedCorrectOption, "C", StringComparison.Ordinal) &&
+                 string.IsNullOrWhiteSpace(normalizedOptionC)))
             {
                 continue;
             }
@@ -5599,7 +5679,8 @@ public sealed partial class SupabaseAdminManagementService(
                 normalizedQuestion,
                 normalizedOptionA,
                 normalizedOptionB,
-                normalizedCorrectOption));
+                normalizedCorrectOption,
+                normalizedOptionC));
         }
 
         return normalizedQuestions;
@@ -5843,6 +5924,9 @@ public sealed partial class SupabaseAdminManagementService(
         [JsonPropertyName("active_tier_codes")]
         public List<string>? ActiveTierCodes { get; set; }
 
+        [JsonPropertyName("active_tier_summaries")]
+        public List<AdminSubscriberTierSummaryRpc>? ActiveTierSummaries { get; set; }
+
         [JsonPropertyName("payment_provider")]
         public string? PaymentProvider { get; set; }
 
@@ -5869,6 +5953,15 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("disabled_reason")]
         public string? DisabledReason { get; set; }
+    }
+
+    private sealed class AdminSubscriberTierSummaryRpc
+    {
+        [JsonPropertyName("tier_code")]
+        public string TierCode { get; set; } = string.Empty;
+
+        [JsonPropertyName("billing_amount_zar")]
+        public decimal? BillingAmountZar { get; set; }
     }
 
     private sealed class SubscriberRow
@@ -6071,6 +6164,12 @@ public sealed partial class SupabaseAdminManagementService(
         [JsonPropertyName("provider_payment_id")]
         public string? ProviderPaymentId { get; set; }
 
+        [JsonPropertyName("first_failed_at")]
+        public DateTimeOffset? FirstFailedAt { get; set; }
+
+        [JsonPropertyName("grace_ends_at")]
+        public DateTimeOffset? GraceEndsAt { get; set; }
+
         [JsonPropertyName("created_at")]
         public DateTimeOffset CreatedAt { get; set; }
 
@@ -6094,6 +6193,12 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("provider_payment_id")]
         public string? ProviderPaymentId { get; set; }
+
+        [JsonPropertyName("first_failed_at")]
+        public DateTimeOffset? FirstFailedAt { get; set; }
+
+        [JsonPropertyName("grace_ends_at")]
+        public DateTimeOffset? GraceEndsAt { get; set; }
 
         [JsonPropertyName("created_at")]
         public DateTimeOffset CreatedAt { get; set; }
@@ -6445,6 +6550,9 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("showcase_image_path")]
         public string? ShowcaseImagePath { get; set; }
+
+        [JsonPropertyName("accent_color_hex")]
+        public string? AccentColorHex { get; set; }
 
         [JsonPropertyName("sort_order")]
         public int SortOrder { get; set; }

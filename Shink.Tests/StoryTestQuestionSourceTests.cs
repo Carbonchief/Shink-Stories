@@ -45,6 +45,22 @@ public class StoryTestQuestionSourceTests
     }
 
     [TestMethod]
+    public void LuisterStoryTestShowsThirdOptionOnlyWhenConfigured()
+    {
+        var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "LuisterStory.razor"));
+        var catalogModel = File.ReadAllText(GetRepoPath("Shink", "Components", "Content", "StoryCatalog.cs"));
+        var catalogService = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseStoryCatalogService.cs"));
+
+        StringAssert.Contains(catalogModel, "[property: JsonPropertyName(\"option_c\")] string? OptionC = null");
+        StringAssert.Contains(catalogService, "var optionC = ReadJsonString(item, \"option_c\");");
+        StringAssert.Contains(catalogService, "normalizedCorrectOption is not (\"A\" or \"B\" or \"C\")");
+        StringAssert.Contains(markup, "HasStoryTestOptionC(question)");
+        StringAssert.Contains(markup, "SelectStoryTestOption(questionIndex, \"C\")");
+        StringAssert.Contains(markup, "BuildStoryTestOptionClass(question, selectedOption, \"C\", IsStoryTestSubmitted)");
+        StringAssert.Contains(markup, "@question.OptionC");
+    }
+
+    [TestMethod]
     public void LuisterStoryTestUsesPositiveYoungAudienceCopy()
     {
         var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "LuisterStory.razor"));
@@ -100,6 +116,25 @@ public class StoryTestQuestionSourceTests
         StringAssert.Contains(catalog, "TestQuestions: ReadStoryTestQuestions(row.TestQuestions)");
         StringAssert.Contains(catalog, "FetchPublishedRowsWithSelectAsync");
         StringAssert.Contains(migration, "add column if not exists test_questions jsonb");
+    }
+
+    [TestMethod]
+    public void AdminStoryEditorSupportsOptionalThirdTestOption()
+    {
+        var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
+        var serviceContract = File.ReadAllText(GetRepoPath("Shink", "Services", "IAdminManagementService.cs"));
+        var service = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseAdminManagementService.cs"));
+
+        StringAssert.Contains(markup, "Label='@T(\"Opsie C (opsioneel)\", \"Option C (optional)\")'");
+        StringAssert.Contains(markup, "@bind-Value=\"question.OptionC\"");
+        StringAssert.Contains(markup, "<MudSelectItem Value=\"@(\"C\")\">C</MudSelectItem>");
+        StringAssert.Contains(markup, "NormalizeDirtyText(question.OptionC)");
+        StringAssert.Contains(markup, "NormalizeStoryTestCorrectOption(question.CorrectOption, question.OptionC)");
+        StringAssert.Contains(markup, "OptionC = question.OptionC");
+        StringAssert.Contains(serviceContract, "[property: JsonPropertyName(\"option_c\")] string? OptionC = null");
+        StringAssert.Contains(service, "var normalizedOptionC = NormalizeOptionalText(question.OptionC, 180);");
+        StringAssert.Contains(service, "normalizedCorrectOption is not (\"A\" or \"B\" or \"C\")");
+        StringAssert.Contains(service, "string.Equals(normalizedCorrectOption, \"C\", StringComparison.Ordinal)");
     }
 
     [TestMethod]

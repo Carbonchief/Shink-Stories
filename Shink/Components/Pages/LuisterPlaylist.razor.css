@@ -1,4 +1,5 @@
 .playlist-page {
+    --playlist-accent-color: var(--accent);
     display: grid;
     gap: 0;
     width: min(100%, 1140px);
@@ -35,7 +36,7 @@
     border-radius: 28px 28px 0 0;
     padding: 1.3rem 1.35rem 1.2rem;
     background:
-        radial-gradient(circle at top right, rgba(84, 173, 180, 0.28), transparent 34%),
+        radial-gradient(circle at top right, color-mix(in srgb, var(--playlist-accent-color) 34%, transparent), transparent 34%),
         linear-gradient(145deg, rgba(34, 34, 34, 0.98), rgba(29, 35, 39, 0.98));
     text-align: center;
     display: grid;
@@ -80,7 +81,7 @@
 .playlist-player-card {
     padding: 1rem;
     background:
-        linear-gradient(180deg, rgba(126, 214, 216, 0.1), rgba(34, 34, 34, 0.98) 24%),
+        linear-gradient(180deg, color-mix(in srgb, var(--playlist-accent-color) 16%, transparent), rgba(34, 34, 34, 0.98) 24%),
         #222222;
 }
 
@@ -118,7 +119,7 @@
 }
 
 .story-cover:focus-visible {
-    outline: 3px solid color-mix(in srgb, #ffffff 35%, var(--accent));
+    outline: 3px solid color-mix(in srgb, #ffffff 35%, var(--playlist-accent-color));
     outline-offset: 2px;
 }
 
@@ -144,7 +145,7 @@
     justify-content: center;
     font-size: 1.5rem;
     color: #11181f;
-    background: rgba(255, 255, 255, 0.94);
+    background: color-mix(in srgb, var(--playlist-accent-color) 22%, #ffffff);
     box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
     padding-left: 0.22rem;
 }

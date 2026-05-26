@@ -18,6 +18,10 @@ public sealed class AdminSubscriberColumnFilters
     public string SourceSystem { get; set; } = string.Empty;
     public string PaymentProvider { get; set; } = string.Empty;
     public string SubscriptionStatus { get; set; } = string.Empty;
+    public DateOnly? SubscribedFrom { get; set; }
+    public DateOnly? SubscribedTo { get; set; }
+    public DateOnly? NextPaymentFrom { get; set; }
+    public DateOnly? NextPaymentTo { get; set; }
 
     public bool HasActiveFilters =>
         HasValue(SubscriberText) ||
@@ -25,7 +29,11 @@ public sealed class AdminSubscriberColumnFilters
         HasValue(TierText) ||
         HasValue(SourceSystem) ||
         HasValue(PaymentProvider) ||
-        HasValue(SubscriptionStatus);
+        HasValue(SubscriptionStatus) ||
+        SubscribedFrom.HasValue ||
+        SubscribedTo.HasValue ||
+        NextPaymentFrom.HasValue ||
+        NextPaymentTo.HasValue;
 
     public void Clear()
     {
@@ -35,6 +43,10 @@ public sealed class AdminSubscriberColumnFilters
         SourceSystem = string.Empty;
         PaymentProvider = string.Empty;
         SubscriptionStatus = string.Empty;
+        SubscribedFrom = null;
+        SubscribedTo = null;
+        NextPaymentFrom = null;
+        NextPaymentTo = null;
     }
 
     private static bool HasValue(string? value) =>
@@ -271,6 +283,39 @@ public static class AdminSubscriberManagementLogic
         return builder.ToString();
     }
 
+    public static string BuildSubscriberTierSummary(
+        IReadOnlyList<AdminSubscriberTierSummary>? tierSummaries,
+        IReadOnlyList<string>? fallbackTierCodes)
+    {
+        if (tierSummaries is not null && tierSummaries.Count > 0)
+        {
+            var values = tierSummaries
+                .Where(summary => !string.IsNullOrWhiteSpace(summary.TierCode))
+                .Select(summary =>
+                {
+                    var tierCode = summary.TierCode.Trim();
+                    return summary.BillingAmountZar is decimal amount
+                        ? $"{tierCode} ({FormatZar(amount)})"
+                        : tierCode;
+                })
+                .ToArray();
+
+            if (values.Length > 0)
+            {
+                return string.Join(", ", values);
+            }
+        }
+
+        var fallbackValues = fallbackTierCodes?
+            .Where(tier => !string.IsNullOrWhiteSpace(tier))
+            .Select(tier => tier.Trim())
+            .ToArray();
+
+        return fallbackValues is null || fallbackValues.Length == 0
+            ? "Geen"
+            : string.Join(", ", fallbackValues);
+    }
+
     public static IReadOnlyList<Guid> NormalizeSelectedSubscriberIds(IEnumerable<Guid>? subscriberIds) =>
         subscriberIds?
             .Where(id => id != Guid.Empty)
@@ -313,6 +358,9 @@ public static class AdminSubscriberManagementLogic
         value.Contains('"', StringComparison.Ordinal) ||
         value.Contains('\r', StringComparison.Ordinal) ||
         value.Contains('\n', StringComparison.Ordinal);
+
+    private static string FormatZar(decimal value) =>
+        $"R {value.ToString("N2", System.Globalization.CultureInfo.InvariantCulture)}";
 }
 
 public sealed record ManualAccessExpiryValidationResult(bool IsValid, string? ErrorMessage);

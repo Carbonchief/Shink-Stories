@@ -118,6 +118,14 @@ export function downloadCsv(filename, csvText) {
   URL.revokeObjectURL(url);
 }
 
+export function closeAdminHeaderFilters() {
+  document.querySelectorAll(".admin-header-filter[open]").forEach((filter) => {
+    if (filter instanceof HTMLDetailsElement) {
+      filter.removeAttribute("open");
+    }
+  });
+}
+
 function beginResize(event, grid, table, columnIndex, storageKey) {
   if (!(event.target instanceof HTMLElement)) {
     return;

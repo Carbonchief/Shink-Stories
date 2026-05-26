@@ -10,6 +10,7 @@ public sealed record StoryPlaylist(
     string? LogoImagePath = null,
     string? BackdropImagePath = null,
     string? ShowcaseImagePath = null,
+    string? AccentColorHex = null,
     bool IncludeInSpeellysteCarousel = false,
     bool IsSystemPlaylist = false,
     string? SystemKey = null,

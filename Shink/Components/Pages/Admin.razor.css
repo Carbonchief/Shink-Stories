@@ -14,6 +14,8 @@
     --admin-toggle-off: #e45d66;
     --admin-input-bg: #1d2d3d;
     --admin-input-border: #49657d;
+    --admin-pager-text: #ffffff;
+    --admin-pager-disabled: color-mix(in srgb, #ffffff 46%, #8092a3);
     --admin-page-inline-pad: clamp(0.75rem, 1.8vw, 1.5rem);
 
     width: 100%;
@@ -349,6 +351,36 @@
     gap: 0.4rem;
     width: min(100%, 860px);
     margin-inline-start: auto;
+}
+
+.admin-subscriber-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.55rem;
+    width: 100%;
+}
+
+.admin-subscriber-toolbar .admin-search {
+    flex: 1 1 680px;
+    margin-inline-start: 0;
+}
+
+.admin-subscriber-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 38px;
+    padding: 0.45rem 0.7rem;
+    border: 1px solid color-mix(in srgb, #8dc66f 70%, var(--admin-border));
+    border-radius: 999px;
+    background: color-mix(in srgb, #8dc66f 16%, var(--admin-surface-soft));
+    color: #ffffff;
+    font-size: 0.92rem;
+    font-weight: 800;
+    line-height: 1;
+    white-space: nowrap;
 }
 
 .admin-search-field {
@@ -706,17 +738,25 @@
 
 .admin-grid ::deep .mud-table-pagination {
     background: var(--admin-surface-soft);
-    color: #1b2836 !important;
+    color: var(--admin-pager-text) !important;
     border-top: 1px solid color-mix(in srgb, var(--admin-border) 84%, transparent);
 }
 
-.admin-grid ::deep .mud-table-pagination * {
-    color: #1b2836 !important;
+.admin-grid ::deep .mud-table-pagination .mud-typography,
+.admin-grid ::deep .mud-table-pagination .mud-select,
+.admin-grid ::deep .mud-table-pagination .mud-input,
+.admin-grid ::deep .mud-table-pagination .mud-input-slot,
+.admin-grid ::deep .mud-table-pagination .mud-select-input,
+.admin-grid ::deep .mud-table-pagination .mud-input-adornment,
+.admin-grid ::deep .mud-table-pagination .mud-icon-root,
+.admin-grid ::deep .mud-table-pagination button:not(:disabled) {
+    color: var(--admin-pager-text) !important;
+    opacity: 1 !important;
 }
 
 .admin-grid ::deep .mud-table-pagination .mud-disabled,
 .admin-grid ::deep .mud-table-pagination button:disabled {
-    color: color-mix(in srgb, var(--admin-text) 48%, #8092a3) !important;
+    color: var(--admin-pager-disabled) !important;
     opacity: 1 !important;
 }
 
@@ -1321,6 +1361,42 @@
     align-self: start;
 }
 
+.admin-playlist-colour-field {
+    display: grid;
+    grid-template-columns: auto minmax(12rem, 1fr);
+    gap: 0.4rem 0.75rem;
+    align-items: center;
+}
+
+.admin-playlist-colour-label,
+.admin-playlist-colour-help {
+    grid-column: 1 / -1;
+}
+
+.admin-playlist-colour-label {
+    color: var(--admin-ink);
+    font-weight: 700;
+}
+
+.admin-playlist-colour-picker {
+    width: 3.25rem;
+    height: 2.5rem;
+    padding: 0.15rem;
+    border: 1px solid var(--admin-border);
+    border-radius: 8px;
+    background: var(--admin-surface);
+    cursor: pointer;
+}
+
+.admin-playlist-colour-hex {
+    min-width: 0;
+}
+
+.admin-playlist-colour-help {
+    color: var(--admin-muted);
+    font-size: 0.84rem;
+}
+
 .admin-form-note {
     margin: 0;
     color: var(--admin-muted);
@@ -1444,7 +1520,7 @@
 
 .admin-story-test-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(7rem, auto) auto;
     gap: 0.72rem;
     align-items: start;
     min-width: 0;
@@ -2259,13 +2335,25 @@
 .admin-page ::deep .mud-table-pagination {
     background: var(--admin-surface-soft);
     border-top: 1px solid color-mix(in srgb, var(--admin-border) 84%, transparent);
-    color: #1b2836 !important;
+    color: var(--admin-pager-text) !important;
 }
 
+.admin-page ::deep .mud-table-pagination .mud-typography,
 .admin-page ::deep .mud-table-pagination .mud-select,
 .admin-page ::deep .mud-table-pagination .mud-input,
-.admin-page ::deep .mud-table-pagination .mud-select-input {
-    color: #1b2836 !important;
+.admin-page ::deep .mud-table-pagination .mud-input-slot,
+.admin-page ::deep .mud-table-pagination .mud-select-input,
+.admin-page ::deep .mud-table-pagination .mud-input-adornment,
+.admin-page ::deep .mud-table-pagination .mud-icon-root,
+.admin-page ::deep .mud-table-pagination button:not(:disabled) {
+    color: var(--admin-pager-text) !important;
+    opacity: 1 !important;
+}
+
+.admin-page ::deep .mud-table-pagination .mud-disabled,
+.admin-page ::deep .mud-table-pagination button:disabled {
+    color: var(--admin-pager-disabled) !important;
+    opacity: 1 !important;
 }
 
 .admin-page ::deep .mud-input-outlined-border,
@@ -2399,10 +2487,15 @@
     }
 
     .admin-search,
+    .admin-subscriber-toolbar,
     .admin-story-picker {
         width: 100%;
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .admin-subscriber-count {
+        width: 100%;
     }
 
     .admin-search-field,

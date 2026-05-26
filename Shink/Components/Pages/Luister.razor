@@ -128,7 +128,7 @@ else
         var hasShowcaseImage = playlist.ShowShowcaseImageOnLuisterPage && showcaseStory is not null;
         var isWeeklyPopularPlaylist = IsWeeklyPopularPlaylist(playlist);
 
-        <section class="section-block stories-carousel-section luister-stories-section" aria-labelledby="@headingId">
+        <section class="section-block stories-carousel-section luister-stories-section" style="@BuildPlaylistAccentStyle(playlist)" aria-labelledby="@headingId">
             <h2 id="@headingId">
                 @if (canOpenPlaylist)
                 {
@@ -457,6 +457,43 @@ else
 
     private static string GetPlaylistTitle(StoryPlaylist playlist) =>
         string.IsNullOrWhiteSpace(playlist.Title) ? "Stories" : playlist.Title.Trim();
+
+    private string? BuildPlaylistAccentStyle(StoryPlaylist? playlist)
+    {
+        var accentColorHex = NormalizePlaylistAccentColorHex(playlist?.AccentColorHex);
+        return string.IsNullOrWhiteSpace(accentColorHex)
+            ? null
+            : $"--playlist-accent-color: {accentColorHex};";
+    }
+
+    private string? NormalizePlaylistAccentColorHex(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var normalized = value.Trim();
+        if (normalized.Length == 6)
+        {
+            normalized = $"#{normalized}";
+        }
+
+        if (normalized.Length != 7 || normalized[0] != '#')
+        {
+            return null;
+        }
+
+        for (var index = 1; index < normalized.Length; index++)
+        {
+            if (!Uri.IsHexDigit(normalized[index]))
+            {
+                return null;
+            }
+        }
+
+        return normalized.ToUpperInvariant();
+    }
 
     private static IReadOnlyList<StoryItem> GetPlaylistStories(StoryPlaylist playlist) =>
         playlist.Stories ?? Array.Empty<StoryItem>();

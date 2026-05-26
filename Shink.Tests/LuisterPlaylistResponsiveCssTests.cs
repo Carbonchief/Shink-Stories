@@ -55,6 +55,22 @@ public class LuisterPlaylistResponsiveCssTests
     }
 
     [TestMethod]
+    public void LuisterShowcaseImageIsLargerOnDesktopAndSquareOnMobile()
+    {
+        var css = File.ReadAllText(GetRepoPath(
+            "Shink",
+            "Components",
+            "Pages",
+            "Luister.razor.css"));
+
+        StringAssert.Contains(css, "@media (min-width: 981px)");
+        StringAssert.Contains(css, "width: min(100%, 936px);");
+        StringAssert.Contains(css, "@media (max-width: 680px)");
+        StringAssert.Contains(css, ".luister-playlist-showcase-cover");
+        StringAssert.Contains(css, "aspect-ratio: 1 / 1;");
+    }
+
+    [TestMethod]
     public void PlaylistLaptopLayoutRemovesWhiteOuterCorners()
     {
         var css = File.ReadAllText(GetRepoPath(

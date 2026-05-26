@@ -117,7 +117,8 @@ public sealed record StoryTestQuestion(
     [property: JsonPropertyName("question")] string Question,
     [property: JsonPropertyName("option_a")] string OptionA,
     [property: JsonPropertyName("option_b")] string OptionB,
-    [property: JsonPropertyName("correct_option")] string CorrectOption);
+    [property: JsonPropertyName("correct_option")] string CorrectOption,
+    [property: JsonPropertyName("option_c")] string? OptionC = null);
 
 public sealed record StoryPreviewItem(
     string Title,
