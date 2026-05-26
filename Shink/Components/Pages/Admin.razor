@@ -3242,46 +3242,52 @@
                                     @foreach (var question in NewStoryEditor.TestQuestions)
                                     {
                                         <div class="admin-story-test-row">
-                                            <MudTextField T="string"
-                                                          Class="admin-span-2"
-                                                          Label='@T("Vraag", "Question")'
-                                                          @bind-Value="question.Question"
-                                                          Variant="Variant.Outlined"
-                                                          Margin="Margin.Dense"
-                                                          Lines="2" />
-                                            <MudTextField T="string"
-                                                          Label='@T("Opsie A", "Option A")'
-                                                          @bind-Value="question.OptionA"
-                                                          Variant="Variant.Outlined"
-                                                          Margin="Margin.Dense" />
-                                            <MudTextField T="string"
-                                                          Label='@T("Opsie B", "Option B")'
-                                                          @bind-Value="question.OptionB"
-                                                          Variant="Variant.Outlined"
-                                                          Margin="Margin.Dense" />
-                                            <MudTextField T="string"
-                                                          Label='@T("Opsie C (opsioneel)", "Option C (optional)")'
-                                                          @bind-Value="question.OptionC"
-                                                          Variant="Variant.Outlined"
-                                                          Margin="Margin.Dense" />
-                                            <MudSelect T="string"
-                                                       Label='@T("Regte antwoord", "Correct answer")'
-                                                       @bind-Value="question.CorrectOption"
-                                                       Variant="Variant.Outlined"
-                                                       Margin="Margin.Dense">
-                                                <MudSelectItem Value="@("A")">A</MudSelectItem>
-                                                <MudSelectItem Value="@("B")">B</MudSelectItem>
-                                                <MudSelectItem Value="@("C")">C</MudSelectItem>
-                                            </MudSelect>
-                                            <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
-                                                       Variant="Variant.Text"
-                                                       Color="Color.Error"
-                                                       OnClick="@(() => RemoveNewStoryTestQuestion(question))"
-                                                       aria-label='@T("Verwyder toetsvraag", "Remove test question")'
-                                                       title='@T("Verwyder toetsvraag", "Remove test question")'>
-                                                <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
-                                                <span class="admin-btn-text">@T("Verwyder", "Remove")</span>
-                                            </MudButton>
+                                            <div class="admin-story-test-question-field">
+                                                <MudTextField T="string"
+                                                              Label='@T("Vraag", "Question")'
+                                                              @bind-Value="question.Question"
+                                                              Variant="Variant.Outlined"
+                                                              Margin="Margin.Dense"
+                                                              Lines="3" />
+                                            </div>
+                                            <div class="admin-story-test-options-grid">
+                                                <MudTextField T="string"
+                                                              Label='@T("Opsie A", "Option A")'
+                                                              @bind-Value="question.OptionA"
+                                                              Variant="Variant.Outlined"
+                                                              Margin="Margin.Dense" />
+                                                <MudTextField T="string"
+                                                              Label='@T("Opsie B", "Option B")'
+                                                              @bind-Value="question.OptionB"
+                                                              Variant="Variant.Outlined"
+                                                              Margin="Margin.Dense" />
+                                                <MudTextField T="string"
+                                                              Label='@T("Opsie C (opsioneel)", "Option C (optional)")'
+                                                              @bind-Value="question.OptionC"
+                                                              Variant="Variant.Outlined"
+                                                              Margin="Margin.Dense" />
+                                                <MudSelect T="string"
+                                                           Class="admin-story-test-correct-select"
+                                                           Label='@T("Regte antwoord", "Correct answer")'
+                                                           @bind-Value="question.CorrectOption"
+                                                           Variant="Variant.Outlined"
+                                                           Margin="Margin.Dense">
+                                                    <MudSelectItem Value="@("A")">A</MudSelectItem>
+                                                    <MudSelectItem Value="@("B")">B</MudSelectItem>
+                                                    <MudSelectItem Value="@("C")">C</MudSelectItem>
+                                                </MudSelect>
+                                            </div>
+                                            <div class="admin-story-test-row-actions">
+                                                <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                                           Variant="Variant.Text"
+                                                           Color="Color.Error"
+                                                           OnClick="@(() => RemoveNewStoryTestQuestion(question))"
+                                                           aria-label='@T("Verwyder toetsvraag", "Remove test question")'
+                                                           title='@T("Verwyder toetsvraag", "Remove test question")'>
+                                                    <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                                                    <span class="admin-btn-text">@T("Verwyder", "Remove")</span>
+                                                </MudButton>
+                                            </div>
                                         </div>
                                     }
                                 }
@@ -3669,46 +3675,52 @@
                                     @foreach (var question in StoryEditor.TestQuestions)
                                     {
                                         <div class="admin-story-test-row">
-                                            <MudTextField T="string"
-                                                          Class="admin-span-2"
-                                                          Label='@T("Vraag", "Question")'
-                                                          @bind-Value="question.Question"
-                                                          Variant="Variant.Outlined"
-                                                          Margin="Margin.Dense"
-                                                          Lines="2" />
-                                            <MudTextField T="string"
-                                                          Label='@T("Opsie A", "Option A")'
-                                                          @bind-Value="question.OptionA"
-                                                          Variant="Variant.Outlined"
-                                                          Margin="Margin.Dense" />
-                                            <MudTextField T="string"
-                                                          Label='@T("Opsie B", "Option B")'
-                                                          @bind-Value="question.OptionB"
-                                                          Variant="Variant.Outlined"
-                                                          Margin="Margin.Dense" />
-                                            <MudTextField T="string"
-                                                          Label='@T("Opsie C (opsioneel)", "Option C (optional)")'
-                                                          @bind-Value="question.OptionC"
-                                                          Variant="Variant.Outlined"
-                                                          Margin="Margin.Dense" />
-                                            <MudSelect T="string"
-                                                       Label='@T("Regte antwoord", "Correct answer")'
-                                                       @bind-Value="question.CorrectOption"
-                                                       Variant="Variant.Outlined"
-                                                       Margin="Margin.Dense">
-                                                <MudSelectItem Value="@("A")">A</MudSelectItem>
-                                                <MudSelectItem Value="@("B")">B</MudSelectItem>
-                                                <MudSelectItem Value="@("C")">C</MudSelectItem>
-                                            </MudSelect>
-                                            <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
-                                                       Variant="Variant.Text"
-                                                       Color="Color.Error"
-                                                       OnClick="@(() => RemoveStoryTestQuestion(question))"
-                                                       aria-label='@T("Verwyder toetsvraag", "Remove test question")'
-                                                       title='@T("Verwyder toetsvraag", "Remove test question")'>
-                                                <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
-                                                <span class="admin-btn-text">@T("Verwyder", "Remove")</span>
-                                            </MudButton>
+                                            <div class="admin-story-test-question-field">
+                                                <MudTextField T="string"
+                                                              Label='@T("Vraag", "Question")'
+                                                              @bind-Value="question.Question"
+                                                              Variant="Variant.Outlined"
+                                                              Margin="Margin.Dense"
+                                                              Lines="3" />
+                                            </div>
+                                            <div class="admin-story-test-options-grid">
+                                                <MudTextField T="string"
+                                                              Label='@T("Opsie A", "Option A")'
+                                                              @bind-Value="question.OptionA"
+                                                              Variant="Variant.Outlined"
+                                                              Margin="Margin.Dense" />
+                                                <MudTextField T="string"
+                                                              Label='@T("Opsie B", "Option B")'
+                                                              @bind-Value="question.OptionB"
+                                                              Variant="Variant.Outlined"
+                                                              Margin="Margin.Dense" />
+                                                <MudTextField T="string"
+                                                              Label='@T("Opsie C (opsioneel)", "Option C (optional)")'
+                                                              @bind-Value="question.OptionC"
+                                                              Variant="Variant.Outlined"
+                                                              Margin="Margin.Dense" />
+                                                <MudSelect T="string"
+                                                           Class="admin-story-test-correct-select"
+                                                           Label='@T("Regte antwoord", "Correct answer")'
+                                                           @bind-Value="question.CorrectOption"
+                                                           Variant="Variant.Outlined"
+                                                           Margin="Margin.Dense">
+                                                    <MudSelectItem Value="@("A")">A</MudSelectItem>
+                                                    <MudSelectItem Value="@("B")">B</MudSelectItem>
+                                                    <MudSelectItem Value="@("C")">C</MudSelectItem>
+                                                </MudSelect>
+                                            </div>
+                                            <div class="admin-story-test-row-actions">
+                                                <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                                           Variant="Variant.Text"
+                                                           Color="Color.Error"
+                                                           OnClick="@(() => RemoveStoryTestQuestion(question))"
+                                                           aria-label='@T("Verwyder toetsvraag", "Remove test question")'
+                                                           title='@T("Verwyder toetsvraag", "Remove test question")'>
+                                                    <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                                                    <span class="admin-btn-text">@T("Verwyder", "Remove")</span>
+                                                </MudButton>
+                                            </div>
                                         </div>
                                     }
                                 }

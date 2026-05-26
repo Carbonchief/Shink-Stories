@@ -138,6 +138,23 @@ public class StoryTestQuestionSourceTests
     }
 
     [TestMethod]
+    public void AdminStoryTestRowsUseReadableCardLayout()
+    {
+        var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
+        var css = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor.css"));
+
+        StringAssert.Contains(markup, "class=\"admin-story-test-question-field\"");
+        StringAssert.Contains(markup, "class=\"admin-story-test-options-grid\"");
+        StringAssert.Contains(markup, "class=\"admin-story-test-row-actions\"");
+        StringAssert.Contains(css, ".admin-story-test-row");
+        StringAssert.Contains(css, "grid-template-columns: minmax(18rem, 0.95fr) minmax(0, 2.2fr) auto;");
+        StringAssert.Contains(css, ".admin-story-test-options-grid");
+        StringAssert.Contains(css, "grid-template-columns: repeat(3, minmax(9rem, 1fr)) minmax(7.5rem, 0.58fr);");
+        StringAssert.Contains(css, ".admin-story-test-row-actions");
+        StringAssert.Contains(css, "@media (max-width: 1180px)");
+    }
+
+    [TestMethod]
     public void AdminStoryEditorUpdatesStorySummaryCardDetails()
     {
         var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));

@@ -62,6 +62,10 @@ public class AdminGridStyleSourceTests
         StringAssert.Contains(css, ".admin-page ::deep .mud-table-pagination .mud-icon-root");
         StringAssert.Contains(css, ".admin-page ::deep .mud-table-pagination .mud-input-adornment");
         StringAssert.Contains(css, ".admin-page ::deep .mud-table-pagination button:not(:disabled)");
+        StringAssert.Contains(css, ".admin-page ::deep .mud-table-pagination .mud-icon-button");
+        StringAssert.Contains(css, ".admin-page ::deep .mud-table-pagination svg");
+        StringAssert.Contains(css, ".admin-page ::deep .mud-table-pagination svg path");
+        StringAssert.Contains(css, "fill: var(--admin-pager-text) !important;");
         StringAssert.Contains(css, "color: var(--admin-pager-disabled) !important;");
         Assert.IsFalse(css.Contains("color: #1b2836 !important;", StringComparison.Ordinal));
     }

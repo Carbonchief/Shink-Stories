@@ -363,8 +363,8 @@
 }
 
 .admin-subscriber-toolbar .admin-search {
-    flex: 1 1 680px;
-    margin-inline-start: 0;
+    flex: 0 1 860px;
+    margin-inline-start: auto;
 }
 
 .admin-subscriber-count {
@@ -749,9 +749,16 @@
 .admin-grid ::deep .mud-table-pagination .mud-select-input,
 .admin-grid ::deep .mud-table-pagination .mud-input-adornment,
 .admin-grid ::deep .mud-table-pagination .mud-icon-root,
+.admin-grid ::deep .mud-table-pagination .mud-icon-button,
+.admin-grid ::deep .mud-table-pagination svg,
 .admin-grid ::deep .mud-table-pagination button:not(:disabled) {
     color: var(--admin-pager-text) !important;
     opacity: 1 !important;
+}
+
+.admin-grid ::deep .mud-table-pagination svg,
+.admin-grid ::deep .mud-table-pagination svg path {
+    fill: var(--admin-pager-text) !important;
 }
 
 .admin-grid ::deep .mud-table-pagination .mud-disabled,
@@ -1520,9 +1527,9 @@
 
 .admin-story-test-row {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(7rem, auto) auto;
-    gap: 0.72rem;
-    align-items: start;
+    grid-template-columns: minmax(18rem, 0.95fr) minmax(0, 2.2fr) auto;
+    gap: 0.78rem;
+    align-items: stretch;
     min-width: 0;
     padding: 0.78rem;
     border: 1px solid color-mix(in srgb, var(--admin-border) 78%, transparent);
@@ -1530,8 +1537,29 @@
     background: color-mix(in srgb, var(--admin-surface-soft) 72%, #000000 28%);
 }
 
-.admin-story-test-row .admin-span-2 {
-    grid-column: 1 / -1;
+.admin-story-test-question-field,
+.admin-story-test-options-grid {
+    min-width: 0;
+}
+
+.admin-story-test-options-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(9rem, 1fr)) minmax(7.5rem, 0.58fr);
+    gap: 0.62rem;
+    align-items: start;
+}
+
+.admin-story-test-row-actions {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 0.18rem;
+}
+
+.admin-story-test-row-actions .admin-icon-btn {
+    width: 2.35rem;
+    min-width: 2.35rem;
+    height: 2.35rem;
 }
 
 .admin-upload-group {
@@ -2345,9 +2373,16 @@
 .admin-page ::deep .mud-table-pagination .mud-select-input,
 .admin-page ::deep .mud-table-pagination .mud-input-adornment,
 .admin-page ::deep .mud-table-pagination .mud-icon-root,
+.admin-page ::deep .mud-table-pagination .mud-icon-button,
+.admin-page ::deep .mud-table-pagination svg,
 .admin-page ::deep .mud-table-pagination button:not(:disabled) {
     color: var(--admin-pager-text) !important;
     opacity: 1 !important;
+}
+
+.admin-page ::deep .mud-table-pagination svg,
+.admin-page ::deep .mud-table-pagination svg path {
+    fill: var(--admin-pager-text) !important;
 }
 
 .admin-page ::deep .mud-table-pagination .mud-disabled,
@@ -2372,6 +2407,25 @@
 
 .admin-page ::deep .mud-icon-button {
     color: var(--admin-text);
+}
+
+@media (max-width: 1180px) {
+    .admin-story-test-row {
+        grid-template-columns: 1fr auto;
+    }
+
+    .admin-story-test-options-grid {
+        grid-column: 1 / -1;
+    }
+
+    .admin-story-test-options-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .admin-story-test-row-actions {
+        grid-column: 2;
+        grid-row: 1;
+    }
 }
 
 @media (max-width: 760px) {
@@ -2540,6 +2594,16 @@
 
     .admin-story-test-head {
         display: grid;
+    }
+
+    .admin-story-test-options-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-story-test-row-actions {
+        grid-column: 1;
+        grid-row: auto;
+        justify-content: flex-start;
     }
 
     .admin-analytics-layout {
