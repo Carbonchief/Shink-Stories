@@ -388,8 +388,8 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     [TestMethod]
     public async Task CancelPaidSubscriptionAsync_SchedulesLegacyRowsWithoutPaystackLookup()
     {
-        var legacyRenewalAt = new DateTimeOffset(2026, 5, 27, 12, 40, 0, TimeSpan.Zero);
-        var paystackRenewalAt = new DateTimeOffset(2026, 5, 27, 10, 40, 0, TimeSpan.Zero);
+        var legacyRenewalAt = DateTimeOffset.UtcNow.AddDays(30);
+        var paystackRenewalAt = DateTimeOffset.UtcNow.AddDays(29);
         var handler = new RecordingHandler(request =>
         {
             if (IsSupabaseGet(request, "/rest/v1/subscribers"))
@@ -1637,6 +1637,78 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
 
         Assert.IsTrue(hasPendingRepair);
         Assert.IsTrue(subscriptionQueryChecked);
+    }
+
+    [TestMethod]
+    public async Task ApplySignupDiscountCodeAsync_UsesAtomicRpcAndReturnsGrantedAccess()
+    {
+        string? rpcPayload = null;
+        var handler = new RecordingHandler(request =>
+        {
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/rpc/redeem_signup_discount_code")
+            {
+                rpcPayload = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
+                return JsonResponse(
+                    """
+                    {
+                      "success": true,
+                      "message": null,
+                      "tier_code": "all_stories_monthly",
+                      "access_expires_at": "2026-06-28T00:00:00+00:00",
+                      "subscription_id": "33333333-3333-3333-3333-333333333333"
+                    }
+                    """);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.ApplySignupDiscountCodeAsync(" Ouer@Example.com ", " GRATIS2026 ", "all_stories_monthly");
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.AreEqual("all_stories_monthly", result.TierCode);
+        Assert.IsNotNull(result.AccessEndsAtUtc);
+        Assert.IsNotNull(rpcPayload);
+        StringAssert.Contains(rpcPayload, "\"p_email\":\"ouer@example.com\"");
+        StringAssert.Contains(rpcPayload, "\"p_code\":\"gratis2026\"");
+        StringAssert.Contains(rpcPayload, "\"p_selected_tier_code\":\"all_stories_monthly\"");
+        Assert.AreEqual(0, handler.SubscriptionCreatePayloads.Count, "Free-access discount application must not grant access outside the atomic RPC.");
+    }
+
+    [TestMethod]
+    public async Task ApplySignupDiscountCodeAsync_FailsClosedWhenAtomicRpcRejectsRedemption()
+    {
+        var handler = new RecordingHandler(request =>
+        {
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/rpc/redeem_signup_discount_code")
+            {
+                return JsonResponse(
+                    """
+                    {
+                      "success": false,
+                      "message": "Hierdie kode het sy maksimum gebruike bereik.",
+                      "tier_code": null,
+                      "access_expires_at": null,
+                      "subscription_id": null
+                    }
+                    """);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.ApplySignupDiscountCodeAsync("ouer@example.com", "gratis2026", "all_stories_monthly");
+
+        Assert.IsFalse(result.IsSuccess);
+        Assert.AreEqual("Hierdie kode het sy maksimum gebruike bereik.", result.ErrorMessage);
+        Assert.IsNull(result.TierCode);
+        Assert.AreEqual(0, handler.SubscriptionCreatePayloads.Count, "A rejected RPC redemption must not grant access.");
     }
 
     [TestMethod]

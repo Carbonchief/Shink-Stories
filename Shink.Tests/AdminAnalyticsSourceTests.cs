@@ -196,6 +196,18 @@ public class AdminAnalyticsSourceTests
     }
 
     [TestMethod]
+    public void AnalyticsSnapshotFunctionsAreServiceRoleOnly()
+    {
+        var migration = File.ReadAllText(GetRepoPath("Shink", "Database", "migrations", "20260528_security_hardening.sql"));
+
+        foreach (var functionName in new[] { "get_admin_analytics_snapshot()", "get_admin_analytics_snapshot_base()" })
+        {
+            StringAssert.Contains(migration, $"revoke all on function public.{functionName} from public, anon, authenticated;");
+            StringAssert.Contains(migration, $"grant execute on function public.{functionName} to service_role;");
+        }
+    }
+
+    [TestMethod]
     public void SubscriberAnalyticsCountsCurrentDistinctSubscribersOnly()
     {
         var now = DateTimeOffset.Now.AddMinutes(-5);

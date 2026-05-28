@@ -45,4 +45,5 @@ public sealed record ResourceDocumentPreviewDownload(
     string ContentType,
     string StorageBucket,
     string StorageObjectKey,
+    string? RequiredTierCode,
     DateTimeOffset? LastModified);

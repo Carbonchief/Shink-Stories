@@ -82,6 +82,8 @@ appsettings.secrets.json
 /*provider-export*.csv
 /*payment-export*.csv
 /*subscriber-export*.csv
+/tmp_*.json
+/recovered-revenue-accounts-*.csv
 
 # Local verification/build output
 /obj_verify/

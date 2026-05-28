@@ -129,7 +129,7 @@
                         var canAccessDocument = UserCanAccessDocument(document);
                         <article class="resources-card @(canAccessDocument ? "is-unlocked" : "is-locked")">
                             <div class="resources-card-preview" aria-hidden="true">
-                                @if (!string.IsNullOrWhiteSpace(document.PreviewUrl))
+                                @if (canAccessDocument && !string.IsNullOrWhiteSpace(document.PreviewUrl))
                                 {
                                     <img class="resources-card-preview-image"
                                          src="@document.PreviewUrl"

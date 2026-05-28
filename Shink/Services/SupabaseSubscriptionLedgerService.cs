@@ -3291,6 +3291,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 apiKey,
                 data,
                 plan,
+                email,
+                nowUtc,
                 cancellationToken);
             if (discountTerms is null)
             {
@@ -3537,6 +3539,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string apiKey,
         JsonElement data,
         PaymentPlan plan,
+        string email,
+        DateTimeOffset nowUtc,
         CancellationToken cancellationToken)
     {
         var discountCodeText = TryReadNestedString(data, "metadata", "discount_code");
@@ -3546,24 +3550,30 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             return null;
         }
 
-        var code = await FetchDiscountCodeByNormalizedCodeAsync(baseUri, apiKey, normalizedCode, cancellationToken);
-        if (code is null || code.DiscountCodeId == Guid.Empty)
+        var resolution = await ResolveDiscountCodeSelectionAsync(
+            normalizedCode,
+            plan.TierCode,
+            email.Trim().ToLowerInvariant(),
+            nowUtc,
+            cancellationToken);
+        if (!resolution.IsSuccess ||
+            resolution.Code is null ||
+            resolution.Mapping is null ||
+            resolution.Code.DiscountCodeId == Guid.Empty ||
+            !string.Equals(NormalizeStoredDiscountKind(resolution.Code.DiscountKind), SubscriptionDiscountKinds.Percentage, StringComparison.Ordinal) ||
+            !string.Equals(resolution.Mapping.TierCode, plan.TierCode, StringComparison.OrdinalIgnoreCase))
         {
             return null;
         }
 
-        var discountPercent = code.DiscountPercent ?? TryReadNestedDecimal(data, "metadata", "discount_percent");
+        var discountPercent = resolution.Code.DiscountPercent;
         if (discountPercent is not (> 0m and <= 100m))
         {
             return null;
         }
 
-        var discountDuration = string.Equals(code.DiscountDuration, SubscriptionDiscountDurations.FirstPayments, StringComparison.OrdinalIgnoreCase) ||
-                               string.Equals(TryReadNestedString(data, "metadata", "discount_duration"), SubscriptionDiscountDurations.FirstPayments, StringComparison.OrdinalIgnoreCase)
-            ? SubscriptionDiscountDurations.FirstPayments
-            : SubscriptionDiscountDurations.Lifetime;
-        var metadataPaymentCount = TryReadNestedDecimal(data, "metadata", "discount_payment_count");
-        var discountPaymentCount = code.DiscountPaymentCount ?? (metadataPaymentCount is null ? null : (int?)decimal.ToInt32(metadataPaymentCount.Value));
+        var discountDuration = NormalizeStoredDiscountDuration(resolution.Code.DiscountDuration);
+        var discountPaymentCount = resolution.Code.DiscountPaymentCount;
         if (string.Equals(discountDuration, SubscriptionDiscountDurations.FirstPayments, StringComparison.Ordinal) &&
             discountPaymentCount is not (>= 1 and <= 3))
         {
@@ -3571,7 +3581,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         }
 
         return new PaystackDiscountedSubscriptionTerms(
-            code.DiscountCodeId,
+            resolution.Code.DiscountCodeId,
             decimal.Round(discountPercent.Value, 2, MidpointRounding.AwayFromZero),
             discountDuration,
             discountPaymentCount,

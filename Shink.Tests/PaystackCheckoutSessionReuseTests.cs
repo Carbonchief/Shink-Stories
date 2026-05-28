@@ -1,4 +1,5 @@
 using System.Net;
+using System.Runtime.CompilerServices;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
@@ -13,6 +14,26 @@ namespace Shink.Tests;
 [TestClass]
 public sealed class PaystackCheckoutSessionReuseTests
 {
+    [TestMethod]
+    public void DiscountedPaystackPersistenceRevalidatesCurrentCodeAndPlanBeforeStoringTerms()
+    {
+        var source = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseSubscriptionLedgerService.cs"));
+        var methodStart = source.IndexOf("private async Task<PaystackDiscountedSubscriptionTerms?> ResolvePaystackDiscountedSubscriptionTermsAsync", StringComparison.Ordinal);
+        Assert.AreNotEqual(-1, methodStart);
+        var methodEnd = source.IndexOf("private static decimal ResolveNextDiscountedSubscriptionBillingAmount", methodStart, StringComparison.Ordinal);
+        Assert.AreNotEqual(-1, methodEnd);
+        var method = source[methodStart..methodEnd];
+
+        StringAssert.Contains(method, "string email");
+        StringAssert.Contains(method, "ResolveDiscountCodeSelectionAsync(");
+        StringAssert.Contains(method, "plan.TierCode");
+        StringAssert.Contains(method, "email.Trim().ToLowerInvariant()");
+        StringAssert.Contains(method, "SubscriptionDiscountKinds.Percentage");
+        StringAssert.Contains(method, "resolution.Mapping.TierCode");
+        Assert.IsFalse(method.Contains("TryReadNestedDecimal(data, \"metadata\", \"discount_percent\")", StringComparison.Ordinal));
+        Assert.IsFalse(method.Contains("TryReadNestedString(data, \"metadata\", \"discount_duration\")", StringComparison.Ordinal));
+    }
+
     [TestMethod]
     public async Task InitializeCheckoutForEmailAsync_ReusesActivePendingSessionWithoutCreatingPaystackTransaction()
     {
@@ -439,26 +460,17 @@ public sealed class PaystackCheckoutSessionReuseTests
 
     private static string GetRepoPath(params string[] parts)
     {
-        var current = AppContext.BaseDirectory;
-        while (!string.IsNullOrWhiteSpace(current))
+        var testDirectory = Path.GetDirectoryName(GetSourceFilePath())!;
+        var candidate = Path.GetFullPath(Path.Combine([testDirectory, "..", .. parts]));
+        if (File.Exists(candidate))
         {
-            var candidate = Path.Combine(new[] { current }.Concat(parts).ToArray());
-            if (File.Exists(candidate))
-            {
-                return candidate;
-            }
-
-            var parent = Directory.GetParent(current);
-            if (parent is null)
-            {
-                break;
-            }
-
-            current = parent.FullName;
+            return candidate;
         }
 
         throw new FileNotFoundException("Could not find repo file.", Path.Combine(parts));
     }
+
+    private static string GetSourceFilePath([CallerFilePath] string path = "") => path;
 
     private sealed class RecordingHandler(Func<HttpRequestMessage, HttpResponseMessage> responseFactory) : HttpMessageHandler
     {

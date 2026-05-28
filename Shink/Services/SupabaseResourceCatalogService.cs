@@ -133,6 +133,7 @@ public sealed class SupabaseResourceCatalogService(
             ContentType: contentType,
             StorageBucket: document.PreviewImageBucket.Trim(),
             StorageObjectKey: document.PreviewImageObjectKey.Trim(),
+            RequiredTierCode: NormalizeOptionalText(document.RequiredTierCode, 64),
             LastModified: document.PreviewGeneratedAt ?? document.UpdatedAt);
     }
 

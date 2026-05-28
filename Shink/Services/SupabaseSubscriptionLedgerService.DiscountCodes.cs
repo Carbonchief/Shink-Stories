@@ -71,74 +71,38 @@ public sealed partial class SupabaseSubscriptionLedgerService
             return new SubscriptionCodeApplicationResult(false, "Voer asseblief 'n geldige kode in.");
         }
 
-        var nowUtc = DateTimeOffset.UtcNow;
-        var resolution = await ResolveDiscountCodeSelectionAsync(
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return new SubscriptionCodeApplicationResult(false, "Supabase URL is not configured.");
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return new SubscriptionCodeApplicationResult(false, "Supabase SecretKey is not configured.");
+        }
+
+        var redemption = await RedeemSignupDiscountCodeAsync(
+            baseUri,
+            apiKey,
+            normalizedEmail,
             normalizedCode,
             NormalizeDiscountTierCode(selectedTierCode),
-            normalizedEmail,
-            nowUtc,
             cancellationToken);
-
-        if (!resolution.IsSuccess || resolution.Code is null || resolution.Mapping is null)
+        if (redemption is null)
         {
-            return new SubscriptionCodeApplicationResult(false, resolution.ErrorMessage ?? "Kode kon nie toegepas word nie.");
+            return new SubscriptionCodeApplicationResult(false, "Kon nie kode-toegang nou aktiveer nie.");
         }
 
-        if (!string.Equals(NormalizeStoredDiscountKind(resolution.Code.DiscountKind), SubscriptionDiscountKinds.FreeAccess, StringComparison.Ordinal))
+        if (!redemption.Success)
         {
-            return new SubscriptionCodeApplicationResult(false, "Hierdie kode gee afslag op Paystack en kan nie gratis toegang aktiveer nie.");
-        }
-
-        var context = await TryResolveSelfServiceContextAsync(normalizedEmail, cancellationToken);
-        if (context is null)
-        {
-            return new SubscriptionCodeApplicationResult(false, "Kon nie jou intekenaarprofiel vind nie.");
-        }
-
-        var accessEndsAtUtc = ResolveDiscountCodeAccessEndsAt(nowUtc, resolution.Mapping);
-        string? grantedSubscriptionId = null;
-        if (!string.Equals(resolution.Mapping.TierCode, GratisTierCode, StringComparison.OrdinalIgnoreCase))
-        {
-            var providerPaymentId = $"discount-code-{Guid.NewGuid():N}";
-            grantedSubscriptionId = await UpsertDiscountCodeSubscriptionAsync(
-                context.BaseUri,
-                context.ApiKey,
-                context.SubscriberId,
-                resolution.Mapping.TierCode,
-                providerPaymentId,
-                nowUtc,
-                accessEndsAtUtc,
-                cancellationToken);
-            if (string.IsNullOrWhiteSpace(grantedSubscriptionId))
-            {
-                return new SubscriptionCodeApplicationResult(false, "Kon nie kode-toegang nou aktiveer nie.");
-            }
-        }
-
-        var redemptionStored = await InsertDiscountCodeRedemptionAsync(
-            context.BaseUri,
-            context.ApiKey,
-            resolution.Code.DiscountCodeId,
-            context.SubscriberId,
-            normalizedEmail,
-            resolution.Mapping.TierCode,
-            nowUtc,
-            accessEndsAtUtc,
-            grantedSubscriptionId,
-            cancellationToken);
-        if (!redemptionStored)
-        {
-            _logger.LogWarning(
-                "Signup discount code redemption history insert failed after access grant. email={Email} code={Code} tier={TierCode}",
-                normalizedEmail,
-                resolution.Code.Code,
-                resolution.Mapping.TierCode);
+            return new SubscriptionCodeApplicationResult(false, redemption.Message ?? "Kode kon nie toegepas word nie.");
         }
 
         return new SubscriptionCodeApplicationResult(
             true,
-            TierCode: resolution.Mapping.TierCode,
-            AccessEndsAtUtc: accessEndsAtUtc);
+            TierCode: redemption.TierCode,
+            AccessEndsAtUtc: redemption.AccessExpiresAt);
     }
 
     private async Task<DiscountCodeSelectionResolution> ResolveDiscountCodeSelectionAsync(
@@ -612,6 +576,52 @@ public sealed partial class SupabaseSubscriptionLedgerService
         return false;
     }
 
+    private async Task<SignupDiscountRedemptionRpcResult?> RedeemSignupDiscountCodeAsync(
+        Uri baseUri,
+        string apiKey,
+        string email,
+        string normalizedCode,
+        string? selectedTierCode,
+        CancellationToken cancellationToken)
+    {
+        var payload = new
+        {
+            p_email = email,
+            p_code = normalizedCode,
+            p_selected_tier_code = selectedTierCode
+        };
+
+        var uri = new Uri(baseUri, "rest/v1/rpc/redeem_signup_discount_code");
+        using var request = CreateJsonRequest(HttpMethod.Post, uri, apiKey, payload, "return=representation");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Signup discount code RPC failed. email={Email} code={Code} Status={StatusCode} Body={Body}",
+                email,
+                normalizedCode,
+                (int)response.StatusCode,
+                body);
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<SignupDiscountRedemptionRpcResult>(body);
+        }
+        catch (JsonException exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Signup discount code RPC returned invalid JSON. email={Email} code={Code} Body={Body}",
+                email,
+                normalizedCode,
+                body);
+            return null;
+        }
+    }
+
     private async Task<IReadOnlyList<T>> FetchRowsAsync<T>(Uri uri, string apiKey, CancellationToken cancellationToken)
     {
         using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
@@ -643,6 +653,24 @@ public sealed partial class SupabaseSubscriptionLedgerService
     {
         [JsonPropertyName("setting_value")]
         public JsonElement SettingValue { get; set; }
+    }
+
+    private sealed class SignupDiscountRedemptionRpcResult
+    {
+        [JsonPropertyName("success")]
+        public bool Success { get; set; }
+
+        [JsonPropertyName("message")]
+        public string? Message { get; set; }
+
+        [JsonPropertyName("tier_code")]
+        public string? TierCode { get; set; }
+
+        [JsonPropertyName("access_expires_at")]
+        public DateTimeOffset? AccessExpiresAt { get; set; }
+
+        [JsonPropertyName("subscription_id")]
+        public string? SubscriptionId { get; set; }
     }
 
     private sealed class DiscountCodeRow

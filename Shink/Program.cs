@@ -101,8 +101,11 @@ builder.Services.AddSingleton<IResourceDocumentPreviewService, ResourceDocumentP
 builder.Services.AddSingleton<WordPressPasswordVerifier>();
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpContextAccessor();
-builder.Services.AddSingleton<UiErrorDiagnosticsStore>();
-builder.Services.AddSingleton<ILoggerProvider, UiErrorDiagnosticsLoggerProvider>();
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddSingleton<UiErrorDiagnosticsStore>();
+    builder.Services.AddSingleton<ILoggerProvider, UiErrorDiagnosticsLoggerProvider>();
+}
 builder.Services.AddSingleton<AppErrorLogQueue>();
 builder.Services.AddSingleton<ILoggerProvider, SupabaseErrorLoggingProvider>();
 builder.Services.AddHostedService<SupabaseErrorLogWorker>();
@@ -111,6 +114,7 @@ builder.Services.Configure<SupabaseOptions>(builder.Configuration.GetSection(Sup
 builder.Services.Configure<CloudflareR2Options>(builder.Configuration.GetSection(CloudflareR2Options.SectionName));
 builder.Services.Configure<WordPressOptions>(builder.Configuration.GetSection(WordPressOptions.SectionName));
 builder.Services.Configure<AuthSessionOptions>(builder.Configuration.GetSection(AuthSessionOptions.SectionName));
+builder.Services.Configure<SiteOptions>(builder.Configuration.GetSection(SiteOptions.SectionName));
 builder.Services.Configure<PayFastOptions>(builder.Configuration.GetSection(PayFastOptions.SectionName));
 builder.Services.Configure<PaystackOptions>(builder.Configuration.GetSection(PaystackOptions.SectionName));
 builder.Services.AddHttpClient("audio-origin", client =>
@@ -628,34 +632,13 @@ app.MapGet("/media/resources/{resourceDocumentId:guid}", async (
         return Results.Forbid();
     }
 
-    var requiredTierCode = document.RequiredTierCode?.Trim().ToLowerInvariant();
-    if (!string.IsNullOrWhiteSpace(requiredTierCode))
+    if (!await HasAccessToResourceDocumentAsync(
+            subscriptionLedgerService,
+            signedInEmail,
+            document.RequiredTierCode,
+            httpContext.RequestAborted))
     {
-        bool hasRequiredTier;
-        if (StoryAccessPolicy.AllStoriesTierCodes.Any(tierCode =>
-                string.Equals(requiredTierCode, tierCode, StringComparison.OrdinalIgnoreCase)))
-        {
-            var allStoriesChecks = StoryAccessPolicy.AllStoriesTierCodes
-                .Select(tierCode => subscriptionLedgerService.HasActiveSubscriptionForTierAsync(
-                    signedInEmail,
-                    tierCode,
-                    httpContext.RequestAborted))
-                .ToArray();
-            var allStoriesResults = await Task.WhenAll(allStoriesChecks);
-            hasRequiredTier = allStoriesResults.Any(result => result);
-        }
-        else
-        {
-            hasRequiredTier = await subscriptionLedgerService.HasActiveSubscriptionForTierAsync(
-                signedInEmail,
-                requiredTierCode,
-                httpContext.RequestAborted);
-        }
-
-        if (!hasRequiredTier)
-        {
-            return Results.Forbid();
-        }
+        return Results.Forbid();
     }
 
     var resourceStream = await resourceDocumentStorageService.OpenReadAsync(
@@ -685,6 +668,7 @@ app.MapGet("/media/resources/{resourceDocumentId:guid}", async (
 app.MapGet("/media/resources/{resourceDocumentId:guid}/preview", async (
     Guid resourceDocumentId,
     IResourceCatalogService resourceCatalogService,
+    ISubscriptionLedgerService subscriptionLedgerService,
     IResourceDocumentStorageService resourceDocumentStorageService,
     HttpContext httpContext) =>
 {
@@ -697,6 +681,18 @@ app.MapGet("/media/resources/{resourceDocumentId:guid}/preview", async (
     if (preview is null)
     {
         return Results.NotFound();
+    }
+
+    var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
+                       ?? httpContext.User.Identity?.Name;
+    if (string.IsNullOrWhiteSpace(signedInEmail) ||
+        !await HasAccessToResourceDocumentAsync(
+            subscriptionLedgerService,
+            signedInEmail,
+            preview.RequiredTierCode,
+            httpContext.RequestAborted))
+    {
+        return Results.Forbid();
     }
 
     var previewStream = await resourceDocumentStorageService.OpenReadAsync(
@@ -1133,6 +1129,7 @@ app.MapGet("/betaal/{planSlug}", async (
     PaystackCheckoutService paystackCheckoutService,
     ISubscriptionLedgerService subscriptionLedgerService,
     IAbandonedCartRecoveryService abandonedCartRecoveryService,
+    IOptions<SiteOptions> siteOptions,
     HttpContext httpContext,
     ILogger<Program> logger) =>
 {
@@ -1166,7 +1163,7 @@ app.MapGet("/betaal/{planSlug}", async (
         signedInDisplayName = signedInDisplayName.Trim();
     }
 
-    var requestBaseUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}{httpContext.Request.PathBase}";
+    var requestBaseUrl = BuildPublicAbsoluteUrl(siteOptions.Value, "/");
     var hasActiveTierSubscription = await subscriptionLedgerService.HasActiveSubscriptionForTierAsync(
         signedInEmail,
         plan.TierCode,
@@ -1364,7 +1361,7 @@ app.MapGet("/betaal/{planSlug}", async (
             ItemName: plan.Name,
             ItemSummary: plan.ItemDescription,
             CartTotalZar: plan.Amount,
-            CheckoutUrl: BuildAbsoluteUrl(httpContext.Request, $"/betaal/{Uri.EscapeDataString(plan.Slug)}?provider=payfast"),
+            CheckoutUrl: BuildPublicAbsoluteUrl(siteOptions.Value, $"/betaal/{Uri.EscapeDataString(plan.Slug)}?provider=payfast"),
             OptOutBaseUrl: requestBaseUrl),
         httpContext.RequestAborted);
     httpContext.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
@@ -1380,6 +1377,7 @@ app.MapPost("/winkel/koop/paystack", async (
     IStoreOrderService storeOrderService,
     IStoreProductCatalogService storeProductCatalogService,
     IAbandonedCartRecoveryService abandonedCartRecoveryService,
+    IOptions<SiteOptions> siteOptions,
     ILogger<Program> logger) =>
 {
     if (!httpContext.Request.HasFormContentType)
@@ -1462,7 +1460,7 @@ app.MapPost("/winkel/koop/paystack", async (
         storeDraft.ProductSlug,
         storeDraft.Quantity);
 
-    var requestBaseUrl = $"{httpContext.Request.Scheme}://{httpContext.Request.Host}{httpContext.Request.PathBase}";
+    var requestBaseUrl = BuildPublicAbsoluteUrl(siteOptions.Value, "/");
     await abandonedCartRecoveryService.StartSequenceAsync(
         new AbandonedCartRecoveryStartRequest(
             SourceType: "store_order",
@@ -1857,10 +1855,11 @@ app.MapGet("/api/auth/google/start", async (
     string? flowType,
     ISupabaseAuthService supabaseAuthService,
     IDataProtectionProvider dataProtectionProvider,
+    IOptions<SiteOptions> siteOptions,
     HttpContext httpContext) =>
 {
     var safeReturnUrl = GetSafeAuthReturnUrl(returnUrl);
-    var callbackUri = BuildAbsoluteUrl(httpContext.Request, "/auth/callback");
+    var callbackUri = BuildPublicAbsoluteUrl(siteOptions.Value, "/auth/callback");
     var useImplicitFlow = ShouldUseImplicitGoogleAuthFlow(flowType, httpContext.Request.Headers.UserAgent.ToString());
 
     var startResult = await supabaseAuthService.StartGoogleSignInAsync(
@@ -1879,7 +1878,8 @@ app.MapGet("/api/auth/google/start", async (
     var protectedState = protector.Protect(System.Text.Json.JsonSerializer.Serialize(new GooglePkceStateCookiePayload(
         ExpiresAtUtc: DateTimeOffset.UtcNow.AddMinutes(10),
         CodeVerifier: startResult.CodeVerifier ?? string.Empty,
-        ReturnUrl: safeReturnUrl)));
+        ReturnUrl: safeReturnUrl,
+        UseImplicitFlow: useImplicitFlow)));
 
     httpContext.Response.Cookies.Append(
         GooglePkceCookieName,
@@ -1906,6 +1906,7 @@ app.MapGet("/auth/callback", async (
     IAdminManagementService adminManagementService,
     ISubscriptionLedgerService subscriptionLedgerService,
     IDataProtectionProvider dataProtectionProvider,
+    IOptions<SiteOptions> siteOptions,
     HttpContext httpContext) =>
 {
     ClearGooglePkceCookie(httpContext);
@@ -1937,6 +1938,7 @@ app.MapGet("/auth/callback", async (
     {
         if (payload is null ||
             payload.ExpiresAtUtc <= DateTimeOffset.UtcNow ||
+            payload.UseImplicitFlow ||
             string.IsNullOrWhiteSpace(payload.CodeVerifier))
         {
             return Results.Redirect(BuildGoogleAuthErrorRedirectPath("Jou Google-aanmeldsessie het verval. Probeer asseblief weer."));
@@ -1950,9 +1952,16 @@ app.MapGet("/auth/callback", async (
     }
     else if (HasImplicitGoogleAuthSession(httpContext.Request))
     {
-        requestedReturnUrl = payload?.ReturnUrl;
+        if (payload is null ||
+            payload.ExpiresAtUtc <= DateTimeOffset.UtcNow ||
+            !payload.UseImplicitFlow)
+        {
+            return Results.Redirect(BuildGoogleAuthErrorRedirectPath("Jou Google-aanmeldsessie het verval. Probeer asseblief weer."));
+        }
+
+        requestedReturnUrl = payload.ReturnUrl;
         exchangeResult = await supabaseAuthService.ExchangeGoogleImplicitSessionAsync(
-            BuildAbsoluteRequestUri(httpContext.Request),
+            BuildPublicAbsoluteRequestUri(siteOptions.Value, httpContext.Request),
             httpContext.RequestAborted);
     }
     else
@@ -2085,6 +2094,7 @@ app.MapPost("/api/auth/login", async (
 app.MapPost("/api/auth/password-reset/request", async (
     AuthPasswordResetRequestApiRequest request,
     ISupabaseAuthService supabaseAuthService,
+    IOptions<SiteOptions> siteOptions,
     HttpContext httpContext) =>
 {
     request = request with
@@ -2103,7 +2113,7 @@ app.MapPost("/api/auth/password-reset/request", async (
     var recoveryPath = safeReturnUrl is null
         ? "/herstel-wagwoord"
         : QueryHelpers.AddQueryString("/herstel-wagwoord", "returnUrl", safeReturnUrl);
-    var redirectTo = BuildAbsoluteUrl(httpContext.Request, recoveryPath);
+    var redirectTo = BuildPublicAbsoluteUrl(siteOptions.Value, recoveryPath);
     var resetResult = await supabaseAuthService.SendPasswordResetEmailAsync(
         request.Email!,
         redirectTo,
@@ -2164,6 +2174,7 @@ app.MapPost("/api/auth/email-change/request", async (
     AuthEmailChangeRequestApiRequest request,
     ISupabaseAuthService supabaseAuthService,
     IDataProtectionProvider dataProtectionProvider,
+    IOptions<SiteOptions> siteOptions,
     HttpContext httpContext) =>
 {
     if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
@@ -2198,7 +2209,7 @@ app.MapPost("/api/auth/email-change/request", async (
             ["emailChange"] = "complete",
             ["emailChangeState"] = callbackState
         });
-    var redirectTo = BuildAbsoluteUrl(httpContext.Request, callbackPath);
+    var redirectTo = BuildPublicAbsoluteUrl(siteOptions.Value, callbackPath);
 
     var changeResult = await supabaseAuthService.RequestEmailChangeAsync(
         currentEmail!,
@@ -3051,21 +3062,24 @@ app.MapGet("/api/mobile/meer-oor-ons", (HttpContext httpContext) =>
     return Results.Ok(new MobileAboutResponse(blocks));
 }).DisableAntiforgery();
 
-app.MapGet("/api/dev/ui-error", (UiErrorDiagnosticsStore diagnosticsStore, string? contains) =>
+if (app.Environment.IsDevelopment())
 {
-    var entry = diagnosticsStore.GetLatest(contains);
-    return Results.Json(entry is null
-        ? new { found = false }
-        : new
-        {
-            found = true,
-            occurredAtUtc = entry.OccurredAtUtc,
-            category = entry.Category,
-            level = entry.Level,
-            message = entry.Message,
-            exception = entry.ExceptionText
-        });
-}).DisableAntiforgery();
+    app.MapGet("/api/dev/ui-error", (UiErrorDiagnosticsStore diagnosticsStore, string? contains) =>
+    {
+        var entry = diagnosticsStore.GetLatest(contains);
+        return Results.Json(entry is null
+            ? new { found = false }
+            : new
+            {
+                found = true,
+                occurredAtUtc = entry.OccurredAtUtc,
+                category = entry.Category,
+                level = entry.Level,
+                message = entry.Message,
+                exception = entry.ExceptionText
+            });
+    }).DisableAntiforgery();
+}
 
 app.MapPost("/api/mobile/stories/{slug}/favorite", async (
     string slug,
@@ -5332,10 +5346,70 @@ static async Task<string> ResolvePostAuthRedirectPathAsync(
     return "/luister";
 }
 
-static string BuildAbsoluteUrl(HttpRequest request, string path)
+static async Task<bool> HasAccessToResourceDocumentAsync(
+    ISubscriptionLedgerService subscriptionLedgerService,
+    string? signedInEmail,
+    string? requiredTierCode,
+    CancellationToken cancellationToken)
+{
+    if (string.IsNullOrWhiteSpace(signedInEmail))
+    {
+        return false;
+    }
+
+    var normalizedRequiredTierCode = requiredTierCode?.Trim().ToLowerInvariant();
+    if (string.IsNullOrWhiteSpace(normalizedRequiredTierCode))
+    {
+        return true;
+    }
+
+    if (StoryAccessPolicy.AllStoriesTierCodes.Any(tierCode =>
+            string.Equals(normalizedRequiredTierCode, tierCode, StringComparison.OrdinalIgnoreCase)))
+    {
+        var allStoriesChecks = StoryAccessPolicy.AllStoriesTierCodes
+            .Select(tierCode => subscriptionLedgerService.HasActiveSubscriptionForTierAsync(
+                signedInEmail,
+                tierCode,
+                cancellationToken))
+            .ToArray();
+        var allStoriesResults = await Task.WhenAll(allStoriesChecks);
+        return allStoriesResults.Any(result => result);
+    }
+
+    return await subscriptionLedgerService.HasActiveSubscriptionForTierAsync(
+        signedInEmail,
+        normalizedRequiredTierCode,
+        cancellationToken);
+}
+
+static string BuildPublicAbsoluteUrl(SiteOptions siteOptions, string path)
+{
+    var normalizedPath = path.StartsWith("/", StringComparison.Ordinal) ? path : $"/{path}";
+    var publicBaseUrl = NormalizePublicBaseUrl(siteOptions.PublicBaseUrl);
+    return $"{publicBaseUrl}{normalizedPath}";
+}
+
+static Uri BuildPublicAbsoluteRequestUri(SiteOptions siteOptions, HttpRequest request)
+{
+    var publicBaseUri = new Uri(NormalizePublicBaseUrl(siteOptions.PublicBaseUrl), UriKind.Absolute);
+    var path = request.PathBase.Add(request.Path).ToString();
+    var normalizedPath = string.IsNullOrWhiteSpace(path) ? "/" : path;
+    var absoluteUrl = new Uri(publicBaseUri, $"{normalizedPath}{request.QueryString}");
+    return absoluteUrl;
+}
+
+static string BuildRequestAbsoluteUrl(HttpRequest request, string path)
 {
     var normalizedPath = path.StartsWith("/", StringComparison.Ordinal) ? path : $"/{path}";
     return $"{request.Scheme}://{request.Host}{request.PathBase}{normalizedPath}";
+}
+
+static string NormalizePublicBaseUrl(string? publicBaseUrl)
+{
+    var normalized = string.IsNullOrWhiteSpace(publicBaseUrl)
+        ? "https://www.schink.co.za"
+        : publicBaseUrl.Trim();
+    return normalized.TrimEnd('/');
 }
 
 static (string FirstName, string LastName) SplitRecoveryName(string? name)
@@ -5357,17 +5431,6 @@ static (string FirstName, string LastName) SplitRecoveryName(string? name)
     }
 
     return (parts[0], string.Join(' ', parts.Skip(1)));
-}
-
-static Uri BuildAbsoluteRequestUri(HttpRequest request)
-{
-    var absoluteUrl = UriHelper.BuildAbsolute(
-        request.Scheme,
-        request.Host,
-        request.PathBase,
-        request.Path,
-        request.QueryString);
-    return new Uri(absoluteUrl, UriKind.Absolute);
 }
 
 static string BuildGoogleAuthErrorRedirectPath(string? message)
@@ -5871,13 +5934,13 @@ static string BuildBlogSearchKeywords(BlogPostListItem post)
 
 static string BuildBlogRssDocument(HttpRequest request, IReadOnlyList<BlogPostListItem> posts)
 {
-    var blogUrl = BuildAbsoluteUrl(request, "/blog");
+    var blogUrl = BuildRequestAbsoluteUrl(request, "/blog");
     var items = posts
         .OrderByDescending(post => post.PublishedAt)
         .Take(50)
         .Select(post =>
         {
-            var postUrl = BuildAbsoluteUrl(request, $"/blog/{Uri.EscapeDataString(post.Slug)}");
+            var postUrl = BuildRequestAbsoluteUrl(request, $"/blog/{Uri.EscapeDataString(post.Slug)}");
             var item = new XElement("item",
                 new XElement("title", post.Title),
                 new XElement("link", postUrl),
@@ -6284,4 +6347,5 @@ sealed record AuthCookieSignInResult(bool IsSuccess, string? ErrorMessage = null
 sealed record GooglePkceStateCookiePayload(
     DateTimeOffset ExpiresAtUtc,
     string CodeVerifier,
-    string? ReturnUrl);
+    string? ReturnUrl,
+    bool UseImplicitFlow);
