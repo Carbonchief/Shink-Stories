@@ -321,6 +321,71 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     }
 
     [TestMethod]
+    public async Task CreatePaystackCardUpdateLinkAsync_GeneratesHostedManagementLinkForCurrentPaystackSubscription()
+    {
+        var nextRenewalAt = DateTimeOffset.UtcNow.AddDays(12);
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      { "subscriber_id": "11111111-1111-1111-1111-111111111111", "disabled_at": null }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "SUB_cardupdate",
+                        "provider_transaction_id": "6135862592",
+                        "provider_email_token": "email-token-123",
+                        "next_renewal_at": "{{nextRenewalAt:O}}",
+                        "cancelled_at": null,
+                        "status": "active"
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == "/subscription/SUB_cardupdate/manage/link")
+            {
+                Assert.AreEqual("paystack-secret", request.Headers.Authorization?.Parameter);
+                return JsonResponse(
+                    """
+                    {
+                      "status": true,
+                      "message": "Link generated",
+                      "data": {
+                        "link": "https://paystack.com/manage/subscriptions/abc?subscription_token=token"
+                      }
+                    }
+                    """);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.CreatePaystackCardUpdateLinkAsync("ouer@example.com");
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.AreEqual("https://paystack.com/manage/subscriptions/abc?subscription_token=token", result.Link);
+        CollectionAssert.Contains(handler.PaystackLookups, "/subscription/SUB_cardupdate/manage/link");
+    }
+
+    [TestMethod]
     public async Task CancelPaidSubscriptionAsync_SchedulesLegacyRowsWithoutPaystackLookup()
     {
         var legacyRenewalAt = new DateTimeOffset(2026, 5, 27, 12, 40, 0, TimeSpan.Zero);

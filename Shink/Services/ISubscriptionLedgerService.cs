@@ -17,6 +17,7 @@ public interface ISubscriptionLedgerService
         string? email,
         string? targetPlanSlug,
         CancellationToken cancellationToken = default);
+    Task<SubscriptionCardUpdateLinkResult> CreatePaystackCardUpdateLinkAsync(string? email, CancellationToken cancellationToken = default);
     Task<SubscriptionRepairResult> TryRepairPaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default);
     Task<SubscriptionFreeTierTransferResult> TransferPaidSubscriptionToGratisAsync(string? email, CancellationToken cancellationToken = default);
     Task<SubscriptionCancelResult> CancelPaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default);
@@ -85,6 +86,7 @@ public sealed record SubscriptionPlanChangeResult(
     DateTimeOffset? EffectiveAtUtc = null,
     decimal? ChargedAmountZar = null,
     string? ErrorMessage = null);
+public sealed record SubscriptionCardUpdateLinkResult(bool IsSuccess, string? Link = null, string? ErrorMessage = null);
 public sealed record SubscriptionRepairResult(
     bool IsRecovered,
     string? PlanSlug = null,

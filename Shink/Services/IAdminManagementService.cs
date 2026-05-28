@@ -35,6 +35,10 @@ public interface IAdminManagementService
         Guid subscriberId,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<AdminSubscriptionTierOption>> GetSubscriberAccessTierOptionsAsync(
+        string? adminEmail,
+        CancellationToken cancellationToken = default);
+
     Task<AdminOperationResult> SetSubscriberDisabledAsync(
         string? adminEmail,
         AdminSubscriberDisabledUpdateRequest request,

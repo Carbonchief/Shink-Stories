@@ -373,6 +373,58 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         return new SubscriptionPlanChangeResult(true, targetPlan.Slug, changeType, accessEndsAtUtc, chargedAmountZar);
     }
 
+    public async Task<SubscriptionCardUpdateLinkResult> CreatePaystackCardUpdateLinkAsync(
+        string? email,
+        CancellationToken cancellationToken = default)
+    {
+        var context = await TryResolveSelfServiceContextAsync(email, cancellationToken);
+        if (context is null)
+        {
+            return new SubscriptionCardUpdateLinkResult(false, ErrorMessage: "Kon nie jou rekening vind nie. Probeer asseblief weer teken in.");
+        }
+
+        if (context.DisabledAt is not null)
+        {
+            return new SubscriptionCardUpdateLinkResult(false, ErrorMessage: "Hierdie rekening is reeds gesluit.");
+        }
+
+        var subscriptions = await FetchSelfServicePaidSubscriptionsAsync(context.BaseUri, context.ApiKey, context.SubscriberId, cancellationToken);
+        var nowUtc = DateTimeOffset.UtcNow;
+        var paystackSubscriptions = subscriptions
+            .Where(subscription => IsCurrentlyActiveSelfServiceSubscription(subscription, nowUtc))
+            .Where(subscription => subscription.CancelledAt is null)
+            .Where(subscription => string.Equals(subscription.Provider, "paystack", StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(subscription => subscription.NextRenewalAt ?? DateTimeOffset.MaxValue)
+            .ThenByDescending(subscription => subscription.SubscriptionId)
+            .ToArray();
+        if (paystackSubscriptions.Length == 0)
+        {
+            return new SubscriptionCardUpdateLinkResult(false, ErrorMessage: "Jy het nie tans 'n aktiewe Paystack-intekening om kaartbesonderhede by te werk nie.");
+        }
+
+        foreach (var subscription in paystackSubscriptions)
+        {
+            var subscriptionCode = PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
+                subscription.Provider,
+                subscription.SourceSystem,
+                subscription.ProviderPaymentId,
+                subscription.ProviderTransactionId);
+            if (string.IsNullOrWhiteSpace(subscriptionCode))
+            {
+                continue;
+            }
+
+            var linkResult = await _paystackCheckoutService.GenerateSubscriptionUpdateLinkAsync(
+                subscriptionCode,
+                cancellationToken);
+            return linkResult.IsSuccess && !string.IsNullOrWhiteSpace(linkResult.Link)
+                ? new SubscriptionCardUpdateLinkResult(true, linkResult.Link)
+                : new SubscriptionCardUpdateLinkResult(false, ErrorMessage: linkResult.ErrorMessage ?? "Paystack kaart-opdateringskakel kon nie geskep word nie.");
+        }
+
+        return new SubscriptionCardUpdateLinkResult(false, ErrorMessage: "Hierdie Paystack-intekening het nie 'n Paystack intekeningkode vir kaartopdatering nie.");
+    }
+
     public async Task<SubscriptionRepairResult> TryRepairPaidSubscriptionAsync(
         string? email,
         CancellationToken cancellationToken = default)

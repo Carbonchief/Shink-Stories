@@ -82,3 +82,6 @@ Project-specific rules for this repository.
   - `npx skills add supabase/agent-skills`
 - Current installed skill path on this machine:
   - `~/.agents/skills/supabase-postgres-best-practices`
+
+## 9) Production / Live Deployment Safety
+- Never push code, publish, deploy, or otherwise promote changes to Production/Live without asking the user first and receiving explicit approval.

@@ -2961,7 +2961,7 @@
                                                    @bind-Value="ManualAccessTierCode"
                                                    Variant="Variant.Outlined"
                                                    Margin="Margin.Dense">
-                                            @foreach (var tier in SubscriberDetail?.TierOptions.Where(tier => tier.IsActive) ?? Array.Empty<AdminSubscriptionTierOption>())
+                                            @foreach (var tier in GetAvailableManualAccessTierOptions())
                                             {
                                                 <MudSelectItem Value="@tier.TierCode">@tier.DisplayName</MudSelectItem>
                                             }
@@ -2976,16 +2976,25 @@
                                                       @bind-Value="ManualAccessReason"
                                                       Variant="Variant.Outlined"
                                                       Margin="Margin.Dense" />
-                                        <MudButton Class="admin-icon-btn admin-action-btn"
-                                                   Variant="Variant.Filled"
-                                                   Color="Color.Primary"
-                                                   Disabled="@IsSavingSubscriberAction"
-                                                   OnClick="GrantSubscriberAccessAsync"
-                                                   aria-label='@T("Gee handmatige toegang", "Grant manual access")'
-                                                   title='@T("Gee handmatige toegang", "Grant manual access")'>
-                                            <i class="fa-solid fa-plus" aria-hidden="true"></i>
-                                            <span class="admin-btn-text">@T("Gee handmatige toegang", "Grant manual access")</span>
-                                        </MudButton>
+                                        @if (SubscriberEditor.IsNew)
+                                        {
+                                            <p class="admin-form-note">
+                                                @T("Skep die intekenaar om hierdie handmatige toegang saam te stoor.", "Create the subscriber to save this manual access with it.")
+                                            </p>
+                                        }
+                                        else
+                                        {
+                                            <MudButton Class="admin-icon-btn admin-action-btn"
+                                                       Variant="Variant.Filled"
+                                                       Color="Color.Primary"
+                                                       Disabled="@IsSavingSubscriberAction"
+                                                       OnClick="GrantSubscriberAccessAsync"
+                                                       aria-label='@T("Gee handmatige toegang", "Grant manual access")'
+                                                       title='@T("Gee handmatige toegang", "Grant manual access")'>
+                                                <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                                                <span class="admin-btn-text">@T("Gee handmatige toegang", "Grant manual access")</span>
+                                            </MudButton>
+                                        }
                                         @if (SubscriberDetail?.Subscriptions.Any(subscription => subscription.IsAdminOverride && string.Equals(subscription.Status, "active", StringComparison.OrdinalIgnoreCase)) == true)
                                         {
                                             <MudSelect T="Guid"
@@ -4253,6 +4262,7 @@
     private IReadOnlyList<AdminSubscriberRecord> Subscribers { get; set; } = Array.Empty<AdminSubscriberRecord>();
     private HashSet<Guid> SelectedSubscriberIds { get; } = [];
     private AdminSubscriberDetailSnapshot? SubscriberDetail { get; set; }
+    private IReadOnlyList<AdminSubscriptionTierOption> SubscriberTierOptions { get; set; } = Array.Empty<AdminSubscriptionTierOption>();
     private bool IsLoadingSubscriberDetail { get; set; }
     private bool IsSavingSubscriberAction { get; set; }
     private bool CanSendSubscriberSubscriptionRecoveryEmail =>
@@ -5597,15 +5607,17 @@
         SubscriberPaidSubscriptionCancelReason = string.Empty;
         SelectedAdminOverrideSubscriptionId = Guid.Empty;
         SelectedPaidSubscriptionId = Guid.Empty;
+        SubscriberTierOptions = Array.Empty<AdminSubscriptionTierOption>();
         ManualAccessTierCode = string.Empty;
         ManualAccessExpiryDate = null;
     }
 
-    private void StartNewSubscriber()
+    private async Task StartNewSubscriber()
     {
         BeginEditModalOpen();
         SubscriberEditor = new EditableSubscriber { IsNew = true };
         SubscriberDetail = null;
+        SubscriberTierOptions = Array.Empty<AdminSubscriptionTierOption>();
         SubscriberDisableReason = string.Empty;
         ManualAccessReason = string.Empty;
         SubscriberAccessCancelReason = string.Empty;
@@ -5618,6 +5630,16 @@
         SubscriberEditorStateSignature = BuildSubscriberEditorStateSignature(SubscriberEditor);
         IsSubscriberDialogOpen = true;
         CompleteEditModalOpenRequest(true);
+        IsLoadingSubscriberDetail = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await LoadSubscriberTierOptionsAsync();
+        }
+        finally
+        {
+            IsLoadingSubscriberDetail = false;
+        }
     }
 
     private async Task LoadSubscriberDetailAsync(Guid subscriberId)
@@ -5625,6 +5647,7 @@
         if (subscriberId == Guid.Empty)
         {
             SubscriberDetail = null;
+            SubscriberTierOptions = Array.Empty<AdminSubscriptionTierOption>();
             return;
         }
 
@@ -5632,6 +5655,7 @@
         try
         {
             SubscriberDetail = await AdminManagementService.GetSubscriberDetailAsync(CurrentAdminEmail, subscriberId);
+            SubscriberTierOptions = SubscriberDetail?.TierOptions ?? Array.Empty<AdminSubscriptionTierOption>();
             var activeAdminOverride = SubscriberDetail?.Subscriptions
                 .Where(subscription => subscription.IsAdminOverride && string.Equals(subscription.Status, "active", StringComparison.OrdinalIgnoreCase))
                 .OrderByDescending(subscription => subscription.NextRenewalAt)
@@ -5651,12 +5675,38 @@
         {
             Logger.LogError(exception, "Failed to load subscriber detail.");
             SubscriberDetail = null;
+            SubscriberTierOptions = Array.Empty<AdminSubscriptionTierOption>();
             SetError(T("Kon nie intekenaarbesonderhede nou laai nie.", "Could not load subscriber details right now."));
         }
         finally
         {
             IsLoadingSubscriberDetail = false;
         }
+    }
+
+    private async Task LoadSubscriberTierOptionsAsync()
+    {
+        try
+        {
+            SubscriberTierOptions = await AdminManagementService.GetSubscriberAccessTierOptionsAsync(CurrentAdminEmail);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to load subscriber access tier options.");
+            SubscriberTierOptions = Array.Empty<AdminSubscriptionTierOption>();
+            SetError(T("Kon nie toegangsvlakke nou laai nie.", "Could not load access tiers right now."));
+        }
+    }
+
+    private IReadOnlyList<AdminSubscriptionTierOption> GetAvailableManualAccessTierOptions()
+    {
+        var tierOptions = SubscriberDetail?.TierOptions.Count > 0
+            ? SubscriberDetail.TierOptions
+            : SubscriberTierOptions;
+
+        return tierOptions
+            .Where(tier => tier.IsActive)
+            .ToArray();
     }
 
     private void ToggleVisibleSubscriberSelection(bool isSelected)
@@ -6060,6 +6110,49 @@
 
     private string BuildPasswordResetUrl() => NavigationManager.ToAbsoluteUri("/reset-password").ToString();
 
+    private bool HasManualAccessDraft() =>
+        !string.IsNullOrWhiteSpace(ManualAccessTierCode) ||
+        ManualAccessExpiryDate.HasValue ||
+        !string.IsNullOrWhiteSpace(ManualAccessReason);
+
+    private bool ValidateManualAccessDraft()
+    {
+        if (string.IsNullOrWhiteSpace(ManualAccessTierCode))
+        {
+            SetError(T("Kies asseblief 'n geldige toegangsvlak.", "Please select a valid access tier."));
+            return false;
+        }
+
+        var expiry = BuildManualAccessExpiry();
+        var validation = AdminSubscriberManagementLogic.ValidateManualAccessExpiry(expiry, DateTimeOffset.UtcNow);
+        if (!validation.IsValid)
+        {
+            SetError(validation.ErrorMessage ?? T("Kon nie handmatige toegang nou stoor nie.", "Could not save manual access right now."));
+            return false;
+        }
+
+        return true;
+    }
+
+    private async Task<bool> SaveManualAccessFromSubscriberSaveAsync(Guid savedSubscriberId)
+    {
+        var result = await AdminManagementService.GrantSubscriberAccessAsync(
+            CurrentAdminEmail,
+            new AdminSubscriberAccessGrantRequest(
+                savedSubscriberId,
+                ManualAccessTierCode,
+                BuildManualAccessExpiry(),
+                ManualAccessReason));
+
+        if (result.IsSuccess)
+        {
+            return true;
+        }
+
+        SetError(result.ErrorMessage ?? T("Kon nie handmatige toegang nou stoor nie.", "Could not save manual access right now."));
+        return false;
+    }
+
     private DateTimeOffset? BuildManualAccessExpiry()
     {
         if (ManualAccessExpiryDate is null)
@@ -6245,11 +6338,18 @@
             return;
         }
 
+        var shouldSaveManualAccess = HasManualAccessDraft();
+        if (shouldSaveManualAccess && !ValidateManualAccessDraft())
+        {
+            return;
+        }
+
         IsSavingSubscriber = true;
         ClearFeedback();
 
         try
         {
+            var wasNewSubscriber = SubscriberEditor.IsNew;
             var result = SubscriberEditor.IsNew
                 ? await AdminManagementService.CreateSubscriberAsync(
                     CurrentAdminEmail,
@@ -6271,10 +6371,19 @@
                         SubscriberEditor.MobileNumber,
                         SubscriberEditor.Email));
 
-            if (!HandleOperationResult(result, SubscriberEditor.IsNew
-                    ? T("Intekenaar is geskep.", "Subscriber created.")
-                    : T("Intekenaar is opgedateer.", "Subscriber updated.")))
+            if (!result.IsSuccess)
             {
+                SetError(result.ErrorMessage ?? T("Die aksie kon nie nou voltooi word nie.", "The action could not be completed right now."));
+                return;
+            }
+
+            var savedSubscriberId = result.EntityId is Guid savedEntityId && savedEntityId != Guid.Empty
+                ? savedEntityId
+                : SubscriberEditor.SubscriberId;
+
+            if (savedSubscriberId == Guid.Empty)
+            {
+                SetError(T("Kon nie nuwe intekenaar bevestig nie.", "Could not confirm new subscriber."));
                 return;
             }
 
@@ -6285,11 +6394,25 @@
                 await LoadSubscriberDetailAsync(entityId);
             }
 
+            if (shouldSaveManualAccess &&
+                !await SaveManualAccessFromSubscriberSaveAsync(savedSubscriberId))
+            {
+                return;
+            }
+
             await RefreshSubscribersAsync();
             if (SubscriberEditor is not null && !SubscriberEditor.IsNew)
             {
                 await LoadSubscriberDetailAsync(SubscriberEditor.SubscriberId);
             }
+
+            SetStatus(shouldSaveManualAccess
+                ? wasNewSubscriber
+                    ? T("Intekenaar is geskep en handmatige toegang is gestoor.", "Subscriber created and manual access saved.")
+                    : T("Intekenaar is opgedateer en handmatige toegang is gestoor.", "Subscriber updated and manual access saved.")
+                : wasNewSubscriber
+                    ? T("Intekenaar is geskep.", "Subscriber created.")
+                    : T("Intekenaar is opgedateer.", "Subscriber updated."));
         }
         catch (Exception exception)
         {

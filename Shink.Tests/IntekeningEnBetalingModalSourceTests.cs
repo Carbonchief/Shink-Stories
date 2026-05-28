@@ -84,6 +84,18 @@ public class IntekeningEnBetalingModalSourceTests
             "Plan cards should use a guarded button click so repeated checkout navigation cannot be spammed.");
     }
 
+    [TestMethod]
+    public void ActivePaidStatus_CanOpenPaystackCardUpdate()
+    {
+        var pagePath = FindRepositoryFile("Shink", "Components", "Pages", "IntekeningEnBetaling.razor");
+        var source = File.ReadAllText(pagePath);
+
+        StringAssert.Contains(source, "Werk kaartbesonderhede by");
+        StringAssert.Contains(source, "IsOpeningCardUpdate");
+        StringAssert.Contains(source, "OpenPaystackCardUpdateAsync");
+        StringAssert.Contains(source, "CreatePaystackCardUpdateLinkAsync(UserEmail)");
+    }
+
     private static string ExtractBetween(string source, string start, string end)
     {
         var startIndex = source.IndexOf(start, StringComparison.Ordinal);

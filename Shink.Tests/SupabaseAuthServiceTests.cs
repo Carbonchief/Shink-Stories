@@ -11,6 +11,68 @@ namespace Shink.Tests;
 public class SupabaseAuthServiceTests
 {
     [TestMethod]
+    public async Task SendPasswordResetEmailAsync_MigratesImportedWordPressUserBeforeSendingRecoveryEmail()
+    {
+        var requestBodies = new List<string>();
+        var requestUris = new List<string>();
+        var migrationService = new ImportedWordPressMigrationService(new WordPressImportedUser(
+            2451,
+            "irmadutoitza@outlook.com",
+            "$wp$2y$10$hash",
+            "wp_bcrypt",
+            "Irma",
+            "du Toit",
+            "Irma du Toit",
+            "0821234567",
+            DateTimeOffset.Parse("2026-04-15T12:59:59+00:00"),
+            null,
+            null,
+            null));
+        var handler = new RecordingHandler(request =>
+        {
+            requestUris.Add(request.RequestUri?.ToString() ?? string.Empty);
+            requestBodies.Add(request.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? string.Empty);
+
+            if (request.RequestUri?.AbsolutePath == "/auth/v1/admin/users")
+            {
+                Assert.AreEqual(HttpMethod.Post, request.Method);
+                Assert.AreEqual("secret-key", request.Headers.Authorization?.Parameter);
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("""{"email":"irmadutoitza@outlook.com"}""", Encoding.UTF8, "application/json")
+                };
+            }
+
+            Assert.AreEqual(HttpMethod.Post, request.Method);
+            Assert.AreEqual("https://example.supabase.co/auth/v1/recover", request.RequestUri?.ToString());
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        });
+        using var httpClient = new HttpClient(handler);
+        var service = CreateService(httpClient, secretKey: "secret-key", wordPressMigrationService: migrationService);
+
+        var result = await service.SendPasswordResetEmailAsync(
+            "irmadutoitza@outlook.com",
+            "https://www.schink.co.za/herstel-wagwoord");
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "https://example.supabase.co/auth/v1/admin/users",
+                "https://example.supabase.co/auth/v1/recover"
+            },
+            requestUris);
+        StringAssert.Contains(requestBodies[0], "\"email\":\"irmadutoitza@outlook.com\"");
+        StringAssert.Contains(requestBodies[0], "\"email_confirm\":true");
+        StringAssert.Contains(requestBodies[0], "\"firstName\":\"Irma\"");
+        StringAssert.Contains(requestBodies[0], "\"lastName\":\"du Toit\"");
+        StringAssert.Contains(requestBodies[0], "\"displayName\":\"Irma du Toit\"");
+        StringAssert.Contains(requestBodies[1], "\"email\":\"irmadutoitza@outlook.com\"");
+        StringAssert.Contains(requestBodies[1], "\"redirect_to\":\"https://www.schink.co.za/herstel-wagwoord\"");
+        CollectionAssert.AreEqual(new[] { 2451L }, migrationService.MarkedPasswordMigratedUserIds);
+    }
+
+    [TestMethod]
     public async Task ExchangeRecoveryTokenHashAsync_PostsVerifyRequestAndReturnsSession()
     {
         string? requestBody = null;
@@ -102,7 +164,10 @@ public class SupabaseAuthServiceTests
         StringAssert.Contains(requestBody!, "\"firstName\":\"Ouer\"");
     }
 
-    private static SupabaseAuthService CreateService(HttpClient httpClient, string secretKey = "") =>
+    private static SupabaseAuthService CreateService(
+        HttpClient httpClient,
+        string secretKey = "",
+        IWordPressMigrationService? wordPressMigrationService = null) =>
         new(
             httpClient,
             Options.Create(new SupabaseOptions
@@ -111,7 +176,7 @@ public class SupabaseAuthServiceTests
                 PublishableKey = "publishable-key",
                 SecretKey = secretKey
             }),
-            new EmptyWordPressMigrationService(),
+            wordPressMigrationService ?? new EmptyWordPressMigrationService(),
             new WordPressPasswordVerifier(),
             NullLogger<SupabaseAuthService>.Instance);
 
@@ -134,5 +199,27 @@ public class SupabaseAuthServiceTests
 
         public Task MarkPasswordMigratedAsync(long wordpressUserId, CancellationToken cancellationToken = default) =>
             Task.CompletedTask;
+    }
+
+    private sealed class ImportedWordPressMigrationService(WordPressImportedUser importedUser) : IWordPressMigrationService
+    {
+        public List<long> MarkedPasswordMigratedUserIds { get; } = [];
+
+        public Task<WordPressSyncResult> SyncAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new WordPressSyncResult(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, []));
+
+        public Task<bool> SyncImportedUserProfileAndAccessAsync(string? email, CancellationToken cancellationToken = default) =>
+            Task.FromResult(false);
+
+        public Task<WordPressImportedUser?> GetImportedUserByEmailAsync(string? email, CancellationToken cancellationToken = default) =>
+            Task.FromResult(string.Equals(email, importedUser.Email, StringComparison.OrdinalIgnoreCase)
+                ? importedUser
+                : null);
+
+        public Task MarkPasswordMigratedAsync(long wordpressUserId, CancellationToken cancellationToken = default)
+        {
+            MarkedPasswordMigratedUserIds.Add(wordpressUserId);
+            return Task.CompletedTask;
+        }
     }
 }

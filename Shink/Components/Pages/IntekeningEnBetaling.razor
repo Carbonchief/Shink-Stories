@@ -285,6 +285,15 @@
                     {
                         <a class="btn btn-warning btn-lg billing-primary-btn" href="/luister">Gaan na alle stories</a>
                         <a class="btn btn-outline-secondary btn-lg billing-secondary-btn" href="/opsies">Sien plan opsies</a>
+                        @if (CanUpdatePaystackCard)
+                        {
+                            <button type="button"
+                                    class="btn btn-outline-secondary btn-lg billing-secondary-btn"
+                                    disabled="@IsOpeningCardUpdate"
+                                    @onclick="OpenPaystackCardUpdateAsync">
+                                @(IsOpeningCardUpdate ? "Maak Paystack oop..." : "Werk kaartbesonderhede by")
+                            </button>
+                        }
                         @if (!IsCancellationScheduled)
                         {
                             <button type="button"
@@ -603,6 +612,7 @@
     private bool IsSubmittingEmailChange { get; set; }
     private bool IsCancellingSubscription { get; set; }
     private bool IsClosingAccount { get; set; }
+    private bool IsOpeningCardUpdate { get; set; }
     private string? PendingPlanSlug { get; set; }
     private bool IsPlanCheckoutPending => !string.IsNullOrWhiteSpace(PendingPlanSlug);
     private bool ProfileSaveSucceeded { get; set; }
@@ -615,6 +625,10 @@
     private string? AccountActionStatusMessage { get; set; }
     private IJSObjectReference? _authModule;
     private bool IsCancellationScheduled => CurrentPaidSubscription?.IsCancellationScheduled == true;
+    private bool CanUpdatePaystackCard =>
+        HasActivePaidSubscription &&
+        !IsCancellationScheduled &&
+        string.Equals(CurrentPaidSubscription?.Provider, "paystack", StringComparison.OrdinalIgnoreCase);
 
     [SupplyParameterFromQuery(Name = "emailChange")]
     public string? EmailChange { get; set; }
@@ -863,6 +877,41 @@
         finally
         {
             IsCancellingSubscription = false;
+        }
+    }
+
+    private async Task OpenPaystackCardUpdateAsync()
+    {
+        if (IsOpeningCardUpdate || string.IsNullOrWhiteSpace(UserEmail))
+        {
+            return;
+        }
+
+        IsOpeningCardUpdate = true;
+        AccountActionSucceeded = false;
+        AccountActionStatusMessage = null;
+        await ShowSubmittingStateAsync();
+
+        try
+        {
+            var result = await SubscriptionLedgerService.CreatePaystackCardUpdateLinkAsync(UserEmail);
+            if (!result.IsSuccess || string.IsNullOrWhiteSpace(result.Link))
+            {
+                AccountActionSucceeded = false;
+                AccountActionStatusMessage = result.ErrorMessage ?? "Kon nie Paystack se kaart-opdateringsblad oopmaak nie. Probeer asseblief weer.";
+                return;
+            }
+
+            NavigationManager.NavigateTo(result.Link, forceLoad: true);
+        }
+        catch
+        {
+            AccountActionSucceeded = false;
+            AccountActionStatusMessage = "Kon nie Paystack se kaart-opdateringsblad oopmaak nie. Probeer asseblief weer.";
+        }
+        finally
+        {
+            IsOpeningCardUpdate = false;
         }
     }
 

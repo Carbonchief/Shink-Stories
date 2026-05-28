@@ -438,6 +438,16 @@ public sealed partial class SupabaseAdminManagementService(
             await FetchSubscriberAuditAsync(context, subscriberId, cancellationToken));
     }
 
+    public async Task<IReadOnlyList<AdminSubscriptionTierOption>> GetSubscriberAccessTierOptionsAsync(
+        string? adminEmail,
+        CancellationToken cancellationToken = default)
+    {
+        var context = await TryCreateAdminOperationContextAsync(adminEmail, cancellationToken);
+        return context is null
+            ? Array.Empty<AdminSubscriptionTierOption>()
+            : await FetchAdminSubscriptionTierOptionsAsync(context, cancellationToken);
+    }
+
     public async Task<AdminOperationResult> SetSubscriberDisabledAsync(
         string? adminEmail,
         AdminSubscriberDisabledUpdateRequest request,

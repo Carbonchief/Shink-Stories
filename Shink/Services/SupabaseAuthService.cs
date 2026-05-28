@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.WebUtilities;
@@ -183,6 +184,13 @@ public sealed class SupabaseAuthService(
             return SupabasePasswordResetResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en publishable key op.");
         }
 
+        var importedUserMigration = await TryPrepareImportedWordPressUserPasswordResetAsync(email, cancellationToken);
+        if (!importedUserMigration.IsSuccess)
+        {
+            return SupabasePasswordResetResult.Failure(
+                importedUserMigration.ErrorMessage ?? "Kon nie nou die ingevoerde rekening voorberei nie. Probeer asseblief weer.");
+        }
+
         using var request = new HttpRequestMessage(HttpMethod.Post, recoverEndpoint)
         {
             Content = JsonContent.Create(new SupabasePasswordRecoveryRequest(email, redirectTo))
@@ -206,6 +214,11 @@ public sealed class SupabaseAuthService(
             var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
             if (response.IsSuccessStatusCode)
             {
+                if (importedUserMigration.WordPressUserId is { } wordpressUserId)
+                {
+                    await _wordPressMigrationService.MarkPasswordMigratedAsync(wordpressUserId, cancellationToken);
+                }
+
                 return SupabasePasswordResetResult.Success();
             }
 
@@ -216,6 +229,30 @@ public sealed class SupabaseAuthService(
                 errorMessage);
             return SupabasePasswordResetResult.Failure(errorMessage);
         }
+    }
+
+    private async Task<ImportedPasswordResetMigrationResult> TryPrepareImportedWordPressUserPasswordResetAsync(
+        string email,
+        CancellationToken cancellationToken)
+    {
+        var importedUser = await _wordPressMigrationService.GetImportedUserByEmailAsync(email, cancellationToken);
+        if (importedUser is null || string.IsNullOrWhiteSpace(importedUser.PasswordHash))
+        {
+            return ImportedPasswordResetMigrationResult.Success(null);
+        }
+
+        var adminCreateResult = await TryCreateConfirmedUserWithAdminApiAsync(
+            importedUser.Email,
+            CreateTemporaryPassword(),
+            CreateImportedWordPressUserMetadata(importedUser),
+            cancellationToken);
+        if (adminCreateResult.IsSuccess || IndicatesExistingAuthUser(adminCreateResult.ErrorMessage))
+        {
+            return ImportedPasswordResetMigrationResult.Success(importedUser.WordPressUserId);
+        }
+
+        return ImportedPasswordResetMigrationResult.Failure(
+            adminCreateResult.ErrorMessage ?? "Kon nie nou die ingevoerde rekening voorberei nie. Probeer asseblief weer.");
     }
 
     public async Task<SupabaseRecoverySessionResult> ExchangeRecoveryTokenHashAsync(
@@ -1229,6 +1266,28 @@ public sealed class SupabaseAuthService(
         return null;
     }
 
+    private static SupabasePasswordSignUpMetadata CreateImportedWordPressUserMetadata(WordPressImportedUser importedUser)
+    {
+        var importedDisplayName = importedUser.DisplayName;
+        if (string.IsNullOrWhiteSpace(importedDisplayName))
+        {
+            importedDisplayName = $"{importedUser.FirstName} {importedUser.LastName}".Trim();
+        }
+
+        return new SupabasePasswordSignUpMetadata(
+            FirstName: importedUser.FirstName,
+            LastName: importedUser.LastName,
+            DisplayName: string.IsNullOrWhiteSpace(importedDisplayName) ? null : importedDisplayName,
+            FullName: string.IsNullOrWhiteSpace(importedDisplayName) ? null : importedDisplayName,
+            MobileNumber: importedUser.MobileNumber);
+    }
+
+    private static string CreateTemporaryPassword()
+    {
+        var randomBytes = RandomNumberGenerator.GetBytes(32);
+        return $"{Convert.ToHexString(randomBytes)}aA1!";
+    }
+
     private sealed record SupabasePasswordSignInRequest(string Email, string Password);
     private sealed record SupabasePasswordSignUpRequest(string Email, string Password, SupabasePasswordSignUpMetadata? Data = null);
     private sealed record SupabasePasswordRecoveryRequest(
@@ -1251,6 +1310,18 @@ public sealed class SupabaseAuthService(
         string? DisplayName,
         string? FullName,
         string? MobileNumber);
+    private sealed record ImportedPasswordResetMigrationResult(
+        bool IsSuccess,
+        long? WordPressUserId,
+        string? ErrorMessage)
+    {
+        public static ImportedPasswordResetMigrationResult Success(long? wordpressUserId) =>
+            new(true, wordpressUserId, null);
+
+        public static ImportedPasswordResetMigrationResult Failure(string errorMessage) =>
+            new(false, null, errorMessage);
+    }
+
     private sealed record PasswordUpdateAttemptResult(
         bool IsSuccess,
         string? UserEmail,

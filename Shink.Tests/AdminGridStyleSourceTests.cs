@@ -215,6 +215,25 @@ public class AdminGridStyleSourceTests
         StringAssert.Contains(migration, "subscription_tiers");
     }
 
+    [TestMethod]
+    public void SubscriberDialogLoadsTierOptionsForNewSubscriberAndSavesManualAccess()
+    {
+        var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
+        var serviceContract = File.ReadAllText(GetRepoPath("Shink", "Services", "IAdminManagementService.cs"));
+        var supabaseService = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseAdminManagementService.cs"));
+
+        StringAssert.Contains(serviceContract, "GetSubscriberAccessTierOptionsAsync");
+        StringAssert.Contains(supabaseService, "public async Task<IReadOnlyList<AdminSubscriptionTierOption>> GetSubscriberAccessTierOptionsAsync");
+        StringAssert.Contains(markup, "private IReadOnlyList<AdminSubscriptionTierOption> SubscriberTierOptions");
+        StringAssert.Contains(markup, "await LoadSubscriberTierOptionsAsync();");
+        StringAssert.Contains(markup, "GetAvailableManualAccessTierOptions()");
+        StringAssert.Contains(markup, "await SaveManualAccessFromSubscriberSaveAsync(savedSubscriberId)");
+        StringAssert.Contains(markup, "Skep die intekenaar om hierdie handmatige toegang saam te stoor.");
+        StringAssert.Contains(markup, "Create the subscriber to save this manual access with it.");
+        StringAssert.Contains(markup, "Intekenaar is geskep en handmatige toegang is gestoor.");
+        StringAssert.Contains(markup, "Subscriber created and manual access saved.");
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var parts = new[]
