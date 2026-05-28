@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http.Extensions;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
@@ -10,6 +11,7 @@ using Shink.Components;
 using Shink.Components.Content;
 using Shink.Services;
 using System.Globalization;
+using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Mail;
@@ -26,6 +28,7 @@ const string GooglePkceCookieName = "shink.auth.google.pkce";
 const string GooglePkceProtectorPurpose = "Shink.Auth.GooglePkce.v1";
 const string EmailChangeStateProtectorPurpose = "Shink.Auth.EmailChange.v1";
 const string LongLivedImageCacheControl = "public, max-age=2592000, stale-while-revalidate=86400";
+const string LongLivedStaticCacheControl = "public, max-age=2592000, stale-while-revalidate=86400";
 const string StoreDeliveryProductSlug = "pudo-locker-delivery";
 const string StoreDeliveryProductName = "PUDO locker aflewering";
 const decimal StoreDeliveryFeeZar = 80m;
@@ -35,6 +38,26 @@ var postHogSettings = PostHogSettings.FromConfiguration(builder.Configuration);
 var postHogHostUrl = postHogSettings.HostUrl;
 var authSessionBootstrapOptions = builder.Configuration.GetSection(AuthSessionOptions.SectionName).Get<AuthSessionOptions>() ?? new AuthSessionOptions();
 var authSessionLifetimeDays = NormalizeSessionLifetimeDays(authSessionBootstrapOptions.SessionLifetimeDays);
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(
+    [
+        "application/javascript",
+        "application/json",
+        "application/manifest+json",
+        "application/wasm",
+        "image/svg+xml"
+    ]);
+});
+builder.Services.Configure<GzipCompressionProviderOptions>(options =>
+{
+    options.Level = CompressionLevel.Fastest;
+});
+builder.Services.Configure<BrotliCompressionProviderOptions>(options =>
+{
+    options.Level = CompressionLevel.Fastest;
+});
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
@@ -240,6 +263,7 @@ if (!app.Environment.IsDevelopment())
 }
 app.UseStatusCodePagesWithReExecute("/error/{0}", createScopeForStatusCodePages: true);
 app.UseHttpsRedirection();
+app.UseResponseCompression();
 app.Use((httpContext, next) =>
 {
     CspConstants.GetOrCreateNonce(httpContext);
@@ -441,6 +465,12 @@ app.UseStaticFiles(new StaticFileOptions
         if (IsStaticImageResponse(context.Context.Response.ContentType, context.File.Name))
         {
             ApplyImageCacheHeaders(context.Context.Response);
+            return;
+        }
+
+        if (IsLongLivedStaticAsset(context.Context.Request.Path, context.Context.Response.ContentType, context.File.Name))
+        {
+            context.Context.Response.Headers.CacheControl = LongLivedStaticCacheControl;
         }
     }
 });
@@ -3705,6 +3735,21 @@ static void ApplyImageProxyCacheHeaders(HttpContext httpContext, HttpResponseMes
 static void ApplyImageCacheHeaders(HttpResponse response)
 {
     response.Headers.CacheControl = LongLivedImageCacheControl;
+}
+
+static bool IsLongLivedStaticAsset(PathString requestPath, string? contentType, string? fileName)
+{
+    var path = requestPath.Value ?? fileName ?? string.Empty;
+    var extension = Path.GetExtension(path).ToLowerInvariant();
+    if (extension is ".css" or ".js" or ".mjs" or ".woff" or ".woff2" or ".ttf" or ".otf" or ".map" or ".json" or ".webmanifest")
+    {
+        return true;
+    }
+
+    return !string.IsNullOrWhiteSpace(contentType) &&
+        (contentType.StartsWith("font/", StringComparison.OrdinalIgnoreCase) ||
+         contentType.Equals("text/css", StringComparison.OrdinalIgnoreCase) ||
+         contentType.Contains("javascript", StringComparison.OrdinalIgnoreCase));
 }
 
 static bool IsStaticImageResponse(string? contentType, string? fileName)

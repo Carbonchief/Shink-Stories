@@ -2744,6 +2744,25 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 }
             }
 
+            if (subscriptionId is null &&
+                ShouldActivatePaystackSubscription(eventType, eventStatus) &&
+                !IsPaystackRecurringSubscriptionCode(providerPaymentId))
+            {
+                paystackContext = await TryGetPaystackPayloadSubscriptionContextAsync(
+                    baseUri,
+                    apiKey,
+                    providerPaymentId,
+                    providerTransactionId,
+                    providerToken: null,
+                    cancellationToken);
+
+                if (paystackContext is not null)
+                {
+                    subscriptionId = paystackContext.SubscriptionId;
+                    await TryResolvePaymentRecoveryAfterSuccessfulChargeAsync(baseUri, apiKey, paystackContext, nowUtc, cancellationToken: cancellationToken);
+                }
+            }
+
             if (subscriptionId is null && ShouldActivatePaystackSubscription(eventType, eventStatus))
             {
                 var upsertResult = await UpsertActivePaystackSubscriptionAsync(baseUri, apiKey, data, nowUtc, cancellationToken);
@@ -3222,13 +3241,14 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         }
 
         var plan = await ResolvePaystackPlanAsync(baseUri, apiKey, data, cancellationToken);
-        if (plan is null && !string.IsNullOrWhiteSpace(providerPaymentId))
+        if (plan is null)
         {
-            var existingContext = await TryGetSubscriptionContextByProviderPaymentIdAsync(
+            var existingContext = await TryGetPaystackPayloadSubscriptionContextAsync(
                 baseUri,
                 apiKey,
-                provider: "paystack",
                 providerPaymentId,
+                providerTransactionId,
+                providerToken: ResolvePaystackProviderToken(data),
                 cancellationToken);
             plan = PaymentPlanCatalog.FindByTierCode(existingContext?.TierCode);
         }
@@ -3494,6 +3514,61 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         return PaymentPlanCatalog.FindBySlug(inferredPlanSlug);
     }
+
+    private async Task<PaymentRecoverySubscriptionContext?> TryGetPaystackPayloadSubscriptionContextAsync(
+        Uri baseUri,
+        string apiKey,
+        string? providerPaymentId,
+        string? providerTransactionId,
+        string? providerToken,
+        CancellationToken cancellationToken)
+    {
+        foreach (var candidatePaymentId in DistinctNonEmpty(providerPaymentId, providerTransactionId))
+        {
+            var context = await TryGetSubscriptionContextByProviderPaymentIdAsync(
+                baseUri,
+                apiKey,
+                provider: "paystack",
+                candidatePaymentId,
+                cancellationToken);
+            if (context is not null)
+            {
+                return context;
+            }
+        }
+
+        foreach (var candidateTransactionId in DistinctNonEmpty(providerTransactionId, providerPaymentId))
+        {
+            var context = await TryGetSubscriptionContextByProviderTransactionIdAsync(
+                baseUri,
+                apiKey,
+                provider: "paystack",
+                candidateTransactionId,
+                cancellationToken);
+            if (context is not null)
+            {
+                return context;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(providerToken))
+        {
+            return await TryGetSubscriptionContextByProviderTokenAsync(
+                baseUri,
+                apiKey,
+                provider: "paystack",
+                providerToken,
+                cancellationToken);
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<string> DistinctNonEmpty(params string?[] values) =>
+        values
+            .Where(value => !string.IsNullOrWhiteSpace(value))
+            .Select(value => value!.Trim())
+            .Distinct(StringComparer.Ordinal);
 
     private static PaymentPlan? ResolvePaystackPlanByAmountAndInterval(JsonElement data)
     {

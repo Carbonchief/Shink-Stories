@@ -1,8 +1,48 @@
 (function () {
     "use strict";
 
-    initializePostHog();
+    schedulePostHogInitialization();
     initializeBrowserShell();
+
+    function schedulePostHogInitialization() {
+        var initialized = false;
+        var initializeOnce = function () {
+            if (initialized) {
+                return;
+            }
+
+            initialized = true;
+            initializePostHog();
+        };
+
+        var initializeOnInteraction = function () {
+            initializeOnce();
+            window.removeEventListener("pointerdown", initializeOnInteraction);
+            window.removeEventListener("keydown", initializeOnInteraction);
+            window.removeEventListener("touchstart", initializeOnInteraction);
+        };
+
+        window.addEventListener("pointerdown", initializeOnInteraction, { once: true, passive: true });
+        window.addEventListener("keydown", initializeOnInteraction, { once: true });
+        window.addEventListener("touchstart", initializeOnInteraction, { once: true, passive: true });
+
+        var scheduleAfterLoad = function () {
+            window.setTimeout(function () {
+                if ("requestIdleCallback" in window) {
+                    window.requestIdleCallback(initializeOnce, { timeout: 3000 });
+                    return;
+                }
+
+                initializeOnce();
+            }, 4500);
+        };
+
+        if (document.readyState === "complete") {
+            scheduleAfterLoad();
+        } else {
+            window.addEventListener("load", scheduleAfterLoad, { once: true });
+        }
+    }
 
     function initializePostHog() {
         if (window.posthog) {

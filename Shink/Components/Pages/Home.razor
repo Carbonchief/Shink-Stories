@@ -20,7 +20,9 @@
 
 <PageTitle>Schink Stories | Tuis</PageTitle>
 <HeadContent>
-    <link rel="stylesheet" href="@Assets["lib/bootstrap/css/bootstrap.min.css"]" />
+    <link rel="preload" href="/branding/Schink_Background.avif" as="image" type="image/avif" fetchpriority="high" />
+    <link rel="preload" href="/branding/Schink_Stories_01.png" as="image" fetchpriority="high" />
+    <link rel="preload" href="/branding/schink-stories-logo-white.png" as="image" />
     <link rel="canonical" href="@HomeCanonicalUrl" />
     <meta property="og:type" content="website" />
     <meta property="og:title" content="Schink Stories | Tuis" />
@@ -52,7 +54,7 @@
 
         <div class="hero-media">
             <img src="/branding/Schink_Stories_01.png" alt="Schink Stories hoofbeeld"
-                 width="800" height="600" loading="eager" fetchpriority="high" decoding="async" />
+                 width="1200" height="655" loading="eager" fetchpriority="high" decoding="async" />
         </div>
     </div>
 
@@ -90,7 +92,7 @@
 <section class="join-promo home-scroll-reveal home-reveal-delay-fast">
     <div class="join-promo-media">
         <img src="/branding/Kom_Luister_Saam.png"
-             alt="Kom Luister Saam by Schink Stories" loading="lazy" decoding="async" />
+             alt="Kom Luister Saam by Schink Stories" width="800" height="600" loading="eager" decoding="async" />
     </div>
 
     <div class="join-promo-copy">
@@ -211,7 +213,6 @@ else
                     var story = playlist.Stories[storyIndex];
                     var storyPath = GetHomeStoryHref(story);
                     var canAccessStory = HasAccessToStory(story);
-                    var imageLoading = storyIndex < 4 ? "eager" : "lazy";
                     var articleClassName = isWeeklyPopularPlaylist
                         ? "story-carousel-item story-carousel-item-ranked"
                         : "story-carousel-item";
@@ -234,7 +235,7 @@ else
                                          srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
                                          sizes="(max-width: 620px) 56vw, (max-width: 900px) 35vw, 240px"
                                          draggable="false"
-                                         alt="Voorblad van @story.Title" width="640" height="485" loading="@imageLoading" decoding="async"
+                                         alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async"
                                          onerror="this.onerror=null;this.removeAttribute('srcset');this.src='/branding/schink-logo-green.png';this.classList.add('story-carousel-image-fallback');" />
                                     <span class="story-cover-play" aria-hidden="true">
                                         <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
@@ -255,7 +256,7 @@ else
                                          srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
                                          sizes="(max-width: 620px) 56vw, (max-width: 900px) 35vw, 240px"
                                          draggable="false"
-                                         alt="Voorblad van @story.Title" width="640" height="485" loading="@imageLoading" decoding="async"
+                                         alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async"
                                          onerror="this.onerror=null;this.removeAttribute('srcset');this.src='/branding/schink-logo-green.png';this.classList.add('story-carousel-image-fallback');" />
                                     <span class="story-cover-play" aria-hidden="true">
                                         <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
