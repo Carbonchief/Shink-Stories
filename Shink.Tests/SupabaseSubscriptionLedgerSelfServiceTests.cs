@@ -1575,6 +1575,254 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     }
 
     [TestMethod]
+    public async Task RecordPaystackEventAsync_InvoiceUpdateResolvesPlanFromExistingTransactionReference()
+    {
+        const string subscriptionId = "22222222-2222-2222-2222-222222222222";
+        const string subscriberId = "11111111-1111-1111-1111-111111111111";
+        const string subscriptionCode = "SUB_d43qdh6b36eqnif";
+        const string transactionReference = "baa714fe11b2b0ef084aa374803777f16bebb7fccceaf7a0";
+        const string providerToken = "AUTH_qp8rdicy7p";
+
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                var query = request.RequestUri!.Query;
+                if (query.Contains($"provider_payment_id=eq.{subscriptionCode}", StringComparison.Ordinal))
+                {
+                    return JsonResponse("[]");
+                }
+
+                if (query.Contains($"provider_payment_id=eq.{transactionReference}", StringComparison.Ordinal) ||
+                    (query.Contains($"provider_token=eq.{providerToken}", StringComparison.Ordinal) &&
+                     query.Contains("tier_code=eq.story_corner_monthly", StringComparison.Ordinal)))
+                {
+                    return JsonResponse(
+                        $$"""
+                        [
+                          {
+                            "subscription_id": "{{subscriptionId}}",
+                            "subscriber_id": "{{subscriberId}}",
+                            "tier_code": "story_corner_monthly",
+                            "provider": "paystack",
+                            "provider_payment_id": "{{transactionReference}}",
+                            "provider_transaction_id": "6194339633",
+                            "provider_token": "{{providerToken}}",
+                            "source_system": "shink_app",
+                            "status": "active",
+                            "billing_amount_zar": 55.00,
+                            "billing_period_months": 1,
+                            "billing_amount_source": "paystack_payload"
+                          }
+                        ]
+                        """);
+                }
+
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "subscriber_id": "{{subscriberId}}",
+                        "email": "ouer@example.com",
+                        "first_name": "Ouer",
+                        "display_name": "Ouer"
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscribers")
+            {
+                return JsonResponse($$"""[{ "subscriber_id": "{{subscriberId}}" }]""");
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.RecordPaystackEventAsync(
+            $$"""
+            {
+              "event": "invoice.update",
+              "data": {
+                "paid": 1,
+                "amount": 5500,
+                "status": "success",
+                "paid_at": "2026-05-28T04:30:24.000Z",
+                "period_start": "2026-05-28T04:23:00.000Z",
+                "period_end": "2026-06-28T04:22:59.000Z",
+                "customer": {
+                  "email": "ouer@example.com"
+                },
+                "transaction": {
+                  "amount": 5500,
+                  "status": "success",
+                  "reference": "{{transactionReference}}"
+                },
+                "subscription": {
+                  "amount": 5500,
+                  "status": "active",
+                  "subscription_code": "{{subscriptionCode}}",
+                  "next_payment_date": "2026-06-28T04:23:00.000Z"
+                },
+                "authorization": {
+                  "authorization_code": "{{providerToken}}",
+                  "reusable": true
+                }
+              }
+            }
+            """);
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.AreEqual(subscriptionId, result.SubscriptionId);
+        Assert.IsTrue(
+            handler.SubscriptionPatchPayloads.Any(payload =>
+                payload.Contains($"\"provider_payment_id\":\"{subscriptionCode}\"", StringComparison.Ordinal) &&
+                payload.Contains("\"billing_amount_zar\":55", StringComparison.Ordinal)),
+            "The invoice update should canonicalize the existing checkout-reference row to the recurring Paystack subscription code.");
+    }
+
+    [TestMethod]
+    public async Task RecordPaystackEventAsync_ChargeSuccessLinksToExistingSubscriptionByTransactionId()
+    {
+        const string subscriptionId = "22222222-2222-2222-2222-222222222222";
+        const string subscriberId = "11111111-1111-1111-1111-111111111111";
+        const string subscriptionCode = "SUB_uryjput210cgp3h";
+        const string checkoutReference = "schink-stories-maandeliks-20260526173200-84af0f03380744c2baaaf59cc98acc18";
+        const string providerTransactionId = "6189545793";
+
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                var query = request.RequestUri!.Query;
+                if (query.Contains($"provider_transaction_id=eq.{providerTransactionId}", StringComparison.Ordinal))
+                {
+                    return JsonResponse(
+                        $$"""
+                        [
+                          {
+                            "subscription_id": "{{subscriptionId}}",
+                            "subscriber_id": "{{subscriberId}}",
+                            "tier_code": "all_stories_monthly",
+                            "provider": "paystack",
+                            "provider_payment_id": "{{subscriptionCode}}",
+                            "provider_transaction_id": "{{providerTransactionId}}",
+                            "provider_token": "AUTH_l0uaaawaw1",
+                            "source_system": "shink_app",
+                            "status": "active",
+                            "billing_amount_zar": 79.00,
+                            "billing_period_months": 1,
+                            "billing_amount_source": "paystack_payload"
+                          }
+                        ]
+                        """);
+                }
+
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "subscriber_id": "{{subscriberId}}",
+                        "email": "elz.coetzer@gmail.com",
+                        "first_name": "Elzie",
+                        "display_name": "Elzie"
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.RecordPaystackEventAsync(
+            $$"""
+            {
+              "event": "charge.success",
+              "data": {
+                "id": {{providerTransactionId}},
+                "status": "success",
+                "reference": "{{checkoutReference}}",
+                "amount": 7900,
+                "paid_at": "2026-05-26T17:34:10.000Z",
+                "customer": {
+                  "email": "elz.coetzer@gmail.com"
+                },
+                "metadata": {
+                  "plan_slug": "schink-stories-maandeliks",
+                  "tier_code": "all_stories_monthly",
+                  "is_subscription": "true",
+                  "subscription_key": "{{checkoutReference}}",
+                  "billing_period_months": "1"
+                },
+                "authorization": {
+                  "authorization_code": "AUTH_l0uaaawaw1",
+                  "reusable": true
+                },
+                "plan": "PLN_8qo97ge1vs631n9",
+                "plan_object": {
+                  "amount": 7900,
+                  "interval": "monthly",
+                  "plan_code": "PLN_8qo97ge1vs631n9"
+                }
+              }
+            }
+            """);
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.AreEqual(subscriptionId, result.SubscriptionId);
+        Assert.IsEmpty(handler.SubscriptionCreatePayloads);
+        Assert.IsTrue(
+            handler.SubscriptionEventPayloads.Any(payload =>
+                payload.Contains($"\"subscription_id\":\"{subscriptionId}\"", StringComparison.Ordinal) &&
+                payload.Contains($"\"provider_payment_id\":\"{checkoutReference}\"", StringComparison.Ordinal) &&
+                payload.Contains($"\"provider_transaction_id\":\"{providerTransactionId}\"", StringComparison.Ordinal)),
+            "The webhook should be recorded against the existing subscription instead of attempting a duplicate subscription insert.");
+    }
+
+    [TestMethod]
     public async Task RecordPaystackEventAsync_FailedRecurringPaymentSeedsOriginalAmountForRetry()
     {
         var originalSubscriptionId = "22222222-2222-2222-2222-222222222222";
