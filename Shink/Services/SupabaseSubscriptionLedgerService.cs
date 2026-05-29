@@ -3326,6 +3326,30 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 discountTerms.DiscountPaymentCount,
                 discountPaymentsUsed: 1);
         }
+
+        if (!isDiscountedAuthorizationCheckout &&
+            !IsPaystackRecurringSubscriptionCode(providerPaymentId) &&
+            !string.IsNullOrWhiteSpace(providerToken))
+        {
+            var existingSubscription = await TryGetActivePaystackSubscriptionByTokenAndTierAsync(
+                baseUri,
+                apiKey,
+                subscriberId,
+                plan.TierCode,
+                providerToken,
+                providerPaymentId,
+                cancellationToken);
+            if (existingSubscription is not null)
+            {
+                return new PaystackUpsertResult(
+                    true,
+                    null,
+                    existingSubscription.SubscriptionId,
+                    ProviderPaymentId: null,
+                    ProviderTransactionId: null);
+            }
+        }
+
         if (!IsPaystackRecurringSubscriptionCode(providerPaymentId) &&
             providerPaymentId.StartsWith("repair-", StringComparison.OrdinalIgnoreCase) &&
             !string.IsNullOrWhiteSpace(providerToken))
@@ -4363,6 +4387,95 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             !string.IsNullOrWhiteSpace(row.SubscriberId) &&
             !string.Equals(row.ProviderPaymentId, canonicalProviderPaymentId, StringComparison.Ordinal) &&
             !IsPaystackRecurringSubscriptionCode(row.ProviderPaymentId));
+        if (candidate is null)
+        {
+            return null;
+        }
+
+        var subscriberEmail = await GetSubscriberEmailByIdAsync(baseUri, apiKey, candidate.SubscriberId!, cancellationToken);
+        if (string.IsNullOrWhiteSpace(subscriberEmail))
+        {
+            return null;
+        }
+
+        var subscriberProfile = await GetSubscriberNamesByIdAsync(baseUri, apiKey, candidate.SubscriberId!, cancellationToken);
+        var planName = PaymentPlanCatalog.FindByTierCode(candidate.TierCode)?.Name
+                       ?? candidate.TierCode
+                       ?? "Schink Stories";
+
+        return new PaymentRecoverySubscriptionContext(
+            candidate.SubscriptionId!,
+            candidate.SubscriberId!,
+            subscriberEmail,
+            subscriberProfile?.FirstName,
+            subscriberProfile?.DisplayName,
+            candidate.TierCode,
+            planName,
+            candidate.Provider,
+            candidate.ProviderPaymentId,
+            candidate.ProviderTransactionId,
+            candidate.ProviderToken,
+            candidate.SourceSystem,
+            candidate.Status,
+            candidate.BillingAmountZar,
+            candidate.BillingPeriodMonths,
+            candidate.BillingAmountSource);
+    }
+
+    private async Task<PaymentRecoverySubscriptionContext?> TryGetActivePaystackSubscriptionByTokenAndTierAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriberId,
+        string tierCode,
+        string providerToken,
+        string checkoutProviderPaymentId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(subscriberId) ||
+            string.IsNullOrWhiteSpace(tierCode) ||
+            string.IsNullOrWhiteSpace(providerToken) ||
+            string.IsNullOrWhiteSpace(checkoutProviderPaymentId))
+        {
+            return null;
+        }
+
+        var escapedSubscriberId = Uri.EscapeDataString(subscriberId);
+        var escapedTierCode = Uri.EscapeDataString(tierCode);
+        var escapedProviderToken = Uri.EscapeDataString(providerToken);
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/subscriptions" +
+            "?provider=eq.paystack" +
+            $"&subscriber_id=eq.{escapedSubscriberId}" +
+            $"&tier_code=eq.{escapedTierCode}" +
+            $"&provider_token=eq.{escapedProviderToken}" +
+            "&source_system=eq.shink_app" +
+            "&status=eq.active" +
+            "&cancelled_at=is.null" +
+            "&select=subscription_id,subscriber_id,tier_code,provider,provider_payment_id,provider_transaction_id,provider_token,source_system,status,billing_amount_zar,billing_period_months,billing_amount_source" +
+            "&order=subscribed_at.desc&limit=25");
+        using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Supabase paystack token and tier subscription lookup failed. subscriber_id={SubscriberId} tier={TierCode} Status={StatusCode} Body={Body}",
+                subscriberId,
+                tierCode,
+                (int)response.StatusCode,
+                body);
+            return null;
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var rows = await JsonSerializer.DeserializeAsync<List<PaymentRecoverySubscriptionRow>>(stream, cancellationToken: cancellationToken)
+            ?? [];
+        var candidate = rows.FirstOrDefault(row =>
+            !string.IsNullOrWhiteSpace(row.SubscriptionId) &&
+            !string.IsNullOrWhiteSpace(row.SubscriberId) &&
+            !string.Equals(row.ProviderPaymentId, checkoutProviderPaymentId, StringComparison.Ordinal) &&
+            IsPaystackRecurringSubscriptionCode(row.ProviderPaymentId));
         if (candidate is null)
         {
             return null;
