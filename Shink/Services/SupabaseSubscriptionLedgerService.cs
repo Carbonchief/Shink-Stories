@@ -139,7 +139,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var nowUtc = DateTimeOffset.UtcNow;
         var current = subscriptions
             .Where(subscription => IsCurrentlyActiveSelfServiceSubscription(subscription, nowUtc))
-            .OrderByDescending(subscription => subscription.NextRenewalAt ?? DateTimeOffset.MaxValue)
+            .OrderBy(subscription => subscription.CancelledAt is not null)
+            .ThenByDescending(subscription => subscription.NextRenewalAt ?? DateTimeOffset.MaxValue)
             .ThenByDescending(subscription => subscription.CancelledAt ?? DateTimeOffset.MaxValue)
             .FirstOrDefault();
 

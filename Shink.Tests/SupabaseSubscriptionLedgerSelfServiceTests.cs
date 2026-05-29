@@ -321,6 +321,68 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     }
 
     [TestMethod]
+    public async Task GetCurrentPaidSubscriptionAsync_PrefersActiveRenewingSubscriptionOverScheduledCancellation()
+    {
+        var activeMonthlyRenewalAt = DateTimeOffset.UtcNow.AddDays(27);
+        var yearlyNextRenewalAt = DateTimeOffset.UtcNow.AddYears(1);
+        var yearlyCancellationAt = DateTimeOffset.UtcNow.AddDays(1);
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      { "subscriber_id": "11111111-1111-1111-1111-111111111111", "disabled_at": null }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "subscription_id": "33333333-3333-3333-3333-333333333333",
+                        "tier_code": "all_stories_yearly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "SUB_yearly_nonrenewing",
+                        "provider_transaction_id": "1181551",
+                        "next_renewal_at": "{{yearlyNextRenewalAt:O}}",
+                        "cancelled_at": "{{yearlyCancellationAt:O}}",
+                        "status": "active"
+                      },
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "SUB_monthly_active",
+                        "provider_transaction_id": "1182728",
+                        "next_renewal_at": "{{activeMonthlyRenewalAt:O}}",
+                        "cancelled_at": null,
+                        "status": "active"
+                      }
+                    ]
+                    """);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var subscription = await service.GetCurrentPaidSubscriptionAsync("ouer@example.com");
+
+        Assert.IsNotNull(subscription);
+        Assert.AreEqual("22222222-2222-2222-2222-222222222222", subscription.SubscriptionId);
+        Assert.AreEqual("all_stories_monthly", subscription.TierCode);
+        Assert.IsFalse(subscription.IsCancellationScheduled);
+    }
+
+    [TestMethod]
     public async Task CreatePaystackCardUpdateLinkAsync_GeneratesHostedManagementLinkForCurrentPaystackSubscription()
     {
         var nextRenewalAt = DateTimeOffset.UtcNow.AddDays(12);
