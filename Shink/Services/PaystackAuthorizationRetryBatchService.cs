@@ -24,6 +24,7 @@ public sealed class PaystackAuthorizationRetryBatchService(
 
     public async Task<PaystackAuthorizationRetryBatchResult> RetryEligibleSubscriptionsAsync(
         int? maxAttempts = null,
+        IReadOnlySet<string>? excludedSubscriberIds = null,
         CancellationToken cancellationToken = default)
     {
         if (!TryBuildSupabaseBaseUri(out var baseUri) || string.IsNullOrWhiteSpace(_supabaseOptions.SecretKey))
@@ -39,6 +40,7 @@ public sealed class PaystackAuthorizationRetryBatchService(
                 SkippedNotActionableLiveCount: 0,
                 SkippedMissingEmailOrPlanCount: 0,
                 SkippedMissingBillingAmountCount: 0,
+                SkippedDuplicateCurrentSubscriptionCount: 0,
                 Errors: ["Supabase SecretKey or URL is not configured."],
                 Attempts: []);
         }
@@ -60,6 +62,11 @@ public sealed class PaystackAuthorizationRetryBatchService(
             baseUri,
             subscriptions.Select(item => item.SubscriberId).Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
             cancellationToken);
+        var currentSubscriptionCodesBySubscriber = await FetchCurrentPaystackSubscriptionCodesBySubscriberAsync(
+            baseUri,
+            subscriptions.Select(item => item.SubscriberId).Where(id => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
+            nowUtc,
+            cancellationToken);
 
         var preferredCandidates = subscriptions
             .Where(item => problematicChargeKeys.Contains(BuildChargeKey(item)))
@@ -69,12 +76,14 @@ public sealed class PaystackAuthorizationRetryBatchService(
                 .ThenBy(item => string.Equals(item.Status, "failed", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
                 .ThenByDescending(item => item.UpdatedAt ?? DateTimeOffset.MinValue)
                 .First())
+            .Where(item => excludedSubscriberIds is null || !excludedSubscriberIds.Contains(item.SubscriberId.Trim()))
             .ToList();
 
         var skippedRecentRetryCount = 0;
         var skippedMissingTokenCount = 0;
         var skippedMissingEmailOrPlanCount = 0;
         var skippedMissingBillingAmountCount = 0;
+        var skippedDuplicateCurrentSubscriptionCount = 0;
         var retryReadyCandidates = 0;
         var executableCandidates = new List<RetryCandidate>();
 
@@ -84,6 +93,12 @@ public sealed class PaystackAuthorizationRetryBatchService(
             if (recentRetryByChargeKey.ContainsKey(chargeKey))
             {
                 skippedRecentRetryCount++;
+                continue;
+            }
+
+            if (HasCurrentDuplicatePaystackSubscription(candidate, currentSubscriptionCodesBySubscriber))
+            {
+                skippedDuplicateCurrentSubscriptionCount++;
                 continue;
             }
 
@@ -282,6 +297,7 @@ public sealed class PaystackAuthorizationRetryBatchService(
             SkippedNotActionableLiveCount: skippedNotActionableLiveCount,
             SkippedMissingEmailOrPlanCount: skippedMissingEmailOrPlanCount,
             SkippedMissingBillingAmountCount: skippedMissingBillingAmountCount,
+            SkippedDuplicateCurrentSubscriptionCount: skippedDuplicateCurrentSubscriptionCount,
             Errors: errors,
             Attempts: attempts);
     }
@@ -303,6 +319,61 @@ public sealed class PaystackAuthorizationRetryBatchService(
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         return await JsonSerializer.DeserializeAsync<List<SubscriptionRow>>(stream, cancellationToken: cancellationToken) ?? [];
+    }
+
+    private async Task<Dictionary<string, List<CurrentSubscriptionRow>>> FetchCurrentPaystackSubscriptionCodesBySubscriberAsync(
+        Uri baseUri,
+        IReadOnlyList<string> subscriberIds,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var result = new Dictionary<string, List<CurrentSubscriptionRow>>(StringComparer.OrdinalIgnoreCase);
+        var escapedNow = Uri.EscapeDataString(nowUtc.UtcDateTime.ToString("O"));
+        foreach (var batch in Batch(subscriberIds, 150))
+        {
+            var filter = string.Join(",", batch.Select(id => $"\"{id}\""));
+            var uri = new Uri(
+                baseUri,
+                "rest/v1/subscriptions" +
+                $"?subscriber_id=in.({Uri.EscapeDataString(filter)})" +
+                "&provider=eq.paystack" +
+                "&status=eq.active" +
+                "&cancelled_at=is.null" +
+                $"&or=(next_renewal_at.is.null,next_renewal_at.gte.{escapedNow})" +
+                "&select=subscription_id,subscriber_id,provider_payment_id,provider_transaction_id,source_system,next_renewal_at");
+            using var request = CreateSupabaseRequest(HttpMethod.Get, uri);
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                continue;
+            }
+
+            var rows = await response.Content.ReadFromJsonAsync<List<CurrentSubscriptionRow>>(cancellationToken: cancellationToken) ?? [];
+            foreach (var row in rows)
+            {
+                if (string.IsNullOrWhiteSpace(row.SubscriberId))
+                {
+                    continue;
+                }
+
+                var code = ResolvePaystackSubscriptionCode(row.SourceSystem, row.ProviderPaymentId, row.ProviderTransactionId);
+                if (string.IsNullOrWhiteSpace(code))
+                {
+                    continue;
+                }
+
+                row.SubscriptionCode = code;
+                if (!result.TryGetValue(row.SubscriberId.Trim(), out var subscriberRows))
+                {
+                    subscriberRows = [];
+                    result[row.SubscriberId.Trim()] = subscriberRows;
+                }
+
+                subscriberRows.Add(row);
+            }
+        }
+
+        return result;
     }
 
     private async Task<Dictionary<string, DateTimeOffset>> FetchRecentRetryByChargeKeyAsync(
@@ -507,6 +578,39 @@ public sealed class PaystackAuthorizationRetryBatchService(
         string.Equals(row.Status, "failed", StringComparison.OrdinalIgnoreCase) ||
         (row.NextRenewalAt.HasValue && row.NextRenewalAt.Value < DateTimeOffset.UtcNow);
 
+    private static bool HasCurrentDuplicatePaystackSubscription(
+        SubscriptionRow candidate,
+        IReadOnlyDictionary<string, List<CurrentSubscriptionRow>> currentSubscriptionCodesBySubscriber)
+    {
+        if (!currentSubscriptionCodesBySubscriber.TryGetValue(candidate.SubscriberId, out var currentRows))
+        {
+            return false;
+        }
+
+        var candidateCode = ResolvePaystackSubscriptionCode(
+            candidate.SourceSystem,
+            candidate.ProviderPaymentId,
+            candidate.ProviderTransactionId);
+        if (string.IsNullOrWhiteSpace(candidateCode))
+        {
+            return false;
+        }
+
+        return currentRows.Any(row =>
+            !string.Equals(row.SubscriptionId, candidate.SubscriptionId, StringComparison.OrdinalIgnoreCase) &&
+            string.Equals(row.SubscriptionCode, candidateCode, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string? ResolvePaystackSubscriptionCode(
+        string? sourceSystem,
+        string? providerPaymentId,
+        string? providerTransactionId) =>
+        PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
+            provider: "paystack",
+            sourceSystem: sourceSystem,
+            providerPaymentId: providerPaymentId,
+            providerTransactionId: providerTransactionId);
+
     private static string BuildChargeKey(SubscriptionRow row) =>
         BuildChargeKey(row.ProviderPaymentId, row.ProviderTransactionId, row.SubscriptionId);
 
@@ -634,6 +738,29 @@ public sealed class PaystackAuthorizationRetryBatchService(
         public decimal? BillingAmountZar { get; set; }
     }
 
+    private sealed class CurrentSubscriptionRow
+    {
+        [JsonPropertyName("subscription_id")]
+        public string SubscriptionId { get; set; } = string.Empty;
+
+        [JsonPropertyName("subscriber_id")]
+        public string SubscriberId { get; set; } = string.Empty;
+
+        [JsonPropertyName("provider_payment_id")]
+        public string? ProviderPaymentId { get; set; }
+
+        [JsonPropertyName("provider_transaction_id")]
+        public string? ProviderTransactionId { get; set; }
+
+        [JsonPropertyName("source_system")]
+        public string? SourceSystem { get; set; }
+
+        [JsonPropertyName("next_renewal_at")]
+        public DateTimeOffset? NextRenewalAt { get; set; }
+
+        public string? SubscriptionCode { get; set; }
+    }
+
     private sealed class SubscriberRow
     {
         [JsonPropertyName("subscriber_id")]
@@ -676,6 +803,7 @@ public sealed record PaystackAuthorizationRetryBatchResult(
     int SkippedNotActionableLiveCount,
     int SkippedMissingEmailOrPlanCount,
     int SkippedMissingBillingAmountCount,
+    int SkippedDuplicateCurrentSubscriptionCount,
     IReadOnlyList<string> Errors,
     IReadOnlyList<PaystackAuthorizationRetryAttemptResult> Attempts);
 

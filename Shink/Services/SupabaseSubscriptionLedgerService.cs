@@ -268,7 +268,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
             if (chargedAmountZar >= 1m)
             {
-                var reference = BuildPlanChangeReference(currentSubscription.SubscriptionId, targetPlan.TierCode);
+                var reference = BuildPlanChangeReference(currentSubscription.SubscriptionId, targetPlan.TierCode, accessEndsAtUtc);
                 var chargeResult = await _paystackCheckoutService.ChargeAuthorizationAsync(
                     targetPlan,
                     normalizedEmail,
@@ -308,7 +308,14 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                     payload: eventPayload,
                     cancellationToken);
 
-                if (!chargeResult.IsSuccess)
+                if (!chargeResult.IsSuccess &&
+                    IsDuplicatePaystackReferenceFailure(chargeResult))
+                {
+                    return new SubscriptionPlanChangeResult(false, targetPlan.Slug, changeType, accessEndsAtUtc, chargedAmountZar, "Ons verwerk reeds jou planverandering. Wag asseblief 'n oomblik voor jy weer probeer.");
+                }
+
+                if (!chargeResult.IsSuccess &&
+                    !IsPendingPaystackStatus(chargeResult.TransactionStatus))
                 {
                     return new SubscriptionPlanChangeResult(false, targetPlan.Slug, changeType, accessEndsAtUtc, chargedAmountZar, chargeResult.ErrorMessage);
                 }
@@ -5610,7 +5617,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         return $"repair-{bucketUtc:yyyyMMddHHmm}-{safeSubscriptionId}";
     }
 
-    private static string BuildPlanChangeReference(string subscriptionId, string targetTierCode)
+    private static string BuildPlanChangeReference(string subscriptionId, string targetTierCode, DateTimeOffset effectiveAtUtc)
     {
         var safeSubscriptionId = Regex.Replace(subscriptionId, "[^a-zA-Z0-9]", string.Empty);
         if (safeSubscriptionId.Length > 12)
@@ -5624,7 +5631,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             safeTierCode = safeTierCode[..16];
         }
 
-        var reference = $"plan-change-{DateTime.UtcNow:yyyyMMddHHmmss}-{safeSubscriptionId}-{safeTierCode}-{Guid.NewGuid():N}";
+        var effectiveKey = effectiveAtUtc.UtcDateTime.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
+        var reference = $"plan-change-{effectiveKey}-{safeSubscriptionId}-{safeTierCode}";
         return reference.Length > 80 ? reference[..80] : reference;
     }
 

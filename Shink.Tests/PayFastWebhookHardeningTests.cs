@@ -74,6 +74,43 @@ public class PayFastWebhookHardeningTests
     }
 
     [TestMethod]
+    public void PlanChangeBillingAmountSourceIsAllowedBySubscriptionConstraint()
+    {
+        var migration = File.ReadAllText(GetRepoPath("Shink", "Database", "migrations", "20260529_allow_plan_change_billing_amount_source.sql"));
+
+        StringAssert.Contains(migration, "subscriptions_billing_amount_source_known");
+        StringAssert.Contains(migration, "'plan_change'");
+        StringAssert.Contains(migration, "validate constraint subscriptions_billing_amount_source_known");
+    }
+
+    [TestMethod]
+    public void PlanChangeUpgradeChargeReferencesAreStablePerRenewalWindow()
+    {
+        var ledgerService = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseSubscriptionLedgerService.cs"));
+        var methodStart = ledgerService.IndexOf("public async Task<SubscriptionPlanChangeResult> ChangePaidSubscriptionPlanAsync", StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(0, methodStart, "The plan-change method must exist.");
+
+        var methodEnd = ledgerService.IndexOf("public async Task<SubscriptionCardUpdateLinkResult> CreatePaystackCardUpdateLinkAsync", methodStart, StringComparison.Ordinal);
+        Assert.IsGreaterThan(methodStart, methodEnd, "The plan-change method block could not be isolated.");
+
+        var planChangeBlock = ledgerService[methodStart..methodEnd];
+        StringAssert.Contains(planChangeBlock, "BuildPlanChangeReference(currentSubscription.SubscriptionId, targetPlan.TierCode, accessEndsAtUtc)");
+        StringAssert.Contains(planChangeBlock, "IsDuplicatePaystackReferenceFailure(chargeResult)");
+
+        var helperStart = ledgerService.IndexOf("private static string BuildPlanChangeReference", StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(0, helperStart, "The plan-change reference helper must exist.");
+
+        var helperEnd = ledgerService.IndexOf("private static int ResolvePaidPlanAccessRank", helperStart, StringComparison.Ordinal);
+        Assert.IsGreaterThan(helperStart, helperEnd, "The plan-change reference helper block could not be isolated.");
+
+        var helperBlock = ledgerService[helperStart..helperEnd];
+        StringAssert.Contains(helperBlock, "DateTimeOffset effectiveAtUtc");
+        StringAssert.Contains(helperBlock, "effectiveAtUtc.UtcDateTime.ToString(\"yyyyMMddHHmmss\", CultureInfo.InvariantCulture)");
+        Assert.IsFalse(helperBlock.Contains("DateTime.UtcNow", StringComparison.Ordinal), "Upgrade charge references must not change on retry.");
+        Assert.IsFalse(helperBlock.Contains("Guid.NewGuid", StringComparison.Ordinal), "Upgrade charge references must not include random data.");
+    }
+
+    [TestMethod]
     public void StatusCodeErrorRouteIsNotDuplicatedByCase()
     {
         var errorPage = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Error.razor"));

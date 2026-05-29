@@ -18,6 +18,18 @@ public sealed class PaystackAuthorizationRetryAmountSourceTests
     }
 
     [TestMethod]
+    public void BatchRetrySkipsCandidatesWithCurrentDuplicatePaystackSubscription()
+    {
+        var service = File.ReadAllText(GetRepoPath("Shink", "Services", "PaystackAuthorizationRetryBatchService.cs"));
+
+        StringAssert.Contains(service, "FetchCurrentPaystackSubscriptionCodesBySubscriberAsync");
+        StringAssert.Contains(service, "HasCurrentDuplicatePaystackSubscription");
+        StringAssert.Contains(service, "SkippedDuplicateCurrentSubscriptionCount");
+        StringAssert.Contains(service, "skippedDuplicateCurrentSubscriptionCount");
+        StringAssert.Contains(service, "next_renewal_at.gte");
+    }
+
+    [TestMethod]
     public void SelfServicePaystackRetryRequiresStoredBillingAmount()
     {
         var service = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseSubscriptionLedgerService.cs"));

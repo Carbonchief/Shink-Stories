@@ -3315,10 +3315,16 @@ if (args.Any(argument => string.Equals(argument, "--retry-overdue-paystack", Str
 {
     using var scope = app.Services.CreateScope();
     var retryService = scope.ServiceProvider.GetRequiredService<PaystackAuthorizationRetryBatchService>();
-    var result = await retryService.RetryEligibleSubscriptionsAsync();
+    const string ExcludeSubscriberArgumentPrefix = "--retry-overdue-paystack-exclude-subscriber=";
+    var excludedSubscriberIds = args
+        .Where(argument => argument.StartsWith(ExcludeSubscriberArgumentPrefix, StringComparison.OrdinalIgnoreCase))
+        .Select(argument => argument[ExcludeSubscriberArgumentPrefix.Length..].Trim())
+        .Where(argument => !string.IsNullOrWhiteSpace(argument))
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+    var result = await retryService.RetryEligibleSubscriptionsAsync(excludedSubscriberIds: excludedSubscriberIds);
 
     app.Logger.LogInformation(
-        "Paystack overdue retry batch finished. problematic={ProblematicCount} retry_ready={RetryReadyCount} attempted={AttemptedCount} succeeded={SucceededCount} failed={FailedCount} skipped_recent={SkippedRecentCount} skipped_missing_token={SkippedMissingTokenCount} skipped_not_actionable={SkippedNotActionableCount} skipped_missing_data={SkippedMissingDataCount} skipped_missing_billing_amount={SkippedMissingBillingAmountCount} errors={ErrorCount}",
+        "Paystack overdue retry batch finished. problematic={ProblematicCount} retry_ready={RetryReadyCount} attempted={AttemptedCount} succeeded={SucceededCount} failed={FailedCount} skipped_recent={SkippedRecentCount} skipped_missing_token={SkippedMissingTokenCount} skipped_not_actionable={SkippedNotActionableCount} skipped_missing_data={SkippedMissingDataCount} skipped_missing_billing_amount={SkippedMissingBillingAmountCount} skipped_duplicate_current_subscription={SkippedDuplicateCurrentSubscriptionCount} excluded_subscribers={ExcludedSubscriberCount} errors={ErrorCount}",
         result.TotalProblematicChargeKeys,
         result.RetryReadyCandidates,
         result.AttemptedCount,
@@ -3329,6 +3335,8 @@ if (args.Any(argument => string.Equals(argument, "--retry-overdue-paystack", Str
         result.SkippedNotActionableLiveCount,
         result.SkippedMissingEmailOrPlanCount,
         result.SkippedMissingBillingAmountCount,
+        result.SkippedDuplicateCurrentSubscriptionCount,
+        excludedSubscriberIds.Count,
         result.Errors.Count);
 
     foreach (var attempt in result.Attempts.Take(50))

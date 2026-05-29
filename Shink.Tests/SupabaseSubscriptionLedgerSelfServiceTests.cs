@@ -731,6 +731,131 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     }
 
     [TestMethod]
+    public async Task ChangePaidSubscriptionPlanAsync_QueuedUpgradeChargeCompletesPlanSwitchWithoutRetry()
+    {
+        var nextRenewalAt = DateTimeOffset.UtcNow.AddDays(7);
+        var paystackChargeCalls = 0;
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      { "subscriber_id": "11111111-1111-1111-1111-111111111111", "disabled_at": null }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "tier_code": "story_corner_monthly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "SUB_storycorner",
+                        "provider_transaction_id": "TRX_storycorner",
+                        "provider_token": "AUTH_upgrade",
+                        "provider_email_token": "email-token-old",
+                        "next_renewal_at": "{{nextRenewalAt:O}}",
+                        "cancelled_at": null,
+                        "status": "active",
+                        "billing_amount_zar": 55.00,
+                        "billing_period_months": 1
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/transaction/charge_authorization")
+            {
+                paystackChargeCalls++;
+                return JsonResponse(
+                    """
+                    {
+                      "status": true,
+                      "data": {
+                        "id": 7000000002,
+                        "status": "queued",
+                        "reference": "plan-change-upgrade-queued",
+                        "transaction_date": "2026-05-16T10:00:00Z"
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/subscription")
+            {
+                return JsonResponse(
+                    """
+                    {
+                      "status": true,
+                      "data": {
+                        "subscription_code": "SUB_allstories",
+                        "email_token": "email-token-new",
+                        "status": "active",
+                        "next_payment_date": "2026-06-05T10:00:00.000Z"
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/subscription/disable")
+            {
+                return JsonResponse("""{ "status": true, "message": "Subscription disabled successfully" }""");
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                return JsonResponse("""[{ "subscription_id": "22222222-2222-2222-2222-222222222222" }]""");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                return JsonResponse("""[{ "subscription_id": "33333333-3333-3333-3333-333333333333" }]""");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.ChangePaidSubscriptionPlanAsync("ouer@example.com", "schink-stories-maandeliks");
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.AreEqual("upgrade", result.ChangeType);
+        Assert.AreEqual(1, paystackChargeCalls, "A queued accepted Paystack charge must not be retried in the same plan-change flow.");
+        Assert.IsTrue(
+            handler.SubscriptionEventPayloads.Any(payload =>
+                payload.Contains("\"event_type\":\"paystack.plan_change_charge\"", StringComparison.Ordinal) &&
+                payload.Contains("\"event_status\":\"queued\"", StringComparison.Ordinal)),
+            "The queued charge should be recorded for audit without making the checkout retryable.");
+        Assert.IsTrue(
+            handler.SubscriptionPatchPayloads.Any(payload =>
+                payload.Contains("\"status\":\"active\"", StringComparison.Ordinal) &&
+                SubscriptionPatchHasCancelledAt(payload, nextRenewalAt)),
+            "The old Paystack subscription should still be scheduled to end at renewal.");
+        Assert.IsTrue(
+            handler.SubscriptionCreatePayloads.Any(payload => payload.Contains("\"provider_payment_id\":\"SUB_allstories\"", StringComparison.Ordinal)),
+            "The replacement All Stories subscription should be persisted after the queued charge is accepted.");
+    }
+
+    [TestMethod]
     public async Task ChangePaidSubscriptionPlanAsync_DowngradeSchedulesLowerTierWithoutImmediateCharge()
     {
         var nextRenewalAt = DateTimeOffset.UtcNow.AddDays(12);
