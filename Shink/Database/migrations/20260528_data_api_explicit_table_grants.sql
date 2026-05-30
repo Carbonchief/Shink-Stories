@@ -40,6 +40,7 @@ grant select, insert, update, delete on table
     public.subscription_discount_codes,
     public.subscription_events,
     public.subscription_payment_recoveries,
+    public.subscription_plan_changes,
     public.subscription_recurring_charge_attempts,
     public.subscription_tiers,
     public.subscriptions

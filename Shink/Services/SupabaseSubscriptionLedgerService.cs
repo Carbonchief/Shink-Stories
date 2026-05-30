@@ -1,5 +1,7 @@
 using System.Net.Http.Headers;
+using System.Net;
 using System.Globalization;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -256,6 +258,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             ? "upgrade"
             : targetRank < currentRank ? "downgrade" : "billing-change";
         var chargedAmountZar = 0m;
+        string? planChangeChargeReference = null;
 
         if (string.Equals(changeType, "upgrade", StringComparison.Ordinal))
         {
@@ -265,10 +268,35 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 targetPlan,
                 nowUtc,
                 accessEndsAtUtc);
-
             if (chargedAmountZar >= 1m)
             {
-                var reference = BuildPlanChangeReference(currentSubscription.SubscriptionId, targetPlan.TierCode, accessEndsAtUtc);
+                planChangeChargeReference = BuildPlanChangeReference(currentSubscription.SubscriptionId, targetPlan.TierCode, accessEndsAtUtc);
+            }
+        }
+
+        var planChangeAttempt = await BeginSubscriptionPlanChangeAttemptAsync(
+            context.BaseUri,
+            context.ApiKey,
+            context.SubscriberId,
+            currentSubscription,
+            current.Plan,
+            targetPlan,
+            changeType,
+            accessEndsAtUtc,
+            chargedAmountZar,
+            planChangeChargeReference,
+            cancellationToken);
+        if (!planChangeAttempt.IsSuccess)
+        {
+            return new SubscriptionPlanChangeResult(false, targetPlan.Slug, changeType, accessEndsAtUtc, chargedAmountZar, planChangeAttempt.ErrorMessage ?? "Kon nie die planverandering veilig begin nie.");
+        }
+
+        if (string.Equals(changeType, "upgrade", StringComparison.Ordinal))
+        {
+            if (chargedAmountZar >= 1m &&
+                !IsPlanChangeChargeAlreadyAccepted(planChangeAttempt))
+            {
+                var reference = planChangeChargeReference ?? BuildPlanChangeReference(currentSubscription.SubscriptionId, targetPlan.TierCode, accessEndsAtUtc);
                 var chargeResult = await _paystackCheckoutService.ChargeAuthorizationAsync(
                     targetPlan,
                     normalizedEmail,
@@ -311,14 +339,41 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 if (!chargeResult.IsSuccess &&
                     IsDuplicatePaystackReferenceFailure(chargeResult))
                 {
+                    await MarkSubscriptionPlanChangeAttemptAsync(
+                        context.BaseUri,
+                        context.ApiKey,
+                        planChangeAttempt.PlanChangeId,
+                        "charge_pending",
+                        cancellationToken,
+                        chargeStatus: "duplicate_reference",
+                        chargeReference: chargeResult.Reference ?? reference,
+                        failureMessage: chargeResult.ErrorMessage);
                     return new SubscriptionPlanChangeResult(false, targetPlan.Slug, changeType, accessEndsAtUtc, chargedAmountZar, "Ons verwerk reeds jou planverandering. Wag asseblief 'n oomblik voor jy weer probeer.");
                 }
 
                 if (!chargeResult.IsSuccess &&
                     !IsPendingPaystackStatus(chargeResult.TransactionStatus))
                 {
+                    await MarkSubscriptionPlanChangeAttemptAsync(
+                        context.BaseUri,
+                        context.ApiKey,
+                        planChangeAttempt.PlanChangeId,
+                        "failed",
+                        cancellationToken,
+                        chargeStatus: chargeResult.TransactionStatus ?? "failed",
+                        chargeReference: chargeResult.Reference ?? reference,
+                        failureMessage: chargeResult.ErrorMessage);
                     return new SubscriptionPlanChangeResult(false, targetPlan.Slug, changeType, accessEndsAtUtc, chargedAmountZar, chargeResult.ErrorMessage);
                 }
+
+                await MarkSubscriptionPlanChangeAttemptAsync(
+                    context.BaseUri,
+                    context.ApiKey,
+                    planChangeAttempt.PlanChangeId,
+                    "charge_accepted",
+                    cancellationToken,
+                    chargeStatus: chargeResult.TransactionStatus ?? "success",
+                    chargeReference: chargeResult.Reference ?? reference);
             }
         }
 
@@ -329,10 +384,25 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             cancellationToken);
         if (!disableResult.IsSuccess)
         {
+            await MarkSubscriptionPlanChangeAttemptAsync(
+                context.BaseUri,
+                context.ApiKey,
+                planChangeAttempt.PlanChangeId,
+                "failed",
+                cancellationToken,
+                failureMessage: disableResult.ErrorMessage ?? "Paystack kon nie die bestaande intekening stop nie.");
             return new SubscriptionPlanChangeResult(false, targetPlan.Slug, changeType, accessEndsAtUtc, chargedAmountZar, disableResult.ErrorMessage ?? "Paystack kon nie die bestaande intekening stop nie.");
         }
 
         providerEmailToken = disableResult.EmailToken ?? providerEmailToken;
+        await MarkSubscriptionPlanChangeAttemptAsync(
+            context.BaseUri,
+            context.ApiKey,
+            planChangeAttempt.PlanChangeId,
+            "old_subscription_disabled",
+            cancellationToken,
+            providerEmailToken: providerEmailToken);
+
         var cancellationScheduled = await ScheduleSubscriptionCancellationAsync(
             context.BaseUri,
             context.ApiKey,
@@ -342,18 +412,55 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             cancellationToken);
         if (!cancellationScheduled)
         {
+            await MarkSubscriptionPlanChangeAttemptAsync(
+                context.BaseUri,
+                context.ApiKey,
+                planChangeAttempt.PlanChangeId,
+                "failed",
+                cancellationToken,
+                failureMessage: "Kon nie die bestaande intekening tot die hernuwingsdatum skeduleer nie.");
             return new SubscriptionPlanChangeResult(false, targetPlan.Slug, changeType, accessEndsAtUtc, chargedAmountZar, "Kon nie die bestaande intekening tot die hernuwingsdatum skeduleer nie.");
         }
 
-        var createResult = await _paystackCheckoutService.CreateSubscriptionAsync(
-            targetPlan,
-            normalizedEmail,
-            currentSubscription.ProviderToken!,
-            accessEndsAtUtc,
+        await MarkSubscriptionPlanChangeAttemptAsync(
+            context.BaseUri,
+            context.ApiKey,
+            planChangeAttempt.PlanChangeId,
+            "old_subscription_scheduled",
             cancellationToken);
-        if (!createResult.IsSuccess || string.IsNullOrWhiteSpace(createResult.SubscriptionCode))
+
+        var newProviderPaymentId = planChangeAttempt.NewProviderPaymentId;
+        var newProviderEmailToken = planChangeAttempt.NewProviderEmailToken;
+        if (string.IsNullOrWhiteSpace(newProviderPaymentId))
         {
-            return new SubscriptionPlanChangeResult(false, targetPlan.Slug, changeType, accessEndsAtUtc, chargedAmountZar, createResult.ErrorMessage ?? "Paystack kon nie die nuwe intekening skep nie.");
+            var createResult = await _paystackCheckoutService.CreateSubscriptionAsync(
+                targetPlan,
+                normalizedEmail,
+                currentSubscription.ProviderToken!,
+                accessEndsAtUtc,
+                cancellationToken);
+            if (!createResult.IsSuccess || string.IsNullOrWhiteSpace(createResult.SubscriptionCode))
+            {
+                await MarkSubscriptionPlanChangeAttemptAsync(
+                    context.BaseUri,
+                    context.ApiKey,
+                    planChangeAttempt.PlanChangeId,
+                    "failed",
+                    cancellationToken,
+                    failureMessage: createResult.ErrorMessage ?? "Paystack kon nie die nuwe intekening skep nie.");
+                return new SubscriptionPlanChangeResult(false, targetPlan.Slug, changeType, accessEndsAtUtc, chargedAmountZar, createResult.ErrorMessage ?? "Paystack kon nie die nuwe intekening skep nie.");
+            }
+
+            newProviderPaymentId = createResult.SubscriptionCode;
+            newProviderEmailToken = createResult.EmailToken;
+            await MarkSubscriptionPlanChangeAttemptAsync(
+                context.BaseUri,
+                context.ApiKey,
+                planChangeAttempt.PlanChangeId,
+                "provider_subscription_created",
+                cancellationToken,
+                newProviderPaymentId: newProviderPaymentId,
+                newProviderEmailToken: newProviderEmailToken);
         }
 
         var targetNextRenewalAtUtc = accessEndsAtUtc.AddMonths(targetPlan.BillingPeriodMonths);
@@ -363,10 +470,10 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             context.SubscriberId,
             targetPlan.TierCode,
             provider: "paystack",
-            providerPaymentId: createResult.SubscriptionCode,
-            providerTransactionId: createResult.SubscriptionCode,
+            providerPaymentId: newProviderPaymentId!,
+            providerTransactionId: newProviderPaymentId,
             providerToken: currentSubscription.ProviderToken,
-            providerEmailToken: createResult.EmailToken,
+            providerEmailToken: newProviderEmailToken,
             subscribedAtUtc: string.Equals(changeType, "upgrade", StringComparison.Ordinal) ? nowUtc : accessEndsAtUtc,
             nextRenewalAtUtc: targetNextRenewalAtUtc,
             cancellationToken,
@@ -375,8 +482,23 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             billingAmountSource: "plan_change");
         if (string.IsNullOrWhiteSpace(targetSubscriptionId))
         {
+            await MarkSubscriptionPlanChangeAttemptAsync(
+                context.BaseUri,
+                context.ApiKey,
+                planChangeAttempt.PlanChangeId,
+                "failed",
+                cancellationToken,
+                failureMessage: "Kon nie die nuwe intekening in die ledger stoor nie.");
             return new SubscriptionPlanChangeResult(false, targetPlan.Slug, changeType, accessEndsAtUtc, chargedAmountZar, "Kon nie die nuwe intekening in die ledger stoor nie.");
         }
+
+        await MarkSubscriptionPlanChangeAttemptAsync(
+            context.BaseUri,
+            context.ApiKey,
+            planChangeAttempt.PlanChangeId,
+            "completed",
+            cancellationToken,
+            targetSubscriptionId: targetSubscriptionId);
 
         return new SubscriptionPlanChangeResult(true, targetPlan.Slug, changeType, accessEndsAtUtc, chargedAmountZar);
     }
@@ -2291,6 +2413,164 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         return false;
     }
 
+    private async Task<SubscriptionPlanChangeAttemptResult> BeginSubscriptionPlanChangeAttemptAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriberId,
+        SelfServiceSubscriptionRow currentSubscription,
+        PaymentPlan currentPlan,
+        PaymentPlan targetPlan,
+        string changeType,
+        DateTimeOffset effectiveAtUtc,
+        decimal chargedAmountZar,
+        string? chargeReference,
+        CancellationToken cancellationToken)
+    {
+        var payload = new
+        {
+            subscriber_id = subscriberId,
+            current_subscription_id = currentSubscription.SubscriptionId,
+            target_plan_slug = targetPlan.Slug,
+            current_tier_code = currentPlan.TierCode,
+            target_tier_code = targetPlan.TierCode,
+            provider = "paystack",
+            provider_payment_id = currentSubscription.ProviderPaymentId,
+            change_type = changeType,
+            status = "pending",
+            effective_at = effectiveAtUtc.UtcDateTime,
+            charged_amount_zar = chargedAmountZar,
+            charge_reference = string.IsNullOrWhiteSpace(chargeReference) ? null : chargeReference,
+            failure_message = (string?)null
+        };
+
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/subscription_plan_changes" +
+            "?on_conflict=current_subscription_id,target_tier_code,effective_at" +
+            "&select=plan_change_id,status,charge_status,charge_reference,new_provider_payment_id,new_provider_email_token,target_subscription_id");
+        using var request = CreateJsonRequest(HttpMethod.Post, uri, apiKey, payload, "resolution=merge-duplicates,return=representation");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Supabase plan-change attempt insert failed. subscription_id={SubscriptionId} target_tier={TargetTierCode} Status={StatusCode} Body={Body}",
+                currentSubscription.SubscriptionId,
+                targetPlan.TierCode,
+                (int)response.StatusCode,
+                body);
+            return new SubscriptionPlanChangeAttemptResult(false, ErrorMessage: "Kon nie die planverandering veilig begin nie.");
+        }
+
+        var row = DeserializeRows<SubscriptionPlanChangeAttemptRow>(body).FirstOrDefault();
+        if (string.IsNullOrWhiteSpace(row?.PlanChangeId))
+        {
+            return new SubscriptionPlanChangeAttemptResult(false, ErrorMessage: "Kon nie die planverandering veilig begin nie.");
+        }
+
+        return new SubscriptionPlanChangeAttemptResult(
+            true,
+            row.PlanChangeId,
+            row.Status,
+            row.ChargeStatus,
+            row.ChargeReference,
+            row.NewProviderPaymentId,
+            row.NewProviderEmailToken,
+            row.TargetSubscriptionId);
+    }
+
+    private async Task MarkSubscriptionPlanChangeAttemptAsync(
+        Uri baseUri,
+        string apiKey,
+        string? planChangeId,
+        string status,
+        CancellationToken cancellationToken,
+        string? chargeStatus = null,
+        string? chargeReference = null,
+        string? providerEmailToken = null,
+        string? newProviderPaymentId = null,
+        string? newProviderEmailToken = null,
+        string? targetSubscriptionId = null,
+        string? failureMessage = null)
+    {
+        if (string.IsNullOrWhiteSpace(planChangeId))
+        {
+            return;
+        }
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["status"] = status,
+            ["updated_at"] = DateTime.UtcNow
+        };
+
+        if (!string.IsNullOrWhiteSpace(chargeStatus))
+        {
+            payload["charge_status"] = chargeStatus;
+        }
+
+        if (!string.IsNullOrWhiteSpace(chargeReference))
+        {
+            payload["charge_reference"] = chargeReference;
+        }
+
+        if (!string.IsNullOrWhiteSpace(providerEmailToken))
+        {
+            payload["provider_email_token"] = providerEmailToken;
+        }
+
+        if (!string.IsNullOrWhiteSpace(newProviderPaymentId))
+        {
+            payload["new_provider_payment_id"] = newProviderPaymentId;
+        }
+
+        if (!string.IsNullOrWhiteSpace(newProviderEmailToken))
+        {
+            payload["new_provider_email_token"] = newProviderEmailToken;
+        }
+
+        if (!string.IsNullOrWhiteSpace(targetSubscriptionId))
+        {
+            payload["target_subscription_id"] = targetSubscriptionId;
+        }
+
+        if (string.Equals(status, "completed", StringComparison.OrdinalIgnoreCase))
+        {
+            payload["completed_at"] = DateTime.UtcNow;
+            payload["failure_message"] = null;
+        }
+        else if (string.Equals(status, "failed", StringComparison.OrdinalIgnoreCase))
+        {
+            payload["failed_at"] = DateTime.UtcNow;
+            payload["failure_message"] = string.IsNullOrWhiteSpace(failureMessage) ? "Plan change failed." : failureMessage;
+        }
+        else if (!string.IsNullOrWhiteSpace(failureMessage))
+        {
+            payload["failure_message"] = failureMessage;
+        }
+
+        var escapedPlanChangeId = Uri.EscapeDataString(planChangeId);
+        var uri = new Uri(baseUri, $"rest/v1/subscription_plan_changes?plan_change_id=eq.{escapedPlanChangeId}");
+        using var request = CreateJsonRequest(new HttpMethod("PATCH"), uri, apiKey, payload, "return=minimal");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Supabase plan-change attempt update failed. plan_change_id={PlanChangeId} status={Status} Status={StatusCode} Body={Body}",
+            planChangeId,
+            status,
+            (int)response.StatusCode,
+            body);
+    }
+
+    private static bool IsPlanChangeChargeAlreadyAccepted(SubscriptionPlanChangeAttemptResult attempt) =>
+        string.Equals(attempt.ChargeStatus, "success", StringComparison.OrdinalIgnoreCase) ||
+        IsPendingPaystackStatus(attempt.ChargeStatus);
+
     private static bool IsCurrentlyActiveSubscription(SubscriptionStatusRow row, DateTimeOffset nowUtc)
     {
         if (!string.Equals(row.Status, "active", StringComparison.OrdinalIgnoreCase))
@@ -2680,31 +2960,48 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 providerPaymentId = TryReadNestedString(data, "metadata", "provider_payment_id") ?? providerPaymentId;
             }
 
-            var duplicateEvent = await TryGetExistingSubscriptionEventAsync(
+            var normalizedPayload = DeserializePayloadObject(payloadJson);
+            var eventDedupeKey = BuildPaystackEventDedupeKey(
+                eventType,
+                data,
+                providerPaymentId,
+                providerTransactionId,
+                rawProviderPaymentId,
+                rawProviderTransactionId,
+                payloadJson);
+            var eventClaim = await TryClaimSubscriptionEventAsync(
                 baseUri,
                 apiKey,
                 provider: "paystack",
-                providerPaymentId: providerPaymentId,
-                providerTransactionId: providerTransactionId,
-                eventType: eventType,
+                eventDedupeKey,
+                providerPaymentId,
+                providerTransactionId,
+                eventType,
+                eventStatus,
+                normalizedPayload,
                 cancellationToken);
-            if (duplicateEvent is null &&
-                (!string.Equals(providerPaymentId, rawProviderPaymentId, StringComparison.Ordinal) ||
-                 !string.Equals(providerTransactionId, rawProviderTransactionId, StringComparison.Ordinal)))
+
+            if (!eventClaim.IsSuccess)
             {
-                duplicateEvent = await TryGetExistingSubscriptionEventAsync(
-                    baseUri,
-                    apiKey,
-                    provider: "paystack",
-                    providerPaymentId: rawProviderPaymentId,
-                    providerTransactionId: rawProviderTransactionId,
-                    eventType: eventType,
-                    cancellationToken);
+                return new SubscriptionPersistResult(false, eventClaim.ErrorMessage, eventClaim.SubscriptionId);
             }
 
-            if (duplicateEvent is not null)
+            if (!eventClaim.ShouldProcess)
             {
-                return new SubscriptionPersistResult(true, null, duplicateEvent.SubscriptionId);
+                return new SubscriptionPersistResult(true, null, eventClaim.SubscriptionId);
+            }
+
+            async Task<SubscriptionPersistResult> FailClaimedEventAsync(string errorMessage, string? failedSubscriptionId)
+            {
+                await MarkSubscriptionEventProcessingStatusAsync(
+                    baseUri,
+                    apiKey,
+                    eventClaim.EventId,
+                    eventDedupeKey,
+                    processingStatus: "failed",
+                    processingError: errorMessage,
+                    cancellationToken);
+                return new SubscriptionPersistResult(false, errorMessage, failedSubscriptionId);
             }
 
             string? subscriptionId = null;
@@ -2797,7 +3094,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                         eventReference: providerPaymentId ?? providerTransactionId ?? eventType,
                         occurredAtUtc: nowUtc,
                         cancellationToken);
-                    return new SubscriptionPersistResult(false, upsertResult.ErrorMessage, upsertResult.SubscriptionId);
+                    return await FailClaimedEventAsync(
+                        upsertResult.ErrorMessage ?? "Paystack subscription could not be persisted.",
+                        upsertResult.SubscriptionId);
                 }
 
                 subscriptionId = upsertResult.SubscriptionId;
@@ -2876,7 +3175,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                             errorMessage: "Could not schedule Paystack subscription cancellation.",
                             payload: DeserializePayloadObject(payloadJson),
                             cancellationToken);
-                        return new SubscriptionPersistResult(false, "Could not schedule Paystack subscription cancellation.", subscriptionId);
+                        return await FailClaimedEventAsync("Could not schedule Paystack subscription cancellation.", subscriptionId);
                     }
                 }
             }
@@ -2940,10 +3239,11 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 }
             }
 
-            var normalizedPayload = DeserializePayloadObject(payloadJson);
-            var eventInserted = await InsertSubscriptionEventAsync(
+            var eventFinalized = await FinalizeClaimedSubscriptionEventAsync(
                 baseUri,
                 apiKey,
+                eventClaim.EventId,
+                eventDedupeKey,
                 subscriptionId,
                 provider: "paystack",
                 providerPaymentId: providerPaymentId,
@@ -2953,7 +3253,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 payload: normalizedPayload,
                 cancellationToken: cancellationToken);
 
-            if (!eventInserted.IsSuccess)
+            if (!eventFinalized)
             {
                 await InsertPaymentWebhookFailureAsync(
                     baseUri,
@@ -2975,6 +3275,14 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                     details: $"Event type: {eventType}\nEvent status: {eventStatus ?? "not available"}\nProvider payment ID: {providerPaymentId ?? "not available"}\nProvider transaction ID: {providerTransactionId ?? "not available"}\nSubscription ID: {subscriptionId ?? "not available"}",
                     eventReference: providerPaymentId ?? providerTransactionId ?? eventType,
                     occurredAtUtc: nowUtc,
+                    cancellationToken);
+                await MarkSubscriptionEventProcessingStatusAsync(
+                    baseUri,
+                    apiKey,
+                    eventClaim.EventId,
+                    eventDedupeKey,
+                    processingStatus: "failed",
+                    processingError: "Could not finalize Paystack event.",
                     cancellationToken);
                 return new SubscriptionPersistResult(false, "Could not persist Paystack event.", subscriptionId);
             }
@@ -5078,6 +5386,199 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             body);
     }
 
+    private async Task<SubscriptionEventClaimResult> TryClaimSubscriptionEventAsync(
+        Uri baseUri,
+        string apiKey,
+        string provider,
+        string eventDedupeKey,
+        string? providerPaymentId,
+        string? providerTransactionId,
+        string eventType,
+        string? eventStatus,
+        object payload,
+        CancellationToken cancellationToken)
+    {
+        var eventPayload = new
+        {
+            subscription_id = (string?)null,
+            provider,
+            provider_payment_id = string.IsNullOrWhiteSpace(providerPaymentId) ? null : providerPaymentId,
+            provider_transaction_id = string.IsNullOrWhiteSpace(providerTransactionId) ? null : providerTransactionId,
+            event_type = eventType,
+            event_status = string.IsNullOrWhiteSpace(eventStatus) ? null : eventStatus,
+            event_dedupe_key = eventDedupeKey,
+            processing_status = "processing",
+            processing_error = (string?)null,
+            payload
+        };
+
+        var uri = new Uri(baseUri, "rest/v1/subscription_events?on_conflict=provider,event_dedupe_key&select=event_id,subscription_id,processing_status");
+        using var request = CreateJsonRequest(HttpMethod.Post, uri, apiKey, eventPayload, "resolution=ignore-duplicates,return=representation");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Supabase subscription event claim failed. provider={Provider} event_type={EventType} Status={StatusCode} Body={Body}",
+                provider,
+                eventType,
+                (int)response.StatusCode,
+                body);
+            return new SubscriptionEventClaimResult(false, false, ErrorMessage: "Could not claim Paystack event for processing.");
+        }
+
+        var claimedRows = DeserializeRows<SubscriptionEventClaimRow>(body);
+        var claimedRow = claimedRows.FirstOrDefault();
+        if (claimedRow is not null || response.StatusCode == HttpStatusCode.Created)
+        {
+            return new SubscriptionEventClaimResult(
+                true,
+                true,
+                EventId: claimedRow?.EventId,
+                SubscriptionId: claimedRow?.SubscriptionId);
+        }
+
+        var existingEvent = await TryGetSubscriptionEventByDedupeKeyAsync(
+            baseUri,
+            apiKey,
+            provider,
+            eventDedupeKey,
+            cancellationToken);
+        if (existingEvent is null)
+        {
+            return new SubscriptionEventClaimResult(
+                false,
+                false,
+                ErrorMessage: "Paystack event claim conflict could not be resolved.");
+        }
+
+        if (string.Equals(existingEvent.ProcessingStatus, "processed", StringComparison.OrdinalIgnoreCase))
+        {
+            return new SubscriptionEventClaimResult(
+                true,
+                false,
+                EventId: existingEvent.EventId,
+                SubscriptionId: existingEvent.SubscriptionId);
+        }
+
+        if (string.Equals(existingEvent.ProcessingStatus, "failed", StringComparison.OrdinalIgnoreCase))
+        {
+            var reclaimed = await MarkSubscriptionEventProcessingStatusAsync(
+                baseUri,
+                apiKey,
+                existingEvent.EventId,
+                eventDedupeKey,
+                processingStatus: "processing",
+                processingError: null,
+                cancellationToken);
+            return reclaimed
+                ? new SubscriptionEventClaimResult(true, true, EventId: existingEvent.EventId, SubscriptionId: existingEvent.SubscriptionId)
+                : new SubscriptionEventClaimResult(false, false, EventId: existingEvent.EventId, SubscriptionId: existingEvent.SubscriptionId, ErrorMessage: "Paystack event is already being processed.");
+        }
+
+        return new SubscriptionEventClaimResult(
+            false,
+            false,
+            EventId: existingEvent.EventId,
+            SubscriptionId: existingEvent.SubscriptionId,
+            ErrorMessage: "Paystack event is already being processed.");
+    }
+
+    private async Task<SubscriptionEventClaimRow?> TryGetSubscriptionEventByDedupeKeyAsync(
+        Uri baseUri,
+        string apiKey,
+        string provider,
+        string eventDedupeKey,
+        CancellationToken cancellationToken)
+    {
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/subscription_events" +
+            $"?provider=eq.{Uri.EscapeDataString(provider)}" +
+            $"&event_dedupe_key=eq.{Uri.EscapeDataString(eventDedupeKey)}" +
+            "&select=event_id,subscription_id,processing_status&limit=1");
+        using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        return DeserializeRows<SubscriptionEventClaimRow>(body).FirstOrDefault();
+    }
+
+    private async Task<bool> MarkSubscriptionEventProcessingStatusAsync(
+        Uri baseUri,
+        string apiKey,
+        string? eventId,
+        string eventDedupeKey,
+        string processingStatus,
+        string? processingError,
+        CancellationToken cancellationToken)
+    {
+        var filters = string.IsNullOrWhiteSpace(eventId)
+            ? $"event_dedupe_key=eq.{Uri.EscapeDataString(eventDedupeKey)}"
+            : $"event_id=eq.{Uri.EscapeDataString(eventId)}";
+        var uri = new Uri(baseUri, $"rest/v1/subscription_events?{filters}");
+        var payload = new
+        {
+            processing_status = processingStatus,
+            processing_error = string.IsNullOrWhiteSpace(processingError) ? null : processingError
+        };
+        using var request = CreateJsonRequest(new HttpMethod("PATCH"), uri, apiKey, payload, "return=minimal");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        return response.IsSuccessStatusCode;
+    }
+
+    private async Task<bool> FinalizeClaimedSubscriptionEventAsync(
+        Uri baseUri,
+        string apiKey,
+        string? eventId,
+        string eventDedupeKey,
+        string? subscriptionId,
+        string provider,
+        string? providerPaymentId,
+        string? providerTransactionId,
+        string eventType,
+        string? eventStatus,
+        object payload,
+        CancellationToken cancellationToken)
+    {
+        var filters = string.IsNullOrWhiteSpace(eventId)
+            ? $"event_dedupe_key=eq.{Uri.EscapeDataString(eventDedupeKey)}"
+            : $"event_id=eq.{Uri.EscapeDataString(eventId)}";
+        var eventPayload = new
+        {
+            subscription_id = string.IsNullOrWhiteSpace(subscriptionId) ? null : subscriptionId,
+            provider,
+            provider_payment_id = string.IsNullOrWhiteSpace(providerPaymentId) ? null : providerPaymentId,
+            provider_transaction_id = string.IsNullOrWhiteSpace(providerTransactionId) ? null : providerTransactionId,
+            event_type = eventType,
+            event_status = string.IsNullOrWhiteSpace(eventStatus) ? null : eventStatus,
+            payload,
+            processing_status = "processed",
+            processing_error = (string?)null
+        };
+
+        var uri = new Uri(baseUri, $"rest/v1/subscription_events?{filters}");
+        using var request = CreateJsonRequest(new HttpMethod("PATCH"), uri, apiKey, eventPayload, "return=minimal");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return true;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Supabase subscription event finalize failed. provider={Provider} event_type={EventType} Status={StatusCode} Body={Body}",
+            provider,
+            eventType,
+            (int)response.StatusCode,
+            body);
+        return false;
+    }
+
     private async Task<EventInsertResult> InsertSubscriptionEventAsync(
         Uri baseUri,
         string apiKey,
@@ -5098,6 +5599,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             provider_transaction_id = string.IsNullOrWhiteSpace(providerTransactionId) ? null : providerTransactionId,
             event_type = eventType,
             event_status = string.IsNullOrWhiteSpace(eventStatus) ? null : eventStatus,
+            event_dedupe_key = BuildSubscriptionEventDedupeKey(provider, eventType, providerPaymentId, providerTransactionId, payload),
+            processing_status = "processed",
+            processing_error = (string?)null,
             payload
         };
 
@@ -6151,6 +6655,106 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         return null;
     }
 
+    private static List<T> DeserializeRows<T>(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<T>>(json) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
+    }
+
+    private static string BuildPaystackEventDedupeKey(
+        string eventType,
+        JsonElement data,
+        string? providerPaymentId,
+        string? providerTransactionId,
+        string? rawProviderPaymentId,
+        string? rawProviderTransactionId,
+        string payloadJson)
+    {
+        var stableProviderPaymentId = FirstNonBlank(
+            providerPaymentId,
+            rawProviderPaymentId,
+            TryReadNestedString(data, "subscription", "subscription_code"),
+            TryReadString(data, "subscription_code"));
+        var stableProviderTransactionId = FirstNonBlank(
+            providerTransactionId,
+            rawProviderTransactionId,
+            TryReadString(data, "id"),
+            TryReadString(data, "reference"),
+            TryReadNestedString(data, "transaction", "id"),
+            TryReadNestedString(data, "transaction", "reference"));
+
+        if (!string.IsNullOrWhiteSpace(stableProviderTransactionId))
+        {
+            return BuildHumanReadableDedupeKey("paystack", eventType, "txn", stableProviderTransactionId);
+        }
+
+        if (!string.IsNullOrWhiteSpace(stableProviderPaymentId))
+        {
+            return BuildHumanReadableDedupeKey("paystack", eventType, "sub", stableProviderPaymentId);
+        }
+
+        return BuildHashedDedupeKey("paystack", eventType, payloadJson);
+    }
+
+    private static string BuildSubscriptionEventDedupeKey(
+        string provider,
+        string eventType,
+        string? providerPaymentId,
+        string? providerTransactionId,
+        object payload)
+    {
+        var providerTransactionKey = NormalizeDedupePart(providerTransactionId);
+        if (!string.IsNullOrWhiteSpace(providerTransactionKey))
+        {
+            return BuildHumanReadableDedupeKey(provider, eventType, "txn", providerTransactionKey);
+        }
+
+        var providerPaymentKey = NormalizeDedupePart(providerPaymentId);
+        if (!string.IsNullOrWhiteSpace(providerPaymentKey))
+        {
+            return BuildHumanReadableDedupeKey(provider, eventType, "payment", providerPaymentKey);
+        }
+
+        return BuildHashedDedupeKey(provider, eventType, JsonSerializer.Serialize(payload));
+    }
+
+    private static string BuildHumanReadableDedupeKey(string provider, string eventType, string keyKind, string value)
+    {
+        var material = $"{NormalizeDedupePart(provider)}:{NormalizeDedupePart(eventType)}:{keyKind}:{NormalizeDedupePart(value)}";
+        return material.Length <= 220 ? material : $"{material[..120]}:{ComputeSha256Hex(material)[..32]}";
+    }
+
+    private static string BuildHashedDedupeKey(string provider, string eventType, string material) =>
+        $"{NormalizeDedupePart(provider)}:{NormalizeDedupePart(eventType)}:hash:{ComputeSha256Hex(material)}";
+
+    private static string NormalizeDedupePart(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var normalized = Regex.Replace(value.Trim().ToLowerInvariant(), "[^a-z0-9_.:-]", "-");
+        return Regex.Replace(normalized, "-{2,}", "-").Trim('-');
+    }
+
+    private static string ComputeSha256Hex(string value) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
+
+    private static string? FirstNonBlank(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
     private static string? TryReadNestedString(JsonElement element, params string[] path)
     {
         if (path.Length == 0)
@@ -6265,6 +6869,24 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
     private sealed record EventInsertResult(bool IsSuccess, bool WasInserted);
 
+    private sealed record SubscriptionEventClaimResult(
+        bool IsSuccess,
+        bool ShouldProcess,
+        string? EventId = null,
+        string? SubscriptionId = null,
+        string? ErrorMessage = null);
+
+    private sealed record SubscriptionPlanChangeAttemptResult(
+        bool IsSuccess,
+        string? PlanChangeId = null,
+        string? Status = null,
+        string? ChargeStatus = null,
+        string? ChargeReference = null,
+        string? NewProviderPaymentId = null,
+        string? NewProviderEmailToken = null,
+        string? TargetSubscriptionId = null,
+        string? ErrorMessage = null);
+
     private sealed record SelfServiceSubscriptionContext(
         Uri BaseUri,
         string ApiKey,
@@ -6338,6 +6960,42 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     {
         [JsonPropertyName("subscription_id")]
         public string? SubscriptionId { get; set; }
+    }
+
+    private sealed class SubscriptionEventClaimRow
+    {
+        [JsonPropertyName("event_id")]
+        public string? EventId { get; set; }
+
+        [JsonPropertyName("subscription_id")]
+        public string? SubscriptionId { get; set; }
+
+        [JsonPropertyName("processing_status")]
+        public string? ProcessingStatus { get; set; }
+    }
+
+    private sealed class SubscriptionPlanChangeAttemptRow
+    {
+        [JsonPropertyName("plan_change_id")]
+        public string? PlanChangeId { get; set; }
+
+        [JsonPropertyName("status")]
+        public string? Status { get; set; }
+
+        [JsonPropertyName("charge_status")]
+        public string? ChargeStatus { get; set; }
+
+        [JsonPropertyName("charge_reference")]
+        public string? ChargeReference { get; set; }
+
+        [JsonPropertyName("new_provider_payment_id")]
+        public string? NewProviderPaymentId { get; set; }
+
+        [JsonPropertyName("new_provider_email_token")]
+        public string? NewProviderEmailToken { get; set; }
+
+        [JsonPropertyName("target_subscription_id")]
+        public string? TargetSubscriptionId { get; set; }
     }
 
     private sealed class PendingRepairSubscriptionRow

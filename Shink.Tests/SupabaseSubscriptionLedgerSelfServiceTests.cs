@@ -238,7 +238,7 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     [TestMethod]
     public async Task CancelPaidSubscriptionAsync_DisablesPaystackAndKeepsAccessUntilNextRenewal()
     {
-        var nextRenewalAt = new DateTimeOffset(2026, 5, 29, 12, 0, 0, TimeSpan.Zero);
+        var nextRenewalAt = DateTimeOffset.UtcNow.AddDays(7);
         var handler = new RecordingHandler(request =>
         {
             if (IsSupabaseGet(request, "/rest/v1/subscribers"))
@@ -530,7 +530,7 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     [TestMethod]
     public async Task CancelPaidSubscriptionAsync_CancelsPayFastTokenAndKeepsAccessUntilNextRenewal()
     {
-        var nextRenewalAt = new DateTimeOffset(2026, 5, 29, 12, 0, 0, TimeSpan.Zero);
+        var nextRenewalAt = DateTimeOffset.UtcNow.AddDays(7);
         var handler = new RecordingHandler(request =>
         {
             if (IsSupabaseGet(request, "/rest/v1/subscribers"))
@@ -728,6 +728,121 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
         Assert.IsTrue(
             handler.SubscriptionCreatePayloads.Any(payload => payload.Contains("\"provider_payment_id\":\"SUB_allstories\"", StringComparison.Ordinal)),
             "The upgraded tier should be active immediately in the local ledger.");
+    }
+
+    [TestMethod]
+    public async Task ChangePaidSubscriptionPlanAsync_DoesNotChargeUntilPlanChangeAttemptIsStored()
+    {
+        var nextRenewalAt = DateTimeOffset.UtcNow.AddDays(20);
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      { "subscriber_id": "11111111-1111-1111-1111-111111111111", "disabled_at": null }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "tier_code": "story_corner_monthly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "SUB_storycorner",
+                        "provider_transaction_id": "TRX_storycorner",
+                        "provider_token": "AUTH_upgrade",
+                        "provider_email_token": "email-token-old",
+                        "next_renewal_at": "{{nextRenewalAt:O}}",
+                        "cancelled_at": null,
+                        "status": "active",
+                        "billing_amount_zar": 55.00,
+                        "billing_period_months": 1
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_plan_changes")
+            {
+                return new HttpResponseMessage(HttpStatusCode.InternalServerError);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/transaction/charge_authorization")
+            {
+                return JsonResponse(
+                    """
+                    {
+                      "status": true,
+                      "data": {
+                        "id": 7000000003,
+                        "status": "success",
+                        "reference": "plan-change-upgrade",
+                        "paid_at": "2026-05-16T10:00:00Z"
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/subscription")
+            {
+                return JsonResponse(
+                    """
+                    {
+                      "status": true,
+                      "data": {
+                        "subscription_code": "SUB_allstories",
+                        "email_token": "email-token-new",
+                        "status": "active",
+                        "next_payment_date": "2026-06-05T10:00:00.000Z"
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/subscription/disable")
+            {
+                return JsonResponse("""{ "status": true, "message": "Subscription disabled successfully" }""");
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                return JsonResponse("""[{ "subscription_id": "22222222-2222-2222-2222-222222222222" }]""");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                return JsonResponse("""[{ "subscription_id": "33333333-3333-3333-3333-333333333333" }]""");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.ChangePaidSubscriptionPlanAsync("ouer@example.com", "schink-stories-maandeliks");
+
+        Assert.IsFalse(result.IsSuccess, "A plan change must fail before charging if the local attempt cannot be stored.");
+        Assert.AreEqual(0, handler.PaystackChargePayloads.Count, "Paystack must not be charged before a durable plan-change attempt exists.");
     }
 
     [TestMethod]
@@ -2028,6 +2143,104 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                 payload.Contains($"\"provider_payment_id\":\"{subscriptionCode}\"", StringComparison.Ordinal) &&
                 payload.Contains("\"billing_amount_zar\":55", StringComparison.Ordinal)),
             "The invoice update should canonicalize the existing checkout-reference row to the recurring Paystack subscription code.");
+    }
+
+    [TestMethod]
+    public async Task RecordPaystackEventAsync_DuplicateInProgressEventDoesNotRunSideEffects()
+    {
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
+            {
+                if (request.RequestUri?.Query.Contains("event_dedupe_key=eq.", StringComparison.OrdinalIgnoreCase) == true)
+                {
+                    return JsonResponse(
+                        """
+                        [
+                          {
+                            "subscription_id": null,
+                            "processing_status": "processing"
+                          }
+                        ]
+                        """);
+                }
+
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscribers")
+            {
+                return JsonResponse("""[{ "subscriber_id": "11111111-1111-1111-1111-111111111111" }]""");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_tiers")
+            {
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                return JsonResponse("""[{ "subscription_id": "22222222-2222-2222-2222-222222222222" }]""");
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.RecordPaystackEventAsync(
+            """
+            {
+              "event": "charge.success",
+              "data": {
+                "id": 6189545793,
+                "reference": "schink-stories-maandeliks-20260526173200-84af0f03380744c2baaaf59cc98acc18",
+                "status": "success",
+                "amount": 7900,
+                "paid_at": "2026-05-26T17:32:00.000Z",
+                "customer": {
+                  "email": "ouer@example.com",
+                  "first_name": "Ouer"
+                },
+                "authorization": {
+                  "authorization_code": "AUTH_duplicate",
+                  "reusable": true
+                },
+                "subscription": {
+                  "subscription_code": "SUB_duplicate",
+                  "email_token": "email-token-duplicate",
+                  "next_payment_date": "2026-06-26T17:32:00.000Z"
+                },
+                "plan": {
+                  "plan_code": "PLN_allstories",
+                  "amount": 7900,
+                  "interval": "monthly"
+                }
+              }
+            }
+            """);
+
+        Assert.IsFalse(result.IsSuccess, "A duplicate event that is still being processed must not be acknowledged as fully persisted.");
+        Assert.AreEqual(0, handler.SubscriptionCreatePayloads.Count, "The duplicate in-progress event must not create or update subscription rows.");
     }
 
     [TestMethod]
@@ -3655,6 +3868,7 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
         public List<string> PaystackChargePayloads { get; } = [];
         public List<string> PaymentRecoveryPatchPayloads { get; } = [];
         public List<string> SubscriptionEventPayloads { get; } = [];
+        public List<string> PlanChangePayloads { get; } = [];
         public List<string> PaystackLookups { get; } = [];
         public PayFastCancelRequest? PayFastCancelRequest { get; private set; }
         public string? SubscriberPatchPayload { get; private set; }
@@ -3707,13 +3921,22 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                     PaymentRecoveryPatchPayloads.Add(payload);
                 }
             }
-            else if (request.Method == HttpMethod.Post &&
+            else if ((request.Method == HttpMethod.Post || request.Method == new HttpMethod("PATCH")) &&
                      request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
             {
                 var payload = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
                 if (payload is not null)
                 {
                     SubscriptionEventPayloads.Add(payload);
+                }
+            }
+            else if ((request.Method == HttpMethod.Post || request.Method == new HttpMethod("PATCH")) &&
+                     request.RequestUri?.AbsolutePath == "/rest/v1/subscription_plan_changes")
+            {
+                var payload = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+                if (payload is not null)
+                {
+                    PlanChangePayloads.Add(payload);
                 }
             }
             else if (request.Method == new HttpMethod("PATCH") &&
@@ -3729,7 +3952,22 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                     request.Headers.ToDictionary(header => header.Key, header => string.Join(",", header.Value)));
             }
 
-            return Task.FromResult(responseFactory(request));
+            var response = responseFactory(request);
+            if (response.StatusCode == HttpStatusCode.NotFound &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_plan_changes")
+            {
+                response = request.Method == HttpMethod.Post
+                    ? JsonResponse("""[{ "plan_change_id": "44444444-4444-4444-4444-444444444444", "status": "pending" }]""")
+                    : new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+            else if (response.StatusCode == HttpStatusCode.NotFound &&
+                     request.Method == new HttpMethod("PATCH") &&
+                     request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                response = new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            return Task.FromResult(response);
         }
     }
 

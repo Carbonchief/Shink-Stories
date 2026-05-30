@@ -1,4 +1,5 @@
 using Microsoft.VisualStudio.TestTools.UnitTesting;
+using System.Runtime.CompilerServices;
 
 namespace Shink.Tests;
 
@@ -44,13 +45,12 @@ public class AdminResourceEditSourceTests
     {
         var parts = new[]
         {
-            AppContext.BaseDirectory,
+            Path.GetDirectoryName(GetSourceFilePath())!,
             "..",
-            "..",
-            "..",
-            ".."
         }.Concat(segments).ToArray();
 
         return Path.GetFullPath(Path.Combine(parts));
     }
+
+    private static string GetSourceFilePath([CallerFilePath] string path = "") => path;
 }

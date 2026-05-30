@@ -17,7 +17,7 @@ public class SupabaseAdminManagementSelfServiceTests
     {
         var subscriberId = Guid.Parse("11111111-1111-1111-1111-111111111111");
         var subscriptionId = Guid.Parse("22222222-2222-2222-2222-222222222222");
-        var nextRenewalAt = new DateTimeOffset(2026, 5, 29, 12, 0, 0, TimeSpan.Zero);
+        var nextRenewalAt = DateTimeOffset.UtcNow.AddDays(7);
         var handler = new RecordingHandler(request =>
         {
             if (IsSupabaseGet(request, "/rest/v1/admin_users"))
@@ -249,7 +249,7 @@ public class SupabaseAdminManagementSelfServiceTests
     {
         var subscriberId = Guid.Parse("11111111-1111-1111-1111-111111111111");
         var subscriptionId = Guid.Parse("55555555-5555-5555-5555-555555555555");
-        var nextRenewalAt = new DateTimeOffset(2026, 5, 29, 12, 0, 0, TimeSpan.Zero);
+        var nextRenewalAt = DateTimeOffset.UtcNow.AddDays(7);
         var handler = new RecordingHandler(request =>
         {
             if (IsSupabaseGet(request, "/rest/v1/admin_users"))
