@@ -473,6 +473,9 @@ public sealed class PaystackAuthorizationRetryBatchService(
             provider_transaction_id = idempotencyTransactionId,
             event_type = "paystack.authorization_retry",
             event_status = eventStatus,
+            event_dedupe_key = BuildRetryEventDedupeKey(providerPaymentId, idempotencyTransactionId, payload),
+            processing_status = "processed",
+            processing_error = (string?)null,
             received_at = DateTime.UtcNow,
             payload
         };
@@ -683,6 +686,38 @@ public sealed class PaystackAuthorizationRetryBatchService(
             ["paid_at"] = paidAt?.UtcDateTime.ToString("O"),
             ["source"] = "subscription_authorization_retry_batch"
         };
+    }
+
+    private static string BuildRetryEventDedupeKey(
+        string providerPaymentId,
+        string? providerTransactionId,
+        IReadOnlyDictionary<string, object?> payload)
+    {
+        if (!string.IsNullOrWhiteSpace(providerTransactionId))
+        {
+            return $"paystack:paystack.authorization_retry:txn:{NormalizeDedupePart(providerTransactionId)}";
+        }
+
+        if (payload.TryGetValue("reference", out var reference) &&
+            !string.IsNullOrWhiteSpace(reference?.ToString()))
+        {
+            return $"paystack:paystack.authorization_retry:ref:{NormalizeDedupePart(reference.ToString())}";
+        }
+
+        return $"paystack:paystack.authorization_retry:payment:{NormalizeDedupePart(providerPaymentId)}";
+    }
+
+    private static string NormalizeDedupePart(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var chars = value.Trim().ToLowerInvariant()
+            .Select(character => char.IsLetterOrDigit(character) || character is '_' or '-' or '.' or ':' ? character : '-')
+            .ToArray();
+        return new string(chars).Trim('-');
     }
 
     private static IEnumerable<List<string>> Batch(IReadOnlyList<string> values, int batchSize)

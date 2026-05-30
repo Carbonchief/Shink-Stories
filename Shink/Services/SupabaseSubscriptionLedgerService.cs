@@ -5429,7 +5429,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         var claimedRows = DeserializeRows<SubscriptionEventClaimRow>(body);
         var claimedRow = claimedRows.FirstOrDefault();
-        if (claimedRow is not null || response.StatusCode == HttpStatusCode.Created)
+        if (claimedRow is not null)
         {
             return new SubscriptionEventClaimResult(
                 true,
@@ -5446,6 +5446,11 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             cancellationToken);
         if (existingEvent is null)
         {
+            if (response.StatusCode == HttpStatusCode.Created)
+            {
+                return new SubscriptionEventClaimResult(true, true);
+            }
+
             return new SubscriptionEventClaimResult(
                 false,
                 false,

@@ -30,6 +30,17 @@ public sealed class PaystackAuthorizationRetryAmountSourceTests
     }
 
     [TestMethod]
+    public void BatchRetryEventsIncludeDedupeAndProcessingStatus()
+    {
+        var service = File.ReadAllText(GetRepoPath("Shink", "Services", "PaystackAuthorizationRetryBatchService.cs"));
+
+        StringAssert.Contains(service, "event_dedupe_key");
+        StringAssert.Contains(service, "BuildRetryEventDedupeKey");
+        StringAssert.Contains(service, "processing_status = \"processed\"");
+        StringAssert.Contains(service, "processing_error = (string?)null");
+    }
+
+    [TestMethod]
     public void SelfServicePaystackRetryRequiresStoredBillingAmount()
     {
         var service = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseSubscriptionLedgerService.cs"));

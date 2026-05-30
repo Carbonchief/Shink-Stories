@@ -2181,7 +2181,10 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
             if (request.Method == HttpMethod.Post &&
                 request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
             {
-                return JsonResponse("[]");
+                return new HttpResponseMessage(HttpStatusCode.Created)
+                {
+                    Content = new StringContent("[]", Encoding.UTF8, "application/json")
+                };
             }
 
             if (request.Method == HttpMethod.Post &&
