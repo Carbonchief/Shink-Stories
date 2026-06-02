@@ -86,6 +86,8 @@ appsettings.secrets.json
 /recovered-revenue-accounts-*.csv
 
 # Local verification/build output
+/.codex-tmp/
+/.codex-verify/
 /obj_verify/
 /Shink/obj_verify/
 /Shink.Tests/obj_verify/

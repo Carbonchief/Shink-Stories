@@ -246,6 +246,11 @@
     font-weight: 800;
 }
 
+.blog-admin-list-date {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
 .blog-admin-list-meta,
 .blog-admin-list-status,
 .blog-admin-list-date,
@@ -612,11 +617,13 @@
 
 .blog-admin-preview {
     min-width: 0;
+    max-width: 100%;
     padding: 1rem;
     border-radius: 16px;
     border: 1px solid var(--admin-border);
     background: #12202d;
     color: var(--admin-text);
+    overflow: hidden;
 }
 
 .blog-admin-preview h2 {
@@ -631,6 +638,7 @@
 
 .blog-admin-preview-body {
     min-width: 0;
+    max-width: 100%;
     margin-top: 1rem;
     line-height: 1.8;
     overflow-wrap: anywhere;
@@ -681,6 +689,24 @@
     margin: 0.35rem 0;
     padding-inline-start: 0.3rem;
     overflow-wrap: anywhere;
+}
+
+.blog-admin-preview-body ::deep ul,
+.blog-admin-preview-body ::deep ol {
+    max-width: 100%;
+    margin: 1rem 0;
+    padding-inline-start: 1.35rem;
+    list-style-position: outside;
+    box-sizing: border-box;
+}
+
+.blog-admin-preview-body ::deep li {
+    max-width: 100%;
+    margin: 0.35rem 0;
+    padding-inline-start: 0.2rem;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    box-sizing: border-box;
 }
 
 .blog-admin-preview-body :global(pre),

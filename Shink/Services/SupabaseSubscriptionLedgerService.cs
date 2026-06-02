@@ -168,16 +168,29 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         }
 
         var subscription = candidate.Subscription;
+        var plan = candidate.Plan;
+        var nowUtc = DateTimeOffset.UtcNow;
+        var canAttemptAutomaticRetry = false;
+        if (subscription is not null &&
+            plan is not null &&
+            CanAttemptAutomaticRetry(subscription, plan))
+        {
+            var activeRecovery = await GetActivePaymentRecoveryAsync(
+                candidate.Context.BaseUri,
+                candidate.Context.ApiKey,
+                subscription.SubscriptionId,
+                cancellationToken);
+            canAttemptAutomaticRetry = IsPaystackAuthorizationRetryDue(activeRecovery, nowUtc);
+        }
+
         return new PaidSubscriptionAttention(
             RequiresAttention: true,
             Reason: candidate.Reason,
             SubscriptionId: subscription?.SubscriptionId,
             TierCode: subscription?.TierCode,
-            PlanSlug: candidate.Plan?.Slug,
+            PlanSlug: plan?.Slug,
             Provider: subscription?.Provider,
-            CanAttemptAutomaticRetry: subscription is not null &&
-                                      candidate.Plan is not null &&
-                                      CanAttemptAutomaticRetry(subscription, candidate.Plan));
+            CanAttemptAutomaticRetry: canAttemptAutomaticRetry);
     }
 
     public async Task<SubscriptionPlanChangeResult> ChangePaidSubscriptionPlanAsync(
@@ -257,17 +270,22 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var changeType = targetRank > currentRank
             ? "upgrade"
             : targetRank < currentRank ? "downgrade" : "billing-change";
-        var chargedAmountZar = 0m;
+        var chargeImmediately = ShouldChargePlanChangeImmediately(changeType);
+        var chargedAmountZar = chargeImmediately
+            ? decimal.Round(targetPlan.Amount, 2, MidpointRounding.AwayFromZero)
+            : 0m;
+        var carriedForwardAccess = CalculateCarriedForwardPlanChangeAccess(
+            current.Plan,
+            changeType,
+            nowUtc,
+            accessEndsAtUtc);
+        var targetNextRenewalAtUtc = chargeImmediately
+            ? nowUtc.AddMonths(targetPlan.BillingPeriodMonths).Add(carriedForwardAccess)
+            : accessEndsAtUtc.AddMonths(targetPlan.BillingPeriodMonths);
         string? planChangeChargeReference = null;
 
-        if (string.Equals(changeType, "upgrade", StringComparison.Ordinal))
+        if (chargeImmediately)
         {
-            chargedAmountZar = CalculateProratedUpgradeAmountZar(
-                currentSubscription,
-                current.Plan,
-                targetPlan,
-                nowUtc,
-                accessEndsAtUtc);
             if (chargedAmountZar >= 1m)
             {
                 planChangeChargeReference = BuildPlanChangeReference(currentSubscription.SubscriptionId, targetPlan.TierCode, accessEndsAtUtc);
@@ -291,7 +309,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             return new SubscriptionPlanChangeResult(false, targetPlan.Slug, changeType, accessEndsAtUtc, chargedAmountZar, planChangeAttempt.ErrorMessage ?? "Kon nie die planverandering veilig begin nie.");
         }
 
-        if (string.Equals(changeType, "upgrade", StringComparison.Ordinal))
+        if (chargeImmediately)
         {
             if (chargedAmountZar >= 1m &&
                 !IsPlanChangeChargeAlreadyAccepted(planChangeAttempt))
@@ -437,7 +455,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 targetPlan,
                 normalizedEmail,
                 currentSubscription.ProviderToken!,
-                accessEndsAtUtc,
+                chargeImmediately ? targetNextRenewalAtUtc : accessEndsAtUtc,
                 cancellationToken);
             if (!createResult.IsSuccess || string.IsNullOrWhiteSpace(createResult.SubscriptionCode))
             {
@@ -463,7 +481,6 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 newProviderEmailToken: newProviderEmailToken);
         }
 
-        var targetNextRenewalAtUtc = accessEndsAtUtc.AddMonths(targetPlan.BillingPeriodMonths);
         var targetSubscriptionId = await UpsertSubscriptionAsync(
             context.BaseUri,
             context.ApiKey,
@@ -474,7 +491,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             providerTransactionId: newProviderPaymentId,
             providerToken: currentSubscription.ProviderToken,
             providerEmailToken: newProviderEmailToken,
-            subscribedAtUtc: string.Equals(changeType, "upgrade", StringComparison.Ordinal) ? nowUtc : accessEndsAtUtc,
+            subscribedAtUtc: chargeImmediately ? nowUtc : accessEndsAtUtc,
             nextRenewalAtUtc: targetNextRenewalAtUtc,
             cancellationToken,
             billingAmountZar: targetPlan.Amount,
@@ -620,6 +637,20 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             return liveSubscriptionResult;
         }
 
+        var activeRecovery = await GetActivePaymentRecoveryAsync(
+            candidate.Context.BaseUri,
+            candidate.Context.ApiKey,
+            subscription.SubscriptionId,
+            cancellationToken);
+        if (!IsPaystackAuthorizationRetryDue(activeRecovery, nowUtc))
+        {
+            return new SubscriptionRepairResult(
+                false,
+                plan.Slug,
+                "Ons wag nog vir Paystack se mislukte-betaling kennisgewing en die 24-uur herstelvenster.",
+                IsPending: true);
+        }
+
         var reference = BuildAccountRepairReference(subscription.SubscriptionId);
         var chargeResult = await _paystackCheckoutService.ChargeAuthorizationAsync(
             plan,
@@ -627,7 +658,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             subscription.ProviderToken!,
             reference,
             subscription.SubscriptionId,
-            providerPaymentId,
+            activeRecovery?.ProviderPaymentId ?? providerPaymentId,
             subscription.BillingAmountZar!.Value,
             cancellationToken);
 
@@ -1728,6 +1759,11 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         DateTimeOffset nowUtc,
         CancellationToken cancellationToken)
     {
+        if (!IsPaystackAuthorizationRetryDue(recovery, nowUtc))
+        {
+            return;
+        }
+
         var subscriptionContext = await TryGetSubscriptionContextByIdAsync(
             baseUri,
             apiKey,
@@ -2309,6 +2345,21 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string.Equals(subscription.Provider, "paystack", StringComparison.OrdinalIgnoreCase) &&
         !string.IsNullOrWhiteSpace(subscription.ProviderToken) &&
         subscription.BillingAmountZar is > 0m;
+
+    private static bool IsPaystackAuthorizationRetryDue(PaymentRecoveryRow? recovery, DateTimeOffset nowUtc)
+    {
+        if (recovery is null ||
+            !string.Equals(recovery.Provider, "paystack", StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(recovery.AuthorizationRetryStatus, "pending", StringComparison.OrdinalIgnoreCase) ||
+            recovery.AuthorizationRetryDueAt is null ||
+            recovery.AuthorizationRetryDueAt.Value > nowUtc ||
+            recovery.FirstFailedAt is null)
+        {
+            return false;
+        }
+
+        return recovery.FirstFailedAt.Value <= nowUtc.Subtract(AuthorizationRetryDelay);
+    }
 
     private static string ResolveProviderPaymentIdForEvent(SelfServiceSubscriptionRow subscription)
     {
@@ -6161,42 +6212,29 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         return 0;
     }
 
-    private static decimal CalculateProratedUpgradeAmountZar(
-        SelfServiceSubscriptionRow currentSubscription,
+    private static bool ShouldChargePlanChangeImmediately(string? changeType) =>
+        string.Equals(changeType, "upgrade", StringComparison.Ordinal) ||
+        string.Equals(changeType, "billing-change", StringComparison.Ordinal);
+
+    private static TimeSpan CalculateCarriedForwardPlanChangeAccess(
         PaymentPlan currentPlan,
-        PaymentPlan targetPlan,
+        string? changeType,
         DateTimeOffset nowUtc,
         DateTimeOffset accessEndsAtUtc)
     {
-        if (accessEndsAtUtc <= nowUtc)
+        if (!ShouldChargePlanChangeImmediately(changeType) ||
+            accessEndsAtUtc <= nowUtc)
         {
-            return decimal.Round(targetPlan.Amount, 2, MidpointRounding.AwayFromZero);
+            return TimeSpan.Zero;
         }
 
-        var currentPeriodMonths = currentSubscription.BillingPeriodMonths is > 0
-            ? currentSubscription.BillingPeriodMonths.Value
-            : currentPlan.BillingPeriodMonths;
-        var currentPeriodStartUtc = accessEndsAtUtc.AddMonths(-currentPeriodMonths);
-        if (currentPeriodStartUtc >= nowUtc)
+        var remainingAccess = accessEndsAtUtc - nowUtc;
+        if (string.Equals(currentPlan.TierCode, "story_corner_monthly", StringComparison.OrdinalIgnoreCase))
         {
-            currentPeriodStartUtc = nowUtc.AddMonths(-currentPeriodMonths);
+            return TimeSpan.FromTicks(remainingAccess.Ticks / 2);
         }
 
-        var remainingSeconds = Math.Max(0d, (accessEndsAtUtc - nowUtc).TotalSeconds);
-        var currentPeriodSeconds = Math.Max(1d, (accessEndsAtUtc - currentPeriodStartUtc).TotalSeconds);
-        var currentRemainingFraction = Math.Min(1d, remainingSeconds / currentPeriodSeconds);
-        var currentAmount = currentSubscription.BillingAmountZar is > 0m
-            ? currentSubscription.BillingAmountZar.Value
-            : currentPlan.Amount;
-        var currentCredit = currentAmount * (decimal)currentRemainingFraction;
-
-        var targetPeriodSeconds = Math.Max(1d, (nowUtc.AddMonths(targetPlan.BillingPeriodMonths) - nowUtc).TotalSeconds);
-        var targetProratedAmount = targetPlan.Amount * (decimal)Math.Min(1d, remainingSeconds / targetPeriodSeconds);
-        var amountDue = targetProratedAmount - currentCredit;
-
-        return amountDue <= 0m
-            ? 0m
-            : decimal.Round(amountDue, 2, MidpointRounding.AwayFromZero);
+        return remainingAccess;
     }
 
     private static object DeserializePayloadObject(string payloadJson)

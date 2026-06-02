@@ -681,6 +681,7 @@
 
     private bool ShouldShowSubscriptionAttentionPopup =>
         SubscriptionAttention.RequiresAttention &&
+        SubscriptionAttention.CanAttemptAutomaticRetry &&
         !IsAdminRoute &&
         !IsSubscriptionActionRoute;
 

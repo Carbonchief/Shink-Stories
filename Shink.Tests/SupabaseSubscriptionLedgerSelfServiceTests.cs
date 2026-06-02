@@ -57,6 +57,74 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
         Assert.IsTrue(attention.RequiresAttention);
         Assert.AreEqual("missing_next_payment", attention.Reason);
         Assert.AreEqual("schink-stories-maandeliks", attention.PlanSlug);
+        Assert.IsFalse(
+            attention.CanAttemptAutomaticRetry,
+            "Automatic Paystack retry must wait until a failed-payment recovery row is due.");
+    }
+
+    [TestMethod]
+    public async Task GetPaidSubscriptionAttentionAsync_AllowsAutomaticRetryWhenPaystackRecoveryIsDue()
+    {
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      { "subscriber_id": "11111111-1111-1111-1111-111111111111", "disabled_at": null }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "provider_payment_id": "SUB_missingrenewal",
+                        "provider_token": "AUTH_retry",
+                        "next_renewal_at": null,
+                        "cancelled_at": null,
+                        "status": "active",
+                        "billing_amount_zar": 79.00
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "recovery_id": "recovery-one",
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "provider": "paystack",
+                        "provider_payment_id": "SUB_missingrenewal",
+                        "first_failed_at": "2000-01-01T00:00:00Z",
+                        "grace_ends_at": "2000-01-06T00:00:00Z",
+                        "authorization_retry_status": "pending",
+                        "authorization_retry_due_at": "2000-01-02T00:00:00Z"
+                      }
+                    ]
+                    """);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var attention = await service.GetPaidSubscriptionAttentionAsync("ouer@example.com");
+
+        Assert.IsTrue(attention.RequiresAttention);
+        Assert.AreEqual("missing_next_payment", attention.Reason);
         Assert.IsTrue(attention.CanAttemptAutomaticRetry);
     }
 
@@ -599,9 +667,10 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     }
 
     [TestMethod]
-    public async Task ChangePaidSubscriptionPlanAsync_UpgradeChargesProratedTopUpAndStartsNewTierImmediately()
+    public async Task ChangePaidSubscriptionPlanAsync_UpgradeFromStoryCornerChargesFullTargetPlanAndCarriesHalfRemainingDays()
     {
-        var nextRenewalAt = DateTimeOffset.UtcNow.AddDays(20);
+        var nowBeforeCall = DateTimeOffset.UtcNow;
+        var nextRenewalAt = nowBeforeCall.AddDays(20);
         var chargeAmountInCents = 0L;
         var handler = new RecordingHandler(request =>
         {
@@ -710,16 +779,11 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
 
         var result = await service.ChangePaidSubscriptionPlanAsync("ouer@example.com", "schink-stories-maandeliks");
 
+        var nowAfterCall = DateTimeOffset.UtcNow;
         Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
         Assert.AreEqual("upgrade", result.ChangeType);
         Assert.AreEqual("schink-stories-maandeliks", result.PlanSlug);
-        Assert.IsTrue(chargeAmountInCents > 0);
-        Assert.IsTrue(chargeAmountInCents < 7900, "Upgrade top-up must be prorated, not a full monthly charge.");
-        Assert.IsTrue(
-            handler.SubscriptionCreatePayloads.Any(payload =>
-                payload.Contains("\"plan\":\"PLN_allstories\"", StringComparison.Ordinal) &&
-                payload.Contains($"\"start_date\":\"{nextRenewalAt.UtcDateTime:O}\"", StringComparison.Ordinal)),
-            "The replacement Paystack subscription should start on the old renewal date.");
+        Assert.AreEqual(7900, chargeAmountInCents, "Story Corner upgrades must charge the full target monthly plan immediately.");
         Assert.IsTrue(
             handler.SubscriptionPatchPayloads.Any(payload =>
                 payload.Contains("\"status\":\"active\"", StringComparison.Ordinal) &&
@@ -728,6 +792,20 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
         Assert.IsTrue(
             handler.SubscriptionCreatePayloads.Any(payload => payload.Contains("\"provider_payment_id\":\"SUB_allstories\"", StringComparison.Ordinal)),
             "The upgraded tier should be active immediately in the local ledger.");
+        var newSubscriptionPayload = handler.SubscriptionCreatePayloads.Single(payload =>
+            payload.Contains("\"provider_payment_id\":\"SUB_allstories\"", StringComparison.Ordinal));
+        var newSubscription = JsonSerializer.Deserialize<JsonElement>(newSubscriptionPayload);
+        var targetNextRenewalAt = newSubscription.GetProperty("next_renewal_at").GetDateTimeOffset();
+        var minimumExpectedRenewal = nowBeforeCall.AddMonths(1).Add(TimeSpan.FromTicks((nextRenewalAt - nowAfterCall).Ticks / 2));
+        var maximumExpectedRenewal = nowAfterCall.AddMonths(1).Add(TimeSpan.FromTicks((nextRenewalAt - nowBeforeCall).Ticks / 2));
+        Assert.IsTrue(
+            targetNextRenewalAt >= minimumExpectedRenewal && targetNextRenewalAt <= maximumExpectedRenewal,
+            $"Expected All Stories monthly renewal to include half the remaining Story Corner time. Actual: {targetNextRenewalAt:O}");
+        Assert.IsTrue(
+            handler.SubscriptionCreatePayloads.Any(payload =>
+                payload.Contains("\"plan\":\"PLN_allstories\"", StringComparison.Ordinal) &&
+                payload.Contains($"\"start_date\":\"{targetNextRenewalAt.UtcDateTime:O}\"", StringComparison.Ordinal)),
+            "The replacement Paystack subscription should only renew after the paid monthly period plus carried Story Corner time.");
     }
 
     [TestMethod]
@@ -843,6 +921,139 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
 
         Assert.IsFalse(result.IsSuccess, "A plan change must fail before charging if the local attempt cannot be stored.");
         Assert.AreEqual(0, handler.PaystackChargePayloads.Count, "Paystack must not be charged before a durable plan-change attempt exists.");
+    }
+
+    [TestMethod]
+    public async Task ChangePaidSubscriptionPlanAsync_BillingChangeToYearlyChargesFullYearImmediatelyAndCarriesRemainingDays()
+    {
+        var nowBeforeCall = DateTimeOffset.UtcNow;
+        var nextRenewalAt = nowBeforeCall.AddDays(20);
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      { "subscriber_id": "11111111-1111-1111-1111-111111111111", "disabled_at": null }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "SUB_allstories_monthly",
+                        "provider_transaction_id": "TRX_allstories_monthly",
+                        "provider_token": "AUTH_billing_change",
+                        "provider_email_token": "email-token-old",
+                        "next_renewal_at": "{{nextRenewalAt:O}}",
+                        "cancelled_at": null,
+                        "status": "active",
+                        "billing_amount_zar": 79.00,
+                        "billing_period_months": 1
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/transaction/charge_authorization")
+            {
+                using var document = JsonDocument.Parse(request.Content!.ReadAsStringAsync().GetAwaiter().GetResult());
+                var root = document.RootElement;
+                Assert.AreEqual(79000, root.GetProperty("amount").GetInt64());
+                Assert.AreEqual("subscription_plan_change", root.GetProperty("metadata").GetProperty("source").GetString());
+                Assert.AreEqual("billing-change", root.GetProperty("metadata").GetProperty("change_type").GetString());
+
+                return JsonResponse(
+                    """
+                    {
+                      "status": true,
+                      "data": {
+                        "id": 7000000004,
+                        "status": "success",
+                        "reference": "plan-change-yearly",
+                        "paid_at": "2026-05-31T10:00:00Z"
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/subscription")
+            {
+                return JsonResponse(
+                    """
+                    {
+                      "status": true,
+                      "data": {
+                        "subscription_code": "SUB_allstories_yearly",
+                        "email_token": "email-token-new",
+                        "status": "active",
+                        "next_payment_date": "2027-06-20T10:00:00.000Z"
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/subscription/disable")
+            {
+                return JsonResponse("""{ "status": true, "message": "Subscription disabled successfully" }""");
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                return JsonResponse("""[{ "subscription_id": "22222222-2222-2222-2222-222222222222" }]""");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                return JsonResponse("""[{ "subscription_id": "33333333-3333-3333-3333-333333333333" }]""");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.ChangePaidSubscriptionPlanAsync("ouer@example.com", "schink-stories-jaarliks");
+
+        var nowAfterCall = DateTimeOffset.UtcNow;
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.AreEqual("billing-change", result.ChangeType);
+        Assert.AreEqual(790m, result.ChargedAmountZar);
+        Assert.AreEqual(1, handler.PaystackChargePayloads.Count);
+        var newSubscriptionPayload = handler.SubscriptionCreatePayloads.Single(payload =>
+            payload.Contains("\"provider_payment_id\":\"SUB_allstories_yearly\"", StringComparison.Ordinal));
+        var newSubscription = JsonSerializer.Deserialize<JsonElement>(newSubscriptionPayload);
+        var targetNextRenewalAt = newSubscription.GetProperty("next_renewal_at").GetDateTimeOffset();
+        var minimumExpectedRenewal = nowBeforeCall.AddMonths(12).Add(nextRenewalAt - nowAfterCall);
+        var maximumExpectedRenewal = nowAfterCall.AddMonths(12).Add(nextRenewalAt - nowBeforeCall);
+        Assert.IsTrue(
+            targetNextRenewalAt >= minimumExpectedRenewal && targetNextRenewalAt <= maximumExpectedRenewal,
+            $"Expected yearly renewal to include remaining monthly time. Actual: {targetNextRenewalAt:O}");
+        Assert.IsTrue(
+            handler.SubscriptionCreatePayloads.Any(payload =>
+                payload.Contains("\"plan\":\"PLN_allstories_yearly\"", StringComparison.Ordinal) &&
+                payload.Contains($"\"start_date\":\"{targetNextRenewalAt.UtcDateTime:O}\"", StringComparison.Ordinal)),
+            "The replacement Paystack subscription should only renew after the paid yearly period plus carried time.");
     }
 
     [TestMethod]
@@ -1067,6 +1278,13 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                 payload.Contains("\"plan\":\"PLN_storycorner\"", StringComparison.Ordinal) &&
                 payload.Contains($"\"start_date\":\"{nextRenewalAt.UtcDateTime:O}\"", StringComparison.Ordinal)),
             "The lower Paystack subscription should only start when the higher tier would have renewed.");
+        var newSubscriptionPayload = handler.SubscriptionCreatePayloads.Single(payload =>
+            payload.Contains("\"provider_payment_id\":\"SUB_storycorner\"", StringComparison.Ordinal));
+        var newSubscription = JsonSerializer.Deserialize<JsonElement>(newSubscriptionPayload);
+        Assert.AreEqual(
+            nextRenewalAt.AddMonths(1),
+            newSubscription.GetProperty("next_renewal_at").GetDateTimeOffset(),
+            "Deferred downgrades should renew one target billing period after the old access end.");
         Assert.IsTrue(
             handler.SubscriptionPatchPayloads.Any(payload =>
                 SubscriptionPatchHasCancelledAt(payload, nextRenewalAt)),
@@ -1153,6 +1371,25 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
             if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
             {
                 return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "recovery_id": "recovery-one",
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "provider": "paystack",
+                        "provider_payment_id": "wp-pmpro-current-2681",
+                        "first_failed_at": "2000-01-01T00:00:00Z",
+                        "grace_ends_at": "2000-01-06T00:00:00Z",
+                        "authorization_retry_status": "pending",
+                        "authorization_retry_due_at": "2000-01-02T00:00:00Z"
+                      }
+                    ]
+                    """);
             }
 
             if (request.Method == HttpMethod.Post &&
@@ -1244,6 +1481,25 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                 return JsonResponse("[]");
             }
 
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "recovery_id": "recovery-one",
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "provider": "paystack",
+                        "provider_payment_id": "SUB_legacy_monthly",
+                        "first_failed_at": "2000-01-01T00:00:00Z",
+                        "grace_ends_at": "2000-01-06T00:00:00Z",
+                        "authorization_retry_status": "pending",
+                        "authorization_retry_due_at": "2000-01-02T00:00:00Z"
+                      }
+                    ]
+                    """);
+            }
+
             if (request.Method == HttpMethod.Post &&
                 request.RequestUri?.AbsolutePath == "/transaction/charge_authorization")
             {
@@ -1327,6 +1583,25 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
             if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
             {
                 return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "recovery_id": "recovery-one",
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "provider": "paystack",
+                        "provider_payment_id": "wp-pmpro-current-2681",
+                        "first_failed_at": "2000-01-01T00:00:00Z",
+                        "grace_ends_at": "2000-01-06T00:00:00Z",
+                        "authorization_retry_status": "pending",
+                        "authorization_retry_due_at": "2000-01-02T00:00:00Z"
+                      }
+                    ]
+                    """);
             }
 
             if (request.Method == HttpMethod.Post &&
@@ -1718,6 +1993,25 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                 return JsonResponse("[]");
             }
 
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "recovery_id": "recovery-one",
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "provider": "paystack",
+                        "provider_payment_id": "SUB_lookup_unavailable",
+                        "first_failed_at": "2000-01-01T00:00:00Z",
+                        "grace_ends_at": "2000-01-06T00:00:00Z",
+                        "authorization_retry_status": "pending",
+                        "authorization_retry_due_at": "2000-01-02T00:00:00Z"
+                      }
+                    ]
+                    """);
+            }
+
             if (IsSupabaseGet(request, "/rest/v1/paystack_checkout_sessions"))
             {
                 return JsonResponse("[]");
@@ -1766,6 +2060,97 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     }
 
     [TestMethod]
+    public async Task TryRepairPaidSubscriptionAsync_DoesNotChargeBeforePaystackFailureRecoveryIsDue()
+    {
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                        "email": "ouer@example.com",
+                        "disabled_at": null
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "SUB_not_failed_yet",
+                        "provider_transaction_id": null,
+                        "provider_token": "AUTH_retry",
+                        "next_renewal_at": null,
+                        "cancelled_at": null,
+                        "status": "active",
+                        "billing_amount_zar": 55.00
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/paystack_checkout_sessions"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == "/subscription/SUB_not_failed_yet")
+            {
+                return JsonResponse(
+                    """
+                    {
+                      "status": true,
+                      "data": {
+                        "subscription_code": "SUB_not_failed_yet",
+                        "status": "active",
+                        "next_payment_date": "2000-01-01T00:00:00Z"
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/transaction/charge_authorization")
+            {
+                Assert.Fail("Account repair must not charge until Paystack has notified a failed payment and the one-day retry delay has elapsed.");
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.TryRepairPaidSubscriptionAsync("ouer@example.com");
+
+        Assert.IsFalse(result.IsRecovered);
+        Assert.IsTrue(result.IsPending);
+        Assert.AreEqual("schink-stories-maandeliks", result.PlanSlug);
+        Assert.AreEqual(0, handler.PaystackChargePayloads.Count);
+    }
+
+    [TestMethod]
     public async Task TryRepairPaidSubscriptionAsync_RecoversAfterSuccessfulChargeWhenRenewalLookupFails()
     {
         var handler = new RecordingHandler(request =>
@@ -1809,6 +2194,25 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
             if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
             {
                 return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "recovery_id": "recovery-one",
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "provider": "paystack",
+                        "provider_payment_id": "SUB_lookup_unavailable",
+                        "first_failed_at": "2000-01-01T00:00:00Z",
+                        "grace_ends_at": "2000-01-06T00:00:00Z",
+                        "authorization_retry_status": "pending",
+                        "authorization_retry_due_at": "2000-01-02T00:00:00Z"
+                      }
+                    ]
+                    """);
             }
 
             if (IsSupabaseGet(request, "/rest/v1/paystack_checkout_sessions"))

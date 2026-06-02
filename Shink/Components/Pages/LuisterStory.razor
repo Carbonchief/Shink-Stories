@@ -334,7 +334,7 @@ else
                         class="story-test-open-btn"
                         @onclick="OpenStoryTestModal">
                     <i class="fa-solid fa-clipboard-question" aria-hidden="true"></i>
-                    <span>Doen die toets</span>
+                    <span>Storie vragies</span>
                 </button>
             }
         </section>
@@ -398,6 +398,8 @@ else
 
 @if (ShowStoryTestModal && CurrentStory is not null && HasStoryTestQuestions(CurrentStory))
 {
+    var storyTestHeroCharacter = ResolveStoryTestHeroCharacter(CurrentStory);
+    var showStoryTestSummary = IsStoryTestSubmitted && !ShowStoryTestDetails;
     <div class="story-test-modal-backdrop" role="presentation" @onclick="CloseStoryTestModal">
         <section class="story-test-modal"
                  role="dialog"
@@ -418,66 +420,103 @@ else
                 </button>
             </header>
 
-            <div class="story-test-question-list">
-                @for (var index = 0; index < CurrentStory.TestQuestions!.Count; index++)
-                {
-                    var questionIndex = index;
-                    var question = CurrentStory.TestQuestions[index];
-                    var selectedOption = GetSelectedStoryTestOption(questionIndex);
-                    <article class="story-test-question">
-                        <p class="story-test-question-count">Vraag @(questionIndex + 1)</p>
-                        <h3>@question.Question</h3>
-                        <div class="story-test-options" role="group" aria-label="@($"Antwoorde vir vraag {questionIndex + 1}")">
-                            <button type="button"
-                                    class='@BuildStoryTestOptionClass(question, selectedOption, "A", IsStoryTestSubmitted)'
-                                    @onclick='@(() => SelectStoryTestOption(questionIndex, "A"))'
-                                    aria-pressed='@(selectedOption == "A")'>
-                                <span class="story-test-option-letter">A</span>
-                                <span>@question.OptionA</span>
-                            </button>
-                            <button type="button"
-                                    class='@BuildStoryTestOptionClass(question, selectedOption, "B", IsStoryTestSubmitted)'
-                                    @onclick='@(() => SelectStoryTestOption(questionIndex, "B"))'
-                                    aria-pressed='@(selectedOption == "B")'>
-                                <span class="story-test-option-letter">B</span>
-                                <span>@question.OptionB</span>
-                            </button>
-                            @if (HasStoryTestOptionC(question))
-                            {
-                                <button type="button"
-                                        class='@BuildStoryTestOptionClass(question, selectedOption, "C", IsStoryTestSubmitted)'
-                                        @onclick='@(() => SelectStoryTestOption(questionIndex, "C"))'
-                                        aria-pressed='@(selectedOption == "C")'>
-                                    <span class="story-test-option-letter">C</span>
-                                    <span>@question.OptionC</span>
-                                </button>
-                            }
-                        </div>
-                        @if (IsStoryTestSubmitted && !string.IsNullOrWhiteSpace(selectedOption))
-                        {
-                            <p class="story-test-result @(IsStoryTestAnswerCorrect(question, selectedOption) ? "is-correct" : "is-incorrect")">
-                                @(IsStoryTestAnswerCorrect(question, selectedOption) ? "Mooi so!" : "Goeie poging! Kyk, die regte antwoord is gemerk.")
-                            </p>
-                        }
-                    </article>
-                }
-            </div>
-            @if (IsStoryTestReadyToCheck(CurrentStory))
+            @if (showStoryTestSummary)
             {
-                <div class="story-test-actions">
-                    @if (IsStoryTestSubmitted)
+                <div class="story-test-success" role="status">
+                    @if (storyTestHeroCharacter is not null)
                     {
-                        <p class="story-test-score" role="status">@BuildStoryTestScoreText(CurrentStory)</p>
+                        <div class="story-test-hero story-test-hero-success" aria-label="@($"Hoofkarakter: {storyTestHeroCharacter.DisplayName}")">
+                            <img class="story-test-hero-image"
+                                 src="@storyTestHeroCharacter.ImagePath"
+                                 alt="@storyTestHeroCharacter.ImageAlt"
+                                 loading="lazy"
+                                 decoding="async" />
+                        </div>
                     }
-                    else
+                    <div class="story-test-speech-bubble">
+                        <p>@BuildStoryTestScoreText(CurrentStory)</p>
+                    </div>
+                    <button type="button"
+                            class="story-test-check-btn story-test-detail-btn"
+                            @onclick="ShowStoryTestDetailedResults">
+                        Wys antwoorde
+                    </button>
+                </div>
+            }
+            else
+            {
+                @if (storyTestHeroCharacter is not null)
+                {
+                    <div class="story-test-hero" aria-label="@($"Hoofkarakter: {storyTestHeroCharacter.DisplayName}")">
+                        <img class="story-test-hero-image"
+                             src="@storyTestHeroCharacter.ImagePath"
+                             alt="@storyTestHeroCharacter.ImageAlt"
+                             loading="lazy"
+                             decoding="async" />
+                    </div>
+                }
+
+                <div class="story-test-question-list">
+                    @for (var index = 0; index < CurrentStory.TestQuestions!.Count; index++)
                     {
-                        <button type="button"
-                                class="story-test-check-btn"
-                                @onclick="CheckStoryTestAnswers">
-                            Kontroleer antwoorde
-                        </button>
+                        var questionIndex = index;
+                        var question = CurrentStory.TestQuestions[index];
+                        var selectedOption = GetSelectedStoryTestOption(questionIndex);
+                        <article class="story-test-question">
+                            <p class="story-test-question-count">Vraag @(questionIndex + 1)</p>
+                            <h3>@question.Question</h3>
+                            <div class="story-test-options" role="group" aria-label="@($"Antwoorde vir vraag {questionIndex + 1}")">
+                                <button type="button"
+                                        class='@BuildStoryTestOptionClass(question, selectedOption, "A", IsStoryTestSubmitted)'
+                                        @onclick='@(() => SelectStoryTestOption(questionIndex, "A"))'
+                                        aria-pressed='@(selectedOption == "A")'>
+                                    <span class="story-test-option-letter">A</span>
+                                    <span>@question.OptionA</span>
+                                </button>
+                                <button type="button"
+                                        class='@BuildStoryTestOptionClass(question, selectedOption, "B", IsStoryTestSubmitted)'
+                                        @onclick='@(() => SelectStoryTestOption(questionIndex, "B"))'
+                                        aria-pressed='@(selectedOption == "B")'>
+                                    <span class="story-test-option-letter">B</span>
+                                    <span>@question.OptionB</span>
+                                </button>
+                                @if (HasStoryTestOptionC(question))
+                                {
+                                    <button type="button"
+                                            class='@BuildStoryTestOptionClass(question, selectedOption, "C", IsStoryTestSubmitted)'
+                                            @onclick='@(() => SelectStoryTestOption(questionIndex, "C"))'
+                                            aria-pressed='@(selectedOption == "C")'>
+                                        <span class="story-test-option-letter">C</span>
+                                        <span>@question.OptionC</span>
+                                    </button>
+                                }
+                            </div>
+                            @if (IsStoryTestSubmitted && !string.IsNullOrWhiteSpace(selectedOption))
+                            {
+                                <p class="story-test-result @(IsStoryTestAnswerCorrect(question, selectedOption) ? "is-correct" : "is-incorrect")">
+                                    @(IsStoryTestAnswerCorrect(question, selectedOption) ? "Mooi so!" : "Goeie poging! Kyk, die regte antwoord is gemerk.")
+                                </p>
+                            }
+                        </article>
                     }
                 </div>
+                @if (IsStoryTestReadyToCheck(CurrentStory))
+                {
+                    <div class="story-test-actions">
+                        @if (IsStoryTestSubmitted)
+                        {
+                            <p class="story-test-score" role="status">@BuildStoryTestScoreText(CurrentStory)</p>
+                        }
+                        else
+                        {
+                            <button type="button"
+                                    class="story-test-check-btn"
+                                    @onclick="CheckStoryTestAnswers">
+                                Kontroleer antwoorde
+                            </button>
+                        }
+                    </div>
+                }
             }
         </section>
     </div>
@@ -521,6 +560,7 @@ else
     private bool ShowStoryAccessPopup { get; set; }
     private bool ShowStoryTestModal { get; set; }
     private bool IsStoryTestSubmitted { get; set; }
+    private bool ShowStoryTestDetails { get; set; }
     private string PendingLockedStoryPath { get; set; } = "/luister";
     private Dictionary<int, string> SelectedStoryTestOptions { get; } = new();
 
@@ -610,6 +650,7 @@ else
         ShowStoryAccessPopup = false;
         ShowStoryTestModal = false;
         IsStoryTestSubmitted = false;
+        ShowStoryTestDetails = false;
         SelectedStoryTestOptions.Clear();
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         SignedInEmail = authState.User.Identity?.IsAuthenticated == true
@@ -789,6 +830,7 @@ else
     {
         SelectedStoryTestOptions.Clear();
         IsStoryTestSubmitted = false;
+        ShowStoryTestDetails = false;
         ShowStoryTestModal = true;
         await SetStoryTestModalScrollLockAsync(true);
     }
@@ -797,6 +839,7 @@ else
     {
         ShowStoryTestModal = false;
         IsStoryTestSubmitted = false;
+        ShowStoryTestDetails = false;
         await SetStoryTestModalScrollLockAsync(false);
     }
 
@@ -845,6 +888,7 @@ else
     {
         SelectedStoryTestOptions[questionIndex] = option;
         IsStoryTestSubmitted = false;
+        ShowStoryTestDetails = false;
     }
 
     private string? GetSelectedStoryTestOption(int questionIndex) =>
@@ -853,6 +897,12 @@ else
     private void CheckStoryTestAnswers()
     {
         IsStoryTestSubmitted = true;
+        ShowStoryTestDetails = false;
+    }
+
+    private void ShowStoryTestDetailedResults()
+    {
+        ShowStoryTestDetails = true;
     }
 
     private bool IsStoryTestReadyToCheck(StoryItem? story) =>
@@ -1383,10 +1433,7 @@ else
     private StoryCharacterTile ResolveStoryCharacterTile(string characterName)
     {
         var displayName = characterName.Trim();
-        var normalizedName = NormalizeCharacterToken(displayName);
-        var matchedCharacter = PublishedCharacters.FirstOrDefault(character =>
-            string.Equals(NormalizeCharacterToken(character.DisplayName), normalizedName, StringComparison.Ordinal) ||
-            string.Equals(NormalizeCharacterToken(character.Slug.Replace("-", " ")), normalizedName, StringComparison.Ordinal));
+        var matchedCharacter = FindPublishedCharacter(displayName);
 
         if (matchedCharacter is null)
         {
@@ -1409,6 +1456,38 @@ else
                 ? $"/karakters?karakter={Uri.EscapeDataString(matchedCharacter.Slug)}"
                 : null,
             string.IsNullOrWhiteSpace(resolvedImagePath));
+    }
+
+    private StoryCharacterTile? ResolveStoryTestHeroCharacter(StoryItem? story)
+    {
+        var firstCharacterName = story?.Characters?
+            .FirstOrDefault(name => !string.IsNullOrWhiteSpace(name));
+
+        if (string.IsNullOrWhiteSpace(firstCharacterName))
+        {
+            return null;
+        }
+
+        var matchedCharacter = FindPublishedCharacter(firstCharacterName);
+        if (matchedCharacter is null || string.IsNullOrWhiteSpace(matchedCharacter.ImagePath))
+        {
+            return null;
+        }
+
+        return new StoryCharacterTile(
+            matchedCharacter.DisplayName,
+            ResolveCharacterImagePath(matchedCharacter.ImagePath, matchedCharacter.UpdatedAt),
+            $"Illustrasie van {matchedCharacter.DisplayName}",
+            null,
+            false);
+    }
+
+    private StoryCharacterItem? FindPublishedCharacter(string characterName)
+    {
+        var normalizedName = NormalizeCharacterToken(characterName);
+        return PublishedCharacters.FirstOrDefault(character =>
+            string.Equals(NormalizeCharacterToken(character.DisplayName), normalizedName, StringComparison.Ordinal) ||
+            string.Equals(NormalizeCharacterToken(character.Slug.Replace("-", " ")), normalizedName, StringComparison.Ordinal));
     }
 
     private static string NormalizeCharacterToken(string value)

@@ -41,6 +41,38 @@ public class AdminResourceEditSourceTests
             "Editing an existing resource must not create published resource notifications.");
     }
 
+    [TestMethod]
+    public void AdminResourceDocumentActionsUseAlignedCircularIconButtons()
+    {
+        var panelMarkup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "AdminResourceTypesPanel.razor"));
+        var panelCss = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "AdminResourceTypesPanel.razor.css"));
+
+        StringAssert.Contains(panelMarkup, "resource-types-admin-document-button-row");
+        StringAssert.Contains(panelCss, ".resource-types-admin-document-button-row");
+        StringAssert.Contains(panelCss, "display: inline-flex;");
+        StringAssert.Contains(panelCss, "align-items: center;");
+        StringAssert.Contains(panelCss, "height: 44px;");
+        StringAssert.Contains(panelCss, "max-width: 44px;");
+        StringAssert.Contains(panelCss, "aspect-ratio: 1;");
+        StringAssert.Contains(panelCss, "border-radius: 999px;");
+    }
+
+    [TestMethod]
+    public void AdminResourceTypeDetailsAreCollapsibleAboveDocuments()
+    {
+        var panelMarkup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "AdminResourceTypesPanel.razor"));
+        var panelCss = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "AdminResourceTypesPanel.razor.css"));
+
+        StringAssert.Contains(panelMarkup, "<details class=\"resource-types-admin-type-disclosure resource-types-admin-card-full\" open>");
+        StringAssert.Contains(panelMarkup, "<summary class=\"resource-types-admin-type-summary\">");
+        StringAssert.Contains(panelMarkup, "@T(\"Tipe besonderhede\", \"Type details\")");
+        Assert.IsTrue(
+            panelMarkup.IndexOf("resource-types-admin-type-disclosure", StringComparison.Ordinal) <
+            panelMarkup.IndexOf("resource-types-admin-document-search", StringComparison.Ordinal));
+        StringAssert.Contains(panelCss, ".resource-types-admin-type-disclosure[open] .resource-types-admin-type-summary-caret");
+        StringAssert.Contains(panelCss, ".resource-types-admin-type-disclosure-body");
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var parts = new[]

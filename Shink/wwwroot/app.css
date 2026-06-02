@@ -1066,6 +1066,23 @@ body.schink-night-mode .luister-page-shell .luister-playlist-link {
     border-bottom: 1px solid #304457 !important;
 }
 
+.mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button,
+.mud-dialog.admin-solid-dialog .mud-dialog-title button.mud-icon-button {
+    position: relative;
+    z-index: 2;
+    pointer-events: auto;
+    color: #eaf1f8 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+.mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button .mud-icon-root,
+.mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button svg,
+.mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button svg path {
+    color: #eaf1f8 !important;
+    fill: currentColor !important;
+}
+
 .mud-dialog.admin-solid-dialog .mud-dialog-actions {
     border-top: 1px solid #304457 !important;
 }

@@ -61,7 +61,7 @@ else if (CurrentPlaylistStories.Count == 0)
 }
 else
 {
-    <section class="playlist-showcase-page">
+    <section class="playlist-showcase-page" style="@BuildShowcasePageStyle(CurrentPlaylist)">
         <header class="playlist-showcase-splash">
             <img class="@BackdropImageClass"
                  src="@BackdropImagePath"
@@ -292,6 +292,15 @@ else
     private string? LogoImagePath =>
         ResolveLogoImagePath();
 
+    private string? BuildShowcasePageStyle(StoryPlaylist? playlist)
+    {
+        var accentColorHex = NormalizePlaylistAccentColorHex(playlist?.AccentColorHex);
+        var accentColorEndHex = NormalizePlaylistAccentColorHex(playlist?.AccentColorEndHex) ?? accentColorHex;
+        return string.IsNullOrWhiteSpace(accentColorHex) || string.IsNullOrWhiteSpace(accentColorEndHex)
+            ? null
+            : $"--playlist-showcase-background-start: {accentColorHex}; --playlist-showcase-background-end: {accentColorEndHex};";
+    }
+
     private string LogoImageAlt =>
         CurrentPlaylist is null
             ? "Schink Stories logo"
@@ -423,6 +432,35 @@ else
             $"/luister/speellys/{Uri.EscapeDataString(playlistSlug.Trim())}",
             "playlistView",
             "showcase");
+
+    private static string? NormalizePlaylistAccentColorHex(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var normalized = value.Trim();
+        if (normalized.Length == 6)
+        {
+            normalized = $"#{normalized}";
+        }
+
+        if (normalized.Length != 7 || normalized[0] != '#')
+        {
+            return null;
+        }
+
+        for (var index = 1; index < normalized.Length; index++)
+        {
+            if (!Uri.IsHexDigit(normalized[index]))
+            {
+                return null;
+            }
+        }
+
+        return normalized.ToUpperInvariant();
+    }
 
     private async Task LoadShowcaseFallbackAssetsAsync()
     {

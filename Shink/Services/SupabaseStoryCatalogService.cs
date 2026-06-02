@@ -329,12 +329,15 @@ public sealed class SupabaseStoryCatalogService(
         }
     }
 
-    private async Task<IReadOnlyList<StoryPlaylistRow>> FetchStoryPlaylistRowsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<StoryPlaylistRow>> FetchStoryPlaylistRowsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken, bool includeGradientEndColor = true)
     {
+        var playlistColumns = includeGradientEndColor
+            ? "playlist_id,slug,title,playlist_type,system_key,description,sort_order,max_items,is_enabled,show_on_home,include_in_speellyste_carousel,show_showcase_image_on_luister_page,logo_image_path,backdrop_image_path,showcase_image_path,accent_color_hex,accent_color_end_hex"
+            : "playlist_id,slug,title,playlist_type,system_key,description,sort_order,max_items,is_enabled,show_on_home,include_in_speellyste_carousel,show_showcase_image_on_luister_page,logo_image_path,backdrop_image_path,showcase_image_path,accent_color_hex";
         var requestUri = new Uri(
             baseUri,
             "rest/v1/story_playlists" +
-            "?select=playlist_id,slug,title,playlist_type,system_key,description,sort_order,max_items,is_enabled,show_on_home,include_in_speellyste_carousel,show_showcase_image_on_luister_page,logo_image_path,backdrop_image_path,showcase_image_path,accent_color_hex" +
+            $"?select={playlistColumns}" +
             "&is_enabled=eq.true" +
             "&order=sort_order.asc" +
             "&order=title.asc");
@@ -355,6 +358,13 @@ public sealed class SupabaseStoryCatalogService(
             if (!response.IsSuccessStatusCode)
             {
                 var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                if (includeGradientEndColor &&
+                    body.Contains("accent_color_end_hex", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogInformation("Supabase playlist gradient color lookup skipped: column accent_color_end_hex is not available yet.");
+                    return await FetchStoryPlaylistRowsAsync(baseUri, apiKey, cancellationToken, includeGradientEndColor: false);
+                }
+
                 _logger.LogWarning(
                     "Supabase playlists lookup failed. Status={StatusCode} Body={Body}",
                     (int)response.StatusCode,
@@ -476,6 +486,7 @@ public sealed class SupabaseStoryCatalogService(
             BackdropImagePath: NormalizeOptionalText(favouritesConfig.BackdropImagePath),
             ShowcaseImagePath: NormalizeOptionalText(favouritesConfig.ShowcaseImagePath),
             AccentColorHex: NormalizePlaylistAccentColorHex(favouritesConfig.AccentColorHex),
+            AccentColorEndHex: NormalizePlaylistAccentColorHex(favouritesConfig.AccentColorEndHex),
             IncludeInSpeellysteCarousel: favouritesConfig.IncludeInSpeellysteCarousel,
             IsSystemPlaylist: true,
             SystemKey: NormalizeSystemKey(favouritesConfig.SystemKey),
@@ -1105,6 +1116,7 @@ public sealed class SupabaseStoryCatalogService(
                 BackdropImagePath: NormalizeOptionalText(playlistRow.BackdropImagePath),
                 ShowcaseImagePath: NormalizeOptionalText(playlistRow.ShowcaseImagePath),
                 AccentColorHex: NormalizePlaylistAccentColorHex(playlistRow.AccentColorHex),
+                AccentColorEndHex: NormalizePlaylistAccentColorHex(playlistRow.AccentColorEndHex),
                 IncludeInSpeellysteCarousel: playlistRow.IncludeInSpeellysteCarousel,
                 IsSystemPlaylist: playlistRow.IsSystemPlaylist,
                 SystemKey: NormalizeSystemKey(playlistRow.SystemKey),
@@ -1138,6 +1150,7 @@ public sealed class SupabaseStoryCatalogService(
                 BackdropImagePath: NormalizeOptionalText(allStoriesConfig?.BackdropImagePath),
                 ShowcaseImagePath: NormalizeOptionalText(allStoriesConfig?.ShowcaseImagePath),
                 AccentColorHex: NormalizePlaylistAccentColorHex(allStoriesConfig?.AccentColorHex),
+                AccentColorEndHex: NormalizePlaylistAccentColorHex(allStoriesConfig?.AccentColorEndHex),
                 IncludeInSpeellysteCarousel: allStoriesConfig?.IncludeInSpeellysteCarousel ?? false,
                 IsSystemPlaylist: allStoriesConfig?.IsSystemPlaylist ?? false,
                 SystemKey: NormalizeSystemKey(allStoriesConfig?.SystemKey),
@@ -1163,6 +1176,7 @@ public sealed class SupabaseStoryCatalogService(
             BackdropImagePath: NormalizeOptionalText(playlistRow.BackdropImagePath),
             ShowcaseImagePath: NormalizeOptionalText(playlistRow.ShowcaseImagePath),
             AccentColorHex: NormalizePlaylistAccentColorHex(playlistRow.AccentColorHex),
+            AccentColorEndHex: NormalizePlaylistAccentColorHex(playlistRow.AccentColorEndHex),
             IncludeInSpeellysteCarousel: false,
             IsSystemPlaylist: true,
             SystemKey: SpeellysteSystemKey,
@@ -1655,6 +1669,9 @@ public sealed class SupabaseStoryCatalogService(
 
         [JsonPropertyName("accent_color_hex")]
         public string? AccentColorHex { get; set; }
+
+        [JsonPropertyName("accent_color_end_hex")]
+        public string? AccentColorEndHex { get; set; }
 
         [JsonIgnore]
         public bool IsSystemPlaylist =>

@@ -93,6 +93,7 @@
     display: grid;
     place-items: center;
     background: color-mix(in srgb, #05090d 68%, transparent);
+    pointer-events: none;
 }
 
 .admin-modal-loading-card {
@@ -765,6 +766,35 @@
 .admin-grid ::deep .mud-table-pagination button:disabled {
     color: var(--admin-pager-disabled) !important;
     opacity: 1 !important;
+}
+
+.admin-grid ::deep .mud-table-pagination .mud-icon-button,
+.admin-grid ::deep .mud-table-pagination button.mud-icon-button {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    min-height: 36px;
+    border: 0 !important;
+    border-radius: 8px;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+.admin-grid ::deep .mud-table-pagination .mud-icon-button .mud-icon-root,
+.admin-grid ::deep .mud-table-pagination .mud-icon-button svg,
+.admin-grid ::deep .mud-table-pagination .mud-icon-button svg path {
+    color: var(--admin-pager-text) !important;
+    fill: currentColor !important;
+}
+
+.admin-grid ::deep .mud-table-pagination .mud-icon-button.mud-disabled .mud-icon-root,
+.admin-grid ::deep .mud-table-pagination .mud-icon-button.mud-disabled svg,
+.admin-grid ::deep .mud-table-pagination .mud-icon-button.mud-disabled svg path,
+.admin-grid ::deep .mud-table-pagination button.mud-icon-button:disabled .mud-icon-root,
+.admin-grid ::deep .mud-table-pagination button.mud-icon-button:disabled svg,
+.admin-grid ::deep .mud-table-pagination button.mud-icon-button:disabled svg path {
+    color: var(--admin-pager-disabled) !important;
+    fill: currentColor !important;
 }
 
 .admin-grid ::deep .mud-table-head .mud-table-cell {
@@ -2011,6 +2041,37 @@
     display: block;
 }
 
+.admin-revenue-range-controls {
+    display: grid;
+    gap: 0.45rem;
+    min-width: min(100%, 420px);
+}
+
+.admin-revenue-custom-range {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+}
+
+.admin-revenue-selected-summary {
+    display: grid;
+    grid-template-columns: minmax(180px, 0.6fr) minmax(220px, 1fr);
+    align-items: center;
+    gap: 0.75rem 1rem;
+}
+
+.admin-revenue-mrr-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.admin-revenue-mrr-card {
+    display: grid;
+    align-content: start;
+    min-height: 150px;
+}
+
 .admin-analytics-label {
     margin: 0;
     color: var(--admin-muted);
@@ -2391,6 +2452,35 @@
     opacity: 1 !important;
 }
 
+.admin-page ::deep .mud-table-pagination .mud-icon-button,
+.admin-page ::deep .mud-table-pagination button.mud-icon-button {
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    min-height: 36px;
+    border: 0 !important;
+    border-radius: 8px;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+.admin-page ::deep .mud-table-pagination .mud-icon-button .mud-icon-root,
+.admin-page ::deep .mud-table-pagination .mud-icon-button svg,
+.admin-page ::deep .mud-table-pagination .mud-icon-button svg path {
+    color: var(--admin-pager-text) !important;
+    fill: currentColor !important;
+}
+
+.admin-page ::deep .mud-table-pagination .mud-icon-button.mud-disabled .mud-icon-root,
+.admin-page ::deep .mud-table-pagination .mud-icon-button.mud-disabled svg,
+.admin-page ::deep .mud-table-pagination .mud-icon-button.mud-disabled svg path,
+.admin-page ::deep .mud-table-pagination button.mud-icon-button:disabled .mud-icon-root,
+.admin-page ::deep .mud-table-pagination button.mud-icon-button:disabled svg,
+.admin-page ::deep .mud-table-pagination button.mud-icon-button:disabled svg path {
+    color: var(--admin-pager-disabled) !important;
+    fill: currentColor !important;
+}
+
 .admin-page ::deep .mud-input-outlined-border,
 .admin-page ::deep .mud-input-outlined {
     border-color: var(--admin-input-border) !important;
@@ -2621,6 +2711,12 @@
     .admin-subscriber-analytics-cards .admin-revenue-drilldown-card {
         grid-template-columns: 1fr;
         align-items: start;
+    }
+
+    .admin-revenue-custom-range,
+    .admin-revenue-mrr-grid,
+    .admin-revenue-selected-summary {
+        grid-template-columns: 1fr;
     }
 
     .admin-subscriber-kpi-secondary {

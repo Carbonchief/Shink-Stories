@@ -1,9 +1,12 @@
 .playlist-showcase-page {
+    --playlist-showcase-background-start: #ffffff;
+    --playlist-showcase-background-end: #ffffff;
     width: 100%;
+    min-height: 100dvh;
     display: grid;
     gap: 1.25rem;
     box-sizing: border-box;
-    background: #ffffff;
+    background: linear-gradient(180deg, var(--playlist-showcase-background-start) 0%, var(--playlist-showcase-background-end) 100%);
 }
 
 .playlist-showcase-loading-state {
@@ -31,7 +34,7 @@
     display: grid;
     gap: 1rem;
     box-sizing: border-box;
-    background: #ffffff;
+    background: transparent;
 }
 
 .playlist-showcase-splash {
@@ -39,7 +42,7 @@
     min-height: 80dvh;
     overflow: hidden;
     isolation: isolate;
-    background: #ffffff;
+    background: var(--playlist-showcase-background-start);
 }
 
 .playlist-showcase-splash-backdrop {
@@ -479,10 +482,9 @@
     font-weight: 700;
 }
 
-body.schink-night-mode .playlist-showcase-page,
-body.schink-night-mode .playlist-showcase-body,
-body.schink-night-mode .playlist-showcase-splash {
-    background: #0f1519;
+body.schink-night-mode .playlist-showcase-page {
+    --playlist-showcase-background-start: #0f1519;
+    --playlist-showcase-background-end: #0f1519;
 }
 
 body.schink-night-mode .playlist-showcase-page {

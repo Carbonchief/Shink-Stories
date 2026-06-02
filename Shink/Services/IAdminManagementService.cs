@@ -554,6 +554,7 @@ public sealed record AdminPlaylistRecord(
     string? BackdropImagePath,
     string? ShowcaseImagePath,
     string? AccentColorHex,
+    string? AccentColorEndHex,
     int SortOrder,
     int? MaxItems,
     bool IsEnabled,
@@ -583,6 +584,7 @@ public sealed record AdminPlaylistUpdateRequest(
     string? BackdropImagePath,
     string? ShowcaseImagePath,
     string? AccentColorHex,
+    string? AccentColorEndHex,
     int SortOrder,
     int? MaxItems,
     bool IsEnabled,
@@ -876,6 +878,7 @@ public sealed record AdminSubscriberReportsSnapshot(
     IReadOnlyList<AdminSubscriberTrendMetric> MembershipTrend,
     IReadOnlyList<AdminTierDistributionMetric> ActiveMembersPerLevel,
     IReadOnlyList<AdminSubscriberMembershipDetailRecord> MembershipDetails,
+    IReadOnlyList<AdminRecurringRevenueMetric> RecurringRevenue,
     IReadOnlyList<AdminSalesRevenueMetric> SalesAndRevenue,
     IReadOnlyList<AdminSalesRevenueDetailRecord> SalesDetails,
     IReadOnlyList<AdminRecoveryMetric> AbandonedCartRecoveries,
@@ -887,6 +890,7 @@ public sealed record AdminSubscriberReportsSnapshot(
         MembershipTrend: [],
         ActiveMembersPerLevel: [],
         MembershipDetails: [],
+        RecurringRevenue: [],
         SalesAndRevenue: [],
         SalesDetails: [],
         AbandonedCartRecoveries: [],
@@ -925,6 +929,18 @@ public sealed record AdminSubscriberMembershipDetailRecord(
     DateTimeOffset SubscribedAt,
     DateTimeOffset? CancelledAt);
 
+public sealed record AdminRecurringRevenueMetric(
+    string SegmentKey,
+    string SegmentName,
+    int ActiveSubscriptions,
+    decimal BillingAmountZar,
+    decimal MonthlyRecurringRevenueZar,
+    decimal AnnualRecurringRevenueZar,
+    int ActualActiveSubscriptions,
+    decimal ActualMonthlyRecurringRevenueZar,
+    decimal ActualAnnualRecurringRevenueZar,
+    int AttentionSubscriptions);
+
 public sealed record AdminSalesRevenueMetric(
     string PeriodKey,
     int SalesCount,
@@ -937,7 +953,9 @@ public sealed record AdminSalesRevenueDetailRecord(
     string TierName,
     string Provider,
     string SourceSystem,
-    string Reference);
+    string Reference,
+    string Status,
+    string AmountSource);
 
 public sealed record AdminRecoveryMetric(
     string PeriodKey,

@@ -14,6 +14,7 @@ public sealed class PaystackAuthorizationRetryBatchService(
 {
     private static readonly TimeSpan MinimumPaystackInterval = TimeSpan.FromSeconds(1);
     private static readonly TimeSpan VerificationDelay = TimeSpan.FromSeconds(6);
+    private static readonly TimeSpan AuthorizationRetryDelay = TimeSpan.FromDays(1);
 
     private readonly HttpClient _httpClient = httpClient;
     private readonly PaystackCheckoutService _paystackCheckoutService = paystackCheckoutService;
@@ -49,9 +50,13 @@ public sealed class PaystackAuthorizationRetryBatchService(
         var nowUtc = DateTimeOffset.UtcNow;
         var cutoffUtc = nowUtc.AddHours(-24);
 
+        var retryReadyRecoveryBySubscriptionId = await FetchRetryReadyRecoveryBySubscriptionIdAsync(baseUri, nowUtc, cancellationToken);
         var subscriptions = await FetchNonCancelledPaystackSubscriptionsAsync(baseUri, cancellationToken);
+        var subscriptionsWithRetryReadyRecovery = subscriptions
+            .Where(item => retryReadyRecoveryBySubscriptionId.ContainsKey(item.SubscriptionId))
+            .ToList();
         var problematicChargeKeys = subscriptions
-            .Where(IsLocallyProblematic)
+            .Where(item => retryReadyRecoveryBySubscriptionId.ContainsKey(item.SubscriptionId))
             .Select(BuildChargeKey)
             .Where(key => !string.IsNullOrWhiteSpace(key))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -68,7 +73,7 @@ public sealed class PaystackAuthorizationRetryBatchService(
             nowUtc,
             cancellationToken);
 
-        var preferredCandidates = subscriptions
+        var preferredCandidates = subscriptionsWithRetryReadyRecovery
             .Where(item => problematicChargeKeys.Contains(BuildChargeKey(item)))
             .GroupBy(BuildChargeKey, StringComparer.OrdinalIgnoreCase)
             .Select(group => group
@@ -304,10 +309,9 @@ public sealed class PaystackAuthorizationRetryBatchService(
 
     private async Task<List<SubscriptionRow>> FetchNonCancelledPaystackSubscriptionsAsync(Uri baseUri, CancellationToken cancellationToken)
     {
-        var escapedNow = Uri.EscapeDataString(DateTimeOffset.UtcNow.UtcDateTime.ToString("O"));
         var uri = new Uri(
             baseUri,
-            $"rest/v1/subscriptions?provider=eq.paystack&status=not.eq.cancelled&or=(status.eq.failed,next_renewal_at.lt.{escapedNow})&select=subscription_id,subscriber_id,tier_code,provider_payment_id,provider_transaction_id,provider_token,provider_email_token,source_system,status,next_renewal_at,updated_at,billing_amount_zar&order=updated_at.desc&limit=2000");
+            "rest/v1/subscriptions?provider=eq.paystack&status=not.eq.cancelled&select=subscription_id,subscriber_id,tier_code,provider_payment_id,provider_transaction_id,provider_token,provider_email_token,source_system,status,next_renewal_at,updated_at,billing_amount_zar&order=updated_at.desc&limit=2000");
         using var request = CreateSupabaseRequest(HttpMethod.Get, uri);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -319,6 +323,35 @@ public sealed class PaystackAuthorizationRetryBatchService(
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
         return await JsonSerializer.DeserializeAsync<List<SubscriptionRow>>(stream, cancellationToken: cancellationToken) ?? [];
+    }
+
+    private async Task<Dictionary<string, PaymentRecoveryRow>> FetchRetryReadyRecoveryBySubscriptionIdAsync(
+        Uri baseUri,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var escapedNow = Uri.EscapeDataString(nowUtc.UtcDateTime.ToString("O"));
+        var uri = new Uri(
+            baseUri,
+            $"rest/v1/subscription_payment_recoveries?provider=eq.paystack&resolved_at=is.null&authorization_retry_status=eq.pending&authorization_retry_due_at=lte.{escapedNow}&select=recovery_id,subscription_id,provider_payment_id,first_failed_at,authorization_retry_due_at,authorization_retry_status&order=authorization_retry_due_at.asc&limit=2000");
+        using var request = CreateSupabaseRequest(HttpMethod.Get, uri);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning("Paystack retry recovery lookup failed. Status={StatusCode} Body={Body}", (int)response.StatusCode, body);
+            return new Dictionary<string, PaymentRecoveryRow>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var rows = await JsonSerializer.DeserializeAsync<List<PaymentRecoveryRow>>(stream, cancellationToken: cancellationToken) ?? [];
+        return rows
+            .Where(row => IsRetryReadyRecovery(row, nowUtc))
+            .GroupBy(row => row.SubscriptionId!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderBy(row => row.AuthorizationRetryDueAt ?? DateTimeOffset.MaxValue).First(),
+                StringComparer.OrdinalIgnoreCase);
     }
 
     private async Task<Dictionary<string, List<CurrentSubscriptionRow>>> FetchCurrentPaystackSubscriptionCodesBySubscriberAsync(
@@ -577,10 +610,6 @@ public sealed class PaystackAuthorizationRetryBatchService(
         return request;
     }
 
-    private static bool IsLocallyProblematic(SubscriptionRow row) =>
-        string.Equals(row.Status, "failed", StringComparison.OrdinalIgnoreCase) ||
-        (row.NextRenewalAt.HasValue && row.NextRenewalAt.Value < DateTimeOffset.UtcNow);
-
     private static bool HasCurrentDuplicatePaystackSubscription(
         SubscriptionRow candidate,
         IReadOnlyDictionary<string, List<CurrentSubscriptionRow>> currentSubscriptionCodesBySubscriber)
@@ -728,6 +757,20 @@ public sealed class PaystackAuthorizationRetryBatchService(
         }
     }
 
+    private static bool IsRetryReadyRecovery(PaymentRecoveryRow row, DateTimeOffset nowUtc)
+    {
+        if (string.IsNullOrWhiteSpace(row.SubscriptionId) ||
+            row.FirstFailedAt is null ||
+            row.AuthorizationRetryDueAt is null ||
+            row.AuthorizationRetryDueAt.Value > nowUtc ||
+            !string.Equals(row.AuthorizationRetryStatus, "pending", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return row.FirstFailedAt.Value <= nowUtc.Subtract(AuthorizationRetryDelay);
+    }
+
     private sealed record RetryCandidate(
         SubscriptionRow Subscription,
         SubscriberRow Subscriber,
@@ -824,6 +867,27 @@ public sealed class PaystackAuthorizationRetryBatchService(
     {
         [JsonPropertyName("event_id")]
         public int EventId { get; set; }
+    }
+
+    private sealed class PaymentRecoveryRow
+    {
+        [JsonPropertyName("recovery_id")]
+        public string? RecoveryId { get; set; }
+
+        [JsonPropertyName("subscription_id")]
+        public string? SubscriptionId { get; set; }
+
+        [JsonPropertyName("provider_payment_id")]
+        public string? ProviderPaymentId { get; set; }
+
+        [JsonPropertyName("first_failed_at")]
+        public DateTimeOffset? FirstFailedAt { get; set; }
+
+        [JsonPropertyName("authorization_retry_due_at")]
+        public DateTimeOffset? AuthorizationRetryDueAt { get; set; }
+
+        [JsonPropertyName("authorization_retry_status")]
+        public string? AuthorizationRetryStatus { get; set; }
     }
 }
 

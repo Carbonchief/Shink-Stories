@@ -1746,6 +1746,7 @@ public sealed partial class SupabaseAdminManagementService(
                     BackdropImagePath: NormalizePlaylistImagePath(row.BackdropImagePath),
                     ShowcaseImagePath: NormalizePlaylistImagePath(row.ShowcaseImagePath),
                     AccentColorHex: NormalizePlaylistAccentColorHex(row.AccentColorHex),
+                    AccentColorEndHex: NormalizePlaylistAccentColorHex(row.AccentColorEndHex),
                     SortOrder: row.SortOrder,
                     MaxItems: row.MaxItems is > 0 ? row.MaxItems : null,
                     IsEnabled: row.IsEnabled,
@@ -1789,6 +1790,13 @@ public sealed partial class SupabaseAdminManagementService(
             return new AdminOperationResult(false, "Gebruik asseblief 'n geldige hex-kleurkode soos #FFAA00.");
         }
 
+        var normalizedAccentColorEndHex = NormalizePlaylistAccentColorHex(request.AccentColorEndHex);
+        if (!string.IsNullOrWhiteSpace(request.AccentColorEndHex) &&
+            string.IsNullOrWhiteSpace(normalizedAccentColorEndHex))
+        {
+            return new AdminOperationResult(false, "Gebruik asseblief 'n geldige tweede hex-kleurkode soos #88CCFF.");
+        }
+
         if (!TryBuildSupabaseBaseUri(out var baseUri))
         {
             return new AdminOperationResult(false, "Supabase URL is nog nie opgestel nie.");
@@ -1810,7 +1818,8 @@ public sealed partial class SupabaseAdminManagementService(
                 ["logo_image_path"] = NormalizePlaylistImagePath(request.LogoImagePath),
                 ["backdrop_image_path"] = NormalizePlaylistImagePath(request.BackdropImagePath),
                 ["showcase_image_path"] = NormalizePlaylistImagePath(request.ShowcaseImagePath),
-                ["accent_color_hex"] = NormalizePlaylistAccentColorHex(request.AccentColorHex),
+                ["accent_color_hex"] = normalizedAccentColorHex,
+                ["accent_color_end_hex"] = normalizedAccentColorEndHex,
                 ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
                 ["max_items"] = request.MaxItems is > 0 ? request.MaxItems : null,
                 ["is_enabled"] = request.IsEnabled,
@@ -1855,7 +1864,8 @@ public sealed partial class SupabaseAdminManagementService(
                 ["logo_image_path"] = NormalizePlaylistImagePath(request.LogoImagePath),
                 ["backdrop_image_path"] = NormalizePlaylistImagePath(request.BackdropImagePath),
                 ["showcase_image_path"] = NormalizePlaylistImagePath(request.ShowcaseImagePath),
-                ["accent_color_hex"] = NormalizePlaylistAccentColorHex(request.AccentColorHex),
+                ["accent_color_hex"] = normalizedAccentColorHex,
+                ["accent_color_end_hex"] = normalizedAccentColorEndHex,
                 ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
                 ["is_enabled"] = request.IsEnabled,
                 ["show_on_home"] = request.ShowOnHome,
@@ -1870,7 +1880,8 @@ public sealed partial class SupabaseAdminManagementService(
                 ["logo_image_path"] = NormalizePlaylistImagePath(request.LogoImagePath),
                 ["backdrop_image_path"] = NormalizePlaylistImagePath(request.BackdropImagePath),
                 ["showcase_image_path"] = NormalizePlaylistImagePath(request.ShowcaseImagePath),
-                ["accent_color_hex"] = NormalizePlaylistAccentColorHex(request.AccentColorHex),
+                ["accent_color_hex"] = normalizedAccentColorHex,
+                ["accent_color_end_hex"] = normalizedAccentColorEndHex,
                 ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
                 ["max_items"] = request.MaxItems is > 0 ? request.MaxItems : null,
                 ["is_enabled"] = request.IsEnabled,
@@ -2334,7 +2345,8 @@ public sealed partial class SupabaseAdminManagementService(
         var wordPressSubscriberReportsTask = FetchWordPressSubscriberReportsAsync(baseUri, apiKey, cancellationToken);
         var subscribersTask = FetchSubscribersAsync(baseUri, apiKey, cancellationToken);
         var subscriptionsTask = FetchSubscriptionsAsync(baseUri, apiKey, cancellationToken);
-        var paystackRevenueEventsTask = FetchPaystackRevenueEventsAsync(baseUri, apiKey, cancellationToken);
+        var providerRevenueEventsTask = FetchProviderRevenueEventsAsync(baseUri, apiKey, cancellationToken);
+        var storeOrderRevenueTask = FetchStoreOrderRevenueAsync(baseUri, apiKey, cancellationToken);
         var subscriptionTiersTask = FetchSubscriptionTiersAsync(baseUri, apiKey, cancellationToken);
         var recoveriesTask = FetchSubscriptionRecoveriesAsync(baseUri, apiKey, cancellationToken);
         var abandonedCartRecoveriesTask = FetchAbandonedCartRecoveriesAsync(baseUri, apiKey, cancellationToken);
@@ -2346,7 +2358,8 @@ public sealed partial class SupabaseAdminManagementService(
             wordPressSubscriberReportsTask,
             subscribersTask,
             subscriptionsTask,
-            paystackRevenueEventsTask,
+            providerRevenueEventsTask,
+            storeOrderRevenueTask,
             subscriptionTiersTask,
             recoveriesTask,
             abandonedCartRecoveriesTask,
@@ -2367,11 +2380,12 @@ public sealed partial class SupabaseAdminManagementService(
             wordPressSubscriberReports,
             subscribersTask.Result,
             subscriptionsTask.Result,
-            paystackRevenueEventsTask.Result,
-            BuildPaystackSubscriptionCreateIdentifiers(paystackRevenueEventsTask.Result),
+            providerRevenueEventsTask.Result,
+            BuildPaystackSubscriptionCreateIdentifiers(providerRevenueEventsTask.Result),
             subscriptionTiersTask.Result,
             recoveriesTask.Result,
             abandonedCartRecoveriesTask.Result,
+            storeOrderRevenueTask.Result,
             authSessionsTask.Result,
             storyViewsTask.Result,
             storyListenSessionsTask.Result);
@@ -3410,25 +3424,38 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/subscriptions" +
-            "?select=subscription_id,subscriber_id,tier_code,provider,source_system,status,subscribed_at,next_renewal_at,cancelled_at,billing_amount_zar,provider_payment_id,provider_transaction_id" +
+            "?select=subscription_id,subscriber_id,tier_code,provider,source_system,status,subscribed_at,next_renewal_at,cancelled_at,billing_amount_zar,billing_period_months,provider_payment_id,provider_transaction_id" +
             "&order=subscribed_at.desc" +
             "&limit=10000");
 
         return await FetchRowsAsync<SubscriptionRow>(uri, apiKey, cancellationToken);
     }
 
-    private async Task<IReadOnlyList<RevenueEventRow>> FetchPaystackRevenueEventsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<RevenueEventRow>> FetchProviderRevenueEventsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
     {
         var uri = new Uri(
             baseUri,
             "rest/v1/subscription_events" +
             "?select=provider,event_type,event_status,received_at,payload,provider_payment_id,provider_transaction_id" +
-            "&provider=eq.paystack" +
-            "&event_type=in.(charge.success,subscription.create,subscription.disable)" +
+            "&provider=in.(paystack,payfast)" +
+            "&event_type=in.(charge.success,subscription.create,subscription.disable,payfast_itn)" +
             "&order=received_at.desc" +
             "&limit=50000");
 
         return await FetchRowsAsync<RevenueEventRow>(uri, apiKey, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<StoreOrderRevenueRow>> FetchStoreOrderRevenueAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    {
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/store_orders" +
+            "?select=order_id,order_reference,product_name,total_price_zar,payment_status,provider,provider_transaction_id,created_at,paid_at" +
+            "&payment_status=eq.paid" +
+            "&order=paid_at.desc.nullslast,created_at.desc" +
+            "&limit=10000");
+
+        return await FetchRowsAsync<StoreOrderRevenueRow>(uri, apiKey, cancellationToken);
     }
 
     private async Task<WordPressSubscriberReportsRpcSnapshot?> FetchWordPressSubscriberReportsAsync(
@@ -3621,7 +3648,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/story_playlists" +
-            "?select=playlist_id,slug,title,playlist_type,system_key,description,logo_image_path,backdrop_image_path,showcase_image_path,accent_color_hex,sort_order,max_items,is_enabled,show_on_home,include_in_speellyste_carousel,show_showcase_image_on_luister_page,updated_at" +
+            "?select=playlist_id,slug,title,playlist_type,system_key,description,logo_image_path,backdrop_image_path,showcase_image_path,accent_color_hex,accent_color_end_hex,sort_order,max_items,is_enabled,show_on_home,include_in_speellyste_carousel,show_showcase_image_on_luister_page,updated_at" +
             "&order=sort_order.asc" +
             "&order=title.asc" +
             "&limit=500");
@@ -3759,7 +3786,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/story_playlists" +
-            "?select=playlist_id,slug,title,playlist_type,system_key,description,logo_image_path,backdrop_image_path,showcase_image_path,accent_color_hex,sort_order,max_items,is_enabled,show_on_home,include_in_speellyste_carousel,show_showcase_image_on_luister_page,updated_at" +
+            "?select=playlist_id,slug,title,playlist_type,system_key,description,logo_image_path,backdrop_image_path,showcase_image_path,accent_color_hex,accent_color_end_hex,sort_order,max_items,is_enabled,show_on_home,include_in_speellyste_carousel,show_showcase_image_on_luister_page,updated_at" +
             $"&playlist_id=eq.{escapedPlaylistId}" +
             "&limit=1");
 
@@ -4020,6 +4047,7 @@ public sealed partial class SupabaseAdminManagementService(
         IReadOnlyList<SubscriptionTierRow> subscriptionTiers,
         IReadOnlyList<SubscriptionRecoveryRow> recoveries,
         IReadOnlyList<AbandonedCartRecoveryRow> abandonedCartRecoveries,
+        IReadOnlyList<StoreOrderRevenueRow> storeOrderRevenue,
         IReadOnlyList<AuthSessionMetricRow> authSessions,
         IReadOnlyList<StoryViewMetricRow> storyViews,
         IReadOnlyList<StoryListenSessionMetricRow> storyListenSessions)
@@ -4043,8 +4071,9 @@ public sealed partial class SupabaseAdminManagementService(
                 revenueEvents),
             ActiveMembersPerLevel: BuildTierDistributionMetrics(wordPressSubscriberReports, subscriptions, tierDetails),
             MembershipDetails: BuildSubscriberMembershipDetails(subscribers, subscriptions, tierDetails, paystackSubscriptionCreateIdentifiers),
-            SalesAndRevenue: BuildSalesRevenueMetrics(wordPressSubscriberReports, subscriptions, tierDetails, revenueEvents),
-            SalesDetails: BuildSalesRevenueDetails(subscriptions, tierDetails, revenueEvents),
+            RecurringRevenue: BuildRecurringRevenueMetrics(subscriptions, recoveries),
+            SalesAndRevenue: BuildSalesRevenueMetricsCore(wordPressSubscriberReports, subscriptions, tierDetails, revenueEvents, storeOrderRevenue),
+            SalesDetails: BuildSalesRevenueDetailsCore(subscriptions, tierDetails, revenueEvents, storeOrderRevenue),
             AbandonedCartRecoveries: BuildRecoveryMetrics(subscriptions, tierDetails, recoveries, abandonedCartRecoveries),
             RecoveredRevenueDetails: BuildRecoveredRevenueDetails(subscribers, subscriptions, tierDetails, recoveries, abandonedCartRecoveries),
             VisitsViewsAndLogins: BuildVisitsViewsLoginsMetrics(authSessions, storyViews, storyListenSessions));
@@ -4337,8 +4366,10 @@ public sealed partial class SupabaseAdminManagementService(
             .GroupBy(subscriber => subscriber.SubscriberId)
             .ToDictionary(group => group.Key, group => group.First());
 
-        return GetFirstSubscriberSignupSubscriptions(subscriptions)
-            .Where(subscription => IsNewSubscriberMetricEligible(subscription, paystackSubscriptionCreateIdentifiers))
+        return GetFirstSubscriberMembershipDetailSubscriptions(subscriptions)
+            .Where(subscription =>
+                IsNewSubscriberMetricEligible(subscription, paystackSubscriptionCreateIdentifiers) ||
+                IsFreeSubscriberMembershipDetailEligible(subscription))
             .Where(subscription => subscription.SubscribedAt is not null)
             .Select(subscription =>
             {
@@ -4372,6 +4403,24 @@ public sealed partial class SupabaseAdminManagementService(
             .ToArray();
     }
 
+    private static bool IsFreeSubscriberMembershipDetailEligible(SubscriptionRow subscription) =>
+        subscription.SubscriberId != Guid.Empty &&
+        !string.Equals(subscription.Status, "failed", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(subscription.SourceSystem, "wordpress_pmpro", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(subscription.SourceSystem, "admin_override", StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(subscription.TierCode, "gratis", StringComparison.OrdinalIgnoreCase) &&
+        subscription.SubscribedAt is not null;
+
+    private static IReadOnlyList<SubscriptionRow> GetFirstSubscriberMembershipDetailSubscriptions(IReadOnlyList<SubscriptionRow> subscriptions) =>
+        subscriptions
+            .Where(subscription => IsSubscriberCountMetricEligible(subscription) || IsFreeSubscriberMembershipDetailEligible(subscription))
+            .Where(subscription => subscription.SubscribedAt is not null)
+            .GroupBy(subscription => subscription.SubscriberId)
+            .Select(group => group
+                .OrderBy(subscription => subscription.SubscribedAt)
+                .First())
+            .ToArray();
+
     private static IReadOnlyList<SubscriptionRow> GetFirstSubscriberSignupSubscriptions(IReadOnlyList<SubscriptionRow> subscriptions) =>
         subscriptions
             .Where(IsSubscriberCountMetricEligible)
@@ -4382,19 +4431,24 @@ public sealed partial class SupabaseAdminManagementService(
                 .First())
             .ToArray();
 
-    private static IReadOnlyList<AdminSalesRevenueMetric> BuildSalesRevenueMetrics(
+    private static IReadOnlyList<AdminSalesRevenueMetric> BuildSalesRevenueMetricsCore(
         WordPressSubscriberReportsRpcSnapshot? wordPressSubscriberReports,
         IReadOnlyList<SubscriptionRow> subscriptions,
         IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
-        IReadOnlyList<RevenueEventRow> revenueEvents)
+        IReadOnlyList<RevenueEventRow> revenueEvents,
+        IReadOnlyList<StoreOrderRevenueRow> storeOrderRevenue)
     {
         _ = wordPressSubscriberReports;
         _ = tierDetails;
 
-        var eligibleSales = BuildEligibleSalesRevenueCandidates(subscriptions, tierDetails, revenueEvents);
+        var eligibleSales = BuildEligibleSalesRevenueCandidates(subscriptions, tierDetails, revenueEvents, storeOrderRevenue);
 
         return
         [
+            BuildSalesRevenueMetric("last_day", eligibleSales, SubscriberPeriod.LastDay),
+            BuildSalesRevenueMetric("last_week", eligibleSales, SubscriberPeriod.LastWeek),
+            BuildSalesRevenueMetric("last_month", eligibleSales, SubscriberPeriod.LastMonth),
+            BuildSalesRevenueMetric("last_year", eligibleSales, SubscriberPeriod.LastYear),
             BuildSalesRevenueMetric("today", eligibleSales, SubscriberPeriod.Today),
             BuildSalesRevenueMetric("this_month", eligibleSales, SubscriberPeriod.ThisMonth),
             BuildSalesRevenueMetric("this_year", eligibleSales, SubscriberPeriod.ThisYear),
@@ -4402,11 +4456,94 @@ public sealed partial class SupabaseAdminManagementService(
         ];
     }
 
-    private static IReadOnlyList<AdminSalesRevenueDetailRecord> BuildSalesRevenueDetails(
+    private static IReadOnlyList<AdminRecurringRevenueMetric> BuildRecurringRevenueMetrics(
+        IReadOnlyList<SubscriptionRow> subscriptions,
+        IReadOnlyList<SubscriptionRecoveryRow> recoveries)
+    {
+        var nowUtc = DateTimeOffset.UtcNow;
+        var attentionSubscriptionIds = recoveries
+            .Where(IsActiveSubscriptionPaymentRecovery)
+            .Select(recovery => recovery.SubscriptionId)
+            .Where(subscriptionId => subscriptionId != Guid.Empty)
+            .ToHashSet();
+        var activePaidSubscriptions = subscriptions
+            .Where(subscription => IsRecurringRevenueEligible(subscription, nowUtc))
+            .Select(subscription => BuildRecurringRevenueCandidate(subscription, attentionSubscriptionIds))
+            .Where(candidate => candidate.BillingAmountZar > 0m)
+            .ToArray();
+
+        return
+        [
+            BuildRecurringRevenueMetric("total", "Total MRR", activePaidSubscriptions),
+            BuildRecurringRevenueMetric(
+                "monthly",
+                "Monthly plan MRR",
+                activePaidSubscriptions.Where(candidate => candidate.BillingPeriodMonths == 1)),
+            BuildRecurringRevenueMetric(
+                "yearly",
+                "Yearly plan MRR",
+                activePaidSubscriptions.Where(candidate => candidate.BillingPeriodMonths >= 12))
+        ];
+    }
+
+    private static IReadOnlyList<AdminRecurringRevenueMetric> BuildRecurringRevenueMetrics(
+        IReadOnlyList<SubscriptionRow> subscriptions) =>
+        BuildRecurringRevenueMetrics(subscriptions, Array.Empty<SubscriptionRecoveryRow>());
+
+    private static AdminRecurringRevenueMetric BuildRecurringRevenueMetric(
+        string segmentKey,
+        string segmentName,
+        IEnumerable<RecurringRevenueCandidate> candidates)
+    {
+        var matchingCandidates = candidates.ToArray();
+        var monthlyRecurringRevenue = matchingCandidates.Sum(candidate =>
+            candidate.BillingAmountZar / Math.Max(1, candidate.BillingPeriodMonths));
+        var actualCandidates = matchingCandidates
+            .Where(candidate => !candidate.HasActivePaymentRecovery)
+            .ToArray();
+        var actualMonthlyRecurringRevenue = actualCandidates.Sum(candidate =>
+            candidate.BillingAmountZar / Math.Max(1, candidate.BillingPeriodMonths));
+
+        return new AdminRecurringRevenueMetric(
+            segmentKey,
+            segmentName,
+            matchingCandidates.Length,
+            decimal.Round(matchingCandidates.Sum(candidate => candidate.BillingAmountZar), 2, MidpointRounding.AwayFromZero),
+            decimal.Round(monthlyRecurringRevenue, 2, MidpointRounding.AwayFromZero),
+            decimal.Round(monthlyRecurringRevenue * 12m, 2, MidpointRounding.AwayFromZero),
+            actualCandidates.Length,
+            decimal.Round(actualMonthlyRecurringRevenue, 2, MidpointRounding.AwayFromZero),
+            decimal.Round(actualMonthlyRecurringRevenue * 12m, 2, MidpointRounding.AwayFromZero),
+            matchingCandidates.Length - actualCandidates.Length);
+    }
+
+    private static RecurringRevenueCandidate BuildRecurringRevenueCandidate(
+        SubscriptionRow subscription,
+        IReadOnlySet<Guid> attentionSubscriptionIds) =>
+        new(
+            subscription.SubscriptionId,
+            subscription.BillingAmountZar ?? 0m,
+            ResolveSubscriptionBillingPeriodMonths(subscription),
+            attentionSubscriptionIds.Contains(subscription.SubscriptionId));
+
+    private static IReadOnlyList<AdminSalesRevenueMetric> BuildSalesRevenueMetrics(
+        WordPressSubscriberReportsRpcSnapshot? wordPressSubscriberReports,
         IReadOnlyList<SubscriptionRow> subscriptions,
         IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
         IReadOnlyList<RevenueEventRow> revenueEvents) =>
-        BuildEligibleSalesRevenueCandidates(subscriptions, tierDetails, revenueEvents)
+        BuildSalesRevenueMetricsCore(
+            wordPressSubscriberReports,
+            subscriptions,
+            tierDetails,
+            revenueEvents,
+            Array.Empty<StoreOrderRevenueRow>());
+
+    private static IReadOnlyList<AdminSalesRevenueDetailRecord> BuildSalesRevenueDetailsCore(
+        IReadOnlyList<SubscriptionRow> subscriptions,
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
+        IReadOnlyList<RevenueEventRow> revenueEvents,
+        IReadOnlyList<StoreOrderRevenueRow> storeOrderRevenue) =>
+        BuildEligibleSalesRevenueCandidates(subscriptions, tierDetails, revenueEvents, storeOrderRevenue)
             .Where(candidate => candidate.SubscribedAt is not null)
             .OrderByDescending(candidate => candidate.SubscribedAt)
             .Select(candidate => new AdminSalesRevenueDetailRecord(
@@ -4416,30 +4553,53 @@ public sealed partial class SupabaseAdminManagementService(
                 candidate.TierName,
                 candidate.Provider,
                 candidate.SourceSystem,
-                candidate.Reference))
+                candidate.Reference,
+                candidate.Status,
+                candidate.AmountSource))
             .ToArray();
+
+    private static IReadOnlyList<AdminSalesRevenueDetailRecord> BuildSalesRevenueDetails(
+        IReadOnlyList<SubscriptionRow> subscriptions,
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
+        IReadOnlyList<RevenueEventRow> revenueEvents) =>
+        BuildSalesRevenueDetailsCore(
+            subscriptions,
+            tierDetails,
+            revenueEvents,
+            Array.Empty<StoreOrderRevenueRow>());
 
     private static IReadOnlyList<SubscriberSaleMetricCandidate> BuildEligibleSalesRevenueCandidates(
         IReadOnlyList<SubscriptionRow> subscriptions,
         IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
-        IReadOnlyList<RevenueEventRow> revenueEvents)
+        IReadOnlyList<RevenueEventRow> revenueEvents,
+        IReadOnlyList<StoreOrderRevenueRow> storeOrderRevenue)
     {
-        var paystackRevenueEvents = revenueEvents
-            .Where(IsPaystackRevenueEventEligible)
-            .Select(BuildRevenueCandidate)
+        var subscriptionLookup = BuildSubscriptionRevenueIdentifierLookup(subscriptions);
+        var providerRevenueEvents = revenueEvents
+            .Where(IsProviderRevenueEventEligible)
+            .Select(row => BuildRevenueCandidate(row, subscriptionLookup, tierDetails))
             .Where(metric => metric.Price > 0m && metric.SubscribedAt is not null)
             .ToArray();
 
-        var earliestPaystackEventDate = paystackRevenueEvents
-            .Select(metric => metric.SubscribedAt?.ToLocalTime().Date)
-            .Where(date => date is not null)
-            .Min();
+        var earliestProviderEventDateByProvider = providerRevenueEvents
+            .Where(metric => metric.SubscribedAt is not null)
+            .GroupBy(metric => metric.Provider, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.Min(metric => metric.SubscribedAt!.Value.ToLocalTime().Date),
+                StringComparer.OrdinalIgnoreCase);
+
+        var paidStoreOrders = storeOrderRevenue
+            .Where(IsPaidStoreOrderRevenue)
+            .Select(BuildStoreOrderRevenueCandidate)
+            .Where(metric => metric.Price > 0m && metric.SubscribedAt is not null);
 
         return subscriptions
-            .Where(subscription => IsRevenueMetricEligible(subscription, earliestPaystackEventDate))
+            .Where(subscription => IsRevenueMetricEligible(subscription, earliestProviderEventDateByProvider))
             .Select(subscription => BuildSubscriptionRevenueCandidate(subscription, tierDetails))
             .Where(metric => metric.Price > 0m)
-            .Concat(paystackRevenueEvents)
+            .Concat(providerRevenueEvents)
+            .Concat(paidStoreOrders)
             .ToArray();
     }
 
@@ -4615,33 +4775,35 @@ public sealed partial class SupabaseAdminManagementService(
             decimal.Round(matchingSales.Sum(item => item.Price), 2, MidpointRounding.AwayFromZero));
     }
 
-    private static SubscriberSaleMetricCandidate BuildRevenueCandidate(RevenueEventRow row)
+    private static SubscriberSaleMetricCandidate BuildRevenueCandidate(
+        RevenueEventRow row,
+        IReadOnlyDictionary<string, SubscriptionRow> subscriptionLookup,
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails)
     {
         var occurredAt = ResolveRevenueEventOccurredAt(row);
-        var amountInCents = TryReadNestedDecimal(row.Payload, "data", "amount") ??
-                            TryReadNestedDecimal(row.Payload, "data", "plan", "amount") ??
-                            TryReadStringAsDecimal(row.Payload, "amount");
-        var price = amountInCents is > 0m
-            ? decimal.Round(amountInCents.Value / 100m, 2, MidpointRounding.AwayFromZero)
-            : 0m;
-
-        var reference = NormalizeOptionalText(
-                TryReadNestedString(row.Payload, "data", "reference") ??
-                TryReadNestedString(row.Payload, "data", "id") ??
-                TryReadString(row.Payload, "reference"),
-                160) ??
-            "-";
-        var tierCode = NormalizeOptionalText(TryReadNestedString(row.Payload, "data", "plan", "plan_code"), 80) ?? "-";
-        var tierName = NormalizeOptionalText(TryReadNestedString(row.Payload, "data", "plan", "name"), 120) ?? tierCode;
+        var amount = ResolveProviderRevenueAmount(row, out var amountSource);
+        var matchedSubscription = FindRevenueEventSubscription(row, subscriptionLookup);
+        var reference = ResolveRevenueEventReference(row);
+        var payloadTierCode = NormalizeOptionalText(TryReadNestedString(row.Payload, "data", "plan", "plan_code"), 80) ??
+                              NormalizeOptionalText(TryReadString(row.Payload, "custom_str1"), 80) ??
+                              NormalizeOptionalText(TryReadString(row.Payload, "item_name"), 80);
+        var tierCode = NormalizeOptionalText(matchedSubscription?.TierCode, 80) ?? payloadTierCode ?? "-";
+        var tierName = ResolveRevenueCandidateTierName(tierCode, tierDetails) ??
+                       NormalizeOptionalText(TryReadNestedString(row.Payload, "data", "plan", "name"), 120) ??
+                       NormalizeOptionalText(TryReadString(row.Payload, "item_name"), 120) ??
+                       tierCode;
+        var provider = NormalizeOptionalText(row.Provider, 40) ?? "-";
 
         return new SubscriberSaleMetricCandidate(
             occurredAt,
-            price,
+            amount,
             tierCode,
             tierName,
-            NormalizeOptionalText(row.Provider, 40) ?? "paystack",
-            "paystack_event",
-            reference);
+            provider,
+            $"{provider}_event",
+            reference,
+            NormalizeOptionalText(row.EventStatus, 40) ?? "success",
+            amountSource);
     }
 
     private static SubscriberSaleMetricCandidate BuildSubscriptionRevenueCandidate(
@@ -4663,7 +4825,133 @@ public sealed partial class SupabaseAdminManagementService(
             tierName,
             NormalizeOptionalText(subscription.Provider, 40) ?? "-",
             NormalizeOptionalText(subscription.SourceSystem, 40) ?? "-",
-            reference);
+            reference,
+            NormalizeOptionalText(subscription.Status, 40) ?? "-",
+            "subscriptions.billing_amount_zar");
+    }
+
+    private static SubscriberSaleMetricCandidate BuildStoreOrderRevenueCandidate(StoreOrderRevenueRow order)
+    {
+        var reference = NormalizeOptionalText(order.ProviderTransactionId, 160) ??
+                        NormalizeOptionalText(order.OrderReference, 160) ??
+                        order.OrderId.ToString("D");
+        var productName = NormalizeOptionalText(order.ProductName, 120) ?? "Store order";
+
+        return new SubscriberSaleMetricCandidate(
+            order.PaidAt ?? order.CreatedAt,
+            order.TotalPriceZar,
+            "store_order",
+            productName,
+            NormalizeOptionalText(order.Provider, 40) ?? "paystack",
+            "store_orders",
+            reference,
+            NormalizeOptionalText(order.PaymentStatus, 40) ?? "paid",
+            "store_orders.total_price_zar");
+    }
+
+    private static decimal ResolveProviderRevenueAmount(RevenueEventRow row, out string amountSource)
+    {
+        if (string.Equals(row.Provider, "paystack", StringComparison.OrdinalIgnoreCase))
+        {
+            var amountInCents = TryReadNestedDecimal(row.Payload, "data", "amount") ??
+                                TryReadNestedDecimal(row.Payload, "data", "plan", "amount") ??
+                                TryReadStringAsDecimal(row.Payload, "amount");
+            amountSource = "paystack.amount_subunit";
+            return amountInCents is > 0m
+                ? decimal.Round(amountInCents.Value / 100m, 2, MidpointRounding.AwayFromZero)
+                : 0m;
+        }
+
+        if (string.Equals(row.Provider, "payfast", StringComparison.OrdinalIgnoreCase))
+        {
+            amountSource = "payfast.amount_gross";
+            var amountGross = TryReadStringAsDecimal(row.Payload, "amount_gross");
+            return amountGross is > 0m
+                ? decimal.Round(amountGross.Value, 2, MidpointRounding.AwayFromZero)
+                : 0m;
+        }
+
+        amountSource = "provider_payload";
+        return 0m;
+    }
+
+    private static string ResolveRevenueEventReference(RevenueEventRow row) =>
+        NormalizeOptionalText(
+            row.ProviderTransactionId ??
+            row.ProviderPaymentId ??
+            TryReadNestedString(row.Payload, "data", "reference") ??
+            TryReadNestedString(row.Payload, "data", "id") ??
+            TryReadString(row.Payload, "pf_payment_id") ??
+            TryReadString(row.Payload, "m_payment_id") ??
+            TryReadString(row.Payload, "reference"),
+            160) ?? "-";
+
+    private static string? ResolveRevenueCandidateTierName(
+        string tierCode,
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails) =>
+        tierDetails.TryGetValue(tierCode, out var tier)
+            ? NormalizeOptionalText(tier.DisplayName, 120) ?? tierCode
+            : null;
+
+    private static bool IsPaidStoreOrderRevenue(StoreOrderRevenueRow order) =>
+        string.Equals(order.PaymentStatus, "paid", StringComparison.OrdinalIgnoreCase) &&
+        order.TotalPriceZar > 0m;
+
+    private static IReadOnlyDictionary<string, SubscriptionRow> BuildSubscriptionRevenueIdentifierLookup(
+        IReadOnlyList<SubscriptionRow> subscriptions)
+    {
+        var lookup = new Dictionary<string, SubscriptionRow>(StringComparer.OrdinalIgnoreCase);
+        foreach (var subscription in subscriptions)
+        {
+            AddSubscriptionRevenueIdentifier(lookup, subscription.ProviderPaymentId, subscription);
+            AddSubscriptionRevenueIdentifier(lookup, subscription.ProviderTransactionId, subscription);
+            AddSubscriptionRevenueIdentifier(lookup, subscription.ProviderToken, subscription);
+        }
+
+        return lookup;
+    }
+
+    private static void AddSubscriptionRevenueIdentifier(
+        Dictionary<string, SubscriptionRow> lookup,
+        string? identifier,
+        SubscriptionRow subscription)
+    {
+        var normalized = NormalizeOptionalText(identifier, 160);
+        if (!string.IsNullOrWhiteSpace(normalized))
+        {
+            lookup.TryAdd(normalized, subscription);
+        }
+    }
+
+    private static SubscriptionRow? FindRevenueEventSubscription(
+        RevenueEventRow row,
+        IReadOnlyDictionary<string, SubscriptionRow> subscriptionLookup)
+    {
+        foreach (var identifier in GetRevenueEventIdentifiers(row))
+        {
+            if (subscriptionLookup.TryGetValue(identifier, out var subscription))
+            {
+                return subscription;
+            }
+        }
+
+        return null;
+    }
+
+    private static IEnumerable<string> GetRevenueEventIdentifiers(RevenueEventRow row)
+    {
+        var identifiers = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        AddIfNotWhiteSpace(identifiers, NormalizeOptionalText(row.ProviderPaymentId, 160));
+        AddIfNotWhiteSpace(identifiers, NormalizeOptionalText(row.ProviderTransactionId, 160));
+        AddIfNotWhiteSpace(identifiers, NormalizeOptionalText(TryReadNestedString(row.Payload, "data", "subscription", "subscription_code"), 160));
+        AddIfNotWhiteSpace(identifiers, NormalizeOptionalText(TryReadNestedString(row.Payload, "data", "subscription_code"), 160));
+        AddIfNotWhiteSpace(identifiers, NormalizeOptionalText(TryReadNestedString(row.Payload, "data", "id"), 160));
+        AddIfNotWhiteSpace(identifiers, NormalizeOptionalText(TryReadNestedString(row.Payload, "data", "reference"), 160));
+        AddIfNotWhiteSpace(identifiers, NormalizeOptionalText(TryReadString(row.Payload, "pf_payment_id"), 160));
+        AddIfNotWhiteSpace(identifiers, NormalizeOptionalText(TryReadString(row.Payload, "m_payment_id"), 160));
+        AddIfNotWhiteSpace(identifiers, NormalizeOptionalText(TryReadString(row.Payload, "token"), 160));
+        AddIfNotWhiteSpace(identifiers, NormalizeOptionalText(TryReadString(row.Payload, "reference"), 160));
+        return identifiers;
     }
 
     private static DateTimeOffset? ResolveRevenueEventOccurredAt(RevenueEventRow row) =>
@@ -4671,7 +4959,8 @@ public sealed partial class SupabaseAdminManagementService(
             TryReadNestedString(row.Payload, "data", "paid_at") ??
             TryReadNestedString(row.Payload, "data", "paidAt") ??
             TryReadNestedString(row.Payload, "data", "transaction_date") ??
-            TryReadString(row.Payload, "paid_at")) ??
+            TryReadString(row.Payload, "paid_at") ??
+            TryReadString(row.Payload, "created_at")) ??
         row.ReceivedAt;
 
     private static AdminRecoveryMetric BuildRecoveryMetric(
@@ -5022,6 +5311,10 @@ public sealed partial class SupabaseAdminManagementService(
         var nowLocal = DateTime.Now;
         var start = period switch
         {
+            SubscriberPeriod.LastDay => nowLocal.AddDays(-1),
+            SubscriberPeriod.LastWeek => nowLocal.AddDays(-7),
+            SubscriberPeriod.LastMonth => nowLocal.AddMonths(-1),
+            SubscriberPeriod.LastYear => nowLocal.AddYears(-1),
             SubscriberPeriod.Today => nowLocal.Date,
             SubscriberPeriod.ThisWeek => GetStartOfWeek(nowLocal.Date),
             SubscriberPeriod.ThisMonth => new DateTime(nowLocal.Year, nowLocal.Month, 1),
@@ -5147,19 +5440,24 @@ public sealed partial class SupabaseAdminManagementService(
         !string.IsNullOrWhiteSpace(subscription.ProviderPaymentId) &&
         subscription.ProviderPaymentId!.StartsWith("gratis-", StringComparison.OrdinalIgnoreCase);
 
-    private static bool IsRevenueMetricEligible(SubscriptionRow subscription, DateTime? earliestPaystackEventDate = null) =>
+    private static bool IsRevenueMetricEligible(
+        SubscriptionRow subscription,
+        IReadOnlyDictionary<string, DateTime> earliestProviderEventDateByProvider) =>
         subscription.SubscribedAt is not null &&
         !string.Equals(subscription.Status, "failed", StringComparison.OrdinalIgnoreCase) &&
         !string.Equals(subscription.SourceSystem, "wordpress_pmpro", StringComparison.OrdinalIgnoreCase) &&
         !string.Equals(subscription.SourceSystem, "admin_override", StringComparison.OrdinalIgnoreCase) &&
-        !ShouldUsePaystackRevenueEventSource(subscription, earliestPaystackEventDate) &&
+        !ShouldUseProviderRevenueEventSource(subscription, earliestProviderEventDateByProvider) &&
         (string.Equals(subscription.Status, "active", StringComparison.OrdinalIgnoreCase) ||
          string.Equals(subscription.Status, "cancelled", StringComparison.OrdinalIgnoreCase));
 
-    private static bool IsPaystackRevenueEventEligible(RevenueEventRow row) =>
-        string.Equals(row.Provider, "paystack", StringComparison.OrdinalIgnoreCase) &&
-        string.Equals(row.EventType, "charge.success", StringComparison.OrdinalIgnoreCase) &&
-        IsSuccessfulRevenueEventStatus(row.EventStatus);
+    private static bool IsProviderRevenueEventEligible(RevenueEventRow row) =>
+        (string.Equals(row.Provider, "paystack", StringComparison.OrdinalIgnoreCase) &&
+         string.Equals(row.EventType, "charge.success", StringComparison.OrdinalIgnoreCase) &&
+         IsSuccessfulRevenueEventStatus(row.EventStatus)) ||
+        (string.Equals(row.Provider, "payfast", StringComparison.OrdinalIgnoreCase) &&
+         string.Equals(row.EventType, "payfast_itn", StringComparison.OrdinalIgnoreCase) &&
+         string.Equals(row.EventStatus, "COMPLETE", StringComparison.OrdinalIgnoreCase));
 
     private static bool IsSuccessfulRevenueEventStatus(string? status) =>
         string.IsNullOrWhiteSpace(status) ||
@@ -5167,9 +5465,13 @@ public sealed partial class SupabaseAdminManagementService(
         string.Equals(status, "successful", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(status, "paid", StringComparison.OrdinalIgnoreCase);
 
-    private static bool ShouldUsePaystackRevenueEventSource(SubscriptionRow subscription, DateTime? earliestPaystackEventDate)
+    private static bool ShouldUseProviderRevenueEventSource(
+        SubscriptionRow subscription,
+        IReadOnlyDictionary<string, DateTime> earliestProviderEventDateByProvider)
     {
-        if (!string.Equals(subscription.Provider, "paystack", StringComparison.OrdinalIgnoreCase))
+        var provider = NormalizeOptionalText(subscription.Provider, 40);
+        if (string.IsNullOrWhiteSpace(provider) ||
+            !earliestProviderEventDateByProvider.TryGetValue(provider, out var earliestProviderEventDate))
         {
             return false;
         }
@@ -5179,8 +5481,49 @@ public sealed partial class SupabaseAdminManagementService(
             return true;
         }
 
-        return earliestPaystackEventDate is null ||
-               subscription.SubscribedAt.Value.ToLocalTime().Date >= earliestPaystackEventDate.Value;
+        return subscription.SubscribedAt.Value.ToLocalTime().Date >= earliestProviderEventDate;
+    }
+
+    private static bool IsRecurringRevenueEligible(SubscriptionRow subscription, DateTimeOffset nowUtc)
+    {
+        if (!IsActiveSubscription(subscription, nowUtc))
+        {
+            return false;
+        }
+
+        if (subscription.BillingAmountZar is not > 0m)
+        {
+            return false;
+        }
+
+        if (string.Equals(subscription.SourceSystem, "wordpress_pmpro", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(subscription.SourceSystem, "admin_override", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (string.Equals(subscription.Provider, "free", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(subscription.TierCode, "gratis", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var plan = PaymentPlanCatalog.FindByTierCode(subscription.TierCode);
+        return plan is null || plan.IsSubscription;
+    }
+
+    private static bool IsActiveSubscriptionPaymentRecovery(SubscriptionRecoveryRow recovery) =>
+        recovery.SubscriptionId != Guid.Empty &&
+        recovery.ResolvedAt is null;
+
+    private static int ResolveSubscriptionBillingPeriodMonths(SubscriptionRow subscription)
+    {
+        if (subscription.BillingPeriodMonths is > 0)
+        {
+            return subscription.BillingPeriodMonths.Value;
+        }
+
+        return PaymentPlanCatalog.FindByTierCode(subscription.TierCode)?.BillingPeriodMonths ?? 1;
     }
 
     private static string? TryReadNestedString(JsonElement element, params string[] path)
@@ -6060,6 +6403,9 @@ public sealed partial class SupabaseAdminManagementService(
         [JsonPropertyName("billing_amount_zar")]
         public decimal? BillingAmountZar { get; set; }
 
+        [JsonPropertyName("billing_period_months")]
+        public int? BillingPeriodMonths { get; set; }
+
         [JsonPropertyName("provider_payment_id")]
         public string? ProviderPaymentId { get; set; }
 
@@ -6278,6 +6624,36 @@ public sealed partial class SupabaseAdminManagementService(
         public DateTimeOffset? PaidAt { get; set; }
     }
 
+    private sealed class StoreOrderRevenueRow
+    {
+        [JsonPropertyName("order_id")]
+        public Guid OrderId { get; set; }
+
+        [JsonPropertyName("order_reference")]
+        public string? OrderReference { get; set; }
+
+        [JsonPropertyName("product_name")]
+        public string? ProductName { get; set; }
+
+        [JsonPropertyName("total_price_zar")]
+        public decimal TotalPriceZar { get; set; }
+
+        [JsonPropertyName("payment_status")]
+        public string? PaymentStatus { get; set; }
+
+        [JsonPropertyName("provider")]
+        public string? Provider { get; set; }
+
+        [JsonPropertyName("provider_transaction_id")]
+        public string? ProviderTransactionId { get; set; }
+
+        [JsonPropertyName("created_at")]
+        public DateTimeOffset CreatedAt { get; set; }
+
+        [JsonPropertyName("paid_at")]
+        public DateTimeOffset? PaidAt { get; set; }
+    }
+
     private sealed class AuthSessionDetailRow
     {
         [JsonPropertyName("created_at")]
@@ -6461,7 +6837,15 @@ public sealed partial class SupabaseAdminManagementService(
         string TierName,
         string Provider,
         string SourceSystem,
-        string Reference);
+        string Reference,
+        string Status,
+        string AmountSource);
+
+    private sealed record RecurringRevenueCandidate(
+        Guid SubscriptionId,
+        decimal BillingAmountZar,
+        int BillingPeriodMonths,
+        bool HasActivePaymentRecovery);
 
     private sealed class SubscriptionTierLookupRow
     {
@@ -6563,6 +6947,9 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("accent_color_hex")]
         public string? AccentColorHex { get; set; }
+
+        [JsonPropertyName("accent_color_end_hex")]
+        public string? AccentColorEndHex { get; set; }
 
         [JsonPropertyName("sort_order")]
         public int SortOrder { get; set; }
@@ -6738,6 +7125,10 @@ public sealed partial class SupabaseAdminManagementService(
 
     private enum SubscriberPeriod
     {
+        LastDay,
+        LastWeek,
+        LastMonth,
+        LastYear,
         Today,
         ThisWeek,
         ThisMonth,

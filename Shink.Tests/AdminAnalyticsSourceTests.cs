@@ -38,6 +38,12 @@ public class AdminAnalyticsSourceTests
         StringAssert.Contains(admin, "Items=\"FilteredSubscriberMembershipDetails\"");
         StringAssert.Contains(admin, "@T(\"Intekenaar detail\", \"Subscriber detail\")");
         StringAssert.Contains(admin, "id=\"subscriber-detail-period\"");
+        StringAssert.Contains(admin, "id=\"subscriber-access-filter\"");
+        StringAssert.Contains(admin, "SelectedSubscriberAccessFilter");
+        StringAssert.Contains(admin, "DoesSubscriberMembershipDetailMatchAccessFilter");
+        StringAssert.Contains(admin, "@T(\"Alle\", \"All\")");
+        StringAssert.Contains(admin, "@T(\"Gratis\", \"Free\")");
+        StringAssert.Contains(admin, "@T(\"Betaal\", \"Paid\")");
         StringAssert.Contains(admin, "BuildSubscriberDrilldownPeriodSummary()");
         StringAssert.Contains(admin, "BuildSubscriberDrilldownOptionLabel(metric)");
         StringAssert.Contains(admin, "SelectedTierDistributionPeriod");
@@ -81,8 +87,13 @@ public class AdminAnalyticsSourceTests
         StringAssert.Contains(admin, "@T(\"Herwinde inkomste detail\", \"Recovered revenue detail\")");
         StringAssert.Contains(admin, "@T(\"Volgende betaling\", \"Next payment\")");
         StringAssert.Contains(admin, "RevenueZar");
+        StringAssert.Contains(admin, "RecurringRevenue");
+        StringAssert.Contains(admin, "@T(\"Maandelikse MRR\", \"Monthly MRR\")");
+        StringAssert.Contains(admin, "@T(\"Jaarplan MRR\", \"Yearly plan MRR\")");
+        StringAssert.Contains(admin, "@T(\"Werklike MRR\", \"Actual MRR\")");
         StringAssert.Contains(admin, "SalesCount");
         StringAssert.Contains(admin, "RecoveredRevenueZar");
+        StringAssert.Contains(service, "AdminRecurringRevenueMetric");
         StringAssert.Contains(service, "AdminSalesRevenueDetailRecord");
         StringAssert.Contains(service, "AdminRecoveredRevenueDetailRecord");
         StringAssert.Contains(service, "SalesDetails");
@@ -489,6 +500,56 @@ public class AdminAnalyticsSourceTests
     }
 
     [TestMethod]
+    public void SubscriberMembershipDetailsIncludeGratisUsersForAnalyticsFilter()
+    {
+        var now = DateTimeOffset.Now.AddMinutes(-5);
+        var paidSubscriberId = Guid.NewGuid();
+        var gratisSubscriberId = Guid.NewGuid();
+        var rows = CreateSubscriptionRows(
+            CreateSubscriptionRow(
+                paidSubscriberId,
+                "shink_app",
+                "active",
+                now,
+                null,
+                tierCode: "all_stories_monthly",
+                provider: "paystack",
+                providerPaymentId: "sub_paid"),
+            CreateSubscriptionRow(
+                gratisSubscriberId,
+                "shink_app",
+                "active",
+                now,
+                null,
+                tierCode: "gratis",
+                provider: "paystack",
+                providerPaymentId: $"gratis-{gratisSubscriberId:D}"),
+            CreateSubscriptionRow(
+                Guid.NewGuid(),
+                "payfast",
+                "active",
+                now,
+                null,
+                tierCode: "all_stories_monthly",
+                provider: "payfast"));
+        var subscribers = CreateSubscriberRows(
+            CreateSubscriberRow(paidSubscriberId, "paid@shink.dev"),
+            CreateSubscriberRow(gratisSubscriberId, "free@shink.dev"));
+        var revenueEvents = CreateRevenueEvents(
+            CreateRevenueEvent(now, 0m, "subscription.create", providerPaymentId: "sub_paid"));
+
+        var details = InvokeBuildSubscriberMembershipDetails(
+            subscribers,
+            rows,
+            CreateEmptyTierDetails(),
+            revenueEvents);
+
+        Assert.AreEqual(2, details.Count);
+        Assert.IsTrue(details.Any(detail => detail.Email == "paid@shink.dev"));
+        Assert.IsTrue(details.Any(detail => detail.Email == "free@shink.dev" && detail.TierCode == "gratis"));
+    }
+
+    [TestMethod]
     public void RevenueAnalyticsUsesRecordedLedgerAmountsOnly()
     {
         var now = DateTimeOffset.Now.AddMinutes(-5);
@@ -532,6 +593,44 @@ public class AdminAnalyticsSourceTests
         Assert.AreEqual(283m, today.RevenueZar);
         Assert.AreEqual(4, allTime.SalesCount);
         Assert.AreEqual(362m, allTime.RevenueZar);
+    }
+
+    [TestMethod]
+    public void RevenueAnalyticsCalculatesMonthlyAndYearlyMrrFromActiveProviderBilling()
+    {
+        var now = DateTimeOffset.Now.AddMinutes(-5);
+        var yearlyAttentionSubscriptionId = Guid.NewGuid();
+        var monthlyAttentionSubscriptionId = Guid.NewGuid();
+        var rows = CreateSubscriptionRows(
+            CreateSubscriptionRow(Guid.NewGuid(), "shink_app", "active", now, null, 79m, tierCode: "all_stories_monthly", provider: "paystack", billingPeriodMonths: 1),
+            CreateSubscriptionRow(Guid.NewGuid(), "shink_app", "active", now, null, 790m, tierCode: "all_stories_yearly", provider: "payfast", billingPeriodMonths: 12),
+            CreateSubscriptionRow(Guid.NewGuid(), "shink_app", "active", now, null, 790m, tierCode: "all_stories_yearly", provider: "paystack", billingPeriodMonths: 12, subscriptionId: yearlyAttentionSubscriptionId),
+            CreateSubscriptionRow(Guid.NewGuid(), "shink_app", "active", now, null, 79m, tierCode: "all_stories_monthly", provider: "payfast", billingPeriodMonths: 1, subscriptionId: monthlyAttentionSubscriptionId),
+            CreateSubscriptionRow(Guid.NewGuid(), "shink_app", "cancelled", now, now, 79m, tierCode: "all_stories_monthly", provider: "paystack", billingPeriodMonths: 1),
+            CreateSubscriptionRow(Guid.NewGuid(), "admin_override", "active", now, null, 500m, tierCode: "all_stories_monthly", provider: "manual", billingPeriodMonths: 1),
+            CreateSubscriptionRow(Guid.NewGuid(), "wordpress_pmpro", "active", now, null, 79m, tierCode: "all_stories_monthly", provider: "paystack", billingPeriodMonths: 1),
+            CreateSubscriptionRow(Guid.NewGuid(), "shink_app", "active", now, null, 6250m, tierCode: "school_small_yearly", provider: "paystack", billingPeriodMonths: 12));
+        var recoveries = CreateSubscriptionRecoveryRows(
+            CreateSubscriptionRecoveryRow(yearlyAttentionSubscriptionId, provider: "paystack", resolvedAt: null),
+            CreateSubscriptionRecoveryRow(monthlyAttentionSubscriptionId, provider: "payfast", resolvedAt: null));
+
+        var metrics = InvokeBuildRecurringRevenueMetrics(rows, recoveries);
+        var total = metrics.Single(metric => metric.SegmentKey == "total");
+        var monthly = metrics.Single(metric => metric.SegmentKey == "monthly");
+        var yearly = metrics.Single(metric => metric.SegmentKey == "yearly");
+
+        Assert.AreEqual(4, total.ActiveSubscriptions);
+        Assert.AreEqual(2, total.ActualActiveSubscriptions);
+        Assert.AreEqual(1738m, total.BillingAmountZar);
+        Assert.AreEqual(289.67m, total.MonthlyRecurringRevenueZar);
+        Assert.AreEqual(144.83m, total.ActualMonthlyRecurringRevenueZar);
+        Assert.AreEqual(2, total.AttentionSubscriptions);
+        Assert.AreEqual(158m, monthly.MonthlyRecurringRevenueZar);
+        Assert.AreEqual(79m, monthly.ActualMonthlyRecurringRevenueZar);
+        Assert.AreEqual(1, monthly.AttentionSubscriptions);
+        Assert.AreEqual(131.67m, yearly.MonthlyRecurringRevenueZar);
+        Assert.AreEqual(65.83m, yearly.ActualMonthlyRecurringRevenueZar);
+        Assert.AreEqual(1, yearly.AttentionSubscriptions);
     }
 
     private static string GetRepoPath(params string[] segments)
@@ -592,6 +691,22 @@ public class AdminAnalyticsSourceTests
         return ((IEnumerable<AdminSalesRevenueMetric>)result).ToArray();
     }
 
+    private static IReadOnlyList<AdminRecurringRevenueMetric> InvokeBuildRecurringRevenueMetrics(object rows, object? recoveries = null)
+    {
+        var method = typeof(SupabaseAdminManagementService)
+            .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
+            .Single(method =>
+                method.Name == "BuildRecurringRevenueMetrics" &&
+                method.GetParameters().Length == (recoveries is null ? 1 : 2));
+
+        Assert.IsNotNull(method);
+        var result = recoveries is null
+            ? method.Invoke(null, [rows])
+            : method.Invoke(null, [rows, recoveries]);
+        Assert.IsNotNull(result);
+        return ((IEnumerable<AdminRecurringRevenueMetric>)result).ToArray();
+    }
+
     private static IReadOnlyList<AdminSubscriberMembershipDetailRecord> InvokeBuildSubscriberMembershipDetails(
         object subscribers,
         object rows,
@@ -646,6 +761,18 @@ public class AdminAnalyticsSourceTests
         return list;
     }
 
+    private static object CreateSubscriptionRecoveryRows(params object[] rows)
+    {
+        var rowType = GetSubscriptionRecoveryRowType();
+        var list = (IList)Activator.CreateInstance(typeof(List<>).MakeGenericType(rowType))!;
+        foreach (var row in rows)
+        {
+            list.Add(row);
+        }
+
+        return list;
+    }
+
     private static object CreateSubscriptionRow(
         Guid subscriberId,
         string sourceSystem,
@@ -656,11 +783,13 @@ public class AdminAnalyticsSourceTests
         string? tierCode = null,
         string? providerPaymentId = null,
         string? provider = null,
-        string? providerTransactionId = null)
+        string? providerTransactionId = null,
+        int? billingPeriodMonths = null,
+        Guid? subscriptionId = null)
     {
         var rowType = GetSubscriptionRowType();
         var row = Activator.CreateInstance(rowType)!;
-        SetProperty(row, "SubscriptionId", Guid.NewGuid());
+        SetProperty(row, "SubscriptionId", subscriptionId ?? Guid.NewGuid());
         SetProperty(row, "SubscriberId", subscriberId);
         SetProperty(row, "SourceSystem", sourceSystem);
         SetProperty(row, "Provider", provider);
@@ -668,9 +797,30 @@ public class AdminAnalyticsSourceTests
         SetProperty(row, "SubscribedAt", subscribedAt);
         SetProperty(row, "CancelledAt", cancelledAt);
         SetProperty(row, "BillingAmountZar", billingAmountZar);
+        SetProperty(row, "BillingPeriodMonths", billingPeriodMonths);
         SetProperty(row, "TierCode", tierCode);
         SetProperty(row, "ProviderPaymentId", providerPaymentId);
         SetProperty(row, "ProviderTransactionId", providerTransactionId);
+        return row;
+    }
+
+    private static object CreateSubscriptionRecoveryRow(
+        Guid subscriptionId,
+        string? provider = null,
+        DateTimeOffset? resolvedAt = null,
+        string? resolution = null)
+    {
+        var rowType = GetSubscriptionRecoveryRowType();
+        var row = Activator.CreateInstance(rowType)!;
+        SetProperty(row, "RecoveryId", Guid.NewGuid());
+        SetProperty(row, "SubscriptionId", subscriptionId);
+        SetProperty(row, "Provider", provider);
+        SetProperty(row, "ProviderPaymentId", null);
+        SetProperty(row, "FirstFailedAt", DateTimeOffset.Now.AddDays(-1));
+        SetProperty(row, "GraceEndsAt", DateTimeOffset.Now.AddDays(3));
+        SetProperty(row, "CreatedAt", DateTimeOffset.Now.AddDays(-1));
+        SetProperty(row, "ResolvedAt", resolvedAt);
+        SetProperty(row, "Resolution", resolution);
         return row;
     }
 
@@ -707,6 +857,16 @@ public class AdminAnalyticsSourceTests
     {
         var type = typeof(SupabaseAdminManagementService).GetNestedType(
             "SubscriberRow",
+            BindingFlags.NonPublic);
+
+        Assert.IsNotNull(type);
+        return type;
+    }
+
+    private static Type GetSubscriptionRecoveryRowType()
+    {
+        var type = typeof(SupabaseAdminManagementService).GetNestedType(
+            "SubscriptionRecoveryRow",
             BindingFlags.NonPublic);
 
         Assert.IsNotNull(type);

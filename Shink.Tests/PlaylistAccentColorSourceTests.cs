@@ -14,13 +14,20 @@ public class PlaylistAccentColorSourceTests
         var adminContract = File.ReadAllText(GetRepoPath("Shink", "Services", "IAdminManagementService.cs"));
 
         StringAssert.Contains(adminMarkup, "PlaylistEditor.AccentColorHex");
-        StringAssert.Contains(adminMarkup, "@T(\"Luister kleur\", \"Luister color\")");
+        StringAssert.Contains(adminMarkup, "PlaylistEditor.AccentColorEndHex");
+        StringAssert.Contains(adminMarkup, "@T(\"Luister kleur 1\", \"Luister color 1\")");
+        StringAssert.Contains(adminMarkup, "@T(\"Luister kleur 2\", \"Luister color 2\")");
         StringAssert.Contains(adminMarkup, "type=\"color\"");
         StringAssert.Contains(adminMarkup, "OnPlaylistAccentColorPickerChanged");
+        StringAssert.Contains(adminMarkup, "OnPlaylistAccentEndColorPickerChanged");
         StringAssert.Contains(adminContract, "string? AccentColorHex");
-        StringAssert.Contains(adminService, "[\"accent_color_hex\"] = NormalizePlaylistAccentColorHex(request.AccentColorHex)");
+        StringAssert.Contains(adminContract, "string? AccentColorEndHex");
+        StringAssert.Contains(adminService, "[\"accent_color_hex\"] = normalizedAccentColorHex");
+        StringAssert.Contains(adminService, "[\"accent_color_end_hex\"] = normalizedAccentColorEndHex");
         StringAssert.Contains(adminService, "[JsonPropertyName(\"accent_color_hex\")]");
+        StringAssert.Contains(adminService, "[JsonPropertyName(\"accent_color_end_hex\")]");
         StringAssert.Contains(adminService, "Gebruik asseblief 'n geldige hex-kleurkode soos #FFAA00.");
+        StringAssert.Contains(adminService, "Gebruik asseblief 'n geldige tweede hex-kleurkode soos #88CCFF.");
     }
 
     [TestMethod]
@@ -32,20 +39,34 @@ public class PlaylistAccentColorSourceTests
         var luisterCss = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Luister.razor.css"));
         var playlistPage = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "LuisterPlaylist.razor"));
         var playlistCss = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "LuisterPlaylist.razor.css"));
+        var showcasePage = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "LuisterPlaylistShowcase.razor"));
+        var showcaseCss = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "LuisterPlaylistShowcase.razor.css"));
         var migration = File.ReadAllText(GetRepoPath(
             "Shink",
             "Database",
             "migrations",
             "20260526_story_playlist_accent_color.sql"));
+        var gradientMigration = File.ReadAllText(GetRepoPath(
+            "Shink",
+            "Database",
+            "migrations",
+            "20260531_story_playlist_gradient_accent_color.sql"));
 
         StringAssert.Contains(playlistModel, "string? AccentColorHex = null");
+        StringAssert.Contains(playlistModel, "string? AccentColorEndHex = null");
         StringAssert.Contains(catalogService, "accent_color_hex");
+        StringAssert.Contains(catalogService, "accent_color_end_hex");
         StringAssert.Contains(catalogService, "AccentColorHex: NormalizePlaylistAccentColorHex");
+        StringAssert.Contains(catalogService, "AccentColorEndHex: NormalizePlaylistAccentColorHex");
         StringAssert.Contains(luister, "BuildPlaylistAccentStyle(playlist)");
         StringAssert.Contains(luisterCss, "--playlist-accent-color");
         StringAssert.Contains(playlistPage, "BuildPlaylistAccentStyle(CurrentPlaylist)");
         StringAssert.Contains(playlistCss, "--playlist-accent-color");
+        StringAssert.Contains(showcasePage, "BuildShowcasePageStyle(CurrentPlaylist)");
+        StringAssert.Contains(showcaseCss, "--playlist-showcase-background-start");
+        StringAssert.Contains(showcaseCss, "--playlist-showcase-background-end");
         StringAssert.Contains(migration, "accent_color_hex");
+        StringAssert.Contains(gradientMigration, "accent_color_end_hex");
     }
 
     private static string GetRepoPath(params string[] segments)

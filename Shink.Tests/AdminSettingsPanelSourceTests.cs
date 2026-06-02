@@ -191,6 +191,16 @@ public class AdminSettingsPanelSourceTests
         StringAssert.Contains(blogCss, ".admin-icon-only");
     }
 
+    [TestMethod]
+    public void StorePanelImagesLoadEagerlyInsideAdminTab()
+    {
+        var store = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "AdminStorePanel.razor"));
+
+        StringAssert.Contains(store, "class=\"store-admin-list-image\"");
+        StringAssert.Contains(store, "loading=\"eager\"");
+        Assert.IsFalse(store.Contains("loading=\"lazy\"", StringComparison.Ordinal));
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var parts = new[]

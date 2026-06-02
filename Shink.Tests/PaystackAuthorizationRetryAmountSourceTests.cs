@@ -18,6 +18,22 @@ public sealed class PaystackAuthorizationRetryAmountSourceTests
     }
 
     [TestMethod]
+    public void BatchRetryRequiresDuePaystackRecoveryRows()
+    {
+        var service = File.ReadAllText(GetRepoPath("Shink", "Services", "PaystackAuthorizationRetryBatchService.cs"));
+
+        StringAssert.Contains(service, "FetchRetryReadyRecoveryBySubscriptionIdAsync");
+        StringAssert.Contains(service, "subscription_payment_recoveries");
+        StringAssert.Contains(service, "authorization_retry_status=eq.pending");
+        StringAssert.Contains(service, "authorization_retry_due_at=lte");
+        StringAssert.Contains(service, "FirstFailedAt");
+        StringAssert.Contains(service, "AuthorizationRetryDelay");
+        Assert.IsFalse(
+            service.Contains("next_renewal_at.lt", StringComparison.Ordinal),
+            "Batch retry must not charge from elapsed local renewal dates alone.");
+    }
+
+    [TestMethod]
     public void BatchRetrySkipsCandidatesWithCurrentDuplicatePaystackSubscription()
     {
         var service = File.ReadAllText(GetRepoPath("Shink", "Services", "PaystackAuthorizationRetryBatchService.cs"));

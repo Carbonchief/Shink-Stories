@@ -134,60 +134,72 @@
                     </div>
 
                     <div class="resource-types-admin-form-grid">
-                        <section class="resource-types-admin-card">
-                            <h4>@T("Basies", "Basics")</h4>
+                        <details class="resource-types-admin-type-disclosure resource-types-admin-card-full" open>
+                            <summary class="resource-types-admin-type-summary">
+                                <span>
+                                    <h4>@T("Tipe besonderhede", "Type details")</h4>
+                                    <p class="resource-types-admin-hint">@Editor.SlugPreview</p>
+                                </span>
+                                <i class="fa-solid fa-chevron-down resource-types-admin-type-summary-caret" aria-hidden="true"></i>
+                            </summary>
 
-                            <label class="resource-types-admin-field">
-                                <span>@T("Naam", "Name")</span>
-                                <input type="text" @bind="Editor.Name" />
-                            </label>
+                            <div class="resource-types-admin-type-disclosure-body">
+                                <section class="resource-types-admin-card">
+                                    <h4>@T("Basies", "Basics")</h4>
 
-                            <label class="resource-types-admin-field">
-                                <span>@T("Slug", "Slug")</span>
-                                <input type="text" @bind="Editor.Slug" />
-                            </label>
+                                    <label class="resource-types-admin-field">
+                                        <span>@T("Naam", "Name")</span>
+                                        <input type="text" @bind="Editor.Name" />
+                                    </label>
 
-                            <label class="resource-types-admin-field">
-                                <span>@T("Beskrywing", "Description")</span>
-                                <textarea rows="3" @bind="Editor.Description"></textarea>
-                            </label>
+                                    <label class="resource-types-admin-field">
+                                        <span>@T("Slug", "Slug")</span>
+                                        <input type="text" @bind="Editor.Slug" />
+                                    </label>
 
-                            <div class="resource-types-admin-field-row">
-                                <label class="resource-types-admin-field">
-                                    <span>@T("Sorteer", "Sort order")</span>
-                                    <input type="number" @bind="Editor.SortOrder" />
-                                </label>
+                                    <label class="resource-types-admin-field">
+                                        <span>@T("Beskrywing", "Description")</span>
+                                        <textarea rows="3" @bind="Editor.Description"></textarea>
+                                    </label>
 
-                                <label class="resource-types-admin-checkbox">
-                                    <input type="checkbox" @bind="Editor.IsEnabled" />
-                                    <span>@T("Wys op hulpbronne blad", "Show on resources page")</span>
-                                </label>
+                                    <div class="resource-types-admin-field-row">
+                                        <label class="resource-types-admin-field">
+                                            <span>@T("Sorteer", "Sort order")</span>
+                                            <input type="number" @bind="Editor.SortOrder" />
+                                        </label>
+
+                                        <label class="resource-types-admin-checkbox">
+                                            <input type="checkbox" @bind="Editor.IsEnabled" />
+                                            <span>@T("Wys op hulpbronne blad", "Show on resources page")</span>
+                                        </label>
+                                    </div>
+                                </section>
+
+                                <section class="resource-types-admin-card">
+                                    <h4>@T("Opsomming", "Summary")</h4>
+
+                                    <dl class="resource-types-admin-summary">
+                                        <div>
+                                            <dt>@T("Dokumente", "Documents")</dt>
+                                            <dd>@(Editor.DocumentCount == 1 ? T("1 dokument", "1 document") : T($"{Editor.DocumentCount} dokumente", $"{Editor.DocumentCount} documents"))</dd>
+                                        </div>
+                                        <div>
+                                            <dt>@T("Blad skakel", "Page link")</dt>
+                                            <dd>/resources?tipe=@Editor.SlugPreview</dd>
+                                        </div>
+                                        <div>
+                                            <dt>@T("Stoorlaag", "Storage layer")</dt>
+                                            <dd>@T("Cloudflare R2 + Supabase metadata", "Cloudflare R2 + Supabase metadata")</dd>
+                                        </div>
+                                    </dl>
+
+                                    <p class="resource-types-admin-hint">
+                                        @T("Laai PDF's per hulpbron tipe op. Die lêers word in Cloudflare R2 gestoor en die metadata word in Supabase gehou vir vinniger soek en bestuur.",
+                                            "Upload PDFs per resource type. Files are stored in Cloudflare R2 and the metadata is kept in Supabase for easier search and management.")
+                                    </p>
+                                </section>
                             </div>
-                        </section>
-
-                        <section class="resource-types-admin-card">
-                            <h4>@T("Opsomming", "Summary")</h4>
-
-                            <dl class="resource-types-admin-summary">
-                                <div>
-                                    <dt>@T("Dokumente", "Documents")</dt>
-                                    <dd>@(Editor.DocumentCount == 1 ? T("1 dokument", "1 document") : T($"{Editor.DocumentCount} dokumente", $"{Editor.DocumentCount} documents"))</dd>
-                                </div>
-                                <div>
-                                    <dt>@T("Blad skakel", "Page link")</dt>
-                                    <dd>/resources?tipe=@Editor.SlugPreview</dd>
-                                </div>
-                                <div>
-                                    <dt>@T("Stoorlaag", "Storage layer")</dt>
-                                    <dd>@T("Cloudflare R2 + Supabase metadata", "Cloudflare R2 + Supabase metadata")</dd>
-                                </div>
-                            </dl>
-
-                            <p class="resource-types-admin-hint">
-                                @T("Laai PDF's per hulpbron tipe op. Die lêers word in Cloudflare R2 gestoor en die metadata word in Supabase gehou vir vinniger soek en bestuur.",
-                                    "Upload PDFs per resource type. Files are stored in Cloudflare R2 and the metadata is kept in Supabase for easier search and management.")
-                            </p>
-                        </section>
+                        </details>
 
                         <section class="resource-types-admin-card resource-types-admin-card-full">
                             <div class="resource-types-admin-card-head">
@@ -324,39 +336,41 @@
                                                         }
                                                     </select>
                                                 </label>
-                                                <span class="resource-types-admin-status-tag @(document.IsEnabled ? "is-enabled" : "is-disabled")"
-                                                      role="status"
-                                                      aria-label="@(document.IsEnabled ? T("Aktief", "Enabled") : T("Af", "Disabled"))"
-                                                      title="@(document.IsEnabled ? T("Aktief", "Enabled") : T("Af", "Disabled"))">
-                                                    <i class="fa-solid @(document.IsEnabled ? "fa-circle-check" : "fa-circle-xmark")" aria-hidden="true"></i>
-                                                    <span class="sr-only">@(document.IsEnabled ? T("Aktief", "Enabled") : T("Af", "Disabled"))</span>
-                                                </span>
-                                                <button type="button"
-                                                        class="resource-types-admin-btn resource-types-admin-btn-secondary resource-types-admin-btn-icon"
-                                                        @onclick="() => BeginEditDocument(document)"
-                                                        disabled="@isDocumentBusy"
-                                                        aria-label='@T("Wysig dokument", "Edit document")'
-                                                        title='@T("Wysig dokument", "Edit document")'>
-                                                    <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
-                                                    <span class="sr-only">@T("Wysig dokument", "Edit document")</span>
-                                                </button>
-                                                <button type="button"
-                                                        class="resource-types-admin-btn resource-types-admin-btn-danger resource-types-admin-btn-icon"
-                                                        @onclick="() => DeleteDocumentAsync(document)"
-                                                        disabled="@isDocumentBusy"
-                                                        aria-label="@(isDeletingDocument ? T("Verwyder dokument...", "Deleting document...") : T("Verwyder dokument", "Delete document"))"
-                                                        title="@(isDeletingDocument ? T("Verwyder dokument...", "Deleting document...") : T("Verwyder dokument", "Delete document"))">
-                                                    @if (isDeletingDocument)
-                                                    {
-                                                        <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
-                                                        <span class="sr-only">@T("Verwyder dokument...", "Deleting document...")</span>
-                                                    }
-                                                    else
-                                                    {
-                                                        <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
-                                                        <span class="sr-only">@T("Verwyder dokument", "Delete document")</span>
-                                                    }
-                                                </button>
+                                                <div class="resource-types-admin-document-button-row">
+                                                    <span class="resource-types-admin-status-tag @(document.IsEnabled ? "is-enabled" : "is-disabled")"
+                                                          role="status"
+                                                          aria-label="@(document.IsEnabled ? T("Aktief", "Enabled") : T("Af", "Disabled"))"
+                                                          title="@(document.IsEnabled ? T("Aktief", "Enabled") : T("Af", "Disabled"))">
+                                                        <i class="fa-solid @(document.IsEnabled ? "fa-circle-check" : "fa-circle-xmark")" aria-hidden="true"></i>
+                                                        <span class="sr-only">@(document.IsEnabled ? T("Aktief", "Enabled") : T("Af", "Disabled"))</span>
+                                                    </span>
+                                                    <button type="button"
+                                                            class="resource-types-admin-btn resource-types-admin-btn-secondary resource-types-admin-btn-icon"
+                                                            @onclick="() => BeginEditDocument(document)"
+                                                            disabled="@isDocumentBusy"
+                                                            aria-label='@T("Wysig dokument", "Edit document")'
+                                                            title='@T("Wysig dokument", "Edit document")'>
+                                                        <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
+                                                        <span class="sr-only">@T("Wysig dokument", "Edit document")</span>
+                                                    </button>
+                                                    <button type="button"
+                                                            class="resource-types-admin-btn resource-types-admin-btn-danger resource-types-admin-btn-icon"
+                                                            @onclick="() => DeleteDocumentAsync(document)"
+                                                            disabled="@isDocumentBusy"
+                                                            aria-label="@(isDeletingDocument ? T("Verwyder dokument...", "Deleting document...") : T("Verwyder dokument", "Delete document"))"
+                                                            title="@(isDeletingDocument ? T("Verwyder dokument...", "Deleting document...") : T("Verwyder dokument", "Delete document"))">
+                                                        @if (isDeletingDocument)
+                                                        {
+                                                            <i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i>
+                                                            <span class="sr-only">@T("Verwyder dokument...", "Deleting document...")</span>
+                                                        }
+                                                        else
+                                                        {
+                                                            <i class="fa-solid fa-trash-can" aria-hidden="true"></i>
+                                                            <span class="sr-only">@T("Verwyder dokument", "Delete document")</span>
+                                                        }
+                                                    </button>
+                                                </div>
                                             </div>
                                             @if (isEditingDocument && EditingDocument is not null)
                                             {

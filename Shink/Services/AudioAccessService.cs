@@ -6,7 +6,7 @@ namespace Shink.Services;
 public sealed class AudioAccessService(IDataProtectionProvider dataProtectionProvider) : IAudioAccessService
 {
     private const string ProtectorPurpose = "Shink.Audio.StreamToken.v1";
-    private static readonly TimeSpan DefaultTokenLifetime = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan DefaultTokenLifetime = TimeSpan.FromHours(4);
     private readonly IDataProtector _protector = dataProtectionProvider.CreateProtector(ProtectorPurpose);
 
     public string CreateSignedAudioUrl(string slug, TimeSpan? lifetime = null)

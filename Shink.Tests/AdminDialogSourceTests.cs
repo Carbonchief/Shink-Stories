@@ -19,6 +19,36 @@ public class AdminDialogSourceTests
         StringAssert.Contains(globalCss, ".mud-dialog.admin-solid-dialog .mud-input-outlined");
     }
 
+    [TestMethod]
+    public void AdminModalLoadingOverlayDoesNotBlockDialogCloseButtons()
+    {
+        var css = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor.css"));
+        var globalCss = File.ReadAllText(GetRepoPath("Shink", "wwwroot", "app.css"));
+
+        StringAssert.Contains(css, ".admin-modal-loading {");
+        StringAssert.Contains(css, "pointer-events: none;");
+        StringAssert.Contains(globalCss, ".mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button");
+        StringAssert.Contains(globalCss, "pointer-events: auto;");
+        StringAssert.Contains(globalCss, "fill: currentColor !important;");
+    }
+
+    [TestMethod]
+    public void NoHeaderAdminDialogsExposeExplicitCloseButtons()
+    {
+        var settingsMarkup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "AdminSettingsPanel.razor"));
+        var charactersMarkup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "AdminCharactersPanel.razor"));
+
+        StringAssert.Contains(settingsMarkup, "NoHeader = true");
+        StringAssert.Contains(settingsMarkup, "CloseButton = false");
+        StringAssert.Contains(settingsMarkup, "OnClick=\"CloseCodeDialog\"");
+        StringAssert.Contains(settingsMarkup, "private void CloseCodeDialog()");
+
+        StringAssert.Contains(charactersMarkup, "NoHeader = true");
+        StringAssert.Contains(charactersMarkup, "CloseButton = false");
+        StringAssert.Contains(charactersMarkup, "@onclick=\"CloseCharacterDialogAsync\"");
+        StringAssert.Contains(charactersMarkup, "private async Task CloseCharacterDialogAsync()");
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var parts = new[]
