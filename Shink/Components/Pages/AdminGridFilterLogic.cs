@@ -248,7 +248,7 @@ public static class AdminSubscriberManagementLogic
         "Provider",
         "Source",
         "Status",
-        "Subscribed at",
+        "Joined at",
         "Next payment",
         "Disabled at",
         "Disabled reason"
@@ -273,7 +273,7 @@ public static class AdminSubscriberManagementLogic
                     subscriber.PaymentProvider,
                     subscriber.SubscriptionSourceSystem,
                     subscriber.SubscriptionStatus,
-                    subscriber.SubscribedAt?.ToString("O"),
+                    subscriber.CreatedAt.ToString("O"),
                     subscriber.NextPaymentDueAt?.ToString("O"),
                     subscriber.DisabledAt?.ToString("O"),
                     subscriber.DisabledReason

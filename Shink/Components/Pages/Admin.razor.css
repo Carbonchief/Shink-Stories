@@ -777,7 +777,30 @@
     border: 0 !important;
     border-radius: 8px;
     background: transparent !important;
+    background-color: transparent !important;
     box-shadow: none !important;
+}
+
+.admin-grid ::deep .mud-table-pagination .mud-icon-button:hover,
+.admin-grid ::deep .mud-table-pagination .mud-icon-button:focus,
+.admin-grid ::deep .mud-table-pagination .mud-icon-button:focus-visible,
+.admin-grid ::deep .mud-table-pagination .mud-icon-button:active,
+.admin-grid ::deep .mud-table-pagination button.mud-icon-button:hover,
+.admin-grid ::deep .mud-table-pagination button.mud-icon-button:focus,
+.admin-grid ::deep .mud-table-pagination button.mud-icon-button:focus-visible,
+.admin-grid ::deep .mud-table-pagination button.mud-icon-button:active {
+    background: color-mix(in srgb, var(--admin-pager-text) 12%, transparent) !important;
+    background-color: color-mix(in srgb, var(--admin-pager-text) 12%, transparent) !important;
+}
+
+.admin-grid ::deep .mud-table-pagination .mud-icon-button .mud-ripple,
+.admin-grid ::deep .mud-table-pagination .mud-icon-button .mud-button-root,
+.admin-grid ::deep .mud-table-pagination .mud-icon-button .mud-icon-root,
+.admin-grid ::deep .mud-table-pagination button.mud-icon-button .mud-ripple,
+.admin-grid ::deep .mud-table-pagination button.mud-icon-button .mud-button-root,
+.admin-grid ::deep .mud-table-pagination button.mud-icon-button .mud-icon-root {
+    background: transparent !important;
+    background-color: transparent !important;
 }
 
 .admin-grid ::deep .mud-table-pagination .mud-icon-button .mud-icon-root,
@@ -1167,6 +1190,32 @@
     background: var(--admin-surface) !important;
 }
 
+.admin-detail-tabs ::deep .mud-tab {
+    min-height: 38px;
+    border-radius: 8px;
+    color: var(--admin-text) !important;
+    -webkit-text-fill-color: var(--admin-text) !important;
+    background: transparent !important;
+    opacity: 1 !important;
+}
+
+.admin-detail-tabs ::deep .mud-tab .mud-tab-content,
+.admin-detail-tabs ::deep .mud-tab .mud-tab-content span,
+.admin-detail-tabs ::deep .mud-tab .mud-button-label,
+.admin-detail-tabs ::deep .mud-tab .mud-button-label span {
+    color: var(--admin-text) !important;
+    -webkit-text-fill-color: var(--admin-text) !important;
+}
+
+.admin-detail-tabs ::deep .mud-tab.mud-tab-active,
+.admin-detail-tabs ::deep .mud-tab[aria-selected="true"] {
+    background: color-mix(in srgb, #f3a13f 18%, var(--admin-surface-soft)) !important;
+}
+
+.admin-detail-tabs ::deep .mud-tabs-slider {
+    background-color: #f3a13f !important;
+}
+
 .admin-detail-tabs ::deep .mud-tabs-panels {
     margin-top: 0.65rem;
     padding: 0.85rem;
@@ -1178,6 +1227,98 @@
 .admin-detail-tabs ::deep .mud-tab-panel {
     background: var(--admin-surface) !important;
     color: var(--admin-text) !important;
+}
+
+.admin-solid-dialog ::deep .mud-checkbox,
+.admin-solid-dialog ::deep .mud-checkbox .mud-typography,
+.admin-solid-dialog ::deep .mud-checkbox .mud-button-root,
+.admin-solid-dialog ::deep .mud-checkbox .mud-icon-root {
+    color: var(--admin-text) !important;
+    -webkit-text-fill-color: var(--admin-text) !important;
+}
+
+.admin-solid-dialog ::deep .mud-checkbox .mud-button-root {
+    background: transparent !important;
+}
+
+.admin-solid-dialog ::deep .admin-action-grid .admin-action-btn,
+.admin-solid-dialog ::deep .mud-dialog-actions .admin-action-btn {
+    width: auto;
+    min-width: 0;
+    min-height: 42px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    border: 1px solid color-mix(in srgb, var(--admin-border-strong) 82%, #ffffff);
+    border-radius: 10px;
+    padding: 0.55rem 0.9rem;
+    color: #f4f8fc !important;
+    background: color-mix(in srgb, var(--admin-surface-soft) 76%, #ffffff 8%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 1px 2px rgba(0, 0, 0, 0.22);
+    transition: background-color 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.admin-solid-dialog ::deep .admin-action-grid .admin-action-btn:hover,
+.admin-solid-dialog ::deep .admin-action-grid .admin-action-btn:focus-visible,
+.admin-solid-dialog ::deep .mud-dialog-actions .admin-action-btn:hover,
+.admin-solid-dialog ::deep .mud-dialog-actions .admin-action-btn:focus-visible {
+    border-color: color-mix(in srgb, #f3a13f 72%, #ffffff);
+    background: color-mix(in srgb, var(--admin-surface-soft) 62%, #f3a13f 18%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 0 0 2px rgba(243, 161, 63, 0.16), 0 5px 14px rgba(0, 0, 0, 0.24);
+    transform: translateY(-1px);
+}
+
+.admin-solid-dialog ::deep .admin-action-grid .admin-action-btn:disabled,
+.admin-solid-dialog ::deep .mud-dialog-actions .admin-action-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.58;
+    transform: none;
+    box-shadow: none;
+}
+
+.admin-solid-dialog ::deep .admin-action-grid .admin-action-btn .admin-btn-text,
+.admin-solid-dialog ::deep .mud-dialog-actions .admin-action-btn .admin-btn-text {
+    display: inline;
+}
+
+.admin-solid-dialog ::deep .admin-action-grid .admin-action-btn.admin-icon-only,
+.admin-solid-dialog ::deep .mud-dialog-actions .admin-action-btn.admin-icon-only {
+    width: 42px;
+    min-width: 42px;
+    padding-inline: 0;
+}
+
+.admin-solid-dialog ::deep .admin-action-grid .admin-action-btn.admin-icon-only .admin-btn-text,
+.admin-solid-dialog ::deep .mud-dialog-actions .admin-action-btn.admin-icon-only .admin-btn-text {
+    display: none;
+}
+
+.admin-solid-dialog ::deep .admin-action-grid .admin-action-btn.mud-button-outlined-primary,
+.admin-solid-dialog ::deep .mud-dialog-actions .admin-action-btn.mud-button-outlined-primary {
+    border-color: color-mix(in srgb, #7db9ff 68%, var(--admin-border-strong));
+    background: rgba(67, 121, 174, 0.22);
+}
+
+.admin-solid-dialog ::deep .admin-action-grid .admin-action-btn.mud-button-outlined-warning,
+.admin-solid-dialog ::deep .mud-dialog-actions .admin-action-btn.mud-button-outlined-warning {
+    border-color: color-mix(in srgb, #f3a13f 78%, var(--admin-border-strong));
+    background: rgba(243, 161, 63, 0.18);
+}
+
+.admin-solid-dialog ::deep .admin-action-grid .admin-action-btn.mud-button-outlined-success,
+.admin-solid-dialog ::deep .mud-dialog-actions .admin-action-btn.mud-button-outlined-success {
+    border-color: color-mix(in srgb, #7bcf9d 72%, var(--admin-border-strong));
+    background: rgba(123, 207, 157, 0.18);
+}
+
+.admin-solid-dialog ::deep .admin-action-grid .admin-action-btn.mud-button-filled,
+.admin-solid-dialog ::deep .mud-dialog-actions .admin-action-btn.mud-button-filled,
+.admin-solid-dialog ::deep .admin-action-grid .admin-action-btn.admin-btn,
+.admin-solid-dialog ::deep .mud-dialog-actions .admin-action-btn.admin-btn {
+    border-color: color-mix(in srgb, #f3a13f 82%, #ffffff);
+    color: #111820 !important;
+    background: #f3a13f;
 }
 
 .admin-detail-subtitle {
@@ -1528,6 +1669,28 @@
 .admin-story-card-editor ::deep textarea {
     font-size: 0.95rem;
     line-height: 1.36;
+}
+
+.admin-story-playlist-selector {
+    border: 1px solid var(--admin-border);
+    border-radius: 8px;
+    background: var(--admin-surface-soft);
+    padding: 0.75rem;
+}
+
+.admin-story-playlist-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.35rem 0.75rem;
+    margin-top: 0.6rem;
+}
+
+.admin-story-playlist-checkbox {
+    min-width: 0;
+}
+
+.admin-story-playlist-checkbox ::deep .mud-typography {
+    overflow-wrap: anywhere;
 }
 
 .admin-story-test-head {
@@ -2461,7 +2624,30 @@
     border: 0 !important;
     border-radius: 8px;
     background: transparent !important;
+    background-color: transparent !important;
     box-shadow: none !important;
+}
+
+.admin-page ::deep .mud-table-pagination .mud-icon-button:hover,
+.admin-page ::deep .mud-table-pagination .mud-icon-button:focus,
+.admin-page ::deep .mud-table-pagination .mud-icon-button:focus-visible,
+.admin-page ::deep .mud-table-pagination .mud-icon-button:active,
+.admin-page ::deep .mud-table-pagination button.mud-icon-button:hover,
+.admin-page ::deep .mud-table-pagination button.mud-icon-button:focus,
+.admin-page ::deep .mud-table-pagination button.mud-icon-button:focus-visible,
+.admin-page ::deep .mud-table-pagination button.mud-icon-button:active {
+    background: color-mix(in srgb, var(--admin-pager-text) 12%, transparent) !important;
+    background-color: color-mix(in srgb, var(--admin-pager-text) 12%, transparent) !important;
+}
+
+.admin-page ::deep .mud-table-pagination .mud-icon-button .mud-ripple,
+.admin-page ::deep .mud-table-pagination .mud-icon-button .mud-button-root,
+.admin-page ::deep .mud-table-pagination .mud-icon-button .mud-icon-root,
+.admin-page ::deep .mud-table-pagination button.mud-icon-button .mud-ripple,
+.admin-page ::deep .mud-table-pagination button.mud-icon-button .mud-button-root,
+.admin-page ::deep .mud-table-pagination button.mud-icon-button .mud-icon-root {
+    background: transparent !important;
+    background-color: transparent !important;
 }
 
 .admin-page ::deep .mud-table-pagination .mud-icon-button .mud-icon-root,
@@ -2582,6 +2768,10 @@
 
     .admin-form-grid .admin-span-2 {
         grid-column: span 1;
+    }
+
+    .admin-story-playlist-options {
+        grid-template-columns: 1fr;
     }
 
     .admin-playlist-order-toolbar {

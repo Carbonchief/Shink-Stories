@@ -67,6 +67,9 @@ public class AdminGridStyleSourceTests
         StringAssert.Contains(css, ".admin-page ::deep .mud-table-pagination svg path");
         StringAssert.Contains(css, "fill: var(--admin-pager-text) !important;");
         StringAssert.Contains(css, "background: transparent !important;");
+        StringAssert.Contains(css, "background-color: transparent !important;");
+        StringAssert.Contains(css, ".admin-page ::deep .mud-table-pagination .mud-icon-button .mud-ripple");
+        StringAssert.Contains(css, ".admin-page ::deep .mud-table-pagination .mud-icon-button .mud-icon-root");
         StringAssert.Contains(css, "fill: currentColor !important;");
         StringAssert.Contains(css, ".admin-page ::deep .mud-table-pagination button.mud-icon-button:disabled svg path");
         StringAssert.Contains(css, "color: var(--admin-pager-disabled) !important;");
@@ -172,6 +175,26 @@ public class AdminGridStyleSourceTests
         StringAssert.Contains(migration, "p_next_payment_to date default null");
         StringAssert.Contains(migration, "summary.subscribed_at");
         StringAssert.Contains(migration, "summary.next_payment_due_at");
+    }
+
+    [TestMethod]
+    public void SubscriberGridJoinedColumnUsesSubscriberCreationDate()
+    {
+        var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
+        var supabaseService = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseAdminManagementService.cs"));
+        var migrationPath = Directory.GetFiles(
+                GetRepoPath("Shink", "Database", "migrations"),
+                "*admin_subscribers_page_joined_date.sql")
+            .SingleOrDefault();
+        Assert.IsNotNull(migrationPath, "Expected a migration that updates admin_subscribers_page to use subscriber created_at for the joined date.");
+        var migration = File.ReadAllText(migrationPath);
+
+        StringAssert.Contains(markup, "@T(\"Aangesluit op\", \"Joined On\")");
+        StringAssert.Contains(markup, "FormatAdminDate(context.CreatedAt)");
+        StringAssert.Contains(supabaseService, "SubscribedAt: item.CreatedAt");
+        StringAssert.Contains(supabaseService, "SubscribedAt: row.CreatedAt");
+        StringAssert.Contains(migration, "s.created_at as subscribed_at");
+        StringAssert.Contains(migration, "(s.created_at at time zone 'Africa/Johannesburg')::date");
     }
 
     [TestMethod]

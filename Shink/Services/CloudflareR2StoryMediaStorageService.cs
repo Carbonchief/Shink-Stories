@@ -55,6 +55,40 @@ public sealed class CloudflareR2StoryMediaStorageService(
         return Task.FromResult(BuildDirectUpload(objectKey, normalizedContentType, includePublicUrl: true));
     }
 
+    public Task<Uri?> CreateAudioReadUrlAsync(
+        string? bucket,
+        string objectKey,
+        TimeSpan lifetime,
+        CancellationToken cancellationToken = default)
+    {
+        // Presigning is local and cheap; media preload aborts should not surface as endpoint exceptions.
+        EnsureUploadConfigured();
+
+        if (!TryNormalizeReadObjectKey(bucket, objectKey, out var normalizedObjectKey))
+        {
+            return Task.FromResult<Uri?>(null);
+        }
+
+        var request = new GetPreSignedUrlRequest
+        {
+            BucketName = ResolveReadBucketName(bucket),
+            Key = normalizedObjectKey,
+            Verb = HttpVerb.GET,
+            Protocol = Protocol.HTTPS,
+            Expires = DateTime.UtcNow.Add(NormalizeReadUrlLifetime(lifetime))
+        };
+
+        var readUrl = GetClient().GetPreSignedURL(request);
+        if (!Uri.TryCreate(readUrl, UriKind.Absolute, out var signedUri) ||
+            signedUri is null ||
+            !string.Equals(signedUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            return Task.FromResult<Uri?>(null);
+        }
+
+        return Task.FromResult<Uri?>(signedUri);
+    }
+
     public async Task<UploadedStoryAudio> UploadAudioAsync(
         string slug,
         string fileName,
@@ -218,6 +252,183 @@ public sealed class CloudflareR2StoryMediaStorageService(
         !string.IsNullOrWhiteSpace(_options.BucketName) &&
         !string.IsNullOrWhiteSpace(_options.AccessKeyId) &&
         !string.IsNullOrWhiteSpace(_options.SecretAccessKey);
+
+    private string ResolveReadBucketName(string? bucket)
+    {
+        var configuredBucket = _options.BucketName.Trim();
+        if (string.IsNullOrWhiteSpace(bucket))
+        {
+            return configuredBucket;
+        }
+
+        var candidate = bucket.Trim();
+        if (string.Equals(candidate, configuredBucket, StringComparison.Ordinal))
+        {
+            return configuredBucket;
+        }
+
+        if (candidate.Contains("://", StringComparison.Ordinal) ||
+            candidate.Contains('/', StringComparison.Ordinal) ||
+            candidate.Contains('\\', StringComparison.Ordinal) ||
+            candidate.Contains('.', StringComparison.Ordinal))
+        {
+            return configuredBucket;
+        }
+
+        return candidate;
+    }
+
+    private bool TryNormalizeReadObjectKey(string? bucket, string objectKey, out string normalizedObjectKey)
+    {
+        normalizedObjectKey = string.Empty;
+        if (string.IsNullOrWhiteSpace(objectKey))
+        {
+            return false;
+        }
+
+        var candidate = objectKey.Trim();
+        if (Uri.TryCreate(candidate, UriKind.Absolute, out var absoluteUri) &&
+            absoluteUri is not null)
+        {
+            if (!TryExtractAllowedReadObjectKey(absoluteUri, bucket, out candidate))
+            {
+                return false;
+            }
+        }
+
+        return TryNormalizeObjectKey(candidate, out normalizedObjectKey);
+    }
+
+    private bool TryExtractAllowedReadObjectKey(Uri absoluteUri, string? bucket, out string objectKey)
+    {
+        objectKey = string.Empty;
+        if (!string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var configuredBucket = ResolveReadBucketName(bucket);
+        var accountHost = $"{_options.AccountId.Trim()}.r2.cloudflarestorage.com";
+        var isPathStyleS3ApiHost = string.Equals(absoluteUri.Host, accountHost, StringComparison.OrdinalIgnoreCase);
+        var isVirtualHostedS3ApiHost = string.Equals(
+            absoluteUri.Host,
+            $"{configuredBucket}.{accountHost}",
+            StringComparison.OrdinalIgnoreCase);
+        var isAllowedPublicHost = IsAllowedPublicReadHost(absoluteUri.Host, bucket);
+        if (!isPathStyleS3ApiHost && !isVirtualHostedS3ApiHost && !isAllowedPublicHost)
+        {
+            return false;
+        }
+
+        var path = Uri.UnescapeDataString(absoluteUri.AbsolutePath).TrimStart('/');
+        if (isPathStyleS3ApiHost &&
+            path.StartsWith($"{configuredBucket}/", StringComparison.Ordinal))
+        {
+            path = path[(configuredBucket.Length + 1)..];
+        }
+
+        objectKey = path;
+        return true;
+    }
+
+    private bool IsAllowedPublicReadHost(string host, string? bucket)
+    {
+        if (TryBuildHttpsBaseUri(_options.PublicBaseUrl, out var configuredPublicBaseUri) &&
+            string.Equals(host, configuredPublicBaseUri.Host, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return TryBuildPublicReferenceUri(bucket, out var bucketPublicBaseUri) &&
+               string.Equals(host, bucketPublicBaseUri.Host, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool TryNormalizeObjectKey(string objectKey, out string normalizedObjectKey)
+    {
+        normalizedObjectKey = string.Empty;
+
+        var normalizedPath = objectKey
+            .Replace('\\', '/')
+            .Trim()
+            .TrimStart('/');
+        if (string.IsNullOrWhiteSpace(normalizedPath))
+        {
+            return false;
+        }
+
+        var segments = normalizedPath
+            .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (segments.Any(segment =>
+                string.Equals(segment, ".", StringComparison.Ordinal) ||
+                string.Equals(segment, "..", StringComparison.Ordinal)))
+        {
+            return false;
+        }
+
+        normalizedObjectKey = string.Join('/', segments);
+        return !string.IsNullOrWhiteSpace(normalizedObjectKey);
+    }
+
+    private static bool TryBuildPublicReferenceUri(string? value, out Uri publicBaseUri)
+    {
+        publicBaseUri = default!;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var candidate = value.Trim();
+        if (!candidate.Contains("://", StringComparison.Ordinal) &&
+            !candidate.Contains('.', StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return TryBuildHttpsBaseUri(candidate, out publicBaseUri);
+    }
+
+    private static bool TryBuildHttpsBaseUri(string? value, out Uri publicBaseUri)
+    {
+        publicBaseUri = default!;
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var candidate = value.Trim();
+        if (!candidate.Contains("://", StringComparison.Ordinal))
+        {
+            candidate = $"https://{candidate.TrimStart('/')}";
+        }
+
+        if (!candidate.EndsWith("/", StringComparison.Ordinal))
+        {
+            candidate = $"{candidate}/";
+        }
+
+        if (!Uri.TryCreate(candidate, UriKind.Absolute, out var parsedBaseUri) ||
+            parsedBaseUri is null ||
+            !string.Equals(parsedBaseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(parsedBaseUri.Host))
+        {
+            return false;
+        }
+
+        publicBaseUri = parsedBaseUri;
+        return true;
+    }
+
+    private static TimeSpan NormalizeReadUrlLifetime(TimeSpan lifetime)
+    {
+        if (lifetime <= TimeSpan.Zero)
+        {
+            return TimeSpan.FromMinutes(10);
+        }
+
+        return lifetime > TimeSpan.FromDays(7)
+            ? TimeSpan.FromDays(7)
+            : lifetime;
+    }
 
     private DirectStoryMediaUpload BuildDirectUpload(
         string objectKey,

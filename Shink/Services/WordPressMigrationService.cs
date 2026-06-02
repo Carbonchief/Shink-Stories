@@ -244,6 +244,7 @@ public sealed partial class WordPressMigrationService(
                 LastName: importedUser.LastName,
                 DisplayName: importedUser.DisplayName,
                 MobileNumber: importedUser.MobileNumber,
+                UserRegistered: importedUser.UserRegistered,
                 LastLoginAt: importedUser.LastLoginAt,
                 ProfileImageUrl: importedUser.ProfileImageUrl,
                 ProfileImageObjectKey: importedUser.ProfileImageObjectKey,
@@ -326,6 +327,7 @@ public sealed partial class WordPressMigrationService(
             LastName: NullIfWhiteSpace(row.LastName),
             DisplayName: NullIfWhiteSpace(row.DisplayName),
             MobileNumber: NullIfWhiteSpace(row.MobileNumber),
+            UserRegistered: row.UserRegistered,
             LastLoginAt: row.LastLoginAt,
             ProfileImageUrl: NullIfWhiteSpace(row.ProfileImageUrl),
             ProfileImageObjectKey: NullIfWhiteSpace(row.ProfileImageObjectKey),
@@ -1466,6 +1468,7 @@ public sealed partial class WordPressMigrationService(
                 LastName: null,
                 DisplayName: null,
                 MobileNumber: null,
+                UserRegistered: null,
                 LastLoginAt: null,
                 ProfileImageUrl: null,
                 ProfileImageObjectKey: null,
@@ -1789,6 +1792,7 @@ public sealed partial class WordPressMigrationService(
         LastName: user.LastName,
         DisplayName: user.DisplayName,
         MobileNumber: NormalizeMobileNumber(user.MobileNumber),
+        UserRegistered: user.UserRegistered,
         LastLoginAt: user.LastLoginAt,
         ProfileImageUrl: user.ProfileImageUrl,
         ProfileImageObjectKey: user.ProfileImageObjectKey,
@@ -2391,6 +2395,7 @@ public sealed partial class WordPressMigrationService(
         [property: JsonPropertyName("last_name")] string? LastName,
         [property: JsonPropertyName("display_name")] string? DisplayName,
         [property: JsonPropertyName("mobile_number")] string? MobileNumber,
+        [property: JsonPropertyName("user_registered")] DateTimeOffset? UserRegistered,
         [property: JsonPropertyName("last_login_at")] DateTimeOffset? LastLoginAt,
         [property: JsonPropertyName("profile_image_url")] string? ProfileImageUrl,
         [property: JsonPropertyName("profile_image_object_key")] string? ProfileImageObjectKey,
@@ -2523,6 +2528,9 @@ public sealed partial class WordPressMigrationService(
 
         [JsonPropertyName("mobile_number")]
         public string? MobileNumber { get; set; }
+
+        [JsonPropertyName("user_registered")]
+        public DateTimeOffset? UserRegistered { get; set; }
 
         [JsonPropertyName("last_login_at")]
         public DateTimeOffset? LastLoginAt { get; set; }

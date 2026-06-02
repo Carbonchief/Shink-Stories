@@ -15,6 +15,12 @@ public interface IStoryMediaStorageService
         string? contentType,
         CancellationToken cancellationToken = default);
 
+    Task<Uri?> CreateAudioReadUrlAsync(
+        string? bucket,
+        string objectKey,
+        TimeSpan lifetime,
+        CancellationToken cancellationToken = default);
+
     Task<UploadedStoryAudio> UploadAudioAsync(
         string slug,
         string fileName,

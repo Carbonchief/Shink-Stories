@@ -245,7 +245,7 @@ public sealed partial class SupabaseAdminManagementService(
                 SubscriptionStatus: disabledStates.GetValueOrDefault(item.SubscriberId)?.DisabledAt is not null
                     ? "disabled"
                     : NormalizeOptionalText(item.SubscriptionStatus, 40),
-                SubscribedAt: item.SubscribedAt,
+                SubscribedAt: item.CreatedAt,
                 NextPaymentDueAt: item.NextPaymentDueAt,
                 CancelledAt: item.CancelledAt,
                 DisabledAt: disabledStates.GetValueOrDefault(item.SubscriberId)?.DisabledAt ?? item.DisabledAt,
@@ -2017,11 +2017,6 @@ public sealed partial class SupabaseAdminManagementService(
             .GroupBy(item => item.StoryId)
             .Select(group => group.First())
             .ToArray();
-        if (normalizedStories.Length == 0)
-        {
-            InvalidateStoryCatalogCache();
-            return new AdminOperationResult(true);
-        }
 
         var showcaseCount = normalizedStories.Count(item => item.IsShowcase);
         if (showcaseCount > 1)
@@ -2044,6 +2039,12 @@ public sealed partial class SupabaseAdminManagementService(
                     responseBody);
                 return new AdminOperationResult(false, "Kon nie bestaande playlist stories verwyder nie.");
             }
+        }
+
+        if (normalizedStories.Length == 0)
+        {
+            InvalidateStoryCatalogCache();
+            return new AdminOperationResult(true);
         }
 
         var payload = normalizedStories
@@ -5694,7 +5695,7 @@ public sealed partial class SupabaseAdminManagementService(
             PaymentProvider: summary?.PaymentProvider,
             SubscriptionSourceSystem: summary?.SourceSystem,
             SubscriptionStatus: row.DisabledAt is not null ? "disabled" : summary?.Status,
-            SubscribedAt: summary?.SubscribedAt,
+            SubscribedAt: row.CreatedAt,
             NextPaymentDueAt: summary?.NextRenewalAt,
             CancelledAt: summary?.CancelledAt,
             DisabledAt: row.DisabledAt,

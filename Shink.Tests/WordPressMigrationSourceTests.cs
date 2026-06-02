@@ -61,6 +61,30 @@ public class WordPressMigrationSourceTests
         StringAssert.Contains(migration, "sub.provider_transaction_id = wordpress_billing.provider_transaction_id");
     }
 
+    [TestMethod]
+    public void WordPressSubscriberImportCarriesHistoricalJoinedDate()
+    {
+        var sourcePath = FindRepositoryFile("Shink", "Services", "WordPressMigrationService.cs");
+        var source = File.ReadAllText(sourcePath);
+        var migrationPath = FindRepositoryFile(
+            "Shink",
+            "Database",
+            "migrations",
+            "20260602_wordpress_subscriber_joined_date_backfill.sql");
+        var migration = File.ReadAllText(migrationPath);
+
+        StringAssert.Contains(source, "UserRegistered: user.UserRegistered");
+        StringAssert.Contains(source, "[property: JsonPropertyName(\"user_registered\")] DateTimeOffset? UserRegistered");
+        StringAssert.Contains(migration, "rows.user_registered");
+        StringAssert.Contains(migration, "least(subscribers.created_at, excluded.created_at)");
+        StringAssert.Contains(migration, "private.wordpress_users");
+        StringAssert.Contains(migration, "private.wordpress_membership_periods");
+        StringAssert.Contains(migration, "private.wordpress_subscriptions");
+        StringAssert.Contains(migration, "private.wordpress_membership_orders");
+        StringAssert.Contains(migration, "update public.subscribers subscriber");
+        StringAssert.Contains(migration, "candidate.joined_at < subscriber.created_at");
+    }
+
     private static string FindRepositoryFile(params string[] pathParts)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

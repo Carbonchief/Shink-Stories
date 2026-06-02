@@ -101,15 +101,6 @@
     }
     else
     {
-        @if (!string.IsNullOrWhiteSpace(ErrorMessage))
-        {
-            <p class="admin-feedback is-error">@ErrorMessage</p>
-        }
-        else if (!string.IsNullOrWhiteSpace(StatusMessage))
-        {
-            <p class="admin-feedback is-success">@StatusMessage</p>
-        }
-
         <div class="admin-tabs-shell">
         <MudTabs Class="admin-tabs"
                  Rounded="true">
@@ -203,6 +194,7 @@
                                     <MudButton Class="admin-icon-btn admin-action-btn"
                                                Variant="Variant.Text"
                                                Color="Color.Warning"
+                                               Disabled="@IsSavingSubscriberAction"
                                                OnClick='() => RunSelectedSubscriberBulkActionAsync(AdminSubscriberBulkAction.Disable)'
                                                aria-label='@T("Deaktiveer gekose intekenaars", "Disable selected subscribers")'
                                                title='@T("Deaktiveer gekose intekenaars", "Disable selected subscribers")'>
@@ -212,6 +204,7 @@
                                     <MudButton Class="admin-icon-btn admin-action-btn"
                                                Variant="Variant.Text"
                                                Color="Color.Success"
+                                               Disabled="@IsSavingSubscriberAction"
                                                OnClick='() => RunSelectedSubscriberBulkActionAsync(AdminSubscriberBulkAction.Enable)'
                                                aria-label='@T("Heraktiveer gekose intekenaars", "Enable selected subscribers")'
                                                title='@T("Heraktiveer gekose intekenaars", "Enable selected subscribers")'>
@@ -221,6 +214,7 @@
                                     <MudButton Class="admin-icon-btn admin-action-btn"
                                                Variant="Variant.Text"
                                                Color="Color.Primary"
+                                               Disabled="@IsSavingSubscriberAction"
                                                OnClick='() => RunSelectedSubscriberBulkActionAsync(AdminSubscriberBulkAction.SendPasswordReset)'
                                                aria-label='@T("Stuur wagwoordherstel aan gekose intekenaars", "Send password reset to selected subscribers")'
                                                title='@T("Stuur wagwoordherstel aan gekose intekenaars", "Send password reset to selected subscribers")'>
@@ -478,15 +472,15 @@
                                 <MudTh>
                                     <div class="admin-header-cell">
                                         <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="subscribed_at">
-                                            @T("Ingeteken op", "Subscribed On")
+                                            @T("Aangesluit op", "Joined On")
                                         </MudTableSortLabel>
                                         <details class='@($"admin-header-filter{(SubscriberColumnFilters.SubscribedFrom is null && SubscriberColumnFilters.SubscribedTo is null ? string.Empty : " is-active")}")'
                                                  @onclick:stopPropagation="true">
                                             <summary class="admin-header-filter-toggle"
                                                      @onclick:stopPropagation="true"
-                                                     title='@T("Filter ingeteken op", "Filter subscribed on")'>
+                                                     title='@T("Filter aangesluit op", "Filter joined on")'>
                                                 <i class="fa-solid fa-filter" aria-hidden="true"></i>
-                                                <span class="sr-only">@T("Filter ingeteken op", "Filter subscribed on")</span>
+                                                <span class="sr-only">@T("Filter aangesluit op", "Filter joined on")</span>
                                             </summary>
                                             <div class="admin-header-filter-popover" @onclick:stopPropagation="true">
                                                 <label class="admin-header-filter-label" for="subscriber-filter-subscribed-from">
@@ -611,7 +605,7 @@
                                 <MudTd DataLabel='@T("Bron", "Source")'>@BuildSubscriptionSourceLabel(context.SubscriptionSourceSystem)</MudTd>
                                 <MudTd DataLabel='@T("Betaalverskaffer", "Payment Provider")'>@BuildPaymentProviderLabel(context.PaymentProvider)</MudTd>
                                 <MudTd DataLabel='@T("Status", "Status")'>@BuildSubscriptionStatusLabel(context)</MudTd>
-                                <MudTd DataLabel='@T("Ingeteken op", "Subscribed On")'>@FormatAdminDate(context.SubscribedAt)</MudTd>
+                                <MudTd DataLabel='@T("Aangesluit op", "Joined On")'>@FormatAdminDate(context.CreatedAt)</MudTd>
                                 <MudTd DataLabel='@T("Volgende betaling", "Next Payment")'>@FormatAdminDate(context.NextPaymentDueAt)</MudTd>
                             </RowTemplate>
                             <NoRecordsContent>
@@ -2963,7 +2957,7 @@
         {
             <MudDialog Visible="IsSubscriberDialogOpen"
                        VisibleChanged="OnSubscriberDialogVisibleChanged"
-                       Class="admin-solid-dialog"
+                       Class="admin-solid-dialog admin-subscriber-dialog"
                        ContentClass="admin-solid-dialog-content"
                        Options="SubscriberEditorDialogOptions">
                 <TitleContent>
@@ -3031,12 +3025,12 @@
                                         <MudButton Class="admin-icon-btn admin-action-btn"
                                                    Variant="Variant.Outlined"
                                                    Color="Color.Primary"
-                                                   Disabled="@IsSavingSubscriberAction"
+                                                   Disabled="@(IsSavingSubscriberAction || IsSendingSubscriberPasswordReset)"
                                                    OnClick="SendSubscriberPasswordResetAsync"
                                                    aria-label='@T("Stuur wagwoordherstel", "Send password reset")'
                                                    title='@T("Stuur wagwoordherstel", "Send password reset")'>
                                             <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
-                                            <span class="admin-btn-text">@T("Stuur wagwoordherstel", "Send password reset")</span>
+                                            <span class="admin-btn-text">@(IsSendingSubscriberPasswordReset ? T("Stuur...", "Sending...") : T("Stuur wagwoordherstel", "Send password reset"))</span>
                                         </MudButton>
                                     </div>
                                 }
@@ -3268,6 +3262,32 @@
                                          Label='@T("Stuur publiseer-kennisgewing", "Send publish notification")'
                                          Disabled="@(!NewStoryEditor.PublishNow)"
                                          @bind-Value="NewStoryEditor.SendPublishedNotification" />
+                            <section class="admin-story-playlist-selector admin-span-2">
+                                <div class="admin-story-test-head">
+                                    <div>
+                                        <h4>@T("Playlists", "Playlists")</h4>
+                                        <p>@T("Kies die admin-bestuurde playlists waarin hierdie storie moet verskyn.", "Choose the admin-managed playlists this story should appear in.")</p>
+                                    </div>
+                                </div>
+                                @if (ManualPlaylistsForStoryAssignment.Count == 0)
+                                {
+                                    <p class="admin-form-note">@T("Geen admin-bestuurde playlists is beskikbaar nie.", "No admin-managed playlists are available.")</p>
+                                }
+                                else
+                                {
+                                    <div class="admin-story-playlist-options">
+                                        @foreach (var playlist in ManualPlaylistsForStoryAssignment)
+                                        {
+                                            var playlistId = playlist.PlaylistId;
+                                            <MudCheckBox T="bool"
+                                                         Class="admin-story-playlist-checkbox"
+                                                         Value="@IsNewStoryPlaylistSelected(playlistId)"
+                                                         ValueChanged="@(value => ToggleNewStoryPlaylist(playlistId, value))"
+                                                         Label="@BuildStoryPlaylistOptionLabel(playlist)" />
+                                        }
+                                    </div>
+                                }
+                            </section>
                             <MudTextField T="string"
                                           Class="admin-span-2"
                                           Label='@T("Opsomming", "Summary")'
@@ -3522,9 +3542,9 @@
 
             <MudDialog Visible="IsStoryDialogOpen"
                        VisibleChanged="OnStoryDialogVisibleChanged"
-                       Class="admin-solid-dialog"
+                       Class="admin-solid-dialog admin-story-dialog"
                        ContentClass="admin-solid-dialog-content"
-                       Options="EditorDialogOptions">
+                       Options="StoryEditorDialogOptions">
                 <TitleContent>
                     <MudText Typo="Typo.h6">@T("Wysig storie", "Edit story")</MudText>
                 </TitleContent>
@@ -3564,6 +3584,32 @@
                                          @bind-Value="StoryEditor.DurationSeconds"
                                          Variant="Variant.Outlined"
                                          Margin="Margin.Dense" />
+                        <section class="admin-story-playlist-selector admin-span-2">
+                            <div class="admin-story-test-head">
+                                <div>
+                                    <h4>@T("Playlists", "Playlists")</h4>
+                                    <p>@T("Kies die admin-bestuurde playlists waarin hierdie storie moet verskyn.", "Choose the admin-managed playlists this story should appear in.")</p>
+                                </div>
+                            </div>
+                            @if (ManualPlaylistsForStoryAssignment.Count == 0)
+                            {
+                                <p class="admin-form-note">@T("Geen admin-bestuurde playlists is beskikbaar nie.", "No admin-managed playlists are available.")</p>
+                            }
+                            else
+                            {
+                                <div class="admin-story-playlist-options">
+                                    @foreach (var playlist in ManualPlaylistsForStoryAssignment)
+                                    {
+                                        var playlistId = playlist.PlaylistId;
+                                        <MudCheckBox T="bool"
+                                                     Class="admin-story-playlist-checkbox"
+                                                     Value="@IsStoryPlaylistSelected(playlistId)"
+                                                     ValueChanged="@(value => ToggleStoryPlaylist(playlistId, value))"
+                                                     Label="@BuildStoryPlaylistOptionLabel(playlist)" />
+                                    }
+                                </div>
+                            }
+                        </section>
                         <div class="admin-upload-group admin-upload-group-3 admin-span-2">
                             <div class="admin-upload-card">
                                 <div class="admin-upload-head">
@@ -4391,6 +4437,13 @@
         CloseButton = true,
         BackdropClick = false
     };
+    private static readonly DialogOptions StoryEditorDialogOptions = new()
+    {
+        MaxWidth = MaxWidth.Large,
+        FullWidth = true,
+        CloseButton = true,
+        BackdropClick = true
+    };
     private static readonly DialogOptions SubscriberEditorDialogOptions = new()
     {
         MaxWidth = MaxWidth.Large,
@@ -4423,6 +4476,7 @@
     private IReadOnlyList<AdminSubscriptionTierOption> SubscriberTierOptions { get; set; } = Array.Empty<AdminSubscriptionTierOption>();
     private bool IsLoadingSubscriberDetail { get; set; }
     private bool IsSavingSubscriberAction { get; set; }
+    private bool IsSendingSubscriberPasswordReset { get; set; }
     private bool CanSendSubscriberSubscriptionRecoveryEmail =>
         !IsLoadingSubscriberDetail &&
         SubscriberDetail?.Subscriptions.Any(IsRecoverableFailedSubscription) == true;
@@ -4661,6 +4715,13 @@
         Stories
             .Where(story => PlaylistStoryEditor.All(item => item.StoryId != story.StoryId))
             .OrderBy(story => story.Title, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    private IReadOnlyList<AdminPlaylistRecord> ManualPlaylistsForStoryAssignment =>
+        Playlists
+            .Where(playlist => !playlist.IsSystemPlaylist)
+            .OrderBy(playlist => playlist.SortOrder)
+            .ThenBy(playlist => playlist.Title, StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
     private bool HasAnalyticsData =>
@@ -5481,6 +5542,7 @@
                 ? Stories.FirstOrDefault(story => story.StoryId == targetStoryId.Value)
                 : Stories.FirstOrDefault();
             StoryEditor = selectedStory is null ? null : EditableStory.From(selectedStory);
+            ApplySelectedPlaylistsToStoryEditor();
             StoryEditorStateSignature = StoryEditor is null
                 ? null
                 : BuildStoryEditorStateSignature(StoryEditor);
@@ -5530,6 +5592,7 @@
             EnsurePlaylistShowcaseSelection();
             ReindexPlaylistStories();
             PlaylistEditorStateSignature = BuildPlaylistEditorStateSignature(PlaylistEditor, PlaylistStoryEditor);
+            ApplySelectedPlaylistsToStoryEditor();
         }
         catch (Exception exception)
         {
@@ -5959,6 +6022,11 @@
 
     private async Task RunSelectedSubscriberBulkActionAsync(AdminSubscriberBulkAction action)
     {
+        if (IsSavingSubscriberAction)
+        {
+            return;
+        }
+
         var selectedIds = SelectedSubscriberIds
             .Where(id => Subscribers.Any(subscriber => subscriber.SubscriberId == id))
             .ToArray();
@@ -6057,11 +6125,17 @@
 
     private async Task SendSubscriberPasswordResetAsync()
     {
+        if (IsSendingSubscriberPasswordReset)
+        {
+            return;
+        }
+
         if (SubscriberEditor is null || SubscriberEditor.IsNew)
         {
             return;
         }
 
+        IsSendingSubscriberPasswordReset = true;
         IsSavingSubscriberAction = true;
         ClearFeedback();
 
@@ -6081,6 +6155,7 @@
         }
         finally
         {
+            IsSendingSubscriberPasswordReset = false;
             IsSavingSubscriberAction = false;
         }
     }
@@ -6338,6 +6413,7 @@
         }
 
         StoryEditor = EditableStory.From(selected);
+        ApplySelectedPlaylistsToStoryEditor();
         StoryEditorStateSignature = BuildStoryEditorStateSignature(StoryEditor);
     }
 
@@ -6957,9 +7033,21 @@
                 return;
             }
 
+            var createdStoryId = result.EntityId ?? Guid.Empty;
+            var playlistResult = NewStoryEditor.SelectedPlaylistIds.Count == 0
+                ? new AdminOperationResult(true)
+                : await SaveStoryPlaylistAssignmentsAsync(createdStoryId, NewStoryEditor.SelectedPlaylistIds);
+            if (!playlistResult.IsSuccess)
+            {
+                SetError(T(
+                    "Nuwe storie is geskep, maar die playlist keuses kon nie gestoor word nie. Wysig die storie om playlists weer te kies.",
+                    "New story was created, but the playlist choices could not be saved. Edit the story to choose playlists again."));
+            }
+
             await RefreshStoriesAsync(result.EntityId);
+            await RefreshPlaylistsAsync();
             CloseNewStoryDialogCore();
-            if (string.IsNullOrWhiteSpace(ErrorMessage))
+            if (playlistResult.IsSuccess && string.IsNullOrWhiteSpace(ErrorMessage))
             {
                 SetStatus(T("Nuwe storie is geskep en opgelaai.", "New story was created and uploaded."));
             }
@@ -7071,10 +7159,19 @@
                     DurationSeconds: StoryEditor.DurationSeconds,
                     SummaryDetails: BuildStorySummaryDetails(StoryEditor)));
 
-            if (!HandleOperationResult(result, T("Storie is opgedateer.", "Story updated.")))
+            if (!result.IsSuccess)
             {
                 await CleanupUploadedStoryObjectsAsync(uploadedObjectKeys);
+                SetError(result.ErrorMessage ?? T("Kon nie storie nou stoor nie.", "Could not save story right now."));
                 return;
+            }
+
+            var playlistResult = await SaveStoryPlaylistAssignmentsAsync(StoryEditor.StoryId, StoryEditor.SelectedPlaylistIds);
+            if (!playlistResult.IsSuccess)
+            {
+                SetError(playlistResult.ErrorMessage ?? T(
+                    "Storie is opgedateer, maar die playlist keuses kon nie gestoor word nie.",
+                    "Story was updated, but the playlist choices could not be saved."));
             }
 
             StoryEditor.CoverFile = null;
@@ -7089,6 +7186,11 @@
             await CleanupReplacedImageAssetAsync(originalCoverImagePath, StoryEditor.CoverImagePath);
             await CleanupReplacedImageAssetAsync(originalThumbnailImagePath, StoryEditor.ThumbnailImagePath);
             await RefreshStoriesAsync(StoryEditor.StoryId);
+            await RefreshPlaylistsAsync();
+            if (playlistResult.IsSuccess && string.IsNullOrWhiteSpace(ErrorMessage))
+            {
+                SetStatus(T("Storie is opgedateer.", "Story updated."));
+            }
         }
         catch (Exception exception)
         {
@@ -7640,6 +7742,137 @@
 
     private static string BuildPlaylistOrderSignature(IReadOnlyList<Guid> orderedPlaylistIds) =>
         string.Join("|", orderedPlaylistIds.Select(id => id.ToString("D")));
+
+    private void ApplySelectedPlaylistsToStoryEditor()
+    {
+        if (StoryEditor is null)
+        {
+            return;
+        }
+
+        StoryEditor.SelectedPlaylistIds = GetManualPlaylistIdsForStory(StoryEditor.StoryId).ToHashSet();
+    }
+
+    private IReadOnlyList<Guid> GetManualPlaylistIdsForStory(Guid storyId)
+    {
+        if (storyId == Guid.Empty)
+        {
+            return Array.Empty<Guid>();
+        }
+
+        return ManualPlaylistsForStoryAssignment
+            .Where(playlist => playlist.Stories.Any(story => story.StoryId == storyId))
+            .Select(playlist => playlist.PlaylistId)
+            .ToArray();
+    }
+
+    private bool IsNewStoryPlaylistSelected(Guid playlistId) =>
+        NewStoryEditor?.SelectedPlaylistIds.Contains(playlistId) == true;
+
+    private void ToggleNewStoryPlaylist(Guid playlistId, bool isSelected)
+    {
+        if (NewStoryEditor is null)
+        {
+            return;
+        }
+
+        TogglePlaylistSelection(NewStoryEditor.SelectedPlaylistIds, playlistId, isSelected);
+    }
+
+    private bool IsStoryPlaylistSelected(Guid playlistId) =>
+        StoryEditor?.SelectedPlaylistIds.Contains(playlistId) == true;
+
+    private void ToggleStoryPlaylist(Guid playlistId, bool isSelected)
+    {
+        if (StoryEditor is null)
+        {
+            return;
+        }
+
+        TogglePlaylistSelection(StoryEditor.SelectedPlaylistIds, playlistId, isSelected);
+    }
+
+    private static void TogglePlaylistSelection(HashSet<Guid> selectedPlaylistIds, Guid playlistId, bool isSelected)
+    {
+        if (playlistId == Guid.Empty)
+        {
+            return;
+        }
+
+        if (isSelected)
+        {
+            selectedPlaylistIds.Add(playlistId);
+            return;
+        }
+
+        selectedPlaylistIds.Remove(playlistId);
+    }
+
+    private string BuildStoryPlaylistOptionLabel(AdminPlaylistRecord playlist)
+    {
+        var itemCount = playlist.Stories.Count;
+        var itemLabel = itemCount == 1
+            ? T("1 storie", "1 story")
+            : T($"{itemCount} stories", $"{itemCount} stories");
+
+        return $"{playlist.Title} ({itemLabel})";
+    }
+
+    private async Task<AdminOperationResult> SaveStoryPlaylistAssignmentsAsync(
+        Guid storyId,
+        IReadOnlySet<Guid> selectedPlaylistIds)
+    {
+        if (storyId == Guid.Empty)
+        {
+            return new AdminOperationResult(false, T("Kon nie die gestoor storie bevestig nie.", "Could not confirm the saved story."));
+        }
+
+        var selectedManualPlaylistIds = selectedPlaylistIds
+            .Where(playlistId => ManualPlaylistsForStoryAssignment.Any(playlist => playlist.PlaylistId == playlistId))
+            .ToHashSet();
+
+        var affectedPlaylists = ManualPlaylistsForStoryAssignment
+            .Where(playlist =>
+                selectedManualPlaylistIds.Contains(playlist.PlaylistId) ||
+                playlist.Stories.Any(story => story.StoryId == storyId))
+            .ToArray();
+
+        foreach (var playlist in affectedPlaylists)
+        {
+            var shouldIncludeStory = selectedManualPlaylistIds.Contains(playlist.PlaylistId);
+            var storyAlreadyInPlaylist = false;
+            var storyItems = new List<AdminPlaylistStorySaveItem>();
+
+            foreach (var playlistStory in playlist.Stories.OrderBy(story => story.SortOrder))
+            {
+                if (playlistStory.StoryId == storyId)
+                {
+                    storyAlreadyInPlaylist = true;
+                    if (shouldIncludeStory)
+                    {
+                        storyItems.Add(new AdminPlaylistStorySaveItem(storyId, playlistStory.IsShowcase));
+                    }
+
+                    continue;
+                }
+
+                storyItems.Add(new AdminPlaylistStorySaveItem(playlistStory.StoryId, playlistStory.IsShowcase));
+            }
+
+            if (shouldIncludeStory && !storyAlreadyInPlaylist)
+            {
+                storyItems.Add(new AdminPlaylistStorySaveItem(storyId, false));
+            }
+
+            var result = await AdminManagementService.SavePlaylistStoriesAsync(CurrentAdminEmail, playlist.PlaylistId, storyItems);
+            if (!result.IsSuccess)
+            {
+                return result;
+            }
+        }
+
+        return new AdminOperationResult(true);
+    }
 
     private void AddStoryToPlaylist()
     {
@@ -9611,7 +9844,11 @@
             Status = NormalizeDirtyText(editor.Status),
             editor.SortOrder,
             editor.DurationSeconds,
-            PublishedAtLocal = NormalizeDirtyText(editor.PublishedAtLocal)
+            PublishedAtLocal = NormalizeDirtyText(editor.PublishedAtLocal),
+            SelectedPlaylistIds = editor.SelectedPlaylistIds
+                .OrderBy(playlistId => playlistId)
+                .Select(playlistId => playlistId.ToString("D"))
+                .ToArray()
         });
     }
 
@@ -9631,6 +9868,11 @@
             TestQuestions = BuildAdminStoryTestQuestions(editor.TestQuestions),
             AccessLevel = NormalizeDirtyText(editor.AccessLevel),
             editor.PublishNow,
+            editor.SendPublishedNotification,
+            SelectedPlaylistIds = editor.SelectedPlaylistIds
+                .OrderBy(playlistId => playlistId)
+                .Select(playlistId => playlistId.ToString("D"))
+                .ToArray(),
             CoverFile = BuildBrowserFileState(editor.CoverFile, editor.CoverFileName),
             ThumbnailFile = BuildBrowserFileState(editor.ThumbnailFile, editor.ThumbnailFileName),
             AudioFile = BuildBrowserFileState(editor.AudioFile, editor.AudioFileName)
@@ -10207,6 +10449,7 @@
         public int SortOrder { get; set; }
         public int? DurationSeconds { get; set; }
         public string? PublishedAtLocal { get; set; }
+        public HashSet<Guid> SelectedPlaylistIds { get; set; } = [];
 
         public static EditableStory From(AdminStoryRecord story) => new()
         {
@@ -10251,6 +10494,7 @@
         public string AccessLevel { get; set; } = "subscriber";
         public bool PublishNow { get; set; } = true;
         public bool SendPublishedNotification { get; set; } = true;
+        public HashSet<Guid> SelectedPlaylistIds { get; set; } = [];
         public IBrowserFile? CoverFile { get; set; }
         public string? CoverFileName { get; set; }
         public IBrowserFile? ThumbnailFile { get; set; }

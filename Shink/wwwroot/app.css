@@ -1066,6 +1066,23 @@ body.schink-night-mode .luister-page-shell .luister-playlist-link {
     border-bottom: 1px solid #304457 !important;
 }
 
+.mud-dialog.admin-solid-dialog.admin-story-dialog .mud-dialog-title,
+.mud-dialog.admin-solid-dialog.admin-subscriber-dialog .mud-dialog-title {
+    position: relative !important;
+    min-height: 56px;
+    padding-right: 3.5rem !important;
+}
+
+.mud-dialog.admin-solid-dialog.admin-story-dialog .mud-dialog-title .mud-icon-button,
+.mud-dialog.admin-solid-dialog.admin-story-dialog .mud-dialog-title button.mud-icon-button,
+.mud-dialog.admin-solid-dialog.admin-subscriber-dialog .mud-dialog-title .mud-icon-button,
+.mud-dialog.admin-solid-dialog.admin-subscriber-dialog .mud-dialog-title button.mud-icon-button {
+    position: absolute !important;
+    top: 0.45rem;
+    right: 0.45rem;
+    margin: 0 !important;
+}
+
 .mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button,
 .mud-dialog.admin-solid-dialog .mud-dialog-title button.mud-icon-button {
     position: relative;
@@ -1073,7 +1090,30 @@ body.schink-night-mode .luister-page-shell .luister-playlist-link {
     pointer-events: auto;
     color: #eaf1f8 !important;
     background: transparent !important;
+    background-color: transparent !important;
     box-shadow: none !important;
+}
+
+.mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button:hover,
+.mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button:focus,
+.mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button:focus-visible,
+.mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button:active,
+.mud-dialog.admin-solid-dialog .mud-dialog-title button.mud-icon-button:hover,
+.mud-dialog.admin-solid-dialog .mud-dialog-title button.mud-icon-button:focus,
+.mud-dialog.admin-solid-dialog .mud-dialog-title button.mud-icon-button:focus-visible,
+.mud-dialog.admin-solid-dialog .mud-dialog-title button.mud-icon-button:active {
+    background: rgba(234, 241, 248, 0.12) !important;
+    background-color: rgba(234, 241, 248, 0.12) !important;
+}
+
+.mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button .mud-ripple,
+.mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button .mud-button-root,
+.mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button .mud-icon-root,
+.mud-dialog.admin-solid-dialog .mud-dialog-title button.mud-icon-button .mud-ripple,
+.mud-dialog.admin-solid-dialog .mud-dialog-title button.mud-icon-button .mud-button-root,
+.mud-dialog.admin-solid-dialog .mud-dialog-title button.mud-icon-button .mud-icon-root {
+    background: transparent !important;
+    background-color: transparent !important;
 }
 
 .mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button .mud-icon-root,

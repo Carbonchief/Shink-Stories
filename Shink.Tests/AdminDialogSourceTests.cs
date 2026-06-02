@@ -13,7 +13,7 @@ public class AdminDialogSourceTests
         var globalCss = NormalizeLineEndings(File.ReadAllText(GetRepoPath("Shink", "wwwroot", "app.css")));
 
         StringAssert.Contains(markup, "<MudDialog Visible=\"IsNewStoryDialogOpen\"\n                       VisibleChanged=\"OnNewStoryDialogVisibleChanged\"\n                       Class=\"admin-solid-dialog\"\n                       ContentClass=\"admin-solid-dialog-content\"\n                       Options=\"EditorDialogOptions\">");
-        StringAssert.Contains(markup, "<MudDialog Visible=\"IsStoryDialogOpen\"\n                       VisibleChanged=\"OnStoryDialogVisibleChanged\"\n                       Class=\"admin-solid-dialog\"\n                       ContentClass=\"admin-solid-dialog-content\"\n                       Options=\"EditorDialogOptions\">");
+        StringAssert.Contains(markup, "<MudDialog Visible=\"IsStoryDialogOpen\"\n                       VisibleChanged=\"OnStoryDialogVisibleChanged\"\n                       Class=\"admin-solid-dialog admin-story-dialog\"\n                       ContentClass=\"admin-solid-dialog-content\"\n                       Options=\"StoryEditorDialogOptions\">");
         StringAssert.Contains(markup, "<MudDialog Visible=\"IsPlaylistDialogOpen\"\n                       VisibleChanged=\"OnPlaylistDialogVisibleChanged\"\n                       Class=\"admin-solid-dialog\"\n                       ContentClass=\"admin-solid-dialog-content\"\n                       Options=\"EditorDialogOptions\">");
         StringAssert.Contains(globalCss, ".mud-dialog.admin-solid-dialog");
         StringAssert.Contains(globalCss, ".mud-dialog.admin-solid-dialog .mud-input-outlined");
@@ -29,7 +29,66 @@ public class AdminDialogSourceTests
         StringAssert.Contains(css, "pointer-events: none;");
         StringAssert.Contains(globalCss, ".mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button");
         StringAssert.Contains(globalCss, "pointer-events: auto;");
+        StringAssert.Contains(globalCss, "background-color: transparent !important;");
+        StringAssert.Contains(globalCss, ".mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button .mud-ripple");
+        StringAssert.Contains(globalCss, ".mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button .mud-icon-root");
         StringAssert.Contains(globalCss, "fill: currentColor !important;");
+    }
+
+    [TestMethod]
+    public void SubscriberDialogCloseButtonIsPinnedTopRight()
+    {
+        var markup = NormalizeLineEndings(File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor")));
+        var globalCss = NormalizeLineEndings(File.ReadAllText(GetRepoPath("Shink", "wwwroot", "app.css")));
+
+        StringAssert.Contains(markup, "<MudDialog Visible=\"IsSubscriberDialogOpen\"\n                       VisibleChanged=\"OnSubscriberDialogVisibleChanged\"\n                       Class=\"admin-solid-dialog admin-subscriber-dialog\"\n                       ContentClass=\"admin-solid-dialog-content\"\n                       Options=\"SubscriberEditorDialogOptions\">");
+        StringAssert.Contains(globalCss, ".mud-dialog.admin-solid-dialog.admin-subscriber-dialog .mud-dialog-title .mud-icon-button,\n.mud-dialog.admin-solid-dialog.admin-subscriber-dialog .mud-dialog-title button.mud-icon-button");
+        StringAssert.Contains(globalCss, "position: absolute !important;");
+        StringAssert.Contains(globalCss, "right: 0.45rem;");
+    }
+
+    [TestMethod]
+    public void SubscriberDialogActionButtonsHaveVisibleButtonChrome()
+    {
+        var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
+        var css = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor.css"));
+
+        StringAssert.Contains(markup, "Class=\"admin-icon-btn admin-action-btn\"");
+        StringAssert.Contains(markup, "SendSubscriberPasswordResetAsync");
+        StringAssert.Contains(markup, "ToggleSubscriberDisabledAsync");
+        StringAssert.Contains(markup, "CancelSelectedPaidSubscriptionAsync");
+
+        StringAssert.Contains(css, ".admin-solid-dialog ::deep .admin-action-grid .admin-action-btn");
+        StringAssert.Contains(css, "border: 1px solid color-mix(in srgb, var(--admin-border-strong) 82%, #ffffff);");
+        StringAssert.Contains(css, "background: color-mix(in srgb, var(--admin-surface-soft) 76%, #ffffff 8%);");
+        StringAssert.Contains(css, ".admin-solid-dialog ::deep .admin-action-grid .admin-action-btn.mud-button-outlined-warning");
+        StringAssert.Contains(css, ".admin-solid-dialog ::deep .admin-action-grid .admin-action-btn.mud-button-outlined-primary");
+        StringAssert.Contains(css, ".admin-solid-dialog ::deep .admin-action-grid .admin-action-btn .admin-btn-text");
+    }
+
+    [TestMethod]
+    public void StoryEditorDialogSupportsBackdropCloseWithDirtyConfirmation()
+    {
+        var markup = NormalizeLineEndings(File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor")));
+
+        StringAssert.Contains(markup, "<MudDialog Visible=\"IsStoryDialogOpen\"\n                       VisibleChanged=\"OnStoryDialogVisibleChanged\"\n                       Class=\"admin-solid-dialog admin-story-dialog\"\n                       ContentClass=\"admin-solid-dialog-content\"\n                       Options=\"StoryEditorDialogOptions\">");
+        StringAssert.Contains(markup, "private static readonly DialogOptions StoryEditorDialogOptions = new()");
+        StringAssert.Contains(markup, "BackdropClick = true");
+        StringAssert.Contains(markup, "private async Task OnStoryDialogVisibleChanged(bool visible)");
+        StringAssert.Contains(markup, "await CloseStoryDialogAsync();");
+        StringAssert.Contains(markup, "if (!await ConfirmDiscardDialogChangesAsync(IsStoryEditorDirty()))");
+        StringAssert.Contains(markup, "IsStoryDialogOpen = true;");
+    }
+
+    [TestMethod]
+    public void StoryEditorCloseButtonIsPinnedTopRight()
+    {
+        var globalCss = NormalizeLineEndings(File.ReadAllText(GetRepoPath("Shink", "wwwroot", "app.css")));
+
+        StringAssert.Contains(globalCss, ".mud-dialog.admin-solid-dialog.admin-story-dialog .mud-dialog-title,\n.mud-dialog.admin-solid-dialog.admin-subscriber-dialog .mud-dialog-title");
+        StringAssert.Contains(globalCss, ".mud-dialog.admin-solid-dialog.admin-story-dialog .mud-dialog-title .mud-icon-button,\n.mud-dialog.admin-solid-dialog.admin-story-dialog .mud-dialog-title button.mud-icon-button,\n.mud-dialog.admin-solid-dialog.admin-subscriber-dialog .mud-dialog-title .mud-icon-button,\n.mud-dialog.admin-solid-dialog.admin-subscriber-dialog .mud-dialog-title button.mud-icon-button");
+        StringAssert.Contains(globalCss, "top: 0.45rem;");
+        StringAssert.Contains(globalCss, "right: 0.45rem;");
     }
 
     [TestMethod]

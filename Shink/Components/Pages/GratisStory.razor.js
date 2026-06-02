@@ -15,6 +15,7 @@ const STORY_NEXT_BUTTON_SELECTOR = ".story-story-next";
 const STORY_NAV_PREV_SELECTOR = ".story-nav-prev";
 const STORY_NAV_NEXT_SELECTOR = ".story-nav-next";
 const PROGRESS_SLIDER_SELECTOR = ".story-progress-slider";
+const TIME_ROW_SELECTOR = ".story-time-row";
 const CURRENT_TIME_SELECTOR = ".story-time-current";
 const TOTAL_TIME_SELECTOR = ".story-time-total";
 const VOLUME_SLIDER_SELECTOR = ".story-volume-slider";
@@ -24,6 +25,7 @@ const SPEED_TOGGLE_SELECTOR = ".story-speed-toggle";
 const SPEED_LABEL_SELECTOR = ".story-speed-label";
 const SHARE_TOGGLE_SELECTOR = ".story-share-toggle";
 const SPEED_STEPS = [1, 1.25, 1.5, 0.8];
+const MEDIA_HAVE_METADATA = 1;
 const STORY_TRACKING_ENDPOINT_PREFIX = "/api/stories/";
 const NOTIFICATION_ENDPOINT = "/api/notifications?limit=10";
 const NOTIFICATION_REFRESH_EVENT = "schink:notifications-refresh";
@@ -636,6 +638,62 @@ function formatTime(seconds) {
     return `${mins}:${String(secs).padStart(2, "0")}`;
 }
 
+function parsePositiveSeconds(value) {
+    if (typeof value !== "string" || value.trim().length === 0) {
+        return null;
+    }
+
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function resolveAudioDurationForDisplay(audioElement) {
+    if (Number.isFinite(audioElement.duration) && audioElement.duration > 0) {
+        return audioElement.duration;
+    }
+
+    return parsePositiveSeconds(audioElement.dataset.storyDurationSeconds) ?? 0;
+}
+
+function resolveAudioCurrentTimeForDisplay(audioElement, duration) {
+    const mediaCurrentTime = Number.isFinite(audioElement.currentTime) ? audioElement.currentTime : 0;
+    if (mediaCurrentTime > 0 || audioElement.readyState >= 1) {
+        return mediaCurrentTime;
+    }
+
+    const savedPosition = loadStoryProgress(audioElement);
+    if (typeof savedPosition !== "number" || !Number.isFinite(savedPosition) || savedPosition <= 0) {
+        return mediaCurrentTime;
+    }
+
+    if (duration > 0 && savedPosition >= duration - 2.5) {
+        return mediaCurrentTime;
+    }
+
+    return duration > 0
+        ? Math.max(0, Math.min(savedPosition, duration - 0.5))
+        : savedPosition;
+}
+
+function isAudioTimeDisplayLoading(audioElement) {
+    const source = (audioElement.currentSrc || audioElement.getAttribute("src") || "").trim();
+    return source.length > 0 && audioElement.readyState < MEDIA_HAVE_METADATA;
+}
+
+function updateTimeRowLoadingState(timeRow, isLoading) {
+    if (!(timeRow instanceof HTMLElement)) {
+        return;
+    }
+
+    timeRow.classList.toggle("is-loading", isLoading);
+    timeRow.setAttribute("aria-busy", String(isLoading));
+}
+
+function setAudioTimeDisplayLoading(audioElement, isLoading) {
+    const customPlayerElements = getCustomPlayerElements(audioElement);
+    updateTimeRowLoadingState(customPlayerElements?.timeRow, isLoading);
+}
+
 async function copyTextToClipboard(text) {
     if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
         try {
@@ -1115,6 +1173,7 @@ function getCustomPlayerElements(audioElement) {
         storyPrevButton: customPlayer.querySelector(STORY_PREV_BUTTON_SELECTOR),
         storyNextButton: customPlayer.querySelector(STORY_NEXT_BUTTON_SELECTOR),
         progressSlider: customPlayer.querySelector(PROGRESS_SLIDER_SELECTOR),
+        timeRow: customPlayer.querySelector(TIME_ROW_SELECTOR),
         currentTime: customPlayer.querySelector(CURRENT_TIME_SELECTOR),
         totalTime: customPlayer.querySelector(TOTAL_TIME_SELECTOR),
         volumeSlider: customPlayer.querySelector(VOLUME_SLIDER_SELECTOR),
@@ -1160,6 +1219,7 @@ function bindAudioEvents(audioElement, dotNetRef) {
         if (declaredSource && declaredSource !== lastDeclaredSource) {
             lastBoundAudioSource.set(audioElement, declaredSource);
             refreshStoryTrackingState(audioElement, true);
+            setAudioTimeDisplayLoading(audioElement, true);
             const shouldAutoplay = shouldAutoplayOnSourceChange(audioElement);
             if (shouldAutoplay) {
                 queueAutoplayAfterSourceChange(audioElement);
@@ -1173,6 +1233,7 @@ function bindAudioEvents(audioElement, dotNetRef) {
         } else if (!declaredSource && lastDeclaredSource) {
             lastBoundAudioSource.set(audioElement, "");
             refreshStoryTrackingState(audioElement, false);
+            setAudioTimeDisplayLoading(audioElement, false);
         } else {
             refreshStoryTrackingState(audioElement, true);
         }
@@ -1207,8 +1268,9 @@ function bindAudioEvents(audioElement, dotNetRef) {
         const prevStoryLink = customPlayerElements.container.querySelector(STORY_NAV_PREV_SELECTOR);
         const nextStoryLink = customPlayerElements.container.querySelector(STORY_NAV_NEXT_SELECTOR);
         const isPlaying = !audioElement.paused;
-        const duration = Number.isFinite(audioElement.duration) ? audioElement.duration : 0;
-        const currentTime = Number.isFinite(audioElement.currentTime) ? audioElement.currentTime : 0;
+        const duration = resolveAudioDurationForDisplay(audioElement);
+        const currentTime = resolveAudioCurrentTimeForDisplay(audioElement, duration);
+        const isTimeLoading = isAudioTimeDisplayLoading(audioElement);
         const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
         const volumeValue = audioElement.muted ? 0 : Math.max(0, Math.min(1, audioElement.volume));
         const volumeProgress = volumeValue * 100;
@@ -1241,6 +1303,8 @@ function bindAudioEvents(audioElement, dotNetRef) {
             customPlayerElements.progressSlider.value = duration > 0 ? String(currentTime) : "0";
             updateRangeVisual(customPlayerElements.progressSlider, progress);
         }
+
+        updateTimeRowLoadingState(customPlayerElements.timeRow, isTimeLoading);
 
         if (customPlayerElements.currentTime instanceof HTMLElement) {
             customPlayerElements.currentTime.textContent = formatTime(currentTime);
@@ -1448,6 +1512,10 @@ function bindAudioEvents(audioElement, dotNetRef) {
         restoreStoryProgress(audioElement);
         updateAll();
     });
+    audioElement.addEventListener("loadstart", updateCustomPlayerState);
+    audioElement.addEventListener("emptied", updateCustomPlayerState);
+    audioElement.addEventListener("loadeddata", updateCustomPlayerState);
+    audioElement.addEventListener("canplay", updateCustomPlayerState);
     audioElement.addEventListener("play", () => {
         const trackingState = getStoryTrackingState(audioElement) ?? refreshStoryTrackingState(audioElement, true);
         if (trackingState) {

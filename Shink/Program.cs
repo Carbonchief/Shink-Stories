@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
+using MudBlazor;
 using MudBlazor.Services;
 using Shink.Components;
 using Shink.Components.Content;
@@ -66,7 +67,10 @@ builder.Services.AddRazorComponents()
         options.DetailedErrors = builder.Environment.IsDevelopment();
     });
 builder.Services.AddCascadingAuthenticationState();
-builder.Services.AddMudServices();
+builder.Services.AddMudServices(options =>
+{
+    options.SnackbarConfiguration.PositionClass = Defaults.Classes.Position.TopRight;
+});
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
     .AddCookie(options =>
     {
@@ -251,6 +255,7 @@ builder.Services.AddRateLimiter(options =>
 });
 
 var app = builder.Build();
+var cloudflareR2Options = app.Services.GetRequiredService<IOptions<CloudflareR2Options>>().Value;
 LogCloudflareR2Configuration(app);
 LogPostHogConfiguration(app, postHogSettings);
 
@@ -402,7 +407,7 @@ app.Use(async (httpContext, next) =>
     {
         var headers = httpContext.Response.Headers;
         var cspNonce = CspConstants.GetNonce(httpContext);
-        var contentSecurityPolicy = BuildContentSecurityPolicy(httpContext.Request, app.Environment.IsDevelopment(), postHogHostUrl, cspNonce);
+        var contentSecurityPolicy = BuildContentSecurityPolicy(httpContext.Request, app.Environment.IsDevelopment(), postHogHostUrl, cspNonce, cloudflareR2Options);
 
         headers["X-Content-Type-Options"] = "nosniff";
         headers["X-Frame-Options"] = "SAMEORIGIN";
@@ -518,8 +523,7 @@ app.MapGet("/media/audio/{slug}", async (
     ISubscriptionLedgerService subscriptionLedgerService,
     ICharacterCatalogService characterCatalogService,
     IWebHostEnvironment environment,
-    IOptions<CloudflareR2Options> cloudflareR2Options,
-    IHttpClientFactory httpClientFactory,
+    IStoryMediaStorageService storyMediaStorageService,
     HttpContext httpContext) =>
 {
     if (!IsLikelySameSiteMediaRequest(httpContext))
@@ -554,21 +558,17 @@ app.MapGet("/media/audio/{slug}", async (
 
         if (string.Equals(story.AudioProvider, "r2", StringComparison.OrdinalIgnoreCase))
         {
-            if (!TryBuildR2AudioUri(
-                    cloudflareR2Options.Value.PublicBaseUrl,
-                    story.AudioBucket,
-                    story.AudioFileName,
-                    out var sourceUri))
+            var readUri = await storyMediaStorageService.CreateAudioReadUrlAsync(
+                story.AudioBucket,
+                story.AudioFileName,
+                TimeSpan.FromMinutes(30),
+                httpContext.RequestAborted);
+            if (readUri is null)
             {
                 return Results.NotFound();
             }
 
-            return await ProxyAudioFromOriginAsync(
-                httpContext,
-                httpClientFactory,
-                sourceUri,
-                story.AudioContentType,
-                story.AudioFileName);
+            return Results.Redirect(readUri.ToString(), permanent: false, preserveMethod: true);
         }
 
         if (!string.Equals(story.AudioProvider, "local", StringComparison.OrdinalIgnoreCase))
@@ -600,21 +600,17 @@ app.MapGet("/media/audio/{slug}", async (
 
     if (string.Equals(characterClip.AudioProvider, "r2", StringComparison.OrdinalIgnoreCase))
     {
-        if (!TryBuildR2AudioUri(
-                cloudflareR2Options.Value.PublicBaseUrl,
-                null,
-                characterClip.AudioObjectKey,
-                out var sourceUri))
+        var readUri = await storyMediaStorageService.CreateAudioReadUrlAsync(
+            null,
+            characterClip.AudioObjectKey,
+            TimeSpan.FromMinutes(30),
+            httpContext.RequestAborted);
+        if (readUri is null)
         {
             return Results.NotFound();
         }
 
-        return await ProxyAudioFromOriginAsync(
-            httpContext,
-            httpClientFactory,
-            sourceUri,
-            characterClip.AudioContentType,
-            characterClip.AudioObjectKey);
+        return Results.Redirect(readUri.ToString(), permanent: false, preserveMethod: true);
     }
 
     if (!string.Equals(characterClip.AudioProvider, "local", StringComparison.OrdinalIgnoreCase))
@@ -3392,7 +3388,12 @@ static async Task<bool> TryServeBundledBlazorRuntimeScriptAsync(HttpContext http
     return true;
 }
 
-static string BuildContentSecurityPolicy(HttpRequest request, bool isDevelopment, string? postHogHostUrl, string? cspNonce)
+static string BuildContentSecurityPolicy(
+    HttpRequest request,
+    bool isDevelopment,
+    string? postHogHostUrl,
+    string? cspNonce,
+    CloudflareR2Options cloudflareR2Options)
 {
     var postHogHostOrigin = TryGetCspHostOrigin(postHogHostUrl);
     var postHogAssetsOrigin = TryGetPostHogAssetsOrigin(postHogHostOrigin);
@@ -3400,11 +3401,29 @@ static string BuildContentSecurityPolicy(HttpRequest request, bool isDevelopment
     var scriptElementSources = BuildScriptSources(postHogHostOrigin, postHogAssetsOrigin, cspNonce, includeUnsafeInlineCompatibility: false);
     var formActionSources = BuildFormActionSources(request, isDevelopment);
     var frameSources = BuildFrameSources();
+    var mediaSources = BuildMediaSources(cloudflareR2Options);
     var connectSources = isDevelopment
         ? "'self' https: http://localhost:* http://127.0.0.1:* ws://localhost:* ws://127.0.0.1:* wss:"
         : "'self' https: wss:";
 
-    return $"default-src 'self'; base-uri 'self'; form-action {formActionSources}; object-src 'none'; frame-ancestors 'self'; frame-src {frameSources}; img-src 'self' data: https:; media-src 'self' blob:; font-src 'self' data:; connect-src {connectSources}; manifest-src 'self'; script-src {scriptSources}; script-src-elem {scriptElementSources}; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; style-src-elem 'self'; style-src-attr 'unsafe-inline';";
+    return $"default-src 'self'; base-uri 'self'; form-action {formActionSources}; object-src 'none'; frame-ancestors 'self'; frame-src {frameSources}; img-src 'self' data: https:; media-src {mediaSources}; font-src 'self' data:; connect-src {connectSources}; manifest-src 'self'; script-src {scriptSources}; script-src-elem {scriptElementSources}; script-src-attr 'unsafe-inline'; style-src 'self' 'unsafe-inline'; style-src-elem 'self'; style-src-attr 'unsafe-inline';";
+}
+
+static string BuildMediaSources(CloudflareR2Options cloudflareR2Options)
+{
+    var sources = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "'self'",
+        "blob:"
+    };
+
+    var accountId = cloudflareR2Options.AccountId.Trim();
+    if (Regex.IsMatch(accountId, "^[a-z0-9]+$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase))
+    {
+        sources.Add($"https://{accountId}.r2.cloudflarestorage.com");
+    }
+
+    return string.Join(' ', sources);
 }
 
 static string BuildFormActionSources(HttpRequest request, bool isDevelopment)
@@ -3783,97 +3802,6 @@ static bool IsImagePath(string? path)
         ".avif" or ".gif" or ".ico" or ".jpeg" or ".jpg" or ".png" or ".svg" or ".webp" => true,
         _ => false
     };
-}
-
-static async Task<IResult> ProxyAudioFromOriginAsync(
-    HttpContext httpContext,
-    IHttpClientFactory httpClientFactory,
-    Uri sourceUri,
-    string? configuredContentType,
-    string? audioObjectKey)
-{
-    try
-    {
-        using var upstreamRequest = new HttpRequestMessage(HttpMethod.Get, sourceUri);
-        var requestRange = httpContext.Request.Headers.Range.ToString();
-        if (!string.IsNullOrWhiteSpace(requestRange) &&
-            RangeHeaderValue.TryParse(requestRange, out var parsedRange))
-        {
-            upstreamRequest.Headers.Range = parsedRange;
-        }
-
-        upstreamRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("audio/*"));
-
-        using var upstreamResponse = await httpClientFactory.CreateClient("audio-origin")
-            .SendAsync(upstreamRequest, HttpCompletionOption.ResponseHeadersRead, httpContext.RequestAborted);
-        if (upstreamResponse.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Forbidden or HttpStatusCode.Unauthorized)
-        {
-            return Results.NotFound();
-        }
-
-        if (upstreamResponse.StatusCode == HttpStatusCode.RequestedRangeNotSatisfiable)
-        {
-            httpContext.Response.StatusCode = StatusCodes.Status416RangeNotSatisfiable;
-            if (upstreamResponse.Content.Headers.ContentRange is not null)
-            {
-                httpContext.Response.Headers.ContentRange = upstreamResponse.Content.Headers.ContentRange.ToString();
-            }
-
-            return Results.Empty;
-        }
-
-        if (!upstreamResponse.IsSuccessStatusCode)
-        {
-            return Results.StatusCode(StatusCodes.Status502BadGateway);
-        }
-
-        httpContext.Response.StatusCode = (int)upstreamResponse.StatusCode;
-        if (upstreamResponse.Headers.AcceptRanges.Count > 0)
-        {
-            httpContext.Response.Headers.AcceptRanges = string.Join(", ", upstreamResponse.Headers.AcceptRanges);
-        }
-        else
-        {
-            httpContext.Response.Headers.AcceptRanges = "bytes";
-        }
-
-        if (upstreamResponse.Content.Headers.ContentRange is not null)
-        {
-            httpContext.Response.Headers.ContentRange = upstreamResponse.Content.Headers.ContentRange.ToString();
-        }
-
-        if (upstreamResponse.Content.Headers.ContentLength.HasValue)
-        {
-            httpContext.Response.ContentLength = upstreamResponse.Content.Headers.ContentLength.Value;
-        }
-
-        var upstreamContentType = upstreamResponse.Content.Headers.ContentType?.MediaType;
-        httpContext.Response.ContentType = ResolveAudioMimeType(
-            string.IsNullOrWhiteSpace(configuredContentType) ? upstreamContentType : configuredContentType,
-            audioObjectKey);
-
-        await using var upstreamStream = await upstreamResponse.Content.ReadAsStreamAsync(httpContext.RequestAborted);
-        await upstreamStream.CopyToAsync(httpContext.Response.Body, httpContext.RequestAborted);
-        return Results.Empty;
-    }
-    catch (OperationCanceledException) when (httpContext.RequestAborted.IsCancellationRequested)
-    {
-        // Client disconnected while stream was in progress.
-        return Results.Empty;
-    }
-    catch (IOException) when (httpContext.RequestAborted.IsCancellationRequested)
-    {
-        // Browser dropped the connection; treat as expected cancellation.
-        return Results.Empty;
-    }
-    catch (OperationCanceledException)
-    {
-        return Results.StatusCode(StatusCodes.Status504GatewayTimeout);
-    }
-    catch (HttpRequestException)
-    {
-        return Results.StatusCode(StatusCodes.Status502BadGateway);
-    }
 }
 
 static bool TryResolveStoryPathTarget(PathString path, out string source, out string slug)
@@ -5070,81 +4998,6 @@ static bool TryResolveLocalAudioPath(string contentRootPath, string? audioObject
 
     audioFilePath = fullPath;
     return true;
-}
-
-static bool TryBuildR2AudioUri(string? publicBaseUrl, string? audioBucket, string? audioObjectKey, out Uri sourceUri)
-{
-    sourceUri = default!;
-    if (string.IsNullOrWhiteSpace(audioObjectKey))
-    {
-        return false;
-    }
-
-    if (!TryBuildR2PublicBaseUri(publicBaseUrl, audioBucket, out var baseUri))
-    {
-        return false;
-    }
-
-    if (Uri.TryCreate(audioObjectKey.Trim(), UriKind.Absolute, out var absoluteUri) &&
-        absoluteUri is not null)
-    {
-        if (!string.Equals(absoluteUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
-            !string.Equals(absoluteUri.Host, baseUri.Host, StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        sourceUri = absoluteUri;
-        return true;
-    }
-
-    var normalizedPath = audioObjectKey
-        .Replace('\\', '/')
-        .Trim()
-        .TrimStart('/');
-    if (string.IsNullOrWhiteSpace(normalizedPath))
-    {
-        return false;
-    }
-
-    var segments = normalizedPath
-        .Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-    if (segments.Any(segment => string.Equals(segment, "..", StringComparison.Ordinal)))
-    {
-        return false;
-    }
-
-    var encodedPath = string.Join('/', segments.Select(Uri.EscapeDataString));
-    sourceUri = new Uri(baseUri, encodedPath);
-    return true;
-}
-
-static bool TryBuildR2PublicBaseUri(string? publicBaseUrl, string? audioBucket, out Uri publicBaseUri)
-{
-    if (TryBuildR2BucketBaseUri(audioBucket, out publicBaseUri))
-    {
-        return true;
-    }
-
-    return TryBuildHttpsPublicBaseUri(publicBaseUrl, out publicBaseUri);
-}
-
-static bool TryBuildR2BucketBaseUri(string? audioBucket, out Uri publicBaseUri)
-{
-    publicBaseUri = default!;
-    if (string.IsNullOrWhiteSpace(audioBucket))
-    {
-        return false;
-    }
-
-    var candidate = audioBucket.Trim();
-    if (!candidate.Contains("://", StringComparison.Ordinal) &&
-        !candidate.Contains('.', StringComparison.Ordinal))
-    {
-        return false;
-    }
-
-    return TryBuildHttpsPublicBaseUri(candidate, out publicBaseUri);
 }
 
 static bool TryBuildHttpsPublicBaseUri(string? publicBaseUrl, out Uri publicBaseUri)

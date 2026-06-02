@@ -180,15 +180,18 @@ public class GratisToLuisterRoutingTests
     }
 
     [TestMethod]
-    public void SignedAudioEndpointAcceptsBareHttpsR2HostConfiguration()
+    public void SignedAudioEndpointUsesR2SignedReadUrlsForBareHttpsHostConfiguration()
     {
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+        var storageService = File.ReadAllText(GetRepoPath("Shink", "Services", "CloudflareR2StoryMediaStorageService.cs"));
 
-        StringAssert.Contains(program, "static bool TryBuildHttpsPublicBaseUri(string? publicBaseUrl, out Uri publicBaseUri)");
-        StringAssert.Contains(program, "candidate = $\"https://{candidate.TrimStart('/')}\";");
-        StringAssert.Contains(program, "TryBuildR2PublicBaseUri(publicBaseUrl, audioBucket, out var baseUri)");
-        StringAssert.Contains(program, "TryBuildR2BucketBaseUri(audioBucket, out publicBaseUri)");
+        StringAssert.Contains(program, "storyMediaStorageService.CreateAudioReadUrlAsync(");
         StringAssert.Contains(program, "story.AudioBucket");
+        StringAssert.Contains(program, "Results.Redirect(readUri.ToString(), permanent: false, preserveMethod: true)");
+        StringAssert.Contains(storageService, "private static bool TryBuildHttpsBaseUri(string? value, out Uri publicBaseUri)");
+        StringAssert.Contains(storageService, "candidate = $\"https://{candidate.TrimStart('/')}\";");
+        StringAssert.Contains(storageService, "TryBuildPublicReferenceUri(bucket, out var bucketPublicBaseUri)");
+        StringAssert.Contains(storageService, "ResolveReadBucketName(bucket)");
         StringAssert.Contains(program, "TryBuildHttpsPublicBaseUri(options.PublicBaseUrl, out var publicBaseUri)");
     }
 

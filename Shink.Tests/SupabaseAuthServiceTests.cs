@@ -24,6 +24,7 @@ public class SupabaseAuthServiceTests
             "du Toit",
             "Irma du Toit",
             "0821234567",
+            DateTimeOffset.Parse("2023-07-24T17:41:38+00:00"),
             DateTimeOffset.Parse("2026-04-15T12:59:59+00:00"),
             null,
             null,
