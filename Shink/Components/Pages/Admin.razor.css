@@ -808,6 +808,8 @@
 .admin-grid ::deep .mud-table-pagination .mud-icon-button svg path {
     color: var(--admin-pager-text) !important;
     fill: currentColor !important;
+    background: transparent !important;
+    background-color: transparent !important;
 }
 
 .admin-grid ::deep .mud-table-pagination .mud-icon-button.mud-disabled .mud-icon-root,
@@ -2304,6 +2306,18 @@
     min-width: 170px;
 }
 
+.admin-subscriber-analytics-controls {
+    grid-template-columns: minmax(150px, auto) minmax(210px, auto);
+    align-items: end;
+    gap: 0.65rem;
+}
+
+.admin-subscriber-analytics-control {
+    display: grid;
+    gap: 0.25rem;
+    min-width: 0;
+}
+
 .admin-analytics-panel-head p {
     margin: 0.25rem 0 0;
     color: var(--admin-muted);
@@ -2312,6 +2326,42 @@
 
 .admin-subscriber-analytics-period-select {
     min-width: 150px;
+}
+
+.admin-subscriber-access-toggle {
+    display: inline-grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.18rem;
+    min-height: 38px;
+    padding: 0.18rem;
+    border: 1px solid var(--admin-border);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--admin-surface-soft) 82%, #14202b);
+}
+
+.admin-subscriber-access-toggle-btn {
+    min-width: 0;
+    min-height: 32px;
+    border: 0;
+    border-radius: 6px;
+    padding: 0.3rem 0.58rem;
+    background: transparent;
+    color: var(--admin-muted);
+    font-size: 0.86rem;
+    font-weight: 800;
+    cursor: pointer;
+    transition: background 0.16s ease, color 0.16s ease;
+}
+
+.admin-subscriber-access-toggle-btn:hover,
+.admin-subscriber-access-toggle-btn:focus-visible {
+    background: color-mix(in srgb, var(--admin-border-strong) 42%, transparent);
+    color: var(--admin-text);
+}
+
+.admin-subscriber-access-toggle-btn.is-selected {
+    background: #f3a13f;
+    color: #17212d;
 }
 
 .admin-story-analytics-select {
@@ -2430,6 +2480,76 @@
     border-radius: 12px;
     background: color-mix(in srgb, var(--admin-surface) 72%, transparent);
     padding: 0.7rem;
+}
+
+.admin-subscriber-trend-list {
+    display: grid;
+    gap: 0.65rem;
+}
+
+.admin-subscriber-trend-row {
+    display: grid;
+    grid-template-columns: minmax(62px, 0.26fr) minmax(0, 1fr);
+    gap: 0.65rem;
+    align-items: center;
+    padding: 0.62rem 0.65rem;
+    border: 1px solid color-mix(in srgb, var(--admin-border) 72%, transparent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--admin-surface-soft) 72%, #101923);
+}
+
+.admin-subscriber-trend-period strong {
+    color: var(--admin-text);
+    font-size: 0.92rem;
+    line-height: 1.1;
+}
+
+.admin-subscriber-trend-bars {
+    display: grid;
+    gap: 0.38rem;
+    min-width: 0;
+}
+
+.admin-subscriber-trend-line {
+    display: grid;
+    grid-template-columns: minmax(86px, 0.28fr) minmax(80px, 1fr) minmax(32px, auto);
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 0;
+}
+
+.admin-subscriber-trend-line span {
+    color: var(--admin-muted);
+    font-size: 0.8rem;
+    font-weight: 800;
+    line-height: 1.15;
+}
+
+.admin-subscriber-trend-line strong {
+    color: var(--admin-text);
+    font-size: 0.88rem;
+    line-height: 1;
+    text-align: right;
+}
+
+.admin-subscriber-trend-track {
+    height: 0.58rem;
+    overflow: hidden;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--admin-border) 56%, transparent);
+}
+
+.admin-subscriber-trend-fill {
+    height: 100%;
+    border-radius: inherit;
+}
+
+.admin-subscriber-trend-fill.is-signups {
+    background: #41c982;
+}
+
+.admin-subscriber-trend-fill.is-cancellations {
+    background: #e45d66;
 }
 
 .admin-subscriber-analytics-summary-layout {
@@ -2567,6 +2687,15 @@
     width: 100%;
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+}
+
+.admin-dialog-save-actions {
+    margin-left: auto;
+    display: inline-flex;
+    flex-wrap: wrap;
     justify-content: flex-end;
     gap: 0.6rem;
 }
@@ -2655,6 +2784,8 @@
 .admin-page ::deep .mud-table-pagination .mud-icon-button svg path {
     color: var(--admin-pager-text) !important;
     fill: currentColor !important;
+    background: transparent !important;
+    background-color: transparent !important;
 }
 
 .admin-page ::deep .mud-table-pagination .mud-icon-button.mud-disabled .mud-icon-root,
@@ -2665,6 +2796,51 @@
 .admin-page ::deep .mud-table-pagination button.mud-icon-button:disabled svg path {
     color: var(--admin-pager-disabled) !important;
     fill: currentColor !important;
+}
+
+.admin-page ::deep .mud-table-pagination-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.admin-page ::deep .mud-table-pagination-actions .mud-icon-button .mud-icon-root {
+    display: inline-flex !important;
+    align-items: center;
+    justify-content: center;
+    color: var(--admin-pager-text) !important;
+    fill: currentColor !important;
+    background: transparent !important;
+    background-color: transparent !important;
+}
+
+.admin-page ::deep .mud-table-pagination-actions .mud-icon-button svg,
+.admin-page ::deep .mud-table-pagination-actions .mud-icon-button svg path {
+    color: var(--admin-pager-text);
+    fill: currentColor !important;
+    background: transparent !important;
+    background-color: transparent !important;
+}
+
+.admin-page ::deep .mud-table-pagination-actions .mud-icon-button.mud-disabled .mud-icon-root,
+.admin-page ::deep .mud-table-pagination-actions .mud-icon-button.mud-disabled svg,
+.admin-page ::deep .mud-table-pagination-actions .mud-icon-button.mud-disabled svg path,
+.admin-page ::deep .mud-table-pagination-actions .mud-icon-button:disabled .mud-icon-root,
+.admin-page ::deep .mud-table-pagination-actions .mud-icon-button:disabled svg,
+.admin-page ::deep .mud-table-pagination-actions .mud-icon-button:disabled svg path {
+    color: var(--admin-pager-disabled) !important;
+    fill: currentColor !important;
+}
+
+.admin-grid ::deep .mud-table-pagination svg path[fill="none"],
+.admin-grid ::deep .mud-table-pagination .mud-icon-button svg path[fill="none"],
+.admin-grid ::deep .mud-table-pagination button.mud-icon-button:disabled svg path[fill="none"],
+.admin-page ::deep .mud-table-pagination svg path[fill="none"],
+.admin-page ::deep .mud-table-pagination .mud-icon-button svg path[fill="none"],
+.admin-page ::deep .mud-table-pagination button.mud-icon-button:disabled svg path[fill="none"],
+.admin-page ::deep .mud-table-pagination-actions .mud-icon-button svg path[fill="none"],
+.admin-page ::deep .mud-table-pagination-actions .mud-icon-button:disabled svg path[fill="none"] {
+    fill: none !important;
 }
 
 .admin-page ::deep .mud-input-outlined-border,
@@ -2892,6 +3068,24 @@
 
     .admin-subscriber-analytics-summary-layout {
         grid-template-columns: 1fr;
+    }
+
+    .admin-subscriber-analytics-controls {
+        grid-template-columns: 1fr;
+        width: 100%;
+    }
+
+    .admin-subscriber-access-toggle {
+        width: 100%;
+    }
+
+    .admin-subscriber-trend-row {
+        grid-template-columns: 1fr;
+        align-items: stretch;
+    }
+
+    .admin-subscriber-trend-line {
+        grid-template-columns: minmax(78px, 0.36fr) minmax(70px, 1fr) minmax(28px, auto);
     }
 
     .admin-subscriber-analytics-cards {

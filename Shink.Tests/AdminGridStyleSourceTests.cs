@@ -72,8 +72,35 @@ public class AdminGridStyleSourceTests
         StringAssert.Contains(css, ".admin-page ::deep .mud-table-pagination .mud-icon-button .mud-icon-root");
         StringAssert.Contains(css, "fill: currentColor !important;");
         StringAssert.Contains(css, ".admin-page ::deep .mud-table-pagination button.mud-icon-button:disabled svg path");
+        StringAssert.Contains(css, ".admin-page ::deep .mud-table-pagination-actions .mud-icon-button .mud-icon-root");
+        StringAssert.Contains(css, "display: inline-flex !important;");
+        StringAssert.Contains(css, ".admin-page ::deep .mud-table-pagination svg path[fill=\"none\"]");
+        StringAssert.Contains(css, ".admin-page ::deep .mud-table-pagination-actions .mud-icon-button svg path[fill=\"none\"]");
+        StringAssert.Contains(css, "fill: none !important;");
+        Assert.IsFalse(css.Contains(".admin-page ::deep .mud-table-pagination-actions .mud-icon-button::before", StringComparison.Ordinal));
+        Assert.IsFalse(css.Contains("content: \"|<\";", StringComparison.Ordinal));
+        Assert.IsFalse(css.Contains("content: \"<\";", StringComparison.Ordinal));
+        Assert.IsFalse(css.Contains("content: \">\";", StringComparison.Ordinal));
+        Assert.IsFalse(css.Contains("content: \">|\";", StringComparison.Ordinal));
         StringAssert.Contains(css, "color: var(--admin-pager-disabled) !important;");
         Assert.IsFalse(css.Contains("color: #1b2836 !important;", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void GlobalMudSvgIconsUseCurrentColorInsteadOfBlankInitialFill()
+    {
+        var globalCss = File.ReadAllText(GetRepoPath("Shink", "wwwroot", "app.css"));
+
+        Assert.IsFalse(globalCss.Contains(".mud-icon-root.mud-svg-icon {\r\n    fill: initial;", StringComparison.Ordinal));
+        Assert.IsFalse(globalCss.Contains(".mud-icon-root.mud-svg-icon {\n    fill: initial;", StringComparison.Ordinal));
+        StringAssert.Contains(globalCss, ".mud-icon-root.mud-svg-icon,");
+        StringAssert.Contains(globalCss, ".mud-icon-root.mud-svg-icon svg,");
+        StringAssert.Contains(globalCss, ".mud-icon-root.mud-svg-icon svg path");
+        StringAssert.Contains(globalCss, "fill: currentColor !important;");
+        StringAssert.Contains(globalCss, ".mud-icon-root.mud-svg-icon svg path[fill=\"none\"]");
+        StringAssert.Contains(globalCss, ".mud-dialog.admin-solid-dialog .mud-dialog-title button.mud-icon-button svg path[fill=\"none\"]");
+        StringAssert.Contains(globalCss, "fill: none !important;");
+        StringAssert.Contains(globalCss, "background: transparent !important;");
     }
 
     [TestMethod]

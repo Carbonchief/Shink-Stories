@@ -1,11 +1,13 @@
 .playlist-showcase-page {
     --playlist-showcase-background-start: #ffffff;
     --playlist-showcase-background-end: #ffffff;
+    --playlist-showcase-font-color: #33424b;
     width: 100%;
     min-height: 100dvh;
     display: grid;
     gap: 1.25rem;
     box-sizing: border-box;
+    color: var(--playlist-showcase-font-color);
     background: linear-gradient(180deg, var(--playlist-showcase-background-start) 0%, var(--playlist-showcase-background-end) 100%);
 }
 
@@ -81,7 +83,7 @@
 
 .playlist-showcase-intro-count {
     margin: 0;
-    color: #8fe5e8;
+    color: var(--playlist-showcase-font-color);
     font-size: 0.95rem;
     font-weight: 800;
     letter-spacing: 0.04em;
@@ -91,7 +93,7 @@
 
 .playlist-showcase-intro-description {
     margin: 0;
-    color: #33424b;
+    color: var(--playlist-showcase-font-color);
     line-height: 1.45;
 }
 
@@ -183,14 +185,14 @@
 }
 
 .playlist-showcase-feature-title {
-    color: #18232b;
+    color: var(--playlist-showcase-font-color);
     font-size: clamp(1.2rem, 2.4vw, 1.5rem);
     font-weight: 700;
     line-height: 1.2;
 }
 
 .playlist-showcase-feature-description {
-    color: #44535b;
+    color: var(--playlist-showcase-font-color);
     line-height: 1.5;
 }
 
@@ -381,7 +383,7 @@
 
 .playlist-showcase-card-title {
     margin: 0;
-    color: #212529;
+    color: var(--playlist-showcase-font-color);
     font-size: 1rem;
     line-height: 1.35;
     min-height: 2.5em;
@@ -390,7 +392,7 @@
 .playlist-showcase-card-action {
     font-size: 0.82rem;
     font-weight: 700;
-    color: #445056;
+    color: var(--playlist-showcase-font-color);
 }
 
 .playlist-showcase-card.is-highlighted .playlist-showcase-card-cover {
@@ -485,6 +487,7 @@
 body.schink-night-mode .playlist-showcase-page {
     --playlist-showcase-background-start: #0f1519;
     --playlist-showcase-background-end: #0f1519;
+    --playlist-showcase-font-color: #f3f0e8;
 }
 
 body.schink-night-mode .playlist-showcase-page {
@@ -535,19 +538,19 @@ body.schink-night-mode .playlist-showcase-secondary-link:focus-visible {
 }
 
 body.schink-night-mode .playlist-showcase-intro-count {
-    color: #9dddea;
+    color: var(--playlist-showcase-font-color);
 }
 
 body.schink-night-mode .playlist-showcase-intro-description,
 body.schink-night-mode .playlist-showcase-feature-description,
 body.schink-night-mode .playlist-showcase-card-action {
-    color: #c5d0d4;
+    color: var(--playlist-showcase-font-color);
 }
 
 body.schink-night-mode .playlist-showcase-stories h2,
 body.schink-night-mode .playlist-showcase-feature-title,
 body.schink-night-mode .playlist-showcase-card-title {
-    color: #f7f3ea;
+    color: var(--playlist-showcase-font-color);
 }
 
 body.schink-night-mode .playlist-showcase-feature-cover,

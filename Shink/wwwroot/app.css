@@ -1006,6 +1006,8 @@ body.schink-night-mode .luister-page-shell .luister-playlist-link {
     z-index: calc(var(--mud-zindex-dialog) + 2) !important;
     margin-top: 0 !important;
     max-height: calc(100dvh - var(--characters-admin-dialog-top-offset)) !important;
+    display: flex !important;
+    flex-direction: column !important;
     border-radius: 16px !important;
     background: transparent !important;
     border: 0 !important;
@@ -1014,9 +1016,17 @@ body.schink-night-mode .luister-page-shell .luister-playlist-link {
 
 .mud-dialog.characters-admin-dialog .mud-dialog-content,
 .mud-dialog.characters-admin-dialog .characters-admin-dialog-content {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
     padding: 0 !important;
     overflow-y: auto !important;
     overflow-x: hidden !important;
+}
+
+.mud-dialog.characters-admin-dialog .mud-dialog-actions {
+    flex: 0 0 auto !important;
+    background: #16212d !important;
+    border-top: 1px solid #304457 !important;
 }
 
 .mud-dialog.characters-admin-dialog .characters-admin-dialog-surface {
@@ -1063,6 +1073,9 @@ body.schink-night-mode .luister-page-shell .luister-playlist-link {
 }
 
 .mud-dialog.admin-solid-dialog .mud-dialog-title {
+    position: relative !important;
+    min-height: 56px;
+    padding-right: 3.5rem !important;
     border-bottom: 1px solid #304457 !important;
 }
 
@@ -1071,6 +1084,14 @@ body.schink-night-mode .luister-page-shell .luister-playlist-link {
     position: relative !important;
     min-height: 56px;
     padding-right: 3.5rem !important;
+}
+
+.mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button,
+.mud-dialog.admin-solid-dialog .mud-dialog-title button.mud-icon-button {
+    position: absolute !important;
+    top: 0.45rem;
+    right: 0.45rem;
+    margin: 0 !important;
 }
 
 .mud-dialog.admin-solid-dialog.admin-story-dialog .mud-dialog-title .mud-icon-button,
@@ -1085,10 +1106,10 @@ body.schink-night-mode .luister-page-shell .luister-playlist-link {
 
 .mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button,
 .mud-dialog.admin-solid-dialog .mud-dialog-title button.mud-icon-button {
-    position: relative;
     z-index: 2;
     pointer-events: auto;
     color: #eaf1f8 !important;
+    -webkit-text-fill-color: #eaf1f8 !important;
     background: transparent !important;
     background-color: transparent !important;
     box-shadow: none !important;
@@ -1118,9 +1139,18 @@ body.schink-night-mode .luister-page-shell .luister-playlist-link {
 
 .mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button .mud-icon-root,
 .mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button svg,
-.mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button svg path {
+.mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button svg path,
+.mud-dialog.admin-solid-dialog .mud-dialog-title button.mud-icon-button .mud-icon-root,
+.mud-dialog.admin-solid-dialog .mud-dialog-title button.mud-icon-button svg,
+.mud-dialog.admin-solid-dialog .mud-dialog-title button.mud-icon-button svg path {
     color: #eaf1f8 !important;
+    -webkit-text-fill-color: #eaf1f8 !important;
     fill: currentColor !important;
+}
+
+.mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button svg path[fill="none"],
+.mud-dialog.admin-solid-dialog .mud-dialog-title button.mud-icon-button svg path[fill="none"] {
+    fill: none !important;
 }
 
 .mud-dialog.admin-solid-dialog .mud-dialog-actions {
@@ -1396,8 +1426,17 @@ a {
     color: inherit;
 }
 
-.mud-icon-root.mud-svg-icon {
-    fill: initial;
+.mud-icon-root.mud-svg-icon,
+.mud-icon-root.mud-svg-icon svg,
+.mud-icon-root.mud-svg-icon svg path {
+    color: currentColor;
+    fill: currentColor !important;
+    background: transparent !important;
+    background-color: transparent !important;
+}
+
+.mud-icon-root.mud-svg-icon svg path[fill="none"] {
+    fill: none !important;
 }
 
 h1:focus {

@@ -1747,6 +1747,7 @@ public sealed partial class SupabaseAdminManagementService(
                     ShowcaseImagePath: NormalizePlaylistImagePath(row.ShowcaseImagePath),
                     AccentColorHex: NormalizePlaylistAccentColorHex(row.AccentColorHex),
                     AccentColorEndHex: NormalizePlaylistAccentColorHex(row.AccentColorEndHex),
+                    FontColorHex: NormalizePlaylistAccentColorHex(row.FontColorHex),
                     SortOrder: row.SortOrder,
                     MaxItems: row.MaxItems is > 0 ? row.MaxItems : null,
                     IsEnabled: row.IsEnabled,
@@ -1797,6 +1798,13 @@ public sealed partial class SupabaseAdminManagementService(
             return new AdminOperationResult(false, "Gebruik asseblief 'n geldige tweede hex-kleurkode soos #88CCFF.");
         }
 
+        var normalizedFontColorHex = NormalizePlaylistAccentColorHex(request.FontColorHex);
+        if (!string.IsNullOrWhiteSpace(request.FontColorHex) &&
+            string.IsNullOrWhiteSpace(normalizedFontColorHex))
+        {
+            return new AdminOperationResult(false, "Gebruik asseblief 'n geldige font hex-kleurkode soos #222222.");
+        }
+
         if (!TryBuildSupabaseBaseUri(out var baseUri))
         {
             return new AdminOperationResult(false, "Supabase URL is nog nie opgestel nie.");
@@ -1820,6 +1828,7 @@ public sealed partial class SupabaseAdminManagementService(
                 ["showcase_image_path"] = NormalizePlaylistImagePath(request.ShowcaseImagePath),
                 ["accent_color_hex"] = normalizedAccentColorHex,
                 ["accent_color_end_hex"] = normalizedAccentColorEndHex,
+                ["font_color_hex"] = normalizedFontColorHex,
                 ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
                 ["max_items"] = request.MaxItems is > 0 ? request.MaxItems : null,
                 ["is_enabled"] = request.IsEnabled,
@@ -1866,6 +1875,7 @@ public sealed partial class SupabaseAdminManagementService(
                 ["showcase_image_path"] = NormalizePlaylistImagePath(request.ShowcaseImagePath),
                 ["accent_color_hex"] = normalizedAccentColorHex,
                 ["accent_color_end_hex"] = normalizedAccentColorEndHex,
+                ["font_color_hex"] = normalizedFontColorHex,
                 ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
                 ["is_enabled"] = request.IsEnabled,
                 ["show_on_home"] = request.ShowOnHome,
@@ -1882,6 +1892,7 @@ public sealed partial class SupabaseAdminManagementService(
                 ["showcase_image_path"] = NormalizePlaylistImagePath(request.ShowcaseImagePath),
                 ["accent_color_hex"] = normalizedAccentColorHex,
                 ["accent_color_end_hex"] = normalizedAccentColorEndHex,
+                ["font_color_hex"] = normalizedFontColorHex,
                 ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
                 ["max_items"] = request.MaxItems is > 0 ? request.MaxItems : null,
                 ["is_enabled"] = request.IsEnabled,
@@ -3644,17 +3655,30 @@ public sealed partial class SupabaseAdminManagementService(
             .FirstOrDefault();
     }
 
-    private async Task<IReadOnlyList<PlaylistRow>> FetchPlaylistsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<PlaylistRow>> FetchPlaylistsAsync(
+        Uri baseUri,
+        string apiKey,
+        CancellationToken cancellationToken,
+        bool includeGradientEndColor = true,
+        bool includeFontColor = true)
     {
+        var playlistColumns = BuildPlaylistSelectColumns(includeGradientEndColor, includeFontColor);
         var uri = new Uri(
             baseUri,
             "rest/v1/story_playlists" +
-            "?select=playlist_id,slug,title,playlist_type,system_key,description,logo_image_path,backdrop_image_path,showcase_image_path,accent_color_hex,accent_color_end_hex,sort_order,max_items,is_enabled,show_on_home,include_in_speellyste_carousel,show_showcase_image_on_luister_page,updated_at" +
+            $"?select={playlistColumns}" +
             "&order=sort_order.asc" +
             "&order=title.asc" +
             "&limit=500");
 
-        return await FetchRowsAsync<PlaylistRow>(uri, apiKey, cancellationToken);
+        return await FetchPlaylistRowsWithColumnFallbackAsync(
+            uri,
+            baseUri,
+            apiKey,
+            cancellationToken,
+            playlistId: null,
+            includeGradientEndColor,
+            includeFontColor);
     }
 
     private async Task<IReadOnlyList<PlaylistItemRow>> FetchPlaylistItemsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
@@ -3776,7 +3800,9 @@ public sealed partial class SupabaseAdminManagementService(
         Uri baseUri,
         string apiKey,
         Guid playlistId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeGradientEndColor = true,
+        bool includeFontColor = true)
     {
         if (playlistId == Guid.Empty)
         {
@@ -3784,18 +3810,98 @@ public sealed partial class SupabaseAdminManagementService(
         }
 
         var escapedPlaylistId = Uri.EscapeDataString(playlistId.ToString("D"));
+        var playlistColumns = BuildPlaylistSelectColumns(includeGradientEndColor, includeFontColor);
         var uri = new Uri(
             baseUri,
             "rest/v1/story_playlists" +
-            "?select=playlist_id,slug,title,playlist_type,system_key,description,logo_image_path,backdrop_image_path,showcase_image_path,accent_color_hex,accent_color_end_hex,sort_order,max_items,is_enabled,show_on_home,include_in_speellyste_carousel,show_showcase_image_on_luister_page,updated_at" +
+            $"?select={playlistColumns}" +
             $"&playlist_id=eq.{escapedPlaylistId}" +
             "&limit=1");
 
-        var rows = await FetchRowsAsync<PlaylistRow>(uri, apiKey, cancellationToken);
+        var rows = await FetchPlaylistRowsWithColumnFallbackAsync(
+            uri,
+            baseUri,
+            apiKey,
+            cancellationToken,
+            playlistId,
+            includeGradientEndColor,
+            includeFontColor);
         return rows
             .Where(row => row.PlaylistId != Guid.Empty)
             .FirstOrDefault();
     }
+
+    private async Task<IReadOnlyList<PlaylistRow>> FetchPlaylistRowsWithColumnFallbackAsync(
+        Uri uri,
+        Uri baseUri,
+        string apiKey,
+        CancellationToken cancellationToken,
+        Guid? playlistId,
+        bool includeGradientEndColor,
+        bool includeFontColor)
+    {
+        try
+        {
+            using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                if (includeGradientEndColor &&
+                    body.Contains("accent_color_end_hex", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogInformation("Supabase admin playlist lookup skipped gradient color: column accent_color_end_hex is not available yet.");
+                    return playlistId is Guid id
+                        ? ToSingleRowList(await FetchPlaylistByIdAsync(baseUri, apiKey, id, cancellationToken, includeGradientEndColor: false, includeFontColor))
+                        : await FetchPlaylistsAsync(baseUri, apiKey, cancellationToken, includeGradientEndColor: false, includeFontColor);
+                }
+
+                if (includeFontColor &&
+                    body.Contains("font_color_hex", StringComparison.OrdinalIgnoreCase))
+                {
+                    _logger.LogInformation("Supabase admin playlist lookup skipped font color: column font_color_hex is not available yet.");
+                    return playlistId is Guid id
+                        ? ToSingleRowList(await FetchPlaylistByIdAsync(baseUri, apiKey, id, cancellationToken, includeGradientEndColor, includeFontColor: false))
+                        : await FetchPlaylistsAsync(baseUri, apiKey, cancellationToken, includeGradientEndColor, includeFontColor: false);
+                }
+
+                _logger.LogWarning(
+                    "Supabase fetch failed. uri={Uri} Status={StatusCode} Body={Body}",
+                    uri,
+                    (int)response.StatusCode,
+                    body);
+                return Array.Empty<PlaylistRow>();
+            }
+
+            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            return await JsonSerializer.DeserializeAsync<List<PlaylistRow>>(stream, JsonOptions, cancellationToken)
+                ?? [];
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(exception, "Supabase fetch failed unexpectedly. uri={Uri}", uri);
+            return Array.Empty<PlaylistRow>();
+        }
+    }
+
+    private static string BuildPlaylistSelectColumns(bool includeGradientEndColor, bool includeFontColor)
+    {
+        var columns = "playlist_id,slug,title,playlist_type,system_key,description,logo_image_path,backdrop_image_path,showcase_image_path,accent_color_hex";
+        if (includeGradientEndColor)
+        {
+            columns += ",accent_color_end_hex";
+        }
+
+        if (includeFontColor)
+        {
+            columns += ",font_color_hex";
+        }
+
+        return columns + ",sort_order,max_items,is_enabled,show_on_home,include_in_speellyste_carousel,show_showcase_image_on_luister_page,updated_at";
+    }
+
+    private static IReadOnlyList<PlaylistRow> ToSingleRowList(PlaylistRow? row) =>
+        row is null ? Array.Empty<PlaylistRow>() : [row];
 
     private async Task<IReadOnlyList<T>> FetchRowsAsync<T>(Uri uri, string apiKey, CancellationToken cancellationToken)
     {
@@ -4088,9 +4194,7 @@ public sealed partial class SupabaseAdminManagementService(
         var currentSubscriberSubscriptions = subscriptions
             .Where(IsSubscriberCountMetricEligible)
             .ToArray();
-        var currentNewSubscriberSubscriptions = currentSubscriberSubscriptions
-            .Where(subscription => IsNewSubscriberMetricEligible(subscription, paystackSubscriptionCreateIdentifiers))
-            .ToArray();
+        var currentNewSubscriberSubscriptions = GetFirstAnalyticsSubscriberSubscriptions(subscriptions, paystackSubscriptionCreateIdentifiers);
         var cancellationDateBySubscriber = BuildCancellationDateBySubscriber(
             currentSubscriberSubscriptions,
             revenueEvents);
@@ -4124,14 +4228,12 @@ public sealed partial class SupabaseAdminManagementService(
         var eligibleSubscriptions = subscriptions
             .Where(IsSubscriberCountMetricEligible)
             .ToArray();
-        var newSubscriberSubscriptions = eligibleSubscriptions
-            .Where(subscription => IsNewSubscriberMetricEligible(subscription, paystackSubscriptionCreateIdentifiers))
-            .ToArray();
+        var newSubscriberSubscriptions = GetFirstAnalyticsSubscriberSubscriptions(subscriptions, paystackSubscriptionCreateIdentifiers);
         var cancellationDateBySubscriber = BuildCancellationDateBySubscriber(
             eligibleSubscriptions,
             revenueEvents);
 
-        if (eligibleSubscriptions.Length == 0)
+        if (eligibleSubscriptions.Length == 0 && newSubscriberSubscriptions.Count == 0)
         {
             return Array.Empty<AdminSubscriberTrendMetric>();
         }
@@ -4432,6 +4534,20 @@ public sealed partial class SupabaseAdminManagementService(
                 .First())
             .ToArray();
 
+    private static IReadOnlyList<SubscriptionRow> GetFirstAnalyticsSubscriberSubscriptions(
+        IReadOnlyList<SubscriptionRow> subscriptions,
+        IReadOnlySet<string> paystackSubscriptionCreateIdentifiers) =>
+        subscriptions
+            .Where(subscription =>
+                IsNewSubscriberMetricEligible(subscription, paystackSubscriptionCreateIdentifiers) ||
+                IsFreeSubscriberMembershipDetailEligible(subscription))
+            .Where(subscription => subscription.SubscribedAt is not null)
+            .GroupBy(subscription => subscription.SubscriberId)
+            .Select(group => group
+                .OrderBy(subscription => subscription.SubscribedAt)
+                .First())
+            .ToArray();
+
     private static IReadOnlyList<AdminSalesRevenueMetric> BuildSalesRevenueMetricsCore(
         WordPressSubscriberReportsRpcSnapshot? wordPressSubscriberReports,
         IReadOnlyList<SubscriptionRow> subscriptions,
@@ -4446,10 +4562,10 @@ public sealed partial class SupabaseAdminManagementService(
 
         return
         [
-            BuildSalesRevenueMetric("last_day", eligibleSales, SubscriberPeriod.LastDay),
-            BuildSalesRevenueMetric("last_week", eligibleSales, SubscriberPeriod.LastWeek),
-            BuildSalesRevenueMetric("last_month", eligibleSales, SubscriberPeriod.LastMonth),
-            BuildSalesRevenueMetric("last_year", eligibleSales, SubscriberPeriod.LastYear),
+            BuildSalesRevenueMetric("current_day", eligibleSales, SubscriberPeriod.Today),
+            BuildSalesRevenueMetric("current_week", eligibleSales, SubscriberPeriod.ThisWeek),
+            BuildSalesRevenueMetric("current_month", eligibleSales, SubscriberPeriod.ThisMonth),
+            BuildSalesRevenueMetric("current_year", eligibleSales, SubscriberPeriod.ThisYear),
             BuildSalesRevenueMetric("today", eligibleSales, SubscriberPeriod.Today),
             BuildSalesRevenueMetric("this_month", eligibleSales, SubscriberPeriod.ThisMonth),
             BuildSalesRevenueMetric("this_year", eligibleSales, SubscriberPeriod.ThisYear),
@@ -5312,10 +5428,6 @@ public sealed partial class SupabaseAdminManagementService(
         var nowLocal = DateTime.Now;
         var start = period switch
         {
-            SubscriberPeriod.LastDay => nowLocal.AddDays(-1),
-            SubscriberPeriod.LastWeek => nowLocal.AddDays(-7),
-            SubscriberPeriod.LastMonth => nowLocal.AddMonths(-1),
-            SubscriberPeriod.LastYear => nowLocal.AddYears(-1),
             SubscriberPeriod.Today => nowLocal.Date,
             SubscriberPeriod.ThisWeek => GetStartOfWeek(nowLocal.Date),
             SubscriberPeriod.ThisMonth => new DateTime(nowLocal.Year, nowLocal.Month, 1),
@@ -6952,6 +7064,9 @@ public sealed partial class SupabaseAdminManagementService(
         [JsonPropertyName("accent_color_end_hex")]
         public string? AccentColorEndHex { get; set; }
 
+        [JsonPropertyName("font_color_hex")]
+        public string? FontColorHex { get; set; }
+
         [JsonPropertyName("sort_order")]
         public int SortOrder { get; set; }
 
@@ -7126,10 +7241,6 @@ public sealed partial class SupabaseAdminManagementService(
 
     private enum SubscriberPeriod
     {
-        LastDay,
-        LastWeek,
-        LastMonth,
-        LastYear,
         Today,
         ThisWeek,
         ThisMonth,

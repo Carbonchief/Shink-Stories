@@ -12,6 +12,7 @@ public sealed record StoryPlaylist(
     string? ShowcaseImagePath = null,
     string? AccentColorHex = null,
     string? AccentColorEndHex = null,
+    string? FontColorHex = null,
     bool IncludeInSpeellysteCarousel = false,
     bool IsSystemPlaylist = false,
     string? SystemKey = null,

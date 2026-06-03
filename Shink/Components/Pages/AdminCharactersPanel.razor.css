@@ -264,6 +264,14 @@
     backdrop-filter: blur(10px);
 }
 
+.characters-admin-dialog-actions-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
 .characters-admin-close-btn {
     width: 40px;
     min-width: 40px;

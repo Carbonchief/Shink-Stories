@@ -92,6 +92,35 @@ public class AdminDialogSourceTests
     }
 
     [TestMethod]
+    public void SolidAdminDialogsPinCloseButtonTopRightAndKeepIconVisible()
+    {
+        var globalCss = NormalizeLineEndings(File.ReadAllText(GetRepoPath("Shink", "wwwroot", "app.css")));
+
+        StringAssert.Contains(globalCss, ".mud-dialog.admin-solid-dialog .mud-dialog-title {\n    position: relative !important;");
+        StringAssert.Contains(globalCss, "padding-right: 3.5rem !important;");
+        StringAssert.Contains(globalCss, ".mud-dialog.admin-solid-dialog .mud-dialog-title .mud-icon-button,\n.mud-dialog.admin-solid-dialog .mud-dialog-title button.mud-icon-button {\n    position: absolute !important;");
+        StringAssert.Contains(globalCss, "top: 0.45rem;");
+        StringAssert.Contains(globalCss, "right: 0.45rem;");
+        StringAssert.Contains(globalCss, ".mud-dialog.admin-solid-dialog .mud-dialog-title button.mud-icon-button svg path");
+        StringAssert.Contains(globalCss, "-webkit-text-fill-color: #eaf1f8 !important;");
+    }
+
+    [TestMethod]
+    public void PlaylistDialogExposesSaveActionsInPersistentFooter()
+    {
+        var markup = NormalizeLineEndings(File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor")));
+        var playlistDialogIndex = markup.IndexOf("<MudDialog Visible=\"IsPlaylistDialogOpen\"", StringComparison.Ordinal);
+        var playlistActionsIndex = markup.IndexOf("<DialogActions>", playlistDialogIndex, StringComparison.Ordinal);
+        var playlistDialogEndIndex = markup.IndexOf("</MudDialog>", playlistActionsIndex, StringComparison.Ordinal);
+        var playlistActions = markup[playlistActionsIndex..playlistDialogEndIndex];
+
+        StringAssert.Contains(playlistActions, "OnClick=\"SavePlaylistAsync\"");
+        StringAssert.Contains(playlistActions, "OnClick=\"SavePlaylistStoriesAsync\"");
+        StringAssert.Contains(playlistActions, "admin-dialog-save-actions");
+        StringAssert.Contains(playlistActions, "fa-solid fa-floppy-disk");
+    }
+
+    [TestMethod]
     public void NoHeaderAdminDialogsExposeExplicitCloseButtons()
     {
         var settingsMarkup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "AdminSettingsPanel.razor"));
@@ -106,6 +135,21 @@ public class AdminDialogSourceTests
         StringAssert.Contains(charactersMarkup, "CloseButton = false");
         StringAssert.Contains(charactersMarkup, "@onclick=\"CloseCharacterDialogAsync\"");
         StringAssert.Contains(charactersMarkup, "private async Task CloseCharacterDialogAsync()");
+    }
+
+    [TestMethod]
+    public void NoHeaderAdminDialogsExposeFooterSaveButtons()
+    {
+        var settingsMarkup = NormalizeLineEndings(File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "AdminSettingsPanel.razor")));
+        var charactersMarkup = NormalizeLineEndings(File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "AdminCharactersPanel.razor")));
+
+        StringAssert.Contains(settingsMarkup, "<DialogActions>\n                    <div class=\"admin-settings-dialog-actions-row\">");
+        StringAssert.Contains(settingsMarkup, "OnClick=\"SaveCodeAsync\"");
+        StringAssert.Contains(settingsMarkup, "OnClick=\"CloseCodeDialog\"");
+
+        StringAssert.Contains(charactersMarkup, "<DialogActions>\n                <div class=\"characters-admin-dialog-actions-row\">");
+        StringAssert.Contains(charactersMarkup, "@onclick=\"SaveCharacterAsync\"");
+        StringAssert.Contains(charactersMarkup, "@onclick=\"CloseCharacterDialogAsync\"");
     }
 
     private static string GetRepoPath(params string[] segments)

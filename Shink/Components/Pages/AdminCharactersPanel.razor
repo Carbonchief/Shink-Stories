@@ -549,6 +549,27 @@
                     </section>
                 </div>
             </DialogContent>
+            <DialogActions>
+                <div class="characters-admin-dialog-actions-row">
+                    <button type="button"
+                            class="characters-admin-btn characters-admin-btn-secondary characters-admin-close-btn"
+                            @onclick="CloseCharacterDialogAsync"
+                            aria-label='@T("Sluit", "Close")'
+                            title='@T("Sluit", "Close")'>
+                        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                        <span class="sr-only">@T("Sluit", "Close")</span>
+                    </button>
+                    <button type="button"
+                            class="characters-admin-btn characters-admin-save-btn"
+                            @onclick="SaveCharacterAsync"
+                            disabled="@IsSaving"
+                            aria-label='@(IsSaving ? T("Stoor...", "Saving...") : T("Stoor karakter", "Save character"))'
+                            title='@(IsSaving ? T("Stoor...", "Saving...") : T("Stoor karakter", "Save character"))'>
+                        <i class="fa-solid @(IsSaving ? "fa-spinner fa-spin" : "fa-floppy-disk")" aria-hidden="true"></i>
+                        <span class="sr-only">@(IsSaving ? T("Stoor...", "Saving...") : T("Stoor karakter", "Save character"))</span>
+                    </button>
+                </div>
+            </DialogActions>
         </MudDialog>
     }
 </section>

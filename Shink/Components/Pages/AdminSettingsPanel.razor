@@ -622,6 +622,30 @@ else
                         }
                     </div>
                 </DialogContent>
+                <DialogActions>
+                    <div class="admin-settings-dialog-actions-row">
+                        <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                   Variant="Variant.Text"
+                                   Color="Color.Default"
+                                   ButtonType="ButtonType.Button"
+                                   ClickPropagation="false"
+                                   OnClick="CloseCodeDialog"
+                                   aria-label='@T("Maak toe", "Close")'
+                                   title='@T("Maak toe", "Close")'>
+                            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                        </MudButton>
+                        <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                   Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   ButtonType="ButtonType.Button"
+                                   OnClick="SaveCodeAsync"
+                                   Disabled="@IsSavingCode"
+                                   aria-label='@T("Stoor kode", "Save code")'
+                                   title='@T("Stoor kode", "Save code")'>
+                            <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                        </MudButton>
+                    </div>
+                </DialogActions>
             </MudDialog>
         }
     </section>

@@ -1480,10 +1480,10 @@
                         var todaySubscriberMetric = GetSubscriberMetric("today");
                         var monthlySubscriberMetric = GetSubscriberMetric("this_month");
                         var yearlySubscriberMetric = GetSubscriberMetric("this_year");
-                        var lastDaySubscriberSales = GetSubscriberSalesMetric(RevenuePeriodLastDay);
-                        var lastWeekSubscriberSales = GetSubscriberSalesMetric(RevenuePeriodLastWeek);
-                        var lastMonthSubscriberSales = GetSubscriberSalesMetric(RevenuePeriodLastMonth);
-                        var lastYearSubscriberSales = GetSubscriberSalesMetric(RevenuePeriodLastYear);
+                        var currentDaySubscriberSales = GetSubscriberSalesMetric(RevenuePeriodCurrentDay);
+                        var currentWeekSubscriberSales = GetSubscriberSalesMetric(RevenuePeriodCurrentWeek);
+                        var currentMonthSubscriberSales = GetSubscriberSalesMetric(RevenuePeriodCurrentMonth);
+                        var currentYearSubscriberSales = GetSubscriberSalesMetric(RevenuePeriodCurrentYear);
                         var customSubscriberSales = GetCustomRevenueSalesMetric();
                         var selectedRevenueSales = GetSelectedRevenueSalesMetric();
                         var todaySubscriberSales = GetSubscriberSalesMetric("today");
@@ -1509,23 +1509,49 @@
                                                 "New subscribers, cancelled subscriptions, active members, and payment signals from the subscriber reports.")
                                         </p>
                                     </div>
-                                    <div class="admin-analytics-panel-head-controls">
-                                        <label class="admin-header-filter-label" for="subscriber-analytics-period">
-                                            @T("Tydreeks", "Time series")
-                                        </label>
-                                        <select id="subscriber-analytics-period"
-                                                class="admin-header-filter-select admin-subscriber-analytics-period-select"
-                                                @bind="SelectedSubscriberTrendPeriod">
-                                            <option value="@SubscriberTrendPeriodDay">
-                                                @T("Dag", "Day")
-                                            </option>
-                                            <option value="@SubscriberTrendPeriodMonth">
-                                                @T("Maand", "Month")
-                                            </option>
-                                            <option value="@SubscriberTrendPeriodYear">
-                                                @T("Jaar", "Year")
-                                            </option>
-                                        </select>
+                                    <div class="admin-analytics-panel-head-controls admin-subscriber-analytics-controls">
+                                        <div class="admin-subscriber-analytics-control">
+                                            <label class="admin-header-filter-label" for="subscriber-analytics-period">
+                                                @T("Tydreeks", "Time series")
+                                            </label>
+                                            <select id="subscriber-analytics-period"
+                                                    class="admin-header-filter-select admin-subscriber-analytics-period-select"
+                                                    @bind="SelectedSubscriberTrendPeriod">
+                                                <option value="@SubscriberTrendPeriodDay">
+                                                    @T("Dag", "Day")
+                                                </option>
+                                                <option value="@SubscriberTrendPeriodMonth">
+                                                    @T("Maand", "Month")
+                                                </option>
+                                                <option value="@SubscriberTrendPeriodYear">
+                                                    @T("Jaar", "Year")
+                                                </option>
+                                            </select>
+                                        </div>
+                                        <div class="admin-subscriber-analytics-control">
+                                            <span class="admin-header-filter-label" id="subscriber-access-filter-label">
+                                                @T("Tipe", "Type")
+                                            </span>
+                                            <div class="admin-subscriber-access-toggle"
+                                                 role="group"
+                                                 aria-labelledby="subscriber-access-filter-label">
+                                                <button type="button"
+                                                        class="@GetSubscriberAccessFilterButtonClass(SubscriberAccessFilterAll)"
+                                                        @onclick='() => SetSubscriberAccessFilter(SubscriberAccessFilterAll)'>
+                                                    @T("Alle", "All")
+                                                </button>
+                                                <button type="button"
+                                                        class="@GetSubscriberAccessFilterButtonClass(SubscriberAccessFilterFree)"
+                                                        @onclick='() => SetSubscriberAccessFilter(SubscriberAccessFilterFree)'>
+                                                    @T("Gratis", "Free")
+                                                </button>
+                                                <button type="button"
+                                                        class="@GetSubscriberAccessFilterButtonClass(SubscriberAccessFilterPaid)"
+                                                        @onclick='() => SetSubscriberAccessFilter(SubscriberAccessFilterPaid)'>
+                                                    @T("Betaal", "Paid")
+                                                </button>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -1533,11 +1559,35 @@
                                     <div class="admin-subscriber-analytics-visual">
                                         @if (CurrentSubscriberTrendMetrics.Count > 0)
                                         {
-                                            <div class="admin-subscriber-analytics-chart-shell">
-                                                <MudChart T="double"
-                                                          ChartType="ChartType.Bar"
-                                                          ChartSeries="SubscriberTrendChartSeries"
-                                                          ChartLabels="SubscriberTrendChartLabels" />
+                                            <div class="admin-subscriber-analytics-chart-shell admin-subscriber-trend-list"
+                                                 role="img"
+                                                 aria-label='@T("Nuwe en gekanselleerde intekenaars per tydperk", "New and cancelled subscribers by period")'>
+                                                @foreach (var metric in CurrentSubscriberTrendMetrics)
+                                                {
+                                                    <div class="admin-subscriber-trend-row">
+                                                        <div class="admin-subscriber-trend-period">
+                                                            <strong>@metric.PeriodLabel</strong>
+                                                        </div>
+                                                        <div class="admin-subscriber-trend-bars">
+                                                            <div class="admin-subscriber-trend-line">
+                                                                <span>@T("Nuwe", "New")</span>
+                                                                <div class="admin-subscriber-trend-track">
+                                                                    <div class="admin-subscriber-trend-fill is-signups"
+                                                                         style="width: @FormatSubscriberTrendBarWidth(metric.Signups);"></div>
+                                                                </div>
+                                                                <strong>@FormatAnalyticsNumber(metric.Signups)</strong>
+                                                            </div>
+                                                            <div class="admin-subscriber-trend-line">
+                                                                <span>@T("Gekanselleer", "Cancelled")</span>
+                                                                <div class="admin-subscriber-trend-track">
+                                                                    <div class="admin-subscriber-trend-fill is-cancellations"
+                                                                         style="width: @FormatSubscriberTrendBarWidth(metric.Cancellations);"></div>
+                                                                </div>
+                                                                <strong>@FormatAnalyticsNumber(metric.Cancellations)</strong>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                }
                                             </div>
                                         }
                                         else
@@ -1621,16 +1671,6 @@
                                                     <option value="@metric.PeriodKey">@BuildSubscriberDrilldownOptionLabel(metric)</option>
                                                 }
                                             </select>
-                                            <label class="admin-header-filter-label" for="subscriber-access-filter">
-                                                @T("Tipe", "Type")
-                                            </label>
-                                            <select id="subscriber-access-filter"
-                                                    class="admin-header-filter-select admin-subscriber-analytics-period-select"
-                                                    @bind="SelectedSubscriberAccessFilter">
-                                                <option value="@SubscriberAccessFilterAll">@T("Alle", "All")</option>
-                                                <option value="@SubscriberAccessFilterFree">@T("Gratis", "Free")</option>
-                                                <option value="@SubscriberAccessFilterPaid">@T("Betaal", "Paid")</option>
-                                            </select>
                                             <span class="admin-story-stats-filter-summary">
                                                 @T($"{FilteredSubscriberMembershipDetails.Count} intekenaars in hierdie grid", $"{FilteredSubscriberMembershipDetails.Count} subscribers in this grid")
                                             </span>
@@ -1663,8 +1703,8 @@
                                                 </MudTableSortLabel>
                                             </MudTh>
                                             <MudTh>
-                                                <MudTableSortLabel T="AdminSubscriberMembershipDetailRecord" SortBy="new Func<AdminSubscriberMembershipDetailRecord, object?>(record => record.SubscribedAt)">
-                                                    @T("Ingeteken", "Subscribed")
+                                                <MudTableSortLabel T="AdminSubscriberMembershipDetailRecord" SortBy="new Func<AdminSubscriberMembershipDetailRecord, object?>(record => GetSubscriberMembershipDetailSubscribedAtSortKey(record))">
+                                                    @T("Aangesluit op", "Joined On")
                                                 </MudTableSortLabel>
                                             </MudTh>
                                             <MudTh>
@@ -1680,7 +1720,7 @@
                                             </MudTd>
                                             <MudTd DataLabel='@T("Vlak", "Tier")'>@context.TierName</MudTd>
                                             <MudTd DataLabel='@T("Bron", "Source")'>@context.Provider / @context.SourceSystem</MudTd>
-                                            <MudTd DataLabel='@T("Ingeteken", "Subscribed")'>@FormatAdminDate(context.SubscribedAt)</MudTd>
+                                            <MudTd DataLabel='@T("Aangesluit op", "Joined On")'>@FormatAdminDate(context.SubscribedAt)</MudTd>
                                             <MudTd DataLabel='@T("Status", "Status")'>@context.Status</MudTd>
                                         </RowTemplate>
                                         <NoRecordsContent>
@@ -1820,46 +1860,46 @@
 
                                 <div class="admin-analytics-grid admin-usage-summary-grid">
                                     <button type="button"
-                                            class="admin-analytics-card admin-revenue-drilldown-card @(IsSelectedRevenueDrilldownPeriod(RevenuePeriodLastDay) ? "is-selected" : null)"
-                                            @onclick='() => SetRevenueDrilldownPeriod(RevenuePeriodLastDay)'>
-                                        <p class="admin-analytics-label">@T("Laaste dag", "Last day")</p>
-                                        <p class="admin-analytics-value">@FormatCurrency(lastDaySubscriberSales.RevenueZar)</p>
+                                            class="admin-analytics-card admin-revenue-drilldown-card @(IsSelectedRevenueDrilldownPeriod(RevenuePeriodCurrentDay) ? "is-selected" : null)"
+                                            @onclick='() => SetRevenueDrilldownPeriod(RevenuePeriodCurrentDay)'>
+                                        <p class="admin-analytics-label">@T("Huidige dag", "Current day")</p>
+                                        <p class="admin-analytics-value">@FormatCurrency(currentDaySubscriberSales.RevenueZar)</p>
                                         <div class="admin-analytics-meta">
                                             <span>@T("Verkope", "Sales")</span>
-                                            <strong>@FormatAnalyticsNumber(lastDaySubscriberSales.SalesCount)</strong>
+                                            <strong>@FormatAnalyticsNumber(currentDaySubscriberSales.SalesCount)</strong>
                                         </div>
                                     </button>
 
                                     <button type="button"
-                                            class="admin-analytics-card admin-revenue-drilldown-card @(IsSelectedRevenueDrilldownPeriod(RevenuePeriodLastWeek) ? "is-selected" : null)"
-                                            @onclick='() => SetRevenueDrilldownPeriod(RevenuePeriodLastWeek)'>
-                                        <p class="admin-analytics-label">@T("Laaste week", "Last week")</p>
-                                        <p class="admin-analytics-value">@FormatCurrency(lastWeekSubscriberSales.RevenueZar)</p>
+                                            class="admin-analytics-card admin-revenue-drilldown-card @(IsSelectedRevenueDrilldownPeriod(RevenuePeriodCurrentWeek) ? "is-selected" : null)"
+                                            @onclick='() => SetRevenueDrilldownPeriod(RevenuePeriodCurrentWeek)'>
+                                        <p class="admin-analytics-label">@T("Huidige week", "Current week")</p>
+                                        <p class="admin-analytics-value">@FormatCurrency(currentWeekSubscriberSales.RevenueZar)</p>
                                         <div class="admin-analytics-meta">
                                             <span>@T("Verkope", "Sales")</span>
-                                            <strong>@FormatAnalyticsNumber(lastWeekSubscriberSales.SalesCount)</strong>
+                                            <strong>@FormatAnalyticsNumber(currentWeekSubscriberSales.SalesCount)</strong>
                                         </div>
                                     </button>
 
                                     <button type="button"
-                                            class="admin-analytics-card admin-revenue-drilldown-card @(IsSelectedRevenueDrilldownPeriod(RevenuePeriodLastMonth) ? "is-selected" : null)"
-                                            @onclick='() => SetRevenueDrilldownPeriod(RevenuePeriodLastMonth)'>
-                                        <p class="admin-analytics-label">@T("Laaste maand", "Last month")</p>
-                                        <p class="admin-analytics-value">@FormatCurrency(lastMonthSubscriberSales.RevenueZar)</p>
+                                            class="admin-analytics-card admin-revenue-drilldown-card @(IsSelectedRevenueDrilldownPeriod(RevenuePeriodCurrentMonth) ? "is-selected" : null)"
+                                            @onclick='() => SetRevenueDrilldownPeriod(RevenuePeriodCurrentMonth)'>
+                                        <p class="admin-analytics-label">@T("Huidige maand", "Current month")</p>
+                                        <p class="admin-analytics-value">@FormatCurrency(currentMonthSubscriberSales.RevenueZar)</p>
                                         <div class="admin-analytics-meta">
                                             <span>@T("Verkope", "Sales")</span>
-                                            <strong>@FormatAnalyticsNumber(lastMonthSubscriberSales.SalesCount)</strong>
+                                            <strong>@FormatAnalyticsNumber(currentMonthSubscriberSales.SalesCount)</strong>
                                         </div>
                                     </button>
 
                                     <button type="button"
-                                            class="admin-analytics-card admin-revenue-drilldown-card @(IsSelectedRevenueDrilldownPeriod(RevenuePeriodLastYear) ? "is-selected" : null)"
-                                            @onclick='() => SetRevenueDrilldownPeriod(RevenuePeriodLastYear)'>
-                                        <p class="admin-analytics-label">@T("Laaste jaar", "Last year")</p>
-                                        <p class="admin-analytics-value">@FormatCurrency(lastYearSubscriberSales.RevenueZar)</p>
+                                            class="admin-analytics-card admin-revenue-drilldown-card @(IsSelectedRevenueDrilldownPeriod(RevenuePeriodCurrentYear) ? "is-selected" : null)"
+                                            @onclick='() => SetRevenueDrilldownPeriod(RevenuePeriodCurrentYear)'>
+                                        <p class="admin-analytics-label">@T("Huidige jaar", "Current year")</p>
+                                        <p class="admin-analytics-value">@FormatCurrency(currentYearSubscriberSales.RevenueZar)</p>
                                         <div class="admin-analytics-meta">
                                             <span>@T("Verkope", "Sales")</span>
-                                            <strong>@FormatAnalyticsNumber(lastYearSubscriberSales.SalesCount)</strong>
+                                            <strong>@FormatAnalyticsNumber(currentYearSubscriberSales.SalesCount)</strong>
                                         </div>
                                     </button>
 
@@ -1887,6 +1927,14 @@
                                     <div class="admin-analytics-meta">
                                         <span>@GetRevenueRangeLabel(SelectedRevenueDrilldownPeriod)</span>
                                         <strong>@FormatAnalyticsNumber(selectedRevenueSales.SalesCount) @T("verkope", "sales")</strong>
+                                    </div>
+                                    <div class="admin-analytics-meta">
+                                        <span>PayFast</span>
+                                        <strong>@FormatAnalyticsNumber(SelectedRevenuePayFastSalesCount) @T("verkope", "sales")</strong>
+                                    </div>
+                                    <div class="admin-analytics-meta">
+                                        <span>Paystack</span>
+                                        <strong>@FormatAnalyticsNumber(SelectedRevenuePaystackSalesCount) @T("verkope", "sales")</strong>
                                     </div>
                                     <div class="admin-analytics-meta">
                                         <span>@T("Herwinde inkomste", "Recovered revenue")</span>
@@ -3956,6 +4004,7 @@
                 : ResolvePreviewImageUrl(PlaylistEditor.ShowcaseImagePath);
             var playlistAccentPickerValue = ResolvePlaylistAccentPickerValue(PlaylistEditor.AccentColorHex);
             var playlistAccentEndPickerValue = ResolvePlaylistAccentPickerValue(PlaylistEditor.AccentColorEndHex);
+            var playlistFontPickerValue = ResolvePlaylistFontPickerValue(PlaylistEditor.FontColorHex);
 
             <MudDialog Visible="IsPlaylistDialogOpen"
                        VisibleChanged="OnPlaylistDialogVisibleChanged"
@@ -4032,8 +4081,24 @@
                                                       Placeholder="#88CCFF"
                                                       Variant="Variant.Outlined"
                                                       Margin="Margin.Dense" />
+                                        <label class="admin-playlist-colour-label" for="playlist-font-color-picker">
+                                            @T("Showcase font kleur", "Showcase font color")
+                                        </label>
+                                        <input id="playlist-font-color-picker"
+                                               class="admin-playlist-colour-picker"
+                                               type="color"
+                                               value="@playlistFontPickerValue"
+                                               @oninput="OnPlaylistFontColorPickerChanged"
+                                               aria-label='@T("Kies showcase font kleur", "Choose showcase font color")' />
+                                        <MudTextField T="string"
+                                                      Class="admin-playlist-colour-hex"
+                                                      Label='@T("Font hex kode", "Font hex code")'
+                                                      @bind-Value="PlaylistEditor.FontColorHex"
+                                                      Placeholder="#222222"
+                                                      Variant="Variant.Outlined"
+                                                      Margin="Margin.Dense" />
                                         <span class="admin-playlist-colour-help">
-                                            @T("Gebruik twee hex-kleurkodes vir die showcase gradient, soos #FFAA00 en #88CCFF.", "Use two hex color codes for the showcase gradient, such as #FFAA00 and #88CCFF.")
+                                            @T("Gebruik twee hex-kleurkodes vir die showcase gradient en 'n fontkleur, soos #FFAA00, #88CCFF en #222222.", "Use two hex color codes for the showcase gradient and a font color, such as #FFAA00, #88CCFF, and #222222.")
                                         </span>
                                     </div>
                                     <MudCheckBox T="bool"
@@ -4356,6 +4421,31 @@
                             <i class="fa-solid fa-xmark" aria-hidden="true"></i>
                             <span class="admin-btn-text">@T("Sluit", "Close")</span>
                         </MudButton>
+                        <div class="admin-dialog-save-actions">
+                            <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only admin-btn"
+                                       Variant="Variant.Filled"
+                                       Color="Color.Primary"
+                                       Disabled="@IsSavingPlaylist"
+                                       OnClick="SavePlaylistAsync"
+                                       aria-label='@T("Stoor playlist", "Save playlist")'
+                                       title='@T("Stoor playlist", "Save playlist")'>
+                                <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                                <span class="admin-btn-text">@(IsSavingPlaylist ? T("Stoor...", "Saving...") : T("Stoor playlist", "Save playlist"))</span>
+                            </MudButton>
+                            @if (!isSystemPlaylist && PlaylistEditor.PlaylistId is Guid footerPlaylistId && footerPlaylistId != Guid.Empty)
+                            {
+                                <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only admin-btn"
+                                           Variant="Variant.Filled"
+                                           Color="Color.Primary"
+                                           Disabled="@IsSavingPlaylistStories"
+                                           OnClick="SavePlaylistStoriesAsync"
+                                           aria-label='@T("Stoor playlist stories", "Save playlist stories")'
+                                           title='@T("Stoor playlist stories", "Save playlist stories")'>
+                                    <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+                                    <span class="admin-btn-text">@(IsSavingPlaylistStories ? T("Stoor...", "Saving...") : T("Stoor playlist stories", "Save playlist stories"))</span>
+                                </MudButton>
+                            }
+                    </div>
                     </div>
                 </DialogActions>
             </MudDialog>
@@ -4400,10 +4490,10 @@
     private const string StoryStatsQuickDateLast30 = "last_30";
     private const string StoryStatsQuickDateThisMonth = "this_month";
     private const string StoryStatsQuickDateCustom = "custom";
-    private const string RevenuePeriodLastDay = "last_day";
-    private const string RevenuePeriodLastWeek = "last_week";
-    private const string RevenuePeriodLastMonth = "last_month";
-    private const string RevenuePeriodLastYear = "last_year";
+    private const string RevenuePeriodCurrentDay = "current_day";
+    private const string RevenuePeriodCurrentWeek = "current_week";
+    private const string RevenuePeriodCurrentMonth = "current_month";
+    private const string RevenuePeriodCurrentYear = "current_year";
     private const string RevenuePeriodCustom = "custom";
 
     private bool IsSavingSubscriber { get; set; }
@@ -4499,7 +4589,7 @@
     private AdminSubscriberReportsSnapshot SubscriberReports { get; set; } = AdminSubscriberReportsSnapshot.Empty;
     private bool HasLoadedSubscriberReports { get; set; }
     private string SelectedSubscriberTrendPeriod { get; set; } = SubscriberTrendPeriodDay;
-    private string SelectedRevenueDrilldownPeriod { get; set; } = RevenuePeriodLastDay;
+    private string SelectedRevenueDrilldownPeriod { get; set; } = RevenuePeriodCurrentDay;
     private DateTime? RevenueCustomFromDate { get; set; }
     private DateTime? RevenueCustomToDate { get; set; }
     private string SelectedUsageActivityPeriod { get; set; } = UsageActivityPeriodLast14;
@@ -4937,10 +5027,10 @@
 
     private IReadOnlyList<AdminSalesRevenueMetric> RevenueAnalyticsPeriodHighlights =>
         [
-            GetSubscriberSalesMetric(RevenuePeriodLastDay),
-            GetSubscriberSalesMetric(RevenuePeriodLastWeek),
-            GetSubscriberSalesMetric(RevenuePeriodLastMonth),
-            GetSubscriberSalesMetric(RevenuePeriodLastYear),
+            GetSubscriberSalesMetric(RevenuePeriodCurrentDay),
+            GetSubscriberSalesMetric(RevenuePeriodCurrentWeek),
+            GetSubscriberSalesMetric(RevenuePeriodCurrentMonth),
+            GetSubscriberSalesMetric(RevenuePeriodCurrentYear),
             GetSubscriberSalesMetric("all_time")
         ];
 
@@ -4956,6 +5046,12 @@
             .Where(IsRevenueDetailInSelectedPeriod)
             .OrderByDescending(detail => detail.SoldAt)
             .ToArray();
+
+    private int SelectedRevenuePayFastSalesCount =>
+        FilteredRevenueSalesDetails.Count(detail => IsRevenueDetailProvider(detail, "payfast"));
+
+    private int SelectedRevenuePaystackSalesCount =>
+        FilteredRevenueSalesDetails.Count(detail => IsRevenueDetailProvider(detail, "paystack"));
 
     private IReadOnlyList<AdminRecoveredRevenueDetailRecord> FilteredRecoveredRevenueDetails =>
         SubscriberReports.RecoveredRevenueDetails
@@ -6836,6 +6932,16 @@
         PlaylistEditor.AccentColorEndHex = NormalizePlaylistAccentColorHex(args.Value?.ToString()) ?? args.Value?.ToString();
     }
 
+    private void OnPlaylistFontColorPickerChanged(ChangeEventArgs args)
+    {
+        if (PlaylistEditor is null)
+        {
+            return;
+        }
+
+        PlaylistEditor.FontColorHex = NormalizePlaylistAccentColorHex(args.Value?.ToString()) ?? args.Value?.ToString();
+    }
+
     private bool CanRemoveStoryCoverImage() =>
         StoryEditor is not null &&
         (StoryEditor.CoverFile is not null || !string.IsNullOrWhiteSpace(StoryEditor.CoverImagePath));
@@ -7350,6 +7456,7 @@
                     PlaylistEditor.ShowcaseImagePath,
                     PlaylistEditor.AccentColorHex,
                     PlaylistEditor.AccentColorEndHex,
+                    PlaylistEditor.FontColorHex,
                     PlaylistEditor.SortOrder,
                     PlaylistEditor.MaxItems,
                     PlaylistEditor.IsEnabled,
@@ -7462,6 +7569,7 @@
                     playlist.ShowcaseImagePath,
                     playlist.AccentColorHex,
                     playlist.AccentColorEndHex,
+                    playlist.FontColorHex,
                     playlist.SortOrder,
                     playlist.MaxItems,
                     isEnabled,
@@ -7521,6 +7629,7 @@
                     playlist.ShowcaseImagePath,
                     playlist.AccentColorHex,
                     playlist.AccentColorEndHex,
+                    playlist.FontColorHex,
                     playlist.SortOrder,
                     playlist.MaxItems,
                     playlist.IsEnabled,
@@ -7580,6 +7689,7 @@
                     playlist.ShowcaseImagePath,
                     playlist.AccentColorHex,
                     playlist.AccentColorEndHex,
+                    playlist.FontColorHex,
                     playlist.SortOrder,
                     playlist.MaxItems,
                     playlist.IsEnabled,
@@ -8813,6 +8923,38 @@
     private bool IsSelectedSubscriberDrilldownPeriod(string periodKey) =>
         string.Equals(SelectedSubscriberDrilldownPeriod, periodKey, StringComparison.OrdinalIgnoreCase);
 
+    private void SetSubscriberAccessFilter(string filter)
+    {
+        if (!string.IsNullOrWhiteSpace(filter))
+        {
+            SelectedSubscriberAccessFilter = filter;
+        }
+    }
+
+    private bool IsSelectedSubscriberAccessFilter(string filter) =>
+        string.Equals(SelectedSubscriberAccessFilter, filter, StringComparison.OrdinalIgnoreCase);
+
+    private string GetSubscriberAccessFilterButtonClass(string filter) =>
+        IsSelectedSubscriberAccessFilter(filter)
+            ? "admin-subscriber-access-toggle-btn is-selected"
+            : "admin-subscriber-access-toggle-btn";
+
+    private string FormatSubscriberTrendBarWidth(int value)
+    {
+        var max = CurrentSubscriberTrendMetrics
+            .SelectMany(metric => new[] { metric.Signups, metric.Cancellations })
+            .DefaultIfEmpty(0)
+            .Max();
+
+        if (value <= 0 || max <= 0)
+        {
+            return "0%";
+        }
+
+        var percentage = Math.Max(8d, value * 100d / max);
+        return $"{percentage.ToString("0.##", CultureInfo.InvariantCulture)}%";
+    }
+
     private string BuildSubscriberDrilldownOptionLabel(AdminMembershipStatsMetric metric) =>
         T(
             $"{GetSubscriberPeriodLabel(metric.PeriodKey)} - {FormatAnalyticsNumber(metric.Signups)} nuwe, {FormatAnalyticsNumber(metric.Cancellations)} gekanselleer",
@@ -8831,10 +8973,10 @@
         var today = DateTime.Now.Date;
         return periodKey switch
         {
-            RevenuePeriodLastDay => $"{today.AddDays(-1).ToString("yyyy/MM/dd", CultureInfo.InvariantCulture)} - {today.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture)}",
-            RevenuePeriodLastWeek => $"{today.AddDays(-7).ToString("yyyy/MM/dd", CultureInfo.InvariantCulture)} - {today.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture)}",
-            RevenuePeriodLastMonth => $"{today.AddMonths(-1).ToString("yyyy/MM/dd", CultureInfo.InvariantCulture)} - {today.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture)}",
-            RevenuePeriodLastYear => $"{today.AddYears(-1).ToString("yyyy/MM/dd", CultureInfo.InvariantCulture)} - {today.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture)}",
+            RevenuePeriodCurrentDay => today.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture),
+            RevenuePeriodCurrentWeek => $"{GetStartOfWeek(today).ToString("yyyy/MM/dd", CultureInfo.InvariantCulture)} - {today.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture)}",
+            RevenuePeriodCurrentMonth => $"{new DateTime(today.Year, today.Month, 1).ToString("yyyy/MM/dd", CultureInfo.InvariantCulture)} - {today.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture)}",
+            RevenuePeriodCurrentYear => $"{new DateTime(today.Year, 1, 1).ToString("yyyy/MM/dd", CultureInfo.InvariantCulture)} - {today.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture)}",
             RevenuePeriodCustom => GetRevenueCustomRangeLabel(),
             "today" => today.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture),
             "this_month" => $"{new DateTime(today.Year, today.Month, 1).ToString("yyyy/MM/dd", CultureInfo.InvariantCulture)} - {today.ToString("yyyy/MM/dd", CultureInfo.InvariantCulture)}",
@@ -8860,6 +9002,9 @@
             SubscriberAccessFilterPaid => !IsFreeSubscriberMembershipDetail(detail),
             _ => true
         };
+
+    private static long GetSubscriberMembershipDetailSubscribedAtSortKey(AdminSubscriberMembershipDetailRecord detail) =>
+        detail.SubscribedAt.ToUniversalTime().Ticks;
 
     private static bool IsFreeSubscriberMembershipDetail(AdminSubscriberMembershipDetailRecord detail) =>
         string.Equals(detail.TierCode, "gratis", StringComparison.OrdinalIgnoreCase) ||
@@ -8959,10 +9104,10 @@
 
         return periodKey switch
         {
-            RevenuePeriodLastDay => (nowLocal.AddDays(-1), nowLocal),
-            RevenuePeriodLastWeek => (nowLocal.AddDays(-7), nowLocal),
-            RevenuePeriodLastMonth => (nowLocal.AddMonths(-1), nowLocal),
-            RevenuePeriodLastYear => (nowLocal.AddYears(-1), nowLocal),
+            RevenuePeriodCurrentDay => (nowLocal.Date, nowLocal),
+            RevenuePeriodCurrentWeek => (GetStartOfWeek(nowLocal.Date), nowLocal),
+            RevenuePeriodCurrentMonth => (new DateTime(nowLocal.Year, nowLocal.Month, 1), nowLocal),
+            RevenuePeriodCurrentYear => (new DateTime(nowLocal.Year, 1, 1), nowLocal),
             "today" => (nowLocal.Date, nowLocal),
             "this_month" => (new DateTime(nowLocal.Year, nowLocal.Month, 1), nowLocal),
             "this_year" => (new DateTime(nowLocal.Year, 1, 1), nowLocal),
@@ -8997,6 +9142,9 @@
     private bool IsRevenueDetailInSelectedPeriod(AdminSalesRevenueDetailRecord detail) =>
         IsAdminDateInRevenuePeriod(detail.SoldAt);
 
+    private static bool IsRevenueDetailProvider(AdminSalesRevenueDetailRecord detail, string provider) =>
+        string.Equals(detail.Provider, provider, StringComparison.OrdinalIgnoreCase);
+
     private bool IsRecoveredRevenueDetailInSelectedPeriod(AdminRecoveredRevenueDetailRecord detail) =>
         IsAdminDateInRevenuePeriod(detail.RecoveredAt);
 
@@ -9026,6 +9174,13 @@
             "this_year" => localDate >= new DateTime(today.Year, 1, 1) && localDate <= today,
             _ => true
         };
+    }
+
+    private static DateTime GetStartOfWeek(DateTime value)
+    {
+        var dayOfWeek = value.DayOfWeek;
+        var daysSinceMonday = ((int)dayOfWeek + 6) % 7;
+        return value.AddDays(-daysSinceMonday);
     }
 
     private AdminRecoveryMetric GetSubscriberRecoveryMetric(string periodKey) =>
@@ -9400,10 +9555,10 @@
     private string GetSubscriberPeriodLabel(string periodKey) =>
         periodKey switch
         {
-            RevenuePeriodLastDay => T("Laaste dag", "Last Day"),
-            RevenuePeriodLastWeek => T("Laaste week", "Last Week"),
-            RevenuePeriodLastMonth => T("Laaste maand", "Last Month"),
-            RevenuePeriodLastYear => T("Laaste jaar", "Last Year"),
+            RevenuePeriodCurrentDay => T("Huidige dag", "Current Day"),
+            RevenuePeriodCurrentWeek => T("Huidige week", "Current Week"),
+            RevenuePeriodCurrentMonth => T("Huidige maand", "Current Month"),
+            RevenuePeriodCurrentYear => T("Huidige jaar", "Current Year"),
             RevenuePeriodCustom => T("Eie tydperk", "Custom"),
             "today" => T("Vandag", "Today"),
             "this_week" => T("Hierdie week", "This Week"),
@@ -9618,6 +9773,9 @@
 
     private string ResolvePlaylistAccentPickerValue(string? value) =>
         NormalizePlaylistAccentColorHex(value) ?? "#408D93";
+
+    private string ResolvePlaylistFontPickerValue(string? value) =>
+        NormalizePlaylistAccentColorHex(value) ?? "#222222";
 
     private string? NormalizePlaylistAccentColorHex(string? value)
     {
@@ -9894,6 +10052,7 @@
             ShowcaseImagePath = NormalizeDirtyText(editor.ShowcaseImagePath),
             AccentColorHex = NormalizeDirtyText(editor.AccentColorHex),
             AccentColorEndHex = NormalizeDirtyText(editor.AccentColorEndHex),
+            FontColorHex = NormalizeDirtyText(editor.FontColorHex),
             LogoFile = BuildBrowserFileState(editor.LogoFile, editor.LogoFileName),
             BackdropFile = BuildBrowserFileState(editor.BackdropFile, editor.BackdropFileName),
             ShowcaseFile = BuildBrowserFileState(editor.ShowcaseFile, editor.ShowcaseFileName),
@@ -10534,6 +10693,7 @@
         public string? ShowcaseImagePath { get; set; }
         public string? AccentColorHex { get; set; }
         public string? AccentColorEndHex { get; set; }
+        public string? FontColorHex { get; set; }
         public IBrowserFile? LogoFile { get; set; }
         public string? LogoFileName { get; set; }
         public string? LogoPreviewDataUrl { get; set; }
@@ -10569,6 +10729,7 @@
                 : playlist.ShowcaseImagePath,
             AccentColorHex = playlist.AccentColorHex,
             AccentColorEndHex = playlist.AccentColorEndHex,
+            FontColorHex = playlist.FontColorHex,
             SortOrder = playlist.SortOrder,
             MaxItems = playlist.MaxItems,
             IsEnabled = playlist.IsEnabled,

@@ -15,19 +15,26 @@ public class PlaylistAccentColorSourceTests
 
         StringAssert.Contains(adminMarkup, "PlaylistEditor.AccentColorHex");
         StringAssert.Contains(adminMarkup, "PlaylistEditor.AccentColorEndHex");
+        StringAssert.Contains(adminMarkup, "PlaylistEditor.FontColorHex");
         StringAssert.Contains(adminMarkup, "@T(\"Luister kleur 1\", \"Luister color 1\")");
         StringAssert.Contains(adminMarkup, "@T(\"Luister kleur 2\", \"Luister color 2\")");
+        StringAssert.Contains(adminMarkup, "@T(\"Showcase font kleur\", \"Showcase font color\")");
         StringAssert.Contains(adminMarkup, "type=\"color\"");
         StringAssert.Contains(adminMarkup, "OnPlaylistAccentColorPickerChanged");
         StringAssert.Contains(adminMarkup, "OnPlaylistAccentEndColorPickerChanged");
+        StringAssert.Contains(adminMarkup, "OnPlaylistFontColorPickerChanged");
         StringAssert.Contains(adminContract, "string? AccentColorHex");
         StringAssert.Contains(adminContract, "string? AccentColorEndHex");
+        StringAssert.Contains(adminContract, "string? FontColorHex");
         StringAssert.Contains(adminService, "[\"accent_color_hex\"] = normalizedAccentColorHex");
         StringAssert.Contains(adminService, "[\"accent_color_end_hex\"] = normalizedAccentColorEndHex");
+        StringAssert.Contains(adminService, "[\"font_color_hex\"] = normalizedFontColorHex");
         StringAssert.Contains(adminService, "[JsonPropertyName(\"accent_color_hex\")]");
         StringAssert.Contains(adminService, "[JsonPropertyName(\"accent_color_end_hex\")]");
+        StringAssert.Contains(adminService, "[JsonPropertyName(\"font_color_hex\")]");
         StringAssert.Contains(adminService, "Gebruik asseblief 'n geldige hex-kleurkode soos #FFAA00.");
         StringAssert.Contains(adminService, "Gebruik asseblief 'n geldige tweede hex-kleurkode soos #88CCFF.");
+        StringAssert.Contains(adminService, "Gebruik asseblief 'n geldige font hex-kleurkode soos #222222.");
     }
 
     [TestMethod]
@@ -51,22 +58,44 @@ public class PlaylistAccentColorSourceTests
             "Database",
             "migrations",
             "20260531_story_playlist_gradient_accent_color.sql"));
+        var fontMigration = File.ReadAllText(GetRepoPath(
+            "Shink",
+            "Database",
+            "migrations",
+            "20260603_story_playlist_font_color.sql"));
 
         StringAssert.Contains(playlistModel, "string? AccentColorHex = null");
         StringAssert.Contains(playlistModel, "string? AccentColorEndHex = null");
+        StringAssert.Contains(playlistModel, "string? FontColorHex = null");
         StringAssert.Contains(catalogService, "accent_color_hex");
         StringAssert.Contains(catalogService, "accent_color_end_hex");
+        StringAssert.Contains(catalogService, "font_color_hex");
         StringAssert.Contains(catalogService, "AccentColorHex: NormalizePlaylistAccentColorHex");
         StringAssert.Contains(catalogService, "AccentColorEndHex: NormalizePlaylistAccentColorHex");
+        StringAssert.Contains(catalogService, "FontColorHex: NormalizePlaylistAccentColorHex");
         StringAssert.Contains(luister, "BuildPlaylistAccentStyle(playlist)");
         StringAssert.Contains(luisterCss, "--playlist-accent-color");
         StringAssert.Contains(playlistPage, "BuildPlaylistAccentStyle(CurrentPlaylist)");
         StringAssert.Contains(playlistCss, "--playlist-accent-color");
         StringAssert.Contains(showcasePage, "BuildShowcasePageStyle(CurrentPlaylist)");
+        StringAssert.Contains(showcasePage, "--playlist-showcase-font-color");
         StringAssert.Contains(showcaseCss, "--playlist-showcase-background-start");
         StringAssert.Contains(showcaseCss, "--playlist-showcase-background-end");
+        StringAssert.Contains(showcaseCss, "--playlist-showcase-font-color");
         StringAssert.Contains(migration, "accent_color_hex");
         StringAssert.Contains(gradientMigration, "accent_color_end_hex");
+        StringAssert.Contains(fontMigration, "font_color_hex");
+    }
+
+    [TestMethod]
+    public void AdminPlaylistLookupFallsBackWhenFontColorColumnIsMissing()
+    {
+        var adminService = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseAdminManagementService.cs"));
+
+        StringAssert.Contains(adminService, "includeFontColor = true");
+        StringAssert.Contains(adminService, "body.Contains(\"font_color_hex\", StringComparison.OrdinalIgnoreCase)");
+        StringAssert.Contains(adminService, "includeFontColor: false");
+        StringAssert.Contains(adminService, "FetchPlaylistByIdAsync(baseUri, apiKey, id, cancellationToken, includeGradientEndColor, includeFontColor: false)");
     }
 
     private static string GetRepoPath(params string[] segments)

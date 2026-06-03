@@ -35,12 +35,20 @@ public class AdminAnalyticsSourceTests
         StringAssert.Contains(admin, "FilteredSubscriberMembershipDetails");
         StringAssert.Contains(admin, "IsSubscriberMembershipDetailInSelectedPeriod");
         StringAssert.Contains(admin, "SetSubscriberDrilldownPeriod");
+        StringAssert.Contains(admin, "admin-subscriber-access-toggle");
+        StringAssert.Contains(admin, "SetSubscriberAccessFilter");
+        StringAssert.Contains(admin, "GetSubscriberAccessFilterButtonClass");
+        StringAssert.Contains(admin, "admin-subscriber-trend-list");
+        StringAssert.Contains(admin, "FormatSubscriberTrendBarWidth");
         StringAssert.Contains(admin, "Items=\"FilteredSubscriberMembershipDetails\"");
         StringAssert.Contains(admin, "@T(\"Intekenaar detail\", \"Subscriber detail\")");
         StringAssert.Contains(admin, "id=\"subscriber-detail-period\"");
-        StringAssert.Contains(admin, "id=\"subscriber-access-filter\"");
         StringAssert.Contains(admin, "SelectedSubscriberAccessFilter");
         StringAssert.Contains(admin, "DoesSubscriberMembershipDetailMatchAccessFilter");
+        StringAssert.Contains(admin, "@T(\"Aangesluit op\", \"Joined On\")");
+        StringAssert.Contains(admin, "record => GetSubscriberMembershipDetailSubscribedAtSortKey(record)");
+        StringAssert.Contains(admin, "detail.SubscribedAt.ToUniversalTime().Ticks");
+        Assert.IsFalse(admin.Contains("SortBy=\"new Func<AdminSubscriberMembershipDetailRecord, object?>(record => record.SubscribedAt)\"", StringComparison.Ordinal));
         StringAssert.Contains(admin, "@T(\"Alle\", \"All\")");
         StringAssert.Contains(admin, "@T(\"Gratis\", \"Free\")");
         StringAssert.Contains(admin, "@T(\"Betaal\", \"Paid\")");
@@ -76,11 +84,22 @@ public class AdminAnalyticsSourceTests
         StringAssert.Contains(admin, "GetSubscriberSalesMetric(\"this_year\")");
         StringAssert.Contains(admin, "GetSubscriberSalesMetric(\"all_time\")");
         StringAssert.Contains(admin, "SelectedRevenueDrilldownPeriod");
+        StringAssert.Contains(admin, "@T(\"Huidige dag\", \"Current day\")");
+        StringAssert.Contains(admin, "@T(\"Huidige week\", \"Current week\")");
+        StringAssert.Contains(admin, "@T(\"Huidige maand\", \"Current month\")");
+        StringAssert.Contains(admin, "@T(\"Huidige jaar\", \"Current year\")");
+        StringAssert.Contains(admin, "RevenuePeriodCurrentDay");
+        StringAssert.Contains(admin, "RevenuePeriodCurrentWeek");
+        StringAssert.Contains(admin, "RevenuePeriodCurrentMonth");
+        StringAssert.Contains(admin, "RevenuePeriodCurrentYear");
         StringAssert.Contains(admin, "FilteredRevenueSalesDetails");
         StringAssert.Contains(admin, "FilteredRecoveredRevenueDetails");
         StringAssert.Contains(admin, "IsRevenueDetailInSelectedPeriod");
         StringAssert.Contains(admin, "IsRecoveredRevenueDetailInSelectedPeriod");
         StringAssert.Contains(admin, "SetRevenueDrilldownPeriod");
+        StringAssert.Contains(admin, "SelectedRevenuePayFastSalesCount");
+        StringAssert.Contains(admin, "SelectedRevenuePaystackSalesCount");
+        StringAssert.Contains(admin, "IsRevenueDetailProvider");
         StringAssert.Contains(admin, "Items=\"FilteredRevenueSalesDetails\"");
         StringAssert.Contains(admin, "Items=\"FilteredRecoveredRevenueDetails\"");
         StringAssert.Contains(admin, "@T(\"Verkope detail\", \"Sales detail\")");
@@ -201,6 +220,10 @@ public class AdminAnalyticsSourceTests
         StringAssert.Contains(css, "margin-bottom: 1rem;");
         StringAssert.Contains(css, ".admin-subscriber-analytics-summary-layout");
         StringAssert.Contains(css, ".admin-subscriber-analytics-cards");
+        StringAssert.Contains(css, ".admin-subscriber-analytics-controls");
+        StringAssert.Contains(css, ".admin-subscriber-access-toggle");
+        StringAssert.Contains(css, ".admin-subscriber-trend-row");
+        StringAssert.Contains(css, ".admin-subscriber-trend-fill.is-signups");
         StringAssert.Contains(css, ".admin-subscriber-kpi-main");
         StringAssert.Contains(css, ".admin-subscriber-kpi-secondary");
         StringAssert.Contains(css, "grid-template-columns: minmax(0, 1fr) minmax(116px, 0.74fr);");
@@ -243,7 +266,7 @@ public class AdminAnalyticsSourceTests
     }
 
     [TestMethod]
-    public void SubscriberTrendExcludesImportedGratisBatch()
+    public void SubscriberTrendIncludesFreeSubscribers()
     {
         var now = DateTimeOffset.Now.AddMinutes(-5);
         var validSubscriberId = Guid.NewGuid();
@@ -260,13 +283,13 @@ public class AdminAnalyticsSourceTests
         var metrics = InvokeBuildMembershipTrendMetrics(rows, revenueEvents);
         var today = metrics.Single(metric => metric.PeriodType == "day" && metric.PeriodKey == now.Date.ToString("yyyy-MM-dd"));
 
-        Assert.AreEqual(1, today.Signups);
+        Assert.AreEqual(2, today.Signups);
         Assert.AreEqual(0, today.Cancellations);
 
         var stats = InvokeBuildMembershipStatsMetrics(rows, revenueEvents);
         var todayStats = stats.Single(metric => metric.PeriodKey == "today");
 
-        Assert.AreEqual(1, todayStats.Signups);
+        Assert.AreEqual(2, todayStats.Signups);
         Assert.AreEqual(0, todayStats.Cancellations);
     }
 
@@ -547,6 +570,14 @@ public class AdminAnalyticsSourceTests
         Assert.AreEqual(2, details.Count);
         Assert.IsTrue(details.Any(detail => detail.Email == "paid@shink.dev"));
         Assert.IsTrue(details.Any(detail => detail.Email == "free@shink.dev" && detail.TierCode == "gratis"));
+
+        var metrics = InvokeBuildMembershipStatsMetrics(rows, revenueEvents);
+        var todayStats = metrics.Single(metric => metric.PeriodKey == "today");
+        Assert.AreEqual(2, todayStats.Signups);
+
+        var trend = InvokeBuildMembershipTrendMetrics(rows, revenueEvents);
+        var todayTrend = trend.Single(metric => metric.PeriodType == "day" && metric.PeriodKey == now.Date.ToString("yyyy-MM-dd"));
+        Assert.AreEqual(2, todayTrend.Signups);
     }
 
     [TestMethod]
@@ -593,6 +624,44 @@ public class AdminAnalyticsSourceTests
         Assert.AreEqual(283m, today.RevenueZar);
         Assert.AreEqual(4, allTime.SalesCount);
         Assert.AreEqual(362m, allTime.RevenueZar);
+    }
+
+    [TestMethod]
+    public void RevenueAnalyticsCurrentPeriodsUseCalendarBoundaries()
+    {
+        var now = DateTimeOffset.Now;
+        var todayStart = new DateTimeOffset(DateTime.Now.Date);
+        var currentWeekStart = new DateTimeOffset(GetStartOfWeek(DateTime.Now.Date));
+        var currentMonthStart = new DateTimeOffset(new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1));
+        var currentYearStart = new DateTimeOffset(new DateTime(DateTime.Now.Year, 1, 1));
+        var saleDates = new[]
+        {
+            todayStart,
+            todayStart.AddTicks(-1),
+            currentWeekStart,
+            currentWeekStart.AddTicks(-1),
+            currentMonthStart,
+            currentMonthStart.AddTicks(-1),
+            currentYearStart,
+            currentYearStart.AddTicks(-1),
+            now
+        }
+        .Distinct()
+        .ToArray();
+        var rows = CreateSubscriptionRows(
+            saleDates
+                .Select(date => CreateSubscriptionRow(Guid.NewGuid(), "shink_app", "active", date, null, 10m))
+                .ToArray());
+
+        var metrics = InvokeBuildSalesRevenueMetrics(
+            CreateWordPressRevenueSnapshot("today", 0, 0m),
+            rows,
+            CreateRevenueEvents());
+
+        AssertPeriodMetric(metrics, "current_day", saleDates, date => date >= todayStart && date <= now);
+        AssertPeriodMetric(metrics, "current_week", saleDates, date => date >= currentWeekStart && date <= now);
+        AssertPeriodMetric(metrics, "current_month", saleDates, date => date >= currentMonthStart && date <= now);
+        AssertPeriodMetric(metrics, "current_year", saleDates, date => date >= currentYearStart && date <= now);
     }
 
     [TestMethod]
@@ -645,6 +714,25 @@ public class AdminAnalyticsSourceTests
     }
 
     private static string GetSourceFilePath([CallerFilePath] string path = "") => path;
+
+    private static void AssertPeriodMetric(
+        IReadOnlyList<AdminSalesRevenueMetric> metrics,
+        string periodKey,
+        IReadOnlyList<DateTimeOffset> saleDates,
+        Func<DateTimeOffset, bool> isExpected)
+    {
+        var metric = metrics.Single(metric => metric.PeriodKey == periodKey);
+        var expectedCount = saleDates.Count(isExpected);
+        Assert.AreEqual(expectedCount, metric.SalesCount);
+        Assert.AreEqual(expectedCount * 10m, metric.RevenueZar);
+    }
+
+    private static DateTime GetStartOfWeek(DateTime value)
+    {
+        var dayOfWeek = value.DayOfWeek;
+        var daysSinceMonday = ((int)dayOfWeek + 6) % 7;
+        return value.AddDays(-daysSinceMonday);
+    }
 
     private static IReadOnlyList<AdminMembershipStatsMetric> InvokeBuildMembershipStatsMetrics(
         object rows,

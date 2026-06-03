@@ -296,9 +296,22 @@ else
     {
         var accentColorHex = NormalizePlaylistAccentColorHex(playlist?.AccentColorHex);
         var accentColorEndHex = NormalizePlaylistAccentColorHex(playlist?.AccentColorEndHex) ?? accentColorHex;
-        return string.IsNullOrWhiteSpace(accentColorHex) || string.IsNullOrWhiteSpace(accentColorEndHex)
+        var fontColorHex = NormalizePlaylistAccentColorHex(playlist?.FontColorHex);
+        var styleParts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(accentColorHex) && !string.IsNullOrWhiteSpace(accentColorEndHex))
+        {
+            styleParts.Add($"--playlist-showcase-background-start: {accentColorHex}");
+            styleParts.Add($"--playlist-showcase-background-end: {accentColorEndHex}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(fontColorHex))
+        {
+            styleParts.Add($"--playlist-showcase-font-color: {fontColorHex}");
+        }
+
+        return styleParts.Count == 0
             ? null
-            : $"--playlist-showcase-background-start: {accentColorHex}; --playlist-showcase-background-end: {accentColorEndHex};";
+            : string.Join("; ", styleParts) + ";";
     }
 
     private string LogoImageAlt =>

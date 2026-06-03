@@ -294,6 +294,14 @@
     overscroll-behavior: contain;
 }
 
+.admin-settings-dialog-actions-row {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
 .admin-code-section-disclosure {
     border: 1px solid rgba(234, 241, 248, 0.12);
     border-radius: 14px;
@@ -511,8 +519,21 @@
 }
 
 ::deep .admin-settings-dialog {
+    display: flex;
+    flex-direction: column;
     max-height: calc(100dvh - 3rem);
     overflow: hidden;
+}
+
+::deep .admin-settings-dialog .mud-dialog-content {
+    min-height: 0;
+    overflow-y: auto;
+}
+
+::deep .admin-settings-dialog .mud-dialog-actions {
+    flex: 0 0 auto;
+    background: var(--admin-settings-surface, #172631);
+    border-top: 1px solid var(--admin-settings-border, rgba(145, 169, 188, 0.34));
 }
 
 @media (max-width: 900px) {
