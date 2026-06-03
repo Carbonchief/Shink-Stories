@@ -189,6 +189,12 @@ jobs:
             fi
 
             migration_name="$(basename "$migration_file")"
+            migration_path="$GITHUB_WORKSPACE/$migration_file"
+            if [ ! -f "$migration_path" ]; then
+              echo "::error::Migration file not found: $migration_path"
+              exit 1
+            fi
+
             migration_name_sql="${migration_name//\'/\'\'}"
             already_applied="$(
               supabase --workdir "${{ env.SUPABASE_WORKDIR }}" db query --linked --output csv \
@@ -203,7 +209,7 @@ jobs:
             fi
 
             echo "Applying Supabase migration: $migration_name"
-            supabase --workdir "${{ env.SUPABASE_WORKDIR }}" db query --linked --file "$migration_file"
+            supabase --workdir "${{ env.SUPABASE_WORKDIR }}" db query --linked --file "$migration_path"
             supabase --workdir "${{ env.SUPABASE_WORKDIR }}" db query --linked \
               "insert into supabase_migrations.shink_action_migrations(file_name, github_sha) values ('$migration_name_sql', '$GITHUB_SHA');"
           done <<< "$MIGRATION_FILES"
