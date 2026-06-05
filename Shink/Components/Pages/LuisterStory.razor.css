@@ -37,6 +37,8 @@
     aspect-ratio: 16 / 9;
     max-height: clamp(240px, calc(100svh - var(--story-player-viewport-reserve)), 760px);
     object-fit: cover;
+    object-position: center bottom;
+    transform-origin: center bottom;
     display: block;
     border-radius: 22px;
     box-shadow: 0 16px 32px rgba(63, 56, 45, 0.16);
@@ -1683,7 +1685,7 @@
         max-height: clamp(190px, calc(100svh - var(--story-player-viewport-reserve)), 360px);
         aspect-ratio: 40 / 27;
         object-fit: cover;
-        object-position: center center;
+        object-position: center bottom;
     }
 
     .story-player-page.manual-fullscreen-focus .story-cover {

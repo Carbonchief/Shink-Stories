@@ -62,6 +62,22 @@ public class LuisterStoryRenderStateTests
         StringAssert.Contains(css, "animation: story-loading-spin 760ms linear infinite;");
     }
 
+    [TestMethod]
+    public void LuisterStoryCoverKeepsBottomArtworkVisibleWhenCropped()
+    {
+        var css = File.ReadAllText(GetRepoPath(
+            "Shink",
+            "Components",
+            "Pages",
+            "LuisterStory.razor.css"));
+
+        StringAssert.Contains(css, "object-position: center bottom;");
+        StringAssert.Contains(css, "transform-origin: center bottom;");
+        Assert.IsFalse(
+            css.Contains("object-position: center center;", StringComparison.Ordinal),
+            "Cropped story-cover states must keep the bottom artwork anchored.");
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var parts = new[]
