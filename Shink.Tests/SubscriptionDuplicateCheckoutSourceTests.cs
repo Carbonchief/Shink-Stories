@@ -15,10 +15,10 @@ public sealed class SubscriptionDuplicateCheckoutSourceTests
             ".DisableAntiforgery();",
             startOffset: program.IndexOf("app.MapGet(\"/betaal/{planSlug}\"", StringComparison.Ordinal));
 
-        StringAssert.Contains(routeBlock, "HasActiveSubscriptionForTierAsync(");
+        StringAssert.Contains(routeBlock, "HasBillableSubscriptionForTierAsync(");
         StringAssert.Contains(routeBlock, "betaling\"] = \"reeds-ingeteken\"");
 
-        var activeCheckIndex = routeBlock.IndexOf("HasActiveSubscriptionForTierAsync(", StringComparison.Ordinal);
+        var activeCheckIndex = routeBlock.IndexOf("HasBillableSubscriptionForTierAsync(", StringComparison.Ordinal);
         var providerResolutionIndex = routeBlock.IndexOf("TryResolvePaymentProvider(", StringComparison.Ordinal);
         Assert.IsTrue(
             activeCheckIndex >= 0 && providerResolutionIndex > activeCheckIndex,
@@ -35,13 +35,13 @@ public sealed class SubscriptionDuplicateCheckoutSourceTests
             ".DisableAntiforgery();",
             startOffset: program.IndexOf("app.MapGet(\"/betaal/{planSlug}\"", StringComparison.Ordinal));
 
-        StringAssert.Contains(routeBlock, "HasActivePaidSubscriptionAsync(");
+        StringAssert.Contains(routeBlock, "HasBillablePaidSubscriptionAsync(");
         StringAssert.Contains(routeBlock, "ChangePaidSubscriptionPlanAsync(");
         StringAssert.Contains(routeBlock, "BuildPlanChangeRedirectPath(");
         StringAssert.Contains(program, "\"plan-opgradeer\"");
         StringAssert.Contains(program, "\"plan-afgradeer\"");
 
-        var paidCheckIndex = routeBlock.IndexOf("HasActivePaidSubscriptionAsync(", StringComparison.Ordinal);
+        var paidCheckIndex = routeBlock.IndexOf("HasBillablePaidSubscriptionAsync(", StringComparison.Ordinal);
         var planChangeIndex = routeBlock.IndexOf("ChangePaidSubscriptionPlanAsync(", StringComparison.Ordinal);
         var pendingRepairCheckIndex = routeBlock.IndexOf("HasPendingPaystackRepairForTierAsync(", StringComparison.Ordinal);
         var providerResolutionIndex = routeBlock.IndexOf("TryResolvePaymentProvider(", StringComparison.Ordinal);
@@ -88,10 +88,10 @@ public sealed class SubscriptionDuplicateCheckoutSourceTests
             startOffset: routeStart);
 
         StringAssert.Contains(routeBlock, "ISubscriptionLedgerService subscriptionLedgerService");
-        StringAssert.Contains(routeBlock, "HasActiveSubscriptionForTierAsync(");
+        StringAssert.Contains(routeBlock, "HasBillableSubscriptionForTierAsync(");
         StringAssert.Contains(routeBlock, "\"reeds-ingeteken\"");
 
-        var activeCheckIndex = routeBlock.IndexOf("HasActiveSubscriptionForTierAsync(", StringComparison.Ordinal);
+        var activeCheckIndex = routeBlock.IndexOf("HasBillableSubscriptionForTierAsync(", StringComparison.Ordinal);
         var paystackCheckoutIndex = routeBlock.IndexOf("InitializeCheckoutForEmailAsync(", StringComparison.Ordinal);
         var payFastCheckoutIndex = routeBlock.IndexOf("TryBuildCheckoutForBuyer(", StringComparison.Ordinal);
 
@@ -114,12 +114,12 @@ public sealed class SubscriptionDuplicateCheckoutSourceTests
             "app.MapPost(\"/rekening/skuif-na-gratis\"",
             startOffset: routeStart);
 
-        StringAssert.Contains(routeBlock, "HasActivePaidSubscriptionAsync(");
+        StringAssert.Contains(routeBlock, "HasBillablePaidSubscriptionAsync(");
         StringAssert.Contains(routeBlock, "ChangePaidSubscriptionPlanAsync(");
         StringAssert.Contains(routeBlock, "BuildPlanChangeRedirectPath(");
         StringAssert.Contains(routeBlock, "paid_plan_changed");
 
-        var paidCheckIndex = routeBlock.IndexOf("HasActivePaidSubscriptionAsync(", StringComparison.Ordinal);
+        var paidCheckIndex = routeBlock.IndexOf("HasBillablePaidSubscriptionAsync(", StringComparison.Ordinal);
         var planChangeIndex = routeBlock.IndexOf("ChangePaidSubscriptionPlanAsync(", StringComparison.Ordinal);
         var pendingRepairCheckIndex = routeBlock.IndexOf("HasPendingPaystackRepairForTierAsync(", StringComparison.Ordinal);
         var paystackCheckoutIndex = routeBlock.IndexOf("InitializeCheckoutForEmailAsync(", StringComparison.Ordinal);

@@ -804,7 +804,7 @@ app.MapGet("/betaalherinneringe/gaan", async (
             return Results.Redirect("/opsies");
         }
 
-        var hasActiveTierSubscription = await subscriptionLedgerService.HasActiveSubscriptionForTierAsync(
+        var hasActiveTierSubscription = await subscriptionLedgerService.HasBillableSubscriptionForTierAsync(
             recovery.CustomerEmail,
             plan.TierCode,
             httpContext.RequestAborted);
@@ -832,7 +832,7 @@ app.MapGet("/betaalherinneringe/gaan", async (
             return Results.Redirect(duplicateRedirectPath);
         }
 
-        var hasActivePaidSubscription = await subscriptionLedgerService.HasActivePaidSubscriptionAsync(
+        var hasActivePaidSubscription = await subscriptionLedgerService.HasBillablePaidSubscriptionAsync(
             recovery.CustomerEmail,
             httpContext.RequestAborted);
         if (hasActivePaidSubscription)
@@ -1190,7 +1190,7 @@ app.MapGet("/betaal/{planSlug}", async (
     }
 
     var requestBaseUrl = BuildPublicAbsoluteUrl(siteOptions.Value, "/");
-    var hasActiveTierSubscription = await subscriptionLedgerService.HasActiveSubscriptionForTierAsync(
+    var hasActiveTierSubscription = await subscriptionLedgerService.HasBillableSubscriptionForTierAsync(
         signedInEmail,
         plan.TierCode,
         httpContext.RequestAborted);
@@ -1215,7 +1215,7 @@ app.MapGet("/betaal/{planSlug}", async (
         return Results.Redirect(duplicateRedirectPath);
     }
 
-    var hasActivePaidSubscription = await subscriptionLedgerService.HasActivePaidSubscriptionAsync(
+    var hasActivePaidSubscription = await subscriptionLedgerService.HasBillablePaidSubscriptionAsync(
         signedInEmail,
         httpContext.RequestAborted);
     if (hasActivePaidSubscription)

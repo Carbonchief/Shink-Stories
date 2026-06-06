@@ -1327,6 +1327,139 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     }
 
     [TestMethod]
+    public async Task HasBillableSubscriptionForTierAsync_DetectsPaidSubscriptionOnClosedAccount()
+    {
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                        "disabled_at": "2026-06-05T04:29:18Z"
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "tier_code": "all_stories_yearly",
+                        "provider": "paystack",
+                        "provider_payment_id": "SUB_active",
+                        "provider_token": "AUTH_active",
+                        "next_renewal_at": "2099-01-01T00:00:00Z",
+                        "cancelled_at": null,
+                        "status": "active"
+                      }
+                    ]
+                    """);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var hasAccessTierSubscription = await service.HasActiveSubscriptionForTierAsync(
+            "ouer@example.com",
+            "all_stories_yearly");
+        var hasBillableTierSubscription = await service.HasBillableSubscriptionForTierAsync(
+            "ouer@example.com",
+            "all_stories_yearly");
+
+        Assert.IsFalse(
+            hasAccessTierSubscription,
+            "Access lookups should still respect the self-service account closure.");
+        Assert.IsTrue(
+            hasBillableTierSubscription,
+            "Duplicate-check subscription lookups must still see paid subscriptions after a self-service account closure.");
+    }
+
+    [TestMethod]
+    public async Task RecordPaystackEventAsync_SuccessfulPaymentReopensSelfClosedSubscriber()
+    {
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscribers")
+            {
+                return JsonResponse("""[{ "subscriber_id": "11111111-1111-1111-1111-111111111111" }]""");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                return JsonResponse("""[{ "subscription_id": "22222222-2222-2222-2222-222222222222" }]""");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.RecordPaystackEventAsync(
+            """
+            {
+              "event": "charge.success",
+              "data": {
+                "id": 6228020470,
+                "status": "success",
+                "reference": "schink-stories-jaarliks-20260606052827-a5a84648255f4d3ba4bc19621dcb8bc0",
+                "amount": 79000,
+                "paid_at": "2026-06-06T05:30:16Z",
+                "customer": {
+                  "email": "ouer@example.com"
+                },
+                "metadata": {
+                  "plan_slug": "schink-stories-jaarliks",
+                  "tier_code": "all_stories_yearly",
+                  "billing_period_months": 12
+                },
+                "authorization": {
+                  "authorization_code": "AUTH_paid"
+                },
+                "plan": {
+                  "amount": 79000,
+                  "interval": "annually"
+                }
+              }
+            }
+            """);
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.IsNotNull(handler.SubscriberCreatePayload);
+        using var document = JsonDocument.Parse(handler.SubscriberCreatePayload);
+        var payload = document.RootElement;
+        Assert.AreEqual(JsonValueKind.Null, payload.GetProperty("disabled_at").ValueKind);
+        Assert.AreEqual(JsonValueKind.Null, payload.GetProperty("disabled_by_admin_email").ValueKind);
+        Assert.AreEqual(JsonValueKind.Null, payload.GetProperty("disabled_reason").ValueKind);
+    }
+
+    [TestMethod]
     public async Task TryRepairPaidSubscriptionAsync_TreatsPaystackQueuedChargeAsPending()
     {
         var paystackChargeCalls = 0;
@@ -4421,6 +4554,7 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
         public List<string> PlanChangePayloads { get; } = [];
         public List<string> PaystackLookups { get; } = [];
         public PayFastCancelRequest? PayFastCancelRequest { get; private set; }
+        public string? SubscriberCreatePayload { get; private set; }
         public string? SubscriberPatchPayload { get; private set; }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
@@ -4452,6 +4586,11 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                 {
                     SubscriptionCreatePayloads.Add(payload);
                 }
+            }
+            else if (request.Method == HttpMethod.Post &&
+                     request.RequestUri?.AbsolutePath == "/rest/v1/subscribers")
+            {
+                SubscriberCreatePayload = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
             }
             else if (request.Method == new HttpMethod("PATCH") &&
                      request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")

@@ -43,6 +43,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             email,
             tierCode: null,
             excludeGratisTier: true,
+            includeClosedAccountSubscriptions: false,
             cancellationToken);
     }
 
@@ -52,6 +53,27 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             email,
             tierCode,
             excludeGratisTier: false,
+            includeClosedAccountSubscriptions: false,
+            cancellationToken);
+    }
+
+    public async Task<bool> HasBillablePaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default)
+    {
+        return await HasActiveSubscriptionAsync(
+            email,
+            tierCode: null,
+            excludeGratisTier: true,
+            includeClosedAccountSubscriptions: true,
+            cancellationToken);
+    }
+
+    public async Task<bool> HasBillableSubscriptionForTierAsync(string? email, string? tierCode, CancellationToken cancellationToken = default)
+    {
+        return await HasActiveSubscriptionAsync(
+            email,
+            tierCode,
+            excludeGratisTier: false,
+            includeClosedAccountSubscriptions: true,
             cancellationToken);
     }
 
@@ -113,7 +135,10 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
     public async Task<IReadOnlyList<string>> GetActiveTierCodesAsync(string? email, CancellationToken cancellationToken = default)
     {
-        var activeSubscriptions = await GetActiveSubscriptionsAsync(email, cancellationToken);
+        var activeSubscriptions = await GetActiveSubscriptionsAsync(
+            email,
+            includeClosedAccountSubscriptions: false,
+            cancellationToken);
         if (activeSubscriptions.Count == 0)
         {
             return [];
@@ -2007,12 +2032,16 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string? email,
         string? tierCode,
         bool excludeGratisTier,
+        bool includeClosedAccountSubscriptions,
         CancellationToken cancellationToken)
     {
         var normalizedTierCode = string.IsNullOrWhiteSpace(tierCode)
             ? null
             : tierCode.Trim();
-        var activeSubscriptions = await GetActiveSubscriptionsAsync(email, cancellationToken);
+        var activeSubscriptions = await GetActiveSubscriptionsAsync(
+            email,
+            includeClosedAccountSubscriptions,
+            cancellationToken);
         return activeSubscriptions.Any(row =>
         {
             if (!string.IsNullOrWhiteSpace(normalizedTierCode) &&
@@ -2033,6 +2062,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
     private async Task<IReadOnlyList<SubscriptionStatusRow>> GetActiveSubscriptionsAsync(
         string? email,
+        bool includeClosedAccountSubscriptions,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(email))
@@ -2072,7 +2102,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             }
 
             var subscriberResponseBody = await subscriberResponse.Content.ReadAsStringAsync(cancellationToken);
-            if (!string.IsNullOrWhiteSpace(ReadFirstStringProperty(subscriberResponseBody, "disabled_at")))
+            if (!includeClosedAccountSubscriptions &&
+                !string.IsNullOrWhiteSpace(ReadFirstStringProperty(subscriberResponseBody, "disabled_at")))
             {
                 return [];
             }
@@ -3407,7 +3438,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             profileImageObjectKey: null,
             profileImageContentType: null,
             lastLoginAtUtc: null,
-            cancellationToken);
+            cancellationToken,
+            reactivateSelfClosedAccount: true);
 
         if (subscriberId is null)
         {
@@ -3637,7 +3669,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             profileImageObjectKey: null,
             profileImageContentType: null,
             lastLoginAtUtc: null,
-            cancellationToken);
+            cancellationToken,
+            reactivateSelfClosedAccount: true);
 
         if (subscriberId is null)
         {
@@ -4183,7 +4216,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string? profileImageObjectKey,
         string? profileImageContentType,
         DateTimeOffset? lastLoginAtUtc,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool reactivateSelfClosedAccount = false)
     {
         var payload = new Dictionary<string, object?>
         {
@@ -4229,6 +4263,13 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         if (lastLoginAtUtc is not null)
         {
             payload["last_login_at"] = lastLoginAtUtc.Value.UtcDateTime;
+        }
+
+        if (reactivateSelfClosedAccount)
+        {
+            payload["disabled_at"] = null;
+            payload["disabled_by_admin_email"] = null;
+            payload["disabled_reason"] = null;
         }
 
         var uri = new Uri(baseUri, "rest/v1/subscribers?on_conflict=email&select=subscriber_id");
