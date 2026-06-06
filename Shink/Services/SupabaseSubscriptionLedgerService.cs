@@ -3837,6 +3837,29 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         if (subscriptionId is null)
         {
+            if (!isDiscountedAuthorizationCheckout &&
+                !IsPaystackRecurringSubscriptionCode(providerPaymentId) &&
+                !string.IsNullOrWhiteSpace(providerToken))
+            {
+                var concurrentSubscription = await TryGetActivePaystackSubscriptionByTokenAndTierAsync(
+                    baseUri,
+                    apiKey,
+                    subscriberId,
+                    plan.TierCode,
+                    providerToken,
+                    providerPaymentId,
+                    cancellationToken);
+                if (concurrentSubscription is not null)
+                {
+                    return new PaystackUpsertResult(
+                        true,
+                        null,
+                        concurrentSubscription.SubscriptionId,
+                        ProviderPaymentId: null,
+                        ProviderTransactionId: null);
+                }
+            }
+
             return new PaystackUpsertResult(false, "Could not upsert Paystack subscription record.");
         }
 

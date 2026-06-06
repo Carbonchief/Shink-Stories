@@ -3029,6 +3029,149 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     }
 
     [TestMethod]
+    public async Task RecordPaystackEventAsync_ChargeSuccessRechecksTokenAfterConcurrentSubscriptionCreateConflict()
+    {
+        const string subscriptionId = "39dc491e-21fd-4d7a-8934-cb9f8706dc92";
+        const string subscriberId = "17336496-9c30-422a-887f-834822ad0c01";
+        const string subscriptionCode = "SUB_doqly4w9ronvoeb";
+        const string checkoutReference = "schink-stories-maandeliks-20260605170531-fc99c1ea181e46e587b75b15a41d1533";
+        const string providerTransactionId = "6226533866";
+        const string authorizationCode = "AUTH_ptq40ibfcz";
+        var tokenTierLookupCount = 0;
+
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "subscriber_id": "{{subscriberId}}",
+                        "email": "maryke12345@gmail.com",
+                        "first_name": "Maryke",
+                        "display_name": "Maryke"
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscribers")
+            {
+                return JsonResponse($$"""[{ "subscriber_id": "{{subscriberId}}" }]""");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                var query = request.RequestUri!.Query;
+                if (query.Contains($"provider_token=eq.{authorizationCode}", StringComparison.Ordinal) &&
+                    query.Contains($"subscriber_id=eq.{subscriberId}", StringComparison.Ordinal) &&
+                    query.Contains("tier_code=eq.all_stories_monthly", StringComparison.Ordinal))
+                {
+                    tokenTierLookupCount++;
+                    return JsonResponse(
+                        tokenTierLookupCount == 1
+                            ? "[]"
+                            : $$"""
+                               [
+                                 {
+                                   "subscription_id": "{{subscriptionId}}",
+                                   "subscriber_id": "{{subscriberId}}",
+                                   "tier_code": "all_stories_monthly",
+                                   "provider": "paystack",
+                                   "provider_payment_id": "{{subscriptionCode}}",
+                                   "provider_transaction_id": "1191765",
+                                   "provider_token": "{{authorizationCode}}",
+                                   "source_system": "shink_app",
+                                   "status": "active",
+                                   "billing_amount_zar": 79.00,
+                                   "billing_period_months": 1,
+                                   "billing_amount_source": "paystack_payload"
+                                 }
+                               ]
+                               """);
+                }
+
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Conflict)
+                {
+                    Content = new StringContent(
+                        "{\"code\":\"23505\",\"message\":\"duplicate key value violates unique constraint \\\"uq_subscriptions_active_paystack_token_tier\\\"\"}",
+                        Encoding.UTF8,
+                        "application/json")
+                };
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_payment_recoveries")
+            {
+                return JsonResponse("[]");
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.RecordPaystackEventAsync(
+            $$"""
+            {
+              "event": "charge.success",
+              "data": {
+                "id": {{providerTransactionId}},
+                "status": "success",
+                "reference": "{{checkoutReference}}",
+                "amount": 7900,
+                "paid_at": "2026-06-05T17:06:23.000Z",
+                "customer": {
+                  "email": "maryke12345@gmail.com"
+                },
+                "metadata": {
+                  "subscription_key": "{{checkoutReference}}",
+                  "plan_slug": "schink-stories-maandeliks",
+                  "tier_code": "all_stories_monthly",
+                  "is_subscription": "true"
+                },
+                "authorization": {
+                  "authorization_code": "{{authorizationCode}}"
+                },
+                "plan": {
+                  "amount": 7900,
+                  "interval": "monthly"
+                }
+              }
+            }
+            """);
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.AreEqual(subscriptionId, result.SubscriptionId);
+        Assert.AreEqual(2, tokenTierLookupCount);
+        Assert.IsTrue(
+            handler.SubscriptionEventPayloads.Any(payload =>
+                payload.Contains($"\"subscription_id\":\"{subscriptionId}\"", StringComparison.Ordinal) &&
+                payload.Contains($"\"provider_payment_id\":\"{checkoutReference}\"", StringComparison.Ordinal) &&
+                payload.Contains($"\"provider_transaction_id\":\"{providerTransactionId}\"", StringComparison.Ordinal)),
+            "The charge.success retry should be recorded against the canonical subscription after the conflict recheck.");
+    }
+
+    [TestMethod]
     public async Task RecordPaystackEventAsync_FailedRecurringPaymentSeedsOriginalAmountForRetry()
     {
         var originalSubscriptionId = "22222222-2222-2222-2222-222222222222";
