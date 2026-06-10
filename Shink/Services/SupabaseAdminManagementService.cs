@@ -6078,7 +6078,8 @@ public sealed partial class SupabaseAdminManagementService(
             "source" => "source",
             "provider" => "provider",
             "status" => "status",
-            "subscribed_at" => "subscribed_at",
+            "created_at" => "created_at",
+            "subscribed_at" => "created_at",
             "next_payment" => "next_payment",
             _ => "subscriber"
         };

@@ -148,7 +148,7 @@
                                         <MudButton Class="admin-icon-btn admin-mobile-cta admin-icon-only"
                                                    Variant="Variant.Text"
                                                    Color="Color.Default"
-                                                   Disabled="@(!HasActiveSubscriberColumnFilters)"
+                                                   Disabled="@(!HasClearableSubscriberFilters)"
                                                    OnClick="ClearSubscriberColumnFiltersAsync"
                                                    aria-label='@T("Maak intekenaarfilters skoon", "Clear subscriber filters")'
                                                    title='@T("Maak intekenaarfilters skoon", "Clear subscriber filters")'>
@@ -471,7 +471,7 @@
                                 </MudTh>
                                 <MudTh>
                                     <div class="admin-header-cell">
-                                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="subscribed_at">
+                                        <MudTableSortLabel T="AdminSubscriberRecord" SortLabel="created_at">
                                             @T("Aangesluit op", "Joined On")
                                         </MudTableSortLabel>
                                         <details class='@($"admin-header-filter{(SubscriberColumnFilters.SubscribedFrom is null && SubscriberColumnFilters.SubscribedTo is null ? string.Empty : " is-active")}")'
@@ -5060,6 +5060,10 @@
             .ToArray();
 
     private bool HasActiveSubscriberColumnFilters => SubscriberColumnFilters.HasActiveFilters;
+    private bool HasClearableSubscriberFilters =>
+        HasActiveSubscriberColumnFilters ||
+        !string.IsNullOrWhiteSpace(SubscriberSearch);
+
     private bool HasActiveStoryColumnFilters => StoryColumnFilters.HasActiveFilters;
     private bool HasActivePlaylistColumnFilters => PlaylistColumnFilters.HasActiveFilters;
 
@@ -5530,6 +5534,8 @@
     private async Task ClearSubscriberColumnFiltersAsync()
     {
         SubscriberColumnFilters.Clear();
+        SubscriberSearch = string.Empty;
+        LastAppliedSubscriberSearch = string.Empty;
         SubscriberTextFilterDraft = string.Empty;
         SubscriberMobileFilterDraft = string.Empty;
         SubscriberTierFilterDraft = string.Empty;

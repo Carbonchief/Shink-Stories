@@ -148,6 +148,29 @@ public interface IAdminManagementService
         AdminSchoolSetupSaveRequest request,
         CancellationToken cancellationToken = default);
 
+    Task<SchoolDashboardSnapshot> GetAdminSchoolDashboardAsync(
+        string? adminEmail,
+        Guid schoolAccountId,
+        CancellationToken cancellationToken = default);
+
+    Task<SchoolOperationResult> InviteAdminSchoolSeatAsync(
+        string? adminEmail,
+        Guid schoolAccountId,
+        SchoolInviteTeacherRequest request,
+        CancellationToken cancellationToken = default);
+
+    Task<SchoolOperationResult> RemoveAdminSchoolSeatAsync(
+        string? adminEmail,
+        Guid schoolAccountId,
+        Guid seatId,
+        CancellationToken cancellationToken = default);
+
+    Task<SchoolSeatStatsSnapshot?> GetAdminSchoolSeatStatsAsync(
+        string? adminEmail,
+        Guid schoolAccountId,
+        Guid seatId,
+        CancellationToken cancellationToken = default);
+
     Task<AdminAnalyticsSnapshot> GetAnalyticsAsync(
         string? adminEmail,
         CancellationToken cancellationToken = default);

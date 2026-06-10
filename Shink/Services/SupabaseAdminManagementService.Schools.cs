@@ -245,6 +245,147 @@ public sealed partial class SupabaseAdminManagementService
         return new AdminOperationResult(true, EntityId: schoolAccountId);
     }
 
+    public async Task<SchoolDashboardSnapshot> GetAdminSchoolDashboardAsync(
+        string? adminEmail,
+        Guid schoolAccountId,
+        CancellationToken cancellationToken = default)
+    {
+        var context = await TryCreateAdminSchoolContextAsync(adminEmail, schoolAccountId, cancellationToken);
+        return context is null
+            ? new SchoolDashboardSnapshot(false, null, [], BuildSchoolPlanRecords())
+            : new SchoolDashboardSnapshot(true, context.Account, await FetchAdminSchoolSeatsAsync(context, cancellationToken), BuildSchoolPlanRecords());
+    }
+
+    public async Task<SchoolOperationResult> InviteAdminSchoolSeatAsync(
+        string? adminEmail,
+        Guid schoolAccountId,
+        SchoolInviteTeacherRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var context = await TryCreateAdminSchoolContextAsync(adminEmail, schoolAccountId, cancellationToken);
+        if (context is null)
+        {
+            return new SchoolOperationResult(false, "Admin toegang tot hierdie skool kon nie bevestig word nie.");
+        }
+
+        if (!string.Equals(context.Account.Status, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            return new SchoolOperationResult(false, "Hierdie skoolrekening is nie aktief nie.");
+        }
+
+        var normalizedEmail = NormalizeEmail(request.Email);
+        if (normalizedEmail is null)
+        {
+            return new SchoolOperationResult(false, "Gee asseblief 'n geldige e-posadres.");
+        }
+
+        var seats = await FetchAdminSchoolSeatsAsync(context, cancellationToken);
+        var existingSeat = seats.FirstOrDefault(seat =>
+            string.Equals(seat.Email, normalizedEmail, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(seat.Status, "removed", StringComparison.OrdinalIgnoreCase));
+        if (existingSeat is not null)
+        {
+            return new SchoolOperationResult(false, "Hierdie e-pos is reeds in 'n skoolplek.");
+        }
+
+        if (seats.Count(seat => seat.CountsTowardSlot) >= context.Account.SlotLimit)
+        {
+            return new SchoolOperationResult(false, "Al die beskikbare skoolplekke is reeds gebruik.");
+        }
+
+        var seatResult = await UpsertAdminSchoolSeatAsync(
+            context,
+            normalizedEmail,
+            NormalizeOptionalText(request.DisplayName, 120),
+            "teacher",
+            "invited",
+            cancellationToken);
+        if (!seatResult.IsSuccess || seatResult.EntityId is null)
+        {
+            return seatResult;
+        }
+
+        await UpsertSchoolSubscriberAsync(context.AdminContext, normalizedEmail, cancellationToken);
+        await GrantAdminSchoolSeatAccessAsync(context, seatResult.EntityId.Value, normalizedEmail, cancellationToken);
+        return seatResult;
+    }
+
+    public async Task<SchoolOperationResult> RemoveAdminSchoolSeatAsync(
+        string? adminEmail,
+        Guid schoolAccountId,
+        Guid seatId,
+        CancellationToken cancellationToken = default)
+    {
+        var context = await TryCreateAdminSchoolContextAsync(adminEmail, schoolAccountId, cancellationToken);
+        if (context is null)
+        {
+            return new SchoolOperationResult(false, "Admin toegang tot hierdie skool kon nie bevestig word nie.");
+        }
+
+        return await RemoveAdminSchoolSeatCoreAsync(context, seatId, cancellationToken);
+    }
+
+    public async Task<SchoolSeatStatsSnapshot?> GetAdminSchoolSeatStatsAsync(
+        string? adminEmail,
+        Guid schoolAccountId,
+        Guid seatId,
+        CancellationToken cancellationToken = default)
+    {
+        if (seatId == Guid.Empty)
+        {
+            return null;
+        }
+
+        var context = await TryCreateAdminSchoolContextAsync(adminEmail, schoolAccountId, cancellationToken);
+        if (context is null)
+        {
+            return null;
+        }
+
+        var seat = (await FetchAdminSchoolSeatsAsync(context, cancellationToken))
+            .FirstOrDefault(candidate => candidate.SchoolSeatId == seatId);
+        if (seat is null)
+        {
+            return null;
+        }
+
+        var subscriberId = await FetchAdminSchoolSubscriberIdAsync(context, seat.Email, cancellationToken);
+        if (subscriberId is null)
+        {
+            return new SchoolSeatStatsSnapshot(seat, false, null, 0, 0, 0, 0, 0, null, []);
+        }
+
+        var accessExpiresAt = await FetchAdminSchoolSeatAccessExpiryAsync(context, subscriberId.Value, seatId, cancellationToken);
+        var viewRowsTask = FetchAdminSchoolSeatStoryViewsAsync(context, subscriberId.Value, cancellationToken);
+        var listenRowsTask = FetchAdminSchoolSeatStoryListensAsync(context, subscriberId.Value, cancellationToken);
+        await Task.WhenAll(viewRowsTask, listenRowsTask);
+
+        var viewRows = viewRowsTask.Result;
+        var listenRows = listenRowsTask.Result;
+        var lastViewAt = viewRows.Select(row => (DateTimeOffset?)row.ViewedAt).DefaultIfEmpty().Max();
+        var lastListenAt = listenRows.Select(row => (DateTimeOffset?)row.OccurredAt).DefaultIfEmpty().Max();
+        var recentStories = BuildAdminSchoolRecentStoryActivity(viewRows, listenRows);
+        var storyTitlesBySlug = await FetchAdminSchoolStoryTitlesBySlugAsync(
+            context,
+            recentStories.Select(story => story.StorySlug),
+            cancellationToken);
+        recentStories = recentStories
+            .Select(story => story with { StoryTitle = ResolveAdminSchoolStoryTitle(story.StorySlug, storyTitlesBySlug) })
+            .ToArray();
+
+        return new SchoolSeatStatsSnapshot(
+            seat,
+            true,
+            accessExpiresAt,
+            viewRows.Count,
+            viewRows.Select(row => row.StorySlug).Where(slug => !string.IsNullOrWhiteSpace(slug)).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+            listenRows.Select(row => row.SessionId).Distinct().Count(),
+            listenRows.Sum(row => row.ListenedSeconds),
+            listenRows.Select(row => row.StorySlug).Where(slug => !string.IsNullOrWhiteSpace(slug)).Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+            MaxNullableAdminSchoolDate(lastViewAt, lastListenAt),
+            recentStories);
+    }
+
     private static AdminSchoolSetupSnapshot BuildEmptySchoolSetupSnapshot() =>
         new([], BuildSchoolPlanOptions());
 
@@ -260,8 +401,410 @@ public sealed partial class SupabaseAdminManagementService
     private static string BuildSchoolTierFilter() =>
         string.Join(',', PaymentPlanCatalog.SchoolPlans.Select(plan => Uri.EscapeDataString(plan.TierCode)));
 
+    private static IReadOnlyList<SchoolPlanRecord> BuildSchoolPlanRecords() =>
+        PaymentPlanCatalog.SchoolPlans
+            .Select(plan => new SchoolPlanRecord(
+                plan.Slug,
+                plan.Name,
+                plan.TierCode,
+                plan.Amount,
+                plan.SchoolSlotLimit ?? 0))
+            .ToArray();
+
     private static string ResolveSchoolPlanName(string? tierCode) =>
         PaymentPlanCatalog.FindByTierCode(tierCode)?.Name ?? tierCode ?? string.Empty;
+
+    private async Task<AdminSchoolContext?> TryCreateAdminSchoolContextAsync(
+        string? adminEmail,
+        Guid schoolAccountId,
+        CancellationToken cancellationToken)
+    {
+        if (schoolAccountId == Guid.Empty)
+        {
+            return null;
+        }
+
+        var adminContext = await TryCreateAdminOperationContextAsync(adminEmail, cancellationToken);
+        if (adminContext is null)
+        {
+            return null;
+        }
+
+        var accountRow = await FetchSchoolAccountByIdAsync(adminContext, schoolAccountId, cancellationToken);
+        return accountRow is null
+            ? null
+            : new AdminSchoolContext(adminContext, MapAdminSchoolAccount(accountRow));
+    }
+
+    private static SchoolAccountRecord MapAdminSchoolAccount(AdminSchoolAccountRow row) =>
+        new(
+            row.SchoolAccountId,
+            string.IsNullOrWhiteSpace(row.SchoolName) ? "My skool" : row.SchoolName,
+            NormalizeEmail(row.AdminEmail) ?? row.AdminEmail,
+            row.PlanTierCode,
+            string.IsNullOrWhiteSpace(row.PlanName) ? ResolveSchoolPlanName(row.PlanTierCode) : row.PlanName,
+            row.SlotLimit,
+            row.AdminUsesSlot,
+            string.IsNullOrWhiteSpace(row.Status) ? "active" : row.Status,
+            row.CreatedAt,
+            row.UpdatedAt);
+
+    private async Task<IReadOnlyList<SchoolSeatRecord>> FetchAdminSchoolSeatsAsync(
+        AdminSchoolContext context,
+        CancellationToken cancellationToken)
+    {
+        var escapedAccountId = Uri.EscapeDataString(context.Account.SchoolAccountId.ToString("D"));
+        var rows = await FetchRowsAsync<AdminSchoolSeatRow>(
+            new Uri(
+                context.AdminContext.BaseUri,
+                "rest/v1/school_seats" +
+                "?select=school_seat_id,school_account_id,email,display_name,role,status,invited_at,accepted_at,removed_at" +
+                $"&school_account_id=eq.{escapedAccountId}" +
+                "&status=neq.removed" +
+                "&order=invited_at.asc"),
+            context.AdminContext.ApiKey,
+            cancellationToken);
+
+        return rows.Select(row => MapAdminSchoolSeat(row, context.Account)).ToArray();
+    }
+
+    private static SchoolSeatRecord MapAdminSchoolSeat(AdminSchoolSeatRow row, SchoolAccountRecord account)
+    {
+        var countsTowardSlot = !string.Equals(row.Status, "removed", StringComparison.OrdinalIgnoreCase) &&
+                               (!string.Equals(row.Role, "school_admin", StringComparison.OrdinalIgnoreCase) || account.AdminUsesSlot);
+        return new SchoolSeatRecord(
+            row.SchoolSeatId,
+            row.SchoolAccountId,
+            row.Email ?? string.Empty,
+            row.DisplayName,
+            row.Role ?? "teacher",
+            row.Status ?? "invited",
+            countsTowardSlot,
+            row.InvitedAt,
+            row.AcceptedAt,
+            row.RemovedAt);
+    }
+
+    private async Task<SchoolOperationResult> UpsertAdminSchoolSeatAsync(
+        AdminSchoolContext context,
+        string email,
+        string? displayName,
+        string role,
+        string status,
+        CancellationToken cancellationToken)
+    {
+        var payload = new
+        {
+            school_account_id = context.Account.SchoolAccountId,
+            email,
+            display_name = displayName,
+            role,
+            status,
+            invited_by_email = context.AdminContext.AdminEmail,
+            accepted_at = string.Equals(status, "accepted", StringComparison.OrdinalIgnoreCase) ? DateTimeOffset.UtcNow.UtcDateTime : (DateTime?)null,
+            removed_at = (DateTime?)null
+        };
+
+        var uri = new Uri(context.AdminContext.BaseUri, "rest/v1/school_seats?on_conflict=school_account_id,email&select=school_seat_id");
+        using var request = CreateJsonRequest(HttpMethod.Post, uri, context.AdminContext.ApiKey, payload, "resolution=merge-duplicates,return=representation");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning(
+                "Admin school seat upsert failed. schoolAccountId={SchoolAccountId} email={Email} Status={StatusCode} Body={Body}",
+                context.Account.SchoolAccountId,
+                email,
+                (int)response.StatusCode,
+                responseText);
+            return new SchoolOperationResult(false, "Kon nie die skoolplek nou stoor nie.");
+        }
+
+        return new SchoolOperationResult(true, EntityId: TryReadFirstGuidProperty(responseText, "school_seat_id"));
+    }
+
+    private async Task GrantAdminSchoolSeatAccessAsync(
+        AdminSchoolContext context,
+        Guid seatId,
+        string email,
+        CancellationToken cancellationToken)
+    {
+        var subscriberId = await UpsertSchoolSubscriberAsync(context.AdminContext, email, cancellationToken);
+        if (subscriberId is null)
+        {
+            return;
+        }
+
+        var plan = PaymentPlanCatalog.FindByTierCode(context.Account.PlanTierCode);
+        var nowUtc = DateTimeOffset.UtcNow;
+        var payload = new
+        {
+            subscriber_id = subscriberId.Value,
+            tier_code = context.Account.PlanTierCode,
+            provider = "free",
+            provider_payment_id = $"school-seat-{seatId:D}",
+            provider_transaction_id = (string?)null,
+            provider_token = (string?)null,
+            status = "active",
+            subscribed_at = nowUtc.UtcDateTime,
+            next_renewal_at = nowUtc.AddMonths(plan?.BillingPeriodMonths ?? 12).UtcDateTime,
+            cancelled_at = (DateTime?)null,
+            source_system = "school_seat"
+        };
+
+        var uri = new Uri(context.AdminContext.BaseUri, "rest/v1/subscriptions?on_conflict=provider,provider_payment_id&select=subscription_id");
+        using var request = CreateJsonRequest(HttpMethod.Post, uri, context.AdminContext.ApiKey, payload, "resolution=merge-duplicates,return=representation");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var responseText = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Admin school seat access grant failed. seatId={SeatId} Status={StatusCode} Body={Body}",
+                seatId,
+                (int)response.StatusCode,
+                responseText);
+        }
+    }
+
+    private async Task<SchoolOperationResult> RemoveAdminSchoolSeatCoreAsync(
+        AdminSchoolContext context,
+        Guid seatId,
+        CancellationToken cancellationToken)
+    {
+        if (seatId == Guid.Empty)
+        {
+            return new SchoolOperationResult(false, "Kies asseblief 'n geldige plek.");
+        }
+
+        var escapedSeatId = Uri.EscapeDataString(seatId.ToString("D"));
+        var escapedAccountId = Uri.EscapeDataString(context.Account.SchoolAccountId.ToString("D"));
+        var seatUri = new Uri(
+            context.AdminContext.BaseUri,
+            $"rest/v1/school_seats?school_seat_id=eq.{escapedSeatId}&school_account_id=eq.{escapedAccountId}");
+        using var seatRequest = CreateJsonRequest(
+            new HttpMethod("PATCH"),
+            seatUri,
+            context.AdminContext.ApiKey,
+            new
+            {
+                status = "removed",
+                removed_at = DateTimeOffset.UtcNow.UtcDateTime
+            },
+            "return=minimal");
+        using var seatResponse = await _httpClient.SendAsync(seatRequest, cancellationToken);
+        if (!seatResponse.IsSuccessStatusCode)
+        {
+            var seatBody = await seatResponse.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Admin school seat remove failed. seatId={SeatId} Status={StatusCode} Body={Body}",
+                seatId,
+                (int)seatResponse.StatusCode,
+                seatBody);
+            return new SchoolOperationResult(false, "Kon nie die plek nou verwyder nie.");
+        }
+
+        using var subscriptionRequest = CreateJsonRequest(
+            new HttpMethod("PATCH"),
+            new Uri(
+                context.AdminContext.BaseUri,
+                $"rest/v1/subscriptions?provider=eq.free&provider_payment_id=eq.{Uri.EscapeDataString($"school-seat-{seatId:D}")}&source_system=eq.school_seat"),
+            context.AdminContext.ApiKey,
+            new
+            {
+                status = "cancelled",
+                cancelled_at = DateTimeOffset.UtcNow.UtcDateTime
+            },
+            "return=minimal");
+        using var subscriptionResponse = await _httpClient.SendAsync(subscriptionRequest, cancellationToken);
+        if (!subscriptionResponse.IsSuccessStatusCode)
+        {
+            var subscriptionBody = await subscriptionResponse.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Admin school seat access cancel failed. seatId={SeatId} Status={StatusCode} Body={Body}",
+                seatId,
+                (int)subscriptionResponse.StatusCode,
+                subscriptionBody);
+        }
+
+        return new SchoolOperationResult(true, EntityId: seatId);
+    }
+
+    private async Task<Guid?> FetchAdminSchoolSubscriberIdAsync(
+        AdminSchoolContext context,
+        string email,
+        CancellationToken cancellationToken)
+    {
+        var normalizedEmail = NormalizeEmail(email);
+        if (normalizedEmail is null)
+        {
+            return null;
+        }
+
+        var rows = await FetchRowsAsync<AdminSchoolSubscriberRow>(
+            new Uri(
+                context.AdminContext.BaseUri,
+                "rest/v1/subscribers" +
+                "?select=subscriber_id,email" +
+                $"&email=eq.{Uri.EscapeDataString(normalizedEmail)}" +
+                "&disabled_at=is.null" +
+                "&limit=1"),
+            context.AdminContext.ApiKey,
+            cancellationToken);
+        return rows.FirstOrDefault()?.SubscriberId;
+    }
+
+    private async Task<DateTimeOffset?> FetchAdminSchoolSeatAccessExpiryAsync(
+        AdminSchoolContext context,
+        Guid subscriberId,
+        Guid seatId,
+        CancellationToken cancellationToken)
+    {
+        var rows = await FetchRowsAsync<AdminSchoolSeatAccessRow>(
+            new Uri(
+                context.AdminContext.BaseUri,
+                "rest/v1/subscriptions" +
+                "?select=next_renewal_at" +
+                $"&subscriber_id=eq.{Uri.EscapeDataString(subscriberId.ToString("D"))}" +
+                $"&provider=eq.free&provider_payment_id=eq.{Uri.EscapeDataString($"school-seat-{seatId:D}")}" +
+                "&source_system=eq.school_seat&status=eq.active" +
+                "&order=subscribed_at.desc&limit=1"),
+            context.AdminContext.ApiKey,
+            cancellationToken);
+        return rows.FirstOrDefault()?.NextRenewalAt;
+    }
+
+    private Task<IReadOnlyList<AdminSchoolStoryViewRow>> FetchAdminSchoolSeatStoryViewsAsync(
+        AdminSchoolContext context,
+        Guid subscriberId,
+        CancellationToken cancellationToken) =>
+        FetchRowsAsync<AdminSchoolStoryViewRow>(
+            new Uri(
+                context.AdminContext.BaseUri,
+                "rest/v1/story_views" +
+                "?select=story_slug,viewed_at" +
+                $"&subscriber_id=eq.{Uri.EscapeDataString(subscriberId.ToString("D"))}" +
+                "&order=viewed_at.desc&limit=500"),
+            context.AdminContext.ApiKey,
+            cancellationToken);
+
+    private Task<IReadOnlyList<AdminSchoolStoryListenRow>> FetchAdminSchoolSeatStoryListensAsync(
+        AdminSchoolContext context,
+        Guid subscriberId,
+        CancellationToken cancellationToken) =>
+        FetchRowsAsync<AdminSchoolStoryListenRow>(
+            new Uri(
+                context.AdminContext.BaseUri,
+                "rest/v1/story_listen_events" +
+                "?select=story_slug,session_id,listened_seconds,occurred_at" +
+                $"&subscriber_id=eq.{Uri.EscapeDataString(subscriberId.ToString("D"))}" +
+                "&order=occurred_at.desc&limit=1000"),
+            context.AdminContext.ApiKey,
+            cancellationToken);
+
+    private async Task<IReadOnlyDictionary<string, string>> FetchAdminSchoolStoryTitlesBySlugAsync(
+        AdminSchoolContext context,
+        IEnumerable<string> storySlugs,
+        CancellationToken cancellationToken)
+    {
+        var normalizedSlugs = storySlugs
+            .Select(slug => NormalizeOptionalText(slug, 160))
+            .Where(slug => !string.IsNullOrWhiteSpace(slug))
+            .Select(slug => slug!)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(20)
+            .ToArray();
+        if (normalizedSlugs.Length == 0)
+        {
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        var rows = await FetchRowsAsync<AdminSchoolStoryTitleRow>(
+            new Uri(
+                context.AdminContext.BaseUri,
+                "rest/v1/stories" +
+                "?select=slug,title" +
+                $"&slug=in.({string.Join(",", normalizedSlugs.Select(Uri.EscapeDataString))})" +
+                $"&limit={normalizedSlugs.Length}"),
+            context.AdminContext.ApiKey,
+            cancellationToken);
+        return rows
+            .Where(row => !string.IsNullOrWhiteSpace(row.Slug) && !string.IsNullOrWhiteSpace(row.Title))
+            .GroupBy(row => row.Slug!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                group => group.Key,
+                group => group.First().Title!.Trim(),
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static IReadOnlyList<SchoolSeatStoryActivityRecord> BuildAdminSchoolRecentStoryActivity(
+        IReadOnlyList<AdminSchoolStoryViewRow> viewRows,
+        IReadOnlyList<AdminSchoolStoryListenRow> listenRows)
+    {
+        var activityBySlug = new Dictionary<string, AdminSchoolStoryActivityAccumulator>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in viewRows)
+        {
+            var slug = NormalizeOptionalText(row.StorySlug, 160);
+            if (string.IsNullOrWhiteSpace(slug))
+            {
+                continue;
+            }
+
+            var activity = GetOrCreateAdminSchoolStoryActivity(activityBySlug, slug);
+            activity.Views++;
+            activity.LastActivityAt = MaxAdminSchoolDate(activity.LastActivityAt, row.ViewedAt);
+        }
+
+        foreach (var row in listenRows)
+        {
+            var slug = NormalizeOptionalText(row.StorySlug, 160);
+            if (string.IsNullOrWhiteSpace(slug))
+            {
+                continue;
+            }
+
+            var activity = GetOrCreateAdminSchoolStoryActivity(activityBySlug, slug);
+            activity.ListenedSeconds += row.ListenedSeconds;
+            activity.LastActivityAt = MaxAdminSchoolDate(activity.LastActivityAt, row.OccurredAt);
+        }
+
+        return activityBySlug
+            .Select(pair => new SchoolSeatStoryActivityRecord(pair.Key, pair.Key, pair.Value.Views, pair.Value.ListenedSeconds, pair.Value.LastActivityAt))
+            .OrderByDescending(activity => activity.LastActivityAt)
+            .Take(5)
+            .ToArray();
+    }
+
+    private static string ResolveAdminSchoolStoryTitle(
+        string storySlug,
+        IReadOnlyDictionary<string, string> storyTitlesBySlug) =>
+        storyTitlesBySlug.TryGetValue(storySlug, out var title) && !string.IsNullOrWhiteSpace(title)
+            ? title
+            : storySlug;
+
+    private static AdminSchoolStoryActivityAccumulator GetOrCreateAdminSchoolStoryActivity(
+        Dictionary<string, AdminSchoolStoryActivityAccumulator> activityBySlug,
+        string slug)
+    {
+        if (!activityBySlug.TryGetValue(slug, out var activity))
+        {
+            activity = new AdminSchoolStoryActivityAccumulator();
+            activityBySlug[slug] = activity;
+        }
+
+        return activity;
+    }
+
+    private static DateTimeOffset MaxAdminSchoolDate(DateTimeOffset left, DateTimeOffset right) =>
+        left >= right ? left : right;
+
+    private static DateTimeOffset? MaxNullableAdminSchoolDate(DateTimeOffset? left, DateTimeOffset? right) =>
+        (left, right) switch
+        {
+            ({ } leftValue, { } rightValue) => MaxAdminSchoolDate(leftValue, rightValue),
+            ({ } leftValue, null) => leftValue,
+            (null, { } rightValue) => rightValue,
+            _ => null
+        };
 
     private static string? NormalizeSchoolSetupStatus(string? status)
     {
@@ -689,6 +1232,36 @@ public sealed partial class SupabaseAdminManagementService
         public string Role { get; set; } = string.Empty;
     }
 
+    private sealed class AdminSchoolSeatRow
+    {
+        [JsonPropertyName("school_seat_id")]
+        public Guid SchoolSeatId { get; set; }
+
+        [JsonPropertyName("school_account_id")]
+        public Guid SchoolAccountId { get; set; }
+
+        [JsonPropertyName("email")]
+        public string? Email { get; set; }
+
+        [JsonPropertyName("display_name")]
+        public string? DisplayName { get; set; }
+
+        [JsonPropertyName("role")]
+        public string? Role { get; set; }
+
+        [JsonPropertyName("status")]
+        public string? Status { get; set; }
+
+        [JsonPropertyName("invited_at")]
+        public DateTimeOffset InvitedAt { get; set; }
+
+        [JsonPropertyName("accepted_at")]
+        public DateTimeOffset? AcceptedAt { get; set; }
+
+        [JsonPropertyName("removed_at")]
+        public DateTimeOffset? RemovedAt { get; set; }
+    }
+
     private sealed class AdminSchoolSeatIdentityRow
     {
         [JsonPropertyName("school_seat_id")]
@@ -721,4 +1294,52 @@ public sealed partial class SupabaseAdminManagementService
         [JsonPropertyName("source_system")]
         public string SourceSystem { get; set; } = string.Empty;
     }
+
+    private sealed class AdminSchoolSeatAccessRow
+    {
+        [JsonPropertyName("next_renewal_at")]
+        public DateTimeOffset? NextRenewalAt { get; set; }
+    }
+
+    private sealed class AdminSchoolStoryViewRow
+    {
+        [JsonPropertyName("story_slug")]
+        public string? StorySlug { get; set; }
+
+        [JsonPropertyName("viewed_at")]
+        public DateTimeOffset ViewedAt { get; set; }
+    }
+
+    private sealed class AdminSchoolStoryListenRow
+    {
+        [JsonPropertyName("story_slug")]
+        public string? StorySlug { get; set; }
+
+        [JsonPropertyName("session_id")]
+        public Guid SessionId { get; set; }
+
+        [JsonPropertyName("listened_seconds")]
+        public decimal ListenedSeconds { get; set; }
+
+        [JsonPropertyName("occurred_at")]
+        public DateTimeOffset OccurredAt { get; set; }
+    }
+
+    private sealed class AdminSchoolStoryTitleRow
+    {
+        [JsonPropertyName("slug")]
+        public string? Slug { get; set; }
+
+        [JsonPropertyName("title")]
+        public string? Title { get; set; }
+    }
+
+    private sealed class AdminSchoolStoryActivityAccumulator
+    {
+        public int Views { get; set; }
+        public decimal ListenedSeconds { get; set; }
+        public DateTimeOffset LastActivityAt { get; set; }
+    }
+
+    private sealed record AdminSchoolContext(AdminOperationContext AdminContext, SchoolAccountRecord Account);
 }

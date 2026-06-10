@@ -73,6 +73,44 @@ public class AdminAnalyticsSourceTests
     }
 
     [TestMethod]
+    public void SubscriberGridJoinedOnColumnSortsBySubscriberCreatedAt()
+    {
+        var admin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
+        var service = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseAdminManagementService.cs"));
+        var migration = File.ReadAllText(GetRepoPath("Shink", "Database", "migrations", "20260606_admin_subscribers_page_joined_on_created_at_sort.sql"));
+
+        StringAssert.Contains(admin, "<MudTableSortLabel T=\"AdminSubscriberRecord\" SortLabel=\"created_at\">");
+        StringAssert.Contains(admin, "<MudTd DataLabel='@T(\"Aangesluit op\", \"Joined On\")'>@FormatAdminDate(context.CreatedAt)</MudTd>");
+        Assert.IsFalse(admin.Contains("<MudTableSortLabel T=\"AdminSubscriberRecord\" SortLabel=\"subscribed_at\">", StringComparison.Ordinal));
+
+        StringAssert.Contains(service, "\"created_at\" => \"created_at\"");
+        StringAssert.Contains(migration, "when 'created_at' then 'created_at'");
+        StringAssert.Contains(migration, "case when n.sort_label = 'created_at' and not n.sort_desc then b.created_at end asc nulls last");
+        StringAssert.Contains(migration, "case when n.sort_label = 'created_at' and n.sort_desc then b.created_at end desc nulls last");
+    }
+
+    [TestMethod]
+    public void SubscriberClearFiltersAlsoClearsSearchState()
+    {
+        var admin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
+        StringAssert.Contains(admin, "Disabled=\"@(!HasClearableSubscriberFilters)\"");
+        StringAssert.Contains(admin, "private bool HasClearableSubscriberFilters =>");
+        StringAssert.Contains(admin, "HasActiveSubscriberColumnFilters ||");
+        StringAssert.Contains(admin, "!string.IsNullOrWhiteSpace(SubscriberSearch)");
+
+        var clearStart = admin.IndexOf("private async Task ClearSubscriberColumnFiltersAsync()", StringComparison.Ordinal);
+        Assert.AreNotEqual(-1, clearStart);
+        var clearEnd = admin.IndexOf("private async Task ApplyStoryTitleFilter()", clearStart, StringComparison.Ordinal);
+        Assert.AreNotEqual(-1, clearEnd);
+        var clearBlock = admin[clearStart..clearEnd];
+
+        StringAssert.Contains(clearBlock, "SubscriberSearch = string.Empty;");
+        StringAssert.Contains(clearBlock, "LastAppliedSubscriberSearch = string.Empty;");
+        StringAssert.Contains(clearBlock, "SubscriberColumnFilters.Clear();");
+        StringAssert.Contains(clearBlock, "await RefreshSubscribersAsync(resetToFirstPage: true);");
+    }
+
+    [TestMethod]
     public void AnalyticsTabShowsRevenueAnalytics()
     {
         var admin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));

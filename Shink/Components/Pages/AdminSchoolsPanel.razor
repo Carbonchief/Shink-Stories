@@ -1,6 +1,7 @@
 @using System.Globalization
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Components.Web
 @inject IAdminManagementService AdminManagementService
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ILogger<AdminSchoolsPanel> Logger
@@ -39,7 +40,7 @@ else
                            Variant="Variant.Outlined"
                            Color="Color.Primary"
                            OnClick="StartNewSchool"
-                           Disabled="@IsSaving"
+                           Disabled="@(IsSaving || IsSeatActionBusy)"
                            aria-label='@T("Nuwe skool", "New school")'
                            title='@T("Nuwe skool", "New school")'>
                     <i class="fa-solid fa-plus" aria-hidden="true"></i>
@@ -49,7 +50,7 @@ else
                            Variant="Variant.Outlined"
                            Color="Color.Primary"
                            OnClick="ReloadAsync"
-                           Disabled="@IsSaving"
+                           Disabled="@(IsSaving || IsSeatActionBusy)"
                            aria-label='@T("Verfris skole", "Refresh schools")'
                            title='@T("Verfris skole", "Refresh schools")'>
                     <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
@@ -76,7 +77,7 @@ else
                         {
                             <button type="button"
                                     class="admin-schools-row @(IsSelected(school) ? "is-selected" : null)"
-                                    @onclick="() => SelectSchool(school)">
+                                    @onclick="() => SelectSchoolAsync(school)">
                                 <span class="admin-schools-row-main">
                                     <strong>@school.SchoolName</strong>
                                     <small>@school.AdminEmail</small>
@@ -161,7 +162,205 @@ else
                 </div>
             </EditForm>
         </div>
+
+        @if (Editor.SchoolAccountId.HasValue)
+        {
+            <div class="admin-schools-manage">
+                <section class="admin-schools-card admin-schools-dashboard">
+                    <div class="admin-schools-card-head">
+                        <h3>@T("Skoolplekke", "School seats")</h3>
+                        @if (SelectedSchoolDashboard is not null)
+                        {
+                            <span>@SelectedSchoolDashboard.UsedSlots / @SelectedSchoolDashboard.SlotLimit @T("gebruik", "used")</span>
+                        }
+                    </div>
+
+                    @if (IsDashboardLoading)
+                    {
+                        <p class="admin-schools-empty">@T("Laai skoolplekke...", "Loading school seats...")</p>
+                    }
+                    else if (SelectedSchoolDashboard is null || !SelectedSchoolDashboard.HasSchoolAccess)
+                    {
+                        <p class="admin-schools-empty">@T("Kon nie hierdie skool se plekke laai nie.", "Could not load this school's seats.")</p>
+                    }
+                    else
+                    {
+                        <div class="admin-schools-stats-row" aria-label='@T("Skoolplek opsomming", "School seat summary")'>
+                            <article>
+                                <span>@T("Beskikbaar", "Available")</span>
+                                <strong>@SelectedSchoolDashboard.AvailableSlots</strong>
+                            </article>
+                            <article>
+                                <span>@T("Uitgenooi", "Invited")</span>
+                                <strong>@SelectedSchoolDashboard.InvitedSeats</strong>
+                            </article>
+                            <article>
+                                <span>@T("Aktief", "Active")</span>
+                                <strong>@SelectedSchoolDashboard.AcceptedSeats</strong>
+                            </article>
+                        </div>
+
+                        <div class="admin-schools-invite">
+                            <label class="admin-schools-field">
+                                <span>@T("Gebruiker e-pos", "User email")</span>
+                                <input @bind="InviteEmail" type="email" maxlength="320" autocomplete="email" placeholder="gebruiker@skool.co.za" />
+                            </label>
+                            <label class="admin-schools-field">
+                                <span>@T("Naam opsioneel", "Name optional")</span>
+                                <input @bind="InviteDisplayName" maxlength="120" autocomplete="name" />
+                            </label>
+                            <MudButton Class="admin-icon-btn admin-action-btn"
+                                       Variant="Variant.Filled"
+                                       Color="Color.Primary"
+                                       Disabled="@(!CanInviteSeat || IsSeatActionBusy)"
+                                       OnClick="InviteSeatAsync"
+                                       aria-label='@T("Nooi gebruiker", "Invite user")'
+                                       title='@T("Nooi gebruiker", "Invite user")'>
+                                <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
+                                <span>@T("Nooi gebruiker", "Invite user")</span>
+                            </MudButton>
+                        </div>
+
+                        @if (SelectedSchoolDashboard.Seats.Count == 0)
+                        {
+                            <p class="admin-schools-empty">@T("Nog geen plekke is toegeken nie.", "No seats have been assigned yet.")</p>
+                        }
+                        else
+                        {
+                            <div class="admin-schools-seat-list">
+                                @foreach (var seat in SelectedSchoolDashboard.Seats)
+                                {
+                                    <div class="admin-schools-seat"
+                                         role="button"
+                                         tabindex="0"
+                                         title='@T("Wys plek-statistiek", "Show seat stats")'
+                                         @onclick="() => OpenSeatStatsAsync(seat)"
+                                         @onkeydown="args => HandleSeatKeyDownAsync(args, seat)">
+                                        <div class="admin-schools-seat-main">
+                                            <strong>@BuildSeatName(seat)</strong>
+                                            <span>@seat.Email</span>
+                                        </div>
+                                        <div class="admin-schools-seat-meta">
+                                            <span>@BuildSeatStatus(seat)</span>
+                                            @if (!string.Equals(seat.Role, "school_admin", StringComparison.OrdinalIgnoreCase))
+                                            {
+                                                <button type="button"
+                                                        class="admin-schools-icon-button"
+                                                        title='@T("Verwyder plek", "Remove seat")'
+                                                        aria-label='@T("Verwyder plek", "Remove seat")'
+                                                        disabled="@IsSeatActionBusy"
+                                                        @onclick="() => RemoveSeatAsync(seat.SchoolSeatId)"
+                                                        @onclick:stopPropagation="true">
+                                                    <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                                                </button>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        }
+                    }
+                </section>
+            </div>
+        }
     </section>
+}
+
+@if (StatsModalSeat is not null)
+{
+    <div class="admin-schools-modal-backdrop" role="presentation" @onclick="CloseSeatStats">
+        <section class="admin-schools-modal" role="dialog" aria-modal="true" aria-labelledby="admin-school-seat-stats-title" @onclick:stopPropagation="true">
+            <header class="admin-schools-modal-head">
+                <div class="admin-schools-modal-title">
+                    <p>@T("Plek-statistiek", "Seat stats")</p>
+                    <h2 id="admin-school-seat-stats-title">@BuildSeatName(StatsModalSeat)</h2>
+                    <span>@StatsModalSeat.Email</span>
+                    @if (!IsStatsLoading && SeatStats is not null)
+                    {
+                        <dl class="admin-schools-modal-meta" aria-label='@T("Plek besonderhede", "Seat details")'>
+                            <div>
+                                <dt>@T("Status", "Status")</dt>
+                                <dd>@BuildSeatStatus(SeatStats.Seat)</dd>
+                            </div>
+                            <div>
+                                <dt>@T("Rekening", "Account")</dt>
+                                <dd>@(SeatStats.HasSubscriberAccount ? T("Gekoppel", "Linked") : T("Nog nie geregistreer", "Not registered yet"))</dd>
+                            </div>
+                            <div>
+                                <dt>@T("Toegang eindig", "Access ends")</dt>
+                                <dd>@FormatDate(SeatStats.AccessExpiresAt)</dd>
+                            </div>
+                        </dl>
+                    }
+                </div>
+                <button type="button" class="admin-schools-icon-button" title='@T("Maak toe", "Close")' aria-label='@T("Maak statistiek toe", "Close stats")' @onclick="CloseSeatStats">
+                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                </button>
+            </header>
+
+            @if (IsStatsLoading)
+            {
+                <p class="admin-schools-empty" role="status" aria-live="polite">@T("Laai statistiek...", "Loading stats...")</p>
+            }
+            else if (!string.IsNullOrWhiteSpace(StatsErrorMessage))
+            {
+                <p class="admin-feedback is-error">@StatsErrorMessage</p>
+            }
+            else if (SeatStats is null)
+            {
+                <p class="admin-schools-empty">@T("Geen statistiek beskikbaar nie.", "No stats available.")</p>
+            }
+            else
+            {
+                <div class="admin-schools-seat-stats-grid">
+                    <article>
+                        <span>@T("Stories oopgemaak", "Stories opened")</span>
+                        <strong>@SeatStats.TotalViews</strong>
+                    </article>
+                    <article>
+                        <span>@T("Unieke stories", "Unique stories")</span>
+                        <strong>@Math.Max(SeatStats.UniqueViewedStories, SeatStats.UniqueListenedStories)</strong>
+                    </article>
+                    <article>
+                        <span>@T("Luistersessies", "Listen sessions")</span>
+                        <strong>@SeatStats.TotalListenSessions</strong>
+                    </article>
+                    <article>
+                        <span>@T("Luistertyd", "Listen time")</span>
+                        <strong>@FormatDuration(SeatStats.TotalListenedSeconds)</strong>
+                    </article>
+                </div>
+
+                <div class="admin-schools-modal-section">
+                    <p>@T("Laaste aktiwiteit", "Last activity")</p>
+                    <strong>@FormatDateTime(SeatStats.LastActivityAt)</strong>
+                </div>
+
+                <div class="admin-schools-modal-section">
+                    <p>@T("Onlangse stories", "Recent stories")</p>
+                    @if (SeatStats.RecentStories.Count == 0)
+                    {
+                        <p class="admin-schools-empty">@T("Nog geen storie-aktiwiteit vir hierdie plek nie.", "No story activity for this seat yet.")</p>
+                    }
+                    else
+                    {
+                        <div class="admin-schools-recent-list">
+                            @foreach (var story in SeatStats.RecentStories)
+                            {
+                                <div class="admin-schools-recent-item">
+                                    <div>
+                                        <strong>@story.StoryTitle</strong>
+                                        <span>@FormatDateTime(story.LastActivityAt)</span>
+                                    </div>
+                                    <span>@FormatViewCount(story.Views) · @FormatDuration(story.ListenedSeconds)</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </section>
+    </div>
 }
 
 @code {
@@ -176,8 +375,18 @@ else
     private string? LoadedAdminEmail { get; set; }
     private bool IsLoading { get; set; } = true;
     private bool IsSaving { get; set; }
+    private bool IsDashboardLoading { get; set; }
+    private bool IsSeatActionBusy { get; set; }
+    private SchoolDashboardSnapshot? SelectedSchoolDashboard { get; set; }
+    private string? InviteEmail { get; set; }
+    private string? InviteDisplayName { get; set; }
+    private SchoolSeatRecord? StatsModalSeat { get; set; }
+    private SchoolSeatStatsSnapshot? SeatStats { get; set; }
+    private bool IsStatsLoading { get; set; }
+    private string? StatsErrorMessage { get; set; }
     private string? StatusMessage { get; set; }
     private string? ErrorMessage { get; set; }
+    private bool CanInviteSeat => SelectedSchoolDashboard?.AvailableSlots > 0 && !string.IsNullOrWhiteSpace(InviteEmail);
 
     protected override async Task OnParametersSetAsync()
     {
@@ -203,7 +412,7 @@ else
             Snapshot = await AdminManagementService.GetSchoolSetupsAsync(effectiveAdminEmail);
             if (Snapshot.Schools.Count > 0)
             {
-                SelectSchool(Snapshot.Schools[0]);
+                await SelectSchoolAsync(Snapshot.Schools[0]);
             }
             else
             {
@@ -255,7 +464,7 @@ else
                 var saved = Snapshot.Schools.FirstOrDefault(school => school.SchoolAccountId == result.EntityId.Value);
                 if (saved is not null)
                 {
-                    SelectSchool(saved);
+                    await SelectSchoolAsync(saved);
                 }
             }
         }
@@ -270,14 +479,174 @@ else
         }
     }
 
-    private void SelectSchool(AdminSchoolAccountRecord school)
+    private async Task SelectSchoolAsync(AdminSchoolAccountRecord school)
     {
         Editor = EditableSchoolSetup.From(school, Snapshot.Plans.FirstOrDefault()?.TierCode);
+        await LoadSelectedSchoolDashboardAsync(school.SchoolAccountId);
     }
 
     private void StartNewSchool()
     {
         Editor = EditableSchoolSetup.New(Snapshot.Plans.FirstOrDefault()?.TierCode);
+        SelectedSchoolDashboard = null;
+        InviteEmail = null;
+        InviteDisplayName = null;
+        CloseSeatStats();
+    }
+
+    private async Task LoadSelectedSchoolDashboardAsync(Guid schoolAccountId)
+    {
+        IsDashboardLoading = true;
+        try
+        {
+            SelectedSchoolDashboard = await AdminManagementService.GetAdminSchoolDashboardAsync(
+                await ResolveAdminEmailAsync(),
+                schoolAccountId);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(exception, "Failed to load admin school dashboard. schoolAccountId={SchoolAccountId}", schoolAccountId);
+            SelectedSchoolDashboard = null;
+            SetError(T("Kon nie hierdie skool se plekke nou laai nie.", "Could not load this school's seats right now."));
+        }
+        finally
+        {
+            IsDashboardLoading = false;
+        }
+    }
+
+    private async Task InviteSeatAsync()
+    {
+        if (Editor.SchoolAccountId is null)
+        {
+            return;
+        }
+
+        ClearMessages();
+        IsSeatActionBusy = true;
+        try
+        {
+            var result = await AdminManagementService.InviteAdminSchoolSeatAsync(
+                await ResolveAdminEmailAsync(),
+                Editor.SchoolAccountId.Value,
+                new SchoolInviteTeacherRequest(InviteEmail, InviteDisplayName));
+            if (result.IsSuccess)
+            {
+                InviteEmail = null;
+                InviteDisplayName = null;
+            }
+
+            await HandleSeatOperationResultAsync(result, T("Gebruiker is by die skoolplekke gevoeg.", "User was added to the school seats."));
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(exception, "Failed to invite admin school seat. schoolAccountId={SchoolAccountId}", Editor.SchoolAccountId);
+            SetError(T("Kon nie die gebruiker nou nooi nie.", "Could not invite the user right now."));
+        }
+        finally
+        {
+            IsSeatActionBusy = false;
+        }
+    }
+
+    private async Task RemoveSeatAsync(Guid seatId)
+    {
+        if (Editor.SchoolAccountId is null)
+        {
+            return;
+        }
+
+        ClearMessages();
+        IsSeatActionBusy = true;
+        try
+        {
+            var result = await AdminManagementService.RemoveAdminSchoolSeatAsync(
+                await ResolveAdminEmailAsync(),
+                Editor.SchoolAccountId.Value,
+                seatId);
+            await HandleSeatOperationResultAsync(result, T("Plek is verwyder.", "Seat removed."));
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(exception, "Failed to remove admin school seat. schoolAccountId={SchoolAccountId} seatId={SeatId}", Editor.SchoolAccountId, seatId);
+            SetError(T("Kon nie die plek nou verwyder nie.", "Could not remove the seat right now."));
+        }
+        finally
+        {
+            IsSeatActionBusy = false;
+        }
+    }
+
+    private async Task OpenSeatStatsAsync(SchoolSeatRecord seat)
+    {
+        if (Editor.SchoolAccountId is null)
+        {
+            return;
+        }
+
+        StatsModalSeat = seat;
+        SeatStats = null;
+        StatsErrorMessage = null;
+        IsStatsLoading = true;
+
+        try
+        {
+            var stats = await AdminManagementService.GetAdminSchoolSeatStatsAsync(
+                await ResolveAdminEmailAsync(),
+                Editor.SchoolAccountId.Value,
+                seat.SchoolSeatId);
+            if (stats is null)
+            {
+                StatsErrorMessage = T("Kon nie hierdie plek se statistiek laai nie.", "Could not load this seat's stats.");
+            }
+            else
+            {
+                SeatStats = stats;
+            }
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(exception, "Failed to load admin school seat stats. schoolAccountId={SchoolAccountId} seatId={SeatId}", Editor.SchoolAccountId, seat.SchoolSeatId);
+            StatsErrorMessage = T("Kon nie hierdie plek se statistiek laai nie.", "Could not load this seat's stats.");
+        }
+        finally
+        {
+            IsStatsLoading = false;
+        }
+    }
+
+    private async Task HandleSeatKeyDownAsync(KeyboardEventArgs args, SchoolSeatRecord seat)
+    {
+        if (string.Equals(args.Key, "Enter", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(args.Key, " ", StringComparison.Ordinal))
+        {
+            await OpenSeatStatsAsync(seat);
+        }
+    }
+
+    private void CloseSeatStats()
+    {
+        StatsModalSeat = null;
+        SeatStats = null;
+        StatsErrorMessage = null;
+        IsStatsLoading = false;
+    }
+
+    private async Task HandleSeatOperationResultAsync(SchoolOperationResult result, string successMessage)
+    {
+        if (!result.IsSuccess)
+        {
+            SetError(result.ErrorMessage ?? T("Die aksie kon nie nou voltooi word nie.", "The action could not be completed right now."));
+            return;
+        }
+
+        SetStatus(successMessage);
+        Snackbar.Add(StatusMessage!, Severity.Success);
+        if (Editor.SchoolAccountId.HasValue)
+        {
+            await LoadSelectedSchoolDashboardAsync(Editor.SchoolAccountId.Value);
+            Snapshot = await AdminManagementService.GetSchoolSetupsAsync(await ResolveAdminEmailAsync());
+        }
     }
 
     private void OnAccessExpiresOnChanged(ChangeEventArgs args)
@@ -293,6 +662,21 @@ else
 
     private string BuildSeatSummary(AdminSchoolAccountRecord school) =>
         $"{school.ActiveSeatCount}/{school.SlotLimit} {T("plekke", "seats")}";
+
+    private static string BuildSeatName(SchoolSeatRecord seat) =>
+        !string.IsNullOrWhiteSpace(seat.DisplayName) ? seat.DisplayName : seat.Email;
+
+    private string BuildSeatStatus(SchoolSeatRecord seat)
+    {
+        if (string.Equals(seat.Role, "school_admin", StringComparison.OrdinalIgnoreCase))
+        {
+            return T("Skool admin", "School admin");
+        }
+
+        return string.Equals(seat.Status, "accepted", StringComparison.OrdinalIgnoreCase)
+            ? T("Aktief", "Active")
+            : T("Uitgenooi", "Invited");
+    }
 
     private string BuildStatusLabel(string? status) =>
         status?.ToLowerInvariant() switch
@@ -333,6 +717,35 @@ else
         value.HasValue
             ? value.Value.ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
             : DateTimeOffset.UtcNow.AddYears(1).ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    private string FormatDate(DateTimeOffset? value) =>
+        value is null ? T("Onbekend", "Unknown") : value.Value.ToLocalTime().ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+
+    private string FormatDateTime(DateTimeOffset? value) =>
+        value is null ? T("Nog geen aktiwiteit", "No activity yet") : value.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+
+    private string FormatViewCount(int views) =>
+        views == 1 ? T("1 kyk", "1 view") : string.Format(CultureInfo.InvariantCulture, T("{0} kyke", "{0} views"), views);
+
+    private string FormatDuration(decimal seconds)
+    {
+        if (seconds <= 0)
+        {
+            return T("0 min", "0 min");
+        }
+
+        var totalMinutes = (int)Math.Round(seconds / 60m, MidpointRounding.AwayFromZero);
+        if (totalMinutes < 60)
+        {
+            return string.Format(CultureInfo.InvariantCulture, T("{0} min", "{0} min"), Math.Max(1, totalMinutes));
+        }
+
+        var hours = totalMinutes / 60;
+        var minutes = totalMinutes % 60;
+        return minutes == 0
+            ? string.Format(CultureInfo.InvariantCulture, T("{0} u", "{0} h"), hours)
+            : string.Format(CultureInfo.InvariantCulture, T("{0} u {1} min", "{0} h {1} min"), hours, minutes);
+    }
 
     private async Task<string?> ResolveAdminEmailAsync()
     {

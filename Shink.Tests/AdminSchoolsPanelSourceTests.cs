@@ -49,6 +49,46 @@ public class AdminSchoolsPanelSourceTests
         Assert.IsFalse(implementation.Contains("CreateRecoveryEmail", StringComparison.Ordinal));
     }
 
+    [TestMethod]
+    public void AdminManagementServiceExposesSchoolSeatAdministrationContract()
+    {
+        var service = File.ReadAllText(GetRepoPath("Shink", "Services", "IAdminManagementService.cs"));
+        var implementation = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseAdminManagementService.Schools.cs"));
+
+        StringAssert.Contains(service, "Task<SchoolDashboardSnapshot> GetAdminSchoolDashboardAsync");
+        StringAssert.Contains(service, "Task<SchoolOperationResult> InviteAdminSchoolSeatAsync");
+        StringAssert.Contains(service, "Task<SchoolOperationResult> RemoveAdminSchoolSeatAsync");
+        StringAssert.Contains(service, "Task<SchoolSeatStatsSnapshot?> GetAdminSchoolSeatStatsAsync");
+        StringAssert.Contains(implementation, "TryCreateAdminSchoolContextAsync");
+        StringAssert.Contains(implementation, "schoolAccountId");
+        StringAssert.Contains(implementation, "SchoolInviteTeacherRequest");
+        StringAssert.Contains(implementation, "SchoolSeatStatsSnapshot");
+        StringAssert.Contains(implementation, "invited_by_email = context.AdminContext.AdminEmail");
+        Assert.IsFalse(implementation.Contains("UpdateAdminSeatUsageAsync", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void SchoolsPanelAllowsAdminToManageSeatsAndOpenSeatStats()
+    {
+        var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "AdminSchoolsPanel.razor"));
+        var css = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "AdminSchoolsPanel.razor.css"));
+
+        StringAssert.Contains(markup, "SelectedSchoolDashboard");
+        StringAssert.Contains(markup, "GetAdminSchoolDashboardAsync");
+        StringAssert.Contains(markup, "InviteAdminSchoolSeatAsync");
+        StringAssert.Contains(markup, "RemoveAdminSchoolSeatAsync");
+        StringAssert.Contains(markup, "GetAdminSchoolSeatStatsAsync");
+        StringAssert.Contains(markup, "@T(\"Nooi gebruiker\", \"Invite user\")");
+        StringAssert.Contains(markup, "@T(\"Plek-statistiek\", \"Seat stats\")");
+        StringAssert.Contains(markup, "OpenSeatStatsAsync(seat)");
+        StringAssert.Contains(markup, "RemoveSeatAsync(seat.SchoolSeatId)");
+        StringAssert.Contains(markup, "StatsModalSeat");
+        StringAssert.Contains(markup, "SeatStats.RecentStories");
+        StringAssert.Contains(css, ".admin-schools-seat-list");
+        StringAssert.Contains(css, ".admin-schools-seat-stats-grid");
+        StringAssert.Contains(css, ".admin-schools-modal-backdrop");
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var parts = new[]
