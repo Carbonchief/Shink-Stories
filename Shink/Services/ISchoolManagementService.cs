@@ -13,7 +13,7 @@ public interface ISchoolManagementService
 
 public sealed record SchoolOperationResult(bool IsSuccess, string? ErrorMessage = null, Guid? EntityId = null);
 
-public sealed record SchoolInviteTeacherRequest(string? Email, string? DisplayName);
+public sealed record SchoolInviteTeacherRequest(string? Email, string? DisplayName, string? Password = null);
 
 public sealed record SchoolDashboardSnapshot(
     bool HasSchoolAccess,

@@ -164,6 +164,41 @@ public sealed class SupabaseAuthService(
         return SupabaseSignInResult.Success(signupResult.UserEmail ?? email);
     }
 
+    public async Task<SupabaseSignInResult> CreateConfirmedUserWithPasswordAsync(
+        string email,
+        string password,
+        SignUpProfileData? profileData = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+        {
+            return SupabaseSignInResult.Failure("Vul asseblief die intekenaar se e-pos en wagwoord in.");
+        }
+
+        var normalizedDisplayName = profileData?.DisplayName?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedDisplayName))
+        {
+            var firstName = profileData?.FirstName?.Trim();
+            var lastName = profileData?.LastName?.Trim();
+            normalizedDisplayName = $"{firstName} {lastName}".Trim();
+        }
+
+        var signUpMetadata = profileData is null
+            ? null
+            : new SupabasePasswordSignUpMetadata(
+                FirstName: profileData.FirstName?.Trim(),
+                LastName: profileData.LastName?.Trim(),
+                DisplayName: string.IsNullOrWhiteSpace(normalizedDisplayName) ? null : normalizedDisplayName,
+                FullName: string.IsNullOrWhiteSpace(normalizedDisplayName) ? null : normalizedDisplayName,
+                MobileNumber: profileData.MobileNumber?.Trim());
+
+        return await TryCreateConfirmedUserWithAdminApiAsync(
+            email,
+            password,
+            signUpMetadata,
+            cancellationToken);
+    }
+
     public async Task<SupabasePasswordResetResult> SendPasswordResetEmailAsync(
         string email,
         string redirectTo,

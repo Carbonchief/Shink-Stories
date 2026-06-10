@@ -727,6 +727,13 @@ public class SupabaseAdminManagementSelfServiceTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult(SupabaseSignInResult.Failure("Not implemented."));
 
+        public Task<SupabaseSignInResult> CreateConfirmedUserWithPasswordAsync(
+            string email,
+            string password,
+            SignUpProfileData? profileData = null,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(SupabaseSignInResult.Success(email));
+
         public Task<SupabasePasswordResetResult> SendPasswordResetEmailAsync(
             string email,
             string redirectTo,

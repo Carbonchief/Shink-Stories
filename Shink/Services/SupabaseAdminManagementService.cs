@@ -352,6 +352,25 @@ public sealed partial class SupabaseAdminManagementService(
             return new AdminOperationResult(false, "Selfoonnommer moet 7 tot 20 syfers wees.");
         }
 
+        if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length is < 6 or > 200)
+        {
+            return new AdminOperationResult(false, "Wagwoord moet tussen 6 en 200 karakters wees.");
+        }
+
+        var authCreateResult = await _supabaseAuthService.CreateConfirmedUserWithPasswordAsync(
+            normalizedEmail,
+            request.Password,
+            new SignUpProfileData(
+                request.FirstName,
+                request.LastName,
+                request.DisplayName,
+                normalizedMobileNumber),
+            cancellationToken);
+        if (!authCreateResult.IsSuccess)
+        {
+            return new AdminOperationResult(false, authCreateResult.ErrorMessage ?? "Kon nie Supabase gebruiker nou skep nie.");
+        }
+
         var payload = new Dictionary<string, object?>
         {
             ["email"] = normalizedEmail,
@@ -392,15 +411,6 @@ public sealed partial class SupabaseAdminManagementService(
             "Subscriber profile created from admin.",
             new { email = normalizedEmail },
             cancellationToken);
-
-        if (request.SendPasswordReset)
-        {
-            var resetUrl = NormalizeOptionalText(request.ResetUrl, 2048);
-            if (!string.IsNullOrWhiteSpace(resetUrl))
-            {
-                await _supabaseAuthService.SendPasswordResetEmailAsync(normalizedEmail, resetUrl, cancellationToken);
-            }
-        }
 
         return new AdminOperationResult(true, EntityId: subscriberId);
     }

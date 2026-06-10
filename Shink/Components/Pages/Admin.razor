@@ -3046,10 +3046,18 @@
                                               Margin="Margin.Dense" />
                                 @if (SubscriberEditor.IsNew)
                                 {
-                                    <MudCheckBox T="bool"
-                                                 Class="admin-span-2"
-                                                 Label='@T("Stuur wagwoordherstel e-pos", "Send password reset email")'
-                                                 @bind-Value="SendNewSubscriberReset" />
+                                    <MudTextField T="string"
+                                                  Label='@T("Wagwoord", "Password")'
+                                                  @bind-Value="NewSubscriberPassword"
+                                                  InputType="InputType.Password"
+                                                  Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense" />
+                                    <MudTextField T="string"
+                                                  Label='@T("Bevestig wagwoord", "Confirm password")'
+                                                  @bind-Value="NewSubscriberPasswordConfirmation"
+                                                  InputType="InputType.Password"
+                                                  Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense" />
                                 }
                                 </div>
                                 @if (!SubscriberEditor.IsNew)
@@ -4579,7 +4587,8 @@
     private Guid SelectedPaidSubscriptionId { get; set; }
     private string SubscriberPaidSubscriptionCancelReason { get; set; } = string.Empty;
     private string SubscriberBulkReason { get; set; } = string.Empty;
-    private bool SendNewSubscriberReset { get; set; } = true;
+    private string NewSubscriberPassword { get; set; } = string.Empty;
+    private string NewSubscriberPasswordConfirmation { get; set; } = string.Empty;
     private bool AreAllVisibleSubscribersSelected =>
         Subscribers.Count > 0 &&
         Subscribers.All(subscriber => SelectedSubscriberIds.Contains(subscriber.SubscriberId));
@@ -5954,7 +5963,8 @@
         SelectedPaidSubscriptionId = Guid.Empty;
         ManualAccessTierCode = string.Empty;
         ManualAccessExpiryDate = null;
-        SendNewSubscriberReset = true;
+        NewSubscriberPassword = string.Empty;
+        NewSubscriberPasswordConfirmation = string.Empty;
         SubscriberEditorStateSignature = BuildSubscriberEditorStateSignature(SubscriberEditor);
         IsSubscriberDialogOpen = true;
         CompleteEditModalOpenRequest(true);
@@ -6474,6 +6484,24 @@
         return true;
     }
 
+    private bool ValidateNewSubscriberPassword()
+    {
+        if (string.IsNullOrWhiteSpace(NewSubscriberPassword) ||
+            NewSubscriberPassword.Length is < 6 or > 200)
+        {
+            SetError(T("Wagwoord moet tussen 6 en 200 karakters wees.", "Password must be between 6 and 200 characters."));
+            return false;
+        }
+
+        if (!string.Equals(NewSubscriberPassword, NewSubscriberPasswordConfirmation, StringComparison.Ordinal))
+        {
+            SetError(T("Wagwoorde stem nie ooreen nie.", "Passwords do not match."));
+            return false;
+        }
+
+        return true;
+    }
+
     private async Task<bool> SaveManualAccessFromSubscriberSaveAsync(Guid savedSubscriberId)
     {
         var result = await AdminManagementService.GrantSubscriberAccessAsync(
@@ -6602,6 +6630,8 @@
         }
 
         IsSubscriberDialogOpen = false;
+        NewSubscriberPassword = string.Empty;
+        NewSubscriberPasswordConfirmation = string.Empty;
         CompleteEditModalClose();
     }
 
@@ -6691,6 +6721,11 @@
         try
         {
             var wasNewSubscriber = SubscriberEditor.IsNew;
+            if (wasNewSubscriber && !ValidateNewSubscriberPassword())
+            {
+                return;
+            }
+
             var result = SubscriberEditor.IsNew
                 ? await AdminManagementService.CreateSubscriberAsync(
                     CurrentAdminEmail,
@@ -6700,8 +6735,7 @@
                         SubscriberEditor.LastName,
                         SubscriberEditor.DisplayName,
                         SubscriberEditor.MobileNumber,
-                        SendNewSubscriberReset,
-                        NavigationManager.ToAbsoluteUri("/reset-password").ToString()))
+                        NewSubscriberPassword))
                 : await AdminManagementService.UpdateSubscriberAsync(
                     CurrentAdminEmail,
                     new AdminSubscriberUpdateRequest(
@@ -6732,6 +6766,8 @@
             {
                 SubscriberEditor.SubscriberId = entityId;
                 SubscriberEditor.IsNew = false;
+                NewSubscriberPassword = string.Empty;
+                NewSubscriberPasswordConfirmation = string.Empty;
                 await LoadSubscriberDetailAsync(entityId);
             }
 
@@ -8814,7 +8850,10 @@
         !string.IsNullOrEmpty(SubscriberEditorStateSignature) &&
         !string.Equals(
             SubscriberEditorStateSignature,
-            BuildSubscriberEditorStateSignature(SubscriberEditor),
+            BuildSubscriberEditorStateSignature(
+                SubscriberEditor,
+                NewSubscriberPassword,
+                NewSubscriberPasswordConfirmation),
             StringComparison.Ordinal);
 
     private bool IsStoryEditorDirty() =>
@@ -9965,7 +10004,10 @@
             : summary.Trim();
     }
 
-    private static string BuildSubscriberEditorStateSignature(EditableSubscriber editor)
+    private static string BuildSubscriberEditorStateSignature(
+        EditableSubscriber editor,
+        string? newSubscriberPassword = null,
+        string? newSubscriberPasswordConfirmation = null)
     {
         return JsonSerializer.Serialize(new
         {
@@ -9975,7 +10017,9 @@
             FirstName = NormalizeDirtyText(editor.FirstName),
             LastName = NormalizeDirtyText(editor.LastName),
             DisplayName = NormalizeDirtyText(editor.DisplayName),
-            MobileNumber = NormalizeDirtyText(editor.MobileNumber)
+            MobileNumber = NormalizeDirtyText(editor.MobileNumber),
+            NewSubscriberPassword = NormalizeDirtyText(newSubscriberPassword),
+            NewSubscriberPasswordConfirmation = NormalizeDirtyText(newSubscriberPasswordConfirmation)
         });
     }
 

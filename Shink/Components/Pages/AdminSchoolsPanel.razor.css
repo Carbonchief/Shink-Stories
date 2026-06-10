@@ -261,6 +261,12 @@
     align-items: end;
 }
 
+.admin-schools-invite .admin-action-btn,
+.admin-schools-invite ::deep .admin-action-btn {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+}
+
 .admin-schools-seat-list,
 .admin-schools-recent-list {
     display: grid;
@@ -517,6 +523,13 @@
     .admin-schools-form-grid,
     .admin-schools-invite {
         grid-template-columns: 1fr;
+    }
+
+    .admin-schools-invite .admin-action-btn,
+    .admin-schools-invite ::deep .admin-action-btn {
+        grid-column: auto;
+        grid-row: auto;
+        justify-self: start;
     }
 }
 

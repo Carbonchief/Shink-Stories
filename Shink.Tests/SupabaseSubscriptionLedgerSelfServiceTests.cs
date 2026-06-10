@@ -4092,7 +4092,7 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     }
 
     [TestMethod]
-    public async Task ProcessExpiredPaymentRecoveriesAsync_FailedFirstRetrySchedulesFollowUpBeforeWarningEmail()
+    public async Task ProcessExpiredPaymentRecoveriesAsync_FailedFirstRetryDefersEmailsAndSchedulesFollowUpRetry()
     {
         var subscriptionId = "22222222-2222-2222-2222-222222222222";
         var providerPaymentId = "SUB_pg02qbp0h6cb015";
@@ -4187,15 +4187,128 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
 
         await service.ProcessExpiredPaymentRecoveriesAsync();
 
-        Assert.AreEqual(1, recoveryEmailService.ScheduledRequests.Count);
+        Assert.AreEqual(
+            0,
+            recoveryEmailService.ScheduledRequests.Count,
+            "The first failed automatic retry should not send or schedule customer recovery emails yet.");
         Assert.IsTrue(
             handler.PaymentRecoveryPatchPayloads.Any(IsFollowUpAuthorizationRetryPatch),
-            "A failed first retry should schedule one more automatic retry before the warning email goes out.");
+            "A failed first retry should schedule one more automatic retry before the recovery email sequence starts.");
+    }
+
+    [TestMethod]
+    public async Task ProcessExpiredPaymentRecoveriesAsync_FailedFollowUpRetryStartsRecoveryEmails()
+    {
+        var subscriptionId = "22222222-2222-2222-2222-222222222222";
+        var providerPaymentId = "SUB_pg02qbp0h6cb015";
+        var recoveryEmailService = new TrackingSubscriptionPaymentRecoveryEmailService();
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries") &&
+                request.RequestUri!.Query.Contains("authorization_retry_status=eq.pending", StringComparison.Ordinal))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "recovery_id": "recovery-one",
+                        "subscription_id": "{{subscriptionId}}",
+                        "provider": "paystack",
+                        "provider_payment_id": "{{providerPaymentId}}",
+                        "first_failed_at": "2026-05-06T20:00:14Z",
+                        "grace_ends_at": "2026-05-12T20:00:14Z",
+                        "authorization_retry_status": "pending",
+                        "authorization_retry_due_at": "2026-05-08T20:00:14Z",
+                        "authorization_retry_attempted_at": "2026-05-07T20:00:14Z",
+                        "authorization_retry_reference": "retry-failed",
+                        "authorization_retry_error": "Declined"
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "subscription_id": "{{subscriptionId}}",
+                        "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "{{providerPaymentId}}",
+                        "provider_transaction_id": null,
+                        "provider_token": "AUTH_retry",
+                        "status": "active",
+                        "billing_amount_zar": 55.00,
+                        "billing_period_months": 1,
+                        "billing_amount_source": "paystack_payload"
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse("""[{ "email": "ouer@example.com", "first_name": "Ouer", "display_name": "Ouer Een" }]""");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/transaction/charge_authorization")
+            {
+                return JsonResponse(
+                    """
+                    {
+                      "status": true,
+                      "data": {
+                        "status": "failed",
+                        "reference": "retry-failed-again",
+                        "gateway_response": "Declined"
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath is "/rest/v1/subscriptions" or "/rest/v1/subscription_payment_recoveries")
+            {
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler, recoveryEmailService);
+
+        await service.ProcessExpiredPaymentRecoveriesAsync();
+
+        Assert.AreEqual(
+            1,
+            recoveryEmailService.ScheduledRequests.Count,
+            "After the follow-up retry fails, the recovery email sequence should start.");
+        Assert.IsTrue(
+            handler.PaymentRecoveryPatchPayloads.Any(payload =>
+                payload.Contains("\"authorization_retry_status\":\"failed\"", StringComparison.Ordinal) &&
+                payload.Contains("\"authorization_retry_reference\":\"retry-failed-again\"", StringComparison.Ordinal)),
+            "The failed follow-up retry should be stored as failed before the recovery emails are scheduled.");
         Assert.IsTrue(
             handler.PaymentRecoveryPatchPayloads.Any(payload =>
                 payload.Contains("\"warning_email_id\":\"warning-email\"", StringComparison.Ordinal) &&
                 payload.Contains("\"suspension_email_id\":\"suspension-email\"", StringComparison.Ordinal)),
-            "The recovery email sequence should still be scheduled after the first retry fails.");
+            "The failed follow-up retry should store the scheduled recovery email ids.");
     }
 
     [TestMethod]

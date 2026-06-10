@@ -26,7 +26,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     private static readonly TimeSpan AccountRepairAttemptWindow = TimeSpan.FromMinutes(10);
     private static readonly TimeSpan PendingAccountRepairCheckoutBlockWindow = TimeSpan.FromHours(1);
     private static readonly TimeSpan AuthorizationRetryDelay = TimeSpan.FromDays(1);
-    private static readonly TimeSpan FollowUpAuthorizationRetryDelay = TimeSpan.FromHours(20);
+    private static readonly TimeSpan FollowUpAuthorizationRetryDelay = TimeSpan.FromDays(1);
     private static readonly TimeSpan PaymentRecoveryGracePeriod = TimeSpan.FromDays(4);
 
     private readonly HttpClient _httpClient = httpClient;
@@ -5894,6 +5894,41 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string? retryError,
         CancellationToken cancellationToken)
     {
+        if (ShouldDeferRecoveryEmailsForFollowUpRetry(recovery, subscriptionContext, provider, retryStatus))
+        {
+            var followUpRetryDueAtUtc = nowUtc.Add(FollowUpAuthorizationRetryDelay);
+            var followUpGraceEndsAtUtc = followUpRetryDueAtUtc.Add(PaymentRecoveryGracePeriod);
+            await MarkPaymentRecoveryAuthorizationRetryAsync(
+                baseUri,
+                apiKey,
+                recovery.RecoveryId,
+                nowUtc,
+                "pending",
+                retryReference,
+                retryError,
+                followUpGraceEndsAtUtc,
+                cancellationToken,
+                nextRetryDueAtUtc: followUpRetryDueAtUtc);
+
+            await ExtendSubscriptionGracePeriodAsync(
+                baseUri,
+                apiKey,
+                subscriptionContext.SubscriptionId,
+                followUpGraceEndsAtUtc,
+                cancellationToken);
+
+            await TrySendAdminOpsAlertAsync(
+                alertKey: $"payment-recovery-follow-up-retry-scheduled/{recovery.RecoveryId}",
+                severity: "warning",
+                title: "Subscription follow-up payment retry scheduled",
+                summary: $"Payment retry failed for {subscriptionContext.Email}; one more retry was scheduled before recovery emails.",
+                details: $"Provider: {provider}\nSubscription ID: {subscriptionContext.SubscriptionId}\nRecovery ID: {recovery.RecoveryId}\nProvider payment ID: {providerPaymentId}\nRetry due: {followUpRetryDueAtUtc:O}\nGrace ends: {followUpGraceEndsAtUtc:O}",
+                eventReference: recovery.RecoveryId,
+                occurredAtUtc: nowUtc,
+                cancellationToken);
+            return;
+        }
+
         var graceEndsAtUtc = nowUtc.Add(PaymentRecoveryGracePeriod);
         if (recovery.EmailsScheduledAt is not null)
         {
@@ -5910,24 +5945,16 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             return;
         }
 
-        var followUpRetryDueAtUtc = string.Equals(provider, "paystack", StringComparison.OrdinalIgnoreCase) &&
-                                    string.Equals(retryStatus, "failed", StringComparison.OrdinalIgnoreCase) &&
-                                    !string.IsNullOrWhiteSpace(subscriptionContext.ProviderToken)
-            ? nowUtc.Add(FollowUpAuthorizationRetryDelay)
-            : (DateTimeOffset?)null;
-        var storedRetryStatus = followUpRetryDueAtUtc is null ? retryStatus : "pending";
-
         await MarkPaymentRecoveryAuthorizationRetryAsync(
             baseUri,
             apiKey,
             recovery.RecoveryId,
             nowUtc,
-            storedRetryStatus,
+            retryStatus,
             retryReference,
             retryError,
             graceEndsAtUtc,
-            cancellationToken,
-            nextRetryDueAtUtc: followUpRetryDueAtUtc);
+            cancellationToken);
 
         await ExtendSubscriptionGracePeriodAsync(
             baseUri,
@@ -5974,6 +6001,17 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             occurredAtUtc: nowUtc,
             cancellationToken);
     }
+
+    private static bool ShouldDeferRecoveryEmailsForFollowUpRetry(
+        PaymentRecoveryRow recovery,
+        PaymentRecoverySubscriptionContext subscriptionContext,
+        string provider,
+        string retryStatus) =>
+        recovery.EmailsScheduledAt is null &&
+        recovery.AuthorizationRetryAttemptedAt is null &&
+        string.Equals(provider, "paystack", StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(retryStatus, "failed", StringComparison.OrdinalIgnoreCase) &&
+        !string.IsNullOrWhiteSpace(subscriptionContext.ProviderToken);
 
     private async Task TryResolvePaymentRecoveryAfterSuccessfulChargeAsync(
         Uri baseUri,

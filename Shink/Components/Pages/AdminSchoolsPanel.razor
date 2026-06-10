@@ -209,6 +209,14 @@ else
                                 <span>@T("Naam opsioneel", "Name optional")</span>
                                 <input @bind="InviteDisplayName" maxlength="120" autocomplete="name" />
                             </label>
+                            <label class="admin-schools-field">
+                                <span>@T("Tydelike wagwoord", "Temporary password")</span>
+                                <input @bind="InvitePassword" type="password" maxlength="200" autocomplete="new-password" />
+                            </label>
+                            <label class="admin-schools-field">
+                                <span>@T("Bevestig wagwoord", "Confirm password")</span>
+                                <input @bind="InvitePasswordConfirmation" type="password" maxlength="200" autocomplete="new-password" />
+                            </label>
                             <MudButton Class="admin-icon-btn admin-action-btn"
                                        Variant="Variant.Filled"
                                        Color="Color.Primary"
@@ -380,6 +388,8 @@ else
     private SchoolDashboardSnapshot? SelectedSchoolDashboard { get; set; }
     private string? InviteEmail { get; set; }
     private string? InviteDisplayName { get; set; }
+    private string? InvitePassword { get; set; }
+    private string? InvitePasswordConfirmation { get; set; }
     private SchoolSeatRecord? StatsModalSeat { get; set; }
     private SchoolSeatStatsSnapshot? SeatStats { get; set; }
     private bool IsStatsLoading { get; set; }
@@ -491,6 +501,8 @@ else
         SelectedSchoolDashboard = null;
         InviteEmail = null;
         InviteDisplayName = null;
+        InvitePassword = null;
+        InvitePasswordConfirmation = null;
         CloseSeatStats();
     }
 
@@ -523,17 +535,24 @@ else
         }
 
         ClearMessages();
+        if (!ValidateInvitePassword())
+        {
+            return;
+        }
+
         IsSeatActionBusy = true;
         try
         {
             var result = await AdminManagementService.InviteAdminSchoolSeatAsync(
                 await ResolveAdminEmailAsync(),
                 Editor.SchoolAccountId.Value,
-                new SchoolInviteTeacherRequest(InviteEmail, InviteDisplayName));
+                new SchoolInviteTeacherRequest(InviteEmail, InviteDisplayName, InvitePassword));
             if (result.IsSuccess)
             {
                 InviteEmail = null;
                 InviteDisplayName = null;
+                InvitePassword = null;
+                InvitePasswordConfirmation = null;
             }
 
             await HandleSeatOperationResultAsync(result, T("Gebruiker is by die skoolplekke gevoeg.", "User was added to the school seats."));
@@ -652,6 +671,24 @@ else
     private void OnAccessExpiresOnChanged(ChangeEventArgs args)
     {
         Editor.AccessExpiresOn = args.Value?.ToString() ?? string.Empty;
+    }
+
+    private bool ValidateInvitePassword()
+    {
+        if (string.IsNullOrWhiteSpace(InvitePassword) ||
+            InvitePassword.Length is < 6 or > 200)
+        {
+            SetError(T("Wagwoord moet tussen 6 en 200 karakters wees.", "Password must be between 6 and 200 characters."));
+            return false;
+        }
+
+        if (!string.Equals(InvitePassword, InvitePasswordConfirmation, StringComparison.Ordinal))
+        {
+            SetError(T("Wagwoorde stem nie ooreen nie.", "Passwords do not match."));
+            return false;
+        }
+
+        return true;
     }
 
     private bool IsSelected(AdminSchoolAccountRecord school) =>

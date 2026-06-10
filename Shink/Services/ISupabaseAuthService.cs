@@ -8,6 +8,11 @@ public interface ISupabaseAuthService
         string password,
         SignUpProfileData? profileData = null,
         CancellationToken cancellationToken = default);
+    Task<SupabaseSignInResult> CreateConfirmedUserWithPasswordAsync(
+        string email,
+        string password,
+        SignUpProfileData? profileData = null,
+        CancellationToken cancellationToken = default);
     Task<SupabasePasswordResetResult> SendPasswordResetEmailAsync(
         string email,
         string redirectTo,

@@ -62,6 +62,10 @@ public class AdminSchoolsPanelSourceTests
         StringAssert.Contains(implementation, "TryCreateAdminSchoolContextAsync");
         StringAssert.Contains(implementation, "schoolAccountId");
         StringAssert.Contains(implementation, "SchoolInviteTeacherRequest");
+        StringAssert.Contains(implementation, "_supabaseAuthService.CreateConfirmedUserWithPasswordAsync");
+        AssertLessThan(
+            implementation.IndexOf("_supabaseAuthService.CreateConfirmedUserWithPasswordAsync", StringComparison.Ordinal),
+            implementation.IndexOf("UpsertAdminSchoolSeatAsync(", StringComparison.Ordinal));
         StringAssert.Contains(implementation, "SchoolSeatStatsSnapshot");
         StringAssert.Contains(implementation, "invited_by_email = context.AdminContext.AdminEmail");
         Assert.IsFalse(implementation.Contains("UpdateAdminSeatUsageAsync", StringComparison.Ordinal));
@@ -76,6 +80,10 @@ public class AdminSchoolsPanelSourceTests
         StringAssert.Contains(markup, "SelectedSchoolDashboard");
         StringAssert.Contains(markup, "GetAdminSchoolDashboardAsync");
         StringAssert.Contains(markup, "InviteAdminSchoolSeatAsync");
+        StringAssert.Contains(markup, "@T(\"Tydelike wagwoord\", \"Temporary password\")");
+        StringAssert.Contains(markup, "@T(\"Bevestig wagwoord\", \"Confirm password\")");
+        StringAssert.Contains(markup, "ValidateInvitePassword()");
+        StringAssert.Contains(markup, "new SchoolInviteTeacherRequest(InviteEmail, InviteDisplayName, InvitePassword)");
         StringAssert.Contains(markup, "RemoveAdminSchoolSeatAsync");
         StringAssert.Contains(markup, "GetAdminSchoolSeatStatsAsync");
         StringAssert.Contains(markup, "@T(\"Nooi gebruiker\", \"Invite user\")");
@@ -101,4 +109,11 @@ public class AdminSchoolsPanelSourceTests
     }
 
     private static string GetSourceFilePath([CallerFilePath] string path = "") => path;
+
+    private static void AssertLessThan(int left, int right)
+    {
+        Assert.AreNotEqual(-1, left, "Expected left marker to exist.");
+        Assert.AreNotEqual(-1, right, "Expected right marker to exist.");
+        Assert.IsLessThan(right, left, $"Expected {left} to appear before {right}.");
+    }
 }

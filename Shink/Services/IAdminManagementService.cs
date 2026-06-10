@@ -340,8 +340,7 @@ public sealed record AdminSubscriberCreateRequest(
     string? LastName,
     string? DisplayName,
     string? MobileNumber,
-    bool SendPasswordReset,
-    string? ResetUrl = null);
+    string? Password);
 
 public sealed record AdminSubscriberDisabledUpdateRequest(
     Guid SubscriberId,

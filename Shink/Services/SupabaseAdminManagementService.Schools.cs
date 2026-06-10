@@ -293,6 +293,25 @@ public sealed partial class SupabaseAdminManagementService
             return new SchoolOperationResult(false, "Al die beskikbare skoolplekke is reeds gebruik.");
         }
 
+        if (string.IsNullOrWhiteSpace(request.Password) || request.Password.Length is < 6 or > 200)
+        {
+            return new SchoolOperationResult(false, "Wagwoord moet tussen 6 en 200 karakters wees.");
+        }
+
+        var authCreateResult = await _supabaseAuthService.CreateConfirmedUserWithPasswordAsync(
+            normalizedEmail,
+            request.Password,
+            new SignUpProfileData(
+                FirstName: null,
+                LastName: null,
+                DisplayName: NormalizeOptionalText(request.DisplayName, 120),
+                MobileNumber: null),
+            cancellationToken);
+        if (!authCreateResult.IsSuccess && !IndicatesExistingAdminSchoolAuthUser(authCreateResult.ErrorMessage))
+        {
+            return new SchoolOperationResult(false, authCreateResult.ErrorMessage ?? "Kon nie Supabase gebruiker nou skep nie.");
+        }
+
         var seatResult = await UpsertAdminSchoolSeatAsync(
             context,
             normalizedEmail,
@@ -811,6 +830,11 @@ public sealed partial class SupabaseAdminManagementService
         var normalized = NormalizeOptionalText(status, 24)?.ToLowerInvariant() ?? "active";
         return SchoolSetupStatuses.Contains(normalized) ? normalized : null;
     }
+
+    private static bool IndicatesExistingAdminSchoolAuthUser(string? message) =>
+        !string.IsNullOrWhiteSpace(message) &&
+        (message.Contains("reeds deur 'n ander rekening gebruik", StringComparison.OrdinalIgnoreCase) ||
+         message.Contains("already", StringComparison.OrdinalIgnoreCase));
 
     private async Task<bool> HasActiveSchoolAdminEmailConflictAsync(
         AdminOperationContext context,
