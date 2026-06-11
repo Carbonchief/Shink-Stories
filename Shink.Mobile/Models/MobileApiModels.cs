@@ -3,6 +3,8 @@ namespace Shink.Mobile.Models;
 public sealed record MobileSession(
     bool IsSignedIn,
     string? Email,
+    string? DisplayName,
+    string? ProfileImageUrl,
     bool HasPaidSubscription,
     IReadOnlyList<string> FavoriteStorySlugs,
     string LoginUrl,

@@ -53,6 +53,8 @@ public sealed class SessionState
     public MobileSession Current { get; private set; } = new(
         IsSignedIn: false,
         Email: null,
+        DisplayName: null,
+        ProfileImageUrl: null,
         HasPaidSubscription: false,
         FavoriteStorySlugs: Array.Empty<string>(),
         LoginUrl: string.Empty,
@@ -102,7 +104,7 @@ public sealed class MobileApiClient
     public async Task<MobileSession> GetSessionAsync(CancellationToken cancellationToken = default)
     {
         var session = await GetAsync<MobileSession>("/api/mobile/session", cancellationToken)
-            ?? new MobileSession(false, null, false, Array.Empty<string>(), string.Empty, string.Empty, string.Empty);
+            ?? new MobileSession(false, null, null, null, false, Array.Empty<string>(), string.Empty, string.Empty, string.Empty);
         _sessionState.Update(session);
         return session;
     }

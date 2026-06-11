@@ -130,6 +130,7 @@ public sealed class LuisterPage : ContentPage
         }
 
         _content.Children.Clear();
+        _content.Children.Add(MobileTopBar.Build(this, _apiClient, _sessionState.Current));
         _content.Children.Add(BuildHero());
         _content.Children.Add(BuildSearchBox());
         _content.Children.Add(BuildAccountPanel());

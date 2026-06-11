@@ -2927,10 +2927,17 @@ app.MapGet("/api/mobile/session", async (
     var favoriteStorySlugs = isSignedIn
         ? await storyFavoriteService.GetFavoriteStorySlugsAsync(signedInEmail, cancellationToken: httpContext.RequestAborted)
         : Array.Empty<string>();
+    var subscriberProfile = isSignedIn
+        ? await subscriptionLedgerService.GetSubscriberProfileAsync(signedInEmail, httpContext.RequestAborted)
+        : null;
+    var displayName = ResolveMobileProfileDisplayName(httpContext.User, subscriberProfile, signedInEmail);
+    var profileImageUrl = ResolveMobileProfileImageUrl(httpContext, subscriberProfile);
 
     return Results.Ok(new MobileSessionResponse(
         IsSignedIn: isSignedIn,
         Email: signedInEmail,
+        DisplayName: displayName,
+        ProfileImageUrl: profileImageUrl,
         HasPaidSubscription: hasPaidSubscription,
         FavoriteStorySlugs: favoriteStorySlugs,
         LoginUrl: ToAbsoluteUri(httpContext, "/teken-in"),
@@ -6064,6 +6071,56 @@ static string? GetSignedInEmail(ClaimsPrincipal user) =>
         ? user.FindFirst(ClaimTypes.Email)?.Value ?? user.Identity?.Name
         : null;
 
+static string? ResolveMobileProfileDisplayName(
+    ClaimsPrincipal user,
+    SubscriberProfile? profile,
+    string? signedInEmail)
+{
+    var displayName = profile?.DisplayName;
+    if (string.IsNullOrWhiteSpace(displayName))
+    {
+        displayName = $"{profile?.FirstName} {profile?.LastName}".Trim();
+    }
+
+    if (string.IsNullOrWhiteSpace(displayName))
+    {
+        displayName = user.FindFirst(ClaimTypes.Name)?.Value
+            ?? user.FindFirst(ClaimTypes.GivenName)?.Value
+            ?? signedInEmail;
+    }
+
+    return string.IsNullOrWhiteSpace(displayName) ? null : displayName.Trim();
+}
+
+static string? ResolveMobileProfileImageUrl(HttpContext httpContext, SubscriberProfile? profile)
+{
+    var profileImageUrl = profile?.ProfileImageUrl;
+    if (string.IsNullOrWhiteSpace(profileImageUrl))
+    {
+        profileImageUrl = httpContext.User.FindFirst("picture")?.Value
+            ?? httpContext.User.FindFirst("avatar_url")?.Value
+            ?? httpContext.User.FindFirst("profile_image_url")?.Value
+            ?? httpContext.User.FindFirst("photo_url")?.Value;
+    }
+
+    if (string.IsNullOrWhiteSpace(profileImageUrl))
+    {
+        return null;
+    }
+
+    var trimmed = profileImageUrl.Trim();
+    if (trimmed.StartsWith("/", StringComparison.Ordinal))
+    {
+        return ToAbsoluteUri(httpContext, trimmed);
+    }
+
+    return Uri.TryCreate(trimmed, UriKind.Absolute, out var parsed) &&
+           (string.Equals(parsed.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(parsed.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase))
+        ? parsed.ToString()
+        : null;
+}
+
 static async Task<MobileStoryAccess> ResolveMobileStoryAccessAsync(
     HttpContext httpContext,
     ISubscriptionLedgerService subscriptionLedgerService)
@@ -6322,6 +6379,8 @@ sealed record MobileFavoriteMutationRequest(bool IsFavorite, string? Source, str
 sealed record MobileSessionResponse(
     bool IsSignedIn,
     string? Email,
+    string? DisplayName,
+    string? ProfileImageUrl,
     bool HasPaidSubscription,
     IReadOnlyList<string> FavoriteStorySlugs,
     string LoginUrl,

@@ -19,15 +19,6 @@ public sealed class AccountPage : ContentPage
     private readonly VerticalStackLayout _signedInState;
     private readonly VerticalStackLayout _signedOutState;
     private readonly VerticalStackLayout _authFormContainer;
-
-    private readonly MauiEntry _loginEmailEntry;
-    private readonly MauiEntry _loginPasswordEntry;
-    private readonly MauiEntry _signupFirstNameEntry;
-    private readonly MauiEntry _signupLastNameEntry;
-    private readonly MauiEntry _signupDisplayNameEntry;
-    private readonly MauiEntry _signupEmailEntry;
-    private readonly MauiEntry _signupMobileEntry;
-    private readonly MauiEntry _signupPasswordEntry;
     private AuthPanelMode _authPanelMode = AuthPanelMode.Landing;
     private bool _hasLoadedSession;
     private bool _isAuthRequestInFlight;
@@ -52,24 +43,6 @@ public sealed class AccountPage : ContentPage
         _signedInState = new VerticalStackLayout { Spacing = 0, IsVisible = hasCachedSession };
         _signedOutState = new VerticalStackLayout { Spacing = 0, IsVisible = !hasCachedSession };
         _authFormContainer = new VerticalStackLayout { Spacing = 12 };
-
-        _loginEmailEntry = new MauiEntry { Placeholder = "E-pos", Keyboard = Keyboard.Email };
-        _loginPasswordEntry = new MauiEntry { Placeholder = "Wagwoord", IsPassword = true };
-        _signupFirstNameEntry = new MauiEntry { Placeholder = "Naam" };
-        _signupLastNameEntry = new MauiEntry { Placeholder = "Van" };
-        _signupDisplayNameEntry = new MauiEntry { Placeholder = "Vertoonnaam" };
-        _signupEmailEntry = new MauiEntry { Placeholder = "E-pos", Keyboard = Keyboard.Email };
-        _signupMobileEntry = new MauiEntry { Placeholder = "Selfoon" };
-        _signupPasswordEntry = new MauiEntry { Placeholder = "Wagwoord", IsPassword = true };
-
-        ConfigureEntry(_loginEmailEntry);
-        ConfigureEntry(_loginPasswordEntry);
-        ConfigureEntry(_signupFirstNameEntry);
-        ConfigureEntry(_signupLastNameEntry);
-        ConfigureEntry(_signupDisplayNameEntry);
-        ConfigureEntry(_signupEmailEntry);
-        ConfigureEntry(_signupMobileEntry);
-        ConfigureEntry(_signupPasswordEntry);
         ApplySessionState();
 
         Content = new Grid
@@ -190,8 +163,7 @@ public sealed class AccountPage : ContentPage
 
     private View BuildAuthPanel()
     {
-        _authFormContainer.Children.Clear();
-        BuildAuthFormContent();
+        RenderAuthFormContent();
 
         return new Border
         {
@@ -302,10 +274,14 @@ public sealed class AccountPage : ContentPage
         return border;
     }
 
-    private void BuildAuthFormContent()
+    private void RenderAuthFormContent()
     {
+        _authFormContainer.Children.Clear();
+
         if (_authPanelMode == AuthPanelMode.SignIn)
         {
+            var loginEmailEntry = CreateEntry("E-pos", Keyboard.Email);
+            var loginPasswordEntry = CreateEntry("Wagwoord", isPassword: true);
             var loginLabel = new Label
             {
                 Text = "Meld aan",
@@ -348,10 +324,10 @@ public sealed class AccountPage : ContentPage
                     return;
                 }
 
-                SetLoginSubmitLoading(loginButton, loginLabel, loginSpinner, isLoading: true);
+                SetLoginSubmitLoading(loginButton, loginLabel, loginSpinner, loginEmailEntry, loginPasswordEntry, isLoading: true);
                 try
                 {
-                    var result = await _apiClient.SignInAsync(_loginEmailEntry.Text ?? string.Empty, _loginPasswordEntry.Text ?? string.Empty);
+                    var result = await _apiClient.SignInAsync(loginEmailEntry.Text ?? string.Empty, loginPasswordEntry.Text ?? string.Empty);
                     await RefreshSessionAsync(result.Message);
                 }
                 catch (Exception ex)
@@ -360,19 +336,25 @@ public sealed class AccountPage : ContentPage
                 }
                 finally
                 {
-                    SetLoginSubmitLoading(loginButton, loginLabel, loginSpinner, isLoading: false);
+                    SetLoginSubmitLoading(loginButton, loginLabel, loginSpinner, loginEmailEntry, loginPasswordEntry, isLoading: false);
                 }
             };
             loginButton.GestureRecognizers.Add(loginTap);
 
-            _authFormContainer.Children.Add(BuildField(_loginEmailEntry));
-            _authFormContainer.Children.Add(BuildField(_loginPasswordEntry));
+            _authFormContainer.Children.Add(BuildField(loginEmailEntry));
+            _authFormContainer.Children.Add(BuildField(loginPasswordEntry));
             _authFormContainer.Children.Add(loginButton);
             return;
         }
 
         if (_authPanelMode == AuthPanelMode.SignUp)
         {
+            var signupFirstNameEntry = CreateEntry("Naam");
+            var signupLastNameEntry = CreateEntry("Van");
+            var signupDisplayNameEntry = CreateEntry("Vertoonnaam");
+            var signupEmailEntry = CreateEntry("E-pos", Keyboard.Email);
+            var signupMobileEntry = CreateEntry("Selfoon");
+            var signupPasswordEntry = CreateEntry("Wagwoord", isPassword: true);
             var signupButton = new Button
             {
                 Text = "Skep rekening",
@@ -387,12 +369,12 @@ public sealed class AccountPage : ContentPage
                 try
                 {
                     var result = await _apiClient.SignUpAsync(
-                        _signupFirstNameEntry.Text ?? string.Empty,
-                        _signupLastNameEntry.Text ?? string.Empty,
-                        _signupDisplayNameEntry.Text ?? string.Empty,
-                        _signupEmailEntry.Text ?? string.Empty,
-                        _signupMobileEntry.Text ?? string.Empty,
-                        _signupPasswordEntry.Text ?? string.Empty);
+                        signupFirstNameEntry.Text ?? string.Empty,
+                        signupLastNameEntry.Text ?? string.Empty,
+                        signupDisplayNameEntry.Text ?? string.Empty,
+                        signupEmailEntry.Text ?? string.Empty,
+                        signupMobileEntry.Text ?? string.Empty,
+                        signupPasswordEntry.Text ?? string.Empty);
                     await RefreshSessionAsync(result.Message);
                 }
                 catch (Exception ex)
@@ -401,12 +383,12 @@ public sealed class AccountPage : ContentPage
                 }
             };
 
-            _authFormContainer.Children.Add(BuildField(_signupFirstNameEntry));
-            _authFormContainer.Children.Add(BuildField(_signupLastNameEntry));
-            _authFormContainer.Children.Add(BuildField(_signupDisplayNameEntry));
-            _authFormContainer.Children.Add(BuildField(_signupEmailEntry));
-            _authFormContainer.Children.Add(BuildField(_signupMobileEntry));
-            _authFormContainer.Children.Add(BuildField(_signupPasswordEntry));
+            _authFormContainer.Children.Add(BuildField(signupFirstNameEntry));
+            _authFormContainer.Children.Add(BuildField(signupLastNameEntry));
+            _authFormContainer.Children.Add(BuildField(signupDisplayNameEntry));
+            _authFormContainer.Children.Add(BuildField(signupEmailEntry));
+            _authFormContainer.Children.Add(BuildField(signupMobileEntry));
+            _authFormContainer.Children.Add(BuildField(signupPasswordEntry));
             _authFormContainer.Children.Add(signupButton);
         }
     }
@@ -414,18 +396,36 @@ public sealed class AccountPage : ContentPage
     private void SetAuthPanelMode(AuthPanelMode mode)
     {
         _authPanelMode = _authPanelMode == mode ? AuthPanelMode.Landing : mode;
-        BuildSignedOutState();
+        RenderAuthFormContent();
     }
 
-    private void SetLoginSubmitLoading(Border button, Label label, ActivityIndicator spinner, bool isLoading)
+    private void SetLoginSubmitLoading(
+        Border button,
+        Label label,
+        ActivityIndicator spinner,
+        MauiEntry emailEntry,
+        MauiEntry passwordEntry,
+        bool isLoading)
     {
         _isAuthRequestInFlight = isLoading;
         button.Opacity = isLoading ? 0.82 : 1;
         label.Text = isLoading ? "Meld aan..." : "Meld aan";
         spinner.IsVisible = isLoading;
         spinner.IsRunning = isLoading;
-        _loginEmailEntry.IsEnabled = !isLoading;
-        _loginPasswordEntry.IsEnabled = !isLoading;
+        emailEntry.IsEnabled = !isLoading;
+        passwordEntry.IsEnabled = !isLoading;
+    }
+
+    private static MauiEntry CreateEntry(string placeholder, Keyboard? keyboard = null, bool isPassword = false)
+    {
+        var entry = new MauiEntry
+        {
+            Placeholder = placeholder,
+            Keyboard = keyboard ?? Keyboard.Default,
+            IsPassword = isPassword
+        };
+        ConfigureEntry(entry);
+        return entry;
     }
 
     private static void ConfigureEntry(MauiEntry entry)
@@ -491,12 +491,17 @@ public sealed class AccountPage : ContentPage
                 await RefreshSessionAsync("Jy is nou afgeteken.");
             };
 
+            _signedInState.Children.Add(MobileTopBar.Build(
+                this,
+                _apiClient,
+                session,
+                new Thickness(18, 54, 18, 0)));
             _signedInState.Children.Add(new Border
             {
                 BackgroundColor = Color.FromArgb("#FFF7E8"),
                 StrokeThickness = 0,
                 StrokeShape = new RoundRectangle { CornerRadius = 34 },
-                Margin = new Thickness(18, 96, 18, 28),
+                Margin = new Thickness(18, 18, 18, 28),
                 Padding = new Thickness(24),
                 Content = new VerticalStackLayout
                 {
@@ -521,7 +526,7 @@ public sealed class AccountPage : ContentPage
                         },
                         new Label
                         {
-                            Text = session.Email ?? "Ingeteken",
+                            Text = session.DisplayName ?? session.Email ?? "Ingeteken",
                             FontSize = 16,
                             TextColor = Color.FromArgb("#5F5F5F"),
                             HorizontalTextAlignment = TextAlignment.Center
