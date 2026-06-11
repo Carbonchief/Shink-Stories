@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using Shink.Mobile.Pages;
 using Shink.Mobile.Services;
+using Shink.Mobile.Views;
 
 namespace Shink.Mobile;
 
@@ -10,13 +11,22 @@ public static class MauiProgram
     {
         var builder = MauiApp.CreateBuilder();
         builder
-            .UseMauiApp<App>();
+            .UseMauiApp<App>()
+            .ConfigureMauiHandlers(handlers =>
+            {
+#if IOS
+                handlers.AddHandler<CastRoutePickerView, Shink.Mobile.Platforms.iOS.CastRoutePickerViewHandler>();
+#endif
+            });
+        ConfigureEntryChrome();
 
         var mobileAppSettings = new MobileAppSettings();
         mobileAppSettings.BaseUrl = ResolveMobileApiBaseUrl(mobileAppSettings.BaseUrl);
         builder.Services.AddSingleton(mobileAppSettings);
         builder.Services.AddSingleton<SessionState>();
+        builder.Services.AddSingleton<PlaylistPlaybackState>();
         builder.Services.AddSingleton<MobileApiClient>();
+        builder.Services.AddSingleton<IAudioPlaybackService, AudioPlaybackService>();
         builder.Services.AddSingleton<AppShell>();
         builder.Services.AddTransient<HomePage>();
         builder.Services.AddTransient<GratisPage>();
@@ -78,4 +88,17 @@ public static class MauiProgram
         return true;
     }
 
+    private static void ConfigureEntryChrome()
+    {
+        Microsoft.Maui.Handlers.EntryHandler.Mapper.AppendToMapping("SchinkPlainEntryChrome", (handler, _) =>
+        {
+#if IOS || MACCATALYST
+            handler.PlatformView.BorderStyle = UIKit.UITextBorderStyle.None;
+            handler.PlatformView.BackgroundColor = UIKit.UIColor.Clear;
+#elif ANDROID
+            handler.PlatformView.Background = null;
+            handler.PlatformView.SetPadding(0, 0, 0, 0);
+#endif
+        });
+    }
 }

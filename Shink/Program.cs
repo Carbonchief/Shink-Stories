@@ -3005,7 +3005,7 @@ app.MapGet("/api/mobile/luister", async (
             Slug: playlist.Slug,
             Title: playlist.Title,
             Description: playlist.Description,
-            ArtworkUrl: ToAbsoluteUri(httpContext, playlist.LogoImagePath ?? playlist.BackdropImagePath ?? "/branding/schink-logo-text.png"),
+            ArtworkUrl: BuildMobilePlaylistArtworkUri(httpContext, playlist),
             BackdropUrl: ToAbsoluteUri(httpContext, playlist.BackdropImagePath ?? playlist.LogoImagePath ?? "/branding/Schink_Stories_01.png"),
             Stories: playlist.Stories
                 .Select(story => BuildMobileStorySummary(
@@ -3029,7 +3029,8 @@ app.MapGet("/api/mobile/stories/{slug}", async (
     IStoryCatalogService storyCatalogService,
     ISubscriptionLedgerService subscriptionLedgerService,
     IStoryFavoriteService storyFavoriteService,
-    IAudioAccessService audioAccessService) =>
+    IAudioAccessService audioAccessService,
+    IStoryMediaStorageService storyMediaStorageService) =>
 {
     var normalizedSource = string.Equals(source, "gratis", StringComparison.OrdinalIgnoreCase)
         ? "gratis"
@@ -3058,19 +3059,22 @@ app.MapGet("/api/mobile/stories/{slug}", async (
     var currentIndex = Array.FindIndex(orderedStories, item => string.Equals(item.Slug, story.Slug, StringComparison.OrdinalIgnoreCase));
     var previousStory = currentIndex > 0 ? orderedStories[currentIndex - 1] : null;
     var nextStory = currentIndex >= 0 && currentIndex < orderedStories.Length - 1 ? orderedStories[currentIndex + 1] : null;
+    var audioUrl = isLocked
+        ? null
+        : await ResolveMobileAudioUrlAsync(
+            httpContext,
+            story,
+            audioAccessService,
+            storyMediaStorageService);
 
     return Results.Ok(new MobileStoryDetailResponse(
         Story: BuildMobileStorySummary(httpContext, story, normalizedSource, isLocked, isFavorite),
-        AudioUrl: isLocked ? null : ToAbsoluteUri(httpContext, audioAccessService.CreateSignedAudioUrl(story.Slug)),
+        AudioUrl: audioUrl,
         ShareUrl: ToAbsoluteUri(httpContext, $"/luister/{Uri.EscapeDataString(story.Slug)}"),
         RequiresSubscription: isLocked,
         PreviousStory: previousStory is null ? null : BuildMobileStorySummary(httpContext, previousStory, normalizedSource, !CanAccessStory(previousStory, access), favoriteSlugs.Contains(previousStory.Slug, StringComparer.OrdinalIgnoreCase)),
         NextStory: nextStory is null ? null : BuildMobileStorySummary(httpContext, nextStory, normalizedSource, !CanAccessStory(nextStory, access), favoriteSlugs.Contains(nextStory.Slug, StringComparer.OrdinalIgnoreCase)),
-        RelatedStories: orderedStories
-            .Where(item => !string.Equals(item.Slug, story.Slug, StringComparison.OrdinalIgnoreCase))
-            .Take(12)
-            .Select(item => BuildMobileStorySummary(httpContext, item, normalizedSource, !CanAccessStory(item, access), favoriteSlugs.Contains(item.Slug, StringComparer.OrdinalIgnoreCase)))
-            .ToArray(),
+        RelatedStories: Array.Empty<MobileStorySummaryResponse>(),
         LoginUrl: ToAbsoluteUri(httpContext, $"/teken-in?returnUrl={Uri.EscapeDataString($"/luister/{story.Slug}")}"),
         PlansUrl: ToAbsoluteUri(httpContext, $"/opsies?returnUrl={Uri.EscapeDataString($"/luister/{story.Slug}")}")));
 }).DisableAntiforgery();
@@ -6096,7 +6100,14 @@ static string ToAbsoluteUri(HttpContext httpContext, string? pathOrUrl)
         return string.Empty;
     }
 
-    if (Uri.TryCreate(pathOrUrl, UriKind.Absolute, out var absoluteUri))
+    var trimmedPathOrUrl = pathOrUrl.Trim();
+    if (trimmedPathOrUrl.StartsWith("//", StringComparison.Ordinal))
+    {
+        trimmedPathOrUrl = $"https:{trimmedPathOrUrl}";
+    }
+
+    if (Uri.TryCreate(trimmedPathOrUrl, UriKind.Absolute, out var absoluteUri) &&
+        absoluteUri.Scheme is "http" or "https")
     {
         return absoluteUri.ToString();
     }
@@ -6122,7 +6133,119 @@ static string ToAbsoluteUri(HttpContext httpContext, string? pathOrUrl)
     }
 
     var baseUrl = $"{scheme}://{host}{request.PathBase}".TrimEnd('/');
-    return $"{baseUrl}/{pathOrUrl.TrimStart('/')}";
+    return $"{baseUrl}/{trimmedPathOrUrl.TrimStart('/')}";
+}
+
+static string ToMobileMediaUri(HttpContext httpContext, string? pathOrUrl)
+{
+    if (string.IsNullOrWhiteSpace(pathOrUrl))
+    {
+        return string.Empty;
+    }
+
+    var trimmedPathOrUrl = pathOrUrl.Trim();
+    if (trimmedPathOrUrl.StartsWith("//", StringComparison.Ordinal))
+    {
+        trimmedPathOrUrl = $"https:{trimmedPathOrUrl}";
+    }
+
+    if (TryExtractImageProxySource(trimmedPathOrUrl, out var proxiedSourceUrl))
+    {
+        return proxiedSourceUrl;
+    }
+
+    if (Uri.TryCreate(trimmedPathOrUrl, UriKind.Absolute, out var absoluteUri) &&
+        absoluteUri.Scheme is "http" or "https")
+    {
+        return absoluteUri.ToString();
+    }
+
+    return ToAbsoluteUri(httpContext, trimmedPathOrUrl);
+}
+
+static string BuildMobilePlaylistArtworkUri(HttpContext httpContext, StoryPlaylist playlist)
+{
+    var candidates = new[]
+    {
+        playlist.ShowcaseImagePath,
+        playlist.BackdropImagePath,
+        playlist.LogoImagePath,
+        "/branding/Schink_Stories_01.png"
+    };
+
+    foreach (var candidate in candidates)
+    {
+        var normalized = NormalizeMobilePlaylistImagePath(candidate);
+        if (!string.IsNullOrWhiteSpace(normalized))
+        {
+            return ToMobileMediaUri(httpContext, normalized);
+        }
+    }
+
+    return ToMobileMediaUri(httpContext, "/branding/Schink_Stories_01.png");
+}
+
+static string? NormalizeMobilePlaylistImagePath(string? value) =>
+    string.IsNullOrWhiteSpace(value)
+        ? null
+        : StoryItem.RewriteImagePathForBrowser(value.Trim());
+
+static bool TryExtractImageProxySource(string pathOrUrl, out string sourceUrl)
+{
+    sourceUrl = string.Empty;
+    var queryStart = pathOrUrl.IndexOf('?', StringComparison.Ordinal);
+    var path = queryStart >= 0 ? pathOrUrl[..queryStart] : pathOrUrl;
+    if (Uri.TryCreate(pathOrUrl, UriKind.Absolute, out var absoluteUri) &&
+        absoluteUri.Scheme is "http" or "https")
+    {
+        path = absoluteUri.AbsolutePath;
+        queryStart = absoluteUri.Query.Length > 0 ? 0 : -1;
+    }
+
+    if (!string.Equals(path.TrimEnd('/'), "/media/image", StringComparison.OrdinalIgnoreCase) ||
+        queryStart < 0)
+    {
+        return false;
+    }
+
+    var query = Uri.TryCreate(pathOrUrl, UriKind.Absolute, out var queryUri)
+        ? queryUri.Query
+        : pathOrUrl[queryStart..];
+    var values = QueryHelpers.ParseQuery(query);
+    if (!values.TryGetValue("src", out var sourceValues))
+    {
+        return false;
+    }
+
+    var candidate = sourceValues.FirstOrDefault();
+    if (string.IsNullOrWhiteSpace(candidate) ||
+        !Uri.TryCreate(candidate, UriKind.Absolute, out var sourceUri) ||
+        sourceUri.Scheme is not ("http" or "https"))
+    {
+        return false;
+    }
+
+    sourceUrl = sourceUri.ToString();
+    return true;
+}
+
+static async Task<string?> ResolveMobileAudioUrlAsync(
+    HttpContext httpContext,
+    StoryItem story,
+    IAudioAccessService audioAccessService,
+    IStoryMediaStorageService storyMediaStorageService)
+{
+    if (string.Equals(story.AudioProvider, "r2", StringComparison.OrdinalIgnoreCase))
+    {
+        var readUri = await storyMediaStorageService.CreateAudioReadUrlAsync(
+            story.AudioBucket,
+            story.AudioFileName,
+            TimeSpan.FromMinutes(30),
+            httpContext.RequestAborted);
+        return readUri?.ToString();
+    }
+
+    return ToAbsoluteUri(httpContext, audioAccessService.CreateSignedAudioUrl(story.Slug));
 }
 
 static MobileStorySummaryResponse BuildMobileStorySummary(
@@ -6135,14 +6258,15 @@ static MobileStorySummaryResponse BuildMobileStorySummary(
         Slug: story.Slug,
         Title: story.Title,
         Description: story.Description,
-        ImageUrl: ToAbsoluteUri(httpContext, story.ImagePath),
-        ThumbnailUrl: ToAbsoluteUri(httpContext, story.ThumbnailPath),
+        ImageUrl: ToMobileMediaUri(httpContext, story.ImagePath),
+        ThumbnailUrl: ToMobileMediaUri(httpContext, story.ThumbnailPath),
         Source: source,
         IsLocked: isLocked,
         IsFavorite: isFavorite,
         DetailUrl: ToAbsoluteUri(
             httpContext,
-            $"/luister/{Uri.EscapeDataString(story.Slug)}"));
+            $"/luister/{Uri.EscapeDataString(story.Slug)}"),
+        DurationSeconds: story.DurationSeconds);
 
 sealed record ContactApiRequest(string? Name, string? Email, string? Subject, string? Message, string? Website);
 sealed record AuthSignInApiRequest(string? Email, string? Password);
@@ -6214,7 +6338,8 @@ sealed record MobileStorySummaryResponse(
     string Source,
     bool IsLocked,
     bool IsFavorite,
-    string DetailUrl);
+    string DetailUrl,
+    decimal? DurationSeconds);
 sealed record MobileHomeResponse(
     string HeroTitle,
     string HeroSubtitle,

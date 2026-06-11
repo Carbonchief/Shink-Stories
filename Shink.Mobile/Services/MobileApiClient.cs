@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Shink.Mobile.Models;
@@ -125,12 +126,14 @@ public sealed class MobileApiClient
 
     public string BuildAbsoluteUrl(string path)
     {
-        if (Uri.TryCreate(path, UriKind.Absolute, out var absoluteUri))
+        var normalizedPath = NormalizeIncomingUrl(path);
+        if (Uri.TryCreate(normalizedPath, UriKind.Absolute, out var absoluteUri) &&
+            IsWebUri(absoluteUri))
         {
             return absoluteUri.ToString();
         }
 
-        var normalizedPath = path.StartsWith("/", StringComparison.Ordinal) ? path : $"/{path}";
+        normalizedPath = normalizedPath.StartsWith("/", StringComparison.Ordinal) ? normalizedPath : $"/{normalizedPath}";
         return $"{_settings.BaseUrl.TrimEnd('/')}{normalizedPath}";
     }
 
@@ -274,14 +277,13 @@ public sealed class MobileApiClient
             return string.Empty;
         }
 
-        var trimmedUrl = url.Trim();
-        if (trimmedUrl.StartsWith("//", StringComparison.Ordinal))
+        var trimmedUrl = NormalizeIncomingUrl(url.Trim());
+        if (TryExtractImageProxySource(trimmedUrl, out var proxiedImageUrl))
         {
-            trimmedUrl = $"https:{trimmedUrl}";
+            return proxiedImageUrl;
         }
 
-        if (Uri.TryCreate(trimmedUrl, UriKind.Absolute, out var parsed) &&
-            (parsed.Scheme is "http" or "https"))
+        if (Uri.TryCreate(trimmedUrl, UriKind.Absolute, out var parsed) && IsWebUri(parsed))
         {
             return parsed.ToString();
         }
@@ -289,10 +291,203 @@ public sealed class MobileApiClient
         return BuildAbsoluteUrl(trimmedUrl);
     }
 
+    public async Task<string> PrepareAudioPlaybackSourceAsync(
+        string? audioUrl,
+        string slug,
+        string source,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(audioUrl))
+        {
+            throw new InvalidOperationException("Geen audio URL is beskikbaar nie.");
+        }
+
+        var playableUrl = BuildAbsoluteUrl(audioUrl);
+        if (!ShouldDownloadAudioForPlayback(playableUrl))
+        {
+            return playableUrl;
+        }
+
+        return await DownloadAudioForPlaybackAsync(playableUrl, slug, source, cancellationToken);
+    }
+
+    public async Task<string> DownloadAudioForPlaybackAsync(
+        string audioUrl,
+        string slug,
+        string source,
+        CancellationToken cancellationToken = default)
+    {
+        var playableUrl = BuildAbsoluteUrl(audioUrl);
+        var cacheDirectory = System.IO.Path.Combine(FileSystem.CacheDirectory, "story-audio");
+        Directory.CreateDirectory(cacheDirectory);
+
+        var cacheKey = BuildAudioCacheKey(playableUrl);
+        var extension = ResolveAudioExtensionFromUrl(playableUrl);
+        var fileName = $"{ToSafeFileSegment(source)}-{ToSafeFileSegment(slug)}-{cacheKey}{extension}";
+        var cachePath = System.IO.Path.Combine(cacheDirectory, fileName);
+        if (File.Exists(cachePath) && new FileInfo(cachePath).Length > 0)
+        {
+            return new Uri(cachePath).AbsoluteUri;
+        }
+
+        var temporaryPath = $"{cachePath}.tmp";
+        if (File.Exists(temporaryPath))
+        {
+            File.Delete(temporaryPath);
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(playableUrl, UriKind.Absolute));
+        using var response = await _httpClient.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+
+        await using (var sourceStream = await response.Content.ReadAsStreamAsync(cancellationToken))
+        await using (var fileStream = File.Create(temporaryPath))
+        {
+            await sourceStream.CopyToAsync(fileStream, cancellationToken);
+        }
+
+        if (File.Exists(cachePath))
+        {
+            File.Delete(cachePath);
+        }
+
+        File.Move(temporaryPath, cachePath);
+        return new Uri(cachePath).AbsoluteUri;
+    }
+
     private Uri BuildUri(string path) => new($"{_settings.BaseUrl.TrimEnd('/')}{path}", UriKind.Absolute);
 
     private static string BuildMobileStoryPath(string slug, string source) =>
         $"/mobile/{Uri.EscapeDataString(source)}/{Uri.EscapeDataString(slug)}";
+
+    private static string NormalizeIncomingUrl(string url)
+    {
+        var trimmedUrl = url.Trim();
+        if (trimmedUrl.StartsWith("//", StringComparison.Ordinal))
+        {
+            return $"https:{trimmedUrl}";
+        }
+
+        if (Uri.TryCreate(trimmedUrl, UriKind.Absolute, out var parsed) &&
+            string.Equals(parsed.Scheme, Uri.UriSchemeFile, StringComparison.OrdinalIgnoreCase))
+        {
+            var path = Uri.UnescapeDataString(parsed.AbsolutePath);
+            return $"{path}{parsed.Query}{parsed.Fragment}";
+        }
+
+        if (trimmedUrl.StartsWith("/media/image%3F", StringComparison.OrdinalIgnoreCase))
+        {
+            return Uri.UnescapeDataString(trimmedUrl);
+        }
+
+        return trimmedUrl;
+    }
+
+    private static bool TryExtractImageProxySource(string url, out string imageUrl)
+    {
+        imageUrl = string.Empty;
+        string path;
+        string query;
+
+        if (Uri.TryCreate(url, UriKind.Absolute, out var parsed) && IsWebUri(parsed))
+        {
+            path = parsed.AbsolutePath;
+            query = parsed.Query;
+        }
+        else
+        {
+            var queryStart = url.IndexOf('?', StringComparison.Ordinal);
+            if (queryStart < 0)
+            {
+                return false;
+            }
+
+            path = url[..queryStart];
+            query = url[queryStart..];
+        }
+
+        if (!string.Equals(path.TrimEnd('/'), "/media/image", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        foreach (var pair in query.TrimStart('?').Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var separator = pair.IndexOf('=', StringComparison.Ordinal);
+            var key = separator >= 0 ? pair[..separator] : pair;
+            if (!string.Equals(Uri.UnescapeDataString(key.Replace('+', ' ')), "src", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var value = separator >= 0 ? pair[(separator + 1)..] : string.Empty;
+            var candidate = Uri.UnescapeDataString(value.Replace('+', ' '));
+            if (Uri.TryCreate(candidate, UriKind.Absolute, out var sourceUri) && IsWebUri(sourceUri))
+            {
+                imageUrl = sourceUri.ToString();
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool IsWebUri(Uri uri) =>
+        string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
+
+    private static bool ShouldDownloadAudioForPlayback(string audioUrl)
+    {
+        if (!Uri.TryCreate(audioUrl, UriKind.Absolute, out var uri))
+        {
+            return true;
+        }
+
+        return string.Equals(uri.Host, "www.schink.co.za", StringComparison.OrdinalIgnoreCase) &&
+               uri.AbsolutePath.StartsWith("/media/audio/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildAudioCacheKey(string audioUrl)
+    {
+        var stableUrl = audioUrl;
+        if (Uri.TryCreate(audioUrl, UriKind.Absolute, out var uri))
+        {
+            stableUrl = uri.GetLeftPart(UriPartial.Path);
+        }
+
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(stableUrl)))[..12].ToLowerInvariant();
+    }
+
+    private static string ResolveAudioExtensionFromUrl(string audioUrl)
+    {
+        if (Uri.TryCreate(audioUrl, UriKind.Absolute, out var uri))
+        {
+            var extension = System.IO.Path.GetExtension(uri.AbsolutePath).ToLowerInvariant();
+            if (extension is ".mp3" or ".mpeg" or ".m4a" or ".wav" or ".ogg")
+            {
+                return extension == ".mpeg" ? ".mp3" : extension;
+            }
+        }
+
+        return ".mp3";
+    }
+
+    private static string ToSafeFileSegment(string value)
+    {
+        var builder = new StringBuilder(value.Length);
+        foreach (var character in value)
+        {
+            builder.Append(char.IsLetterOrDigit(character) || character is '-' or '_'
+                ? char.ToLowerInvariant(character)
+                : '-');
+        }
+
+        var segment = builder.ToString().Trim('-');
+        return string.IsNullOrWhiteSpace(segment) ? "audio" : segment;
+    }
 
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {

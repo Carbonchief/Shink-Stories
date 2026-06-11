@@ -72,5 +72,11 @@ public sealed class GratisPage : ContentPage
     }
 
     private Task OpenStoryAsync(MobileStorySummary story) =>
-        Shell.Current.GoToAsync($"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source=gratis");
+        Shell.Current.GoToAsync(
+            $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source=gratis",
+            animate: false,
+            parameters: new Dictionary<string, object>
+            {
+                ["preview"] = story
+            });
 }

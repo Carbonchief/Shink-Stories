@@ -20,6 +20,10 @@ public partial class AppShell : Shell
         _services = services;
         _apiClient = apiClient;
         _sessionState = sessionState;
+        Shell.SetTabBarForegroundColor(this, Color.FromArgb("#146D69"));
+        Shell.SetTabBarUnselectedColor(this, Color.FromArgb("#7C817C"));
+        Shell.SetTabBarTitleColor(this, Color.FromArgb("#146D69"));
+        Shell.SetTabBarBackgroundColor(this, Color.FromArgb("#FFF7E8"));
 
         Items.Clear();
         Routing.RegisterRoute(nameof(StoryDetailPage), typeof(StoryDetailPage));
@@ -123,21 +127,19 @@ public partial class AppShell : Shell
 
         Items.Clear();
         var tabs = new TabBar();
-        tabs.Items.Add(CreateTab("Luister", () => _services.GetRequiredService<LuisterPage>()));
-        tabs.Items.Add(CreateTab("Gratis", () => _services.GetRequiredService<GratisPage>()));
-        tabs.Items.Add(CreateTab("Tuis", () => _services.GetRequiredService<HomePage>()));
-        tabs.Items.Add(CreateTab("Meer", () => _services.GetRequiredService<AboutPage>()));
-        tabs.Items.Add(CreateTab("Rekening", () => _services.GetRequiredService<AccountPage>()));
+        tabs.Items.Add(CreateTab("Luister", "tab_luister.png", () => _services.GetRequiredService<LuisterPage>()));
+        tabs.Items.Add(CreateTab("Rekening", "tab_rekening.png", () => _services.GetRequiredService<AccountPage>()));
         Items.Add(tabs);
         _isSignedInRendered = true;
     }
 
-    private static Tab CreateTab(string title, Func<Page> pageFactory)
+    private static Tab CreateTab(string title, string icon, Func<Page> pageFactory)
     {
-        var tab = new Tab { Title = title };
+        var tab = new Tab { Title = title, Icon = icon };
         tab.Items.Add(new ShellContent
         {
             Title = title,
+            Icon = icon,
             ContentTemplate = new DataTemplate(pageFactory)
         });
         return tab;

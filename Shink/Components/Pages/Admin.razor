@@ -1559,35 +1559,13 @@
                                     <div class="admin-subscriber-analytics-visual">
                                         @if (CurrentSubscriberTrendMetrics.Count > 0)
                                         {
-                                            <div class="admin-subscriber-analytics-chart-shell admin-subscriber-trend-list"
+                                            <div class="admin-subscriber-analytics-chart-shell"
                                                  role="img"
                                                  aria-label='@T("Nuwe en gekanselleerde intekenaars per tydperk", "New and cancelled subscribers by period")'>
-                                                @foreach (var metric in CurrentSubscriberTrendMetrics)
-                                                {
-                                                    <div class="admin-subscriber-trend-row">
-                                                        <div class="admin-subscriber-trend-period">
-                                                            <strong>@metric.PeriodLabel</strong>
-                                                        </div>
-                                                        <div class="admin-subscriber-trend-bars">
-                                                            <div class="admin-subscriber-trend-line">
-                                                                <span>@T("Nuwe", "New")</span>
-                                                                <div class="admin-subscriber-trend-track">
-                                                                    <div class="admin-subscriber-trend-fill is-signups"
-                                                                         style="width: @FormatSubscriberTrendBarWidth(metric.Signups);"></div>
-                                                                </div>
-                                                                <strong>@FormatAnalyticsNumber(metric.Signups)</strong>
-                                                            </div>
-                                                            <div class="admin-subscriber-trend-line">
-                                                                <span>@T("Gekanselleer", "Cancelled")</span>
-                                                                <div class="admin-subscriber-trend-track">
-                                                                    <div class="admin-subscriber-trend-fill is-cancellations"
-                                                                         style="width: @FormatSubscriberTrendBarWidth(metric.Cancellations);"></div>
-                                                                </div>
-                                                                <strong>@FormatAnalyticsNumber(metric.Cancellations)</strong>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                }
+                                                <MudChart T="double"
+                                                          ChartType="ChartType.Line"
+                                                          ChartSeries="SubscriberTrendChartSeries"
+                                                          ChartLabels="SubscriberTrendChartLabels" />
                                             </div>
                                         }
                                         else
@@ -1991,38 +1969,6 @@
                                         <div class="admin-analytics-meta">
                                             <span>@T("Gefaktureer per jaar", "Billed yearly")</span>
                                             <strong>@FormatCurrency(yearlyRecurringRevenue.BillingAmountZar)</strong>
-                                        </div>
-                                    </article>
-                                </section>
-
-                                <section class="admin-report-analytics-layout">
-                                    <article class="admin-report-panel">
-                                        <div class="admin-analytics-panel-head">
-                                            <div>
-                                                <h3>@T("Verkope samestelling", "Sales mix")</h3>
-                                                <p>@T("Balkgrafiek vir nuwe, recurring en jaarlikse verkope (gebaseer op huidige snapshot-data).", "Bar chart for new, recurring, and yearly sales (from the current snapshot data).")</p>
-                                            </div>
-                                        </div>
-                                        <div class="admin-report-chart-shell">
-                                            <MudChart T="double"
-                                                      ChartType="ChartType.Bar"
-                                                      ChartSeries="RevenueCompositionChartSeries"
-                                                      ChartLabels="RevenueCompositionChartLabels" />
-                                        </div>
-                                    </article>
-
-                                    <article class="admin-report-panel">
-                                        <div class="admin-analytics-panel-head">
-                                            <div>
-                                                <h3>@T("Maand vergelyking", "Monthly comparison")</h3>
-                                                <p>@T("Lyn grafiek wat hierdie maand langs vorige maand en dieselfde maand verlede jaar plaas.", "Line chart that places this month alongside last month and the same month last year.")</p>
-                                            </div>
-                                        </div>
-                                        <div class="admin-report-chart-shell">
-                                            <MudChart T="double"
-                                                      ChartType="ChartType.Line"
-                                                      ChartSeries="RevenueComparisonChartSeries"
-                                                      ChartLabels="RevenueComparisonChartLabels" />
                                         </div>
                                     </article>
                                 </section>
@@ -4727,47 +4673,6 @@
             }
         ];
 
-    private string[] RevenueCompositionChartLabels =>
-        [
-            T("Nuwe", "New"),
-            T("Recurring", "Recurring"),
-            T("Jaar", "Year")
-        ];
-
-    private List<ChartSeries<double>> RevenueCompositionChartSeries =>
-        [
-            new ChartSeries<double>
-            {
-                Name = T("Verkope", "Sales"),
-                Data = new double[]
-                {
-                    ThisMonthNewSalesCount,
-                    ThisMonthRecurringSalesCount,
-                    ThisYearSalesCount
-                }
-            }
-        ];
-
-    private string[] RevenueComparisonChartLabels =>
-        [
-            SameMonthLastYearStart.ToString("MMM yy", CultureInfo.InvariantCulture),
-            PreviousMonthStart.ToString("MMM yy", CultureInfo.InvariantCulture),
-            CurrentMonthStart.ToString("MMM yy", CultureInfo.InvariantCulture)
-        ];
-
-    private List<ChartSeries<double>> RevenueComparisonChartSeries =>
-        [
-            new ChartSeries<double>
-            {
-                Name = T("Inkomste (R)", "Revenue (R)"),
-                Data = new[]
-                {
-                    decimal.ToDouble(GetRevenueForMonth(SameMonthLastYearStart)),
-                    decimal.ToDouble(GetRevenueForMonth(PreviousMonthStart)),
-                    decimal.ToDouble(GetRevenueForMonth(CurrentMonthStart))
-                }
-            }
-        ];
     private List<ChartSeries<double>> ActiveMembersPerLevelChartSeries =>
         [
             new ChartSeries<double>
@@ -5042,13 +4947,6 @@
             GetSubscriberSalesMetric(RevenuePeriodCurrentYear),
             GetSubscriberSalesMetric("all_time")
         ];
-
-    private int ThisMonthNewSalesCount => GetSubscriberMetric("this_month").Signups;
-    private int ThisMonthRecurringSalesCount => Math.Max(0, GetSubscriberSalesMetric("this_month").SalesCount - ThisMonthNewSalesCount);
-    private int ThisYearSalesCount => Math.Max(0, GetSubscriberSalesMetric("this_year").SalesCount);
-    private DateTime CurrentMonthStart => new(DateTime.Now.Year, DateTime.Now.Month, 1);
-    private DateTime PreviousMonthStart => CurrentMonthStart.AddMonths(-1);
-    private DateTime SameMonthLastYearStart => CurrentMonthStart.AddYears(-1);
 
     private IReadOnlyList<AdminSalesRevenueDetailRecord> FilteredRevenueSalesDetails =>
         SubscriberReports.SalesDetails
@@ -8984,22 +8882,6 @@
             ? "admin-subscriber-access-toggle-btn is-selected"
             : "admin-subscriber-access-toggle-btn";
 
-    private string FormatSubscriberTrendBarWidth(int value)
-    {
-        var max = CurrentSubscriberTrendMetrics
-            .SelectMany(metric => new[] { metric.Signups, metric.Cancellations })
-            .DefaultIfEmpty(0)
-            .Max();
-
-        if (value <= 0 || max <= 0)
-        {
-            return "0%";
-        }
-
-        var percentage = Math.Max(8d, value * 100d / max);
-        return $"{percentage.ToString("0.##", CultureInfo.InvariantCulture)}%";
-    }
-
     private string BuildSubscriberDrilldownOptionLabel(AdminMembershipStatsMetric metric) =>
         T(
             $"{GetSubscriberPeriodLabel(metric.PeriodKey)} - {FormatAnalyticsNumber(metric.Signups)} nuwe, {FormatAnalyticsNumber(metric.Cancellations)} gekanselleer",
@@ -9192,21 +9074,6 @@
 
     private bool IsRecoveredRevenueDetailInSelectedPeriod(AdminRecoveredRevenueDetailRecord detail) =>
         IsAdminDateInRevenuePeriod(detail.RecoveredAt);
-
-    private decimal GetRevenueForMonth(DateTime monthStartLocal)
-    {
-        var monthEndLocal = monthStartLocal.AddMonths(1);
-        return decimal.Round(
-            SubscriberReports.SalesDetails
-                .Where(detail =>
-                {
-                    var soldLocal = detail.SoldAt.ToLocalTime().DateTime;
-                    return soldLocal >= monthStartLocal && soldLocal < monthEndLocal;
-                })
-                .Sum(detail => detail.RevenueZar),
-            2,
-            MidpointRounding.AwayFromZero);
-    }
 
     private static bool IsAdminDateInCurrentPeriod(DateTimeOffset value, string periodKey)
     {

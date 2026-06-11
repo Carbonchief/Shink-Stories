@@ -202,6 +202,7 @@ public sealed partial class SupabaseAdminManagementService(
             .Where(item => !string.IsNullOrWhiteSpace(item.Email))
             .ToArray()
             ?? [];
+        pageItems = SortSubscriberPageItems(pageItems, request.SortLabel, request.SortDescending);
         var disabledStates = await FetchSubscriberDisabledStatesAsync(
             baseUri,
             apiKey,
@@ -6093,6 +6094,25 @@ public sealed partial class SupabaseAdminManagementService(
             "next_payment" => "next_payment",
             _ => "subscriber"
         };
+
+    private static AdminSubscriberPageItemRpc[] SortSubscriberPageItems(
+        AdminSubscriberPageItemRpc[] items,
+        string? sortLabel,
+        bool sortDescending)
+    {
+        return NormalizeSubscriberSortLabel(sortLabel) switch
+        {
+            "created_at" when sortDescending => items
+                .OrderByDescending(item => item.CreatedAt)
+                .ThenBy(item => item.Email, StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            "created_at" => items
+                .OrderBy(item => item.CreatedAt)
+                .ThenBy(item => item.Email, StringComparer.OrdinalIgnoreCase)
+                .ToArray(),
+            _ => items
+        };
+    }
 
     private static bool MatchesSubscriberSearch(SubscriberRow row, string? searchTerm)
     {

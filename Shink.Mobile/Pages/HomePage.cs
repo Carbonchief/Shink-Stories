@@ -143,7 +143,7 @@ public sealed class HomePage : ContentPage
                 var route = item.DetailUrl.Contains("/gratis/", StringComparison.OrdinalIgnoreCase)
                     ? $"{nameof(StoryDetailPage)}?slug={ExtractSlug(item.DetailUrl)}&source=gratis"
                     : $"{nameof(StoryDetailPage)}?slug={ExtractSlug(item.DetailUrl)}&source=luister";
-                await Shell.Current.GoToAsync(route);
+                await Shell.Current.GoToAsync(route, animate: false);
             };
             card.GestureRecognizers.Add(tap);
             row.Children.Add(card);
@@ -154,7 +154,13 @@ public sealed class HomePage : ContentPage
     }
 
     private Task OpenStoryAsync(MobileStorySummary story) =>
-        Shell.Current.GoToAsync($"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source={Uri.EscapeDataString(story.Source)}");
+        Shell.Current.GoToAsync(
+            $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source={Uri.EscapeDataString(story.Source)}",
+            animate: false,
+            parameters: new Dictionary<string, object>
+            {
+                ["preview"] = story
+            });
 
     private static string ExtractSlug(string detailUrl)
     {

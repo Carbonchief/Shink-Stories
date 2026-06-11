@@ -38,8 +38,9 @@ public class AdminAnalyticsSourceTests
         StringAssert.Contains(admin, "admin-subscriber-access-toggle");
         StringAssert.Contains(admin, "SetSubscriberAccessFilter");
         StringAssert.Contains(admin, "GetSubscriberAccessFilterButtonClass");
-        StringAssert.Contains(admin, "admin-subscriber-trend-list");
-        StringAssert.Contains(admin, "FormatSubscriberTrendBarWidth");
+        StringAssert.Contains(admin, "ChartType=\"ChartType.Line\"");
+        StringAssert.Contains(admin, "ChartSeries=\"SubscriberTrendChartSeries\"");
+        StringAssert.Contains(admin, "ChartLabels=\"SubscriberTrendChartLabels\"");
         StringAssert.Contains(admin, "Items=\"FilteredSubscriberMembershipDetails\"");
         StringAssert.Contains(admin, "@T(\"Intekenaar detail\", \"Subscriber detail\")");
         StringAssert.Contains(admin, "id=\"subscriber-detail-period\"");
@@ -77,16 +78,22 @@ public class AdminAnalyticsSourceTests
     {
         var admin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
         var service = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseAdminManagementService.cs"));
-        var migration = File.ReadAllText(GetRepoPath("Shink", "Database", "migrations", "20260606_admin_subscribers_page_joined_on_created_at_sort.sql"));
+        var migration = File.ReadAllText(GetRepoPath("Shink", "Database", "migrations", "20260610_admin_subscribers_page_stable_joined_on_order.sql"));
 
         StringAssert.Contains(admin, "<MudTableSortLabel T=\"AdminSubscriberRecord\" SortLabel=\"created_at\">");
         StringAssert.Contains(admin, "<MudTd DataLabel='@T(\"Aangesluit op\", \"Joined On\")'>@FormatAdminDate(context.CreatedAt)</MudTd>");
         Assert.IsFalse(admin.Contains("<MudTableSortLabel T=\"AdminSubscriberRecord\" SortLabel=\"subscribed_at\">", StringComparison.Ordinal));
 
         StringAssert.Contains(service, "\"created_at\" => \"created_at\"");
+        StringAssert.Contains(service, "pageItems = SortSubscriberPageItems(pageItems, request.SortLabel, request.SortDescending);");
+        StringAssert.Contains(service, "\"created_at\" when sortDescending => items");
+        StringAssert.Contains(service, ".OrderByDescending(item => item.CreatedAt)");
+        StringAssert.Contains(service, ".OrderBy(item => item.CreatedAt)");
         StringAssert.Contains(migration, "when 'created_at' then 'created_at'");
+        StringAssert.Contains(migration, "row_number() over (");
         StringAssert.Contains(migration, "case when n.sort_label = 'created_at' and not n.sort_desc then b.created_at end asc nulls last");
         StringAssert.Contains(migration, "case when n.sort_label = 'created_at' and n.sort_desc then b.created_at end desc nulls last");
+        StringAssert.Contains(migration, "order by o.row_order");
     }
 
     [TestMethod]
@@ -260,8 +267,9 @@ public class AdminAnalyticsSourceTests
         StringAssert.Contains(css, ".admin-subscriber-analytics-cards");
         StringAssert.Contains(css, ".admin-subscriber-analytics-controls");
         StringAssert.Contains(css, ".admin-subscriber-access-toggle");
-        StringAssert.Contains(css, ".admin-subscriber-trend-row");
-        StringAssert.Contains(css, ".admin-subscriber-trend-fill.is-signups");
+        StringAssert.Contains(css, ".admin-subscriber-analytics-chart-shell");
+        StringAssert.Contains(css, ".admin-subscriber-analytics-chart-shell ::deep .mud-chart");
+        StringAssert.Contains(css, "min-height: 280px;");
         StringAssert.Contains(css, ".admin-subscriber-kpi-main");
         StringAssert.Contains(css, ".admin-subscriber-kpi-secondary");
         StringAssert.Contains(css, "grid-template-columns: minmax(0, 1fr) minmax(116px, 0.74fr);");

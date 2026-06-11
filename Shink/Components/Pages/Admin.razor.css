@@ -2480,76 +2480,13 @@
     border-radius: 12px;
     background: color-mix(in srgb, var(--admin-surface) 72%, transparent);
     padding: 0.7rem;
-}
-
-.admin-subscriber-trend-list {
+    min-height: 280px;
     display: grid;
-    gap: 0.65rem;
-}
-
-.admin-subscriber-trend-row {
-    display: grid;
-    grid-template-columns: minmax(62px, 0.26fr) minmax(0, 1fr);
-    gap: 0.65rem;
     align-items: center;
-    padding: 0.62rem 0.65rem;
-    border: 1px solid color-mix(in srgb, var(--admin-border) 72%, transparent);
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--admin-surface-soft) 72%, #101923);
 }
 
-.admin-subscriber-trend-period strong {
-    color: var(--admin-text);
-    font-size: 0.92rem;
-    line-height: 1.1;
-}
-
-.admin-subscriber-trend-bars {
-    display: grid;
-    gap: 0.38rem;
-    min-width: 0;
-}
-
-.admin-subscriber-trend-line {
-    display: grid;
-    grid-template-columns: minmax(86px, 0.28fr) minmax(80px, 1fr) minmax(32px, auto);
-    align-items: center;
-    gap: 0.5rem;
-    min-width: 0;
-}
-
-.admin-subscriber-trend-line span {
-    color: var(--admin-muted);
-    font-size: 0.8rem;
-    font-weight: 800;
-    line-height: 1.15;
-}
-
-.admin-subscriber-trend-line strong {
-    color: var(--admin-text);
-    font-size: 0.88rem;
-    line-height: 1;
-    text-align: right;
-}
-
-.admin-subscriber-trend-track {
-    height: 0.58rem;
-    overflow: hidden;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--admin-border) 56%, transparent);
-}
-
-.admin-subscriber-trend-fill {
-    height: 100%;
-    border-radius: inherit;
-}
-
-.admin-subscriber-trend-fill.is-signups {
-    background: #41c982;
-}
-
-.admin-subscriber-trend-fill.is-cancellations {
-    background: #e45d66;
+.admin-subscriber-analytics-chart-shell ::deep .mud-chart {
+    width: 100%;
 }
 
 .admin-subscriber-analytics-summary-layout {
@@ -3077,15 +3014,6 @@
 
     .admin-subscriber-access-toggle {
         width: 100%;
-    }
-
-    .admin-subscriber-trend-row {
-        grid-template-columns: 1fr;
-        align-items: stretch;
-    }
-
-    .admin-subscriber-trend-line {
-        grid-template-columns: minmax(78px, 0.36fr) minmax(70px, 1fr) minmax(28px, auto);
     }
 
     .admin-subscriber-analytics-cards {

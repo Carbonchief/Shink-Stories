@@ -57,9 +57,11 @@ public class StoryTrackingSourceTests
         var client = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
 
         StringAssert.Contains(page, "TrackStoryViewAsync(detail.Story.Slug, detail.Story.Source)");
-        StringAssert.Contains(page, "schink-track://listen?");
-        StringAssert.Contains(page, "TrackMobileListenAsync(detail, trackingSessionId, uri)");
-        StringAssert.Contains(page, "visibilityhidden");
+        StringAssert.Contains(page, "TrackStoryListenAsync(");
+        StringAssert.Contains(page, "StartProgressTimer()");
+        StringAssert.Contains(page, "UpdateProgressState()");
+        Assert.IsFalse(page.Contains("schink-track://listen?", StringComparison.Ordinal));
+        Assert.IsFalse(page.Contains("visibilityhidden", StringComparison.Ordinal));
         StringAssert.Contains(client, "TrackStoryViewAsync(string slug, string source");
         StringAssert.Contains(client, "TrackStoryListenAsync(");
         StringAssert.Contains(client, "\"/api/stories/{Uri.EscapeDataString(slug)}/view\"");

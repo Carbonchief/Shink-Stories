@@ -20,8 +20,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <MauiIcon Include="Resources/AppIcon/appicon.svg" />
-    <MauiSplashScreen Include="Resources/Splash/splash.svg" Color="#222222" BaseSize="128,128" />
+    <MauiIcon Include="Resources/AppIcon/schink_appicon.png" />
+    <MauiSplashScreen Include="Resources/Splash/schink_stories_splash.png" Color="#023333" BaseSize="420,420" />
     <MauiImage Include="Resources/Images/*" />
   </ItemGroup>
 

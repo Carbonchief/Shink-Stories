@@ -7,6 +7,7 @@ public sealed class LuisterPage : ContentPage
 {
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
+    private readonly PlaylistPlaybackState _playlistPlaybackState;
     private readonly VerticalStackLayout _content;
     private readonly VerticalStackLayout _playlistContent;
     private readonly Entry _searchEntry;
@@ -16,17 +17,21 @@ public sealed class LuisterPage : ContentPage
     private IReadOnlyList<MobilePlaylist> _playlists = Array.Empty<MobilePlaylist>();
     private bool _hasLoaded;
 
-    public LuisterPage(MobileApiClient apiClient, SessionState sessionState)
+    public LuisterPage(
+        MobileApiClient apiClient,
+        SessionState sessionState,
+        PlaylistPlaybackState playlistPlaybackState)
     {
         _apiClient = apiClient;
         _sessionState = sessionState;
+        _playlistPlaybackState = playlistPlaybackState;
         Title = "Luister";
-        BackgroundColor = Color.FromArgb("#FFF9F0");
+        BackgroundColor = Color.FromArgb("#FFF7E8");
 
         _content = new VerticalStackLayout
         {
-            Padding = new Thickness(20, 24),
-            Spacing = 14
+            Padding = new Thickness(18, 18, 18, 28),
+            Spacing = 16
         };
         _playlistContent = new VerticalStackLayout
         {
@@ -166,13 +171,20 @@ public sealed class LuisterPage : ContentPage
     {
         return new Border
         {
-            BackgroundColor = Color.FromArgb("#EEF7F4"),
+            BackgroundColor = Color.FromArgb("#EAF7F4"),
             StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = 22 },
+            StrokeShape = new RoundRectangle { CornerRadius = 28 },
             Padding = 0,
+            Shadow = new Shadow
+            {
+                Brush = Brush.Black,
+                Offset = new Point(0, 8),
+                Radius = 18,
+                Opacity = 0.08f
+            },
             Content = new Image
             {
-                Source = _apiClient.BuildImageUrl("/branding/DIS_STORIETYD.png"),
+                Source = "dis_storietyd.png",
                 HeightRequest = 230,
                 Aspect = Aspect.AspectFit
             }
@@ -184,10 +196,17 @@ public sealed class LuisterPage : ContentPage
         return new Border
         {
             BackgroundColor = Colors.White,
-            Stroke = Color.FromArgb("#222222"),
-            StrokeThickness = 2,
-            StrokeShape = new RoundRectangle { CornerRadius = 16 },
-            Padding = new Thickness(12, 2),
+            Stroke = Color.FromArgb("#E6DDCA"),
+            StrokeThickness = 1,
+            StrokeShape = new RoundRectangle { CornerRadius = 22 },
+            Padding = new Thickness(16, 4),
+            Shadow = new Shadow
+            {
+                Brush = Brush.Black,
+                Offset = new Point(0, 4),
+                Radius = 12,
+                Opacity = 0.05f
+            },
             Content = _searchEntry
         };
     }
@@ -328,25 +347,39 @@ public sealed class LuisterPage : ContentPage
 
     private View BuildPlaylistCard(MobilePlaylist playlist)
     {
-        var imageUrl = string.IsNullOrWhiteSpace(playlist.BackdropUrl) ? playlist.ArtworkUrl : playlist.BackdropUrl;
-        var resolvedImageUrl = _apiClient.BuildImageUrl(imageUrl);
+        var resolvedImageUrl = string.IsNullOrWhiteSpace(playlist.ArtworkUrl)
+            ? "schink_background.jpeg"
+            : _apiClient.BuildImageUrl(playlist.ArtworkUrl);
         var card = new Border
         {
-            WidthRequest = 250,
-            BackgroundColor = Colors.White,
+            WidthRequest = 224,
+            BackgroundColor = Color.FromArgb("#FFFDF7"),
             StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = 18 },
-            Padding = 12,
+            StrokeShape = new RoundRectangle { CornerRadius = 26 },
+            Padding = 10,
+            Shadow = new Shadow
+            {
+                Brush = Brush.Black,
+                Offset = new Point(0, 8),
+                Radius = 16,
+                Opacity = 0.08f
+            },
             Content = new VerticalStackLayout
             {
                 Spacing = 8,
                 Children =
                 {
-                    new Image
+                    new Border
                     {
-                        Source = resolvedImageUrl,
-                        HeightRequest = 140,
-                        Aspect = Aspect.AspectFill
+                        StrokeThickness = 0,
+                        StrokeShape = new RoundRectangle { CornerRadius = 20 },
+                        HeightRequest = 126,
+                        Content = new Image
+                        {
+                            Source = resolvedImageUrl,
+                            HeightRequest = 126,
+                            Aspect = Aspect.AspectFill
+                        }
                     },
                     new Label
                     {
@@ -361,14 +394,7 @@ public sealed class LuisterPage : ContentPage
         };
 
         var tap = new TapGestureRecognizer();
-        tap.Tapped += async (_, _) =>
-        {
-            var firstStory = playlist.Stories.FirstOrDefault();
-            if (firstStory is not null)
-            {
-                await OpenStoryAsync(firstStory);
-            }
-        };
+        tap.Tapped += async (_, _) => await OpenPlaylistAsync(playlist);
         card.GestureRecognizers.Add(tap);
         return card;
     }
@@ -398,7 +424,7 @@ public sealed class LuisterPage : ContentPage
         foreach (var story in playlist.Stories)
         {
             var card = PageHelpers.BuildStoryCard(story, _apiClient, OpenStoryAsync, ToggleFavoriteAsync);
-            card.WidthRequest = 260;
+            card.WidthRequest = 226;
             row.Children.Add(card);
         }
 
@@ -438,8 +464,39 @@ public sealed class LuisterPage : ContentPage
         !string.IsNullOrWhiteSpace(value) &&
         value.Contains(query, StringComparison.OrdinalIgnoreCase);
 
-    private Task OpenStoryAsync(MobileStorySummary story) =>
-        Shell.Current.GoToAsync($"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source=luister");
+    private Task OpenStoryAsync(MobileStorySummary story)
+    {
+        _playlistPlaybackState.Clear();
+        return Shell.Current.GoToAsync(
+            $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source=luister",
+            animate: false,
+            parameters: new Dictionary<string, object>
+            {
+                ["preview"] = story
+            });
+    }
+
+    private Task OpenPlaylistAsync(MobilePlaylist playlist)
+    {
+        var firstStory = playlist.Stories.FirstOrDefault();
+        return firstStory is null
+            ? Task.CompletedTask
+            : OpenPlaylistStoryAsync(firstStory, playlist);
+    }
+
+    private Task OpenPlaylistStoryAsync(MobileStorySummary story, MobilePlaylist playlist)
+    {
+        _playlistPlaybackState.Set(playlist);
+        return Shell.Current.GoToAsync(
+            $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source=luister",
+            animate: false,
+            parameters: new Dictionary<string, object>
+            {
+                ["preview"] = story,
+                ["playlistTitle"] = playlist.Title,
+                ["playlistSlug"] = playlist.Slug
+            });
+    }
 
     private async Task ToggleFavoriteAsync(MobileStorySummary story)
     {

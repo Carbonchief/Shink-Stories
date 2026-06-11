@@ -23,7 +23,8 @@ public sealed record MobileStorySummary(
     string Source,
     bool IsLocked,
     bool IsFavorite,
-    string DetailUrl);
+    string DetailUrl,
+    decimal? DurationSeconds);
 
 public sealed record MobileHomeResponse(
     string HeroTitle,
