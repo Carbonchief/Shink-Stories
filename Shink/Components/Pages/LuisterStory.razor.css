@@ -1547,7 +1547,7 @@
     }
 
     .story-cover-wrap {
-        width: fit-content;
+        width: min(100%, clamp(820px, 76vw, 1080px));
         max-width: 100%;
         max-height: calc(100svh - var(--story-player-viewport-reserve));
         margin-inline: auto;
@@ -1556,7 +1556,7 @@
     }
 
     .story-cover {
-        width: auto;
+        width: 100%;
         height: auto;
         max-width: 100%;
         max-height: calc(100svh - var(--story-player-viewport-reserve));
@@ -1783,15 +1783,15 @@
     }
 
     .story-player-page:not(.manual-fullscreen-focus) .story-cover-wrap {
-        width: min(100%, 760px);
+        width: min(100%, clamp(820px, 88vw, 980px));
         max-width: calc(100vw - 1.4rem);
-        max-height: clamp(190px, calc(100svh - var(--story-player-viewport-reserve)), 360px);
+        max-height: clamp(190px, calc(100svh - var(--story-player-viewport-reserve)), 480px);
     }
 
     .story-player-page:not(.manual-fullscreen-focus) .story-cover {
         width: 100%;
         height: auto;
-        max-height: clamp(190px, calc(100svh - var(--story-player-viewport-reserve)), 360px);
+        max-height: clamp(190px, calc(100svh - var(--story-player-viewport-reserve)), 480px);
         aspect-ratio: 40 / 27;
         object-fit: cover;
         object-position: center bottom;
