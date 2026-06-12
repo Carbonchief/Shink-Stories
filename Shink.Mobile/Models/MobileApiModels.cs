@@ -52,6 +52,14 @@ public sealed record MobilePlaylist(
 
 public sealed record MobileLuisterResponse(
     bool HasPaidSubscription,
+    IReadOnlyList<MobilePlaylist> Playlists,
+    IReadOnlyList<MobileLuisterSection>? Sections);
+
+public sealed record MobileLuisterSection(
+    string Kind,
+    string Title,
+    int SortOrder,
+    MobilePlaylist? Playlist,
     IReadOnlyList<MobilePlaylist> Playlists);
 
 public sealed record MobileStoryDetailResponse(

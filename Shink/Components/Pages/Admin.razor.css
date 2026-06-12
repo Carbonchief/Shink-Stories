@@ -1673,6 +1673,29 @@
     line-height: 1.36;
 }
 
+.admin-story-field-guidance {
+    display: grid;
+    gap: 0.35rem;
+    min-width: 0;
+    margin-top: -0.2rem;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid color-mix(in srgb, var(--admin-border) 65%, transparent);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--admin-surface-soft) 80%, #ffffff 20%);
+    color: var(--admin-muted);
+    font-size: 0.82rem;
+    line-height: 1.38;
+}
+
+.admin-story-field-guidance p {
+    margin: 0;
+}
+
+.admin-story-field-guidance strong {
+    color: var(--admin-text);
+    font-weight: 800;
+}
+
 .admin-story-playlist-selector {
     border: 1px solid var(--admin-border);
     border-radius: 8px;

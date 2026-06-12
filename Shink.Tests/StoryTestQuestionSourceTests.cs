@@ -95,6 +95,24 @@ public class StoryTestQuestionSourceTests
     }
 
     [TestMethod]
+    public void LuisterStoryTestCelebratesPerfectScoresAndAnimatesCharacter()
+    {
+        var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "LuisterStory.razor"));
+        var css = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "LuisterStory.razor.css"));
+
+        StringAssert.Contains(markup, "IsStoryTestPerfectScore(CurrentStory)");
+        StringAssert.Contains(markup, "class=\"story-test-confetti\"");
+        StringAssert.Contains(markup, "class=\"story-test-confetti-piece\"");
+        StringAssert.Contains(css, ".story-test-confetti");
+        StringAssert.Contains(css, "@keyframes story-test-confetti-explode");
+        StringAssert.Contains(css, "@keyframes story-test-character-wiggle");
+        StringAssert.Contains(css, "animation: story-test-character-wiggle");
+        StringAssert.Contains(css, "background: transparent;");
+        StringAssert.Contains(css, "box-shadow: none;");
+        StringAssert.Contains(css, "@media (prefers-reduced-motion: reduce)");
+    }
+
+    [TestMethod]
     public void AdminStoryEditorPersistsStoryTestQuestions()
     {
         var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
@@ -185,6 +203,10 @@ public class StoryTestQuestionSourceTests
         StringAssert.Contains(markup, "admin-story-card-fields");
         StringAssert.Contains(markup, "admin-story-card-field is-synopsis");
         StringAssert.Contains(markup, "admin-story-card-field-label");
+        StringAssert.Contains(markup, "Opsomming verskyn op storielyste en soekresultate; hou dit kort.");
+        StringAssert.Contains(markup, "Description appears on story detail surfaces when there is room for more context.");
+        StringAssert.Contains(markup, "Die storiekaart-sinopsis is vir die leerkaart se inhoud en kan anders wees as die algemene opsomming of beskrywing.");
+        StringAssert.Contains(markup, "The story card synopsis is for the learning card content and can differ from the general summary or description.");
         StringAssert.Contains(markup, "Placeholder='@T(\"Kort sinopsis\", \"Short synopsis\")'");
         StringAssert.Contains(markup, "Placeholder='@T(\"Een waarde per lyn\", \"One value per line\")'");
         StringAssert.Contains(css, ".admin-story-card-fields");

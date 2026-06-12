@@ -701,6 +701,8 @@
 }
 
 .story-test-modal {
+    position: relative;
+    isolation: isolate;
     width: min(100%, 680px);
     max-height: min(760px, calc(100dvh - 2rem));
     overflow-y: auto;
@@ -714,6 +716,59 @@
     display: grid;
     gap: 1rem;
 }
+
+.story-test-modal > :not(.story-test-confetti) {
+    position: relative;
+    z-index: 1;
+}
+
+.story-test-confetti {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    overflow: hidden;
+    border-radius: inherit;
+    pointer-events: none;
+}
+
+.story-test-confetti-piece {
+    position: absolute;
+    top: 32%;
+    left: 50%;
+    width: 0.56rem;
+    height: 0.86rem;
+    border-radius: 3px;
+    background: var(--confetti-color, #f3c86d);
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.3) rotate(0deg);
+    animation: story-test-confetti-explode 1.25s cubic-bezier(0.16, 0.85, 0.22, 1) forwards;
+    animation-delay: var(--confetti-delay, 0ms);
+}
+
+.story-test-confetti-piece:nth-child(1) { --confetti-x: -17rem; --confetti-y: -8rem; --confetti-r: -210deg; --confetti-color: #f3c86d; --confetti-delay: 0ms; }
+.story-test-confetti-piece:nth-child(2) { --confetti-x: -13rem; --confetti-y: -12rem; --confetti-r: 165deg; --confetti-color: #70d6ff; --confetti-delay: 22ms; }
+.story-test-confetti-piece:nth-child(3) { --confetti-x: -9rem; --confetti-y: -7rem; --confetti-r: 245deg; --confetti-color: #ff70a6; --confetti-delay: 42ms; }
+.story-test-confetti-piece:nth-child(4) { --confetti-x: -5rem; --confetti-y: -13rem; --confetti-r: -155deg; --confetti-color: #b8f7d4; --confetti-delay: 12ms; }
+.story-test-confetti-piece:nth-child(5) { --confetti-x: -1rem; --confetti-y: -9rem; --confetti-r: 210deg; --confetti-color: #ffd670; --confetti-delay: 52ms; }
+.story-test-confetti-piece:nth-child(6) { --confetti-x: 4rem; --confetti-y: -12rem; --confetti-r: -225deg; --confetti-color: #8bd3dd; --confetti-delay: 18ms; }
+.story-test-confetti-piece:nth-child(7) { --confetti-x: 9rem; --confetti-y: -8rem; --confetti-r: 195deg; --confetti-color: #f7a072; --confetti-delay: 34ms; }
+.story-test-confetti-piece:nth-child(8) { --confetti-x: 14rem; --confetti-y: -11rem; --confetti-r: -170deg; --confetti-color: #f3c86d; --confetti-delay: 58ms; }
+.story-test-confetti-piece:nth-child(9) { --confetti-x: 17rem; --confetti-y: -6rem; --confetti-r: 260deg; --confetti-color: #cdb4db; --confetti-delay: 26ms; }
+.story-test-confetti-piece:nth-child(10) { --confetti-x: -18rem; --confetti-y: 1rem; --confetti-r: -250deg; --confetti-color: #ffafcc; --confetti-delay: 76ms; }
+.story-test-confetti-piece:nth-child(11) { --confetti-x: -14rem; --confetti-y: 5rem; --confetti-r: 190deg; --confetti-color: #70d6ff; --confetti-delay: 96ms; }
+.story-test-confetti-piece:nth-child(12) { --confetti-x: -9rem; --confetti-y: 7rem; --confetti-r: -180deg; --confetti-color: #f3c86d; --confetti-delay: 64ms; }
+.story-test-confetti-piece:nth-child(13) { --confetti-x: -4rem; --confetti-y: 6rem; --confetti-r: 260deg; --confetti-color: #b8f7d4; --confetti-delay: 108ms; }
+.story-test-confetti-piece:nth-child(14) { --confetti-x: 2rem; --confetti-y: 8rem; --confetti-r: -215deg; --confetti-color: #ffd670; --confetti-delay: 88ms; }
+.story-test-confetti-piece:nth-child(15) { --confetti-x: 7rem; --confetti-y: 6rem; --confetti-r: 175deg; --confetti-color: #ff70a6; --confetti-delay: 114ms; }
+.story-test-confetti-piece:nth-child(16) { --confetti-x: 12rem; --confetti-y: 4rem; --confetti-r: -260deg; --confetti-color: #8bd3dd; --confetti-delay: 72ms; }
+.story-test-confetti-piece:nth-child(17) { --confetti-x: 17rem; --confetti-y: 1rem; --confetti-r: 230deg; --confetti-color: #f7a072; --confetti-delay: 104ms; }
+.story-test-confetti-piece:nth-child(18) { --confetti-x: -16rem; --confetti-y: -3rem; --confetti-r: 160deg; --confetti-color: #cdb4db; --confetti-delay: 130ms; }
+.story-test-confetti-piece:nth-child(19) { --confetti-x: -11rem; --confetti-y: -1rem; --confetti-r: -210deg; --confetti-color: #ffd670; --confetti-delay: 144ms; }
+.story-test-confetti-piece:nth-child(20) { --confetti-x: -6rem; --confetti-y: 2rem; --confetti-r: 235deg; --confetti-color: #70d6ff; --confetti-delay: 122ms; }
+.story-test-confetti-piece:nth-child(21) { --confetti-x: 5rem; --confetti-y: 1rem; --confetti-r: -170deg; --confetti-color: #ffafcc; --confetti-delay: 136ms; }
+.story-test-confetti-piece:nth-child(22) { --confetti-x: 10rem; --confetti-y: -2rem; --confetti-r: 215deg; --confetti-color: #f3c86d; --confetti-delay: 156ms; }
+.story-test-confetti-piece:nth-child(23) { --confetti-x: 15rem; --confetti-y: -4rem; --confetti-r: -235deg; --confetti-color: #b8f7d4; --confetti-delay: 148ms; }
+.story-test-confetti-piece:nth-child(24) { --confetti-x: 1rem; --confetti-y: -15rem; --confetti-r: 275deg; --confetti-color: #f7a072; --confetti-delay: 66ms; }
 
 .story-test-modal-head {
     display: flex;
@@ -761,9 +816,10 @@
     max-width: 100%;
     aspect-ratio: 1 / 1;
     object-fit: contain;
-    border-radius: 18px;
-    background: rgba(255, 255, 255, 0.08);
-    box-shadow: 0 16px 32px rgba(0, 0, 0, 0.24);
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+    animation: story-test-character-wiggle 1.15s ease-in-out 160ms 2 both;
 }
 
 .story-test-success {
@@ -932,6 +988,59 @@
     background: #f3c86d;
     font-weight: 900;
     text-align: center;
+}
+
+@keyframes story-test-character-wiggle {
+    0%, 100% {
+        transform: rotate(0deg) translateY(0);
+    }
+
+    18% {
+        transform: rotate(-2.4deg) translateY(-2px);
+    }
+
+    36% {
+        transform: rotate(2deg) translateY(1px);
+    }
+
+    54% {
+        transform: rotate(-1.3deg) translateY(-1px);
+    }
+
+    72% {
+        transform: rotate(0.9deg) translateY(0);
+    }
+}
+
+@keyframes story-test-confetti-explode {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, -50%) scale(0.25) rotate(0deg);
+    }
+
+    12% {
+        opacity: 1;
+    }
+
+    72% {
+        opacity: 1;
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(calc(-50% + var(--confetti-x)), calc(-50% + var(--confetti-y))) scale(1) rotate(var(--confetti-r));
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .story-test-hero-image,
+    .story-test-confetti-piece {
+        animation: none;
+    }
+
+    .story-test-confetti {
+        display: none;
+    }
 }
 
 .story-video-embed {

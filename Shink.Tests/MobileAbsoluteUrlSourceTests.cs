@@ -72,6 +72,24 @@ public class MobileAbsoluteUrlSourceTests
     }
 
     [TestMethod]
+    public void MobileLuisterUsesOrderedSectionsForSpeellysteParity()
+    {
+        var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
+        var models = File.ReadAllText(GetRepoPath("Shink.Mobile", "Models", "MobileApiModels.cs"));
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+
+        StringAssert.Contains(models, "public sealed record MobileLuisterSection(");
+        StringAssert.Contains(program, "IsMobileSpeellysteSystemPlaylist");
+        StringAssert.Contains(program, "playlist.IncludeInSpeellysteCarousel");
+        StringAssert.Contains(program, "MobileLuisterSectionKinds.Speellyste");
+        StringAssert.Contains(program, ".OrderBy(section => section.SortOrder)");
+        StringAssert.Contains(luisterPage, "FilterSections(_sections, _searchEntry.Text)");
+        StringAssert.Contains(luisterPage, "IsSpeellysteSection(section)");
+        StringAssert.Contains(luisterPage, "BuildPlaylistShowcase(section.Title, section.Playlists)");
+        Assert.IsFalse(luisterPage.Contains("_playlistContent.Children.Add(BuildPlaylistShowcase(filteredPlaylists));", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public void MobileLuisterStoryCardsUseNativeArtworkAndFavoriteHeartOverlay()
     {
         var helper = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "PageHelpers.cs"));
@@ -247,7 +265,7 @@ public class MobileAbsoluteUrlSourceTests
         var splashPath = GetRepoPath("Shink.Mobile", "Resources", "Splash", "schink_stories_splash.png");
         var splashBytes = File.ReadAllBytes(splashPath);
 
-        StringAssert.Contains(project, "<MauiSplashScreen Include=\"Resources/Splash/schink_stories_splash.png\" Color=\"#023333\" BaseSize=\"320,320\" />");
+        StringAssert.Contains(project, "<MauiSplashScreen Include=\"Resources/Splash/schink_stories_splash.png\" Color=\"#023333\" BaseSize=\"420,420\" />");
         Assert.IsFalse(project.Contains("<MauiSplashScreen Include=\"Resources/Splash/splash.svg\"", StringComparison.Ordinal));
         CollectionAssert.AreEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47 }, splashBytes.Take(4).ToArray());
         Assert.IsTrue(splashBytes.Length > 100_000);

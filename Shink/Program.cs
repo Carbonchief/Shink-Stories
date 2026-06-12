@@ -3007,8 +3007,8 @@ app.MapGet("/api/mobile/luister", async (
     var favoriteSet = favoriteSlugs.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     var playlists = await storyCatalogService.GetLuisterPlaylistsAsync(signedInEmail, httpContext.RequestAborted);
-    var response = playlists
-        .Select(playlist => new MobilePlaylistResponse(
+    MobilePlaylistResponse MapPlaylist(StoryPlaylist playlist) =>
+        new(
             Slug: playlist.Slug,
             Title: playlist.Title,
             Description: playlist.Description,
@@ -3021,12 +3021,44 @@ app.MapGet("/api/mobile/luister", async (
                     source: "luister",
                     isLocked: !CanAccessStory(story, access),
                     isFavorite: favoriteSet.Contains(story.Slug)))
-                .ToArray()))
+                .ToArray());
+
+    var displayPlaylists = playlists
+        .Where(playlist => !IsMobileSpeellysteSystemPlaylist(playlist))
         .ToArray();
+    var response = displayPlaylists.Select(MapPlaylist).ToArray();
+    var speellysteConfig = playlists.FirstOrDefault(IsMobileSpeellysteSystemPlaylist);
+    var sections = displayPlaylists
+        .Select(playlist => new MobileLuisterSectionResponse(
+            Kind: MobileLuisterSectionKinds.Playlist,
+            Title: playlist.Title,
+            SortOrder: playlist.SortOrder,
+            Playlist: MapPlaylist(playlist),
+            Playlists: Array.Empty<MobilePlaylistResponse>()))
+        .ToList();
+    var speellystePlaylists = displayPlaylists
+        .Where(playlist => playlist.IncludeInSpeellysteCarousel)
+        .Select(MapPlaylist)
+        .ToArray();
+    if (speellystePlaylists.Length > 0)
+    {
+        sections.Add(new MobileLuisterSectionResponse(
+            Kind: MobileLuisterSectionKinds.Speellyste,
+            Title: speellysteConfig is null || string.IsNullOrWhiteSpace(speellysteConfig.Title)
+                ? "Speellyste"
+                : speellysteConfig.Title.Trim(),
+            SortOrder: speellysteConfig?.SortOrder ?? int.MinValue,
+            Playlist: null,
+            Playlists: speellystePlaylists));
+    }
 
     return Results.Ok(new MobileLuisterResponse(
         HasPaidSubscription: access.HasPaidSubscription,
-        Playlists: response));
+        Playlists: response,
+        Sections: sections
+            .OrderBy(section => section.SortOrder)
+            .ThenBy(section => section.Title, StringComparer.OrdinalIgnoreCase)
+            .ToArray()));
 }).DisableAntiforgery();
 
 app.MapGet("/api/mobile/stories/{slug}", async (
@@ -6247,6 +6279,10 @@ static string? NormalizeMobilePlaylistImagePath(string? value) =>
         ? null
         : StoryItem.RewriteImagePathForBrowser(value.Trim());
 
+static bool IsMobileSpeellysteSystemPlaylist(StoryPlaylist playlist) =>
+    string.Equals(playlist.SystemKey, "speellyste", StringComparison.OrdinalIgnoreCase) ||
+    string.Equals(playlist.Slug, "speellyste", StringComparison.OrdinalIgnoreCase);
+
 static bool TryExtractImageProxySource(string pathOrUrl, out string sourceUrl)
 {
     sourceUrl = string.Empty;
@@ -6420,7 +6456,19 @@ sealed record MobilePlaylistResponse(
     IReadOnlyList<MobileStorySummaryResponse> Stories);
 sealed record MobileLuisterResponse(
     bool HasPaidSubscription,
+    IReadOnlyList<MobilePlaylistResponse> Playlists,
+    IReadOnlyList<MobileLuisterSectionResponse> Sections);
+sealed record MobileLuisterSectionResponse(
+    string Kind,
+    string Title,
+    int SortOrder,
+    MobilePlaylistResponse? Playlist,
     IReadOnlyList<MobilePlaylistResponse> Playlists);
+static class MobileLuisterSectionKinds
+{
+    public const string Playlist = "playlist";
+    public const string Speellyste = "speellyste";
+}
 sealed record MobileStoryDetailResponse(
     MobileStorySummaryResponse Story,
     string? AudioUrl,

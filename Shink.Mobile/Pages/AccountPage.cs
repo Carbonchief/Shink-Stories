@@ -18,7 +18,8 @@ public sealed class AccountPage : ContentPage
     private readonly Label _statusLabel;
     private readonly VerticalStackLayout _signedInState;
     private readonly VerticalStackLayout _signedOutState;
-    private readonly VerticalStackLayout _authFormContainer;
+    private readonly VerticalStackLayout _authPanelContent;
+    private View? _authHero;
     private AuthPanelMode _authPanelMode = AuthPanelMode.Landing;
     private bool _hasLoadedSession;
     private bool _isAuthRequestInFlight;
@@ -42,7 +43,7 @@ public sealed class AccountPage : ContentPage
         var hasCachedSession = _sessionState.Current.IsSignedIn;
         _signedInState = new VerticalStackLayout { Spacing = 0, IsVisible = hasCachedSession };
         _signedOutState = new VerticalStackLayout { Spacing = 0, IsVisible = !hasCachedSession };
-        _authFormContainer = new VerticalStackLayout { Spacing = 12 };
+        _authPanelContent = new VerticalStackLayout { Spacing = 14 };
         ApplySessionState();
 
         Content = new Grid
@@ -97,7 +98,9 @@ public sealed class AccountPage : ContentPage
     private void BuildSignedOutState()
     {
         _signedOutState.Children.Clear();
-        _signedOutState.Children.Add(BuildAuthHero());
+        _authHero = BuildAuthHero();
+        _authHero.IsVisible = _authPanelMode == AuthPanelMode.Landing;
+        _signedOutState.Children.Add(_authHero);
         _signedOutState.Children.Add(BuildAuthPanel());
     }
 
@@ -174,27 +177,10 @@ public sealed class AccountPage : ContentPage
             Padding = new Thickness(26, 24, 26, 28),
             Content = new VerticalStackLayout
             {
-                Spacing = 16,
+                Spacing = 0,
                 Children =
                 {
-                    BuildModeButton("Meld aan", AuthPanelMode.SignIn, true),
-                    BuildModeButton("Skep rekening", AuthPanelMode.SignUp, false),
-                    new BoxView
-                    {
-                        HeightRequest = 1,
-                        Color = Color.FromArgb("#DDD1B8"),
-                        Margin = new Thickness(16, 8)
-                    },
-                    new Label
-                    {
-                        Text = "Jou stories. Jou plek.\nVeilig, privaat en altyd kind-vriendelik.",
-                        TextColor = Color.FromArgb("#243238"),
-                        FontSize = 15,
-                        HorizontalTextAlignment = TextAlignment.Center,
-                        LineHeight = 1.18
-                    },
-                    _statusLabel,
-                    _authFormContainer
+                    _authPanelContent
                 }
             }
         };
@@ -210,7 +196,8 @@ public sealed class AccountPage : ContentPage
             HeightRequest = 46,
             Aspect = Aspect.AspectFit,
             VerticalOptions = LayoutOptions.Center,
-            HorizontalOptions = LayoutOptions.Start
+            HorizontalOptions = LayoutOptions.Start,
+            InputTransparent = true
         };
         var textLabel = new Label
         {
@@ -220,7 +207,8 @@ public sealed class AccountPage : ContentPage
             FontFamily = "serif",
             TextColor = labelColor,
             HorizontalOptions = LayoutOptions.Center,
-            VerticalOptions = LayoutOptions.Center
+            VerticalOptions = LayoutOptions.Center,
+            InputTransparent = true
         };
         var caret = new Image
         {
@@ -229,7 +217,8 @@ public sealed class AccountPage : ContentPage
             HeightRequest = 28,
             Aspect = Aspect.AspectFit,
             VerticalOptions = LayoutOptions.Center,
-            HorizontalOptions = LayoutOptions.End
+            HorizontalOptions = LayoutOptions.End,
+            InputTransparent = true
         };
 
         Grid.SetColumn(icon, 0);
@@ -264,7 +253,8 @@ public sealed class AccountPage : ContentPage
                     icon,
                     textLabel,
                     caret
-                }
+                },
+                InputTransparent = true
             }
         };
 
@@ -276,7 +266,33 @@ public sealed class AccountPage : ContentPage
 
     private void RenderAuthFormContent()
     {
-        _authFormContainer.Children.Clear();
+        _authPanelContent.Children.Clear();
+
+        if (_authPanelMode == AuthPanelMode.Landing)
+        {
+            _authPanelContent.Children.Add(BuildModeButton("Meld aan", AuthPanelMode.SignIn, true));
+            _authPanelContent.Children.Add(BuildModeButton("Skep rekening", AuthPanelMode.SignUp, false));
+            _authPanelContent.Children.Add(new BoxView
+            {
+                HeightRequest = 1,
+                Color = Color.FromArgb("#DDD1B8"),
+                Margin = new Thickness(16, 8)
+            });
+            _authPanelContent.Children.Add(new Label
+            {
+                Text = "Jou stories. Jou plek.\nVeilig, privaat en altyd kind-vriendelik.",
+                TextColor = Color.FromArgb("#243238"),
+                FontSize = 15,
+                HorizontalTextAlignment = TextAlignment.Center,
+                LineHeight = 1.18
+            });
+            _authPanelContent.Children.Add(_statusLabel);
+            return;
+        }
+
+        _authPanelContent.Children.Add(BuildAuthPanelHeading(
+            _authPanelMode == AuthPanelMode.SignIn ? "Meld aan" : "Skep rekening"));
+        _authPanelContent.Children.Add(_statusLabel);
 
         if (_authPanelMode == AuthPanelMode.SignIn)
         {
@@ -341,9 +357,13 @@ public sealed class AccountPage : ContentPage
             };
             loginButton.GestureRecognizers.Add(loginTap);
 
-            _authFormContainer.Children.Add(BuildField(loginEmailEntry));
-            _authFormContainer.Children.Add(BuildField(loginPasswordEntry));
-            _authFormContainer.Children.Add(loginButton);
+            _authPanelContent.Children.Add(BuildField(loginEmailEntry));
+            _authPanelContent.Children.Add(BuildField(loginPasswordEntry));
+            _authPanelContent.Children.Add(loginButton);
+            _authPanelContent.Children.Add(BuildModeSwitchLink(
+                "Nog nie 'n rekening nie?",
+                "Skep rekening",
+                AuthPanelMode.SignUp));
             return;
         }
 
@@ -383,20 +403,68 @@ public sealed class AccountPage : ContentPage
                 }
             };
 
-            _authFormContainer.Children.Add(BuildField(signupFirstNameEntry));
-            _authFormContainer.Children.Add(BuildField(signupLastNameEntry));
-            _authFormContainer.Children.Add(BuildField(signupDisplayNameEntry));
-            _authFormContainer.Children.Add(BuildField(signupEmailEntry));
-            _authFormContainer.Children.Add(BuildField(signupMobileEntry));
-            _authFormContainer.Children.Add(BuildField(signupPasswordEntry));
-            _authFormContainer.Children.Add(signupButton);
+            _authPanelContent.Children.Add(BuildField(signupFirstNameEntry));
+            _authPanelContent.Children.Add(BuildField(signupLastNameEntry));
+            _authPanelContent.Children.Add(BuildField(signupDisplayNameEntry));
+            _authPanelContent.Children.Add(BuildField(signupEmailEntry));
+            _authPanelContent.Children.Add(BuildField(signupMobileEntry));
+            _authPanelContent.Children.Add(BuildField(signupPasswordEntry));
+            _authPanelContent.Children.Add(signupButton);
+            _authPanelContent.Children.Add(BuildModeSwitchLink(
+                "Het jy reeds 'n rekening?",
+                "Meld aan",
+                AuthPanelMode.SignIn));
         }
     }
 
     private void SetAuthPanelMode(AuthPanelMode mode)
     {
-        _authPanelMode = _authPanelMode == mode ? AuthPanelMode.Landing : mode;
+        _authPanelMode = mode;
+        if (_authHero is not null)
+        {
+            _authHero.IsVisible = _authPanelMode == AuthPanelMode.Landing;
+        }
+
+        SetStatus(null);
         RenderAuthFormContent();
+    }
+
+    private static View BuildAuthPanelHeading(string text) =>
+        new Label
+        {
+            Text = text,
+            FontSize = 25,
+            FontAttributes = FontAttributes.Bold,
+            FontFamily = "serif",
+            TextColor = Color.FromArgb("#243238"),
+            HorizontalTextAlignment = TextAlignment.Center
+        };
+
+    private View BuildModeSwitchLink(string prompt, string action, AuthPanelMode mode)
+    {
+        var label = new Label
+        {
+            HorizontalTextAlignment = TextAlignment.Center,
+            TextColor = Color.FromArgb("#5F5F5F"),
+            FontSize = 14,
+            FormattedText = new FormattedString
+            {
+                Spans =
+                {
+                    new Span { Text = $"{prompt} " },
+                    new Span
+                    {
+                        Text = action,
+                        TextColor = Color.FromArgb("#146D69"),
+                        FontAttributes = FontAttributes.Bold
+                    }
+                }
+            }
+        };
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += (_, _) => SetAuthPanelMode(mode);
+        label.GestureRecognizers.Add(tap);
+        return label;
     }
 
     private void SetLoginSubmitLoading(

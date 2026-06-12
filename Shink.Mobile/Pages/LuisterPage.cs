@@ -14,7 +14,7 @@ public sealed class LuisterPage : ContentPage
     private readonly Entry _loginEmailEntry;
     private readonly Entry _loginPasswordEntry;
     private readonly Label _loginStatusLabel;
-    private IReadOnlyList<MobilePlaylist> _playlists = Array.Empty<MobilePlaylist>();
+    private IReadOnlyList<MobileLuisterSection> _sections = Array.Empty<MobileLuisterSection>();
     private bool _hasLoaded;
 
     public LuisterPage(
@@ -107,7 +107,9 @@ public sealed class LuisterPage : ContentPage
                 return;
             }
 
-            _playlists = response.Playlists;
+            _sections = response.Sections is { Count: > 0 }
+                ? response.Sections
+                : BuildLegacySections(response.Playlists);
             _hasLoaded = true;
             RenderContent();
         }
@@ -142,8 +144,8 @@ public sealed class LuisterPage : ContentPage
     private void RenderPlaylistContent()
     {
         _playlistContent.Children.Clear();
-        var filteredPlaylists = FilterPlaylists(_playlists, _searchEntry.Text).ToArray();
-        if (filteredPlaylists.Length == 0)
+        var filteredSections = FilterSections(_sections, _searchEntry.Text).ToArray();
+        if (filteredSections.Length == 0)
         {
             _playlistContent.Children.Add(new Border
             {
@@ -160,11 +162,18 @@ public sealed class LuisterPage : ContentPage
             return;
         }
 
-        _playlistContent.Children.Add(BuildPlaylistShowcase(filteredPlaylists));
-
-        foreach (var playlist in filteredPlaylists)
+        foreach (var section in filteredSections)
         {
-            _playlistContent.Children.Add(BuildPlaylistSection(playlist));
+            if (IsSpeellysteSection(section))
+            {
+                _playlistContent.Children.Add(BuildPlaylistShowcase(section.Title, section.Playlists));
+                continue;
+            }
+
+            if (section.Playlist is not null)
+            {
+                _playlistContent.Children.Add(BuildPlaylistSection(section.Playlist));
+            }
         }
     }
 
@@ -326,10 +335,10 @@ public sealed class LuisterPage : ContentPage
         }
     }
 
-    private View BuildPlaylistShowcase(IReadOnlyList<MobilePlaylist> playlists)
+    private View BuildPlaylistShowcase(string title, IReadOnlyList<MobilePlaylist> playlists)
     {
         var section = new VerticalStackLayout { Spacing = 10 };
-        section.Children.Add(PageHelpers.BuildSectionTitle("Speellyste"));
+        section.Children.Add(PageHelpers.BuildSectionTitle(string.IsNullOrWhiteSpace(title) ? "Speellyste" : title));
 
         var row = new HorizontalStackLayout { Spacing = 14 };
         foreach (var playlist in playlists)
@@ -438,6 +447,44 @@ public sealed class LuisterPage : ContentPage
         return section;
     }
 
+    private static IReadOnlyList<MobileLuisterSection> BuildLegacySections(IReadOnlyList<MobilePlaylist> playlists) =>
+        playlists
+            .Select((playlist, index) => new MobileLuisterSection(
+                Kind: "playlist",
+                Title: playlist.Title,
+                SortOrder: index,
+                Playlist: playlist,
+                Playlists: Array.Empty<MobilePlaylist>()))
+            .ToArray();
+
+    private static IEnumerable<MobileLuisterSection> FilterSections(IReadOnlyList<MobileLuisterSection> sections, string? query)
+    {
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            return sections.Where(SectionHasContent);
+        }
+
+        return sections
+            .Select(section =>
+            {
+                if (IsSpeellysteSection(section))
+                {
+                    var filteredPlaylists = FilterPlaylists(section.Playlists, query).ToArray();
+                    return section with { Playlists = filteredPlaylists };
+                }
+
+                if (section.Playlist is null)
+                {
+                    return section;
+                }
+
+                return FilterPlaylist(section.Playlist, query) is { } playlist
+                    ? section with { Playlist = playlist }
+                    : section with { Playlist = null };
+            })
+            .Where(SectionHasContent);
+    }
+
     private static IEnumerable<MobilePlaylist> FilterPlaylists(IReadOnlyList<MobilePlaylist> playlists, string? query)
     {
         if (string.IsNullOrWhiteSpace(query))
@@ -447,19 +494,30 @@ public sealed class LuisterPage : ContentPage
 
         var normalizedQuery = query.Trim();
         return playlists
-            .Select(playlist => playlist with
-            {
-                Stories = playlist.Stories
-                    .Where(story =>
-                        Contains(story.Title, normalizedQuery) ||
-                        Contains(story.Description, normalizedQuery))
-                    .ToArray()
-            })
-            .Where(playlist =>
-                Contains(playlist.Title, normalizedQuery) ||
-                Contains(playlist.Description, normalizedQuery) ||
-                playlist.Stories.Count > 0);
+            .Select(playlist => FilterPlaylist(playlist, normalizedQuery))
+            .Where(playlist => playlist is not null)
+            .Cast<MobilePlaylist>();
     }
+
+    private static MobilePlaylist? FilterPlaylist(MobilePlaylist playlist, string query)
+    {
+        var playlistMatches = Contains(playlist.Title, query) || Contains(playlist.Description, query);
+        var matchingStories = playlist.Stories
+            .Where(story => Contains(story.Title, query))
+            .ToArray();
+
+        return playlistMatches || matchingStories.Length > 0
+            ? playlist with { Stories = playlistMatches ? playlist.Stories : matchingStories }
+            : null;
+    }
+
+    private static bool IsSpeellysteSection(MobileLuisterSection section) =>
+        string.Equals(section.Kind, "speellyste", StringComparison.OrdinalIgnoreCase);
+
+    private static bool SectionHasContent(MobileLuisterSection section) =>
+        IsSpeellysteSection(section)
+            ? section.Playlists.Count > 0
+            : section.Playlist is not null;
 
     private static bool Contains(string? value, string query) =>
         !string.IsNullOrWhiteSpace(value) &&

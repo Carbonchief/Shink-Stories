@@ -403,12 +403,22 @@ else
 {
     var storyTestHeroCharacter = ResolveStoryTestHeroCharacter(CurrentStory);
     var showStoryTestSummary = IsStoryTestSubmitted && !ShowStoryTestDetails;
+    var isStoryTestPerfectScore = showStoryTestSummary && IsStoryTestPerfectScore(CurrentStory);
     <div class="story-test-modal-backdrop" role="presentation" @onclick="CloseStoryTestModal">
         <section class="story-test-modal"
                  role="dialog"
                  aria-modal="true"
                  aria-labelledby="story-test-modal-title"
                  @onclick:stopPropagation="true">
+            @if (isStoryTestPerfectScore)
+            {
+                <div class="story-test-confetti" aria-hidden="true">
+                    @for (var confettiIndex = 0; confettiIndex < 24; confettiIndex++)
+                    {
+                        <span class="story-test-confetti-piece"></span>
+                    }
+                </div>
+            }
             <header class="story-test-modal-head">
                 <div>
                     <span class="story-test-eyebrow">Storie toets</span>
@@ -951,6 +961,18 @@ else
         }
 
         return $"Mooi probeer! Jy het {correctAnswers} uit {story.TestQuestions.Count} reg.";
+    }
+
+    private bool IsStoryTestPerfectScore(StoryItem story)
+    {
+        if (story.TestQuestions is not { Count: > 0 } questions)
+        {
+            return false;
+        }
+
+        return questions
+            .Select((question, index) => IsStoryTestAnswerCorrect(question, GetSelectedStoryTestOption(index)))
+            .All(isCorrect => isCorrect);
     }
 
     private static string BuildStoryTestOptionClass(StoryTestQuestion question, string? selectedOption, string option, bool isSubmitted)
