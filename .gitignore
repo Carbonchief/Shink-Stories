@@ -9,6 +9,7 @@
 *.user
 *.userosscache
 *.sln.docstates
+.DS_Store
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
@@ -66,6 +67,7 @@ artifacts/
 downloads/
 
 # Local secrets / developer-only config
+/appsettings.json
 /appsettings.Development.json
 appsettings.Local.json
 appsettings.local.json
@@ -86,11 +88,15 @@ appsettings.secrets.json
 /recovered-revenue-accounts-*.csv
 
 # Local verification/build output
+/.codex/
 /.codex-tmp/
 /.codex-verify/
 /obj_verify/
 /Shink/obj_verify/
 /Shink.Tests/obj_verify/
+/Shink/.dotnet/
+/output/
+/outputs/
 
 # ASP.NET Scaffolding
 ScaffoldingReadMe.txt

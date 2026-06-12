@@ -1,5 +1,0 @@
-<Solution>
-  <Project Path="Shink.Tests/Shink.Tests.csproj" />
-  <Project Path="Shink.Mobile/Shink.Mobile.csproj" />
-  <Project Path="Shink/Shink.csproj" />
-</Solution>
