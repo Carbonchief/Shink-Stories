@@ -10,7 +10,7 @@
     <Nullable>enable</Nullable>
     <MauiXamlInflator>SourceGen</MauiXamlInflator>
 
-    <ApplicationTitle>Shink Stories</ApplicationTitle>
+    <ApplicationTitle>Schink Stories</ApplicationTitle>
     <ApplicationId>com.schink.stories.mobile</ApplicationId>
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
     <ApplicationVersion>1</ApplicationVersion>

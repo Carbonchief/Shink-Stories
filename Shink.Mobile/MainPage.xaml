@@ -18,7 +18,7 @@
                 FontAttributes="Bold"
                 FontSize="32"
                 HorizontalTextAlignment="Center"
-                Text="Shink Stories"
+                Text="Schink Stories"
                 TextColor="{StaticResource PrimaryText}" />
 
             <Label
@@ -41,7 +41,7 @@
                     <Label
                         FontSize="16"
                         LineBreakMode="WordWrap"
-                        Text="Koppel die mobiele UI aan gedeelde inhoud, API-oproepe en die bestaande Shink Stories dienste wanneer julle gereed is."
+                        Text="Koppel die mobiele UI aan gedeelde inhoud, API-oproepe en die bestaande Schink Stories dienste wanneer julle gereed is."
                         TextColor="{StaticResource MutedText}" />
                 </VerticalStackLayout>
             </Border>
