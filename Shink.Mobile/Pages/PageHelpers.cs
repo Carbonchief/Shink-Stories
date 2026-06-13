@@ -175,7 +175,7 @@ internal static class PageHelpers
             Margin = new Thickness(0, 0, 0, 10)
         };
 
-    private static string ResolveStoryCardImageSource(MobileStorySummary story, MobileApiClient apiClient)
+    internal static string ResolveStoryCardImageSource(MobileStorySummary story, MobileApiClient apiClient)
     {
         if (IsLegacyWebsiteAsset(story.ThumbnailUrl) && !string.IsNullOrWhiteSpace(story.ImageUrl))
         {

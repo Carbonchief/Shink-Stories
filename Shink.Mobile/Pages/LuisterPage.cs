@@ -98,8 +98,11 @@ public sealed class LuisterPage : ContentPage
 
         try
         {
-            await _apiClient.GetSessionAsync();
-            var response = await _apiClient.GetLuisterAsync();
+            var sessionTask = _apiClient.GetSessionAsync();
+            var luisterTask = _apiClient.GetLuisterAsync();
+            await Task.WhenAll(sessionTask, luisterTask);
+
+            var response = await luisterTask;
             if (response is null)
             {
                 _content.Children.Clear();
@@ -362,42 +365,49 @@ public sealed class LuisterPage : ContentPage
             : _apiClient.BuildImageUrl(playlist.ArtworkUrl);
         var card = new Border
         {
-            WidthRequest = 224,
-            BackgroundColor = Color.FromArgb("#FFFDF7"),
+            WidthRequest = 246,
+            BackgroundColor = Colors.Transparent,
             StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = 26 },
-            Padding = 10,
-            Shadow = new Shadow
-            {
-                Brush = Brush.Black,
-                Offset = new Point(0, 8),
-                Radius = 16,
-                Opacity = 0.08f
-            },
+            Padding = 0,
             Content = new VerticalStackLayout
             {
-                Spacing = 8,
+                Spacing = 9,
                 Children =
                 {
                     new Border
                     {
                         StrokeThickness = 0,
-                        StrokeShape = new RoundRectangle { CornerRadius = 20 },
-                        HeightRequest = 126,
-                        Content = new Image
+                        StrokeShape = new RoundRectangle { CornerRadius = 16 },
+                        HeightRequest = 138,
+                        Shadow = new Shadow
                         {
-                            Source = resolvedImageUrl,
-                            HeightRequest = 126,
-                            Aspect = Aspect.AspectFill
-                        }
+                            Brush = Brush.Black,
+                            Offset = new Point(0, 8),
+                            Radius = 18,
+                            Opacity = 0.22f
+                        },
+                        Content = new Grid
+                        {
+                            Children =
+                            {
+                                new Image
+                                {
+                                    Source = resolvedImageUrl,
+                                    HeightRequest = 138,
+                                    Aspect = Aspect.AspectFill
+                                },
+                                BuildCoverPlayBadge("▦")
+                            }
+                        },
                     },
                     new Label
                     {
                         Text = playlist.Title,
-                        FontAttributes = FontAttributes.Bold,
-                        FontSize = 16,
-                        TextColor = Color.FromArgb("#222222"),
-                        MaxLines = 2
+                        FontSize = 17,
+                        TextColor = Color.FromArgb("#1B2231"),
+                        MaxLines = 2,
+                        LineBreakMode = LineBreakMode.TailTruncation,
+                        LineHeight = 1.15
                     }
                 }
             }
@@ -433,9 +443,7 @@ public sealed class LuisterPage : ContentPage
         var row = new HorizontalStackLayout { Spacing = 14 };
         foreach (var story in playlist.Stories)
         {
-            var card = PageHelpers.BuildStoryCard(story, _apiClient, OpenStoryAsync, ToggleFavoriteAsync);
-            card.WidthRequest = 226;
-            row.Children.Add(card);
+            row.Children.Add(BuildLuisterStoryCarouselCard(story));
         }
 
         section.Children.Add(new ScrollView
@@ -446,6 +454,162 @@ public sealed class LuisterPage : ContentPage
 
         return section;
     }
+
+    private View BuildLuisterStoryCarouselCard(MobileStorySummary story)
+    {
+        var cover = new Border
+        {
+            StrokeThickness = 0,
+            StrokeShape = new RoundRectangle { CornerRadius = 16 },
+            HeightRequest = 218,
+            Shadow = new Shadow
+            {
+                Brush = Brush.Black,
+                Offset = new Point(0, 9),
+                Radius = 22,
+                Opacity = 0.26f
+            },
+            Content = new Grid
+            {
+                HeightRequest = 218,
+                Children =
+                {
+                    new Image
+                    {
+                        Source = PageHelpers.ResolveStoryCardImageSource(story, _apiClient),
+                        Aspect = Aspect.AspectFill,
+                        HeightRequest = 218
+                    },
+                    BuildLockedBadge(story),
+                    BuildFavoriteOverlay(story),
+                    BuildCoverPlayBadge("▶")
+                }
+            }
+        };
+
+        var card = new Border
+        {
+            WidthRequest = 168,
+            BackgroundColor = Colors.Transparent,
+            StrokeThickness = 0,
+            Padding = 0,
+            Margin = new Thickness(0, 0, 0, 10),
+            Content = new VerticalStackLayout
+            {
+                Spacing = 9,
+                Children =
+                {
+                    cover,
+                    new Label
+                    {
+                        Text = story.Title,
+                        FontSize = 16,
+                        TextColor = Color.FromArgb("#1B2231"),
+                        MaxLines = 2,
+                        LineBreakMode = LineBreakMode.TailTruncation,
+                        LineHeight = 1.16
+                    }
+                }
+            }
+        };
+
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += async (_, _) => await OpenStoryAsync(story);
+        card.GestureRecognizers.Add(tap);
+        return card;
+    }
+
+    private static View BuildLockedBadge(MobileStorySummary story) =>
+        new Border
+        {
+            IsVisible = story.IsLocked,
+            BackgroundColor = Color.FromArgb("#D9222222"),
+            StrokeThickness = 0,
+            StrokeShape = new RoundRectangle { CornerRadius = 999 },
+            Padding = new Thickness(9, 4),
+            Margin = new Thickness(10),
+            HorizontalOptions = LayoutOptions.Start,
+            VerticalOptions = LayoutOptions.Start,
+            Content = new Label
+            {
+                Text = "Gesluit",
+                TextColor = Colors.White,
+                FontSize = 10,
+                FontAttributes = FontAttributes.Bold
+            }
+        };
+
+    private View BuildFavoriteOverlay(MobileStorySummary story)
+    {
+        var heart = new Label
+        {
+            Text = story.IsFavorite ? "♥" : "♡",
+            TextColor = story.IsFavorite ? Color.FromArgb("#FFE6EF") : Colors.White,
+            FontSize = 25,
+            FontAttributes = FontAttributes.Bold,
+            Shadow = new Shadow
+            {
+                Brush = Brush.Black,
+                Offset = new Point(0, 2),
+                Radius = 7,
+                Opacity = 0.88f
+            },
+            HorizontalTextAlignment = TextAlignment.Center,
+            VerticalTextAlignment = TextAlignment.Center
+        };
+
+        var target = new Grid
+        {
+            WidthRequest = 44,
+            HeightRequest = 44,
+            Margin = new Thickness(0, 6, 6, 0),
+            HorizontalOptions = LayoutOptions.End,
+            VerticalOptions = LayoutOptions.Start,
+            Children = { heart }
+        };
+
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += async (_, _) => await ToggleFavoriteAsync(story);
+        target.GestureRecognizers.Add(tap);
+        return target;
+    }
+
+    private static View BuildCoverPlayBadge(string icon) =>
+        new Grid
+        {
+            BackgroundColor = Color.FromArgb("#22000000"),
+            InputTransparent = true,
+            Children =
+            {
+                new Border
+                {
+                    WidthRequest = 54,
+                    HeightRequest = 54,
+                    BackgroundColor = Color.FromArgb("#EEF3B23F"),
+                    StrokeThickness = 0,
+                    StrokeShape = new RoundRectangle { CornerRadius = 999 },
+                    HorizontalOptions = LayoutOptions.Center,
+                    VerticalOptions = LayoutOptions.Center,
+                    Shadow = new Shadow
+                    {
+                        Brush = Brush.Black,
+                        Offset = new Point(0, 6),
+                        Radius = 18,
+                        Opacity = 0.28f
+                    },
+                    Content = new Label
+                    {
+                        Text = icon,
+                        TextColor = Color.FromArgb("#1A1A1A"),
+                        FontSize = icon == "▶" ? 22 : 24,
+                        FontAttributes = FontAttributes.Bold,
+                        HorizontalTextAlignment = TextAlignment.Center,
+                        VerticalTextAlignment = TextAlignment.Center,
+                        Margin = icon == "▶" ? new Thickness(3, 0, 0, 0) : Thickness.Zero
+                    }
+                }
+            }
+        };
 
     private static IReadOnlyList<MobileLuisterSection> BuildLegacySections(IReadOnlyList<MobilePlaylist> playlists) =>
         playlists

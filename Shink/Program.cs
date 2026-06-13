@@ -2997,16 +2997,23 @@ app.MapGet("/api/mobile/luister", async (
     HttpContext httpContext,
     IStoryCatalogService storyCatalogService,
     ISubscriptionLedgerService subscriptionLedgerService,
-    IStoryFavoriteService storyFavoriteService) =>
+    IStoryFavoriteService storyFavoriteService,
+    bool compact = false) =>
 {
     var signedInEmail = GetSignedInEmail(httpContext.User);
-    var access = await ResolveMobileStoryAccessAsync(httpContext, subscriptionLedgerService);
-    var favoriteSlugs = !string.IsNullOrWhiteSpace(signedInEmail)
-        ? await storyFavoriteService.GetFavoriteStorySlugsAsync(signedInEmail, cancellationToken: httpContext.RequestAborted)
-        : Array.Empty<string>();
+    var accessTask = ResolveMobileStoryAccessAsync(httpContext, subscriptionLedgerService);
+    var favoriteSlugsTask = !string.IsNullOrWhiteSpace(signedInEmail)
+        ? storyFavoriteService.GetFavoriteStorySlugsAsync(signedInEmail, cancellationToken: httpContext.RequestAborted)
+        : Task.FromResult<IReadOnlyList<string>>(Array.Empty<string>());
+    var playlistsTask = storyCatalogService.GetLuisterPlaylistsAsync(signedInEmail, httpContext.RequestAborted);
+
+    await Task.WhenAll(accessTask, favoriteSlugsTask, playlistsTask);
+
+    var access = await accessTask;
+    var favoriteSlugs = await favoriteSlugsTask;
     var favoriteSet = favoriteSlugs.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-    var playlists = await storyCatalogService.GetLuisterPlaylistsAsync(signedInEmail, httpContext.RequestAborted);
+    var playlists = await playlistsTask;
     MobilePlaylistResponse MapPlaylist(StoryPlaylist playlist) =>
         new(
             Slug: playlist.Slug,
@@ -3026,19 +3033,20 @@ app.MapGet("/api/mobile/luister", async (
     var displayPlaylists = playlists
         .Where(playlist => !IsMobileSpeellysteSystemPlaylist(playlist))
         .ToArray();
-    var response = displayPlaylists.Select(MapPlaylist).ToArray();
+    var mappedPlaylists = displayPlaylists.Select(MapPlaylist).ToArray();
     var speellysteConfig = playlists.FirstOrDefault(IsMobileSpeellysteSystemPlaylist);
-    var sections = displayPlaylists
-        .Select(playlist => new MobileLuisterSectionResponse(
+    var sections = mappedPlaylists
+        .Select((playlist, index) => new MobileLuisterSectionResponse(
             Kind: MobileLuisterSectionKinds.Playlist,
             Title: playlist.Title,
-            SortOrder: playlist.SortOrder,
-            Playlist: MapPlaylist(playlist),
+            SortOrder: displayPlaylists[index].SortOrder,
+            Playlist: playlist,
             Playlists: Array.Empty<MobilePlaylistResponse>()))
         .ToList();
     var speellystePlaylists = displayPlaylists
-        .Where(playlist => playlist.IncludeInSpeellysteCarousel)
-        .Select(MapPlaylist)
+        .Select((playlist, index) => new { Playlist = playlist, Mapped = mappedPlaylists[index] })
+        .Where(item => item.Playlist.IncludeInSpeellysteCarousel)
+        .Select(item => item.Mapped)
         .ToArray();
     if (speellystePlaylists.Length > 0)
     {
@@ -3054,7 +3062,7 @@ app.MapGet("/api/mobile/luister", async (
 
     return Results.Ok(new MobileLuisterResponse(
         HasPaidSubscription: access.HasPaidSubscription,
-        Playlists: response,
+        Playlists: compact ? Array.Empty<MobilePlaylistResponse>() : mappedPlaylists,
         Sections: sections
             .OrderBy(section => section.SortOrder)
             .ThenBy(section => section.Title, StringComparer.OrdinalIgnoreCase)

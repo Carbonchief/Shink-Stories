@@ -116,7 +116,7 @@ public sealed class MobileApiClient
         GetAsync<MobileStoryCollectionResponse>("/api/mobile/gratis", cancellationToken);
 
     public Task<MobileLuisterResponse?> GetLuisterAsync(CancellationToken cancellationToken = default) =>
-        GetAsync<MobileLuisterResponse>("/api/mobile/luister", cancellationToken);
+        GetAsync<MobileLuisterResponse>("/api/mobile/luister?compact=true", cancellationToken);
 
     public Task<MobileAboutResponse?> GetAboutAsync(CancellationToken cancellationToken = default) =>
         GetAsync<MobileAboutResponse>("/api/mobile/meer-oor-ons", cancellationToken);
