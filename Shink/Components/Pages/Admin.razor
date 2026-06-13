@@ -9092,7 +9092,7 @@
         string.Equals(SelectedRevenueDrilldownPeriod, periodKey, StringComparison.OrdinalIgnoreCase);
 
     private string GetRevenueDrilldownPeriodRowClass(AdminSalesRevenueMetric metric, int _)
-        => IsSelectedRevenueDrilldownPeriod(metric.PeriodKey) ? "is-selected" : null;
+        => IsSelectedRevenueDrilldownPeriod(metric.PeriodKey) ? "is-selected" : string.Empty;
 
     private AdminSalesRevenueMetric GetSelectedRevenueSalesMetric() =>
         IsSelectedRevenueDrilldownPeriod(RevenuePeriodCustom)

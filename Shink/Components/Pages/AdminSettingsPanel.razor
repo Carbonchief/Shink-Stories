@@ -706,7 +706,7 @@ else
             : [];
 
     private string GetParentDiscountCodeRowClass(AdminSubscriptionDiscountCodeRecord code, int _)
-        => code.DiscountCodeId == SelectedParentCodeId ? "is-selected" : null;
+        => code.DiscountCodeId == SelectedParentCodeId ? "is-selected" : string.Empty;
 
     private bool MatchesParentCodeSearch(AdminSubscriptionDiscountCodeRecord code)
     {
@@ -730,7 +730,7 @@ else
             .ToArray();
 
     private string GetSubcodeRowClass(AdminSubscriptionDiscountCodeRecord subcode, int _)
-        => subcode.DiscountCodeId == DiscountCodeEditor?.DiscountCodeId ? "is-selected" : null;
+        => subcode.DiscountCodeId == DiscountCodeEditor?.DiscountCodeId ? "is-selected" : string.Empty;
 
     private string FormatSubcodeCount(int count) =>
         IsEnglish

@@ -384,25 +384,30 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
 
         Stop();
         _currentAudioUrl = audioUrl;
-        _player = new Android.Media.MediaPlayer();
-        _player.SetAudioAttributes(
-            new Android.Media.AudioAttributes.Builder()
-                .SetUsage(Android.Media.AudioUsageKind.Media)
-                .SetContentType(Android.Media.AudioContentType.Speech)
-                .Build());
-        _player.SetDataSource(audioUrl);
+        var player = new Android.Media.MediaPlayer();
+        _player = player;
+        var audioAttributesBuilder = new Android.Media.AudioAttributes.Builder();
+        audioAttributesBuilder.SetUsage(Android.Media.AudioUsageKind.Media);
+        audioAttributesBuilder.SetContentType(Android.Media.AudioContentType.Speech);
+        var audioAttributes = audioAttributesBuilder.Build();
+        if (audioAttributes is not null)
+        {
+            player.SetAudioAttributes(audioAttributes);
+        }
+
+        player.SetDataSource(audioUrl);
 
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        _player.Prepared += (_, _) => ready.TrySetResult();
-        _player.Completion += (_, _) =>
+        player.Prepared += (_, _) => ready.TrySetResult();
+        player.Completion += (_, _) =>
         {
             IsPlaying = false;
             PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
             MainThread.BeginInvokeOnMainThread(() => PlaybackEnded?.Invoke(this, EventArgs.Empty));
         };
-        _player.PrepareAsync();
+        player.PrepareAsync();
         await ready.Task;
-        _player.Start();
+        player.Start();
         IsPlaying = true;
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
     }

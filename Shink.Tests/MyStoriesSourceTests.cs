@@ -21,9 +21,13 @@ public class MyStoriesSourceTests
         StringAssert.Contains(page, "Totale luistertyd");
         StringAssert.Contains(page, "SubscriptionLedgerService.GetSubscriberProfileAsync(email)");
         StringAssert.Contains(page, "BuildUserStats(progressTask.Result, FavoriteStories.Count)");
+        StringAssert.Contains(page, "my-stories-carousel stories-carousel");
+        StringAssert.Contains(page, "initializeHomeStoryLoading");
         StringAssert.Contains(css, ".my-stories-stats-block");
-        StringAssert.Contains(css, "grid-template-columns: minmax(210px, 0.72fr) minmax(0, 1.28fr);");
+        StringAssert.Contains(css, "grid-template-columns: minmax(250px, 0.76fr) minmax(0, 1.24fr);");
         StringAssert.Contains(css, ".my-stories-stats-grid");
+        StringAssert.Contains(css, "grid-auto-columns: calc((100% - (var(--my-stories-carousel-gap) * 5)) / 6);");
+        StringAssert.Contains(css, ".my-stories-carousel.is-dragging");
     }
 
     private static string GetRepoPath(params string[] segments)

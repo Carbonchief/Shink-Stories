@@ -2,12 +2,15 @@
 @using System.Globalization
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.JSInterop
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IStoryTrackingService StoryTrackingService
 @inject IStoryCatalogService StoryCatalogService
 @inject IStoryFavoriteService StoryFavoriteService
 @inject ISubscriptionLedgerService SubscriptionLedgerService
+@inject IJSRuntime JS
 @inject NavigationManager NavigationManager
+@implements IAsyncDisposable
 
 <PageTitle>Schink Stories | My stories</PageTitle>
 <HeadContent>
@@ -115,7 +118,7 @@
         {
             <section class="my-stories-section" aria-label="Jou gunsteling stories">
                 <h2>Jou gunstelinge</h2>
-                <div class="my-stories-carousel" role="list" aria-label="Jou gunstelinge">
+                <div class="my-stories-carousel stories-carousel" role="list" aria-label="Jou gunstelinge">
                     @foreach (var story in FavoriteStories)
                     {
                         <article class="my-story-card @(story.IsCompleted ? "is-complete" : null)" role="listitem">
@@ -159,7 +162,7 @@
         {
             <section class="my-stories-section" aria-label="Stories waarmee jy besig is">
                 <h2>Jy luister tans</h2>
-                <div class="my-stories-carousel" role="list" aria-label="Jy luister tans">
+                <div class="my-stories-carousel stories-carousel" role="list" aria-label="Jy luister tans">
                     @foreach (var story in InProgressStories)
                     {
                         <article class="my-story-card" role="listitem">
@@ -203,7 +206,7 @@
         {
             <section class="my-stories-section" aria-label="Stories wat jy reeds geluister het">
                 <h2>Reeds geluister</h2>
-                <div class="my-stories-carousel" role="list" aria-label="Reeds geluister">
+                <div class="my-stories-carousel stories-carousel" role="list" aria-label="Reeds geluister">
                     @foreach (var story in CompletedStories)
                     {
                         <article class="my-story-card is-complete" role="listitem">
@@ -253,6 +256,8 @@
     private IReadOnlyList<MyStoryCard> FavoriteStories { get; set; } = Array.Empty<MyStoryCard>();
     private MyStoriesProfileSummary? ProfileSummary { get; set; }
     private MyStoriesStats? UserStats { get; set; }
+    private IJSObjectReference? _myStoriesModule;
+    private bool _myStoriesModuleLoadFailed;
     private string MyStoriesCanonicalUrl => NavigationManager.ToAbsoluteUri("/my-stories").ToString();
 
     protected override async Task OnInitializedAsync()
@@ -315,6 +320,37 @@
         ProfileSummary = profileTask.Result;
         UserStats = BuildUserStats(progressTask.Result, FavoriteStories.Count);
         IsLoading = false;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool _)
+    {
+        if (IsLoading || IsRedirectingToLogin)
+        {
+            return;
+        }
+
+        var module = await TryGetMyStoriesModuleAsync();
+        if (module is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await module.InvokeVoidAsync("initializeHomeStoryLoading");
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignore cancellations when navigation interrupts JS interop.
+        }
+        catch (JSException)
+        {
+            _myStoriesModuleLoadFailed = true;
+        }
+        catch (JSDisconnectedException)
+        {
+            // Ignore circuit disconnects during teardown/navigation.
+        }
     }
 
     private static MyStoryCard BuildStoryCard(UserStoryProgressItem progress, IReadOnlyDictionary<string, StoryItem> storiesBySlug)
@@ -672,6 +708,59 @@
         }
 
         return $"{firstInitial}{lastInitial}".Trim();
+    }
+
+    private async Task<IJSObjectReference?> TryGetMyStoriesModuleAsync()
+    {
+        if (_myStoriesModuleLoadFailed)
+        {
+            return null;
+        }
+
+        if (_myStoriesModule is not null)
+        {
+            return _myStoriesModule;
+        }
+
+        try
+        {
+            _myStoriesModule = await JS.InvokeAsync<IJSObjectReference>("import", "/Components/Pages/Home.razor.js");
+            return _myStoriesModule;
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch (JSException)
+        {
+            _myStoriesModuleLoadFailed = true;
+            return null;
+        }
+        catch (JSDisconnectedException)
+        {
+            return null;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_myStoriesModule is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _myStoriesModule.DisposeAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            // Ignore cancellations during component disposal.
+        }
+        catch (JSDisconnectedException)
+        {
+            // Ignore JS disconnects during teardown.
+        }
     }
 
     private sealed record MyStoryCard(
