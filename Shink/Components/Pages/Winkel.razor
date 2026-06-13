@@ -72,7 +72,7 @@
                             </div>
 
                             <div class="winkel-product-body">
-                                <p class="winkel-product-type">StorieTjommie teddie</p>
+                                <p class="winkel-product-type">StorieTjommie</p>
                                 <h3>@product.Name</h3>
                                 <p class="winkel-product-price">R @product.UnitPriceDisplay elk</p>
                                 <p class="winkel-product-description">@GetProductBlurb(product)</p>
@@ -124,7 +124,7 @@
                         <p class="winkel-order-panel-kicker">Vinnig opgesom</p>
                         <h3>Wat gebeur na betaling?</h3>
                         <ol class="winkel-order-list">
-                            <li>Jy kies jou kombinasie van teddies en hoeveel van elkeen jy wil hê.</li>
+                            <li>Jy kies jou kombinasie van StorieTjommies en hoeveel van elkeen jy wil hê.</li>
                             <li>Die PUDO locker aflewering word as 'n aparte lyn by jou bestelling gevoeg.</li>
                             <li>Paystack hanteer die produkte en aflewering saam as een veilige betaling.</li>
                         </ol>
@@ -263,7 +263,7 @@
     private string DeliveryFeeText => FormatZar(DeliveryFeeZar);
     private string PriceSummaryText => BuildPriceSummaryText();
     private string WinkelMetaDescription => HasProducts
-        ? "Koop StorieTjommie teddies en betaal alles saam in een veilige Paystack betaling."
+        ? "Koop StorieTjommies en betaal alles saam in een veilige Paystack betaling."
         : "Schink Stories se winkel word tans opgedateer met nuwe StorieTjommie produkte.";
 
     private bool HasPaymentMessage => !string.IsNullOrWhiteSpace(PaymentBannerText);
@@ -368,7 +368,7 @@
                     ["@type"] = "Product",
                     ["name"] = product.Name,
                     ["image"] = NavigationManager.ToAbsoluteUri(product.ImagePath).ToString(),
-                    ["category"] = "StorieTjommie teddie",
+                    ["category"] = "StorieTjommie",
                     ["offers"] = new Dictionary<string, object?>
                     {
                         ["@type"] = "Offer",

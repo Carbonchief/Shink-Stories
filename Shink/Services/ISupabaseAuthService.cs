@@ -25,6 +25,10 @@ public interface ISupabaseAuthService
         string refreshToken,
         string newPassword,
         CancellationToken cancellationToken = default);
+    Task<SupabasePasswordResetResult> ForceUpdatePasswordByEmailAsync(
+        string email,
+        string newPassword,
+        CancellationToken cancellationToken = default);
     Task<SupabaseEmailChangeResult> RequestEmailChangeAsync(
         string currentEmail,
         string currentPassword,

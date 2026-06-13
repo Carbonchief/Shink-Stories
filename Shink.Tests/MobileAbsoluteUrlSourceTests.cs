@@ -271,6 +271,19 @@ public class MobileAbsoluteUrlSourceTests
         Assert.IsTrue(splashBytes.Length > 100_000);
     }
 
+    [TestMethod]
+    public void MobileVisibleBrandCopyUsesSchinkSpelling()
+    {
+        var project = File.ReadAllText(GetRepoPath("Shink.Mobile", "Shink.Mobile.csproj"));
+        var mainPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "MainPage.xaml"));
+
+        StringAssert.Contains(project, "<ApplicationTitle>Schink Stories</ApplicationTitle>");
+        StringAssert.Contains(mainPage, "Text=\"Schink Stories\"");
+        StringAssert.Contains(mainPage, "bestaande Schink Stories dienste");
+        Assert.IsFalse(project.Contains(">Shink Stories<", StringComparison.Ordinal));
+        Assert.IsFalse(mainPage.Contains("Shink Stories", StringComparison.Ordinal));
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var current = new DirectoryInfo(AppContext.BaseDirectory);

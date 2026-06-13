@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -405,6 +406,44 @@ public sealed class SupabaseAuthService(
 
         return SupabasePasswordResetResult.Failure(
             updateResult.ErrorMessage ?? "Kon nie jou wagwoord nou opdateer nie. Probeer asseblief weer.");
+    }
+
+    public async Task<SupabasePasswordResetResult> ForceUpdatePasswordByEmailAsync(
+        string email,
+        string newPassword,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedEmail = email.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedEmail) || !normalizedEmail.Contains('@', StringComparison.Ordinal))
+        {
+            return SupabasePasswordResetResult.Failure("Gebruik asseblief 'n geldige e-posadres.");
+        }
+
+        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length is < 6 or > 200)
+        {
+            return SupabasePasswordResetResult.Failure("Wagwoord moet tussen 6 en 200 karakters wees.");
+        }
+
+        if (!TryBuildAdminUsersEndpoint(out var adminUsersEndpoint))
+        {
+            _logger.LogWarning(
+                "Supabase admin password update skipped because SecretKey or URL is not configured.");
+            return SupabasePasswordResetResult.Failure("Supabase SecretKey is nog nie opgestel nie.");
+        }
+
+        var userIdResult = await TryFindAdminUserIdByEmailAsync(adminUsersEndpoint, normalizedEmail, cancellationToken);
+        if (!userIdResult.IsSuccess)
+        {
+            return SupabasePasswordResetResult.Failure(
+                userIdResult.ErrorMessage ?? "Kon nie Supabase gebruiker nou vind nie.");
+        }
+
+        return await TryForceUpdateAdminUserPasswordAsync(
+            adminUsersEndpoint,
+            userIdResult.UserId!,
+            normalizedEmail,
+            newPassword,
+            cancellationToken);
     }
 
     public async Task<SupabaseEmailChangeResult> RequestEmailChangeAsync(
@@ -829,6 +868,106 @@ public sealed class SupabaseAuthService(
                 (int)response.StatusCode,
                 errorMessage);
             return SupabaseSignInResult.Failure(errorMessage);
+        }
+    }
+
+    private async Task<AdminUserIdLookupResult> TryFindAdminUserIdByEmailAsync(
+        Uri adminUsersEndpoint,
+        string email,
+        CancellationToken cancellationToken)
+    {
+        const int perPage = 1000;
+        const int maxPages = 100;
+
+        for (var page = 1; page <= maxPages; page++)
+        {
+            var pageUri = new Uri(adminUsersEndpoint, $"?page={page.ToString(CultureInfo.InvariantCulture)}&per_page={perPage.ToString(CultureInfo.InvariantCulture)}");
+            using var request = new HttpRequestMessage(HttpMethod.Get, pageUri);
+            request.Headers.TryAddWithoutValidation("apikey", _options.SecretKey);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.SecretKey);
+
+            HttpResponseMessage response;
+            try
+            {
+                response = await _httpClient.SendAsync(request, cancellationToken);
+            }
+            catch (HttpRequestException exception)
+            {
+                _logger.LogWarning(exception, "Supabase admin user lookup failed.");
+                return AdminUserIdLookupResult.Failure("Kon nie nou met Supabase koppel nie. Probeer asseblief weer.");
+            }
+
+            using (response)
+            {
+                var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorMessage = ReadErrorMessage(responseBody) ?? "Kon nie Supabase gebruiker nou vind nie.";
+                    _logger.LogWarning(
+                        "Supabase admin user lookup rejected: {StatusCode} {Message}",
+                        (int)response.StatusCode,
+                        errorMessage);
+                    return AdminUserIdLookupResult.Failure(errorMessage);
+                }
+
+                var users = ReadAdminUsers(responseBody);
+                var matchedUser = users.FirstOrDefault(user =>
+                    string.Equals(user.Email, email, StringComparison.OrdinalIgnoreCase));
+                if (matchedUser is not null)
+                {
+                    return AdminUserIdLookupResult.Success(matchedUser.Id);
+                }
+
+                if (users.Count < perPage)
+                {
+                    return AdminUserIdLookupResult.Failure("Geen Supabase gebruiker is vir hierdie e-posadres gevind nie.");
+                }
+            }
+        }
+
+        return AdminUserIdLookupResult.Failure("Kon nie Supabase gebruiker nou vind nie.");
+    }
+
+    private async Task<SupabasePasswordResetResult> TryForceUpdateAdminUserPasswordAsync(
+        Uri adminUsersEndpoint,
+        string userId,
+        string email,
+        string newPassword,
+        CancellationToken cancellationToken)
+    {
+        var userEndpoint = new Uri($"{adminUsersEndpoint.AbsoluteUri.TrimEnd('/')}/{Uri.EscapeDataString(userId)}");
+        using var request = new HttpRequestMessage(HttpMethod.Put, userEndpoint)
+        {
+            Content = JsonContent.Create(new SupabaseAdminPasswordUpdateRequest(newPassword))
+        };
+        request.Headers.TryAddWithoutValidation("apikey", _options.SecretKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.SecretKey);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(request, cancellationToken);
+        }
+        catch (HttpRequestException exception)
+        {
+            _logger.LogWarning(exception, "Supabase admin password update request failed.");
+            return SupabasePasswordResetResult.Failure("Kon nie nou met Supabase koppel nie. Probeer asseblief weer.");
+        }
+
+        using (response)
+        {
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                return SupabasePasswordResetResult.Success(ReadUserEmail(responseBody) ?? email);
+            }
+
+            var errorMessage = ReadErrorMessage(responseBody) ?? "Kon nie wagwoord nou verander nie.";
+            _logger.LogWarning(
+                "Supabase admin password update rejected: {StatusCode} {Message}",
+                (int)response.StatusCode,
+                errorMessage);
+            return SupabasePasswordResetResult.Failure(errorMessage);
         }
     }
 
@@ -1323,6 +1462,52 @@ public sealed class SupabaseAuthService(
         return $"{Convert.ToHexString(randomBytes)}aA1!";
     }
 
+    private static IReadOnlyList<AdminUserListItem> ReadAdminUsers(string responseBody)
+    {
+        if (string.IsNullOrWhiteSpace(responseBody))
+        {
+            return Array.Empty<AdminUserListItem>();
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(responseBody);
+            var root = document.RootElement;
+            var usersElement = root.ValueKind == JsonValueKind.Array
+                ? root
+                : root.TryGetProperty("users", out var usersProperty) && usersProperty.ValueKind == JsonValueKind.Array
+                    ? usersProperty
+                    : default;
+
+            if (usersElement.ValueKind != JsonValueKind.Array)
+            {
+                return Array.Empty<AdminUserListItem>();
+            }
+
+            var users = new List<AdminUserListItem>();
+            foreach (var userElement in usersElement.EnumerateArray())
+            {
+                var id = ReadStringProperty(userElement, "id");
+                var email = ReadStringProperty(userElement, "email");
+                if (!string.IsNullOrWhiteSpace(id) && !string.IsNullOrWhiteSpace(email))
+                {
+                    users.Add(new AdminUserListItem(id, email));
+                }
+            }
+
+            return users;
+        }
+        catch (JsonException)
+        {
+            return Array.Empty<AdminUserListItem>();
+        }
+    }
+
+    private static string? ReadStringProperty(JsonElement element, string propertyName) =>
+        element.TryGetProperty(propertyName, out var property) && property.ValueKind == JsonValueKind.String
+            ? property.GetString()
+            : null;
+
     private sealed record SupabasePasswordSignInRequest(string Email, string Password);
     private sealed record SupabasePasswordSignUpRequest(string Email, string Password, SupabasePasswordSignUpMetadata? Data = null);
     private sealed record SupabasePasswordRecoveryRequest(
@@ -1339,6 +1524,14 @@ public sealed class SupabaseAuthService(
         string Password,
         [property: JsonPropertyName("email_confirm")] bool EmailConfirm,
         [property: JsonPropertyName("user_metadata")] SupabasePasswordSignUpMetadata? UserMetadata);
+    private sealed record SupabaseAdminPasswordUpdateRequest(string Password);
+    private sealed record AdminUserListItem(string Id, string Email);
+    private sealed record AdminUserIdLookupResult(bool IsSuccess, string? UserId, string? ErrorMessage)
+    {
+        public static AdminUserIdLookupResult Success(string userId) => new(true, userId, null);
+
+        public static AdminUserIdLookupResult Failure(string errorMessage) => new(false, null, errorMessage);
+    }
     private sealed record SupabasePasswordSignUpMetadata(
         string? FirstName,
         string? LastName,

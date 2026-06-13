@@ -6,6 +6,7 @@
 @inject IStoryTrackingService StoryTrackingService
 @inject IStoryCatalogService StoryCatalogService
 @inject IStoryFavoriteService StoryFavoriteService
+@inject ISubscriptionLedgerService SubscriptionLedgerService
 @inject NavigationManager NavigationManager
 
 <PageTitle>Schink Stories | My stories</PageTitle>
@@ -51,19 +52,65 @@
             <h2>Laai jou stories...</h2>
         </section>
     }
-    else if (InProgressStories.Count == 0 && CompletedStories.Count == 0 && FavoriteStories.Count == 0)
-    {
-        <section class="my-stories-state">
-            <h2>Jy het nog nie begin luister nie.</h2>
-            <p>Kies 'n storie en begin luister. Jou vordering sal hier wys.</p>
-            <div class="my-stories-actions">
-                <a href="/luister" class="my-stories-btn">Gaan na gratis stories</a>
-                <a href="/luister" class="my-stories-btn my-stories-btn-secondary">Gaan na alle stories</a>
-            </div>
-        </section>
-    }
     else
     {
+        @if (ProfileSummary is not null && UserStats is not null)
+        {
+            <section class="my-stories-stats-block" aria-label="Jou luisterstatistiek">
+                <div class="my-stories-profile-summary">
+                    <span class="my-stories-profile-avatar" aria-hidden="true">
+                        @if (!string.IsNullOrWhiteSpace(ProfileSummary.ProfileImageUrl))
+                        {
+                            <img src="@ProfileSummary.ProfileImageUrl"
+                                 alt=""
+                                 loading="lazy"
+                                 decoding="async"
+                                 onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';this.classList.add('my-stories-profile-avatar-fallback');" />
+                        }
+                        else
+                        {
+                            <span>@ProfileSummary.Initials</span>
+                        }
+                    </span>
+                    <span class="my-stories-profile-copy">
+                        <strong>@ProfileSummary.DisplayName</strong>
+                        <span>Jou luisterreis</span>
+                    </span>
+                </div>
+
+                <dl class="my-stories-stats-grid">
+                    <div>
+                        <dt>Stories geluister</dt>
+                        <dd>@UserStats.StoriesListened</dd>
+                    </div>
+                    <div>
+                        <dt>Klaar geluister</dt>
+                        <dd>@UserStats.CompletedStories</dd>
+                    </div>
+                    <div>
+                        <dt>Gunstelinge</dt>
+                        <dd>@UserStats.FavoriteStories</dd>
+                    </div>
+                    <div>
+                        <dt>Totale luistertyd</dt>
+                        <dd>@UserStats.TotalListenTimeLabel</dd>
+                    </div>
+                </dl>
+            </section>
+        }
+
+        @if (InProgressStories.Count == 0 && CompletedStories.Count == 0 && FavoriteStories.Count == 0)
+        {
+            <section class="my-stories-state">
+                <h2>Jy het nog nie begin luister nie.</h2>
+                <p>Kies 'n storie en begin luister. Jou vordering sal hier wys.</p>
+                <div class="my-stories-actions">
+                    <a href="/luister" class="my-stories-btn">Gaan na gratis stories</a>
+                    <a href="/luister" class="my-stories-btn my-stories-btn-secondary">Gaan na alle stories</a>
+                </div>
+            </section>
+        }
+
         @if (FavoriteStories.Count > 0)
         {
             <section class="my-stories-section" aria-label="Jou gunsteling stories">
@@ -204,6 +251,8 @@
     private IReadOnlyList<MyStoryCard> InProgressStories { get; set; } = Array.Empty<MyStoryCard>();
     private IReadOnlyList<MyStoryCard> CompletedStories { get; set; } = Array.Empty<MyStoryCard>();
     private IReadOnlyList<MyStoryCard> FavoriteStories { get; set; } = Array.Empty<MyStoryCard>();
+    private MyStoriesProfileSummary? ProfileSummary { get; set; }
+    private MyStoriesStats? UserStats { get; set; }
     private string MyStoriesCanonicalUrl => NavigationManager.ToAbsoluteUri("/my-stories").ToString();
 
     protected override async Task OnInitializedAsync()
@@ -223,9 +272,10 @@
 
         var progressTask = StoryTrackingService.GetUserStoryProgressAsync(signedInEmail);
         var favoriteSlugsTask = StoryFavoriteService.GetFavoriteStorySlugsAsync(signedInEmail);
+        var profileTask = BuildProfileSummaryAsync(authState.User, signedInEmail);
         var freeStoriesTask = StoryCatalogService.GetFreeStoriesAsync();
         var luisterStoriesTask = StoryCatalogService.GetLuisterStoriesAsync();
-        await Task.WhenAll(progressTask, favoriteSlugsTask, freeStoriesTask, luisterStoriesTask);
+        await Task.WhenAll(progressTask, favoriteSlugsTask, profileTask, freeStoriesTask, luisterStoriesTask);
 
         var freeStoriesBySlug = freeStoriesTask.Result
             .GroupBy(story => story.Slug, StringComparer.OrdinalIgnoreCase)
@@ -262,6 +312,8 @@
             .ToArray();
         InProgressStories = cards.Where(card => !card.IsCompleted).ToArray();
         CompletedStories = cards.Where(card => card.IsCompleted).ToArray();
+        ProfileSummary = profileTask.Result;
+        UserStats = BuildUserStats(progressTask.Result, FavoriteStories.Count);
         IsLoading = false;
     }
 
@@ -432,6 +484,196 @@
         return $"{minutesPart}:{secondsPart:00}";
     }
 
+    private async Task<MyStoriesProfileSummary> BuildProfileSummaryAsync(ClaimsPrincipal user, string? email)
+    {
+        var profile = await TryGetSubscriberProfileAsync(email);
+        var displayName = ResolveDisplayName(user, profile, email);
+        var profileImageUrl = ResolveProfileImageUrl(profile?.ProfileImageUrl) ?? ResolveProfileImageUrl(user);
+        var initials = BuildProfileInitials(user, profile, displayName, email);
+
+        return new MyStoriesProfileSummary(
+            DisplayName: displayName,
+            ProfileImageUrl: profileImageUrl,
+            Initials: initials);
+    }
+
+    private async Task<SubscriberProfile?> TryGetSubscriberProfileAsync(string? email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return null;
+        }
+
+        try
+        {
+            return await SubscriptionLedgerService.GetSubscriberProfileAsync(email);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static MyStoriesStats BuildUserStats(IReadOnlyList<UserStoryProgressItem> progressItems, int favoriteStoryCount)
+    {
+        var storiesListened = progressItems
+            .Count(progress => !string.IsNullOrWhiteSpace(progress.StorySlug));
+        var completedStories = progressItems.Count(progress => progress.IsCompleted);
+        var totalListenedSeconds = progressItems.Sum(progress => progress.TotalListenedSeconds <= 0m ? 0m : progress.TotalListenedSeconds);
+
+        return new MyStoriesStats(
+            StoriesListened: storiesListened,
+            CompletedStories: completedStories,
+            FavoriteStories: favoriteStoryCount,
+            TotalListenTimeLabel: FormatListenTime(totalListenedSeconds));
+    }
+
+    private static string FormatListenTime(decimal totalSeconds)
+    {
+        if (totalSeconds <= 0m)
+        {
+            return "0 min";
+        }
+
+        var minutes = (int)Math.Round(totalSeconds / 60m, 0, MidpointRounding.AwayFromZero);
+        if (minutes < 60)
+        {
+            return $"{Math.Max(1, minutes)} min";
+        }
+
+        var hours = minutes / 60;
+        var remainingMinutes = minutes % 60;
+        return remainingMinutes == 0
+            ? $"{hours} uur"
+            : $"{hours} uur {remainingMinutes} min";
+    }
+
+    private static string ResolveDisplayName(ClaimsPrincipal user, SubscriberProfile? profile, string? email)
+    {
+        var displayName = FirstNonBlank(
+            profile?.DisplayName,
+            BuildFullName(profile?.FirstName, profile?.LastName),
+            user.FindFirst(ClaimTypes.Name)?.Value,
+            BuildFullName(user.FindFirst(ClaimTypes.GivenName)?.Value, user.FindFirst(ClaimTypes.Surname)?.Value),
+            email,
+            user.Identity?.Name);
+
+        if (string.IsNullOrWhiteSpace(displayName))
+        {
+            return "Schink luisteraar";
+        }
+
+        var trimmed = displayName.Trim();
+        return trimmed.Contains('@', StringComparison.Ordinal)
+            ? trimmed[..trimmed.IndexOf('@')]
+            : trimmed;
+    }
+
+    private static string? BuildFullName(string? firstName, string? lastName)
+    {
+        var parts = new[] { firstName, lastName }
+            .Where(part => !string.IsNullOrWhiteSpace(part))
+            .Select(part => part!.Trim())
+            .ToArray();
+
+        return parts.Length == 0 ? null : string.Join(" ", parts);
+    }
+
+    private static string? FirstNonBlank(params string?[] candidates) =>
+        candidates.FirstOrDefault(candidate => !string.IsNullOrWhiteSpace(candidate))?.Trim();
+
+    private static string? ResolveProfileImageUrl(ClaimsPrincipal user)
+    {
+        if (user.Identity?.IsAuthenticated != true)
+        {
+            return null;
+        }
+
+        return ResolveProfileImageUrl(
+            user.FindFirst("picture")?.Value
+            ?? user.FindFirst("avatar_url")?.Value
+            ?? user.FindFirst("profile_image_url")?.Value
+            ?? user.FindFirst("photo_url")?.Value);
+    }
+
+    private static string? ResolveProfileImageUrl(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var trimmed = value.Trim();
+        if (trimmed.StartsWith("/", StringComparison.Ordinal) &&
+            !trimmed.StartsWith("//", StringComparison.Ordinal))
+        {
+            return trimmed;
+        }
+
+        if (!Uri.TryCreate(trimmed, UriKind.Absolute, out var parsed))
+        {
+            return null;
+        }
+
+        return string.Equals(parsed.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+               string.Equals(parsed.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
+            ? parsed.ToString()
+            : null;
+    }
+
+    private static string BuildProfileInitials(ClaimsPrincipal user, SubscriberProfile? profile, string displayName, string? email)
+    {
+        var fromSeparateNames = BuildInitials(
+            profile?.FirstName ?? user.FindFirst(ClaimTypes.GivenName)?.Value,
+            profile?.LastName ?? user.FindFirst(ClaimTypes.Surname)?.Value);
+        if (!string.IsNullOrWhiteSpace(fromSeparateNames))
+        {
+            return fromSeparateNames;
+        }
+
+        var initialsSource = FirstNonBlank(displayName, email, user.Identity?.Name) ?? "Schink";
+        var localName = initialsSource.Contains('@', StringComparison.Ordinal)
+            ? initialsSource[..initialsSource.IndexOf('@')]
+            : initialsSource;
+        var tokens = localName
+            .Split([' ', '.', '_', '-'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(token => token.Length > 0)
+            .Take(2)
+            .ToArray();
+
+        if (tokens.Length >= 2)
+        {
+            return string.Concat(char.ToUpperInvariant(tokens[0][0]), char.ToUpperInvariant(tokens[1][0]));
+        }
+
+        if (tokens.Length == 1)
+        {
+            var token = tokens[0];
+            return token.Length >= 2
+                ? string.Concat(char.ToUpperInvariant(token[0]), char.ToUpperInvariant(token[1]))
+                : char.ToUpperInvariant(token[0]).ToString();
+        }
+
+        return "S";
+    }
+
+    private static string? BuildInitials(string? first, string? last)
+    {
+        var firstInitial = string.IsNullOrWhiteSpace(first)
+            ? null
+            : char.ToUpperInvariant(first.Trim()[0]).ToString();
+        var lastInitial = string.IsNullOrWhiteSpace(last)
+            ? null
+            : char.ToUpperInvariant(last.Trim()[0]).ToString();
+
+        if (firstInitial is null && lastInitial is null)
+        {
+            return null;
+        }
+
+        return $"{firstInitial}{lastInitial}".Trim();
+    }
+
     private sealed record MyStoryCard(
         string StorySlug,
         string Title,
@@ -446,4 +688,15 @@
         public string ProgressStyle => $"--my-story-progress: {ProgressPercent.ToString("0.###", CultureInfo.InvariantCulture)}%;";
         public bool HasMeta => !string.IsNullOrWhiteSpace(DurationLabel) || !string.IsNullOrWhiteSpace(ProgressLabel);
     }
+
+    private sealed record MyStoriesProfileSummary(
+        string DisplayName,
+        string? ProfileImageUrl,
+        string Initials);
+
+    private sealed record MyStoriesStats(
+        int StoriesListened,
+        int CompletedStories,
+        int FavoriteStories,
+        string TotalListenTimeLabel);
 }

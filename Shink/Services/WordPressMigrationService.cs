@@ -196,7 +196,7 @@ public sealed partial class WordPressMigrationService(
             if (reconciledNativePaystackTokens > 0)
             {
                 _logger.LogInformation(
-                    "Reconciled Paystack retry tokens onto {Count} native Shink subscription rows from imported WordPress data.",
+                    "Reconciled Paystack retry tokens onto {Count} native Schink subscription rows from imported WordPress data.",
                     reconciledNativePaystackTokens);
             }
 

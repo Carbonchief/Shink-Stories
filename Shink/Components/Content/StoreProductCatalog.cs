@@ -29,7 +29,7 @@ public static class StoreProductCatalog
             Name: "Suurlemoentjie",
             Description: "Helder, vrolik en gereed vir stories vol sonskyn en moed.",
             ImagePath: "/branding/winkel/storie-tjommie-suurlemoentjie.png",
-            AltText: "Suurlemoentjie StorieTjommie teddie",
+            AltText: "Suurlemoentjie StorieTjommie",
             ThemeClass: "is-suurlemoentjie",
             UnitPriceZar: TeddyPrice),
         new(
@@ -38,7 +38,7 @@ public static class StoreProductCatalog
             Name: "Tiekie",
             Description: "Vir kinders wat hou van sagte troos en 'n bekende maatjie naby.",
             ImagePath: "/branding/winkel/storie-tjommie-tiekie.png",
-            AltText: "Tiekie StorieTjommie teddie",
+            AltText: "Tiekie StorieTjommie",
             ThemeClass: "is-tiekie",
             UnitPriceZar: TeddyPrice),
         new(
@@ -47,7 +47,7 @@ public static class StoreProductCatalog
             Name: "Lama Lama Pajama Lama",
             Description: "Speels en knus vir slaaptyd, speeltyd en elke giggel tussenin.",
             ImagePath: "/branding/winkel/storie-tjommie-lama-lama-pajama-lama.png",
-            AltText: "Lama Lama Pajama Lama StorieTjommie teddie",
+            AltText: "Lama Lama Pajama Lama StorieTjommie",
             ThemeClass: "is-lama",
             UnitPriceZar: TeddyPrice),
         new(
@@ -56,7 +56,7 @@ public static class StoreProductCatalog
             Name: "Georgie",
             Description: "Rustige geselskap vir kinders wat lief is vir Georgie se warm persoonlikheid.",
             ImagePath: "/branding/winkel/storie-tjommie-georgie.png",
-            AltText: "Georgie StorieTjommie teddie",
+            AltText: "Georgie StorieTjommie",
             ThemeClass: "is-georgie",
             UnitPriceZar: TeddyPrice)
     ];

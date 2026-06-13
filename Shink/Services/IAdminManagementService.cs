@@ -65,6 +65,11 @@ public interface IAdminManagementService
         string resetUrl,
         CancellationToken cancellationToken = default);
 
+    Task<AdminOperationResult> ForceChangeSubscriberPasswordAsync(
+        string? adminEmail,
+        AdminSubscriberPasswordChangeRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<AdminOperationResult> ResendSubscriberRecoveryEmailAsync(
         string? adminEmail,
         Guid subscriberId,
@@ -341,6 +346,10 @@ public sealed record AdminSubscriberCreateRequest(
     string? DisplayName,
     string? MobileNumber,
     string? Password);
+
+public sealed record AdminSubscriberPasswordChangeRequest(
+    Guid SubscriberId,
+    string? NewPassword);
 
 public sealed record AdminSubscriberDisabledUpdateRequest(
     Guid SubscriberId,

@@ -3035,6 +3035,31 @@
                                             <span class="admin-btn-text">@(IsSendingSubscriberPasswordReset ? T("Stuur...", "Sending...") : T("Stuur wagwoordherstel", "Send password reset"))</span>
                                         </MudButton>
                                     </div>
+                                    <div class="admin-action-grid">
+                                        <MudTextField T="string"
+                                                      Label='@T("Nuwe wagwoord", "New password")'
+                                                      @bind-Value="ForcedSubscriberPassword"
+                                                      InputType="InputType.Password"
+                                                      Variant="Variant.Outlined"
+                                                      Margin="Margin.Dense" />
+                                        <MudTextField T="string"
+                                                      Label='@T("Bevestig nuwe wagwoord", "Confirm new password")'
+                                                      @bind-Value="ForcedSubscriberPasswordConfirmation"
+                                                      InputType="InputType.Password"
+                                                      Variant="Variant.Outlined"
+                                                      Margin="Margin.Dense" />
+                                        <MudButton Class="admin-icon-btn admin-action-btn"
+                                                   Variant="Variant.Outlined"
+                                                   Color="Color.Warning"
+                                                   Disabled="@(IsSavingSubscriberAction || IsChangingSubscriberPassword)"
+                                                   OnClick="ForceChangeSubscriberPasswordAsync"
+                                                   aria-label='@T("Verander wagwoord", "Change password")'
+                                                   title='@T("Verander wagwoord", "Change password")'>
+                                            <i class="fa-solid fa-key" aria-hidden="true"></i>
+                                            <span class="admin-btn-text">@(IsChangingSubscriberPassword ? T("Verander...", "Changing...") : T("Verander wagwoord", "Change password"))</span>
+                                        </MudButton>
+                                    </div>
+                                    <p class="admin-form-note">@T("Gebruik dit net wanneer jy die intekenaar se wagwoord namens hulle moet verander.", "Use this only when you need to change the subscriber's password for them.")</p>
                                 }
                             </MudTabPanel>
                             <MudTabPanel Text='@T("Toegang", "Access")'>
@@ -4529,6 +4554,7 @@
     private bool IsLoadingSubscriberDetail { get; set; }
     private bool IsSavingSubscriberAction { get; set; }
     private bool IsSendingSubscriberPasswordReset { get; set; }
+    private bool IsChangingSubscriberPassword { get; set; }
     private bool CanSendSubscriberSubscriptionRecoveryEmail =>
         !IsLoadingSubscriberDetail &&
         SubscriberDetail?.Subscriptions.Any(IsRecoverableFailedSubscription) == true;
@@ -4543,6 +4569,8 @@
     private string SubscriberBulkReason { get; set; } = string.Empty;
     private string NewSubscriberPassword { get; set; } = string.Empty;
     private string NewSubscriberPasswordConfirmation { get; set; } = string.Empty;
+    private string ForcedSubscriberPassword { get; set; } = string.Empty;
+    private string ForcedSubscriberPasswordConfirmation { get; set; } = string.Empty;
     private bool AreAllVisibleSubscribersSelected =>
         Subscribers.Count > 0 &&
         Subscribers.All(subscriber => SelectedSubscriberIds.Contains(subscriber.SubscriberId));
@@ -5853,6 +5881,8 @@
         SubscriberTierOptions = Array.Empty<AdminSubscriptionTierOption>();
         ManualAccessTierCode = string.Empty;
         ManualAccessExpiryDate = null;
+        ForcedSubscriberPassword = string.Empty;
+        ForcedSubscriberPasswordConfirmation = string.Empty;
     }
 
     private async Task StartNewSubscriber()
@@ -5871,6 +5901,8 @@
         ManualAccessExpiryDate = null;
         NewSubscriberPassword = string.Empty;
         NewSubscriberPasswordConfirmation = string.Empty;
+        ForcedSubscriberPassword = string.Empty;
+        ForcedSubscriberPasswordConfirmation = string.Empty;
         SubscriberEditorStateSignature = BuildSubscriberEditorStateSignature(SubscriberEditor);
         IsSubscriberDialogOpen = true;
         CompleteEditModalOpenRequest(true);
@@ -6178,6 +6210,57 @@
         }
     }
 
+    private async Task ForceChangeSubscriberPasswordAsync()
+    {
+        if (IsChangingSubscriberPassword)
+        {
+            return;
+        }
+
+        if (SubscriberEditor is null || SubscriberEditor.IsNew)
+        {
+            return;
+        }
+
+        if (!ValidateForcedSubscriberPassword())
+        {
+            return;
+        }
+
+        IsChangingSubscriberPassword = true;
+        IsSavingSubscriberAction = true;
+        ClearFeedback();
+
+        try
+        {
+            var result = await AdminManagementService.ForceChangeSubscriberPasswordAsync(
+                CurrentAdminEmail,
+                new AdminSubscriberPasswordChangeRequest(
+                    SubscriberEditor.SubscriberId,
+                    ForcedSubscriberPassword));
+
+            if (!HandleOperationResult(result, T("Wagwoord is verander.", "Password changed.")))
+            {
+                return;
+            }
+
+            ForcedSubscriberPassword = string.Empty;
+            ForcedSubscriberPasswordConfirmation = string.Empty;
+            SubscriberEditorStateSignature = BuildSubscriberEditorStateSignature(SubscriberEditor);
+            await LoadSubscriberDetailAsync(SubscriberEditor.SubscriberId);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to force-change subscriber password.");
+            SetError(T("Kon nie wagwoord nou verander nie.", "Could not change password right now."));
+        }
+        finally
+        {
+            IsChangingSubscriberPassword = false;
+            IsSavingSubscriberAction = false;
+        }
+    }
+
     private async Task GrantSubscriberAccessAsync()
     {
         if (SubscriberEditor is null || SubscriberEditor.IsNew)
@@ -6408,6 +6491,24 @@
         return true;
     }
 
+    private bool ValidateForcedSubscriberPassword()
+    {
+        if (string.IsNullOrWhiteSpace(ForcedSubscriberPassword) ||
+            ForcedSubscriberPassword.Length is < 6 or > 200)
+        {
+            SetError(T("Wagwoord moet tussen 6 en 200 karakters wees.", "Password must be between 6 and 200 characters."));
+            return false;
+        }
+
+        if (!string.Equals(ForcedSubscriberPassword, ForcedSubscriberPasswordConfirmation, StringComparison.Ordinal))
+        {
+            SetError(T("Wagwoorde stem nie ooreen nie.", "Passwords do not match."));
+            return false;
+        }
+
+        return true;
+    }
+
     private async Task<bool> SaveManualAccessFromSubscriberSaveAsync(Guid savedSubscriberId)
     {
         var result = await AdminManagementService.GrantSubscriberAccessAsync(
@@ -6538,6 +6639,8 @@
         IsSubscriberDialogOpen = false;
         NewSubscriberPassword = string.Empty;
         NewSubscriberPasswordConfirmation = string.Empty;
+        ForcedSubscriberPassword = string.Empty;
+        ForcedSubscriberPasswordConfirmation = string.Empty;
         CompleteEditModalClose();
     }
 
@@ -8759,7 +8862,9 @@
             BuildSubscriberEditorStateSignature(
                 SubscriberEditor,
                 NewSubscriberPassword,
-                NewSubscriberPasswordConfirmation),
+                NewSubscriberPasswordConfirmation,
+                ForcedSubscriberPassword,
+                ForcedSubscriberPasswordConfirmation),
             StringComparison.Ordinal);
 
     private bool IsStoryEditorDirty() =>
@@ -9882,7 +9987,9 @@
     private static string BuildSubscriberEditorStateSignature(
         EditableSubscriber editor,
         string? newSubscriberPassword = null,
-        string? newSubscriberPasswordConfirmation = null)
+        string? newSubscriberPasswordConfirmation = null,
+        string? forcedSubscriberPassword = null,
+        string? forcedSubscriberPasswordConfirmation = null)
     {
         return JsonSerializer.Serialize(new
         {
@@ -9894,7 +10001,9 @@
             DisplayName = NormalizeDirtyText(editor.DisplayName),
             MobileNumber = NormalizeDirtyText(editor.MobileNumber),
             NewSubscriberPassword = NormalizeDirtyText(newSubscriberPassword),
-            NewSubscriberPasswordConfirmation = NormalizeDirtyText(newSubscriberPasswordConfirmation)
+            NewSubscriberPasswordConfirmation = NormalizeDirtyText(newSubscriberPasswordConfirmation),
+            ForcedSubscriberPassword = NormalizeDirtyText(forcedSubscriberPassword),
+            ForcedSubscriberPasswordConfirmation = NormalizeDirtyText(forcedSubscriberPasswordConfirmation)
         });
     }
 

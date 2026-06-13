@@ -802,6 +802,53 @@ public sealed partial class SupabaseAdminManagementService(
         return new AdminOperationResult(true, EntityId: subscriberId);
     }
 
+    public async Task<AdminOperationResult> ForceChangeSubscriberPasswordAsync(
+        string? adminEmail,
+        AdminSubscriberPasswordChangeRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var context = await TryCreateAdminOperationContextAsync(adminEmail, cancellationToken);
+        if (context is null)
+        {
+            return new AdminOperationResult(false, "Jy het nie admin toegang nie.");
+        }
+
+        if (request.SubscriberId == Guid.Empty)
+        {
+            return new AdminOperationResult(false, "Kies asseblief 'n geldige intekenaar.");
+        }
+
+        if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length is < 6 or > 200)
+        {
+            return new AdminOperationResult(false, "Wagwoord moet tussen 6 en 200 karakters wees.");
+        }
+
+        var subscriber = await FetchSubscriberRecordByIdAsync(context, request.SubscriberId, cancellationToken);
+        if (subscriber is null)
+        {
+            return new AdminOperationResult(false, "Kies asseblief 'n geldige intekenaar.");
+        }
+
+        var passwordResult = await _supabaseAuthService.ForceUpdatePasswordByEmailAsync(
+            subscriber.Email,
+            request.NewPassword,
+            cancellationToken);
+        if (!passwordResult.IsSuccess)
+        {
+            return new AdminOperationResult(false, passwordResult.ErrorMessage ?? "Kon nie wagwoord nou verander nie.");
+        }
+
+        await WriteSubscriberAuditAsync(
+            context,
+            request.SubscriberId,
+            "auth.password_force_changed",
+            "Password force-changed from admin.",
+            new { email = subscriber.Email },
+            cancellationToken);
+
+        return new AdminOperationResult(true, EntityId: request.SubscriberId);
+    }
+
     public async Task<AdminOperationResult> ResendSubscriberRecoveryEmailAsync(
         string? adminEmail,
         Guid subscriberId,

@@ -25,6 +25,112 @@
     max-width: 66ch;
 }
 
+.my-stories-stats-block {
+    display: grid;
+    grid-template-columns: minmax(210px, 0.72fr) minmax(0, 1.28fr);
+    align-items: stretch;
+    gap: 0.85rem;
+    padding: 0.9rem;
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--line) 82%, #bfc8c3);
+    background: color-mix(in srgb, var(--surface) 92%, white);
+    box-shadow: 0 14px 34px rgba(21, 33, 40, 0.08);
+}
+
+.my-stories-profile-summary {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: 76px minmax(0, 1fr);
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.7rem;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--surface) 78%, #e9f0ec);
+}
+
+.my-stories-profile-avatar {
+    width: 76px;
+    height: 76px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    color: #183d49;
+    background: color-mix(in srgb, var(--accent) 42%, white);
+    border: 2px solid color-mix(in srgb, white 72%, var(--accent));
+    box-shadow: 0 8px 20px rgba(21, 33, 40, 0.13);
+    font-size: 1.34rem;
+    font-weight: 800;
+    letter-spacing: 0;
+}
+
+.my-stories-profile-avatar img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    object-fit: cover;
+}
+
+.my-stories-profile-avatar img.my-stories-profile-avatar-fallback {
+    padding: 0.6rem;
+    object-fit: contain;
+    background: #ffffff;
+}
+
+.my-stories-profile-copy {
+    min-width: 0;
+    display: grid;
+    gap: 0.18rem;
+}
+
+.my-stories-profile-copy strong {
+    color: #1b2231;
+    font-size: 1.1rem;
+    line-height: 1.16;
+    overflow-wrap: anywhere;
+}
+
+.my-stories-profile-copy span {
+    color: #48606a;
+    font-size: 0.88rem;
+    font-weight: 700;
+}
+
+.my-stories-stats-grid {
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.6rem;
+}
+
+.my-stories-stats-grid div {
+    min-width: 0;
+    display: grid;
+    align-content: center;
+    gap: 0.24rem;
+    padding: 0.72rem 0.68rem;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--surface) 84%, white);
+    border: 1px solid color-mix(in srgb, var(--line) 74%, transparent);
+}
+
+.my-stories-stats-grid dt {
+    color: #48606a;
+    font-size: 0.76rem;
+    font-weight: 800;
+    line-height: 1.18;
+}
+
+.my-stories-stats-grid dd {
+    margin: 0;
+    color: #183d49;
+    font-size: clamp(1.1rem, 2vw, 1.42rem);
+    font-weight: 800;
+    line-height: 1.05;
+    overflow-wrap: anywhere;
+}
+
 .my-stories-state {
     padding: 1rem;
     border-radius: 14px;
@@ -260,6 +366,10 @@
 }
 
 @media (max-width: 980px) {
+    .my-stories-stats-block {
+        grid-template-columns: 1fr;
+    }
+
     .my-stories-carousel {
         grid-auto-columns: clamp(180px, 42vw, 220px);
     }
@@ -288,6 +398,51 @@
         margin-top: 0.3rem;
         font-size: 0.94rem;
         line-height: 1.45;
+    }
+
+    .my-stories-stats-block {
+        gap: 0.65rem;
+        padding: 0.72rem;
+        border-radius: 12px;
+    }
+
+    .my-stories-profile-summary {
+        grid-template-columns: 62px minmax(0, 1fr);
+        gap: 0.62rem;
+        padding: 0.62rem;
+        border-radius: 10px;
+    }
+
+    .my-stories-profile-avatar {
+        width: 62px;
+        height: 62px;
+        font-size: 1.08rem;
+    }
+
+    .my-stories-profile-copy strong {
+        font-size: 1rem;
+    }
+
+    .my-stories-profile-copy span {
+        font-size: 0.8rem;
+    }
+
+    .my-stories-stats-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.52rem;
+    }
+
+    .my-stories-stats-grid div {
+        padding: 0.64rem 0.6rem;
+        border-radius: 10px;
+    }
+
+    .my-stories-stats-grid dt {
+        font-size: 0.72rem;
+    }
+
+    .my-stories-stats-grid dd {
+        font-size: 1.08rem;
     }
 
     .my-stories-section {

@@ -165,6 +165,60 @@ public class SupabaseAuthServiceTests
         StringAssert.Contains(requestBody!, "\"firstName\":\"Ouer\"");
     }
 
+    [TestMethod]
+    public async Task ForceUpdatePasswordByEmailAsync_FindsUserByEmailAndUpdatesPasswordWithServiceRole()
+    {
+        var requestUris = new List<string>();
+        var requestBodies = new List<string>();
+        var handler = new RecordingHandler(request =>
+        {
+            requestUris.Add(request.RequestUri?.ToString() ?? string.Empty);
+            Assert.AreEqual("secret-key", request.Headers.Authorization?.Parameter);
+
+            if (request.RequestUri?.AbsolutePath == "/auth/v1/admin/users")
+            {
+                Assert.AreEqual(HttpMethod.Get, request.Method);
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        """
+                        {
+                          "users": [
+                            { "id": "11111111-1111-1111-1111-111111111111", "email": "other@example.com" },
+                            { "id": "22222222-2222-2222-2222-222222222222", "email": "ouer@example.com" }
+                          ]
+                        }
+                        """,
+                        Encoding.UTF8,
+                        "application/json")
+                };
+            }
+
+            Assert.AreEqual(HttpMethod.Put, request.Method);
+            Assert.AreEqual("/auth/v1/admin/users/22222222-2222-2222-2222-222222222222", request.RequestUri?.AbsolutePath);
+            requestBodies.Add(request.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? string.Empty);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"email":"ouer@example.com"}""", Encoding.UTF8, "application/json")
+            };
+        });
+        using var httpClient = new HttpClient(handler);
+        var service = CreateService(httpClient, secretKey: "secret-key");
+
+        var result = await service.ForceUpdatePasswordByEmailAsync("ouer@example.com", "NewPassword123!");
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.AreEqual("ouer@example.com", result.UserEmail);
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "https://example.supabase.co/auth/v1/admin/users?page=1&per_page=1000",
+                "https://example.supabase.co/auth/v1/admin/users/22222222-2222-2222-2222-222222222222"
+            },
+            requestUris);
+        StringAssert.Contains(requestBodies[0], "\"password\":\"NewPassword123!\"");
+    }
+
     private static SupabaseAuthService CreateService(
         HttpClient httpClient,
         string secretKey = "",
