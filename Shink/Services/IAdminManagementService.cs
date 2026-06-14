@@ -982,6 +982,7 @@ public sealed record AdminSalesRevenueMetric(
 public sealed record AdminSalesRevenueDetailRecord(
     DateTimeOffset SoldAt,
     decimal RevenueZar,
+    string Email,
     string TierCode,
     string TierName,
     string Provider,

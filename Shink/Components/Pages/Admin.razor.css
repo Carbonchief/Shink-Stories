@@ -2423,6 +2423,57 @@
     font-size: 0.9rem;
 }
 
+.admin-collapsible-card,
+.admin-collapsible-panel,
+.admin-story-analytics-drilldown {
+    overflow: hidden;
+}
+
+.admin-collapsible-summary {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    cursor: pointer;
+    list-style: none;
+}
+
+.admin-collapsible-summary::-webkit-details-marker {
+    display: none;
+}
+
+.admin-collapsible-summary i {
+    margin-top: 0.15rem;
+    color: var(--admin-muted);
+    transition: transform 0.16s ease, color 0.16s ease;
+}
+
+.admin-collapsible-summary:hover i,
+.admin-collapsible-summary:focus-visible i {
+    color: var(--admin-text);
+}
+
+details[open] > .admin-collapsible-summary i {
+    transform: rotate(180deg);
+}
+
+.admin-collapsible-summary-card {
+    align-items: center;
+}
+
+.admin-collapsible-content {
+    display: grid;
+    gap: 0.75rem;
+}
+
+.admin-collapsible-summary-meta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+}
+
 .admin-subscriber-analytics-period-select {
     min-width: 150px;
 }

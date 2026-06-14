@@ -4295,7 +4295,7 @@ public sealed partial class SupabaseAdminManagementService(
             MembershipDetails: BuildSubscriberMembershipDetails(subscribers, subscriptions, tierDetails, paystackSubscriptionCreateIdentifiers),
             RecurringRevenue: BuildRecurringRevenueMetrics(subscriptions, recoveries),
             SalesAndRevenue: BuildSalesRevenueMetricsCore(wordPressSubscriberReports, subscriptions, tierDetails, revenueEvents, storeOrderRevenue),
-            SalesDetails: BuildSalesRevenueDetailsCore(subscriptions, tierDetails, revenueEvents, storeOrderRevenue),
+            SalesDetails: BuildSalesRevenueDetailsCore(subscribers, subscriptions, tierDetails, revenueEvents, storeOrderRevenue),
             AbandonedCartRecoveries: BuildRecoveryMetrics(subscriptions, tierDetails, recoveries, abandonedCartRecoveries),
             RecoveredRevenueDetails: BuildRecoveredRevenueDetails(subscribers, subscriptions, tierDetails, recoveries, abandonedCartRecoveries),
             VisitsViewsAndLogins: BuildVisitsViewsLoginsMetrics(authSessions, storyViews, storyListenSessions));
@@ -4649,7 +4649,12 @@ public sealed partial class SupabaseAdminManagementService(
         _ = wordPressSubscriberReports;
         _ = tierDetails;
 
-        var eligibleSales = BuildEligibleSalesRevenueCandidates(subscriptions, tierDetails, revenueEvents, storeOrderRevenue);
+        var eligibleSales = BuildEligibleSalesRevenueCandidates(
+            subscriptions,
+            tierDetails,
+            revenueEvents,
+            storeOrderRevenue,
+            new Dictionary<Guid, string>());
 
         return
         [
@@ -4747,16 +4752,27 @@ public sealed partial class SupabaseAdminManagementService(
             Array.Empty<StoreOrderRevenueRow>());
 
     private static IReadOnlyList<AdminSalesRevenueDetailRecord> BuildSalesRevenueDetailsCore(
+        IReadOnlyList<SubscriberRow> subscribers,
         IReadOnlyList<SubscriptionRow> subscriptions,
         IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
         IReadOnlyList<RevenueEventRow> revenueEvents,
-        IReadOnlyList<StoreOrderRevenueRow> storeOrderRevenue) =>
-        BuildEligibleSalesRevenueCandidates(subscriptions, tierDetails, revenueEvents, storeOrderRevenue)
+        IReadOnlyList<StoreOrderRevenueRow> storeOrderRevenue)
+    {
+        var subscriberEmailById = subscribers
+            .Where(subscriber => subscriber.SubscriberId != Guid.Empty)
+            .Where(subscriber => !string.IsNullOrWhiteSpace(subscriber.Email))
+            .GroupBy(subscriber => subscriber.SubscriberId)
+            .ToDictionary(
+                group => group.Key,
+                group => NormalizeOptionalText(group.First().Email, 254) ?? "-");
+
+        return BuildEligibleSalesRevenueCandidates(subscriptions, tierDetails, revenueEvents, storeOrderRevenue, subscriberEmailById)
             .Where(candidate => candidate.SubscribedAt is not null)
             .OrderByDescending(candidate => candidate.SubscribedAt)
             .Select(candidate => new AdminSalesRevenueDetailRecord(
                 candidate.SubscribedAt!.Value,
                 decimal.Round(candidate.Price, 2, MidpointRounding.AwayFromZero),
+                candidate.Email,
                 candidate.TierCode,
                 candidate.TierName,
                 candidate.Provider,
@@ -4765,12 +4781,15 @@ public sealed partial class SupabaseAdminManagementService(
                 candidate.Status,
                 candidate.AmountSource))
             .ToArray();
+    }
 
     private static IReadOnlyList<AdminSalesRevenueDetailRecord> BuildSalesRevenueDetails(
+        IReadOnlyList<SubscriberRow> subscribers,
         IReadOnlyList<SubscriptionRow> subscriptions,
         IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
         IReadOnlyList<RevenueEventRow> revenueEvents) =>
         BuildSalesRevenueDetailsCore(
+            subscribers,
             subscriptions,
             tierDetails,
             revenueEvents,
@@ -4780,12 +4799,13 @@ public sealed partial class SupabaseAdminManagementService(
         IReadOnlyList<SubscriptionRow> subscriptions,
         IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
         IReadOnlyList<RevenueEventRow> revenueEvents,
-        IReadOnlyList<StoreOrderRevenueRow> storeOrderRevenue)
+        IReadOnlyList<StoreOrderRevenueRow> storeOrderRevenue,
+        IReadOnlyDictionary<Guid, string> subscriberEmailById)
     {
         var subscriptionLookup = BuildSubscriptionRevenueIdentifierLookup(subscriptions);
         var providerRevenueEvents = revenueEvents
             .Where(IsProviderRevenueEventEligible)
-            .Select(row => BuildRevenueCandidate(row, subscriptionLookup, tierDetails))
+            .Select(row => BuildRevenueCandidate(row, subscriptionLookup, tierDetails, subscriberEmailById))
             .Where(metric => metric.Price > 0m && metric.SubscribedAt is not null)
             .ToArray();
 
@@ -4804,7 +4824,7 @@ public sealed partial class SupabaseAdminManagementService(
 
         return subscriptions
             .Where(subscription => IsRevenueMetricEligible(subscription, earliestProviderEventDateByProvider))
-            .Select(subscription => BuildSubscriptionRevenueCandidate(subscription, tierDetails))
+            .Select(subscription => BuildSubscriptionRevenueCandidate(subscription, tierDetails, subscriberEmailById))
             .Where(metric => metric.Price > 0m)
             .Concat(providerRevenueEvents)
             .Concat(paidStoreOrders)
@@ -4986,11 +5006,13 @@ public sealed partial class SupabaseAdminManagementService(
     private static SubscriberSaleMetricCandidate BuildRevenueCandidate(
         RevenueEventRow row,
         IReadOnlyDictionary<string, SubscriptionRow> subscriptionLookup,
-        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails)
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
+        IReadOnlyDictionary<Guid, string> subscriberEmailById)
     {
         var occurredAt = ResolveRevenueEventOccurredAt(row);
         var amount = ResolveProviderRevenueAmount(row, out var amountSource);
         var matchedSubscription = FindRevenueEventSubscription(row, subscriptionLookup);
+        var email = ResolveRevenueCandidateEmail(row, matchedSubscription, subscriberEmailById);
         var reference = ResolveRevenueEventReference(row);
         var payloadTierCode = NormalizeOptionalText(TryReadNestedString(row.Payload, "data", "plan", "plan_code"), 80) ??
                               NormalizeOptionalText(TryReadString(row.Payload, "custom_str1"), 80) ??
@@ -5005,6 +5027,7 @@ public sealed partial class SupabaseAdminManagementService(
         return new SubscriberSaleMetricCandidate(
             occurredAt,
             amount,
+            email,
             tierCode,
             tierName,
             provider,
@@ -5016,12 +5039,16 @@ public sealed partial class SupabaseAdminManagementService(
 
     private static SubscriberSaleMetricCandidate BuildSubscriptionRevenueCandidate(
         SubscriptionRow subscription,
-        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails)
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
+        IReadOnlyDictionary<Guid, string> subscriberEmailById)
     {
         var tierCode = NormalizeOptionalText(subscription.TierCode, 80) ?? "-";
         var tierName = tierDetails.TryGetValue(tierCode, out var tier)
             ? NormalizeOptionalText(tier.DisplayName, 120) ?? tierCode
             : tierCode;
+        var email = subscriberEmailById.TryGetValue(subscription.SubscriberId, out var matchedEmail)
+            ? matchedEmail
+            : "-";
         var reference = NormalizeOptionalText(subscription.ProviderTransactionId, 160) ??
                         NormalizeOptionalText(subscription.ProviderPaymentId, 160) ??
                         subscription.SubscriptionId.ToString("D");
@@ -5029,6 +5056,7 @@ public sealed partial class SupabaseAdminManagementService(
         return new SubscriberSaleMetricCandidate(
             subscription.SubscribedAt,
             subscription.BillingAmountZar ?? 0m,
+            email,
             tierCode,
             tierName,
             NormalizeOptionalText(subscription.Provider, 40) ?? "-",
@@ -5048,6 +5076,7 @@ public sealed partial class SupabaseAdminManagementService(
         return new SubscriberSaleMetricCandidate(
             order.PaidAt ?? order.CreatedAt,
             order.TotalPriceZar,
+            "-",
             "store_order",
             productName,
             NormalizeOptionalText(order.Provider, 40) ?? "paystack",
@@ -5055,6 +5084,25 @@ public sealed partial class SupabaseAdminManagementService(
             reference,
             NormalizeOptionalText(order.PaymentStatus, 40) ?? "paid",
             "store_orders.total_price_zar");
+    }
+
+    private static string ResolveRevenueCandidateEmail(
+        RevenueEventRow row,
+        SubscriptionRow? matchedSubscription,
+        IReadOnlyDictionary<Guid, string> subscriberEmailById)
+    {
+        if (matchedSubscription is not null &&
+            subscriberEmailById.TryGetValue(matchedSubscription.SubscriberId, out var matchedEmail))
+        {
+            return matchedEmail;
+        }
+
+        return NormalizeOptionalText(
+                   TryReadNestedString(row.Payload, "data", "customer", "email") ??
+                   TryReadNestedString(row.Payload, "customer", "email") ??
+                   TryReadString(row.Payload, "email"),
+                   254) ??
+               "-";
     }
 
     private static decimal ResolveProviderRevenueAmount(RevenueEventRow row, out string amountSource)
@@ -7075,6 +7123,7 @@ public sealed partial class SupabaseAdminManagementService(
     private sealed record SubscriberSaleMetricCandidate(
         DateTimeOffset? SubscribedAt,
         decimal Price,
+        string Email,
         string TierCode,
         string TierName,
         string Provider,
