@@ -18,9 +18,9 @@ public class AdminAnalyticsSourceTests
 
         StringAssert.Contains(admin, "admin-subscriber-analytics-section");
         StringAssert.Contains(admin, "SubscriberReports.MembershipStats");
-        StringAssert.Contains(admin, "GetSubscriberMetric(\"today\")");
-        StringAssert.Contains(admin, "GetSubscriberMetric(\"this_month\")");
-        StringAssert.Contains(admin, "GetSubscriberMetric(\"this_year\")");
+        StringAssert.Contains(admin, "GetAccessFilteredSubscriberMetric(\"today\")");
+        StringAssert.Contains(admin, "GetAccessFilteredSubscriberMetric(\"this_month\")");
+        StringAssert.Contains(admin, "GetAccessFilteredSubscriberMetric(\"this_year\")");
         StringAssert.Contains(admin, "Cancellations");
         StringAssert.Contains(admin, "New subscribers today");
         StringAssert.Contains(admin, "Cancelled subscriptions");
@@ -55,10 +55,11 @@ public class AdminAnalyticsSourceTests
         StringAssert.Contains(admin, "@T(\"Betaal\", \"Paid\")");
         StringAssert.Contains(admin, "BuildSubscriberDrilldownPeriodSummary()");
         StringAssert.Contains(admin, "BuildSubscriberDrilldownOptionLabel(metric)");
-        StringAssert.Contains(admin, "SelectedTierDistributionPeriod");
         StringAssert.Contains(admin, "CurrentTierDistributionMetrics");
-        StringAssert.Contains(admin, "SetTierDistributionPeriod");
         StringAssert.Contains(admin, "ChartSeries=\"ActiveMembersPerLevelChartSeries\"");
+        Assert.IsFalse(admin.Contains("SelectedTierDistributionPeriod", StringComparison.Ordinal));
+        Assert.IsFalse(admin.Contains("SetTierDistributionPeriod", StringComparison.Ordinal));
+        Assert.IsFalse(admin.Contains("tier-distribution-period", StringComparison.Ordinal));
         Assert.IsFalse(admin.Contains("admin-subscriber-analytics-table", StringComparison.Ordinal));
         StringAssert.Contains(service, "AdminSubscriberMembershipDetailRecord");
         StringAssert.Contains(service, "MembershipDetails");
@@ -94,6 +95,59 @@ public class AdminAnalyticsSourceTests
         StringAssert.Contains(migration, "case when n.sort_label = 'created_at' and not n.sort_desc then b.created_at end asc nulls last");
         StringAssert.Contains(migration, "case when n.sort_label = 'created_at' and n.sort_desc then b.created_at end desc nulls last");
         StringAssert.Contains(migration, "order by o.row_order");
+    }
+
+    [TestMethod]
+    public void SubscriberTierPieChartShowsAllTimeEffectiveTierDistribution()
+    {
+        var admin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
+        var service = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseAdminManagementService.cs"));
+
+        StringAssert.Contains(service, "FetchRowsPagedAsync<SubscriptionRow>");
+        StringAssert.Contains(service, "maxRows: 50000");
+        StringAssert.Contains(service, "&order=subscribed_at.desc,subscription_id.asc");
+        StringAssert.Contains(service, "SelectEffectiveTierDistributionSubscriptions");
+        StringAssert.Contains(service, "GetTierDistributionRank");
+        StringAssert.Contains(service, "IsTierDistributionEligible");
+        StringAssert.Contains(service, "ActiveMembersPerLevel: BuildTierDistributionMetrics(subscriptions, tierDetails)");
+        StringAssert.Contains(admin, "@T(\"Alle intekenaars en persentasie per intekenvlak.\", \"All subscribers and percentage by subscription tier.\")");
+        StringAssert.Contains(admin, "@T(\"Intekenaars\", \"Subscribers\")");
+        StringAssert.Contains(admin, "string.Equals(metric.PeriodKey, \"all_time\", StringComparison.OrdinalIgnoreCase)");
+        Assert.IsFalse(admin.Contains("id=\"tier-distribution-period\"", StringComparison.Ordinal));
+
+        var tierDistributionStart = service.IndexOf("private static IReadOnlyList<AdminTierDistributionMetric> BuildTierDistributionMetrics(", StringComparison.Ordinal);
+        Assert.AreNotEqual(-1, tierDistributionStart);
+        var tierDistributionEnd = service.IndexOf("private static IReadOnlyList<AdminTierDistributionMetric> BuildTierDistributionMetricsForPeriod(", tierDistributionStart, StringComparison.Ordinal);
+        Assert.AreNotEqual(-1, tierDistributionEnd);
+        var tierDistributionBlock = service[tierDistributionStart..tierDistributionEnd];
+
+        Assert.IsFalse(tierDistributionBlock.Contains("wordPressSubscriberReports.ActiveMembersPerLevel", StringComparison.Ordinal));
+        Assert.IsFalse(tierDistributionBlock.Contains("GetFirstSubscriberSignupSubscriptions", StringComparison.Ordinal));
+        Assert.IsFalse(tierDistributionBlock.Contains("SubscriberPeriod.Today", StringComparison.Ordinal));
+        Assert.IsFalse(tierDistributionBlock.Contains("SubscriberPeriod.ThisMonth", StringComparison.Ordinal));
+        Assert.IsFalse(tierDistributionBlock.Contains("SubscriberPeriod.ThisYear", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void RevenueMrrCardsExposeHelpfulTooltips()
+    {
+        var admin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
+        var css = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor.css"));
+
+        StringAssert.Contains(admin, "class=\"admin-analytics-label-row\"");
+        StringAssert.Contains(admin, "class=\"admin-info-icon-button\"");
+        StringAssert.Contains(admin, "data-tooltip='@T(");
+        StringAssert.Contains(admin, "fa-circle-info");
+        StringAssert.Contains(admin, "@T(\"Meer oor totale MRR\", \"More about total MRR\")");
+        StringAssert.Contains(admin, "@T(\"Meer oor maandelikse MRR\", \"More about monthly MRR\")");
+        StringAssert.Contains(admin, "@T(\"Meer oor jaarplan MRR\", \"More about yearly plan MRR\")");
+        StringAssert.Contains(admin, "Estimated monthly recurring revenue from all recurring plans.");
+        StringAssert.Contains(admin, "Monthly recurring revenue from monthly plans only.");
+        StringAssert.Contains(admin, "Recurring revenue from yearly plans, shown as a monthly value.");
+        StringAssert.Contains(css, ".admin-analytics-label-row");
+        StringAssert.Contains(css, ".admin-info-icon-button");
+        StringAssert.Contains(css, "content: attr(data-tooltip);");
+        StringAssert.Contains(css, ".admin-info-icon-button:hover::after");
     }
 
     [TestMethod]
@@ -269,6 +323,8 @@ public class AdminAnalyticsSourceTests
         StringAssert.Contains(css, ".admin-subscriber-access-toggle");
         StringAssert.Contains(css, ".admin-subscriber-analytics-chart-shell");
         StringAssert.Contains(css, ".admin-subscriber-analytics-chart-shell ::deep .mud-chart");
+        StringAssert.Contains(css, ".admin-subscriber-analytics-chart-shell ::deep svg text");
+        StringAssert.Contains(css, "fill: #ffffff !important;");
         StringAssert.Contains(css, "min-height: 280px;");
         StringAssert.Contains(css, ".admin-subscriber-kpi-main");
         StringAssert.Contains(css, ".admin-subscriber-kpi-secondary");
@@ -624,6 +680,105 @@ public class AdminAnalyticsSourceTests
         var trend = InvokeBuildMembershipTrendMetrics(rows, revenueEvents);
         var todayTrend = trend.Single(metric => metric.PeriodType == "day" && metric.PeriodKey == now.Date.ToString("yyyy-MM-dd"));
         Assert.AreEqual(2, todayTrend.Signups);
+    }
+
+    [TestMethod]
+    public void SubscriberMembershipDetailsUseSameSignupCandidatesAsSubscriberMetrics()
+    {
+        var yesterday = DateTimeOffset.Now.AddDays(-1);
+        var now = DateTimeOffset.Now.AddMinutes(-5);
+        var returningFreeSubscriberId = Guid.NewGuid();
+        var newFreeSubscriberId = Guid.NewGuid();
+        var rows = CreateSubscriptionRows(
+            CreateSubscriptionRow(
+                returningFreeSubscriberId,
+                "shink_app",
+                "active",
+                yesterday,
+                null,
+                tierCode: "all_stories_monthly",
+                provider: "paystack",
+                providerPaymentId: "old-paid-without-create-event"),
+            CreateSubscriptionRow(
+                returningFreeSubscriberId,
+                "shink_app",
+                "active",
+                now,
+                null,
+                tierCode: "gratis",
+                provider: "paystack",
+                providerPaymentId: $"gratis-{returningFreeSubscriberId:D}"),
+            CreateSubscriptionRow(
+                newFreeSubscriberId,
+                "shink_app",
+                "active",
+                now,
+                null,
+                tierCode: "gratis",
+                provider: "paystack",
+                providerPaymentId: $"gratis-{newFreeSubscriberId:D}"));
+        var subscribers = CreateSubscriberRows(
+            CreateSubscriberRow(returningFreeSubscriberId, "returning-free@shink.dev"),
+            CreateSubscriberRow(newFreeSubscriberId, "new-free@shink.dev"));
+        var revenueEvents = CreateRevenueEvents();
+
+        var metrics = InvokeBuildMembershipStatsMetrics(rows, revenueEvents);
+        var todayStats = metrics.Single(metric => metric.PeriodKey == "today");
+        var details = InvokeBuildSubscriberMembershipDetails(
+            subscribers,
+            rows,
+            CreateEmptyTierDetails(),
+            revenueEvents);
+
+        Assert.AreEqual(2, todayStats.Signups);
+        Assert.AreEqual(2, details.Count(detail => detail.SubscribedAt.Date == now.Date));
+        Assert.IsTrue(details.Any(detail => detail.Email == "returning-free@shink.dev" && detail.TierCode == "gratis"));
+    }
+
+    [TestMethod]
+    public void SubscriberAnalyticsAccessToggleScopesTopCards()
+    {
+        var admin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
+
+        StringAssert.Contains(admin, "var todaySubscriberMetric = GetAccessFilteredSubscriberMetric(\"today\");");
+        StringAssert.Contains(admin, "var monthlySubscriberMetric = GetAccessFilteredSubscriberMetric(\"this_month\");");
+        StringAssert.Contains(admin, "var yearlySubscriberMetric = GetAccessFilteredSubscriberMetric(\"this_year\");");
+        StringAssert.Contains(admin, "GetAccessFilteredSubscriberMetric(\"all_time\")");
+        StringAssert.Contains(admin, "AccessFilteredSubscriberMembershipDetails");
+        StringAssert.Contains(admin, "CountSubscriberMembershipDetailsInPeriod");
+    }
+
+    [TestMethod]
+    public void SubscriberTimeSeriesSelectionScopesCardsAndDetailGrid()
+    {
+        var admin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
+
+        StringAssert.Contains(admin, "private string selectedSubscriberTrendPeriod = SubscriberTrendPeriodDay;");
+        StringAssert.Contains(admin, "SelectedSubscriberDrilldownPeriod = GetSubscriberDrilldownPeriodForTrendPeriod(normalizedPeriod);");
+        StringAssert.Contains(admin, "private static string GetSubscriberDrilldownPeriodForTrendPeriod(string trendPeriod)");
+        StringAssert.Contains(admin, "SubscriberTrendPeriodMonth => \"this_month\"");
+        StringAssert.Contains(admin, "SubscriberTrendPeriodYear => \"this_year\"");
+        StringAssert.Contains(admin, "selectedSubscriberTrendPeriod = GetSubscriberTrendPeriodForDrilldownPeriod(periodKey);");
+    }
+
+    [TestMethod]
+    public void SubscriberAnalyticsChartCanSwitchBetweenLineAndBar()
+    {
+        var admin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
+
+        StringAssert.Contains(admin, "private const string SubscriberChartTypeLine = \"line\";");
+        StringAssert.Contains(admin, "private const string SubscriberChartTypeBar = \"bar\";");
+        StringAssert.Contains(admin, "SelectedSubscriberChartType");
+        StringAssert.Contains(admin, "SubscriberTrendChartType");
+        StringAssert.Contains(admin, "ChartType=\"@SubscriberTrendChartType\"");
+        StringAssert.Contains(admin, "@T(\"Grafiek\", \"Chart\")");
+        StringAssert.Contains(admin, "@T(\"Lyn\", \"Line\")");
+        StringAssert.Contains(admin, "@T(\"Staaf\", \"Bar\")");
+        StringAssert.Contains(admin, "admin-subscriber-analytics-toolbar");
+        StringAssert.Contains(admin, "admin-subscriber-chart-toolbar");
+        StringAssert.Contains(admin, "admin-subscriber-chart-type-toggle");
+        StringAssert.Contains(admin, "GetSubscriberChartTypeButtonClass(SubscriberChartTypeLine)");
+        StringAssert.Contains(admin, "GetSubscriberChartTypeButtonClass(SubscriberChartTypeBar)");
     }
 
     [TestMethod]

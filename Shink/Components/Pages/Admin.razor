@@ -709,7 +709,7 @@
                                     <div class="admin-analytics-panel-head">
                                         <div>
                                             <h3>@T("Lede verdeling", "Member distribution")</h3>
-                                            <p>@T("Sirkelgrafiek van aktiewe lede per vlak.", "Pie chart of active members per level.")</p>
+                                            <p>@T("Sirkelgrafiek van alle intekenaars per vlak.", "Pie chart of all subscribers per level.")</p>
                                         </div>
                                     </div>
 
@@ -728,7 +728,7 @@
                                     <div class="admin-analytics-panel-head">
                                         <div>
                                             <h3>@T("Vlak opsomming", "Level summary")</h3>
-                                            <p>@T("Aktiewe lede en persentasie per intekenvlak.", "Active members and percentage by subscription level.")</p>
+                                            <p>@T("Intekenaars en persentasie per intekenvlak.", "Subscribers and percentage by subscription level.")</p>
                                         </div>
                                     </div>
 
@@ -753,7 +753,7 @@
                                                 <MudTh>
                                                     <MudTableSortLabel T="AdminTierDistributionMetric"
                                                                        SortBy="new Func<AdminTierDistributionMetric, object?>(metric => metric.ActiveMembers)">
-                                                        @T("Aktiewe lede", "Active members")
+                                                        @T("Intekenaars", "Subscribers")
                                                     </MudTableSortLabel>
                                                 </MudTh>
                                                 <MudTh>
@@ -765,7 +765,7 @@
                                             </HeaderContent>
                                             <RowTemplate>
                                                 <MudTd DataLabel='@T("Vlak", "Level")'>@context.TierName</MudTd>
-                                                <MudTd DataLabel='@T("Aktiewe lede", "Active members")'>@FormatAnalyticsNumber(context.ActiveMembers)</MudTd>
+                                                <MudTd DataLabel='@T("Intekenaars", "Subscribers")'>@FormatAnalyticsNumber(context.ActiveMembers)</MudTd>
                                                 <MudTd DataLabel='@T("Persentasie", "Percentage")'>@FormatReportPercentage(context.Percentage)</MudTd>
                                             </RowTemplate>
                                         </MudTable>
@@ -1477,9 +1477,9 @@
                     </div>
 
                     @{
-                        var todaySubscriberMetric = GetSubscriberMetric("today");
-                        var monthlySubscriberMetric = GetSubscriberMetric("this_month");
-                        var yearlySubscriberMetric = GetSubscriberMetric("this_year");
+                        var todaySubscriberMetric = GetAccessFilteredSubscriberMetric("today");
+                        var monthlySubscriberMetric = GetAccessFilteredSubscriberMetric("this_month");
+                        var yearlySubscriberMetric = GetAccessFilteredSubscriberMetric("this_year");
                         var currentDaySubscriberSales = GetSubscriberSalesMetric(RevenuePeriodCurrentDay);
                         var currentWeekSubscriberSales = GetSubscriberSalesMetric(RevenuePeriodCurrentWeek);
                         var currentMonthSubscriberSales = GetSubscriberSalesMetric(RevenuePeriodCurrentMonth);
@@ -1508,6 +1508,32 @@
                                                 "Nuwe intekenaars, gekanselleerde intekeninge, aktiewe lede en betalingseinligting uit die intekenaarverslae.",
                                                 "New subscribers, cancelled subscriptions, active members, and payment signals from the subscriber reports.")
                                         </p>
+                                    </div>
+                                </div>
+
+                                <div class="admin-subscriber-analytics-toolbar">
+                                    <div class="admin-subscriber-chart-toolbar">
+                                        <span class="admin-header-filter-label" id="subscriber-chart-type-label">
+                                            @T("Grafiek", "Chart")
+                                        </span>
+                                        <div class="admin-subscriber-access-toggle admin-subscriber-chart-type-toggle"
+                                             role="group"
+                                             aria-labelledby="subscriber-chart-type-label">
+                                            <button type="button"
+                                                    class="@GetSubscriberChartTypeButtonClass(SubscriberChartTypeLine)"
+                                                    @onclick='() => SetSubscriberChartType(SubscriberChartTypeLine)'
+                                                    title='@T("Wys as lyngrafiek", "Show as line chart")'>
+                                                <i class="fa-solid fa-chart-line" aria-hidden="true"></i>
+                                                <span>@T("Lyn", "Line")</span>
+                                            </button>
+                                            <button type="button"
+                                                    class="@GetSubscriberChartTypeButtonClass(SubscriberChartTypeBar)"
+                                                    @onclick='() => SetSubscriberChartType(SubscriberChartTypeBar)'
+                                                    title='@T("Wys as staafgrafiek", "Show as bar chart")'>
+                                                <i class="fa-solid fa-chart-column" aria-hidden="true"></i>
+                                                <span>@T("Staaf", "Bar")</span>
+                                            </button>
+                                        </div>
                                     </div>
                                     <div class="admin-analytics-panel-head-controls admin-subscriber-analytics-controls">
                                         <div class="admin-subscriber-analytics-control">
@@ -1563,7 +1589,7 @@
                                                  role="img"
                                                  aria-label='@T("Nuwe en gekanselleerde intekenaars per tydperk", "New and cancelled subscribers by period")'>
                                                 <MudChart T="double"
-                                                          ChartType="ChartType.Line"
+                                                          ChartType="@SubscriberTrendChartType"
                                                           ChartSeries="SubscriberTrendChartSeries"
                                                           ChartLabels="SubscriberTrendChartLabels" />
                                             </div>
@@ -1716,21 +1742,7 @@
                                     <div class="admin-analytics-panel-head">
                                         <div>
                                             <h3>@T("Per vlak", "By subscription tier")</h3>
-                                            <p>@T("Aktiewe lede en persentasie per intekenvlak.", "Active members and percentage by subscription tier.")</p>
-                                        </div>
-                                        <div class="admin-analytics-panel-head-controls">
-                                            <label class="admin-header-filter-label" for="tier-distribution-period">
-                                                @T("Periode", "Period")
-                                            </label>
-                                            <select id="tier-distribution-period"
-                                                    class="admin-header-filter-select admin-subscriber-analytics-period-select"
-                                                    @onchange="@(args => SetTierDistributionPeriod(args.Value?.ToString() ?? "all_time"))"
-                                                    value="@SelectedTierDistributionPeriod">
-                                                @foreach (var metric in SubscriberAnalyticsPeriodHighlights)
-                                                {
-                                                    <option value="@metric.PeriodKey">@GetSubscriberPeriodLabel(metric.PeriodKey)</option>
-                                                }
-                                            </select>
+                                            <p>@T("Alle intekenaars en persentasie per intekenvlak.", "All subscribers and percentage by subscription tier.")</p>
                                         </div>
                                     </div>
 
@@ -1767,7 +1779,7 @@
                                                     <MudTh>
                                                         <MudTableSortLabel T="AdminTierDistributionMetric"
                                                                            SortBy="new Func<AdminTierDistributionMetric, object?>(metric => metric.ActiveMembers)">
-                                                            @T("Aktiewe lede", "Active members")
+                                                            @T("Intekenaars", "Subscribers")
                                                         </MudTableSortLabel>
                                                     </MudTh>
                                                     <MudTh>
@@ -1779,7 +1791,7 @@
                                                 </HeaderContent>
                                                 <RowTemplate>
                                                     <MudTd DataLabel='@T("Vlak", "Level")'>@context.TierName</MudTd>
-                                                    <MudTd DataLabel='@T("Aktiewe lede", "Active members")'>@FormatAnalyticsNumber(context.ActiveMembers)</MudTd>
+                                                    <MudTd DataLabel='@T("Intekenaars", "Subscribers")'>@FormatAnalyticsNumber(context.ActiveMembers)</MudTd>
                                                     <MudTd DataLabel='@T("Persentasie", "Percentage")'>@FormatReportPercentage(context.Percentage)</MudTd>
                                                 </RowTemplate>
                                             </MudTable>
@@ -1788,7 +1800,7 @@
                                     else
                                     {
                                         <p class="admin-analytics-footnote">
-                                            @T("Nog geen aktiewe lede per vlak beskikbaar nie.", "No active members by tier available yet.")
+                                            @T("Nog geen intekenaars per vlak beskikbaar nie.", "No subscribers by tier available yet.")
                                         </p>
                                     }
                                 </section>
@@ -1922,7 +1934,15 @@
 
                                 <section class="admin-revenue-mrr-grid" aria-label='@T("Herhalende inkomste", "Recurring revenue")'>
                                     <article class="admin-analytics-card admin-revenue-mrr-card">
-                                        <p class="admin-analytics-label">@T("Totale MRR", "Total MRR")</p>
+                                        <div class="admin-analytics-label-row">
+                                            <p class="admin-analytics-label">@T("Totale MRR", "Total MRR")</p>
+                                            <button type="button"
+                                                    class="admin-info-icon-button"
+                                                    aria-label='@T("Meer oor totale MRR", "More about total MRR")'
+                                                    data-tooltip='@T("Geskatte maandelikse herhalende inkomste van alle herhalende planne. Jaarplanne word na 'n maandbedrag omgeskakel; werklike MRR sluit intekeninge uit wat aandag nodig het.", "Estimated monthly recurring revenue from all recurring plans. Yearly plans are normalised to a monthly amount; actual MRR excludes subscriptions that need attention.")'>
+                                                <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+                                            </button>
+                                        </div>
                                         <p class="admin-analytics-value">@FormatCurrency(totalRecurringRevenue.MonthlyRecurringRevenueZar)</p>
                                         <div class="admin-analytics-meta">
                                             <span>@T("Werklike MRR", "Actual MRR")</span>
@@ -1939,7 +1959,15 @@
                                     </article>
 
                                     <article class="admin-analytics-card admin-revenue-mrr-card">
-                                        <p class="admin-analytics-label">@T("Maandelikse MRR", "Monthly MRR")</p>
+                                        <div class="admin-analytics-label-row">
+                                            <p class="admin-analytics-label">@T("Maandelikse MRR", "Monthly MRR")</p>
+                                            <button type="button"
+                                                    class="admin-info-icon-button"
+                                                    aria-label='@T("Meer oor maandelikse MRR", "More about monthly MRR")'
+                                                    data-tooltip='@T("Maandelikse herhalende inkomste uit maandelikse planne alleen. Die kaart wys die geskatte MRR, werklike MRR, aktiewe planne en die volle bedrag wat maandeliks gefaktureer word.", "Monthly recurring revenue from monthly plans only. The card shows estimated MRR, actual MRR, active plans, and the full amount billed each month.")'>
+                                                <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+                                            </button>
+                                        </div>
                                         <p class="admin-analytics-value">@FormatCurrency(monthlyRecurringRevenue.MonthlyRecurringRevenueZar)</p>
                                         <div class="admin-analytics-meta">
                                             <span>@T("Werklik", "Actual")</span>
@@ -1956,7 +1984,15 @@
                                     </article>
 
                                     <article class="admin-analytics-card admin-revenue-mrr-card">
-                                        <p class="admin-analytics-label">@T("Jaarplan MRR", "Yearly plan MRR")</p>
+                                        <div class="admin-analytics-label-row">
+                                            <p class="admin-analytics-label">@T("Jaarplan MRR", "Yearly plan MRR")</p>
+                                            <button type="button"
+                                                    class="admin-info-icon-button"
+                                                    aria-label='@T("Meer oor jaarplan MRR", "More about yearly plan MRR")'
+                                                    data-tooltip='@T("Herhalende inkomste uit jaarplanne, as 'n maandwaarde gewys. Die jaarlikse faktuurbedrag word oor twaalf maande verdeel sodat dit met maandelikse MRR vergelyk kan word.", "Recurring revenue from yearly plans, shown as a monthly value. The annual billing amount is divided across twelve months so it can be compared with monthly MRR.")'>
+                                                <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+                                            </button>
+                                        </div>
                                         <p class="admin-analytics-value">@FormatCurrency(yearlyRecurringRevenue.MonthlyRecurringRevenueZar)</p>
                                         <div class="admin-analytics-meta">
                                             <span>@T("Werklik", "Actual")</span>
@@ -4462,6 +4498,8 @@
     private const string SubscriberTrendPeriodDay = "day";
     private const string SubscriberTrendPeriodMonth = "month";
     private const string SubscriberTrendPeriodYear = "year";
+    private const string SubscriberChartTypeLine = "line";
+    private const string SubscriberChartTypeBar = "bar";
     private const string SubscriberAccessFilterAll = "all";
     private const string SubscriberAccessFilterFree = "free";
     private const string SubscriberAccessFilterPaid = "paid";
@@ -4579,7 +4617,17 @@
     private AdminAnalyticsSnapshot Analytics { get; set; } = AdminAnalyticsSnapshot.Empty;
     private AdminSubscriberReportsSnapshot SubscriberReports { get; set; } = AdminSubscriberReportsSnapshot.Empty;
     private bool HasLoadedSubscriberReports { get; set; }
-    private string SelectedSubscriberTrendPeriod { get; set; } = SubscriberTrendPeriodDay;
+    private string selectedSubscriberTrendPeriod = SubscriberTrendPeriodDay;
+    private string SelectedSubscriberTrendPeriod
+    {
+        get => selectedSubscriberTrendPeriod;
+        set
+        {
+            var normalizedPeriod = NormalizeSubscriberTrendPeriod(value);
+            selectedSubscriberTrendPeriod = normalizedPeriod;
+            SelectedSubscriberDrilldownPeriod = GetSubscriberDrilldownPeriodForTrendPeriod(normalizedPeriod);
+        }
+    }
     private string SelectedRevenueDrilldownPeriod { get; set; } = RevenuePeriodCurrentDay;
     private DateTime? RevenueCustomFromDate { get; set; }
     private DateTime? RevenueCustomToDate { get; set; }
@@ -4591,8 +4639,8 @@
     private DateTime? StoryStatsFromDate { get; set; }
     private DateTime? StoryStatsToDate { get; set; }
     private string SelectedSubscriberDrilldownPeriod { get; set; } = "today";
+    private string SelectedSubscriberChartType { get; set; } = SubscriberChartTypeLine;
     private string SelectedSubscriberAccessFilter { get; set; } = SubscriberAccessFilterAll;
-    private string SelectedTierDistributionPeriod { get; set; } = "all_time";
     private AdminSubscriberColumnFilters SubscriberColumnFilters { get; } = new();
     private AdminStoryColumnFilters StoryColumnFilters { get; } = new();
     private AdminPlaylistColumnFilters PlaylistColumnFilters { get; } = new();
@@ -4620,7 +4668,7 @@
     ];
     private IReadOnlyList<AdminTierDistributionMetric> CurrentTierDistributionMetrics =>
         SubscriberReports.ActiveMembersPerLevel
-            .Where(metric => string.Equals(metric.PeriodKey, SelectedTierDistributionPeriod, StringComparison.OrdinalIgnoreCase))
+            .Where(metric => string.Equals(metric.PeriodKey, "all_time", StringComparison.OrdinalIgnoreCase))
             .ToArray();
     private string[] ActiveMembersPerLevelChartLabels =>
         CurrentTierDistributionMetrics
@@ -4630,6 +4678,10 @@
         SubscriberReports.MembershipTrend
             .Where(metric => string.Equals(metric.PeriodType, SelectedSubscriberTrendPeriod, StringComparison.OrdinalIgnoreCase))
             .ToArray();
+    private ChartType SubscriberTrendChartType =>
+        string.Equals(SelectedSubscriberChartType, SubscriberChartTypeBar, StringComparison.OrdinalIgnoreCase)
+            ? ChartType.Bar
+            : ChartType.Line;
     private string[] SubscriberTrendChartLabels =>
         CurrentSubscriberTrendMetrics
             .Select(metric => metric.PeriodLabel)
@@ -4713,7 +4765,7 @@
         [
             new ChartSeries<double>
             {
-                Name = T("Aktiewe lede", "Active members"),
+                Name = T("Intekenaars", "Subscribers"),
                 Data = CurrentTierDistributionMetrics
                     .Select(metric => (double)metric.ActiveMembers)
                     .ToArray()
@@ -4962,16 +5014,20 @@
 
     private IReadOnlyList<AdminMembershipStatsMetric> SubscriberAnalyticsPeriodHighlights =>
         [
-            GetSubscriberMetric("today"),
-            GetSubscriberMetric("this_month"),
-            GetSubscriberMetric("this_year"),
-            GetSubscriberMetric("all_time")
+            GetAccessFilteredSubscriberMetric("today"),
+            GetAccessFilteredSubscriberMetric("this_month"),
+            GetAccessFilteredSubscriberMetric("this_year"),
+            GetAccessFilteredSubscriberMetric("all_time")
         ];
 
-    private IReadOnlyList<AdminSubscriberMembershipDetailRecord> FilteredSubscriberMembershipDetails =>
+    private IReadOnlyList<AdminSubscriberMembershipDetailRecord> AccessFilteredSubscriberMembershipDetails =>
         SubscriberReports.MembershipDetails
-            .Where(IsSubscriberMembershipDetailInSelectedPeriod)
             .Where(DoesSubscriberMembershipDetailMatchAccessFilter)
+            .ToArray();
+
+    private IReadOnlyList<AdminSubscriberMembershipDetailRecord> FilteredSubscriberMembershipDetails =>
+        AccessFilteredSubscriberMembershipDetails
+            .Where(IsSubscriberMembershipDetailInSelectedPeriod)
             .OrderByDescending(detail => detail.SubscribedAt)
             .ToArray();
 
@@ -8968,16 +9024,90 @@
             string.Equals(metric.PeriodKey, periodKey, StringComparison.OrdinalIgnoreCase))
         ?? new AdminMembershipStatsMetric(periodKey, 0, 0);
 
+    private AdminMembershipStatsMetric GetAccessFilteredSubscriberMetric(string periodKey)
+    {
+        var metric = GetSubscriberMetric(periodKey);
+        if (IsSelectedSubscriberAccessFilter(SubscriberAccessFilterAll))
+        {
+            return metric;
+        }
+
+        return new AdminMembershipStatsMetric(
+            periodKey,
+            CountSubscriberMembershipDetailsInPeriod(
+                AccessFilteredSubscriberMembershipDetails,
+                periodKey),
+            CountSubscriberMembershipDetailCancellationsInPeriod(
+                AccessFilteredSubscriberMembershipDetails,
+                periodKey));
+    }
+
+    private static int CountSubscriberMembershipDetailsInPeriod(
+        IEnumerable<AdminSubscriberMembershipDetailRecord> details,
+        string periodKey) =>
+        details.Count(detail => IsAdminDateInCurrentPeriod(detail.SubscribedAt, periodKey));
+
+    private static int CountSubscriberMembershipDetailCancellationsInPeriod(
+        IEnumerable<AdminSubscriberMembershipDetailRecord> details,
+        string periodKey) =>
+        details.Count(detail =>
+            detail.CancelledAt is not null &&
+            IsAdminDateInCurrentPeriod(detail.CancelledAt.Value, periodKey));
+
     private void SetSubscriberDrilldownPeriod(string periodKey)
     {
         if (!string.IsNullOrWhiteSpace(periodKey))
         {
             SelectedSubscriberDrilldownPeriod = periodKey;
+            selectedSubscriberTrendPeriod = GetSubscriberTrendPeriodForDrilldownPeriod(periodKey);
         }
     }
 
     private bool IsSelectedSubscriberDrilldownPeriod(string periodKey) =>
         string.Equals(SelectedSubscriberDrilldownPeriod, periodKey, StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeSubscriberTrendPeriod(string? trendPeriod) =>
+        trendPeriod switch
+        {
+            SubscriberTrendPeriodMonth => SubscriberTrendPeriodMonth,
+            SubscriberTrendPeriodYear => SubscriberTrendPeriodYear,
+            _ => SubscriberTrendPeriodDay
+        };
+
+    private static string GetSubscriberDrilldownPeriodForTrendPeriod(string trendPeriod) =>
+        trendPeriod switch
+        {
+            SubscriberTrendPeriodMonth => "this_month",
+            SubscriberTrendPeriodYear => "this_year",
+            _ => "today"
+        };
+
+    private static string GetSubscriberTrendPeriodForDrilldownPeriod(string periodKey) =>
+        periodKey switch
+        {
+            "this_month" => SubscriberTrendPeriodMonth,
+            "this_year" => SubscriberTrendPeriodYear,
+            _ => SubscriberTrendPeriodDay
+        };
+
+    private void SetSubscriberChartType(string chartType)
+    {
+        if (string.Equals(chartType, SubscriberChartTypeBar, StringComparison.OrdinalIgnoreCase))
+        {
+            SelectedSubscriberChartType = SubscriberChartTypeBar;
+            return;
+        }
+
+        SelectedSubscriberChartType = SubscriberChartTypeLine;
+    }
+
+    private bool IsSelectedSubscriberChartType(string chartType) =>
+        string.Equals(SelectedSubscriberChartType, chartType, StringComparison.OrdinalIgnoreCase);
+
+    private string GetSubscriberChartTypeButtonClass(string chartType) =>
+        IsSelectedSubscriberChartType(chartType)
+            ? "admin-subscriber-access-toggle-btn is-selected"
+            : "admin-subscriber-access-toggle-btn";
 
     private void SetSubscriberAccessFilter(string filter)
     {
@@ -9049,14 +9179,6 @@
     private static bool IsFreeSubscriberMembershipDetail(AdminSubscriberMembershipDetailRecord detail) =>
         string.Equals(detail.TierCode, "gratis", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(detail.Provider, "free", StringComparison.OrdinalIgnoreCase);
-
-    private void SetTierDistributionPeriod(string periodKey)
-    {
-        if (!string.IsNullOrWhiteSpace(periodKey))
-        {
-            SelectedTierDistributionPeriod = periodKey;
-        }
-    }
 
     private AdminSalesRevenueMetric GetSubscriberSalesMetric(string periodKey) =>
         SubscriberReports.SalesAndRevenue.FirstOrDefault(metric =>
@@ -9231,7 +9353,7 @@
         {
             SubscriberAdminView.AllSubscribers => T("Alle intekenaars", "All subscribers"),
             SubscriberAdminView.MembershipStats => T("Lidmaatskap statistiek", "Membership Stats"),
-            SubscriberAdminView.ActiveMembersPerLevel => T("Aktiewe lede per vlak", "Active Members Per Level"),
+            SubscriberAdminView.ActiveMembersPerLevel => T("Intekenaars per vlak", "Subscribers Per Level"),
             SubscriberAdminView.SalesAndRevenue => T("Verkope en inkomste", "Sales and Revenue"),
             SubscriberAdminView.AbandonedCartRecoveries => T("Herwinning van verlate mandjies", "Abandoned Cart Recoveries"),
             SubscriberAdminView.VisitsViewsAndLogins => T("Besoeke, kyke en aanmeldings", "Visits, Views, and Logins"),
@@ -9246,8 +9368,8 @@
                 "Intekeninge en kansellasies volgens tydperk vanaf die huidige subskripsie-ledger.",
                 "Signups and cancellations by period from the current subscription ledger."),
             SubscriberAdminView.ActiveMembersPerLevel => T(
-                "Huidige aktiewe lede per intekenvlak met hulle aandeel van die totaal.",
-                "Current active members by subscription level with their share of the total."),
+                "Alle intekenaars per intekenvlak met hulle aandeel van die totaal.",
+                "All subscribers by subscription level with their share of the total."),
             SubscriberAdminView.SalesAndRevenue => T(
                 "Lidmaatskap verkope en beraamde inkomste volgens suksesvolle intekeninge.",
                 "Membership sales and estimated revenue based on successful subscriptions."),

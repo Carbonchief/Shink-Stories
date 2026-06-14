@@ -511,6 +511,139 @@ public class SupabaseAdminManagementSelfServiceTests
         Assert.IsNull(notificationService.PublishedStoryRequest);
     }
 
+    [TestMethod]
+    public async Task GetSubscriberReportsAsync_MatchesStoryCornerRecoveryToAllStoriesSubscription()
+    {
+        var subscriberId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var subscriptionId = Guid.Parse("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/admin_users"))
+            {
+                return JsonResponse("""[{ "email": "admin@example.com" }]""");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/rpc/get_wordpress_subscriber_report_snapshot")
+            {
+                return JsonResponse("""{ "has_wordpress_data": true, "membership_stats": [], "active_members_per_level": [], "sales_and_revenue": [] }""");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "subscriber_id": "{{subscriberId}}",
+                        "email": "ouer@example.com",
+                        "first_name": "Ouer",
+                        "last_name": "Toets",
+                        "display_name": "Ouer Toets",
+                        "mobile_number": null,
+                        "profile_image_url": null,
+                        "created_at": "2026-06-14T07:55:37Z",
+                        "updated_at": "2026-06-14T07:58:30Z",
+                        "disabled_at": null,
+                        "disabled_by_admin_email": null,
+                        "disabled_reason": null
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "subscription_id": "{{subscriptionId}}",
+                        "subscriber_id": "{{subscriberId}}",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "status": "active",
+                        "subscribed_at": "2026-06-14T07:58:18Z",
+                        "next_renewal_at": "2026-07-14T07:58:18Z",
+                        "cancelled_at": null,
+                        "billing_amount_zar": 79.00,
+                        "billing_period_months": 1,
+                        "provider_payment_id": "SUB_test",
+                        "provider_transaction_id": "1200677"
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_events") ||
+                IsSupabaseGet(request, "/rest/v1/store_orders") ||
+                IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries") ||
+                IsSupabaseGet(request, "/rest/v1/auth_sessions") ||
+                IsSupabaseGet(request, "/rest/v1/story_views") ||
+                IsSupabaseGet(request, "/rest/v1/story_listen_events"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_tiers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "tier_code": "story_corner_monthly",
+                        "display_name": "Story Corner Monthly",
+                        "price_zar": 55.00,
+                        "is_active": true
+                      },
+                      {
+                        "tier_code": "all_stories_monthly",
+                        "display_name": "All Stories Monthly",
+                        "price_zar": 79.00,
+                        "is_active": true
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/abandoned_cart_recoveries"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "recovery_id": "cccccccc-cccc-cccc-cccc-cccccccccccc",
+                        "source_type": "subscription",
+                        "source_key": "story_corner_monthly",
+                        "checkout_reference": "storie-hoekie-maandeliks-test",
+                        "provider": "paystack",
+                        "customer_email": "ouer@example.com",
+                        "customer_name": "Ouer Toets",
+                        "item_name": "Storie Hoekie Maandeliks",
+                        "cart_total_zar": 55.00,
+                        "created_at": "2026-06-14T07:55:44Z",
+                        "resolved_at": "2026-06-14T07:58:27Z",
+                        "resolution": "paid"
+                      }
+                    ]
+                    """);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var snapshot = await service.GetSubscriberReportsAsync("admin@example.com");
+        var recoveredRevenue = snapshot.RecoveredRevenueDetails.Single();
+
+        Assert.AreEqual("story_corner_monthly", recoveredRevenue.TierCode);
+        Assert.AreEqual("active", recoveredRevenue.SubscriptionStatus);
+        Assert.AreEqual("subscriptions.next_renewal_at", recoveredRevenue.NextPaymentSource);
+        Assert.AreEqual(new DateTimeOffset(2026, 7, 14, 7, 58, 18, TimeSpan.Zero), recoveredRevenue.NextPaymentAt);
+    }
+
     private static SupabaseAdminManagementService CreateService(
         RecordingHandler handler,
         IUserNotificationService? userNotificationService = null,

@@ -3495,10 +3495,9 @@ public sealed partial class SupabaseAdminManagementService(
             baseUri,
             "rest/v1/subscriptions" +
             "?select=subscription_id,subscriber_id,tier_code,provider,source_system,status,subscribed_at,next_renewal_at,cancelled_at,billing_amount_zar,billing_period_months,provider_payment_id,provider_transaction_id" +
-            "&order=subscribed_at.desc" +
-            "&limit=10000");
+            "&order=subscribed_at.desc,subscription_id.asc");
 
-        return await FetchRowsAsync<SubscriptionRow>(uri, apiKey, cancellationToken);
+        return await FetchRowsPagedAsync<SubscriptionRow>(uri, apiKey, maxRows: 50000, cancellationToken);
     }
 
     private async Task<IReadOnlyList<RevenueEventRow>> FetchProviderRevenueEventsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
@@ -3990,6 +3989,64 @@ public sealed partial class SupabaseAdminManagementService(
         }
     }
 
+    private async Task<IReadOnlyList<T>> FetchRowsPagedAsync<T>(
+        Uri uri,
+        string apiKey,
+        int maxRows,
+        CancellationToken cancellationToken)
+    {
+        const int PageSize = 1000;
+        var rows = new List<T>();
+
+        try
+        {
+            for (var offset = 0; offset < maxRows; offset += PageSize)
+            {
+                var pageUri = BuildPagedUri(uri, PageSize, offset);
+                using var request = CreateRequest(HttpMethod.Get, pageUri, apiKey);
+
+                using var response = await _httpClient.SendAsync(request, cancellationToken);
+                if (!response.IsSuccessStatusCode)
+                {
+                    var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+                    _logger.LogWarning(
+                        "Supabase paged fetch failed. uri={Uri} Status={StatusCode} Body={Body}",
+                        pageUri,
+                        (int)response.StatusCode,
+                        responseBody);
+                    break;
+                }
+
+                await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+                var pageRows = await JsonSerializer.DeserializeAsync<List<T>>(stream, JsonOptions, cancellationToken)
+                    ?? [];
+                rows.AddRange(pageRows);
+
+                if (pageRows.Count < PageSize)
+                {
+                    break;
+                }
+            }
+
+            return rows;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(exception, "Supabase paged fetch failed unexpectedly. uri={Uri}", uri);
+            return rows;
+        }
+    }
+
+    private static Uri BuildPagedUri(Uri uri, int limit, int offset)
+    {
+        var builder = new UriBuilder(uri);
+        var query = builder.Query;
+        builder.Query = string.IsNullOrWhiteSpace(query)
+            ? $"limit={limit}&offset={offset}"
+            : $"{query.TrimStart('?')}&limit={limit}&offset={offset}";
+        return builder.Uri;
+    }
+
     private static bool HasStoryBeenPublished(StoryRow? story) =>
         story is not null &&
         (story.PublishedAt.HasValue ||
@@ -4234,7 +4291,7 @@ public sealed partial class SupabaseAdminManagementService(
                 subscriptions,
                 paystackSubscriptionCreateIdentifiers,
                 revenueEvents),
-            ActiveMembersPerLevel: BuildTierDistributionMetrics(wordPressSubscriberReports, subscriptions, tierDetails),
+            ActiveMembersPerLevel: BuildTierDistributionMetrics(subscriptions, tierDetails),
             MembershipDetails: BuildSubscriberMembershipDetails(subscribers, subscriptions, tierDetails, paystackSubscriptionCreateIdentifiers),
             RecurringRevenue: BuildRecurringRevenueMetrics(subscriptions, recoveries),
             SalesAndRevenue: BuildSalesRevenueMetricsCore(wordPressSubscriberReports, subscriptions, tierDetails, revenueEvents, storeOrderRevenue),
@@ -4412,69 +4469,49 @@ public sealed partial class SupabaseAdminManagementService(
     }
 
     private static IReadOnlyList<AdminTierDistributionMetric> BuildTierDistributionMetrics(
-        WordPressSubscriberReportsRpcSnapshot? wordPressSubscriberReports,
         IReadOnlyList<SubscriptionRow> subscriptions,
         IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails)
     {
-        var metrics = new List<AdminTierDistributionMetric>();
+        var effectiveSubscriptions = SelectEffectiveTierDistributionSubscriptions(
+            subscriptions.Where(IsTierDistributionEligible),
+            tierDetails);
 
-        if (wordPressSubscriberReports is { HasWordPressData: true })
-        {
-            var wordPressGrouped = (wordPressSubscriberReports.ActiveMembersPerLevel ?? [])
-                .Where(metric => !string.IsNullOrWhiteSpace(metric.TierCode))
-                .Where(metric => metric.ActiveMembers > 0)
-                .Select(metric =>
-                {
-                    var tierCode = metric.TierCode!.Trim();
-                    var tier = tierDetails.TryGetValue(tierCode, out var detail) ? detail : null;
-                    return new
-                    {
-                        TierCode = tierCode,
-                        TierName = NormalizeTierDisplayName(tierCode, tier?.DisplayName),
-                        ActiveMembers = metric.ActiveMembers
-                    };
-                })
-                .OrderByDescending(item => item.ActiveMembers)
-                .ThenBy(item => item.TierName, StringComparer.OrdinalIgnoreCase)
-                .ToArray();
-
-            var wordPressTotalActiveMembers = wordPressGrouped.Sum(item => item.ActiveMembers);
-            if (wordPressTotalActiveMembers > 0)
-            {
-                metrics.AddRange(wordPressGrouped
-                    .Select(item => new AdminTierDistributionMetric(
-                        "all_time",
-                        item.TierCode,
-                        item.TierName,
-                        item.ActiveMembers,
-                        decimal.Round(item.ActiveMembers * 100m / wordPressTotalActiveMembers, 1, MidpointRounding.AwayFromZero))));
-            }
-        }
-        else
-        {
-            metrics.AddRange(BuildTierDistributionMetricsForPeriod(
-                "all_time",
-                subscriptions
-                    .Where(subscription => !string.IsNullOrWhiteSpace(subscription.TierCode))
-                    .Where(subscription => IsActiveSubscription(subscription, DateTimeOffset.UtcNow)),
-                tierDetails));
-        }
-
-        metrics.AddRange(BuildTierDistributionMetricsForPeriod(
-            "today",
-            GetFirstSubscriberSignupSubscriptions(subscriptions).Where(subscription => IsInLocalPeriod(subscription.SubscribedAt, SubscriberPeriod.Today)),
-            tierDetails));
-        metrics.AddRange(BuildTierDistributionMetricsForPeriod(
-            "this_month",
-            GetFirstSubscriberSignupSubscriptions(subscriptions).Where(subscription => IsInLocalPeriod(subscription.SubscribedAt, SubscriberPeriod.ThisMonth)),
-            tierDetails));
-        metrics.AddRange(BuildTierDistributionMetricsForPeriod(
-            "this_year",
-            GetFirstSubscriberSignupSubscriptions(subscriptions).Where(subscription => IsInLocalPeriod(subscription.SubscribedAt, SubscriberPeriod.ThisYear)),
-            tierDetails));
-
-        return metrics.ToArray();
+        return BuildTierDistributionMetricsForPeriod(
+            "all_time",
+            effectiveSubscriptions,
+            tierDetails);
     }
+
+    private static bool IsTierDistributionEligible(SubscriptionRow subscription) =>
+        IsSubscriberCountMetricEligible(subscription) ||
+        IsFreeSubscriberMembershipDetailEligible(subscription);
+
+    private static IReadOnlyList<SubscriptionRow> SelectEffectiveTierDistributionSubscriptions(
+        IEnumerable<SubscriptionRow> subscriptions,
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails) =>
+        subscriptions
+            .Where(subscription => subscription.SubscriberId != Guid.Empty)
+            .Where(subscription => !string.IsNullOrWhiteSpace(subscription.TierCode))
+            .GroupBy(subscription => subscription.SubscriberId)
+            .Select(group => group
+                .OrderByDescending(subscription => GetTierDistributionRank(subscription.TierCode))
+                .ThenByDescending(subscription => ResolveTierPrice(subscription.TierCode, tierDetails))
+                .ThenByDescending(subscription => subscription.SubscribedAt)
+                .First())
+            .ToArray();
+
+    private static int GetTierDistributionRank(string? tierCode) =>
+        tierCode?.Trim().ToLowerInvariant() switch
+        {
+            "school_large_yearly" => 60,
+            "school_medium_yearly" => 50,
+            "school_small_yearly" => 40,
+            "all_stories_yearly" => 30,
+            "all_stories_monthly" => 20,
+            "story_corner_monthly" => 10,
+            "gratis" => 0,
+            _ => 0
+        };
 
     private static IReadOnlyList<AdminTierDistributionMetric> BuildTierDistributionMetricsForPeriod(
         string periodKey,
@@ -4527,11 +4564,7 @@ public sealed partial class SupabaseAdminManagementService(
             .GroupBy(subscriber => subscriber.SubscriberId)
             .ToDictionary(group => group.Key, group => group.First());
 
-        return GetFirstSubscriberMembershipDetailSubscriptions(subscriptions)
-            .Where(subscription =>
-                IsNewSubscriberMetricEligible(subscription, paystackSubscriptionCreateIdentifiers) ||
-                IsFreeSubscriberMembershipDetailEligible(subscription))
-            .Where(subscription => subscription.SubscribedAt is not null)
+        return GetFirstAnalyticsSubscriberSubscriptions(subscriptions, paystackSubscriptionCreateIdentifiers)
             .Select(subscription =>
             {
                 subscribersById.TryGetValue(subscription.SubscriberId, out var subscriber);
@@ -5214,7 +5247,7 @@ public sealed partial class SupabaseAdminManagementService(
         var nowUtc = DateTimeOffset.UtcNow;
         var matchingTierSubscriptions = subscriberSubscriptions
             .Where(subscription => string.IsNullOrWhiteSpace(sourceTierCode) ||
-                                   string.Equals(subscription.TierCode, sourceTierCode, StringComparison.OrdinalIgnoreCase))
+                                   IsRecoveredRevenueTierMatch(sourceTierCode, subscription.TierCode))
             .ToArray();
         if (!string.IsNullOrWhiteSpace(sourceTierCode) && matchingTierSubscriptions.Length == 0)
         {
@@ -5233,6 +5266,24 @@ public sealed partial class SupabaseAdminManagementService(
             .ThenByDescending(subscription => subscription.NextRenewalAt is not null)
             .ThenByDescending(subscription => subscription.SubscribedAt)
             .FirstOrDefault();
+    }
+
+    private static bool IsRecoveredRevenueTierMatch(string recoveryTierCode, string? subscriptionTierCode)
+    {
+        if (string.IsNullOrWhiteSpace(recoveryTierCode) ||
+            string.IsNullOrWhiteSpace(subscriptionTierCode))
+        {
+            return false;
+        }
+
+        if (string.Equals(recoveryTierCode, subscriptionTierCode, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return string.Equals(recoveryTierCode, "story_corner_monthly", StringComparison.OrdinalIgnoreCase) &&
+               (string.Equals(subscriptionTierCode, "all_stories_monthly", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(subscriptionTierCode, "all_stories_yearly", StringComparison.OrdinalIgnoreCase));
     }
 
     private static string ResolveRecoveredRevenueNextPaymentSource(SubscriptionRow? subscription, string? recoverySourceType)

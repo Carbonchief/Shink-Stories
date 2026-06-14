@@ -4,6 +4,7 @@
 @using System.Globalization
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.WebUtilities
 @using Microsoft.JSInterop
 @rendermode InteractiveServer
 @implements IAsyncDisposable
@@ -522,6 +523,57 @@
                 <p>Begin direk by die regte plan, of gaan na <a href="/opsies">Opsies</a> vir die volledige vergelyking.</p>
             </div>
 
+            <div class="billing-discount-card" aria-live="polite">
+                <div class="billing-discount-copy">
+                    <p class="billing-section-kicker">Promosiekode</p>
+                    <h3>Het jy 'n promosiekode?</h3>
+                    <p>
+                        Vul dit hier in om te sien op watter planne dit werk voordat jy Paystack oopmaak.
+                        @if (HasActivePaidSubscription)
+                        {
+                            <text> Jou huidige betaalde intekening gebruik steeds die gewone planverandering, so promosiekodes geld hier net wanneer jy later 'n nuwe betaling begin.</text>
+                        }
+                    </p>
+                </div>
+
+                <div class="billing-discount-form">
+                    <label class="form-label" for="billing-discount-code">Kode of voucher</label>
+                    <InputText id="billing-discount-code"
+                               class="form-control form-control-lg"
+                               autocomplete="off"
+                               placeholder="Voer promosiekode in"
+                               aria-label="Kode of voucher"
+                               @bind-Value="BillingDiscountCode"
+                               @onblur="PreviewBillingDiscountAsync" />
+
+                    <div class="billing-discount-actions">
+                        <button type="button"
+                                class="btn btn-warning billing-primary-btn"
+                                disabled="@IsPreviewingBillingDiscount"
+                                @onclick="PreviewBillingDiscountAsync">
+                            @(IsPreviewingBillingDiscount ? "Kontroleer..." : "Pas kode toe")
+                        </button>
+
+                        @if (!string.IsNullOrWhiteSpace(BillingDiscountCode))
+                        {
+                            <button type="button"
+                                    class="btn btn-outline-secondary billing-secondary-btn"
+                                    @onclick="RemoveBillingDiscountCode">
+                                Verwyder
+                            </button>
+                        }
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(BillingDiscountStatusMessage))
+                    {
+                        <div class="alert @(BillingDiscountStatusIsSuccess ? "alert-success" : "alert-danger") billing-profile-status billing-discount-status"
+                             role="@(BillingDiscountStatusIsSuccess ? "status" : "alert")">
+                            @BillingDiscountStatusMessage
+                        </div>
+                    }
+                </div>
+            </div>
+
             <div class="billing-plan-grid">
                 @foreach (var plan in BillingPlanChoices)
                 {
@@ -530,7 +582,11 @@
                     <article class="billing-plan-card @(IsYearlyAllStoriesPlan(plan) ? "is-highlighted" : string.Empty) @(isPendingPlan ? "is-loading" : string.Empty)">
                         <p class="billing-plan-badge">@(plan.BillingPeriodMonths <= 1 ? "Maandeliks" : "Jaarliks")</p>
                         <h3>@plan.Name</h3>
-                        <p class="billing-price">@FormatRand(plan.Amount) <span>@ResolveBillingLabel(plan.BillingPeriodMonths)</span></p>
+                        <p class="billing-price">@GetPlanPriceDisplay(plan) <span>@ResolveBillingLabel(plan.BillingPeriodMonths)</span></p>
+                        @if (HasValidPercentageDiscountForPlan(plan))
+                        {
+                            <p class="billing-plan-discount-note">@GetPlanDiscountSummary(plan)</p>
+                        }
                         @if (IsYearlyAllStoriesPlan(plan))
                         {
                             <p class="billing-save-badge">2 maande gratis</p>
@@ -614,6 +670,11 @@
     private bool IsClosingAccount { get; set; }
     private bool IsOpeningCardUpdate { get; set; }
     private string? PendingPlanSlug { get; set; }
+    private string BillingDiscountCode { get; set; } = string.Empty;
+    private bool IsPreviewingBillingDiscount { get; set; }
+    private bool BillingDiscountStatusIsSuccess { get; set; }
+    private string? BillingDiscountStatusMessage { get; set; }
+    private Dictionary<string, SignupDiscountPreviewResponse> BillingDiscountPreviews { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     private bool IsPlanCheckoutPending => !string.IsNullOrWhiteSpace(PendingPlanSlug);
     private bool ProfileSaveSucceeded { get; set; }
     private bool EmailChangeStatusIsSuccess { get; set; }
@@ -1050,6 +1111,82 @@
         await Task.Yield();
     }
 
+    private async Task PreviewBillingDiscountAsync()
+    {
+        if (string.IsNullOrWhiteSpace(BillingDiscountCode))
+        {
+            RemoveBillingDiscountCode();
+            return;
+        }
+
+        IsPreviewingBillingDiscount = true;
+        BillingDiscountStatusIsSuccess = false;
+        BillingDiscountStatusMessage = null;
+        await ShowSubmittingStateAsync();
+
+        try
+        {
+            var authModule = await EnsureAuthModuleAsync();
+            var nextPreviews = new Dictionary<string, SignupDiscountPreviewResponse>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var plan in BillingPlanChoices.Where(CanPreviewDiscountForPlan))
+            {
+                var preview = await authModule.InvokeAsync<SignupDiscountPreviewResponse>(
+                    "postJson",
+                    "/api/auth/signup/discount-preview",
+                    new SignupDiscountPreviewRequest(BillingDiscountCode.Trim(), plan.TierCode));
+
+                nextPreviews[plan.TierCode] = preview;
+            }
+
+            BillingDiscountPreviews = nextPreviews;
+
+            var matchedPlans = BillingPlanChoices.Where(HasValidPercentageDiscountForPlan).ToArray();
+            if (matchedPlans.Length > 0)
+            {
+                BillingDiscountStatusIsSuccess = true;
+                BillingDiscountStatusMessage = matchedPlans.Length == 1
+                    ? $"Jou kode is gereed vir {matchedPlans[0].Name}."
+                    : $"Jou kode is gereed vir {matchedPlans.Length} planne hieronder.";
+                return;
+            }
+
+            var infoPreview = BillingPlanChoices
+                .Where(CanPreviewDiscountForPlan)
+                .Select(GetDiscountPreviewForPlan)
+                .FirstOrDefault(preview => preview?.IsValid == true);
+            if (infoPreview?.IsValid == true)
+            {
+                BillingDiscountStatusIsSuccess = false;
+                BillingDiscountStatusMessage = "Hierdie kode gee nie 'n Paystack-afslag op die planne op hierdie blad nie.";
+                return;
+            }
+
+            BillingDiscountStatusMessage = BillingPlanChoices
+                .Where(CanPreviewDiscountForPlan)
+                .Select(plan => GetDiscountPreviewForPlan(plan)?.ErrorMessage ?? GetDiscountPreviewForPlan(plan)?.Message)
+                .FirstOrDefault(message => !string.IsNullOrWhiteSpace(message))
+                ?? "Hierdie kode is nie geldig vir die planne op hierdie blad nie.";
+        }
+        catch
+        {
+            BillingDiscountPreviews = new Dictionary<string, SignupDiscountPreviewResponse>(StringComparer.OrdinalIgnoreCase);
+            BillingDiscountStatusMessage = "Kon nie die kode nou kontroleer nie. Probeer asseblief weer.";
+        }
+        finally
+        {
+            IsPreviewingBillingDiscount = false;
+        }
+    }
+
+    private void RemoveBillingDiscountCode()
+    {
+        BillingDiscountCode = string.Empty;
+        BillingDiscountPreviews = new Dictionary<string, SignupDiscountPreviewResponse>(StringComparer.OrdinalIgnoreCase);
+        BillingDiscountStatusIsSuccess = false;
+        BillingDiscountStatusMessage = null;
+    }
+
     private async Task StartPlanCheckoutAsync(PaymentPlan plan)
     {
         if (IsPlanCheckoutPending || string.IsNullOrWhiteSpace(plan.Slug))
@@ -1059,11 +1196,22 @@
 
         PendingPlanSlug = plan.Slug;
         await ShowSubmittingStateAsync();
-        NavigationManager.NavigateTo($"/betaal/{Uri.EscapeDataString(plan.Slug)}", forceLoad: true);
+        NavigationManager.NavigateTo(BuildPlanCheckoutPath(plan), forceLoad: true);
     }
 
     private bool IsPendingPlan(PaymentPlan plan) =>
         string.Equals(PendingPlanSlug, plan.Slug, StringComparison.OrdinalIgnoreCase);
+
+    private string BuildPlanCheckoutPath(PaymentPlan plan)
+    {
+        var checkoutPath = $"/betaal/{Uri.EscapeDataString(plan.Slug)}";
+        if (!HasValidPercentageDiscountForPlan(plan) || string.IsNullOrWhiteSpace(BillingDiscountCode) || HasActivePaidSubscription)
+        {
+            return checkoutPath;
+        }
+
+        return QueryHelpers.AddQueryString(checkoutPath, "discountCode", BillingDiscountCode.Trim());
+    }
 
     private async Task RedirectToTargetAsync(string? target)
     {
@@ -1121,6 +1269,50 @@
     private static string ResolveBillingLabel(int billingPeriodMonths) =>
         billingPeriodMonths <= 1 ? "per maand" : "per jaar";
 
+    private static bool CanPreviewDiscountForPlan(PaymentPlan plan) =>
+        plan.IsSubscription &&
+        !plan.IsSchoolPlan &&
+        !string.Equals(plan.TierCode, "gratis", StringComparison.OrdinalIgnoreCase);
+
+    private SignupDiscountPreviewResponse? GetDiscountPreviewForPlan(PaymentPlan plan)
+    {
+        if (string.IsNullOrWhiteSpace(plan.TierCode))
+        {
+            return null;
+        }
+
+        return BillingDiscountPreviews.GetValueOrDefault(plan.TierCode);
+    }
+
+    private bool HasValidPercentageDiscountForPlan(PaymentPlan plan)
+    {
+        var preview = GetDiscountPreviewForPlan(plan);
+        return preview?.IsValid == true &&
+               string.Equals(preview.DiscountKind, SubscriptionDiscountKinds.Percentage, StringComparison.Ordinal) &&
+               preview.DiscountedAmountZar is not null &&
+               preview.OriginalAmountZar is not null;
+    }
+
+    private string GetPlanPriceDisplay(PaymentPlan plan)
+    {
+        var preview = GetDiscountPreviewForPlan(plan);
+        return HasValidPercentageDiscountForPlan(plan)
+            ? FormatRand(preview!.DiscountedAmountZar!.Value)
+            : FormatRand(plan.Amount);
+    }
+
+    private string GetPlanDiscountSummary(PaymentPlan plan)
+    {
+        var preview = GetDiscountPreviewForPlan(plan);
+        if (preview is null || !HasValidPercentageDiscountForPlan(plan))
+        {
+            return string.Empty;
+        }
+
+        var saved = Math.Max(0m, (preview.OriginalAmountZar ?? plan.Amount) - (preview.DiscountedAmountZar ?? plan.Amount));
+        return $"{preview.DiscountPercent:0.##}% afslag. Jy spaar {FormatRand(saved)}.";
+    }
+
     private static bool IsYearlyAllStoriesPlan(PaymentPlan plan) =>
         string.Equals(plan.TierCode, "all_stories_yearly", StringComparison.OrdinalIgnoreCase);
 
@@ -1168,6 +1360,25 @@
     private sealed record EmailChangeRequestPayload(string NewEmail, string CurrentPassword);
 
     private sealed record EmailChangeCompletePayload(string? AccessToken, string? RefreshToken, string? EmailChangeState);
+
+    private sealed record SignupDiscountPreviewRequest(
+        string? DiscountCode,
+        string? SelectedTierCode);
+
+    private sealed record SignupDiscountPreviewResponse(
+        bool IsValid,
+        string? Message = null,
+        string? ErrorMessage = null,
+        string? ResolvedTierCode = null,
+        string? ResolvedTierName = null,
+        bool BypassesPayment = false,
+        string DiscountKind = SubscriptionDiscountKinds.FreeAccess,
+        decimal? DiscountPercent = null,
+        string DiscountDuration = SubscriptionDiscountDurations.Lifetime,
+        int? DiscountPaymentCount = null,
+        decimal? OriginalAmountZar = null,
+        decimal? DiscountedAmountZar = null,
+        string? DurationDescription = null);
 
     private sealed class ProfileFormModel
     {

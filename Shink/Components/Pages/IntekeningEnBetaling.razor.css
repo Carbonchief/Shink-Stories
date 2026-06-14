@@ -502,6 +502,71 @@
     width: 100%;
 }
 
+.billing-discount-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+    gap: 1rem;
+    padding: 1rem 1.1rem;
+    border-radius: 24px;
+    border: 1px solid rgba(33, 95, 104, 0.14);
+    background:
+        radial-gradient(120% 140% at 0% 0%, rgba(243, 154, 50, 0.12), transparent 52%),
+        linear-gradient(180deg, #ffffff 0%, #f8fbfb 100%);
+    box-shadow: 0 16px 30px rgba(17, 31, 38, 0.06);
+}
+
+.billing-discount-copy,
+.billing-discount-form {
+    display: grid;
+    gap: 0.5rem;
+    align-content: start;
+}
+
+.billing-discount-copy h3 {
+    margin: 0;
+    color: #162a34;
+    font-size: clamp(1.25rem, 2vw, 1.55rem);
+    line-height: 1.12;
+}
+
+.billing-discount-copy p:last-child {
+    margin: 0;
+    color: #5b6971;
+    line-height: 1.65;
+}
+
+.billing-discount-form .form-label {
+    margin-bottom: 0;
+    font-weight: 700;
+    color: #173f4f;
+    font-size: 0.92rem;
+}
+
+.billing-discount-form .form-control {
+    min-height: 54px;
+    border-radius: 14px;
+    border-color: #d6ddd9;
+    background: #fffdf8;
+    color: #15242c;
+    box-shadow: none;
+}
+
+.billing-discount-form .form-control:focus {
+    border-color: color-mix(in srgb, var(--accent) 58%, #ffffff);
+    background: #ffffff;
+    box-shadow: 0 0 0 0.22rem rgba(243, 154, 50, 0.18);
+}
+
+.billing-discount-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+}
+
+.billing-discount-status {
+    margin-top: 0.1rem;
+}
+
 .billing-plans {
     display: grid;
     gap: 1rem;
@@ -639,6 +704,13 @@
     line-height: 1.6;
 }
 
+.billing-plan-discount-note {
+    margin: -0.15rem 0 0;
+    color: #1f7041;
+    font-weight: 700;
+    line-height: 1.45;
+}
+
 .billing-plan-actions {
     margin-top: auto;
     align-self: end;
@@ -757,7 +829,8 @@ body.schink-night-mode .billing-form-hint,
 body.schink-night-mode .billing-email-note,
 body.schink-night-mode .billing-status-list li,
 body.schink-night-mode .billing-price span,
-body.schink-night-mode .billing-description {
+body.schink-night-mode .billing-description,
+body.schink-night-mode .billing-discount-copy p:last-child {
     color: #c5d0d4;
 }
 
@@ -771,13 +844,29 @@ body.schink-night-mode .billing-profile-form .form-label {
     color: #dbe8e6;
 }
 
+body.schink-night-mode .billing-discount-form .form-label {
+    color: #dbe8e6;
+}
+
 body.schink-night-mode .billing-profile-form .form-control {
     border-color: rgba(234, 229, 216, 0.18);
     background: #11191f;
     color: #f3f0e8;
 }
 
+body.schink-night-mode .billing-discount-form .form-control {
+    border-color: rgba(234, 229, 216, 0.18);
+    background: #11191f;
+    color: #f3f0e8;
+}
+
 body.schink-night-mode .billing-profile-form .form-control:focus {
+    border-color: rgba(242, 168, 77, 0.68);
+    background: #121c22;
+    box-shadow: 0 0 0 0.22rem rgba(242, 168, 77, 0.16);
+}
+
+body.schink-night-mode .billing-discount-form .form-control:focus {
     border-color: rgba(242, 168, 77, 0.68);
     background: #121c22;
     box-shadow: 0 0 0 0.22rem rgba(242, 168, 77, 0.16);
@@ -857,6 +946,18 @@ body.schink-night-mode .billing-save-badge {
     border-color: rgba(242, 168, 77, 0.24);
 }
 
+body.schink-night-mode .billing-discount-card {
+    border-color: rgba(114, 190, 204, 0.18);
+    background:
+        radial-gradient(120% 140% at 0% 0%, rgba(242, 168, 77, 0.08), transparent 52%),
+        linear-gradient(180deg, rgba(23, 32, 39, 0.97) 0%, rgba(17, 25, 31, 0.97) 100%);
+}
+
+body.schink-night-mode .billing-discount-copy h3,
+body.schink-night-mode .billing-plan-discount-note {
+    color: #dff8e7;
+}
+
 body.schink-night-mode .billing-profile-status.alert-success {
     color: #dff8e7;
     background: rgba(31, 112, 65, 0.22);
@@ -871,7 +972,8 @@ body.schink-night-mode .billing-profile-status.alert-danger {
 
 @media (max-width: 1024px) {
     .billing-hero,
-    .billing-content-grid {
+    .billing-content-grid,
+    .billing-discount-card {
         grid-template-columns: 1fr;
     }
 
