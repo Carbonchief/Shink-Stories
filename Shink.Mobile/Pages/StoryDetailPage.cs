@@ -24,6 +24,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     private readonly VerticalStackLayout _content;
     private Border? _castSheet;
     private BoxView? _castScrim;
+    private MobileStoryDetailResponse? _currentDetail;
     private Button? _activePlayButton;
     private ProgressBar? _activeProgressBar;
     private Label? _activeCurrentTimeLabel;
@@ -202,6 +203,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
         _content.Children.Clear();
         Title = story.Title;
+        _currentDetail = previewDetail;
         _activeStory = story;
         _content.Children.Add(BuildTopBar());
         _content.Children.Add(BuildCoverArt(previewDetail));
@@ -214,6 +216,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     {
         _content.Children.Clear();
         Title = detail.Story.Title;
+        _currentDetail = detail;
         _activeStory = detail.Story;
         _content.Children.Add(BuildTopBar());
         _content.Children.Add(BuildCoverArt(detail));
@@ -240,10 +243,6 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             _content.Children.Add(playlistQueue);
         }
 
-        if (ScreenHeight >= TallScreenThreshold)
-        {
-            _content.Children.Add(BuildQueueHint());
-        }
     }
 
     private static View BuildLoadingState() =>
@@ -277,17 +276,28 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             ColumnSpacing = 14
         };
 
-        var closeButton = BuildTopIconButton("⌄");
-        closeButton.Clicked += async (_, _) => await CloseAsync(closeButton);
+        var closeButton = BuildDownCaretButton();
+        var closeTap = new TapGestureRecognizer();
+        closeTap.Tapped += async (_, _) => await CloseAsync(closeButton);
+        closeButton.GestureRecognizers.Add(closeTap);
 
-        var castButton = BuildCastButton();
         var menuButton = BuildTopIconButton("⋮");
+        menuButton.Clicked += async (_, _) => await ShowPlayerMenuAsync();
 
         grid.Children.Add(closeButton);
-        grid.Children.Add(castButton);
+        if (IsNativeRoutePickerAvailable)
+        {
+            var castButton = BuildCastButton();
+            grid.Children.Add(castButton);
+            Grid.SetColumn(castButton, 2);
+            Grid.SetColumn(menuButton, 3);
+        }
+        else
+        {
+            Grid.SetColumn(menuButton, 2);
+        }
+
         grid.Children.Add(menuButton);
-        Grid.SetColumn(castButton, 2);
-        Grid.SetColumn(menuButton, 3);
 
         return grid;
     }
@@ -321,6 +331,11 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
     private async Task ShowCastPickerAsync()
     {
+        if (!IsNativeRoutePickerAvailable)
+        {
+            return;
+        }
+
         if (_castSheet is not null)
         {
             return;
@@ -372,19 +387,19 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                         Color = Color.FromArgb("#353535"),
                         Margin = new Thickness(-30, 24, -30, 24)
                     },
-                    BuildCastAllDevicesHeader(),
+                    BuildCastAvailableControlsHeader(),
                     BuildCastPickerDeviceRow(
                         CastSheetIconKind.AirPlay,
                         "AirPlay and Bluetooth devices",
-                        () => routePicker.OpenPicker()),
-                    BuildCastPickerDeviceRow(
-                        CastSheetIconKind.Speaker,
-                        "Living Room Speaker",
                         () => routePicker.OpenPicker()),
                     routePicker
                 }
             }
         };
+
+        var swipeDown = new SwipeGestureRecognizer { Direction = SwipeDirection.Down };
+        swipeDown.Swiped += (_, _) => DismissCastPicker();
+        _castSheet.GestureRecognizers.Add(swipeDown);
 
         _root.Children.Add(_castScrim);
         _root.Children.Add(_castSheet);
@@ -499,29 +514,13 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         return grid;
     }
 
-    private static View BuildCastAllDevicesHeader() =>
-        new HorizontalStackLayout
+    private static View BuildCastAvailableControlsHeader() =>
+        new Label
         {
-            Spacing = 18,
-            Margin = new Thickness(0, 0, 0, 22),
-            Children =
-            {
-                new Label
-                {
-                    Text = "All devices",
-                    FontSize = 23,
-                    TextColor = Colors.White,
-                    VerticalTextAlignment = TextAlignment.Center
-                },
-                new ActivityIndicator
-                {
-                    IsRunning = true,
-                    Color = Color.FromArgb("#9C9C9C"),
-                    WidthRequest = 28,
-                    HeightRequest = 28,
-                    VerticalOptions = LayoutOptions.Center
-                }
-            }
+            Text = "Available controls",
+            FontSize = 23,
+            TextColor = Colors.White,
+            Margin = new Thickness(0, 0, 0, 22)
         };
 
     private static View BuildCastPickerDeviceRow(
@@ -581,7 +580,40 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         }
     }
 
-    private async Task CloseAsync(Button closeButton)
+    private async Task ShowPlayerMenuAsync()
+    {
+        var detail = _currentDetail;
+        if (detail is null)
+        {
+            return;
+        }
+
+        var actions = string.IsNullOrWhiteSpace(detail.ShareUrl)
+            ? new[] { "Storie info", "Maak speler toe" }
+            : new[] { "Storie info", "Deel storie", "Maak speler toe" };
+        var selected = await DisplayActionSheetAsync("Storie opsies", "Kanselleer", null, actions);
+
+        if (string.Equals(selected, "Storie info", StringComparison.Ordinal))
+        {
+            await DisplayAlertAsync(detail.Story.Title, detail.Story.Description, "Maak toe");
+        }
+        else if (string.Equals(selected, "Deel storie", StringComparison.Ordinal) &&
+                 !string.IsNullOrWhiteSpace(detail.ShareUrl))
+        {
+            await Share.Default.RequestAsync(new ShareTextRequest
+            {
+                Title = detail.Story.Title,
+                Text = detail.Story.Title,
+                Uri = detail.ShareUrl
+            });
+        }
+        else if (string.Equals(selected, "Maak speler toe", StringComparison.Ordinal))
+        {
+            await CloseAsync(this);
+        }
+    }
+
+    private async Task CloseAsync(VisualElement closeButton)
     {
         if (_isClosing)
         {
@@ -591,7 +623,22 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         _isClosing = true;
         closeButton.IsEnabled = false;
         CancelActiveLoad();
+        await AnimateCloseAsync();
         await Shell.Current.GoToAsync("..", animate: false);
+    }
+
+    private async Task AnimateCloseAsync()
+    {
+        if (_content.TranslationY > 0 || _content.Opacity < 1)
+        {
+            return;
+        }
+
+        var closeDistance = Height > 0
+            ? Height + 40
+            : 760;
+
+        await _content.TranslateToAsync(0, closeDistance, 240, Easing.CubicIn);
     }
 
     private void CancelActiveLoad()
@@ -639,6 +686,29 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             Padding = 0
         };
 
+    private static Grid BuildDownCaretButton()
+    {
+        var button = new Grid
+        {
+            WidthRequest = 44,
+            HeightRequest = 44,
+            HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.Center
+        };
+
+        button.Children.Add(new GraphicsView
+        {
+            Drawable = new DownCaretDrawable(),
+            WidthRequest = 26,
+            HeightRequest = 26,
+            HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.Center,
+            InputTransparent = true
+        });
+
+        return button;
+    }
+
     private View BuildCoverArt(MobileStoryDetailResponse detail) =>
         new Border
         {
@@ -683,6 +753,10 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         }
     }
 
+    private static bool IsNativeRoutePickerAvailable =>
+        DeviceInfo.Platform == DevicePlatform.iOS ||
+        DeviceInfo.Platform == DevicePlatform.MacCatalyst;
+
     private static View BuildInlineLoadingState() =>
         new HorizontalStackLayout
         {
@@ -708,7 +782,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             }
         };
 
-    private static View BuildStoryHeader(MobileStoryDetailResponse detail)
+    private View BuildStoryHeader(MobileStoryDetailResponse detail)
     {
         var titleRow = new Grid
         {
@@ -737,6 +811,9 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         };
         titleRow.Children.Add(titleCaret);
         Grid.SetColumn(titleCaret, 1);
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += async (_, _) => await DisplayAlertAsync(detail.Story.Title, detail.Story.Description, "Maak toe");
+        titleRow.GestureRecognizers.Add(tap);
 
         return
         new VerticalStackLayout
@@ -776,28 +853,6 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             await LoadAsync();
         };
 
-        var saveButton = BuildPillButton("☰+  Stoor");
-        saveButton.IsEnabled = _sessionState.Current.IsSignedIn;
-        saveButton.Clicked += async (_, _) =>
-        {
-            if (!_sessionState.Current.IsSignedIn)
-            {
-                return;
-            }
-
-            await _apiClient.SetFavoriteAsync(detail.Story.Slug, detail.Story.Source, true);
-            _loadedKey = null;
-            await LoadAsync();
-        };
-
-        var shareButton = BuildPillButton("↗");
-        shareButton.WidthRequest = 64;
-        shareButton.Clicked += async (_, _) => await Share.Default.RequestAsync(new ShareTextRequest
-        {
-            Uri = detail.ShareUrl,
-            Title = detail.Story.Title
-        });
-
         var infoButton = BuildPillButton("▱  Info");
         infoButton.Clicked += async (_, _) => await DisplayAlertAsync(detail.Story.Title, detail.Story.Description, "Maak toe");
 
@@ -811,9 +866,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 Children =
                 {
                     favoriteButton,
-                    infoButton,
-                    saveButton,
-                    shareButton
+                    infoButton
                 }
             }
         };
@@ -1003,46 +1056,76 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             {
                 new ColumnDefinition(GridLength.Star),
                 new ColumnDefinition(GridLength.Star),
-                new ColumnDefinition(GridLength.Star),
-                new ColumnDefinition(GridLength.Star),
                 new ColumnDefinition(GridLength.Star)
             },
             HeightRequest = 82
         };
 
-        var shuffleButton = BuildTransportButton("⇄");
+        var previousStory = ResolvePreviousStory(detail);
+        var nextStory = ResolveNextStory(detail);
         var previousButton = BuildTransportButton("|‹");
         var nextButton = BuildTransportButton("›|");
-        var repeatButton = BuildTransportButton("↻");
 
-        previousButton.IsEnabled = detail.PreviousStory is not null;
-        nextButton.IsEnabled = detail.NextStory is not null;
+        previousButton.IsEnabled = previousStory is not null;
+        nextButton.IsEnabled = nextStory is not null;
         previousButton.Clicked += async (_, _) =>
         {
-            if (detail.PreviousStory is not null)
+            if (previousStory is not null)
             {
-                await OpenStoryAsync(detail.PreviousStory);
+                await OpenPlaylistStoryAsync(previousStory);
             }
         };
         nextButton.Clicked += async (_, _) =>
         {
-            if (detail.NextStory is not null)
+            if (nextStory is not null)
             {
-                await OpenStoryAsync(detail.NextStory);
+                await OpenPlaylistStoryAsync(nextStory);
             }
         };
 
-        grid.Children.Add(shuffleButton);
         grid.Children.Add(previousButton);
         grid.Children.Add(playButton);
         grid.Children.Add(nextButton);
-        grid.Children.Add(repeatButton);
-        Grid.SetColumn(previousButton, 1);
-        Grid.SetColumn(playButton, 2);
-        Grid.SetColumn(nextButton, 3);
-        Grid.SetColumn(repeatButton, 4);
+        Grid.SetColumn(playButton, 1);
+        Grid.SetColumn(nextButton, 2);
 
         return grid;
+    }
+
+    private MobileStorySummary? ResolvePreviousStory(MobileStoryDetailResponse detail)
+    {
+        var playlistIndex = FindCurrentPlaylistIndex(detail.Story);
+        if (playlistIndex > 0)
+        {
+            return _playlistStories[playlistIndex - 1];
+        }
+
+        return detail.PreviousStory;
+    }
+
+    private MobileStorySummary? ResolveNextStory(MobileStoryDetailResponse detail)
+    {
+        var playlistIndex = FindCurrentPlaylistIndex(detail.Story);
+        if (playlistIndex >= 0 && playlistIndex < _playlistStories.Count - 1)
+        {
+            return _playlistStories[playlistIndex + 1];
+        }
+
+        return detail.NextStory;
+    }
+
+    private int FindCurrentPlaylistIndex(MobileStorySummary story)
+    {
+        for (var index = 0; index < _playlistStories.Count; index++)
+        {
+            if (string.Equals(_playlistStories[index].Slug, story.Slug, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(_playlistStories[index].Source, story.Source, StringComparison.OrdinalIgnoreCase))
+            {
+                return index;
+            }
+        }
+
+        return -1;
     }
 
     private View? BuildPlaylistQueue(MobileStoryDetailResponse detail)
@@ -1215,32 +1298,6 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             Padding = 0,
             HorizontalOptions = LayoutOptions.Center,
             VerticalOptions = LayoutOptions.Center
-        };
-
-    private static View BuildQueueHint() =>
-        new VerticalStackLayout
-        {
-            Spacing = 10,
-            Padding = new Thickness(0, 8, 0, 0),
-            Children =
-            {
-                new BoxView
-                {
-                    WidthRequest = 48,
-                    HeightRequest = 6,
-                    CornerRadius = 3,
-                    Color = Color.FromArgb("#2B3B38"),
-                    HorizontalOptions = LayoutOptions.Center
-                },
-                new Label
-                {
-                    Text = "Jou ry",
-                    FontSize = 16,
-                    FontAttributes = FontAttributes.Bold,
-                    TextColor = PlayerMutedTextColor,
-                    HorizontalTextAlignment = TextAlignment.Center
-                }
-            }
         };
 
     private static Button BuildPrimaryButton(string text) =>
@@ -1437,17 +1494,45 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
     private async Task OpenPlaylistStoryAsync(MobileStorySummary story)
     {
-        _loadedKey = null;
+        await ReplaceActiveStoryAsync(story);
+    }
+
+    private async Task ReplaceActiveStoryAsync(MobileStorySummary story)
+    {
+        CancelActiveLoad();
+        DismissCastPicker();
+        StopProgressTimer();
+        TryStopAudioPlayback();
+        ClearActivePlaybackUi();
+
+        StorySlug = story.Slug;
+        Source = story.Source;
         _previewStory = story;
-        await Shell.Current.GoToAsync(
-            $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source={Uri.EscapeDataString(story.Source)}",
-            animate: false,
-            parameters: new Dictionary<string, object>
-            {
-                ["preview"] = story,
-                ["playlistTitle"] = _playlistTitle ?? string.Empty,
-                ["playlistSlug"] = _playlistSlug ?? string.Empty
-            });
+        _loadedKey = $"{StorySlug}:{Source}";
+
+        RenderPreview(story);
+
+        _loadCts = new CancellationTokenSource();
+        await LoadAsync(showLoading: false, cancellationToken: _loadCts.Token);
+    }
+
+    private sealed class DownCaretDrawable : IDrawable
+    {
+        public void Draw(ICanvas canvas, RectF dirtyRect)
+        {
+            canvas.StrokeColor = PlayerTextColor;
+            canvas.StrokeSize = 3.6f;
+            canvas.StrokeLineCap = LineCap.Round;
+            canvas.StrokeLineJoin = LineJoin.Round;
+
+            var centerX = dirtyRect.Center.X;
+            var centerY = dirtyRect.Center.Y + dirtyRect.Height * 0.04f;
+            var halfWidth = dirtyRect.Width * 0.25f;
+            var halfHeight = dirtyRect.Height * 0.16f;
+
+            canvas.DrawLine(centerX - halfWidth, centerY - halfHeight, centerX, centerY + halfHeight);
+            canvas.DrawLine(centerX, centerY + halfHeight, centerX + halfWidth, centerY - halfHeight);
+        }
     }
 
     private enum CastSheetIconKind
@@ -1531,37 +1616,24 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         public void Draw(ICanvas canvas, RectF dirtyRect)
         {
             canvas.StrokeColor = PlayerTextColor;
-            canvas.StrokeSize = 2.6f;
+            canvas.FillColor = PlayerTextColor;
+            canvas.StrokeSize = 2.8f;
             canvas.StrokeLineCap = LineCap.Round;
             canvas.StrokeLineJoin = LineJoin.Round;
 
             var screenRect = new RectF(
-                dirtyRect.Width * 0.25f,
+                dirtyRect.Width * 0.12f,
                 dirtyRect.Height * 0.18f,
-                dirtyRect.Width * 0.56f,
-                dirtyRect.Height * 0.42f);
-            canvas.DrawRoundedRectangle(screenRect, 1.5f);
+                dirtyRect.Width * 0.76f,
+                dirtyRect.Height * 0.48f);
+            canvas.DrawRoundedRectangle(screenRect, 2.5f);
 
-            canvas.DrawArc(
-                dirtyRect.Width * 0.05f,
-                dirtyRect.Height * 0.49f,
-                dirtyRect.Width * 0.42f,
-                dirtyRect.Height * 0.42f,
-                0,
-                90,
-                false,
-                false);
-            canvas.DrawArc(
-                dirtyRect.Width * 0.05f,
-                dirtyRect.Height * 0.66f,
-                dirtyRect.Width * 0.22f,
-                dirtyRect.Height * 0.22f,
-                0,
-                90,
-                false,
-                false);
-            canvas.FillColor = PlayerTextColor;
-            canvas.FillCircle(dirtyRect.Width * 0.12f, dirtyRect.Height * 0.82f, 2.3f);
+            var triangle = new PathF();
+            triangle.MoveTo(dirtyRect.Width * 0.50f, dirtyRect.Height * 0.56f);
+            triangle.LineTo(dirtyRect.Width * 0.32f, dirtyRect.Height * 0.84f);
+            triangle.LineTo(dirtyRect.Width * 0.68f, dirtyRect.Height * 0.84f);
+            triangle.Close();
+            canvas.FillPath(triangle);
         }
     }
 }

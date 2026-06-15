@@ -6,6 +6,8 @@ namespace Shink.Mobile;
 
 [Activity(
     Theme = "@style/Maui.SplashTheme",
+    Icon = "@mipmap/schink_appicon",
+    RoundIcon = "@mipmap/schink_appicon_round",
     MainLauncher = true,
     LaunchMode = LaunchMode.SingleTop,
     ConfigurationChanges = ConfigChanges.ScreenSize

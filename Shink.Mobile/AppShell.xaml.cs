@@ -30,7 +30,7 @@ public partial class AppShell : Shell
 
         _sessionState.Changed += _ => MainThread.BeginInvokeOnMainThread(RenderShellFromSessionState);
         _isSignedInRendered = null;
-        BuildSignedOutShell();
+        RenderShellFromSessionState();
     }
 
     protected override void OnAppearing()
@@ -60,7 +60,7 @@ public partial class AppShell : Shell
         }
         catch
         {
-            // If the session endpoint is unavailable, keep the user on the login screen.
+            // If the session endpoint is unavailable, keep the current cached shell.
         }
         finally
         {

@@ -19,8 +19,17 @@ public sealed class AccountPage : ContentPage
     private readonly VerticalStackLayout _signedInState;
     private readonly VerticalStackLayout _signedOutState;
     private readonly VerticalStackLayout _authPanelContent;
+    private readonly BoxView _authPanelTopSpacer;
+    private VerticalStackLayout? _authHeroStack;
+    private Image? _authLogoImage;
+    private Label? _authWelcomeLabel;
+    private Border? _authTaglinePill;
+    private Label? _authTaglineLabel;
+    private Image? _authCharacterImage;
+    private Border? _authPanelFrame;
     private View? _authHero;
     private AuthPanelMode _authPanelMode = AuthPanelMode.Landing;
+    private double _lastLandingLayoutHeight = -1;
     private bool _hasLoadedSession;
     private bool _isAuthRequestInFlight;
 
@@ -44,6 +53,13 @@ public sealed class AccountPage : ContentPage
         _signedInState = new VerticalStackLayout { Spacing = 0, IsVisible = hasCachedSession };
         _signedOutState = new VerticalStackLayout { Spacing = 0, IsVisible = !hasCachedSession };
         _authPanelContent = new VerticalStackLayout { Spacing = 14 };
+        _authPanelTopSpacer = new BoxView
+        {
+            Color = Colors.Transparent,
+            HeightRequest = 0,
+            IsVisible = false,
+            InputTransparent = true
+        };
         ApplySessionState();
 
         Content = new Grid
@@ -83,6 +99,21 @@ public sealed class AccountPage : ContentPage
         _sessionState.Changed += _ => MainThread.BeginInvokeOnMainThread(ApplySessionState);
     }
 
+    protected override void OnSizeAllocated(double width, double height)
+    {
+        base.OnSizeAllocated(width, height);
+        UpdateAuthPanelTopSpacer();
+        if (height > 0 && Math.Abs(_lastLandingLayoutHeight - height) > 1)
+        {
+            _lastLandingLayoutHeight = height;
+            ApplyLandingLayoutMetrics();
+            if (_authPanelMode == AuthPanelMode.Landing && _authPanelContent.Children.Count > 0)
+            {
+                RenderAuthFormContent();
+            }
+        }
+    }
+
     protected override async void OnAppearing()
     {
         base.OnAppearing();
@@ -100,81 +131,91 @@ public sealed class AccountPage : ContentPage
         _signedOutState.Children.Clear();
         _authHero = BuildAuthHero();
         _authHero.IsVisible = _authPanelMode == AuthPanelMode.Landing;
+        UpdateAuthPanelTopSpacer();
+        _signedOutState.Children.Add(_authPanelTopSpacer);
         _signedOutState.Children.Add(_authHero);
         _signedOutState.Children.Add(BuildAuthPanel());
     }
 
     private View BuildAuthHero()
     {
-        return new VerticalStackLayout
+        var metrics = GetLandingLayoutMetrics();
+        _authLogoImage = new Image
         {
-            Padding = new Thickness(18, 54, 18, 0),
-            Spacing = 8,
-            Children =
+            Source = "schink_stories_logo_white.png",
+            HeightRequest = metrics.LogoHeight,
+            Aspect = Aspect.AspectFit,
+            Margin = metrics.LogoMargin
+        };
+        _authWelcomeLabel = new Label
+        {
+            Text = "Welkom by\nSchink Stories",
+            FontSize = metrics.TitleFontSize,
+            FontAttributes = FontAttributes.Bold,
+            FontFamily = "serif",
+            LineHeight = 0.9,
+            TextColor = Colors.White,
+            HorizontalTextAlignment = TextAlignment.Center,
+            Shadow = new Shadow
             {
-                new Image
-                {
-                    Source = "schink_stories_logo_white.png",
-                    HeightRequest = 192,
-                    Aspect = Aspect.AspectFit,
-                    Margin = new Thickness(-12, 0, -12, -12)
-                },
-                new Label
-                {
-                    Text = "Welkom by\nSchink Stories",
-                    FontSize = 35,
-                    FontAttributes = FontAttributes.Bold,
-                    FontFamily = "serif",
-                    LineHeight = 0.9,
-                    TextColor = Colors.White,
-                    HorizontalTextAlignment = TextAlignment.Center,
-                    Shadow = new Shadow
-                    {
-                        Brush = Brush.Black,
-                        Offset = new Point(0, 2),
-                        Radius = 6,
-                        Opacity = 0.28f
-                    }
-                },
-                new Border
-                {
-                    BackgroundColor = Color.FromArgb("#FFD45A"),
-                    Stroke = Color.FromArgb("#E8B52F"),
-                    StrokeThickness = 1,
-                    StrokeShape = new RoundRectangle { CornerRadius = 999 },
-                    Padding = new Thickness(18, 10),
-                    HorizontalOptions = LayoutOptions.Center,
-                    Content = new Label
-                    {
-                        Text = "Afrikaanse stories vir klein luisteraars",
-                        TextColor = Color.FromArgb("#0F6868"),
-                        FontSize = 13,
-                        FontAttributes = FontAttributes.Bold,
-                        HorizontalTextAlignment = TextAlignment.Center
-                    }
-                },
-                new Image
-                {
-                    Source = "schink_character_lineup.png",
-                    HeightRequest = 176,
-                    Aspect = Aspect.AspectFit,
-                    Margin = new Thickness(-34, 0, -34, -30)
-                }
+                Brush = Brush.Black,
+                Offset = new Point(0, 2),
+                Radius = 6,
+                Opacity = 0.28f
             }
         };
+        _authTaglineLabel = new Label
+        {
+            Text = "Afrikaanse stories vir klein luisteraars",
+            TextColor = Color.FromArgb("#0F6868"),
+            FontSize = metrics.TaglineFontSize,
+            FontAttributes = FontAttributes.Bold,
+            HorizontalTextAlignment = TextAlignment.Center
+        };
+        _authTaglinePill = new Border
+        {
+            BackgroundColor = Color.FromArgb("#FFD45A"),
+            Stroke = Color.FromArgb("#E8B52F"),
+            StrokeThickness = 1,
+            StrokeShape = new RoundRectangle { CornerRadius = 999 },
+            Padding = metrics.TaglinePadding,
+            HorizontalOptions = LayoutOptions.Center,
+            Content = _authTaglineLabel
+        };
+        _authCharacterImage = new Image
+        {
+            Source = "schink_character_lineup.png",
+            HeightRequest = metrics.CharacterHeight,
+            Aspect = Aspect.AspectFit,
+            Margin = metrics.CharacterMargin
+        };
+        _authHeroStack = new VerticalStackLayout
+        {
+            Padding = metrics.HeroPadding,
+            Spacing = metrics.HeroSpacing,
+            Children =
+            {
+                _authLogoImage,
+                _authWelcomeLabel,
+                _authTaglinePill,
+                _authCharacterImage
+            }
+        };
+        return _authHeroStack;
     }
 
     private View BuildAuthPanel()
     {
         RenderAuthFormContent();
+        var metrics = GetLandingLayoutMetrics();
 
-        return new Border
+        _authPanelFrame = new Border
         {
             BackgroundColor = Color.FromArgb("#FFF7E8"),
             StrokeThickness = 0,
             StrokeShape = new RoundRectangle { CornerRadius = 44 },
-            Margin = new Thickness(18, 0, 18, 14),
-            Padding = new Thickness(26, 24, 26, 28),
+            Margin = metrics.PanelMargin,
+            Padding = metrics.PanelPadding,
             Content = new VerticalStackLayout
             {
                 Spacing = 0,
@@ -184,16 +225,19 @@ public sealed class AccountPage : ContentPage
                 }
             }
         };
+        return _authPanelFrame;
     }
 
     private View BuildModeButton(string text, AuthPanelMode mode, bool isPrimary)
     {
+        var metrics = GetLandingLayoutMetrics();
+        var isLanding = _authPanelMode == AuthPanelMode.Landing;
         var labelColor = isPrimary ? Colors.White : Color.FromArgb("#243238");
         var icon = new Image
         {
             Source = mode == AuthPanelMode.SignIn ? "auth_icon_user_white_rendered.png" : "auth_icon_pencil_gold_rendered.png",
-            WidthRequest = 46,
-            HeightRequest = 46,
+            WidthRequest = isLanding ? metrics.ModeIconSize : 46,
+            HeightRequest = isLanding ? metrics.ModeIconSize : 46,
             Aspect = Aspect.AspectFit,
             VerticalOptions = LayoutOptions.Center,
             HorizontalOptions = LayoutOptions.Start,
@@ -202,7 +246,7 @@ public sealed class AccountPage : ContentPage
         var textLabel = new Label
         {
             Text = text,
-            FontSize = 25,
+            FontSize = isLanding ? metrics.ModeButtonFontSize : 25,
             FontAttributes = FontAttributes.Bold,
             FontFamily = "serif",
             TextColor = labelColor,
@@ -231,8 +275,8 @@ public sealed class AccountPage : ContentPage
             Stroke = isPrimary ? Color.FromArgb("#146D69") : Color.FromArgb("#E8B52F"),
             StrokeThickness = isPrimary ? 0 : 2,
             StrokeShape = new RoundRectangle { CornerRadius = 26 },
-            HeightRequest = 78,
-            Padding = new Thickness(18, 12),
+            HeightRequest = isLanding ? metrics.ModeButtonHeight : 78,
+            Padding = isLanding ? metrics.ModeButtonPadding : new Thickness(18, 12),
             Shadow = new Shadow
             {
                 Brush = Brush.Black,
@@ -244,7 +288,7 @@ public sealed class AccountPage : ContentPage
             {
                 ColumnDefinitions =
                 {
-                    new ColumnDefinition { Width = 48 },
+                    new ColumnDefinition { Width = isLanding ? metrics.ModeIconColumnWidth : 48 },
                     new ColumnDefinition { Width = GridLength.Star },
                     new ColumnDefinition { Width = 28 }
                 },
@@ -267,6 +311,10 @@ public sealed class AccountPage : ContentPage
     private void RenderAuthFormContent()
     {
         _authPanelContent.Children.Clear();
+        var metrics = GetLandingLayoutMetrics();
+        _authPanelContent.Spacing = _authPanelMode == AuthPanelMode.Landing
+            ? metrics.PanelContentSpacing
+            : 14;
 
         if (_authPanelMode == AuthPanelMode.Landing)
         {
@@ -276,13 +324,13 @@ public sealed class AccountPage : ContentPage
             {
                 HeightRequest = 1,
                 Color = Color.FromArgb("#DDD1B8"),
-                Margin = new Thickness(16, 8)
+                Margin = metrics.SeparatorMargin
             });
             _authPanelContent.Children.Add(new Label
             {
                 Text = "Jou stories. Jou plek.\nVeilig, privaat en altyd kind-vriendelik.",
                 TextColor = Color.FromArgb("#243238"),
-                FontSize = 15,
+                FontSize = metrics.PanelInfoFontSize,
                 HorizontalTextAlignment = TextAlignment.Center,
                 LineHeight = 1.18
             });
@@ -290,7 +338,7 @@ public sealed class AccountPage : ContentPage
             return;
         }
 
-        _authPanelContent.Children.Add(BuildAuthPanelHeading(
+        _authPanelContent.Children.Add(BuildAuthPanelHeader(
             _authPanelMode == AuthPanelMode.SignIn ? "Meld aan" : "Skep rekening"));
         _authPanelContent.Children.Add(_statusLabel);
 
@@ -426,19 +474,166 @@ public sealed class AccountPage : ContentPage
         }
 
         SetStatus(null);
+        UpdateAuthPanelTopSpacer();
         RenderAuthFormContent();
     }
 
-    private static View BuildAuthPanelHeading(string text) =>
-        new Label
+    private void ApplyLandingLayoutMetrics()
+    {
+        var metrics = GetLandingLayoutMetrics();
+        if (_authHeroStack is not null)
+        {
+            _authHeroStack.Padding = metrics.HeroPadding;
+            _authHeroStack.Spacing = metrics.HeroSpacing;
+        }
+
+        if (_authLogoImage is not null)
+        {
+            _authLogoImage.HeightRequest = metrics.LogoHeight;
+            _authLogoImage.Margin = metrics.LogoMargin;
+        }
+
+        if (_authWelcomeLabel is not null)
+        {
+            _authWelcomeLabel.FontSize = metrics.TitleFontSize;
+        }
+
+        if (_authTaglinePill is not null)
+        {
+            _authTaglinePill.Padding = metrics.TaglinePadding;
+        }
+
+        if (_authTaglineLabel is not null)
+        {
+            _authTaglineLabel.FontSize = metrics.TaglineFontSize;
+        }
+
+        if (_authCharacterImage is not null)
+        {
+            _authCharacterImage.HeightRequest = metrics.CharacterHeight;
+            _authCharacterImage.Margin = metrics.CharacterMargin;
+        }
+
+        if (_authPanelFrame is not null && _authPanelMode == AuthPanelMode.Landing)
+        {
+            _authPanelFrame.Margin = metrics.PanelMargin;
+            _authPanelFrame.Padding = metrics.PanelPadding;
+        }
+    }
+
+    private LandingLayoutMetrics GetLandingLayoutMetrics()
+    {
+        var height = Height > 0
+            ? Height
+            : DeviceDisplay.MainDisplayInfo.Height / DeviceDisplay.MainDisplayInfo.Density;
+        var compact = height < 740;
+        var tight = height < 680;
+
+        return new LandingLayoutMetrics(
+            HeroPadding: new Thickness(18, tight ? 22 : compact ? 32 : 48, 18, 0),
+            HeroSpacing: tight ? 4 : compact ? 6 : 8,
+            LogoHeight: Math.Clamp(height * (tight ? 0.18 : 0.2), 112, 182),
+            LogoMargin: new Thickness(-12, 0, -12, tight ? -8 : -12),
+            TitleFontSize: Math.Clamp(height * 0.04, 25, 35),
+            TaglineFontSize: tight ? 12 : 13,
+            TaglinePadding: new Thickness(tight ? 14 : 18, tight ? 7 : 10),
+            CharacterHeight: Math.Clamp(height * (tight ? 0.12 : 0.17), 76, 158),
+            CharacterMargin: new Thickness(-34, 0, -34, tight ? -18 : compact ? -24 : -30),
+            PanelMargin: new Thickness(18, 0, 18, tight ? 8 : 14),
+            PanelPadding: new Thickness(26, tight ? 18 : compact ? 21 : 24, 26, tight ? 20 : compact ? 24 : 28),
+            PanelContentSpacing: tight ? 10 : compact ? 12 : 14,
+            ModeButtonHeight: tight ? 64 : compact ? 70 : 78,
+            ModeButtonFontSize: tight ? 22 : compact ? 24 : 25,
+            ModeButtonPadding: new Thickness(tight ? 14 : 18, tight ? 9 : 12),
+            ModeIconSize: tight ? 38 : compact ? 42 : 46,
+            ModeIconColumnWidth: tight ? 42 : compact ? 46 : 48,
+            SeparatorMargin: new Thickness(16, tight ? 3 : compact ? 5 : 8),
+            PanelInfoFontSize: tight ? 13 : compact ? 14 : 15);
+    }
+
+    private void UpdateAuthPanelTopSpacer()
+    {
+        if (_authPanelMode == AuthPanelMode.Landing)
+        {
+            _authPanelTopSpacer.IsVisible = false;
+            _authPanelTopSpacer.HeightRequest = 0;
+            return;
+        }
+
+        var screenHeight = Height > 0
+            ? Height
+            : DeviceDisplay.MainDisplayInfo.Height / DeviceDisplay.MainDisplayInfo.Density;
+        var estimatedPanelHeight = _authPanelMode == AuthPanelMode.SignIn ? 330 : 620;
+        var topInset = Math.Max(24, Math.Floor((screenHeight - estimatedPanelHeight) / 2));
+
+        _authPanelTopSpacer.IsVisible = true;
+        _authPanelTopSpacer.HeightRequest = topInset;
+    }
+
+    private View BuildAuthPanelHeader(string text)
+    {
+        var backIcon = new Image
+        {
+            Source = "auth_caret_dark_rendered.png",
+            WidthRequest = 10,
+            HeightRequest = 16,
+            Rotation = 180,
+            Aspect = Aspect.AspectFit,
+            HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.Center,
+            InputTransparent = true
+        };
+        var backButton = new Border
+        {
+            BackgroundColor = Color.FromArgb("#FFF7E8"),
+            Stroke = Color.FromArgb("#E8DEC8"),
+            StrokeThickness = 1,
+            StrokeShape = new RoundRectangle { CornerRadius = 18 },
+            WidthRequest = 38,
+            HeightRequest = 38,
+            HorizontalOptions = LayoutOptions.Start,
+            VerticalOptions = LayoutOptions.Center,
+            Content = backIcon
+        };
+        var backTap = new TapGestureRecognizer();
+        backTap.Tapped += (_, _) =>
+        {
+            if (!_isAuthRequestInFlight)
+            {
+                SetAuthPanelMode(AuthPanelMode.Landing);
+            }
+        };
+        backButton.GestureRecognizers.Add(backTap);
+
+        var heading = new Label
         {
             Text = text,
             FontSize = 25,
             FontAttributes = FontAttributes.Bold,
             FontFamily = "serif",
             TextColor = Color.FromArgb("#243238"),
-            HorizontalTextAlignment = TextAlignment.Center
+            HorizontalTextAlignment = TextAlignment.Center,
+            VerticalTextAlignment = TextAlignment.Center
         };
+
+        Grid.SetColumn(backButton, 0);
+        Grid.SetColumn(heading, 1);
+
+        return new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = 38 },
+                new ColumnDefinition { Width = GridLength.Star },
+                new ColumnDefinition { Width = 38 }
+            },
+            Children =
+            {
+                backButton,
+                heading
+            }
+        };
+    }
 
     private View BuildModeSwitchLink(string prompt, string action, AuthPanelMode mode)
     {
@@ -466,6 +661,27 @@ public sealed class AccountPage : ContentPage
         label.GestureRecognizers.Add(tap);
         return label;
     }
+
+    private sealed record LandingLayoutMetrics(
+        Thickness HeroPadding,
+        double HeroSpacing,
+        double LogoHeight,
+        Thickness LogoMargin,
+        double TitleFontSize,
+        double TaglineFontSize,
+        Thickness TaglinePadding,
+        double CharacterHeight,
+        Thickness CharacterMargin,
+        Thickness PanelMargin,
+        Thickness PanelPadding,
+        double PanelContentSpacing,
+        double ModeButtonHeight,
+        double ModeButtonFontSize,
+        Thickness ModeButtonPadding,
+        double ModeIconSize,
+        double ModeIconColumnWidth,
+        Thickness SeparatorMargin,
+        double PanelInfoFontSize);
 
     private void SetLoginSubmitLoading(
         Border button,

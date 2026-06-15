@@ -48,7 +48,9 @@ public sealed record MobilePlaylist(
     string? Description,
     string ArtworkUrl,
     string BackdropUrl,
-    IReadOnlyList<MobileStorySummary> Stories);
+    IReadOnlyList<MobileStorySummary> Stories,
+    bool? ShowShowcaseImageOnLuisterPage = null,
+    MobileStorySummary? ShowcaseStory = null);
 
 public sealed record MobileLuisterResponse(
     bool HasPaidSubscription,
@@ -82,3 +84,28 @@ public sealed record MobileContentBlock(
 public sealed record MobileAboutResponse(IReadOnlyList<MobileContentBlock> Blocks);
 
 public sealed record AuthResponse(string? Message, string? RedirectPath);
+
+public sealed record MobileNotificationPage(
+    int Count,
+    int UnreadCount,
+    bool HasMore,
+    bool HasHistory,
+    IReadOnlyList<MobileNotificationItem> Notifications);
+
+public sealed record MobileNotificationItem(
+    Guid Id,
+    string Type,
+    string Title,
+    string Body,
+    string? ImagePath,
+    string? ImageAlt,
+    string? Href,
+    DateTimeOffset CreatedAt,
+    bool IsRead,
+    bool IsCleared);
+
+public sealed record MobileNotificationMutationResponse(
+    int? MarkedCount,
+    bool? Marked,
+    int? ClearedCount,
+    bool? Cleared);

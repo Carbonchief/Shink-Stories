@@ -3014,6 +3014,14 @@ app.MapGet("/api/mobile/luister", async (
     var favoriteSet = favoriteSlugs.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     var playlists = await playlistsTask;
+    MobileStorySummaryResponse MapStory(StoryItem story) =>
+        BuildMobileStorySummary(
+            httpContext,
+            story,
+            source: "luister",
+            isLocked: !CanAccessStory(story, access),
+            isFavorite: favoriteSet.Contains(story.Slug));
+
     MobilePlaylistResponse MapPlaylist(StoryPlaylist playlist) =>
         new(
             Slug: playlist.Slug,
@@ -3021,14 +3029,9 @@ app.MapGet("/api/mobile/luister", async (
             Description: playlist.Description,
             ArtworkUrl: BuildMobilePlaylistArtworkUri(httpContext, playlist),
             BackdropUrl: ToAbsoluteUri(httpContext, playlist.BackdropImagePath ?? playlist.LogoImagePath ?? "/branding/Schink_Stories_01.png"),
-            Stories: playlist.Stories
-                .Select(story => BuildMobileStorySummary(
-                    httpContext,
-                    story,
-                    source: "luister",
-                    isLocked: !CanAccessStory(story, access),
-                    isFavorite: favoriteSet.Contains(story.Slug)))
-                .ToArray());
+            Stories: playlist.Stories.Select(MapStory).ToArray(),
+            ShowShowcaseImageOnLuisterPage: playlist.ShowShowcaseImageOnLuisterPage,
+            ShowcaseStory: playlist.PreferredStory is null ? null : MapStory(playlist.PreferredStory));
 
     var displayPlaylists = playlists
         .Where(playlist => !IsMobileSpeellysteSystemPlaylist(playlist))
@@ -6265,6 +6268,8 @@ static string BuildMobilePlaylistArtworkUri(HttpContext httpContext, StoryPlayli
     var candidates = new[]
     {
         playlist.ShowcaseImagePath,
+        playlist.PreferredStory?.ImagePath,
+        playlist.PreferredStory?.ThumbnailPath,
         playlist.BackdropImagePath,
         playlist.LogoImagePath,
         "/branding/Schink_Stories_01.png"
@@ -6461,7 +6466,9 @@ sealed record MobilePlaylistResponse(
     string? Description,
     string ArtworkUrl,
     string BackdropUrl,
-    IReadOnlyList<MobileStorySummaryResponse> Stories);
+    IReadOnlyList<MobileStorySummaryResponse> Stories,
+    bool ShowShowcaseImageOnLuisterPage,
+    MobileStorySummaryResponse? ShowcaseStory);
 sealed record MobileLuisterResponse(
     bool HasPaidSubscription,
     IReadOnlyList<MobilePlaylistResponse> Playlists,

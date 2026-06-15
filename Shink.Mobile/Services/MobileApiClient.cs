@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -50,23 +51,104 @@ public sealed class MobileAppSettings
 
 public sealed class SessionState
 {
-    public MobileSession Current { get; private set; } = new(
-        IsSignedIn: false,
-        Email: null,
-        DisplayName: null,
-        ProfileImageUrl: null,
-        HasPaidSubscription: false,
-        FavoriteStorySlugs: Array.Empty<string>(),
-        LoginUrl: string.Empty,
-        SignupUrl: string.Empty,
-        PlansUrl: string.Empty);
+    private static readonly JsonSerializerOptions SessionJsonOptions = new(JsonSerializerDefaults.Web);
+
+    private const string IsSignedInPreferenceKey = "mobile_session_is_signed_in";
+    private const string EmailPreferenceKey = "mobile_session_email";
+    private const string DisplayNamePreferenceKey = "mobile_session_display_name";
+    private const string ProfileImageUrlPreferenceKey = "mobile_session_profile_image_url";
+    private const string HasPaidSubscriptionPreferenceKey = "mobile_session_has_paid_subscription";
+    private const string FavoriteStorySlugsPreferenceKey = "mobile_session_favorite_story_slugs";
+    private const string LoginUrlPreferenceKey = "mobile_session_login_url";
+    private const string SignupUrlPreferenceKey = "mobile_session_signup_url";
+    private const string PlansUrlPreferenceKey = "mobile_session_plans_url";
+
+    public MobileSession Current { get; private set; } = LoadCachedSession();
 
     public event Action<MobileSession>? Changed;
 
     public void Update(MobileSession session)
     {
         Current = session;
+        SaveCachedSession(session);
         Changed?.Invoke(session);
+    }
+
+    private static MobileSession LoadCachedSession()
+    {
+        var isSignedIn = Preferences.Get(IsSignedInPreferenceKey, false);
+        return new MobileSession(
+            IsSignedIn: isSignedIn,
+            Email: GetNullablePreference(EmailPreferenceKey),
+            DisplayName: GetNullablePreference(DisplayNamePreferenceKey),
+            ProfileImageUrl: GetNullablePreference(ProfileImageUrlPreferenceKey),
+            HasPaidSubscription: Preferences.Get(HasPaidSubscriptionPreferenceKey, false),
+            FavoriteStorySlugs: LoadFavoriteStorySlugs(),
+            LoginUrl: Preferences.Get(LoginUrlPreferenceKey, string.Empty),
+            SignupUrl: Preferences.Get(SignupUrlPreferenceKey, string.Empty),
+            PlansUrl: Preferences.Get(PlansUrlPreferenceKey, string.Empty));
+    }
+
+    private static IReadOnlyList<string> LoadFavoriteStorySlugs()
+    {
+        var serializedSlugs = Preferences.Get(FavoriteStorySlugsPreferenceKey, string.Empty);
+        if (string.IsNullOrWhiteSpace(serializedSlugs))
+        {
+            return Array.Empty<string>();
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<string[]>(serializedSlugs, SessionJsonOptions) ?? Array.Empty<string>();
+        }
+        catch
+        {
+            Preferences.Remove(FavoriteStorySlugsPreferenceKey);
+            return Array.Empty<string>();
+        }
+    }
+
+    private static void SaveCachedSession(MobileSession session)
+    {
+        Preferences.Set(IsSignedInPreferenceKey, session.IsSignedIn);
+        Preferences.Set(LoginUrlPreferenceKey, session.LoginUrl);
+        Preferences.Set(SignupUrlPreferenceKey, session.SignupUrl);
+        Preferences.Set(PlansUrlPreferenceKey, session.PlansUrl);
+
+        if (!session.IsSignedIn)
+        {
+            Preferences.Remove(EmailPreferenceKey);
+            Preferences.Remove(DisplayNamePreferenceKey);
+            Preferences.Remove(ProfileImageUrlPreferenceKey);
+            Preferences.Remove(HasPaidSubscriptionPreferenceKey);
+            Preferences.Remove(FavoriteStorySlugsPreferenceKey);
+            return;
+        }
+
+        SetNullablePreference(EmailPreferenceKey, session.Email);
+        SetNullablePreference(DisplayNamePreferenceKey, session.DisplayName);
+        SetNullablePreference(ProfileImageUrlPreferenceKey, session.ProfileImageUrl);
+        Preferences.Set(HasPaidSubscriptionPreferenceKey, session.HasPaidSubscription);
+        Preferences.Set(
+            FavoriteStorySlugsPreferenceKey,
+            JsonSerializer.Serialize(session.FavoriteStorySlugs ?? Array.Empty<string>(), SessionJsonOptions));
+    }
+
+    private static string? GetNullablePreference(string key)
+    {
+        var value = Preferences.Get(key, string.Empty);
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    private static void SetNullablePreference(string key, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            Preferences.Remove(key);
+            return;
+        }
+
+        Preferences.Set(key, value);
     }
 }
 
@@ -125,6 +207,29 @@ public sealed class MobileApiClient
         GetAsync<MobileStoryDetailResponse>(
             $"/api/mobile/stories/{Uri.EscapeDataString(slug)}?source={Uri.EscapeDataString(source)}",
             cancellationToken);
+
+    public Task<MobileNotificationPage?> GetNotificationsAsync(
+        int limit = 10,
+        DateTimeOffset? before = null,
+        bool history = false,
+        CancellationToken cancellationToken = default) =>
+        GetAsync<MobileNotificationPage>(BuildNotificationRequestPath(limit, before, history), cancellationToken);
+
+    public Task<MobileNotificationMutationResponse?> MarkAllNotificationsReadAsync(CancellationToken cancellationToken = default) =>
+        PostAsync<MobileNotificationMutationResponse>("/api/notifications/read-all", new { }, cancellationToken);
+
+    public Task<MobileNotificationMutationResponse?> MarkNotificationReadAsync(
+        Guid notificationId,
+        CancellationToken cancellationToken = default) =>
+        PostAsync<MobileNotificationMutationResponse>($"/api/notifications/{notificationId:D}/read", new { }, cancellationToken);
+
+    public Task<MobileNotificationMutationResponse?> ClearNotificationsAsync(CancellationToken cancellationToken = default) =>
+        PostAsync<MobileNotificationMutationResponse>("/api/notifications/clear", new { }, cancellationToken);
+
+    public Task<MobileNotificationMutationResponse?> ClearNotificationAsync(
+        Guid notificationId,
+        CancellationToken cancellationToken = default) =>
+        PostAsync<MobileNotificationMutationResponse>($"/api/notifications/{notificationId:D}/clear", new { }, cancellationToken);
 
     public string BuildAbsoluteUrl(string path)
     {
@@ -270,6 +375,27 @@ public sealed class MobileApiClient
         }
 
         return await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
+    }
+
+    private static string BuildNotificationRequestPath(int limit, DateTimeOffset? before, bool history)
+    {
+        var normalizedLimit = Math.Clamp(limit, 1, 50);
+        var queryParts = new List<string>
+        {
+            $"limit={normalizedLimit.ToString(CultureInfo.InvariantCulture)}"
+        };
+
+        if (before is { } beforeValue)
+        {
+            queryParts.Add($"before={Uri.EscapeDataString(beforeValue.ToString("O", CultureInfo.InvariantCulture))}");
+        }
+
+        if (history)
+        {
+            queryParts.Add("history=true");
+        }
+
+        return $"/api/notifications?{string.Join("&", queryParts)}";
     }
 
     public string BuildImageUrl(string? url)

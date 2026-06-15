@@ -7,7 +7,7 @@ internal static class MobileTopBar
 {
     public static View Build(Page hostPage, MobileApiClient apiClient, MobileSession session, Thickness? margin = null)
     {
-        var menuButton = BuildCircleButton("☰", 22, Colors.White, Color.FromArgb("#123F3F"));
+        var menuButton = BuildMenuCircleButton(Colors.White, Color.FromArgb("#123F3F"));
         var menuTap = new TapGestureRecognizer();
         menuTap.Tapped += async (_, _) => await ShowMenuAsync(hostPage);
         menuButton.GestureRecognizers.Add(menuTap);
@@ -36,6 +36,40 @@ internal static class MobileTopBar
         Grid.SetColumn(profileButton, 2);
         return grid;
     }
+
+    private static Border BuildMenuCircleButton(Color lineColor, Color backgroundColor) =>
+        new()
+        {
+            BackgroundColor = backgroundColor,
+            StrokeThickness = 0,
+            StrokeShape = new RoundRectangle { CornerRadius = 23 },
+            WidthRequest = 46,
+            HeightRequest = 46,
+            VerticalOptions = LayoutOptions.Center,
+            Content = new VerticalStackLayout
+            {
+                Spacing = 4,
+                WidthRequest = 18,
+                HeightRequest = 14,
+                HorizontalOptions = LayoutOptions.Center,
+                VerticalOptions = LayoutOptions.Center,
+                Children =
+                {
+                    BuildMenuLine(lineColor),
+                    BuildMenuLine(lineColor),
+                    BuildMenuLine(lineColor)
+                }
+            }
+        };
+
+    private static BoxView BuildMenuLine(Color color) =>
+        new()
+        {
+            Color = color,
+            WidthRequest = 18,
+            HeightRequest = 2,
+            HorizontalOptions = LayoutOptions.Center
+        };
 
     private static Border BuildCircleButton(string text, double fontSize, Color textColor, Color backgroundColor) =>
         new()
