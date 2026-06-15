@@ -16,6 +16,8 @@ public sealed class LuisterPage : ContentPage
     private readonly Label _loginStatusLabel;
     private IReadOnlyList<MobileLuisterSection> _sections = Array.Empty<MobileLuisterSection>();
     private bool _hasLoaded;
+    private bool _isSearchVisible;
+    private CancellationTokenSource? _imageWarmupCancellation;
 
     public LuisterPage(
         MobileApiClient apiClient,
@@ -80,9 +82,15 @@ public sealed class LuisterPage : ContentPage
         }
         else
         {
-            await _apiClient.GetSessionAsync();
             RenderContent();
+            _ = RefreshSessionInBackgroundAsync();
         }
+    }
+
+    protected override void OnDisappearing()
+    {
+        _imageWarmupCancellation?.Cancel();
+        base.OnDisappearing();
     }
 
     private async Task LoadAsync(bool forceRefresh = false)
@@ -115,6 +123,7 @@ public sealed class LuisterPage : ContentPage
                 : BuildLegacySections(response.Playlists);
             _hasLoaded = true;
             RenderContent();
+            StartImageWarmup();
         }
         catch (Exception ex)
         {
@@ -127,6 +136,19 @@ public sealed class LuisterPage : ContentPage
         }
     }
 
+    private async Task RefreshSessionInBackgroundAsync()
+    {
+        try
+        {
+            await _apiClient.GetSessionAsync();
+            MainThread.BeginInvokeOnMainThread(RenderContent);
+        }
+        catch
+        {
+            // Keep cached Luister content visible if session refresh is temporarily unavailable.
+        }
+    }
+
     private void RenderContent()
     {
         if (!_hasLoaded)
@@ -135,9 +157,12 @@ public sealed class LuisterPage : ContentPage
         }
 
         _content.Children.Clear();
-        _content.Children.Add(MobileTopBar.Build(this, _apiClient, _sessionState.Current));
-        _content.Children.Add(BuildHero());
-        _content.Children.Add(BuildSearchBox());
+        _content.Children.Add(BuildLuisterTopBar());
+        if (_isSearchVisible || !string.IsNullOrWhiteSpace(_searchEntry.Text))
+        {
+            _content.Children.Add(BuildSearchBox());
+        }
+
         _content.Children.Add(BuildAccountPanel());
         _content.Children.Add(_playlistContent);
 
@@ -180,28 +205,59 @@ public sealed class LuisterPage : ContentPage
         }
     }
 
-    private View BuildHero()
+    private View BuildLuisterTopBar()
     {
-        return new Border
+        var menuButton = BuildHeaderCircleButton("☰", 22, Colors.White, Color.FromArgb("#123F3F"));
+        var menuTap = new TapGestureRecognizer();
+        menuTap.Tapped += async (_, _) => await ShowMenuAsync();
+        menuButton.GestureRecognizers.Add(menuTap);
+
+        var searchButton = BuildHeaderCircleButton("⌕", 25, Color.FromArgb("#0B3534"), Color.FromArgb("#F4E9D1"));
+        var searchTap = new TapGestureRecognizer();
+        searchTap.Tapped += (_, _) =>
         {
-            BackgroundColor = Color.FromArgb("#EAF7F4"),
-            StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = 28 },
-            Padding = 0,
-            Shadow = new Shadow
+            _isSearchVisible = !_isSearchVisible;
+            RenderContent();
+            if (_isSearchVisible)
             {
-                Brush = Brush.Black,
-                Offset = new Point(0, 8),
-                Radius = 18,
-                Opacity = 0.08f
-            },
-            Content = new Image
-            {
-                Source = "dis_storietyd.png",
-                HeightRequest = 230,
-                Aspect = Aspect.AspectFit
+                MainThread.BeginInvokeOnMainThread(() => _searchEntry.Focus());
             }
         };
+        searchButton.GestureRecognizers.Add(searchTap);
+
+        var profileButton = BuildProfileButton();
+        var profileTap = new TapGestureRecognizer();
+        profileTap.Tapped += (_, _) => OpenAccountTab();
+        profileButton.GestureRecognizers.Add(profileTap);
+
+        var rightActions = new HorizontalStackLayout
+        {
+            Spacing = 10,
+            HorizontalOptions = LayoutOptions.End,
+            Children =
+            {
+                searchButton,
+                profileButton
+            }
+        };
+
+        var grid = new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = GridLength.Auto },
+                new ColumnDefinition { Width = GridLength.Star },
+                new ColumnDefinition { Width = GridLength.Auto }
+            },
+            Children =
+            {
+                menuButton,
+                rightActions
+            }
+        };
+
+        Grid.SetColumn(rightActions, 2);
+        return grid;
     }
 
     private View BuildSearchBox()
@@ -222,6 +278,119 @@ public sealed class LuisterPage : ContentPage
             },
             Content = _searchEntry
         };
+    }
+
+    private static Border BuildHeaderCircleButton(string text, double fontSize, Color textColor, Color backgroundColor) =>
+        new()
+        {
+            BackgroundColor = backgroundColor,
+            StrokeThickness = 0,
+            StrokeShape = new RoundRectangle { CornerRadius = 23 },
+            WidthRequest = 46,
+            HeightRequest = 46,
+            VerticalOptions = LayoutOptions.Center,
+            Content = new Label
+            {
+                Text = text,
+                FontSize = fontSize,
+                FontAttributes = FontAttributes.Bold,
+                TextColor = textColor,
+                HorizontalTextAlignment = TextAlignment.Center,
+                VerticalTextAlignment = TextAlignment.Center,
+                Margin = text == "⌕" ? new Thickness(0, -2, 0, 0) : Thickness.Zero
+            }
+        };
+
+    private Border BuildProfileButton()
+    {
+        var session = _sessionState.Current;
+        if (string.IsNullOrWhiteSpace(session.ProfileImageUrl))
+        {
+            return BuildHeaderCircleButton(BuildInitials(session), 15, Color.FromArgb("#0B3534"), Color.FromArgb("#FFD45A"));
+        }
+
+        return new Border
+        {
+            BackgroundColor = Color.FromArgb("#F7EAD0"),
+            Stroke = Colors.White,
+            StrokeThickness = 2,
+            StrokeShape = new RoundRectangle { CornerRadius = 23 },
+            WidthRequest = 46,
+            HeightRequest = 46,
+            Padding = 0,
+            VerticalOptions = LayoutOptions.Center,
+            Content = new Image
+            {
+                Source = _apiClient.BuildCachedImageSource(session.ProfileImageUrl),
+                Aspect = Aspect.AspectFill,
+                WidthRequest = 46,
+                HeightRequest = 46
+            }
+        };
+    }
+
+    private async Task ShowMenuAsync()
+    {
+        var choice = await DisplayActionSheetAsync("Menu", "Kanselleer", null, "Settings", "Manage Account");
+        switch (choice)
+        {
+            case "Settings":
+                await DisplayAlertAsync("Settings", "Instellings kom binnekort.", "Reg so");
+                break;
+            case "Manage Account":
+                OpenAccountTab();
+                break;
+        }
+    }
+
+    private static void OpenAccountTab()
+    {
+        if (Shell.Current?.CurrentItem is not TabBar tabs)
+        {
+            return;
+        }
+
+        var accountTab = tabs.Items.FirstOrDefault(item =>
+            string.Equals(item.Title, "Rekening", StringComparison.OrdinalIgnoreCase));
+        if (accountTab is not null)
+        {
+            tabs.CurrentItem = accountTab;
+        }
+    }
+
+    private static string BuildInitials(MobileSession session)
+    {
+        var source = !string.IsNullOrWhiteSpace(session.DisplayName)
+            ? session.DisplayName
+            : session.Email;
+
+        if (string.IsNullOrWhiteSpace(source))
+        {
+            return "S";
+        }
+
+        var localName = source.Contains('@', StringComparison.Ordinal)
+            ? source[..source.IndexOf('@')]
+            : source;
+        var tokens = localName
+            .Split([' ', '.', '_', '-'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Take(2)
+            .ToArray();
+
+        if (tokens.Length >= 2)
+        {
+            return $"{char.ToUpperInvariant(tokens[0][0])}{char.ToUpperInvariant(tokens[1][0])}";
+        }
+
+        if (tokens.Length == 1)
+        {
+            var token = tokens[0];
+            return token.Length >= 2
+                ? $"{char.ToUpperInvariant(token[0])}{char.ToUpperInvariant(token[1])}"
+                : char.ToUpperInvariant(token[0]).ToString();
+        }
+
+        return "S";
     }
 
     private View BuildAccountPanel()
@@ -343,26 +512,17 @@ public sealed class LuisterPage : ContentPage
         var section = new VerticalStackLayout { Spacing = 10 };
         section.Children.Add(PageHelpers.BuildSectionTitle(string.IsNullOrWhiteSpace(title) ? "Speellyste" : title));
 
-        var row = new HorizontalStackLayout { Spacing = 14 };
-        foreach (var playlist in playlists)
-        {
-            row.Children.Add(BuildPlaylistCard(playlist));
-        }
-
-        section.Children.Add(new ScrollView
-        {
-            Orientation = ScrollOrientation.Horizontal,
-            Content = row
-        });
+        section.Children.Add(BuildHorizontalCarousel(
+            playlists,
+            186,
+            playlist => BuildPlaylistCard(playlist)));
 
         return section;
     }
 
     private View BuildPlaylistCard(MobilePlaylist playlist)
     {
-        var resolvedImageUrl = string.IsNullOrWhiteSpace(playlist.ArtworkUrl)
-            ? "schink_background.jpeg"
-            : _apiClient.BuildImageUrl(playlist.ArtworkUrl);
+        var imageSource = _apiClient.BuildCachedImageSource(playlist.ArtworkUrl, "schink_background.jpeg");
         var card = new Border
         {
             WidthRequest = 246,
@@ -379,24 +539,17 @@ public sealed class LuisterPage : ContentPage
                         StrokeThickness = 0,
                         StrokeShape = new RoundRectangle { CornerRadius = 16 },
                         HeightRequest = 138,
-                        Shadow = new Shadow
-                        {
-                            Brush = Brush.Black,
-                            Offset = new Point(0, 8),
-                            Radius = 18,
-                            Opacity = 0.22f
-                        },
                         Content = new Grid
                         {
                             Children =
                             {
                                 new Image
                                 {
-                                    Source = resolvedImageUrl,
+                                    Source = imageSource,
                                     HeightRequest = 138,
                                     Aspect = Aspect.AspectFill
                                 },
-                                BuildCoverPlayBadge("▦")
+                                BuildCoverPlayBadge("▦", 38, 19, 0)
                             }
                         },
                     },
@@ -440,19 +593,47 @@ public sealed class LuisterPage : ContentPage
             });
         }
 
-        var row = new HorizontalStackLayout { Spacing = 14 };
-        foreach (var story in playlist.Stories)
-        {
-            row.Children.Add(BuildLuisterStoryCarouselCard(story));
-        }
-
-        section.Children.Add(new ScrollView
-        {
-            Orientation = ScrollOrientation.Horizontal,
-            Content = row
-        });
+        section.Children.Add(BuildHorizontalCarousel(
+            playlist.Stories,
+            286,
+            story => BuildLuisterStoryCarouselCard(story)));
 
         return section;
+    }
+
+    private static CollectionView BuildHorizontalCarousel<T>(
+        IReadOnlyList<T> items,
+        double heightRequest,
+        Func<T, View> buildItem)
+    {
+        var carousel = new CollectionView
+        {
+            ItemsSource = items,
+            HeightRequest = heightRequest,
+            ItemsLayout = new LinearItemsLayout(ItemsLayoutOrientation.Horizontal)
+            {
+                ItemSpacing = 14,
+                SnapPointsType = SnapPointsType.None
+            },
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Never,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Never,
+            ItemSizingStrategy = ItemSizingStrategy.MeasureFirstItem,
+            SelectionMode = SelectionMode.None,
+            ItemTemplate = new DataTemplate(() =>
+            {
+                var host = new ContentView();
+                host.BindingContextChanged += (_, _) =>
+                {
+                    if (host.BindingContext is T item)
+                    {
+                        host.Content = buildItem(item);
+                    }
+                };
+                return host;
+            })
+        };
+
+        return carousel;
     }
 
     private View BuildLuisterStoryCarouselCard(MobileStorySummary story)
@@ -462,13 +643,6 @@ public sealed class LuisterPage : ContentPage
             StrokeThickness = 0,
             StrokeShape = new RoundRectangle { CornerRadius = 16 },
             HeightRequest = 218,
-            Shadow = new Shadow
-            {
-                Brush = Brush.Black,
-                Offset = new Point(0, 9),
-                Radius = 22,
-                Opacity = 0.26f
-            },
             Content = new Grid
             {
                 HeightRequest = 218,
@@ -476,13 +650,14 @@ public sealed class LuisterPage : ContentPage
                 {
                     new Image
                     {
-                        Source = PageHelpers.ResolveStoryCardImageSource(story, _apiClient),
+                        Source = _apiClient.BuildCachedImageSource(
+                            PageHelpers.ResolveStoryCardImageSource(story, _apiClient)),
                         Aspect = Aspect.AspectFill,
                         HeightRequest = 218
                     },
                     BuildLockedBadge(story),
                     BuildFavoriteOverlay(story),
-                    BuildCoverPlayBadge("▶")
+                    BuildCoverPlayBadge("▶", 38, 17, 2)
                 }
             }
         };
@@ -574,38 +749,31 @@ public sealed class LuisterPage : ContentPage
         return target;
     }
 
-    private static View BuildCoverPlayBadge(string icon) =>
+    private static View BuildCoverPlayBadge(string icon, double size, double fontSize, double leftOffset) =>
         new Grid
         {
-            BackgroundColor = Color.FromArgb("#22000000"),
             InputTransparent = true,
             Children =
             {
                 new Border
                 {
-                    WidthRequest = 54,
-                    HeightRequest = 54,
-                    BackgroundColor = Color.FromArgb("#EEF3B23F"),
+                    WidthRequest = size,
+                    HeightRequest = size,
+                    BackgroundColor = Color.FromArgb("#8AF3B23F"),
                     StrokeThickness = 0,
                     StrokeShape = new RoundRectangle { CornerRadius = 999 },
                     HorizontalOptions = LayoutOptions.Center,
                     VerticalOptions = LayoutOptions.Center,
-                    Shadow = new Shadow
-                    {
-                        Brush = Brush.Black,
-                        Offset = new Point(0, 6),
-                        Radius = 18,
-                        Opacity = 0.28f
-                    },
                     Content = new Label
                     {
                         Text = icon,
-                        TextColor = Color.FromArgb("#1A1A1A"),
-                        FontSize = icon == "▶" ? 22 : 24,
+                        Opacity = 0.78,
+                        TextColor = Color.FromArgb("#2A1C05"),
+                        FontSize = fontSize,
                         FontAttributes = FontAttributes.Bold,
                         HorizontalTextAlignment = TextAlignment.Center,
                         VerticalTextAlignment = TextAlignment.Center,
-                        Margin = icon == "▶" ? new Thickness(3, 0, 0, 0) : Thickness.Zero
+                        Margin = new Thickness(leftOffset, 0, 0, 0)
                     }
                 }
             }
@@ -697,6 +865,61 @@ public sealed class LuisterPage : ContentPage
             {
                 ["preview"] = story
             });
+    }
+
+    private void StartImageWarmup()
+    {
+        _imageWarmupCancellation?.Cancel();
+        _imageWarmupCancellation?.Dispose();
+        _imageWarmupCancellation = new CancellationTokenSource();
+        var token = _imageWarmupCancellation.Token;
+        var imageUrls = EnumerateLuisterImageUrls().ToArray();
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _apiClient.CacheImagesAsync(imageUrls, token);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch
+            {
+                // Image warmup is best-effort; the remote image source remains available.
+            }
+        }, token);
+    }
+
+    private IEnumerable<string?> EnumerateLuisterImageUrls()
+    {
+        foreach (var section in _sections)
+        {
+            if (IsSpeellysteSection(section))
+            {
+                foreach (var playlist in section.Playlists)
+                {
+                    yield return playlist.ArtworkUrl;
+                    foreach (var story in playlist.Stories)
+                    {
+                        yield return PageHelpers.ResolveStoryCardImageSource(story, _apiClient);
+                    }
+                }
+
+                continue;
+            }
+
+            if (section.Playlist is null)
+            {
+                continue;
+            }
+
+            yield return section.Playlist.ArtworkUrl;
+            foreach (var story in section.Playlist.Stories)
+            {
+                yield return PageHelpers.ResolveStoryCardImageSource(story, _apiClient);
+            }
+        }
     }
 
     private Task OpenPlaylistAsync(MobilePlaylist playlist)

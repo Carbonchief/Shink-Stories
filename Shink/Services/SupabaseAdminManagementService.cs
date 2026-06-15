@@ -4472,46 +4472,39 @@ public sealed partial class SupabaseAdminManagementService(
         IReadOnlyList<SubscriptionRow> subscriptions,
         IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails)
     {
-        var effectiveSubscriptions = SelectEffectiveTierDistributionSubscriptions(
-            subscriptions.Where(IsTierDistributionEligible),
-            tierDetails);
+        var nowUtc = DateTimeOffset.UtcNow;
+        var activeSystemSubscriptions = subscriptions
+            .Where(subscription => IsCurrentSystemTierDistributionSubscription(subscription, nowUtc))
+            .ToArray();
 
         return BuildTierDistributionMetricsForPeriod(
             "all_time",
-            effectiveSubscriptions,
+            activeSystemSubscriptions,
             tierDetails);
     }
 
-    private static bool IsTierDistributionEligible(SubscriptionRow subscription) =>
-        IsSubscriberCountMetricEligible(subscription) ||
-        IsFreeSubscriberMembershipDetailEligible(subscription);
-
-    private static IReadOnlyList<SubscriptionRow> SelectEffectiveTierDistributionSubscriptions(
-        IEnumerable<SubscriptionRow> subscriptions,
-        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails) =>
-        subscriptions
-            .Where(subscription => subscription.SubscriberId != Guid.Empty)
-            .Where(subscription => !string.IsNullOrWhiteSpace(subscription.TierCode))
-            .GroupBy(subscription => subscription.SubscriberId)
-            .Select(group => group
-                .OrderByDescending(subscription => GetTierDistributionRank(subscription.TierCode))
-                .ThenByDescending(subscription => ResolveTierPrice(subscription.TierCode, tierDetails))
-                .ThenByDescending(subscription => subscription.SubscribedAt)
-                .First())
-            .ToArray();
-
-    private static int GetTierDistributionRank(string? tierCode) =>
-        tierCode?.Trim().ToLowerInvariant() switch
+    private static bool IsCurrentSystemTierDistributionSubscription(SubscriptionRow subscription, DateTimeOffset nowUtc)
+    {
+        if (subscription.SubscriberId == Guid.Empty ||
+            string.IsNullOrWhiteSpace(subscription.TierCode))
         {
-            "school_large_yearly" => 60,
-            "school_medium_yearly" => 50,
-            "school_small_yearly" => 40,
-            "all_stories_yearly" => 30,
-            "all_stories_monthly" => 20,
-            "story_corner_monthly" => 10,
-            "gratis" => 0,
-            _ => 0
-        };
+            return false;
+        }
+
+        if (string.Equals(subscription.SourceSystem, "wordpress_pmpro", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(subscription.SourceSystem, "admin_override", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        if (!IsActiveSubscription(subscription, nowUtc))
+        {
+            return false;
+        }
+
+        return string.Equals(subscription.TierCode, "gratis", StringComparison.OrdinalIgnoreCase) ||
+            subscription.NextRenewalAt is not null;
+    }
 
     private static IReadOnlyList<AdminTierDistributionMetric> BuildTierDistributionMetricsForPeriod(
         string periodKey,
@@ -4523,7 +4516,7 @@ public sealed partial class SupabaseAdminManagementService(
             .GroupBy(subscription => subscription.TierCode!.Trim(), StringComparer.OrdinalIgnoreCase)
             .Select(group =>
             {
-                var activeMembers = group.Select(subscription => subscription.SubscriberId).Distinct().Count();
+                var activeMembers = group.Count();
                 var tier = tierDetails.TryGetValue(group.Key, out var detail) ? detail : null;
                 return new
                 {

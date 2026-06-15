@@ -709,7 +709,7 @@
                                     <div class="admin-analytics-panel-head">
                                         <div>
                                             <h3>@T("Lede verdeling", "Member distribution")</h3>
-                                            <p>@T("Sirkelgrafiek van alle intekenaars per vlak.", "Pie chart of all subscribers per level.")</p>
+                                            <p>@T("Sirkelgrafiek van aktiewe intekeninge per vlak.", "Pie chart of active subscriptions per level.")</p>
                                         </div>
                                     </div>
 
@@ -753,7 +753,7 @@
                                                 <MudTh>
                                                     <MudTableSortLabel T="AdminTierDistributionMetric"
                                                                        SortBy="new Func<AdminTierDistributionMetric, object?>(metric => metric.ActiveMembers)">
-                                                        @T("Intekenaars", "Subscribers")
+                                                        @T("Aktiewe intekeninge", "Active subscriptions")
                                                     </MudTableSortLabel>
                                                 </MudTh>
                                                 <MudTh>
@@ -765,7 +765,7 @@
                                             </HeaderContent>
                                             <RowTemplate>
                                                 <MudTd DataLabel='@T("Vlak", "Level")'>@context.TierName</MudTd>
-                                                <MudTd DataLabel='@T("Intekenaars", "Subscribers")'>@FormatAnalyticsNumber(context.ActiveMembers)</MudTd>
+                                                <MudTd DataLabel='@T("Aktiewe intekeninge", "Active subscriptions")'>@FormatAnalyticsNumber(context.ActiveMembers)</MudTd>
                                                 <MudTd DataLabel='@T("Persentasie", "Percentage")'>@FormatReportPercentage(context.Percentage)</MudTd>
                                             </RowTemplate>
                                         </MudTable>
@@ -1742,7 +1742,7 @@
                                     <div class="admin-analytics-panel-head">
                                         <div>
                                             <h3>@T("Per vlak", "By subscription tier")</h3>
-                                            <p>@T("Alle intekenaars en persentasie per intekenvlak.", "All subscribers and percentage by subscription tier.")</p>
+                                            <p>@T("Aktiewe intekeninge en persentasie per intekenvlak.", "Active subscriptions and percentage by subscription tier.")</p>
                                         </div>
                                     </div>
 
@@ -1779,7 +1779,7 @@
                                                     <MudTh>
                                                         <MudTableSortLabel T="AdminTierDistributionMetric"
                                                                            SortBy="new Func<AdminTierDistributionMetric, object?>(metric => metric.ActiveMembers)">
-                                                            @T("Intekenaars", "Subscribers")
+                                                            @T("Aktiewe intekeninge", "Active subscriptions")
                                                         </MudTableSortLabel>
                                                     </MudTh>
                                                     <MudTh>
@@ -1791,7 +1791,7 @@
                                                 </HeaderContent>
                                                 <RowTemplate>
                                                     <MudTd DataLabel='@T("Vlak", "Level")'>@context.TierName</MudTd>
-                                                    <MudTd DataLabel='@T("Intekenaars", "Subscribers")'>@FormatAnalyticsNumber(context.ActiveMembers)</MudTd>
+                                                    <MudTd DataLabel='@T("Aktiewe intekeninge", "Active subscriptions")'>@FormatAnalyticsNumber(context.ActiveMembers)</MudTd>
                                                     <MudTd DataLabel='@T("Persentasie", "Percentage")'>@FormatReportPercentage(context.Percentage)</MudTd>
                                                 </RowTemplate>
                                             </MudTable>
@@ -4823,7 +4823,7 @@
         [
             new ChartSeries<double>
             {
-                Name = T("Intekenaars", "Subscribers"),
+                Name = T("Aktiewe intekeninge", "Active subscriptions"),
                 Data = CurrentTierDistributionMetrics
                     .Select(metric => (double)metric.ActiveMembers)
                     .ToArray()
@@ -9411,7 +9411,7 @@
         {
             SubscriberAdminView.AllSubscribers => T("Alle intekenaars", "All subscribers"),
             SubscriberAdminView.MembershipStats => T("Lidmaatskap statistiek", "Membership Stats"),
-            SubscriberAdminView.ActiveMembersPerLevel => T("Intekenaars per vlak", "Subscribers Per Level"),
+            SubscriberAdminView.ActiveMembersPerLevel => T("Aktiewe intekeninge per vlak", "Active Subscriptions Per Level"),
             SubscriberAdminView.SalesAndRevenue => T("Verkope en inkomste", "Sales and Revenue"),
             SubscriberAdminView.AbandonedCartRecoveries => T("Herwinning van verlate mandjies", "Abandoned Cart Recoveries"),
             SubscriberAdminView.VisitsViewsAndLogins => T("Besoeke, kyke en aanmeldings", "Visits, Views, and Logins"),
@@ -9426,8 +9426,8 @@
                 "Intekeninge en kansellasies volgens tydperk vanaf die huidige subskripsie-ledger.",
                 "Signups and cancellations by period from the current subscription ledger."),
             SubscriberAdminView.ActiveMembersPerLevel => T(
-                "Alle intekenaars per intekenvlak met hulle aandeel van die totaal.",
-                "All subscribers by subscription level with their share of the total."),
+                "Aktiewe intekeninge per intekenvlak met hulle aandeel van die totaal.",
+                "Active subscriptions by subscription level with their share of the total."),
             SubscriberAdminView.SalesAndRevenue => T(
                 "Lidmaatskap verkope en beraamde inkomste volgens suksesvolle intekeninge.",
                 "Membership sales and estimated revenue based on successful subscriptions."),

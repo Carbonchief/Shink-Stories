@@ -21,7 +21,7 @@
 
   <ItemGroup>
     <MauiIcon Include="Resources/AppIcon/schink_appicon.png" />
-    <MauiSplashScreen Include="Resources/Splash/schink_stories_splash.png" Color="#023333" BaseSize="420,420" />
+    <MauiSplashScreen Include="Resources/Splash/schink_stories_logo_white.png" Color="#023333" BaseSize="320,140" />
     <MauiImage Include="Resources/Images/*" />
   </ItemGroup>
 

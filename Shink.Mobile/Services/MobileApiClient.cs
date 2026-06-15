@@ -293,6 +293,67 @@ public sealed class MobileApiClient
         return BuildAbsoluteUrl(trimmedUrl);
     }
 
+    public ImageSource BuildCachedImageSource(string? url, string? fallbackFile = null)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return string.IsNullOrWhiteSpace(fallbackFile)
+                ? ImageSource.FromFile(string.Empty)
+                : ImageSource.FromFile(fallbackFile);
+        }
+
+        var normalizedUrl = NormalizeIncomingUrl(url.Trim());
+        if (IsBundledImageName(normalizedUrl))
+        {
+            return ImageSource.FromFile(normalizedUrl);
+        }
+
+        var imageUrl = BuildImageUrl(normalizedUrl);
+        if (TryGetCachedImagePath(imageUrl, out var cachedPath))
+        {
+            return ImageSource.FromFile(cachedPath);
+        }
+
+        return Uri.TryCreate(imageUrl, UriKind.Absolute, out var imageUri) && IsWebUri(imageUri)
+            ? new UriImageSource
+            {
+                Uri = imageUri,
+                CachingEnabled = true,
+                CacheValidity = TimeSpan.FromDays(30)
+            }
+            : ImageSource.FromFile(string.IsNullOrWhiteSpace(fallbackFile) ? imageUrl : fallbackFile);
+    }
+
+    public async Task CacheImagesAsync(IEnumerable<string?> urls, CancellationToken cancellationToken = default)
+    {
+        var imageUrls = urls
+            .Where(url => !string.IsNullOrWhiteSpace(url))
+            .Select(url => BuildImageUrl(url!))
+            .Where(url => Uri.TryCreate(url, UriKind.Absolute, out var uri) && IsWebUri(uri))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Take(80)
+            .ToArray();
+
+        await Parallel.ForEachAsync(
+            imageUrls,
+            new ParallelOptions
+            {
+                MaxDegreeOfParallelism = 4,
+                CancellationToken = cancellationToken
+            },
+            async (imageUrl, token) =>
+            {
+                try
+                {
+                    await CacheImageAsync(imageUrl, token);
+                }
+                catch
+                {
+                    // Image cache warmup should never block the Luister page.
+                }
+            });
+    }
+
     public async Task<string> PrepareAudioPlaybackSourceAsync(
         string? audioUrl,
         string slug,
@@ -358,6 +419,47 @@ public sealed class MobileApiClient
 
         File.Move(temporaryPath, cachePath);
         return new Uri(cachePath).AbsoluteUri;
+    }
+
+    private async Task CacheImageAsync(string imageUrl, CancellationToken cancellationToken)
+    {
+        if (!Uri.TryCreate(imageUrl, UriKind.Absolute, out var imageUri) || !IsWebUri(imageUri))
+        {
+            return;
+        }
+
+        var cachePath = BuildImageCachePath(imageUrl);
+        if (File.Exists(cachePath) && new FileInfo(cachePath).Length > 0)
+        {
+            return;
+        }
+
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(cachePath)!);
+        var temporaryPath = $"{cachePath}.tmp";
+        if (File.Exists(temporaryPath))
+        {
+            File.Delete(temporaryPath);
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, imageUri);
+        using var response = await _httpClient.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+
+        await using (var sourceStream = await response.Content.ReadAsStreamAsync(cancellationToken))
+        await using (var fileStream = File.Create(temporaryPath))
+        {
+            await sourceStream.CopyToAsync(fileStream, cancellationToken);
+        }
+
+        if (File.Exists(cachePath))
+        {
+            File.Delete(cachePath);
+        }
+
+        File.Move(temporaryPath, cachePath);
     }
 
     private Uri BuildUri(string path) => new($"{_settings.BaseUrl.TrimEnd('/')}{path}", UriKind.Absolute);
@@ -441,6 +543,25 @@ public sealed class MobileApiClient
         string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
         string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsBundledImageName(string imageUrl) =>
+        !imageUrl.StartsWith("/", StringComparison.Ordinal) &&
+        !imageUrl.StartsWith("file://", StringComparison.OrdinalIgnoreCase) &&
+        !Uri.TryCreate(imageUrl, UriKind.Absolute, out _);
+
+    private static bool TryGetCachedImagePath(string imageUrl, out string cachePath)
+    {
+        cachePath = BuildImageCachePath(imageUrl);
+        return File.Exists(cachePath) && new FileInfo(cachePath).Length > 0;
+    }
+
+    private static string BuildImageCachePath(string imageUrl)
+    {
+        var cacheDirectory = System.IO.Path.Combine(FileSystem.CacheDirectory, "story-images");
+        var cacheKey = BuildStableCacheKey(imageUrl);
+        var extension = ResolveImageExtensionFromUrl(imageUrl);
+        return System.IO.Path.Combine(cacheDirectory, $"{cacheKey}{extension}");
+    }
+
     private static bool ShouldDownloadAudioForPlayback(string audioUrl)
     {
         if (!Uri.TryCreate(audioUrl, UriKind.Absolute, out var uri))
@@ -460,7 +581,24 @@ public sealed class MobileApiClient
             stableUrl = uri.GetLeftPart(UriPartial.Path);
         }
 
-        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(stableUrl)))[..12].ToLowerInvariant();
+        return BuildStableCacheKey(stableUrl)[..12];
+    }
+
+    private static string BuildStableCacheKey(string value) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
+
+    private static string ResolveImageExtensionFromUrl(string imageUrl)
+    {
+        if (Uri.TryCreate(imageUrl, UriKind.Absolute, out var uri))
+        {
+            var extension = System.IO.Path.GetExtension(uri.AbsolutePath).ToLowerInvariant();
+            if (extension is ".jpg" or ".jpeg" or ".png" or ".webp" or ".gif")
+            {
+                return extension;
+            }
+        }
+
+        return ".jpg";
     }
 
     private static string ResolveAudioExtensionFromUrl(string audioUrl)

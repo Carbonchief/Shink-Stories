@@ -98,7 +98,7 @@ public class AdminAnalyticsSourceTests
     }
 
     [TestMethod]
-    public void SubscriberTierPieChartShowsAllTimeEffectiveTierDistribution()
+    public void SubscriberTierPieChartShowsCurrentActiveSystemTierDistribution()
     {
         var admin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
         var service = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseAdminManagementService.cs"));
@@ -106,12 +106,10 @@ public class AdminAnalyticsSourceTests
         StringAssert.Contains(service, "FetchRowsPagedAsync<SubscriptionRow>");
         StringAssert.Contains(service, "maxRows: 50000");
         StringAssert.Contains(service, "&order=subscribed_at.desc,subscription_id.asc");
-        StringAssert.Contains(service, "SelectEffectiveTierDistributionSubscriptions");
-        StringAssert.Contains(service, "GetTierDistributionRank");
-        StringAssert.Contains(service, "IsTierDistributionEligible");
+        StringAssert.Contains(service, "IsCurrentSystemTierDistributionSubscription(subscription, nowUtc)");
         StringAssert.Contains(service, "ActiveMembersPerLevel: BuildTierDistributionMetrics(subscriptions, tierDetails)");
-        StringAssert.Contains(admin, "@T(\"Alle intekenaars en persentasie per intekenvlak.\", \"All subscribers and percentage by subscription tier.\")");
-        StringAssert.Contains(admin, "@T(\"Intekenaars\", \"Subscribers\")");
+        StringAssert.Contains(admin, "@T(\"Aktiewe intekeninge en persentasie per intekenvlak.\", \"Active subscriptions and percentage by subscription tier.\")");
+        StringAssert.Contains(admin, "@T(\"Aktiewe intekeninge\", \"Active subscriptions\")");
         StringAssert.Contains(admin, "string.Equals(metric.PeriodKey, \"all_time\", StringComparison.OrdinalIgnoreCase)");
         Assert.IsFalse(admin.Contains("id=\"tier-distribution-period\"", StringComparison.Ordinal));
 
@@ -122,10 +120,22 @@ public class AdminAnalyticsSourceTests
         var tierDistributionBlock = service[tierDistributionStart..tierDistributionEnd];
 
         Assert.IsFalse(tierDistributionBlock.Contains("wordPressSubscriberReports.ActiveMembersPerLevel", StringComparison.Ordinal));
+        Assert.IsFalse(tierDistributionBlock.Contains("SelectEffectiveTierDistributionSubscriptions", StringComparison.Ordinal));
+        Assert.IsFalse(tierDistributionBlock.Contains("GetTierDistributionRank", StringComparison.Ordinal));
         Assert.IsFalse(tierDistributionBlock.Contains("GetFirstSubscriberSignupSubscriptions", StringComparison.Ordinal));
         Assert.IsFalse(tierDistributionBlock.Contains("SubscriberPeriod.Today", StringComparison.Ordinal));
         Assert.IsFalse(tierDistributionBlock.Contains("SubscriberPeriod.ThisMonth", StringComparison.Ordinal));
         Assert.IsFalse(tierDistributionBlock.Contains("SubscriberPeriod.ThisYear", StringComparison.Ordinal));
+
+        var activeSystemStart = service.IndexOf("private static bool IsCurrentSystemTierDistributionSubscription(", StringComparison.Ordinal);
+        Assert.AreNotEqual(-1, activeSystemStart);
+        var activeSystemEnd = service.IndexOf("private static IReadOnlyList<AdminTierDistributionMetric> BuildTierDistributionMetricsForPeriod(", activeSystemStart, StringComparison.Ordinal);
+        Assert.AreNotEqual(-1, activeSystemEnd);
+        var activeSystemBlock = service[activeSystemStart..activeSystemEnd];
+        StringAssert.Contains(activeSystemBlock, "IsActiveSubscription(subscription, nowUtc)");
+        StringAssert.Contains(activeSystemBlock, "wordpress_pmpro");
+        StringAssert.Contains(activeSystemBlock, "admin_override");
+        StringAssert.Contains(activeSystemBlock, "subscription.NextRenewalAt is not null");
     }
 
     [TestMethod]
