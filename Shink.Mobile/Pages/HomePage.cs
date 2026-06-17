@@ -6,11 +6,13 @@ namespace Shink.Mobile.Pages;
 public sealed class HomePage : ContentPage
 {
     private readonly MobileApiClient _apiClient;
+    private readonly PlayerTransitionBackdropState _transitionBackdropState;
     private readonly VerticalStackLayout _content;
 
-    public HomePage(MobileApiClient apiClient)
+    public HomePage(MobileApiClient apiClient, PlayerTransitionBackdropState transitionBackdropState)
     {
         _apiClient = apiClient;
+        _transitionBackdropState = transitionBackdropState;
         Title = "Tuis";
         BackgroundColor = Color.FromArgb("#FFF9F0");
 
@@ -143,6 +145,7 @@ public sealed class HomePage : ContentPage
                 var route = item.DetailUrl.Contains("/gratis/", StringComparison.OrdinalIgnoreCase)
                     ? $"{nameof(StoryDetailPage)}?slug={ExtractSlug(item.DetailUrl)}&source=gratis"
                     : $"{nameof(StoryDetailPage)}?slug={ExtractSlug(item.DetailUrl)}&source=luister";
+                await CapturePlayerTransitionBackdropAsync();
                 await Shell.Current.GoToAsync(route, animate: false);
             };
             card.GestureRecognizers.Add(tap);
@@ -153,14 +156,29 @@ public sealed class HomePage : ContentPage
         return stack;
     }
 
-    private Task OpenStoryAsync(MobileStorySummary story) =>
-        Shell.Current.GoToAsync(
+    private async Task OpenStoryAsync(MobileStorySummary story)
+    {
+        await CapturePlayerTransitionBackdropAsync();
+        await Shell.Current.GoToAsync(
             $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source={Uri.EscapeDataString(story.Source)}",
             animate: false,
             parameters: new Dictionary<string, object>
             {
                 ["preview"] = story
             });
+    }
+
+    private async Task CapturePlayerTransitionBackdropAsync()
+    {
+        try
+        {
+            await _transitionBackdropState.CaptureAsync();
+        }
+        catch
+        {
+            // Transition backdrop capture should never block opening the player.
+        }
+    }
 
     private static string ExtractSlug(string detailUrl)
     {

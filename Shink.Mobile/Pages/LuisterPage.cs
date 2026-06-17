@@ -11,6 +11,7 @@ public sealed class LuisterPage : ContentPage
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
     private readonly PlaylistPlaybackState _playlistPlaybackState;
+    private readonly PlayerTransitionBackdropState _transitionBackdropState;
     private readonly VerticalStackLayout _content;
     private readonly VerticalStackLayout _playlistContent;
     private readonly Entry _searchEntry;
@@ -29,13 +30,16 @@ public sealed class LuisterPage : ContentPage
     public LuisterPage(
         MobileApiClient apiClient,
         SessionState sessionState,
-        PlaylistPlaybackState playlistPlaybackState)
+        PlaylistPlaybackState playlistPlaybackState,
+        PlayerTransitionBackdropState transitionBackdropState)
     {
         _apiClient = apiClient;
         _sessionState = sessionState;
         _playlistPlaybackState = playlistPlaybackState;
+        _transitionBackdropState = transitionBackdropState;
         Title = "Luister";
         BackgroundColor = Color.FromArgb("#FFF7E8");
+        Shell.SetNavBarIsVisible(this, false);
 
         _content = new VerticalStackLayout
         {
@@ -1682,10 +1686,11 @@ public sealed class LuisterPage : ContentPage
         return builder.ToString().Normalize(NormalizationForm.FormC);
     }
 
-    private Task OpenStoryAsync(MobileStorySummary story)
+    private async Task OpenStoryAsync(MobileStorySummary story)
     {
         _playlistPlaybackState.Clear();
-        return Shell.Current.GoToAsync(
+        await CapturePlayerTransitionBackdropAsync();
+        await Shell.Current.GoToAsync(
             $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source=luister",
             animate: false,
             parameters: new Dictionary<string, object>
@@ -1767,10 +1772,11 @@ public sealed class LuisterPage : ContentPage
             : OpenPlaylistStoryAsync(firstStory, playlist);
     }
 
-    private Task OpenPlaylistStoryAsync(MobileStorySummary story, MobilePlaylist playlist)
+    private async Task OpenPlaylistStoryAsync(MobileStorySummary story, MobilePlaylist playlist)
     {
         _playlistPlaybackState.Set(playlist);
-        return Shell.Current.GoToAsync(
+        await CapturePlayerTransitionBackdropAsync();
+        await Shell.Current.GoToAsync(
             $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source=luister",
             animate: false,
             parameters: new Dictionary<string, object>
@@ -1779,6 +1785,18 @@ public sealed class LuisterPage : ContentPage
                 ["playlistTitle"] = playlist.Title,
                 ["playlistSlug"] = playlist.Slug
             });
+    }
+
+    private async Task CapturePlayerTransitionBackdropAsync()
+    {
+        try
+        {
+            await _transitionBackdropState.CaptureAsync();
+        }
+        catch
+        {
+            // Transition backdrop capture should never block opening the player.
+        }
     }
 
     private async Task ToggleFavoriteAsync(MobileStorySummary story)

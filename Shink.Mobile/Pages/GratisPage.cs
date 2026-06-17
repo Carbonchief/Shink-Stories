@@ -6,11 +6,13 @@ namespace Shink.Mobile.Pages;
 public sealed class GratisPage : ContentPage
 {
     private readonly MobileApiClient _apiClient;
+    private readonly PlayerTransitionBackdropState _transitionBackdropState;
     private readonly VerticalStackLayout _content;
 
-    public GratisPage(MobileApiClient apiClient)
+    public GratisPage(MobileApiClient apiClient, PlayerTransitionBackdropState transitionBackdropState)
     {
         _apiClient = apiClient;
+        _transitionBackdropState = transitionBackdropState;
         Title = "Gratis";
         BackgroundColor = Color.FromArgb("#FFF9F0");
 
@@ -71,12 +73,27 @@ public sealed class GratisPage : ContentPage
         }
     }
 
-    private Task OpenStoryAsync(MobileStorySummary story) =>
-        Shell.Current.GoToAsync(
+    private async Task OpenStoryAsync(MobileStorySummary story)
+    {
+        await CapturePlayerTransitionBackdropAsync();
+        await Shell.Current.GoToAsync(
             $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source=gratis",
             animate: false,
             parameters: new Dictionary<string, object>
             {
                 ["preview"] = story
             });
+    }
+
+    private async Task CapturePlayerTransitionBackdropAsync()
+    {
+        try
+        {
+            await _transitionBackdropState.CaptureAsync();
+        }
+        catch
+        {
+            // Transition backdrop capture should never block opening the player.
+        }
+    }
 }

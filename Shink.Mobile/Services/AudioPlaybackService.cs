@@ -13,6 +13,8 @@ public interface IAudioPlaybackService
 
     TimeSpan? Duration { get; }
 
+    Task<TimeSpan?> GetDurationAsync(string audioUrl, CancellationToken cancellationToken = default);
+
     event EventHandler? PlaybackEnded;
 
     event EventHandler? PlaybackStateChanged;
@@ -51,6 +53,48 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
     public event EventHandler? PlaybackEnded;
 
     public event EventHandler? PlaybackStateChanged;
+
+    public async Task<TimeSpan?> GetDurationAsync(string audioUrl, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(audioUrl))
+        {
+            return null;
+        }
+
+        if (string.Equals(_currentAudioUrl, audioUrl, StringComparison.Ordinal) && Duration is { } currentDuration)
+        {
+            return currentDuration;
+        }
+
+        AVFoundation.AVPlayerItem? playerItem = null;
+        AVFoundation.AVPlayer? probePlayer = null;
+        await MainThread.InvokeOnMainThreadAsync(() =>
+        {
+            var playerUrl = Foundation.NSUrl.FromString(audioUrl);
+            if (playerUrl is null)
+            {
+                throw new InvalidOperationException("Die audio URL is ongeldig.");
+            }
+
+            playerItem = AVFoundation.AVPlayerItem.FromUrl(playerUrl);
+            probePlayer = new AVFoundation.AVPlayer(playerItem);
+        });
+
+        try
+        {
+            await WaitUntilReadyToPlayAsync(playerItem, cancellationToken);
+            return await MainThread.InvokeOnMainThreadAsync(() => ToTimeSpan(playerItem?.Duration ?? CoreMedia.CMTime.Zero));
+        }
+        finally
+        {
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                probePlayer?.Pause();
+                probePlayer?.Dispose();
+                playerItem?.Dispose();
+            });
+        }
+    }
 
     public async Task PlayAsync(string audioUrl, AudioPlaybackMetadata? metadata = null)
     {
@@ -302,7 +346,9 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         MediaPlayer.MPNowPlayingInfoCenter.DefaultCenter.NowPlaying = null!;
     }
 
-    private static async Task WaitUntilReadyToPlayAsync(AVFoundation.AVPlayerItem? playerItem)
+    private static async Task WaitUntilReadyToPlayAsync(
+        AVFoundation.AVPlayerItem? playerItem,
+        CancellationToken cancellationToken = default)
     {
         if (playerItem is null)
         {
@@ -312,6 +358,7 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         var deadline = DateTimeOffset.UtcNow.Add(ReadyTimeout);
         while (DateTimeOffset.UtcNow < deadline)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var status = await MainThread.InvokeOnMainThreadAsync(() => playerItem.Status);
             if (status == AVFoundation.AVPlayerItemStatus.ReadyToPlay)
             {
@@ -328,7 +375,7 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
                         : $"Kon nie die audio stroom oopmaak nie: {errorMessage}");
             }
 
-            await Task.Delay(150);
+            await Task.Delay(150, cancellationToken);
         }
 
         throw new TimeoutException("Die audio het nie betyds begin laai nie.");
@@ -366,6 +413,50 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
     public event EventHandler? PlaybackEnded;
 
     public event EventHandler? PlaybackStateChanged;
+
+    public async Task<TimeSpan?> GetDurationAsync(string audioUrl, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(audioUrl))
+        {
+            return null;
+        }
+
+        if (string.Equals(_currentAudioUrl, audioUrl, StringComparison.Ordinal) && Duration is { } currentDuration)
+        {
+            return currentDuration;
+        }
+
+        var player = new Android.Media.MediaPlayer();
+        try
+        {
+            var audioAttributesBuilder = new Android.Media.AudioAttributes.Builder();
+            audioAttributesBuilder.SetUsage(Android.Media.AudioUsageKind.Media);
+            audioAttributesBuilder.SetContentType(Android.Media.AudioContentType.Speech);
+            var audioAttributes = audioAttributesBuilder.Build();
+            if (audioAttributes is not null)
+            {
+                player.SetAudioAttributes(audioAttributes);
+            }
+
+            player.SetDataSource(audioUrl);
+
+            var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            player.Prepared += (_, _) => ready.TrySetResult();
+            using var registration = cancellationToken.Register(() => ready.TrySetCanceled(cancellationToken));
+            player.PrepareAsync();
+            await ready.Task;
+
+            var durationMilliseconds = player.Duration;
+            return durationMilliseconds > 0
+                ? TimeSpan.FromMilliseconds(durationMilliseconds)
+                : null;
+        }
+        finally
+        {
+            player.Release();
+            player.Dispose();
+        }
+    }
 
     public async Task PlayAsync(string audioUrl, AudioPlaybackMetadata? metadata = null)
     {
@@ -442,6 +533,9 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
     public event EventHandler? PlaybackEnded;
 
     public event EventHandler? PlaybackStateChanged;
+
+    public Task<TimeSpan?> GetDurationAsync(string audioUrl, CancellationToken cancellationToken = default) =>
+        Task.FromResult<TimeSpan?>(null);
 
     public Task PlayAsync(string audioUrl, AudioPlaybackMetadata? metadata = null) => Task.CompletedTask;
 

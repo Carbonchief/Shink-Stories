@@ -57,7 +57,12 @@ public class StoryTrackingSourceTests
         var client = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
 
         StringAssert.Contains(page, "TrackStoryViewAsync(detail.Story.Slug, detail.Story.Source)");
-        StringAssert.Contains(page, "TrackStoryListenAsync(");
+        StringAssert.Contains(page, "FlushPendingListen(\"progress\", force: false)");
+        StringAssert.Contains(page, "FlushPendingListen(\"pause\", force: true)");
+        StringAssert.Contains(page, "FlushPendingListen(\"ended\", force: true, isCompleted: true)");
+        StringAssert.Contains(page, "FlushPendingListen(\"pagehide\", force: true)");
+        StringAssert.Contains(page, "BeginListenTracking(detail, trackingSessionId);");
+        Assert.IsFalse(page.Contains("eventType,\n            \"play\",", StringComparison.Ordinal));
         StringAssert.Contains(page, "StartProgressTimer()");
         StringAssert.Contains(page, "UpdateProgressState()");
         Assert.IsFalse(page.Contains("schink-track://listen?", StringComparison.Ordinal));

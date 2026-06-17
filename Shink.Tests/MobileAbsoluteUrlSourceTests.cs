@@ -220,7 +220,10 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "story => BuildLuisterStoryCarouselCard(playlist, story)");
         StringAssert.Contains(luisterPage, "private View BuildLuisterStoryCarouselCard(MobilePlaylist playlist, MobileStorySummary story)");
         StringAssert.Contains(luisterPage, "await OpenPlaylistStoryAsync(story, playlist);");
-        StringAssert.Contains(luisterPage, "private Task OpenPlaylistStoryAsync(MobileStorySummary story, MobilePlaylist playlist)");
+        StringAssert.Contains(luisterPage, "private async Task OpenPlaylistStoryAsync(MobileStorySummary story, MobilePlaylist playlist)");
+        StringAssert.Contains(luisterPage, "await CapturePlayerTransitionBackdropAsync();");
+        StringAssert.Contains(luisterPage, "private async Task CapturePlayerTransitionBackdropAsync()");
+        StringAssert.Contains(luisterPage, "await _transitionBackdropState.CaptureAsync();");
         StringAssert.Contains(luisterPage, "[\"playlistTitle\"] = playlist.Title");
         StringAssert.Contains(luisterPage, "[\"playlistSlug\"] = playlist.Slug");
         Assert.IsFalse(luisterPage.Contains("story => BuildLuisterStoryCarouselCard(story)", StringComparison.Ordinal));
@@ -254,10 +257,19 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(storyDetail, "WidthRequest = 76");
         StringAssert.Contains(storyDetail, "private static double CoverArtHeight");
         StringAssert.Contains(storyDetail, "var height = ScreenHeight;");
-        StringAssert.Contains(storyDetail, "_activeCatalogDuration = ToTimeSpan(detail.Story.DurationSeconds);");
+        StringAssert.Contains(storyDetail, "_activeCatalogDuration = ResolveCatalogDuration(detail);");
         StringAssert.Contains(storyDetail, "_activeCatalogDuration is null ? \"--:--\" : FormatTime(_activeCatalogDuration.Value)");
+        StringAssert.Contains(storyDetail, "private TimeSpan? ResolveCatalogDuration(MobileStoryDetailResponse detail) =>");
+        StringAssert.Contains(storyDetail, "private decimal? ResolveCatalogDurationSeconds(MobileStoryDetailResponse detail)");
+        StringAssert.Contains(storyDetail, "if (detail.Story.DurationSeconds is > 0)");
+        StringAssert.Contains(storyDetail, "_previewStory is { DurationSeconds: > 0 } previewStory");
+        StringAssert.Contains(storyDetail, "var playlistStory = _playlistStories.FirstOrDefault");
         StringAssert.Contains(storyDetail, "var duration = _audioPlaybackService.Duration ?? _activeCatalogDuration;");
-        StringAssert.Contains(storyDetail, "durationSeconds: detail.Story.DurationSeconds");
+        StringAssert.Contains(storyDetail, "var durationSeconds = NormalizeTrackingSeconds(duration?.TotalSeconds);");
+        StringAssert.Contains(storyDetail, "EnsureCatalogDurationVisibleAsync(detail);");
+        StringAssert.Contains(storyDetail, "private void EnsureCatalogDurationVisibleAsync(MobileStoryDetailResponse detail)");
+        StringAssert.Contains(storyDetail, "var audioUrl = _apiClient.BuildAbsoluteUrl(detail.AudioUrl);");
+        StringAssert.Contains(storyDetail, "var duration = await _audioPlaybackService.GetDurationAsync(audioUrl, cancellationToken);");
         StringAssert.Contains(storyDetail, "PrepareAudioPlaybackSourceAsync(");
         StringAssert.Contains(storyDetail, "DownloadAudioForPlaybackAsync(");
         Assert.IsFalse(storyDetail.Contains("Gereed om te luister", StringComparison.Ordinal));
@@ -265,7 +277,11 @@ public class MobileAbsoluteUrlSourceTests
         Assert.IsFalse(storyDetail.Contains("Besig om te speel", StringComparison.Ordinal));
         StringAssert.Contains(audioService, "TimeSpan CurrentPosition");
         StringAssert.Contains(audioService, "TimeSpan? Duration");
+        StringAssert.Contains(audioService, "Task<TimeSpan?> GetDurationAsync(string audioUrl, CancellationToken cancellationToken = default);");
+        StringAssert.Contains(audioService, "public async Task<TimeSpan?> GetDurationAsync(string audioUrl, CancellationToken cancellationToken = default)");
+        StringAssert.Contains(audioService, "probePlayer = new AVFoundation.AVPlayer(playerItem);");
         StringAssert.Contains(audioService, "WaitUntilReadyToPlayAsync(playerItem)");
+        StringAssert.Contains(audioService, "WaitUntilReadyToPlayAsync(playerItem, cancellationToken)");
         StringAssert.Contains(audioService, "AVFoundation.AVPlayerItemStatus.ReadyToPlay");
         StringAssert.Contains(audioService, "AVFoundation.AVPlayerItemStatus.Failed");
         StringAssert.Contains(audioService, "AVFoundation.AVAudioSessionCategory.Playback");
@@ -338,15 +354,28 @@ public class MobileAbsoluteUrlSourceTests
     public void MobileStoryDetailAnimatesCloseBeforeFastShellPop()
     {
         var storyDetail = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "StoryDetailPage.cs"));
+        var mauiProgram = File.ReadAllText(GetRepoPath("Shink.Mobile", "MauiProgram.cs"));
 
+        StringAssert.Contains(storyDetail, "PrepareCloseBackdrop();");
+        StringAssert.Contains(storyDetail, "private void PrepareCloseBackdrop()");
+        StringAssert.Contains(storyDetail, "_closeBackdrop = new Image");
+        StringAssert.Contains(storyDetail, "_playerSurface = new Grid");
+        StringAssert.Contains(storyDetail, "_closeBackdrop.Margin = ResolveBackdropMargin();");
+        StringAssert.Contains(storyDetail, "private Thickness ResolveBackdropMargin()");
+        StringAssert.Contains(storyDetail, "var safeAreaInsets = iOSPage.GetSafeAreaInsets(this);");
+        StringAssert.Contains(storyDetail, "var activity = Microsoft.Maui.ApplicationModel.Platform.CurrentActivity;");
+        StringAssert.Contains(storyDetail, "var systemBarInsets = insets.GetInsets(WindowInsets.Type.SystemBars());");
+        StringAssert.Contains(storyDetail, "_closeBackdrop.IsVisible = true;");
         StringAssert.Contains(storyDetail, "await AnimateCloseAsync();");
         StringAssert.Contains(storyDetail, "private async Task AnimateCloseAsync()");
+        StringAssert.Contains(storyDetail, "private const uint CloseAnimationDurationMs = 170;");
         StringAssert.Contains(storyDetail, "var closeDistance = Height > 0");
         StringAssert.Contains(storyDetail, "? Height + 40");
-        StringAssert.Contains(storyDetail, "_content.TranslateToAsync(0, closeDistance, 240, Easing.CubicIn)");
+        StringAssert.Contains(storyDetail, "_playerSurface.TranslateToAsync(0, closeDistance, CloseAnimationDurationMs, Easing.CubicIn)");
         Assert.IsFalse(storyDetail.Contains("_content.FadeToAsync", StringComparison.Ordinal));
         Assert.IsFalse(storyDetail.Contains("_root.FadeToAsync", StringComparison.Ordinal));
         StringAssert.Contains(storyDetail, "await Shell.Current.GoToAsync(\"..\", animate: false);");
+        StringAssert.Contains(mauiProgram, "builder.Services.AddSingleton<PlayerTransitionBackdropState>();");
     }
 
     [TestMethod]
@@ -357,13 +386,64 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(storyDetail, "BuildDownCaretButton()");
         StringAssert.Contains(storyDetail, "DownCaretDrawable");
         StringAssert.Contains(storyDetail, "CastIconDrawable");
-        StringAssert.Contains(storyDetail, "BuildPillButton(detail.Story.IsFavorite ? \"♥  Gunsteling\" : \"♡  Gunsteling\")");
-        StringAssert.Contains(storyDetail, "BuildPillButton(\"▱  Info\")");
+        StringAssert.Contains(storyDetail, "BuildFavoriteOverlay(detail)");
+        StringAssert.Contains(storyDetail, "Text = detail.Story.IsFavorite ? \"♥\" : \"♡\"");
+        StringAssert.Contains(storyDetail, "BuildInfoPillButton()");
+        StringAssert.Contains(storyDetail, "Drawable = new InfoIconDrawable()");
+        StringAssert.Contains(storyDetail, "Text = \"Info\"");
+        StringAssert.Contains(storyDetail, "await ToggleFavoriteAsync(detail);");
         Assert.IsFalse(storyDetail.Contains("BuildQueueHint()", StringComparison.Ordinal));
         Assert.IsFalse(storyDetail.Contains("\"Jou ry\"", StringComparison.Ordinal));
         Assert.IsFalse(storyDetail.Contains("\"☰+  Stoor\"", StringComparison.Ordinal));
         Assert.IsFalse(storyDetail.Contains("\"↗\"", StringComparison.Ordinal));
         Assert.IsFalse(storyDetail.Contains("BuildTopIconButton(\"⌄\")", StringComparison.Ordinal));
+        Assert.IsFalse(storyDetail.Contains("Gunsteling\")", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void MobileStoryDetailCoverArtCanOpenFullscreenImage()
+    {
+        var storyDetail = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "StoryDetailPage.cs"));
+        var mauiProgram = File.ReadAllText(GetRepoPath("Shink.Mobile", "MauiProgram.cs"));
+        var orientationService = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "OrientationService.cs"));
+        var infoPlist = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "iOS", "Info.plist"));
+        var appDelegate = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "iOS", "AppDelegate.cs"));
+
+        StringAssert.Contains(storyDetail, "BuildFullscreenCoverButton()");
+        StringAssert.Contains(storyDetail, "FullscreenIconDrawable");
+        StringAssert.Contains(storyDetail, "HorizontalOptions = LayoutOptions.End");
+        StringAssert.Contains(storyDetail, "VerticalOptions = LayoutOptions.End");
+        StringAssert.Contains(storyDetail, "await ShowFullscreenCoverAsync(detail);");
+        StringAssert.Contains(storyDetail, "private async Task ShowFullscreenCoverAsync(MobileStoryDetailResponse detail)");
+        StringAssert.Contains(storyDetail, "Navigation.PushModalAsync(fullscreenPage, true)");
+        StringAssert.Contains(storyDetail, "Aspect = Aspect.AspectFit");
+        StringAssert.Contains(storyDetail, "fullscreenImageTap.Tapped += (_, _) => _ = ToggleFullscreenPlaybackAsync(detail);");
+        StringAssert.Contains(storyDetail, "await Navigation.PopModalAsync(true)");
+        StringAssert.Contains(storyDetail, "Padding = new Thickness(8)");
+        StringAssert.Contains(storyDetail, "new ColumnDefinition(GridLength.Star)");
+        StringAssert.Contains(storyDetail, "new ColumnDefinition(GridLength.Auto)");
+        StringAssert.Contains(storyDetail, "BuildFullscreenMediaControls(detail)");
+        StringAssert.Contains(storyDetail, "HeightRequest = 4");
+        StringAssert.Contains(storyDetail, "BuildFullscreenTransportControls(detail, playButton)");
+        StringAssert.Contains(storyDetail, "private async Task ToggleFullscreenPlaybackAsync(MobileStoryDetailResponse detail)");
+        StringAssert.Contains(storyDetail, "BuildCompactPlaybackButton(playButton.Text)");
+        StringAssert.Contains(storyDetail, "BuildCompactTransportButton(\"|‹\")");
+        StringAssert.Contains(storyDetail, "RestoreFullscreenPlaybackUi(detail);");
+        StringAssert.Contains(storyDetail, "IOrientationService _orientationService");
+        StringAssert.Contains(storyDetail, "_orientationService.RequestLandscape();");
+        StringAssert.Contains(storyDetail, "_orientationService.RequestPortrait();");
+        StringAssert.Contains(storyDetail, "DeviceDisplay.Current.KeepScreenOn = true;");
+        StringAssert.Contains(storyDetail, "DeviceDisplay.Current.KeepScreenOn = _wasKeepScreenOnBeforeFullscreen;");
+        StringAssert.Contains(storyDetail, "fullscreenPage.Disappearing += (_, _) =>");
+        StringAssert.Contains(storyDetail, "RestoreFullscreenCoverDeviceState();");
+        StringAssert.Contains(mauiProgram, "builder.Services.AddSingleton<IOrientationService, OrientationService>();");
+        StringAssert.Contains(orientationService, "public interface IOrientationService");
+        StringAssert.Contains(orientationService, "RequestLandscape()");
+        StringAssert.Contains(orientationService, "RequestPortrait()");
+        StringAssert.Contains(infoPlist, "UIInterfaceOrientationLandscapeLeft");
+        StringAssert.Contains(infoPlist, "UIInterfaceOrientationLandscapeRight");
+        StringAssert.Contains(appDelegate, "GetSupportedInterfaceOrientations");
+        StringAssert.Contains(appDelegate, "OrientationService.CurrentIosOrientationMask");
     }
 
     [TestMethod]
@@ -427,9 +507,11 @@ public class MobileAbsoluteUrlSourceTests
     public void MobileAuthFieldsRemoveNativeEntryChromeInsideRoundedBorders()
     {
         var accountPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "AccountPage.cs"));
+        var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
         var mauiProgram = File.ReadAllText(GetRepoPath("Shink.Mobile", "MauiProgram.cs"));
 
         StringAssert.Contains(accountPage, "entry.BackgroundColor = Colors.Transparent;");
+        StringAssert.Contains(luisterPage, "Shell.SetNavBarIsVisible(this, false);");
         StringAssert.Contains(accountPage, "Content = entry");
         StringAssert.Contains(mauiProgram, "ConfigureEntryChrome();");
         StringAssert.Contains(mauiProgram, "EntryHandler.Mapper.AppendToMapping(\"SchinkPlainEntryChrome\"");

@@ -1,6 +1,11 @@
 using Shink.Mobile.Models;
 using Shink.Mobile.Services;
 using Shink.Mobile.Views;
+#if IOS
+using iOSPage = Microsoft.Maui.Controls.PlatformConfiguration.iOSSpecific.Page;
+#elif ANDROID
+using AndroidWindowInsets = Android.Views.WindowInsets;
+#endif
 
 namespace Shink.Mobile.Pages;
 
@@ -9,6 +14,10 @@ namespace Shink.Mobile.Pages;
 public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 {
     private const double TallScreenThreshold = 820;
+    private const uint CloseAnimationDurationMs = 170;
+    private const double ListenFlushThresholdSeconds = 12;
+    private const double ListenMaxEventSeconds = 600;
+    private const double ListenMinEventSeconds = 0.2;
     private static readonly Color PlayerBackgroundColor = Color.FromArgb("#061816");
     private static readonly Color PlayerPanelColor = Color.FromArgb("#102724");
     private static readonly Color PlayerPillColor = Color.FromArgb("#1B302D");
@@ -20,7 +29,11 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     private readonly SessionState _sessionState;
     private readonly IAudioPlaybackService _audioPlaybackService;
     private readonly PlaylistPlaybackState _playlistPlaybackState;
+    private readonly IOrientationService _orientationService;
+    private readonly PlayerTransitionBackdropState _transitionBackdropState;
     private readonly Grid _root;
+    private readonly Grid _playerSurface;
+    private readonly Image _closeBackdrop;
     private readonly VerticalStackLayout _content;
     private Border? _castSheet;
     private BoxView? _castScrim;
@@ -41,17 +54,34 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     private bool _isPageActive;
     private bool _isPlaybackEventSubscribed;
     private bool _isClosing;
+    private bool _isShowingFullscreenCover;
+    private bool _wasKeepScreenOnBeforeFullscreen;
+    private bool _isFavoriteRequestInFlight;
+    private bool _suppressNextPauseTracking;
+    private Button? _inlinePlayButton;
+    private ProgressBar? _inlineProgressBar;
+    private Label? _inlineCurrentTimeLabel;
+    private Label? _inlineDurationLabel;
+    private Guid _trackingSessionId;
+    private string? _trackingStorySlug;
+    private string? _trackingSource;
+    private double _pendingListenSeconds;
+    private TimeSpan? _lastTrackedPosition;
 
     public StoryDetailPage(
         MobileApiClient apiClient,
         SessionState sessionState,
         IAudioPlaybackService audioPlaybackService,
-        PlaylistPlaybackState playlistPlaybackState)
+        PlaylistPlaybackState playlistPlaybackState,
+        IOrientationService orientationService,
+        PlayerTransitionBackdropState transitionBackdropState)
     {
         _apiClient = apiClient;
         _sessionState = sessionState;
         _audioPlaybackService = audioPlaybackService;
         _playlistPlaybackState = playlistPlaybackState;
+        _orientationService = orientationService;
+        _transitionBackdropState = transitionBackdropState;
         BackgroundColor = PlayerBackgroundColor;
         Shell.SetNavBarIsVisible(this, false);
         Shell.SetTabBarIsVisible(this, false);
@@ -69,10 +99,23 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             Content = _content
         };
 
-        _root = new Grid
+        _playerSurface = new Grid
         {
             BackgroundColor = PlayerBackgroundColor,
             Children = { scrollView }
+        };
+
+        _closeBackdrop = new Image
+        {
+            Aspect = Aspect.Fill,
+            IsVisible = false,
+            InputTransparent = true
+        };
+
+        _root = new Grid
+        {
+            BackgroundColor = PlayerBackgroundColor,
+            Children = { _closeBackdrop, _playerSurface }
         };
 
         Content = _root;
@@ -117,6 +160,9 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         base.OnAppearing();
         _isPageActive = true;
         _isClosing = false;
+        _closeBackdrop.IsVisible = false;
+        _closeBackdrop.Source = null;
+        _playerSurface.TranslationY = 0;
         SubscribePlaybackEvents();
 
         var loadKey = $"{StorySlug}:{Source}";
@@ -139,6 +185,13 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     protected override void OnDisappearing()
     {
         base.OnDisappearing();
+        if (_isShowingFullscreenCover)
+        {
+            return;
+        }
+
+        FlushPendingListen("pagehide", force: true);
+        _suppressNextPauseTracking = true;
         _isPageActive = false;
         CancelActiveLoad();
         DismissCastPicker();
@@ -212,7 +265,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         _content.Children.Add(BuildInlineLoadingState());
     }
 
-    private void RenderDetail(MobileStoryDetailResponse detail)
+    private void RenderDetail(MobileStoryDetailResponse detail, bool trackView = true)
     {
         _content.Children.Clear();
         Title = detail.Story.Title;
@@ -229,8 +282,13 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         }
         else if (!string.IsNullOrWhiteSpace(detail.AudioUrl))
         {
-            _ = _apiClient.TrackStoryViewAsync(detail.Story.Slug, detail.Story.Source);
+            if (trackView)
+            {
+                _ = _apiClient.TrackStoryViewAsync(detail.Story.Slug, detail.Story.Source);
+            }
             _content.Children.Add(BuildAudioPlayer(detail));
+            UpdateProgressState();
+            EnsureCatalogDurationVisibleAsync(detail);
         }
         else
         {
@@ -622,9 +680,53 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
         _isClosing = true;
         closeButton.IsEnabled = false;
+        PrepareCloseBackdrop();
         CancelActiveLoad();
         await AnimateCloseAsync();
         await Shell.Current.GoToAsync("..", animate: false);
+    }
+
+    private void PrepareCloseBackdrop()
+    {
+        var backdropSource = _transitionBackdropState.BuildImageSource();
+        if (backdropSource is null)
+        {
+            return;
+        }
+
+        _closeBackdrop.Margin = ResolveBackdropMargin();
+        _closeBackdrop.Source = backdropSource;
+        _closeBackdrop.IsVisible = true;
+    }
+
+    private Thickness ResolveBackdropMargin()
+    {
+#if IOS
+        var safeAreaInsets = iOSPage.GetSafeAreaInsets(this);
+        return new Thickness(0, -safeAreaInsets.Top, 0, -safeAreaInsets.Bottom);
+#elif ANDROID
+        var activity = Microsoft.Maui.ApplicationModel.Platform.CurrentActivity;
+        var insets = activity?.Window?.DecorView?.RootWindowInsets;
+        if (insets is null)
+        {
+            return Thickness.Zero;
+        }
+
+        var systemBarInsets = insets.GetInsets(AndroidWindowInsets.Type.SystemBars());
+        var density = DeviceDisplay.MainDisplayInfo.Density;
+        if (density <= 0)
+        {
+            return Thickness.Zero;
+        }
+
+        return new Thickness(
+            0,
+            -(systemBarInsets.Top / density),
+            0,
+            -(systemBarInsets.Bottom / density));
+#else
+        return Thickness.Zero;
+#endif
     }
 
     private async Task AnimateCloseAsync()
@@ -638,7 +740,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             ? Height + 40
             : 760;
 
-        await _content.TranslateToAsync(0, closeDistance, 240, Easing.CubicIn);
+        await _playerSurface.TranslateToAsync(0, closeDistance, CloseAnimationDurationMs, Easing.CubicIn);
     }
 
     private void CancelActiveLoad()
@@ -671,6 +773,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         _activeProgressBar = null;
         _activeCurrentTimeLabel = null;
         _activeDurationLabel = null;
+        ResetListenTracking();
     }
 
     private static Button BuildTopIconButton(string text) =>
@@ -709,8 +812,15 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         return button;
     }
 
-    private View BuildCoverArt(MobileStoryDetailResponse detail) =>
-        new Border
+    private View BuildCoverArt(MobileStoryDetailResponse detail)
+    {
+        var favoriteButton = BuildFavoriteOverlay(detail);
+        var fullscreenButton = BuildFullscreenCoverButton();
+        var fullscreenTap = new TapGestureRecognizer();
+        fullscreenTap.Tapped += async (_, _) => await ShowFullscreenCoverAsync(detail);
+        fullscreenButton.GestureRecognizers.Add(fullscreenTap);
+
+        return new Border
         {
             HeightRequest = CoverArtHeight,
             BackgroundColor = Color.FromArgb("#0C211F"),
@@ -723,12 +833,366 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 Radius = 32,
                 Opacity = 0.22f
             },
-            Content = new Image
+            Content = new Grid
             {
-                Source = _apiClient.BuildImageUrl(detail.Story.ImageUrl),
-                Aspect = Aspect.AspectFill
+                Children =
+                {
+                    new Image
+                    {
+                        Source = _apiClient.BuildImageUrl(detail.Story.ImageUrl),
+                        Aspect = Aspect.AspectFill
+                    },
+                    favoriteButton,
+                    fullscreenButton
+                }
             }
         };
+    }
+
+    private View BuildFavoriteOverlay(MobileStoryDetailResponse detail)
+    {
+        var heart = new Label
+        {
+            Text = detail.Story.IsFavorite ? "♥" : "♡",
+            TextColor = detail.Story.IsFavorite ? Color.FromArgb("#FFE6EF") : Colors.White,
+            FontSize = 25,
+            FontAttributes = FontAttributes.Bold,
+            Shadow = new Shadow
+            {
+                Brush = Brush.Black,
+                Offset = new Point(0, 2),
+                Radius = 7,
+                Opacity = 0.88f
+            },
+            HorizontalTextAlignment = TextAlignment.Center,
+            VerticalTextAlignment = TextAlignment.Center
+        };
+
+        var indicator = new ActivityIndicator
+        {
+            IsRunning = true,
+            Color = detail.Story.IsFavorite ? Color.FromArgb("#FFE6EF") : Colors.White,
+            WidthRequest = 24,
+            HeightRequest = 24,
+            HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.Center
+        };
+
+        var target = new Grid
+        {
+            WidthRequest = 44,
+            HeightRequest = 44,
+            Margin = new Thickness(0, 6, 6, 0),
+            HorizontalOptions = LayoutOptions.End,
+            VerticalOptions = LayoutOptions.Start,
+            Children =
+            {
+                _isFavoriteRequestInFlight ? indicator : heart
+            }
+        };
+
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += async (_, _) => await ToggleFavoriteAsync(detail);
+        target.GestureRecognizers.Add(tap);
+        return target;
+    }
+
+    private static Grid BuildFullscreenCoverButton() =>
+        new()
+        {
+            WidthRequest = 48,
+            HeightRequest = 48,
+            Margin = new Thickness(0, 0, 12, 12),
+            HorizontalOptions = LayoutOptions.End,
+            VerticalOptions = LayoutOptions.End,
+            Children =
+            {
+                new Border
+                {
+                    BackgroundColor = Color.FromArgb("#B0061816"),
+                    Stroke = Color.FromArgb("#44FFFFFF"),
+                    StrokeThickness = 1,
+                    StrokeShape = new RoundRectangle { CornerRadius = 24 },
+                    Content = new GraphicsView
+                    {
+                        Drawable = new FullscreenIconDrawable(),
+                        WidthRequest = 22,
+                        HeightRequest = 22,
+                        HorizontalOptions = LayoutOptions.Center,
+                        VerticalOptions = LayoutOptions.Center,
+                        InputTransparent = true
+                    }
+                }
+            }
+        };
+
+    private async Task ShowFullscreenCoverAsync(MobileStoryDetailResponse detail)
+    {
+        var closeButton = BuildFullscreenCloseButton();
+        var closeTap = new TapGestureRecognizer();
+        closeTap.Tapped += async (_, _) =>
+        {
+            await Navigation.PopModalAsync(true);
+        };
+        closeButton.GestureRecognizers.Add(closeTap);
+
+        var fullscreenImage = new Image
+        {
+            Source = _apiClient.BuildImageUrl(detail.Story.ImageUrl),
+            Aspect = Aspect.AspectFit,
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalOptions = LayoutOptions.Fill
+        };
+        if (!detail.RequiresSubscription && !string.IsNullOrWhiteSpace(detail.AudioUrl))
+        {
+            var fullscreenImageTap = new TapGestureRecognizer();
+            fullscreenImageTap.Tapped += (_, _) => _ = ToggleFullscreenPlaybackAsync(detail);
+            fullscreenImage.GestureRecognizers.Add(fullscreenImageTap);
+        }
+
+        var fullscreenPage = new ContentPage
+        {
+            BackgroundColor = Colors.Black,
+            Content = new Grid
+            {
+                Padding = new Thickness(8),
+                ColumnDefinitions =
+                {
+                    new ColumnDefinition(GridLength.Star),
+                    new ColumnDefinition(GridLength.Auto)
+                },
+                Children =
+                {
+                    fullscreenImage,
+                    closeButton,
+                    BuildFullscreenMediaControls(detail)
+                }
+            }
+        };
+        Grid.SetColumn(closeButton, 1);
+        Shell.SetNavBarIsVisible(fullscreenPage, false);
+        fullscreenPage.Disappearing += (_, _) =>
+        {
+            RestoreFullscreenCoverDeviceState();
+            RestoreFullscreenPlaybackUi(detail);
+        };
+
+        _wasKeepScreenOnBeforeFullscreen = DeviceDisplay.Current.KeepScreenOn;
+        DeviceDisplay.Current.KeepScreenOn = true;
+        _orientationService.RequestLandscape();
+        _isShowingFullscreenCover = true;
+        try
+        {
+            await Navigation.PushModalAsync(fullscreenPage, true);
+        }
+        catch
+        {
+            RestoreFullscreenCoverDeviceState();
+            throw;
+        }
+    }
+
+    private void RestoreFullscreenCoverDeviceState()
+    {
+        if (!_isShowingFullscreenCover)
+        {
+            return;
+        }
+
+        _isShowingFullscreenCover = false;
+        _orientationService.RequestPortrait();
+        DeviceDisplay.Current.KeepScreenOn = _wasKeepScreenOnBeforeFullscreen;
+    }
+
+    private View BuildFullscreenMediaControls(MobileStoryDetailResponse detail)
+    {
+        if (detail.RequiresSubscription || string.IsNullOrWhiteSpace(detail.AudioUrl))
+        {
+            return new Grid { InputTransparent = true };
+        }
+
+        var progressBar = new ProgressBar
+        {
+            Progress = _activeProgressBar?.Progress ?? 0,
+            ProgressColor = PlayerAccentColor,
+            BackgroundColor = Color.FromArgb("#4D5A57"),
+            HeightRequest = 4
+        };
+        var currentTimeLabel = BuildTimeLabel(
+            _activeCurrentTimeLabel?.Text ?? "0:00",
+            TextAlignment.Start);
+        var durationLabel = BuildTimeLabel(
+            _activeDurationLabel?.Text ??
+            (_activeCatalogDuration is null ? "--:--" : FormatTime(_activeCatalogDuration.Value)),
+            TextAlignment.End);
+        var playButton = BuildMainPlaybackButton(_audioPlaybackService.IsPlaying ? "II" : "▶");
+
+        _activePlayButton = playButton;
+        _activeProgressBar = progressBar;
+        _activeCurrentTimeLabel = currentTimeLabel;
+        _activeDurationLabel = durationLabel;
+
+        playButton.Clicked += (_, _) => _ = ToggleFullscreenPlaybackAsync(detail);
+
+        return new Grid
+        {
+            Padding = new Thickness(20, 0, 20, 12),
+            VerticalOptions = LayoutOptions.End,
+            Children =
+            {
+                new Border
+                {
+                    BackgroundColor = Color.FromArgb("#8A061816"),
+                    StrokeThickness = 0,
+                    StrokeShape = new RoundRectangle { CornerRadius = 22 },
+                    Padding = new Thickness(14, 10, 14, 12),
+                    Content = new VerticalStackLayout
+                    {
+                        Spacing = 8,
+                        Children =
+                        {
+                            progressBar,
+                            new Grid
+                            {
+                                ColumnDefinitions =
+                                {
+                                    new ColumnDefinition(GridLength.Star),
+                                    new ColumnDefinition(GridLength.Star)
+                                },
+                                Children =
+                                {
+                                    currentTimeLabel,
+                                    durationLabel
+                                }
+                            },
+                            BuildFullscreenTransportControls(detail, playButton)
+                        }
+                    }
+                }
+            }
+        };
+    }
+
+    private async Task ToggleFullscreenPlaybackAsync(MobileStoryDetailResponse detail)
+    {
+        if (_audioPlaybackService.IsPlaying)
+        {
+            FlushPendingListen("pause", force: true);
+            _suppressNextPauseTracking = true;
+            _audioPlaybackService.Pause();
+            if (_activePlayButton is not null)
+            {
+                _activePlayButton.Text = "▶";
+            }
+
+            StopProgressTimer();
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(detail.AudioUrl))
+        {
+            return;
+        }
+
+        await ResumePlaybackInFullscreenAsync(detail, _activePlayButton ?? BuildMainPlaybackButton("▶"));
+    }
+
+    private async Task ResumePlaybackInFullscreenAsync(MobileStoryDetailResponse detail, Button playButton)
+    {
+        try
+        {
+            var playbackUrl = await _apiClient.PrepareAudioPlaybackSourceAsync(
+                detail.AudioUrl,
+                detail.Story.Slug,
+                detail.Story.Source);
+            await PlayPreparedAudioAsync(playbackUrl, detail, ResolveTrackingSessionId(detail), playButton);
+        }
+        catch (Exception) when (IsR2AudioUrl(detail.AudioUrl))
+        {
+            try
+            {
+                var cachedPlaybackUrl = await _apiClient.DownloadAudioForPlaybackAsync(
+                    detail.AudioUrl ?? string.Empty,
+                    detail.Story.Slug,
+                    detail.Story.Source);
+                await PlayPreparedAudioAsync(cachedPlaybackUrl, detail, ResolveTrackingSessionId(detail), playButton);
+            }
+            catch (Exception ex)
+            {
+                playButton.Text = "▶";
+                StopProgressTimer();
+                await DisplayAlertAsync("Kon nie audio speel nie", ex.Message, "Maak toe");
+            }
+        }
+        catch (Exception ex)
+        {
+            playButton.Text = "▶";
+            StopProgressTimer();
+            await DisplayAlertAsync("Kon nie audio speel nie", ex.Message, "Maak toe");
+        }
+    }
+
+    private void RestoreFullscreenPlaybackUi(MobileStoryDetailResponse detail)
+    {
+        if (_inlinePlayButton is not null)
+        {
+            _activePlayButton = _inlinePlayButton;
+        }
+
+        if (_inlineProgressBar is not null)
+        {
+            _activeProgressBar = _inlineProgressBar;
+        }
+
+        if (_inlineCurrentTimeLabel is not null)
+        {
+            _activeCurrentTimeLabel = _inlineCurrentTimeLabel;
+        }
+
+        if (_inlineDurationLabel is not null)
+        {
+            _activeDurationLabel = _inlineDurationLabel;
+        }
+
+        if (_audioPlaybackService.IsPlaying)
+        {
+            StartProgressTimer();
+        }
+        else
+        {
+            UpdateProgressState();
+        }
+    }
+
+    private static Grid BuildFullscreenCloseButton()
+    {
+        var button = new Grid
+        {
+            WidthRequest = 48,
+            HeightRequest = 48,
+            HorizontalOptions = LayoutOptions.End,
+            VerticalOptions = LayoutOptions.Start
+        };
+
+        button.Children.Add(new Border
+        {
+            BackgroundColor = Color.FromArgb("#B0061816"),
+            Stroke = Color.FromArgb("#44FFFFFF"),
+            StrokeThickness = 1,
+            StrokeShape = new RoundRectangle { CornerRadius = 24 },
+            Content = new Label
+            {
+                Text = "×",
+                FontSize = 30,
+                TextColor = Colors.White,
+                HorizontalTextAlignment = TextAlignment.Center,
+                VerticalTextAlignment = TextAlignment.Center,
+                Margin = new Thickness(0, -3, 0, 0)
+            }
+        });
+
+        return button;
+    }
 
     private static double CoverArtHeight
     {
@@ -838,23 +1302,10 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
     private View BuildActionRail(MobileStoryDetailResponse detail)
     {
-        var favoriteButton = BuildPillButton(detail.Story.IsFavorite ? "♥  Gunsteling" : "♡  Gunsteling");
-        favoriteButton.TextColor = detail.Story.IsFavorite ? Color.FromArgb("#FF8A9A") : PlayerTextColor;
-        favoriteButton.IsEnabled = _sessionState.Current.IsSignedIn;
-        favoriteButton.Clicked += async (_, _) =>
-        {
-            if (!_sessionState.Current.IsSignedIn)
-            {
-                return;
-            }
-
-            await _apiClient.SetFavoriteAsync(detail.Story.Slug, detail.Story.Source, !detail.Story.IsFavorite);
-            _loadedKey = null;
-            await LoadAsync();
-        };
-
-        var infoButton = BuildPillButton("▱  Info");
-        infoButton.Clicked += async (_, _) => await DisplayAlertAsync(detail.Story.Title, detail.Story.Description, "Maak toe");
+        var infoButton = BuildInfoPillButton();
+        var infoTap = new TapGestureRecognizer();
+        infoTap.Tapped += async (_, _) => await DisplayAlertAsync(detail.Story.Title, detail.Story.Description, "Maak toe");
+        infoButton.GestureRecognizers.Add(infoTap);
 
         return new ScrollView
         {
@@ -865,24 +1316,87 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 Spacing = 10,
                 Children =
                 {
-                    favoriteButton,
                     infoButton
                 }
             }
         };
     }
 
-    private static Button BuildPillButton(string text) =>
+    private async Task ToggleFavoriteAsync(MobileStoryDetailResponse detail)
+    {
+        if (!_sessionState.Current.IsSignedIn)
+        {
+            await DisplayAlertAsync("Teken in", "Teken eers in om gunstelinge te stoor.", "Reg so");
+            return;
+        }
+
+        if (_isFavoriteRequestInFlight)
+        {
+            return;
+        }
+
+        _isFavoriteRequestInFlight = true;
+        RenderFavoriteState(detail, detail.Story.IsFavorite);
+        try
+        {
+            var isFavorite = await _apiClient.SetFavoriteAsync(detail.Story.Slug, detail.Story.Source, !detail.Story.IsFavorite);
+            RenderFavoriteState(detail, isFavorite);
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlertAsync("Kon nie stoor nie", ex.Message, "Reg so");
+        }
+        finally
+        {
+            _isFavoriteRequestInFlight = false;
+            if (_currentDetail is not null)
+            {
+                RenderFavoriteState(_currentDetail, _currentDetail.Story.IsFavorite);
+            }
+        }
+    }
+
+    private void RenderFavoriteState(MobileStoryDetailResponse detail, bool isFavorite)
+    {
+        var updatedStory = detail.Story with { IsFavorite = isFavorite };
+        _currentDetail = detail with { Story = updatedStory };
+        _previewStory = updatedStory;
+        _activeStory = updatedStory;
+        RenderDetail(_currentDetail, trackView: false);
+    }
+
+    private static Border BuildInfoPillButton() =>
         new()
         {
-            Text = text,
-            FontSize = 15,
-            FontAttributes = FontAttributes.Bold,
-            TextColor = PlayerTextColor,
             BackgroundColor = PlayerPillColor,
-            CornerRadius = 24,
+            StrokeThickness = 0,
+            StrokeShape = new RoundRectangle { CornerRadius = 24 },
             HeightRequest = 42,
-            Padding = new Thickness(16, 0)
+            Padding = new Thickness(16, 0),
+            Content = new HorizontalStackLayout
+            {
+                Spacing = 8,
+                VerticalOptions = LayoutOptions.Center,
+                Children =
+                {
+                    new GraphicsView
+                    {
+                        Drawable = new InfoIconDrawable(),
+                        WidthRequest = 16,
+                        HeightRequest = 16,
+                        VerticalOptions = LayoutOptions.Center,
+                        InputTransparent = true
+                    },
+                    new Label
+                    {
+                        Text = "Info",
+                        FontSize = 15,
+                        FontAttributes = FontAttributes.Bold,
+                        TextColor = PlayerTextColor,
+                        VerticalTextAlignment = TextAlignment.Center
+                    }
+                }
+            }
         };
 
     private View BuildLockedPanel(MobileStoryDetailResponse detail)
@@ -929,7 +1443,6 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
     private View BuildAudioPlayer(MobileStoryDetailResponse detail)
     {
-        var trackingSessionId = Guid.NewGuid();
         var progressBar = new ProgressBar
         {
             Progress = 0,
@@ -938,7 +1451,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             HeightRequest = 4
         };
         var currentTimeLabel = BuildTimeLabel("0:00", TextAlignment.Start);
-        _activeCatalogDuration = ToTimeSpan(detail.Story.DurationSeconds);
+        _activeCatalogDuration = ResolveCatalogDuration(detail);
         var durationLabel = BuildTimeLabel(
             _activeCatalogDuration is null ? "--:--" : FormatTime(_activeCatalogDuration.Value),
             TextAlignment.End);
@@ -948,11 +1461,18 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         _activeProgressBar = progressBar;
         _activeCurrentTimeLabel = currentTimeLabel;
         _activeDurationLabel = durationLabel;
+        _inlinePlayButton = playButton;
+        _inlineProgressBar = progressBar;
+        _inlineCurrentTimeLabel = currentTimeLabel;
+        _inlineDurationLabel = durationLabel;
+        ResetListenTracking();
 
         playButton.Clicked += async (_, _) =>
         {
             if (_audioPlaybackService.IsPlaying)
             {
+                FlushPendingListen("pause", force: true);
+                _suppressNextPauseTracking = true;
                 _audioPlaybackService.Pause();
                 playButton.Text = "▶";
                 StopProgressTimer();
@@ -965,7 +1485,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                     detail.AudioUrl,
                     detail.Story.Slug,
                     detail.Story.Source);
-                await PlayPreparedAudioAsync(playbackUrl, detail, trackingSessionId, playButton);
+                await PlayPreparedAudioAsync(playbackUrl, detail, ResolveTrackingSessionId(detail), playButton);
             }
             catch (Exception) when (IsR2AudioUrl(detail.AudioUrl))
             {
@@ -975,7 +1495,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                         detail.AudioUrl ?? string.Empty,
                         detail.Story.Slug,
                         detail.Story.Source);
-                    await PlayPreparedAudioAsync(cachedPlaybackUrl, detail, trackingSessionId, playButton);
+                    await PlayPreparedAudioAsync(cachedPlaybackUrl, detail, ResolveTrackingSessionId(detail), playButton);
                 }
                 catch (Exception ex)
                 {
@@ -1036,16 +1556,8 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 "Schink Stories",
                 _apiClient.BuildImageUrl(detail.Story.ImageUrl)));
         playButton.Text = "II";
+        BeginListenTracking(detail, trackingSessionId);
         StartProgressTimer();
-        _ = _apiClient.TrackStoryListenAsync(
-            detail.Story.Slug,
-            detail.Story.Source,
-            trackingSessionId,
-            "play",
-            listenedSeconds: 1,
-            positionSeconds: null,
-            durationSeconds: detail.Story.DurationSeconds,
-            isCompleted: false);
     }
 
     private View BuildTransportControls(MobileStoryDetailResponse detail, Button playButton)
@@ -1087,6 +1599,57 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         grid.Children.Add(playButton);
         grid.Children.Add(nextButton);
         Grid.SetColumn(playButton, 1);
+        Grid.SetColumn(nextButton, 2);
+
+        return grid;
+    }
+
+    private View BuildFullscreenTransportControls(MobileStoryDetailResponse detail, Button playButton)
+    {
+        var grid = new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Star)
+            },
+            HeightRequest = 54
+        };
+
+        var previousStory = ResolvePreviousStory(detail);
+        var nextStory = ResolveNextStory(detail);
+        var previousButton = BuildCompactTransportButton("|‹");
+        var nextButton = BuildCompactTransportButton("›|");
+        var compactPlayButton = BuildCompactPlaybackButton(playButton.Text);
+
+        _activePlayButton = compactPlayButton;
+
+        previousButton.IsEnabled = previousStory is not null;
+        nextButton.IsEnabled = nextStory is not null;
+
+        previousButton.Clicked += async (_, _) =>
+        {
+            if (previousStory is not null)
+            {
+                await ReplaceActiveStoryAsync(previousStory);
+            }
+        };
+
+        compactPlayButton.Clicked += (_, _) => _ = ToggleFullscreenPlaybackAsync(detail);
+
+        nextButton.Clicked += async (_, _) =>
+        {
+            if (nextStory is not null)
+            {
+                await ReplaceActiveStoryAsync(nextStory);
+            }
+        };
+
+        grid.Children.Add(previousButton);
+        grid.Children.Add(compactPlayButton);
+        grid.Children.Add(nextButton);
+        Grid.SetColumn(compactPlayButton, 1);
         Grid.SetColumn(nextButton, 2);
 
         return grid;
@@ -1300,6 +1863,37 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             VerticalOptions = LayoutOptions.Center
         };
 
+    private static Button BuildCompactTransportButton(string text) =>
+        new()
+        {
+            Text = text,
+            FontSize = 24,
+            FontAttributes = FontAttributes.Bold,
+            TextColor = PlayerTextColor,
+            BackgroundColor = Colors.Transparent,
+            WidthRequest = 44,
+            HeightRequest = 44,
+            Padding = 0,
+            HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.End
+        };
+
+    private static Button BuildCompactPlaybackButton(string text) =>
+        new()
+        {
+            Text = text,
+            FontSize = 22,
+            FontAttributes = FontAttributes.Bold,
+            TextColor = Color.FromArgb("#061816"),
+            BackgroundColor = PlayerAccentColor,
+            CornerRadius = 26,
+            WidthRequest = 52,
+            HeightRequest = 52,
+            Padding = 0,
+            HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.End
+        };
+
     private static Button BuildPrimaryButton(string text) =>
         new()
         {
@@ -1347,7 +1941,15 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         {
             _progressTimer = Dispatcher.CreateTimer();
             _progressTimer.Interval = TimeSpan.FromMilliseconds(500);
-            _progressTimer.Tick += (_, _) => UpdateProgressState();
+            _progressTimer.Tick += (_, _) =>
+            {
+                if (_audioPlaybackService.IsPlaying)
+                {
+                    FlushPendingListen("progress", force: false);
+                }
+
+                UpdateProgressState();
+            };
         }
 
         UpdateProgressState();
@@ -1387,10 +1989,185 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         }
     }
 
+    private void BeginListenTracking(MobileStoryDetailResponse detail, Guid trackingSessionId)
+    {
+        _trackingSessionId = trackingSessionId;
+        _trackingStorySlug = detail.Story.Slug;
+        _trackingSource = detail.Story.Source;
+        _pendingListenSeconds = 0;
+        _lastTrackedPosition = _audioPlaybackService.CurrentPosition;
+    }
+
+    private Guid ResolveTrackingSessionId(MobileStoryDetailResponse detail)
+    {
+        return _trackingSessionId != Guid.Empty &&
+               string.Equals(_trackingStorySlug, detail.Story.Slug, StringComparison.OrdinalIgnoreCase) &&
+               string.Equals(_trackingSource, detail.Story.Source, StringComparison.OrdinalIgnoreCase)
+            ? _trackingSessionId
+            : Guid.NewGuid();
+    }
+
+    private void ResetListenTracking()
+    {
+        _trackingSessionId = Guid.Empty;
+        _trackingStorySlug = null;
+        _trackingSource = null;
+        _pendingListenSeconds = 0;
+        _lastTrackedPosition = null;
+        _suppressNextPauseTracking = false;
+    }
+
+    private void CaptureListenProgressDelta()
+    {
+        if (_trackingSessionId == Guid.Empty)
+        {
+            return;
+        }
+
+        var currentPosition = _audioPlaybackService.CurrentPosition;
+        var previousPosition = _lastTrackedPosition ?? currentPosition;
+        _lastTrackedPosition = currentPosition;
+
+        var elapsedSeconds = (currentPosition - previousPosition).TotalSeconds;
+        if (!double.IsFinite(elapsedSeconds) || elapsedSeconds <= 0)
+        {
+            return;
+        }
+
+        _pendingListenSeconds += elapsedSeconds;
+    }
+
+    private void FlushPendingListen(string eventType, bool force, bool isCompleted = false)
+    {
+        if (_trackingSessionId == Guid.Empty ||
+            string.IsNullOrWhiteSpace(_trackingStorySlug) ||
+            string.IsNullOrWhiteSpace(_trackingSource))
+        {
+            return;
+        }
+
+        CaptureListenProgressDelta();
+        while (true)
+        {
+            var pendingSeconds = _pendingListenSeconds;
+            if ((!force && pendingSeconds < ListenFlushThresholdSeconds) ||
+                pendingSeconds < ListenMinEventSeconds)
+            {
+                return;
+            }
+
+            var listenedSeconds = Math.Min(pendingSeconds, ListenMaxEventSeconds);
+            _pendingListenSeconds = Math.Max(0, pendingSeconds - listenedSeconds);
+
+            var currentPosition = NormalizeTrackingSeconds(_audioPlaybackService.CurrentPosition.TotalSeconds);
+            var duration = _audioPlaybackService.Duration ?? _activeCatalogDuration;
+            var durationSeconds = NormalizeTrackingSeconds(duration?.TotalSeconds);
+            var slug = _trackingStorySlug;
+            var source = _trackingSource;
+            var sessionId = _trackingSessionId;
+
+            if (string.IsNullOrWhiteSpace(slug) || string.IsNullOrWhiteSpace(source))
+            {
+                return;
+            }
+
+            _ = _apiClient.TrackStoryListenAsync(
+                slug,
+                source,
+                sessionId,
+                eventType,
+                decimal.Round((decimal)listenedSeconds, 3, MidpointRounding.AwayFromZero),
+                currentPosition,
+                durationSeconds,
+                isCompleted);
+
+            if (!force)
+            {
+                return;
+            }
+        }
+    }
+
+    private static decimal? NormalizeTrackingSeconds(double? seconds)
+    {
+        if (seconds is not > 0 || !double.IsFinite(seconds.Value))
+        {
+            return null;
+        }
+
+        return decimal.Round((decimal)seconds.Value, 3, MidpointRounding.AwayFromZero);
+    }
+
     private static string FormatTime(TimeSpan value) =>
         value.TotalHours >= 1
             ? $"{(int)value.TotalHours}:{value.Minutes:00}:{value.Seconds:00}"
             : $"{(int)value.TotalMinutes}:{value.Seconds:00}";
+
+    private void EnsureCatalogDurationVisibleAsync(MobileStoryDetailResponse detail)
+    {
+        if (_activeCatalogDuration is not null || string.IsNullOrWhiteSpace(detail.AudioUrl))
+        {
+            return;
+        }
+
+        var audioUrl = _apiClient.BuildAbsoluteUrl(detail.AudioUrl);
+        var slug = detail.Story.Slug;
+        var cancellationToken = _loadCts?.Token ?? CancellationToken.None;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var duration = await _audioPlaybackService.GetDurationAsync(audioUrl, cancellationToken);
+                if (duration is null || cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                await MainThread.InvokeOnMainThreadAsync(() =>
+                {
+                    if (cancellationToken.IsCancellationRequested ||
+                        !_isPageActive ||
+                        !string.Equals(_currentDetail?.Story.Slug, slug, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return;
+                    }
+
+                    _activeCatalogDuration = duration;
+                    UpdateProgressState();
+                });
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch
+            {
+                // Playback metadata should quietly fall back to the live player duration if probing fails.
+            }
+        });
+    }
+
+    private TimeSpan? ResolveCatalogDuration(MobileStoryDetailResponse detail) =>
+        ToTimeSpan(ResolveCatalogDurationSeconds(detail));
+
+    private decimal? ResolveCatalogDurationSeconds(MobileStoryDetailResponse detail)
+    {
+        if (detail.Story.DurationSeconds is > 0)
+        {
+            return detail.Story.DurationSeconds;
+        }
+
+        if (_previewStory is { DurationSeconds: > 0 } previewStory &&
+            string.Equals(_previewStory.Slug, detail.Story.Slug, StringComparison.OrdinalIgnoreCase))
+        {
+            return previewStory.DurationSeconds;
+        }
+
+        var playlistStory = _playlistStories.FirstOrDefault(story =>
+            string.Equals(story.Slug, detail.Story.Slug, StringComparison.OrdinalIgnoreCase));
+
+        return playlistStory?.DurationSeconds;
+    }
 
     private static TimeSpan? ToTimeSpan(decimal? seconds)
     {
@@ -1449,10 +2226,20 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
             if (_audioPlaybackService.IsPlaying)
             {
+                _lastTrackedPosition = _audioPlaybackService.CurrentPosition;
                 StartProgressTimer();
             }
             else
             {
+                if (_suppressNextPauseTracking)
+                {
+                    _suppressNextPauseTracking = false;
+                }
+                else
+                {
+                    FlushPendingListen("pause", force: true);
+                }
+
                 StopProgressTimer();
                 UpdateProgressState();
             }
@@ -1468,6 +2255,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 return;
             }
 
+            FlushPendingListen("ended", force: true, isCompleted: true);
             StopProgressTimer();
             UpdateProgressState();
 
@@ -1501,7 +2289,9 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     {
         CancelActiveLoad();
         DismissCastPicker();
+        FlushPendingListen("pagehide", force: true);
         StopProgressTimer();
+        _suppressNextPauseTracking = true;
         TryStopAudioPlayback();
         ClearActivePlaybackUi();
 
@@ -1634,6 +2424,56 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             triangle.LineTo(dirtyRect.Width * 0.68f, dirtyRect.Height * 0.84f);
             triangle.Close();
             canvas.FillPath(triangle);
+        }
+    }
+
+    private sealed class InfoIconDrawable : IDrawable
+    {
+        public void Draw(ICanvas canvas, RectF dirtyRect)
+        {
+            canvas.StrokeColor = PlayerTextColor;
+            canvas.FillColor = PlayerTextColor;
+            canvas.StrokeSize = 1.8f;
+            canvas.StrokeLineCap = LineCap.Round;
+            canvas.StrokeLineJoin = LineJoin.Round;
+
+            var radius = Math.Min(dirtyRect.Width, dirtyRect.Height) * 0.42f;
+            var centerX = dirtyRect.Center.X;
+            var centerY = dirtyRect.Center.Y;
+
+            canvas.DrawCircle(centerX, centerY, radius);
+            canvas.FillCircle(centerX, dirtyRect.Height * 0.30f, 1.1f);
+            canvas.DrawLine(centerX, dirtyRect.Height * 0.43f, centerX, dirtyRect.Height * 0.72f);
+        }
+    }
+
+    private sealed class FullscreenIconDrawable : IDrawable
+    {
+        public void Draw(ICanvas canvas, RectF dirtyRect)
+        {
+            canvas.StrokeColor = Colors.White;
+            canvas.StrokeSize = 2.4f;
+            canvas.StrokeLineCap = LineCap.Round;
+            canvas.StrokeLineJoin = LineJoin.Round;
+
+            var inset = dirtyRect.Width * 0.18f;
+            var cornerLength = dirtyRect.Width * 0.22f;
+            var left = dirtyRect.Left + inset;
+            var right = dirtyRect.Right - inset;
+            var top = dirtyRect.Top + inset;
+            var bottom = dirtyRect.Bottom - inset;
+
+            canvas.DrawLine(left, top + cornerLength, left, top);
+            canvas.DrawLine(left, top, left + cornerLength, top);
+
+            canvas.DrawLine(right - cornerLength, top, right, top);
+            canvas.DrawLine(right, top, right, top + cornerLength);
+
+            canvas.DrawLine(left, bottom - cornerLength, left, bottom);
+            canvas.DrawLine(left, bottom, left + cornerLength, bottom);
+
+            canvas.DrawLine(right - cornerLength, bottom, right, bottom);
+            canvas.DrawLine(right, bottom - cornerLength, right, bottom);
         }
     }
 }
