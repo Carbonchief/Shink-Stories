@@ -1,4 +1,5 @@
 using Shink.Mobile.Services;
+using Microsoft.Maui.Authentication;
 using MauiEntry = Microsoft.Maui.Controls.Entry;
 using MauiScrollView = Microsoft.Maui.Controls.ScrollView;
 
@@ -148,14 +149,29 @@ public sealed class AccountPage : ContentPage
         };
         _authWelcomeLabel = new Label
         {
-            Text = "Bou jou kind se karakter -\neen storie op 'n slag.",
             FontSize = metrics.TitleFontSize,
-            FontAttributes = FontAttributes.Bold,
-            FontFamily = "serif",
-            LineHeight = 0.95,
+            FontFamily = "sans-serif",
+            LineHeight = 0.92,
             TextColor = Colors.White,
             HorizontalTextAlignment = TextAlignment.Center,
             Margin = metrics.TitleMargin,
+            FormattedText = new FormattedString
+            {
+                Spans =
+                {
+                    new Span
+                    {
+                        Text = "Bou jou kind se karakter -",
+                        FontAttributes = FontAttributes.Bold
+                    },
+                    new Span
+                    {
+                        Text = "\neen storie op 'n slag.",
+                        FontAttributes = FontAttributes.Italic,
+                        FontSize = metrics.TitleSublineFontSize
+                    }
+                }
+            },
             Shadow = new Shadow
             {
                 Brush = Brush.Black,
@@ -166,12 +182,24 @@ public sealed class AccountPage : ContentPage
         };
         _authIntroLabel = new Label
         {
-            Text = "Rustige, opbouende Afrikaanse storietyd.",
             TextColor = Colors.White,
             FontSize = metrics.IntroFontSize,
-            FontAttributes = FontAttributes.Bold,
             HorizontalTextAlignment = TextAlignment.Center,
             LineBreakMode = LineBreakMode.WordWrap,
+            Margin = metrics.IntroMargin,
+            FormattedText = new FormattedString
+            {
+                Spans =
+                {
+                    new Span { Text = "Rustige, opbouende " },
+                    new Span
+                    {
+                        Text = "Afrikaanse storietyd",
+                        FontAttributes = FontAttributes.Bold
+                    },
+                    new Span { Text = "." }
+                }
+            },
             Shadow = new Shadow
             {
                 Brush = Brush.Black,
@@ -185,7 +213,9 @@ public sealed class AccountPage : ContentPage
             Text = "Minder skerms. Rustiger aande. Stories wat waardes bou.",
             TextColor = Color.FromArgb("#FFF7E8"),
             FontSize = metrics.TaglineFontSize,
-            HorizontalTextAlignment = TextAlignment.Center
+            HorizontalTextAlignment = TextAlignment.Center,
+            LineHeight = 1.1,
+            Margin = metrics.TaglineMargin
         };
         _authCharacterImage = new Image
         {
@@ -399,6 +429,7 @@ public sealed class AccountPage : ContentPage
                     }
                 }
             };
+            var googleButton = BuildGoogleSignInButton(out var googleLabel, out var googleSpinner);
             var loginTap = new TapGestureRecognizer();
             loginTap.Tapped += async (_, _) =>
             {
@@ -423,7 +454,55 @@ public sealed class AccountPage : ContentPage
                 }
             };
             loginButton.GestureRecognizers.Add(loginTap);
+            var googleTap = new TapGestureRecognizer();
+            googleTap.Tapped += async (_, _) =>
+            {
+                if (_isAuthRequestInFlight)
+                {
+                    return;
+                }
 
+                SetGoogleSubmitLoading(googleButton, googleLabel, googleSpinner, loginEmailEntry, loginPasswordEntry, loginButton, isLoading: true);
+                try
+                {
+                    var result = await WebAuthenticator.Default.AuthenticateAsync(
+                        _apiClient.BuildGoogleSignInStartUri(),
+                        new Uri(MobileApiClient.GoogleCallbackUrl));
+
+                    if (result.Properties.TryGetValue("error", out var errorMessage) &&
+                        !string.IsNullOrWhiteSpace(errorMessage))
+                    {
+                        SetStatus(errorMessage, isError: true);
+                        return;
+                    }
+
+                    if (!result.Properties.TryGetValue("token", out var token) ||
+                        string.IsNullOrWhiteSpace(token))
+                    {
+                        SetStatus("Google-aanmelding kon nie bevestig word nie. Probeer asseblief weer.", isError: true);
+                        return;
+                    }
+
+                    var signInResult = await _apiClient.CompleteGoogleSignInAsync(token);
+                    await RefreshSessionAsync(signInResult.Message);
+                }
+                catch (TaskCanceledException)
+                {
+                    SetStatus(null);
+                }
+                catch (Exception ex)
+                {
+                    SetStatus(ex.Message, isError: true);
+                }
+                finally
+                {
+                    SetGoogleSubmitLoading(googleButton, googleLabel, googleSpinner, loginEmailEntry, loginPasswordEntry, loginButton, isLoading: false);
+                }
+            };
+            googleButton.GestureRecognizers.Add(googleTap);
+
+            formContent.Children.Add(googleButton);
+            formContent.Children.Add(BuildAuthDivider("of"));
             formContent.Children.Add(BuildField(loginEmailEntry));
             formContent.Children.Add(BuildField(loginPasswordEntry));
             formContent.Children.Add(loginButton);
@@ -531,16 +610,22 @@ public sealed class AccountPage : ContentPage
         {
             _authWelcomeLabel.FontSize = metrics.TitleFontSize;
             _authWelcomeLabel.Margin = metrics.TitleMargin;
+            if (_authWelcomeLabel.FormattedText?.Spans.Count > 1)
+            {
+                _authWelcomeLabel.FormattedText.Spans[1].FontSize = metrics.TitleSublineFontSize;
+            }
         }
 
         if (_authIntroLabel is not null)
         {
             _authIntroLabel.FontSize = metrics.IntroFontSize;
+            _authIntroLabel.Margin = metrics.IntroMargin;
         }
 
         if (_authTaglineLabel is not null)
         {
             _authTaglineLabel.FontSize = metrics.TaglineFontSize;
+            _authTaglineLabel.Margin = metrics.TaglineMargin;
         }
 
         if (_authCharacterImage is not null)
@@ -568,17 +653,20 @@ public sealed class AccountPage : ContentPage
         var tight = height < 680;
 
         return new LandingLayoutMetrics(
-            HeroPadding: new Thickness(18, tight ? 20 : compact ? 28 : 42, 18, 0),
-            HeroSpacing: tight ? 3 : compact ? 5 : 7,
-            LogoHeight: Math.Clamp(height * (tight ? 0.1 : 0.12), 78, 116),
-            LogoMargin: new Thickness(-12, 0, -12, tight ? -6 : -10),
-            TitleFontSize: Math.Clamp(height * 0.037, 24, 34),
-            TitleMargin: new Thickness(0, tight ? -4 : -2, 0, 0),
-            IntroFontSize: tight ? 13 : compact ? 14 : 15,
-            TaglineFontSize: tight ? 12 : compact ? 13 : 14,
-            CharacterHeight: Math.Clamp(height * (tight ? 0.15 : 0.19), 104, 166),
-            CharacterMargin: new Thickness(-24, tight ? -10 : -14, -24, tight ? -8 : -12),
-            PanelMargin: new Thickness(18, 0, 18, tight ? 8 : 14),
+            HeroPadding: new Thickness(14, tight ? 10 : compact ? 16 : 22, 14, 0),
+            HeroSpacing: tight ? 0 : 1,
+            LogoHeight: Math.Clamp(height * (tight ? 0.135 : 0.155), 96, 144),
+            LogoMargin: new Thickness(-18, 0, -18, tight ? -18 : -24),
+            TitleFontSize: Math.Clamp(height * (tight ? 0.039 : 0.043), 26, 36),
+            TitleSublineFontSize: Math.Clamp(height * (tight ? 0.035 : 0.039), 23, 32),
+            TitleMargin: new Thickness(0, tight ? -34 : compact ? -42 : -52, 0, 0),
+            IntroFontSize: Math.Clamp(height * 0.019, 14, 18),
+            IntroMargin: new Thickness(0, tight ? 7 : 9, 0, 0),
+            TaglineFontSize: Math.Clamp(height * 0.017, 13, 16),
+            TaglineMargin: new Thickness(tight ? 8 : 10, tight ? 6 : 8, tight ? 8 : 10, 0),
+            CharacterHeight: Math.Clamp(height * (tight ? 0.23 : 0.27), 154, 246),
+            CharacterMargin: new Thickness(-36, tight ? -12 : -18, -36, tight ? -18 : -26),
+            PanelMargin: new Thickness(18, tight ? 8 : compact ? 12 : 16, 18, tight ? 8 : 14),
             PanelPadding: new Thickness(26, tight ? 18 : compact ? 21 : 24, 26, tight ? 20 : compact ? 24 : 28),
             PanelContentSpacing: tight ? 10 : compact ? 12 : 14,
             ModeButtonHeight: tight ? 64 : compact ? 70 : 78,
@@ -721,15 +809,165 @@ public sealed class AccountPage : ContentPage
         return label;
     }
 
+    private static Border BuildGoogleSignInButton(out Label label, out ActivityIndicator spinner)
+    {
+        var googleIcon = new GraphicsView
+        {
+            Drawable = new GoogleLogoDrawable(),
+            WidthRequest = 30,
+            HeightRequest = 30,
+            HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.Center,
+            InputTransparent = true
+        };
+        label = new Label
+        {
+            Text = "Teken in met Google",
+            TextColor = Color.FromArgb("#3C4043"),
+            FontAttributes = FontAttributes.Bold,
+            FontSize = 18,
+            HorizontalTextAlignment = TextAlignment.Center,
+            VerticalTextAlignment = TextAlignment.Center,
+            InputTransparent = true
+        };
+        spinner = new ActivityIndicator
+        {
+            Color = Color.FromArgb("#3C4043"),
+            WidthRequest = 22,
+            HeightRequest = 22,
+            IsRunning = false,
+            IsVisible = false,
+            HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.Center,
+            InputTransparent = true
+        };
+
+        Grid.SetColumn(googleIcon, 0);
+        Grid.SetColumn(label, 1);
+        Grid.SetColumn(spinner, 2);
+
+        return new Border
+        {
+            BackgroundColor = Colors.White,
+            Stroke = Color.FromArgb("#DADCE0"),
+            StrokeThickness = 1,
+            StrokeShape = new RoundRectangle { CornerRadius = 18 },
+            HeightRequest = 58,
+            Padding = new Thickness(18, 0),
+            Shadow = new Shadow
+            {
+                Brush = Brush.Black,
+                Offset = new Point(0, 2),
+                Radius = 5,
+                Opacity = 0.18f
+            },
+            Content = new Grid
+            {
+                ColumnDefinitions =
+                {
+                    new ColumnDefinition { Width = 42 },
+                    new ColumnDefinition { Width = GridLength.Star },
+                    new ColumnDefinition { Width = 42 }
+                },
+                Children =
+                {
+                    googleIcon,
+                    label,
+                    spinner
+                },
+                InputTransparent = true
+            }
+        };
+    }
+
+    private static View BuildAuthDivider(string text)
+    {
+        var leftLine = new BoxView
+        {
+            HeightRequest = 1,
+            Color = Color.FromArgb("#E8DEC8"),
+            VerticalOptions = LayoutOptions.Center
+        };
+        var label = new Label
+        {
+            Text = text,
+            TextColor = Color.FromArgb("#7C817C"),
+            FontSize = 13,
+            HorizontalTextAlignment = TextAlignment.Center,
+            VerticalTextAlignment = TextAlignment.Center
+        };
+        var rightLine = new BoxView
+        {
+            HeightRequest = 1,
+            Color = Color.FromArgb("#E8DEC8"),
+            VerticalOptions = LayoutOptions.Center
+        };
+
+        Grid.SetColumn(leftLine, 0);
+        Grid.SetColumn(label, 1);
+        Grid.SetColumn(rightLine, 2);
+
+        return new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = GridLength.Star },
+                new ColumnDefinition { Width = GridLength.Auto },
+                new ColumnDefinition { Width = GridLength.Star }
+            },
+            ColumnSpacing = 10,
+            Children =
+            {
+                leftLine,
+                label,
+                rightLine
+            }
+        };
+    }
+
+    private sealed class GoogleLogoDrawable : Microsoft.Maui.Graphics.IDrawable
+    {
+        public void Draw(Microsoft.Maui.Graphics.ICanvas canvas, Microsoft.Maui.Graphics.RectF dirtyRect)
+        {
+            var size = Math.Min(dirtyRect.Width, dirtyRect.Height);
+            var stroke = size * 0.18f;
+            var inset = stroke * 0.7f;
+            var rect = new Microsoft.Maui.Graphics.RectF(
+                dirtyRect.Center.X - size / 2 + inset,
+                dirtyRect.Center.Y - size / 2 + inset,
+                size - inset * 2,
+                size - inset * 2);
+
+            canvas.StrokeSize = stroke;
+            canvas.StrokeLineCap = Microsoft.Maui.Graphics.LineCap.Square;
+
+            canvas.StrokeColor = Color.FromArgb("#4285F4");
+            canvas.DrawArc(rect, -35, 45, false, false);
+            canvas.DrawLine(dirtyRect.Center.X, dirtyRect.Center.Y, dirtyRect.Right - inset, dirtyRect.Center.Y);
+
+            canvas.StrokeColor = Color.FromArgb("#34A853");
+            canvas.DrawArc(rect, 45, 140, false, false);
+
+            canvas.StrokeColor = Color.FromArgb("#FBBC05");
+            canvas.DrawArc(rect, 140, 215, false, false);
+
+            canvas.StrokeColor = Color.FromArgb("#EA4335");
+            canvas.DrawArc(rect, 215, 325, false, false);
+        }
+    }
+
     private sealed record LandingLayoutMetrics(
         Thickness HeroPadding,
         double HeroSpacing,
         double LogoHeight,
         Thickness LogoMargin,
         double TitleFontSize,
+        double TitleSublineFontSize,
         Thickness TitleMargin,
         double IntroFontSize,
+        Thickness IntroMargin,
         double TaglineFontSize,
+        Thickness TaglineMargin,
         double CharacterHeight,
         Thickness CharacterMargin,
         Thickness PanelMargin,
@@ -758,6 +996,25 @@ public sealed class AccountPage : ContentPage
         spinner.IsRunning = isLoading;
         emailEntry.IsEnabled = !isLoading;
         passwordEntry.IsEnabled = !isLoading;
+    }
+
+    private void SetGoogleSubmitLoading(
+        Border googleButton,
+        Label googleLabel,
+        ActivityIndicator googleSpinner,
+        MauiEntry emailEntry,
+        MauiEntry passwordEntry,
+        Border loginButton,
+        bool isLoading)
+    {
+        _isAuthRequestInFlight = isLoading;
+        googleButton.Opacity = isLoading ? 0.82 : 1;
+        googleLabel.Text = isLoading ? "Koppel met Google..." : "Teken in met Google";
+        googleSpinner.IsVisible = isLoading;
+        googleSpinner.IsRunning = isLoading;
+        emailEntry.IsEnabled = !isLoading;
+        passwordEntry.IsEnabled = !isLoading;
+        loginButton.IsEnabled = !isLoading;
     }
 
     private static MauiEntry CreateEntry(string placeholder, Keyboard? keyboard = null, bool isPassword = false)

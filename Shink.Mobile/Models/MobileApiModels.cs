@@ -111,6 +111,8 @@ public sealed record MobileAboutResponse(IReadOnlyList<MobileContentBlock> Block
 
 public sealed record AuthResponse(string? Message, string? RedirectPath);
 
+public sealed record MobileGoogleAuthCompleteResponse(string Message, MobileSession Session);
+
 public sealed record MobileNotificationPage(
     int Count,
     int UnreadCount,

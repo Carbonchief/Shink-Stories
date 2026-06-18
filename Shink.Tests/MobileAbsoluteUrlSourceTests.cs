@@ -957,12 +957,17 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(accountPage, "GetLandingLayoutMetrics()");
         StringAssert.Contains(accountPage, "var compact = height < 740;");
         StringAssert.Contains(accountPage, "var tight = height < 680;");
-        StringAssert.Contains(accountPage, "Text = \"Bou jou kind se karakter -\\neen storie op 'n slag.\"");
-        StringAssert.Contains(accountPage, "Text = \"Rustige, opbouende Afrikaanse storietyd.\"");
+        StringAssert.Contains(accountPage, "Text = \"Bou jou kind se karakter -\"");
+        StringAssert.Contains(accountPage, "Text = \"\\neen storie op 'n slag.\"");
+        StringAssert.Contains(accountPage, "FontAttributes = FontAttributes.Italic");
+        StringAssert.Contains(accountPage, "Text = \"Rustige, opbouende \"");
+        StringAssert.Contains(accountPage, "Text = \"Afrikaanse storietyd\"");
         StringAssert.Contains(accountPage, "Text = \"Minder skerms. Rustiger aande. Stories wat waardes bou.\"");
         StringAssert.Contains(accountPage, "Source = \"schink_stories_home_hero.png\"");
-        StringAssert.Contains(accountPage, "LogoHeight: Math.Clamp(height * (tight ? 0.1 : 0.12), 78, 116)");
-        StringAssert.Contains(accountPage, "CharacterHeight: Math.Clamp(height * (tight ? 0.15 : 0.19), 104, 166)");
+        StringAssert.Contains(accountPage, "LogoHeight: Math.Clamp(height * (tight ? 0.135 : 0.155), 96, 144)");
+        StringAssert.Contains(accountPage, "TitleSublineFontSize: Math.Clamp(height * (tight ? 0.035 : 0.039), 23, 32)");
+        StringAssert.Contains(accountPage, "TitleMargin: new Thickness(0, tight ? -34 : compact ? -42 : -52, 0, 0)");
+        StringAssert.Contains(accountPage, "CharacterHeight: Math.Clamp(height * (tight ? 0.23 : 0.27), 154, 246)");
         StringAssert.Contains(accountPage, "ModeButtonHeight: tight ? 64 : compact ? 70 : 78");
         StringAssert.Contains(accountPage, "RowSpacing = metrics.PanelContentSpacing");
         StringAssert.Contains(accountPage, "ApplyLandingLayoutMetrics();");
@@ -993,6 +998,35 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(accountPage, "return button;");
         Assert.IsFalse(accountPage.Contains("var hitTarget = new Button", StringComparison.Ordinal));
         Assert.IsFalse(accountPage.Contains("Opacity = 0.01", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void MobileSignInSupportsGoogleOAuthDeepLinkFlow()
+    {
+        var accountPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "AccountPage.cs"));
+        var apiClient = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
+        var iOSInfo = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "iOS", "Info.plist"));
+        var androidCallback = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "Android", "GoogleAuthCallbackActivity.cs"));
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+
+        StringAssert.Contains(accountPage, "Teken in met Google");
+        StringAssert.Contains(accountPage, "WebAuthenticator.Default.AuthenticateAsync(");
+        StringAssert.Contains(accountPage, "_apiClient.BuildGoogleSignInStartUri()");
+        StringAssert.Contains(accountPage, "new Uri(MobileApiClient.GoogleCallbackUrl)");
+        StringAssert.Contains(accountPage, "CompleteGoogleSignInAsync(token)");
+        StringAssert.Contains(apiClient, "public const string GoogleCallbackUrl = \"schinkstories://auth/google\";");
+        StringAssert.Contains(apiClient, "BuildUri(\"/api/mobile/auth/google/start\")");
+        StringAssert.Contains(apiClient, "\"/api/mobile/auth/google/complete\"");
+        StringAssert.Contains(iOSInfo, "<string>schinkstories</string>");
+        StringAssert.Contains(androidCallback, "WebAuthenticatorCallbackActivity");
+        StringAssert.Contains(androidCallback, "DataScheme = \"schinkstories\"");
+        StringAssert.Contains(androidCallback, "DataHost = \"auth\"");
+        StringAssert.Contains(androidCallback, "DataPath = \"/google\"");
+        StringAssert.Contains(program, "app.MapGet(\"/api/mobile/auth/google/start\"");
+        StringAssert.Contains(program, "app.MapGet(\"/auth/mobile/google/callback\"");
+        StringAssert.Contains(program, "app.MapPost(\"/api/mobile/auth/google/complete\"");
+        StringAssert.Contains(program, "MobileGoogleAuthTokenProtectorPurpose");
+        StringAssert.Contains(program, "MobileGoogleCallbackUrl = \"schinkstories://auth/google\"");
     }
 
     [TestMethod]

@@ -168,6 +168,8 @@ public sealed record MobileAudioDownloadProgress(long BytesReceived, long? Total
 
 public sealed class MobileApiClient
 {
+    public const string GoogleCallbackUrl = "schinkstories://auth/google";
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly TimeSpan DefaultLuisterCacheMaxAge = TimeSpan.FromHours(12);
 
@@ -301,6 +303,30 @@ public sealed class MobileApiClient
         var payload = new { email = email.Trim(), password };
         var result = await PostAsync<AuthResponse>("/api/auth/login", payload, cancellationToken);
         await GetSessionAsync(cancellationToken);
+        return (true, result?.Message ?? "Welkom terug!");
+    }
+
+    public Uri BuildGoogleSignInStartUri() =>
+        BuildUri("/api/mobile/auth/google/start");
+
+    public async Task<(bool IsSuccess, string Message)> CompleteGoogleSignInAsync(
+        string token,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await PostAsync<MobileGoogleAuthCompleteResponse>(
+            "/api/mobile/auth/google/complete",
+            new { token },
+            cancellationToken);
+
+        if (result?.Session is not null)
+        {
+            _sessionState.Update(result.Session);
+        }
+        else
+        {
+            await GetSessionAsync(cancellationToken);
+        }
+
         return (true, result?.Message ?? "Welkom terug!");
     }
 

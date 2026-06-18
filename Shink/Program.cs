@@ -26,7 +26,10 @@ using System.Xml.Linq;
 const string AuthSessionIdClaimType = "shink:session_id";
 const string AdminRoleName = "admin";
 const string GooglePkceCookieName = "shink.auth.google.pkce";
+const string MobileGooglePkceCookieName = "shink.mobile.auth.google.pkce";
 const string GooglePkceProtectorPurpose = "Shink.Auth.GooglePkce.v1";
+const string MobileGoogleAuthTokenProtectorPurpose = "Shink.Mobile.Auth.GoogleToken.v1";
+const string MobileGoogleCallbackUrl = "schinkstories://auth/google";
 const string EmailChangeStateProtectorPurpose = "Shink.Auth.EmailChange.v1";
 const string LongLivedImageCacheControl = "public, max-age=2592000, stale-while-revalidate=86400";
 const string LongLivedStaticCacheControl = "public, max-age=2592000, stale-while-revalidate=86400";
@@ -2035,6 +2038,143 @@ app.MapGet("/auth/callback", async (
     return Results.Redirect(redirectPath);
 });
 
+app.MapGet("/api/mobile/auth/google/start", async (
+    ISupabaseAuthService supabaseAuthService,
+    IDataProtectionProvider dataProtectionProvider,
+    IOptions<SiteOptions> siteOptions,
+    HttpContext httpContext) =>
+{
+    var callbackUri = BuildPublicAbsoluteUrl(siteOptions.Value, "/auth/mobile/google/callback");
+    var startResult = await supabaseAuthService.StartGoogleSignInAsync(
+        callbackUri,
+        useImplicitFlow: false,
+        httpContext.RequestAborted);
+    if (!startResult.IsSuccess ||
+        startResult.RedirectUri is null ||
+        string.IsNullOrWhiteSpace(startResult.CodeVerifier))
+    {
+        return Results.Redirect(BuildMobileGoogleAuthCallbackUrl(
+            token: null,
+            errorMessage: "Kon nie Google-aanmelding begin nie. Probeer asseblief weer."));
+    }
+
+    var protector = dataProtectionProvider.CreateProtector(GooglePkceProtectorPurpose);
+    var protectedState = protector.Protect(JsonSerializer.Serialize(new GooglePkceStateCookiePayload(
+        ExpiresAtUtc: DateTimeOffset.UtcNow.AddMinutes(10),
+        CodeVerifier: startResult.CodeVerifier,
+        ReturnUrl: null,
+        UseImplicitFlow: false)));
+
+    httpContext.Response.Cookies.Append(
+        MobileGooglePkceCookieName,
+        protectedState,
+        new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = httpContext.Request.IsHttps,
+            SameSite = SameSiteMode.Lax,
+            IsEssential = true,
+            MaxAge = TimeSpan.FromMinutes(10),
+            Path = "/auth/mobile/google/callback"
+        });
+
+    return Results.Redirect(startResult.RedirectUri.ToString());
+});
+
+app.MapGet("/auth/mobile/google/callback", async (
+    string? code,
+    string? error,
+    string? error_description,
+    ISupabaseAuthService supabaseAuthService,
+    ISubscriptionLedgerService subscriptionLedgerService,
+    IDataProtectionProvider dataProtectionProvider,
+    HttpContext httpContext) =>
+{
+    ClearMobileGooglePkceCookie(httpContext);
+
+    if (!string.IsNullOrWhiteSpace(error))
+    {
+        return Results.Redirect(BuildMobileGoogleAuthCallbackUrl(token: null, errorMessage: error_description));
+    }
+
+    if (string.IsNullOrWhiteSpace(code))
+    {
+        return Results.Redirect(BuildMobileGoogleAuthCallbackUrl(
+            token: null,
+            errorMessage: "Google-aanmelding kon nie bevestig word nie. Probeer asseblief weer."));
+    }
+
+    GooglePkceStateCookiePayload? payload;
+    if (!httpContext.Request.Cookies.TryGetValue(MobileGooglePkceCookieName, out var protectedCookie) ||
+        string.IsNullOrWhiteSpace(protectedCookie))
+    {
+        return Results.Redirect(BuildMobileGoogleAuthCallbackUrl(
+            token: null,
+            errorMessage: "Jou Google-aanmeldsessie het verval. Probeer asseblief weer."));
+    }
+
+    try
+    {
+        var callbackProtector = dataProtectionProvider.CreateProtector(GooglePkceProtectorPurpose);
+        payload = JsonSerializer.Deserialize<GooglePkceStateCookiePayload>(callbackProtector.Unprotect(protectedCookie));
+    }
+    catch
+    {
+        return Results.Redirect(BuildMobileGoogleAuthCallbackUrl(
+            token: null,
+            errorMessage: "Kon nie jou Google-aanmeldsessie verifieer nie. Probeer asseblief weer."));
+    }
+
+    if (payload is null ||
+        payload.ExpiresAtUtc <= DateTimeOffset.UtcNow ||
+        payload.UseImplicitFlow ||
+        string.IsNullOrWhiteSpace(payload.CodeVerifier))
+    {
+        return Results.Redirect(BuildMobileGoogleAuthCallbackUrl(
+            token: null,
+            errorMessage: "Jou Google-aanmeldsessie het verval. Probeer asseblief weer."));
+    }
+
+    var exchangeResult = await supabaseAuthService.ExchangeGoogleAuthCodeAsync(
+        code,
+        payload.CodeVerifier,
+        httpContext.RequestAborted);
+    if (!exchangeResult.IsSuccess || string.IsNullOrWhiteSpace(exchangeResult.UserEmail))
+    {
+        return Results.Redirect(BuildMobileGoogleAuthCallbackUrl(token: null, errorMessage: exchangeResult.ErrorMessage));
+    }
+
+    var signedInEmail = exchangeResult.UserEmail;
+    var profileStored = await subscriptionLedgerService.UpsertSubscriberProfileAsync(
+        signedInEmail,
+        exchangeResult.FirstName,
+        exchangeResult.LastName,
+        exchangeResult.DisplayName,
+        null,
+        cancellationToken: httpContext.RequestAborted);
+    var gratisProvisioned = await subscriptionLedgerService.EnsureGratisAccessAsync(
+        signedInEmail,
+        exchangeResult.FirstName,
+        exchangeResult.LastName,
+        exchangeResult.DisplayName,
+        null,
+        cancellationToken: httpContext.RequestAborted);
+
+    if (!profileStored || !gratisProvisioned)
+    {
+        return Results.Redirect(BuildMobileGoogleAuthCallbackUrl(
+            token: null,
+            errorMessage: "Kon nie jou gratis toegang nou aktiveer nie. Probeer asseblief weer."));
+    }
+
+    var tokenProtector = dataProtectionProvider.CreateProtector(MobileGoogleAuthTokenProtectorPurpose);
+    var mobileToken = tokenProtector.Protect(JsonSerializer.Serialize(new MobileGoogleAuthTokenPayload(
+        ExpiresAtUtc: DateTimeOffset.UtcNow.AddMinutes(2),
+        Email: signedInEmail)));
+
+    return Results.Redirect(BuildMobileGoogleAuthCallbackUrl(mobileToken, errorMessage: null));
+});
+
 app.MapGet("/auth/confirm", async (
     string? token_hash,
     string? type,
@@ -2927,6 +3067,60 @@ app.MapGet("/api/mobile/session", async (
 
     return Results.Ok(session);
 }).DisableAntiforgery();
+
+app.MapPost("/api/mobile/auth/google/complete", async (
+    HttpContext httpContext,
+    MobileGoogleAuthCompleteRequest request,
+    IDataProtectionProvider dataProtectionProvider,
+    IAuthSessionService authSessionService,
+    IAdminManagementService adminManagementService,
+    ISubscriptionLedgerService subscriptionLedgerService,
+    IStoryFavoriteService storyFavoriteService) =>
+{
+    if (string.IsNullOrWhiteSpace(request.Token))
+    {
+        return Results.BadRequest(new { message = "Google-aanmelding kon nie bevestig word nie. Probeer asseblief weer." });
+    }
+
+    MobileGoogleAuthTokenPayload? payload;
+    try
+    {
+        var protector = dataProtectionProvider.CreateProtector(MobileGoogleAuthTokenProtectorPurpose);
+        payload = JsonSerializer.Deserialize<MobileGoogleAuthTokenPayload>(protector.Unprotect(request.Token));
+    }
+    catch
+    {
+        return Results.BadRequest(new { message = "Google-aanmelding kon nie bevestig word nie. Probeer asseblief weer." });
+    }
+
+    if (payload is null ||
+        payload.ExpiresAtUtc <= DateTimeOffset.UtcNow ||
+        string.IsNullOrWhiteSpace(payload.Email))
+    {
+        return Results.BadRequest(new { message = "Jou Google-aanmeldsessie het verval. Probeer asseblief weer." });
+    }
+
+    var signInCookieResult = await SignInUserAsync(
+        httpContext,
+        payload.Email,
+        authSessionService,
+        adminManagementService,
+        subscriptionLedgerService,
+        httpContext.RequestServices.GetRequiredService<IWordPressMigrationService>());
+    if (!signInCookieResult.IsSuccess)
+    {
+        return Results.Json(
+            new { message = signInCookieResult.ErrorMessage ?? "Kon nie nou jou sessie begin nie. Probeer asseblief weer." },
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
+    var session = await BuildMobileSessionResponseAsync(
+        httpContext,
+        subscriptionLedgerService,
+        storyFavoriteService);
+
+    return Results.Ok(new MobileGoogleAuthCompleteResponse("Welkom terug! Jy is nou ingeteken.", session));
+}).RequireRateLimiting("auth-submit").DisableAntiforgery();
 
 app.MapPost("/api/mobile/profile", async (
     HttpContext httpContext,
@@ -5485,6 +5679,20 @@ static string BuildGoogleAuthErrorRedirectPath(string? message)
     return QueryHelpers.AddQueryString("/teken-in", "oauthError", safeMessage);
 }
 
+static string BuildMobileGoogleAuthCallbackUrl(string? token, string? errorMessage)
+{
+    if (!string.IsNullOrWhiteSpace(token))
+    {
+        return QueryHelpers.AddQueryString(MobileGoogleCallbackUrl, "token", token);
+    }
+
+    var safeMessage = string.IsNullOrWhiteSpace(errorMessage)
+        ? "Google-aanmelding het misluk. Probeer asseblief weer."
+        : errorMessage.Trim();
+
+    return QueryHelpers.AddQueryString(MobileGoogleCallbackUrl, "error", safeMessage);
+}
+
 static string BuildPasswordRecoveryErrorRedirectPath(string? message)
 {
     var safeMessage = string.IsNullOrWhiteSpace(message)
@@ -5584,6 +5792,20 @@ static void ClearGooglePkceCookie(HttpContext httpContext)
             SameSite = SameSiteMode.Lax,
             IsEssential = true,
             Path = "/auth/callback"
+        });
+}
+
+static void ClearMobileGooglePkceCookie(HttpContext httpContext)
+{
+    httpContext.Response.Cookies.Delete(
+        MobileGooglePkceCookieName,
+        new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = httpContext.Request.IsHttps,
+            SameSite = SameSiteMode.Lax,
+            IsEssential = true,
+            Path = "/auth/mobile/google/callback"
         });
 }
 
@@ -6687,6 +6909,9 @@ sealed record WinkelAddressSuggestion(
     string? City,
     string? PostalCode);
 sealed record MobileFavoriteMutationRequest(bool IsFavorite, string? Source, string? PlaylistSlug);
+sealed record MobileGoogleAuthCompleteRequest(string? Token);
+sealed record MobileGoogleAuthCompleteResponse(string Message, MobileSessionResponse Session);
+sealed record MobileGoogleAuthTokenPayload(DateTimeOffset ExpiresAtUtc, string Email);
 sealed record MobileProfileUpdateRequest(string? FirstName, string? LastName, string? DisplayName, string? MobileNumber);
 sealed record MobileProfileUpdateResponse(string Message, MobileSessionResponse Session);
 sealed record MobileSessionResponse(
