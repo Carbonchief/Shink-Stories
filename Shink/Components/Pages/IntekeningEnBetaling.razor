@@ -432,12 +432,85 @@
                         </div>
                     }
 
+                    <div class="billing-cancel-survey">
+                        <div class="billing-cancel-survey-copy">
+                            <h3>Hoekom kanselleer jy vandag?</h3>
+                            <p>As jy wil, kan jy vir ons een rede kies sodat ons Schink Stories beter kan maak.</p>
+                        </div>
+
+                        <div class="billing-cancel-survey-options" role="radiogroup" aria-label="Hoekom kanselleer jy vandag?">
+                            <label class="billing-cancel-survey-option" for="cancel-reason-too-expensive">
+                                <input id="cancel-reason-too-expensive"
+                                       type="radio"
+                                       name="billing-cancel-reason"
+                                       checked="@(SelectedCancellationReasonCode == SubscriptionCancellationReasonCodes.TooExpensive)"
+                                       @onchange="@(() => SelectedCancellationReasonCode = SubscriptionCancellationReasonCodes.TooExpensive)" />
+                                <span>Dis te duur</span>
+                            </label>
+                            <label class="billing-cancel-survey-option" for="cancel-reason-not-using-enough">
+                                <input id="cancel-reason-not-using-enough"
+                                       type="radio"
+                                       name="billing-cancel-reason"
+                                       checked="@(SelectedCancellationReasonCode == SubscriptionCancellationReasonCodes.NotUsingEnough)"
+                                       @onchange="@(() => SelectedCancellationReasonCode = SubscriptionCancellationReasonCodes.NotUsingEnough)" />
+                                <span>Ons gebruik dit nie genoeg nie</span>
+                            </label>
+                            <label class="billing-cancel-survey-option" for="cancel-reason-child-lost-interest">
+                                <input id="cancel-reason-child-lost-interest"
+                                       type="radio"
+                                       name="billing-cancel-reason"
+                                       checked="@(SelectedCancellationReasonCode == SubscriptionCancellationReasonCodes.ChildLostInterest)"
+                                       @onchange="@(() => SelectedCancellationReasonCode = SubscriptionCancellationReasonCodes.ChildLostInterest)" />
+                                <span>My kind stel nie meer belang nie</span>
+                            </label>
+                            <label class="billing-cancel-survey-option" for="cancel-reason-right-stories">
+                                <input id="cancel-reason-right-stories"
+                                       type="radio"
+                                       name="billing-cancel-reason"
+                                       checked="@(SelectedCancellationReasonCode == SubscriptionCancellationReasonCodes.CouldNotFindRightStories)"
+                                       @onchange="@(() => SelectedCancellationReasonCode = SubscriptionCancellationReasonCodes.CouldNotFindRightStories)" />
+                                <span>Ons kon nie die regte stories kry nie</span>
+                            </label>
+                            <label class="billing-cancel-survey-option" for="cancel-reason-technical">
+                                <input id="cancel-reason-technical"
+                                       type="radio"
+                                       name="billing-cancel-reason"
+                                       checked="@(SelectedCancellationReasonCode == SubscriptionCancellationReasonCodes.TechnicalOrPaymentIssues)"
+                                       @onchange="@(() => SelectedCancellationReasonCode = SubscriptionCancellationReasonCodes.TechnicalOrPaymentIssues)" />
+                                <span>Tegniese of betalingsprobleme</span>
+                            </label>
+                            <label class="billing-cancel-survey-option" for="cancel-reason-other">
+                                <input id="cancel-reason-other"
+                                       type="radio"
+                                       name="billing-cancel-reason"
+                                       checked="@(SelectedCancellationReasonCode == SubscriptionCancellationReasonCodes.Other)"
+                                       @onchange="@(() => SelectedCancellationReasonCode = SubscriptionCancellationReasonCodes.Other)" />
+                                <span>Ander rede</span>
+                            </label>
+                        </div>
+
+                        <div class="billing-cancel-survey-note">
+                            <label class="form-label" for="billing-cancel-note">Vertel ons meer</label>
+                            <InputTextArea id="billing-cancel-note"
+                                           class="form-control"
+                                           rows="4"
+                                           maxlength="1200"
+                                           @bind-Value="CancellationSurveyNote" />
+                        </div>
+                    </div>
+
                     <div class="billing-form-actions d-flex flex-wrap gap-2">
                         <button type="button"
                                 class="btn btn-outline-secondary btn-lg billing-danger-btn"
                                 disabled="@IsCancellingSubscription"
-                                @onclick="CancelSubscriptionAsync">
+                                @onclick="CancelSubscriptionWithSurveyAsync">
                             @(IsCancellingSubscription ? "Kanselleer..." : "Ja, kanselleer intekening")
+                        </button>
+                        <button type="button"
+                                class="btn btn-outline-secondary btn-lg billing-secondary-btn"
+                                disabled="@IsCancellingSubscription"
+                                @onclick="SkipCancelSurveyAsync">
+                            Slaan oor en kanselleer
                         </button>
                         <button type="button"
                                 class="btn btn-outline-secondary btn-lg billing-secondary-btn"
@@ -649,7 +722,6 @@
 @code {
     private static readonly IReadOnlyList<PaymentPlan> BillingPlanChoices =
         PaymentPlanCatalog.All.Where(plan => !plan.IsSchoolPlan).ToArray();
-
     private string BillingCanonicalUrl => NavigationManager.ToAbsoluteUri("/intekening-en-betaling").ToString();
     private bool IsLoading { get; set; } = true;
     private bool IsRedirectingToLogin { get; set; }
@@ -684,6 +756,8 @@
     private string? EmailChangeStatusMessage { get; set; }
     private string? EmailChangeCallbackMessage { get; set; }
     private string? AccountActionStatusMessage { get; set; }
+    private string? SelectedCancellationReasonCode { get; set; }
+    private string CancellationSurveyNote { get; set; } = string.Empty;
     private IJSObjectReference? _authModule;
     private bool IsCancellationScheduled => CurrentPaidSubscription?.IsCancellationScheduled == true;
     private bool CanUpdatePaystackCard =>
@@ -872,6 +946,7 @@
     {
         AccountActionStatusMessage = null;
         IsCloseAccountModalOpen = false;
+        ResetCancellationSurvey();
         IsCancelSubscriptionModalOpen = true;
     }
 
@@ -882,6 +957,7 @@
             return;
         }
 
+        ResetCancellationSurvey();
         IsCancelSubscriptionModalOpen = false;
     }
 
@@ -901,7 +977,18 @@
         IsCloseAccountModalOpen = false;
     }
 
-    private async Task CancelSubscriptionAsync()
+    private async Task CancelSubscriptionWithSurveyAsync()
+    {
+        await CancelSubscriptionAsync(BuildCancellationSurveyFeedback());
+    }
+
+    private async Task SkipCancelSurveyAsync()
+    {
+        await CancelSubscriptionAsync(new SubscriptionCancellationFeedbackInput(
+            SubscriptionCancellationFeedbackStatuses.Skipped));
+    }
+
+    private async Task CancelSubscriptionAsync(SubscriptionCancellationFeedbackInput? feedback)
     {
         if (IsCancellingSubscription || string.IsNullOrWhiteSpace(UserEmail))
         {
@@ -915,7 +1002,7 @@
 
         try
         {
-            var result = await SubscriptionLedgerService.CancelPaidSubscriptionAsync(UserEmail);
+            var result = await SubscriptionLedgerService.CancelPaidSubscriptionAsync(UserEmail, feedback);
             AccountActionSucceeded = result.IsSuccess;
             if (!result.IsSuccess)
             {
@@ -924,6 +1011,7 @@
             }
 
             IsCancelSubscriptionModalOpen = false;
+            ResetCancellationSurvey();
             HasActivePaidSubscription = await SubscriptionLedgerService.HasActivePaidSubscriptionAsync(UserEmail);
             CurrentPaidSubscription = await SubscriptionLedgerService.GetCurrentPaidSubscriptionAsync(UserEmail);
             AccountActionStatusMessage = result.AccessEndsAtUtc is null
@@ -939,6 +1027,25 @@
         {
             IsCancellingSubscription = false;
         }
+    }
+
+    private SubscriptionCancellationFeedbackInput BuildCancellationSurveyFeedback()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedCancellationReasonCode))
+        {
+            return new SubscriptionCancellationFeedbackInput(SubscriptionCancellationFeedbackStatuses.Skipped);
+        }
+
+        return new SubscriptionCancellationFeedbackInput(
+            SubscriptionCancellationFeedbackStatuses.Submitted,
+            SelectedCancellationReasonCode,
+            CancellationSurveyNote);
+    }
+
+    private void ResetCancellationSurvey()
+    {
+        SelectedCancellationReasonCode = null;
+        CancellationSurveyNote = string.Empty;
     }
 
     private async Task OpenPaystackCardUpdateAsync()

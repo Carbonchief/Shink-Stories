@@ -2423,6 +2423,7 @@ public sealed partial class SupabaseAdminManagementService(
         var authSessionsTask = FetchAuthSessionsAsync(baseUri, apiKey, cancellationToken);
         var storyViewsTask = FetchStoryViewsAsync(baseUri, apiKey, cancellationToken);
         var storyListenSessionsTask = FetchStoryListenSessionsAsync(baseUri, apiKey, cancellationToken);
+        var cancellationSurveyTask = FetchSubscriptionCancellationFeedbackAsync(baseUri, apiKey, cancellationToken);
 
         await Task.WhenAll(
             wordPressSubscriberReportsTask,
@@ -2435,7 +2436,8 @@ public sealed partial class SupabaseAdminManagementService(
             abandonedCartRecoveriesTask,
             authSessionsTask,
             storyViewsTask,
-            storyListenSessionsTask);
+            storyListenSessionsTask,
+            cancellationSurveyTask);
 
         var wordPressSubscriberReports = wordPressSubscriberReportsTask.Result;
         if (wordPressSubscriberReports is null || !wordPressSubscriberReports.HasWordPressData)
@@ -2458,7 +2460,8 @@ public sealed partial class SupabaseAdminManagementService(
             storeOrderRevenueTask.Result,
             authSessionsTask.Result,
             storyViewsTask.Result,
-            storyListenSessionsTask.Result);
+            storyListenSessionsTask.Result,
+            cancellationSurveyTask.Result);
     }
 
     private async Task<AdminOperationContext?> TryCreateAdminOperationContextAsync(
@@ -3610,6 +3613,21 @@ public sealed partial class SupabaseAdminManagementService(
         return await FetchRowsAsync<StoryListenSessionMetricRow>(uri, apiKey, cancellationToken);
     }
 
+    private async Task<IReadOnlyList<SubscriptionCancellationFeedbackRow>> FetchSubscriptionCancellationFeedbackAsync(
+        Uri baseUri,
+        string apiKey,
+        CancellationToken cancellationToken)
+    {
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/subscription_cancellation_feedback" +
+            "?select=feedback_id,subscriber_id,subscription_id,tier_code,provider,feedback_status,reason_code,note,cancelled_subscription_count,created_at" +
+            "&order=created_at.desc" +
+            "&limit=50000");
+
+        return await FetchRowsAsync<SubscriptionCancellationFeedbackRow>(uri, apiKey, cancellationToken);
+    }
+
     private async Task<IReadOnlyList<StoryRow>> FetchStoriesAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
     {
         const string storySelectWithTestQuestions =
@@ -4272,7 +4290,8 @@ public sealed partial class SupabaseAdminManagementService(
         IReadOnlyList<StoreOrderRevenueRow> storeOrderRevenue,
         IReadOnlyList<AuthSessionMetricRow> authSessions,
         IReadOnlyList<StoryViewMetricRow> storyViews,
-        IReadOnlyList<StoryListenSessionMetricRow> storyListenSessions)
+        IReadOnlyList<StoryListenSessionMetricRow> storyListenSessions,
+        IReadOnlyList<SubscriptionCancellationFeedbackRow> cancellationSurveyRows)
     {
         var tierDetails = subscriptionTiers
             .Where(tier => !string.IsNullOrWhiteSpace(tier.TierCode))
@@ -4281,6 +4300,9 @@ public sealed partial class SupabaseAdminManagementService(
                 group => group.Key,
                 group => group.First(),
                 StringComparer.OrdinalIgnoreCase);
+        var cancellationSurveyOverview = BuildCancellationSurveyOverview(cancellationSurveyRows);
+        var cancellationSurveyReasons = BuildCancellationSurveyReasons(cancellationSurveyRows);
+        var cancellationSurveyResponses = BuildCancellationSurveyResponses(cancellationSurveyRows, subscribers, tierDetails);
 
         return new AdminSubscriberReportsSnapshot(
             MembershipStats: BuildMembershipStatsMetrics(
@@ -4298,7 +4320,10 @@ public sealed partial class SupabaseAdminManagementService(
             SalesDetails: BuildSalesRevenueDetailsCore(subscribers, subscriptions, tierDetails, revenueEvents, storeOrderRevenue),
             AbandonedCartRecoveries: BuildRecoveryMetrics(subscriptions, tierDetails, recoveries, abandonedCartRecoveries),
             RecoveredRevenueDetails: BuildRecoveredRevenueDetails(subscribers, subscriptions, tierDetails, recoveries, abandonedCartRecoveries),
-            VisitsViewsAndLogins: BuildVisitsViewsLoginsMetrics(authSessions, storyViews, storyListenSessions));
+            VisitsViewsAndLogins: BuildVisitsViewsLoginsMetrics(authSessions, storyViews, storyListenSessions),
+            CancellationSurveyOverview: cancellationSurveyOverview,
+            CancellationSurveyReasons: cancellationSurveyReasons,
+            CancellationSurveyResponses: cancellationSurveyResponses);
     }
 
     private static IReadOnlyList<AdminMembershipStatsMetric> BuildMembershipStatsMetrics(
@@ -4979,6 +5004,95 @@ public sealed partial class SupabaseAdminManagementService(
                 CountByLocalPeriod(storyViews.Select(row => row.ViewedAt), SubscriberPeriod.AllTime),
                 CountByLocalPeriod(authSessions.Select(row => row.CreatedAt), SubscriberPeriod.AllTime))
         ];
+    }
+
+    private static AdminCancellationSurveyOverview BuildCancellationSurveyOverview(
+        IReadOnlyList<SubscriptionCancellationFeedbackRow> feedbackRows)
+    {
+        var totalResponses = feedbackRows.Count;
+        var submittedResponses = feedbackRows.Count(row =>
+            string.Equals(row.FeedbackStatus, SubscriptionCancellationFeedbackStatuses.Submitted, StringComparison.OrdinalIgnoreCase));
+        var skippedResponses = feedbackRows.Count(row =>
+            string.Equals(row.FeedbackStatus, SubscriptionCancellationFeedbackStatuses.Skipped, StringComparison.OrdinalIgnoreCase));
+        var topReason = feedbackRows
+            .Where(row =>
+                string.Equals(row.FeedbackStatus, SubscriptionCancellationFeedbackStatuses.Submitted, StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(row.ReasonCode))
+            .GroupBy(row => row.ReasonCode!, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new { ReasonCode = group.Key, Count = group.Count() })
+            .OrderByDescending(group => group.Count)
+            .ThenBy(group => group.ReasonCode, StringComparer.OrdinalIgnoreCase)
+            .FirstOrDefault();
+
+        var responseRatePercent = totalResponses == 0
+            ? 0m
+            : Math.Round((decimal)submittedResponses / totalResponses * 100m, 2, MidpointRounding.AwayFromZero);
+
+        return new AdminCancellationSurveyOverview(
+            totalResponses,
+            submittedResponses,
+            skippedResponses,
+            responseRatePercent,
+            topReason?.ReasonCode,
+            topReason?.Count ?? 0);
+    }
+
+    private static IReadOnlyList<AdminCancellationSurveyReasonMetric> BuildCancellationSurveyReasons(
+        IReadOnlyList<SubscriptionCancellationFeedbackRow> feedbackRows)
+    {
+        var submittedResponses = feedbackRows.Count(row =>
+            string.Equals(row.FeedbackStatus, SubscriptionCancellationFeedbackStatuses.Submitted, StringComparison.OrdinalIgnoreCase));
+        if (submittedResponses == 0)
+        {
+            return [];
+        }
+
+        return feedbackRows
+            .Where(row =>
+                string.Equals(row.FeedbackStatus, SubscriptionCancellationFeedbackStatuses.Submitted, StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(row.ReasonCode))
+            .GroupBy(row => row.ReasonCode!, StringComparer.OrdinalIgnoreCase)
+            .Select(group => new AdminCancellationSurveyReasonMetric(
+                group.Key,
+                group.Count(),
+                Math.Round((decimal)group.Count() / submittedResponses * 100m, 2, MidpointRounding.AwayFromZero)))
+            .OrderByDescending(metric => metric.ResponseCount)
+            .ThenBy(metric => metric.ReasonCode, StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static IReadOnlyList<AdminCancellationSurveyResponseRecord> BuildCancellationSurveyResponses(
+        IReadOnlyList<SubscriptionCancellationFeedbackRow> feedbackRows,
+        IReadOnlyList<SubscriberRow> subscribers,
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails)
+    {
+        var subscriberLookup = subscribers
+            .Where(subscriber => subscriber.SubscriberId != Guid.Empty)
+            .GroupBy(subscriber => subscriber.SubscriberId)
+            .ToDictionary(group => group.Key, group => group.First());
+
+        return feedbackRows
+            .OrderByDescending(row => row.CreatedAt)
+            .Select(row =>
+            {
+                subscriberLookup.TryGetValue(row.SubscriberId, out var subscriber);
+                var email = ResolveSubscriberEmail(subscriber);
+                var tierCode = NormalizeOptionalText(row.TierCode, 80) ?? "-";
+                var tier = tierDetails.GetValueOrDefault(tierCode);
+
+                return new AdminCancellationSurveyResponseRecord(
+                    row.CreatedAt,
+                    row.SubscriberId,
+                    email,
+                    ResolveSubscriberDisplayName(subscriber, email),
+                    tierCode,
+                    NormalizeTierDisplayName(tierCode, tier?.DisplayName),
+                    NormalizeOptionalText(row.Provider, 40) ?? "-",
+                    NormalizeOptionalText(row.FeedbackStatus, 40) ?? SubscriptionCancellationFeedbackStatuses.Skipped,
+                    NormalizeCancellationReasonCode(row.ReasonCode),
+                    NormalizeOptionalText(row.Note, 1200));
+            })
+            .ToArray();
     }
 
     private static AdminSalesRevenueMetric BuildSalesRevenueMetric(
@@ -5914,6 +6028,25 @@ public sealed partial class SupabaseAdminManagementService(
             .Replace("-", " ", StringComparison.Ordinal);
     }
 
+    private static string? NormalizeCancellationReasonCode(string? reasonCode)
+    {
+        if (string.IsNullOrWhiteSpace(reasonCode))
+        {
+            return null;
+        }
+
+        return reasonCode.Trim().ToLowerInvariant() switch
+        {
+            SubscriptionCancellationReasonCodes.TooExpensive => SubscriptionCancellationReasonCodes.TooExpensive,
+            SubscriptionCancellationReasonCodes.NotUsingEnough => SubscriptionCancellationReasonCodes.NotUsingEnough,
+            SubscriptionCancellationReasonCodes.ChildLostInterest => SubscriptionCancellationReasonCodes.ChildLostInterest,
+            SubscriptionCancellationReasonCodes.CouldNotFindRightStories => SubscriptionCancellationReasonCodes.CouldNotFindRightStories,
+            SubscriptionCancellationReasonCodes.TechnicalOrPaymentIssues => SubscriptionCancellationReasonCodes.TechnicalOrPaymentIssues,
+            SubscriptionCancellationReasonCodes.Other => SubscriptionCancellationReasonCodes.Other,
+            _ => null
+        };
+    }
+
     private static Dictionary<Guid, SubscriptionSummary> BuildSubscriptionSummaryMap(IReadOnlyList<SubscriptionRow> subscriptions)
     {
         var nowUtc = DateTimeOffset.UtcNow;
@@ -6715,6 +6848,39 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("is_active")]
         public bool IsActive { get; set; }
+    }
+
+    private sealed class SubscriptionCancellationFeedbackRow
+    {
+        [JsonPropertyName("feedback_id")]
+        public Guid FeedbackId { get; set; }
+
+        [JsonPropertyName("subscriber_id")]
+        public Guid SubscriberId { get; set; }
+
+        [JsonPropertyName("subscription_id")]
+        public Guid? SubscriptionId { get; set; }
+
+        [JsonPropertyName("tier_code")]
+        public string? TierCode { get; set; }
+
+        [JsonPropertyName("provider")]
+        public string? Provider { get; set; }
+
+        [JsonPropertyName("feedback_status")]
+        public string? FeedbackStatus { get; set; }
+
+        [JsonPropertyName("reason_code")]
+        public string? ReasonCode { get; set; }
+
+        [JsonPropertyName("note")]
+        public string? Note { get; set; }
+
+        [JsonPropertyName("cancelled_subscription_count")]
+        public int CancelledSubscriptionCount { get; set; }
+
+        [JsonPropertyName("created_at")]
+        public DateTimeOffset CreatedAt { get; set; }
     }
 
     private sealed class WordPressSubscriberReportsRpcSnapshot

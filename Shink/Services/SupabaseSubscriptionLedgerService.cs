@@ -1169,6 +1169,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
     public async Task<SubscriptionCancelResult> CancelPaidSubscriptionAsync(
         string? email,
+        SubscriptionCancellationFeedbackInput? feedback = null,
         CancellationToken cancellationToken = default)
     {
         var context = await TryResolveSelfServiceContextAsync(email, cancellationToken);
@@ -1254,6 +1255,18 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             latestAccessEndsAtUtc = latestAccessEndsAtUtc is null || accessEndsAtUtc > latestAccessEndsAtUtc
                 ? accessEndsAtUtc
                 : latestAccessEndsAtUtc;
+        }
+
+        if (cancelledCount > 0)
+        {
+            await RecordSubscriptionCancellationFeedbackAsync(
+                context.BaseUri,
+                context.ApiKey,
+                context.SubscriberId,
+                activePaidSubscriptions,
+                cancelledCount,
+                feedback,
+                cancellationToken);
         }
 
         return cancelledCount == 0
@@ -2493,6 +2506,52 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             (int)response.StatusCode,
             body);
         return false;
+    }
+
+    private async Task RecordSubscriptionCancellationFeedbackAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriberId,
+        IReadOnlyList<SelfServiceSubscriptionRow> cancelledSubscriptions,
+        int cancelledSubscriptionCount,
+        SubscriptionCancellationFeedbackInput? feedback,
+        CancellationToken cancellationToken)
+    {
+        var representativeSubscription = cancelledSubscriptions.FirstOrDefault(subscription =>
+            !string.IsNullOrWhiteSpace(subscription.SubscriptionId));
+        if (representativeSubscription is null)
+        {
+            return;
+        }
+
+        var normalizedFeedback = NormalizeCancellationFeedback(feedback);
+        var payload = new Dictionary<string, object?>
+        {
+            ["subscriber_id"] = subscriberId,
+            ["subscription_id"] = representativeSubscription.SubscriptionId,
+            ["tier_code"] = NormalizeOptionalText(representativeSubscription.TierCode, 80),
+            ["provider"] = NormalizeOptionalText(representativeSubscription.Provider, 40),
+            ["feedback_status"] = normalizedFeedback.FeedbackStatus,
+            ["reason_code"] = normalizedFeedback.ReasonCode,
+            ["note"] = NormalizeOptionalText(normalizedFeedback.Note, 1200),
+            ["cancelled_subscription_count"] = cancelledSubscriptionCount
+        };
+
+        var uri = new Uri(baseUri, "rest/v1/subscription_cancellation_feedback");
+        using var request = CreateJsonRequest(HttpMethod.Post, uri, apiKey, payload, "return=minimal");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Subscription cancellation feedback insert failed. subscriber_id={SubscriberId} subscription_id={SubscriptionId} Status={StatusCode} Body={Body}",
+            subscriberId,
+            representativeSubscription.SubscriptionId,
+            (int)response.StatusCode,
+            body);
     }
 
     private async Task<SubscriptionPlanChangeAttemptResult> BeginSubscriptionPlanChangeAttemptAsync(
@@ -6508,6 +6567,53 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         return trimmed.Length > maxLength
             ? trimmed[..maxLength]
             : trimmed;
+    }
+
+    private static SubscriptionCancellationFeedbackInput NormalizeCancellationFeedback(
+        SubscriptionCancellationFeedbackInput? feedback)
+    {
+        var normalizedStatus = string.Equals(
+            feedback?.FeedbackStatus,
+            SubscriptionCancellationFeedbackStatuses.Submitted,
+            StringComparison.OrdinalIgnoreCase)
+            ? SubscriptionCancellationFeedbackStatuses.Submitted
+            : SubscriptionCancellationFeedbackStatuses.Skipped;
+        var normalizedReasonCode = NormalizeCancellationReasonCode(feedback?.ReasonCode);
+        var normalizedNote = NormalizeOptionalText(feedback?.Note, 1200);
+
+        if (!string.Equals(normalizedStatus, SubscriptionCancellationFeedbackStatuses.Submitted, StringComparison.Ordinal))
+        {
+            return new SubscriptionCancellationFeedbackInput(SubscriptionCancellationFeedbackStatuses.Skipped);
+        }
+
+        if (string.IsNullOrWhiteSpace(normalizedReasonCode))
+        {
+            return new SubscriptionCancellationFeedbackInput(SubscriptionCancellationFeedbackStatuses.Skipped);
+        }
+
+        return new SubscriptionCancellationFeedbackInput(
+            SubscriptionCancellationFeedbackStatuses.Submitted,
+            normalizedReasonCode,
+            normalizedNote);
+    }
+
+    private static string? NormalizeCancellationReasonCode(string? reasonCode)
+    {
+        if (string.IsNullOrWhiteSpace(reasonCode))
+        {
+            return null;
+        }
+
+        return reasonCode.Trim().ToLowerInvariant() switch
+        {
+            SubscriptionCancellationReasonCodes.TooExpensive => SubscriptionCancellationReasonCodes.TooExpensive,
+            SubscriptionCancellationReasonCodes.NotUsingEnough => SubscriptionCancellationReasonCodes.NotUsingEnough,
+            SubscriptionCancellationReasonCodes.ChildLostInterest => SubscriptionCancellationReasonCodes.ChildLostInterest,
+            SubscriptionCancellationReasonCodes.CouldNotFindRightStories => SubscriptionCancellationReasonCodes.CouldNotFindRightStories,
+            SubscriptionCancellationReasonCodes.TechnicalOrPaymentIssues => SubscriptionCancellationReasonCodes.TechnicalOrPaymentIssues,
+            SubscriptionCancellationReasonCodes.Other => SubscriptionCancellationReasonCodes.Other,
+            _ => null
+        };
     }
 
     private static bool ShouldActivatePaystackSubscription(string eventType, string? eventStatus)

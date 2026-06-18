@@ -22,7 +22,10 @@ public interface ISubscriptionLedgerService
     Task<SubscriptionCardUpdateLinkResult> CreatePaystackCardUpdateLinkAsync(string? email, CancellationToken cancellationToken = default);
     Task<SubscriptionRepairResult> TryRepairPaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default);
     Task<SubscriptionFreeTierTransferResult> TransferPaidSubscriptionToGratisAsync(string? email, CancellationToken cancellationToken = default);
-    Task<SubscriptionCancelResult> CancelPaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default);
+    Task<SubscriptionCancelResult> CancelPaidSubscriptionAsync(
+        string? email,
+        SubscriptionCancellationFeedbackInput? feedback = null,
+        CancellationToken cancellationToken = default);
     Task<AccountClosureResult> CloseAccountAsync(string? email, CancellationToken cancellationToken = default);
     Task<SubscriberProfile?> GetSubscriberProfileAsync(string? email, CancellationToken cancellationToken = default);
     Task<bool> UpsertSubscriberProfileAsync(
@@ -103,6 +106,10 @@ public sealed record SubscriptionCancelResult(
     string? ErrorMessage = null,
     DateTimeOffset? AccessEndsAtUtc = null,
     int CancelledSubscriptions = 0);
+public sealed record SubscriptionCancellationFeedbackInput(
+    string FeedbackStatus,
+    string? ReasonCode = null,
+    string? Note = null);
 public sealed record AccountClosureResult(bool IsSuccess, string? ErrorMessage = null);
 public sealed record SubscriberProfile(
     string Email,
@@ -156,4 +163,20 @@ public static class SubscriptionRecurringBillingModes
 {
     public const string ProviderSubscription = "provider_subscription";
     public const string PaystackAuthorizationSchedule = "paystack_authorization_schedule";
+}
+
+public static class SubscriptionCancellationFeedbackStatuses
+{
+    public const string Submitted = "submitted";
+    public const string Skipped = "skipped";
+}
+
+public static class SubscriptionCancellationReasonCodes
+{
+    public const string TooExpensive = "too_expensive";
+    public const string NotUsingEnough = "not_using_enough";
+    public const string ChildLostInterest = "child_lost_interest";
+    public const string CouldNotFindRightStories = "could_not_find_right_stories";
+    public const string TechnicalOrPaymentIssues = "technical_or_payment_issues";
+    public const string Other = "other";
 }

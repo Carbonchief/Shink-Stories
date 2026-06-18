@@ -525,10 +525,14 @@ else
                 Title: speellysteConfig is null ? "Speellyste" : GetPlaylistTitle(speellysteConfig)));
         }
 
-        return sections
+        var orderedSections = sections
             .OrderBy(section => section.SortOrder)
             .ThenBy(section => section.Title, StringComparer.OrdinalIgnoreCase)
             .ToArray();
+        return GratisPlaylistDisplayOrderPolicy.MoveGratisPlaylistNearTop(
+            orderedSections,
+            IsGratisOnlyUser(),
+            static section => section.Playlist?.Slug);
     }
 
     private RenderFragment RenderSpeellysteSection(IReadOnlyList<StoryPlaylist> speellysteCarouselPlaylists) => @<text>
@@ -631,6 +635,12 @@ else
     private static bool IsWeeklyPopularPlaylist(StoryPlaylist playlist) =>
         string.Equals(playlist.SystemKey, "popular-stories-this-week", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(playlist.Slug, "popular-stories-this-week", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsGratisOnlyUser() =>
+        !string.IsNullOrWhiteSpace(SignedInEmail) &&
+        AccessProfile.HasGratisOrPaid &&
+        !AccessProfile.HasStoryCornerOrAll &&
+        !AccessProfile.HasAllStories;
 
     private bool IsStoryFavorite(string slug) => FavoriteStorySlugs.Contains(slug);
 

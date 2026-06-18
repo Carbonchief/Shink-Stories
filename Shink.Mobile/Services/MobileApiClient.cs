@@ -57,6 +57,9 @@ public sealed class SessionState
     private const string EmailPreferenceKey = "mobile_session_email";
     private const string DisplayNamePreferenceKey = "mobile_session_display_name";
     private const string ProfileImageUrlPreferenceKey = "mobile_session_profile_image_url";
+    private const string FirstNamePreferenceKey = "mobile_session_first_name";
+    private const string LastNamePreferenceKey = "mobile_session_last_name";
+    private const string MobileNumberPreferenceKey = "mobile_session_mobile_number";
     private const string HasPaidSubscriptionPreferenceKey = "mobile_session_has_paid_subscription";
     private const string FavoriteStorySlugsPreferenceKey = "mobile_session_favorite_story_slugs";
     private const string LoginUrlPreferenceKey = "mobile_session_login_url";
@@ -82,6 +85,9 @@ public sealed class SessionState
             Email: GetNullablePreference(EmailPreferenceKey),
             DisplayName: GetNullablePreference(DisplayNamePreferenceKey),
             ProfileImageUrl: GetNullablePreference(ProfileImageUrlPreferenceKey),
+            FirstName: GetNullablePreference(FirstNamePreferenceKey),
+            LastName: GetNullablePreference(LastNamePreferenceKey),
+            MobileNumber: GetNullablePreference(MobileNumberPreferenceKey),
             HasPaidSubscription: Preferences.Get(HasPaidSubscriptionPreferenceKey, false),
             FavoriteStorySlugs: LoadFavoriteStorySlugs(),
             LoginUrl: Preferences.Get(LoginUrlPreferenceKey, string.Empty),
@@ -120,6 +126,9 @@ public sealed class SessionState
             Preferences.Remove(EmailPreferenceKey);
             Preferences.Remove(DisplayNamePreferenceKey);
             Preferences.Remove(ProfileImageUrlPreferenceKey);
+            Preferences.Remove(FirstNamePreferenceKey);
+            Preferences.Remove(LastNamePreferenceKey);
+            Preferences.Remove(MobileNumberPreferenceKey);
             Preferences.Remove(HasPaidSubscriptionPreferenceKey);
             Preferences.Remove(FavoriteStorySlugsPreferenceKey);
             return;
@@ -128,6 +137,9 @@ public sealed class SessionState
         SetNullablePreference(EmailPreferenceKey, session.Email);
         SetNullablePreference(DisplayNamePreferenceKey, session.DisplayName);
         SetNullablePreference(ProfileImageUrlPreferenceKey, session.ProfileImageUrl);
+        SetNullablePreference(FirstNamePreferenceKey, session.FirstName);
+        SetNullablePreference(LastNamePreferenceKey, session.LastName);
+        SetNullablePreference(MobileNumberPreferenceKey, session.MobileNumber);
         Preferences.Set(HasPaidSubscriptionPreferenceKey, session.HasPaidSubscription);
         Preferences.Set(
             FavoriteStorySlugsPreferenceKey,
@@ -157,10 +169,13 @@ public sealed record MobileAudioDownloadProgress(long BytesReceived, long? Total
 public sealed class MobileApiClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private static readonly TimeSpan DefaultLuisterCacheMaxAge = TimeSpan.FromHours(12);
 
     private readonly HttpClient _httpClient;
     private readonly MobileAppSettings _settings;
     private readonly SessionState _sessionState;
+
+    public event Action<int>? NewNotificationsAvailable;
 
     public MobileApiClient(MobileAppSettings settings, SessionState sessionState)
     {
@@ -188,7 +203,7 @@ public sealed class MobileApiClient
     public async Task<MobileSession> GetSessionAsync(CancellationToken cancellationToken = default)
     {
         var session = await GetAsync<MobileSession>("/api/mobile/session", cancellationToken)
-            ?? new MobileSession(false, null, null, null, false, Array.Empty<string>(), string.Empty, string.Empty, string.Empty);
+            ?? new MobileSession(false, null, null, null, null, null, null, false, Array.Empty<string>(), string.Empty, string.Empty, string.Empty);
         _sessionState.Update(session);
         return session;
     }
@@ -200,7 +215,42 @@ public sealed class MobileApiClient
         GetAsync<MobileStoryCollectionResponse>("/api/mobile/gratis", cancellationToken);
 
     public Task<MobileLuisterResponse?> GetLuisterAsync(CancellationToken cancellationToken = default) =>
-        GetAsync<MobileLuisterResponse>("/api/mobile/luister?compact=true", cancellationToken);
+        GetAndCacheLuisterAsync(cancellationToken);
+
+    public Task<MobileLuisterResponse?> GetCachedLuisterAsync(CancellationToken cancellationToken = default) =>
+        GetCachedLuisterAsync(DefaultLuisterCacheMaxAge, cancellationToken);
+
+    public async Task<MobileLuisterResponse?> GetCachedLuisterAsync(
+        TimeSpan maxAge,
+        CancellationToken cancellationToken = default)
+    {
+        var cachePath = BuildLuisterCachePath();
+        if (!File.Exists(cachePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            await using var stream = File.OpenRead(cachePath);
+            var cacheEntry = await JsonSerializer.DeserializeAsync<MobileLuisterCacheEntry>(
+                stream,
+                JsonOptions,
+                cancellationToken);
+            if (cacheEntry?.Response is null ||
+                DateTimeOffset.UtcNow - cacheEntry.CachedAtUtc > maxAge)
+            {
+                return null;
+            }
+
+            return cacheEntry.Response;
+        }
+        catch
+        {
+            TryDeleteFile(cachePath);
+            return null;
+        }
+    }
 
     public Task<MobileAboutResponse?> GetAboutAsync(CancellationToken cancellationToken = default) =>
         GetAsync<MobileAboutResponse>("/api/mobile/meer-oor-ons", cancellationToken);
@@ -284,6 +334,36 @@ public sealed class MobileApiClient
         await GetSessionAsync(cancellationToken);
     }
 
+    public async Task<(bool IsSuccess, string Message)> UpdateProfileAsync(
+        string firstName,
+        string lastName,
+        string displayName,
+        string mobileNumber,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await PostAsync<MobileProfileUpdateResponse>(
+            "/api/mobile/profile",
+            new
+            {
+                firstName = firstName.Trim(),
+                lastName = lastName.Trim(),
+                displayName = displayName.Trim(),
+                mobileNumber = mobileNumber.Trim()
+            },
+            cancellationToken);
+
+        if (result?.Session is not null)
+        {
+            _sessionState.Update(result.Session);
+        }
+        else
+        {
+            await GetSessionAsync(cancellationToken);
+        }
+
+        return (true, result?.Message ?? "Profiel opgedateer.");
+    }
+
     public async Task<bool> SetFavoriteAsync(string slug, string source, bool isFavorite, CancellationToken cancellationToken = default)
     {
         var result = await PostAsync<FavoriteResponse>(
@@ -332,7 +412,7 @@ public sealed class MobileApiClient
 
         try
         {
-            await PostAsync<TrackingResponse>(
+            var result = await PostAsync<TrackingResponse>(
                 $"/api/stories/{Uri.EscapeDataString(slug)}/listen",
                 new
                 {
@@ -346,6 +426,10 @@ public sealed class MobileApiClient
                     isCompleted
                 },
                 cancellationToken);
+            if (result?.NewNotificationsCreated > 0)
+            {
+                NewNotificationsAvailable?.Invoke(result.NewNotificationsCreated);
+            }
         }
         catch
         {
@@ -359,6 +443,46 @@ public sealed class MobileApiClient
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
+    }
+
+    private async Task<MobileLuisterResponse?> GetAndCacheLuisterAsync(CancellationToken cancellationToken)
+    {
+        var response = await GetAsync<MobileLuisterResponse>("/api/mobile/luister?compact=true", cancellationToken);
+        if (response is not null)
+        {
+            await SaveLuisterCacheAsync(response, cancellationToken);
+        }
+
+        return response;
+    }
+
+    private async Task SaveLuisterCacheAsync(MobileLuisterResponse response, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var cachePath = BuildLuisterCachePath();
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(cachePath)!);
+            var temporaryPath = $"{cachePath}.tmp";
+            await using (var stream = File.Create(temporaryPath))
+            {
+                await JsonSerializer.SerializeAsync(
+                    stream,
+                    new MobileLuisterCacheEntry(DateTimeOffset.UtcNow, response),
+                    JsonOptions,
+                    cancellationToken);
+            }
+
+            if (File.Exists(cachePath))
+            {
+                File.Delete(cachePath);
+            }
+
+            File.Move(temporaryPath, cachePath);
+        }
+        catch
+        {
+            // Luister data caching is an optimization only.
+        }
     }
 
     private async Task<T?> PostAsync<T>(string path, object payload, CancellationToken cancellationToken)
@@ -729,6 +853,13 @@ public sealed class MobileApiClient
         return System.IO.Path.Combine(cacheDirectory, $"{cacheKey}{extension}");
     }
 
+    private string BuildLuisterCachePath()
+    {
+        var cacheDirectory = System.IO.Path.Combine(FileSystem.CacheDirectory, "story-data");
+        var cacheKey = BuildStableCacheKey(_settings.BaseUrl);
+        return System.IO.Path.Combine(cacheDirectory, $"luister-{cacheKey}.json");
+    }
+
     private static bool ShouldDownloadAudioForPlayback(string audioUrl)
     {
         if (!Uri.TryCreate(audioUrl, UriKind.Absolute, out var uri))
@@ -753,6 +884,20 @@ public sealed class MobileApiClient
 
     private static string BuildStableCacheKey(string value) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant();
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+        }
+    }
 
     private static string ResolveImageExtensionFromUrl(string imageUrl)
     {
@@ -833,5 +978,6 @@ public sealed class MobileApiClient
     }
 
     private sealed record FavoriteResponse(bool IsFavorite);
-    private sealed record TrackingResponse(bool Tracked);
+    private sealed record TrackingResponse(bool Tracked, int NewNotificationsCreated = 0);
+    private sealed record MobileLuisterCacheEntry(DateTimeOffset CachedAtUtc, MobileLuisterResponse Response);
 }

@@ -229,6 +229,28 @@ public class AdminAnalyticsSourceTests
     }
 
     [TestMethod]
+    public void AnalyticsTabShowsCancellationSurveyAnalytics()
+    {
+        var admin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
+        var service = File.ReadAllText(GetRepoPath("Shink", "Services", "IAdminManagementService.cs"));
+
+        StringAssert.Contains(admin, "@T(\"Kansellasies\", \"Cancellations\")");
+        StringAssert.Contains(admin, "admin-cancellation-analytics-section");
+        StringAssert.Contains(admin, "CancellationSurveyOverview");
+        StringAssert.Contains(admin, "CancellationSurveyReasons");
+        StringAssert.Contains(admin, "CancellationSurveyResponses");
+        StringAssert.Contains(admin, "@T(\"Responskoers\", \"Response rate\")");
+        StringAssert.Contains(admin, "@T(\"Top rede\", \"Top reason\")");
+        StringAssert.Contains(admin, "@T(\"Rede uiteensetting\", \"Reason breakdown\")");
+        StringAssert.Contains(admin, "@T(\"Onlangse antwoorde\", \"Recent responses\")");
+        StringAssert.Contains(admin, "Items=\"CancellationSurveyResponses\"");
+        StringAssert.Contains(service, "CancellationSurveyOverview");
+        StringAssert.Contains(service, "AdminCancellationSurveyOverview");
+        StringAssert.Contains(service, "AdminCancellationSurveyReasonMetric");
+        StringAssert.Contains(service, "AdminCancellationSurveyResponseRecord");
+    }
+
+    [TestMethod]
     public void UsageAnalyticsTabShowsStoryDrilldown()
     {
         var admin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));

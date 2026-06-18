@@ -23,7 +23,7 @@ public sealed class AccountPage : ContentPage
     private VerticalStackLayout? _authHeroStack;
     private Image? _authLogoImage;
     private Label? _authWelcomeLabel;
-    private Border? _authTaglinePill;
+    private Label? _authIntroLabel;
     private Label? _authTaglineLabel;
     private Image? _authCharacterImage;
     private Grid? _authPanelFrame;
@@ -148,13 +148,14 @@ public sealed class AccountPage : ContentPage
         };
         _authWelcomeLabel = new Label
         {
-            Text = "Welkom by\nSchink Stories",
+            Text = "Bou jou kind se karakter -\neen storie op 'n slag.",
             FontSize = metrics.TitleFontSize,
             FontAttributes = FontAttributes.Bold,
             FontFamily = "serif",
-            LineHeight = 0.9,
+            LineHeight = 0.95,
             TextColor = Colors.White,
             HorizontalTextAlignment = TextAlignment.Center,
+            Margin = metrics.TitleMargin,
             Shadow = new Shadow
             {
                 Brush = Brush.Black,
@@ -163,27 +164,32 @@ public sealed class AccountPage : ContentPage
                 Opacity = 0.28f
             }
         };
+        _authIntroLabel = new Label
+        {
+            Text = "Rustige, opbouende Afrikaanse storietyd.",
+            TextColor = Colors.White,
+            FontSize = metrics.IntroFontSize,
+            FontAttributes = FontAttributes.Bold,
+            HorizontalTextAlignment = TextAlignment.Center,
+            LineBreakMode = LineBreakMode.WordWrap,
+            Shadow = new Shadow
+            {
+                Brush = Brush.Black,
+                Offset = new Point(0, 1),
+                Radius = 4,
+                Opacity = 0.22f
+            }
+        };
         _authTaglineLabel = new Label
         {
-            Text = "Afrikaanse stories vir klein luisteraars",
-            TextColor = Color.FromArgb("#0F6868"),
+            Text = "Minder skerms. Rustiger aande. Stories wat waardes bou.",
+            TextColor = Color.FromArgb("#FFF7E8"),
             FontSize = metrics.TaglineFontSize,
-            FontAttributes = FontAttributes.Bold,
             HorizontalTextAlignment = TextAlignment.Center
-        };
-        _authTaglinePill = new Border
-        {
-            BackgroundColor = Color.FromArgb("#FFD45A"),
-            Stroke = Color.FromArgb("#E8B52F"),
-            StrokeThickness = 1,
-            StrokeShape = new RoundRectangle { CornerRadius = 999 },
-            Padding = metrics.TaglinePadding,
-            HorizontalOptions = LayoutOptions.Center,
-            Content = _authTaglineLabel
         };
         _authCharacterImage = new Image
         {
-            Source = "schink_character_lineup.png",
+            Source = "schink_stories_home_hero.png",
             HeightRequest = metrics.CharacterHeight,
             Aspect = Aspect.AspectFit,
             Margin = metrics.CharacterMargin
@@ -195,9 +201,10 @@ public sealed class AccountPage : ContentPage
             Children =
             {
                 _authLogoImage,
+                _authCharacterImage,
                 _authWelcomeLabel,
-                _authTaglinePill,
-                _authCharacterImage
+                _authIntroLabel,
+                _authTaglineLabel
             }
         };
         return _authHeroStack;
@@ -523,11 +530,12 @@ public sealed class AccountPage : ContentPage
         if (_authWelcomeLabel is not null)
         {
             _authWelcomeLabel.FontSize = metrics.TitleFontSize;
+            _authWelcomeLabel.Margin = metrics.TitleMargin;
         }
 
-        if (_authTaglinePill is not null)
+        if (_authIntroLabel is not null)
         {
-            _authTaglinePill.Padding = metrics.TaglinePadding;
+            _authIntroLabel.FontSize = metrics.IntroFontSize;
         }
 
         if (_authTaglineLabel is not null)
@@ -560,15 +568,16 @@ public sealed class AccountPage : ContentPage
         var tight = height < 680;
 
         return new LandingLayoutMetrics(
-            HeroPadding: new Thickness(18, tight ? 22 : compact ? 32 : 48, 18, 0),
-            HeroSpacing: tight ? 4 : compact ? 6 : 8,
-            LogoHeight: Math.Clamp(height * (tight ? 0.18 : 0.2), 112, 182),
-            LogoMargin: new Thickness(-12, 0, -12, tight ? -8 : -12),
-            TitleFontSize: Math.Clamp(height * 0.04, 25, 35),
-            TaglineFontSize: tight ? 12 : 13,
-            TaglinePadding: new Thickness(tight ? 14 : 18, tight ? 7 : 10),
-            CharacterHeight: Math.Clamp(height * (tight ? 0.12 : 0.17), 76, 158),
-            CharacterMargin: new Thickness(-34, 0, -34, tight ? -18 : compact ? -24 : -30),
+            HeroPadding: new Thickness(18, tight ? 20 : compact ? 28 : 42, 18, 0),
+            HeroSpacing: tight ? 3 : compact ? 5 : 7,
+            LogoHeight: Math.Clamp(height * (tight ? 0.1 : 0.12), 78, 116),
+            LogoMargin: new Thickness(-12, 0, -12, tight ? -6 : -10),
+            TitleFontSize: Math.Clamp(height * 0.037, 24, 34),
+            TitleMargin: new Thickness(0, tight ? -4 : -2, 0, 0),
+            IntroFontSize: tight ? 13 : compact ? 14 : 15,
+            TaglineFontSize: tight ? 12 : compact ? 13 : 14,
+            CharacterHeight: Math.Clamp(height * (tight ? 0.15 : 0.19), 104, 166),
+            CharacterMargin: new Thickness(-24, tight ? -10 : -14, -24, tight ? -8 : -12),
             PanelMargin: new Thickness(18, 0, 18, tight ? 8 : 14),
             PanelPadding: new Thickness(26, tight ? 18 : compact ? 21 : 24, 26, tight ? 20 : compact ? 24 : 28),
             PanelContentSpacing: tight ? 10 : compact ? 12 : 14,
@@ -718,8 +727,9 @@ public sealed class AccountPage : ContentPage
         double LogoHeight,
         Thickness LogoMargin,
         double TitleFontSize,
+        Thickness TitleMargin,
+        double IntroFontSize,
         double TaglineFontSize,
-        Thickness TaglinePadding,
         double CharacterHeight,
         Thickness CharacterMargin,
         Thickness PanelMargin,

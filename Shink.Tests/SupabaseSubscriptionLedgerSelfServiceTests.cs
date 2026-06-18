@@ -375,7 +375,12 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
 
         var service = CreateService(handler);
 
-        var result = await service.CancelPaidSubscriptionAsync("ouer@example.com");
+        var result = await service.CancelPaidSubscriptionAsync(
+            "ouer@example.com",
+            new SubscriptionCancellationFeedbackInput(
+                FeedbackStatus: SubscriptionCancellationFeedbackStatuses.Submitted,
+                ReasonCode: SubscriptionCancellationReasonCodes.TooExpensive,
+                Note: "Ons gebruik dit nie meer elke week nie."));
 
         Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
         Assert.AreEqual(nextRenewalAt, result.AccessEndsAtUtc);
@@ -386,6 +391,16 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
         Assert.AreEqual("active", patchPayload.GetProperty("status").GetString());
         Assert.AreEqual(nextRenewalAt, patchPayload.GetProperty("cancelled_at").GetDateTimeOffset());
         Assert.AreEqual("email-token-123", patchPayload.GetProperty("provider_email_token").GetString());
+
+        var feedbackPayload = JsonSerializer.Deserialize<JsonElement>(handler.CancellationFeedbackPayload!);
+        Assert.AreEqual("11111111-1111-1111-1111-111111111111", feedbackPayload.GetProperty("subscriber_id").GetString());
+        Assert.AreEqual("22222222-2222-2222-2222-222222222222", feedbackPayload.GetProperty("subscription_id").GetString());
+        Assert.AreEqual("all_stories_monthly", feedbackPayload.GetProperty("tier_code").GetString());
+        Assert.AreEqual("paystack", feedbackPayload.GetProperty("provider").GetString());
+        Assert.AreEqual("submitted", feedbackPayload.GetProperty("feedback_status").GetString());
+        Assert.AreEqual("too_expensive", feedbackPayload.GetProperty("reason_code").GetString());
+        Assert.AreEqual("Ons gebruik dit nie meer elke week nie.", feedbackPayload.GetProperty("note").GetString());
+        Assert.AreEqual(1, feedbackPayload.GetProperty("cancelled_subscription_count").GetInt32());
     }
 
     [TestMethod]
@@ -586,13 +601,25 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
 
         var service = CreateService(handler);
 
-        var result = await service.CancelPaidSubscriptionAsync("ouer@example.com");
+        var result = await service.CancelPaidSubscriptionAsync(
+            "ouer@example.com",
+            new SubscriptionCancellationFeedbackInput(
+                FeedbackStatus: SubscriptionCancellationFeedbackStatuses.Skipped));
 
         Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
         Assert.AreEqual(legacyRenewalAt, result.AccessEndsAtUtc);
         Assert.AreEqual(2, handler.SubscriptionPatchPayloads.Count);
         Assert.IsFalse(handler.PaystackLookups.Any(path => path.Contains("wp-pmpro-current", StringComparison.Ordinal)));
         StringAssert.Contains(handler.PaystackDisablePayload!, "\"code\":\"SUB_selfservice\"");
+
+        var feedbackPayload = JsonSerializer.Deserialize<JsonElement>(handler.CancellationFeedbackPayload!);
+        Assert.AreEqual("33333333-3333-3333-3333-333333333333", feedbackPayload.GetProperty("subscription_id").GetString());
+        Assert.AreEqual("story_corner_monthly", feedbackPayload.GetProperty("tier_code").GetString());
+        Assert.AreEqual("paystack", feedbackPayload.GetProperty("provider").GetString());
+        Assert.AreEqual("skipped", feedbackPayload.GetProperty("feedback_status").GetString());
+        Assert.AreEqual(JsonValueKind.Null, feedbackPayload.GetProperty("reason_code").ValueKind);
+        Assert.AreEqual(JsonValueKind.Null, feedbackPayload.GetProperty("note").ValueKind);
+        Assert.AreEqual(2, feedbackPayload.GetProperty("cancelled_subscription_count").GetInt32());
     }
 
     [TestMethod]
@@ -649,7 +676,12 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
 
         var service = CreateService(handler);
 
-        var result = await service.CancelPaidSubscriptionAsync("ouer@example.com");
+        var result = await service.CancelPaidSubscriptionAsync(
+            "ouer@example.com",
+            new SubscriptionCancellationFeedbackInput(
+                FeedbackStatus: SubscriptionCancellationFeedbackStatuses.Submitted,
+                ReasonCode: SubscriptionCancellationReasonCodes.TechnicalOrPaymentIssues,
+                Note: "Die betaling het ons verwar."));
 
         Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
         Assert.AreEqual(nextRenewalAt, result.AccessEndsAtUtc);
@@ -664,6 +696,141 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
         var patchPayload = JsonSerializer.Deserialize<JsonElement>(handler.SubscriptionPatchPayload!);
         Assert.AreEqual("active", patchPayload.GetProperty("status").GetString());
         Assert.AreEqual(nextRenewalAt, patchPayload.GetProperty("cancelled_at").GetDateTimeOffset());
+    }
+
+    [TestMethod]
+    public async Task CancelPaidSubscriptionAsync_ReturnsSuccessWhenFeedbackInsertFails()
+    {
+        var nextRenewalAt = DateTimeOffset.UtcNow.AddDays(10);
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      { "subscriber_id": "11111111-1111-1111-1111-111111111111", "disabled_at": null }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "provider_payment_id": "SUB_feedback_failure",
+                        "provider_email_token": "email-token-123",
+                        "next_renewal_at": "{{nextRenewalAt:O}}",
+                        "cancelled_at": null,
+                        "status": "active"
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/subscription/disable")
+            {
+                return JsonResponse("""{ "status": true, "message": "Subscription disabled successfully" }""");
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_cancellation_feedback")
+            {
+                return new HttpResponseMessage(HttpStatusCode.InternalServerError)
+                {
+                    Content = new StringContent("insert failed", Encoding.UTF8, "text/plain")
+                };
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.CancelPaidSubscriptionAsync(
+            "ouer@example.com",
+            new SubscriptionCancellationFeedbackInput(
+                FeedbackStatus: SubscriptionCancellationFeedbackStatuses.Submitted,
+                ReasonCode: SubscriptionCancellationReasonCodes.NotUsingEnough,
+                Note: "Ons luister net soms."));
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.AreEqual(nextRenewalAt, result.AccessEndsAtUtc);
+        Assert.IsNotNull(handler.CancellationFeedbackPayload);
+    }
+
+    [TestMethod]
+    public async Task CancelPaidSubscriptionAsync_DoesNotWriteFeedbackWhenProviderCancellationFails()
+    {
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      { "subscriber_id": "11111111-1111-1111-1111-111111111111", "disabled_at": null }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "provider_payment_id": "SUB_cancel_fail",
+                        "provider_email_token": "email-token-123",
+                        "next_renewal_at": "2099-07-01T00:00:00Z",
+                        "cancelled_at": null,
+                        "status": "active"
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/subscription/disable")
+            {
+                return JsonResponse("""{ "status": false, "message": "Disable failed" }""");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_cancellation_feedback")
+            {
+                Assert.Fail("Feedback should not be written when cancellation fails.");
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.CancelPaidSubscriptionAsync(
+            "ouer@example.com",
+            new SubscriptionCancellationFeedbackInput(
+                FeedbackStatus: SubscriptionCancellationFeedbackStatuses.Submitted,
+                ReasonCode: SubscriptionCancellationReasonCodes.Other,
+                Note: "Nog nie seker nie."));
+
+        Assert.IsFalse(result.IsSuccess);
+        Assert.IsNull(handler.CancellationFeedbackPayload);
     }
 
     [TestMethod]
@@ -4658,6 +4825,7 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     private sealed class RecordingHandler(Func<HttpRequestMessage, HttpResponseMessage> responseFactory) : HttpMessageHandler
     {
         public string? PaystackDisablePayload { get; private set; }
+        public string? CancellationFeedbackPayload { get; private set; }
         public string? SubscriptionPatchPayload { get; private set; }
         public List<string> SubscriptionPatchPayloads { get; } = [];
         public List<string> SubscriptionCreatePayloads { get; } = [];
@@ -4690,6 +4858,11 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                 {
                     PaystackChargePayloads.Add(payload);
                 }
+            }
+            else if (request.Method == HttpMethod.Post &&
+                     request.RequestUri?.AbsolutePath == "/rest/v1/subscription_cancellation_feedback")
+            {
+                CancellationFeedbackPayload = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
             }
             else if (request.Method == HttpMethod.Post &&
                      request.RequestUri?.AbsolutePath is "/subscription" or "/rest/v1/subscriptions")

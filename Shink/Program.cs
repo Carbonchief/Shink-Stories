@@ -2920,29 +2920,73 @@ app.MapGet("/api/mobile/session", async (
     ISubscriptionLedgerService subscriptionLedgerService,
     IStoryFavoriteService storyFavoriteService) =>
 {
-    var signedInEmail = GetSignedInEmail(httpContext.User);
-    var isSignedIn = !string.IsNullOrWhiteSpace(signedInEmail);
-    var hasPaidSubscription = isSignedIn &&
-        await subscriptionLedgerService.HasActivePaidSubscriptionAsync(signedInEmail, httpContext.RequestAborted);
-    var favoriteStorySlugs = isSignedIn
-        ? await storyFavoriteService.GetFavoriteStorySlugsAsync(signedInEmail, cancellationToken: httpContext.RequestAborted)
-        : Array.Empty<string>();
-    var subscriberProfile = isSignedIn
-        ? await subscriptionLedgerService.GetSubscriberProfileAsync(signedInEmail, httpContext.RequestAborted)
-        : null;
-    var displayName = ResolveMobileProfileDisplayName(httpContext.User, subscriberProfile, signedInEmail);
-    var profileImageUrl = ResolveMobileProfileImageUrl(httpContext, subscriberProfile);
+    var session = await BuildMobileSessionResponseAsync(
+        httpContext,
+        subscriptionLedgerService,
+        storyFavoriteService);
 
-    return Results.Ok(new MobileSessionResponse(
-        IsSignedIn: isSignedIn,
-        Email: signedInEmail,
-        DisplayName: displayName,
-        ProfileImageUrl: profileImageUrl,
-        HasPaidSubscription: hasPaidSubscription,
-        FavoriteStorySlugs: favoriteStorySlugs,
-        LoginUrl: ToAbsoluteUri(httpContext, "/teken-in"),
-        SignupUrl: ToAbsoluteUri(httpContext, "/teken-op"),
-        PlansUrl: ToAbsoluteUri(httpContext, "/opsies")));
+    return Results.Ok(session);
+}).DisableAntiforgery();
+
+app.MapPost("/api/mobile/profile", async (
+    HttpContext httpContext,
+    MobileProfileUpdateRequest request,
+    ISubscriptionLedgerService subscriptionLedgerService,
+    IStoryFavoriteService storyFavoriteService) =>
+{
+    var signedInEmail = GetSignedInEmail(httpContext.User);
+    if (string.IsNullOrWhiteSpace(signedInEmail))
+    {
+        return Results.Unauthorized();
+    }
+
+    var firstName = TrimOrNull(request.FirstName);
+    var lastName = TrimOrNull(request.LastName);
+    var displayName = TrimOrNull(request.DisplayName);
+    var mobileNumber = TrimOrNull(request.MobileNumber);
+
+    if (string.IsNullOrWhiteSpace(firstName))
+    {
+        return Results.BadRequest(new { message = "Naam is nodig." });
+    }
+
+    if (firstName.Length > 80 ||
+        (lastName?.Length ?? 0) > 80 ||
+        (displayName?.Length ?? 0) > 120)
+    {
+        return Results.BadRequest(new { message = "Profiel besonderhede is te lank." });
+    }
+
+    if (!string.IsNullOrWhiteSpace(mobileNumber) && !IsValidMobileNumber(mobileNumber))
+    {
+        return Results.BadRequest(new { message = "Gebruik asseblief 'n geldige selfoonnommer." });
+    }
+
+    var existingProfile = await subscriptionLedgerService.GetSubscriberProfileAsync(
+        signedInEmail,
+        httpContext.RequestAborted);
+    var updated = await subscriptionLedgerService.UpsertSubscriberProfileAsync(
+        signedInEmail,
+        firstName,
+        lastName,
+        displayName,
+        mobileNumber,
+        existingProfile?.ProfileImageUrl,
+        existingProfile?.ProfileImageObjectKey,
+        existingProfile?.ProfileImageContentType,
+        httpContext.RequestAborted);
+
+    if (!updated)
+    {
+        return Results.BadRequest(new { message = "Kon nie jou profiel opdateer nie." });
+    }
+
+    var session = await BuildMobileSessionResponseAsync(
+        httpContext,
+        subscriptionLedgerService,
+        storyFavoriteService);
+
+    return Results.Ok(new MobileProfileUpdateResponse("Profiel opgedateer.", session));
 }).DisableAntiforgery();
 
 app.MapGet("/api/mobile/home", async (
@@ -3036,7 +3080,11 @@ app.MapGet("/api/mobile/luister", async (
     var displayPlaylists = playlists
         .Where(playlist => !IsMobileSpeellysteSystemPlaylist(playlist))
         .ToArray();
-    var mappedPlaylists = displayPlaylists.Select(MapPlaylist).ToArray();
+    var mappedPlaylists = GratisPlaylistDisplayOrderPolicy.MoveGratisPlaylistNearTop(
+            displayPlaylists.Select(MapPlaylist).ToArray(),
+            access.IsAuthenticated && !access.HasPaidSubscription,
+            static playlist => playlist.Slug)
+        .ToArray();
     var speellysteConfig = playlists.FirstOrDefault(IsMobileSpeellysteSystemPlaylist);
     var sections = mappedPlaylists
         .Select((playlist, index) => new MobileLuisterSectionResponse(
@@ -3063,13 +3111,20 @@ app.MapGet("/api/mobile/luister", async (
             Playlists: speellystePlaylists));
     }
 
+    var orderedSections = sections
+        .OrderBy(section => section.SortOrder)
+        .ThenBy(section => section.Title, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+    orderedSections = GratisPlaylistDisplayOrderPolicy.MoveGratisPlaylistNearTop(
+            orderedSections,
+            access.IsAuthenticated && !access.HasPaidSubscription,
+            static section => section.Playlist?.Slug)
+        .ToArray();
+
     return Results.Ok(new MobileLuisterResponse(
         HasPaidSubscription: access.HasPaidSubscription,
         Playlists: compact ? Array.Empty<MobilePlaylistResponse>() : mappedPlaylists,
-        Sections: sections
-            .OrderBy(section => section.SortOrder)
-            .ThenBy(section => section.Title, StringComparer.OrdinalIgnoreCase)
-            .ToArray()));
+        Sections: orderedSections));
 }).DisableAntiforgery();
 
 app.MapGet("/api/mobile/stories/{slug}", async (
@@ -3080,7 +3135,10 @@ app.MapGet("/api/mobile/stories/{slug}", async (
     ISubscriptionLedgerService subscriptionLedgerService,
     IStoryFavoriteService storyFavoriteService,
     IAudioAccessService audioAccessService,
-    IStoryMediaStorageService storyMediaStorageService) =>
+    IStoryMediaStorageService storyMediaStorageService,
+    ICharacterCatalogService characterCatalogService,
+    ICharacterTrackingService characterTrackingService,
+    IStoryTrackingService storyTrackingService) =>
 {
     var normalizedSource = string.Equals(source, "gratis", StringComparison.OrdinalIgnoreCase)
         ? "gratis"
@@ -3109,6 +3167,9 @@ app.MapGet("/api/mobile/stories/{slug}", async (
     var currentIndex = Array.FindIndex(orderedStories, item => string.Equals(item.Slug, story.Slug, StringComparison.OrdinalIgnoreCase));
     var previousStory = currentIndex > 0 ? orderedStories[currentIndex - 1] : null;
     var nextStory = currentIndex >= 0 && currentIndex < orderedStories.Length - 1 ? orderedStories[currentIndex + 1] : null;
+    var storyPath = normalizedSource == "gratis"
+        ? $"/gratis/{Uri.EscapeDataString(story.Slug)}"
+        : $"/luister/{Uri.EscapeDataString(story.Slug)}";
     var audioUrl = isLocked
         ? null
         : await ResolveMobileAudioUrlAsync(
@@ -3116,6 +3177,13 @@ app.MapGet("/api/mobile/stories/{slug}", async (
             story,
             audioAccessService,
             storyMediaStorageService);
+    var characterTiles = await BuildMobileStoryCharacterTilesAsync(
+        httpContext,
+        story,
+        signedInEmail,
+        characterCatalogService,
+        characterTrackingService,
+        storyTrackingService);
 
     return Results.Ok(new MobileStoryDetailResponse(
         Story: BuildMobileStorySummary(httpContext, story, normalizedSource, isLocked, isFavorite),
@@ -3125,8 +3193,23 @@ app.MapGet("/api/mobile/stories/{slug}", async (
         PreviousStory: previousStory is null ? null : BuildMobileStorySummary(httpContext, previousStory, normalizedSource, !CanAccessStory(previousStory, access), favoriteSlugs.Contains(previousStory.Slug, StringComparer.OrdinalIgnoreCase)),
         NextStory: nextStory is null ? null : BuildMobileStorySummary(httpContext, nextStory, normalizedSource, !CanAccessStory(nextStory, access), favoriteSlugs.Contains(nextStory.Slug, StringComparer.OrdinalIgnoreCase)),
         RelatedStories: Array.Empty<MobileStorySummaryResponse>(),
-        LoginUrl: ToAbsoluteUri(httpContext, $"/teken-in?returnUrl={Uri.EscapeDataString($"/luister/{story.Slug}")}"),
-        PlansUrl: ToAbsoluteUri(httpContext, $"/opsies?returnUrl={Uri.EscapeDataString($"/luister/{story.Slug}")}")));
+        Summary: story.Summary,
+        Lessons: story.Lessons ?? Array.Empty<string>(),
+        ValueTags: story.ValueTags ?? Array.Empty<string>(),
+        ConversationQuestions: story.ConversationQuestions ?? Array.Empty<string>(),
+        Characters: story.Characters ?? Array.Empty<string>(),
+        CharacterTiles: characterTiles,
+        YouTubeUrl: story.YouTubeUrl,
+        TestQuestions: (story.TestQuestions ?? Array.Empty<StoryTestQuestion>())
+            .Select(question => new MobileStoryTestQuestionResponse(
+                question.Question,
+                question.OptionA,
+                question.OptionB,
+                question.CorrectOption,
+                question.OptionC))
+            .ToArray(),
+        LoginUrl: ToAbsoluteUri(httpContext, $"/teken-in?returnUrl={Uri.EscapeDataString(storyPath)}"),
+        PlansUrl: ToAbsoluteUri(httpContext, $"/opsies?returnUrl={Uri.EscapeDataString(storyPath)}")));
 }).DisableAntiforgery();
 
 app.MapGet("/api/mobile/meer-oor-ons", (HttpContext httpContext) =>
@@ -3874,7 +3957,7 @@ static async Task<bool> HasRequiredStoryAccessAsync(
 {
     if (requirement == StoryAccessRequirement.Free)
     {
-        return true;
+        return !string.IsNullOrWhiteSpace(email);
     }
 
     if (!StoryAccessPolicy.RequiresPaidSubscription(requirement))
@@ -6109,10 +6192,46 @@ static bool IsValidMobileNumber(string value)
     return Regex.IsMatch(sanitized, @"^\+?[0-9]{7,20}$", RegexOptions.CultureInvariant);
 }
 
+static string? TrimOrNull(string? value) =>
+    string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
 static string? GetSignedInEmail(ClaimsPrincipal user) =>
     user.Identity?.IsAuthenticated == true
         ? user.FindFirst(ClaimTypes.Email)?.Value ?? user.Identity?.Name
         : null;
+
+static async Task<MobileSessionResponse> BuildMobileSessionResponseAsync(
+    HttpContext httpContext,
+    ISubscriptionLedgerService subscriptionLedgerService,
+    IStoryFavoriteService storyFavoriteService)
+{
+    var signedInEmail = GetSignedInEmail(httpContext.User);
+    var isSignedIn = !string.IsNullOrWhiteSpace(signedInEmail);
+    var hasPaidSubscription = isSignedIn &&
+        await subscriptionLedgerService.HasActivePaidSubscriptionAsync(signedInEmail, httpContext.RequestAborted);
+    var favoriteStorySlugs = isSignedIn
+        ? await storyFavoriteService.GetFavoriteStorySlugsAsync(signedInEmail, cancellationToken: httpContext.RequestAborted)
+        : Array.Empty<string>();
+    var subscriberProfile = isSignedIn
+        ? await subscriptionLedgerService.GetSubscriberProfileAsync(signedInEmail, httpContext.RequestAborted)
+        : null;
+    var displayName = ResolveMobileProfileDisplayName(httpContext.User, subscriberProfile, signedInEmail);
+    var profileImageUrl = ResolveMobileProfileImageUrl(httpContext, subscriberProfile);
+
+    return new MobileSessionResponse(
+        IsSignedIn: isSignedIn,
+        Email: signedInEmail,
+        DisplayName: displayName,
+        ProfileImageUrl: profileImageUrl,
+        FirstName: ResolveMobileProfileFirstName(httpContext.User, subscriberProfile),
+        LastName: ResolveMobileProfileLastName(httpContext.User, subscriberProfile),
+        MobileNumber: ResolveMobileProfileMobileNumber(httpContext.User, subscriberProfile),
+        HasPaidSubscription: hasPaidSubscription,
+        FavoriteStorySlugs: favoriteStorySlugs,
+        LoginUrl: ToAbsoluteUri(httpContext, "/teken-in"),
+        SignupUrl: ToAbsoluteUri(httpContext, "/teken-op"),
+        PlansUrl: ToAbsoluteUri(httpContext, "/opsies"));
+}
 
 static string? ResolveMobileProfileDisplayName(
     ClaimsPrincipal user,
@@ -6134,6 +6253,21 @@ static string? ResolveMobileProfileDisplayName(
 
     return string.IsNullOrWhiteSpace(displayName) ? null : displayName.Trim();
 }
+
+static string? ResolveMobileProfileFirstName(ClaimsPrincipal user, SubscriberProfile? profile) =>
+    TrimOrNull(profile?.FirstName)
+    ?? TrimOrNull(user.FindFirst(ClaimTypes.GivenName)?.Value)
+    ?? TrimOrNull(user.FindFirst("first_name")?.Value);
+
+static string? ResolveMobileProfileLastName(ClaimsPrincipal user, SubscriberProfile? profile) =>
+    TrimOrNull(profile?.LastName)
+    ?? TrimOrNull(user.FindFirst(ClaimTypes.Surname)?.Value)
+    ?? TrimOrNull(user.FindFirst("last_name")?.Value);
+
+static string? ResolveMobileProfileMobileNumber(ClaimsPrincipal user, SubscriberProfile? profile) =>
+    TrimOrNull(profile?.MobileNumber)
+    ?? TrimOrNull(user.FindFirst("mobile_number")?.Value)
+    ?? TrimOrNull(user.FindFirst("phone_number")?.Value);
 
 static string? ResolveMobileProfileImageUrl(HttpContext httpContext, SubscriberProfile? profile)
 {
@@ -6174,23 +6308,19 @@ static async Task<MobileStoryAccess> ResolveMobileStoryAccessAsync(
         return new MobileStoryAccess(false, false);
     }
 
-    var gratisTask = subscriptionLedgerService.HasActiveSubscriptionForTierAsync(
-        signedInEmail,
-        "gratis",
-        httpContext.RequestAborted);
     var paidTask = subscriptionLedgerService.HasActivePaidSubscriptionAsync(
         signedInEmail,
         httpContext.RequestAborted);
-    await Task.WhenAll(gratisTask, paidTask);
+    await paidTask;
 
     return new MobileStoryAccess(
-        HasGratisOrPaidSubscription: gratisTask.Result || paidTask.Result,
+        IsAuthenticated: true,
         HasPaidSubscription: paidTask.Result);
 }
 
 static bool CanAccessStory(StoryItem story, MobileStoryAccess access) =>
     string.Equals(story.AccessLevel, "free", StringComparison.OrdinalIgnoreCase)
-        ? access.HasGratisOrPaidSubscription
+        ? access.IsAuthenticated
         : access.HasPaidSubscription;
 
 static string ToAbsoluteUri(HttpContext httpContext, string? pathOrUrl)
@@ -6364,6 +6494,148 @@ static MobileStorySummaryResponse BuildMobileStorySummary(
             $"/luister/{Uri.EscapeDataString(story.Slug)}"),
         DurationSeconds: story.DurationSeconds);
 
+static async Task<IReadOnlyList<MobileStoryCharacterResponse>> BuildMobileStoryCharacterTilesAsync(
+    HttpContext httpContext,
+    StoryItem story,
+    string? signedInEmail,
+    ICharacterCatalogService characterCatalogService,
+    ICharacterTrackingService characterTrackingService,
+    IStoryTrackingService storyTrackingService)
+{
+    if (story.Characters is not { Count: > 0 })
+    {
+        return Array.Empty<MobileStoryCharacterResponse>();
+    }
+
+    try
+    {
+        var publishedCharacters = await characterCatalogService.GetPublishedCharactersAsync(httpContext.RequestAborted);
+        var unlockProgress = await LoadMobileCharacterUnlockProgressAsync(
+            signedInEmail,
+            characterTrackingService,
+            storyTrackingService,
+            httpContext.RequestAborted);
+        var unlockStates = CharacterUnlockEvaluator.EvaluateUnlockStates(
+            publishedCharacters,
+            unlockProgress.ProgressLookup,
+            unlockProgress.ProfileListenLookup);
+
+        return story.Characters
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(characterName => BuildMobileStoryCharacterTile(httpContext, characterName, publishedCharacters, unlockStates))
+            .ToArray();
+    }
+    catch
+    {
+        return story.Characters
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(characterName => new MobileStoryCharacterResponse(characterName.Trim(), null, null, true))
+            .ToArray();
+    }
+}
+
+static async Task<MobileCharacterUnlockProgress> LoadMobileCharacterUnlockProgressAsync(
+    string? email,
+    ICharacterTrackingService characterTrackingService,
+    IStoryTrackingService storyTrackingService,
+    CancellationToken cancellationToken)
+{
+    if (string.IsNullOrWhiteSpace(email))
+    {
+        return MobileCharacterUnlockProgress.Empty;
+    }
+
+    var progressTask = storyTrackingService.GetUserStoryProgressAsync(email, cancellationToken);
+    var profileListenTask = characterTrackingService.GetUserProfileListenStatsAsync(email, cancellationToken);
+    await Task.WhenAll(progressTask, profileListenTask);
+
+    var progressLookup = progressTask.Result
+        .GroupBy(progress => progress.StorySlug, StringComparer.OrdinalIgnoreCase)
+        .ToDictionary(
+            group => group.Key,
+            group => group.OrderByDescending(item => item.LastListenedAtUtc).First(),
+            StringComparer.OrdinalIgnoreCase);
+    var profileListenLookup = profileListenTask.Result
+        .GroupBy(item => item.CharacterSlug, StringComparer.OrdinalIgnoreCase)
+        .ToDictionary(
+            group => group.Key,
+            group => group.Sum(item => item.ListenCount),
+            StringComparer.OrdinalIgnoreCase);
+
+    return new MobileCharacterUnlockProgress(progressLookup, profileListenLookup);
+}
+
+static MobileStoryCharacterResponse BuildMobileStoryCharacterTile(
+    HttpContext httpContext,
+    string characterName,
+    IReadOnlyList<StoryCharacterItem> publishedCharacters,
+    IReadOnlyDictionary<Guid, bool> unlockStates)
+{
+    var displayName = characterName.Trim();
+    var matchedCharacter = FindMobilePublishedCharacter(displayName, publishedCharacters);
+
+    if (matchedCharacter is null)
+    {
+        return new MobileStoryCharacterResponse(displayName, null, null, true);
+    }
+
+    var isUnlocked = unlockStates.TryGetValue(matchedCharacter.CharacterId, out var unlocked) && unlocked;
+    var imagePath = isUnlocked ? matchedCharacter.ImagePath : matchedCharacter.MysteryImagePath;
+    var imageUrl = ResolveMobileCharacterImageUrl(httpContext, imagePath, matchedCharacter.UpdatedAt);
+    var resolvedDisplayName = isUnlocked ? matchedCharacter.DisplayName : "?????";
+    var imageAlt = isUnlocked
+        ? $"Illustrasie van {matchedCharacter.DisplayName}"
+        : "Mysterie karakter illustrasie";
+
+    return new MobileStoryCharacterResponse(
+        resolvedDisplayName,
+        imageUrl,
+        imageAlt,
+        string.IsNullOrWhiteSpace(imageUrl));
+}
+
+static StoryCharacterItem? FindMobilePublishedCharacter(
+    string characterName,
+    IReadOnlyList<StoryCharacterItem> publishedCharacters)
+{
+    var normalizedName = NormalizeMobileCharacterToken(characterName);
+    return publishedCharacters.FirstOrDefault(character =>
+        string.Equals(NormalizeMobileCharacterToken(character.DisplayName), normalizedName, StringComparison.Ordinal) ||
+        string.Equals(NormalizeMobileCharacterToken(character.Slug.Replace("-", " ")), normalizedName, StringComparison.Ordinal));
+}
+
+static string NormalizeMobileCharacterToken(string value)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return string.Empty;
+    }
+
+    return new string(value
+        .Trim()
+        .ToLowerInvariant()
+        .Where(char.IsLetterOrDigit)
+        .ToArray());
+}
+
+static string ResolveMobileCharacterImageUrl(
+    HttpContext httpContext,
+    string? path,
+    DateTimeOffset? updatedAt)
+{
+    var resolvedPath = string.IsNullOrWhiteSpace(path)
+        ? "/branding/schink-logo-green.png"
+        : StoryItem.RewriteImagePathForBrowser(path.Trim());
+    var imageUrl = ToMobileMediaUri(httpContext, resolvedPath);
+    if (updatedAt is null || string.IsNullOrWhiteSpace(imageUrl))
+    {
+        return imageUrl;
+    }
+
+    var separator = imageUrl.Contains('?', StringComparison.Ordinal) ? '&' : '?';
+    return $"{imageUrl}{separator}v={updatedAt.Value.ToUnixTimeSeconds()}";
+}
+
 sealed record ContactApiRequest(string? Name, string? Email, string? Subject, string? Message, string? Website);
 sealed record AuthSignInApiRequest(string? Email, string? Password);
 sealed record AuthPasswordResetRequestApiRequest(string? Email, string? ReturnUrl);
@@ -6415,18 +6687,23 @@ sealed record WinkelAddressSuggestion(
     string? City,
     string? PostalCode);
 sealed record MobileFavoriteMutationRequest(bool IsFavorite, string? Source, string? PlaylistSlug);
+sealed record MobileProfileUpdateRequest(string? FirstName, string? LastName, string? DisplayName, string? MobileNumber);
+sealed record MobileProfileUpdateResponse(string Message, MobileSessionResponse Session);
 sealed record MobileSessionResponse(
     bool IsSignedIn,
     string? Email,
     string? DisplayName,
     string? ProfileImageUrl,
+    string? FirstName,
+    string? LastName,
+    string? MobileNumber,
     bool HasPaidSubscription,
     IReadOnlyList<string> FavoriteStorySlugs,
     string LoginUrl,
     string SignupUrl,
     string PlansUrl);
 sealed record MobileStoryPreview(string Title, string ImageUrl, string DetailUrl);
-sealed record MobileStoryAccess(bool HasGratisOrPaidSubscription, bool HasPaidSubscription);
+sealed record MobileStoryAccess(bool IsAuthenticated, bool HasPaidSubscription);
 sealed record MobileStorySummaryResponse(
     string Slug,
     string Title,
@@ -6482,8 +6759,35 @@ sealed record MobileStoryDetailResponse(
     MobileStorySummaryResponse? PreviousStory,
     MobileStorySummaryResponse? NextStory,
     IReadOnlyList<MobileStorySummaryResponse> RelatedStories,
+    string? Summary,
+    IReadOnlyList<string> Lessons,
+    IReadOnlyList<string> ValueTags,
+    IReadOnlyList<string> ConversationQuestions,
+    IReadOnlyList<string> Characters,
+    IReadOnlyList<MobileStoryCharacterResponse> CharacterTiles,
+    string? YouTubeUrl,
+    IReadOnlyList<MobileStoryTestQuestionResponse> TestQuestions,
     string LoginUrl,
     string PlansUrl);
+sealed record MobileStoryCharacterResponse(
+    string DisplayName,
+    string? ImageUrl,
+    string? ImageAlt,
+    bool IsTextOnly);
+sealed record MobileStoryTestQuestionResponse(
+    string Question,
+    string OptionA,
+    string OptionB,
+    string CorrectOption,
+    string? OptionC);
+sealed record MobileCharacterUnlockProgress(
+    IReadOnlyDictionary<string, UserStoryProgressItem> ProgressLookup,
+    IReadOnlyDictionary<string, int> ProfileListenLookup)
+{
+    public static MobileCharacterUnlockProgress Empty { get; } = new(
+        new Dictionary<string, UserStoryProgressItem>(StringComparer.OrdinalIgnoreCase),
+        new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase));
+}
 sealed record MobileContentBlockResponse(string Key, string Title, string Body, string ImageUrl);
 sealed record MobileAboutResponse(IReadOnlyList<MobileContentBlockResponse> Blocks);
 sealed record AuthCookieSignInResult(bool IsSuccess, string? ErrorMessage = null);

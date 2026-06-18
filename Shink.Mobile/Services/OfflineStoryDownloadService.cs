@@ -337,6 +337,14 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
             PreviousStory: null,
             NextStory: null,
             RelatedStories: Array.Empty<MobileStorySummary>(),
+            Summary: null,
+            Lessons: Array.Empty<string>(),
+            ValueTags: Array.Empty<string>(),
+            ConversationQuestions: Array.Empty<string>(),
+            Characters: Array.Empty<string>(),
+            CharacterTiles: Array.Empty<MobileStoryCharacter>(),
+            YouTubeUrl: null,
+            TestQuestions: Array.Empty<MobileStoryTestQuestion>(),
             LoginUrl: string.Empty,
             PlansUrl: string.Empty);
     }

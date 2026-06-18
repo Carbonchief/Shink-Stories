@@ -693,11 +693,15 @@ else
 
             AccessProfile = accessProfileTask.Result;
             var luisterPlaylists = luisterPlaylistsTask.Result;
-            HomePlaylists = luisterPlaylists
+            var orderedHomePlaylists = luisterPlaylists
                 .Where(playlist => playlist.ShowOnHome)
                 .OrderBy(playlist => playlist.SortOrder)
                 .ThenBy(playlist => playlist.Title, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
+            HomePlaylists = GratisPlaylistDisplayOrderPolicy.MoveGratisPlaylistNearTop(
+                orderedHomePlaylists,
+                IsGratisOnlyUser(),
+                static playlist => playlist.Slug);
         }
         catch
         {
@@ -763,6 +767,12 @@ else
     private static bool IsWeeklyPopularPlaylist(StoryPlaylist playlist) =>
         string.Equals(playlist.SystemKey, "popular-stories-this-week", StringComparison.OrdinalIgnoreCase) ||
         string.Equals(playlist.Slug, "popular-stories-this-week", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsGratisOnlyUser() =>
+        IsSignedIn &&
+        AccessProfile.HasGratisOrPaid &&
+        !AccessProfile.HasStoryCornerOrAll &&
+        !AccessProfile.HasAllStories;
 
     private static string BuildOpsiesHref(string returnPath)
     {

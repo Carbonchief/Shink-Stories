@@ -24,12 +24,19 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     private static readonly Color PlayerTextColor = Color.FromArgb("#F7FBF7");
     private static readonly Color PlayerMutedTextColor = Color.FromArgb("#AAB7B2");
     private static readonly Color PlayerAccentColor = Color.FromArgb("#FFFFFF");
+    private static readonly Color StorySummaryCardColor = Color.FromArgb("#222222");
+    private static readonly Color StorySummaryTextColor = Color.FromArgb("#F6F1EA");
+    private static readonly Color StorySummaryLeadColor = Color.FromArgb("#F0DDC8");
+    private static readonly Color StorySummaryGoldColor = Color.FromArgb("#D4B075");
+    private static readonly Color StorySummaryPillColor = Color.FromArgb("#403A30");
+    private static readonly Color StorySummaryTestButtonColor = Color.FromArgb("#F3C86D");
 
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
     private readonly IAudioPlaybackService _audioPlaybackService;
     private readonly IOfflineStoryDownloadService _offlineDownloadService;
     private readonly PlaylistPlaybackState _playlistPlaybackState;
+    private readonly ContinueListeningState _continueListeningState;
     private readonly IOrientationService _orientationService;
     private readonly PlayerTransitionBackdropState _transitionBackdropState;
     private readonly Grid _root;
@@ -69,6 +76,11 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     private string? _trackingSource;
     private double _pendingListenSeconds;
     private TimeSpan? _lastTrackedPosition;
+    private readonly Dictionary<int, string> _selectedStoryTestOptions = new();
+    private bool _isStoryTestSubmitted;
+    private ContentPage? _storyTestModalPage;
+    private VerticalStackLayout? _storyTestModalContent;
+    private MobileStoryDetailResponse? _storyTestDetail;
 
     public StoryDetailPage(
         MobileApiClient apiClient,
@@ -76,6 +88,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         IAudioPlaybackService audioPlaybackService,
         IOfflineStoryDownloadService offlineDownloadService,
         PlaylistPlaybackState playlistPlaybackState,
+        ContinueListeningState continueListeningState,
         IOrientationService orientationService,
         PlayerTransitionBackdropState transitionBackdropState)
     {
@@ -84,6 +97,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         _audioPlaybackService = audioPlaybackService;
         _offlineDownloadService = offlineDownloadService;
         _playlistPlaybackState = playlistPlaybackState;
+        _continueListeningState = continueListeningState;
         _orientationService = orientationService;
         _transitionBackdropState = transitionBackdropState;
         BackgroundColor = PlayerBackgroundColor;
@@ -269,6 +283,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         Title = detail.Story.Title;
         _currentDetail = detail;
         _activeStory = detail.Story;
+        SaveContinueListening(detail);
         _content.Children.Add(BuildTopBar());
         _content.Children.Add(BuildCoverArt(detail));
         _content.Children.Add(BuildStoryHeader(detail));
@@ -281,6 +296,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         }
 
         _content.Children.Add(BuildAudioPlayer(detail));
+        _content.Children.Add(BuildStoryInfoCard(detail));
         UpdateProgressState();
     }
 
@@ -294,6 +310,14 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             PreviousStory: null,
             NextStory: null,
             RelatedStories: Array.Empty<MobileStorySummary>(),
+            Summary: null,
+            Lessons: Array.Empty<string>(),
+            ValueTags: Array.Empty<string>(),
+            ConversationQuestions: Array.Empty<string>(),
+            Characters: Array.Empty<string>(),
+            CharacterTiles: Array.Empty<MobileStoryCharacter>(),
+            YouTubeUrl: null,
+            TestQuestions: Array.Empty<MobileStoryTestQuestion>(),
             LoginUrl: string.Empty,
             PlansUrl: string.Empty);
 
@@ -314,6 +338,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         Title = detail.Story.Title;
         _currentDetail = detail;
         _activeStory = detail.Story;
+        SaveContinueListening(detail);
         _content.Children.Add(BuildTopBar());
         _content.Children.Add(BuildCoverArt(detail));
         _content.Children.Add(BuildStoryHeader(detail));
@@ -339,6 +364,8 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         {
             _content.Children.Add(BuildMessage("Geen audio is tans beskikbaar vir hierdie storie nie."));
         }
+
+        _content.Children.Add(BuildStoryInfoCard(detail));
 
         var playlistQueue = BuildPlaylistQueue(detail);
         if (playlistQueue is not null)
@@ -1313,10 +1340,12 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         return new ScrollView
         {
             Orientation = ScrollOrientation.Horizontal,
+            HeightRequest = 42,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Never,
             Content = new HorizontalStackLayout
             {
                 Spacing = 10,
+                HeightRequest = 42,
                 Children =
                 {
                     infoButton,
@@ -1326,33 +1355,63 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         };
     }
 
-    private Button BuildDownloadPillButton(MobileStoryDetailResponse detail)
+    private Border BuildDownloadPillButton(MobileStoryDetailResponse detail)
     {
-        var button = new Button
+        var iconView = new GraphicsView
+        {
+            Drawable = new DownloadIconDrawable(),
+            WidthRequest = 17,
+            HeightRequest = 17,
+            VerticalOptions = LayoutOptions.Center,
+            InputTransparent = true
+        };
+        var textLabel = new Label
         {
             Text = "Laai af",
             AutomationId = "Download for offline listening",
-            BackgroundColor = PlayerPillColor,
-            TextColor = PlayerTextColor,
             FontSize = 15,
             FontAttributes = FontAttributes.Bold,
-            CornerRadius = 22,
+            TextColor = PlayerTextColor,
+            VerticalTextAlignment = TextAlignment.Center
+        };
+        var button = new Border
+        {
+            BackgroundColor = PlayerPillColor,
+            StrokeThickness = 0,
+            StrokeShape = new RoundRectangle { CornerRadius = 24 },
             HeightRequest = 42,
-            Padding = new Thickness(16, 0)
+            Padding = new Thickness(16, 0),
+            Content = new HorizontalStackLayout
+            {
+                Spacing = 8,
+                VerticalOptions = LayoutOptions.Center,
+                Children =
+                {
+                    iconView,
+                    textLabel
+                }
+            }
         };
 
-        button.Clicked += async (_, _) => await HandleDownloadButtonAsync(detail, button);
-        _ = UpdateDownloadButtonAsync(detail, button);
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += async (_, _) => await HandleDownloadButtonAsync(detail, button, textLabel, iconView);
+        button.GestureRecognizers.Add(tap);
+        _ = UpdateDownloadButtonAsync(detail, button, textLabel, iconView);
         return button;
     }
 
-    private async Task UpdateDownloadButtonAsync(MobileStoryDetailResponse detail, Button button)
+    private async Task UpdateDownloadButtonAsync(MobileStoryDetailResponse detail, Border button, Label textLabel, GraphicsView iconView)
     {
         var state = await _offlineDownloadService.GetStateAsync(detail);
         await MainThread.InvokeOnMainThreadAsync(() =>
         {
             button.IsEnabled = !detail.RequiresSubscription && state != OfflineDownloadState.Downloading;
-            button.Text = state switch
+            button.Opacity = button.IsEnabled ? 1 : 0.52;
+            iconView.Drawable = state == OfflineDownloadState.Downloaded
+                ? new DownloadedIconDrawable()
+                : new DownloadIconDrawable();
+            iconView.Invalidate();
+            textLabel.Text = state switch
             {
                 OfflineDownloadState.Downloading => "Laai af...",
                 OfflineDownloadState.Downloaded => "Afgelaai",
@@ -1363,8 +1422,13 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         });
     }
 
-    private async Task HandleDownloadButtonAsync(MobileStoryDetailResponse detail, Button button)
+    private async Task HandleDownloadButtonAsync(MobileStoryDetailResponse detail, Border button, Label textLabel, GraphicsView iconView)
     {
+        if (!button.IsEnabled)
+        {
+            return;
+        }
+
         if (detail.RequiresSubscription || string.IsNullOrWhiteSpace(detail.AudioUrl))
         {
             await DisplayAlertAsync("Nie beskikbaar nie", "Hierdie storie kan nie tans afgelaai word nie.", "Reg so");
@@ -1378,7 +1442,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             if (string.Equals(action, "Verwyder aflaai", StringComparison.Ordinal))
             {
                 await _offlineDownloadService.RemoveAsync(detail.Story.Slug, detail.Story.Source);
-                await UpdateDownloadButtonAsync(detail, button);
+                await UpdateDownloadButtonAsync(detail, button, textLabel, iconView);
             }
 
             return;
@@ -1399,7 +1463,10 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         }
 
         button.IsEnabled = false;
-        button.Text = "Laai af...";
+        button.Opacity = 0.52;
+        textLabel.Text = "Laai af...";
+        iconView.Drawable = new DownloadIconDrawable();
+        iconView.Invalidate();
         try
         {
             await _offlineDownloadService.DownloadAsync(
@@ -1409,21 +1476,23 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                     if (progress.Percent is { } percent)
                     {
                         MainThread.BeginInvokeOnMainThread(() =>
-                            button.Text = $"{Math.Round(percent * 100):0}%");
+                            textLabel.Text = $"{Math.Round(percent * 100):0}%");
                     }
                 }));
-            button.Text = "Afgelaai";
-            await DisplayAlertAsync("Afgelaai", "Hierdie storie is gereed vir offline luister.", "Reg so");
+            textLabel.Text = "Afgelaai";
+            iconView.Drawable = new DownloadedIconDrawable();
+            iconView.Invalidate();
             RenderDetail(detail, trackView: false);
         }
         catch (Exception ex)
         {
-            button.Text = "Probeer weer";
+            textLabel.Text = "Probeer weer";
             await DisplayAlertAsync("Kon nie aflaai nie", ex.Message, "Reg so");
         }
         finally
         {
             button.IsEnabled = true;
+            button.Opacity = 1;
         }
     }
 
@@ -2171,6 +2240,676 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         return button;
     }
 
+    private View BuildStoryInfoCard(MobileStoryDetailResponse detail)
+    {
+        var cardContent = new VerticalStackLayout
+        {
+            Spacing = 18
+        };
+
+        cardContent.Children.Add(new Label
+        {
+            Text = detail.Story.Title,
+            FontSize = 32,
+            FontAttributes = FontAttributes.Bold,
+            TextColor = Colors.White,
+            LineBreakMode = LineBreakMode.WordWrap,
+            HorizontalTextAlignment = TextAlignment.Center
+        });
+
+        if (ShouldShowStoryLead(detail))
+        {
+            cardContent.Children.Add(new Label
+            {
+                Text = detail.Story.Description,
+                FontSize = 16,
+                TextColor = StorySummaryLeadColor,
+                LineBreakMode = LineBreakMode.WordWrap
+            });
+        }
+
+        var synopsis = GetStorySynopsis(detail);
+        if (!string.IsNullOrWhiteSpace(synopsis))
+        {
+            cardContent.Children.Add(BuildStoryInfoTextBlock("Waaroor gaan die storie?", synopsis));
+        }
+
+        if (detail.ValueTags is { Count: > 0 })
+        {
+            cardContent.Children.Add(BuildStoryInfoTagBlock("Waardes", detail.ValueTags));
+        }
+
+        if (detail.Lessons is { Count: > 0 })
+        {
+            cardContent.Children.Add(BuildStoryInfoListBlock(detail.Lessons.Count == 1 ? "Les" : "Lesse", detail.Lessons));
+        }
+
+        if (detail.ConversationQuestions is { Count: > 0 })
+        {
+            cardContent.Children.Add(BuildStoryInfoListBlock("Gesels 'n bietjie", detail.ConversationQuestions));
+        }
+
+        if (detail.Characters is { Count: > 0 } || detail.CharacterTiles is { Count: > 0 })
+        {
+            cardContent.Children.Add(BuildStoryCharacterBlock(detail));
+        }
+
+        if (!string.IsNullOrWhiteSpace(detail.YouTubeUrl))
+        {
+            cardContent.Children.Add(BuildStoryInfoActionButton("Kyk saam op YouTube", async () =>
+            {
+                try
+                {
+                    await Launcher.OpenAsync(detail.YouTubeUrl);
+                }
+                catch
+                {
+                    await DisplayAlertAsync("YouTube", "Kon nie die video oopmaak nie.", "Reg so");
+                }
+            }));
+        }
+
+        if (HasStoryTestQuestions(detail))
+        {
+            cardContent.Children.Add(BuildStoryInfoActionButton(
+                "Storie vragies",
+                async () => await ShowStoryTestModalAsync(detail),
+                isPrimary: true));
+        }
+
+        return new Border
+        {
+            BackgroundColor = StorySummaryCardColor,
+            StrokeThickness = 0,
+            StrokeShape = new RoundRectangle { CornerRadius = 24 },
+            Padding = new Thickness(22, 22, 22, 24),
+            Content = cardContent
+        };
+    }
+
+    private static View BuildStoryInfoTextBlock(string title, string body) =>
+        new VerticalStackLayout
+        {
+            Spacing = 6,
+            Children =
+            {
+                BuildStoryInfoHeading(title),
+                new Label
+                {
+                    Text = body,
+                    FontSize = 15,
+                    TextColor = StorySummaryTextColor,
+                    LineBreakMode = LineBreakMode.WordWrap
+                }
+            }
+        };
+
+    private static View BuildStoryInfoListBlock(string title, IReadOnlyList<string> items)
+    {
+        var list = new VerticalStackLayout
+        {
+            Spacing = 8
+        };
+        list.Children.Add(BuildStoryInfoHeading(title));
+
+        foreach (var item in items.Where(item => !string.IsNullOrWhiteSpace(item)))
+        {
+            var row = new Grid
+            {
+                ColumnDefinitions =
+                {
+                    new ColumnDefinition(GridLength.Auto),
+                    new ColumnDefinition(GridLength.Star)
+                },
+                ColumnSpacing = 10
+            };
+
+            row.Children.Add(new Label
+            {
+                Text = "•",
+                FontSize = 18,
+                TextColor = StorySummaryGoldColor,
+                VerticalTextAlignment = TextAlignment.Start
+            });
+
+            var textLabel = new Label
+            {
+                Text = item.Trim(),
+                FontSize = 15,
+                TextColor = StorySummaryTextColor,
+                LineBreakMode = LineBreakMode.WordWrap
+            };
+            row.Children.Add(textLabel);
+            Grid.SetColumn(textLabel, 1);
+            list.Children.Add(row);
+        }
+
+        return list;
+    }
+
+    private static View BuildStoryInfoTagBlock(string title, IReadOnlyList<string> tags)
+    {
+        var block = new VerticalStackLayout
+        {
+            Spacing = 10
+        };
+        block.Children.Add(BuildStoryInfoHeading(title));
+
+        var wrap = new FlexLayout
+        {
+            Direction = Microsoft.Maui.Layouts.FlexDirection.Row,
+            Wrap = Microsoft.Maui.Layouts.FlexWrap.Wrap,
+            AlignItems = Microsoft.Maui.Layouts.FlexAlignItems.Center,
+            JustifyContent = Microsoft.Maui.Layouts.FlexJustify.Center
+        };
+
+        foreach (var tag in tags.Where(tag => !string.IsNullOrWhiteSpace(tag)))
+        {
+            wrap.Children.Add(new Border
+            {
+                BackgroundColor = StorySummaryPillColor,
+                StrokeThickness = 1,
+                Stroke = StorySummaryGoldColor.WithAlpha(0.58f),
+                StrokeShape = new RoundRectangle { CornerRadius = 999 },
+                Padding = new Thickness(12, 7),
+                Margin = new Thickness(0, 0, 8, 8),
+                Content = new Label
+                {
+                    Text = tag.Trim(),
+                    FontSize = 13,
+                    TextColor = StorySummaryTextColor
+                }
+            });
+        }
+
+        block.Children.Add(wrap);
+        return block;
+    }
+
+    private static Label BuildStoryInfoHeading(string text) =>
+        new()
+        {
+            Text = text,
+            FontSize = 17,
+            FontAttributes = FontAttributes.Bold,
+            TextColor = Colors.White
+        };
+
+    private static View BuildStoryCharacterBlock(MobileStoryDetailResponse detail)
+    {
+        var block = new VerticalStackLayout
+        {
+            Spacing = 12
+        };
+        block.Children.Add(BuildStoryInfoHeading("Karakters in die storie"));
+
+        var tiles = detail.CharacterTiles is { Count: > 0 }
+            ? detail.CharacterTiles
+            : detail.Characters
+                .Where(character => !string.IsNullOrWhiteSpace(character))
+                .Select(character => new MobileStoryCharacter(character.Trim(), null, null, true))
+                .ToArray();
+
+        var visualTiles = tiles.Where(character => !character.IsTextOnly).ToArray();
+        var textOnlyTiles = tiles.Where(character => character.IsTextOnly).ToArray();
+
+        if (visualTiles.Length > 0)
+        {
+            var visualWrap = new FlexLayout
+            {
+                Direction = Microsoft.Maui.Layouts.FlexDirection.Row,
+                Wrap = Microsoft.Maui.Layouts.FlexWrap.Wrap,
+                AlignItems = Microsoft.Maui.Layouts.FlexAlignItems.Start,
+                JustifyContent = Microsoft.Maui.Layouts.FlexJustify.Center
+            };
+
+            foreach (var character in visualTiles)
+            {
+                visualWrap.Children.Add(BuildStoryCharacterTile(character));
+            }
+
+            block.Children.Add(visualWrap);
+        }
+
+        if (textOnlyTiles.Length > 0)
+        {
+            var textWrap = new FlexLayout
+            {
+                Direction = Microsoft.Maui.Layouts.FlexDirection.Row,
+                Wrap = Microsoft.Maui.Layouts.FlexWrap.Wrap,
+                AlignItems = Microsoft.Maui.Layouts.FlexAlignItems.Center,
+                JustifyContent = Microsoft.Maui.Layouts.FlexJustify.Center
+            };
+
+            foreach (var character in textOnlyTiles)
+            {
+                textWrap.Children.Add(new Border
+                {
+                    BackgroundColor = StorySummaryPillColor,
+                    StrokeThickness = 1,
+                    Stroke = StorySummaryGoldColor.WithAlpha(0.58f),
+                    StrokeShape = new RoundRectangle { CornerRadius = 999 },
+                    Padding = new Thickness(14, 8),
+                    Margin = new Thickness(0, 0, 8, 8),
+                    Content = new Label
+                    {
+                        Text = character.DisplayName,
+                        FontSize = 14,
+                        TextColor = StorySummaryTextColor,
+                        HorizontalTextAlignment = TextAlignment.Center
+                    }
+                });
+            }
+
+            block.Children.Add(textWrap);
+        }
+
+        return block;
+    }
+
+    private static View BuildStoryCharacterTile(MobileStoryCharacter character)
+    {
+        var stack = new VerticalStackLayout
+        {
+            WidthRequest = 88,
+            Spacing = 6,
+            Margin = new Thickness(0, 0, 12, 12),
+            HorizontalOptions = LayoutOptions.Center
+        };
+
+        stack.Children.Add(new Image
+        {
+            Source = character.ImageUrl,
+            WidthRequest = 64,
+            HeightRequest = 64,
+            Aspect = Aspect.AspectFit,
+            HorizontalOptions = LayoutOptions.Center
+        });
+        stack.Children.Add(new Label
+        {
+            Text = character.DisplayName,
+            FontSize = 12,
+            TextColor = StorySummaryTextColor,
+            HorizontalTextAlignment = TextAlignment.Center,
+            LineBreakMode = LineBreakMode.WordWrap
+        });
+
+        return stack;
+    }
+
+    private static View BuildStoryInfoActionButton(string text, Func<Task> onTap, bool isPrimary = false)
+    {
+        var button = new Border
+        {
+            BackgroundColor = isPrimary ? StorySummaryTestButtonColor : PlayerAccentColor,
+            StrokeThickness = isPrimary ? 1 : 0,
+            Stroke = isPrimary ? StorySummaryGoldColor.WithAlpha(0.62f) : Colors.Transparent,
+            StrokeShape = new RoundRectangle { CornerRadius = isPrimary ? 14 : 22 },
+            HeightRequest = isPrimary ? 48 : 44,
+            Padding = new Thickness(16, 0),
+            Content = new Label
+            {
+                Text = text,
+                FontSize = 15,
+                FontAttributes = FontAttributes.Bold,
+                TextColor = isPrimary ? StorySummaryCardColor : Color.FromArgb("#061816"),
+                HorizontalTextAlignment = TextAlignment.Center,
+                VerticalTextAlignment = TextAlignment.Center
+            }
+        };
+
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += async (_, _) => await onTap();
+        button.GestureRecognizers.Add(tap);
+        return button;
+    }
+
+    private async Task ShowStoryTestModalAsync(MobileStoryDetailResponse detail)
+    {
+        _selectedStoryTestOptions.Clear();
+        _isStoryTestSubmitted = false;
+        _storyTestDetail = detail;
+        _storyTestModalContent = new VerticalStackLayout
+        {
+            Spacing = 16,
+            Padding = new Thickness(18, 18, 18, 28)
+        };
+
+        _storyTestModalPage = new ContentPage
+        {
+            BackgroundColor = PlayerBackgroundColor,
+            Content = new ScrollView
+            {
+                BackgroundColor = PlayerBackgroundColor,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Never,
+                Content = _storyTestModalContent
+            }
+        };
+        Shell.SetNavBarIsVisible(_storyTestModalPage, false);
+        RenderStoryTestModalContent();
+        await Navigation.PushModalAsync(_storyTestModalPage, true);
+    }
+
+    private void RenderStoryTestModalContent()
+    {
+        if (_storyTestModalContent is null || _storyTestDetail is not { } detail)
+        {
+            return;
+        }
+
+        _storyTestModalContent.Children.Clear();
+        _storyTestModalContent.Children.Add(BuildStoryTestHeader(detail));
+
+        if (_isStoryTestSubmitted)
+        {
+            _storyTestModalContent.Children.Add(new Border
+            {
+                BackgroundColor = Color.FromArgb("#173B35"),
+                StrokeThickness = 0,
+                StrokeShape = new RoundRectangle { CornerRadius = 20 },
+                Padding = 16,
+                Content = new Label
+                {
+                    Text = BuildStoryTestScoreText(detail),
+                    FontSize = 17,
+                    FontAttributes = FontAttributes.Bold,
+                    TextColor = PlayerTextColor,
+                    HorizontalTextAlignment = TextAlignment.Center
+                }
+            });
+        }
+
+        for (var index = 0; index < detail.TestQuestions.Count; index++)
+        {
+            _storyTestModalContent.Children.Add(BuildStoryTestQuestionCard(detail.TestQuestions[index], index));
+        }
+
+        if (IsStoryTestReadyToCheck(detail))
+        {
+            if (!_isStoryTestSubmitted)
+            {
+                _storyTestModalContent.Children.Add(BuildStoryInfoActionButton("Kontroleer antwoorde", () =>
+                {
+                    _isStoryTestSubmitted = true;
+                    RenderStoryTestModalContent();
+                    return Task.CompletedTask;
+                }));
+            }
+        }
+        else
+        {
+            _storyTestModalContent.Children.Add(new Label
+            {
+                Text = "Antwoord al die vragies om jou telling te sien.",
+                FontSize = 14,
+                TextColor = PlayerMutedTextColor,
+                HorizontalTextAlignment = TextAlignment.Center
+            });
+        }
+    }
+
+    private View BuildStoryTestHeader(MobileStoryDetailResponse detail)
+    {
+        var closeButton = BuildTopIconButton("×");
+        closeButton.FontSize = 28;
+        closeButton.Clicked += async (_, _) => await CloseStoryTestModalAsync();
+
+        var header = new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Auto)
+            },
+            ColumnSpacing = 12
+        };
+
+        header.Children.Add(new VerticalStackLayout
+        {
+            Spacing = 2,
+            Children =
+            {
+                new Label
+                {
+                    Text = "Storie toets",
+                    FontSize = 13,
+                    FontAttributes = FontAttributes.Bold,
+                    TextColor = PlayerMutedTextColor,
+                    CharacterSpacing = 1
+                },
+                new Label
+                {
+                    Text = detail.Story.Title,
+                    FontSize = 24,
+                    FontAttributes = FontAttributes.Bold,
+                    TextColor = PlayerTextColor,
+                    LineBreakMode = LineBreakMode.WordWrap
+                }
+            }
+        });
+        header.Children.Add(closeButton);
+        Grid.SetColumn(closeButton, 1);
+        return header;
+    }
+
+    private View BuildStoryTestQuestionCard(MobileStoryTestQuestion question, int questionIndex)
+    {
+        var options = new VerticalStackLayout
+        {
+            Spacing = 8
+        };
+        options.Children.Add(BuildStoryTestOption(question, questionIndex, "A", question.OptionA));
+        options.Children.Add(BuildStoryTestOption(question, questionIndex, "B", question.OptionB));
+        if (!string.IsNullOrWhiteSpace(question.OptionC))
+        {
+            options.Children.Add(BuildStoryTestOption(question, questionIndex, "C", question.OptionC));
+        }
+
+        var card = new VerticalStackLayout
+        {
+            Spacing = 12,
+            Children =
+            {
+                new Label
+                {
+                    Text = $"Vraag {questionIndex + 1}",
+                    FontSize = 13,
+                    FontAttributes = FontAttributes.Bold,
+                    TextColor = PlayerMutedTextColor
+                },
+                new Label
+                {
+                    Text = question.Question,
+                    FontSize = 18,
+                    FontAttributes = FontAttributes.Bold,
+                    TextColor = PlayerTextColor,
+                    LineBreakMode = LineBreakMode.WordWrap
+                },
+                options
+            }
+        };
+
+        if (_isStoryTestSubmitted && !string.IsNullOrWhiteSpace(GetSelectedStoryTestOption(questionIndex)))
+        {
+            card.Children.Add(new Label
+            {
+                Text = IsStoryTestAnswerCorrect(question, GetSelectedStoryTestOption(questionIndex))
+                    ? "Mooi so!"
+                    : "Goeie poging! Kyk, die regte antwoord is gemerk.",
+                FontSize = 14,
+                FontAttributes = FontAttributes.Bold,
+                TextColor = IsStoryTestAnswerCorrect(question, GetSelectedStoryTestOption(questionIndex))
+                    ? Color.FromArgb("#B9F2D0")
+                    : Color.FromArgb("#FFD5A8")
+            });
+        }
+
+        return new Border
+        {
+            BackgroundColor = PlayerPanelColor,
+            StrokeThickness = 0,
+            StrokeShape = new RoundRectangle { CornerRadius = 20 },
+            Padding = 16,
+            Content = card
+        };
+    }
+
+    private View BuildStoryTestOption(MobileStoryTestQuestion question, int questionIndex, string option, string? optionText)
+    {
+        var selectedOption = GetSelectedStoryTestOption(questionIndex);
+        var isSelected = string.Equals(selectedOption, option, StringComparison.OrdinalIgnoreCase);
+        var isCorrect = IsStoryTestAnswerCorrect(question, option);
+        var backgroundColor = isSelected ? Color.FromArgb("#254D47") : PlayerPillColor;
+        var strokeColor = isSelected ? Color.FromArgb("#D9F2E7") : Color.FromArgb("#2E4844");
+        if (_isStoryTestSubmitted && isCorrect)
+        {
+            backgroundColor = Color.FromArgb("#1F5B3D");
+            strokeColor = Color.FromArgb("#B9F2D0");
+        }
+        else if (_isStoryTestSubmitted && isSelected && !isCorrect)
+        {
+            backgroundColor = Color.FromArgb("#5B3324");
+            strokeColor = Color.FromArgb("#FFD5A8");
+        }
+
+        var optionView = new Border
+        {
+            BackgroundColor = backgroundColor,
+            Stroke = strokeColor,
+            StrokeThickness = 1,
+            StrokeShape = new RoundRectangle { CornerRadius = 16 },
+            Padding = new Thickness(12),
+            Content = new Grid
+            {
+                ColumnDefinitions =
+                {
+                    new ColumnDefinition(GridLength.Auto),
+                    new ColumnDefinition(GridLength.Star)
+                },
+                ColumnSpacing = 10,
+                Children =
+                {
+                    new Border
+                    {
+                        WidthRequest = 30,
+                        HeightRequest = 30,
+                        BackgroundColor = PlayerAccentColor,
+                        StrokeThickness = 0,
+                        StrokeShape = new RoundRectangle { CornerRadius = 999 },
+                        Content = new Label
+                        {
+                            Text = option,
+                            FontSize = 14,
+                            FontAttributes = FontAttributes.Bold,
+                            TextColor = Color.FromArgb("#061816"),
+                            HorizontalTextAlignment = TextAlignment.Center,
+                            VerticalTextAlignment = TextAlignment.Center
+                        }
+                    },
+                    new Label
+                    {
+                        Text = optionText,
+                        FontSize = 15,
+                        TextColor = PlayerTextColor,
+                        LineBreakMode = LineBreakMode.WordWrap,
+                        VerticalTextAlignment = TextAlignment.Center
+                    }
+                }
+            }
+        };
+
+        if (optionView.Content is Grid grid && grid.Children.Count > 1)
+        {
+            grid.SetColumn(grid.Children[1], 1);
+        }
+
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += (_, _) =>
+        {
+            SelectStoryTestOption(questionIndex, option);
+            RenderStoryTestModalContent();
+        };
+        optionView.GestureRecognizers.Add(tap);
+        return optionView;
+    }
+
+    private async Task CloseStoryTestModalAsync()
+    {
+        if (_storyTestModalPage is null)
+        {
+            return;
+        }
+
+        await Navigation.PopModalAsync(true);
+        _storyTestModalPage = null;
+        _storyTestModalContent = null;
+        _storyTestDetail = null;
+    }
+
+    private void SelectStoryTestOption(int questionIndex, string option)
+    {
+        _selectedStoryTestOptions[questionIndex] = option;
+        _isStoryTestSubmitted = false;
+    }
+
+    private string? GetSelectedStoryTestOption(int questionIndex) =>
+        _selectedStoryTestOptions.TryGetValue(questionIndex, out var option) ? option : null;
+
+    private bool IsStoryTestReadyToCheck(MobileStoryDetailResponse detail) =>
+        detail.TestQuestions is { Count: > 0 } questions &&
+        Enumerable.Range(0, questions.Count).All(index => !string.IsNullOrWhiteSpace(GetSelectedStoryTestOption(index)));
+
+    private string BuildStoryTestScoreText(MobileStoryDetailResponse detail)
+    {
+        if (detail.TestQuestions is not { Count: > 0 })
+        {
+            return "Mooi probeer! Jy het 0 uit 0 reg.";
+        }
+
+        var correctAnswers = detail.TestQuestions
+            .Select((question, index) => IsStoryTestAnswerCorrect(question, GetSelectedStoryTestOption(index)) ? 1 : 0)
+            .Sum();
+
+        return correctAnswers == detail.TestQuestions.Count
+            ? "Jippie! Jy het alles reg! Fantastiese werk."
+            : $"Mooi probeer! Jy het {correctAnswers} uit {detail.TestQuestions.Count} reg.";
+    }
+
+    private static bool IsStoryTestAnswerCorrect(MobileStoryTestQuestion question, string? selectedOption) =>
+        string.Equals(question.CorrectOption, selectedOption, StringComparison.OrdinalIgnoreCase);
+
+    private static bool HasStoryTestQuestions(MobileStoryDetailResponse detail) =>
+        detail.TestQuestions is { Count: > 0 };
+
+    private static string? GetStorySynopsis(MobileStoryDetailResponse detail)
+    {
+        if (!string.IsNullOrWhiteSpace(detail.Summary))
+        {
+            return detail.Summary;
+        }
+
+        return string.IsNullOrWhiteSpace(detail.Story.Description) ? null : detail.Story.Description;
+    }
+
+    private static bool ShouldShowStoryLead(MobileStoryDetailResponse detail)
+    {
+        if (string.IsNullOrWhiteSpace(detail.Story.Description) ||
+            string.IsNullOrWhiteSpace(detail.Summary))
+        {
+            return false;
+        }
+
+        return !string.Equals(
+            NormalizeStoryText(detail.Story.Description),
+            NormalizeStoryText(detail.Summary),
+            StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeStoryText(string value) =>
+        string.Join(
+            ' ',
+            value.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
     private static View BuildMessage(string message) =>
         new Border
         {
@@ -2322,6 +3061,8 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 return;
             }
 
+            _continueListeningState.UpdateProgress(slug, source, currentPosition, durationSeconds);
+
             _ = _apiClient.TrackStoryListenAsync(
                 slug,
                 source,
@@ -2347,6 +3088,16 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         }
 
         return decimal.Round((decimal)seconds.Value, 3, MidpointRounding.AwayFromZero);
+    }
+
+    private void SaveContinueListening(MobileStoryDetailResponse detail)
+    {
+        _continueListeningState.Save(
+            detail.Story,
+            _playlistSlug,
+            _playlistTitle,
+            NormalizeTrackingSeconds(_audioPlaybackService.CurrentPosition.TotalSeconds),
+            ResolveCatalogDurationSeconds(detail));
     }
 
     private static string FormatTime(TimeSpan value) =>
@@ -2705,6 +3456,44 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             canvas.DrawCircle(centerX, centerY, radius);
             canvas.FillCircle(centerX, dirtyRect.Height * 0.30f, 1.1f);
             canvas.DrawLine(centerX, dirtyRect.Height * 0.43f, centerX, dirtyRect.Height * 0.72f);
+        }
+    }
+
+    private sealed class DownloadIconDrawable : IDrawable
+    {
+        public void Draw(ICanvas canvas, RectF dirtyRect)
+        {
+            canvas.StrokeColor = PlayerTextColor;
+            canvas.StrokeSize = 2.1f;
+            canvas.StrokeLineCap = LineCap.Round;
+            canvas.StrokeLineJoin = LineJoin.Round;
+
+            var centerX = dirtyRect.Center.X;
+            var top = dirtyRect.Height * 0.14f;
+            var arrowBottom = dirtyRect.Height * 0.58f;
+            var wingY = dirtyRect.Height * 0.43f;
+            var wingOffset = dirtyRect.Width * 0.18f;
+
+            canvas.DrawLine(centerX, top, centerX, arrowBottom);
+            canvas.DrawLine(centerX - wingOffset, wingY, centerX, arrowBottom);
+            canvas.DrawLine(centerX + wingOffset, wingY, centerX, arrowBottom);
+            canvas.DrawLine(dirtyRect.Width * 0.22f, dirtyRect.Height * 0.82f, dirtyRect.Width * 0.78f, dirtyRect.Height * 0.82f);
+        }
+    }
+
+    private sealed class DownloadedIconDrawable : IDrawable
+    {
+        public void Draw(ICanvas canvas, RectF dirtyRect)
+        {
+            canvas.StrokeColor = PlayerTextColor;
+            canvas.StrokeSize = 2.1f;
+            canvas.StrokeLineCap = LineCap.Round;
+            canvas.StrokeLineJoin = LineJoin.Round;
+
+            var trayY = dirtyRect.Height * 0.82f;
+            canvas.DrawLine(dirtyRect.Width * 0.20f, trayY, dirtyRect.Width * 0.80f, trayY);
+            canvas.DrawLine(dirtyRect.Width * 0.27f, dirtyRect.Height * 0.50f, dirtyRect.Width * 0.43f, dirtyRect.Height * 0.66f);
+            canvas.DrawLine(dirtyRect.Width * 0.43f, dirtyRect.Height * 0.66f, dirtyRect.Width * 0.76f, dirtyRect.Height * 0.30f);
         }
     }
 

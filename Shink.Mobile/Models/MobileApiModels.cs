@@ -5,11 +5,16 @@ public sealed record MobileSession(
     string? Email,
     string? DisplayName,
     string? ProfileImageUrl,
+    string? FirstName,
+    string? LastName,
+    string? MobileNumber,
     bool HasPaidSubscription,
     IReadOnlyList<string> FavoriteStorySlugs,
     string LoginUrl,
     string SignupUrl,
     string PlansUrl);
+
+public sealed record MobileProfileUpdateResponse(string Message, MobileSession Session);
 
 public sealed record MobileStoryPreview(
     string Title,
@@ -72,8 +77,29 @@ public sealed record MobileStoryDetailResponse(
     MobileStorySummary? PreviousStory,
     MobileStorySummary? NextStory,
     IReadOnlyList<MobileStorySummary> RelatedStories,
+    string? Summary,
+    IReadOnlyList<string> Lessons,
+    IReadOnlyList<string> ValueTags,
+    IReadOnlyList<string> ConversationQuestions,
+    IReadOnlyList<string> Characters,
+    IReadOnlyList<MobileStoryCharacter> CharacterTiles,
+    string? YouTubeUrl,
+    IReadOnlyList<MobileStoryTestQuestion> TestQuestions,
     string LoginUrl,
     string PlansUrl);
+
+public sealed record MobileStoryCharacter(
+    string DisplayName,
+    string? ImageUrl,
+    string? ImageAlt,
+    bool IsTextOnly);
+
+public sealed record MobileStoryTestQuestion(
+    string Question,
+    string OptionA,
+    string OptionB,
+    string CorrectOption,
+    string? OptionC);
 
 public sealed record MobileContentBlock(
     string Key,

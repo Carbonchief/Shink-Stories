@@ -51,6 +51,24 @@ public class AdminSubscriberManagementMigrationTests
         StringAssert.Contains(sql, "subscriptions.cancelled_at is not null");
     }
 
+    [TestMethod]
+    public void Migration_AddsSubscriptionCancellationFeedbackTable()
+    {
+        var migrationPath = FindRepositoryFile(
+            "Shink",
+            "Database",
+            "migrations",
+            "20260618_subscription_cancellation_feedback.sql");
+        var sql = File.ReadAllText(migrationPath);
+
+        StringAssert.Contains(sql, "subscription_cancellation_feedback");
+        StringAssert.Contains(sql, "feedback_status");
+        StringAssert.Contains(sql, "reason_code");
+        StringAssert.Contains(sql, "cancelled_subscription_count");
+        StringAssert.Contains(sql, "subscriber_id");
+        StringAssert.Contains(sql, "subscription_id");
+    }
+
     private static string FindRepositoryFile(params string[] pathParts)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

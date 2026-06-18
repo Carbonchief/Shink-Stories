@@ -13,7 +13,7 @@ public class PaystackCallbackRoutingTests
         var checkoutService = File.ReadAllText(GetRepoPath("Shink", "Services", "PaystackCheckoutService.cs"));
         var options = File.ReadAllText(GetRepoPath("Shink", "Services", "PaystackOptions.cs"));
         var appSettings = File.ReadAllText(GetRepoPath("Shink", "appsettings.json"));
-        var developmentSettings = File.ReadAllText(GetRepoPath("appsettings.Development.json"));
+        var developmentSettings = File.ReadAllText(GetRepoPath("Shink", "appsettings.Development.json"));
 
         StringAssert.Contains(program, "app.MapGet(\"/betaal/paystack/callback\"");
         StringAssert.Contains(program, "VerifyTransactionAsync(resolvedReference");

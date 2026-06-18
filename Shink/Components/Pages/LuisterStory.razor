@@ -49,9 +49,9 @@
 else if (IsRedirectingToOpsies)
 {
     <section class="story-player-empty">
-        <h1>Hierdie storie is nog gesluit.</h1>
-        <p>Teken in of kies 'n plan om hierdie storie te luister.</p>
-        <a href="@StoryAccessPopupPrimaryHref">Gaan voort</a>
+        <h1>@LockedStoryHeading</h1>
+        <p>@LockedStoryMessage</p>
+        <a href="@StoryAccessPopupPrimaryHref">@LockedStoryPrimaryText</a>
     </section>
 }
 else if (CurrentStory is null)
@@ -396,7 +396,11 @@ else
 
 <StoryAccessPopup IsOpen="@ShowStoryAccessPopup"
                   PrimaryActionHref="@StoryAccessPopupPrimaryHref"
+                  PrimaryActionText="@StoryAccessPopupPrimaryText"
                   PlanActionHref="@StoryAccessPopupPlanHref"
+                  Title="@StoryAccessPopupTitle"
+                  Subtitle="@StoryAccessPopupSubtitle"
+                  Message="@StoryAccessPopupMessage"
                   OnClose="CloseStoryAccessPopupAsync" />
 
 @if (ShowStoryTestModal && CurrentStory is not null && HasStoryTestQuestions(CurrentStory))
@@ -599,11 +603,25 @@ else
 
     private string ShareCanonicalUrl => ShareUrl;
     private bool IsSignedIn => !string.IsNullOrWhiteSpace(SignedInEmail);
+    private bool IsFreeStorySignInOnlyGate =>
+        !IsSignedIn &&
+        CurrentStory is not null &&
+        StoryAccessPolicy.ResolveRequirement("luister", CurrentStory) == StoryAccessRequirement.Free;
     private string StoryAccessPopupPrimaryHref =>
         IsSignedIn
             ? BuildOpsiesHref(PendingLockedStoryPath)
             : $"/teken-in?returnUrl={Uri.EscapeDataString(PendingLockedStoryPath)}";
-    private string StoryAccessPopupPlanHref => BuildOpsiesHref(PendingLockedStoryPath);
+    private string StoryAccessPopupPrimaryText => IsFreeStorySignInOnlyGate ? "👉 Teken in" : "👉 Kry toegang";
+    private string StoryAccessPopupPlanHref => IsFreeStorySignInOnlyGate ? string.Empty : BuildOpsiesHref(PendingLockedStoryPath);
+    private string StoryAccessPopupTitle => IsFreeStorySignInOnlyGate ? "Teken in" : "Oeps!";
+    private string? StoryAccessPopupSubtitle => IsFreeStorySignInOnlyGate ? "Gratis stories speel net vir lede" : "Hierdie stories is nog gesluit";
+    private string StoryAccessPopupMessage =>
+        IsFreeStorySignInOnlyGate
+            ? "Skep 'n gratis rekening of teken in om hierdie gratis storie te luister."
+            : "Kry toegang tot die volle storiewêreld - alle stories, enige tyd.";
+    private string LockedStoryHeading => IsFreeStorySignInOnlyGate ? "Teken in om hierdie gratis storie te luister." : "Hierdie storie is nog gesluit.";
+    private string LockedStoryMessage => IsFreeStorySignInOnlyGate ? "Jy het 'n rekening nodig en moet ingeteken wees voordat hierdie gratis storie kan speel." : "Teken in of kies 'n plan om hierdie storie te luister.";
+    private string LockedStoryPrimaryText => IsFreeStorySignInOnlyGate ? "Teken in" : "Gaan voort";
 
     private string ShareImageUrl =>
         CurrentStory is null
@@ -1041,7 +1059,7 @@ else
 
         if (requirement == StoryAccessRequirement.Free)
         {
-            return true;
+            return !string.IsNullOrWhiteSpace(email);
         }
 
         if (string.IsNullOrWhiteSpace(email))

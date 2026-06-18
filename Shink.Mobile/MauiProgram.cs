@@ -25,6 +25,7 @@ public static class MauiProgram
         builder.Services.AddSingleton(mobileAppSettings);
         builder.Services.AddSingleton<SessionState>();
         builder.Services.AddSingleton<PlaylistPlaybackState>();
+        builder.Services.AddSingleton<ContinueListeningState>();
         builder.Services.AddSingleton<PlayerTransitionBackdropState>();
         builder.Services.AddSingleton<MobileApiClient>();
         builder.Services.AddSingleton<IOfflineStoryDownloadService, OfflineStoryDownloadService>();
@@ -34,8 +35,10 @@ public static class MauiProgram
         builder.Services.AddTransient<HomePage>();
         builder.Services.AddTransient<GratisPage>();
         builder.Services.AddTransient<LuisterPage>();
+        builder.Services.AddTransient<DownloadedPage>();
         builder.Services.AddTransient<AboutPage>();
         builder.Services.AddTransient<AccountPage>();
+        builder.Services.AddTransient<ProfilePage>();
         builder.Services.AddTransient<StoryDetailPage>();
 
 #if DEBUG

@@ -916,7 +916,10 @@ public sealed record AdminSubscriberReportsSnapshot(
     IReadOnlyList<AdminSalesRevenueDetailRecord> SalesDetails,
     IReadOnlyList<AdminRecoveryMetric> AbandonedCartRecoveries,
     IReadOnlyList<AdminRecoveredRevenueDetailRecord> RecoveredRevenueDetails,
-    IReadOnlyList<AdminVisitsViewsLoginsMetric> VisitsViewsAndLogins)
+    IReadOnlyList<AdminVisitsViewsLoginsMetric> VisitsViewsAndLogins,
+    AdminCancellationSurveyOverview CancellationSurveyOverview,
+    IReadOnlyList<AdminCancellationSurveyReasonMetric> CancellationSurveyReasons,
+    IReadOnlyList<AdminCancellationSurveyResponseRecord> CancellationSurveyResponses)
 {
     public static AdminSubscriberReportsSnapshot Empty { get; } = new(
         MembershipStats: [],
@@ -928,7 +931,10 @@ public sealed record AdminSubscriberReportsSnapshot(
         SalesDetails: [],
         AbandonedCartRecoveries: [],
         RecoveredRevenueDetails: [],
-        VisitsViewsAndLogins: []);
+        VisitsViewsAndLogins: [],
+        CancellationSurveyOverview: new AdminCancellationSurveyOverview(0, 0, 0, 0m, null, 0),
+        CancellationSurveyReasons: [],
+        CancellationSurveyResponses: []);
 }
 
 public sealed record AdminMembershipStatsMetric(
@@ -1016,6 +1022,31 @@ public sealed record AdminVisitsViewsLoginsMetric(
     int Visits,
     int Views,
     int Logins);
+
+public sealed record AdminCancellationSurveyOverview(
+    int TotalResponses,
+    int SubmittedResponses,
+    int SkippedResponses,
+    decimal ResponseRatePercent,
+    string? TopReasonCode,
+    int TopReasonCount);
+
+public sealed record AdminCancellationSurveyReasonMetric(
+    string ReasonCode,
+    int ResponseCount,
+    decimal PercentageOfSubmitted);
+
+public sealed record AdminCancellationSurveyResponseRecord(
+    DateTimeOffset CreatedAt,
+    Guid SubscriberId,
+    string Email,
+    string DisplayName,
+    string TierCode,
+    string TierName,
+    string Provider,
+    string FeedbackStatus,
+    string? ReasonCode,
+    string? Note);
 
 public sealed record AdminResourceTypeRecord(
     Guid ResourceTypeId,

@@ -14,7 +14,7 @@ internal static class MobileTopBar
 
         var profileButton = BuildProfileButton(apiClient, session);
         var profileTap = new TapGestureRecognizer();
-        profileTap.Tapped += async (_, _) => await OpenAccountAsync();
+        profileTap.Tapped += async (_, _) => await OpenProfileAsync();
         profileButton.GestureRecognizers.Add(profileTap);
 
         var grid = new Grid
@@ -136,20 +136,11 @@ internal static class MobileTopBar
         }
     }
 
-    private static Task OpenAccountAsync()
-    {
-        if (Shell.Current?.CurrentItem is TabBar tabs)
-        {
-            var accountTab = tabs.Items.FirstOrDefault(item =>
-                string.Equals(item.Title, "Rekening", StringComparison.OrdinalIgnoreCase));
-            if (accountTab is not null)
-            {
-                tabs.CurrentItem = accountTab;
-            }
-        }
+    private static Task OpenAccountAsync() =>
+        Shell.Current.GoToAsync(nameof(AccountPage), animate: true);
 
-        return Task.CompletedTask;
-    }
+    private static Task OpenProfileAsync() =>
+        Shell.Current.GoToAsync(nameof(ProfilePage), animate: true);
 
     private static string BuildInitials(MobileSession session)
     {

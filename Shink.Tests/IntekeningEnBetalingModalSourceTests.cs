@@ -21,6 +21,30 @@ public class IntekeningEnBetalingModalSourceTests
     }
 
     [TestMethod]
+    public void CancelSubscriptionModal_RendersOptionalSurveyControlsAndSkipPath()
+    {
+        var pagePath = FindRepositoryFile("Shink", "Components", "Pages", "IntekeningEnBetaling.razor");
+        var source = File.ReadAllText(pagePath);
+
+        var cancelModal = ExtractBetween(
+            source,
+            "@if (IsCancelSubscriptionModalOpen)",
+            "@if (IsCloseAccountModalOpen)");
+
+        StringAssert.Contains(cancelModal, "Hoekom kanselleer jy vandag?");
+        StringAssert.Contains(cancelModal, "Dis te duur");
+        StringAssert.Contains(cancelModal, "Ons gebruik dit nie genoeg nie");
+        StringAssert.Contains(cancelModal, "My kind stel nie meer belang nie");
+        StringAssert.Contains(cancelModal, "Ons kon nie die regte stories kry nie");
+        StringAssert.Contains(cancelModal, "Tegniese of betalingsprobleme");
+        StringAssert.Contains(cancelModal, "Ander rede");
+        StringAssert.Contains(cancelModal, "Vertel ons meer");
+        StringAssert.Contains(cancelModal, "CancelSubscriptionWithSurveyAsync");
+        StringAssert.Contains(cancelModal, "SkipCancelSurveyAsync");
+        StringAssert.Contains(cancelModal, "Hou intekening");
+    }
+
+    [TestMethod]
     public void CloseAccountSection_RendersAfterPlanChoices()
     {
         var pagePath = FindRepositoryFile("Shink", "Components", "Pages", "IntekeningEnBetaling.razor");
@@ -76,7 +100,9 @@ public class IntekeningEnBetalingModalSourceTests
         StringAssert.Contains(source, "StartPlanCheckoutAsync(plan)");
         StringAssert.Contains(source, "disabled=\"@IsPlanCheckoutPending\"");
         StringAssert.Contains(source, "billing-plan-button-spinner");
-        StringAssert.Contains(source, "NavigationManager.NavigateTo($\"/betaal/{Uri.EscapeDataString(plan.Slug)}\", forceLoad: true)");
+        StringAssert.Contains(source, "NavigationManager.NavigateTo(BuildPlanCheckoutPath(plan), forceLoad: true)");
+        StringAssert.Contains(source, "private string BuildPlanCheckoutPath(PaymentPlan plan)");
+        StringAssert.Contains(source, "var checkoutPath = $\"/betaal/{Uri.EscapeDataString(plan.Slug)}\";");
         StringAssert.Contains(css, ".billing-plan-select-btn:disabled");
         StringAssert.Contains(css, ".billing-plan-button-spinner");
         Assert.IsFalse(

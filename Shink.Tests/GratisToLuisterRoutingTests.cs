@@ -139,17 +139,19 @@ public class GratisToLuisterRoutingTests
     }
 
     [TestMethod]
-    public void LuisterStoryAllowsFreeStoriesWithoutSubscription()
+    public void LuisterStoryRequiresSignInForFreeStoriesWithoutRequiringPaidSubscription()
     {
         var luisterStory = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "LuisterStory.razor"));
         var luister = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Luister.razor"));
+        var normalizedLuisterStory = luisterStory.Replace("\r\n", "\n");
 
         StringAssert.Contains(luisterStory, "if (requirement == StoryAccessRequirement.Free)");
-        StringAssert.Contains(luisterStory, "return true;");
+        StringAssert.Contains(luisterStory, "return !string.IsNullOrWhiteSpace(email);");
         StringAssert.Contains(luister, "StoryAccessRequirement.Free => true");
-        Assert.IsFalse(
-            luisterStory.Contains("HasAnyActiveStorySubscriptionAsync", StringComparison.Ordinal),
-            "Free stories on /luister/{slug} should not require a gratis or paid subscription row.");
+        Assert.IsFalse(normalizedLuisterStory.Contains(
+                "if (requirement == StoryAccessRequirement.Free)\n        {\n            return true;\n        }",
+                StringComparison.Ordinal),
+            "Free stories on /luister/{slug} should still skip the paid-tier check, but they should no longer play anonymously.");
     }
 
     [TestMethod]
@@ -161,22 +163,36 @@ public class GratisToLuisterRoutingTests
         StringAssert.Contains(program, "var requirement = StoryAccessPolicy.ResolveRequirement(\"luister\", story);");
         StringAssert.Contains(program, "var hasStoryAccess = await HasRequiredStoryAccessAsync(");
         StringAssert.Contains(program, "if (requirement == StoryAccessRequirement.Free)");
-        StringAssert.Contains(program, "return true;");
+        StringAssert.Contains(program, "return !string.IsNullOrWhiteSpace(email);");
         StringAssert.Contains(program, "return httpContext.User.Identity?.IsAuthenticated == true");
     }
 
     [TestMethod]
-    public void GratisStoryPageDoesNotRedirectFreeStoriesAwayFromPlayback()
+    public void GratisStoryPageRequiresSignedInAccountBeforePlayback()
     {
         var gratisStory = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "GratisStory.razor"));
+        var normalizedGratisStory = gratisStory.Replace("\r\n", "\n");
 
-        StringAssert.Contains(gratisStory, "AudioAccessService.CreateSignedAudioUrl(CurrentStory.Slug)");
+        StringAssert.Contains(gratisStory, "@inject AuthenticationStateProvider AuthenticationStateProvider");
+        StringAssert.Contains(gratisStory, "RequiresSignIn");
+        StringAssert.Contains(gratisStory, "SignInHref");
+        StringAssert.Contains(gratisStory, "SignUpHref");
+        Assert.IsTrue(
+            normalizedGratisStory.Contains("AudioUrl = CurrentStory is null || RequiresSignIn\n            ? null\n            : AudioAccessService.CreateSignedAudioUrl(CurrentStory.Slug);", StringComparison.Ordinal),
+            "The dedicated gratis player should only mint a signed audio URL after the user is signed in.");
+    }
+
+    [TestMethod]
+    public void MobileGratisStoriesUnlockForSignedInUsersWithoutGratisTierCheck()
+    {
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+
+        StringAssert.Contains(program, "return new MobileStoryAccess(false, false);");
+        StringAssert.Contains(program, "IsAuthenticated: true,");
+        StringAssert.Contains(program, "? access.IsAuthenticated");
         Assert.IsFalse(
-            gratisStory.Contains("NavigateTo($\"/opsies?returnUrl={returnUrl}\")", StringComparison.Ordinal),
-            "The dedicated gratis player should render the signed free-story audio URL instead of redirecting away.");
-        Assert.IsFalse(
-            gratisStory.Contains("IsRedirectingToOpsies", StringComparison.Ordinal),
-            "The dedicated gratis player should not show the paid-options redirect state.");
+            program.Contains("HasGratisOrPaidSubscription", StringComparison.Ordinal),
+            "Mobile free-story access should track signed-in state directly instead of requiring a separate gratis tier row.");
     }
 
     [TestMethod]

@@ -1495,6 +1495,7 @@
                         var totalRecurringRevenue = GetRecurringRevenueMetric("total");
                         var monthlyRecurringRevenue = GetRecurringRevenueMetric("monthly");
                         var yearlyRecurringRevenue = GetRecurringRevenueMetric("yearly");
+                        var cancellationSurveyOverview = CancellationSurveyOverview;
                     }
 
                     <MudTabs Class="admin-detail-tabs admin-analytics-tabs" Rounded="true">
@@ -1804,6 +1805,238 @@
                                         </p>
                                     }
                                 </section>
+                            </section>
+                        </MudTabPanel>
+
+                        <MudTabPanel Text='@T("Kansellasies", "Cancellations")'>
+                            <section class="admin-cancellation-analytics-section admin-analytics-panel admin-analytics-panel-wide">
+                                <div class="admin-analytics-panel-head">
+                                    <div>
+                                        <h3>@T("Kansellasie opname", "Cancellation survey")</h3>
+                                        <p>
+                                            @T(
+                                                "Self-diens kansellasies wys hier of ouers 'n rede gekies het, wat hulle geskryf het, en watter redes die meeste voorkom.",
+                                                "Self-service cancellations show here whether parents chose a reason, what they wrote, and which reasons appear most often.")
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div class="admin-report-cards">
+                                    <article class="admin-report-card">
+                                        <p class="admin-report-card-label">@T("Antwoorde", "Responses")</p>
+                                        <p class="admin-report-card-value">@FormatAnalyticsNumber(cancellationSurveyOverview.TotalResponses)</p>
+                                        <p class="admin-report-card-meta">
+                                            @T("Ingedien", "Submitted"): @FormatAnalyticsNumber(cancellationSurveyOverview.SubmittedResponses)
+                                        </p>
+                                    </article>
+
+                                    <article class="admin-report-card">
+                                        <p class="admin-report-card-label">@T("Oorgeslaan", "Skipped")</p>
+                                        <p class="admin-report-card-value">@FormatAnalyticsNumber(cancellationSurveyOverview.SkippedResponses)</p>
+                                        <p class="admin-report-card-meta">
+                                            @T("Opnames sonder rede", "Cancellations without a reason")
+                                        </p>
+                                    </article>
+
+                                    <article class="admin-report-card">
+                                        <p class="admin-report-card-label">@T("Responskoers", "Response rate")</p>
+                                        <p class="admin-report-card-value">@FormatReportPercentage(cancellationSurveyOverview.ResponseRatePercent)</p>
+                                        <p class="admin-report-card-meta">
+                                            @T("Van alle self-diens kansellasies", "Across all self-service cancellations")
+                                        </p>
+                                    </article>
+
+                                    <article class="admin-report-card">
+                                        <p class="admin-report-card-label">@T("Top rede", "Top reason")</p>
+                                        <p class="admin-report-card-value">@GetCancellationSurveyReasonLabel(cancellationSurveyOverview.TopReasonCode)</p>
+                                        <p class="admin-report-card-meta">
+                                            @if (cancellationSurveyOverview.TopReasonCount > 0)
+                                            {
+                                                <span>@FormatAnalyticsNumber(cancellationSurveyOverview.TopReasonCount) @T("reaksies", "responses")</span>
+                                            }
+                                            else
+                                            {
+                                                <span>@T("Nog geen redes nie", "No reasons yet")</span>
+                                            }
+                                        </p>
+                                    </article>
+                                </div>
+
+                                <div class="admin-report-analytics-layout">
+                                    <section class="admin-report-panel">
+                                        <div class="admin-analytics-panel-head">
+                                            <div>
+                                                <h3>@T("Rede uiteensetting", "Reason breakdown")</h3>
+                                                <p>
+                                                    @T(
+                                                        "Persentasie en aantal van elke ingediende rede.",
+                                                        "Percentage and count for each submitted reason.")
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        @if (CancellationSurveyReasons.Count > 0)
+                                        {
+                                            <div class="admin-report-chart-shell">
+                                                <MudChart T="double"
+                                                          ChartType="ChartType.Bar"
+                                                          ChartSeries="CancellationSurveyReasonChartSeries"
+                                                          ChartLabels="CancellationSurveyReasonChartLabels" />
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <p class="admin-analytics-footnote">
+                                                @T("Nog geen ingediende redes beskikbaar nie.", "No submitted reasons available yet.")
+                                            </p>
+                                        }
+                                    </section>
+
+                                    <section class="admin-report-panel">
+                                        <div class="admin-analytics-panel-head">
+                                            <div>
+                                                <h3>@T("Rede tabel", "Reason table")</h3>
+                                                <p>
+                                                    @T(
+                                                        "Gebruik dit om te sien watter redes die meeste voorkom.",
+                                                        "Use this to see which reasons appear most often.")
+                                                </p>
+                                            </div>
+                                        </div>
+
+                                        <div class="admin-report-table-wrap">
+                                            <MudTable T="AdminCancellationSurveyReasonMetric"
+                                                      Items="CancellationSurveyReasons"
+                                                      Class="admin-report-table"
+                                                      SortLabel='@T("Sorteer volgens", "Sort by")'
+                                                      RowsPerPage="100"
+                                                      Dense="true"
+                                                      Hover="true"
+                                                      Bordered="true"
+                                                      Elevation="0"
+                                                      Breakpoint="Breakpoint.Md">
+                                                <HeaderContent>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminCancellationSurveyReasonMetric"
+                                                                           SortBy="new Func<AdminCancellationSurveyReasonMetric, object?>(metric => metric.ReasonCode)">
+                                                            @T("Rede", "Reason")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminCancellationSurveyReasonMetric"
+                                                                           SortBy="new Func<AdminCancellationSurveyReasonMetric, object?>(metric => metric.ResponseCount)">
+                                                            @T("Antwoorde", "Responses")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                    <MudTh>
+                                                        <MudTableSortLabel T="AdminCancellationSurveyReasonMetric"
+                                                                           SortBy="new Func<AdminCancellationSurveyReasonMetric, object?>(metric => metric.PercentageOfSubmitted)">
+                                                            @T("Persentasie", "Percentage")
+                                                        </MudTableSortLabel>
+                                                    </MudTh>
+                                                </HeaderContent>
+                                                <RowTemplate>
+                                                    <MudTd DataLabel='@T("Rede", "Reason")'>@GetCancellationSurveyReasonLabel(context.ReasonCode)</MudTd>
+                                                    <MudTd DataLabel='@T("Antwoorde", "Responses")'>@FormatAnalyticsNumber(context.ResponseCount)</MudTd>
+                                                    <MudTd DataLabel='@T("Persentasie", "Percentage")'>@FormatReportPercentage(context.PercentageOfSubmitted)</MudTd>
+                                                </RowTemplate>
+                                                <NoRecordsContent>
+                                                    <MudText Typo="Typo.body2">@T("Geen redes is nog ingedien nie.", "No reasons have been submitted yet.")</MudText>
+                                                </NoRecordsContent>
+                                            </MudTable>
+                                        </div>
+                                    </section>
+                                </div>
+
+                                <details class="admin-revenue-drilldown admin-collapsible-panel" open>
+                                    <summary class="admin-collapsible-summary admin-analytics-panel-head">
+                                        <div>
+                                            <h3>@T("Onlangse antwoorde", "Recent responses")</h3>
+                                            <p>
+                                                @T(
+                                                    "Laaste self-diens kansellasies met die rede, plan en nota waar beskikbaar.",
+                                                    "Latest self-service cancellations with the reason, plan, and note where available.")
+                                            </p>
+                                        </div>
+                                        <div class="admin-collapsible-summary-meta">
+                                            <span class="admin-story-stats-filter-summary">
+                                                @FormatAnalyticsNumber(CancellationSurveyResponses.Count) @T("inskrywings", "entries")
+                                            </span>
+                                            <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                                        </div>
+                                    </summary>
+
+                                    <div class="admin-collapsible-content">
+                                        <MudTable T="AdminCancellationSurveyResponseRecord"
+                                                  Class="admin-grid"
+                                                  Items="CancellationSurveyResponses"
+                                                  RowsPerPage="25"
+                                                  Dense="true"
+                                                  Hover="true"
+                                                  Bordered="true"
+                                                  Elevation="0"
+                                                  Breakpoint="Breakpoint.Md">
+                                            <HeaderContent>
+                                                <MudTh>
+                                                    <MudTableSortLabel T="AdminCancellationSurveyResponseRecord" SortBy="new Func<AdminCancellationSurveyResponseRecord, object?>(record => record.CreatedAt)">
+                                                        @T("Datum", "Date")
+                                                    </MudTableSortLabel>
+                                                </MudTh>
+                                                <MudTh>
+                                                    <MudTableSortLabel T="AdminCancellationSurveyResponseRecord" SortBy="new Func<AdminCancellationSurveyResponseRecord, object?>(record => record.DisplayName)">
+                                                        @T("Intekenaar", "Subscriber")
+                                                    </MudTableSortLabel>
+                                                </MudTh>
+                                                <MudTh>
+                                                    <MudTableSortLabel T="AdminCancellationSurveyResponseRecord" SortBy="new Func<AdminCancellationSurveyResponseRecord, object?>(record => record.ReasonCode)">
+                                                        @T("Rede", "Reason")
+                                                    </MudTableSortLabel>
+                                                </MudTh>
+                                                <MudTh>
+                                                    <MudTableSortLabel T="AdminCancellationSurveyResponseRecord" SortBy="new Func<AdminCancellationSurveyResponseRecord, object?>(record => record.TierName)">
+                                                        @T("Plan", "Plan")
+                                                    </MudTableSortLabel>
+                                                </MudTh>
+                                                <MudTh>
+                                                    <MudTableSortLabel T="AdminCancellationSurveyResponseRecord" SortBy="new Func<AdminCancellationSurveyResponseRecord, object?>(record => record.Provider)">
+                                                        @T("Verskaffer", "Provider")
+                                                    </MudTableSortLabel>
+                                                </MudTh>
+                                                <MudTh>
+                                                    <MudTableSortLabel T="AdminCancellationSurveyResponseRecord" SortBy="new Func<AdminCancellationSurveyResponseRecord, object?>(record => record.Note)">
+                                                        @T("Nota", "Note")
+                                                    </MudTableSortLabel>
+                                                </MudTh>
+                                            </HeaderContent>
+                                            <RowTemplate>
+                                                <MudTd DataLabel='@T("Datum", "Date")'>@FormatAdminDateTime(context.CreatedAt)</MudTd>
+                                                <MudTd DataLabel='@T("Intekenaar", "Subscriber")'>
+                                                    <div class="admin-analytics-story-cell">
+                                                        <strong>@context.DisplayName</strong>
+                                                        <span>@context.Email</span>
+                                                    </div>
+                                                </MudTd>
+                                                <MudTd DataLabel='@T("Rede", "Reason")'>
+                                                    <div class="admin-analytics-story-cell">
+                                                        <strong>@GetCancellationSurveyReasonLabel(context.ReasonCode)</strong>
+                                                        <span>@GetCancellationSurveyFeedbackStatusLabel(context.FeedbackStatus)</span>
+                                                    </div>
+                                                </MudTd>
+                                                <MudTd DataLabel='@T("Plan", "Plan")'>
+                                                    <div class="admin-analytics-story-cell">
+                                                        <strong>@context.TierName</strong>
+                                                        <span>@context.TierCode</span>
+                                                    </div>
+                                                </MudTd>
+                                                <MudTd DataLabel='@T("Verskaffer", "Provider")'>@BuildRevenueProviderLabel(context.Provider)</MudTd>
+                                                <MudTd DataLabel='@T("Nota", "Note")'>@(string.IsNullOrWhiteSpace(context.Note) ? "-" : context.Note)</MudTd>
+                                            </RowTemplate>
+                                            <NoRecordsContent>
+                                                <MudText Typo="Typo.body2">@T("Geen kansellasie-opnames is nog beskikbaar nie.", "No cancellation survey responses are available yet.")</MudText>
+                                            </NoRecordsContent>
+                                        </MudTable>
+                                    </div>
+                                </details>
                             </section>
                         </MudTabPanel>
 
@@ -5115,6 +5348,31 @@
             .Where(IsRevenueDetailInSelectedPeriod)
             .OrderByDescending(detail => detail.SoldAt)
             .ToArray();
+
+    private AdminCancellationSurveyOverview CancellationSurveyOverview =>
+        SubscriberReports.CancellationSurveyOverview;
+
+    private IReadOnlyList<AdminCancellationSurveyReasonMetric> CancellationSurveyReasons =>
+        SubscriberReports.CancellationSurveyReasons;
+
+    private IReadOnlyList<AdminCancellationSurveyResponseRecord> CancellationSurveyResponses =>
+        SubscriberReports.CancellationSurveyResponses;
+
+    private string[] CancellationSurveyReasonChartLabels =>
+        CancellationSurveyReasons
+            .Select(metric => GetCancellationSurveyReasonLabel(metric.ReasonCode))
+            .ToArray();
+
+    private List<ChartSeries<double>> CancellationSurveyReasonChartSeries =>
+        [
+            new ChartSeries<double>
+            {
+                Name = T("Antwoorde", "Responses"),
+                Data = CancellationSurveyReasons
+                    .Select(metric => (double)metric.ResponseCount)
+                    .ToArray()
+            }
+        ];
 
     private int SelectedRevenuePayFastSalesCount =>
         FilteredRevenueSalesDetails.Count(detail => IsRevenueDetailProvider(detail, "payfast"));
@@ -9922,6 +10180,25 @@
             "paystack" => "Paystack",
             "payfast" => "PayFast",
             _ => provider ?? "-"
+        };
+
+    private string GetCancellationSurveyReasonLabel(string? reasonCode) =>
+        reasonCode?.Trim().ToLowerInvariant() switch
+        {
+            SubscriptionCancellationReasonCodes.TooExpensive => T("Dis te duur", "Too expensive"),
+            SubscriptionCancellationReasonCodes.NotUsingEnough => T("Ons gebruik dit nie genoeg nie", "Not using it enough"),
+            SubscriptionCancellationReasonCodes.ChildLostInterest => T("My kind stel nie meer belang nie", "Child lost interest"),
+            SubscriptionCancellationReasonCodes.CouldNotFindRightStories => T("Ons kon nie die regte stories kry nie", "Could not find the right stories"),
+            SubscriptionCancellationReasonCodes.TechnicalOrPaymentIssues => T("Tegniese of betalingsprobleme", "Technical or payment issues"),
+            SubscriptionCancellationReasonCodes.Other => T("Ander rede", "Other"),
+            _ => T("Oorgeslaan", "Skipped")
+        };
+
+    private string GetCancellationSurveyFeedbackStatusLabel(string? feedbackStatus) =>
+        feedbackStatus?.Trim().ToLowerInvariant() switch
+        {
+            SubscriptionCancellationFeedbackStatuses.Submitted => T("Rede ingedien", "Reason submitted"),
+            _ => T("Opname oorgeslaan", "Survey skipped")
         };
 
     private string FormatRecoveredRevenueNextPayment(AdminRecoveredRevenueDetailRecord detail) =>
