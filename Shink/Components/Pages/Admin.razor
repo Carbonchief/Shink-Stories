@@ -1477,9 +1477,9 @@
                     </div>
 
                     @{
-                        var todaySubscriberMetric = GetAccessFilteredSubscriberMetric("today");
-                        var monthlySubscriberMetric = GetAccessFilteredSubscriberMetric("this_month");
-                        var yearlySubscriberMetric = GetAccessFilteredSubscriberMetric("this_year");
+                        var todaySubscriberMetric = GetSubscriberMetric("today");
+                        var monthlySubscriberMetric = GetSubscriberMetric("this_month");
+                        var yearlySubscriberMetric = GetSubscriberMetric("this_year");
                         var currentDaySubscriberSales = GetSubscriberSalesMetric(RevenuePeriodCurrentDay);
                         var currentWeekSubscriberSales = GetSubscriberSalesMetric(RevenuePeriodCurrentWeek);
                         var currentMonthSubscriberSales = GetSubscriberSalesMetric(RevenuePeriodCurrentMonth);
@@ -1556,7 +1556,7 @@
                                         </div>
                                         <div class="admin-subscriber-analytics-control">
                                             <span class="admin-header-filter-label" id="subscriber-access-filter-label">
-                                                @T("Tipe", "Type")
+                                                @T("Detail tipe", "Detail type")
                                             </span>
                                             <div class="admin-subscriber-access-toggle"
                                                  role="group"
@@ -4733,9 +4733,13 @@
             .Select(metric => metric.TierName)
             .ToArray();
     private IReadOnlyList<AdminSubscriberTrendMetric> CurrentSubscriberTrendMetrics =>
-        SubscriberReports.MembershipTrend
-            .Where(metric => string.Equals(metric.PeriodType, SelectedSubscriberTrendPeriod, StringComparison.OrdinalIgnoreCase))
-            .ToArray();
+        IsSelectedSubscriberAccessFilter(SubscriberAccessFilterAll)
+            ? SubscriberReports.MembershipTrend
+                .Where(metric => string.Equals(metric.PeriodType, SelectedSubscriberTrendPeriod, StringComparison.OrdinalIgnoreCase))
+                .ToArray()
+            : BuildAccessFilteredSubscriberTrendMetrics(
+                AccessFilteredSubscriberMembershipDetails,
+                SelectedSubscriberTrendPeriod);
     private ChartType SubscriberTrendChartType =>
         string.Equals(SelectedSubscriberChartType, SubscriberChartTypeBar, StringComparison.OrdinalIgnoreCase)
             ? ChartType.Bar
@@ -5072,10 +5076,10 @@
 
     private IReadOnlyList<AdminMembershipStatsMetric> SubscriberAnalyticsPeriodHighlights =>
         [
-            GetAccessFilteredSubscriberMetric("today"),
-            GetAccessFilteredSubscriberMetric("this_month"),
-            GetAccessFilteredSubscriberMetric("this_year"),
-            GetAccessFilteredSubscriberMetric("all_time")
+            GetSubscriberMetric("today"),
+            GetSubscriberMetric("this_month"),
+            GetSubscriberMetric("this_year"),
+            GetSubscriberMetric("all_time")
         ];
 
     private IReadOnlyList<AdminSubscriberMembershipDetailRecord> AccessFilteredSubscriberMembershipDetails =>
@@ -9082,35 +9086,124 @@
             string.Equals(metric.PeriodKey, periodKey, StringComparison.OrdinalIgnoreCase))
         ?? new AdminMembershipStatsMetric(periodKey, 0, 0);
 
-    private AdminMembershipStatsMetric GetAccessFilteredSubscriberMetric(string periodKey)
+    private static IReadOnlyList<AdminSubscriberTrendMetric> BuildAccessFilteredSubscriberTrendMetrics(
+        IReadOnlyList<AdminSubscriberMembershipDetailRecord> details,
+        string periodType)
     {
-        var metric = GetSubscriberMetric(periodKey);
-        if (IsSelectedSubscriberAccessFilter(SubscriberAccessFilterAll))
-        {
-            return metric;
-        }
+        var normalizedPeriodType = NormalizeSubscriberTrendPeriod(periodType);
+        var signupDates = details
+            .Select(detail => detail.SubscribedAt.ToLocalTime().Date)
+            .ToArray();
+        var cancellationDates = details
+            .Where(detail => detail.CancelledAt is not null)
+            .Select(detail => detail.CancelledAt!.Value.ToLocalTime().Date)
+            .ToArray();
 
-        return new AdminMembershipStatsMetric(
-            periodKey,
-            CountSubscriberMembershipDetailsInPeriod(
-                AccessFilteredSubscriberMembershipDetails,
-                periodKey),
-            CountSubscriberMembershipDetailCancellationsInPeriod(
-                AccessFilteredSubscriberMembershipDetails,
-                periodKey));
+        var signupCountByDate = signupDates
+            .GroupBy(value => value)
+            .ToDictionary(group => group.Key, group => group.Count());
+        var cancellationCountByDate = cancellationDates
+            .GroupBy(value => value)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var signupCountByMonth = signupDates
+            .GroupBy(value => value.ToString("yyyy-MM", CultureInfo.InvariantCulture))
+            .ToDictionary(group => group.Key, group => group.Count());
+        var cancellationCountByMonth = cancellationDates
+            .GroupBy(value => value.ToString("yyyy-MM", CultureInfo.InvariantCulture))
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var signupCountByYear = signupDates
+            .GroupBy(value => value.Year)
+            .ToDictionary(group => group.Key, group => group.Count());
+        var cancellationCountByYear = cancellationDates
+            .GroupBy(value => value.Year)
+            .ToDictionary(group => group.Key, group => group.Count());
+
+        var nowLocal = DateTime.Now;
+        return normalizedPeriodType switch
+        {
+            SubscriberTrendPeriodMonth => GetMonthTrendSeries(
+                new DateTime(nowLocal.Year, nowLocal.Month, 1).AddMonths(-11),
+                new DateTime(nowLocal.Year, nowLocal.Month, 1),
+                signupCountByMonth,
+                cancellationCountByMonth),
+            SubscriberTrendPeriodYear => GetYearTrendSeries(
+                nowLocal.Year - 5,
+                nowLocal.Year,
+                signupCountByYear,
+                cancellationCountByYear),
+            _ => GetDayTrendSeries(
+                nowLocal.Date.AddDays(-6),
+                nowLocal.Date,
+                signupCountByDate,
+                cancellationCountByDate)
+        };
     }
 
-    private static int CountSubscriberMembershipDetailsInPeriod(
-        IEnumerable<AdminSubscriberMembershipDetailRecord> details,
-        string periodKey) =>
-        details.Count(detail => IsAdminDateInCurrentPeriod(detail.SubscribedAt, periodKey));
+    private static IReadOnlyList<AdminSubscriberTrendMetric> GetDayTrendSeries(
+        DateTime dayStart,
+        DateTime dayEnd,
+        IReadOnlyDictionary<DateTime, int> signupsByDate,
+        IReadOnlyDictionary<DateTime, int> cancellationsByDate)
+    {
+        var metrics = new List<AdminSubscriberTrendMetric>(7);
 
-    private static int CountSubscriberMembershipDetailCancellationsInPeriod(
-        IEnumerable<AdminSubscriberMembershipDetailRecord> details,
-        string periodKey) =>
-        details.Count(detail =>
-            detail.CancelledAt is not null &&
-            IsAdminDateInCurrentPeriod(detail.CancelledAt.Value, periodKey));
+        for (var date = dayStart; date <= dayEnd; date = date.AddDays(1))
+        {
+            var periodKey = date.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+            metrics.Add(new AdminSubscriberTrendMetric(
+                "day",
+                periodKey,
+                date.ToString("dd/MM", CultureInfo.InvariantCulture),
+                signupsByDate.GetValueOrDefault(date),
+                cancellationsByDate.GetValueOrDefault(date)));
+        }
+
+        return metrics;
+    }
+
+    private static IReadOnlyList<AdminSubscriberTrendMetric> GetMonthTrendSeries(
+        DateTime monthStart,
+        DateTime monthEnd,
+        IReadOnlyDictionary<string, int> signupsByMonth,
+        IReadOnlyDictionary<string, int> cancellationsByMonth)
+    {
+        var metrics = new List<AdminSubscriberTrendMetric>(12);
+        for (var month = monthStart; month <= monthEnd; month = month.AddMonths(1))
+        {
+            var periodKey = month.ToString("yyyy-MM", CultureInfo.InvariantCulture);
+            metrics.Add(new AdminSubscriberTrendMetric(
+                "month",
+                periodKey,
+                month.ToString("MM/yy", CultureInfo.InvariantCulture),
+                signupsByMonth.GetValueOrDefault(periodKey),
+                cancellationsByMonth.GetValueOrDefault(periodKey)));
+        }
+
+        return metrics;
+    }
+
+    private static IReadOnlyList<AdminSubscriberTrendMetric> GetYearTrendSeries(
+        int yearStart,
+        int endYear,
+        IReadOnlyDictionary<int, int> signupsByYear,
+        IReadOnlyDictionary<int, int> cancellationsByYear)
+    {
+        var metrics = new List<AdminSubscriberTrendMetric>(Math.Max(0, endYear - yearStart + 1));
+        for (var year = yearStart; year <= endYear; year++)
+        {
+            var periodKey = year.ToString(CultureInfo.InvariantCulture);
+            metrics.Add(new AdminSubscriberTrendMetric(
+                "year",
+                periodKey,
+                periodKey,
+                signupsByYear.GetValueOrDefault(year),
+                cancellationsByYear.GetValueOrDefault(year)));
+        }
+
+        return metrics;
+    }
 
     private void SetSubscriberDrilldownPeriod(string periodKey)
     {

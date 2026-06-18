@@ -18,9 +18,9 @@ public class AdminAnalyticsSourceTests
 
         StringAssert.Contains(admin, "admin-subscriber-analytics-section");
         StringAssert.Contains(admin, "SubscriberReports.MembershipStats");
-        StringAssert.Contains(admin, "GetAccessFilteredSubscriberMetric(\"today\")");
-        StringAssert.Contains(admin, "GetAccessFilteredSubscriberMetric(\"this_month\")");
-        StringAssert.Contains(admin, "GetAccessFilteredSubscriberMetric(\"this_year\")");
+        StringAssert.Contains(admin, "GetSubscriberMetric(\"today\")");
+        StringAssert.Contains(admin, "GetSubscriberMetric(\"this_month\")");
+        StringAssert.Contains(admin, "GetSubscriberMetric(\"this_year\")");
         StringAssert.Contains(admin, "Cancellations");
         StringAssert.Contains(admin, "New subscribers today");
         StringAssert.Contains(admin, "Cancelled subscriptions");
@@ -746,16 +746,18 @@ public class AdminAnalyticsSourceTests
     }
 
     [TestMethod]
-    public void SubscriberAnalyticsAccessToggleScopesTopCards()
+    public void SubscriberAnalyticsAccessToggleScopesDetailGridOnly()
     {
         var admin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
 
-        StringAssert.Contains(admin, "var todaySubscriberMetric = GetAccessFilteredSubscriberMetric(\"today\");");
-        StringAssert.Contains(admin, "var monthlySubscriberMetric = GetAccessFilteredSubscriberMetric(\"this_month\");");
-        StringAssert.Contains(admin, "var yearlySubscriberMetric = GetAccessFilteredSubscriberMetric(\"this_year\");");
-        StringAssert.Contains(admin, "GetAccessFilteredSubscriberMetric(\"all_time\")");
+        StringAssert.Contains(admin, "var todaySubscriberMetric = GetSubscriberMetric(\"today\");");
+        StringAssert.Contains(admin, "var monthlySubscriberMetric = GetSubscriberMetric(\"this_month\");");
+        StringAssert.Contains(admin, "var yearlySubscriberMetric = GetSubscriberMetric(\"this_year\");");
+        StringAssert.Contains(admin, "GetSubscriberMetric(\"all_time\")");
         StringAssert.Contains(admin, "AccessFilteredSubscriberMembershipDetails");
-        StringAssert.Contains(admin, "CountSubscriberMembershipDetailsInPeriod");
+        StringAssert.Contains(admin, "@T(\"Detail tipe\", \"Detail type\")");
+        Assert.IsFalse(admin.Contains("GetAccessFilteredSubscriberMetric", StringComparison.Ordinal));
+        Assert.IsFalse(admin.Contains("CountSubscriberMembershipDetailsInPeriod", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -769,6 +771,8 @@ public class AdminAnalyticsSourceTests
         StringAssert.Contains(admin, "SubscriberTrendPeriodMonth => \"this_month\"");
         StringAssert.Contains(admin, "SubscriberTrendPeriodYear => \"this_year\"");
         StringAssert.Contains(admin, "selectedSubscriberTrendPeriod = GetSubscriberTrendPeriodForDrilldownPeriod(periodKey);");
+        StringAssert.Contains(admin, "BuildAccessFilteredSubscriberTrendMetrics(");
+        StringAssert.Contains(admin, "IsSelectedSubscriberAccessFilter(SubscriberAccessFilterAll)");
     }
 
     [TestMethod]

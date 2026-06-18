@@ -95,6 +95,8 @@ public class MobileAbsoluteUrlSourceTests
         var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
 
         StringAssert.Contains(luisterPage, "_searchEntry.TextChanged += (_, _) => QueueSearchRender();");
+        StringAssert.Contains(luisterPage, "TextColor = Color.FromArgb(\"#243238\")");
+        StringAssert.Contains(luisterPage, "PlaceholderColor = Color.FromArgb(\"#7C817C\")");
         StringAssert.Contains(luisterPage, "private async Task DebounceSearchRenderAsync(CancellationToken cancellationToken)");
         StringAssert.Contains(luisterPage, "await Task.Delay(220, cancellationToken);");
         StringAssert.Contains(luisterPage, "MainThread.BeginInvokeOnMainThread(RenderPlaylistContent);");
@@ -102,6 +104,25 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "ContainsNormalized(story.Description, normalizedQuery)");
         StringAssert.Contains(luisterPage, "ContainsNormalized(story.Slug, normalizedQuery)");
         Assert.IsFalse(luisterPage.Contains("_searchEntry.TextChanged += (_, _) => RenderPlaylistContent();", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void MobileLuisterPullToRefreshUsesUiSafeCancelableLoadPath()
+    {
+        var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
+
+        StringAssert.Contains(luisterPage, "_refreshView = new RefreshView");
+        StringAssert.Contains(luisterPage, "Command = new Command(() => _ = TriggerRefreshAsync())");
+        StringAssert.Contains(luisterPage, "private async Task TriggerRefreshAsync()");
+        StringAssert.Contains(luisterPage, "_loadCancellation?.Cancel();");
+        StringAssert.Contains(luisterPage, "_loadCancellation = new CancellationTokenSource();");
+        StringAssert.Contains(luisterPage, "var cancellationToken = _loadCancellation.Token;");
+        StringAssert.Contains(luisterPage, "await MainThread.InvokeOnMainThreadAsync(() =>");
+        StringAssert.Contains(luisterPage, "_refreshView.IsRefreshing = false");
+        StringAssert.Contains(luisterPage, "if (cancellationToken.IsCancellationRequested || !_isPageActive)");
+        StringAssert.Contains(luisterPage, "_isPageActive = true;");
+        StringAssert.Contains(luisterPage, "_isPageActive = false;");
+        Assert.IsFalse(luisterPage.Contains("Command = new Command(async () => await LoadAsync(forceRefresh: true))", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -153,7 +174,13 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "await _apiClient.GetNotificationsAsync(before: before, history: _notificationPage.HasHistory");
         StringAssert.Contains(luisterPage, "Teken in om kennisgewings te sien.");
         StringAssert.Contains(luisterPage, "BuildNotificationCloseButton()");
-        StringAssert.Contains(luisterPage, "Margin = new Thickness(0, -4, 0, 0)");
+        StringAssert.Contains(luisterPage, "Drawable = new NotificationDownCaretDrawable()");
+        StringAssert.Contains(luisterPage, "private sealed class NotificationDownCaretDrawable : IDrawable");
+        StringAssert.Contains(luisterPage, "return new SwipeView");
+        StringAssert.Contains(luisterPage, "var removeSwipeItem = new SwipeItem");
+        StringAssert.Contains(luisterPage, "Text = \"Verwyder\"");
+        StringAssert.Contains(luisterPage, "removeSwipeItem.Invoked += async (_, _) => await ClearNotificationAsync();");
+        StringAssert.Contains(luisterPage, "SwipeBehaviorOnInvoked = SwipeBehaviorOnInvoked.Close");
         StringAssert.Contains(luisterPage, "RowDefinitions =");
         StringAssert.Contains(luisterPage, "new RowDefinition { Height = GridLength.Star }");
         StringAssert.Contains(luisterPage, "Grid.SetRow(notificationScrollView, 2);");
@@ -191,6 +218,30 @@ public class MobileAbsoluteUrlSourceTests
         Assert.IsFalse(helper.Contains("new HorizontalStackLayout", StringComparison.Ordinal));
         StringAssert.Contains(luisterPage, "WidthRequest = 168");
         StringAssert.Contains(luisterPage, "StrokeShape = new RoundRectangle { CornerRadius = 16 }");
+        StringAssert.Contains(luisterPage, "TextColor = story.IsFavorite ? Color.FromArgb(\"#E11D48\") : Color.FromArgb(\"#8A938D\")");
+        StringAssert.Contains(luisterPage, "Color = story.IsFavorite ? Color.FromArgb(\"#E11D48\") : Color.FromArgb(\"#8A938D\")");
+    }
+
+    [TestMethod]
+    public void MobileLuisterWeeklyPopularPlaylistShowsTopLeftRankBadgesLikeWeb()
+    {
+        var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
+        var webLuister = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Luister.razor"));
+
+        StringAssert.Contains(webLuister, "private static bool IsWeeklyPopularPlaylist(StoryPlaylist playlist) =>");
+        StringAssert.Contains(webLuister, "\"popular-stories-this-week\"");
+        StringAssert.Contains(webLuister, "story-carousel-rank");
+        StringAssert.Contains(luisterPage, "private static bool IsWeeklyPopularPlaylist(MobilePlaylist playlist) =>");
+        StringAssert.Contains(luisterPage, "\"popular-stories-this-week\"");
+        StringAssert.Contains(luisterPage, "BuildRankedStoryCarousel(playlist)");
+        StringAssert.Contains(luisterPage, "new RankedLuisterStory(story, index + 1)");
+        StringAssert.Contains(luisterPage, "BuildLuisterStoryCarouselCard(playlist, rankedStory.Story, rankedStory.Rank)");
+        StringAssert.Contains(luisterPage, "if (rank is not null)");
+        StringAssert.Contains(luisterPage, "coverGrid.Children.Add(BuildStoryRankBadge(rank.Value));");
+        StringAssert.Contains(luisterPage, "private static View BuildStoryRankBadge(int rank) =>");
+        StringAssert.Contains(luisterPage, "Text = rank.ToString(CultureInfo.InvariantCulture)");
+        StringAssert.Contains(luisterPage, "HorizontalOptions = LayoutOptions.Start");
+        StringAssert.Contains(luisterPage, "VerticalOptions = LayoutOptions.Start");
     }
 
     [TestMethod]
@@ -218,7 +269,7 @@ public class MobileAbsoluteUrlSourceTests
         var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
 
         StringAssert.Contains(luisterPage, "story => BuildLuisterStoryCarouselCard(playlist, story)");
-        StringAssert.Contains(luisterPage, "private View BuildLuisterStoryCarouselCard(MobilePlaylist playlist, MobileStorySummary story)");
+        StringAssert.Contains(luisterPage, "private View BuildLuisterStoryCarouselCard(MobilePlaylist playlist, MobileStorySummary story, int? rank = null)");
         StringAssert.Contains(luisterPage, "await OpenPlaylistStoryAsync(story, playlist);");
         StringAssert.Contains(luisterPage, "private async Task OpenPlaylistStoryAsync(MobileStorySummary story, MobilePlaylist playlist)");
         StringAssert.Contains(luisterPage, "await CapturePlayerTransitionBackdropAsync();");
@@ -364,7 +415,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(storyDetail, "private Thickness ResolveBackdropMargin()");
         StringAssert.Contains(storyDetail, "var safeAreaInsets = iOSPage.GetSafeAreaInsets(this);");
         StringAssert.Contains(storyDetail, "var activity = Microsoft.Maui.ApplicationModel.Platform.CurrentActivity;");
-        StringAssert.Contains(storyDetail, "var systemBarInsets = insets.GetInsets(WindowInsets.Type.SystemBars());");
+        StringAssert.Contains(storyDetail, "var systemBarInsets = insets.GetInsets(AndroidWindowInsets.Type.SystemBars());");
         StringAssert.Contains(storyDetail, "_closeBackdrop.IsVisible = true;");
         StringAssert.Contains(storyDetail, "await AnimateCloseAsync();");
         StringAssert.Contains(storyDetail, "private async Task AnimateCloseAsync()");
@@ -450,18 +501,27 @@ public class MobileAbsoluteUrlSourceTests
     public void MobileStoryDetailPlayerButtonsUseRealActionsOnly()
     {
         var storyDetail = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "StoryDetailPage.cs"));
+        var playlistState = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "PlaylistPlaybackState.cs"));
 
         StringAssert.Contains(storyDetail, "menuButton.Clicked += async (_, _) => await ShowPlayerMenuAsync();");
         StringAssert.Contains(storyDetail, "await Share.Default.RequestAsync(new ShareTextRequest");
         StringAssert.Contains(storyDetail, "titleRow.GestureRecognizers.Add(tap);");
         StringAssert.Contains(storyDetail, "private MobileStorySummary? ResolvePreviousStory(");
         StringAssert.Contains(storyDetail, "private MobileStorySummary? ResolveNextStory(");
-        StringAssert.Contains(storyDetail, "await OpenPlaylistStoryAsync(previousStory);");
-        StringAssert.Contains(storyDetail, "await OpenPlaylistStoryAsync(nextStory);");
-        Assert.IsFalse(storyDetail.Contains("var shuffleButton = BuildTransportButton", StringComparison.Ordinal));
-        Assert.IsFalse(storyDetail.Contains("var repeatButton = BuildTransportButton", StringComparison.Ordinal));
-        Assert.IsFalse(storyDetail.Contains("grid.Children.Add(shuffleButton)", StringComparison.Ordinal));
-        Assert.IsFalse(storyDetail.Contains("grid.Children.Add(repeatButton)", StringComparison.Ordinal));
+        StringAssert.Contains(storyDetail, "BuildPlaybackModeRow(detail)");
+        StringAssert.Contains(storyDetail, "BuildPlaybackModeButton(");
+        StringAssert.Contains(storyDetail, "\"Auto\"");
+        StringAssert.Contains(storyDetail, "\"Skommel\"");
+        StringAssert.Contains(storyDetail, "_playlistPlaybackState.SetAutoplay(!_playlistPlaybackState.IsAutoplayEnabled);");
+        StringAssert.Contains(storyDetail, "_playlistPlaybackState.SetShuffle(!_playlistPlaybackState.IsShuffleEnabled, detail.Story);");
+        StringAssert.Contains(storyDetail, "await OpenPlaylistStoryAsync(previousStory, autoplay: ShouldAutoplaySelection());");
+        StringAssert.Contains(storyDetail, "await OpenPlaylistStoryAsync(nextStory, autoplay: ShouldAutoplaySelection());");
+        StringAssert.Contains(storyDetail, "await ReplaceActiveStoryAsync(nextStory, autoplay: ShouldAutoplaySelection());");
+        StringAssert.Contains(storyDetail, "_playlistPlaybackState.IsAutoplayEnabled && _currentDetail is { } currentDetail");
+        StringAssert.Contains(storyDetail, "await ReplaceActiveStoryAsync(nextStory, autoplay: true);");
+        StringAssert.Contains(playlistState, "public bool IsAutoplayEnabled { get; private set; }");
+        StringAssert.Contains(playlistState, "public bool IsShuffleEnabled { get; private set; }");
+        StringAssert.Contains(playlistState, "public IReadOnlyList<MobileStorySummary> GetPlaybackStories(MobileStorySummary? currentStory = null)");
     }
 
     [TestMethod]
@@ -469,8 +529,9 @@ public class MobileAbsoluteUrlSourceTests
     {
         var storyDetail = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "StoryDetailPage.cs"));
 
-        StringAssert.Contains(storyDetail, "private async Task ReplaceActiveStoryAsync(MobileStorySummary story)");
-        StringAssert.Contains(storyDetail, "await ReplaceActiveStoryAsync(story);");
+        StringAssert.Contains(storyDetail, "private async Task ReplaceActiveStoryAsync(MobileStorySummary story, bool autoplay = false)");
+        StringAssert.Contains(storyDetail, "await ReplaceActiveStoryAsync(story, autoplay);");
+        StringAssert.Contains(storyDetail, "_pendingAutoplayAfterLoad = autoplay;");
         StringAssert.Contains(storyDetail, "StorySlug = story.Slug;");
         StringAssert.Contains(storyDetail, "Source = story.Source;");
         StringAssert.Contains(storyDetail, "RenderPreview(story);");
@@ -484,6 +545,22 @@ public class MobileAbsoluteUrlSourceTests
 
         Assert.IsFalse(playlistMethod.Contains("Shell.Current.GoToAsync", StringComparison.Ordinal));
         Assert.IsFalse(playlistMethod.Contains("StoryDetailPage?slug=", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void MobilePlaylistPlaybackStateKeepsShuffleOrderAndAutoplayFlags()
+    {
+        var playlistState = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "PlaylistPlaybackState.cs"));
+        var storyDetail = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "StoryDetailPage.cs"));
+
+        StringAssert.Contains(playlistState, "private IReadOnlyList<string> _shuffleOrder = Array.Empty<string>();");
+        StringAssert.Contains(playlistState, "public void Set(MobilePlaylist playlist, MobileStorySummary? currentStory = null)");
+        StringAssert.Contains(playlistState, "public void SetAutoplay(bool isEnabled)");
+        StringAssert.Contains(playlistState, "public void SetShuffle(bool isEnabled, MobileStorySummary? currentStory = null)");
+        StringAssert.Contains(playlistState, "RefreshShuffleOrder(currentStory);");
+        StringAssert.Contains(playlistState, "OrderBy(_ => Random.Shared.Next())");
+        StringAssert.Contains(playlistState, "remainingKeys.Insert(0, currentStoryKey);");
+        StringAssert.Contains(storyDetail, "return _playlistPlaybackState.GetPlaybackStories(currentStory);");
     }
 
     [TestMethod]

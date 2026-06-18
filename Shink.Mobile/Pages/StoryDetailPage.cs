@@ -57,6 +57,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     private bool _isShowingFullscreenCover;
     private bool _wasKeepScreenOnBeforeFullscreen;
     private bool _isFavoriteRequestInFlight;
+    private bool _pendingAutoplayAfterLoad;
     private bool _suppressNextPauseTracking;
     private Button? _inlinePlayButton;
     private ProgressBar? _inlineProgressBar;
@@ -289,6 +290,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             _content.Children.Add(BuildAudioPlayer(detail));
             UpdateProgressState();
             EnsureCatalogDurationVisibleAsync(detail);
+            TryStartPendingAutoplay(detail);
         }
         else
         {
@@ -1077,15 +1079,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     {
         if (_audioPlaybackService.IsPlaying)
         {
-            FlushPendingListen("pause", force: true);
-            _suppressNextPauseTracking = true;
-            _audioPlaybackService.Pause();
-            if (_activePlayButton is not null)
-            {
-                _activePlayButton.Text = "▶";
-            }
-
-            StopProgressTimer();
+            PausePlayback(_activePlayButton ?? BuildMainPlaybackButton("▶"));
             return;
         }
 
@@ -1094,42 +1088,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             return;
         }
 
-        await ResumePlaybackInFullscreenAsync(detail, _activePlayButton ?? BuildMainPlaybackButton("▶"));
-    }
-
-    private async Task ResumePlaybackInFullscreenAsync(MobileStoryDetailResponse detail, Button playButton)
-    {
-        try
-        {
-            var playbackUrl = await _apiClient.PrepareAudioPlaybackSourceAsync(
-                detail.AudioUrl,
-                detail.Story.Slug,
-                detail.Story.Source);
-            await PlayPreparedAudioAsync(playbackUrl, detail, ResolveTrackingSessionId(detail), playButton);
-        }
-        catch (Exception) when (IsR2AudioUrl(detail.AudioUrl))
-        {
-            try
-            {
-                var cachedPlaybackUrl = await _apiClient.DownloadAudioForPlaybackAsync(
-                    detail.AudioUrl ?? string.Empty,
-                    detail.Story.Slug,
-                    detail.Story.Source);
-                await PlayPreparedAudioAsync(cachedPlaybackUrl, detail, ResolveTrackingSessionId(detail), playButton);
-            }
-            catch (Exception ex)
-            {
-                playButton.Text = "▶";
-                StopProgressTimer();
-                await DisplayAlertAsync("Kon nie audio speel nie", ex.Message, "Maak toe");
-            }
-        }
-        catch (Exception ex)
-        {
-            playButton.Text = "▶";
-            StopProgressTimer();
-            await DisplayAlertAsync("Kon nie audio speel nie", ex.Message, "Maak toe");
-        }
+        await StartPlaybackAsync(detail, _activePlayButton ?? BuildMainPlaybackButton("▶"));
     }
 
     private void RestoreFullscreenPlaybackUi(MobileStoryDetailResponse detail)
@@ -1455,7 +1414,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         var durationLabel = BuildTimeLabel(
             _activeCatalogDuration is null ? "--:--" : FormatTime(_activeCatalogDuration.Value),
             TextAlignment.End);
-        var playButton = BuildMainPlaybackButton("▶");
+        var playButton = BuildMainPlaybackButton(_audioPlaybackService.IsPlaying ? "II" : "▶");
 
         _activePlayButton = playButton;
         _activeProgressBar = progressBar;
@@ -1465,52 +1424,8 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         _inlineProgressBar = progressBar;
         _inlineCurrentTimeLabel = currentTimeLabel;
         _inlineDurationLabel = durationLabel;
-        ResetListenTracking();
 
-        playButton.Clicked += async (_, _) =>
-        {
-            if (_audioPlaybackService.IsPlaying)
-            {
-                FlushPendingListen("pause", force: true);
-                _suppressNextPauseTracking = true;
-                _audioPlaybackService.Pause();
-                playButton.Text = "▶";
-                StopProgressTimer();
-                return;
-            }
-
-            try
-            {
-                var playbackUrl = await _apiClient.PrepareAudioPlaybackSourceAsync(
-                    detail.AudioUrl,
-                    detail.Story.Slug,
-                    detail.Story.Source);
-                await PlayPreparedAudioAsync(playbackUrl, detail, ResolveTrackingSessionId(detail), playButton);
-            }
-            catch (Exception) when (IsR2AudioUrl(detail.AudioUrl))
-            {
-                try
-                {
-                    var cachedPlaybackUrl = await _apiClient.DownloadAudioForPlaybackAsync(
-                        detail.AudioUrl ?? string.Empty,
-                        detail.Story.Slug,
-                        detail.Story.Source);
-                    await PlayPreparedAudioAsync(cachedPlaybackUrl, detail, ResolveTrackingSessionId(detail), playButton);
-                }
-                catch (Exception ex)
-                {
-                    playButton.Text = "▶";
-                    StopProgressTimer();
-                    await DisplayAlertAsync("Kon nie audio speel nie", ex.Message, "Maak toe");
-                }
-            }
-            catch (Exception ex)
-            {
-                playButton.Text = "▶";
-                StopProgressTimer();
-                await DisplayAlertAsync("Kon nie audio speel nie", ex.Message, "Maak toe");
-            }
-        };
+        playButton.Clicked += async (_, _) => await TogglePlaybackAsync(detail, playButton);
 
         return new VerticalStackLayout
         {
@@ -1538,6 +1453,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                         }
                     }
                 },
+                BuildPlaybackModeRow(detail),
                 BuildTransportControls(detail, playButton)
             }
         };
@@ -1559,6 +1475,120 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         BeginListenTracking(detail, trackingSessionId);
         StartProgressTimer();
     }
+
+    private async Task TogglePlaybackAsync(MobileStoryDetailResponse detail, Button playButton)
+    {
+        if (_audioPlaybackService.IsPlaying)
+        {
+            PausePlayback(playButton);
+            return;
+        }
+
+        await StartPlaybackAsync(detail, playButton);
+    }
+
+    private void PausePlayback(Button playButton)
+    {
+        FlushPendingListen("pause", force: true);
+        _suppressNextPauseTracking = true;
+        _audioPlaybackService.Pause();
+        playButton.Text = "▶";
+        StopProgressTimer();
+    }
+
+    private async Task StartPlaybackAsync(MobileStoryDetailResponse detail, Button playButton)
+    {
+        try
+        {
+            var playbackUrl = await _apiClient.PrepareAudioPlaybackSourceAsync(
+                detail.AudioUrl,
+                detail.Story.Slug,
+                detail.Story.Source);
+            await PlayPreparedAudioAsync(playbackUrl, detail, ResolveTrackingSessionId(detail), playButton);
+        }
+        catch (Exception) when (IsR2AudioUrl(detail.AudioUrl))
+        {
+            try
+            {
+                var cachedPlaybackUrl = await _apiClient.DownloadAudioForPlaybackAsync(
+                    detail.AudioUrl ?? string.Empty,
+                    detail.Story.Slug,
+                    detail.Story.Source);
+                await PlayPreparedAudioAsync(cachedPlaybackUrl, detail, ResolveTrackingSessionId(detail), playButton);
+            }
+            catch (Exception ex)
+            {
+                playButton.Text = "▶";
+                StopProgressTimer();
+                await DisplayAlertAsync("Kon nie audio speel nie", ex.Message, "Maak toe");
+            }
+        }
+        catch (Exception ex)
+        {
+            playButton.Text = "▶";
+            StopProgressTimer();
+            await DisplayAlertAsync("Kon nie audio speel nie", ex.Message, "Maak toe");
+        }
+    }
+
+    private void TryStartPendingAutoplay(MobileStoryDetailResponse detail)
+    {
+        if (!_pendingAutoplayAfterLoad)
+        {
+            return;
+        }
+
+        _pendingAutoplayAfterLoad = false;
+        if (detail.RequiresSubscription || string.IsNullOrWhiteSpace(detail.AudioUrl) || _activePlayButton is null)
+        {
+            return;
+        }
+
+        _ = StartPlaybackAsync(detail, _activePlayButton);
+    }
+
+    private View BuildPlaybackModeRow(MobileStoryDetailResponse detail)
+    {
+        var nextStoryAvailable = ResolveNextStory(detail) is not null;
+        var canShuffle = GetOrderedPlaylistStories(detail.Story).Count > 1;
+        var autoplayButton = BuildPlaybackModeButton(
+            "Auto",
+            _playlistPlaybackState.IsAutoplayEnabled,
+            nextStoryAvailable,
+            () => ToggleAutoplay(detail));
+        var shuffleButton = BuildPlaybackModeButton(
+            "Skommel",
+            _playlistPlaybackState.IsShuffleEnabled,
+            canShuffle,
+            () => ToggleShuffle(detail));
+
+        return new HorizontalStackLayout
+        {
+            Spacing = 10,
+            HorizontalOptions = LayoutOptions.Center,
+            Children =
+            {
+                autoplayButton,
+                shuffleButton
+            }
+        };
+    }
+
+    private void ToggleAutoplay(MobileStoryDetailResponse detail)
+    {
+        _playlistPlaybackState.SetAutoplay(!_playlistPlaybackState.IsAutoplayEnabled);
+        RenderDetail(detail, trackView: false);
+    }
+
+    private void ToggleShuffle(MobileStoryDetailResponse detail)
+    {
+        _playlistPlaybackState.SetShuffle(!_playlistPlaybackState.IsShuffleEnabled, detail.Story);
+        _playlistStories = GetOrderedPlaylistStories(detail.Story);
+        RenderDetail(detail, trackView: false);
+    }
+
+    private bool ShouldAutoplaySelection() =>
+        _audioPlaybackService.IsPlaying || _playlistPlaybackState.IsAutoplayEnabled;
 
     private View BuildTransportControls(MobileStoryDetailResponse detail, Button playButton)
     {
@@ -1584,14 +1614,14 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         {
             if (previousStory is not null)
             {
-                await OpenPlaylistStoryAsync(previousStory);
+                await OpenPlaylistStoryAsync(previousStory, autoplay: ShouldAutoplaySelection());
             }
         };
         nextButton.Clicked += async (_, _) =>
         {
             if (nextStory is not null)
             {
-                await OpenPlaylistStoryAsync(nextStory);
+                await OpenPlaylistStoryAsync(nextStory, autoplay: ShouldAutoplaySelection());
             }
         };
 
@@ -1632,7 +1662,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         {
             if (previousStory is not null)
             {
-                await ReplaceActiveStoryAsync(previousStory);
+                await ReplaceActiveStoryAsync(previousStory, autoplay: ShouldAutoplaySelection());
             }
         };
 
@@ -1642,7 +1672,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         {
             if (nextStory is not null)
             {
-                await ReplaceActiveStoryAsync(nextStory);
+                await ReplaceActiveStoryAsync(nextStory, autoplay: ShouldAutoplaySelection());
             }
         };
 
@@ -1657,10 +1687,11 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
     private MobileStorySummary? ResolvePreviousStory(MobileStoryDetailResponse detail)
     {
-        var playlistIndex = FindCurrentPlaylistIndex(detail.Story);
+        var playlistStories = GetOrderedPlaylistStories(detail.Story);
+        var playlistIndex = FindCurrentPlaylistIndex(playlistStories, detail.Story);
         if (playlistIndex > 0)
         {
-            return _playlistStories[playlistIndex - 1];
+            return playlistStories[playlistIndex - 1];
         }
 
         return detail.PreviousStory;
@@ -1668,21 +1699,33 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
     private MobileStorySummary? ResolveNextStory(MobileStoryDetailResponse detail)
     {
-        var playlistIndex = FindCurrentPlaylistIndex(detail.Story);
-        if (playlistIndex >= 0 && playlistIndex < _playlistStories.Count - 1)
+        var playlistStories = GetOrderedPlaylistStories(detail.Story);
+        var playlistIndex = FindCurrentPlaylistIndex(playlistStories, detail.Story);
+        if (playlistIndex >= 0 && playlistIndex < playlistStories.Count - 1)
         {
-            return _playlistStories[playlistIndex + 1];
+            return playlistStories[playlistIndex + 1];
         }
 
         return detail.NextStory;
     }
 
-    private int FindCurrentPlaylistIndex(MobileStorySummary story)
+    private IReadOnlyList<MobileStorySummary> GetOrderedPlaylistStories(MobileStorySummary? currentStory = null)
     {
-        for (var index = 0; index < _playlistStories.Count; index++)
+        if (!string.IsNullOrWhiteSpace(_playlistSlug) &&
+            string.Equals(_playlistPlaybackState.Slug, _playlistSlug, StringComparison.OrdinalIgnoreCase))
         {
-            if (string.Equals(_playlistStories[index].Slug, story.Slug, StringComparison.OrdinalIgnoreCase) &&
-                string.Equals(_playlistStories[index].Source, story.Source, StringComparison.OrdinalIgnoreCase))
+            return _playlistPlaybackState.GetPlaybackStories(currentStory);
+        }
+
+        return _playlistStories;
+    }
+
+    private static int FindCurrentPlaylistIndex(IReadOnlyList<MobileStorySummary> playlistStories, MobileStorySummary story)
+    {
+        for (var index = 0; index < playlistStories.Count; index++)
+        {
+            if (string.Equals(playlistStories[index].Slug, story.Slug, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(playlistStories[index].Source, story.Source, StringComparison.OrdinalIgnoreCase))
             {
                 return index;
             }
@@ -1693,7 +1736,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
     private View? BuildPlaylistQueue(MobileStoryDetailResponse detail)
     {
-        var queuedStories = _playlistStories
+        var queuedStories = GetOrderedPlaylistStories(detail.Story)
             .Where(story => !string.Equals(story.Slug, detail.Story.Slug, StringComparison.OrdinalIgnoreCase))
             .ToArray();
         if (queuedStories.Length == 0)
@@ -1742,7 +1785,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             HorizontalOptions = LayoutOptions.End,
             VerticalOptions = LayoutOptions.Center
         };
-        playButton.Clicked += async (_, _) => await OpenPlaylistStoryAsync(story);
+        playButton.Clicked += async (_, _) => await OpenPlaylistStoryAsync(story, autoplay: ShouldAutoplaySelection());
 
         var row = new Grid
         {
@@ -1808,7 +1851,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         };
 
         var tap = new TapGestureRecognizer();
-        tap.Tapped += async (_, _) => await OpenPlaylistStoryAsync(story);
+        tap.Tapped += async (_, _) => await OpenPlaylistStoryAsync(story, autoplay: ShouldAutoplaySelection());
         frame.GestureRecognizers.Add(tap);
 
         return frame;
@@ -1919,6 +1962,39 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             HeightRequest = 42,
             Padding = new Thickness(18, 0)
         };
+
+    private static Border BuildPlaybackModeButton(string text, bool isSelected, bool isEnabled, Action onTap)
+    {
+        var backgroundColor = isSelected ? PlayerAccentColor : PlayerPillColor;
+        var textColor = isSelected ? Color.FromArgb("#061816") : PlayerTextColor;
+        var button = new Border
+        {
+            BackgroundColor = isEnabled ? backgroundColor : Color.FromArgb("#142B28"),
+            StrokeThickness = 0,
+            StrokeShape = new RoundRectangle { CornerRadius = 20 },
+            HeightRequest = 38,
+            Padding = new Thickness(16, 0),
+            Opacity = isEnabled ? 1 : 0.5,
+            Content = new Label
+            {
+                Text = text,
+                FontSize = 13,
+                FontAttributes = FontAttributes.Bold,
+                TextColor = textColor,
+                VerticalTextAlignment = TextAlignment.Center,
+                HorizontalTextAlignment = TextAlignment.Center
+            }
+        };
+
+        if (isEnabled)
+        {
+            var tap = new TapGestureRecognizer();
+            tap.Tapped += (_, _) => onTap();
+            button.GestureRecognizers.Add(tap);
+        }
+
+        return button;
+    }
 
     private static View BuildMessage(string message) =>
         new Border
@@ -2248,7 +2324,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
     private void OnPlaybackEnded(object? sender, EventArgs args)
     {
-        MainThread.BeginInvokeOnMainThread(() =>
+        MainThread.BeginInvokeOnMainThread(async () =>
         {
             if (!_isPageActive)
             {
@@ -2264,6 +2340,14 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 _activePlayButton.Text = "▶";
             }
 
+            if (_playlistPlaybackState.IsAutoplayEnabled && _currentDetail is { } currentDetail)
+            {
+                var nextStory = ResolveNextStory(currentDetail);
+                if (nextStory is not null)
+                {
+                    await ReplaceActiveStoryAsync(nextStory, autoplay: true);
+                }
+            }
         });
     }
 
@@ -2280,20 +2364,22 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             });
     }
 
-    private async Task OpenPlaylistStoryAsync(MobileStorySummary story)
+    private async Task OpenPlaylistStoryAsync(MobileStorySummary story, bool autoplay = false)
     {
-        await ReplaceActiveStoryAsync(story);
+        await ReplaceActiveStoryAsync(story, autoplay);
     }
 
-    private async Task ReplaceActiveStoryAsync(MobileStorySummary story)
+    private async Task ReplaceActiveStoryAsync(MobileStorySummary story, bool autoplay = false)
     {
         CancelActiveLoad();
         DismissCastPicker();
         FlushPendingListen("pagehide", force: true);
         StopProgressTimer();
         _suppressNextPauseTracking = true;
+        _pendingAutoplayAfterLoad = autoplay;
         TryStopAudioPlayback();
         ClearActivePlaybackUi();
+        ResetListenTracking();
 
         StorySlug = story.Slug;
         Source = story.Source;
