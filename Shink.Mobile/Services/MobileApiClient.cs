@@ -152,6 +152,8 @@ public sealed class SessionState
     }
 }
 
+public sealed record MobileAudioDownloadProgress(long BytesReceived, long? TotalBytes, double? Percent);
+
 public sealed class MobileApiClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
@@ -547,6 +549,45 @@ public sealed class MobileApiClient
         return new Uri(cachePath).AbsoluteUri;
     }
 
+    public async Task DownloadAudioToFileAsync(
+        string audioUrl,
+        string destinationPath,
+        IProgress<MobileAudioDownloadProgress>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        var playableUrl = BuildAbsoluteUrl(audioUrl);
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(destinationPath)!);
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(playableUrl, UriKind.Absolute));
+        using var response = await _httpClient.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
+        await EnsureSuccessAsync(response, cancellationToken);
+
+        var totalBytes = response.Content.Headers.ContentLength;
+        long bytesReceived = 0;
+        var buffer = new byte[81920];
+
+        await using var sourceStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        await using var fileStream = File.Create(destinationPath);
+        while (true)
+        {
+            var read = await sourceStream.ReadAsync(buffer, cancellationToken);
+            if (read == 0)
+            {
+                break;
+            }
+
+            await fileStream.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+            bytesReceived += read;
+            progress?.Report(new MobileAudioDownloadProgress(
+                bytesReceived,
+                totalBytes,
+                totalBytes is > 0 ? Math.Clamp(bytesReceived / (double)totalBytes.Value, 0, 1) : null));
+        }
+    }
+
     private async Task CacheImageAsync(string imageUrl, CancellationToken cancellationToken)
     {
         if (!Uri.TryCreate(imageUrl, UriKind.Absolute, out var imageUri) || !IsWebUri(imageUri))
@@ -765,7 +806,30 @@ public sealed class MobileApiClient
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         throw new InvalidOperationException(string.IsNullOrWhiteSpace(body)
             ? $"Versoek het misluk met status {(int)response.StatusCode}."
-            : body);
+            : ExtractErrorMessage(body));
+    }
+
+    private static string ExtractErrorMessage(string body)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            if (document.RootElement.ValueKind == JsonValueKind.Object &&
+                document.RootElement.TryGetProperty("message", out var messageElement) &&
+                messageElement.ValueKind == JsonValueKind.String)
+            {
+                var message = messageElement.GetString();
+                if (!string.IsNullOrWhiteSpace(message))
+                {
+                    return message;
+                }
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        return body;
     }
 
     private sealed record FavoriteResponse(bool IsFavorite);

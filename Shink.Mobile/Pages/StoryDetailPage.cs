@@ -28,6 +28,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
     private readonly IAudioPlaybackService _audioPlaybackService;
+    private readonly IOfflineStoryDownloadService _offlineDownloadService;
     private readonly PlaylistPlaybackState _playlistPlaybackState;
     private readonly IOrientationService _orientationService;
     private readonly PlayerTransitionBackdropState _transitionBackdropState;
@@ -73,6 +74,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         MobileApiClient apiClient,
         SessionState sessionState,
         IAudioPlaybackService audioPlaybackService,
+        IOfflineStoryDownloadService offlineDownloadService,
         PlaylistPlaybackState playlistPlaybackState,
         IOrientationService orientationService,
         PlayerTransitionBackdropState transitionBackdropState)
@@ -80,6 +82,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         _apiClient = apiClient;
         _sessionState = sessionState;
         _audioPlaybackService = audioPlaybackService;
+        _offlineDownloadService = offlineDownloadService;
         _playlistPlaybackState = playlistPlaybackState;
         _orientationService = orientationService;
         _transitionBackdropState = transitionBackdropState;
@@ -120,6 +123,13 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         };
 
         Content = _root;
+        _offlineDownloadService.DownloadsChanged += (_, _) => MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (_isPageActive && _currentDetail is not null)
+            {
+                RenderDetail(_currentDetail, trackView: false);
+            }
+        });
     }
 
     public string? StorySlug { get; set; }
@@ -237,9 +247,41 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 return;
             }
 
+            var offlineDownload = await _offlineDownloadService.GetDownloadAsync(
+                StorySlug ?? string.Empty,
+                Source ?? "luister",
+                cancellationToken);
+            if (offlineDownload is not null)
+            {
+                RenderOfflineDetail(offlineDownload);
+                return;
+            }
+
             _content.Children.Clear();
             _content.Children.Add(BuildMessage(ex.Message));
         }
+    }
+
+    private void RenderOfflineDetail(OfflineStoryDownload download)
+    {
+        var detail = _offlineDownloadService.CreateOfflineDetail(download);
+        _content.Children.Clear();
+        Title = detail.Story.Title;
+        _currentDetail = detail;
+        _activeStory = detail.Story;
+        _content.Children.Add(BuildTopBar());
+        _content.Children.Add(BuildCoverArt(detail));
+        _content.Children.Add(BuildStoryHeader(detail));
+        _content.Children.Add(BuildActionRail(detail));
+
+        if (detail.RequiresSubscription)
+        {
+            _content.Children.Add(BuildMessage("Hierdie aflaai moet weer aanlyn bevestig word."));
+            return;
+        }
+
+        _content.Children.Add(BuildAudioPlayer(detail));
+        UpdateProgressState();
     }
 
     private void RenderPreview(MobileStorySummary story)
@@ -276,6 +318,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         _content.Children.Add(BuildCoverArt(detail));
         _content.Children.Add(BuildStoryHeader(detail));
         _content.Children.Add(BuildActionRail(detail));
+        _ = _offlineDownloadService.RefreshAccessAsync(detail);
 
         if (detail.RequiresSubscription)
         {
@@ -1265,6 +1308,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         var infoTap = new TapGestureRecognizer();
         infoTap.Tapped += async (_, _) => await DisplayAlertAsync(detail.Story.Title, detail.Story.Description, "Maak toe");
         infoButton.GestureRecognizers.Add(infoTap);
+        var downloadButton = BuildDownloadPillButton(detail);
 
         return new ScrollView
         {
@@ -1275,10 +1319,126 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 Spacing = 10,
                 Children =
                 {
-                    infoButton
+                    infoButton,
+                    downloadButton
                 }
             }
         };
+    }
+
+    private Button BuildDownloadPillButton(MobileStoryDetailResponse detail)
+    {
+        var button = new Button
+        {
+            Text = "Laai af",
+            AutomationId = "Download for offline listening",
+            BackgroundColor = PlayerPillColor,
+            TextColor = PlayerTextColor,
+            FontSize = 15,
+            FontAttributes = FontAttributes.Bold,
+            CornerRadius = 22,
+            HeightRequest = 42,
+            Padding = new Thickness(16, 0)
+        };
+
+        button.Clicked += async (_, _) => await HandleDownloadButtonAsync(detail, button);
+        _ = UpdateDownloadButtonAsync(detail, button);
+        return button;
+    }
+
+    private async Task UpdateDownloadButtonAsync(MobileStoryDetailResponse detail, Button button)
+    {
+        var state = await _offlineDownloadService.GetStateAsync(detail);
+        await MainThread.InvokeOnMainThreadAsync(() =>
+        {
+            button.IsEnabled = !detail.RequiresSubscription && state != OfflineDownloadState.Downloading;
+            button.Text = state switch
+            {
+                OfflineDownloadState.Downloading => "Laai af...",
+                OfflineDownloadState.Downloaded => "Afgelaai",
+                OfflineDownloadState.ExpiredAccess => "Herbevestig",
+                OfflineDownloadState.Failed => "Probeer weer",
+                _ => "Laai af"
+            };
+        });
+    }
+
+    private async Task HandleDownloadButtonAsync(MobileStoryDetailResponse detail, Button button)
+    {
+        if (detail.RequiresSubscription || string.IsNullOrWhiteSpace(detail.AudioUrl))
+        {
+            await DisplayAlertAsync("Nie beskikbaar nie", "Hierdie storie kan nie tans afgelaai word nie.", "Reg so");
+            return;
+        }
+
+        var state = await _offlineDownloadService.GetStateAsync(detail);
+        if (state == OfflineDownloadState.Downloaded)
+        {
+            var action = await DisplayActionSheetAsync("Afgelaai", "Kanselleer", null, "Verwyder aflaai");
+            if (string.Equals(action, "Verwyder aflaai", StringComparison.Ordinal))
+            {
+                await _offlineDownloadService.RemoveAsync(detail.Story.Slug, detail.Story.Source);
+                await UpdateDownloadButtonAsync(detail, button);
+            }
+
+            return;
+        }
+
+        if (state == OfflineDownloadState.ExpiredAccess)
+        {
+            await DisplayAlertAsync(
+                "Aanlyn bevestiging nodig",
+                "Hierdie aflaai moet weer aanlyn bevestig word.",
+                "Reg so");
+            return;
+        }
+
+        if (!await ConfirmCellularDownloadAsync())
+        {
+            return;
+        }
+
+        button.IsEnabled = false;
+        button.Text = "Laai af...";
+        try
+        {
+            await _offlineDownloadService.DownloadAsync(
+                detail,
+                new Progress<OfflineDownloadProgress>(progress =>
+                {
+                    if (progress.Percent is { } percent)
+                    {
+                        MainThread.BeginInvokeOnMainThread(() =>
+                            button.Text = $"{Math.Round(percent * 100):0}%");
+                    }
+                }));
+            button.Text = "Afgelaai";
+            await DisplayAlertAsync("Afgelaai", "Hierdie storie is gereed vir offline luister.", "Reg so");
+            RenderDetail(detail, trackView: false);
+        }
+        catch (Exception ex)
+        {
+            button.Text = "Probeer weer";
+            await DisplayAlertAsync("Kon nie aflaai nie", ex.Message, "Reg so");
+        }
+        finally
+        {
+            button.IsEnabled = true;
+        }
+    }
+
+    private async Task<bool> ConfirmCellularDownloadAsync()
+    {
+        if (!Connectivity.Current.ConnectionProfiles.Contains(ConnectionProfile.Cellular))
+        {
+            return true;
+        }
+
+        return await DisplayAlertAsync(
+            "Mobiele data",
+            "Hierdie aflaai kan mobiele data gebruik. Wil jy voortgaan?",
+            "Laai af",
+            "Kanselleer");
     }
 
     private async Task ToggleFavoriteAsync(MobileStoryDetailResponse detail)
@@ -1500,6 +1660,21 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     {
         try
         {
+            var offlinePlaybackUrl = await _offlineDownloadService.ResolvePlayableAudioAsync(detail);
+            if (!string.IsNullOrWhiteSpace(offlinePlaybackUrl))
+            {
+                await PlayPreparedAudioAsync(offlinePlaybackUrl, detail, ResolveTrackingSessionId(detail), playButton);
+                return;
+            }
+
+            if (await _offlineDownloadService.GetStateAsync(detail) == OfflineDownloadState.ExpiredAccess)
+            {
+                await DisplayAlertAsync(
+                    "Aanlyn bevestiging nodig",
+                    "Hierdie aflaai moet weer aanlyn bevestig word.",
+                    "Reg so");
+            }
+
             var playbackUrl = await _apiClient.PrepareAudioPlaybackSourceAsync(
                 detail.AudioUrl,
                 detail.Story.Slug,

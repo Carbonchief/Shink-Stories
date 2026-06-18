@@ -11,6 +11,7 @@ public sealed class LuisterPage : ContentPage
 {
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
+    private readonly IOfflineStoryDownloadService _offlineDownloadService;
     private readonly PlaylistPlaybackState _playlistPlaybackState;
     private readonly PlayerTransitionBackdropState _transitionBackdropState;
     private readonly VerticalStackLayout _content;
@@ -21,7 +22,9 @@ public sealed class LuisterPage : ContentPage
     private readonly Entry _loginPasswordEntry;
     private readonly Label _loginStatusLabel;
     private IReadOnlyList<MobileLuisterSection> _sections = Array.Empty<MobileLuisterSection>();
+    private IReadOnlyList<OfflineStoryDownload> _downloadedStories = Array.Empty<OfflineStoryDownload>();
     private MobileNotificationPage? _notificationPage;
+    private string? _loadErrorMessage;
     private bool _hasLoaded;
     private bool _isPageActive;
     private bool _isSearchVisible;
@@ -34,11 +37,13 @@ public sealed class LuisterPage : ContentPage
     public LuisterPage(
         MobileApiClient apiClient,
         SessionState sessionState,
+        IOfflineStoryDownloadService offlineDownloadService,
         PlaylistPlaybackState playlistPlaybackState,
         PlayerTransitionBackdropState transitionBackdropState)
     {
         _apiClient = apiClient;
         _sessionState = sessionState;
+        _offlineDownloadService = offlineDownloadService;
         _playlistPlaybackState = playlistPlaybackState;
         _transitionBackdropState = transitionBackdropState;
         Title = "Luister";
@@ -87,6 +92,7 @@ public sealed class LuisterPage : ContentPage
             Command = new Command(() => _ = TriggerRefreshAsync())
         };
         Content = _refreshView;
+        _offlineDownloadService.DownloadsChanged += (_, _) => _ = RefreshDownloadsInBackgroundAsync();
 
         _sessionState.Changed += session => MainThread.BeginInvokeOnMainThread(() =>
         {
@@ -114,6 +120,7 @@ public sealed class LuisterPage : ContentPage
         else
         {
             RenderContent();
+            _ = RefreshDownloadsInBackgroundAsync();
             _ = RefreshSessionInBackgroundAsync();
         }
     }
@@ -153,9 +160,10 @@ public sealed class LuisterPage : ContentPage
 
         try
         {
+            var downloadsTask = LoadPlayableDownloadsSafelyAsync(cancellationToken);
             var sessionTask = _apiClient.GetSessionAsync();
             var luisterTask = _apiClient.GetLuisterAsync();
-            await Task.WhenAll(sessionTask, luisterTask);
+            await Task.WhenAll(sessionTask, luisterTask, downloadsTask);
 
             var response = await luisterTask;
             if (cancellationToken.IsCancellationRequested || !_isPageActive)
@@ -181,6 +189,8 @@ public sealed class LuisterPage : ContentPage
             _sections = response.Sections is { Count: > 0 }
                 ? response.Sections
                 : BuildLegacySections(response.Playlists);
+            _downloadedStories = await downloadsTask;
+            _loadErrorMessage = null;
             _hasLoaded = true;
             await MainThread.InvokeOnMainThreadAsync(() =>
             {
@@ -204,6 +214,10 @@ public sealed class LuisterPage : ContentPage
                 return;
             }
 
+            _sections = Array.Empty<MobileLuisterSection>();
+            _downloadedStories = await LoadPlayableDownloadsSafelyAsync(cancellationToken);
+            _loadErrorMessage = ex.Message;
+            _hasLoaded = true;
             await MainThread.InvokeOnMainThreadAsync(() =>
             {
                 if (!_isPageActive || cancellationToken.IsCancellationRequested)
@@ -211,18 +225,53 @@ public sealed class LuisterPage : ContentPage
                     return;
                 }
 
-                _content.Children.Clear();
-                _content.Children.Add(new Label
-                {
-                    Text = ex.Message,
-                    TextColor = Color.FromArgb("#B42318")
-                });
+                RenderContent();
             });
         }
         finally
         {
             await MainThread.InvokeOnMainThreadAsync(() => _refreshView.IsRefreshing = false);
         }
+    }
+
+    private async Task<IReadOnlyList<OfflineStoryDownload>> LoadPlayableDownloadsSafelyAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _offlineDownloadService.GetPlayableDownloadsAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch
+        {
+            return Array.Empty<OfflineStoryDownload>();
+        }
+    }
+
+    private async Task RefreshDownloadsInBackgroundAsync()
+    {
+        IReadOnlyList<OfflineStoryDownload> downloads;
+        try
+        {
+            downloads = await _offlineDownloadService.GetPlayableDownloadsAsync();
+        }
+        catch
+        {
+            return;
+        }
+
+        await MainThread.InvokeOnMainThreadAsync(() =>
+        {
+            if (!_isPageActive)
+            {
+                return;
+            }
+
+            _downloadedStories = downloads;
+            RenderContent();
+        });
     }
 
     private async Task TriggerRefreshAsync()
@@ -283,9 +332,25 @@ public sealed class LuisterPage : ContentPage
 
         _searchDebounceCancellation?.Cancel();
         _playlistContent.Children.Clear();
+        var downloadedSection = BuildDownloadedSection();
+        if (downloadedSection is not null)
+        {
+            _playlistContent.Children.Add(downloadedSection);
+        }
+
         var filteredSections = FilterSections(_sections, _searchEntry.Text).ToArray();
         if (filteredSections.Length == 0)
         {
+            if (downloadedSection is not null)
+            {
+                if (!string.IsNullOrWhiteSpace(_loadErrorMessage))
+                {
+                    _playlistContent.Children.Add(BuildInlineNotice("Jy is offline. Jou afgelaaide stories is beskikbaar."));
+                }
+
+                return;
+            }
+
             _playlistContent.Children.Add(new Border
             {
                 BackgroundColor = Colors.White,
@@ -294,7 +359,9 @@ public sealed class LuisterPage : ContentPage
                 Padding = 16,
                 Content = new Label
                 {
-                    Text = "Geen stories pas by jou soektog nie.",
+                    Text = string.IsNullOrWhiteSpace(_loadErrorMessage)
+                        ? "Geen stories pas by jou soektog nie."
+                        : _loadErrorMessage,
                     TextColor = Color.FromArgb("#5F5F5F")
                 }
             });
@@ -1736,6 +1803,130 @@ public sealed class LuisterPage : ContentPage
             }
         };
 
+    private View? BuildDownloadedSection()
+    {
+        var downloads = _downloadedStories;
+        var normalizedQuery = NormalizeSearchValue(_searchEntry.Text);
+        if (!string.IsNullOrWhiteSpace(normalizedQuery))
+        {
+            downloads = downloads
+                .Where(download =>
+                    ContainsNormalized(download.Title, normalizedQuery) ||
+                    ContainsNormalized(download.Description, normalizedQuery) ||
+                    ContainsNormalized(download.Slug, normalizedQuery) ||
+                    ContainsNormalized(download.Source, normalizedQuery))
+                .ToArray();
+        }
+
+        if (downloads.Count == 0)
+        {
+            return null;
+        }
+
+        return new VerticalStackLayout
+        {
+            Spacing = 10,
+            Children =
+            {
+                new Label
+                {
+                    Text = "Afgelaai",
+                    FontSize = 22,
+                    FontAttributes = FontAttributes.Bold,
+                    TextColor = Color.FromArgb("#222222"),
+                    HorizontalOptions = LayoutOptions.Fill,
+                    HorizontalTextAlignment = TextAlignment.Center
+                },
+                BuildHorizontalCarousel(downloads, 286, BuildDownloadedStoryCard)
+            }
+        };
+    }
+
+    private View BuildDownloadedStoryCard(OfflineStoryDownload download)
+    {
+        var story = ToMobileStorySummary(download);
+        var coverGrid = new Grid
+        {
+            HeightRequest = 218,
+            Children =
+            {
+                new Image
+                {
+                    Source = _apiClient.BuildCachedImageSource(
+                        PageHelpers.ResolveStoryCardImageSource(story, _apiClient)),
+                    Aspect = Aspect.AspectFill,
+                    HeightRequest = 218
+                },
+                BuildCoverPlayBadge("▶", 38, 17, 2)
+            }
+        };
+
+        var card = new Border
+        {
+            WidthRequest = 168,
+            BackgroundColor = Colors.Transparent,
+            StrokeThickness = 0,
+            Padding = 0,
+            Margin = new Thickness(0, 0, 0, 10),
+            Content = new VerticalStackLayout
+            {
+                Spacing = 9,
+                Children =
+                {
+                    new Border
+                    {
+                        StrokeThickness = 0,
+                        StrokeShape = new RoundRectangle { CornerRadius = 16 },
+                        HeightRequest = 218,
+                        Content = coverGrid
+                    },
+                    new Label
+                    {
+                        Text = download.Title,
+                        FontSize = 16,
+                        TextColor = Color.FromArgb("#1B2231"),
+                        InputTransparent = true,
+                        MaxLines = 2,
+                        LineBreakMode = LineBreakMode.TailTruncation,
+                        LineHeight = 1.16
+                    }
+                }
+            }
+        };
+
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += async (_, _) => await OpenDownloadedStoryAsync(download);
+        card.GestureRecognizers.Add(tap);
+        return card;
+    }
+
+    private static View BuildInlineNotice(string message) =>
+        new Border
+        {
+            BackgroundColor = Colors.White,
+            StrokeThickness = 0,
+            StrokeShape = new RoundRectangle { CornerRadius = 18 },
+            Padding = 16,
+            Content = new Label
+            {
+                Text = message,
+                TextColor = Color.FromArgb("#5F5F5F")
+            }
+        };
+
+    private static MobileStorySummary ToMobileStorySummary(OfflineStoryDownload download) =>
+        new(
+            Slug: download.Slug,
+            Title: download.Title,
+            Description: download.Description,
+            ImageUrl: download.ImageUrl,
+            ThumbnailUrl: download.ThumbnailUrl,
+            Source: download.Source,
+            IsLocked: false,
+            IsFavorite: false,
+            DetailUrl: download.DetailUrl,
+            DurationSeconds: download.DurationSeconds);
+
     private static IReadOnlyList<MobileLuisterSection> BuildLegacySections(IReadOnlyList<MobilePlaylist> playlists) =>
         playlists
             .Select((playlist, index) => new MobileLuisterSection(
@@ -1844,6 +2035,20 @@ public sealed class LuisterPage : ContentPage
         await CapturePlayerTransitionBackdropAsync();
         await Shell.Current.GoToAsync(
             $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source=luister",
+            animate: false,
+            parameters: new Dictionary<string, object>
+            {
+                ["preview"] = story
+            });
+    }
+
+    private async Task OpenDownloadedStoryAsync(OfflineStoryDownload download)
+    {
+        _playlistPlaybackState.Clear();
+        await CapturePlayerTransitionBackdropAsync();
+        var story = ToMobileStorySummary(download);
+        await Shell.Current.GoToAsync(
+            $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(download.Slug)}&source={Uri.EscapeDataString(download.Source)}",
             animate: false,
             parameters: new Dictionary<string, object>
             {
