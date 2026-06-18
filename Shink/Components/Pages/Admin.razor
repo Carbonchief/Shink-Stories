@@ -1477,9 +1477,9 @@
                     </div>
 
                     @{
-                        var todaySubscriberMetric = GetSubscriberMetric("today");
-                        var monthlySubscriberMetric = GetSubscriberMetric("this_month");
-                        var yearlySubscriberMetric = GetSubscriberMetric("this_year");
+                        var todaySubscriberMetric = GetAccessFilteredSubscriberMetric("today");
+                        var monthlySubscriberMetric = GetAccessFilteredSubscriberMetric("this_month");
+                        var yearlySubscriberMetric = GetAccessFilteredSubscriberMetric("this_year");
                         var currentDaySubscriberSales = GetSubscriberSalesMetric(RevenuePeriodCurrentDay);
                         var currentWeekSubscriberSales = GetSubscriberSalesMetric(RevenuePeriodCurrentWeek);
                         var currentMonthSubscriberSales = GetSubscriberSalesMetric(RevenuePeriodCurrentMonth);
@@ -1644,7 +1644,7 @@
 
                                         <article class="admin-analytics-card">
                                             <p class="admin-analytics-label">@T("Live aktiewe intekenaars", "Live active subscribers")</p>
-                                            <p class="admin-analytics-value">@FormatAnalyticsNumber(ActiveSubscriberAnalyticsTotal)</p>
+                                            <p class="admin-analytics-value">@FormatAnalyticsNumber(AccessFilteredActiveSubscriberAnalyticsTotal)</p>
                                             <div class="admin-analytics-meta">
                                                 <span>@T("Inkomste hierdie maand", "Revenue this month")</span>
                                                 <strong>@FormatCurrency(monthlySubscriberSales.RevenueZar)</strong>
@@ -5074,12 +5074,20 @@
             .Where(metric => string.Equals(metric.PeriodKey, "all_time", StringComparison.OrdinalIgnoreCase))
             .Sum(metric => metric.ActiveMembers);
 
+    private int AccessFilteredActiveSubscriberAnalyticsTotal =>
+        IsSelectedSubscriberAccessFilter(SubscriberAccessFilterAll)
+            ? ActiveSubscriberAnalyticsTotal
+            : SubscriberReports.ActiveMembersPerLevel
+                .Where(metric => string.Equals(metric.PeriodKey, "all_time", StringComparison.OrdinalIgnoreCase))
+                .Where(DoesSubscriberTierMetricMatchAccessFilter)
+                .Sum(metric => metric.ActiveMembers);
+
     private IReadOnlyList<AdminMembershipStatsMetric> SubscriberAnalyticsPeriodHighlights =>
         [
-            GetSubscriberMetric("today"),
-            GetSubscriberMetric("this_month"),
-            GetSubscriberMetric("this_year"),
-            GetSubscriberMetric("all_time")
+            GetAccessFilteredSubscriberMetric("today"),
+            GetAccessFilteredSubscriberMetric("this_month"),
+            GetAccessFilteredSubscriberMetric("this_year"),
+            GetAccessFilteredSubscriberMetric("all_time")
         ];
 
     private IReadOnlyList<AdminSubscriberMembershipDetailRecord> AccessFilteredSubscriberMembershipDetails =>
@@ -9086,6 +9094,28 @@
             string.Equals(metric.PeriodKey, periodKey, StringComparison.OrdinalIgnoreCase))
         ?? new AdminMembershipStatsMetric(periodKey, 0, 0);
 
+    private AdminMembershipStatsMetric GetAccessFilteredSubscriberMetric(string periodKey)
+    {
+        if (IsSelectedSubscriberAccessFilter(SubscriberAccessFilterAll))
+        {
+            return GetSubscriberMetric(periodKey);
+        }
+
+        return new AdminMembershipStatsMetric(
+            periodKey,
+            CountSubscriberMembershipDetailsInPeriod(AccessFilteredSubscriberMembershipDetails, periodKey, detail => detail.SubscribedAt),
+            CountSubscriberMembershipDetailsInPeriod(
+                AccessFilteredSubscriberMembershipDetails.Where(detail => detail.CancelledAt is not null),
+                periodKey,
+                detail => detail.CancelledAt!.Value));
+    }
+
+    private static int CountSubscriberMembershipDetailsInPeriod(
+        IEnumerable<AdminSubscriberMembershipDetailRecord> details,
+        string periodKey,
+        Func<AdminSubscriberMembershipDetailRecord, DateTimeOffset> dateSelector) =>
+        details.Count(detail => IsAdminDateInCurrentPeriod(dateSelector(detail), periodKey));
+
     private static IReadOnlyList<AdminSubscriberTrendMetric> BuildAccessFilteredSubscriberTrendMetrics(
         IReadOnlyList<AdminSubscriberMembershipDetailRecord> details,
         string periodType)
@@ -9321,6 +9351,14 @@
         {
             SubscriberAccessFilterFree => IsFreeSubscriberMembershipDetail(detail),
             SubscriberAccessFilterPaid => !IsFreeSubscriberMembershipDetail(detail),
+            _ => true
+        };
+
+    private bool DoesSubscriberTierMetricMatchAccessFilter(AdminTierDistributionMetric metric) =>
+        SelectedSubscriberAccessFilter switch
+        {
+            SubscriberAccessFilterFree => string.Equals(metric.TierCode, "gratis", StringComparison.OrdinalIgnoreCase),
+            SubscriberAccessFilterPaid => !string.Equals(metric.TierCode, "gratis", StringComparison.OrdinalIgnoreCase),
             _ => true
         };
 

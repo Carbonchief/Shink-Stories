@@ -618,9 +618,15 @@ public class MobileAbsoluteUrlSourceTests
         var accountPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "AccountPage.cs"));
 
         StringAssert.Contains(accountPage, "BuildAuthPanelHeader(");
-        StringAssert.Contains(accountPage, "Source = \"auth_caret_dark_rendered.png\"");
-        StringAssert.Contains(accountPage, "Rotation = 180");
+        StringAssert.Contains(accountPage, "var backIcon = new GraphicsView");
+        StringAssert.Contains(accountPage, "Drawable = new BackChevronDrawable()");
+        StringAssert.Contains(accountPage, "private sealed class BackChevronDrawable");
+        StringAssert.Contains(accountPage, "canvas.DrawLine(21.5f, 12.5f, 15.5f, 19f);");
+        StringAssert.Contains(accountPage, "canvas.DrawLine(15.5f, 19f, 21.5f, 25.5f);");
+        Assert.IsFalse(accountPage.Contains("Source = \"auth_caret_dark_rendered.png\"", StringComparison.Ordinal));
+        Assert.IsFalse(accountPage.Contains("Rotation = 180", StringComparison.Ordinal));
         StringAssert.Contains(accountPage, "WidthRequest = 38");
+        StringAssert.Contains(accountPage, "Content = new Grid");
         StringAssert.Contains(accountPage, "new ColumnDefinition { Width = 38 }");
         StringAssert.Contains(accountPage, "SetAuthPanelMode(AuthPanelMode.Landing);");
         Assert.IsFalse(accountPage.Contains("BuildAuthPanelHeading(", StringComparison.Ordinal));
@@ -638,8 +644,47 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(accountPage, "LogoHeight: Math.Clamp(height * (tight ? 0.18 : 0.2), 112, 182)");
         StringAssert.Contains(accountPage, "CharacterHeight: Math.Clamp(height * (tight ? 0.12 : 0.17), 76, 158)");
         StringAssert.Contains(accountPage, "ModeButtonHeight: tight ? 64 : compact ? 70 : 78");
-        StringAssert.Contains(accountPage, "_authPanelContent.Spacing = _authPanelMode == AuthPanelMode.Landing");
+        StringAssert.Contains(accountPage, "RowSpacing = metrics.PanelContentSpacing");
         StringAssert.Contains(accountPage, "ApplyLandingLayoutMetrics();");
+    }
+
+    [TestMethod]
+    public void MobileAuthLandingButtonsRenderIconRowsOnAndroid()
+    {
+        var accountPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "AccountPage.cs"));
+
+        StringAssert.Contains(accountPage, "var icon = new Image");
+        StringAssert.Contains(accountPage, "? \"auth_icon_user_white_rendered.png\"");
+        StringAssert.Contains(accountPage, ": \"auth_icon_pencil_gold_rendered.png\"");
+        StringAssert.Contains(accountPage, "var label = new Label");
+        StringAssert.Contains(accountPage, "var button = new Border");
+        StringAssert.Contains(accountPage, "HorizontalOptions = LayoutOptions.Fill");
+        StringAssert.Contains(accountPage, "VerticalOptions = LayoutOptions.Fill");
+        Assert.IsFalse(accountPage.Contains("ImageSource = mode == AuthPanelMode.SignIn ? \"auth_icon_user_white_rendered.png\" : \"auth_icon_pencil_gold_rendered.png\"", StringComparison.Ordinal));
+        Assert.IsFalse(accountPage.Contains("ContentLayout = new Button.ButtonContentLayout", StringComparison.Ordinal));
+        StringAssert.Contains(accountPage, "BackgroundColor = isPrimary ? Color.FromArgb(\"#146D69\") : Color.FromArgb(\"#FFFCF5\")");
+        StringAssert.Contains(accountPage, "Stroke = isPrimary ? Color.FromArgb(\"#146D69\") : Color.FromArgb(\"#E8B52F\")");
+        StringAssert.Contains(accountPage, "StrokeShape = new RoundRectangle { CornerRadius = 26 }");
+        StringAssert.Contains(accountPage, "var buttonHeight = isLanding ? metrics.ModeButtonHeight : 78;");
+        StringAssert.Contains(accountPage, "HeightRequest = buttonHeight");
+        StringAssert.Contains(accountPage, "MinimumHeightRequest = buttonHeight");
+        StringAssert.Contains(accountPage, "tap.Tapped += (_, _) => SetAuthPanelMode(mode);");
+        StringAssert.Contains(accountPage, "button.GestureRecognizers.Add(tap);");
+        StringAssert.Contains(accountPage, "return button;");
+        Assert.IsFalse(accountPage.Contains("var hitTarget = new Button", StringComparison.Ordinal));
+        Assert.IsFalse(accountPage.Contains("Opacity = 0.01", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void MobileWelcomeLogoForcesTransparentImageBackground()
+    {
+        var project = File.ReadAllText(GetRepoPath("Shink.Mobile", "Shink.Mobile.csproj"));
+        var accountPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "AccountPage.cs"));
+
+        StringAssert.Contains(project, "<MauiAsset Include=\"Resources/Images/schink_stories_logo_white.png\" LogicalName=\"schink_stories_logo_white_raw.png\" />");
+        StringAssert.Contains(accountPage, "CreatePackageImageSource(\"schink_stories_logo_white_raw.png\")");
+        StringAssert.Contains(accountPage, "FileSystem.OpenAppPackageFileAsync(fileName)");
+        StringAssert.Contains(accountPage, "BackgroundColor = Colors.Transparent");
     }
 
     [TestMethod]
@@ -650,7 +695,7 @@ public class MobileAbsoluteUrlSourceTests
         var logoBytes = File.ReadAllBytes(GetRepoPath("Shink.Mobile", "Resources", "Images", "schink_stories_logo_white.png"));
 
         StringAssert.Contains(project, "<MauiImage Update=\"Resources/Images/schink_stories_logo_white.png\" Resize=\"False\" />");
-        StringAssert.Contains(accountPage, "Source = \"schink_stories_logo_white.png\"");
+        StringAssert.Contains(accountPage, "CreatePackageImageSource(\"schink_stories_logo_white_raw.png\")");
         CollectionAssert.AreEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47 }, logoBytes.Take(4).ToArray());
         Assert.AreEqual(6, logoBytes[25]);
     }
