@@ -373,6 +373,76 @@ public class MobileAbsoluteUrlSourceTests
     }
 
     [TestMethod]
+    public void MobileOfflineDownloadsUsePrivateDurableStorageAndAccessExpiry()
+    {
+        var service = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "OfflineStoryDownloadService.cs"));
+        var mauiProgram = File.ReadAllText(GetRepoPath("Shink.Mobile", "MauiProgram.cs"));
+        var androidManifest = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "Android", "AndroidManifest.xml"));
+
+        StringAssert.Contains(service, "public interface IOfflineStoryDownloadService");
+        StringAssert.Contains(service, "public sealed record OfflineStoryDownload");
+        StringAssert.Contains(service, "public enum OfflineDownloadState");
+        StringAssert.Contains(service, "FileSystem.AppDataDirectory");
+        StringAssert.Contains(service, "offline-story-audio");
+        StringAssert.Contains(service, "offline-story-downloads.json");
+        StringAssert.Contains(service, "LastAccessVerifiedAt");
+        StringAssert.Contains(service, "AccessRefreshWindow = TimeSpan.FromDays(30)");
+        StringAssert.Contains(service, "DeletePaidDownloadsAsync");
+        StringAssert.Contains(service, "File.Move(temporaryPath, audioPath)");
+        StringAssert.Contains(service, "DownloadAudioToFileAsync(");
+        StringAssert.Contains(mauiProgram, "builder.Services.AddSingleton<IOfflineStoryDownloadService, OfflineStoryDownloadService>();");
+        StringAssert.Contains(androidManifest, "android.permission.ACCESS_NETWORK_STATE");
+        Assert.IsFalse(service.Contains("FileSystem.CacheDirectory", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void MobileStoryDetailOffersOfflineDownloadAndPrefersLocalPlayback()
+    {
+        var storyDetail = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "StoryDetailPage.cs"));
+
+        StringAssert.Contains(storyDetail, "IOfflineStoryDownloadService offlineDownloadService");
+        StringAssert.Contains(storyDetail, "_offlineDownloadService");
+        StringAssert.Contains(storyDetail, "BuildDownloadPillButton(");
+        StringAssert.Contains(storyDetail, "Download for offline listening");
+        StringAssert.Contains(storyDetail, "Laai af");
+        StringAssert.Contains(storyDetail, "Afgelaai");
+        StringAssert.Contains(storyDetail, "Verwyder aflaai");
+        StringAssert.Contains(storyDetail, "ConfirmCellularDownloadAsync()");
+        StringAssert.Contains(storyDetail, "ResolvePlayableAudioAsync(");
+        StringAssert.Contains(storyDetail, "RenderOfflineDetail(");
+        StringAssert.Contains(storyDetail, "Hierdie aflaai moet weer aanlyn bevestig word.");
+    }
+
+    [TestMethod]
+    public void MobileLuisterRendersDownloadedOfflineSection()
+    {
+        var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
+
+        StringAssert.Contains(luisterPage, "IOfflineStoryDownloadService offlineDownloadService");
+        StringAssert.Contains(luisterPage, "_offlineDownloadService");
+        StringAssert.Contains(luisterPage, "_downloadedStories");
+        StringAssert.Contains(luisterPage, "BuildDownloadedSection()");
+        StringAssert.Contains(luisterPage, "Afgelaai");
+        StringAssert.Contains(luisterPage, "GetPlayableDownloadsAsync()");
+        StringAssert.Contains(luisterPage, "RefreshDownloadsInBackgroundAsync()");
+        StringAssert.Contains(luisterPage, "OpenDownloadedStoryAsync(");
+        StringAssert.Contains(luisterPage, "source={Uri.EscapeDataString(download.Source)}");
+        Assert.IsFalse(luisterPage.Contains(".GetAwaiter()", StringComparison.Ordinal));
+        Assert.IsFalse(luisterPage.Contains(".GetResult()", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void MobileStoryAudioUsesSignedMediaRouteForR2AndLocalProviders()
+    {
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+
+        StringAssert.Contains(program, "static Task<string?> ResolveMobileAudioUrlAsync(");
+        StringAssert.Contains(program, "return Task.FromResult<string?>(ToAbsoluteUri(httpContext, audioAccessService.CreateSignedAudioUrl(story.Slug)));");
+        Assert.IsFalse(program.Contains("storyMediaStorageService.CreateAudioReadUrlAsync(\r\n            story.AudioBucket", StringComparison.Ordinal));
+        Assert.IsFalse(program.Contains("return readUri?.ToString();", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public void MobileStoryDetailOpensAndClosesWithoutSlowExtraWork()
     {
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
@@ -630,6 +700,18 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(accountPage, "new ColumnDefinition { Width = 38 }");
         StringAssert.Contains(accountPage, "SetAuthPanelMode(AuthPanelMode.Landing);");
         Assert.IsFalse(accountPage.Contains("BuildAuthPanelHeading(", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void MobileApiErrorsExtractServerMessageFromJsonBody()
+    {
+        var client = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
+
+        StringAssert.Contains(client, "ExtractErrorMessage(body)");
+        StringAssert.Contains(client, "JsonDocument.Parse(body)");
+        StringAssert.Contains(client, "TryGetProperty(\"message\", out var messageElement)");
+        StringAssert.Contains(client, "return message;");
+        Assert.IsFalse(client.Contains(": body);", StringComparison.Ordinal));
     }
 
     [TestMethod]

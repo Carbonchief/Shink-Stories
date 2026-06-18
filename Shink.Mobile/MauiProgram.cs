@@ -27,6 +27,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<PlaylistPlaybackState>();
         builder.Services.AddSingleton<PlayerTransitionBackdropState>();
         builder.Services.AddSingleton<MobileApiClient>();
+        builder.Services.AddSingleton<IOfflineStoryDownloadService, OfflineStoryDownloadService>();
         builder.Services.AddSingleton<IAudioPlaybackService, AudioPlaybackService>();
         builder.Services.AddSingleton<IOrientationService, OrientationService>();
         builder.Services.AddSingleton<AppShell>();
