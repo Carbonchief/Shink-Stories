@@ -1,5 +1,6 @@
 const STORY_AUDIO_SELECTOR = ".story-audio";
 const STORY_COVER_SELECTOR = ".story-cover";
+const STORY_COVER_WRAP_SELECTOR = ".story-cover-wrap";
 const STORY_PAGE_SELECTOR = ".story-player-page";
 const STORY_PLAYER_CONTENT_SELECTOR = ".story-player-content";
 const DEFAULT_IMAGE_PATH = "/branding/schink-logo-text.png";
@@ -47,6 +48,7 @@ const STORY_TEST_MODAL_BODY_LOCK_CLASS = "story-test-modal-open";
 
 const boundAudios = new WeakSet();
 const fullscreenBindings = new WeakMap();
+const coverFrameBindings = new WeakMap();
 const playerCapabilityCache = new WeakMap();
 const storyTrackingStateCache = new WeakMap();
 const lastBoundAudioSource = new WeakMap();
@@ -292,6 +294,133 @@ function getStoryCoverImage(audioElement) {
 
     const cover = container.querySelector(STORY_COVER_SELECTOR);
     return cover instanceof HTMLImageElement ? cover : null;
+}
+
+function resolveStoryCoverAspect(coverImage) {
+    if (coverImage.naturalWidth > 0 && coverImage.naturalHeight > 0) {
+        return coverImage.naturalWidth / coverImage.naturalHeight;
+    }
+
+    const declaredWidth = Number.parseFloat(coverImage.getAttribute("width") || "");
+    const declaredHeight = Number.parseFloat(coverImage.getAttribute("height") || "");
+    return declaredWidth > 0 && declaredHeight > 0 ? declaredWidth / declaredHeight : 1;
+}
+
+function updateStoryCoverFrameSize(container, coverWrap, coverImage) {
+    if (!(container instanceof HTMLElement) ||
+        !(coverWrap instanceof HTMLElement) ||
+        !(coverImage instanceof HTMLImageElement)) {
+        return;
+    }
+
+    const aspect = resolveStoryCoverAspect(coverImage);
+    const maxHeight = Number.parseFloat(window.getComputedStyle(coverImage).maxHeight || "");
+    const availableWidth = container.getBoundingClientRect().width;
+
+    if (!Number.isFinite(aspect) ||
+        aspect <= 0 ||
+        !Number.isFinite(maxHeight) ||
+        maxHeight <= 0 ||
+        !Number.isFinite(availableWidth) ||
+        availableWidth <= 0) {
+        coverWrap.style.removeProperty("--story-cover-fit-width");
+        return;
+    }
+
+    const fittedWidth = Math.min(availableWidth, maxHeight * aspect);
+    coverWrap.style.setProperty("--story-cover-fit-width", `${Math.max(1, Math.floor(fittedWidth))}px`);
+}
+
+function bindStoryCoverFrameFit(audioElement) {
+    const coverImage = getStoryCoverImage(audioElement);
+    if (!(coverImage instanceof HTMLImageElement)) {
+        return;
+    }
+
+    const container = audioElement.closest(STORY_PLAYER_CONTENT_SELECTOR);
+    const coverWrap = coverImage.closest(STORY_COVER_WRAP_SELECTOR);
+    if (!(container instanceof HTMLElement) || !(coverWrap instanceof HTMLElement)) {
+        return;
+    }
+
+    const existingBinding = coverFrameBindings.get(coverWrap);
+    if (existingBinding) {
+        if (existingBinding.coverImage !== coverImage) {
+            existingBinding.cancelPendingFrame?.();
+            existingBinding.resizeObserver?.disconnect();
+            existingBinding.coverImage?.removeEventListener("load", existingBinding.update);
+            window.removeEventListener("resize", existingBinding.update);
+            window.visualViewport?.removeEventListener("resize", existingBinding.update);
+            coverFrameBindings.delete(coverWrap);
+            bindStoryCoverFrameFit(audioElement);
+            return;
+        }
+
+        existingBinding.update();
+        return;
+    }
+
+    let animationFrameId = 0;
+    const update = () => {
+        if (animationFrameId) {
+            window.cancelAnimationFrame(animationFrameId);
+        }
+
+        animationFrameId = window.requestAnimationFrame(() => {
+            animationFrameId = 0;
+            updateStoryCoverFrameSize(container, coverWrap, coverImage);
+        });
+    };
+
+    const resizeObserver = typeof ResizeObserver === "function"
+        ? new ResizeObserver(update)
+        : null;
+
+    resizeObserver?.observe(container);
+    resizeObserver?.observe(coverImage);
+    coverImage.addEventListener("load", update);
+    window.addEventListener("resize", update);
+    window.visualViewport?.addEventListener("resize", update);
+
+    coverFrameBindings.set(coverWrap, {
+        coverImage,
+        resizeObserver,
+        update,
+        cancelPendingFrame: () => {
+            if (animationFrameId) {
+                window.cancelAnimationFrame(animationFrameId);
+                animationFrameId = 0;
+            }
+        }
+    });
+
+    update();
+}
+
+function disposeStoryCoverFrameFit(storyPage) {
+    if (!(storyPage instanceof HTMLElement)) {
+        return;
+    }
+
+    const coverWraps = storyPage.querySelectorAll(STORY_COVER_WRAP_SELECTOR);
+    coverWraps.forEach((coverWrap) => {
+        if (!(coverWrap instanceof HTMLElement)) {
+            return;
+        }
+
+        const binding = coverFrameBindings.get(coverWrap);
+        if (!binding) {
+            return;
+        }
+
+        binding.cancelPendingFrame?.();
+        binding.resizeObserver?.disconnect();
+        binding.coverImage?.removeEventListener("load", binding.update);
+        window.removeEventListener("resize", binding.update);
+        window.visualViewport?.removeEventListener("resize", binding.update);
+        coverWrap.style.removeProperty("--story-cover-fit-width");
+        coverFrameBindings.delete(coverWrap);
+    });
 }
 
 function resolveArtworkUrl(audioElement) {
@@ -1240,6 +1369,7 @@ function bindAudioEvents(audioElement, dotNetRef) {
 
         updateMediaMetadata(audioElement);
         updatePositionState(audioElement);
+        bindStoryCoverFrameFit(audioElement);
         return;
     }
 
@@ -1255,6 +1385,7 @@ function bindAudioEvents(audioElement, dotNetRef) {
     const customPlayerElements = getCustomPlayerElements(audioElement);
     const playerCapabilities = detectPlayerCapabilities(audioElement);
     refreshStoryTrackingState(audioElement, true);
+    bindStoryCoverFrameFit(audioElement);
 
     if (customPlayerElements?.container instanceof HTMLElement) {
         customPlayerElements.container.classList.add("story-player-enhanced");
@@ -2144,6 +2275,8 @@ export function initializeStoryPlayerFullscreenExperience(dotNetRef) {
 export function disposeStoryPlayerFullscreenExperience() {
     const storyPage = document.querySelector(STORY_PAGE_SELECTOR);
     if (storyPage instanceof HTMLElement) {
+        disposeStoryCoverFrameFit(storyPage);
+
         const binding = fullscreenBindings.get(storyPage);
         if (binding) {
             if (binding.content instanceof HTMLElement) {

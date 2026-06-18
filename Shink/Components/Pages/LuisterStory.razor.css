@@ -19,28 +19,36 @@
     min-width: 0;
     margin-inline: auto;
     box-sizing: border-box;
-    gap: 0.68rem;
+    gap: 0.55rem;
     color: #202020;
     overflow: clip;
     --story-player-viewport-reserve: 20rem;
+    --story-cover-fit-height: clamp(120px, calc(100svh - var(--story-player-viewport-reserve)), 760px);
+    --story-cover-fit-width: 100%;
+    --story-cover-max-width: 100%;
 }
 
 .story-cover-wrap {
     position: relative;
-    width: 100%;
+    width: min(100%, var(--story-cover-fit-width), var(--story-cover-max-width));
     max-width: 100%;
+    max-height: var(--story-cover-fit-height);
+    margin-inline: auto;
+    border-radius: 22px;
+    overflow: hidden;
 }
 
 .story-cover {
     width: 100%;
     max-width: 100%;
-    aspect-ratio: 16 / 9;
-    max-height: clamp(240px, calc(100svh - var(--story-player-viewport-reserve)), 760px);
-    object-fit: cover;
+    height: auto;
+    max-height: var(--story-cover-fit-height);
+    aspect-ratio: auto;
+    object-fit: contain;
     object-position: center bottom;
     transform-origin: center bottom;
     display: block;
-    border-radius: 22px;
+    border-radius: 0;
     box-shadow: 0 16px 32px rgba(63, 56, 45, 0.16);
     cursor: pointer;
     transition: transform 0.22s ease, filter 0.22s ease;
@@ -1543,23 +1551,19 @@
 @media (min-width: 641px) {
     .story-player-content {
         min-height: calc(100dvh - 5.5rem);
-        --story-player-viewport-reserve: 15.5rem;
+        --story-player-viewport-reserve: 16rem;
+        --story-cover-max-width: clamp(820px, 76vw, 1080px);
     }
 
     .story-cover-wrap {
-        width: min(100%, clamp(820px, 76vw, 1080px));
-        max-width: 100%;
-        max-height: calc(100svh - var(--story-player-viewport-reserve));
-        margin-inline: auto;
-        border-radius: 22px;
-        overflow: hidden;
+        max-height: var(--story-cover-fit-height);
     }
 
     .story-cover {
         width: 100%;
         height: auto;
         max-width: 100%;
-        max-height: calc(100svh - var(--story-player-viewport-reserve));
+        max-height: var(--story-cover-fit-height);
         aspect-ratio: auto;
         object-fit: contain;
         border-radius: 0;
@@ -1571,7 +1575,7 @@
 
     .story-custom-player {
         order: 2;
-        margin-top: auto;
+        margin-top: 0;
     }
 }
 
@@ -1591,7 +1595,7 @@
     }
 
     .story-player-content {
-        gap: 0.75rem;
+        gap: 0.55rem;
         --story-player-viewport-reserve: 20.25rem;
     }
 
@@ -1600,7 +1604,8 @@
     }
 
     .story-cover {
-        aspect-ratio: 40 / 27;
+        aspect-ratio: auto;
+        object-fit: contain;
         object-position: center bottom;
     }
 
@@ -1783,17 +1788,17 @@
     }
 
     .story-player-page:not(.manual-fullscreen-focus) .story-cover-wrap {
-        width: min(100%, clamp(820px, 88vw, 980px));
+        width: min(100%, var(--story-cover-fit-width), clamp(820px, 88vw, 980px));
         max-width: calc(100vw - 1.4rem);
-        max-height: clamp(190px, calc(100svh - var(--story-player-viewport-reserve)), 480px);
+        max-height: clamp(110px, calc(100svh - var(--story-player-viewport-reserve)), 480px);
     }
 
     .story-player-page:not(.manual-fullscreen-focus) .story-cover {
         width: 100%;
         height: auto;
-        max-height: clamp(190px, calc(100svh - var(--story-player-viewport-reserve)), 480px);
-        aspect-ratio: 40 / 27;
-        object-fit: cover;
+        max-height: clamp(110px, calc(100svh - var(--story-player-viewport-reserve)), 480px);
+        aspect-ratio: auto;
+        object-fit: contain;
         object-position: center bottom;
     }
 
