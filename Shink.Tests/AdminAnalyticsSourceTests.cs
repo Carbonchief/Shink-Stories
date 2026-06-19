@@ -428,7 +428,7 @@ public class AdminAnalyticsSourceTests
     }
 
     [TestMethod]
-    public void SubscriberAnalyticsExcludesPayfastFromNewSubscriberCounts()
+    public void SubscriberAnalyticsIncludesLedgerPaidRowsInNewSubscriberCounts()
     {
         var now = DateTimeOffset.Now.AddMinutes(-5);
         var paystackSubscriberId = Guid.NewGuid();
@@ -449,13 +449,13 @@ public class AdminAnalyticsSourceTests
         var metrics = InvokeBuildMembershipStatsMetrics(rows, revenueEvents);
         var today = metrics.Single(metric => metric.PeriodKey == "today");
 
-        Assert.AreEqual(2, today.Signups);
+        Assert.AreEqual(5, today.Signups);
         Assert.AreEqual(0, today.Cancellations);
 
         var trend = InvokeBuildMembershipTrendMetrics(rows, revenueEvents);
         var todayTrend = trend.Single(metric => metric.PeriodType == "day" && metric.PeriodKey == now.Date.ToString("yyyy-MM-dd"));
 
-        Assert.AreEqual(2, todayTrend.Signups);
+        Assert.AreEqual(5, todayTrend.Signups);
         Assert.AreEqual(0, todayTrend.Cancellations);
     }
 
@@ -500,18 +500,18 @@ public class AdminAnalyticsSourceTests
         var metrics = InvokeBuildMembershipStatsMetrics(rows, revenueEvents);
         var today = metrics.Single(metric => metric.PeriodKey == "today");
 
-        Assert.AreEqual(2, today.Signups);
+        Assert.AreEqual(3, today.Signups);
         Assert.AreEqual(2, today.Cancellations);
 
         var trend = InvokeBuildMembershipTrendMetrics(rows, revenueEvents);
         var todayTrend = trend.Single(metric => metric.PeriodType == "day" && metric.PeriodKey == now.Date.ToString("yyyy-MM-dd"));
 
-        Assert.AreEqual(2, todayTrend.Signups);
+        Assert.AreEqual(3, todayTrend.Signups);
         Assert.AreEqual(2, todayTrend.Cancellations);
     }
 
     [TestMethod]
-    public void SubscriberAnalyticsCountsOnlyRowsWithPaystackSubscriptionCreateEvents()
+    public void SubscriberAnalyticsCountsLedgerRowsWithoutPaystackSubscriptionCreateEvents()
     {
         var now = DateTimeOffset.Now.AddMinutes(-5);
         var paystackWithCreateId = Guid.NewGuid();
@@ -548,13 +548,13 @@ public class AdminAnalyticsSourceTests
         var metrics = InvokeBuildMembershipStatsMetrics(rows, revenueEvents);
         var today = metrics.Single(metric => metric.PeriodKey == "today");
 
-        Assert.AreEqual(1, today.Signups);
+        Assert.AreEqual(3, today.Signups);
         Assert.AreEqual(0, today.Cancellations);
 
         var trend = InvokeBuildMembershipTrendMetrics(rows, revenueEvents);
         var todayTrend = trend.Single(metric => metric.PeriodType == "day" && metric.PeriodKey == now.Date.ToString("yyyy-MM-dd"));
 
-        Assert.AreEqual(1, todayTrend.Signups);
+        Assert.AreEqual(3, todayTrend.Signups);
         Assert.AreEqual(0, todayTrend.Cancellations);
     }
 
@@ -583,7 +583,7 @@ public class AdminAnalyticsSourceTests
     }
 
     [TestMethod]
-    public void SubscriberMembershipDetailsExcludePayfastRows()
+    public void SubscriberMembershipDetailsIncludeLedgerPaidRows()
     {
         var now = DateTimeOffset.Now.AddMinutes(-5);
         var paystackSubscriberId = Guid.NewGuid();
@@ -613,12 +613,12 @@ public class AdminAnalyticsSourceTests
             CreateEmptyTierDetails(),
             revenueEvents);
 
-        Assert.AreEqual(2, details.Count);
-        Assert.IsFalse(details.Any(detail => detail.Provider.Equals("payfast", StringComparison.OrdinalIgnoreCase)));
+        Assert.AreEqual(4, details.Count);
+        Assert.IsTrue(details.Any(detail => detail.Provider.Equals("payfast", StringComparison.OrdinalIgnoreCase)));
     }
 
     [TestMethod]
-    public void SubscriberMembershipDetailsIncludeOnlyPaystackSubscriptionCreateWebhookRows()
+    public void SubscriberMembershipDetailsIncludePaystackRowsWithoutCreateWebhook()
     {
         var now = DateTimeOffset.Now.AddMinutes(-5);
         var paystackWithCreateId = Guid.NewGuid();
@@ -652,8 +652,9 @@ public class AdminAnalyticsSourceTests
             CreateEmptyTierDetails(),
             revenueEvents);
 
-        Assert.AreEqual(1, details.Count);
-        Assert.AreEqual("paystack@shink.dev", details.Single().Email);
+        Assert.AreEqual(2, details.Count);
+        Assert.IsTrue(details.Any(detail => detail.Email == "paystack@shink.dev"));
+        Assert.IsTrue(details.Any(detail => detail.Email == "missing-event@shink.dev"));
     }
 
     [TestMethod]
@@ -701,17 +702,17 @@ public class AdminAnalyticsSourceTests
             CreateEmptyTierDetails(),
             revenueEvents);
 
-        Assert.AreEqual(2, details.Count);
+        Assert.AreEqual(3, details.Count);
         Assert.IsTrue(details.Any(detail => detail.Email == "paid@shink.dev"));
         Assert.IsTrue(details.Any(detail => detail.Email == "free@shink.dev" && detail.TierCode == "gratis"));
 
         var metrics = InvokeBuildMembershipStatsMetrics(rows, revenueEvents);
         var todayStats = metrics.Single(metric => metric.PeriodKey == "today");
-        Assert.AreEqual(2, todayStats.Signups);
+        Assert.AreEqual(3, todayStats.Signups);
 
         var trend = InvokeBuildMembershipTrendMetrics(rows, revenueEvents);
         var todayTrend = trend.Single(metric => metric.PeriodType == "day" && metric.PeriodKey == now.Date.ToString("yyyy-MM-dd"));
-        Assert.AreEqual(2, todayTrend.Signups);
+        Assert.AreEqual(3, todayTrend.Signups);
     }
 
     [TestMethod]
@@ -762,9 +763,64 @@ public class AdminAnalyticsSourceTests
             CreateEmptyTierDetails(),
             revenueEvents);
 
-        Assert.AreEqual(2, todayStats.Signups);
-        Assert.AreEqual(2, details.Count(detail => detail.SubscribedAt.Date == now.Date));
-        Assert.IsTrue(details.Any(detail => detail.Email == "returning-free@shink.dev" && detail.TierCode == "gratis"));
+        Assert.AreEqual(1, todayStats.Signups);
+        Assert.AreEqual(1, details.Count(detail => detail.SubscribedAt.Date == now.Date));
+        Assert.IsTrue(details.Any(detail => detail.Email == "returning-free@shink.dev" && detail.TierCode == "all_stories_monthly"));
+    }
+
+    [TestMethod]
+    public void SubscriberSignupDetailsKeepFirstFreeAndFirstPaidSignupSeparately()
+    {
+        var freeSignupDate = DateTimeOffset.Now.AddMonths(-2);
+        var paidSignupDate = DateTimeOffset.Now.AddMinutes(-5);
+        var convertedSubscriberId = Guid.NewGuid();
+        var schoolSeatSubscriberId = Guid.NewGuid();
+        var rows = CreateSubscriptionRows(
+            CreateSubscriptionRow(
+                convertedSubscriberId,
+                "shink_app",
+                "active",
+                freeSignupDate,
+                null,
+                tierCode: "gratis",
+                provider: "free",
+                providerPaymentId: $"gratis-{convertedSubscriberId:D}"),
+            CreateSubscriptionRow(
+                convertedSubscriberId,
+                "shink_app",
+                "active",
+                paidSignupDate,
+                null,
+                tierCode: "all_stories_monthly",
+                provider: "paystack",
+                providerPaymentId: "paid-conversion"),
+            CreateSubscriptionRow(
+                schoolSeatSubscriberId,
+                "school_seat",
+                "active",
+                paidSignupDate,
+                null,
+                tierCode: "school_medium_yearly",
+                provider: "free"));
+        var subscribers = CreateSubscriberRows(
+            CreateSubscriberRow(convertedSubscriberId, "converted@shink.dev"),
+            CreateSubscriberRow(schoolSeatSubscriberId, "school@shink.dev"));
+
+        var details = InvokeBuildSubscriberSignupDetails(
+            subscribers,
+            rows,
+            CreateEmptyTierDetails());
+
+        Assert.AreEqual(2, details.Count);
+        Assert.IsTrue(details.Any(detail =>
+            detail.Email == "converted@shink.dev" &&
+            detail.TierCode == "gratis" &&
+            detail.SubscribedAt == freeSignupDate));
+        Assert.IsTrue(details.Any(detail =>
+            detail.Email == "converted@shink.dev" &&
+            detail.TierCode == "all_stories_monthly" &&
+            detail.SubscribedAt == paidSignupDate));
+        Assert.IsFalse(details.Any(detail => detail.Email == "school@shink.dev"));
     }
 
     [TestMethod]
@@ -777,8 +833,10 @@ public class AdminAnalyticsSourceTests
         StringAssert.Contains(admin, "var yearlySubscriberMetric = GetAccessFilteredSubscriberMetric(\"this_year\");");
         StringAssert.Contains(admin, "AccessFilteredActiveSubscriberAnalyticsTotal");
         StringAssert.Contains(admin, "AccessFilteredSubscriberMembershipDetails");
+        StringAssert.Contains(admin, "SubscriberReports.SignupDetails");
         StringAssert.Contains(admin, "@T(\"Detail tipe\", \"Detail type\")");
         StringAssert.Contains(admin, "CountSubscriberMembershipDetailsInPeriod");
+        StringAssert.Contains(admin, "SubscriberAccessFilterPaid => IsPaidSubscriberMembershipDetail(detail)");
     }
 
     [TestMethod]
@@ -1045,6 +1103,21 @@ public class AdminAnalyticsSourceTests
         var events = revenueEvents ?? CreateRevenueEvents();
         var paystackCreateIdentifiers = BuildPaystackSubscriptionCreateIdentifiers(events);
         var result = method.Invoke(null, [subscribers, rows, tierDetails, paystackCreateIdentifiers]);
+        Assert.IsNotNull(result);
+        return ((IEnumerable<AdminSubscriberMembershipDetailRecord>)result).ToArray();
+    }
+
+    private static IReadOnlyList<AdminSubscriberMembershipDetailRecord> InvokeBuildSubscriberSignupDetails(
+        object subscribers,
+        object rows,
+        object tierDetails)
+    {
+        var method = typeof(SupabaseAdminManagementService).GetMethod(
+            "BuildSubscriberSignupDetails",
+            BindingFlags.NonPublic | BindingFlags.Static);
+
+        Assert.IsNotNull(method);
+        var result = method.Invoke(null, [subscribers, rows, tierDetails]);
         Assert.IsNotNull(result);
         return ((IEnumerable<AdminSubscriberMembershipDetailRecord>)result).ToArray();
     }

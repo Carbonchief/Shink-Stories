@@ -4315,6 +4315,7 @@ public sealed partial class SupabaseAdminManagementService(
                 revenueEvents),
             ActiveMembersPerLevel: BuildTierDistributionMetrics(subscriptions, tierDetails),
             MembershipDetails: BuildSubscriberMembershipDetails(subscribers, subscriptions, tierDetails, paystackSubscriptionCreateIdentifiers),
+            SignupDetails: BuildSubscriberSignupDetails(subscribers, subscriptions, tierDetails),
             RecurringRevenue: BuildRecurringRevenueMetrics(subscriptions, recoveries),
             SalesAndRevenue: BuildSalesRevenueMetricsCore(wordPressSubscriberReports, subscriptions, tierDetails, revenueEvents, storeOrderRevenue),
             SalesDetails: BuildSalesRevenueDetailsCore(subscribers, subscriptions, tierDetails, revenueEvents, storeOrderRevenue),
@@ -4583,36 +4584,57 @@ public sealed partial class SupabaseAdminManagementService(
             .ToDictionary(group => group.Key, group => group.First());
 
         return GetFirstAnalyticsSubscriberSubscriptions(subscriptions, paystackSubscriptionCreateIdentifiers)
-            .Select(subscription =>
-            {
-                subscribersById.TryGetValue(subscription.SubscriberId, out var subscriber);
-                var tierCode = NormalizeOptionalText(subscription.TierCode, 80) ?? "-";
-                var tier = tierDetails.TryGetValue(tierCode, out var detail) ? detail : null;
-                var email = NormalizeOptionalText(subscriber?.Email, 254) ?? "-";
-                var displayName = NormalizeOptionalText(subscriber?.DisplayName, 120);
-                if (string.IsNullOrWhiteSpace(displayName))
-                {
-                    displayName = string.Join(" ", new[]
-                    {
-                        NormalizeOptionalText(subscriber?.FirstName, 80),
-                        NormalizeOptionalText(subscriber?.LastName, 80)
-                    }.Where(part => !string.IsNullOrWhiteSpace(part)));
-                }
-
-                return new AdminSubscriberMembershipDetailRecord(
-                    subscription.SubscriberId,
-                    email,
-                    string.IsNullOrWhiteSpace(displayName) ? email : displayName,
-                    tierCode,
-                    NormalizeTierDisplayName(tierCode, tier?.DisplayName),
-                    NormalizeOptionalText(subscription.Provider, 40) ?? "-",
-                    NormalizeOptionalText(subscription.SourceSystem, 40) ?? "-",
-                    NormalizeOptionalText(subscription.Status, 40) ?? "-",
-                    subscription.SubscribedAt!.Value,
-                    subscription.CancelledAt);
-            })
+            .Select(subscription => CreateSubscriberMembershipDetail(subscribersById, tierDetails, subscription))
             .OrderByDescending(detail => detail.SubscribedAt)
             .ToArray();
+    }
+
+    private static IReadOnlyList<AdminSubscriberMembershipDetailRecord> BuildSubscriberSignupDetails(
+        IReadOnlyList<SubscriberRow> subscribers,
+        IReadOnlyList<SubscriptionRow> subscriptions,
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails)
+    {
+        var subscribersById = subscribers
+            .Where(subscriber => subscriber.SubscriberId != Guid.Empty)
+            .GroupBy(subscriber => subscriber.SubscriberId)
+            .ToDictionary(group => group.Key, group => group.First());
+
+        return GetAccessSpecificSubscriberSignupSubscriptions(subscriptions)
+            .Select(subscription => CreateSubscriberMembershipDetail(subscribersById, tierDetails, subscription))
+            .OrderByDescending(detail => detail.SubscribedAt)
+            .ToArray();
+    }
+
+    private static AdminSubscriberMembershipDetailRecord CreateSubscriberMembershipDetail(
+        IReadOnlyDictionary<Guid, SubscriberRow> subscribersById,
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
+        SubscriptionRow subscription)
+    {
+        subscribersById.TryGetValue(subscription.SubscriberId, out var subscriber);
+        var tierCode = NormalizeOptionalText(subscription.TierCode, 80) ?? "-";
+        var tier = tierDetails.TryGetValue(tierCode, out var detail) ? detail : null;
+        var email = NormalizeOptionalText(subscriber?.Email, 254) ?? "-";
+        var displayName = NormalizeOptionalText(subscriber?.DisplayName, 120);
+        if (string.IsNullOrWhiteSpace(displayName))
+        {
+            displayName = string.Join(" ", new[]
+            {
+                NormalizeOptionalText(subscriber?.FirstName, 80),
+                NormalizeOptionalText(subscriber?.LastName, 80)
+            }.Where(part => !string.IsNullOrWhiteSpace(part)));
+        }
+
+        return new AdminSubscriberMembershipDetailRecord(
+            subscription.SubscriberId,
+            email,
+            string.IsNullOrWhiteSpace(displayName) ? email : displayName,
+            tierCode,
+            NormalizeTierDisplayName(tierCode, tier?.DisplayName),
+            NormalizeOptionalText(subscription.Provider, 40) ?? "-",
+            NormalizeOptionalText(subscription.SourceSystem, 40) ?? "-",
+            NormalizeOptionalText(subscription.Status, 40) ?? "-",
+            subscription.SubscribedAt!.Value,
+            subscription.CancelledAt);
     }
 
     private static bool IsFreeSubscriberMembershipDetailEligible(SubscriptionRow subscription) =>
@@ -4645,10 +4667,13 @@ public sealed partial class SupabaseAdminManagementService(
 
     private static IReadOnlyList<SubscriptionRow> GetFirstAnalyticsSubscriberSubscriptions(
         IReadOnlyList<SubscriptionRow> subscriptions,
-        IReadOnlySet<string> paystackSubscriptionCreateIdentifiers) =>
-        subscriptions
+        IReadOnlySet<string> paystackSubscriptionCreateIdentifiers)
+    {
+        _ = paystackSubscriptionCreateIdentifiers;
+
+        return subscriptions
             .Where(subscription =>
-                IsNewSubscriberMetricEligible(subscription, paystackSubscriptionCreateIdentifiers) ||
+                IsSubscriberCountMetricEligible(subscription) ||
                 IsFreeSubscriberMembershipDetailEligible(subscription))
             .Where(subscription => subscription.SubscribedAt is not null)
             .GroupBy(subscription => subscription.SubscriberId)
@@ -4656,6 +4681,35 @@ public sealed partial class SupabaseAdminManagementService(
                 .OrderBy(subscription => subscription.SubscribedAt)
                 .First())
             .ToArray();
+    }
+
+    private static IReadOnlyList<SubscriptionRow> GetAccessSpecificSubscriberSignupSubscriptions(IReadOnlyList<SubscriptionRow> subscriptions)
+    {
+        var firstGratisSignups = subscriptions
+            .Where(IsFreeSubscriberMembershipDetailEligible)
+            .Where(subscription => subscription.SubscribedAt is not null)
+            .GroupBy(subscription => subscription.SubscriberId)
+            .Select(group => group
+                .OrderBy(subscription => subscription.SubscribedAt)
+                .First());
+
+        var firstPaidSignups = subscriptions
+            .Where(IsPaidSubscriberSignupEligible)
+            .Where(subscription => subscription.SubscribedAt is not null)
+            .GroupBy(subscription => subscription.SubscriberId)
+            .Select(group => group
+                .OrderBy(subscription => subscription.SubscribedAt)
+                .First());
+
+        return firstGratisSignups
+            .Concat(firstPaidSignups)
+            .ToArray();
+    }
+
+    private static bool IsPaidSubscriberSignupEligible(SubscriptionRow subscription) =>
+        IsSubscriberCountMetricEligible(subscription) &&
+        !string.Equals(subscription.TierCode, "gratis", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(subscription.Provider, "free", StringComparison.OrdinalIgnoreCase);
 
     private static IReadOnlyList<AdminSalesRevenueMetric> BuildSalesRevenueMetricsCore(
         WordPressSubscriberReportsRpcSnapshot? wordPressSubscriberReports,

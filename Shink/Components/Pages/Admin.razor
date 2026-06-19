@@ -4966,13 +4966,9 @@
             .Select(metric => metric.TierName)
             .ToArray();
     private IReadOnlyList<AdminSubscriberTrendMetric> CurrentSubscriberTrendMetrics =>
-        IsSelectedSubscriberAccessFilter(SubscriberAccessFilterAll)
-            ? SubscriberReports.MembershipTrend
-                .Where(metric => string.Equals(metric.PeriodType, SelectedSubscriberTrendPeriod, StringComparison.OrdinalIgnoreCase))
-                .ToArray()
-            : BuildAccessFilteredSubscriberTrendMetrics(
-                AccessFilteredSubscriberMembershipDetails,
-                SelectedSubscriberTrendPeriod);
+        BuildAccessFilteredSubscriberTrendMetrics(
+            AccessFilteredSubscriberMembershipDetails,
+            SelectedSubscriberTrendPeriod);
     private ChartType SubscriberTrendChartType =>
         string.Equals(SelectedSubscriberChartType, SubscriberChartTypeBar, StringComparison.OrdinalIgnoreCase)
             ? ChartType.Bar
@@ -5324,7 +5320,7 @@
         ];
 
     private IReadOnlyList<AdminSubscriberMembershipDetailRecord> AccessFilteredSubscriberMembershipDetails =>
-        SubscriberReports.MembershipDetails
+        SubscriberReports.SignupDetails
             .Where(DoesSubscriberMembershipDetailMatchAccessFilter)
             .ToArray();
 
@@ -9354,11 +9350,6 @@
 
     private AdminMembershipStatsMetric GetAccessFilteredSubscriberMetric(string periodKey)
     {
-        if (IsSelectedSubscriberAccessFilter(SubscriberAccessFilterAll))
-        {
-            return GetSubscriberMetric(periodKey);
-        }
-
         return new AdminMembershipStatsMetric(
             periodKey,
             CountSubscriberMembershipDetailsInPeriod(AccessFilteredSubscriberMembershipDetails, periodKey, detail => detail.SubscribedAt),
@@ -9571,7 +9562,7 @@
 
     private string BuildSubscriberDrilldownPeriodSummary()
     {
-        var metric = GetSubscriberMetric(SelectedSubscriberDrilldownPeriod);
+        var metric = GetAccessFilteredSubscriberMetric(SelectedSubscriberDrilldownPeriod);
         return T(
             $"Wys intekenaars vir {GetSubscriberPeriodLabel(SelectedSubscriberDrilldownPeriod)} ({GetCurrentPeriodRangeLabel(SelectedSubscriberDrilldownPeriod)}): {FormatAnalyticsNumber(metric.Signups)} nuwe en {FormatAnalyticsNumber(metric.Cancellations)} gekanselleer.",
             $"Showing subscribers for {GetSubscriberPeriodLabel(SelectedSubscriberDrilldownPeriod)} ({GetCurrentPeriodRangeLabel(SelectedSubscriberDrilldownPeriod)}): {FormatAnalyticsNumber(metric.Signups)} new and {FormatAnalyticsNumber(metric.Cancellations)} cancelled.");
@@ -9608,7 +9599,7 @@
         SelectedSubscriberAccessFilter switch
         {
             SubscriberAccessFilterFree => IsFreeSubscriberMembershipDetail(detail),
-            SubscriberAccessFilterPaid => !IsFreeSubscriberMembershipDetail(detail),
+            SubscriberAccessFilterPaid => IsPaidSubscriberMembershipDetail(detail),
             _ => true
         };
 
@@ -9624,8 +9615,11 @@
         detail.SubscribedAt.ToUniversalTime().Ticks;
 
     private static bool IsFreeSubscriberMembershipDetail(AdminSubscriberMembershipDetailRecord detail) =>
-        string.Equals(detail.TierCode, "gratis", StringComparison.OrdinalIgnoreCase) ||
-        string.Equals(detail.Provider, "free", StringComparison.OrdinalIgnoreCase);
+        string.Equals(detail.TierCode, "gratis", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsPaidSubscriberMembershipDetail(AdminSubscriberMembershipDetailRecord detail) =>
+        !string.Equals(detail.TierCode, "gratis", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(detail.Provider, "free", StringComparison.OrdinalIgnoreCase);
 
     private AdminSalesRevenueMetric GetSubscriberSalesMetric(string periodKey) =>
         SubscriberReports.SalesAndRevenue.FirstOrDefault(metric =>
