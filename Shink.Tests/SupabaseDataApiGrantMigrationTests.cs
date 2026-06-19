@@ -7,10 +7,16 @@ namespace Shink.Tests;
 public sealed partial class SupabaseDataApiGrantMigrationTests
 {
     [TestMethod]
-    public void ExplicitDataApiGrantMigrationCoversEveryPublicTableCreatedByMigrations()
+    public void ExplicitDataApiGrantsCoverEveryPublicTableCreatedByMigrations()
     {
         var migrationsDirectory = GetRepoPath("Shink", "Database", "migrations");
-        var grantMigration = File.ReadAllText(Path.Combine(migrationsDirectory, "20260528_data_api_explicit_table_grants.sql"));
+        var grantSql = string.Join(
+            Environment.NewLine,
+            Directory
+                .EnumerateFiles(migrationsDirectory, "*.sql")
+                .Select(File.ReadAllText)
+                .SelectMany(sql => GrantStatementRegex().Matches(sql))
+                .Select(match => match.Value));
         var tableNames = Directory
             .EnumerateFiles(migrationsDirectory, "*.sql")
             .SelectMany(path => PublicTableCreateRegex().Matches(File.ReadAllText(path)))
@@ -23,30 +29,36 @@ public sealed partial class SupabaseDataApiGrantMigrationTests
 
         foreach (var tableName in tableNames)
         {
-            StringAssert.Contains(grantMigration, $"public.{tableName}");
+            StringAssert.Contains(grantSql, $"public.{tableName}");
         }
 
-        StringAssert.Contains(grantMigration, "to service_role;");
-        StringAssert.Contains(grantMigration, "grant usage, select on all sequences in schema public to service_role;");
+        StringAssert.Contains(grantSql, "to service_role;");
+        StringAssert.Contains(grantSql, "grant usage, select on all sequences in schema public to service_role;");
     }
 
     [TestMethod]
     public void ExplicitDataApiGrantMigrationKeepsAnonAccessReadOnly()
     {
-        var grantMigration = File.ReadAllText(GetRepoPath(
-            "Shink",
-            "Database",
-            "migrations",
-            "20260528_data_api_explicit_table_grants.sql"));
+        var migrationsDirectory = GetRepoPath("Shink", "Database", "migrations");
+        var grantSql = string.Join(
+            Environment.NewLine,
+            Directory
+                .EnumerateFiles(migrationsDirectory, "*.sql")
+                .Select(File.ReadAllText)
+                .SelectMany(sql => GrantStatementRegex().Matches(sql))
+                .Select(match => match.Value));
 
         Assert.IsFalse(
-            Regex.IsMatch(grantMigration, @"grant\s+[^;]*(insert|update|delete)[^;]*\bto\s+anon\b", RegexOptions.IgnoreCase),
+            Regex.IsMatch(grantSql, @"grant\s+[^;]*(insert|update|delete)[^;]*\bto\s+anon\b", RegexOptions.IgnoreCase),
             "Anon should not receive write privileges through the Data API grant migration.");
-        StringAssert.Contains(grantMigration, "to anon, authenticated;");
+        StringAssert.Contains(grantSql, "to anon, authenticated;");
     }
 
     [GeneratedRegex(@"create\s+table\s+(?:if\s+not\s+exists\s+)?public\.(?<name>[a-zA-Z_][a-zA-Z0-9_]*)", RegexOptions.IgnoreCase)]
     private static partial Regex PublicTableCreateRegex();
+
+    [GeneratedRegex(@"\bgrant\b[\s\S]*?;", RegexOptions.IgnoreCase)]
+    private static partial Regex GrantStatementRegex();
 
     private static string GetRepoPath(params string[] pathParts)
     {

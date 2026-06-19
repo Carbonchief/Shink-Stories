@@ -18,3 +18,7 @@ create index if not exists idx_subscription_cancellation_feedback_subscriber_cre
     on public.subscription_cancellation_feedback (subscriber_id, created_at desc);
 
 alter table public.subscription_cancellation_feedback enable row level security;
+
+grant select, insert, update, delete on table
+    public.subscription_cancellation_feedback
+to service_role;
