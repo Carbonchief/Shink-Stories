@@ -170,12 +170,17 @@ public sealed class MobileApiClient
 {
     public const string GoogleCallbackUrl = "schinkstories://auth/google";
 
+    private const string AuthCookieStorageKeyPrefix = "mobile_auth_cookies";
+
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly TimeSpan DefaultLuisterCacheMaxAge = TimeSpan.FromHours(12);
 
     private readonly HttpClient _httpClient;
+    private readonly CookieContainer _cookieContainer;
     private readonly MobileAppSettings _settings;
     private readonly SessionState _sessionState;
+    private readonly SemaphoreSlim _authCookieStorageLock = new(1, 1);
+    private bool _authCookiesLoaded;
 
     public event Action<int>? NewNotificationsAvailable;
 
@@ -184,9 +189,11 @@ public sealed class MobileApiClient
         _settings = settings;
         _sessionState = sessionState;
 
+        _cookieContainer = new CookieContainer();
+
         var handler = new HttpClientHandler
         {
-            CookieContainer = new CookieContainer(),
+            CookieContainer = _cookieContainer,
             UseCookies = true
         };
 
@@ -357,6 +364,7 @@ public sealed class MobileApiClient
     public async Task SignOutAsync(CancellationToken cancellationToken = default)
     {
         await PostAsync<object>("/api/auth/logout", new { }, cancellationToken);
+        await ClearPersistedAuthCookiesAsync();
         await GetSessionAsync(cancellationToken);
     }
 
@@ -465,8 +473,11 @@ public sealed class MobileApiClient
 
     private async Task<T?> GetAsync<T>(string path, CancellationToken cancellationToken)
     {
+        await EnsureAuthCookiesLoadedAsync(cancellationToken);
+
         using var request = new HttpRequestMessage(HttpMethod.Get, BuildUri(path));
         using var response = await _httpClient.SendAsync(request, cancellationToken);
+        await SaveAuthCookiesAsync(cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
         return await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
     }
@@ -513,12 +524,15 @@ public sealed class MobileApiClient
 
     private async Task<T?> PostAsync<T>(string path, object payload, CancellationToken cancellationToken)
     {
+        await EnsureAuthCookiesLoadedAsync(cancellationToken);
+
         using var request = new HttpRequestMessage(HttpMethod.Post, BuildUri(path))
         {
             Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
         };
 
         using var response = await _httpClient.SendAsync(request, cancellationToken);
+        await SaveAuthCookiesAsync(cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
 
         if (response.Content.Headers.ContentLength == 0)
@@ -658,6 +672,8 @@ public sealed class MobileApiClient
         string source,
         CancellationToken cancellationToken = default)
     {
+        await EnsureAuthCookiesLoadedAsync(cancellationToken);
+
         var playableUrl = BuildAbsoluteUrl(audioUrl);
         var cacheDirectory = System.IO.Path.Combine(FileSystem.CacheDirectory, "story-audio");
         Directory.CreateDirectory(cacheDirectory);
@@ -682,6 +698,7 @@ public sealed class MobileApiClient
             request,
             HttpCompletionOption.ResponseHeadersRead,
             cancellationToken);
+        await SaveAuthCookiesAsync(cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
 
         await using (var sourceStream = await response.Content.ReadAsStreamAsync(cancellationToken))
@@ -705,6 +722,8 @@ public sealed class MobileApiClient
         IProgress<MobileAudioDownloadProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
+        await EnsureAuthCookiesLoadedAsync(cancellationToken);
+
         var playableUrl = BuildAbsoluteUrl(audioUrl);
         Directory.CreateDirectory(System.IO.Path.GetDirectoryName(destinationPath)!);
 
@@ -713,6 +732,7 @@ public sealed class MobileApiClient
             request,
             HttpCompletionOption.ResponseHeadersRead,
             cancellationToken);
+        await SaveAuthCookiesAsync(cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
 
         var totalBytes = response.Content.Headers.ContentLength;
@@ -740,6 +760,8 @@ public sealed class MobileApiClient
 
     private async Task CacheImageAsync(string imageUrl, CancellationToken cancellationToken)
     {
+        await EnsureAuthCookiesLoadedAsync(cancellationToken);
+
         if (!Uri.TryCreate(imageUrl, UriKind.Absolute, out var imageUri) || !IsWebUri(imageUri))
         {
             return;
@@ -763,6 +785,7 @@ public sealed class MobileApiClient
             request,
             HttpCompletionOption.ResponseHeadersRead,
             cancellationToken);
+        await SaveAuthCookiesAsync(cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
 
         await using (var sourceStream = await response.Content.ReadAsStreamAsync(cancellationToken))
@@ -780,6 +803,131 @@ public sealed class MobileApiClient
     }
 
     private Uri BuildUri(string path) => new($"{_settings.BaseUrl.TrimEnd('/')}{path}", UriKind.Absolute);
+
+    private async Task EnsureAuthCookiesLoadedAsync(CancellationToken cancellationToken)
+    {
+        if (_authCookiesLoaded)
+        {
+            return;
+        }
+
+        await _authCookieStorageLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_authCookiesLoaded)
+            {
+                return;
+            }
+
+            var serializedCookies = await SecureStorage.Default.GetAsync(BuildAuthCookieStorageKey());
+            if (!string.IsNullOrWhiteSpace(serializedCookies))
+            {
+                RestoreAuthCookies(serializedCookies);
+            }
+
+            _authCookiesLoaded = true;
+        }
+        catch
+        {
+            _authCookiesLoaded = true;
+        }
+        finally
+        {
+            _authCookieStorageLock.Release();
+        }
+    }
+
+    private async Task SaveAuthCookiesAsync(CancellationToken cancellationToken)
+    {
+        await _authCookieStorageLock.WaitAsync(cancellationToken);
+        try
+        {
+            var cookies = _cookieContainer
+                .GetCookies(GetBaseUri())
+                .Cast<Cookie>()
+                .Where(cookie => !cookie.Expired && !string.IsNullOrWhiteSpace(cookie.Name))
+                .Select(PersistedAuthCookie.FromCookie)
+                .ToArray();
+
+            if (cookies.Length == 0)
+            {
+                SecureStorage.Default.Remove(BuildAuthCookieStorageKey());
+                return;
+            }
+
+            var serializedCookies = JsonSerializer.Serialize(cookies, JsonOptions);
+            await SecureStorage.Default.SetAsync(BuildAuthCookieStorageKey(), serializedCookies);
+        }
+        catch
+        {
+            // Secure cookie persistence is a convenience for app updates; failed storage must not break API calls.
+        }
+        finally
+        {
+            _authCookieStorageLock.Release();
+        }
+    }
+
+    private async Task ClearPersistedAuthCookiesAsync()
+    {
+        await _authCookieStorageLock.WaitAsync();
+        try
+        {
+            SecureStorage.Default.Remove(BuildAuthCookieStorageKey());
+        }
+        catch
+        {
+        }
+        finally
+        {
+            _authCookieStorageLock.Release();
+        }
+    }
+
+    private void RestoreAuthCookies(string serializedCookies)
+    {
+        PersistedAuthCookie[]? cookies;
+        try
+        {
+            cookies = JsonSerializer.Deserialize<PersistedAuthCookie[]>(serializedCookies, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            SecureStorage.Default.Remove(BuildAuthCookieStorageKey());
+            return;
+        }
+
+        if (cookies is null)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        foreach (var persistedCookie in cookies)
+        {
+            if (persistedCookie.ExpiresUtc is { } expiresUtc && expiresUtc <= now)
+            {
+                continue;
+            }
+
+            try
+            {
+                var cookie = persistedCookie.ToCookie(GetBaseUri());
+                _cookieContainer.Add(GetBaseUri(), cookie);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    private Uri GetBaseUri() => new(_settings.BaseUrl.TrimEnd('/'), UriKind.Absolute);
+
+    private string BuildAuthCookieStorageKey()
+    {
+        var baseUri = GetBaseUri();
+        return $"{AuthCookieStorageKeyPrefix}_{baseUri.Host.ToLowerInvariant()}";
+    }
 
     private static string BuildMobileStoryPath(string slug, string source) =>
         $"/mobile/{Uri.EscapeDataString(source)}/{Uri.EscapeDataString(slug)}";
@@ -1006,4 +1154,43 @@ public sealed class MobileApiClient
     private sealed record FavoriteResponse(bool IsFavorite);
     private sealed record TrackingResponse(bool Tracked, int NewNotificationsCreated = 0);
     private sealed record MobileLuisterCacheEntry(DateTimeOffset CachedAtUtc, MobileLuisterResponse Response);
+    private sealed record PersistedAuthCookie(
+        string Name,
+        string Value,
+        string Domain,
+        string Path,
+        bool Secure,
+        bool HttpOnly,
+        DateTimeOffset? ExpiresUtc)
+    {
+        public static PersistedAuthCookie FromCookie(Cookie cookie) =>
+            new(
+                cookie.Name,
+                cookie.Value,
+                string.IsNullOrWhiteSpace(cookie.Domain) ? string.Empty : cookie.Domain,
+                string.IsNullOrWhiteSpace(cookie.Path) ? "/" : cookie.Path,
+                cookie.Secure,
+                cookie.HttpOnly,
+                cookie.Expires == DateTime.MinValue ? null : new DateTimeOffset(cookie.Expires.ToUniversalTime()));
+
+        public Cookie ToCookie(Uri baseUri)
+        {
+            var cookie = new Cookie(
+                Name,
+                Value,
+                string.IsNullOrWhiteSpace(Path) ? "/" : Path,
+                string.IsNullOrWhiteSpace(Domain) ? baseUri.Host : Domain)
+            {
+                Secure = Secure,
+                HttpOnly = HttpOnly
+            };
+
+            if (ExpiresUtc is { } expiresUtc)
+            {
+                cookie.Expires = expiresUtc.UtcDateTime;
+            }
+
+            return cookie;
+        }
+    }
 }

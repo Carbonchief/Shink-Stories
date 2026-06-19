@@ -408,25 +408,32 @@ public sealed class LuisterPage : ContentPage
 
     private void RenderContent()
     {
-        if (!_hasLoaded || !_isPageActive)
+        if (!_hasLoaded || !_isPageActive || Handler is null)
         {
             return;
         }
 
-        RenderFloatingTopBar();
-        _content.Children.Clear();
-        if (_isSearchVisible || !string.IsNullOrWhiteSpace(_searchEntry.Text))
+        try
         {
-            _content.Children.Add(BuildSearchBox());
-        }
+            RenderFloatingTopBar();
+            _content.Children.Clear();
+            if (_isSearchVisible || !string.IsNullOrWhiteSpace(_searchEntry.Text))
+            {
+                _content.Children.Add(BuildSearchBox());
+            }
 
-        if (!_sessionState.Current.IsSignedIn)
+            if (!_sessionState.Current.IsSignedIn)
+            {
+                _content.Children.Add(BuildAccountPanel());
+            }
+            _content.Children.Add(_playlistContent);
+
+            RenderPlaylistContent();
+        }
+        catch (ObjectDisposedException)
         {
-            _content.Children.Add(BuildAccountPanel());
+            _isPageActive = false;
         }
-        _content.Children.Add(_playlistContent);
-
-        RenderPlaylistContent();
     }
 
     private void RenderFloatingTopBar()
@@ -596,9 +603,29 @@ public sealed class LuisterPage : ContentPage
                 return;
             }
 
-            MainThread.BeginInvokeOnMainThread(RenderPlaylistContent);
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                _ = ResetScrollPositionAsync();
+                RenderPlaylistContent();
+            });
         }
         catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private async Task ResetScrollPositionAsync()
+    {
+        if (!_isPageActive)
+        {
+            return;
+        }
+
+        try
+        {
+            await _scrollView.ScrollToAsync(0, 0, false);
+        }
+        catch
         {
         }
     }
@@ -615,6 +642,7 @@ public sealed class LuisterPage : ContentPage
         searchTap.Tapped += (_, _) =>
         {
             _isSearchVisible = !_isSearchVisible;
+            _ = ResetScrollPositionAsync();
             RenderContent();
             if (_isSearchVisible)
             {
@@ -2637,11 +2665,13 @@ public sealed class LuisterPage : ContentPage
         var resolvedStory = ResolveContinueListeningStory(item);
         if (resolvedStory.HasValue && resolvedStory.Value.Playlist is { } playlist)
         {
-            await OpenPlaylistStoryAsync(resolvedStory.Value.Story, playlist);
+            await OpenPlaylistStoryAsync(MergeContinueListeningMetadata(resolvedStory.Value.Story, item), playlist);
             return;
         }
 
-        var story = resolvedStory?.Story ?? ToMobileStorySummary(item);
+        var story = resolvedStory is { } resolved
+            ? MergeContinueListeningMetadata(resolved.Story, item)
+            : ToMobileStorySummary(item);
         _playlistPlaybackState.Clear();
         await CapturePlayerTransitionBackdropAsync();
         await Shell.Current.GoToAsync(
@@ -2652,6 +2682,14 @@ public sealed class LuisterPage : ContentPage
                 ["preview"] = story
             });
     }
+
+    private static MobileStorySummary MergeContinueListeningMetadata(MobileStorySummary story, ContinueListeningItem item) =>
+        story with
+        {
+            ImageUrl = string.IsNullOrWhiteSpace(story.ImageUrl) ? item.ImageUrl : story.ImageUrl,
+            ThumbnailUrl = string.IsNullOrWhiteSpace(story.ThumbnailUrl) ? item.ThumbnailUrl : story.ThumbnailUrl,
+            DurationSeconds = story.DurationSeconds is > 0 ? story.DurationSeconds : item.DurationSeconds
+        };
 
     private async Task OpenPlaylistStoryAsync(MobileStorySummary story, MobilePlaylist playlist)
     {

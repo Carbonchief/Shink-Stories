@@ -24,6 +24,15 @@ public sealed class ContinueListeningState
             return;
         }
 
+        var current = LoadCurrent();
+        var preservedDurationSeconds = current is not null &&
+            string.Equals(current.Slug, story.Slug, StringComparison.OrdinalIgnoreCase) &&
+            (string.IsNullOrWhiteSpace(story.Source) ||
+             string.IsNullOrWhiteSpace(current.Source) ||
+             string.Equals(current.Source, story.Source, StringComparison.OrdinalIgnoreCase))
+                ? current.DurationSeconds
+                : null;
+
         var item = new ContinueListeningItem(
             story.Slug,
             string.IsNullOrWhiteSpace(story.Source) ? "luister" : story.Source,
@@ -31,7 +40,7 @@ public sealed class ContinueListeningState
             story.Description,
             story.ImageUrl,
             story.ThumbnailUrl,
-            durationSeconds ?? story.DurationSeconds,
+            NormalizeSeconds(durationSeconds) ?? story.DurationSeconds ?? preservedDurationSeconds,
             NormalizeSeconds(positionSeconds),
             playlistSlug,
             playlistTitle,

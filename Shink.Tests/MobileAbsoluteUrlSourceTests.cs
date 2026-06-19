@@ -99,7 +99,14 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "PlaceholderColor = Color.FromArgb(\"#7C817C\")");
         StringAssert.Contains(luisterPage, "private async Task DebounceSearchRenderAsync(CancellationToken cancellationToken)");
         StringAssert.Contains(luisterPage, "await Task.Delay(220, cancellationToken);");
-        StringAssert.Contains(luisterPage, "MainThread.BeginInvokeOnMainThread(RenderPlaylistContent);");
+        StringAssert.Contains(luisterPage, "private async Task ResetScrollPositionAsync()");
+        StringAssert.Contains(luisterPage, "await _scrollView.ScrollToAsync(0, 0, false);");
+        StringAssert.Contains(luisterPage, "if (!_hasLoaded || !_isPageActive || Handler is null)");
+        StringAssert.Contains(luisterPage, "catch (ObjectDisposedException)");
+        StringAssert.Contains(luisterPage, "_isPageActive = false;");
+        StringAssert.Contains(luisterPage, "MainThread.BeginInvokeOnMainThread(() =>");
+        StringAssert.Contains(luisterPage, "_ = ResetScrollPositionAsync();");
+        StringAssert.Contains(luisterPage, "RenderPlaylistContent();");
         StringAssert.Contains(luisterPage, "StoryMatches(story, normalizedQuery)");
         StringAssert.Contains(luisterPage, "ContainsNormalized(story.Description, normalizedQuery)");
         StringAssert.Contains(luisterPage, "ContainsNormalized(story.Slug, normalizedQuery)");
@@ -481,8 +488,12 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(storyDetail, "EnsureCatalogDurationVisibleAsync(detail);");
         StringAssert.Contains(storyDetail, "private void EnsureCatalogDurationVisibleAsync(MobileStoryDetailResponse detail)");
         StringAssert.Contains(storyDetail, "var audioUrl = _apiClient.BuildAbsoluteUrl(detail.AudioUrl);");
-        StringAssert.Contains(storyDetail, "var duration = await _audioPlaybackService.GetDurationAsync(audioUrl, cancellationToken);");
-        StringAssert.Contains(storyDetail, "PrepareAudioPlaybackSourceAsync(");
+        StringAssert.Contains(storyDetail, "var shouldPrepareFirst = DeviceInfo.Current.Platform == DevicePlatform.Android;");
+        StringAssert.Contains(storyDetail, "if (shouldPrepareFirst)");
+        StringAssert.Contains(storyDetail, "duration = await _audioPlaybackService.GetDurationAsync(preparedAudioUrl, cancellationToken);");
+        StringAssert.Contains(storyDetail, "duration = await _audioPlaybackService.GetDurationAsync(audioUrl, cancellationToken);");
+        StringAssert.Contains(storyDetail, "if (duration is null && !cancellationToken.IsCancellationRequested)");
+        StringAssert.Contains(storyDetail, "var preparedAudioUrl = await _apiClient.PrepareAudioPlaybackSourceAsync(");
         StringAssert.Contains(storyDetail, "DownloadAudioForPlaybackAsync(");
         Assert.IsFalse(storyDetail.Contains("Gereed om te luister", StringComparison.Ordinal));
         Assert.IsFalse(storyDetail.Contains("Onderbreek", StringComparison.Ordinal));
@@ -503,6 +514,9 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(audioService, "LoadArtworkForMetadataAsync(metadata)");
         StringAssert.Contains(audioService, "info.Artwork = _artwork;");
         StringAssert.Contains(audioService, "GetByteArrayAsync(artworkUrl");
+        StringAssert.Contains(audioService, "player.Error += (_, args) =>");
+        StringAssert.Contains(audioService, "args.Handled = true;");
+        StringAssert.Contains(audioService, "ready.TrySetException(new InvalidOperationException(\"Kon nie die audio stroom oopmaak nie.\"));");
         Assert.IsFalse(storyDetail.Contains("<audio id=\"story-audio\"", StringComparison.Ordinal));
         Assert.IsFalse(storyDetail.Contains("new WebView", StringComparison.Ordinal));
         StringAssert.Contains(audioService, "AVFoundation.AVPlayer");
@@ -1128,6 +1142,8 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(continueListeningState, "Preferences.Default.Set(PreferenceKey");
         StringAssert.Contains(continueListeningState, "public void UpdateProgress(");
         StringAssert.Contains(continueListeningState, "public void Clear()");
+        StringAssert.Contains(continueListeningState, "var preservedDurationSeconds = current is not null");
+        StringAssert.Contains(continueListeningState, "NormalizeSeconds(durationSeconds) ?? story.DurationSeconds ?? preservedDurationSeconds");
         StringAssert.Contains(storyDetail, "ContinueListeningState continueListeningState");
         StringAssert.Contains(storyDetail, "SaveContinueListening(detail);");
         StringAssert.Contains(storyDetail, "_continueListeningState.UpdateProgress(");
@@ -1139,7 +1155,34 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "_continueListeningState.Clear();");
         StringAssert.Contains(luisterPage, "ResolveContinueListeningStory(item)");
         StringAssert.Contains(luisterPage, "await OpenContinueListeningAsync(item)");
+        StringAssert.Contains(luisterPage, "MergeContinueListeningMetadata(resolvedStory.Value.Story, item)");
+        StringAssert.Contains(luisterPage, "DurationSeconds = story.DurationSeconds is > 0 ? story.DurationSeconds : item.DurationSeconds");
         StringAssert.Contains(luisterPage, "_playlistContent.Children.Add(continueListeningCard);");
+    }
+
+    [TestMethod]
+    public void MobileAuthCookiesPersistForApkUpdateDemoInstalls()
+    {
+        var client = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
+        var project = File.ReadAllText(GetRepoPath("Shink.Mobile", "Shink.Mobile.csproj"));
+        var agents = File.ReadAllText(GetRepoPath("AGENTS.md"));
+
+        StringAssert.Contains(client, "private readonly CookieContainer _cookieContainer;");
+        StringAssert.Contains(client, "SecureStorage.Default.GetAsync(BuildAuthCookieStorageKey())");
+        StringAssert.Contains(client, "SecureStorage.Default.SetAsync(BuildAuthCookieStorageKey(), serializedCookies)");
+        StringAssert.Contains(client, "await EnsureAuthCookiesLoadedAsync(cancellationToken);");
+        StringAssert.Contains(client, "await SaveAuthCookiesAsync(cancellationToken);");
+        StringAssert.Contains(client, "await ClearPersistedAuthCookiesAsync();");
+        StringAssert.Contains(client, "private sealed record PersistedAuthCookie(");
+
+        StringAssert.Contains(project, "<ApplicationId>com.schink.stories.mobile</ApplicationId>");
+        StringAssert.Contains(project, "<ApplicationVersion>2</ApplicationVersion>");
+        StringAssert.Contains(project, "<EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>");
+
+        StringAssert.Contains(agents, "Keep the mobile package ID fixed at `com.schink.stories.mobile`.");
+        StringAssert.Contains(agents, "same stable release/demo keystore");
+        StringAssert.Contains(agents, "`ApplicationVersion` before producing every shareable APK");
+        StringAssert.Contains(agents, "install the new APK over the old one instead of uninstalling first");
     }
 
     private static string GetRepoPath(params string[] segments)

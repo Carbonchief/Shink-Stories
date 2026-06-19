@@ -442,6 +442,11 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
 
             var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             player.Prepared += (_, _) => ready.TrySetResult();
+            player.Error += (_, args) =>
+            {
+                args.Handled = true;
+                ready.TrySetResult();
+            };
             using var registration = cancellationToken.Register(() => ready.TrySetCanceled(cancellationToken));
             player.PrepareAsync();
             await ready.Task;
@@ -490,6 +495,11 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
 
         var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         player.Prepared += (_, _) => ready.TrySetResult();
+        player.Error += (_, args) =>
+        {
+            args.Handled = true;
+            ready.TrySetException(new InvalidOperationException("Kon nie die audio stroom oopmaak nie."));
+        };
         player.Completion += (_, _) =>
         {
             IsPlaying = false;

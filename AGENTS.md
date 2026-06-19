@@ -85,3 +85,9 @@ Project-specific rules for this repository.
 
 ## 9) Production / Live Deployment Safety
 - Never push code, publish, deploy, or otherwise promote changes to Production/Live without asking the user first and receiving explicit approval.
+
+## 10) Mobile APK Demo Builds
+- Keep the mobile package ID fixed at `com.schink.stories.mobile`.
+- Keep Android demo APKs signed with the same stable release/demo keystore each time; changing the signing key forces clients to uninstall and lose app data.
+- Increment `Shink.Mobile/Shink.Mobile.csproj` `ApplicationVersion` before producing every shareable APK so Android can install it over the previous APK as an update.
+- Tell demo clients to install the new APK over the old one instead of uninstalling first, otherwise Android removes the remembered account/session data.

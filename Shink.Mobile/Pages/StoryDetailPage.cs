@@ -3120,7 +3120,35 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         {
             try
             {
-                var duration = await _audioPlaybackService.GetDurationAsync(audioUrl, cancellationToken);
+                TimeSpan? duration = null;
+                var shouldPrepareFirst = DeviceInfo.Current.Platform == DevicePlatform.Android;
+
+                if (shouldPrepareFirst)
+                {
+                    var preparedAudioUrl = await _apiClient.PrepareAudioPlaybackSourceAsync(
+                        detail.AudioUrl,
+                        detail.Story.Slug,
+                        detail.Story.Source,
+                        cancellationToken);
+                    duration = await _audioPlaybackService.GetDurationAsync(preparedAudioUrl, cancellationToken);
+                }
+                else
+                {
+                    duration = await _audioPlaybackService.GetDurationAsync(audioUrl, cancellationToken);
+                    if (duration is null && !cancellationToken.IsCancellationRequested)
+                    {
+                        var preparedAudioUrl = await _apiClient.PrepareAudioPlaybackSourceAsync(
+                            detail.AudioUrl,
+                            detail.Story.Slug,
+                            detail.Story.Source,
+                            cancellationToken);
+                        if (!string.Equals(preparedAudioUrl, audioUrl, StringComparison.Ordinal))
+                        {
+                            duration = await _audioPlaybackService.GetDurationAsync(preparedAudioUrl, cancellationToken);
+                        }
+                    }
+                }
+
                 if (duration is null || cancellationToken.IsCancellationRequested)
                 {
                     return;
