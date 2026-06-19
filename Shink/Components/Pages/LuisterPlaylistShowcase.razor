@@ -153,7 +153,7 @@ else
 
             <section class="playlist-showcase-stories" aria-labelledby="playlist-showcase-stories-heading">
                 <h2 id="playlist-showcase-stories-heading">Stories in hierdie speellys</h2>
-                <div id="playlist-showcase-grid" class="playlist-showcase-grid" role="list">
+                <div id="playlist-showcase-grid" class="@PlaylistShowcaseGridClass" role="list">
                     @foreach (var story in CurrentPlaylistStories)
                     {
                         var isHighlighted = string.Equals(story.Slug, EffectiveHighlightStorySlug, StringComparison.OrdinalIgnoreCase);
@@ -234,6 +234,11 @@ else
         CurrentPlaylistStories.Count == 1
             ? "1 Storie om te Luister"
             : $"{CurrentPlaylistStories.Count} Stories om te Luister";
+
+    private string PlaylistShowcaseGridClass =>
+        CurrentPlaylistStories.Count == 3
+            ? "playlist-showcase-grid is-three-story-grid"
+            : "playlist-showcase-grid";
 
     private string ShowcaseCanonicalUrl =>
         NavigationManager.ToAbsoluteUri(GetShowcasePath(CurrentPlaylist?.Slug ?? PlaylistSlug)).ToString();

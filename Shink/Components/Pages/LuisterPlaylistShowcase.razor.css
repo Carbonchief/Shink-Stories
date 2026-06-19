@@ -300,6 +300,10 @@
     scroll-margin-top: 5.4rem;
 }
 
+.playlist-showcase-grid.is-three-story-grid {
+    grid-template-columns: repeat(3, 220px);
+}
+
 .playlist-showcase-card {
     min-width: 0;
     width: 220px;
@@ -580,6 +584,10 @@ body.schink-night-mode .playlist-showcase-loading-state {
         grid-template-columns: repeat(auto-fill, minmax(170px, 42vw));
     }
 
+    .playlist-showcase-grid.is-three-story-grid {
+        grid-template-columns: repeat(3, minmax(170px, 220px));
+    }
+
     .playlist-showcase-card {
         width: 100%;
     }
@@ -628,6 +636,17 @@ body.schink-night-mode .playlist-showcase-loading-state {
     .playlist-showcase-grid {
         grid-template-columns: repeat(2, minmax(146px, 44vw));
         gap: 0.72rem;
+    }
+
+    .playlist-showcase-grid.is-three-story-grid {
+        grid-template-columns: repeat(2, minmax(146px, 44vw));
+    }
+
+    .playlist-showcase-grid.is-three-story-grid .playlist-showcase-card:nth-child(3):last-child {
+        grid-column: 1 / -1;
+        justify-self: center;
+        width: min(44vw, 220px);
+        min-width: 146px;
     }
 
     .playlist-showcase-action-bar {
