@@ -4685,24 +4685,30 @@ public sealed partial class SupabaseAdminManagementService(
 
     private static IReadOnlyList<SubscriptionRow> GetAccessSpecificSubscriberSignupSubscriptions(IReadOnlyList<SubscriptionRow> subscriptions)
     {
-        var firstGratisSignups = subscriptions
+        var firstGratisSignupBySubscriber = subscriptions
             .Where(IsFreeSubscriberMembershipDetailEligible)
             .Where(subscription => subscription.SubscribedAt is not null)
             .GroupBy(subscription => subscription.SubscriberId)
-            .Select(group => group
-                .OrderBy(subscription => subscription.SubscribedAt)
-                .First());
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderBy(subscription => subscription.SubscribedAt)
+                    .First());
 
-        var firstPaidSignups = subscriptions
+        var firstPaidSignupBySubscriber = subscriptions
             .Where(IsPaidSubscriberSignupEligible)
             .Where(subscription => subscription.SubscribedAt is not null)
             .GroupBy(subscription => subscription.SubscriberId)
-            .Select(group => group
-                .OrderBy(subscription => subscription.SubscribedAt)
-                .First());
+            .ToDictionary(
+                group => group.Key,
+                group => group
+                    .OrderBy(subscription => subscription.SubscribedAt)
+                    .First());
 
-        return firstGratisSignups
-            .Concat(firstPaidSignups)
+        return firstPaidSignupBySubscriber.Values
+            .Concat(firstGratisSignupBySubscriber
+                .Where(item => !firstPaidSignupBySubscriber.ContainsKey(item.Key))
+                .Select(item => item.Value))
             .ToArray();
     }
 

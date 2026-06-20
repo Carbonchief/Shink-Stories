@@ -769,7 +769,7 @@ public class AdminAnalyticsSourceTests
     }
 
     [TestMethod]
-    public void SubscriberSignupDetailsKeepFirstFreeAndFirstPaidSignupSeparately()
+    public void SubscriberSignupDetailsPreferPaidSignupOverGratisForSameSubscriber()
     {
         var freeSignupDate = DateTimeOffset.Now.AddMonths(-2);
         var paidSignupDate = DateTimeOffset.Now.AddMinutes(-5);
@@ -811,15 +811,14 @@ public class AdminAnalyticsSourceTests
             rows,
             CreateEmptyTierDetails());
 
-        Assert.AreEqual(2, details.Count);
-        Assert.IsTrue(details.Any(detail =>
-            detail.Email == "converted@shink.dev" &&
-            detail.TierCode == "gratis" &&
-            detail.SubscribedAt == freeSignupDate));
+        Assert.AreEqual(1, details.Count);
         Assert.IsTrue(details.Any(detail =>
             detail.Email == "converted@shink.dev" &&
             detail.TierCode == "all_stories_monthly" &&
             detail.SubscribedAt == paidSignupDate));
+        Assert.IsFalse(details.Any(detail =>
+            detail.Email == "converted@shink.dev" &&
+            detail.TierCode == "gratis"));
         Assert.IsFalse(details.Any(detail => detail.Email == "school@shink.dev"));
     }
 
