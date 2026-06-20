@@ -29,6 +29,7 @@ public sealed class DownloadedPage : ContentPage
 
         Title = "Downloaded";
         BackgroundColor = PageBackgroundColor;
+        SafeAreaEdges = new SafeAreaEdges(SafeAreaRegions.Container);
         Shell.SetNavBarIsVisible(this, false);
         Shell.SetTabBarIsVisible(this, false);
 

@@ -168,18 +168,27 @@ public sealed record MobileAudioDownloadProgress(long BytesReceived, long? Total
 
 public sealed class MobileApiClient
 {
-    public const string GoogleCallbackUrl = "schinkstories://auth/google";
+    public const string GoogleCallbackUrl = "https://www.schink.co.za/mobile-auth/google/callback";
 
     private const string AuthCookieStorageKeyPrefix = "mobile_auth_cookies";
+    private const string MobileAppHeaderName = "X-Schink-Mobile-App";
+    private const string MobileAppHeaderValue = "1";
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly TimeSpan DefaultLuisterCacheMaxAge = TimeSpan.FromHours(12);
+    private static readonly TimeSpan DefaultStoryDetailCacheMaxAge = TimeSpan.FromHours(12);
 
     private readonly HttpClient _httpClient;
     private readonly CookieContainer _cookieContainer;
     private readonly MobileAppSettings _settings;
     private readonly SessionState _sessionState;
     private readonly SemaphoreSlim _authCookieStorageLock = new(1, 1);
+    private readonly SemaphoreSlim _luisterCacheLock = new(1, 1);
+    private readonly SemaphoreSlim _storyDetailCacheLock = new(1, 1);
+    private readonly SemaphoreSlim _offlineStoryListenQueueLock = new(1, 1);
+    private readonly SemaphoreSlim _offlineStoryListenFlushLock = new(1, 1);
+    private MobileLuisterCacheEntry? _memoryLuisterCache;
+    private readonly Dictionary<string, MobileStoryDetailCacheEntry> _memoryStoryDetailCache = new(StringComparer.OrdinalIgnoreCase);
     private bool _authCookiesLoaded;
 
     public event Action<int>? NewNotificationsAvailable;
@@ -233,6 +242,12 @@ public sealed class MobileApiClient
         TimeSpan maxAge,
         CancellationToken cancellationToken = default)
     {
+        if (_memoryLuisterCache is { Response: { } memoryResponse } &&
+            DateTimeOffset.UtcNow - _memoryLuisterCache.CachedAtUtc <= maxAge)
+        {
+            return memoryResponse;
+        }
+
         var cachePath = BuildLuisterCachePath();
         if (!File.Exists(cachePath))
         {
@@ -252,6 +267,7 @@ public sealed class MobileApiClient
                 return null;
             }
 
+            _memoryLuisterCache = cacheEntry;
             return cacheEntry.Response;
         }
         catch
@@ -265,9 +281,56 @@ public sealed class MobileApiClient
         GetAsync<MobileAboutResponse>("/api/mobile/meer-oor-ons", cancellationToken);
 
     public Task<MobileStoryDetailResponse?> GetStoryAsync(string slug, string source, CancellationToken cancellationToken = default) =>
-        GetAsync<MobileStoryDetailResponse>(
-            $"/api/mobile/stories/{Uri.EscapeDataString(slug)}?source={Uri.EscapeDataString(source)}",
-            cancellationToken);
+        GetAndCacheStoryAsync(slug, source, cancellationToken);
+
+    public Task<MobileStoryDetailResponse?> GetCachedStoryAsync(
+        string slug,
+        string source,
+        CancellationToken cancellationToken = default) =>
+        GetCachedStoryAsync(slug, source, DefaultStoryDetailCacheMaxAge, cancellationToken);
+
+    public async Task<MobileStoryDetailResponse?> GetCachedStoryAsync(
+        string slug,
+        string source,
+        TimeSpan maxAge,
+        CancellationToken cancellationToken = default)
+    {
+        var cacheKey = BuildStoryDetailCacheKey(slug, source);
+        if (_memoryStoryDetailCache.TryGetValue(cacheKey, out var memoryEntry) &&
+            DateTimeOffset.UtcNow - memoryEntry.CachedAtUtc <= maxAge)
+        {
+            return memoryEntry.Response;
+        }
+
+        var cachePath = BuildStoryDetailCachePath(slug, source);
+        if (!File.Exists(cachePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            await using var stream = File.OpenRead(cachePath);
+            var cacheEntry = await JsonSerializer.DeserializeAsync<MobileStoryDetailCacheEntry>(
+                stream,
+                JsonOptions,
+                cancellationToken);
+            if (cacheEntry?.Response is null ||
+                DateTimeOffset.UtcNow - cacheEntry.CachedAtUtc > maxAge)
+            {
+                return null;
+            }
+
+            _memoryStoryDetailCache[cacheKey] = cacheEntry;
+            return cacheEntry.Response;
+        }
+        catch
+        {
+            TryDeleteFile(cachePath);
+            _memoryStoryDetailCache.Remove(cacheKey);
+            return null;
+        }
+    }
 
     public Task<MobileNotificationPage?> GetNotificationsAsync(
         int limit = 10,
@@ -446,27 +509,32 @@ public sealed class MobileApiClient
 
         try
         {
-            var result = await PostAsync<TrackingResponse>(
-                $"/api/stories/{Uri.EscapeDataString(slug)}/listen",
-                new
-                {
-                    storyPath = BuildMobileStoryPath(slug, source),
+            var trackingEvent = new QueuedStoryListenEvent(
+                slug,
+                source,
+                sessionId,
+                eventType,
+                listenedSeconds,
+                positionSeconds,
+                durationSeconds,
+                isCompleted,
+                DateTimeOffset.UtcNow);
+            await SendStoryListenTrackingAsync(trackingEvent, flushQueuedListensAfterSuccess: true, cancellationToken);
+        }
+        catch
+        {
+            await EnqueueStoryListenAsync(
+                new QueuedStoryListenEvent(
+                    slug,
                     source,
-                    sessionId = sessionId.ToString(),
+                    sessionId,
                     eventType,
                     listenedSeconds,
                     positionSeconds,
                     durationSeconds,
-                    isCompleted
-                },
+                    isCompleted,
+                    DateTimeOffset.UtcNow),
                 cancellationToken);
-            if (result?.NewNotificationsCreated > 0)
-            {
-                NewNotificationsAvailable?.Invoke(result.NewNotificationsCreated);
-            }
-        }
-        catch
-        {
             // Tracking must not block mobile playback or page rendering.
         }
     }
@@ -476,10 +544,13 @@ public sealed class MobileApiClient
         await EnsureAuthCookiesLoadedAsync(cancellationToken);
 
         using var request = new HttpRequestMessage(HttpMethod.Get, BuildUri(path));
+        AddMobileAppHeaderIfNeeded(request, path);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         await SaveAuthCookiesAsync(cancellationToken);
         await EnsureSuccessAsync(response, cancellationToken);
-        return await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
+        var result = await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
+        _ = FlushQueuedStoryListensAsync();
+        return result;
     }
 
     private async Task<MobileLuisterResponse?> GetAndCacheLuisterAsync(CancellationToken cancellationToken)
@@ -493,10 +564,32 @@ public sealed class MobileApiClient
         return response;
     }
 
+    private async Task<MobileStoryDetailResponse?> GetAndCacheStoryAsync(
+        string slug,
+        string source,
+        CancellationToken cancellationToken)
+    {
+        var response = await GetAsync<MobileStoryDetailResponse>(
+            $"/api/mobile/stories/{Uri.EscapeDataString(slug)}?source={Uri.EscapeDataString(source)}",
+            cancellationToken);
+        if (response is not null)
+        {
+            await SaveStoryDetailCacheAsync(slug, source, response, cancellationToken);
+        }
+
+        return response;
+    }
+
     private async Task SaveLuisterCacheAsync(MobileLuisterResponse response, CancellationToken cancellationToken)
     {
+        var cacheEntry = new MobileLuisterCacheEntry(DateTimeOffset.UtcNow, response);
+        _memoryLuisterCache = cacheEntry;
+
+        var cacheLockAcquired = false;
         try
         {
+            await _luisterCacheLock.WaitAsync(cancellationToken);
+            cacheLockAcquired = true;
             var cachePath = BuildLuisterCachePath();
             Directory.CreateDirectory(System.IO.Path.GetDirectoryName(cachePath)!);
             var temporaryPath = $"{cachePath}.tmp";
@@ -504,7 +597,7 @@ public sealed class MobileApiClient
             {
                 await JsonSerializer.SerializeAsync(
                     stream,
-                    new MobileLuisterCacheEntry(DateTimeOffset.UtcNow, response),
+                    cacheEntry,
                     JsonOptions,
                     cancellationToken);
             }
@@ -520,9 +613,67 @@ public sealed class MobileApiClient
         {
             // Luister data caching is an optimization only.
         }
+        finally
+        {
+            if (cacheLockAcquired)
+            {
+                _luisterCacheLock.Release();
+            }
+        }
     }
 
-    private async Task<T?> PostAsync<T>(string path, object payload, CancellationToken cancellationToken)
+    private async Task SaveStoryDetailCacheAsync(
+        string slug,
+        string source,
+        MobileStoryDetailResponse response,
+        CancellationToken cancellationToken)
+    {
+        var cacheKey = BuildStoryDetailCacheKey(slug, source);
+        var cacheEntry = new MobileStoryDetailCacheEntry(DateTimeOffset.UtcNow, response);
+        _memoryStoryDetailCache[cacheKey] = cacheEntry;
+
+        var cacheLockAcquired = false;
+        try
+        {
+            await _storyDetailCacheLock.WaitAsync(cancellationToken);
+            cacheLockAcquired = true;
+            var cachePath = BuildStoryDetailCachePath(slug, source);
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(cachePath)!);
+            var temporaryPath = $"{cachePath}.tmp";
+            await using (var stream = File.Create(temporaryPath))
+            {
+                await JsonSerializer.SerializeAsync(
+                    stream,
+                    cacheEntry,
+                    JsonOptions,
+                    cancellationToken);
+            }
+
+            if (File.Exists(cachePath))
+            {
+                File.Delete(cachePath);
+            }
+
+            File.Move(temporaryPath, cachePath);
+        }
+        catch
+        {
+            // Story detail caching is an optimization only.
+        }
+        finally
+        {
+            if (cacheLockAcquired)
+            {
+                _storyDetailCacheLock.Release();
+            }
+        }
+    }
+
+    private async Task<T?> PostAsync<T>(
+        string path,
+        object payload,
+        CancellationToken cancellationToken,
+        bool flushQueuedListens = true)
     {
         await EnsureAuthCookiesLoadedAsync(cancellationToken);
 
@@ -530,6 +681,7 @@ public sealed class MobileApiClient
         {
             Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
         };
+        AddMobileAppHeaderIfNeeded(request, path);
 
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         await SaveAuthCookiesAsync(cancellationToken);
@@ -537,10 +689,194 @@ public sealed class MobileApiClient
 
         if (response.Content.Headers.ContentLength == 0)
         {
+            if (flushQueuedListens)
+            {
+                _ = FlushQueuedStoryListensAsync();
+            }
+
             return default;
         }
 
-        return await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
+        var result = await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
+        if (flushQueuedListens)
+        {
+            _ = FlushQueuedStoryListensAsync();
+        }
+
+        return result;
+    }
+
+    private async Task SendStoryListenTrackingAsync(
+        QueuedStoryListenEvent trackingEvent,
+        bool flushQueuedListensAfterSuccess,
+        CancellationToken cancellationToken)
+    {
+        var result = await PostAsync<TrackingResponse>(
+            $"/api/stories/{Uri.EscapeDataString(trackingEvent.Slug)}/listen",
+            new
+            {
+                storyPath = BuildMobileStoryPath(trackingEvent.Slug, trackingEvent.Source),
+                source = trackingEvent.Source,
+                sessionId = trackingEvent.SessionId.ToString(),
+                eventType = trackingEvent.EventType,
+                listenedSeconds = trackingEvent.ListenedSeconds,
+                positionSeconds = trackingEvent.PositionSeconds,
+                durationSeconds = trackingEvent.DurationSeconds,
+                isCompleted = trackingEvent.IsCompleted
+            },
+            cancellationToken,
+            flushQueuedListens: false);
+        if (result?.NewNotificationsCreated > 0)
+        {
+            NewNotificationsAvailable?.Invoke(result.NewNotificationsCreated);
+        }
+
+        if (flushQueuedListensAfterSuccess)
+        {
+            _ = FlushQueuedStoryListensAsync();
+        }
+    }
+
+    private async Task EnqueueStoryListenAsync(
+        QueuedStoryListenEvent trackingEvent,
+        CancellationToken cancellationToken)
+    {
+        var queueLockAcquired = false;
+        try
+        {
+            await _offlineStoryListenQueueLock.WaitAsync(cancellationToken);
+            queueLockAcquired = true;
+            var queuedEvents = (await LoadQueuedStoryListensUnsafeAsync(cancellationToken)).ToList();
+            queuedEvents.Add(trackingEvent);
+            await SaveQueuedStoryListensUnsafeAsync(
+                queuedEvents
+                    .OrderBy(item => item.QueuedAtUtc)
+                    .TakeLast(300)
+                    .ToArray(),
+                cancellationToken);
+        }
+        catch
+        {
+            // Offline tracking is best-effort and must not interrupt playback.
+        }
+        finally
+        {
+            if (queueLockAcquired)
+            {
+                _offlineStoryListenQueueLock.Release();
+            }
+        }
+    }
+
+    public async Task FlushQueuedStoryListensAsync(CancellationToken cancellationToken = default)
+    {
+        if (!await _offlineStoryListenFlushLock.WaitAsync(0, cancellationToken))
+        {
+            return;
+        }
+
+        try
+        {
+            IReadOnlyList<QueuedStoryListenEvent> queuedEvents;
+            await _offlineStoryListenQueueLock.WaitAsync(cancellationToken);
+            try
+            {
+                queuedEvents = await LoadQueuedStoryListensUnsafeAsync(cancellationToken);
+            }
+            finally
+            {
+                _offlineStoryListenQueueLock.Release();
+            }
+
+            if (queuedEvents.Count == 0)
+            {
+                return;
+            }
+
+            var remainingEvents = new List<QueuedStoryListenEvent>();
+            for (var index = 0; index < queuedEvents.Count; index++)
+            {
+                var queuedEvent = queuedEvents[index];
+                try
+                {
+                    await SendStoryListenTrackingAsync(
+                        queuedEvent,
+                        flushQueuedListensAfterSuccess: false,
+                        cancellationToken);
+                }
+                catch
+                {
+                    remainingEvents.AddRange(queuedEvents.Skip(index));
+                    break;
+                }
+            }
+
+            await _offlineStoryListenQueueLock.WaitAsync(cancellationToken);
+            try
+            {
+                await SaveQueuedStoryListensUnsafeAsync(remainingEvents, cancellationToken);
+            }
+            finally
+            {
+                _offlineStoryListenQueueLock.Release();
+            }
+        }
+        catch
+        {
+            // Syncing queued tracking should never block app startup or playback.
+        }
+        finally
+        {
+            _offlineStoryListenFlushLock.Release();
+        }
+    }
+
+    private static async Task<IReadOnlyList<QueuedStoryListenEvent>> LoadQueuedStoryListensUnsafeAsync(
+        CancellationToken cancellationToken)
+    {
+        var queuePath = BuildOfflineStoryListenQueuePath();
+        if (!File.Exists(queuePath))
+        {
+            return Array.Empty<QueuedStoryListenEvent>();
+        }
+
+        try
+        {
+            await using var stream = File.OpenRead(queuePath);
+            return await JsonSerializer.DeserializeAsync<QueuedStoryListenEvent[]>(stream, JsonOptions, cancellationToken)
+                   ?? Array.Empty<QueuedStoryListenEvent>();
+        }
+        catch
+        {
+            TryDeleteFile(queuePath);
+            return Array.Empty<QueuedStoryListenEvent>();
+        }
+    }
+
+    private static async Task SaveQueuedStoryListensUnsafeAsync(
+        IReadOnlyList<QueuedStoryListenEvent> queuedEvents,
+        CancellationToken cancellationToken)
+    {
+        var queuePath = BuildOfflineStoryListenQueuePath();
+        if (queuedEvents.Count == 0)
+        {
+            TryDeleteFile(queuePath);
+            return;
+        }
+
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(queuePath)!);
+        var temporaryPath = $"{queuePath}.tmp";
+        await using (var stream = File.Create(temporaryPath))
+        {
+            await JsonSerializer.SerializeAsync(stream, queuedEvents, JsonOptions, cancellationToken);
+        }
+
+        if (File.Exists(queuePath))
+        {
+            File.Delete(queuePath);
+        }
+
+        File.Move(temporaryPath, queuePath);
     }
 
     private static string BuildNotificationRequestPath(int limit, DateTimeOffset? before, bool history)
@@ -804,6 +1140,14 @@ public sealed class MobileApiClient
 
     private Uri BuildUri(string path) => new($"{_settings.BaseUrl.TrimEnd('/')}{path}", UriKind.Absolute);
 
+    private static void AddMobileAppHeaderIfNeeded(HttpRequestMessage request, string path)
+    {
+        if (path.StartsWith("/api/mobile/", StringComparison.OrdinalIgnoreCase))
+        {
+            request.Headers.TryAddWithoutValidation(MobileAppHeaderName, MobileAppHeaderValue);
+        }
+    }
+
     private async Task EnsureAuthCookiesLoadedAsync(CancellationToken cancellationToken)
     {
         if (_authCookiesLoaded)
@@ -1034,6 +1378,21 @@ public sealed class MobileApiClient
         return System.IO.Path.Combine(cacheDirectory, $"luister-{cacheKey}.json");
     }
 
+    private string BuildStoryDetailCachePath(string slug, string source)
+    {
+        var cacheDirectory = System.IO.Path.Combine(FileSystem.CacheDirectory, "story-data");
+        return System.IO.Path.Combine(cacheDirectory, $"story-{BuildStoryDetailCacheKey(slug, source)}.json");
+    }
+
+    private string BuildStoryDetailCacheKey(string slug, string source) =>
+        BuildStableCacheKey($"{_settings.BaseUrl}|{source}|{slug}");
+
+    private static string BuildOfflineStoryListenQueuePath()
+    {
+        var queueDirectory = System.IO.Path.Combine(FileSystem.AppDataDirectory, "offline-tracking");
+        return System.IO.Path.Combine(queueDirectory, "story-listens.json");
+    }
+
     private static bool ShouldDownloadAudioForPlayback(string audioUrl)
     {
         if (!Uri.TryCreate(audioUrl, UriKind.Absolute, out var uri))
@@ -1154,6 +1513,19 @@ public sealed class MobileApiClient
     private sealed record FavoriteResponse(bool IsFavorite);
     private sealed record TrackingResponse(bool Tracked, int NewNotificationsCreated = 0);
     private sealed record MobileLuisterCacheEntry(DateTimeOffset CachedAtUtc, MobileLuisterResponse Response);
+
+    private sealed record MobileStoryDetailCacheEntry(DateTimeOffset CachedAtUtc, MobileStoryDetailResponse Response);
+
+    private sealed record QueuedStoryListenEvent(
+        string Slug,
+        string Source,
+        Guid SessionId,
+        string EventType,
+        decimal ListenedSeconds,
+        decimal? PositionSeconds,
+        decimal? DurationSeconds,
+        bool IsCompleted,
+        DateTimeOffset QueuedAtUtc);
     private sealed record PersistedAuthCookie(
         string Name,
         string Value,

@@ -70,7 +70,7 @@ public class StoryTrackingSourceTests
         StringAssert.Contains(client, "TrackStoryViewAsync(string slug, string source");
         StringAssert.Contains(client, "TrackStoryListenAsync(");
         StringAssert.Contains(client, "\"/api/stories/{Uri.EscapeDataString(slug)}/view\"");
-        StringAssert.Contains(client, "\"/api/stories/{Uri.EscapeDataString(slug)}/listen\"");
+        StringAssert.Contains(client, "\"/api/stories/{Uri.EscapeDataString(trackingEvent.Slug)}/listen\"");
     }
 
     private static string GetRepoPath(params string[] segments)

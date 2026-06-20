@@ -29,7 +29,9 @@ const string GooglePkceCookieName = "shink.auth.google.pkce";
 const string MobileGooglePkceCookieName = "shink.mobile.auth.google.pkce";
 const string GooglePkceProtectorPurpose = "Shink.Auth.GooglePkce.v1";
 const string MobileGoogleAuthTokenProtectorPurpose = "Shink.Mobile.Auth.GoogleToken.v1";
-const string MobileGoogleCallbackUrl = "schinkstories://auth/google";
+const string MobileGoogleCallbackUrl = "https://www.schink.co.za/mobile-auth/google/callback";
+const string MobileAppHeaderName = "X-Schink-Mobile-App";
+const string MobileAppHeaderValue = "1";
 const string EmailChangeStateProtectorPurpose = "Shink.Auth.EmailChange.v1";
 const string LongLivedImageCacheControl = "public, max-age=2592000, stale-while-revalidate=86400";
 const string LongLivedStaticCacheControl = "public, max-age=2592000, stale-while-revalidate=86400";
@@ -449,6 +451,33 @@ app.Use(async (httpContext, next) =>
     }
 
     await httpContext.Response.SendFileAsync(securityFilePath, httpContext.RequestAborted);
+});
+
+app.Use(async (httpContext, next) =>
+{
+    if (!TryResolveMobileAssociationFile(httpContext.Request.Path, out var fileName, out var contentType))
+    {
+        await next();
+        return;
+    }
+
+    var filePath = Path.Combine(app.Environment.WebRootPath, ".well-known", fileName);
+    if (!File.Exists(filePath))
+    {
+        httpContext.Response.StatusCode = StatusCodes.Status404NotFound;
+        return;
+    }
+
+    httpContext.Response.ContentType = contentType;
+    httpContext.Response.Headers.CacheControl = "public, max-age=3600";
+    httpContext.Response.ContentLength = new FileInfo(filePath).Length;
+
+    if (HttpMethods.IsHead(httpContext.Request.Method))
+    {
+        return;
+    }
+
+    await httpContext.Response.SendFileAsync(filePath, httpContext.RequestAborted);
 });
 
 app.UseAntiforgery();
@@ -3077,6 +3106,16 @@ app.MapPost("/api/mobile/auth/google/complete", async (
     ISubscriptionLedgerService subscriptionLedgerService,
     IStoryFavoriteService storyFavoriteService) =>
 {
+    if (!IsMobileAppRequest(httpContext))
+    {
+        return Results.Forbid();
+    }
+
+    if (!IsLikelySameSiteRequest(httpContext))
+    {
+        return Results.Forbid();
+    }
+
     if (string.IsNullOrWhiteSpace(request.Token))
     {
         return Results.BadRequest(new { message = "Google-aanmelding kon nie bevestig word nie. Probeer asseblief weer." });
@@ -3128,6 +3167,16 @@ app.MapPost("/api/mobile/profile", async (
     ISubscriptionLedgerService subscriptionLedgerService,
     IStoryFavoriteService storyFavoriteService) =>
 {
+    if (!IsMobileAppRequest(httpContext))
+    {
+        return Results.Forbid();
+    }
+
+    if (!IsLikelySameSiteRequest(httpContext))
+    {
+        return Results.Forbid();
+    }
+
     var signedInEmail = GetSignedInEmail(httpContext.User);
     if (string.IsNullOrWhiteSpace(signedInEmail))
     {
@@ -3444,6 +3493,16 @@ app.MapPost("/api/mobile/stories/{slug}/favorite", async (
     HttpContext httpContext,
     IStoryFavoriteService storyFavoriteService) =>
 {
+    if (!IsMobileAppRequest(httpContext))
+    {
+        return Results.Forbid();
+    }
+
+    if (!IsLikelySameSiteRequest(httpContext))
+    {
+        return Results.Forbid();
+    }
+
     var signedInEmail = GetSignedInEmail(httpContext.User);
     if (string.IsNullOrWhiteSpace(signedInEmail))
     {
@@ -3928,6 +3987,33 @@ static bool IsLikelySameSiteRequest(HttpContext httpContext)
     }
 
     return string.Equals(refererUri.Host, httpContext.Request.Host.Host, StringComparison.OrdinalIgnoreCase);
+}
+
+static bool IsMobileAppRequest(HttpContext httpContext) =>
+    string.Equals(
+        httpContext.Request.Headers[MobileAppHeaderName].ToString(),
+        MobileAppHeaderValue,
+        StringComparison.Ordinal);
+
+static bool TryResolveMobileAssociationFile(PathString path, out string fileName, out string contentType)
+{
+    if (path.Equals("/.well-known/assetlinks.json", StringComparison.OrdinalIgnoreCase))
+    {
+        fileName = "assetlinks.json";
+        contentType = "application/json; charset=utf-8";
+        return true;
+    }
+
+    if (path.Equals("/.well-known/apple-app-site-association", StringComparison.OrdinalIgnoreCase))
+    {
+        fileName = "apple-app-site-association";
+        contentType = "application/json; charset=utf-8";
+        return true;
+    }
+
+    fileName = string.Empty;
+    contentType = string.Empty;
+    return false;
 }
 
 static bool IsLikelySameSiteMediaRequest(HttpContext httpContext)

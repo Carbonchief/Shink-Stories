@@ -15,6 +15,7 @@ public sealed class HomePage : ContentPage
         _transitionBackdropState = transitionBackdropState;
         Title = "Tuis";
         BackgroundColor = Color.FromArgb("#FFF9F0");
+        SafeAreaEdges = new SafeAreaEdges(SafeAreaRegions.Container);
 
         _content = new VerticalStackLayout
         {

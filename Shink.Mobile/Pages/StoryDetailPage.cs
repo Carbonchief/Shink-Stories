@@ -39,6 +39,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     private readonly ContinueListeningState _continueListeningState;
     private readonly IOrientationService _orientationService;
     private readonly PlayerTransitionBackdropState _transitionBackdropState;
+    private readonly NavigationGate _navigationGate = new();
     private readonly Grid _root;
     private readonly Grid _playerSurface;
     private readonly Image _closeBackdrop;
@@ -60,6 +61,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     private string? _loadedKey;
     private CancellationTokenSource? _loadCts;
     private bool _isPageActive;
+    private bool _isDownloadEventSubscribed;
     private bool _isPlaybackEventSubscribed;
     private bool _isClosing;
     private bool _isShowingFullscreenCover;
@@ -101,6 +103,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         _orientationService = orientationService;
         _transitionBackdropState = transitionBackdropState;
         BackgroundColor = PlayerBackgroundColor;
+        SafeAreaEdges = SafeAreaEdges.None;
         Shell.SetNavBarIsVisible(this, false);
         Shell.SetTabBarIsVisible(this, false);
 
@@ -137,13 +140,6 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         };
 
         Content = _root;
-        _offlineDownloadService.DownloadsChanged += (_, _) => MainThread.BeginInvokeOnMainThread(() =>
-        {
-            if (_isPageActive && _currentDetail is not null)
-            {
-                RenderDetail(_currentDetail, trackView: false);
-            }
-        });
     }
 
     public string? StorySlug { get; set; }
@@ -188,6 +184,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         _closeBackdrop.IsVisible = false;
         _closeBackdrop.Source = null;
         _playerSurface.TranslationY = 0;
+        SubscribeDownloadEvents();
         SubscribePlaybackEvents();
 
         var loadKey = $"{StorySlug}:{Source}";
@@ -221,17 +218,56 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         CancelActiveLoad();
         DismissCastPicker();
         StopProgressTimer();
+        UnsubscribeDownloadEvents();
         UnsubscribePlaybackEvents();
         TryStopAudioPlayback();
         ClearActivePlaybackUi();
     }
 
+    private void SubscribeDownloadEvents()
+    {
+        if (_isDownloadEventSubscribed)
+        {
+            return;
+        }
+
+        _offlineDownloadService.DownloadsChanged += OnDownloadsChanged;
+        _isDownloadEventSubscribed = true;
+    }
+
+    private void UnsubscribeDownloadEvents()
+    {
+        if (!_isDownloadEventSubscribed)
+        {
+            return;
+        }
+
+        _offlineDownloadService.DownloadsChanged -= OnDownloadsChanged;
+        _isDownloadEventSubscribed = false;
+    }
+
+    private void OnDownloadsChanged(object? sender, EventArgs args)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (_isPageActive && _currentDetail is not null)
+            {
+                RenderDetail(_currentDetail, trackView: false);
+            }
+        });
+    }
+
     private async Task LoadAsync(bool showLoading = true, CancellationToken cancellationToken = default)
     {
+        var renderedCachedDetail = false;
         if (showLoading)
         {
-            _content.Children.Clear();
-            _content.Children.Add(BuildLoadingState());
+            renderedCachedDetail = await TryRenderCachedStoryAsync(cancellationToken);
+            if (!renderedCachedDetail)
+            {
+                _content.Children.Clear();
+                _content.Children.Add(BuildLoadingState());
+            }
         }
 
         try
@@ -249,7 +285,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 return;
             }
 
-            RenderDetail(detail);
+            RenderDetail(detail, trackView: !renderedCachedDetail);
         }
         catch (OperationCanceledException)
         {
@@ -271,8 +307,35 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 return;
             }
 
+            if (renderedCachedDetail)
+            {
+                return;
+            }
+
             _content.Children.Clear();
             _content.Children.Add(BuildMessage(ex.Message));
+        }
+    }
+
+    private async Task<bool> TryRenderCachedStoryAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var cachedDetail = await _apiClient.GetCachedStoryAsync(
+                StorySlug ?? string.Empty,
+                Source ?? "luister",
+                cancellationToken);
+            if (cachedDetail is null || cancellationToken.IsCancellationRequested || !_isPageActive)
+            {
+                return false;
+            }
+
+            RenderDetail(cachedDetail);
+            return true;
+        }
+        catch
+        {
+            return false;
         }
     }
 
@@ -745,17 +808,20 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
     private async Task CloseAsync(VisualElement closeButton)
     {
-        if (_isClosing)
+        await _navigationGate.RunAsync(async () =>
         {
-            return;
-        }
+            if (_isClosing)
+            {
+                return;
+            }
 
-        _isClosing = true;
-        closeButton.IsEnabled = false;
-        PrepareCloseBackdrop();
-        CancelActiveLoad();
-        await AnimateCloseAsync();
-        await Shell.Current.GoToAsync("..", animate: false);
+            _isClosing = true;
+            closeButton.IsEnabled = false;
+            PrepareCloseBackdrop();
+            CancelActiveLoad();
+            await AnimateCloseAsync();
+            await Shell.Current.GoToAsync("..", animate: false);
+        });
     }
 
     private void PrepareCloseBackdrop()
@@ -3307,15 +3373,18 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
     private async Task OpenStoryAsync(MobileStorySummary story)
     {
-        _loadedKey = null;
-        _previewStory = story;
-        await Shell.Current.GoToAsync(
-            $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source={Uri.EscapeDataString(story.Source)}",
-            animate: false,
-            parameters: new Dictionary<string, object>
-            {
-                ["preview"] = story
-            });
+        await _navigationGate.RunAsync(async () =>
+        {
+            _loadedKey = null;
+            _previewStory = story;
+            await Shell.Current.GoToAsync(
+                $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source={Uri.EscapeDataString(story.Source)}",
+                animate: false,
+                parameters: new Dictionary<string, object>
+                {
+                    ["preview"] = story
+                });
+        });
     }
 
     private async Task OpenPlaylistStoryAsync(MobileStorySummary story, bool autoplay = false)

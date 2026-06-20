@@ -33,6 +33,7 @@ public sealed class ProfilePage : ContentPage
 
         Title = "Profiel";
         BackgroundColor = PageBackgroundColor;
+        SafeAreaEdges = new SafeAreaEdges(SafeAreaRegions.Container);
         Shell.SetNavBarIsVisible(this, false);
         Shell.SetTabBarIsVisible(this, false);
 

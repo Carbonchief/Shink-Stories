@@ -1,3 +1,4 @@
+using Shink.Mobile.Models;
 using Shink.Mobile.Services;
 using Microsoft.Maui.Authentication;
 using MauiEntry = Microsoft.Maui.Controls.Entry;
@@ -33,6 +34,7 @@ public sealed class AccountPage : ContentPage
     private double _lastLandingLayoutHeight = -1;
     private bool _hasLoadedSession;
     private bool _isAuthRequestInFlight;
+    private bool _isSessionStateSubscribed;
 
     public AccountPage(MobileApiClient apiClient, SessionState sessionState)
     {
@@ -96,7 +98,6 @@ public sealed class AccountPage : ContentPage
             }
         };
 
-        _sessionState.Changed += _ => MainThread.BeginInvokeOnMainThread(ApplySessionState);
     }
 
     protected override void OnSizeAllocated(double width, double height)
@@ -113,6 +114,7 @@ public sealed class AccountPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+        SubscribePageEvents();
         if (_hasLoadedSession)
         {
             return;
@@ -120,6 +122,39 @@ public sealed class AccountPage : ContentPage
 
         _hasLoadedSession = true;
         await RefreshSessionAsync();
+    }
+
+    protected override void OnDisappearing()
+    {
+        UnsubscribePageEvents();
+        base.OnDisappearing();
+    }
+
+    private void SubscribePageEvents()
+    {
+        if (_isSessionStateSubscribed)
+        {
+            return;
+        }
+
+        _sessionState.Changed += OnSessionStateChanged;
+        _isSessionStateSubscribed = true;
+    }
+
+    private void UnsubscribePageEvents()
+    {
+        if (!_isSessionStateSubscribed)
+        {
+            return;
+        }
+
+        _sessionState.Changed -= OnSessionStateChanged;
+        _isSessionStateSubscribed = false;
+    }
+
+    private void OnSessionStateChanged(MobileSession session)
+    {
+        MainThread.BeginInvokeOnMainThread(ApplySessionState);
     }
 
     private void BuildSignedOutState()

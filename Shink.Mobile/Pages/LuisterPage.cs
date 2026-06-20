@@ -20,6 +20,7 @@ public sealed class LuisterPage : ContentPage
     private readonly PlaylistPlaybackState _playlistPlaybackState;
     private readonly ContinueListeningState _continueListeningState;
     private readonly PlayerTransitionBackdropState _transitionBackdropState;
+    private readonly NavigationGate _navigationGate = new();
     private readonly Grid _rootLayout;
     private readonly Grid _topBarOverlay;
     private readonly VerticalStackLayout _content;
@@ -46,6 +47,7 @@ public sealed class LuisterPage : ContentPage
     private CancellationTokenSource? _loadCancellation;
     private CancellationTokenSource? _searchDebounceCancellation;
     private readonly HashSet<string> _favoriteRequestsInFlight = new(StringComparer.OrdinalIgnoreCase);
+    private bool _isPageEventsSubscribed;
 
     public LuisterPage(
         MobileApiClient apiClient,
@@ -63,6 +65,7 @@ public sealed class LuisterPage : ContentPage
         _transitionBackdropState = transitionBackdropState;
         Title = "Luister";
         BackgroundColor = LuisterBackgroundColor;
+        SafeAreaEdges = SafeAreaEdges.None;
         Shell.SetNavBarIsVisible(this, false);
 
         _content = new VerticalStackLayout
@@ -134,39 +137,16 @@ public sealed class LuisterPage : ContentPage
             }
         };
         Content = _rootLayout;
-        _offlineDownloadService.DownloadsChanged += (_, _) => _ = RefreshDownloadsInBackgroundAsync();
-        _apiClient.NewNotificationsAvailable += _count => MainThread.BeginInvokeOnMainThread(() =>
-            _ = RefreshNotificationsInBackgroundAsync());
-        _continueListeningState.Changed += _ => MainThread.BeginInvokeOnMainThread(() =>
-        {
-            if (_isPageActive && _hasLoaded)
-            {
-                RenderPlaylistContent();
-            }
-        });
-
-        _sessionState.Changed += session => MainThread.BeginInvokeOnMainThread(() =>
-        {
-            if (!_sessionState.Current.IsSignedIn)
-            {
-                _notificationPage = null;
-            }
-
-            RenderContent();
-            if (_sessionState.Current.IsSignedIn)
-            {
-                _ = RefreshNotificationsInBackgroundAsync();
-            }
-        });
     }
 
     protected override async void OnAppearing()
     {
         base.OnAppearing();
         _isPageActive = true;
+        SubscribePageEvents();
         if (!_hasLoaded)
         {
-            await LoadAsync(forceRefresh: true);
+            await LoadAsync();
         }
         else
         {
@@ -182,10 +162,92 @@ public sealed class LuisterPage : ContentPage
     {
         _isPageActive = false;
         StopNotificationRefreshTimer();
+        UnsubscribePageEvents();
         _loadCancellation?.Cancel();
         _imageWarmupCancellation?.Cancel();
         _searchDebounceCancellation?.Cancel();
         base.OnDisappearing();
+    }
+
+    private void SubscribePageEvents()
+    {
+        if (_isPageEventsSubscribed)
+        {
+            return;
+        }
+
+        _offlineDownloadService.DownloadsChanged += OnDownloadsChanged;
+        _apiClient.NewNotificationsAvailable += OnNewNotificationsAvailable;
+        _continueListeningState.Changed += OnContinueListeningChanged;
+        _sessionState.Changed += OnSessionStateChanged;
+        _isPageEventsSubscribed = true;
+    }
+
+    private void UnsubscribePageEvents()
+    {
+        if (!_isPageEventsSubscribed)
+        {
+            return;
+        }
+
+        _offlineDownloadService.DownloadsChanged -= OnDownloadsChanged;
+        _apiClient.NewNotificationsAvailable -= OnNewNotificationsAvailable;
+        _continueListeningState.Changed -= OnContinueListeningChanged;
+        _sessionState.Changed -= OnSessionStateChanged;
+        _isPageEventsSubscribed = false;
+    }
+
+    private void OnDownloadsChanged(object? sender, EventArgs args)
+    {
+        if (!_isPageActive)
+        {
+            return;
+        }
+
+        _ = RefreshDownloadsInBackgroundAsync();
+    }
+
+    private void OnNewNotificationsAvailable(int count)
+    {
+        if (!_isPageActive)
+        {
+            return;
+        }
+
+        MainThread.BeginInvokeOnMainThread(() => _ = RefreshNotificationsInBackgroundAsync());
+    }
+
+    private void OnContinueListeningChanged(ContinueListeningItem? item)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (_isPageActive && _hasLoaded)
+            {
+                RenderPlaylistContent();
+            }
+        });
+    }
+
+    private void OnSessionStateChanged(MobileSession session)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (!_isPageActive)
+            {
+                return;
+            }
+
+            if (!session.IsSignedIn)
+            {
+                _notificationPage = null;
+            }
+
+            RenderContent();
+            if (session.IsSignedIn)
+            {
+                _ = RefreshNotificationsInBackgroundAsync();
+            }
+        });
     }
 
     private async Task LoadAsync(bool forceRefresh = false)
@@ -859,19 +921,22 @@ public sealed class LuisterPage : ContentPage
 
     private async Task ShowMenuAsync()
     {
-        var choice = await DisplayActionSheetAsync("Menu", "Kanselleer", null, "Downloaded", "Settings", "Manage Account");
-        switch (choice)
+        await _navigationGate.RunAsync(async () =>
         {
-            case "Downloaded":
-                await Shell.Current.GoToAsync(nameof(DownloadedPage), animate: true);
-                break;
-            case "Settings":
-                await DisplayAlertAsync("Settings", "Instellings kom binnekort.", "Reg so");
-                break;
-            case "Manage Account":
-                await OpenAccountAsync();
-                break;
-        }
+            var choice = await DisplayActionSheetAsync("Menu", "Kanselleer", null, "Downloaded", "Settings", "Manage Account");
+            switch (choice)
+            {
+                case "Downloaded":
+                    await Shell.Current.GoToAsync(nameof(DownloadedPage), animate: true);
+                    break;
+                case "Settings":
+                    await DisplayAlertAsync("Settings", "Instellings kom binnekort.", "Reg so");
+                    break;
+                case "Manage Account":
+                    await OpenAccountCoreAsync();
+                    break;
+            }
+        });
     }
 
     private async Task RefreshNotificationsInBackgroundAsync()
@@ -1506,11 +1571,14 @@ public sealed class LuisterPage : ContentPage
         return "/karakters";
     }
 
-    private static Task OpenAccountAsync() =>
+    private Task OpenAccountAsync() =>
+        _navigationGate.RunAsync(OpenAccountCoreAsync);
+
+    private static Task OpenAccountCoreAsync() =>
         Shell.Current.GoToAsync(nameof(AccountPage), animate: true);
 
-    private static Task OpenProfileAsync() =>
-        Shell.Current.GoToAsync(nameof(ProfilePage), animate: true);
+    private Task OpenProfileAsync() =>
+        _navigationGate.RunAsync(() => Shell.Current.GoToAsync(nameof(ProfilePage), animate: true));
 
     private static string BuildInitials(MobileSession session)
     {
@@ -2562,29 +2630,35 @@ public sealed class LuisterPage : ContentPage
 
     private async Task OpenStoryAsync(MobileStorySummary story)
     {
-        _playlistPlaybackState.Clear();
-        await CapturePlayerTransitionBackdropAsync();
-        await Shell.Current.GoToAsync(
-            $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source=luister",
-            animate: false,
-            parameters: new Dictionary<string, object>
-            {
-                ["preview"] = story
-            });
+        await _navigationGate.RunAsync(async () =>
+        {
+            _playlistPlaybackState.Clear();
+            await CapturePlayerTransitionBackdropAsync();
+            await Shell.Current.GoToAsync(
+                $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source=luister",
+                animate: false,
+                parameters: new Dictionary<string, object>
+                {
+                    ["preview"] = story
+                });
+        });
     }
 
     private async Task OpenDownloadedStoryAsync(OfflineStoryDownload download)
     {
-        _playlistPlaybackState.Clear();
-        await CapturePlayerTransitionBackdropAsync();
-        var story = ToMobileStorySummary(download);
-        await Shell.Current.GoToAsync(
-            $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(download.Slug)}&source={Uri.EscapeDataString(download.Source)}",
-            animate: false,
-            parameters: new Dictionary<string, object>
-            {
-                ["preview"] = story
-            });
+        await _navigationGate.RunAsync(async () =>
+        {
+            _playlistPlaybackState.Clear();
+            await CapturePlayerTransitionBackdropAsync();
+            var story = ToMobileStorySummary(download);
+            await Shell.Current.GoToAsync(
+                $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(download.Slug)}&source={Uri.EscapeDataString(download.Source)}",
+                animate: false,
+                parameters: new Dictionary<string, object>
+                {
+                    ["preview"] = story
+                });
+        });
     }
 
     private void StartImageWarmup()
@@ -2662,25 +2736,28 @@ public sealed class LuisterPage : ContentPage
 
     private async Task OpenContinueListeningAsync(ContinueListeningItem item)
     {
-        var resolvedStory = ResolveContinueListeningStory(item);
-        if (resolvedStory.HasValue && resolvedStory.Value.Playlist is { } playlist)
+        await _navigationGate.RunAsync(async () =>
         {
-            await OpenPlaylistStoryAsync(MergeContinueListeningMetadata(resolvedStory.Value.Story, item), playlist);
-            return;
-        }
-
-        var story = resolvedStory is { } resolved
-            ? MergeContinueListeningMetadata(resolved.Story, item)
-            : ToMobileStorySummary(item);
-        _playlistPlaybackState.Clear();
-        await CapturePlayerTransitionBackdropAsync();
-        await Shell.Current.GoToAsync(
-            $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source={Uri.EscapeDataString(story.Source)}",
-            animate: false,
-            parameters: new Dictionary<string, object>
+            var resolvedStory = ResolveContinueListeningStory(item);
+            if (resolvedStory.HasValue && resolvedStory.Value.Playlist is { } playlist)
             {
-                ["preview"] = story
-            });
+                await OpenPlaylistStoryCoreAsync(MergeContinueListeningMetadata(resolvedStory.Value.Story, item), playlist);
+                return;
+            }
+
+            var story = resolvedStory is { } resolved
+                ? MergeContinueListeningMetadata(resolved.Story, item)
+                : ToMobileStorySummary(item);
+            _playlistPlaybackState.Clear();
+            await CapturePlayerTransitionBackdropAsync();
+            await Shell.Current.GoToAsync(
+                $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source={Uri.EscapeDataString(story.Source)}",
+                animate: false,
+                parameters: new Dictionary<string, object>
+                {
+                    ["preview"] = story
+                });
+        });
     }
 
     private static MobileStorySummary MergeContinueListeningMetadata(MobileStorySummary story, ContinueListeningItem item) =>
@@ -2692,6 +2769,11 @@ public sealed class LuisterPage : ContentPage
         };
 
     private async Task OpenPlaylistStoryAsync(MobileStorySummary story, MobilePlaylist playlist)
+    {
+        await _navigationGate.RunAsync(() => OpenPlaylistStoryCoreAsync(story, playlist));
+    }
+
+    private async Task OpenPlaylistStoryCoreAsync(MobileStorySummary story, MobilePlaylist playlist)
     {
         _playlistPlaybackState.Set(playlist, story);
         await CapturePlayerTransitionBackdropAsync();

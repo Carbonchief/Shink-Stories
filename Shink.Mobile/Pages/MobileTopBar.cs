@@ -7,14 +7,15 @@ internal static class MobileTopBar
 {
     public static View Build(Page hostPage, MobileApiClient apiClient, MobileSession session, Thickness? margin = null)
     {
+        var navigationGate = new NavigationGate();
         var menuButton = BuildMenuCircleButton(Colors.White, Color.FromArgb("#123F3F"));
         var menuTap = new TapGestureRecognizer();
-        menuTap.Tapped += async (_, _) => await ShowMenuAsync(hostPage);
+        menuTap.Tapped += async (_, _) => await navigationGate.RunAsync(() => ShowMenuAsync(hostPage));
         menuButton.GestureRecognizers.Add(menuTap);
 
         var profileButton = BuildProfileButton(apiClient, session);
         var profileTap = new TapGestureRecognizer();
-        profileTap.Tapped += async (_, _) => await OpenProfileAsync();
+        profileTap.Tapped += async (_, _) => await navigationGate.RunAsync(OpenProfileAsync);
         profileButton.GestureRecognizers.Add(profileTap);
 
         var grid = new Grid

@@ -196,7 +196,8 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(appShell, "Routing.RegisterRoute(nameof(ProfilePage), typeof(ProfilePage));");
         StringAssert.Contains(mauiProgram, "builder.Services.AddTransient<ProfilePage>();");
         StringAssert.Contains(luisterPage, "profileTap.Tapped += async (_, _) => await OpenProfileAsync();");
-        StringAssert.Contains(mobileTopBar, "profileTap.Tapped += async (_, _) => await OpenProfileAsync();");
+        StringAssert.Contains(mobileTopBar, "profileTap.Tapped += async (_, _) => await navigationGate.RunAsync(OpenProfileAsync);");
+        StringAssert.Contains(mobileTopBar, "var navigationGate = new NavigationGate();");
         StringAssert.Contains(profilePage, "public sealed class ProfilePage : ContentPage");
         StringAssert.Contains(profilePage, "private readonly Entry _emailEntry;");
         StringAssert.Contains(profilePage, "private readonly Entry _firstNameEntry;");
@@ -258,7 +259,7 @@ public class MobileAbsoluteUrlSourceTests
         Assert.IsFalse(luisterPage.Contains("\"Alles oop\"", StringComparison.Ordinal));
         Assert.IsFalse(luisterPage.Contains("\"Gratis toegang\"", StringComparison.Ordinal));
         Assert.IsFalse(luisterPage.Contains("Text = session.Email ?? \"Ingeteken\"", StringComparison.Ordinal));
-        Assert.IsFalse(luisterPage.Contains("if (session.IsSignedIn)", StringComparison.Ordinal));
+        Assert.IsFalse(luisterPage.Contains("BuildSignedInAccountSummary", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -276,7 +277,9 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "FormatNotificationCount(unreadCount)");
         StringAssert.Contains(luisterPage, "NotificationBadgeRefreshInterval = TimeSpan.FromSeconds(45)");
         StringAssert.Contains(luisterPage, "private IDispatcherTimer? _notificationRefreshTimer;");
-        StringAssert.Contains(luisterPage, "_apiClient.NewNotificationsAvailable += _count => MainThread.BeginInvokeOnMainThread(() =>");
+        StringAssert.Contains(luisterPage, "_apiClient.NewNotificationsAvailable += OnNewNotificationsAvailable;");
+        StringAssert.Contains(luisterPage, "_apiClient.NewNotificationsAvailable -= OnNewNotificationsAvailable;");
+        StringAssert.Contains(luisterPage, "private void OnNewNotificationsAvailable(int count)");
         StringAssert.Contains(luisterPage, "_ = RefreshNotificationsInBackgroundAsync());");
         StringAssert.Contains(luisterPage, "StartNotificationRefreshTimer();");
         StringAssert.Contains(luisterPage, "StopNotificationRefreshTimer();");
@@ -388,6 +391,9 @@ public class MobileAbsoluteUrlSourceTests
     public void MobileLuisterFavoriteHeartPersistsAndUpdatesVisibleStoryState()
     {
         var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
+        var favoriteMethodStart = luisterPage.IndexOf("private async Task ToggleFavoriteAsync", StringComparison.Ordinal);
+        var favoriteMethodEnd = luisterPage.IndexOf("private bool IsFavoriteRequestInFlight", StringComparison.Ordinal);
+        var favoriteMethod = luisterPage[favoriteMethodStart..favoriteMethodEnd];
 
         StringAssert.Contains(luisterPage, "var isFavorite = await _apiClient.SetFavoriteAsync(story.Slug, story.Source, !story.IsFavorite);");
         StringAssert.Contains(luisterPage, "_favoriteRequestsInFlight.Add(favoriteKey)");
@@ -400,7 +406,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "private void UpdateFavoriteState(string slug, bool isFavorite)");
         StringAssert.Contains(luisterPage, "playlist.ShowcaseStory is null ? null : UpdateStoryFavoriteState(playlist.ShowcaseStory, slug, isFavorite)");
         StringAssert.Contains(luisterPage, "story with { IsFavorite = isFavorite }");
-        Assert.IsFalse(luisterPage.Contains("await LoadAsync();", StringComparison.Ordinal));
+        Assert.IsFalse(favoriteMethod.Contains("LoadAsync", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -420,6 +426,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(client, "private sealed record MobileLuisterCacheEntry(DateTimeOffset CachedAtUtc, MobileLuisterResponse Response);");
 
         StringAssert.Contains(luisterPage, "var downloadsTask = LoadPlayableDownloadsSafelyAsync(cancellationToken);");
+        StringAssert.Contains(luisterPage, "await LoadAsync();");
         StringAssert.Contains(luisterPage, "var renderedCachedData = !forceRefresh && await TryRenderCachedLuisterAsync(downloadsTask, cancellationToken);");
         StringAssert.Contains(luisterPage, "if (!renderedCachedData)");
         StringAssert.Contains(luisterPage, "private async Task<bool> TryRenderCachedLuisterAsync(");
@@ -429,6 +436,29 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "_sections = ApplyCurrentFavoriteState(sections);");
         StringAssert.Contains(luisterPage, "private IReadOnlyList<MobileLuisterSection> ApplyCurrentFavoriteState(IReadOnlyList<MobileLuisterSection> sections)");
         StringAssert.Contains(luisterPage, "favoriteSlugs.Contains(story.Slug)");
+    }
+
+    [TestMethod]
+    public void MobileStoryDetailCachesStoryDataForFastOpen()
+    {
+        var client = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
+        var storyDetail = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "StoryDetailPage.cs"));
+
+        StringAssert.Contains(client, "private static readonly TimeSpan DefaultStoryDetailCacheMaxAge = TimeSpan.FromHours(12);");
+        StringAssert.Contains(client, "public Task<MobileStoryDetailResponse?> GetCachedStoryAsync(");
+        StringAssert.Contains(client, "private async Task<MobileStoryDetailResponse?> GetAndCacheStoryAsync(");
+        StringAssert.Contains(client, "await SaveStoryDetailCacheAsync(slug, source, response, cancellationToken);");
+        StringAssert.Contains(client, "private async Task SaveStoryDetailCacheAsync(");
+        StringAssert.Contains(client, "new MobileStoryDetailCacheEntry(DateTimeOffset.UtcNow, response)");
+        StringAssert.Contains(client, "return System.IO.Path.Combine(cacheDirectory, $\"story-{BuildStoryDetailCacheKey(slug, source)}.json\");");
+        StringAssert.Contains(client, "private sealed record MobileStoryDetailCacheEntry(DateTimeOffset CachedAtUtc, MobileStoryDetailResponse Response);");
+
+        StringAssert.Contains(storyDetail, "var renderedCachedDetail = false;");
+        StringAssert.Contains(storyDetail, "renderedCachedDetail = await TryRenderCachedStoryAsync(cancellationToken);");
+        StringAssert.Contains(storyDetail, "RenderDetail(detail, trackView: !renderedCachedDetail);");
+        StringAssert.Contains(storyDetail, "private async Task<bool> TryRenderCachedStoryAsync(CancellationToken cancellationToken)");
+        StringAssert.Contains(storyDetail, "var cachedDetail = await _apiClient.GetCachedStoryAsync(");
+        StringAssert.Contains(storyDetail, "RenderDetail(cachedDetail);");
     }
 
     [TestMethod]
@@ -638,6 +668,28 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(storyDetail, "ResolvePlayableAudioAsync(");
         StringAssert.Contains(storyDetail, "RenderOfflineDetail(");
         StringAssert.Contains(storyDetail, "Hierdie aflaai moet weer aanlyn bevestig word.");
+    }
+
+    [TestMethod]
+    public void MobileOfflineDownloadedListeningQueuesAndSyncsTracking()
+    {
+        var client = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
+        var storyDetail = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "StoryDetailPage.cs"));
+        var offlineService = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "OfflineStoryDownloadService.cs"));
+
+        StringAssert.Contains(storyDetail, "var offlinePlaybackUrl = await _offlineDownloadService.ResolvePlayableAudioAsync(detail);");
+        StringAssert.Contains(storyDetail, "await PlayPreparedAudioAsync(offlinePlaybackUrl, detail, ResolveTrackingSessionId(detail), playButton);");
+        StringAssert.Contains(storyDetail, "_apiClient.TrackStoryListenAsync(");
+        StringAssert.Contains(offlineService, "FileSystem.AppDataDirectory");
+        StringAssert.Contains(client, "private readonly SemaphoreSlim _offlineStoryListenQueueLock = new(1, 1);");
+        StringAssert.Contains(client, "await EnqueueStoryListenAsync(");
+        StringAssert.Contains(client, "public async Task FlushQueuedStoryListensAsync");
+        StringAssert.Contains(client, "BuildOfflineStoryListenQueuePath()");
+        StringAssert.Contains(client, "FileSystem.AppDataDirectory, \"offline-tracking\"");
+        StringAssert.Contains(client, "TakeLast(300)");
+        StringAssert.Contains(client, "private sealed record QueuedStoryListenEvent(");
+        StringAssert.Contains(client, "flushQueuedListens: false");
+        StringAssert.Contains(client, "_ = FlushQueuedStoryListensAsync();");
     }
 
     [TestMethod]
@@ -1020,9 +1072,14 @@ public class MobileAbsoluteUrlSourceTests
         var accountPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "AccountPage.cs"));
         var apiClient = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
         var iOSInfo = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "iOS", "Info.plist"));
+        var iOSEntitlements = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "iOS", "Entitlements.plist"));
+        var iOSAppDelegate = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "iOS", "AppDelegate.cs"));
+        var androidManifest = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "Android", "AndroidManifest.xml"));
         var androidCallback = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "Android", "GoogleAuthCallbackActivity.cs"));
         var googleIcon = File.ReadAllText(GetRepoPath("Shink.Mobile", "Resources", "Images", "google_g.svg"));
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+        var assetLinks = File.ReadAllText(GetRepoPath("Shink", "wwwroot", ".well-known", "assetlinks.json"));
+        var appleAssociation = File.ReadAllText(GetRepoPath("Shink", "wwwroot", ".well-known", "apple-app-site-association"));
 
         StringAssert.Contains(accountPage, "Teken in met Google");
         StringAssert.Contains(accountPage, "Source = ImageSource.FromFile(\"google_g.svg\")");
@@ -1035,19 +1092,53 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(accountPage, "_apiClient.BuildGoogleSignInStartUri()");
         StringAssert.Contains(accountPage, "new Uri(MobileApiClient.GoogleCallbackUrl)");
         StringAssert.Contains(accountPage, "CompleteGoogleSignInAsync(token)");
-        StringAssert.Contains(apiClient, "public const string GoogleCallbackUrl = \"schinkstories://auth/google\";");
+        StringAssert.Contains(apiClient, "public const string GoogleCallbackUrl = \"https://www.schink.co.za/mobile-auth/google/callback\";");
         StringAssert.Contains(apiClient, "BuildUri(\"/api/mobile/auth/google/start\")");
         StringAssert.Contains(apiClient, "\"/api/mobile/auth/google/complete\"");
+        StringAssert.Contains(iOSEntitlements, "applinks:www.schink.co.za");
+        StringAssert.Contains(iOSAppDelegate, "WebAuthenticator.Default.ContinueUserActivity(application, userActivity, completionHandler)");
         StringAssert.Contains(iOSInfo, "<string>schinkstories</string>");
+        StringAssert.Contains(androidManifest, "android:allowBackup=\"false\"");
         StringAssert.Contains(androidCallback, "WebAuthenticatorCallbackActivity");
+        StringAssert.Contains(androidCallback, "AutoVerify = true");
+        StringAssert.Contains(androidCallback, "DataScheme = \"https\"");
+        StringAssert.Contains(androidCallback, "DataHost = \"www.schink.co.za\"");
+        StringAssert.Contains(androidCallback, "DataPath = \"/mobile-auth/google/callback\"");
         StringAssert.Contains(androidCallback, "DataScheme = \"schinkstories\"");
         StringAssert.Contains(androidCallback, "DataHost = \"auth\"");
         StringAssert.Contains(androidCallback, "DataPath = \"/google\"");
+        StringAssert.Contains(assetLinks, "\"package_name\": \"com.schink.stories.mobile\"");
+        StringAssert.Contains(assetLinks, "\"46:EB:77:79:B5:EE:8F:AF:3A:33:82:F4:EC:F9:4A:6F:50:DE:7D:DF:1C:F3:00:E7:C3:DF:32:2A:69:A6:EA:AA\"");
+        StringAssert.Contains(appleAssociation, "\"7CCCKUVX8Q.com.schink.stories.mobile\"");
+        StringAssert.Contains(appleAssociation, "\"/mobile-auth/google/callback\"");
         StringAssert.Contains(program, "app.MapGet(\"/api/mobile/auth/google/start\"");
         StringAssert.Contains(program, "app.MapGet(\"/auth/mobile/google/callback\"");
         StringAssert.Contains(program, "app.MapPost(\"/api/mobile/auth/google/complete\"");
         StringAssert.Contains(program, "MobileGoogleAuthTokenProtectorPurpose");
-        StringAssert.Contains(program, "MobileGoogleCallbackUrl = \"schinkstories://auth/google\"");
+        StringAssert.Contains(program, "MobileGoogleCallbackUrl = \"https://www.schink.co.za/mobile-auth/google/callback\"");
+        StringAssert.Contains(program, "TryResolveMobileAssociationFile(httpContext.Request.Path");
+    }
+
+    [TestMethod]
+    public void MobileApiMutationsRequireMobileAppHeader()
+    {
+        var apiClient = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+
+        StringAssert.Contains(apiClient, "private const string MobileAppHeaderName = \"X-Schink-Mobile-App\";");
+        StringAssert.Contains(apiClient, "private const string MobileAppHeaderValue = \"1\";");
+        StringAssert.Contains(apiClient, "private static void AddMobileAppHeaderIfNeeded(HttpRequestMessage request, string path)");
+        StringAssert.Contains(apiClient, "path.StartsWith(\"/api/mobile/\", StringComparison.OrdinalIgnoreCase)");
+        StringAssert.Contains(apiClient, "request.Headers.TryAddWithoutValidation(MobileAppHeaderName, MobileAppHeaderValue);");
+        StringAssert.Contains(apiClient, "AddMobileAppHeaderIfNeeded(request, path);");
+
+        StringAssert.Contains(program, "const string MobileAppHeaderName = \"X-Schink-Mobile-App\";");
+        StringAssert.Contains(program, "static bool IsMobileAppRequest(HttpContext httpContext)");
+        StringAssert.Contains(program, "app.MapPost(\"/api/mobile/auth/google/complete\"");
+        StringAssert.Contains(program, "app.MapPost(\"/api/mobile/profile\"");
+        StringAssert.Contains(program, "app.MapPost(\"/api/mobile/stories/{slug}/favorite\"");
+        Assert.IsTrue(CountOccurrences(program, "if (!IsMobileAppRequest(httpContext))") >= 3);
+        Assert.IsTrue(CountOccurrences(program, "}).RequireRateLimiting(\"auth-submit\").DisableAntiforgery();") >= 1);
     }
 
     [TestMethod]
@@ -1084,7 +1175,9 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(accountPage, "_signedInState = new VerticalStackLayout { Spacing = 0, IsVisible = hasCachedSession };");
         StringAssert.Contains(accountPage, "_signedOutState = new VerticalStackLayout { Spacing = 0, IsVisible = !hasCachedSession };");
         StringAssert.Contains(accountPage, "if (_signedOutState.Children.Count == 0)");
-        StringAssert.Contains(accountPage, "_sessionState.Changed += _ => MainThread.BeginInvokeOnMainThread(ApplySessionState);");
+        StringAssert.Contains(accountPage, "_sessionState.Changed += OnSessionStateChanged;");
+        StringAssert.Contains(accountPage, "_sessionState.Changed -= OnSessionStateChanged;");
+        StringAssert.Contains(accountPage, "private void OnSessionStateChanged(MobileSession session)");
         StringAssert.Contains(accountPage, "_signedInState.IsVisible = true;");
         StringAssert.Contains(accountPage, "_signedOutState.IsVisible = false;");
     }
@@ -1190,6 +1283,19 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(agents, "same stable release/demo keystore");
         StringAssert.Contains(agents, "`ApplicationVersion` before producing every shareable APK");
         StringAssert.Contains(agents, "install the new APK over the old one instead of uninstalling first");
+    }
+
+    private static int CountOccurrences(string source, string value)
+    {
+        var count = 0;
+        var index = 0;
+        while ((index = source.IndexOf(value, index, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            index += value.Length;
+        }
+
+        return count;
     }
 
     private static string GetRepoPath(params string[] segments)

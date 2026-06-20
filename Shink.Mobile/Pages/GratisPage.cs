@@ -15,6 +15,7 @@ public sealed class GratisPage : ContentPage
         _transitionBackdropState = transitionBackdropState;
         Title = "Gratis";
         BackgroundColor = Color.FromArgb("#FFF9F0");
+        SafeAreaEdges = new SafeAreaEdges(SafeAreaRegions.Container);
 
         _content = new VerticalStackLayout
         {
