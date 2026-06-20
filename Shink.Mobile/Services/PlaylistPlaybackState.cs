@@ -17,6 +17,10 @@ public sealed class PlaylistPlaybackState
 
     public bool IsShuffleEnabled { get; private set; }
 
+    public int? AutoplayLimitStories { get; private set; }
+
+    public int AutoplayStoriesPlayedInRun { get; private set; }
+
     public void Set(MobilePlaylist playlist, MobileStorySummary? currentStory = null)
     {
         Slug = playlist.Slug;
@@ -55,6 +59,13 @@ public sealed class PlaylistPlaybackState
     public void SetAutoplay(bool isEnabled)
     {
         IsAutoplayEnabled = isEnabled;
+        ResetAutoplayProgress();
+    }
+
+    public void SetAutoplayLimit(int? limitStories, MobileStorySummary? currentStory = null)
+    {
+        AutoplayLimitStories = limitStories is 3 or 5 ? limitStories : null;
+        ResetAutoplayProgress(currentStory);
     }
 
     public void SetShuffle(bool isEnabled, MobileStorySummary? currentStory = null)
@@ -71,6 +82,55 @@ public sealed class PlaylistPlaybackState
         _shuffleOrder = Array.Empty<string>();
         IsAutoplayEnabled = false;
         IsShuffleEnabled = false;
+        AutoplayLimitStories = null;
+        AutoplayStoriesPlayedInRun = 0;
+    }
+
+    public bool CanAutoplayAdvance(MobileStorySummary? currentStory)
+    {
+        if (!IsAutoplayEnabled)
+        {
+            return false;
+        }
+
+        if (!AutoplayLimitStories.HasValue)
+        {
+            return true;
+        }
+
+        if (AutoplayStoriesPlayedInRun <= 0 && currentStory is not null)
+        {
+            AutoplayStoriesPlayedInRun = 1;
+        }
+
+        return AutoplayStoriesPlayedInRun < AutoplayLimitStories.Value;
+    }
+
+    public void TrackManualStorySelection(MobileStorySummary? currentStory)
+    {
+        ResetAutoplayProgress(currentStory);
+    }
+
+    public void TrackAutoplayAdvance(MobileStorySummary? currentStory)
+    {
+        if (!IsAutoplayEnabled || !AutoplayLimitStories.HasValue || currentStory is null)
+        {
+            AutoplayStoriesPlayedInRun = 0;
+            return;
+        }
+
+        AutoplayStoriesPlayedInRun = Math.Max(1, AutoplayStoriesPlayedInRun + 1);
+    }
+
+    private void ResetAutoplayProgress(MobileStorySummary? currentStory = null)
+    {
+        if (!IsAutoplayEnabled || !AutoplayLimitStories.HasValue || currentStory is null)
+        {
+            AutoplayStoriesPlayedInRun = 0;
+            return;
+        }
+
+        AutoplayStoriesPlayedInRun = 1;
     }
 
     private void RefreshShuffleOrder(MobileStorySummary? currentStory)

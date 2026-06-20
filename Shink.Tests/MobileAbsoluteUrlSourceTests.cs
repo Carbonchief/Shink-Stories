@@ -880,17 +880,26 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(storyDetail, "private MobileStorySummary? ResolveNextStory(");
         StringAssert.Contains(storyDetail, "BuildPlaybackModeRow(detail)");
         StringAssert.Contains(storyDetail, "BuildPlaybackModeButton(");
+        StringAssert.Contains(storyDetail, "FormatPlaybackSpeed(_audioPlaybackService.PlaybackSpeed)");
+        StringAssert.Contains(storyDetail, "CyclePlaybackSpeed(detail)");
         StringAssert.Contains(storyDetail, "\"Auto\"");
+        StringAssert.Contains(storyDetail, "FormatAutoplayLimit()");
+        StringAssert.Contains(storyDetail, "CycleAutoplayLimit(detail)");
         StringAssert.Contains(storyDetail, "\"Skommel\"");
         StringAssert.Contains(storyDetail, "_playlistPlaybackState.SetAutoplay(!_playlistPlaybackState.IsAutoplayEnabled);");
+        StringAssert.Contains(storyDetail, "_playlistPlaybackState.SetAutoplayLimit(nextLimit, detail.Story);");
         StringAssert.Contains(storyDetail, "_playlistPlaybackState.SetShuffle(!_playlistPlaybackState.IsShuffleEnabled, detail.Story);");
         StringAssert.Contains(storyDetail, "await OpenPlaylistStoryAsync(previousStory, autoplay: ShouldAutoplaySelection());");
         StringAssert.Contains(storyDetail, "await OpenPlaylistStoryAsync(nextStory, autoplay: ShouldAutoplaySelection());");
         StringAssert.Contains(storyDetail, "await ReplaceActiveStoryAsync(nextStory, autoplay: ShouldAutoplaySelection());");
-        StringAssert.Contains(storyDetail, "_playlistPlaybackState.IsAutoplayEnabled && _currentDetail is { } currentDetail");
+        StringAssert.Contains(storyDetail, "_playlistPlaybackState.CanAutoplayAdvance(currentDetail.Story)");
+        StringAssert.Contains(storyDetail, "_playlistPlaybackState.TrackAutoplayAdvance(story);");
+        StringAssert.Contains(storyDetail, "_playlistPlaybackState.TrackManualStorySelection(story);");
         StringAssert.Contains(storyDetail, "await ReplaceActiveStoryAsync(nextStory, autoplay: true);");
         StringAssert.Contains(playlistState, "public bool IsAutoplayEnabled { get; private set; }");
         StringAssert.Contains(playlistState, "public bool IsShuffleEnabled { get; private set; }");
+        StringAssert.Contains(playlistState, "public int? AutoplayLimitStories { get; private set; }");
+        StringAssert.Contains(playlistState, "public bool CanAutoplayAdvance(MobileStorySummary? currentStory)");
         StringAssert.Contains(playlistState, "public IReadOnlyList<MobileStorySummary> GetPlaybackStories(MobileStorySummary? currentStory = null)");
     }
 

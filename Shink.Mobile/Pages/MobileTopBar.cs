@@ -5,13 +5,20 @@ namespace Shink.Mobile.Pages;
 
 internal static class MobileTopBar
 {
-    public static View Build(Page hostPage, MobileApiClient apiClient, MobileSession session, Thickness? margin = null)
+    public static View Build(
+        Page hostPage,
+        MobileApiClient apiClient,
+        MobileSession session,
+        Thickness? margin = null,
+        string leftAction = "menu")
     {
         var navigationGate = new NavigationGate();
-        var menuButton = BuildMenuCircleButton(Colors.White, Color.FromArgb("#123F3F"));
-        var menuTap = new TapGestureRecognizer();
-        menuTap.Tapped += async (_, _) => await navigationGate.RunAsync(() => ShowMenuAsync(hostPage));
-        menuButton.GestureRecognizers.Add(menuTap);
+        var leftButton = string.Equals(leftAction, "back", StringComparison.OrdinalIgnoreCase)
+            ? BuildBackCircleButton(Colors.White, Color.FromArgb("#123F3F"))
+            : BuildMenuCircleButton(Colors.White, Color.FromArgb("#123F3F"));
+        var leftTap = new TapGestureRecognizer();
+        leftTap.Tapped += async (_, _) => await navigationGate.RunAsync(() => HandleLeftActionAsync(hostPage, leftAction));
+        leftButton.GestureRecognizers.Add(leftTap);
 
         var profileButton = BuildProfileButton(apiClient, session);
         var profileTap = new TapGestureRecognizer();
@@ -29,7 +36,7 @@ internal static class MobileTopBar
             },
             Children =
             {
-                menuButton,
+                leftButton,
                 profileButton
             }
         };
@@ -70,6 +77,25 @@ internal static class MobileTopBar
             WidthRequest = 18,
             HeightRequest = 2,
             HorizontalOptions = LayoutOptions.Center
+        };
+
+    private static Border BuildBackCircleButton(Color lineColor, Color backgroundColor) =>
+        new()
+        {
+            BackgroundColor = backgroundColor,
+            StrokeThickness = 0,
+            StrokeShape = new RoundRectangle { CornerRadius = 23 },
+            WidthRequest = 46,
+            HeightRequest = 46,
+            VerticalOptions = LayoutOptions.Center,
+            Content = new GraphicsView
+            {
+                Drawable = new DownCaretDrawable(lineColor),
+                WidthRequest = 19,
+                HeightRequest = 19,
+                HorizontalOptions = LayoutOptions.Center,
+                VerticalOptions = LayoutOptions.Center
+            }
         };
 
     private static Border BuildCircleButton(string text, double fontSize, Color textColor, Color backgroundColor) =>
@@ -137,6 +163,29 @@ internal static class MobileTopBar
         }
     }
 
+    private static Task HandleLeftActionAsync(Page hostPage, string leftAction) =>
+        string.Equals(leftAction, "back", StringComparison.OrdinalIgnoreCase)
+            ? OpenLuisterAsync()
+            : ShowMenuAsync(hostPage);
+
+    private static async Task OpenLuisterAsync()
+    {
+        var navigation = Shell.Current.Navigation;
+        if (navigation.ModalStack.Count > 0)
+        {
+            await navigation.PopModalAsync();
+            return;
+        }
+
+        if (navigation.NavigationStack.Count > 1)
+        {
+            await navigation.PopAsync();
+            return;
+        }
+
+        await Shell.Current.GoToAsync("//Luister", animate: true);
+    }
+
     private static Task OpenAccountAsync() =>
         Shell.Current.GoToAsync(nameof(AccountPage), animate: true);
 
@@ -176,5 +225,27 @@ internal static class MobileTopBar
         }
 
         return "S";
+    }
+
+    private sealed class DownCaretDrawable(Color strokeColor) : IDrawable
+    {
+        public void Draw(ICanvas canvas, RectF dirtyRect)
+        {
+            canvas.StrokeColor = strokeColor;
+            canvas.StrokeSize = 3.2f;
+            canvas.StrokeLineCap = LineCap.Round;
+            canvas.StrokeLineJoin = LineJoin.Round;
+
+            var centerX = dirtyRect.Center.X;
+            var centerY = dirtyRect.Center.Y + 1;
+            var halfWidth = MathF.Min(dirtyRect.Width, dirtyRect.Height) * 0.28f;
+            var halfHeight = MathF.Min(dirtyRect.Width, dirtyRect.Height) * 0.18f;
+
+            var path = new PathF();
+            path.MoveTo(centerX - halfWidth, centerY - halfHeight);
+            path.LineTo(centerX, centerY + halfHeight);
+            path.LineTo(centerX + halfWidth, centerY - halfHeight);
+            canvas.DrawPath(path);
+        }
     }
 }

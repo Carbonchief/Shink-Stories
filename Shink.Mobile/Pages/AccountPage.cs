@@ -8,6 +8,8 @@ namespace Shink.Mobile.Pages;
 
 public sealed class AccountPage : ContentPage
 {
+    private static readonly Thickness SignedInTopBarMargin = new(18, 18, 18, 0);
+
     private enum AuthPanelMode
     {
         Landing,
@@ -1100,7 +1102,8 @@ public sealed class AccountPage : ContentPage
                 this,
                 _apiClient,
                 session,
-                new Thickness(18, 54, 18, 0)));
+                SignedInTopBarMargin,
+                "back"));
             _signedInState.Children.Add(new Border
             {
                 BackgroundColor = Color.FromArgb("#FFF7E8"),

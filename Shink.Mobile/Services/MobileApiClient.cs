@@ -177,6 +177,7 @@ public sealed class MobileApiClient
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly TimeSpan DefaultLuisterCacheMaxAge = TimeSpan.FromHours(12);
     private static readonly TimeSpan DefaultStoryDetailCacheMaxAge = TimeSpan.FromHours(12);
+    private static readonly TimeSpan DefaultNotificationCacheMaxAge = TimeSpan.FromDays(7);
 
     private readonly HttpClient _httpClient;
     private readonly CookieContainer _cookieContainer;
@@ -185,9 +186,11 @@ public sealed class MobileApiClient
     private readonly SemaphoreSlim _authCookieStorageLock = new(1, 1);
     private readonly SemaphoreSlim _luisterCacheLock = new(1, 1);
     private readonly SemaphoreSlim _storyDetailCacheLock = new(1, 1);
+    private readonly SemaphoreSlim _notificationCacheLock = new(1, 1);
     private readonly SemaphoreSlim _offlineStoryListenQueueLock = new(1, 1);
     private readonly SemaphoreSlim _offlineStoryListenFlushLock = new(1, 1);
     private MobileLuisterCacheEntry? _memoryLuisterCache;
+    private MobileNotificationCacheEntry? _memoryNotificationCache;
     private readonly Dictionary<string, MobileStoryDetailCacheEntry> _memoryStoryDetailCache = new(StringComparer.OrdinalIgnoreCase);
     private bool _authCookiesLoaded;
 
@@ -337,7 +340,62 @@ public sealed class MobileApiClient
         DateTimeOffset? before = null,
         bool history = false,
         CancellationToken cancellationToken = default) =>
-        GetAsync<MobileNotificationPage>(BuildNotificationRequestPath(limit, before, history), cancellationToken);
+        GetAndCacheNotificationsAsync(limit, before, history, cancellationToken);
+
+    public Task<MobileNotificationPage?> GetCachedNotificationsAsync(CancellationToken cancellationToken = default) =>
+        GetCachedNotificationsAsync(DefaultNotificationCacheMaxAge, cancellationToken);
+
+    public async Task<MobileNotificationPage?> GetCachedNotificationsAsync(
+        TimeSpan maxAge,
+        CancellationToken cancellationToken = default)
+    {
+        var cacheKey = BuildNotificationCacheKey();
+        if (_memoryNotificationCache is { Response: { } memoryResponse } &&
+            string.Equals(_memoryNotificationCache.CacheKey, cacheKey, StringComparison.Ordinal) &&
+            DateTimeOffset.UtcNow - _memoryNotificationCache.CachedAtUtc <= maxAge)
+        {
+            return memoryResponse;
+        }
+
+        var cachePath = BuildNotificationCachePath();
+        if (!File.Exists(cachePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            await using var stream = File.OpenRead(cachePath);
+            var cacheEntry = await JsonSerializer.DeserializeAsync<MobileNotificationCacheEntry>(
+                stream,
+                JsonOptions,
+                cancellationToken);
+            if (cacheEntry?.Response is null ||
+                !string.Equals(cacheEntry.CacheKey, cacheKey, StringComparison.Ordinal) ||
+                DateTimeOffset.UtcNow - cacheEntry.CachedAtUtc > maxAge)
+            {
+                return null;
+            }
+
+            _memoryNotificationCache = cacheEntry;
+            return cacheEntry.Response;
+        }
+        catch
+        {
+            TryDeleteFile(cachePath);
+            if (_memoryNotificationCache?.CacheKey == cacheKey)
+            {
+                _memoryNotificationCache = null;
+            }
+
+            return null;
+        }
+    }
+
+    public Task SaveNotificationsCacheAsync(
+        MobileNotificationPage response,
+        CancellationToken cancellationToken = default) =>
+        SaveNotificationCacheAsync(response, cancellationToken);
 
     public Task<MobileNotificationMutationResponse?> MarkAllNotificationsReadAsync(CancellationToken cancellationToken = default) =>
         PostAsync<MobileNotificationMutationResponse>("/api/notifications/read-all", new { }, cancellationToken);
@@ -580,6 +638,23 @@ public sealed class MobileApiClient
         return response;
     }
 
+    private async Task<MobileNotificationPage?> GetAndCacheNotificationsAsync(
+        int limit,
+        DateTimeOffset? before,
+        bool history,
+        CancellationToken cancellationToken)
+    {
+        var response = await GetAsync<MobileNotificationPage>(
+            BuildNotificationRequestPath(limit, before, history),
+            cancellationToken);
+        if (response is not null && before is null && !history)
+        {
+            await SaveNotificationCacheAsync(response, cancellationToken);
+        }
+
+        return response;
+    }
+
     private async Task SaveLuisterCacheAsync(MobileLuisterResponse response, CancellationToken cancellationToken)
     {
         var cacheEntry = new MobileLuisterCacheEntry(DateTimeOffset.UtcNow, response);
@@ -665,6 +740,53 @@ public sealed class MobileApiClient
             if (cacheLockAcquired)
             {
                 _storyDetailCacheLock.Release();
+            }
+        }
+    }
+
+    private async Task SaveNotificationCacheAsync(
+        MobileNotificationPage response,
+        CancellationToken cancellationToken)
+    {
+        var cacheEntry = new MobileNotificationCacheEntry(
+            BuildNotificationCacheKey(),
+            DateTimeOffset.UtcNow,
+            response);
+        _memoryNotificationCache = cacheEntry;
+
+        var cacheLockAcquired = false;
+        try
+        {
+            await _notificationCacheLock.WaitAsync(cancellationToken);
+            cacheLockAcquired = true;
+            var cachePath = BuildNotificationCachePath();
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(cachePath)!);
+            var temporaryPath = $"{cachePath}.tmp";
+            await using (var stream = File.Create(temporaryPath))
+            {
+                await JsonSerializer.SerializeAsync(
+                    stream,
+                    cacheEntry,
+                    JsonOptions,
+                    cancellationToken);
+            }
+
+            if (File.Exists(cachePath))
+            {
+                File.Delete(cachePath);
+            }
+
+            File.Move(temporaryPath, cachePath);
+        }
+        catch
+        {
+            // Notification caching is an optimization only.
+        }
+        finally
+        {
+            if (cacheLockAcquired)
+            {
+                _notificationCacheLock.Release();
             }
         }
     }
@@ -1387,6 +1509,18 @@ public sealed class MobileApiClient
     private string BuildStoryDetailCacheKey(string slug, string source) =>
         BuildStableCacheKey($"{_settings.BaseUrl}|{source}|{slug}");
 
+    private string BuildNotificationCachePath()
+    {
+        var cacheDirectory = System.IO.Path.Combine(FileSystem.CacheDirectory, "notification-data");
+        return System.IO.Path.Combine(cacheDirectory, $"notifications-{BuildNotificationCacheKey()}.json");
+    }
+
+    private string BuildNotificationCacheKey()
+    {
+        var email = _sessionState.Current.Email?.Trim().ToLowerInvariant();
+        return BuildStableCacheKey($"{_settings.BaseUrl}|{email}");
+    }
+
     private static string BuildOfflineStoryListenQueuePath()
     {
         var queueDirectory = System.IO.Path.Combine(FileSystem.AppDataDirectory, "offline-tracking");
@@ -1515,6 +1649,11 @@ public sealed class MobileApiClient
     private sealed record MobileLuisterCacheEntry(DateTimeOffset CachedAtUtc, MobileLuisterResponse Response);
 
     private sealed record MobileStoryDetailCacheEntry(DateTimeOffset CachedAtUtc, MobileStoryDetailResponse Response);
+
+    private sealed record MobileNotificationCacheEntry(
+        string CacheKey,
+        DateTimeOffset CachedAtUtc,
+        MobileNotificationPage Response);
 
     private sealed record QueuedStoryListenEvent(
         string Slug,

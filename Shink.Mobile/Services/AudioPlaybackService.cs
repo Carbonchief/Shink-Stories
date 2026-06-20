@@ -9,6 +9,8 @@ public interface IAudioPlaybackService
 {
     bool IsPlaying { get; }
 
+    double PlaybackSpeed { get; }
+
     TimeSpan CurrentPosition { get; }
 
     TimeSpan? Duration { get; }
@@ -20,6 +22,8 @@ public interface IAudioPlaybackService
     event EventHandler? PlaybackStateChanged;
 
     Task PlayAsync(string audioUrl, AudioPlaybackMetadata? metadata = null);
+
+    void SetPlaybackSpeed(double speed);
 
     void Pause();
 
@@ -41,8 +45,11 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
     private MediaPlayer.MPMediaItemArtwork? _artwork;
     private string? _artworkUrl;
     private CancellationTokenSource? _artworkLoadCts;
+    private double _playbackSpeed = 1;
 
     public bool IsPlaying { get; private set; }
+
+    public double PlaybackSpeed => _playbackSpeed;
 
     public TimeSpan CurrentPosition => ToTimeSpan(_player?.CurrentTime ?? CoreMedia.CMTime.Zero) ?? TimeSpan.Zero;
 
@@ -142,9 +149,18 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         {
             _player?.Play();
             IsPlaying = true;
+            ApplyPlaybackSpeed();
             UpdateNowPlayingInfo();
             PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
         });
+    }
+
+    public void SetPlaybackSpeed(double speed)
+    {
+        _playbackSpeed = NormalizePlaybackSpeed(speed);
+        ApplyPlaybackSpeed();
+        UpdateNowPlayingInfo();
+        PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
     }
 
     public void Pause()
@@ -244,8 +260,19 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         ConfigureAudioSession();
         _player.Play();
         IsPlaying = true;
+        ApplyPlaybackSpeed();
         UpdateNowPlayingInfo();
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void ApplyPlaybackSpeed()
+    {
+        if (_player is null)
+        {
+            return;
+        }
+
+        _player.Rate = IsPlaying ? (float)_playbackSpeed : 0;
     }
 
     private void UpdateNowPlayingInfo()
@@ -262,7 +289,7 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
             Title = string.IsNullOrWhiteSpace(metadata?.Title) ? "Schink Stories" : metadata.Title,
             Artist = string.IsNullOrWhiteSpace(metadata?.Artist) ? "Schink Stories" : metadata.Artist,
             ElapsedPlaybackTime = CurrentPosition.TotalSeconds,
-            PlaybackRate = IsPlaying ? 1 : 0
+            PlaybackRate = IsPlaying ? _playbackSpeed : 0
         };
 
         if (Duration is { TotalSeconds: > 0 } duration)
@@ -388,14 +415,25 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
             ? TimeSpan.FromSeconds(seconds)
             : null;
     }
+
+    private static double NormalizePlaybackSpeed(double speed) =>
+        speed switch
+        {
+            < 0.75 => 0.75,
+            > 1.5 => 1.5,
+            _ => speed
+        };
 }
 #elif ANDROID
 public sealed class AudioPlaybackService : IAudioPlaybackService
 {
     private Android.Media.MediaPlayer? _player;
     private string? _currentAudioUrl;
+    private double _playbackSpeed = 1;
 
     public bool IsPlaying { get; private set; }
+
+    public double PlaybackSpeed => _playbackSpeed;
 
     public TimeSpan CurrentPosition => TimeSpan.FromMilliseconds(_player?.CurrentPosition ?? 0);
 
@@ -474,6 +512,7 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         {
             _player.Start();
             IsPlaying = true;
+            ApplyPlaybackSpeed();
             PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
             return;
         }
@@ -510,6 +549,14 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         await ready.Task;
         player.Start();
         IsPlaying = true;
+        ApplyPlaybackSpeed();
+        PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void SetPlaybackSpeed(double speed)
+    {
+        _playbackSpeed = NormalizePlaybackSpeed(speed);
+        ApplyPlaybackSpeed();
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
     }
 
@@ -530,11 +577,33 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         IsPlaying = false;
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
     }
+
+    private void ApplyPlaybackSpeed()
+    {
+        if (_player is null || !OperatingSystem.IsAndroidVersionAtLeast(23))
+        {
+            return;
+        }
+
+        var parameters = _player.PlaybackParams ?? new Android.Media.PlaybackParams();
+        parameters.SetSpeed((float)_playbackSpeed);
+        _player.PlaybackParams = parameters;
+    }
+
+    private static double NormalizePlaybackSpeed(double speed) =>
+        speed switch
+        {
+            < 0.75 => 0.75,
+            > 1.5 => 1.5,
+            _ => speed
+        };
 }
 #else
 public sealed class AudioPlaybackService : IAudioPlaybackService
 {
     public bool IsPlaying => false;
+
+    public double PlaybackSpeed { get; private set; } = 1;
 
     public TimeSpan CurrentPosition => TimeSpan.Zero;
 
@@ -548,6 +617,12 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         Task.FromResult<TimeSpan?>(null);
 
     public Task PlayAsync(string audioUrl, AudioPlaybackMetadata? metadata = null) => Task.CompletedTask;
+
+    public void SetPlaybackSpeed(double speed)
+    {
+        PlaybackSpeed = speed;
+        PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
+    }
 
     public void Pause()
     {

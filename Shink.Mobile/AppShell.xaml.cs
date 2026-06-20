@@ -128,6 +128,7 @@ public partial class AppShell : Shell
         Items.Add(new ShellContent
         {
             Title = "Luister",
+            Route = "Luister",
             ContentTemplate = new DataTemplate(() => _services.GetRequiredService<LuisterPage>())
         });
         _isSignedInRendered = true;

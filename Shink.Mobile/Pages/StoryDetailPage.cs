@@ -18,6 +18,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     private const double ListenFlushThresholdSeconds = 12;
     private const double ListenMaxEventSeconds = 600;
     private const double ListenMinEventSeconds = 0.2;
+    private static readonly double[] PlaybackSpeedSteps = [0.75, 1.0, 1.25, 1.5];
     private static readonly Color PlayerBackgroundColor = Color.FromArgb("#061816");
     private static readonly Color PlayerPanelColor = Color.FromArgb("#102724");
     private static readonly Color PlayerPillColor = Color.FromArgb("#1B302D");
@@ -1861,32 +1862,72 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     {
         var nextStoryAvailable = ResolveNextStory(detail) is not null;
         var canShuffle = GetOrderedPlaylistStories(detail.Story).Count > 1;
+        var speedButton = BuildPlaybackModeButton(
+            FormatPlaybackSpeed(_audioPlaybackService.PlaybackSpeed),
+            false,
+            true,
+            () => CyclePlaybackSpeed(detail));
         var autoplayButton = BuildPlaybackModeButton(
             "Auto",
             _playlistPlaybackState.IsAutoplayEnabled,
             nextStoryAvailable,
             () => ToggleAutoplay(detail));
+        var autoplayLimitButton = BuildPlaybackModeButton(
+            FormatAutoplayLimit(),
+            _playlistPlaybackState.AutoplayLimitStories.HasValue,
+            _playlistPlaybackState.IsAutoplayEnabled && nextStoryAvailable,
+            () => CycleAutoplayLimit(detail));
         var shuffleButton = BuildPlaybackModeButton(
             "Skommel",
             _playlistPlaybackState.IsShuffleEnabled,
             canShuffle,
             () => ToggleShuffle(detail));
 
-        return new HorizontalStackLayout
+        return new ScrollView
         {
-            Spacing = 10,
+            Orientation = ScrollOrientation.Horizontal,
             HorizontalOptions = LayoutOptions.Center,
-            Children =
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Never,
+            Content = new HorizontalStackLayout
             {
-                autoplayButton,
-                shuffleButton
+                Spacing = 8,
+                HorizontalOptions = LayoutOptions.Center,
+                Children =
+                {
+                    speedButton,
+                    autoplayButton,
+                    autoplayLimitButton,
+                    shuffleButton
+                }
             }
         };
+    }
+
+    private void CyclePlaybackSpeed(MobileStoryDetailResponse detail)
+    {
+        var currentSpeed = _audioPlaybackService.PlaybackSpeed;
+        var currentIndex = Array.FindIndex(PlaybackSpeedSteps, speed => Math.Abs(speed - currentSpeed) < 0.001);
+        var nextIndex = currentIndex < 0 ? 1 : (currentIndex + 1) % PlaybackSpeedSteps.Length;
+        _audioPlaybackService.SetPlaybackSpeed(PlaybackSpeedSteps[nextIndex]);
+        RenderDetail(detail, trackView: false);
     }
 
     private void ToggleAutoplay(MobileStoryDetailResponse detail)
     {
         _playlistPlaybackState.SetAutoplay(!_playlistPlaybackState.IsAutoplayEnabled);
+        _playlistPlaybackState.TrackManualStorySelection(detail.Story);
+        RenderDetail(detail, trackView: false);
+    }
+
+    private void CycleAutoplayLimit(MobileStoryDetailResponse detail)
+    {
+        int? nextLimit = _playlistPlaybackState.AutoplayLimitStories switch
+        {
+            null => 3,
+            3 => 5,
+            _ => null
+        };
+        _playlistPlaybackState.SetAutoplayLimit(nextLimit, detail.Story);
         RenderDetail(detail, trackView: false);
     }
 
@@ -1896,6 +1937,14 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         _playlistStories = GetOrderedPlaylistStories(detail.Story);
         RenderDetail(detail, trackView: false);
     }
+
+    private string FormatAutoplayLimit() =>
+        _playlistPlaybackState.AutoplayLimitStories is { } limit
+            ? $"Stop {limit}"
+            : "Geen limiet";
+
+    private static string FormatPlaybackSpeed(double speed) =>
+        $"{speed:0.##}x";
 
     private bool ShouldAutoplaySelection() =>
         _audioPlaybackService.IsPlaying || _playlistPlaybackState.IsAutoplayEnabled;
@@ -3360,7 +3409,8 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 _activePlayButton.Text = "▶";
             }
 
-            if (_playlistPlaybackState.IsAutoplayEnabled && _currentDetail is { } currentDetail)
+            if (_currentDetail is { } currentDetail &&
+                _playlistPlaybackState.CanAutoplayAdvance(currentDetail.Story))
             {
                 var nextStory = ResolveNextStory(currentDetail);
                 if (nextStory is not null)
@@ -3403,6 +3453,14 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         TryStopAudioPlayback();
         ClearActivePlaybackUi();
         ResetListenTracking();
+        if (autoplay)
+        {
+            _playlistPlaybackState.TrackAutoplayAdvance(story);
+        }
+        else
+        {
+            _playlistPlaybackState.TrackManualStorySelection(story);
+        }
 
         StorySlug = story.Slug;
         Source = story.Source;

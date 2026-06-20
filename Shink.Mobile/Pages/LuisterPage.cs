@@ -1103,8 +1103,39 @@ public sealed class LuisterPage : ContentPage
         loadMoreButton.Clicked += async (_, _) =>
             await LoadMoreNotificationsAsync(list, countLabel, statusLabel, clearButton, loadMoreButton);
 
+        var renderedCachedNotifications = await TryRenderCachedNotificationsAsync(
+            list,
+            countLabel,
+            statusLabel,
+            clearButton,
+            loadMoreButton);
+
         await Navigation.PushModalAsync(modal, true);
-        await LoadNotificationsAsync(list, countLabel, statusLabel, clearButton, loadMoreButton);
+        _ = LoadNotificationsAsync(
+            list,
+            countLabel,
+            statusLabel,
+            clearButton,
+            loadMoreButton,
+            renderedCachedNotifications);
+    }
+
+    private async Task<bool> TryRenderCachedNotificationsAsync(
+        VerticalStackLayout list,
+        Label countLabel,
+        Label statusLabel,
+        Button clearButton,
+        Button loadMoreButton)
+    {
+        var cachedPage = _notificationPage ?? await _apiClient.GetCachedNotificationsAsync();
+        if (cachedPage is null)
+        {
+            return false;
+        }
+
+        _notificationPage = cachedPage;
+        RenderNotificationModalState(list, countLabel, statusLabel, clearButton, loadMoreButton);
+        return true;
     }
 
     private async Task LoadNotificationsAsync(
@@ -1112,9 +1143,13 @@ public sealed class LuisterPage : ContentPage
         Label countLabel,
         Label statusLabel,
         Button clearButton,
-        Button loadMoreButton)
+        Button loadMoreButton,
+        bool hasRenderedCachedNotifications = false)
     {
-        SetNotificationControlsBusy(statusLabel, clearButton, loadMoreButton, "Laai kennisgewings...");
+        if (!hasRenderedCachedNotifications)
+        {
+            SetNotificationControlsBusy(statusLabel, clearButton, loadMoreButton, "Laai kennisgewings...");
+        }
 
         try
         {
@@ -1127,6 +1162,7 @@ public sealed class LuisterPage : ContentPage
                 RenderNotificationModalState(list, countLabel, statusLabel, clearButton, loadMoreButton);
                 RenderContent();
                 await _apiClient.MarkAllNotificationsReadAsync();
+                _ = _apiClient.SaveNotificationsCacheAsync(_notificationPage);
             }
         }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
@@ -1143,8 +1179,11 @@ public sealed class LuisterPage : ContentPage
         }
         catch
         {
-            statusLabel.IsVisible = true;
-            statusLabel.Text = "Ons kon nie nou die kennisgewings laai nie.";
+            if (!hasRenderedCachedNotifications)
+            {
+                statusLabel.IsVisible = true;
+                statusLabel.Text = "Ons kon nie nou die kennisgewings laai nie.";
+            }
         }
         finally
         {
@@ -1213,6 +1252,7 @@ public sealed class LuisterPage : ContentPage
                 HasHistory = false,
                 Notifications = Array.Empty<MobileNotificationItem>()
             };
+            _ = _apiClient.SaveNotificationsCacheAsync(_notificationPage);
             RenderNotificationModalState(list, countLabel, statusLabel, clearButton, loadMoreButton);
             RenderContent();
         }
@@ -1298,6 +1338,11 @@ public sealed class LuisterPage : ContentPage
             {
                 await _apiClient.ClearNotificationAsync(notification.Id);
                 RemoveNotificationLocally(notification.Id);
+                if (_notificationPage is not null)
+                {
+                    _ = _apiClient.SaveNotificationsCacheAsync(_notificationPage);
+                }
+
                 RenderNotificationModalState(list, countLabel, statusLabel, clearButton, loadMoreButton);
                 RenderContent();
             }
@@ -1426,6 +1471,10 @@ public sealed class LuisterPage : ContentPage
     {
         await _apiClient.MarkNotificationReadAsync(notification.Id);
         MarkNotificationReadLocally(notification.Id);
+        if (_notificationPage is not null)
+        {
+            _ = _apiClient.SaveNotificationsCacheAsync(_notificationPage);
+        }
 
         var href = ResolveNotificationHref(notification);
         if (!string.IsNullOrWhiteSpace(href))
