@@ -20,7 +20,12 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+    <RuntimeIdentifiers>android-arm64</RuntimeIdentifiers>
     <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
+    <RuntimeIdentifiers>ios-arm64</RuntimeIdentifiers>
   </PropertyGroup>
 
   <ItemGroup>

@@ -1021,9 +1021,16 @@ public class MobileAbsoluteUrlSourceTests
         var apiClient = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
         var iOSInfo = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "iOS", "Info.plist"));
         var androidCallback = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "Android", "GoogleAuthCallbackActivity.cs"));
+        var googleIcon = File.ReadAllText(GetRepoPath("Shink.Mobile", "Resources", "Images", "google_g.svg"));
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
 
         StringAssert.Contains(accountPage, "Teken in met Google");
+        StringAssert.Contains(accountPage, "Source = ImageSource.FromFile(\"google_g.svg\")");
+        StringAssert.Contains(googleIcon, "fill=\"#4285F4\"");
+        StringAssert.Contains(googleIcon, "fill=\"#34A853\"");
+        StringAssert.Contains(googleIcon, "fill=\"#FBBC05\"");
+        StringAssert.Contains(googleIcon, "fill=\"#EA4335\"");
+        Assert.IsFalse(accountPage.Contains("GoogleLogoDrawable", StringComparison.Ordinal));
         StringAssert.Contains(accountPage, "WebAuthenticator.Default.AuthenticateAsync(");
         StringAssert.Contains(accountPage, "_apiClient.BuildGoogleSignInStartUri()");
         StringAssert.Contains(accountPage, "new Uri(MobileApiClient.GoogleCallbackUrl)");

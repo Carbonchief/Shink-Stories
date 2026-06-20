@@ -811,11 +811,11 @@ public sealed class AccountPage : ContentPage
 
     private static Border BuildGoogleSignInButton(out Label label, out ActivityIndicator spinner)
     {
-        var googleIcon = new GraphicsView
+        var googleIcon = new Image
         {
-            Drawable = new GoogleLogoDrawable(),
-            WidthRequest = 30,
-            HeightRequest = 30,
+            Source = ImageSource.FromFile("google_g.svg"),
+            WidthRequest = 24,
+            HeightRequest = 24,
             HorizontalOptions = LayoutOptions.Center,
             VerticalOptions = LayoutOptions.Center,
             InputTransparent = true
@@ -923,37 +923,6 @@ public sealed class AccountPage : ContentPage
                 rightLine
             }
         };
-    }
-
-    private sealed class GoogleLogoDrawable : Microsoft.Maui.Graphics.IDrawable
-    {
-        public void Draw(Microsoft.Maui.Graphics.ICanvas canvas, Microsoft.Maui.Graphics.RectF dirtyRect)
-        {
-            var size = Math.Min(dirtyRect.Width, dirtyRect.Height);
-            var stroke = size * 0.18f;
-            var inset = stroke * 0.7f;
-            var rect = new Microsoft.Maui.Graphics.RectF(
-                dirtyRect.Center.X - size / 2 + inset,
-                dirtyRect.Center.Y - size / 2 + inset,
-                size - inset * 2,
-                size - inset * 2);
-
-            canvas.StrokeSize = stroke;
-            canvas.StrokeLineCap = Microsoft.Maui.Graphics.LineCap.Square;
-
-            canvas.StrokeColor = Color.FromArgb("#4285F4");
-            canvas.DrawArc(rect, -35, 45, false, false);
-            canvas.DrawLine(dirtyRect.Center.X, dirtyRect.Center.Y, dirtyRect.Right - inset, dirtyRect.Center.Y);
-
-            canvas.StrokeColor = Color.FromArgb("#34A853");
-            canvas.DrawArc(rect, 45, 140, false, false);
-
-            canvas.StrokeColor = Color.FromArgb("#FBBC05");
-            canvas.DrawArc(rect, 140, 215, false, false);
-
-            canvas.StrokeColor = Color.FromArgb("#EA4335");
-            canvas.DrawArc(rect, 215, 325, false, false);
-        }
     }
 
     private sealed record LandingLayoutMetrics(

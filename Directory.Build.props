@@ -1,6 +1,7 @@
 <Project>
   <PropertyGroup>
-    <RestoreUseStaticGraphEvaluation>true</RestoreUseStaticGraphEvaluation>
+    <RestoreUseStaticGraphEvaluation Condition="'$(MSBuildProjectName)' != 'Shink.Mobile'">true</RestoreUseStaticGraphEvaluation>
+    <RestoreUseStaticGraphEvaluation Condition="'$(MSBuildProjectName)' == 'Shink.Mobile'">false</RestoreUseStaticGraphEvaluation>
     <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
     <CreateHardLinksForCopyFilesToOutputDirectoryIfPossible>true</CreateHardLinksForCopyFilesToOutputDirectoryIfPossible>
     <SkipCopyUnchangedFiles>true</SkipCopyUnchangedFiles>
@@ -8,5 +9,9 @@
 
   <PropertyGroup Condition="'$(Configuration)' == 'Debug' and '$(CI)' != 'true' and '$(ContinuousIntegrationBuild)' != 'true'">
     <RunAnalyzers>false</RunAnalyzers>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' and '$(JavaSdkDirectory)' == '' and Exists('$(HOME)/.local/share/schink-tools/microsoft-jdk-17.0.19/microsoft-17.jdk/Contents/Home/bin/java')">
+    <JavaSdkDirectory>$(HOME)/.local/share/schink-tools/microsoft-jdk-17.0.19/microsoft-17.jdk/Contents/Home</JavaSdkDirectory>
   </PropertyGroup>
 </Project>
