@@ -128,7 +128,7 @@ else
         var hasShowcaseImage = playlist.ShowShowcaseImageOnLuisterPage && showcaseStory is not null;
         var isWeeklyPopularPlaylist = IsWeeklyPopularPlaylist(playlist);
 
-        <section class="section-block stories-carousel-section luister-stories-section" style="@BuildPlaylistAccentStyle(playlist)" aria-labelledby="@headingId">
+        <section class="@BuildPlaylistSectionClass(playlist)" style="@BuildPlaylistAccentStyle(playlist)" aria-labelledby="@headingId">
             <h2 id="@headingId">
                 @if (canOpenPlaylist)
                 {
@@ -457,6 +457,14 @@ else
 
     private static string GetPlaylistTitle(StoryPlaylist playlist) =>
         string.IsNullOrWhiteSpace(playlist.Title) ? "Stories" : playlist.Title.Trim();
+
+    private static string BuildPlaylistSectionClass(StoryPlaylist playlist)
+    {
+        const string baseClass = "section-block stories-carousel-section luister-stories-section";
+        return string.Equals(GetPlaylistSlug(playlist), StoryAccessPolicy.GratisPlaylistSlug, StringComparison.OrdinalIgnoreCase)
+            ? $"{baseClass} luister-gratis-stories-section"
+            : baseClass;
+    }
 
     private string? BuildPlaylistAccentStyle(StoryPlaylist? playlist)
     {
