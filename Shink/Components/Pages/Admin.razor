@@ -113,6 +113,30 @@
                                 <div class="admin-subscriber-count" aria-live="polite">
                                     @BuildSubscriberCountLabel()
                                 </div>
+                                <div class="admin-subscriber-register-filter">
+                                    <span class="admin-header-filter-label" id="subscriber-register-access-filter-label">
+                                        @T("Toegang", "Access")
+                                    </span>
+                                    <div class="admin-subscriber-access-toggle"
+                                         role="group"
+                                         aria-labelledby="subscriber-register-access-filter-label">
+                                        <button type="button"
+                                                class="@GetSubscriberRegisterAccessFilterButtonClass(SubscriberAccessFilterAll)"
+                                                @onclick='() => SetSubscriberRegisterAccessFilterAsync(SubscriberAccessFilterAll)'>
+                                            @T("Alle", "All")
+                                        </button>
+                                        <button type="button"
+                                                class="@GetSubscriberRegisterAccessFilterButtonClass(SubscriberAccessFilterFree)"
+                                                @onclick='() => SetSubscriberRegisterAccessFilterAsync(SubscriberAccessFilterFree)'>
+                                            @T("Gratis", "Free")
+                                        </button>
+                                        <button type="button"
+                                                class="@GetSubscriberRegisterAccessFilterButtonClass(SubscriberAccessFilterPaid)"
+                                                @onclick='() => SetSubscriberRegisterAccessFilterAsync(SubscriberAccessFilterPaid)'>
+                                            @T("Betaal", "Paid")
+                                        </button>
+                                    </div>
+                                </div>
                                 <div class="admin-search">
                                     <div class="admin-search-field">
                                         <MudTextField T="string"
@@ -4932,6 +4956,7 @@
     private string SelectedSubscriberDrilldownPeriod { get; set; } = "today";
     private string SelectedSubscriberChartType { get; set; } = SubscriberChartTypeLine;
     private string SelectedSubscriberAccessFilter { get; set; } = SubscriberAccessFilterAll;
+    private string SelectedSubscriberRegisterAccessFilter { get; set; } = SubscriberAccessFilterAll;
     private AdminSubscriberColumnFilters SubscriberColumnFilters { get; } = new();
     private AdminStoryColumnFilters StoryColumnFilters { get; } = new();
     private AdminPlaylistColumnFilters PlaylistColumnFilters { get; } = new();
@@ -5385,7 +5410,8 @@
     private bool HasActiveSubscriberColumnFilters => SubscriberColumnFilters.HasActiveFilters;
     private bool HasClearableSubscriberFilters =>
         HasActiveSubscriberColumnFilters ||
-        !string.IsNullOrWhiteSpace(SubscriberSearch);
+        !string.IsNullOrWhiteSpace(SubscriberSearch) ||
+        !IsSelectedSubscriberRegisterAccessFilter(SubscriberAccessFilterAll);
 
     private bool HasActiveStoryColumnFilters => StoryColumnFilters.HasActiveFilters;
     private bool HasActivePlaylistColumnFilters => PlaylistColumnFilters.HasActiveFilters;
@@ -5746,6 +5772,7 @@
             SourceSystem: SubscriberColumnFilters.SourceSystem,
             PaymentProvider: SubscriberColumnFilters.PaymentProvider,
             SubscriptionStatus: SubscriberColumnFilters.SubscriptionStatus,
+            AccessFilter: SelectedSubscriberRegisterAccessFilter,
             SubscribedFrom: SubscriberColumnFilters.SubscribedFrom,
             SubscribedTo: SubscriberColumnFilters.SubscribedTo,
             NextPaymentFrom: SubscriberColumnFilters.NextPaymentFrom,
@@ -5866,6 +5893,7 @@
         SubscriberSubscribedToFilterDraft = string.Empty;
         SubscriberNextPaymentFromFilterDraft = string.Empty;
         SubscriberNextPaymentToFilterDraft = string.Empty;
+        SelectedSubscriberRegisterAccessFilter = SubscriberAccessFilterAll;
         await CloseAdminHeaderFiltersAsync();
         await RefreshSubscribersAsync(resetToFirstPage: true);
     }
@@ -9554,6 +9582,33 @@
         IsSelectedSubscriberAccessFilter(filter)
             ? "admin-subscriber-access-toggle-btn is-selected"
             : "admin-subscriber-access-toggle-btn";
+
+    private async Task SetSubscriberRegisterAccessFilterAsync(string filter)
+    {
+        var normalizedFilter = NormalizeSubscriberAccessFilter(filter);
+        if (IsSelectedSubscriberRegisterAccessFilter(normalizedFilter))
+        {
+            return;
+        }
+
+        SelectedSubscriberRegisterAccessFilter = normalizedFilter;
+        await RefreshSubscribersAsync(resetToFirstPage: true);
+    }
+
+    private bool IsSelectedSubscriberRegisterAccessFilter(string filter) =>
+        string.Equals(SelectedSubscriberRegisterAccessFilter, filter, StringComparison.OrdinalIgnoreCase);
+
+    private string GetSubscriberRegisterAccessFilterButtonClass(string filter) =>
+        IsSelectedSubscriberRegisterAccessFilter(filter)
+            ? "admin-subscriber-access-toggle-btn is-selected"
+            : "admin-subscriber-access-toggle-btn";
+
+    private static string NormalizeSubscriberAccessFilter(string? filter) =>
+        string.Equals(filter, SubscriberAccessFilterFree, StringComparison.OrdinalIgnoreCase)
+            ? SubscriberAccessFilterFree
+            : string.Equals(filter, SubscriberAccessFilterPaid, StringComparison.OrdinalIgnoreCase)
+                ? SubscriberAccessFilterPaid
+                : SubscriberAccessFilterAll;
 
     private string BuildSubscriberDrilldownOptionLabel(AdminMembershipStatsMetric metric) =>
         T(

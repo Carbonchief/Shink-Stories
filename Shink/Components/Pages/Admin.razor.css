@@ -384,6 +384,12 @@
     white-space: nowrap;
 }
 
+.admin-subscriber-register-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
 .admin-search-field {
     flex: 1;
     min-width: 220px;
@@ -3117,8 +3123,14 @@ details[open] > .admin-collapsible-summary i {
         align-items: stretch;
     }
 
-    .admin-subscriber-count {
+    .admin-subscriber-count,
+    .admin-subscriber-register-filter {
         width: 100%;
+    }
+
+    .admin-subscriber-register-filter {
+        flex-direction: column;
+        align-items: stretch;
     }
 
     .admin-search-field,
