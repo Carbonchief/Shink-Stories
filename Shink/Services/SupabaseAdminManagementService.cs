@@ -1214,6 +1214,7 @@ public sealed partial class SupabaseAdminManagementService(
                 AudioBucket: NormalizeOptionalText(row.AudioBucket, 120),
                 AudioObjectKey: NormalizeOptionalText(row.AudioObjectKey, 1024),
                 AudioContentType: NormalizeOptionalText(row.AudioContentType, 100),
+                StoryType: NormalizeStoryType(row.StoryType),
                 AccessLevel: string.IsNullOrWhiteSpace(row.AccessLevel) ? "subscriber" : row.AccessLevel.Trim().ToLowerInvariant(),
                 Status: string.IsNullOrWhiteSpace(row.Status) ? "draft" : row.Status.Trim().ToLowerInvariant(),
                 SortOrder: row.SortOrder,
@@ -1303,6 +1304,12 @@ public sealed partial class SupabaseAdminManagementService(
         var normalizedAudioBucket = NormalizeOptionalText(request.AudioBucket, 120);
         var normalizedAudioObjectKey = NormalizeOptionalText(request.AudioObjectKey, 1024);
         var normalizedAudioContentType = NormalizeOptionalText(request.AudioContentType, 100);
+        var normalizedStoryType = NormalizeStoryType(request.StoryType, allowDefault: false);
+        if (string.IsNullOrWhiteSpace(normalizedStoryType))
+        {
+            return new AdminOperationResult(false, "Storie tipe moet 'story' of 'music' wees.");
+        }
+
         var normalizedSortOrder = Math.Clamp(request.SortOrder, -500_000, 500_000);
         var normalizedDurationSeconds = request.DurationSeconds is > 0 ? request.DurationSeconds : null;
 
@@ -1359,6 +1366,7 @@ public sealed partial class SupabaseAdminManagementService(
             ["audio_bucket"] = normalizedAudioBucket,
             ["audio_object_key"] = normalizedAudioObjectKey,
             ["audio_content_type"] = normalizedAudioContentType,
+            ["story_type"] = normalizedStoryType,
             ["access_level"] = normalizedAccessLevel,
             ["status"] = normalizedStatus,
             ["sort_order"] = normalizedSortOrder,
@@ -1575,6 +1583,12 @@ public sealed partial class SupabaseAdminManagementService(
         var normalizedAudioBucket = NormalizeOptionalText(request.AudioBucket, 120);
         var normalizedAudioObjectKey = NormalizeOptionalText(request.AudioObjectKey, 1024);
         var normalizedAudioContentType = NormalizeOptionalText(request.AudioContentType, 100);
+        var normalizedStoryType = NormalizeStoryType(request.StoryType, allowDefault: false);
+        if (string.IsNullOrWhiteSpace(normalizedStoryType))
+        {
+            return new AdminOperationResult(false, "Storie tipe moet 'story' of 'music' wees.");
+        }
+
         var normalizedSortOrder = Math.Clamp(request.SortOrder, -500_000, 500_000);
         var normalizedDurationSeconds = request.DurationSeconds is > 0 ? request.DurationSeconds : null;
 
@@ -1623,6 +1637,7 @@ public sealed partial class SupabaseAdminManagementService(
             ["audio_bucket"] = normalizedAudioBucket,
             ["audio_object_key"] = normalizedAudioObjectKey,
             ["audio_content_type"] = normalizedAudioContentType,
+            ["story_type"] = normalizedStoryType,
             ["access_level"] = normalizedAccessLevel,
             ["status"] = normalizedStatus,
             ["sort_order"] = normalizedSortOrder,
@@ -3632,8 +3647,10 @@ public sealed partial class SupabaseAdminManagementService(
     private async Task<IReadOnlyList<StoryRow>> FetchStoriesAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
     {
         const string storySelectWithTestQuestions =
-            "story_id,slug,title,summary,description,youtube_url,test_questions,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,access_level,status,sort_order,published_at,duration_seconds,updated_at,metadata";
+            "story_id,slug,title,summary,description,youtube_url,test_questions,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,story_type,access_level,status,sort_order,published_at,duration_seconds,updated_at,metadata";
         const string storySelectWithoutTestQuestions =
+            "story_id,slug,title,summary,description,youtube_url,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,story_type,access_level,status,sort_order,published_at,duration_seconds,updated_at,metadata";
+        const string storySelectLegacyColumns =
             "story_id,slug,title,summary,description,youtube_url,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,access_level,status,sort_order,published_at,duration_seconds,updated_at,metadata";
 
         var rows = await FetchStoriesWithSelectAsync(
@@ -3648,10 +3665,22 @@ public sealed partial class SupabaseAdminManagementService(
             return rows;
         }
 
-        return await FetchStoriesWithSelectAsync(
+        var rowsWithoutTestQuestions = await FetchStoriesWithSelectAsync(
                 baseUri,
                 apiKey,
                 storySelectWithoutTestQuestions,
+                retryWithoutTestQuestionsOnMissingColumn: false,
+                cancellationToken);
+
+        if (rowsWithoutTestQuestions is not null)
+        {
+            return rowsWithoutTestQuestions;
+        }
+
+        return await FetchStoriesWithSelectAsync(
+                baseUri,
+                apiKey,
+                storySelectLegacyColumns,
                 retryWithoutTestQuestionsOnMissingColumn: false,
                 cancellationToken) ??
             Array.Empty<StoryRow>();
@@ -6513,6 +6542,14 @@ public sealed partial class SupabaseAdminManagementService(
             Characters: ReadMetadataStringArray(storyDetails, "characters"));
     }
 
+    private static string NormalizeStoryType(string? value, bool allowDefault = true) =>
+        value?.Trim().ToLowerInvariant() switch
+        {
+            "story" => "story",
+            "music" => "music",
+            _ => allowDefault ? "story" : string.Empty
+        };
+
     private static Dictionary<string, object?> BuildStoryMetadataPayload(
         JsonElement? existingMetadata,
         AdminStorySummaryDetails details)
@@ -7378,6 +7415,9 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("audio_content_type")]
         public string? AudioContentType { get; set; }
+
+        [JsonPropertyName("story_type")]
+        public string? StoryType { get; set; }
 
         [JsonPropertyName("access_level")]
         public string? AccessLevel { get; set; }
