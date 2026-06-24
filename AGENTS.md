@@ -1,72 +1,83 @@
-# AGENT.md
+# AGENTS.md
 
-Project-specific rules for this repository.
+Project-specific instructions for agents working in this repository.
 
-## 1) Branding and Navigation
+## 1) Working Rules
+- Read and follow this file before changing UI, content, audio, admin, email, Supabase, deployment, or publishing behavior.
+- Keep changes narrow and preserve the existing visual style unless the user explicitly asks for a redesign.
+- Afrikaans-first copy and tone are required for public-facing content.
+- Mobile responsiveness is required for all page changes.
+- Do not rename technical identifiers, namespaces, slugs, or asset names just because visible branding uses `Schink`.
+- If the user asks only to inspect, review, or check something, do not make changes.
+
+## 2) Production / Live Safety
+- Never publish, deploy, release, or otherwise promote changes to Production/Live without explicit user approval.
+- Never run production data migrations, destructive database operations, or live content changes without explicit user approval.
+- `git push` is allowed only when the user explicitly asks to push, sync, publish a branch, or otherwise requests the Git remote update.
+
+## 3) Branding and Navigation
 - Header must use the text logo only: `/branding/schink-logo-text.png`.
 - Do not re-add the extra header tagline text.
 - Main nav currently uses:
   - `Meer oor Ons` -> `/meer-oor-ons`
   - `Gratis stories` -> `/gratis`
 
-## 2) Footer (All Pages)
+## 4) Footer (All Pages)
 - Footer background color must be `#222222`.
-- Show text logo in footer.
-- Show social links as icon buttons (not text), below the logo:
+- Show the text logo in the footer.
+- Show social links as icon buttons, not text links, below the logo:
   - Facebook: `https://www.facebook.com/SchinkPublishing`
   - Instagram: `https://www.instagram.com/schinkpublishing/`
 - Footer copyright text is fixed to: `© 2023 Schink`.
 
-## 3) Home Page Rules
+## 5) Home Page
 - Main hero image is `/branding/Schink_Stories_01.png`.
-- White logo above hero image: `/branding/schink-stories-logo-white.png`.
+- White logo above hero image is `/branding/schink-stories-logo-white.png`.
 - Hero logo and image should visually blend.
 - Current overlap target is 50px for desktop and mobile.
 
-## 4) Meer Oor Ons Page Rules
+## 6) Meer Oor Ons Page
 - Route: `/meer-oor-ons`.
 - Hero image: `/branding/Schink_Die_Ware_Wenner_Schink_Stories_600x600.png`.
 - Keep all established copy blocks from the live source page adaptation.
 - Keep founder image above founder text:
-  - `/branding/Matin-Profile-Photo.webp`.
-- Keep section before "Ons is Martin & Simone":
+  - `/branding/Matin-Profile-Photo.webp`
+- Keep this section before `Ons is Martin & Simone`:
   - Header: `Wie ons is`
-  - Image: `/branding/Schwella.webp`.
+  - Image: `/branding/Schwella.webp`
 - Promise section requirements:
   - Header: `Ons Belofte aan Ouer & Kind`
   - Promise text remains in that block
   - Centered panda image below promise text: `/branding/Panda.webp`
-  - Panda image size should match Schwella image size and use rounded corners.
-- "Wat ouers se" should remain a review-card block style.
-- Review display names in order:
-  1. `Renske` (with role `Arbeidsterapeut` below name)
+  - Panda image size should match Schwella image size and use rounded corners
+- `Wat ouers se` should remain a review-card block style.
+- Review display names stay in this order:
+  1. `Renske` with role `Arbeidsterapeut` below name
   2. `Sivonne`
   3. `Elmarette`
 - Review text should not include double quotation marks.
 
-## 5) Audio Protection Rules (Hardening)
+## 7) Audio Protection
 - Do not expose direct static audio URLs for playback.
-- Playback must use signed, expiring URLs from:
-  - `/media/audio/{slug}?token=...`
-- Audio files are served from server-side `Stories` folder.
+- Playback must use signed, expiring URLs from `/media/audio/{slug}?token=...`.
+- Audio files are served from the server-side `Stories` folder.
 - Public direct audio file access under `/stories/*` for common audio extensions is blocked.
-- Keep right-click suppression on player area/audio element.
+- Keep right-click suppression on the player area and audio element.
 - Keep `controlslist` restrictions on audio where supported.
 - Keep no-cache and same-origin oriented response headers for audio streams.
-- Keep rate limiting enabled for audio stream endpoint.
+- Keep rate limiting enabled for the audio stream endpoint.
+- When touching audio playback or routing, verify that generated markup and network paths do not reveal static audio file URLs.
 
-## 6) Content and UX
-- Afrikaans-first copy and tone.
-- Mobile responsiveness is required for all page changes.
-- Preserve existing visual style unless explicitly asked to redesign.
-- When creating new emails through Resend, always use published Resend Email Templates instead of inline HTML/text payloads.
-
-## 7) Admin Page Localization
+## 8) Admin Page Localization
 - The `/admin` page must support both Afrikaans and English.
-- Any new admin UI copy must be added in both languages (not one language only).
+- Any new admin UI copy must be added in both languages, not one language only.
 - Keep the admin language toggle and persisted preference behavior working when making admin changes.
 
-## 8) Supabase MCP Setup
+## 9) Email
+- When creating new emails through Resend, always use published Resend Email Templates instead of inline HTML/text payloads.
+- Ask which sending account or sending method to use before sending email.
+
+## 10) Supabase MCP Setup
 - This project uses the Supabase MCP server for project ref `btpsoyiyhtfbeznonygn`.
 - Add the server to Codex with:
   - `codex mcp add supabase --url 'https://mcp.supabase.com/mcp?project_ref=btpsoyiyhtfbeznonygn'`
@@ -83,11 +94,13 @@ Project-specific rules for this repository.
 - Current installed skill path on this machine:
   - `~/.agents/skills/supabase-postgres-best-practices`
 
-## 9) Production / Live Deployment Safety
-- Never push code, publish, deploy, or otherwise promote changes to Production/Live without asking the user first and receiving explicit approval.
-
-## 10) Mobile APK Demo Builds
+## 11) Mobile APK Demo Builds
 - Keep the mobile package ID fixed at `com.schink.stories.mobile`.
 - Keep Android demo APKs signed with the same stable release/demo keystore each time; changing the signing key forces clients to uninstall and lose app data.
 - Increment `Shink.Mobile/Shink.Mobile.csproj` `ApplicationVersion` before producing every shareable APK so Android can install it over the previous APK as an update.
 - Tell demo clients to install the new APK over the old one instead of uninstalling first, otherwise Android removes the remembered account/session data.
+
+## 12) Verification
+- Run the narrowest relevant verification for the change, such as focused source tests, `dotnet test`, or a targeted build.
+- If auth-gated pages prevent browser verification, report the limitation and use source assertions, compiled scoped CSS, or focused tests as evidence.
+- Before finishing, report what was changed and what verification was run.

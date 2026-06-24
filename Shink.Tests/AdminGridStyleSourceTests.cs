@@ -269,6 +269,41 @@ public class AdminGridStyleSourceTests
     }
 
     [TestMethod]
+    public void SubscriberGridCanFilterFreeAndPaidSubscribersByAnyPaidPlan()
+    {
+        var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
+        var serviceContract = File.ReadAllText(GetRepoPath("Shink", "Services", "IAdminManagementService.cs"));
+        var supabaseService = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseAdminManagementService.cs"));
+        var migrationPath = Directory.GetFiles(
+                GetRepoPath("Shink", "Database", "migrations"),
+                "*admin_subscribers_page_access_filter.sql")
+            .SingleOrDefault();
+
+        Assert.IsNotNull(migrationPath, "Expected a migration that updates admin_subscribers_page with the register access filter.");
+        var migration = File.ReadAllText(migrationPath);
+
+        StringAssert.Contains(markup, "id=\"subscriber-register-access-filter-label\"");
+        StringAssert.Contains(markup, "SetSubscriberRegisterAccessFilter");
+        StringAssert.Contains(markup, "@T(\"Toegang\", \"Access\")");
+        StringAssert.Contains(markup, "@T(\"Gratis\", \"Free\")");
+        StringAssert.Contains(markup, "@T(\"Betaal\", \"Paid\")");
+        StringAssert.Contains(markup, "AccessFilter: SelectedSubscriberRegisterAccessFilter");
+
+        StringAssert.Contains(serviceContract, "string? AccessFilter = null");
+        StringAssert.Contains(supabaseService, "p_access_filter = NormalizeSubscriberAccessFilter(request.AccessFilter)");
+        StringAssert.Contains(supabaseService, "private static string? NormalizeSubscriberAccessFilter");
+
+        StringAssert.Contains(migration, "p_access_filter text default null");
+        StringAssert.Contains(migration, "subscriber_access_filter");
+        StringAssert.Contains(migration, "has_paid_tier");
+        StringAssert.Contains(migration, "has_free_tier");
+        StringAssert.Contains(migration, "bool_or(active_row.tier_code <> 'gratis')");
+        StringAssert.Contains(migration, "bool_or(active_row.tier_code = 'gratis')");
+        StringAssert.Contains(migration, "n.subscriber_access_filter = 'free' and coalesce(active.has_free_tier, false) and not coalesce(active.has_paid_tier, false)");
+        StringAssert.Contains(migration, "n.subscriber_access_filter = 'paid' and coalesce(active.has_paid_tier, false)");
+    }
+
+    [TestMethod]
     public void SubscriberDialogLoadsTierOptionsForNewSubscriberAndSavesManualAccess()
     {
         var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));

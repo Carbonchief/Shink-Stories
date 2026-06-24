@@ -296,6 +296,7 @@ public sealed record AdminSubscriberPageRequest(
     string? SourceSystem = null,
     string? PaymentProvider = null,
     string? SubscriptionStatus = null,
+    string? AccessFilter = null,
     DateOnly? SubscribedFrom = null,
     DateOnly? SubscribedTo = null,
     DateOnly? NextPaymentFrom = null,

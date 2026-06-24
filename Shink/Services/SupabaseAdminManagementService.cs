@@ -179,6 +179,7 @@ public sealed partial class SupabaseAdminManagementService(
             p_source = NormalizeSubscriberFilterToken(request.SourceSystem),
             p_provider = NormalizeSubscriberFilterToken(request.PaymentProvider),
             p_status = NormalizeSubscriberFilterToken(request.SubscriptionStatus),
+            p_access_filter = NormalizeSubscriberAccessFilter(request.AccessFilter),
             p_subscribed_from = request.SubscribedFrom,
             p_subscribed_to = request.SubscribedTo,
             p_next_payment_from = request.NextPaymentFrom,
@@ -6391,6 +6392,14 @@ public sealed partial class SupabaseAdminManagementService(
             "subscribed_at" => "created_at",
             "next_payment" => "next_payment",
             _ => "subscriber"
+        };
+
+    private static string? NormalizeSubscriberAccessFilter(string? value) =>
+        value?.Trim().ToLowerInvariant() switch
+        {
+            "free" => "free",
+            "paid" => "paid",
+            _ => null
         };
 
     private static AdminSubscriberPageItemRpc[] SortSubscriberPageItems(
