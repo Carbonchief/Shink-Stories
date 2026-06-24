@@ -498,6 +498,7 @@ public class SupabaseAdminManagementSelfServiceTests
                 AudioBucket: "stories",
                 AudioObjectKey: "stil-gepubliseerde-storie/audio.mp3",
                 AudioContentType: "audio/mpeg",
+                StoryType: "story",
                 AccessLevel: "subscriber",
                 Status: "published",
                 SortOrder: 10,

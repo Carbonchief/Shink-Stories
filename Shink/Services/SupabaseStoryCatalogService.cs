@@ -246,8 +246,10 @@ public sealed class SupabaseStoryCatalogService(
     private async Task<IReadOnlyList<StoryCatalogRow>> FetchPublishedRowsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
     {
         const string storySelectWithTestQuestions =
-            "story_id,slug,title,summary,description,youtube_url,test_questions,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,access_level,status,sort_order,published_at,duration_seconds,tags,metadata";
+            "story_id,slug,title,summary,description,youtube_url,test_questions,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,story_type,access_level,status,sort_order,published_at,duration_seconds,tags,metadata";
         const string storySelectWithoutTestQuestions =
+            "story_id,slug,title,summary,description,youtube_url,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,story_type,access_level,status,sort_order,published_at,duration_seconds,tags,metadata";
+        const string storySelectLegacyColumns =
             "story_id,slug,title,summary,description,youtube_url,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,access_level,status,sort_order,published_at,duration_seconds,tags,metadata";
 
         var rows = await FetchPublishedRowsWithSelectAsync(
@@ -262,10 +264,22 @@ public sealed class SupabaseStoryCatalogService(
             return rows;
         }
 
-        return await FetchPublishedRowsWithSelectAsync(
+        var rowsWithoutTestQuestions = await FetchPublishedRowsWithSelectAsync(
                 baseUri,
                 apiKey,
                 storySelectWithoutTestQuestions,
+                retryWithoutTestQuestionsOnMissingColumn: false,
+                cancellationToken);
+
+        if (rowsWithoutTestQuestions is not null)
+        {
+            return rowsWithoutTestQuestions;
+        }
+
+        return await FetchPublishedRowsWithSelectAsync(
+                baseUri,
+                apiKey,
+                storySelectLegacyColumns,
                 retryWithoutTestQuestionsOnMissingColumn: false,
                 cancellationToken) ??
             BuildLegacyFallbackRows();
@@ -855,7 +869,8 @@ public sealed class SupabaseStoryCatalogService(
             YouTubeUrl: string.IsNullOrWhiteSpace(row.YouTubeUrl) ? null : row.YouTubeUrl.Trim(),
             TestQuestions: ReadStoryTestQuestions(row.TestQuestions),
             DurationSeconds: row.DurationSeconds,
-            PlaylistSlugs: playlistSlugs);
+            PlaylistSlugs: playlistSlugs,
+            StoryType: NormalizeStoryType(row.StoryType));
     }
 
     private static IReadOnlyDictionary<Guid, IReadOnlyList<string>> BuildPlaylistSlugLookup(
@@ -1447,6 +1462,13 @@ public sealed class SupabaseStoryCatalogService(
         return value.Trim();
     }
 
+    private static string NormalizeStoryType(string? value) =>
+        value?.Trim().ToLowerInvariant() switch
+        {
+            "music" => "music",
+            _ => "story"
+        };
+
     private static string? NormalizePlaylistAccentColorHex(string? value)
     {
         var normalized = NormalizeOptionalText(value);
@@ -1522,6 +1544,7 @@ public sealed class SupabaseStoryCatalogService(
                 AudioBucket = story.AudioBucket,
                 AudioObjectKey = story.AudioFileName,
                 AudioContentType = story.AudioContentType,
+                StoryType = NormalizeStoryType(story.StoryType),
                 AccessLevel = isFree ? "free" : "subscriber",
                 Status = "published",
                 SortOrder = sortOrder,
@@ -1621,6 +1644,9 @@ public sealed class SupabaseStoryCatalogService(
 
         [JsonPropertyName("audio_content_type")]
         public string? AudioContentType { get; set; }
+
+        [JsonPropertyName("story_type")]
+        public string? StoryType { get; set; }
 
         [JsonPropertyName("access_level")]
         public string AccessLevel { get; set; } = "subscriber";

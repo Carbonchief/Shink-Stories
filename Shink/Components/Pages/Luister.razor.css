@@ -336,6 +336,15 @@ h1 {
     transition: transform 0.22s ease, filter 0.22s ease;
 }
 
+.luister-playlist-showcase.is-music {
+    max-width: min(420px, 100%);
+}
+
+.luister-playlist-showcase.is-music .luister-playlist-showcase-cover,
+.luister-playlist-showcase.is-music .luister-playlist-showcase-image {
+    aspect-ratio: 1 / 1;
+}
+
 .luister-playlist-showcase-title {
     color: #1b2231;
     font-size: 1.04rem;
@@ -584,6 +593,11 @@ h1 {
     -webkit-user-drag: none;
     user-select: none;
     transition: transform 0.22s ease, filter 0.22s ease;
+}
+
+.story-carousel-item.is-music .story-carousel-cover,
+.story-carousel-item.is-music .story-carousel-image {
+    aspect-ratio: 1 / 1;
 }
 
 .luister-speellyste-link {

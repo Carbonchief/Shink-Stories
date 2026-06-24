@@ -3607,6 +3607,14 @@
                                 <MudSelectItem Value="@("subscriber")">subscriber</MudSelectItem>
                                 <MudSelectItem Value="@("free")">free</MudSelectItem>
                             </MudSelect>
+                            <MudSelect T="string"
+                                       Label='@T("Storie tipe", "Story type")'
+                                       @bind-Value="NewStoryEditor.StoryType"
+                                       Variant="Variant.Outlined"
+                                       Margin="Margin.Dense">
+                                <MudSelectItem Value="@("story")">@T("Storie", "Story")</MudSelectItem>
+                                <MudSelectItem Value="@("music")">@T("Musiek", "Music")</MudSelectItem>
+                            </MudSelect>
                             <MudCheckBox T="bool"
                                          Class="admin-span-2"
                                          Label='@T("Publiseer onmiddellik", "Publish immediately")'
@@ -3922,6 +3930,14 @@
                                    Margin="Margin.Dense">
                             <MudSelectItem Value="@("subscriber")">subscriber</MudSelectItem>
                             <MudSelectItem Value="@("free")">free</MudSelectItem>
+                        </MudSelect>
+                        <MudSelect T="string"
+                                   Label='@T("Storie tipe", "Story type")'
+                                   @bind-Value="StoryEditor.StoryType"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense">
+                            <MudSelectItem Value="@("story")">@T("Storie", "Story")</MudSelectItem>
+                            <MudSelectItem Value="@("music")">@T("Musiek", "Music")</MudSelectItem>
                         </MudSelect>
                         <MudSelect T="string"
                                    Label='@T("Status", "Status")'
@@ -6940,6 +6956,7 @@
         NewStoryEditor = new NewStoryDraft
         {
             AccessLevel = "subscriber",
+            StoryType = "story",
             PublishNow = true
         };
         NewStoryEditorStateSignature = BuildNewStoryEditorStateSignature(NewStoryEditor);
@@ -7555,6 +7572,7 @@
                     AudioBucket: audioUpload.Bucket,
                     AudioObjectKey: audioUpload.ObjectKey,
                     AudioContentType: audioUpload.ContentType,
+                    StoryType: NewStoryEditor.StoryType,
                     AccessLevel: NewStoryEditor.AccessLevel,
                     Status: NewStoryEditor.PublishNow ? "published" : "draft",
                     SortOrder: BuildNextStorySortOrder(allStories),
@@ -7689,6 +7707,7 @@
                     AudioBucket: StoryEditor.AudioBucket,
                     AudioObjectKey: StoryEditor.AudioObjectKey,
                     AudioContentType: StoryEditor.AudioContentType,
+                    StoryType: StoryEditor.StoryType,
                     AccessLevel: StoryEditor.AccessLevel,
                     Status: StoryEditor.Status,
                     SortOrder: StoryEditor.SortOrder,
@@ -8680,6 +8699,13 @@
 
         return normalized is "A" or "B" ? normalized : "A";
     }
+
+    private static string NormalizeStoryType(string? value) =>
+        value?.Trim().ToLowerInvariant() switch
+        {
+            "music" => "music",
+            _ => "story"
+        };
 
     private string? ValidateNewStoryDraft(NewStoryDraft draft)
     {
@@ -10622,6 +10648,7 @@
             AudioBucket = NormalizeDirtyText(editor.AudioBucket),
             AudioObjectKey = NormalizeDirtyText(editor.AudioObjectKey),
             AudioContentType = NormalizeDirtyText(editor.AudioContentType),
+            StoryType = NormalizeDirtyText(editor.StoryType),
             AccessLevel = NormalizeDirtyText(editor.AccessLevel),
             Status = NormalizeDirtyText(editor.Status),
             editor.SortOrder,
@@ -10649,6 +10676,7 @@
             YouTubeUrl = NormalizeDirtyText(editor.YouTubeUrl),
             TestQuestions = BuildAdminStoryTestQuestions(editor.TestQuestions),
             AccessLevel = NormalizeDirtyText(editor.AccessLevel),
+            StoryType = NormalizeDirtyText(editor.StoryType),
             editor.PublishNow,
             editor.SendPublishedNotification,
             SelectedPlaylistIds = editor.SelectedPlaylistIds
@@ -11227,6 +11255,7 @@
         public string? AudioBucket { get; set; }
         public string? AudioObjectKey { get; set; }
         public string? AudioContentType { get; set; }
+        public string StoryType { get; set; } = "story";
         public string AccessLevel { get; set; } = "subscriber";
         public string Status { get; set; } = "draft";
         public int SortOrder { get; set; }
@@ -11254,6 +11283,7 @@
             AudioBucket = story.AudioBucket,
             AudioObjectKey = story.AudioObjectKey,
             AudioContentType = story.AudioContentType,
+            StoryType = NormalizeStoryType(story.StoryType),
             AccessLevel = story.AccessLevel,
             Status = story.Status,
             SortOrder = story.SortOrder,
@@ -11275,6 +11305,7 @@
         public string? YouTubeUrl { get; set; }
         public List<EditableStoryTestQuestion> TestQuestions { get; set; } = [];
         public string AccessLevel { get; set; } = "subscriber";
+        public string StoryType { get; set; } = "story";
         public bool PublishNow { get; set; } = true;
         public bool SendPublishedNotification { get; set; } = true;
         public HashSet<Guid> SelectedPlaylistIds { get; set; } = [];

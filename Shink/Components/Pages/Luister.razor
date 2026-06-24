@@ -151,8 +151,11 @@ else
             {
                 var showcaseStoryTitle = string.IsNullOrWhiteSpace(showcaseStory!.Title) ? "hierdie storie" : showcaseStory.Title.Trim();
                 var canAccessShowcaseStory = HasAccessToStory(showcaseStory);
+                var showcaseClassName = IsMusicStory(showcaseStory)
+                    ? "luister-playlist-showcase is-music"
+                    : "luister-playlist-showcase";
 
-                <div class="luister-playlist-showcase">
+                <div class="@showcaseClassName">
                     @if (canAccessShowcaseStory)
                     {
                         <a class="luister-playlist-showcase-link"
@@ -209,9 +212,7 @@ else
                         var story = playlistStories[storyIndex];
                         var canAccessStory = HasAccessToStory(story);
                         var storyTitle = string.IsNullOrWhiteSpace(story.Title) ? "hierdie storie" : story.Title.Trim();
-                        var articleClassName = isWeeklyPopularPlaylist
-                            ? "story-carousel-item story-carousel-item-ranked"
-                            : "story-carousel-item";
+                        var articleClassName = BuildStoryCarouselItemClass(story, isWeeklyPopularPlaylist);
 
                         <article class="@articleClassName" role="listitem">
                             <div class="story-carousel-card-shell">
@@ -505,6 +506,25 @@ else
 
     private static IReadOnlyList<StoryItem> GetPlaylistStories(StoryPlaylist playlist) =>
         playlist.Stories ?? Array.Empty<StoryItem>();
+
+    private static string BuildStoryCarouselItemClass(StoryItem story, bool isWeeklyPopularPlaylist)
+    {
+        var classes = new List<string> { "story-carousel-item" };
+        if (isWeeklyPopularPlaylist)
+        {
+            classes.Add("story-carousel-item-ranked");
+        }
+
+        if (IsMusicStory(story))
+        {
+            classes.Add("is-music");
+        }
+
+        return string.Join(' ', classes);
+    }
+
+    private static bool IsMusicStory(StoryItem? story) =>
+        string.Equals(story?.StoryType, "music", StringComparison.OrdinalIgnoreCase);
 
     private static StoryItem? GetPlaylistShowcaseStory(StoryPlaylist playlist) =>
         playlist.PreferredStory;
