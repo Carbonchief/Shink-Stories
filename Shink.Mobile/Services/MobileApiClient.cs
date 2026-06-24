@@ -168,7 +168,13 @@ public sealed record MobileAudioDownloadProgress(long BytesReceived, long? Total
 
 public sealed class MobileApiClient
 {
+#if DEBUG
+    public const string GoogleCallbackUrl = "schinkstories://auth/google";
+    private const string GoogleStartPath = "/api/mobile/auth/google/start?callback=custom-scheme";
+#else
     public const string GoogleCallbackUrl = "https://www.schink.co.za/mobile-auth/google/callback";
+    private const string GoogleStartPath = "/api/mobile/auth/google/start";
+#endif
 
     private const string AuthCookieStorageKeyPrefix = "mobile_auth_cookies";
     private const string MobileAppHeaderName = "X-Schink-Mobile-App";
@@ -435,7 +441,7 @@ public sealed class MobileApiClient
     }
 
     public Uri BuildGoogleSignInStartUri() =>
-        BuildUri("/api/mobile/auth/google/start");
+        BuildUri(GoogleStartPath);
 
     public async Task<(bool IsSuccess, string Message)> CompleteGoogleSignInAsync(
         string token,

@@ -850,7 +850,7 @@ public sealed class AccountPage : ContentPage
     {
         var googleIcon = new Image
         {
-            Source = ImageSource.FromFile("google_g.svg"),
+            Source = ImageSource.FromFile("google_logo.png"),
             WidthRequest = 24,
             HeightRequest = 24,
             HorizontalOptions = LayoutOptions.Center,

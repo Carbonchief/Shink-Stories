@@ -4599,7 +4599,7 @@ public sealed partial class SupabaseAdminManagementService(
             .GroupBy(subscriber => subscriber.SubscriberId)
             .ToDictionary(group => group.Key, group => group.First());
 
-        return GetAccessSpecificSubscriberSignupSubscriptions(subscriptions)
+        return GetFirstSubscriberMembershipDetailSubscriptions(subscriptions)
             .Select(subscription => CreateSubscriberMembershipDetail(subscribersById, tierDetails, subscription))
             .OrderByDescending(detail => detail.SubscribedAt)
             .ToArray();
@@ -4682,40 +4682,6 @@ public sealed partial class SupabaseAdminManagementService(
                 .First())
             .ToArray();
     }
-
-    private static IReadOnlyList<SubscriptionRow> GetAccessSpecificSubscriberSignupSubscriptions(IReadOnlyList<SubscriptionRow> subscriptions)
-    {
-        var firstGratisSignupBySubscriber = subscriptions
-            .Where(IsFreeSubscriberMembershipDetailEligible)
-            .Where(subscription => subscription.SubscribedAt is not null)
-            .GroupBy(subscription => subscription.SubscriberId)
-            .ToDictionary(
-                group => group.Key,
-                group => group
-                    .OrderBy(subscription => subscription.SubscribedAt)
-                    .First());
-
-        var firstPaidSignupBySubscriber = subscriptions
-            .Where(IsPaidSubscriberSignupEligible)
-            .Where(subscription => subscription.SubscribedAt is not null)
-            .GroupBy(subscription => subscription.SubscriberId)
-            .ToDictionary(
-                group => group.Key,
-                group => group
-                    .OrderBy(subscription => subscription.SubscribedAt)
-                    .First());
-
-        return firstPaidSignupBySubscriber.Values
-            .Concat(firstGratisSignupBySubscriber
-                .Where(item => !firstPaidSignupBySubscriber.ContainsKey(item.Key))
-                .Select(item => item.Value))
-            .ToArray();
-    }
-
-    private static bool IsPaidSubscriberSignupEligible(SubscriptionRow subscription) =>
-        IsSubscriberCountMetricEligible(subscription) &&
-        !string.Equals(subscription.TierCode, "gratis", StringComparison.OrdinalIgnoreCase) &&
-        !string.Equals(subscription.Provider, "free", StringComparison.OrdinalIgnoreCase);
 
     private static IReadOnlyList<AdminSalesRevenueMetric> BuildSalesRevenueMetricsCore(
         WordPressSubscriberReportsRpcSnapshot? wordPressSubscriberReports,

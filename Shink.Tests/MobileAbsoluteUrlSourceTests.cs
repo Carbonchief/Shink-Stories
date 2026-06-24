@@ -1085,24 +1085,23 @@ public class MobileAbsoluteUrlSourceTests
         var iOSAppDelegate = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "iOS", "AppDelegate.cs"));
         var androidManifest = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "Android", "AndroidManifest.xml"));
         var androidCallback = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "Android", "GoogleAuthCallbackActivity.cs"));
-        var googleIcon = File.ReadAllText(GetRepoPath("Shink.Mobile", "Resources", "Images", "google_g.svg"));
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
         var assetLinks = File.ReadAllText(GetRepoPath("Shink", "wwwroot", ".well-known", "assetlinks.json"));
         var appleAssociation = File.ReadAllText(GetRepoPath("Shink", "wwwroot", ".well-known", "apple-app-site-association"));
 
         StringAssert.Contains(accountPage, "Teken in met Google");
-        StringAssert.Contains(accountPage, "Source = ImageSource.FromFile(\"google_g.svg\")");
-        StringAssert.Contains(googleIcon, "fill=\"#4285F4\"");
-        StringAssert.Contains(googleIcon, "fill=\"#34A853\"");
-        StringAssert.Contains(googleIcon, "fill=\"#FBBC05\"");
-        StringAssert.Contains(googleIcon, "fill=\"#EA4335\"");
+        StringAssert.Contains(accountPage, "Source = ImageSource.FromFile(\"google_logo.png\")");
+        Assert.IsTrue(File.Exists(GetRepoPath("Shink.Mobile", "Resources", "Images", "google_logo.png")));
         Assert.IsFalse(accountPage.Contains("GoogleLogoDrawable", StringComparison.Ordinal));
         StringAssert.Contains(accountPage, "WebAuthenticator.Default.AuthenticateAsync(");
         StringAssert.Contains(accountPage, "_apiClient.BuildGoogleSignInStartUri()");
         StringAssert.Contains(accountPage, "new Uri(MobileApiClient.GoogleCallbackUrl)");
         StringAssert.Contains(accountPage, "CompleteGoogleSignInAsync(token)");
+        StringAssert.Contains(apiClient, "public const string GoogleCallbackUrl = \"schinkstories://auth/google\";");
         StringAssert.Contains(apiClient, "public const string GoogleCallbackUrl = \"https://www.schink.co.za/mobile-auth/google/callback\";");
-        StringAssert.Contains(apiClient, "BuildUri(\"/api/mobile/auth/google/start\")");
+        StringAssert.Contains(apiClient, "private const string GoogleStartPath = \"/api/mobile/auth/google/start?callback=custom-scheme\";");
+        StringAssert.Contains(apiClient, "private const string GoogleStartPath = \"/api/mobile/auth/google/start\";");
+        StringAssert.Contains(apiClient, "BuildUri(GoogleStartPath)");
         StringAssert.Contains(apiClient, "\"/api/mobile/auth/google/complete\"");
         StringAssert.Contains(iOSEntitlements, "applinks:www.schink.co.za");
         StringAssert.Contains(iOSAppDelegate, "WebAuthenticator.Default.ContinueUserActivity(application, userActivity, completionHandler)");
@@ -1121,10 +1120,17 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(appleAssociation, "\"7CCCKUVX8Q.com.schink.stories.mobile\"");
         StringAssert.Contains(appleAssociation, "\"/mobile-auth/google/callback\"");
         StringAssert.Contains(program, "app.MapGet(\"/api/mobile/auth/google/start\"");
+        StringAssert.Contains(program, "IsMobileGoogleCustomSchemeCallback(callback)");
         StringAssert.Contains(program, "app.MapGet(\"/auth/mobile/google/callback\"");
+        StringAssert.Contains(program, "app.MapGet(\"/mobile-auth/google/callback\"");
+        StringAssert.Contains(program, "BuildMobileGoogleCustomSchemeCallbackUrl(httpContext.Request.QueryString)");
         StringAssert.Contains(program, "app.MapPost(\"/api/mobile/auth/google/complete\"");
         StringAssert.Contains(program, "MobileGoogleAuthTokenProtectorPurpose");
         StringAssert.Contains(program, "MobileGoogleCallbackUrl = \"https://www.schink.co.za/mobile-auth/google/callback\"");
+        StringAssert.Contains(program, "MobileGoogleCustomSchemeCallbackUrl = \"schinkstories://auth/google\"");
+        StringAssert.Contains(program, "$\"{MobileGoogleCustomSchemeCallbackUrl}{queryString.Value}\"");
+        StringAssert.Contains(program, "UseMobileCustomSchemeCallback: useCustomSchemeCallback");
+        StringAssert.Contains(program, "bool UseMobileCustomSchemeCallback = false");
         StringAssert.Contains(program, "TryResolveMobileAssociationFile(httpContext.Request.Path");
     }
 

@@ -769,11 +769,13 @@ public class AdminAnalyticsSourceTests
     }
 
     [TestMethod]
-    public void SubscriberSignupDetailsPreferPaidSignupOverGratisForSameSubscriber()
+    public void SubscriberSignupDetailsCountEachCustomerAtFirstSignupOnly()
     {
         var freeSignupDate = DateTimeOffset.Now.AddMonths(-2);
         var paidSignupDate = DateTimeOffset.Now.AddMinutes(-5);
         var convertedSubscriberId = Guid.NewGuid();
+        var paidRenewalSubscriberId = Guid.NewGuid();
+        var newPaidSubscriberId = Guid.NewGuid();
         var schoolSeatSubscriberId = Guid.NewGuid();
         var rows = CreateSubscriptionRows(
             CreateSubscriptionRow(
@@ -795,6 +797,33 @@ public class AdminAnalyticsSourceTests
                 provider: "paystack",
                 providerPaymentId: "paid-conversion"),
             CreateSubscriptionRow(
+                paidRenewalSubscriberId,
+                "shink_app",
+                "active",
+                freeSignupDate,
+                null,
+                tierCode: "all_stories_monthly",
+                provider: "paystack",
+                providerPaymentId: "first-paid-subscription"),
+            CreateSubscriptionRow(
+                paidRenewalSubscriberId,
+                "shink_app",
+                "active",
+                paidSignupDate,
+                null,
+                tierCode: "all_stories_monthly",
+                provider: "paystack",
+                providerPaymentId: "paid-renewal"),
+            CreateSubscriptionRow(
+                newPaidSubscriberId,
+                "shink_app",
+                "active",
+                paidSignupDate,
+                null,
+                tierCode: "all_stories_monthly",
+                provider: "paystack",
+                providerPaymentId: "new-paid-customer"),
+            CreateSubscriptionRow(
                 schoolSeatSubscriberId,
                 "school_seat",
                 "active",
@@ -804,6 +833,8 @@ public class AdminAnalyticsSourceTests
                 provider: "free"));
         var subscribers = CreateSubscriberRows(
             CreateSubscriberRow(convertedSubscriberId, "converted@shink.dev"),
+            CreateSubscriberRow(paidRenewalSubscriberId, "renewal@shink.dev"),
+            CreateSubscriberRow(newPaidSubscriberId, "new-paid@shink.dev"),
             CreateSubscriberRow(schoolSeatSubscriberId, "school@shink.dev"));
 
         var details = InvokeBuildSubscriberSignupDetails(
@@ -811,14 +842,21 @@ public class AdminAnalyticsSourceTests
             rows,
             CreateEmptyTierDetails());
 
-        Assert.AreEqual(1, details.Count);
+        Assert.AreEqual(3, details.Count);
         Assert.IsTrue(details.Any(detail =>
             detail.Email == "converted@shink.dev" &&
+            detail.TierCode == "gratis" &&
+            detail.SubscribedAt == freeSignupDate));
+        Assert.IsTrue(details.Any(detail =>
+            detail.Email == "renewal@shink.dev" &&
+            detail.TierCode == "all_stories_monthly" &&
+            detail.SubscribedAt == freeSignupDate));
+        Assert.IsTrue(details.Any(detail =>
+            detail.Email == "new-paid@shink.dev" &&
             detail.TierCode == "all_stories_monthly" &&
             detail.SubscribedAt == paidSignupDate));
-        Assert.IsFalse(details.Any(detail =>
-            detail.Email == "converted@shink.dev" &&
-            detail.TierCode == "gratis"));
+        Assert.IsFalse(details.Any(detail => detail.Email == "converted@shink.dev" && detail.SubscribedAt == paidSignupDate));
+        Assert.IsFalse(details.Any(detail => detail.Email == "renewal@shink.dev" && detail.SubscribedAt == paidSignupDate));
         Assert.IsFalse(details.Any(detail => detail.Email == "school@shink.dev"));
     }
 
