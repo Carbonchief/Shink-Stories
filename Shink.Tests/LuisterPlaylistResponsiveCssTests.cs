@@ -71,6 +71,33 @@ public class LuisterPlaylistResponsiveCssTests
     }
 
     [TestMethod]
+    public void LuisterMusicStoryCardsUseSquareArtwork()
+    {
+        var markup = File.ReadAllText(GetRepoPath(
+            "Shink",
+            "Components",
+            "Pages",
+            "Luister.razor"));
+        var css = File.ReadAllText(GetRepoPath(
+            "Shink",
+            "Components",
+            "Pages",
+            "Luister.razor.css"));
+        var catalogService = File.ReadAllText(GetRepoPath(
+            "Shink",
+            "Services",
+            "SupabaseStoryCatalogService.cs"));
+
+        StringAssert.Contains(catalogService, "story_type,access_level");
+        StringAssert.Contains(catalogService, "StoryType: NormalizeStoryType(row.StoryType)");
+        StringAssert.Contains(markup, "IsMusicStory(story)");
+        StringAssert.Contains(markup, "classes.Add(\"is-music\")");
+        StringAssert.Contains(css, ".story-carousel-item.is-music .story-carousel-cover");
+        StringAssert.Contains(css, ".story-carousel-item.is-music .story-carousel-image");
+        StringAssert.Contains(css, "aspect-ratio: 1 / 1;");
+    }
+
+    [TestMethod]
     public void GratisStoriesSectionUsesBadgeWrapperOnLuisterPage()
     {
         var markup = File.ReadAllText(GetRepoPath(

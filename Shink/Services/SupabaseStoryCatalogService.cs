@@ -1615,6 +1615,9 @@ public sealed class SupabaseStoryCatalogService(
         [JsonPropertyName("title")]
         public string Title { get; set; } = string.Empty;
 
+        [JsonPropertyName("story_type")]
+        public string? StoryType { get; set; }
+
         [JsonPropertyName("summary")]
         public string? Summary { get; set; }
 
@@ -1644,9 +1647,6 @@ public sealed class SupabaseStoryCatalogService(
 
         [JsonPropertyName("audio_content_type")]
         public string? AudioContentType { get; set; }
-
-        [JsonPropertyName("story_type")]
-        public string? StoryType { get; set; }
 
         [JsonPropertyName("access_level")]
         public string AccessLevel { get; set; } = "subscriber";
