@@ -111,7 +111,7 @@ else
             @if (ShowcaseStory is not null)
             {
                 <section class="playlist-showcase-feature" aria-label="Showcase storie">
-                    <article class="playlist-showcase-feature-card">
+                    <article class="@GetFeatureCardClass(ShowcaseStory)">
                         <div class="playlist-showcase-feature-shell">
                             <a class="playlist-showcase-feature-link"
                                href="@BuildStoryHref(ShowcaseStory)"
@@ -158,7 +158,7 @@ else
                     {
                         var isHighlighted = string.Equals(story.Slug, EffectiveHighlightStorySlug, StringComparison.OrdinalIgnoreCase);
 
-                        <article class="playlist-showcase-card @(isHighlighted ? "is-highlighted" : null)" role="listitem">
+                        <article class="@GetStoryCardClass(story, isHighlighted)" role="listitem">
                             <div class="playlist-showcase-card-shell">
                                 <a class="playlist-showcase-card-link"
                                    href="@BuildStoryHref(story)"
@@ -239,6 +239,30 @@ else
         CurrentPlaylistStories.Count == 3
             ? "playlist-showcase-grid is-three-story-grid"
             : "playlist-showcase-grid";
+
+    private static string GetFeatureCardClass(StoryItem story) =>
+        IsMusicStory(story)
+            ? "playlist-showcase-feature-card is-music"
+            : "playlist-showcase-feature-card";
+
+    private static string GetStoryCardClass(StoryItem story, bool isHighlighted)
+    {
+        var classes = new List<string> { "playlist-showcase-card" };
+        if (isHighlighted)
+        {
+            classes.Add("is-highlighted");
+        }
+
+        if (IsMusicStory(story))
+        {
+            classes.Add("is-music");
+        }
+
+        return string.Join(" ", classes);
+    }
+
+    private static bool IsMusicStory(StoryItem? story) =>
+        string.Equals(story?.StoryType, "music", StringComparison.OrdinalIgnoreCase);
 
     private string ShowcaseCanonicalUrl =>
         NavigationManager.ToAbsoluteUri(GetShowcasePath(CurrentPlaylist?.Slug ?? PlaylistSlug)).ToString();

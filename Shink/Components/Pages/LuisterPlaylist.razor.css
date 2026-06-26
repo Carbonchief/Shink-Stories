@@ -105,6 +105,10 @@
     width: min(100%, 820px);
 }
 
+.story-cover-wrap.is-music {
+    width: min(100%, clamp(260px, 58vh, 540px));
+}
+
 .story-cover {
     width: 100%;
     height: auto;
@@ -116,6 +120,13 @@
     box-shadow: 0 18px 34px rgba(0, 0, 0, 0.28);
     cursor: pointer;
     transition: transform 0.22s ease, filter 0.22s ease;
+}
+
+.story-cover-wrap.is-music .story-cover {
+    aspect-ratio: 1 / 1;
+    max-height: none;
+    object-fit: cover;
+    object-position: center;
 }
 
 .story-cover:focus-visible {
@@ -277,9 +288,18 @@
         width: min(100%, 900px);
     }
 
+    .story-cover-wrap.is-music {
+        width: min(100%, clamp(320px, 62vh, 640px));
+    }
+
     .story-cover {
         object-fit: contain;
         max-height: clamp(320px, 62vh, 640px);
+    }
+
+    .story-cover-wrap.is-music .story-cover {
+        max-height: none;
+        object-fit: cover;
     }
 }
 
@@ -1161,6 +1181,10 @@
     .story-cover-wrap {
         width: min(100%, calc(100vw - 1.8rem));
         max-width: none;
+    }
+
+    .story-cover-wrap.is-music {
+        width: min(100%, calc(100vw - 1.8rem));
     }
 
     .story-cover {

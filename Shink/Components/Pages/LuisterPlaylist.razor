@@ -84,7 +84,7 @@ else
                      data-autoplay-enabled="@(AutoplayEnabled ? "true" : "false")"
                      oncontextmenu="return false;">
                     <div class="playlist-player-grid">
-                        <div class="story-cover-wrap">
+                        <div class="@StoryCoverWrapClass">
                             <img src="@CurrentStory.ThumbnailPath"
                                  srcset="@($"{CurrentStory.ThumbnailPath} 640w, {CurrentStory.ImagePath} 1024w")"
                                  sizes="(max-width: 920px) calc(100vw - 2rem), 900px"
@@ -383,6 +383,14 @@ else
             ? BuildOpsiesHref(PendingLockedStoryPath)
             : $"/teken-in?returnUrl={Uri.EscapeDataString(PendingLockedStoryPath)}";
     private string StoryAccessPopupPlanHref => BuildOpsiesHref(PendingLockedStoryPath);
+
+    private string StoryCoverWrapClass =>
+        IsMusicStory(CurrentStory)
+            ? "story-cover-wrap is-music"
+            : "story-cover-wrap";
+
+    private static bool IsMusicStory(StoryItem? story) =>
+        string.Equals(story?.StoryType, "music", StringComparison.OrdinalIgnoreCase);
 
     private string StoryCountLabel =>
         AccessibleStories.Count == 1 ? "1 storie beskikbaar" : $"{AccessibleStories.Count} stories beskikbaar";
