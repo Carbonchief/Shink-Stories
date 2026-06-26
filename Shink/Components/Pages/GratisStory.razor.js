@@ -806,7 +806,11 @@ function resolveAudioCurrentTimeForDisplay(audioElement, duration) {
 
 function isAudioTimeDisplayLoading(audioElement) {
     const source = (audioElement.currentSrc || audioElement.getAttribute("src") || "").trim();
-    return source.length > 0 && audioElement.readyState < MEDIA_HAVE_METADATA;
+    if (source.length === 0) {
+        return parsePositiveSeconds(audioElement.dataset.storyDurationSeconds) !== null;
+    }
+
+    return audioElement.readyState < MEDIA_HAVE_METADATA;
 }
 
 function updateTimeRowLoadingState(timeRow, isLoading) {

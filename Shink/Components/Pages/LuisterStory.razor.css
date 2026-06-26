@@ -1221,6 +1221,10 @@
     font-weight: 700;
 }
 
+.story-player-pending {
+    min-height: calc(100dvh - 12rem);
+}
+
 .story-player-loading {
     width: min(100%, 660px);
     margin-inline: auto;
@@ -1238,6 +1242,19 @@
     border: 2px solid rgba(246, 241, 234, 0.32);
     border-top-color: #ffffff;
     animation: story-loading-spin 760ms linear infinite;
+}
+
+@keyframes story-fullscreen-cover-breathe {
+    0%,
+    100% {
+        -webkit-transform: translate3d(0, 0, 0) scale(1);
+        transform: translate3d(0, 0, 0) scale(1);
+    }
+
+    50% {
+        -webkit-transform: translate3d(0, 0, 0) scale(1.055);
+        transform: translate3d(0, 0, 0) scale(1.055);
+    }
 }
 
 .story-player-page.manual-fullscreen-focus {
@@ -1287,6 +1304,8 @@
 }
 
 .story-player-page.manual-fullscreen-focus .story-cover {
+    position: relative;
+    z-index: 1;
     width: 100%;
     height: 100%;
     max-width: none;
@@ -1298,22 +1317,21 @@
     filter: none;
     background: #000000;
     transform-origin: center center;
-    will-change: auto;
-    backface-visibility: visible;
-    -webkit-backface-visibility: visible;
-    transform: none;
-    -webkit-transform: none;
-    animation: none;
+    will-change: transform;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+    transform: translate3d(0, 0, 0);
+    -webkit-transform: translate3d(0, 0, 0);
+    animation: story-fullscreen-cover-breathe 34s ease-in-out infinite;
 }
 
 .story-player-page.manual-fullscreen-focus .story-cover-wrap:hover .story-cover,
 .story-player-page.manual-fullscreen-focus .story-cover-wrap:focus-within .story-cover {
-    transform: none;
-    -webkit-transform: none;
     filter: none;
 }
 
 .story-player-page.manual-fullscreen-focus .story-cover-play {
+    z-index: 2;
     border-radius: 0;
     background: linear-gradient(to top, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.16) 38%, rgba(0, 0, 0, 0) 72%);
 }
@@ -1341,14 +1359,37 @@
     top: max(0.7rem, env(safe-area-inset-top));
     right: max(0.7rem, env(safe-area-inset-right));
     bottom: auto;
-    z-index: 7;
-    background: rgba(12, 15, 20, 0.56);
-    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4), 0 14px 28px rgba(0, 0, 0, 0.3);
+    z-index: 20;
+    width: 3.75rem;
+    height: 3.75rem;
+    border-radius: 20px;
+    background: rgba(12, 15, 20, 0.38);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.34), 0 14px 28px rgba(0, 0, 0, 0.18);
+    pointer-events: auto;
+    touch-action: manipulation;
+    transform-origin: center center;
+    transition: opacity 0.24s ease, transform 0.24s ease, background 0.24s ease, box-shadow 0.24s ease;
+}
+
+.story-player-page.manual-fullscreen-focus .story-fullscreen-toggle:hover,
+.story-player-page.manual-fullscreen-focus .story-fullscreen-toggle:focus-visible {
+    background: rgba(12, 15, 20, 0.62);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.58), 0 18px 34px rgba(0, 0, 0, 0.28);
+    transform: translateY(-2px) scale(1.06);
+}
+
+.story-player-page.manual-fullscreen-focus .story-fullscreen-toggle:hover i,
+.story-player-page.manual-fullscreen-focus .story-fullscreen-toggle:focus-visible i {
+    transform: scale(1.08);
+}
+
+.story-player-page.manual-fullscreen-focus .story-fullscreen-toggle i {
+    transition: transform 0.24s ease;
 }
 
 .story-player-page.manual-fullscreen-focus .story-favorite-toggle {
     top: max(0.7rem, env(safe-area-inset-top));
-    right: calc(max(0.7rem, env(safe-area-inset-right)) + 3.45rem);
+    right: calc(max(0.7rem, env(safe-area-inset-right)) + 4.45rem);
     z-index: 7;
     background: transparent;
     box-shadow: none;
@@ -1486,7 +1527,6 @@
     max-width: 150px;
 }
 
-.story-player-page.manual-fullscreen-focus .story-fullscreen-toggle,
 .story-player-page.manual-fullscreen-focus .story-favorite-toggle,
 .story-player-page.manual-fullscreen-focus .story-nav-btn {
     transition: opacity 0.24s ease, transform 0.24s ease;
@@ -1600,13 +1640,18 @@
     }
 
     .story-cover-wrap {
+        width: min(100%, var(--story-cover-fit-height));
+        aspect-ratio: 1 / 1;
+        max-height: none;
         overflow: hidden;
     }
 
     .story-cover {
-        aspect-ratio: auto;
-        object-fit: contain;
-        object-position: center bottom;
+        height: 100%;
+        max-height: none;
+        aspect-ratio: 1 / 1;
+        object-fit: cover;
+        object-position: center center;
     }
 
     .story-audio {
@@ -1800,11 +1845,5 @@
         aspect-ratio: auto;
         object-fit: contain;
         object-position: center bottom;
-    }
-
-    .story-player-page.manual-fullscreen-focus .story-cover {
-        animation: none;
-        transform: none;
-        -webkit-transform: none;
     }
 }

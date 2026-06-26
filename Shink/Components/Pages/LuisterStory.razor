@@ -41,10 +41,7 @@
 
 @if (ShouldShowStoryLoading)
 {
-    <section class="story-player-empty story-player-loading" aria-live="polite" aria-busy="true">
-        <span class="story-loading-spinner" aria-hidden="true"></span>
-        <span>Storie laai</span>
-    </section>
+    <section class="story-player-pending" aria-busy="true"></section>
 }
 else if (IsRedirectingToOpsies)
 {
@@ -345,7 +342,7 @@ else
         <section class="story-carousel-section" aria-label="Ander luister stories">
             <h2>Ander luister stories</h2>
             <div class="story-carousel" role="list">
-                @foreach (var story in LuisterStories)
+                @foreach (var story in RelatedLuisterStories)
                 {
                     var isActiveStory = string.Equals(story.Slug, CurrentStory.Slug, StringComparison.OrdinalIgnoreCase);
                     <article class="story-carousel-item @(isActiveStory ? "is-active" : null)" role="listitem">
@@ -580,6 +577,9 @@ else
     private bool ShowStoryTestDetails { get; set; }
     private string PendingLockedStoryPath { get; set; } = "/luister";
     private Dictionary<int, string> SelectedStoryTestOptions { get; } = new();
+
+    private IEnumerable<StoryItem> RelatedLuisterStories =>
+        LuisterStories.Where(story => !IsMusicStory(story));
 
     private string? StoryArtworkUrl =>
         CurrentStory is null ? null : NavigationManager.ToAbsoluteUri(CurrentStory.ImagePath).ToString();
@@ -1402,7 +1402,18 @@ else
             return story.Summary;
         }
 
-        return string.IsNullOrWhiteSpace(story.Description) ? null : story.Description;
+        return IsGeneratedStoryDescription(story)
+            ? null
+            : story.Description;
+    }
+
+    private static bool IsGeneratedStoryDescription(StoryItem story)
+    {
+        var generatedDescription = $"Luister na {story.Title} op Schink Stories.";
+        return string.Equals(
+            NormalizeStoryText(story.Description),
+            NormalizeStoryText(generatedDescription),
+            StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool ShouldShowStoryLead(StoryItem? story)
@@ -1431,6 +1442,9 @@ else
 
     private static bool HasStoryTestQuestions(StoryItem? story) =>
         story?.TestQuestions is { Count: > 0 };
+
+    private static bool IsMusicStory(StoryItem story) =>
+        string.Equals(story.StoryType, "music", StringComparison.OrdinalIgnoreCase);
 
     private static bool HasStoryCharacters(StoryItem? story) =>
         story?.Characters is { Count: > 0 };
