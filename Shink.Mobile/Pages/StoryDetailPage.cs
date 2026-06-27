@@ -38,6 +38,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     private readonly IOfflineStoryDownloadService _offlineDownloadService;
     private readonly PlaylistPlaybackState _playlistPlaybackState;
     private readonly ContinueListeningState _continueListeningState;
+    private readonly MobileAppLifecycleService _lifecycleService;
     private readonly IOrientationService _orientationService;
     private readonly PlayerTransitionBackdropState _transitionBackdropState;
     private readonly NavigationGate _navigationGate = new();
@@ -62,6 +63,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     private string? _loadedKey;
     private CancellationTokenSource? _loadCts;
     private bool _isPageActive;
+    private bool _isLifecycleEventSubscribed;
     private bool _isDownloadEventSubscribed;
     private bool _isPlaybackEventSubscribed;
     private bool _isClosing;
@@ -92,6 +94,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         IOfflineStoryDownloadService offlineDownloadService,
         PlaylistPlaybackState playlistPlaybackState,
         ContinueListeningState continueListeningState,
+        MobileAppLifecycleService lifecycleService,
         IOrientationService orientationService,
         PlayerTransitionBackdropState transitionBackdropState)
     {
@@ -101,6 +104,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         _offlineDownloadService = offlineDownloadService;
         _playlistPlaybackState = playlistPlaybackState;
         _continueListeningState = continueListeningState;
+        _lifecycleService = lifecycleService;
         _orientationService = orientationService;
         _transitionBackdropState = transitionBackdropState;
         BackgroundColor = PlayerBackgroundColor;
@@ -185,6 +189,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         _closeBackdrop.IsVisible = false;
         _closeBackdrop.Source = null;
         _playerSurface.TranslationY = 0;
+        SubscribeLifecycleEvents();
         SubscribeDownloadEvents();
         SubscribePlaybackEvents();
 
@@ -219,10 +224,55 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         CancelActiveLoad();
         DismissCastPicker();
         StopProgressTimer();
+        UnsubscribeLifecycleEvents();
         UnsubscribeDownloadEvents();
         UnsubscribePlaybackEvents();
         TryStopAudioPlayback();
         ClearActivePlaybackUi();
+    }
+
+    private void SubscribeLifecycleEvents()
+    {
+        if (_isLifecycleEventSubscribed)
+        {
+            return;
+        }
+
+        _lifecycleService.Stopping += OnAppStopping;
+        _lifecycleService.Destroying += OnAppDestroying;
+        _isLifecycleEventSubscribed = true;
+    }
+
+    private void UnsubscribeLifecycleEvents()
+    {
+        if (!_isLifecycleEventSubscribed)
+        {
+            return;
+        }
+
+        _lifecycleService.Stopping -= OnAppStopping;
+        _lifecycleService.Destroying -= OnAppDestroying;
+        _isLifecycleEventSubscribed = false;
+    }
+
+    private void OnAppStopping(object? sender, EventArgs args) =>
+        FlushActiveListenProgress("appstop");
+
+    private void OnAppDestroying(object? sender, EventArgs args) =>
+        FlushActiveListenProgress("appdestroy");
+
+    private void FlushActiveListenProgress(string eventType)
+    {
+        if (!_isPageActive)
+        {
+            return;
+        }
+
+        FlushPendingListen(eventType, force: true);
+        if (_currentDetail is not null)
+        {
+            SaveContinueListening(_currentDetail);
+        }
     }
 
     private void SubscribeDownloadEvents()
@@ -845,24 +895,40 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         return new Thickness(0, -safeAreaInsets.Top, 0, -safeAreaInsets.Bottom);
 #elif ANDROID
         var activity = Microsoft.Maui.ApplicationModel.Platform.CurrentActivity;
+        if (!OperatingSystem.IsAndroidVersionAtLeast(23))
+        {
+            return Thickness.Zero;
+        }
+
         var insets = activity?.Window?.DecorView?.RootWindowInsets;
         if (insets is null)
         {
             return Thickness.Zero;
         }
 
-        var systemBarInsets = insets.GetInsets(AndroidWindowInsets.Type.SystemBars());
         var density = DeviceDisplay.MainDisplayInfo.Density;
         if (density <= 0)
         {
             return Thickness.Zero;
         }
 
+        if (OperatingSystem.IsAndroidVersionAtLeast(30))
+        {
+            var systemBarInsets = insets.GetInsets(AndroidWindowInsets.Type.SystemBars());
+            return new Thickness(
+                0,
+                -(systemBarInsets.Top / density),
+                0,
+                -(systemBarInsets.Bottom / density));
+        }
+
+#pragma warning disable CS0618
         return new Thickness(
             0,
-            -(systemBarInsets.Top / density),
+            -(insets.SystemWindowInsetTop / density),
             0,
-            -(systemBarInsets.Bottom / density));
+            -(insets.SystemWindowInsetBottom / density));
+#pragma warning restore CS0618
 #else
         return Thickness.Zero;
 #endif

@@ -53,6 +53,7 @@ public sealed class SessionState
 {
     private static readonly JsonSerializerOptions SessionJsonOptions = new(JsonSerializerDefaults.Web);
 
+    private const string SensitiveSessionPreferenceKey = "mobile_session_sensitive_v1";
     private const string IsSignedInPreferenceKey = "mobile_session_is_signed_in";
     private const string EmailPreferenceKey = "mobile_session_email";
     private const string DisplayNamePreferenceKey = "mobile_session_display_name";
@@ -80,14 +81,15 @@ public sealed class SessionState
     private static MobileSession LoadCachedSession()
     {
         var isSignedIn = Preferences.Get(IsSignedInPreferenceKey, false);
+        var sensitiveSession = isSignedIn ? LoadSensitiveCachedSession() : null;
         return new MobileSession(
             IsSignedIn: isSignedIn,
-            Email: GetNullablePreference(EmailPreferenceKey),
-            DisplayName: GetNullablePreference(DisplayNamePreferenceKey),
-            ProfileImageUrl: GetNullablePreference(ProfileImageUrlPreferenceKey),
-            FirstName: GetNullablePreference(FirstNamePreferenceKey),
-            LastName: GetNullablePreference(LastNamePreferenceKey),
-            MobileNumber: GetNullablePreference(MobileNumberPreferenceKey),
+            Email: sensitiveSession?.Email,
+            DisplayName: sensitiveSession?.DisplayName,
+            ProfileImageUrl: sensitiveSession?.ProfileImageUrl,
+            FirstName: sensitiveSession?.FirstName,
+            LastName: sensitiveSession?.LastName,
+            MobileNumber: sensitiveSession?.MobileNumber,
             HasPaidSubscription: Preferences.Get(HasPaidSubscriptionPreferenceKey, false),
             FavoriteStorySlugs: LoadFavoriteStorySlugs(),
             LoginUrl: Preferences.Get(LoginUrlPreferenceKey, string.Empty),
@@ -123,44 +125,105 @@ public sealed class SessionState
 
         if (!session.IsSignedIn)
         {
-            Preferences.Remove(EmailPreferenceKey);
-            Preferences.Remove(DisplayNamePreferenceKey);
-            Preferences.Remove(ProfileImageUrlPreferenceKey);
-            Preferences.Remove(FirstNamePreferenceKey);
-            Preferences.Remove(LastNamePreferenceKey);
-            Preferences.Remove(MobileNumberPreferenceKey);
+            RemoveLegacySensitivePreferences();
+            SecureStorage.Default.Remove(SensitiveSessionPreferenceKey);
             Preferences.Remove(HasPaidSubscriptionPreferenceKey);
             Preferences.Remove(FavoriteStorySlugsPreferenceKey);
             return;
         }
 
-        SetNullablePreference(EmailPreferenceKey, session.Email);
-        SetNullablePreference(DisplayNamePreferenceKey, session.DisplayName);
-        SetNullablePreference(ProfileImageUrlPreferenceKey, session.ProfileImageUrl);
-        SetNullablePreference(FirstNamePreferenceKey, session.FirstName);
-        SetNullablePreference(LastNamePreferenceKey, session.LastName);
-        SetNullablePreference(MobileNumberPreferenceKey, session.MobileNumber);
+        RemoveLegacySensitivePreferences();
+        _ = SaveSensitiveCachedSessionAsync(session);
         Preferences.Set(HasPaidSubscriptionPreferenceKey, session.HasPaidSubscription);
         Preferences.Set(
             FavoriteStorySlugsPreferenceKey,
             JsonSerializer.Serialize(session.FavoriteStorySlugs ?? Array.Empty<string>(), SessionJsonOptions));
     }
 
-    private static string? GetNullablePreference(string key)
+    private static CachedSensitiveSession? LoadSensitiveCachedSession()
+    {
+        try
+        {
+            var serializedSession = SecureStorage.Default.GetAsync(SensitiveSessionPreferenceKey).GetAwaiter().GetResult();
+            if (!string.IsNullOrWhiteSpace(serializedSession))
+            {
+                return JsonSerializer.Deserialize<CachedSensitiveSession>(serializedSession, SessionJsonOptions);
+            }
+        }
+        catch
+        {
+            SecureStorage.Default.Remove(SensitiveSessionPreferenceKey);
+        }
+
+        var legacySession = LoadLegacySensitivePreferences();
+        return legacySession.HasAnyValue ? legacySession : null;
+    }
+
+    private static async Task SaveSensitiveCachedSessionAsync(MobileSession session)
+    {
+        try
+        {
+            var sensitiveSession = new CachedSensitiveSession(
+                NormalizeSensitiveValue(session.Email),
+                NormalizeSensitiveValue(session.DisplayName),
+                NormalizeSensitiveValue(session.ProfileImageUrl),
+                NormalizeSensitiveValue(session.FirstName),
+                NormalizeSensitiveValue(session.LastName),
+                NormalizeSensitiveValue(session.MobileNumber));
+
+            await SecureStorage.Default.SetAsync(
+                SensitiveSessionPreferenceKey,
+                JsonSerializer.Serialize(sensitiveSession, SessionJsonOptions));
+        }
+        catch
+        {
+            // Cached profile details are a convenience only; live session refresh remains authoritative.
+        }
+    }
+
+    private static CachedSensitiveSession LoadLegacySensitivePreferences() =>
+        new(
+            GetLegacyNullablePreference(EmailPreferenceKey),
+            GetLegacyNullablePreference(DisplayNamePreferenceKey),
+            GetLegacyNullablePreference(ProfileImageUrlPreferenceKey),
+            GetLegacyNullablePreference(FirstNamePreferenceKey),
+            GetLegacyNullablePreference(LastNamePreferenceKey),
+            GetLegacyNullablePreference(MobileNumberPreferenceKey));
+
+    private static string? GetLegacyNullablePreference(string key)
     {
         var value = Preferences.Get(key, string.Empty);
         return string.IsNullOrWhiteSpace(value) ? null : value;
     }
 
-    private static void SetNullablePreference(string key, string? value)
+    private static void RemoveLegacySensitivePreferences()
     {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            Preferences.Remove(key);
-            return;
-        }
+        Preferences.Remove(EmailPreferenceKey);
+        Preferences.Remove(DisplayNamePreferenceKey);
+        Preferences.Remove(ProfileImageUrlPreferenceKey);
+        Preferences.Remove(FirstNamePreferenceKey);
+        Preferences.Remove(LastNamePreferenceKey);
+        Preferences.Remove(MobileNumberPreferenceKey);
+    }
 
-        Preferences.Set(key, value);
+    private static string? NormalizeSensitiveValue(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private sealed record CachedSensitiveSession(
+        string? Email,
+        string? DisplayName,
+        string? ProfileImageUrl,
+        string? FirstName,
+        string? LastName,
+        string? MobileNumber)
+    {
+        public bool HasAnyValue =>
+            !string.IsNullOrWhiteSpace(Email) ||
+            !string.IsNullOrWhiteSpace(DisplayName) ||
+            !string.IsNullOrWhiteSpace(ProfileImageUrl) ||
+            !string.IsNullOrWhiteSpace(FirstName) ||
+            !string.IsNullOrWhiteSpace(LastName) ||
+            !string.IsNullOrWhiteSpace(MobileNumber);
     }
 }
 

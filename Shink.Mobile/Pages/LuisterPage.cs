@@ -1957,20 +1957,34 @@ public sealed class LuisterPage : ContentPage
             ItemSizingStrategy = ItemSizingStrategy.MeasureFirstItem,
             SelectionMode = SelectionMode.None,
             ItemTemplate = new DataTemplate(() =>
-            {
-                var host = new ContentView();
-                host.BindingContextChanged += (_, _) =>
-                {
-                    if (host.BindingContext is T item)
-                    {
-                        host.Content = buildItem(item);
-                    }
-                };
-                return host;
-            })
+                new CarouselItemView<T>(buildItem))
         };
 
         return carousel;
+    }
+
+    private sealed class CarouselItemView<T>(Func<T, View> buildItem) : ContentView
+    {
+        private T? _renderedItem;
+
+        protected override void OnBindingContextChanged()
+        {
+            base.OnBindingContextChanged();
+            if (BindingContext is not T item)
+            {
+                _renderedItem = default;
+                Content = null;
+                return;
+            }
+
+            if (EqualityComparer<T>.Default.Equals(_renderedItem, item))
+            {
+                return;
+            }
+
+            _renderedItem = item;
+            Content = buildItem(item);
+        }
     }
 
     private View BuildLuisterStoryCarouselCard(MobilePlaylist playlist, MobileStorySummary story, int? rank = null)

@@ -20,7 +20,7 @@ Project-specific instructions for agents working in this repository.
 - Do not re-add the extra header tagline text.
 - Main nav currently uses:
   - `Meer oor Ons` -> `/meer-oor-ons`
-  - `Gratis stories` -> `/gratis`
+- Free stories are no longer a separate `/gratis` navigation route; keep free and paid story discovery under the `/luister` root.
 
 ## 4) Footer (All Pages)
 - Footer background color must be `#222222`.
@@ -58,15 +58,16 @@ Project-specific instructions for agents working in this repository.
 - Review text should not include double quotation marks.
 
 ## 7) Audio Protection
-- Do not expose direct static audio URLs for playback.
-- Playback must use signed, expiring URLs from `/media/audio/{slug}?token=...`.
-- Audio files are served from the server-side `Stories` folder.
+- Do not expose public static audio URLs for playback.
+- Browser-facing playback markup should start from signed, expiring URLs at `/media/audio/{slug}?token=...`.
+- R2-backed audio should redirect or stream directly from signed R2 read URLs after `/media/audio` token and access checks so app-server egress stays low.
+- Legacy local audio files may still be served from the server-side `Stories` folder.
 - Public direct audio file access under `/stories/*` for common audio extensions is blocked.
 - Keep right-click suppression on the player area and audio element.
 - Keep `controlslist` restrictions on audio where supported.
-- Keep no-cache and same-origin oriented response headers for audio streams.
+- Keep no-cache and same-origin oriented response headers on the `/media/audio` authorization endpoint where applicable.
 - Keep rate limiting enabled for the audio stream endpoint.
-- When touching audio playback or routing, verify that generated markup and network paths do not reveal static audio file URLs.
+- When touching audio playback or routing, verify that generated markup does not expose public static audio file URLs and that R2 delivery uses signed, expiring read URLs only after app-side authorization.
 
 ## 8) Admin Page Localization
 - The `/admin` page must support both Afrikaans and English.
