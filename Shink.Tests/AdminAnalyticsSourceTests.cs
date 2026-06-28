@@ -251,7 +251,7 @@ public class AdminAnalyticsSourceTests
     }
 
     [TestMethod]
-    public void UsageAnalyticsTabShowsStoryDrilldown()
+    public void StoryAnalyticsTabShowsStoryDrilldown()
     {
         var admin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
         var service = File.ReadAllText(GetRepoPath("Shink", "Services", "IAdminManagementService.cs"));
@@ -259,8 +259,17 @@ public class AdminAnalyticsSourceTests
 
         StringAssert.Contains(admin, "SelectedAnalyticsStorySlug");
         StringAssert.Contains(admin, "SelectedAnalyticsStory");
+        StringAssert.Contains(admin, "<MudTabPanel Text='@T(\"Stories\", \"Stories\")'>");
         StringAssert.Contains(admin, "@T(\"Storie statistieke\", \"Story stats\")");
         StringAssert.Contains(admin, "@T(\"Storie detail\", \"Story detail\")");
+        Assert.IsTrue(
+            admin.IndexOf("<MudTabPanel Text='@T(\"Gebruik\", \"Usage\")'>", StringComparison.Ordinal) <
+            admin.IndexOf("@T(\"Storie statistieke\", \"Story stats\")", StringComparison.Ordinal),
+            "Story stats should render outside the Usage analytics tab.");
+        Assert.IsTrue(
+            admin.IndexOf("<MudTabPanel Text='@T(\"Stories\", \"Stories\")'>", admin.IndexOf("<MudTabPanel Text='@T(\"Gebruik\", \"Usage\")'>", StringComparison.Ordinal), StringComparison.Ordinal) <
+            admin.IndexOf("@T(\"Storie statistieke\", \"Story stats\")", StringComparison.Ordinal),
+            "Story stats should render in the analytics Stories tab.");
         StringAssert.Contains(admin, "StoryStatsSearch");
         StringAssert.Contains(admin, "SelectedStoryStatsQuickDatePeriod");
         StringAssert.Contains(admin, "id=\"story-stats-quick-date\"");
@@ -845,8 +854,11 @@ public class AdminAnalyticsSourceTests
         Assert.AreEqual(3, details.Count);
         Assert.IsTrue(details.Any(detail =>
             detail.Email == "converted@shink.dev" &&
-            detail.TierCode == "gratis" &&
-            detail.SubscribedAt == freeSignupDate));
+            detail.TierCode == "all_stories_monthly" &&
+            detail.SubscribedAt == paidSignupDate));
+        Assert.IsFalse(details.Any(detail =>
+            detail.Email == "converted@shink.dev" &&
+            detail.TierCode == "gratis"));
         Assert.IsTrue(details.Any(detail =>
             detail.Email == "renewal@shink.dev" &&
             detail.TierCode == "all_stories_monthly" &&
@@ -855,9 +867,89 @@ public class AdminAnalyticsSourceTests
             detail.Email == "new-paid@shink.dev" &&
             detail.TierCode == "all_stories_monthly" &&
             detail.SubscribedAt == paidSignupDate));
-        Assert.IsFalse(details.Any(detail => detail.Email == "converted@shink.dev" && detail.SubscribedAt == paidSignupDate));
         Assert.IsFalse(details.Any(detail => detail.Email == "renewal@shink.dev" && detail.SubscribedAt == paidSignupDate));
         Assert.IsFalse(details.Any(detail => detail.Email == "school@shink.dev"));
+    }
+
+    [TestMethod]
+    public void SubscriberSignupDetailsUseSupabasePaystackChargeEventsForPaidRows()
+    {
+        var yesterday = DateTimeOffset.Now.AddDays(-1);
+        var today = DateTimeOffset.Now.AddMinutes(-5);
+        var repeatSubscriberId = Guid.NewGuid();
+        var wordpressSubscriberId = Guid.NewGuid();
+        var newSubscriberId = Guid.NewGuid();
+        var freeSubscriberId = Guid.NewGuid();
+        var rows = CreateSubscriptionRows(
+            CreateSubscriptionRow(
+                repeatSubscriberId,
+                "shink_app",
+                "cancelled",
+                yesterday,
+                null,
+                79m,
+                tierCode: "all_stories_monthly",
+                provider: "paystack",
+                providerTransactionId: "repeat-old"),
+            CreateSubscriptionRow(
+                wordpressSubscriberId,
+                "wordpress_pmpro",
+                "active",
+                yesterday,
+                null,
+                tierCode: "gratis",
+                provider: "free",
+                providerPaymentId: "wp-pmpro-current-123"),
+            CreateSubscriptionRow(
+                newSubscriberId,
+                "shink_app",
+                "active",
+                yesterday,
+                null,
+                tierCode: "gratis",
+                provider: "free",
+                providerPaymentId: $"free-{newSubscriberId:D}"),
+            CreateSubscriptionRow(
+                newSubscriberId,
+                "shink_app",
+                "active",
+                today,
+                null,
+                79m,
+                tierCode: "all_stories_monthly",
+                provider: "paystack",
+                providerTransactionId: "new-today"),
+            CreateSubscriptionRow(
+                freeSubscriberId,
+                "shink_app",
+                "active",
+                today,
+                null,
+                tierCode: "gratis",
+                provider: "free",
+                providerPaymentId: $"free-{freeSubscriberId:D}"));
+        var subscribers = CreateSubscriberRows(
+            CreateSubscriberRow(repeatSubscriberId, "repeat@shink.dev"),
+            CreateSubscriberRow(wordpressSubscriberId, "wordpress@shink.dev"),
+            CreateSubscriberRow(newSubscriberId, "new@shink.dev"),
+            CreateSubscriberRow(freeSubscriberId, "free@shink.dev"));
+        var revenueEvents = CreateRevenueEvents(
+            CreateRevenueEvent(yesterday, 7900m, providerTransactionId: "repeat-old", customerId: "101", customerEmail: "repeat@shink.dev"),
+            CreateRevenueEvent(today, 7900m, providerTransactionId: "repeat-today", customerId: "101", customerEmail: "repeat@shink.dev"),
+            CreateRevenueEvent(today, 5500m, providerTransactionId: "wordpress-today", customerId: "102", customerEmail: "wordpress@shink.dev"),
+            CreateRevenueEvent(today, 7900m, providerTransactionId: "new-today", customerId: "201", customerEmail: "new@shink.dev"));
+
+        var details = InvokeBuildSubscriberSignupDetails(
+            subscribers,
+            rows,
+            CreateEmptyTierDetails(),
+            revenueEvents);
+
+        Assert.IsTrue(details.Any(detail => detail.Email == "new@shink.dev" && detail.Provider == "paystack"));
+        Assert.IsFalse(details.Any(detail => detail.Email == "new@shink.dev" && detail.TierCode == "gratis"));
+        Assert.IsFalse(details.Any(detail => detail.Email == "repeat@shink.dev" && detail.SubscribedAt.Date == today.Date));
+        Assert.IsFalse(details.Any(detail => detail.Email == "wordpress@shink.dev" && detail.SubscribedAt.Date == today.Date));
+        Assert.IsTrue(details.Any(detail => detail.Email == "free@shink.dev" && detail.TierCode == "gratis"));
     }
 
     [TestMethod]
@@ -1147,14 +1239,16 @@ public class AdminAnalyticsSourceTests
     private static IReadOnlyList<AdminSubscriberMembershipDetailRecord> InvokeBuildSubscriberSignupDetails(
         object subscribers,
         object rows,
-        object tierDetails)
+        object tierDetails,
+        object? revenueEvents = null)
     {
         var method = typeof(SupabaseAdminManagementService).GetMethod(
             "BuildSubscriberSignupDetails",
             BindingFlags.NonPublic | BindingFlags.Static);
 
         Assert.IsNotNull(method);
-        var result = method.Invoke(null, [subscribers, rows, tierDetails]);
+        var events = revenueEvents ?? CreateRevenueEvents();
+        var result = method.Invoke(null, [subscribers, rows, tierDetails, events]);
         Assert.IsNotNull(result);
         return ((IEnumerable<AdminSubscriberMembershipDetailRecord>)result).ToArray();
     }
@@ -1325,7 +1419,9 @@ public class AdminAnalyticsSourceTests
         string eventType = "charge.success",
         string? providerPaymentId = null,
         string? providerTransactionId = null,
-        string eventStatus = "success")
+        string eventStatus = "success",
+        string? customerId = null,
+        string? customerEmail = null)
     {
         var rowType = GetRevenueEventRowType();
         var row = Activator.CreateInstance(rowType)!;
@@ -1342,7 +1438,12 @@ public class AdminAnalyticsSourceTests
             {
               "data": {
                 "amount": {{amountInCents}},
-                "paid_at": "{{receivedAt:O}}"
+                "paid_at": "{{receivedAt:O}}",
+                "reference": "{{providerTransactionId ?? providerPaymentId ?? Guid.NewGuid().ToString("N")}}",
+                "customer": {
+                  "id": "{{customerId ?? Guid.NewGuid().ToString("N")}}",
+                  "email": "{{customerEmail ?? "customer@shink.dev"}}"
+                }
               }
             }
             """));

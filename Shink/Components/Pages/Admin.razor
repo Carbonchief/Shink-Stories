@@ -2646,85 +2646,6 @@
                                     <details class="admin-analytics-panel admin-collapsible-panel" open>
                                         <summary class="admin-collapsible-summary admin-analytics-panel-head">
                                             <div>
-                                                <h3>@T("Storie gebruik (Laaste 14 dae)", "Story usage (Last 14 days)")</h3>
-                                                <p>@T("Storie-opsomming vir die laaste 14 dae: luistertyd, besoekers en inteken-gebruikers.", "Story-level summary for the last 14 days: listening time, visitors, and signed-in users.")</p>
-                                            </div>
-                                            <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
-                                        </summary>
-
-                                        <div class="admin-collapsible-content">
-                                            @if (Last14StoryUsage.Count == 0)
-                                            {
-                                                <p class="admin-analytics-footnote">
-                                                    @T("Geen storie-aktiwiteit vir die laaste 14 dae.", "No story activity in the last 14 days.")
-                                                </p>
-                                            }
-                                            else
-                                            {
-                                                <div class="admin-report-table-wrap">
-                                            <MudTable T="AdminAnalyticsStoryDetailRecord"
-                                                      Items="Last14StoryUsage"
-                                                      Class="admin-report-table"
-                                                      SortLabel='@T("Sorteer volgens", "Sort by")'
-                                                      RowsPerPage="100"
-                                                      Dense="true"
-                                                      Hover="true"
-                                                      Bordered="true"
-                                                      Elevation="0"
-                                                      Breakpoint="Breakpoint.Md">
-                                                <HeaderContent>
-                                                    <MudTh>
-                                                        <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord"
-                                                                           SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.Title)">
-                                                            @T("Storie", "Story")
-                                                        </MudTableSortLabel>
-                                                    </MudTh>
-                                                    <MudTh>
-                                                        <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord"
-                                                                           SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.TotalListenedSeconds)">
-                                                            @T("Totale luistertyd", "Total listening time")
-                                                        </MudTableSortLabel>
-                                                    </MudTh>
-                                                    <MudTh>
-                                                        <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord"
-                                                                           SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.UniqueViewers)">
-                                                            @T("Besoekers", "Visitors")
-                                                        </MudTableSortLabel>
-                                                    </MudTh>
-                                                    <MudTh>
-                                                        <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord"
-                                                                           SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.UniqueListeners)">
-                                                            @T("Ingeteken", "Signed in")
-                                                        </MudTableSortLabel>
-                                                    </MudTh>
-                                                    <MudTh>
-                                                        <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord"
-                                                                           SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.LastActivityAt ?? DateTimeOffset.MinValue)">
-                                                            @T("Laaste aktiwiteit", "Last activity")
-                                                        </MudTableSortLabel>
-                                                    </MudTh>
-                                                </HeaderContent>
-                                                <RowTemplate>
-                                                    <MudTd DataLabel='@T("Storie", "Story")'>
-                                                        <div class="admin-analytics-story-cell">
-                                                            <strong>@context.Title</strong>
-                                                            <span>@context.StorySlug</span>
-                                                        </div>
-                                                    </MudTd>
-                                                    <MudTd DataLabel='@T("Totale luistertyd", "Total listening time")'>@FormatAnalyticsDuration(context.TotalListenedSeconds)</MudTd>
-                                                    <MudTd DataLabel='@T("Besoekers", "Visitors")'>@FormatAnalyticsNumber(context.UniqueViewers)</MudTd>
-                                                    <MudTd DataLabel='@T("Ingeteken", "Signed in")'>@FormatAnalyticsNumber(context.UniqueListeners)</MudTd>
-                                                    <MudTd DataLabel='@T("Laaste aktiwiteit", "Last activity")'>@FormatAdminDateTime(context.LastActivityAt)</MudTd>
-                                                </RowTemplate>
-                                            </MudTable>
-                                            </div>
-                                            }
-                                        </div>
-                                    </details>
-
-                                    <details class="admin-analytics-panel admin-collapsible-panel" open>
-                                        <summary class="admin-collapsible-summary admin-analytics-panel-head">
-                                            <div>
                                                 <h3>@T("Gebruik oor tyd", "Usage over time")</h3>
                                                 <p>@T("Kyke, sessies, luistertyd en gunstelinge vir die gekose periode.", "Views, sessions, listening time, and favorites for the selected period.")</p>
                                             </div>
@@ -2910,203 +2831,215 @@
                                         </div>
                                     </details>
 
-                                    <details class="admin-analytics-panel admin-analytics-panel-wide admin-collapsible-panel" open>
-                                        <summary class="admin-collapsible-summary admin-analytics-panel-head">
-                                            <div>
-                                                <h3>@T("Storie statistieke", "Story stats")</h3>
-                                                <p>@T("Soek en filter alle stories volgens hul laaste analitika-aktiwiteit.", "Search and filter all stories by their latest analytics activity.")</p>
-                                            </div>
-                                            <div class="admin-collapsible-summary-meta">
-                                                <span class="admin-story-stats-filter-summary">
-                                                    @FormatAnalyticsNumber(FilteredAnalyticsStoryDetails.Count) @T("stories", "stories")
-                                                </span>
-                                                <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
-                                            </div>
-                                        </summary>
-
-                                        <div class="admin-collapsible-content">
-                                            <div class="admin-story-stats-filters">
-                                            <MudTextField T="string"
-                                                          @bind-Value="StoryStatsSearch"
-                                                          Placeholder='@T("Soek titel of slug", "Search title or slug")'
-                                                          Variant="Variant.Outlined"
-                                                          Margin="Margin.Dense"
-                                                          Immediate="true" />
-                                            <div class="admin-story-stats-preset-filter">
-                                                <label class="admin-header-filter-label" for="story-stats-quick-date">
-                                                    @T("Vinnige datum", "Quick date")
-                                                </label>
-                                                <select id="story-stats-quick-date"
-                                                        class="admin-header-filter-select admin-story-stats-preset-select"
-                                                        value="@SelectedStoryStatsQuickDatePeriod"
-                                                        @onchange="OnStoryStatsQuickDateChanged">
-                                                    <option value="@StoryStatsQuickDateAll">@T("Alle datums", "All dates")</option>
-                                                    <option value="@StoryStatsQuickDateToday">@T("Vandag", "Today")</option>
-                                                    <option value="@StoryStatsQuickDateYesterday">@T("Gister", "Yesterday")</option>
-                                                    <option value="@StoryStatsQuickDateLast7">@T("Laaste 7 dae", "Last 7 days")</option>
-                                                    <option value="@StoryStatsQuickDateLast30">@T("Laaste 30 dae", "Last 30 days")</option>
-                                                    <option value="@StoryStatsQuickDateThisMonth">@T("Hierdie maand", "This month")</option>
-                                                    <option value="@StoryStatsQuickDateCustom">@T("Pasgemaak", "Custom")</option>
-                                                </select>
-                                            </div>
-                                            <MudDatePicker Label='@T("Van datum", "From date")'
-                                                           Date="StoryStatsFromDate"
-                                                           DateChanged="OnStoryStatsFromDateChanged"
-                                                           Variant="Variant.Outlined"
-                                                           Margin="Margin.Dense" />
-                                            <MudDatePicker Label='@T("Tot datum", "To date")'
-                                                           Date="StoryStatsToDate"
-                                                           DateChanged="OnStoryStatsToDateChanged"
-                                                           Variant="Variant.Outlined"
-                                                           Margin="Margin.Dense" />
-                                            <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
-                                                       Variant="Variant.Text"
-                                                       Color="Color.Default"
-                                                       Disabled="@(!HasStoryStatsFilters)"
-                                                       OnClick="ClearStoryStatsFilters"
-                                                       aria-label='@T("Maak storie-statistiek filters skoon", "Clear story stats filters")'
-                                                       title='@T("Maak storie-statistiek filters skoon", "Clear story stats filters")'>
-                                                <i class="fa-solid fa-filter-circle-xmark" aria-hidden="true"></i>
-                                                <span class="admin-btn-text">@T("Maak filters skoon", "Clear filters")</span>
-                                            </MudButton>
-                                            </div>
-
-                                            @if (SelectedAnalyticsStory is { } selectedAnalyticsStory)
-                                            {
-                                                <details class="admin-story-analytics-drilldown" open>
-                                                    <summary class="admin-collapsible-summary admin-story-analytics-drilldown-head">
-                                                        <div>
-                                                            <h4>@T("Storie detail", "Story detail")</h4>
-                                                            <p>@selectedAnalyticsStory.Title</p>
-                                                            <span>@selectedAnalyticsStory.StorySlug</span>
-                                                        </div>
-                                                        <div class="admin-collapsible-summary-meta">
-                                                            <div class="admin-story-analytics-last">
-                                                                <span>@T("Laaste aktiwiteit", "Last activity")</span>
-                                                                <strong>@FormatAdminDateTime(selectedAnalyticsStory.LastActivityAt)</strong>
-                                                            </div>
-                                                            <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
-                                                        </div>
-                                                    </summary>
-                                                    <div class="admin-collapsible-content">
-                                                        <div class="admin-analytics-grid admin-story-analytics-grid">
-                                                            <article class="admin-analytics-card">
-                                                                <p class="admin-analytics-label">@T("Kyke", "Views")</p>
-                                                                <p class="admin-analytics-value">@FormatAnalyticsNumber(selectedAnalyticsStory.TotalViews)</p>
-                                                                <div class="admin-analytics-meta">
-                                                                    <span>@T("Unieke kykers", "Unique viewers")</span>
-                                                                    <strong>@FormatAnalyticsNumber(selectedAnalyticsStory.UniqueViewers)</strong>
-                                                                </div>
-                                                                <p class="admin-analytics-footnote">@T("Laaste kyk", "Last view"): @FormatAdminDateTime(selectedAnalyticsStory.LastViewAt)</p>
-                                                            </article>
-                                                            <article class="admin-analytics-card">
-                                                                <p class="admin-analytics-label">@T("Luistersessies", "Listen sessions")</p>
-                                                                <p class="admin-analytics-value">@FormatAnalyticsNumber(selectedAnalyticsStory.TotalListenSessions)</p>
-                                                                <div class="admin-analytics-meta">
-                                                                    <span>@T("Luister-events", "Listen events")</span>
-                                                                    <strong>@FormatAnalyticsNumber(selectedAnalyticsStory.TotalListenEvents)</strong>
-                                                                </div>
-                                                                <div class="admin-analytics-meta">
-                                                                    <span>@T("Unieke luisteraars", "Unique listeners")</span>
-                                                                    <strong>@FormatAnalyticsNumber(selectedAnalyticsStory.UniqueListeners)</strong>
-                                                                </div>
-                                                                <p class="admin-analytics-footnote">@T("Laaste luister", "Last listen"): @FormatAdminDateTime(selectedAnalyticsStory.LastListenAt)</p>
-                                                            </article>
-                                                            <article class="admin-analytics-card">
-                                                                <p class="admin-analytics-label">@T("Luistertyd", "Listening time")</p>
-                                                                <p class="admin-analytics-value">@FormatAnalyticsDuration(selectedAnalyticsStory.TotalListenedSeconds)</p>
-                                                                <div class="admin-analytics-meta">
-                                                                    <span>@T("Gemiddeld per sessie", "Average per session")</span>
-                                                                    <strong>@FormatAnalyticsDuration(selectedAnalyticsStory.AverageListenedSecondsPerSession)</strong>
-                                                                </div>
-                                                            </article>
-                                                            <article class="admin-analytics-card">
-                                                                <p class="admin-analytics-label">@T("Gunstelinge", "Favorites")</p>
-                                                                <p class="admin-analytics-value">@FormatAnalyticsNumber(selectedAnalyticsStory.TotalFavorites)</p>
-                                                                <div class="admin-analytics-meta">
-                                                                    <span>@T("Unieke mense", "Unique people")</span>
-                                                                    <strong>@FormatAnalyticsNumber(selectedAnalyticsStory.UniqueFavoriters)</strong>
-                                                                </div>
-                                                                <p class="admin-analytics-footnote">@T("Laaste gunsteling", "Last favorite"): @FormatAdminDateTime(selectedAnalyticsStory.LastFavoriteAt)</p>
-                                                            </article>
-                                                        </div>
-                                                    </div>
-                                                </details>
-                                            }
-
-                                            <MudTable T="AdminAnalyticsStoryDetailRecord"
-                                                  Class="admin-grid"
-                                                  Items="FilteredAnalyticsStoryDetails"
-                                                  RowsPerPage="25"
-                                                  Dense="true"
-                                                  Hover="true"
-                                                  Bordered="true"
-                                                  Elevation="0"
-                                                  OnRowClick="OnAnalyticsStoryRowClick"
-                                                  Breakpoint="Breakpoint.Md">
-                                            <HeaderContent>
-                                                <MudTh>
-                                                    <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord" SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.Title)">
-                                                        @T("Titel", "Title")
-                                                    </MudTableSortLabel>
-                                                </MudTh>
-                                                <MudTh>
-                                                    <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord" SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.TotalViews)">
-                                                        @T("Kyke", "Views")
-                                                    </MudTableSortLabel>
-                                                </MudTh>
-                                                <MudTh>
-                                                    <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord" SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.UniqueViewers)">
-                                                        @T("Kykers", "Viewers")
-                                                    </MudTableSortLabel>
-                                                </MudTh>
-                                                <MudTh>
-                                                    <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord" SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.TotalListenSessions)">
-                                                        @T("Sessies", "Sessions")
-                                                    </MudTableSortLabel>
-                                                </MudTh>
-                                                <MudTh>
-                                                    <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord" SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.TotalListenEvents)">
-                                                        @T("Luister-events", "Listen events")
-                                                    </MudTableSortLabel>
-                                                </MudTh>
-                                                <MudTh>
-                                                    <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord" SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.TotalListenedSeconds)">
-                                                        @T("Luistertyd", "Listening time")
-                                                    </MudTableSortLabel>
-                                                </MudTh>
-                                                <MudTh>
-                                                    <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord" SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.TotalFavorites)">
-                                                        @T("Gunstelinge", "Favorites")
-                                                    </MudTableSortLabel>
-                                                </MudTh>
-                                                <MudTh>
-                                                    <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord" SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.LastActivityAt)">
-                                                        @T("Laaste aktiwiteit", "Last activity")
-                                                    </MudTableSortLabel>
-                                                </MudTh>
-                                            </HeaderContent>
-                                            <RowTemplate>
-                                                <MudTd DataLabel='@T("Titel", "Title")'>
-                                                    <div class="admin-analytics-story-cell">
-                                                        <strong>@context.Title</strong>
-                                                    </div>
-                                                </MudTd>
-                                                <MudTd DataLabel='@T("Kyke", "Views")'>@FormatAnalyticsNumber(context.TotalViews)</MudTd>
-                                                <MudTd DataLabel='@T("Kykers", "Viewers")'>@FormatAnalyticsNumber(context.UniqueViewers)</MudTd>
-                                                <MudTd DataLabel='@T("Sessies", "Sessions")'>@FormatAnalyticsNumber(context.TotalListenSessions)</MudTd>
-                                                <MudTd DataLabel='@T("Luister-events", "Listen events")'>@FormatAnalyticsNumber(context.TotalListenEvents)</MudTd>
-                                                <MudTd DataLabel='@T("Luistertyd", "Listening time")'>@FormatAnalyticsDuration(context.TotalListenedSeconds)</MudTd>
-                                                <MudTd DataLabel='@T("Gunstelinge", "Favorites")'>@FormatAnalyticsNumber(context.TotalFavorites)</MudTd>
-                                                <MudTd DataLabel='@T("Laaste aktiwiteit", "Last activity")'>@FormatAdminDateTime(context.LastActivityAt)</MudTd>
-                                            </RowTemplate>
-                                            <NoRecordsContent>
-                                                <MudText Typo="Typo.body2">@T("Nog geen storie-analitika nie.", "No story analytics yet.")</MudText>
-                                            </NoRecordsContent>
-                                            </MudTable>
-                                        </div>
-                                    </details>
                                 </div>
+                            }
+                        </MudTabPanel>
+
+                        <MudTabPanel Text='@T("Stories", "Stories")'>
+                            @if (!HasAnalyticsData)
+                            {
+                                <section class="admin-state">
+                                    <h2>@T("Nog geen analitika beskikbaar nie", "No analytics available yet")</h2>
+                                    <p>
+                                        @T(
+                                            "Sodra stories gebruik word, sal die nagespoorde data hier verskyn.",
+                                            "As stories get used, the tracked data will appear here.")
+                                    </p>
+                                </section>
+                            }
+                            else
+                            {
+                                <section class="admin-analytics-panel admin-analytics-panel-wide">
+                                    <div class="admin-analytics-panel-head">
+                                        <div>
+                                            <h3>@T("Storie statistieke", "Story stats")</h3>
+                                            <p>@T("Soek en filter alle stories volgens hul laaste analitika-aktiwiteit.", "Search and filter all stories by their latest analytics activity.")</p>
+                                        </div>
+                                        <span class="admin-story-stats-filter-summary">
+                                            @FormatAnalyticsNumber(FilteredAnalyticsStoryDetails.Count) @T("stories", "stories")
+                                        </span>
+                                    </div>
+
+                                    <div class="admin-story-stats-filters">
+                                        <MudTextField T="string"
+                                                      @bind-Value="StoryStatsSearch"
+                                                      Placeholder='@T("Soek titel of slug", "Search title or slug")'
+                                                      Variant="Variant.Outlined"
+                                                      Margin="Margin.Dense"
+                                                      Immediate="true" />
+                                        <div class="admin-story-stats-preset-filter">
+                                            <label class="admin-header-filter-label" for="story-stats-quick-date">
+                                                @T("Vinnige datum", "Quick date")
+                                            </label>
+                                            <select id="story-stats-quick-date"
+                                                    class="admin-header-filter-select admin-story-stats-preset-select"
+                                                    value="@SelectedStoryStatsQuickDatePeriod"
+                                                    @onchange="OnStoryStatsQuickDateChanged">
+                                                <option value="@StoryStatsQuickDateAll">@T("Alle datums", "All dates")</option>
+                                                <option value="@StoryStatsQuickDateToday">@T("Vandag", "Today")</option>
+                                                <option value="@StoryStatsQuickDateYesterday">@T("Gister", "Yesterday")</option>
+                                                <option value="@StoryStatsQuickDateLast7">@T("Laaste 7 dae", "Last 7 days")</option>
+                                                <option value="@StoryStatsQuickDateLast30">@T("Laaste 30 dae", "Last 30 days")</option>
+                                                <option value="@StoryStatsQuickDateThisMonth">@T("Hierdie maand", "This month")</option>
+                                                <option value="@StoryStatsQuickDateCustom">@T("Pasgemaak", "Custom")</option>
+                                            </select>
+                                        </div>
+                                        <MudDatePicker Label='@T("Van datum", "From date")'
+                                                       Date="StoryStatsFromDate"
+                                                       DateChanged="OnStoryStatsFromDateChanged"
+                                                       Variant="Variant.Outlined"
+                                                       Margin="Margin.Dense" />
+                                        <MudDatePicker Label='@T("Tot datum", "To date")'
+                                                       Date="StoryStatsToDate"
+                                                       DateChanged="OnStoryStatsToDateChanged"
+                                                       Variant="Variant.Outlined"
+                                                       Margin="Margin.Dense" />
+                                        <MudButton Class="admin-icon-btn admin-action-btn admin-icon-only"
+                                                   Variant="Variant.Text"
+                                                   Color="Color.Default"
+                                                   Disabled="@(!HasStoryStatsFilters)"
+                                                   OnClick="ClearStoryStatsFilters"
+                                                   aria-label='@T("Maak storie-statistiek filters skoon", "Clear story stats filters")'
+                                                   title='@T("Maak storie-statistiek filters skoon", "Clear story stats filters")'>
+                                            <i class="fa-solid fa-filter-circle-xmark" aria-hidden="true"></i>
+                                            <span class="admin-btn-text">@T("Maak filters skoon", "Clear filters")</span>
+                                        </MudButton>
+                                    </div>
+
+                                    @if (SelectedAnalyticsStory is { } selectedAnalyticsStory)
+                                    {
+                                        <details class="admin-story-analytics-drilldown" open>
+                                            <summary class="admin-collapsible-summary admin-story-analytics-drilldown-head">
+                                                <div>
+                                                    <h4>@T("Storie detail", "Story detail")</h4>
+                                                    <p>@selectedAnalyticsStory.Title</p>
+                                                    <span>@selectedAnalyticsStory.StorySlug</span>
+                                                </div>
+                                                <div class="admin-collapsible-summary-meta">
+                                                    <div class="admin-story-analytics-last">
+                                                        <span>@T("Laaste aktiwiteit", "Last activity")</span>
+                                                        <strong>@FormatAdminDateTime(selectedAnalyticsStory.LastActivityAt)</strong>
+                                                    </div>
+                                                    <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                                                </div>
+                                            </summary>
+                                            <div class="admin-collapsible-content">
+                                                <div class="admin-analytics-grid admin-story-analytics-grid">
+                                                    <article class="admin-analytics-card">
+                                                        <p class="admin-analytics-label">@T("Kyke", "Views")</p>
+                                                        <p class="admin-analytics-value">@FormatAnalyticsNumber(selectedAnalyticsStory.TotalViews)</p>
+                                                        <div class="admin-analytics-meta">
+                                                            <span>@T("Unieke kykers", "Unique viewers")</span>
+                                                            <strong>@FormatAnalyticsNumber(selectedAnalyticsStory.UniqueViewers)</strong>
+                                                        </div>
+                                                        <p class="admin-analytics-footnote">@T("Laaste kyk", "Last view"): @FormatAdminDateTime(selectedAnalyticsStory.LastViewAt)</p>
+                                                    </article>
+                                                    <article class="admin-analytics-card">
+                                                        <p class="admin-analytics-label">@T("Luistersessies", "Listen sessions")</p>
+                                                        <p class="admin-analytics-value">@FormatAnalyticsNumber(selectedAnalyticsStory.TotalListenSessions)</p>
+                                                        <div class="admin-analytics-meta">
+                                                            <span>@T("Luister-events", "Listen events")</span>
+                                                            <strong>@FormatAnalyticsNumber(selectedAnalyticsStory.TotalListenEvents)</strong>
+                                                        </div>
+                                                        <div class="admin-analytics-meta">
+                                                            <span>@T("Unieke luisteraars", "Unique listeners")</span>
+                                                            <strong>@FormatAnalyticsNumber(selectedAnalyticsStory.UniqueListeners)</strong>
+                                                        </div>
+                                                        <p class="admin-analytics-footnote">@T("Laaste luister", "Last listen"): @FormatAdminDateTime(selectedAnalyticsStory.LastListenAt)</p>
+                                                    </article>
+                                                    <article class="admin-analytics-card">
+                                                        <p class="admin-analytics-label">@T("Luistertyd", "Listening time")</p>
+                                                        <p class="admin-analytics-value">@FormatAnalyticsDuration(selectedAnalyticsStory.TotalListenedSeconds)</p>
+                                                        <div class="admin-analytics-meta">
+                                                            <span>@T("Gemiddeld per sessie", "Average per session")</span>
+                                                            <strong>@FormatAnalyticsDuration(selectedAnalyticsStory.AverageListenedSecondsPerSession)</strong>
+                                                        </div>
+                                                    </article>
+                                                    <article class="admin-analytics-card">
+                                                        <p class="admin-analytics-label">@T("Gunstelinge", "Favorites")</p>
+                                                        <p class="admin-analytics-value">@FormatAnalyticsNumber(selectedAnalyticsStory.TotalFavorites)</p>
+                                                        <div class="admin-analytics-meta">
+                                                            <span>@T("Unieke mense", "Unique people")</span>
+                                                            <strong>@FormatAnalyticsNumber(selectedAnalyticsStory.UniqueFavoriters)</strong>
+                                                        </div>
+                                                        <p class="admin-analytics-footnote">@T("Laaste gunsteling", "Last favorite"): @FormatAdminDateTime(selectedAnalyticsStory.LastFavoriteAt)</p>
+                                                    </article>
+                                                </div>
+                                            </div>
+                                        </details>
+                                    }
+
+                                    <MudTable T="AdminAnalyticsStoryDetailRecord"
+                                              Class="admin-grid"
+                                              Items="FilteredAnalyticsStoryDetails"
+                                              RowsPerPage="25"
+                                              Dense="true"
+                                              Hover="true"
+                                              Bordered="true"
+                                              Elevation="0"
+                                              OnRowClick="OnAnalyticsStoryRowClick"
+                                              Breakpoint="Breakpoint.Md">
+                                        <HeaderContent>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord" SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.Title)">
+                                                    @T("Titel", "Title")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord" SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.TotalViews)">
+                                                    @T("Kyke", "Views")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord" SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.UniqueViewers)">
+                                                    @T("Kykers", "Viewers")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord" SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.TotalListenSessions)">
+                                                    @T("Sessies", "Sessions")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord" SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.TotalListenEvents)">
+                                                    @T("Luister-events", "Listen events")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord" SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.TotalListenedSeconds)">
+                                                    @T("Luistertyd", "Listening time")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord" SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.TotalFavorites)">
+                                                    @T("Gunstelinge", "Favorites")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                            <MudTh>
+                                                <MudTableSortLabel T="AdminAnalyticsStoryDetailRecord" SortBy="new Func<AdminAnalyticsStoryDetailRecord, object?>(story => story.LastActivityAt)">
+                                                    @T("Laaste aktiwiteit", "Last activity")
+                                                </MudTableSortLabel>
+                                            </MudTh>
+                                        </HeaderContent>
+                                        <RowTemplate>
+                                            <MudTd DataLabel='@T("Titel", "Title")'>
+                                                <div class="admin-analytics-story-cell">
+                                                    <strong>@context.Title</strong>
+                                                </div>
+                                            </MudTd>
+                                            <MudTd DataLabel='@T("Kyke", "Views")'>@FormatAnalyticsNumber(context.TotalViews)</MudTd>
+                                            <MudTd DataLabel='@T("Kykers", "Viewers")'>@FormatAnalyticsNumber(context.UniqueViewers)</MudTd>
+                                            <MudTd DataLabel='@T("Sessies", "Sessions")'>@FormatAnalyticsNumber(context.TotalListenSessions)</MudTd>
+                                            <MudTd DataLabel='@T("Luister-events", "Listen events")'>@FormatAnalyticsNumber(context.TotalListenEvents)</MudTd>
+                                            <MudTd DataLabel='@T("Luistertyd", "Listening time")'>@FormatAnalyticsDuration(context.TotalListenedSeconds)</MudTd>
+                                            <MudTd DataLabel='@T("Gunstelinge", "Favorites")'>@FormatAnalyticsNumber(context.TotalFavorites)</MudTd>
+                                            <MudTd DataLabel='@T("Laaste aktiwiteit", "Last activity")'>@FormatAdminDateTime(context.LastActivityAt)</MudTd>
+                                        </RowTemplate>
+                                        <NoRecordsContent>
+                                            <MudText Typo="Typo.body2">@T("Nog geen storie-analitika nie.", "No story analytics yet.")</MudText>
+                                        </NoRecordsContent>
+                                    </MudTable>
+                                </section>
                             }
                         </MudTabPanel>
 
@@ -5043,13 +4976,6 @@
             .OrderByDescending(point => point.ActivityDate)
             .ToArray();
 
-    private IReadOnlyList<AdminAnalyticsStoryDetailRecord> Last14StoryUsage =>
-        AnalyticsStoryDetails
-            .Where(story => IsStoryActivityInPeriod(story, UsageActivityPeriodLast14))
-            .OrderByDescending(story => story.TotalListenedSeconds)
-            .ThenBy(story => story.Title, StringComparer.CurrentCultureIgnoreCase)
-            .ToArray();
-
     private IReadOnlyList<AdminAnalyticsDailyActivityPoint> GetUsageActivityPoints(string selectedUsageActivityPeriod) =>
         Analytics.DailyActivity
             .Where(point => IsUsageActivityPointInPeriod(point, selectedUsageActivityPeriod))
@@ -5539,6 +5465,7 @@
         if (!SubscriberGridEnhancementPending)
         {
             if (!IsLoading &&
+                !IsRefreshingSubscribers &&
                 SubscriberTableReloadPending &&
                 SubscribersTable is not null)
             {
@@ -5570,6 +5497,7 @@
         }
 
         if (!IsLoading &&
+            !IsRefreshingSubscribers &&
             SubscriberTableReloadPending &&
             SubscribersTable is not null)
         {
@@ -5744,6 +5672,17 @@
             {
                 Items = Subscribers,
                 TotalItems = page.TotalCount
+            };
+        }
+        catch (Exception exception)
+            when (exception is OperationCanceledException)
+        {
+            Logger.LogDebug(exception, "Admin subscriber refresh was cancelled.");
+
+            return new TableData<AdminSubscriberRecord>
+            {
+                Items = Subscribers,
+                TotalItems = SubscriberTotalCount ?? Subscribers.Count
             };
         }
         catch (Exception exception)

@@ -4345,7 +4345,7 @@ public sealed partial class SupabaseAdminManagementService(
                 revenueEvents),
             ActiveMembersPerLevel: BuildTierDistributionMetrics(subscriptions, tierDetails),
             MembershipDetails: BuildSubscriberMembershipDetails(subscribers, subscriptions, tierDetails, paystackSubscriptionCreateIdentifiers),
-            SignupDetails: BuildSubscriberSignupDetails(subscribers, subscriptions, tierDetails),
+            SignupDetails: BuildSubscriberSignupDetails(subscribers, subscriptions, tierDetails, revenueEvents),
             RecurringRevenue: BuildRecurringRevenueMetrics(subscriptions, recoveries),
             SalesAndRevenue: BuildSalesRevenueMetricsCore(wordPressSubscriberReports, subscriptions, tierDetails, revenueEvents, storeOrderRevenue),
             SalesDetails: BuildSalesRevenueDetailsCore(subscribers, subscriptions, tierDetails, revenueEvents, storeOrderRevenue),
@@ -4622,17 +4622,124 @@ public sealed partial class SupabaseAdminManagementService(
     private static IReadOnlyList<AdminSubscriberMembershipDetailRecord> BuildSubscriberSignupDetails(
         IReadOnlyList<SubscriberRow> subscribers,
         IReadOnlyList<SubscriptionRow> subscriptions,
-        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails)
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
+        IReadOnlyList<RevenueEventRow> revenueEvents)
     {
         var subscribersById = subscribers
             .Where(subscriber => subscriber.SubscriberId != Guid.Empty)
             .GroupBy(subscriber => subscriber.SubscriberId)
             .ToDictionary(group => group.Key, group => group.First());
+        var subscribersByEmail = subscribers
+            .Where(subscriber => !string.IsNullOrWhiteSpace(subscriber.Email))
+            .GroupBy(subscriber => subscriber.Email!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
 
-        return GetFirstSubscriberMembershipDetailSubscriptions(subscriptions)
+        var freeSignupDetails = GetFirstSubscriberMembershipDetailSubscriptions(subscriptions)
+            .Where(IsFreeSubscriberMembershipDetailEligible)
             .Select(subscription => CreateSubscriberMembershipDetail(subscribersById, tierDetails, subscription))
+            .ToArray();
+
+        var paidSignupDetails = revenueEvents.Any(IsSuccessfulPositivePaystackChargeEvent)
+            ? BuildPaystackPaidSignupDetails(subscribersByEmail, subscriptions, tierDetails, revenueEvents)
+            : GetFirstPaidSubscriberMembershipDetailSubscriptions(subscriptions)
+                .Where(IsPaidSubscriberMembershipDetailEligible)
+                .Select(subscription => CreateSubscriberMembershipDetail(subscribersById, tierDetails, subscription))
+                .ToArray();
+
+        return BuildSingleSubscriberSignupDetails(freeSignupDetails, paidSignupDetails)
             .OrderByDescending(detail => detail.SubscribedAt)
             .ToArray();
+    }
+
+    private static IReadOnlyList<AdminSubscriberMembershipDetailRecord> BuildSingleSubscriberSignupDetails(
+        IReadOnlyList<AdminSubscriberMembershipDetailRecord> freeSignupDetails,
+        IReadOnlyList<AdminSubscriberMembershipDetailRecord> paidSignupDetails)
+    {
+        var paidSignupKeys = paidSignupDetails
+            .Select(GetSubscriberSignupDetailUserKey)
+            .Where(key => !string.IsNullOrWhiteSpace(key))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return paidSignupDetails
+            .Concat(freeSignupDetails.Where(detail => !paidSignupKeys.Contains(GetSubscriberSignupDetailUserKey(detail))))
+            .ToArray();
+    }
+
+    private static string GetSubscriberSignupDetailUserKey(AdminSubscriberMembershipDetailRecord detail)
+    {
+        var email = NormalizeOptionalText(detail.Email, 254);
+        if (!string.IsNullOrWhiteSpace(email) && !string.Equals(email, "-", StringComparison.Ordinal))
+        {
+            return email;
+        }
+
+        return detail.SubscriberId != Guid.Empty
+            ? detail.SubscriberId.ToString("D")
+            : string.Empty;
+    }
+
+    private static IReadOnlyList<AdminSubscriberMembershipDetailRecord> BuildPaystackPaidSignupDetails(
+        IReadOnlyDictionary<string, SubscriberRow> subscribersByEmail,
+        IReadOnlyList<SubscriptionRow> subscriptions,
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
+        IReadOnlyList<RevenueEventRow> revenueEvents)
+    {
+        var subscriptionLookup = BuildSubscriptionRevenueIdentifierLookup(subscriptions);
+
+        return revenueEvents
+            .Where(IsSuccessfulPositivePaystackChargeEvent)
+            .Where(row => ResolveRevenueEventOccurredAt(row) is not null)
+            .Where(row => !string.IsNullOrWhiteSpace(ResolvePaystackRevenueEventCustomerKey(row)))
+            .GroupBy(ResolvePaystackRevenueEventCustomerKey, StringComparer.OrdinalIgnoreCase)
+            .Select(group => group
+                .OrderBy(row => ResolveRevenueEventOccurredAt(row))
+                .ThenBy(row => row.ProviderTransactionId, StringComparer.OrdinalIgnoreCase)
+                .First())
+            .Select(row => CreatePaystackPaidSignupDetail(subscribersByEmail, subscriptions, subscriptionLookup, tierDetails, row))
+            .Where(detail => detail is not null)
+            .Select(detail => detail!)
+            .ToArray();
+    }
+
+    private static AdminSubscriberMembershipDetailRecord? CreatePaystackPaidSignupDetail(
+        IReadOnlyDictionary<string, SubscriberRow> subscribersByEmail,
+        IReadOnlyList<SubscriptionRow> subscriptions,
+        IReadOnlyDictionary<string, SubscriptionRow> subscriptionLookup,
+        IReadOnlyDictionary<string, SubscriptionTierRow> tierDetails,
+        RevenueEventRow row)
+    {
+        var email = NormalizeOptionalText(ResolvePaystackRevenueEventEmail(row), 254);
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return null;
+        }
+
+        subscribersByEmail.TryGetValue(email, out var subscriber);
+        var occurredAt = ResolveRevenueEventOccurredAt(row);
+        if (occurredAt is null ||
+            HasEarlierSupabasePaidSignupEvidence(subscriber, subscriptions, occurredAt.Value))
+        {
+            return null;
+        }
+
+        var matchedSubscription = FindRevenueEventSubscription(row, subscriptionLookup);
+        var tierCode = NormalizeOptionalText(matchedSubscription?.TierCode, 80) ??
+                       ResolvePaystackRevenueEventTierCode(row) ??
+                       "-";
+        var tierName = ResolveRevenueCandidateTierName(tierCode, tierDetails) ?? tierCode;
+        var displayName = ResolveSubscriberDisplayName(subscriber, email);
+
+        return new AdminSubscriberMembershipDetailRecord(
+            subscriber?.SubscriberId ?? Guid.Empty,
+            email,
+            displayName,
+            tierCode,
+            tierName,
+            "paystack",
+            "paystack_event",
+            NormalizeOptionalText(row.EventStatus, 40) ?? "success",
+            occurredAt.Value,
+            matchedSubscription?.CancelledAt);
     }
 
     private static AdminSubscriberMembershipDetailRecord CreateSubscriberMembershipDetail(
@@ -4667,6 +4774,132 @@ public sealed partial class SupabaseAdminManagementService(
             subscription.CancelledAt);
     }
 
+    private static string ResolveSubscriberDisplayName(SubscriberRow? subscriber, string email)
+    {
+        var displayName = NormalizeOptionalText(subscriber?.DisplayName, 120);
+        if (!string.IsNullOrWhiteSpace(displayName))
+        {
+            return displayName;
+        }
+
+        displayName = string.Join(" ", new[]
+        {
+            NormalizeOptionalText(subscriber?.FirstName, 80),
+            NormalizeOptionalText(subscriber?.LastName, 80)
+        }.Where(part => !string.IsNullOrWhiteSpace(part)));
+
+        return string.IsNullOrWhiteSpace(displayName) ? email : displayName;
+    }
+
+    private static bool IsSuccessfulPositivePaystackChargeEvent(RevenueEventRow row) =>
+        string.Equals(row.Provider, "paystack", StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(row.EventType, "charge.success", StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(row.EventStatus, "success", StringComparison.OrdinalIgnoreCase) &&
+        ResolveProviderRevenueAmount(row, out _) > 0m;
+
+    private static string ResolvePaystackRevenueEventCustomerKey(RevenueEventRow row)
+    {
+        var customerId = NormalizeOptionalText(
+            TryReadNestedString(row.Payload, "data", "customer", "id") ??
+            TryReadNestedString(row.Payload, "customer", "id"),
+            80);
+        if (!string.IsNullOrWhiteSpace(customerId))
+        {
+            return customerId;
+        }
+
+        var customerCode = NormalizeOptionalText(
+            TryReadNestedString(row.Payload, "data", "customer", "customer_code") ??
+            TryReadNestedString(row.Payload, "customer", "customer_code"),
+            80);
+        if (!string.IsNullOrWhiteSpace(customerCode))
+        {
+            return customerCode;
+        }
+
+        return NormalizeOptionalText(ResolvePaystackRevenueEventEmail(row), 254) ?? string.Empty;
+    }
+
+    private static string? ResolvePaystackRevenueEventEmail(RevenueEventRow row) =>
+        TryReadNestedString(row.Payload, "data", "customer", "email") ??
+        TryReadNestedString(row.Payload, "customer", "email") ??
+        TryReadString(row.Payload, "email");
+
+    private static bool HasEarlierSupabasePaidSignupEvidence(
+        SubscriberRow? subscriber,
+        IReadOnlyList<SubscriptionRow> subscriptions,
+        DateTimeOffset occurredAt)
+    {
+        if (subscriber is null || subscriber.SubscriberId == Guid.Empty)
+        {
+            return false;
+        }
+
+        return subscriptions
+            .Where(subscription => subscription.SubscriberId == subscriber.SubscriberId)
+            .Where(subscription => subscription.SubscribedAt is not null && subscription.SubscribedAt.Value < occurredAt)
+            .Any(subscription =>
+                string.Equals(subscription.SourceSystem, "wordpress_pmpro", StringComparison.OrdinalIgnoreCase) ||
+                IsPaidSubscriberMembershipDetailEligible(subscription));
+    }
+
+    private static string? ResolvePaystackRevenueEventTierCode(RevenueEventRow row)
+    {
+        var metadataPlan = NormalizeOptionalText(
+            TryReadNestedString(row.Payload, "data", "metadata", "planSlug") ??
+            TryReadNestedString(row.Payload, "data", "metadata", "plan_slug") ??
+            TryReadNestedString(row.Payload, "data", "metadata", "tier_code") ??
+            TryReadString(row.Payload, "planSlug") ??
+            TryReadString(row.Payload, "plan_slug") ??
+            TryReadString(row.Payload, "tier_code"),
+            80);
+        var reference = NormalizeOptionalText(
+            TryReadNestedString(row.Payload, "data", "reference") ??
+            TryReadString(row.Payload, "reference") ??
+            row.ProviderPaymentId,
+            160);
+        var amount = ResolveProviderRevenueAmount(row, out _);
+
+        return NormalizePaystackPlanIdentifier(metadataPlan) ??
+               NormalizePaystackPlanIdentifier(reference) ??
+               amount switch
+               {
+                   790m => "all_stories_yearly",
+                   79m => "all_stories_monthly",
+                   55m => "story_corner_monthly",
+                   _ => null
+               };
+    }
+
+    private static string? NormalizePaystackPlanIdentifier(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (value.Contains("schink-stories-jaarliks", StringComparison.OrdinalIgnoreCase))
+        {
+            return "all_stories_yearly";
+        }
+
+        if (value.Contains("schink-stories-maandeliks", StringComparison.OrdinalIgnoreCase))
+        {
+            return "all_stories_monthly";
+        }
+
+        if (value.Contains("storie-hoekie-maandeliks", StringComparison.OrdinalIgnoreCase))
+        {
+            return "story_corner_monthly";
+        }
+
+        return value switch
+        {
+            "all_stories_yearly" or "all_stories_monthly" or "story_corner_monthly" => value,
+            _ => null
+        };
+    }
+
     private static bool IsFreeSubscriberMembershipDetailEligible(SubscriptionRow subscription) =>
         subscription.SubscriberId != Guid.Empty &&
         !string.Equals(subscription.Status, "failed", StringComparison.OrdinalIgnoreCase) &&
@@ -4675,9 +4908,24 @@ public sealed partial class SupabaseAdminManagementService(
         string.Equals(subscription.TierCode, "gratis", StringComparison.OrdinalIgnoreCase) &&
         subscription.SubscribedAt is not null;
 
+    private static bool IsPaidSubscriberMembershipDetailEligible(SubscriptionRow subscription) =>
+        IsSubscriberCountMetricEligible(subscription) &&
+        !string.Equals(subscription.TierCode, "gratis", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(subscription.Provider, "free", StringComparison.OrdinalIgnoreCase);
+
     private static IReadOnlyList<SubscriptionRow> GetFirstSubscriberMembershipDetailSubscriptions(IReadOnlyList<SubscriptionRow> subscriptions) =>
         subscriptions
             .Where(subscription => IsSubscriberCountMetricEligible(subscription) || IsFreeSubscriberMembershipDetailEligible(subscription))
+            .Where(subscription => subscription.SubscribedAt is not null)
+            .GroupBy(subscription => subscription.SubscriberId)
+            .Select(group => group
+                .OrderBy(subscription => subscription.SubscribedAt)
+                .First())
+            .ToArray();
+
+    private static IReadOnlyList<SubscriptionRow> GetFirstPaidSubscriberMembershipDetailSubscriptions(IReadOnlyList<SubscriptionRow> subscriptions) =>
+        subscriptions
+            .Where(IsPaidSubscriberMembershipDetailEligible)
             .Where(subscription => subscription.SubscribedAt is not null)
             .GroupBy(subscription => subscription.SubscriberId)
             .Select(group => group

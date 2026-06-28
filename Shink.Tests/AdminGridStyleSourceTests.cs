@@ -174,6 +174,16 @@ public class AdminGridStyleSourceTests
     }
 
     [TestMethod]
+    public void SubscriberGridDoesNotPinToolbarCountToZeroForCancelledInitialReload()
+    {
+        var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
+
+        StringAssert.Contains(markup, "!IsRefreshingSubscribers &&");
+        StringAssert.Contains(markup, "when (exception is OperationCanceledException)");
+        StringAssert.Contains(markup, "TotalItems = SubscriberTotalCount ?? Subscribers.Count");
+    }
+
+    [TestMethod]
     public void SubscriberGridDateColumnsExposeServerSideFilters()
     {
         var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
