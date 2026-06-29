@@ -2770,6 +2770,63 @@ app.MapPost("/api/auth/signup/discount-preview", async (
     });
 }).RequireRateLimiting("auth-submit").DisableAntiforgery();
 
+app.MapPost("/api/account/discount-code/apply", async (
+    SignupDiscountPreviewApiRequest request,
+    ISubscriptionLedgerService subscriptionLedgerService,
+    HttpContext httpContext) =>
+{
+    if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
+    {
+        return Results.Json(
+            new { message = "Teken asseblief in om hierdie kode te gebruik." },
+            statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
+                       ?? httpContext.User.Identity?.Name;
+    if (string.IsNullOrWhiteSpace(signedInEmail))
+    {
+        return Results.BadRequest(new { message = "Ons kon nie jou e-posadres lees nie. Teken asseblief weer in." });
+    }
+
+    var preview = await subscriptionLedgerService.PreviewSignupDiscountCodeAsync(
+        request.DiscountCode?.Trim(),
+        request.SelectedTierCode?.Trim(),
+        httpContext.RequestAborted);
+    if (!preview.IsValid ||
+        !string.Equals(preview.DiscountKind, SubscriptionDiscountKinds.FreeAccess, StringComparison.Ordinal) ||
+        !preview.BypassesPayment)
+    {
+        return Results.BadRequest(new { message = preview.ErrorMessage ?? "Hierdie kode kan nie hier toegepas word nie." });
+    }
+
+    var applyResult = await subscriptionLedgerService.ApplySignupDiscountCodeAsync(
+        signedInEmail,
+        request.DiscountCode?.Trim(),
+        request.SelectedTierCode?.Trim(),
+        httpContext.RequestAborted);
+    if (!applyResult.IsSuccess)
+    {
+        return Results.Json(
+            new { message = applyResult.ErrorMessage ?? "Kon nie die kode nou toepas nie." },
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
+    return Results.Ok(new
+    {
+        message = applyResult.PaymentPauseApplied && applyResult.PauseEndsAtUtc is not null
+            ? $"Jou kode is toegepas. Jou Paystack-betaling is tydelik gestop tot {applyResult.PauseEndsAtUtc.Value.ToLocalTime():d MMMM yyyy}."
+            : applyResult.AccessEndsAtUtc is null
+                ? "Jou kode is toegepas en jou toegang is nou aktief."
+                : $"Jou kode is toegepas. Jou toegang is aktief tot {applyResult.AccessEndsAtUtc.Value.ToLocalTime():d MMMM yyyy}.",
+        redirectPath = "/intekening-en-betaling?kode=toegepas",
+        codeApplied = true,
+        paymentPauseApplied = applyResult.PaymentPauseApplied,
+        pauseEndsAtUtc = applyResult.PauseEndsAtUtc,
+        resumeGraceEndsAtUtc = applyResult.ResumeGraceEndsAtUtc
+    });
+}).RequireRateLimiting("auth-submit").DisableAntiforgery();
+
 app.MapPost("/api/auth/logout", async (HttpContext httpContext, IAuthSessionService authSessionService) =>
 {
     await RevokeCurrentUserSessionAsync(httpContext, authSessionService);

@@ -28,6 +28,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     private static readonly TimeSpan AuthorizationRetryDelay = TimeSpan.FromDays(1);
     private static readonly TimeSpan FollowUpAuthorizationRetryDelay = TimeSpan.FromDays(1);
     private static readonly TimeSpan PaymentRecoveryGracePeriod = TimeSpan.FromDays(4);
+    private static readonly TimeSpan SubscriptionPaymentPauseResumeGrace = TimeSpan.FromHours(72);
 
     private readonly HttpClient _httpClient = httpClient;
     private readonly SupabaseOptions _options = supabaseOptions.Value;
@@ -3378,6 +3379,17 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                         cancellationToken,
                         isRecurringFailure: IsPaystackRecoverableFailureEvent(eventType, eventStatus));
                 }
+            }
+
+            if (!string.IsNullOrWhiteSpace(subscriptionId) &&
+                ShouldActivatePaystackSubscription(eventType, eventStatus))
+            {
+                await TryMarkSubscriptionPaymentPauseResumedAsync(
+                    baseUri,
+                    apiKey,
+                    subscriptionId,
+                    nowUtc,
+                    cancellationToken);
             }
 
             var eventFinalized = await FinalizeClaimedSubscriptionEventAsync(

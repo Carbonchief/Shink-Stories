@@ -122,6 +122,26 @@ public class IntekeningEnBetalingModalSourceTests
         StringAssert.Contains(source, "CreatePaystackCardUpdateLinkAsync(UserEmail)");
     }
 
+    [TestMethod]
+    public void BillingDiscountCodes_CanApplyFreeAccessCodesWithoutPaystack()
+    {
+        var pagePath = FindRepositoryFile("Shink", "Components", "Pages", "IntekeningEnBetaling.razor");
+        var programPath = FindRepositoryFile("Shink", "Program.cs");
+        var source = File.ReadAllText(pagePath);
+        var program = File.ReadAllText(programPath);
+
+        StringAssert.Contains(source, "HasValidFreeAccessCodeForPlan(plan)");
+        StringAssert.Contains(source, "Aktiveer met kode");
+        StringAssert.Contains(source, "stop ons jou Paystack-betaling tydelik");
+        StringAssert.Contains(source, "ApplyBillingDiscountCodeAsync(plan)");
+        StringAssert.Contains(source, "\"/api/account/discount-code/apply\"");
+        StringAssert.Contains(program, "app.MapPost(\"/api/account/discount-code/apply\"");
+        StringAssert.Contains(program, "SubscriptionDiscountKinds.FreeAccess");
+        StringAssert.Contains(program, "ApplySignupDiscountCodeAsync");
+        StringAssert.Contains(program, "paymentPauseApplied");
+        StringAssert.Contains(program, "Teken asseblief in om hierdie kode te gebruik.");
+    }
+
     private static string ExtractBetween(string source, string start, string end)
     {
         var startIndex = source.IndexOf(start, StringComparison.Ordinal);

@@ -62,6 +62,42 @@ public class PayFastWebhookHardeningTests
     }
 
     [TestMethod]
+    public void SuccessfulPaystackWebhookMarksPaymentPauseResumedBeforeFinalizingEvent()
+    {
+        var ledgerService = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseSubscriptionLedgerService.cs"));
+        var markerIndex = ledgerService.IndexOf("TryMarkSubscriptionPaymentPauseResumedAsync(", StringComparison.Ordinal);
+        var finalizerIndex = ledgerService.IndexOf("FinalizeClaimedSubscriptionEventAsync(", markerIndex, StringComparison.Ordinal);
+
+        Assert.IsGreaterThanOrEqualTo(0, markerIndex, "Successful Paystack processing must mark resumed payment pauses.");
+        Assert.IsGreaterThan(markerIndex, finalizerIndex, "Payment pause resume marking should happen before event finalization.");
+        StringAssert.Contains(ledgerService, "ShouldActivatePaystackSubscription(eventType, eventStatus)");
+
+        var schedulePartial = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseSubscriptionLedgerService.PaystackAuthorizationSchedule.cs"));
+        StringAssert.Contains(schedulePartial, "status = \"resumed\"");
+        StringAssert.Contains(schedulePartial, "status=eq.resume_pending");
+    }
+
+    [TestMethod]
+    public void PaystackEnableSubscriptionMirrorsDisableTokenAndErrorHandling()
+    {
+        var service = File.ReadAllText(GetRepoPath("Shink", "Services", "PaystackCheckoutService.cs"));
+        var methodStart = service.IndexOf("public async Task<PaystackSubscriptionEnableResult> EnableSubscriptionAsync", StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(0, methodStart, "Paystack enable helper must exist.");
+
+        var methodEnd = service.IndexOf("public async Task<PaystackAuthorizationChargeResult> ChargeAuthorizationAsync", methodStart, StringComparison.Ordinal);
+        Assert.IsGreaterThan(methodStart, methodEnd, "Paystack enable helper block could not be isolated.");
+
+        var method = service[methodStart..methodEnd];
+        StringAssert.Contains(method, "FetchSubscriptionEmailTokenAsync(normalizedCode");
+        StringAssert.Contains(method, "https://api.paystack.co/subscription/enable");
+        StringAssert.Contains(method, "code = normalizedCode");
+        StringAssert.Contains(method, "token = normalizedToken");
+        StringAssert.Contains(method, "!response.IsSuccessStatusCode");
+        StringAssert.Contains(method, "JsonException");
+        StringAssert.Contains(service, "public sealed record PaystackSubscriptionEnableResult");
+    }
+
+    [TestMethod]
     public void SubscriptionsStoreProviderBillingAmountForRecurringAmountChecks()
     {
         var migration = File.ReadAllText(GetRepoPath("Shink", "Database", "migrations", "20260501_payfast_recurring_amount_and_failure_logging.sql"));

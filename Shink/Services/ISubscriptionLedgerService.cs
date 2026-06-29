@@ -57,6 +57,7 @@ public interface ISubscriptionLedgerService
         string? selectedTierCode,
         CancellationToken cancellationToken = default);
     Task ProcessPaystackAuthorizationScheduleAsync(CancellationToken cancellationToken = default);
+    Task ProcessSubscriptionPaymentPausesAsync(CancellationToken cancellationToken = default);
     Task<SubscriptionCodeApplicationResult> ApplySignupDiscountCodeAsync(
         string? email,
         string? code,
@@ -144,7 +145,10 @@ public sealed record SubscriptionCodeApplicationResult(
     bool IsSuccess,
     string? ErrorMessage = null,
     string? TierCode = null,
-    DateTimeOffset? AccessEndsAtUtc = null);
+    DateTimeOffset? AccessEndsAtUtc = null,
+    bool PaymentPauseApplied = false,
+    DateTimeOffset? PauseEndsAtUtc = null,
+    DateTimeOffset? ResumeGraceEndsAtUtc = null);
 public sealed record SubscriberEmailChangeResult(bool IsSuccess, string? ErrorMessage = null);
 
 public static class SubscriptionDiscountKinds

@@ -602,7 +602,11 @@
                     <h3>Het jy 'n promosiekode?</h3>
                     <p>
                         Vul dit hier in om te sien op watter planne dit werk voordat jy Paystack oopmaak.
-                        @if (HasActivePaidSubscription)
+                        @if (CanUpdatePaystackCard)
+                        {
+                            <text> As dit 'n gratis-toegang kode is, stop ons jou Paystack-betaling tydelik vir die kode se tydperk en hervat dit daarna outomaties.</text>
+                        }
+                        else if (HasActivePaidSubscription)
                         {
                             <text> Jou huidige betaalde intekening gebruik steeds die gewone planverandering, so promosiekodes geld hier net wanneer jy later 'n nuwe betaling begin.</text>
                         }
@@ -660,6 +664,10 @@
                         {
                             <p class="billing-plan-discount-note">@GetPlanDiscountSummary(plan)</p>
                         }
+                        else if (HasValidFreeAccessCodeForPlan(plan))
+                        {
+                            <p class="billing-plan-discount-note">@GetFreeAccessCodeSummary(plan)</p>
+                        }
                         @if (IsYearlyAllStoriesPlan(plan))
                         {
                             <p class="billing-save-badge">2 maande gratis</p>
@@ -682,7 +690,7 @@
                                 }
                                 else
                                 {
-                                    <span>Kies hierdie plan</span>
+                                    <span>@GetPlanActionText(plan)</span>
                                 }
                             </button>
                         </div>
@@ -1258,6 +1266,16 @@
                 return;
             }
 
+            var freeAccessPlans = BillingPlanChoices.Where(HasValidFreeAccessCodeForPlan).ToArray();
+            if (freeAccessPlans.Length > 0)
+            {
+                BillingDiscountStatusIsSuccess = true;
+                BillingDiscountStatusMessage = freeAccessPlans.Length == 1
+                    ? $"Jou kode kan {freeAccessPlans[0].Name} sonder Paystack aktiveer."
+                    : $"Jou kode kan {freeAccessPlans.Length} planne sonder Paystack aktiveer. Kies die regte plan hieronder.";
+                return;
+            }
+
             var infoPreview = BillingPlanChoices
                 .Where(CanPreviewDiscountForPlan)
                 .Select(GetDiscountPreviewForPlan)
@@ -1288,10 +1306,18 @@
 
     private void RemoveBillingDiscountCode()
     {
+        ClearBillingDiscountCode(keepStatusMessage: false);
+    }
+
+    private void ClearBillingDiscountCode(bool keepStatusMessage)
+    {
         BillingDiscountCode = string.Empty;
         BillingDiscountPreviews = new Dictionary<string, SignupDiscountPreviewResponse>(StringComparer.OrdinalIgnoreCase);
-        BillingDiscountStatusIsSuccess = false;
-        BillingDiscountStatusMessage = null;
+        if (!keepStatusMessage)
+        {
+            BillingDiscountStatusIsSuccess = false;
+            BillingDiscountStatusMessage = null;
+        }
     }
 
     private async Task StartPlanCheckoutAsync(PaymentPlan plan)
@@ -1303,7 +1329,47 @@
 
         PendingPlanSlug = plan.Slug;
         await ShowSubmittingStateAsync();
+
+        if (HasValidFreeAccessCodeForPlan(plan) && !string.IsNullOrWhiteSpace(BillingDiscountCode))
+        {
+            await ApplyBillingDiscountCodeAsync(plan);
+            return;
+        }
+
         NavigationManager.NavigateTo(BuildPlanCheckoutPath(plan), forceLoad: true);
+    }
+
+    private async Task ApplyBillingDiscountCodeAsync(PaymentPlan plan)
+    {
+        try
+        {
+            var authModule = await EnsureAuthModuleAsync();
+            var response = await authModule.InvokeAsync<AuthBrowserResponse>(
+                "postAuthJson",
+                "/api/account/discount-code/apply",
+                new SignupDiscountPreviewRequest(BillingDiscountCode.Trim(), plan.TierCode));
+
+            BillingDiscountStatusIsSuccess = response.Ok;
+            BillingDiscountStatusMessage = response.Message ?? (response.Ok
+                ? "Jou kode is toegepas."
+                : "Kon nie hierdie kode nou toepas nie. Probeer asseblief weer.");
+
+            if (response.Ok)
+            {
+                HasActivePaidSubscription = await SubscriptionLedgerService.HasActivePaidSubscriptionAsync(UserEmail);
+                CurrentPaidSubscription = await SubscriptionLedgerService.GetCurrentPaidSubscriptionAsync(UserEmail);
+                ClearBillingDiscountCode(keepStatusMessage: true);
+            }
+        }
+        catch
+        {
+            BillingDiscountStatusIsSuccess = false;
+            BillingDiscountStatusMessage = "Kon nie hierdie kode nou toepas nie. Probeer asseblief weer.";
+        }
+        finally
+        {
+            PendingPlanSlug = null;
+        }
     }
 
     private bool IsPendingPlan(PaymentPlan plan) =>
@@ -1400,6 +1466,14 @@
                preview.OriginalAmountZar is not null;
     }
 
+    private bool HasValidFreeAccessCodeForPlan(PaymentPlan plan)
+    {
+        var preview = GetDiscountPreviewForPlan(plan);
+        return preview?.IsValid == true &&
+               string.Equals(preview.DiscountKind, SubscriptionDiscountKinds.FreeAccess, StringComparison.Ordinal) &&
+               preview.BypassesPayment;
+    }
+
     private string GetPlanPriceDisplay(PaymentPlan plan)
     {
         var preview = GetDiscountPreviewForPlan(plan);
@@ -1419,6 +1493,26 @@
         var saved = Math.Max(0m, (preview.OriginalAmountZar ?? plan.Amount) - (preview.DiscountedAmountZar ?? plan.Amount));
         return $"{preview.DiscountPercent:0.##}% afslag. Jy spaar {FormatRand(saved)}.";
     }
+
+    private string GetFreeAccessCodeSummary(PaymentPlan plan)
+    {
+        var preview = GetDiscountPreviewForPlan(plan);
+        if (preview is null || !HasValidFreeAccessCodeForPlan(plan))
+        {
+            return string.Empty;
+        }
+
+        return string.IsNullOrWhiteSpace(preview.ResolvedTierName)
+            ? CanUpdatePaystackCard
+                ? "Hierdie kode stop jou Paystack-betaling tydelik en hou toegang oop."
+                : "Hierdie kode aktiveer toegang sonder Paystack."
+            : CanUpdatePaystackCard
+                ? $"Hierdie kode stop jou Paystack-betaling tydelik en hou {preview.ResolvedTierName} oop."
+                : $"Hierdie kode aktiveer {preview.ResolvedTierName} sonder Paystack.";
+    }
+
+    private string GetPlanActionText(PaymentPlan plan) =>
+        HasValidFreeAccessCodeForPlan(plan) ? "Aktiveer met kode" : "Kies hierdie plan";
 
     private static bool IsYearlyAllStoriesPlan(PaymentPlan plan) =>
         string.Equals(plan.TierCode, "all_stories_yearly", StringComparison.OrdinalIgnoreCase);

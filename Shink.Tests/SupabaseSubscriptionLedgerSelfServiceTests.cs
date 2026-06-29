@@ -1,4 +1,5 @@
 using System.Net;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -2718,6 +2719,616 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     }
 
     [TestMethod]
+    public async Task ApplySignupDiscountCodeAsync_ActivePaystackSubscriberDisablesProviderAndCreatesPaymentPause()
+    {
+        var pauseEndsAt = new DateTimeOffset(2026, 9, 29, 12, 0, 0, TimeSpan.Zero);
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      { "subscriber_id": "11111111-1111-1111-1111-111111111111", "disabled_at": null }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "SUB_pausecode",
+                        "provider_transaction_id": null,
+                        "provider_token": "AUTH_pausecode",
+                        "provider_email_token": null,
+                        "next_renewal_at": "2099-01-01T00:00:00Z",
+                        "cancelled_at": null,
+                        "status": "active",
+                        "billing_amount_zar": 79,
+                        "billing_period_months": 1,
+                        "billing_amount_source": "paystack_payload",
+                        "recurring_billing_mode": "provider_subscription"
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/site_settings"))
+            {
+                return JsonResponse("""[{ "setting_value": true }]""");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_discount_codes"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "discount_code_id": "33333333-3333-3333-3333-333333333333",
+                        "code": "PAUSE3",
+                        "normalized_code": "pause3",
+                        "starts_at": null,
+                        "expires_at": null,
+                        "max_uses": 0,
+                        "one_use_per_user": false,
+                        "bypass_payment": true,
+                        "discount_kind": "free_access",
+                        "discount_percent": null,
+                        "discount_duration": "lifetime",
+                        "discount_payment_count": null,
+                        "is_active": true
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_discount_code_tiers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "tier_code": "all_stories_monthly",
+                        "expiration_number": 3,
+                        "expiration_period": "months"
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_tiers"))
+            {
+                return JsonResponse("""[{ "tier_code": "all_stories_monthly", "display_name": "Alle stories" }]""");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_discount_code_redemptions"))
+            {
+                if (request.RequestUri!.Query.Contains("select=redemption_id", StringComparison.OrdinalIgnoreCase) &&
+                    request.RequestUri.Query.Contains("order=redeemed_at.desc", StringComparison.OrdinalIgnoreCase))
+                {
+                    return JsonResponse("""[{ "redemption_id": "44444444-4444-4444-4444-444444444444" }]""");
+                }
+
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == "/subscription/SUB_pausecode")
+            {
+                return JsonResponse(
+                    """
+                    {
+                      "status": true,
+                      "data": {
+                        "subscription_code": "SUB_pausecode",
+                        "email_token": "email-token-123"
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/subscription/disable")
+            {
+                return JsonResponse("""{ "status": true, "message": "Subscription disabled successfully" }""");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/rpc/redeem_signup_discount_code")
+            {
+                return JsonResponse(
+                    $$"""
+                    {
+                      "success": true,
+                      "message": null,
+                      "tier_code": "all_stories_monthly",
+                      "access_expires_at": "{{pauseEndsAt:O}}",
+                      "subscription_id": "55555555-5555-5555-5555-555555555555"
+                    }
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_payment_pauses")
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                return JsonResponse("[]");
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.ApplySignupDiscountCodeAsync("ouer@example.com", "PAUSE3", "all_stories_monthly");
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.IsTrue(result.PaymentPauseApplied);
+        Assert.AreEqual(pauseEndsAt, result.PauseEndsAtUtc);
+        StringAssert.Contains(handler.PaystackDisablePayload!, "\"code\":\"SUB_pausecode\"");
+        StringAssert.Contains(handler.PaystackDisablePayload!, "\"token\":\"email-token-123\"");
+        Assert.AreEqual(1, handler.SubscriptionPaymentPauseCreatePayloads.Count);
+        var pausePayload = handler.SubscriptionPaymentPauseCreatePayloads[0];
+        StringAssert.Contains(pausePayload, "\"paid_subscription_id\":\"22222222-2222-2222-2222-222222222222\"");
+        StringAssert.Contains(pausePayload, "\"discount_code_id\":\"33333333-3333-3333-3333-333333333333\"");
+        StringAssert.Contains(pausePayload, "\"redemption_id\":\"44444444-4444-4444-4444-444444444444\"");
+        StringAssert.Contains(pausePayload, "\"provider_payment_id\":\"SUB_pausecode\"");
+        StringAssert.Contains(pausePayload, "\"provider_email_token\":\"email-token-123\"");
+        Assert.IsTrue(handler.SubscriptionPatchPayloads.Any(payload => payload.Contains("\"provider_email_token\":\"email-token-123\"", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
+    public async Task ApplySignupDiscountCodeAsync_DoesNotRedeemWhenPaystackDisableFails()
+    {
+        var rpcCalled = false;
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse("""[{ "subscriber_id": "11111111-1111-1111-1111-111111111111", "disabled_at": null }]""");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "SUB_pausefail",
+                        "provider_transaction_id": null,
+                        "provider_token": "AUTH_pausefail",
+                        "provider_email_token": "email-token-123",
+                        "next_renewal_at": "2099-01-01T00:00:00Z",
+                        "cancelled_at": null,
+                        "status": "active",
+                        "billing_amount_zar": 79,
+                        "billing_period_months": 1,
+                        "billing_amount_source": "paystack_payload",
+                        "recurring_billing_mode": "provider_subscription"
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/site_settings"))
+            {
+                return JsonResponse("""[{ "setting_value": true }]""");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_discount_codes"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "discount_code_id": "33333333-3333-3333-3333-333333333333",
+                        "code": "PAUSE3",
+                        "normalized_code": "pause3",
+                        "starts_at": null,
+                        "expires_at": null,
+                        "max_uses": 0,
+                        "one_use_per_user": false,
+                        "bypass_payment": true,
+                        "discount_kind": "free_access",
+                        "discount_percent": null,
+                        "discount_duration": "lifetime",
+                        "discount_payment_count": null,
+                        "is_active": true
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_discount_code_tiers"))
+            {
+                return JsonResponse("""[{ "tier_code": "all_stories_monthly", "expiration_number": 3, "expiration_period": "months" }]""");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_tiers") ||
+                IsSupabaseGet(request, "/rest/v1/subscription_discount_code_redemptions"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/subscription/disable")
+            {
+                return JsonResponse("""{ "status": false, "message": "Disable failed" }""");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/rpc/redeem_signup_discount_code")
+            {
+                rpcCalled = true;
+                return JsonResponse("""{ "success": true }""");
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.ApplySignupDiscountCodeAsync("ouer@example.com", "PAUSE3", "all_stories_monthly");
+
+        Assert.IsFalse(result.IsSuccess);
+        Assert.IsFalse(rpcCalled, "The free-code RPC must not redeem access if Paystack could not be disabled first.");
+        Assert.AreEqual(0, handler.SubscriptionPaymentPauseCreatePayloads.Count);
+    }
+
+    [TestMethod]
+    public async Task ApplySignupDiscountCodeAsync_CompensatesAlreadyDisabledPaystackSubscriptionsWhenLaterDisableFails()
+    {
+        var disableAttempts = 0;
+        var rpcCalled = false;
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse("""[{ "subscriber_id": "11111111-1111-1111-1111-111111111111", "disabled_at": null }]""");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "SUB_pause_first",
+                        "provider_transaction_id": null,
+                        "provider_email_token": "email-token-first",
+                        "next_renewal_at": "2099-01-01T00:00:00Z",
+                        "cancelled_at": null,
+                        "status": "active",
+                        "billing_amount_zar": 79,
+                        "billing_period_months": 1,
+                        "billing_amount_source": "paystack_payload",
+                        "recurring_billing_mode": "provider_subscription"
+                      },
+                      {
+                        "subscription_id": "33333333-3333-3333-3333-333333333333",
+                        "tier_code": "story_corner_monthly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "SUB_pause_second",
+                        "provider_transaction_id": null,
+                        "provider_email_token": "email-token-second",
+                        "next_renewal_at": "2099-01-01T00:00:00Z",
+                        "cancelled_at": null,
+                        "status": "active",
+                        "billing_amount_zar": 55,
+                        "billing_period_months": 1,
+                        "billing_amount_source": "paystack_payload",
+                        "recurring_billing_mode": "provider_subscription"
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/site_settings"))
+            {
+                return JsonResponse("""[{ "setting_value": true }]""");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_discount_codes"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "discount_code_id": "44444444-4444-4444-4444-444444444444",
+                        "code": "PAUSE3",
+                        "normalized_code": "pause3",
+                        "starts_at": null,
+                        "expires_at": null,
+                        "max_uses": 0,
+                        "one_use_per_user": false,
+                        "bypass_payment": true,
+                        "discount_kind": "free_access",
+                        "discount_percent": null,
+                        "discount_duration": "lifetime",
+                        "discount_payment_count": null,
+                        "is_active": true
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_discount_code_tiers"))
+            {
+                return JsonResponse("""[{ "tier_code": "all_stories_monthly", "expiration_number": 3, "expiration_period": "months" }]""");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_tiers") ||
+                IsSupabaseGet(request, "/rest/v1/subscription_discount_code_redemptions"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/subscription/disable")
+            {
+                disableAttempts++;
+                return disableAttempts == 1
+                    ? JsonResponse("""{ "status": true, "message": "Subscription disabled successfully" }""")
+                    : JsonResponse("""{ "status": false, "message": "Second disable failed" }""");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/subscription/enable")
+            {
+                return JsonResponse("""{ "status": true, "message": "Subscription enabled successfully" }""");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/rpc/redeem_signup_discount_code")
+            {
+                rpcCalled = true;
+                return JsonResponse("""{ "success": true }""");
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                return JsonResponse("[]");
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.ApplySignupDiscountCodeAsync("ouer@example.com", "PAUSE3", "all_stories_monthly");
+
+        Assert.IsFalse(result.IsSuccess);
+        Assert.IsFalse(rpcCalled, "The free-code RPC must not redeem access if one of the Paystack disables failed.");
+        Assert.AreEqual(2, handler.PaystackDisablePayloads.Count);
+        Assert.AreEqual(1, handler.PaystackEnablePayloads.Count, "The first successfully disabled subscription should be re-enabled.");
+        StringAssert.Contains(handler.PaystackEnablePayloads[0], "\"code\":\"SUB_pause_first\"");
+        StringAssert.Contains(handler.PaystackEnablePayloads[0], "\"token\":\"email-token-first\"");
+        Assert.AreEqual(0, handler.SubscriptionPaymentPauseCreatePayloads.Count);
+    }
+
+    [TestMethod]
+    public async Task ProcessSubscriptionPaymentPausesAsync_SuccessfulEnableMovesPauseToResumePendingAndBridgesToPaystackNextPaymentDate()
+    {
+        var nextPaymentDate = DateTimeOffset.Parse("2099-10-12T07:05:30Z", CultureInfo.InvariantCulture);
+        var expectedGraceEnd = nextPaymentDate.AddHours(72);
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_pauses"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "pause_id": "11111111-1111-1111-1111-111111111111",
+                        "subscriber_id": "22222222-2222-2222-2222-222222222222",
+                        "paid_subscription_id": "33333333-3333-3333-3333-333333333333",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "provider_payment_id": "SUB_resume",
+                        "provider_email_token": "email-token-123",
+                        "status": "active",
+                        "pause_ends_at": "2000-01-01T00:00:00Z",
+                        "resume_attempt_count": 0
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/subscription/enable")
+            {
+                return JsonResponse("""{ "status": true, "message": "Subscription enabled successfully" }""");
+            }
+
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == "/subscription/SUB_resume")
+            {
+                return JsonResponse(
+                    """
+                    {
+                      "status": true,
+                      "message": "Subscription retrieved",
+                      "data": {
+                        "subscription_code": "SUB_resume",
+                        "status": "active",
+                        "next_payment_date": "2099-10-12T07:05:30Z",
+                        "email_token": "email-token-123"
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath is "/rest/v1/subscription_payment_pauses" or "/rest/v1/subscriptions")
+            {
+                return JsonResponse("[]");
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        await service.ProcessSubscriptionPaymentPausesAsync();
+
+        StringAssert.Contains(handler.PaystackEnablePayload!, "\"code\":\"SUB_resume\"");
+        StringAssert.Contains(handler.PaystackEnablePayload!, "\"token\":\"email-token-123\"");
+        Assert.IsTrue(handler.PaystackLookups.Contains("/subscription/SUB_resume"));
+        Assert.AreEqual(1, handler.SubscriptionPaymentPausePatchPayloads.Count);
+        StringAssert.Contains(handler.SubscriptionPaymentPausePatchPayloads[0], "\"status\":\"resume_pending\"");
+        StringAssert.Contains(handler.SubscriptionPaymentPausePatchPayloads[0], "\"resume_attempt_count\":1");
+        Assert.IsTrue(handler.SubscriptionPatchPayloads.Any(payload =>
+            payload.Contains("\"cancelled_at\":null", StringComparison.Ordinal) &&
+            SubscriptionPatchHasNextRenewalAt(payload, expectedGraceEnd)));
+    }
+
+    [TestMethod]
+    public async Task ProcessSubscriptionPaymentPausesAsync_EnableSuccessButNonActivePaystackStatusMarksResumeFailedWithoutBridge()
+    {
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_pauses"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "pause_id": "11111111-1111-1111-1111-111111111111",
+                        "subscriber_id": "22222222-2222-2222-2222-222222222222",
+                        "paid_subscription_id": "33333333-3333-3333-3333-333333333333",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "provider_payment_id": "SUB_resume_non_active",
+                        "provider_email_token": "email-token-123",
+                        "status": "active",
+                        "pause_ends_at": "2000-01-01T00:00:00Z",
+                        "resume_attempt_count": 0
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/subscription/enable")
+            {
+                return JsonResponse("""{ "status": true, "message": "Subscription enabled successfully" }""");
+            }
+
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == "/subscription/SUB_resume_non_active")
+            {
+                return JsonResponse(
+                    """
+                    {
+                      "status": true,
+                      "message": "Subscription retrieved",
+                      "data": {
+                        "subscription_code": "SUB_resume_non_active",
+                        "status": "non-renewing",
+                        "next_payment_date": "2099-10-12T07:05:30Z",
+                        "email_token": "email-token-123"
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_payment_pauses")
+            {
+                return JsonResponse("[]");
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        await service.ProcessSubscriptionPaymentPausesAsync();
+
+        StringAssert.Contains(handler.PaystackEnablePayload!, "\"code\":\"SUB_resume_non_active\"");
+        Assert.IsTrue(handler.PaystackLookups.Contains("/subscription/SUB_resume_non_active"));
+        Assert.AreEqual(1, handler.SubscriptionPaymentPausePatchPayloads.Count);
+        StringAssert.Contains(handler.SubscriptionPaymentPausePatchPayloads[0], "\"status\":\"resume_failed\"");
+        StringAssert.Contains(handler.SubscriptionPaymentPausePatchPayloads[0], "\"resume_attempt_count\":1");
+        StringAssert.Contains(handler.SubscriptionPaymentPausePatchPayloads[0], "non-renewing");
+        Assert.AreEqual(0, handler.SubscriptionPatchPayloads.Count, "A non-active Paystack subscription must not receive bridge access.");
+    }
+
+    [TestMethod]
+    public async Task ProcessSubscriptionPaymentPausesAsync_FailedEnableMarksResumeFailedWithoutBridgingAccess()
+    {
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_pauses"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "pause_id": "11111111-1111-1111-1111-111111111111",
+                        "subscriber_id": "22222222-2222-2222-2222-222222222222",
+                        "paid_subscription_id": "33333333-3333-3333-3333-333333333333",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "provider_payment_id": "SUB_resume_fail",
+                        "provider_email_token": "email-token-123",
+                        "status": "active",
+                        "pause_ends_at": "2000-01-01T00:00:00Z",
+                        "resume_attempt_count": 2
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/subscription/enable")
+            {
+                return JsonResponse("""{ "status": false, "message": "Enable failed" }""");
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_payment_pauses")
+            {
+                return JsonResponse("[]");
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        await service.ProcessSubscriptionPaymentPausesAsync();
+
+        StringAssert.Contains(handler.PaystackEnablePayload!, "\"code\":\"SUB_resume_fail\"");
+        Assert.AreEqual(1, handler.SubscriptionPaymentPausePatchPayloads.Count);
+        StringAssert.Contains(handler.SubscriptionPaymentPausePatchPayloads[0], "\"status\":\"resume_failed\"");
+        StringAssert.Contains(handler.SubscriptionPaymentPausePatchPayloads[0], "\"resume_attempt_count\":3");
+        Assert.AreEqual(0, handler.SubscriptionPatchPayloads.Count, "Failed resume must not bridge paid access.");
+    }
+
+    [TestMethod]
     public async Task RecordPaystackEventAsync_InvoiceUpdateResolvesPlanFromExistingTransactionReference()
     {
         const string subscriptionId = "22222222-2222-2222-2222-222222222222";
@@ -4816,6 +5427,15 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                parsed == expected;
     }
 
+    private static bool SubscriptionPatchHasNextRenewalAt(string payload, DateTimeOffset expected)
+    {
+        using var document = JsonDocument.Parse(payload);
+        var root = document.RootElement;
+        return root.TryGetProperty("next_renewal_at", out var nextRenewalAt) &&
+               nextRenewalAt.TryGetDateTimeOffset(out var parsed) &&
+               parsed == expected;
+    }
+
     private static HttpResponseMessage JsonResponse(string json) =>
         new(HttpStatusCode.OK)
         {
@@ -4825,10 +5445,15 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     private sealed class RecordingHandler(Func<HttpRequestMessage, HttpResponseMessage> responseFactory) : HttpMessageHandler
     {
         public string? PaystackDisablePayload { get; private set; }
+        public string? PaystackEnablePayload { get; private set; }
+        public List<string> PaystackDisablePayloads { get; } = [];
+        public List<string> PaystackEnablePayloads { get; } = [];
         public string? CancellationFeedbackPayload { get; private set; }
         public string? SubscriptionPatchPayload { get; private set; }
         public List<string> SubscriptionPatchPayloads { get; } = [];
         public List<string> SubscriptionCreatePayloads { get; } = [];
+        public List<string> SubscriptionPaymentPauseCreatePayloads { get; } = [];
+        public List<string> SubscriptionPaymentPausePatchPayloads { get; } = [];
         public List<string> PaystackChargePayloads { get; } = [];
         public List<string> PaymentRecoveryPatchPayloads { get; } = [];
         public List<string> SubscriptionEventPayloads { get; } = [];
@@ -4849,6 +5474,19 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                      request.RequestUri?.AbsolutePath == "/subscription/disable")
             {
                 PaystackDisablePayload = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+                if (PaystackDisablePayload is not null)
+                {
+                    PaystackDisablePayloads.Add(PaystackDisablePayload);
+                }
+            }
+            else if (request.Method == HttpMethod.Post &&
+                     request.RequestUri?.AbsolutePath == "/subscription/enable")
+            {
+                PaystackEnablePayload = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+                if (PaystackEnablePayload is not null)
+                {
+                    PaystackEnablePayloads.Add(PaystackEnablePayload);
+                }
             }
             else if (request.Method == HttpMethod.Post &&
                      request.RequestUri?.AbsolutePath == "/transaction/charge_authorization")
@@ -4865,6 +5503,15 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                 CancellationFeedbackPayload = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
             }
             else if (request.Method == HttpMethod.Post &&
+                     request.RequestUri?.AbsolutePath == "/rest/v1/subscription_payment_pauses")
+            {
+                var payload = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+                if (payload is not null)
+                {
+                    SubscriptionPaymentPauseCreatePayloads.Add(payload);
+                }
+            }
+            else if (request.Method == HttpMethod.Post &&
                      request.RequestUri?.AbsolutePath is "/subscription" or "/rest/v1/subscriptions")
             {
                 var payload = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
@@ -4877,6 +5524,15 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                      request.RequestUri?.AbsolutePath == "/rest/v1/subscribers")
             {
                 SubscriberCreatePayload = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+            }
+            else if (request.Method == new HttpMethod("PATCH") &&
+                     request.RequestUri?.AbsolutePath == "/rest/v1/subscription_payment_pauses")
+            {
+                var payload = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+                if (payload is not null)
+                {
+                    SubscriptionPaymentPausePatchPayloads.Add(payload);
+                }
             }
             else if (request.Method == new HttpMethod("PATCH") &&
                      request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")

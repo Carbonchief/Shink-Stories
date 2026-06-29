@@ -31,6 +31,32 @@ public sealed partial class SupabaseSubscriptionLedgerService
         }
     }
 
+    public async Task ProcessSubscriptionPaymentPausesAsync(CancellationToken cancellationToken = default)
+    {
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            return;
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return;
+        }
+
+        var nowUtc = DateTimeOffset.UtcNow;
+        var dueRows = await FetchDueSubscriptionPaymentPauseRowsAsync(baseUri, apiKey, nowUtc, cancellationToken);
+        foreach (var row in dueRows)
+        {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            await ProcessSubscriptionPaymentPauseRowAsync(baseUri, apiKey, row, nowUtc, cancellationToken);
+        }
+    }
+
     private async Task<IReadOnlyList<PaystackAuthorizationScheduleRow>> FetchDuePaystackAuthorizationScheduleRowsAsync(
         Uri baseUri,
         string apiKey,
@@ -50,6 +76,122 @@ public sealed partial class SupabaseSubscriptionLedgerService
             "&limit=25");
 
         return await FetchRowsAsync<PaystackAuthorizationScheduleRow>(uri, apiKey, cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<SubscriptionPaymentPauseRow>> FetchDueSubscriptionPaymentPauseRowsAsync(
+        Uri baseUri,
+        string apiKey,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/subscription_payment_pauses" +
+            "?select=pause_id,subscriber_id,paid_subscription_id,tier_code,provider,provider_payment_id,provider_email_token,status,pause_ends_at,resume_attempt_count" +
+            "&provider=eq.paystack" +
+            "&status=eq.active" +
+            $"&pause_ends_at=lte.{Uri.EscapeDataString(nowUtc.UtcDateTime.ToString("O"))}" +
+            "&order=pause_ends_at.asc" +
+            "&limit=50");
+
+        return await FetchRowsAsync<SubscriptionPaymentPauseRow>(uri, apiKey, cancellationToken);
+    }
+
+    private async Task ProcessSubscriptionPaymentPauseRowAsync(
+        Uri baseUri,
+        string apiKey,
+        SubscriptionPaymentPauseRow row,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(row.PauseId) ||
+            string.IsNullOrWhiteSpace(row.PaidSubscriptionId) ||
+            string.IsNullOrWhiteSpace(row.ProviderPaymentId))
+        {
+            return;
+        }
+
+        var enableResult = await _paystackCheckoutService.EnableSubscriptionAsync(
+            row.ProviderPaymentId,
+            row.ProviderEmailToken,
+            cancellationToken);
+        var nextAttemptCount = Math.Max(0, row.ResumeAttemptCount) + 1;
+        if (!enableResult.IsSuccess)
+        {
+            await MarkSubscriptionPaymentPauseResumeFailedAsync(
+                baseUri,
+                apiKey,
+                row.PauseId,
+                nowUtc,
+                nextAttemptCount,
+                enableResult.ErrorMessage ?? "Paystack kon nie die intekening hervat nie.",
+                cancellationToken);
+            return;
+        }
+
+        var graceStartResult = await ResolveSubscriptionPaymentPauseGraceStartAsync(
+            row.ProviderPaymentId,
+            nowUtc,
+            cancellationToken);
+        if (!graceStartResult.IsSuccess)
+        {
+            await MarkSubscriptionPaymentPauseResumeFailedAsync(
+                baseUri,
+                apiKey,
+                row.PauseId,
+                nowUtc,
+                nextAttemptCount,
+                graceStartResult.ErrorMessage ?? "Paystack kon nie bevestig dat die intekening aktief hervat is nie.",
+                cancellationToken);
+            return;
+        }
+
+        var graceEndsAtUtc = graceStartResult.GraceStartsAtUtc.Add(SubscriptionPaymentPauseResumeGrace);
+        await MarkSubscriptionPaymentPauseResumePendingAsync(
+            baseUri,
+            apiKey,
+            row.PauseId,
+            nowUtc,
+            graceEndsAtUtc,
+            nextAttemptCount,
+            enableResult.EmailToken ?? row.ProviderEmailToken,
+            cancellationToken);
+        await BridgePausedSubscriptionAccessAsync(
+            baseUri,
+            apiKey,
+            row.PaidSubscriptionId,
+            graceEndsAtUtc,
+            enableResult.EmailToken ?? row.ProviderEmailToken,
+            cancellationToken);
+    }
+
+    private async Task<SubscriptionPaymentPauseGraceStartResult> ResolveSubscriptionPaymentPauseGraceStartAsync(
+        string providerPaymentId,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var lookup = await _paystackCheckoutService.GetSubscriptionAsync(providerPaymentId, cancellationToken);
+        if (!lookup.IsSuccess)
+        {
+            return new SubscriptionPaymentPauseGraceStartResult(
+                false,
+                nowUtc,
+                lookup.ErrorMessage ?? "Paystack intekening kon nie na hervatting gelees word nie.");
+        }
+
+        if (!string.Equals(lookup.Status, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            return new SubscriptionPaymentPauseGraceStartResult(
+                false,
+                nowUtc,
+                $"Paystack intekening is nie aktief na hervatting nie (status: {lookup.Status ?? "onbekend"}).");
+        }
+
+        return new SubscriptionPaymentPauseGraceStartResult(
+            true,
+            lookup.NextPaymentDate is { } nextPaymentDate && nextPaymentDate > nowUtc
+                ? nextPaymentDate
+                : nowUtc);
     }
 
     private async Task ProcessPaystackAuthorizationScheduleRowAsync(
@@ -299,6 +441,117 @@ public sealed partial class SupabaseSubscriptionLedgerService
         using var _ = await _httpClient.SendAsync(request, cancellationToken);
     }
 
+    private async Task MarkSubscriptionPaymentPauseResumeFailedAsync(
+        Uri baseUri,
+        string apiKey,
+        string pauseId,
+        DateTimeOffset attemptedAtUtc,
+        int resumeAttemptCount,
+        string errorMessage,
+        CancellationToken cancellationToken)
+    {
+        var escapedPauseId = Uri.EscapeDataString(pauseId);
+        var payload = new
+        {
+            status = "resume_failed",
+            last_resume_attempt_at = attemptedAtUtc.UtcDateTime,
+            resume_attempt_count = resumeAttemptCount,
+            last_error = errorMessage
+        };
+        using var request = CreateJsonRequest(
+            new HttpMethod("PATCH"),
+            new Uri(baseUri, $"rest/v1/subscription_payment_pauses?pause_id=eq.{escapedPauseId}"),
+            apiKey,
+            payload,
+            "return=minimal");
+        using var _ = await _httpClient.SendAsync(request, cancellationToken);
+    }
+
+    private async Task MarkSubscriptionPaymentPauseResumePendingAsync(
+        Uri baseUri,
+        string apiKey,
+        string pauseId,
+        DateTimeOffset attemptedAtUtc,
+        DateTimeOffset resumeGraceEndsAtUtc,
+        int resumeAttemptCount,
+        string? providerEmailToken,
+        CancellationToken cancellationToken)
+    {
+        var escapedPauseId = Uri.EscapeDataString(pauseId);
+        var payload = new Dictionary<string, object?>
+        {
+            ["status"] = "resume_pending",
+            ["last_resume_attempt_at"] = attemptedAtUtc.UtcDateTime,
+            ["resume_attempt_count"] = resumeAttemptCount,
+            ["resume_grace_ends_at"] = resumeGraceEndsAtUtc.UtcDateTime,
+            ["last_error"] = null
+        };
+        if (!string.IsNullOrWhiteSpace(providerEmailToken))
+        {
+            payload["provider_email_token"] = providerEmailToken.Trim();
+        }
+
+        using var request = CreateJsonRequest(
+            new HttpMethod("PATCH"),
+            new Uri(baseUri, $"rest/v1/subscription_payment_pauses?pause_id=eq.{escapedPauseId}"),
+            apiKey,
+            payload,
+            "return=minimal");
+        using var _ = await _httpClient.SendAsync(request, cancellationToken);
+    }
+
+    private async Task BridgePausedSubscriptionAccessAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriptionId,
+        DateTimeOffset resumeGraceEndsAtUtc,
+        string? providerEmailToken,
+        CancellationToken cancellationToken)
+    {
+        var escapedSubscriptionId = Uri.EscapeDataString(subscriptionId);
+        var payload = new Dictionary<string, object?>
+        {
+            ["status"] = "active",
+            ["cancelled_at"] = null,
+            ["next_renewal_at"] = resumeGraceEndsAtUtc.UtcDateTime
+        };
+        if (!string.IsNullOrWhiteSpace(providerEmailToken))
+        {
+            payload["provider_email_token"] = providerEmailToken.Trim();
+        }
+
+        using var request = CreateJsonRequest(
+            new HttpMethod("PATCH"),
+            new Uri(baseUri, $"rest/v1/subscriptions?subscription_id=eq.{escapedSubscriptionId}"),
+            apiKey,
+            payload,
+            "return=minimal");
+        using var _ = await _httpClient.SendAsync(request, cancellationToken);
+    }
+
+    private async Task TryMarkSubscriptionPaymentPauseResumedAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriptionId,
+        DateTimeOffset resumedAtUtc,
+        CancellationToken cancellationToken)
+    {
+        var escapedSubscriptionId = Uri.EscapeDataString(subscriptionId);
+        var payload = new
+        {
+            status = "resumed",
+            resumed_at = resumedAtUtc.UtcDateTime,
+            last_error = (string?)null
+        };
+        using var request = CreateJsonRequest(
+            new HttpMethod("PATCH"),
+            new Uri(baseUri, $"rest/v1/subscription_payment_pauses?paid_subscription_id=eq.{escapedSubscriptionId}&status=eq.resume_pending"),
+            apiKey,
+            payload,
+            "return=minimal");
+        using var _ = await _httpClient.SendAsync(request, cancellationToken);
+    }
+
     private sealed record PaystackAuthorizationScheduleRow
     {
         [JsonPropertyName("subscription_id")]
@@ -361,4 +614,42 @@ public sealed partial class SupabaseSubscriptionLedgerService
         [JsonPropertyName("authorization_reusable")]
         public bool? AuthorizationReusable { get; init; }
     }
+
+    private sealed record SubscriptionPaymentPauseRow
+    {
+        [JsonPropertyName("pause_id")]
+        public string PauseId { get; init; } = string.Empty;
+
+        [JsonPropertyName("subscriber_id")]
+        public string SubscriberId { get; init; } = string.Empty;
+
+        [JsonPropertyName("paid_subscription_id")]
+        public string PaidSubscriptionId { get; init; } = string.Empty;
+
+        [JsonPropertyName("tier_code")]
+        public string? TierCode { get; init; }
+
+        [JsonPropertyName("provider")]
+        public string? Provider { get; init; }
+
+        [JsonPropertyName("provider_payment_id")]
+        public string? ProviderPaymentId { get; init; }
+
+        [JsonPropertyName("provider_email_token")]
+        public string? ProviderEmailToken { get; init; }
+
+        [JsonPropertyName("status")]
+        public string? Status { get; init; }
+
+        [JsonPropertyName("pause_ends_at")]
+        public DateTimeOffset PauseEndsAt { get; init; }
+
+        [JsonPropertyName("resume_attempt_count")]
+        public int ResumeAttemptCount { get; init; }
+    }
+
+    private sealed record SubscriptionPaymentPauseGraceStartResult(
+        bool IsSuccess,
+        DateTimeOffset GraceStartsAtUtc,
+        string? ErrorMessage = null);
 }

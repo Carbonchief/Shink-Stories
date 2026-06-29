@@ -487,6 +487,89 @@ public sealed class PaystackCheckoutService(
         }
     }
 
+    public async Task<PaystackSubscriptionEnableResult> EnableSubscriptionAsync(
+        string subscriptionCode,
+        string? emailToken = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.SecretKey))
+        {
+            return new PaystackSubscriptionEnableResult(false, ErrorMessage: "Paystack is nog nie volledig opgestel nie.");
+        }
+
+        if (string.IsNullOrWhiteSpace(subscriptionCode))
+        {
+            return new PaystackSubscriptionEnableResult(false, ErrorMessage: "Paystack intekeningkode ontbreek.");
+        }
+
+        var normalizedCode = subscriptionCode.Trim();
+        var normalizedToken = emailToken?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedToken))
+        {
+            var tokenLookup = await FetchSubscriptionEmailTokenAsync(normalizedCode, cancellationToken);
+            if (!tokenLookup.IsSuccess)
+            {
+                return new PaystackSubscriptionEnableResult(false, ErrorMessage: tokenLookup.ErrorMessage);
+            }
+
+            normalizedToken = tokenLookup.EmailToken;
+        }
+
+        if (string.IsNullOrWhiteSpace(normalizedToken))
+        {
+            return new PaystackSubscriptionEnableResult(false, ErrorMessage: "Paystack hervat-token ontbreek.");
+        }
+
+        var payload = new
+        {
+            code = normalizedCode,
+            token = normalizedToken
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.paystack.co/subscription/enable")
+        {
+            Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.SecretKey);
+
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return new PaystackSubscriptionEnableResult(
+                false,
+                EmailToken: normalizedToken,
+                ErrorMessage: $"Paystack kon nie die intekening hervat nie (HTTP {(int)response.StatusCode}).",
+                RawPayload: body);
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(body);
+            var root = document.RootElement;
+            var status = root.TryGetProperty("status", out var statusNode) &&
+                         statusNode.ValueKind == JsonValueKind.True;
+            if (!status)
+            {
+                return new PaystackSubscriptionEnableResult(
+                    false,
+                    EmailToken: normalizedToken,
+                    ErrorMessage: TryReadString(root, "message") ?? "Paystack kon nie die intekening hervat nie.",
+                    RawPayload: body);
+            }
+
+            return new PaystackSubscriptionEnableResult(true, EmailToken: normalizedToken, RawPayload: body);
+        }
+        catch (JsonException)
+        {
+            return new PaystackSubscriptionEnableResult(
+                false,
+                EmailToken: normalizedToken,
+                ErrorMessage: "Paystack hervat-antwoord kon nie gelees word nie.",
+                RawPayload: body);
+        }
+    }
+
     public async Task<PaystackAuthorizationChargeResult> ChargeAuthorizationAsync(
         PaymentPlan plan,
         string email,
@@ -1543,6 +1626,12 @@ public sealed record PaystackSubscriptionManageLinkResult(
     string? ErrorMessage = null);
 
 public sealed record PaystackSubscriptionDisableResult(
+    bool IsSuccess,
+    string? EmailToken = null,
+    string? ErrorMessage = null,
+    string? RawPayload = null);
+
+public sealed record PaystackSubscriptionEnableResult(
     bool IsSuccess,
     string? EmailToken = null,
     string? ErrorMessage = null,

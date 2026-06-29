@@ -82,6 +82,94 @@ public sealed partial class SupabaseSubscriptionLedgerService
             return new SubscriptionCodeApplicationResult(false, "Supabase SecretKey is not configured.");
         }
 
+        var nowUtc = DateTimeOffset.UtcNow;
+        var paystackPauseCandidates = await FetchActivePaystackPaidPauseCandidatesAsync(
+            baseUri,
+            apiKey,
+            normalizedEmail,
+            nowUtc,
+            cancellationToken);
+        if (paystackPauseCandidates.Count == 0)
+        {
+            var directRedemption = await RedeemSignupDiscountCodeAsync(
+                baseUri,
+                apiKey,
+                normalizedEmail,
+                normalizedCode,
+                NormalizeDiscountTierCode(selectedTierCode),
+                cancellationToken);
+            if (directRedemption is null)
+            {
+                return new SubscriptionCodeApplicationResult(false, "Kon nie kode-toegang nou aktiveer nie.");
+            }
+
+            if (!directRedemption.Success)
+            {
+                return new SubscriptionCodeApplicationResult(false, directRedemption.Message ?? "Kode kon nie toegepas word nie.");
+            }
+
+            return new SubscriptionCodeApplicationResult(
+                true,
+                TierCode: directRedemption.TierCode,
+                AccessEndsAtUtc: directRedemption.AccessExpiresAt);
+        }
+
+        var resolution = await ResolveDiscountCodeSelectionAsync(
+            normalizedCode,
+            NormalizeDiscountTierCode(selectedTierCode),
+            normalizedEmail,
+            nowUtc,
+            cancellationToken);
+        if (!resolution.IsSuccess || resolution.Code is null || resolution.Mapping is null)
+        {
+            return new SubscriptionCodeApplicationResult(false, resolution.ErrorMessage ?? "Kode kon nie toegepas word nie.");
+        }
+
+        if (!string.Equals(NormalizeStoredDiscountKind(resolution.Code.DiscountKind), SubscriptionDiscountKinds.FreeAccess, StringComparison.Ordinal) ||
+            !resolution.Code.BypassPayment)
+        {
+            return new SubscriptionCodeApplicationResult(false, "Hierdie kode kan nie gratis toegang aktiveer nie.");
+        }
+
+        var accessEndsAtUtc = ResolveDiscountCodeAccessEndsAt(nowUtc, resolution.Mapping);
+        if (accessEndsAtUtc is null)
+        {
+            return new SubscriptionCodeApplicationResult(false, "Hierdie kode het nie 'n einddatum nie, so ons kan nie jou Paystack-betaling veilig tydelik stop nie.");
+        }
+
+        var disabledPaystackSubscriptions = new List<PaystackPauseCandidate>();
+        foreach (var subscription in paystackPauseCandidates)
+        {
+            var paystackSubscriptionCode = subscription.ProviderPaymentId;
+            if (string.IsNullOrWhiteSpace(paystackSubscriptionCode))
+            {
+                return new SubscriptionCodeApplicationResult(false, "Ons kon nie jou Paystack-intekeningkode vind om betalings tydelik te stop nie.");
+            }
+
+            var disableResult = await _paystackCheckoutService.DisableSubscriptionAsync(
+                paystackSubscriptionCode,
+                subscription.ProviderEmailToken,
+                cancellationToken);
+            if (!disableResult.IsSuccess)
+            {
+                await TryCompensateDisabledPaystackSubscriptionsAsync(disabledPaystackSubscriptions, cancellationToken);
+                return new SubscriptionCodeApplicationResult(false, disableResult.ErrorMessage ?? "Paystack kon nie jou betaling tydelik stop nie.");
+            }
+
+            disabledPaystackSubscriptions.Add(subscription with
+            {
+                ProviderPaymentId = paystackSubscriptionCode,
+                ProviderEmailToken = disableResult.EmailToken ?? subscription.ProviderEmailToken
+            });
+
+            await UpdateSubscriptionProviderEmailTokenAsync(
+                baseUri,
+                apiKey,
+                subscription.SubscriptionId,
+                disableResult.EmailToken,
+                cancellationToken);
+        }
+
         var redemption = await RedeemSignupDiscountCodeAsync(
             baseUri,
             apiKey,
@@ -91,18 +179,48 @@ public sealed partial class SupabaseSubscriptionLedgerService
             cancellationToken);
         if (redemption is null)
         {
+            await TryCompensateDisabledPaystackSubscriptionsAsync(disabledPaystackSubscriptions, cancellationToken);
             return new SubscriptionCodeApplicationResult(false, "Kon nie kode-toegang nou aktiveer nie.");
         }
 
         if (!redemption.Success)
         {
+            await TryCompensateDisabledPaystackSubscriptionsAsync(disabledPaystackSubscriptions, cancellationToken);
             return new SubscriptionCodeApplicationResult(false, redemption.Message ?? "Kode kon nie toegepas word nie.");
+        }
+
+        if (disabledPaystackSubscriptions.Count > 0)
+        {
+            var effectivePauseEndsAtUtc = redemption.AccessExpiresAt ?? accessEndsAtUtc;
+            var pauseRecorded = await InsertSubscriptionPaymentPausesAsync(
+                baseUri,
+                apiKey,
+                normalizedEmail,
+                resolution.Code.DiscountCodeId,
+                await FetchLatestDiscountRedemptionIdAsync(
+                    baseUri,
+                    apiKey,
+                    resolution.Code.DiscountCodeId,
+                    normalizedEmail,
+                    resolution.Mapping.TierCode,
+                    cancellationToken),
+                resolution.Mapping.TierCode,
+                effectivePauseEndsAtUtc!.Value,
+                disabledPaystackSubscriptions,
+                cancellationToken);
+            if (!pauseRecorded)
+            {
+                await TryCompensateDisabledPaystackSubscriptionsAsync(disabledPaystackSubscriptions, cancellationToken);
+                return new SubscriptionCodeApplicationResult(false, "Jou kode is toegepas, maar ons kon nie die Paystack-pouse nou stoor nie. Kontak ons asseblief as jou betaling nie gestop is nie.");
+            }
         }
 
         return new SubscriptionCodeApplicationResult(
             true,
             TierCode: redemption.TierCode,
-            AccessEndsAtUtc: redemption.AccessExpiresAt);
+            AccessEndsAtUtc: redemption.AccessExpiresAt,
+            PaymentPauseApplied: disabledPaystackSubscriptions.Count > 0,
+            PauseEndsAtUtc: disabledPaystackSubscriptions.Count > 0 ? redemption.AccessExpiresAt ?? accessEndsAtUtc : null);
     }
 
     private async Task<DiscountCodeSelectionResolution> ResolveDiscountCodeSelectionAsync(
@@ -484,6 +602,173 @@ public sealed partial class SupabaseSubscriptionLedgerService
         return await FetchRowsAsync<RedemptionLookupRow>(uri, apiKey, cancellationToken);
     }
 
+    private async Task<IReadOnlyList<PaystackPauseCandidate>> FetchActivePaystackPaidPauseCandidatesAsync(
+        Uri baseUri,
+        string apiKey,
+        string email,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var subscriberId = await FindSubscriberIdByEmailAsync(baseUri, apiKey, email, cancellationToken);
+        if (string.IsNullOrWhiteSpace(subscriberId))
+        {
+            return [];
+        }
+
+        var subscriptions = await FetchSelfServicePaidSubscriptionsAsync(baseUri, apiKey, subscriberId, cancellationToken);
+        return subscriptions
+            .Where(subscription =>
+                IsCurrentlyActiveSelfServiceSubscription(subscription, nowUtc) &&
+                string.Equals(subscription.Provider, "paystack", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(subscription.TierCode, GratisTierCode, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(subscription.SourceSystem, DiscountCodeSourceSystem, StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
+                    subscription.Provider,
+                    subscription.SourceSystem,
+                    subscription.ProviderPaymentId,
+                    subscription.ProviderTransactionId)))
+            .Select(subscription => new PaystackPauseCandidate(
+                subscriberId,
+                subscription.SubscriptionId,
+                subscription.TierCode ?? string.Empty,
+                subscription.Provider,
+                subscription.SourceSystem,
+                PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
+                    subscription.Provider,
+                    subscription.SourceSystem,
+                    subscription.ProviderPaymentId,
+                    subscription.ProviderTransactionId) ?? string.Empty,
+                subscription.ProviderEmailToken))
+            .ToArray();
+    }
+
+    private async Task UpdateSubscriptionProviderEmailTokenAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriptionId,
+        string? providerEmailToken,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(subscriptionId) || string.IsNullOrWhiteSpace(providerEmailToken))
+        {
+            return;
+        }
+
+        var escapedSubscriptionId = Uri.EscapeDataString(subscriptionId);
+        var payload = new
+        {
+            provider_email_token = providerEmailToken.Trim()
+        };
+        var uri = new Uri(baseUri, $"rest/v1/subscriptions?subscription_id=eq.{escapedSubscriptionId}");
+        using var request = CreateJsonRequest(new HttpMethod("PATCH"), uri, apiKey, payload, "return=minimal");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Discount-code Paystack pause token update failed. subscription_id={SubscriptionId} Status={StatusCode} Body={Body}",
+            subscriptionId,
+            (int)response.StatusCode,
+            body);
+    }
+
+    private async Task<string?> FetchLatestDiscountRedemptionIdAsync(
+        Uri baseUri,
+        string apiKey,
+        Guid discountCodeId,
+        string email,
+        string tierCode,
+        CancellationToken cancellationToken)
+    {
+        var escapedCodeId = Uri.EscapeDataString(discountCodeId.ToString("D"));
+        var escapedEmail = Uri.EscapeDataString(email.Trim().ToLowerInvariant());
+        var escapedTierCode = Uri.EscapeDataString(tierCode.Trim().ToLowerInvariant());
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/subscription_discount_code_redemptions" +
+            "?select=redemption_id" +
+            $"&discount_code_id=eq.{escapedCodeId}" +
+            $"&email=eq.{escapedEmail}" +
+            $"&tier_code=eq.{escapedTierCode}" +
+            "&order=redeemed_at.desc&limit=1");
+        var row = (await FetchRowsAsync<RedemptionLookupRow>(uri, apiKey, cancellationToken)).FirstOrDefault();
+        return row?.RedemptionId.ToString("D");
+    }
+
+    private async Task<bool> InsertSubscriptionPaymentPausesAsync(
+        Uri baseUri,
+        string apiKey,
+        string email,
+        Guid discountCodeId,
+        string? redemptionId,
+        string tierCode,
+        DateTimeOffset pauseEndsAtUtc,
+        IReadOnlyList<PaystackPauseCandidate> subscriptions,
+        CancellationToken cancellationToken)
+    {
+        if (subscriptions.Count == 0)
+        {
+            return true;
+        }
+
+        var nowUtc = DateTimeOffset.UtcNow;
+        var payload = subscriptions.Select(subscription => new
+        {
+            subscriber_id = subscription.SubscriberId,
+            paid_subscription_id = subscription.SubscriptionId,
+            discount_code_id = discountCodeId,
+            redemption_id = string.IsNullOrWhiteSpace(redemptionId) ? null : redemptionId,
+            tier_code = string.IsNullOrWhiteSpace(subscription.TierCode) ? tierCode : subscription.TierCode,
+            provider = "paystack",
+            provider_payment_id = subscription.ProviderPaymentId,
+            provider_email_token = string.IsNullOrWhiteSpace(subscription.ProviderEmailToken) ? null : subscription.ProviderEmailToken,
+            status = "active",
+            pause_started_at = nowUtc.UtcDateTime,
+            pause_ends_at = pauseEndsAtUtc.UtcDateTime,
+            last_error = (string?)null
+        }).ToArray();
+
+        var uri = new Uri(baseUri, "rest/v1/subscription_payment_pauses");
+        using var request = CreateJsonRequest(HttpMethod.Post, uri, apiKey, payload, "return=minimal");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return true;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Discount-code Paystack pause insert failed. email={Email} Status={StatusCode} Body={Body}",
+            email,
+            (int)response.StatusCode,
+            body);
+        return false;
+    }
+
+    private async Task TryCompensateDisabledPaystackSubscriptionsAsync(
+        IReadOnlyList<PaystackPauseCandidate> subscriptions,
+        CancellationToken cancellationToken)
+    {
+        foreach (var subscription in subscriptions)
+        {
+            var enableResult = await _paystackCheckoutService.EnableSubscriptionAsync(
+                subscription.ProviderPaymentId,
+                subscription.ProviderEmailToken,
+                cancellationToken);
+            if (!enableResult.IsSuccess)
+            {
+                _logger.LogWarning(
+                    "Paystack compensation enable failed after discount-code pause failure. subscription_id={SubscriptionId} provider_payment_id={ProviderPaymentId} error={Error}",
+                    subscription.SubscriptionId,
+                    subscription.ProviderPaymentId,
+                    enableResult.ErrorMessage);
+            }
+        }
+    }
+
     private async Task<string?> UpsertDiscountCodeSubscriptionAsync(
         Uri baseUri,
         string apiKey,
@@ -648,6 +933,15 @@ public sealed partial class SupabaseSubscriptionLedgerService
         string? TierName = null,
         string? ErrorMessage = null,
         IReadOnlyList<SubscriptionCodeTierOption>? TierOptions = null);
+
+    private sealed record PaystackPauseCandidate(
+        string SubscriberId,
+        string SubscriptionId,
+        string TierCode,
+        string? Provider,
+        string? SourceSystem,
+        string ProviderPaymentId,
+        string? ProviderEmailToken);
 
     private sealed class SiteSettingToggleRow
     {

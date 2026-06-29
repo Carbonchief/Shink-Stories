@@ -29,6 +29,7 @@ public sealed class PaystackAuthorizationSubscriptionBillingWorker(
             using var scope = _scopeFactory.CreateScope();
             var ledgerService = scope.ServiceProvider.GetRequiredService<ISubscriptionLedgerService>();
             await ledgerService.ProcessPaystackAuthorizationScheduleAsync(cancellationToken);
+            await ledgerService.ProcessSubscriptionPaymentPausesAsync(cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
