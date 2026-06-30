@@ -58,7 +58,6 @@ public sealed partial class SupabaseDataApiGrantMigrationTests
     public void SubscriptionPaymentPauseMigrationDefinesResumeTrackingAndGrants()
     {
         var migration = File.ReadAllText(GetRepoPath("Shink", "Database", "migrations", "20260629_subscription_payment_pauses.sql"));
-        var grants = File.ReadAllText(GetRepoPath("Shink", "Database", "migrations", "20260528_data_api_explicit_table_grants.sql"));
 
         StringAssert.Contains(migration, "create table if not exists public.subscription_payment_pauses");
         StringAssert.Contains(migration, "paid_subscription_id uuid not null references public.subscriptions");
@@ -71,7 +70,9 @@ public sealed partial class SupabaseDataApiGrantMigrationTests
         StringAssert.Contains(migration, "alter table public.subscription_payment_pauses enable row level security");
         StringAssert.Contains(migration, "ix_subscription_payment_pauses_due");
         StringAssert.Contains(migration, "uq_subscription_payment_pauses_open_paid_subscription");
-        StringAssert.Contains(grants, "public.subscription_payment_pauses");
+        StringAssert.Contains(migration, "grant select, insert, update, delete on table");
+        StringAssert.Contains(migration, "public.subscription_payment_pauses");
+        StringAssert.Contains(migration, "to service_role;");
     }
 
     [GeneratedRegex(@"create\s+table\s+(?:if\s+not\s+exists\s+)?public\.(?<name>[a-zA-Z_][a-zA-Z0-9_]*)", RegexOptions.IgnoreCase)]

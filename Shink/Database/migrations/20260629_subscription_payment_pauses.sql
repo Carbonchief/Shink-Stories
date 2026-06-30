@@ -45,3 +45,7 @@ drop trigger if exists trg_subscription_payment_pauses_set_updated_at on public.
 create trigger trg_subscription_payment_pauses_set_updated_at
 before update on public.subscription_payment_pauses
 for each row execute function public.set_updated_at();
+
+grant select, insert, update, delete on table
+    public.subscription_payment_pauses
+to service_role;
