@@ -252,6 +252,7 @@ public sealed class MobileApiClient
     private readonly CookieContainer _cookieContainer;
     private readonly MobileAppSettings _settings;
     private readonly SessionState _sessionState;
+    private readonly MobileAnalyticsService _analytics;
     private readonly SemaphoreSlim _authCookieStorageLock = new(1, 1);
     private readonly SemaphoreSlim _luisterCacheLock = new(1, 1);
     private readonly SemaphoreSlim _storyDetailCacheLock = new(1, 1);
@@ -265,10 +266,14 @@ public sealed class MobileApiClient
 
     public event Action<int>? NewNotificationsAvailable;
 
-    public MobileApiClient(MobileAppSettings settings, SessionState sessionState)
+    public MobileApiClient(
+        MobileAppSettings settings,
+        SessionState sessionState,
+        MobileAnalyticsService analytics)
     {
         _settings = settings;
         _sessionState = sessionState;
+        _analytics = analytics;
 
         _cookieContainer = new CookieContainer();
 
@@ -500,6 +505,10 @@ public sealed class MobileApiClient
         var payload = new { email = email.Trim(), password };
         var result = await PostAsync<AuthResponse>("/api/auth/login", payload, cancellationToken);
         await GetSessionAsync(cancellationToken);
+        _analytics.TrackEvent("mobile_auth_signed_in", new Dictionary<string, object>
+        {
+            ["auth_method"] = "email"
+        });
         return (true, result?.Message ?? "Welkom terug!");
     }
 
@@ -524,6 +533,10 @@ public sealed class MobileApiClient
             await GetSessionAsync(cancellationToken);
         }
 
+        _analytics.TrackEvent("mobile_auth_signed_in", new Dictionary<string, object>
+        {
+            ["auth_method"] = "google"
+        });
         return (true, result?.Message ?? "Welkom terug!");
     }
 
@@ -548,6 +561,10 @@ public sealed class MobileApiClient
 
         var result = await PostAsync<AuthResponse>("/api/auth/signup", payload, cancellationToken);
         await GetSessionAsync(cancellationToken);
+        _analytics.TrackEvent("mobile_auth_signed_up", new Dictionary<string, object>
+        {
+            ["auth_method"] = "email"
+        });
         return (true, result?.Message ?? "Jou rekening is geskep.");
     }
 
@@ -556,6 +573,7 @@ public sealed class MobileApiClient
         await PostAsync<object>("/api/auth/logout", new { }, cancellationToken);
         await ClearPersistedAuthCookiesAsync();
         await GetSessionAsync(cancellationToken);
+        _analytics.TrackEvent("mobile_auth_signed_out");
     }
 
     public async Task<(bool IsSuccess, string Message)> UpdateProfileAsync(
@@ -585,6 +603,7 @@ public sealed class MobileApiClient
             await GetSessionAsync(cancellationToken);
         }
 
+        _analytics.TrackEvent("mobile_profile_updated");
         return (true, result?.Message ?? "Profiel opgedateer.");
     }
 
@@ -595,6 +614,12 @@ public sealed class MobileApiClient
             new { isFavorite, source },
             cancellationToken);
         await GetSessionAsync(cancellationToken);
+        _analytics.TrackEvent("mobile_story_favorite_changed", new Dictionary<string, object>
+        {
+            ["story_slug"] = slug,
+            ["story_source"] = source,
+            ["is_favorite"] = result?.IsFavorite ?? isFavorite
+        });
         return result?.IsFavorite ?? false;
     }
 
@@ -611,9 +636,19 @@ public sealed class MobileApiClient
                     referrerPath = "/mobile"
                 },
                 cancellationToken);
+            _analytics.TrackEvent("mobile_story_viewed", new Dictionary<string, object>
+            {
+                ["story_slug"] = slug,
+                ["story_source"] = source
+            });
         }
-        catch
+        catch (Exception ex)
         {
+            _analytics.TrackException(ex, "mobile_story_view_tracking_failed", new Dictionary<string, object>
+            {
+                ["story_slug"] = slug,
+                ["story_source"] = source
+            });
             // Tracking must not block mobile playback or page rendering.
         }
     }
@@ -648,7 +683,7 @@ public sealed class MobileApiClient
                 DateTimeOffset.UtcNow);
             await SendStoryListenTrackingAsync(trackingEvent, flushQueuedListensAfterSuccess: true, cancellationToken);
         }
-        catch
+        catch (Exception ex)
         {
             await EnqueueStoryListenAsync(
                 new QueuedStoryListenEvent(
@@ -662,6 +697,16 @@ public sealed class MobileApiClient
                     isCompleted,
                     DateTimeOffset.UtcNow),
                 cancellationToken);
+            _analytics.TrackException(ex, "mobile_story_listen_tracking_queued", new Dictionary<string, object>
+            {
+                ["story_slug"] = slug,
+                ["story_source"] = source,
+                ["listen_event_type"] = eventType,
+                ["listened_seconds"] = listenedSeconds,
+                ["position_seconds"] = positionSeconds ?? 0,
+                ["duration_seconds"] = durationSeconds ?? 0,
+                ["is_completed"] = isCompleted
+            });
             // Tracking must not block mobile playback or page rendering.
         }
     }
@@ -669,15 +714,25 @@ public sealed class MobileApiClient
     private async Task<T?> GetAsync<T>(string path, CancellationToken cancellationToken)
     {
         await EnsureAuthCookiesLoadedAsync(cancellationToken);
+        var startedAt = DateTimeOffset.UtcNow;
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, BuildUri(path));
-        AddMobileAppHeaderIfNeeded(request, path);
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
-        await SaveAuthCookiesAsync(cancellationToken);
-        await EnsureSuccessAsync(response, cancellationToken);
-        var result = await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
-        _ = FlushQueuedStoryListensAsync();
-        return result;
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, BuildUri(path));
+            AddMobileAppHeaderIfNeeded(request, path);
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            await SaveAuthCookiesAsync(cancellationToken);
+            await EnsureSuccessAsync(response, cancellationToken);
+            var result = await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
+            TrackMobileApiRequest("GET", path, response.StatusCode, startedAt, true);
+            _ = FlushQueuedStoryListensAsync();
+            return result;
+        }
+        catch (Exception ex)
+        {
+            TrackMobileApiRequest("GET", path, null, startedAt, false, ex);
+            throw;
+        }
     }
 
     private async Task<MobileLuisterResponse?> GetAndCacheLuisterAsync(CancellationToken cancellationToken)
@@ -867,34 +922,44 @@ public sealed class MobileApiClient
         bool flushQueuedListens = true)
     {
         await EnsureAuthCookiesLoadedAsync(cancellationToken);
+        var startedAt = DateTimeOffset.UtcNow;
 
-        using var request = new HttpRequestMessage(HttpMethod.Post, BuildUri(path))
+        try
         {
-            Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
-        };
-        AddMobileAppHeaderIfNeeded(request, path);
+            using var request = new HttpRequestMessage(HttpMethod.Post, BuildUri(path))
+            {
+                Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+            };
+            AddMobileAppHeaderIfNeeded(request, path);
 
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
-        await SaveAuthCookiesAsync(cancellationToken);
-        await EnsureSuccessAsync(response, cancellationToken);
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            await SaveAuthCookiesAsync(cancellationToken);
+            await EnsureSuccessAsync(response, cancellationToken);
+            TrackMobileApiRequest("POST", path, response.StatusCode, startedAt, true);
 
-        if (response.Content.Headers.ContentLength == 0)
-        {
+            if (response.Content.Headers.ContentLength == 0)
+            {
+                if (flushQueuedListens)
+                {
+                    _ = FlushQueuedStoryListensAsync();
+                }
+
+                return default;
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
             if (flushQueuedListens)
             {
                 _ = FlushQueuedStoryListensAsync();
             }
 
-            return default;
+            return result;
         }
-
-        var result = await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
-        if (flushQueuedListens)
+        catch (Exception ex)
         {
-            _ = FlushQueuedStoryListensAsync();
+            TrackMobileApiRequest("POST", path, null, startedAt, false, ex);
+            throw;
         }
-
-        return result;
     }
 
     private async Task SendStoryListenTrackingAsync(
@@ -922,6 +987,18 @@ public sealed class MobileApiClient
             NewNotificationsAvailable?.Invoke(result.NewNotificationsCreated);
         }
 
+        _analytics.TrackEvent("mobile_story_listened", new Dictionary<string, object>
+        {
+            ["story_slug"] = trackingEvent.Slug,
+            ["story_source"] = trackingEvent.Source,
+            ["listen_event_type"] = trackingEvent.EventType,
+            ["listened_seconds"] = trackingEvent.ListenedSeconds,
+            ["position_seconds"] = trackingEvent.PositionSeconds ?? 0,
+            ["duration_seconds"] = trackingEvent.DurationSeconds ?? 0,
+            ["is_completed"] = trackingEvent.IsCompleted,
+            ["new_notifications_created"] = result?.NewNotificationsCreated ?? 0
+        });
+
         if (flushQueuedListensAfterSuccess)
         {
             _ = FlushQueuedStoryListensAsync();
@@ -945,6 +1022,13 @@ public sealed class MobileApiClient
                     .TakeLast(300)
                     .ToArray(),
                 cancellationToken);
+            _analytics.TrackEvent("mobile_story_listen_queued", new Dictionary<string, object>
+            {
+                ["story_slug"] = trackingEvent.Slug,
+                ["story_source"] = trackingEvent.Source,
+                ["listen_event_type"] = trackingEvent.EventType,
+                ["queued_count"] = queuedEvents.Count
+            });
         }
         catch
         {
@@ -984,6 +1068,7 @@ public sealed class MobileApiClient
                 return;
             }
 
+            var initialQueuedCount = queuedEvents.Count;
             var remainingEvents = new List<QueuedStoryListenEvent>();
             for (var index = 0; index < queuedEvents.Count; index++)
             {
@@ -1011,9 +1096,17 @@ public sealed class MobileApiClient
             {
                 _offlineStoryListenQueueLock.Release();
             }
+
+            _analytics.TrackEvent("mobile_story_listen_queue_flushed", new Dictionary<string, object>
+            {
+                ["initial_queued_count"] = initialQueuedCount,
+                ["flushed_count"] = initialQueuedCount - remainingEvents.Count,
+                ["remaining_count"] = remainingEvents.Count
+            });
         }
-        catch
+        catch (Exception ex)
         {
+            _analytics.TrackException(ex, "mobile_story_listen_queue_flush_failed");
             // Syncing queued tracking should never block app startup or playback.
         }
         finally
@@ -1143,21 +1236,28 @@ public sealed class MobileApiClient
             : ImageSource.FromFile(string.IsNullOrWhiteSpace(fallbackFile) ? imageUrl : fallbackFile);
     }
 
-    public async Task CacheImagesAsync(IEnumerable<string?> urls, CancellationToken cancellationToken = default)
+    public async Task CacheImagesAsync(
+        IEnumerable<string?> urls,
+        CancellationToken cancellationToken = default,
+        int maxImages = 80,
+        int maxDegreeOfParallelism = 4)
     {
+        maxImages = Math.Max(1, maxImages);
+        maxDegreeOfParallelism = Math.Max(1, maxDegreeOfParallelism);
+
         var imageUrls = urls
             .Where(url => !string.IsNullOrWhiteSpace(url))
             .Select(url => BuildImageUrl(url!))
             .Where(url => Uri.TryCreate(url, UriKind.Absolute, out var uri) && IsWebUri(uri))
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .Take(80)
+            .Take(maxImages)
             .ToArray();
 
         await Parallel.ForEachAsync(
             imageUrls,
             new ParallelOptions
             {
-                MaxDegreeOfParallelism = 4,
+                MaxDegreeOfParallelism = maxDegreeOfParallelism,
                 CancellationToken = cancellationToken
             },
             async (imageUrl, token) =>
@@ -1211,6 +1311,11 @@ public sealed class MobileApiClient
         var cachePath = System.IO.Path.Combine(cacheDirectory, fileName);
         if (File.Exists(cachePath) && new FileInfo(cachePath).Length > 0)
         {
+            _analytics.TrackEvent("mobile_audio_playback_cache_hit", new Dictionary<string, object>
+            {
+                ["story_slug"] = slug,
+                ["story_source"] = source
+            });
             return new Uri(cachePath).AbsoluteUri;
         }
 
@@ -1240,6 +1345,12 @@ public sealed class MobileApiClient
         }
 
         File.Move(temporaryPath, cachePath);
+        _analytics.TrackEvent("mobile_audio_playback_cached", new Dictionary<string, object>
+        {
+            ["story_slug"] = slug,
+            ["story_source"] = source,
+            ["file_size_bytes"] = new FileInfo(cachePath).Length
+        });
         return new Uri(cachePath).AbsoluteUri;
     }
 
@@ -1283,6 +1394,12 @@ public sealed class MobileApiClient
                 totalBytes,
                 totalBytes is > 0 ? Math.Clamp(bytesReceived / (double)totalBytes.Value, 0, 1) : null));
         }
+
+        _analytics.TrackEvent("mobile_audio_file_downloaded", new Dictionary<string, object>
+        {
+            ["bytes_received"] = bytesReceived,
+            ["total_bytes"] = totalBytes ?? 0
+        });
     }
 
     private async Task CacheImageAsync(string imageUrl, CancellationToken cancellationToken)
@@ -1333,10 +1450,52 @@ public sealed class MobileApiClient
 
     private static void AddMobileAppHeaderIfNeeded(HttpRequestMessage request, string path)
     {
-        if (path.StartsWith("/api/mobile/", StringComparison.OrdinalIgnoreCase))
+        var requestPath = path;
+        if (Uri.TryCreate(path, UriKind.Absolute, out var uri))
+        {
+            requestPath = uri.AbsolutePath;
+        }
+
+        if (requestPath.StartsWith("/api/mobile/", StringComparison.OrdinalIgnoreCase))
         {
             request.Headers.TryAddWithoutValidation(MobileAppHeaderName, MobileAppHeaderValue);
         }
+    }
+
+    private void TrackMobileApiRequest(
+        string method,
+        string path,
+        HttpStatusCode? statusCode,
+        DateTimeOffset startedAt,
+        bool isSuccess,
+        Exception? exception = null)
+    {
+        var properties = new Dictionary<string, object>
+        {
+            ["method"] = method,
+            ["path"] = NormalizeAnalyticsPath(path),
+            ["status_code"] = statusCode.HasValue ? (int)statusCode.Value : 0,
+            ["duration_ms"] = Math.Max(0, (DateTimeOffset.UtcNow - startedAt).TotalMilliseconds),
+            ["success"] = isSuccess
+        };
+
+        if (exception is not null)
+        {
+            properties["exception_type"] = exception.GetType().Name;
+        }
+
+        _analytics.TrackEvent("mobile_api_request", properties);
+    }
+
+    private static string NormalizeAnalyticsPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return string.Empty;
+        }
+
+        var queryIndex = path.IndexOf('?', StringComparison.Ordinal);
+        return queryIndex >= 0 ? path[..queryIndex] : path;
     }
 
     private async Task EnsureAuthCookiesLoadedAsync(CancellationToken cancellationToken)

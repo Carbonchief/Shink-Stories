@@ -73,6 +73,45 @@ public class StoryTrackingSourceTests
         StringAssert.Contains(client, "\"/api/stories/{Uri.EscapeDataString(trackingEvent.Slug)}/listen\"");
     }
 
+    [TestMethod]
+    public void MobileAppCapturesPostHogAnalytics()
+    {
+        var project = File.ReadAllText(GetRepoPath("Shink.Mobile", "Shink.Mobile.csproj"));
+        var mauiProgram = File.ReadAllText(GetRepoPath("Shink.Mobile", "MauiProgram.cs"));
+        var analytics = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileAnalyticsService.cs"));
+        var app = File.ReadAllText(GetRepoPath("Shink.Mobile", "App.xaml.cs"));
+        var shell = File.ReadAllText(GetRepoPath("Shink.Mobile", "AppShell.xaml.cs"));
+        var client = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
+        var downloads = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "OfflineStoryDownloadService.cs"));
+        var playback = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "AudioPlaybackService.cs"));
+
+        StringAssert.Contains(project, "<PackageReference Include=\"PostHog\" Version=\"");
+        StringAssert.Contains(mauiProgram, "builder.Services.AddPostHog");
+        StringAssert.Contains(mauiProgram, "options.ProjectToken = analyticsSettings.ProjectApiKey;");
+        StringAssert.Contains(mauiProgram, "builder.Services.AddSingleton<MobileAnalyticsService>();");
+        StringAssert.Contains(analytics, "public sealed class MobileAnalyticsService");
+        StringAssert.Contains(analytics, "_postHog.Capture(");
+        StringAssert.Contains(analytics, "_postHog.CaptureScreenView(");
+        StringAssert.Contains(analytics, "_postHog.IdentifyAsync(");
+        StringAssert.Contains(analytics, "_postHog.FlushAsync()");
+        StringAssert.Contains(app, "_analytics.TrackAppOpened();");
+        StringAssert.Contains(shell, "_analytics.TrackScreenView(");
+        StringAssert.Contains(shell, "mobile_shell_rendered");
+        StringAssert.Contains(client, "mobile_api_request");
+        StringAssert.Contains(client, "mobile_auth_signed_in");
+        StringAssert.Contains(client, "mobile_auth_signed_up");
+        StringAssert.Contains(client, "mobile_story_viewed");
+        StringAssert.Contains(client, "mobile_story_listened");
+        StringAssert.Contains(client, "mobile_story_listen_queue_flushed");
+        StringAssert.Contains(downloads, "mobile_story_download_started");
+        StringAssert.Contains(downloads, "mobile_story_download_completed");
+        StringAssert.Contains(downloads, "mobile_story_download_removed");
+        StringAssert.Contains(playback, "mobile_audio_played");
+        StringAssert.Contains(playback, "mobile_audio_paused");
+        StringAssert.Contains(playback, "mobile_audio_completed");
+        StringAssert.Contains(playback, "mobile_audio_speed_changed");
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var testsDirectory = Path.GetDirectoryName(GetSourceFilePath())!;

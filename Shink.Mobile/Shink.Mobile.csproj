@@ -13,20 +13,55 @@
     <ApplicationTitle>Schink Stories</ApplicationTitle>
     <ApplicationId>com.schink.stories.mobile</ApplicationId>
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-    <ApplicationVersion>2</ApplicationVersion>
+    <ApplicationVersion>3</ApplicationVersion>
 
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">21.0</SupportedOSPlatformVersion>
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">15.0</SupportedOSPlatformVersion>
   </PropertyGroup>
+
+  <PropertyGroup>
+    <PostHogProjectApiKey Condition="'$(PostHogProjectApiKey)' == ''">$([System.Environment]::GetEnvironmentVariable('POSTHOG_PROJECT_API_KEY'))</PostHogProjectApiKey>
+    <PostHogHostUrl Condition="'$(PostHogHostUrl)' == ''">$([System.Environment]::GetEnvironmentVariable('POSTHOG_HOST_URL'))</PostHogHostUrl>
+    <PostHogHostUrl Condition="'$(PostHogHostUrl)' == ''">https://eu.i.posthog.com</PostHogHostUrl>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(PostHogProjectApiKey)' != ''">
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>PostHogProjectApiKey</_Parameter1>
+      <_Parameter2>$(PostHogProjectApiKey)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>PostHogHostUrl</_Parameter1>
+      <_Parameter2>$(PostHogHostUrl)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
 
   <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
     <RuntimeIdentifiers>android-arm64</RuntimeIdentifiers>
     <EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>
   </PropertyGroup>
 
+  <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+    <SchinkAndroidDemoKeyStore Condition="'$(SchinkAndroidDemoKeyStore)' == ''">$([System.Environment]::GetEnvironmentVariable('SCHINK_ANDROID_DEMO_KEYSTORE'))</SchinkAndroidDemoKeyStore>
+    <SchinkAndroidDemoKeyAlias Condition="'$(SchinkAndroidDemoKeyAlias)' == ''">$([System.Environment]::GetEnvironmentVariable('SCHINK_ANDROID_DEMO_KEY_ALIAS'))</SchinkAndroidDemoKeyAlias>
+    <SchinkAndroidDemoStorePass Condition="'$(SchinkAndroidDemoStorePass)' == ''">$([System.Environment]::GetEnvironmentVariable('SCHINK_ANDROID_DEMO_STORE_PASS'))</SchinkAndroidDemoStorePass>
+    <SchinkAndroidDemoKeyPass Condition="'$(SchinkAndroidDemoKeyPass)' == ''">$([System.Environment]::GetEnvironmentVariable('SCHINK_ANDROID_DEMO_KEY_PASS'))</SchinkAndroidDemoKeyPass>
+    <SchinkAndroidDemoKeyAlias Condition="'$(SchinkAndroidDemoKeyAlias)' == ''">schink-stories-demo</SchinkAndroidDemoKeyAlias>
+    <SchinkAndroidDemoKeyPass Condition="'$(SchinkAndroidDemoKeyPass)' == ''">$(SchinkAndroidDemoStorePass)</SchinkAndroidDemoKeyPass>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' and '$(Configuration)' == 'Release' and '$(SchinkAndroidDemoKeyStore)' != '' and '$(SchinkAndroidDemoStorePass)' != ''">
+    <AndroidKeyStore>true</AndroidKeyStore>
+    <AndroidSigningKeyStore>$(SchinkAndroidDemoKeyStore)</AndroidSigningKeyStore>
+    <AndroidSigningKeyAlias>$(SchinkAndroidDemoKeyAlias)</AndroidSigningKeyAlias>
+    <AndroidSigningStorePass>$(SchinkAndroidDemoStorePass)</AndroidSigningStorePass>
+    <AndroidSigningKeyPass>$(SchinkAndroidDemoKeyPass)</AndroidSigningKeyPass>
+  </PropertyGroup>
+
   <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
     <RuntimeIdentifiers>ios-arm64</RuntimeIdentifiers>
     <CodesignEntitlements>Platforms/iOS/Entitlements.plist</CodesignEntitlements>
+    <ValidateXcodeVersion>false</ValidateXcodeVersion>
   </PropertyGroup>
 
   <ItemGroup>
@@ -40,6 +75,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Maui.Controls" Version="$(MauiVersion)" />
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
+    <PackageReference Include="PostHog" Version="2.8.4" />
   </ItemGroup>
 
 </Project>

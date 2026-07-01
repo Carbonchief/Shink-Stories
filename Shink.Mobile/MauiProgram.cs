@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using PostHog.Config;
 using Shink.Mobile.Pages;
 using Shink.Mobile.Services;
 using Shink.Mobile.Views;
@@ -22,8 +23,27 @@ public static class MauiProgram
 
         var mobileAppSettings = new MobileAppSettings();
         mobileAppSettings.BaseUrl = ResolveMobileApiBaseUrl(mobileAppSettings.BaseUrl);
+        var analyticsSettings = MobileAnalyticsSettings.FromEnvironment();
+        builder.Services.AddPostHog(postHog =>
+        {
+            postHog.PostConfigure(options =>
+            {
+                options.ProjectToken = analyticsSettings.ProjectApiKey;
+                options.HostUrl = Uri.TryCreate(analyticsSettings.HostUrl, UriKind.Absolute, out var hostUrl)
+                    ? hostUrl
+                    : new Uri(MobileAnalyticsSettings.DefaultHostUrl);
+                options.Disabled = !analyticsSettings.IsConfigured;
+                options.IsServer = false;
+                options.FlushAt = 10;
+                options.FlushInterval = TimeSpan.FromSeconds(15);
+                options.SuperProperties["app"] = "schink_stories_mobile";
+                options.SuperProperties["platform"] = DeviceInfo.Platform.ToString();
+            });
+        });
         builder.Services.AddSingleton(mobileAppSettings);
+        builder.Services.AddSingleton(analyticsSettings);
         builder.Services.AddSingleton<SessionState>();
+        builder.Services.AddSingleton<MobileAnalyticsService>();
         builder.Services.AddSingleton<PlaylistPlaybackState>();
         builder.Services.AddSingleton<ContinueListeningState>();
         builder.Services.AddSingleton<PlayerTransitionBackdropState>();

@@ -396,7 +396,7 @@ public sealed class AccountPage : ContentPage
                     new RowDefinition { Height = GridLength.Auto }
                 }
             };
-            landingContent.Add(BuildModeButton("Meld aan", AuthPanelMode.SignIn, true), 0, 0);
+            landingContent.Add(BuildModeButton("Teken in", AuthPanelMode.SignIn, true), 0, 0);
             landingContent.Add(BuildModeButton("Skep rekening", AuthPanelMode.SignUp, false), 0, 1);
             landingContent.Add(new BoxView
             {
@@ -425,7 +425,7 @@ public sealed class AccountPage : ContentPage
         };
 
         formContent.Children.Add(BuildAuthPanelHeader(
-            _authPanelMode == AuthPanelMode.SignIn ? "Meld aan" : "Skep rekening"));
+            _authPanelMode == AuthPanelMode.SignIn ? "Teken in" : "Skep rekening"));
         formContent.Children.Add(_statusLabel);
 
         if (_authPanelMode == AuthPanelMode.SignIn)
@@ -434,7 +434,7 @@ public sealed class AccountPage : ContentPage
             var loginPasswordEntry = CreateEntry("Wagwoord", isPassword: true);
             var loginLabel = new Label
             {
-                Text = "Meld aan",
+                Text = "Teken in",
                 TextColor = Colors.White,
                 FontAttributes = FontAttributes.Bold,
                 HorizontalTextAlignment = TextAlignment.Center,
@@ -596,7 +596,7 @@ public sealed class AccountPage : ContentPage
             formContent.Children.Add(signupButton);
             formContent.Children.Add(BuildModeSwitchLink(
                 "Het jy reeds 'n rekening?",
-                "Meld aan",
+                "Teken in",
                 AuthPanelMode.SignIn));
         }
 
@@ -997,7 +997,7 @@ public sealed class AccountPage : ContentPage
     {
         _isAuthRequestInFlight = isLoading;
         button.Opacity = isLoading ? 0.82 : 1;
-        label.Text = isLoading ? "Meld aan..." : "Meld aan";
+        label.Text = isLoading ? "Teken in..." : "Teken in";
         spinner.IsVisible = isLoading;
         spinner.IsRunning = isLoading;
         emailEntry.IsEnabled = !isLoading;

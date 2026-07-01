@@ -39,6 +39,7 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
 
     private AVFoundation.AVPlayer? _player;
     private Foundation.NSObject? _endedObserver;
+    private readonly MobileAnalyticsService _analytics;
     private readonly List<Foundation.NSObject> _remoteCommandTargets = [];
     private string? _currentAudioUrl;
     private AudioPlaybackMetadata? _metadata;
@@ -46,6 +47,11 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
     private string? _artworkUrl;
     private CancellationTokenSource? _artworkLoadCts;
     private double _playbackSpeed = 1;
+
+    public AudioPlaybackService(MobileAnalyticsService analytics)
+    {
+        _analytics = analytics;
+    }
 
     public bool IsPlaying { get; private set; }
 
@@ -152,6 +158,7 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
             ApplyPlaybackSpeed();
             UpdateNowPlayingInfo();
             PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
+            _analytics.TrackEvent("mobile_audio_played", BuildPlaybackProperties(metadata));
         });
     }
 
@@ -161,6 +168,10 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         ApplyPlaybackSpeed();
         UpdateNowPlayingInfo();
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
+        _analytics.TrackEvent("mobile_audio_speed_changed", new Dictionary<string, object>
+        {
+            ["playback_speed"] = _playbackSpeed
+        });
     }
 
     public void Pause()
@@ -169,10 +180,14 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         IsPlaying = false;
         UpdateNowPlayingInfo();
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
+        _analytics.TrackEvent("mobile_audio_paused", BuildPlaybackProperties(_metadata));
     }
 
     public void Stop()
     {
+        var metadata = _metadata;
+        var position = CurrentPosition.TotalSeconds;
+        var duration = Duration?.TotalSeconds ?? 0;
         _player?.Pause();
         _player = null;
         _currentAudioUrl = null;
@@ -185,6 +200,7 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         IsPlaying = false;
         ClearNowPlayingInfo();
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
+        _analytics.TrackEvent("mobile_audio_stopped", BuildPlaybackProperties(metadata, position, duration));
 
         if (_endedObserver is not null)
         {
@@ -197,6 +213,7 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
     {
         IsPlaying = false;
         UpdateNowPlayingInfo();
+        _analytics.TrackEvent("mobile_audio_completed", BuildPlaybackProperties(_metadata));
         MainThread.BeginInvokeOnMainThread(() => PlaybackEnded?.Invoke(this, EventArgs.Empty));
     }
 
@@ -423,13 +440,33 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
             > 1.5 => 1.5,
             _ => speed
         };
+
+    private Dictionary<string, object> BuildPlaybackProperties(
+        AudioPlaybackMetadata? metadata,
+        double? positionSeconds = null,
+        double? durationSeconds = null) =>
+        new()
+        {
+            ["title"] = string.IsNullOrWhiteSpace(metadata?.Title) ? "Schink Stories" : metadata.Title,
+            ["artist"] = string.IsNullOrWhiteSpace(metadata?.Artist) ? "Schink Stories" : metadata.Artist,
+            ["position_seconds"] = positionSeconds ?? CurrentPosition.TotalSeconds,
+            ["duration_seconds"] = durationSeconds ?? Duration?.TotalSeconds ?? 0,
+            ["playback_speed"] = _playbackSpeed
+        };
 }
 #elif ANDROID
 public sealed class AudioPlaybackService : IAudioPlaybackService
 {
     private Android.Media.MediaPlayer? _player;
+    private readonly MobileAnalyticsService _analytics;
     private string? _currentAudioUrl;
+    private AudioPlaybackMetadata? _metadata;
     private double _playbackSpeed = 1;
+
+    public AudioPlaybackService(MobileAnalyticsService analytics)
+    {
+        _analytics = analytics;
+    }
 
     public bool IsPlaying { get; private set; }
 
@@ -510,15 +547,18 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
 
         if (string.Equals(_currentAudioUrl, audioUrl, StringComparison.Ordinal) && _player is not null)
         {
+            _metadata = metadata ?? _metadata;
             _player.Start();
             IsPlaying = true;
             ApplyPlaybackSpeed();
             PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
+            _analytics.TrackEvent("mobile_audio_played", BuildPlaybackProperties(_metadata));
             return;
         }
 
         Stop();
         _currentAudioUrl = audioUrl;
+        _metadata = metadata;
         var player = new Android.Media.MediaPlayer();
         _player = player;
         var audioAttributesBuilder = new Android.Media.AudioAttributes.Builder();
@@ -543,6 +583,7 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         {
             IsPlaying = false;
             PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
+            _analytics.TrackEvent("mobile_audio_completed", BuildPlaybackProperties(_metadata));
             MainThread.BeginInvokeOnMainThread(() => PlaybackEnded?.Invoke(this, EventArgs.Empty));
         };
         player.PrepareAsync();
@@ -551,6 +592,7 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         IsPlaying = true;
         ApplyPlaybackSpeed();
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
+        _analytics.TrackEvent("mobile_audio_played", BuildPlaybackProperties(_metadata));
     }
 
     public void SetPlaybackSpeed(double speed)
@@ -558,6 +600,10 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         _playbackSpeed = NormalizePlaybackSpeed(speed);
         ApplyPlaybackSpeed();
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
+        _analytics.TrackEvent("mobile_audio_speed_changed", new Dictionary<string, object>
+        {
+            ["playback_speed"] = _playbackSpeed
+        });
     }
 
     public void Pause()
@@ -565,17 +611,23 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         _player?.Pause();
         IsPlaying = false;
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
+        _analytics.TrackEvent("mobile_audio_paused", BuildPlaybackProperties(_metadata));
     }
 
     public void Stop()
     {
+        var metadata = _metadata;
+        var position = CurrentPosition.TotalSeconds;
+        var duration = Duration?.TotalSeconds ?? 0;
         _player?.Stop();
         _player?.Release();
         _player?.Dispose();
         _player = null;
         _currentAudioUrl = null;
+        _metadata = null;
         IsPlaying = false;
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
+        _analytics.TrackEvent("mobile_audio_stopped", BuildPlaybackProperties(metadata, position, duration));
     }
 
     private void ApplyPlaybackSpeed()
@@ -597,10 +649,30 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
             > 1.5 => 1.5,
             _ => speed
         };
+
+    private Dictionary<string, object> BuildPlaybackProperties(
+        AudioPlaybackMetadata? metadata,
+        double? positionSeconds = null,
+        double? durationSeconds = null) =>
+        new()
+        {
+            ["title"] = string.IsNullOrWhiteSpace(metadata?.Title) ? "Schink Stories" : metadata.Title,
+            ["artist"] = string.IsNullOrWhiteSpace(metadata?.Artist) ? "Schink Stories" : metadata.Artist,
+            ["position_seconds"] = positionSeconds ?? CurrentPosition.TotalSeconds,
+            ["duration_seconds"] = durationSeconds ?? Duration?.TotalSeconds ?? 0,
+            ["playback_speed"] = _playbackSpeed
+        };
 }
 #else
 public sealed class AudioPlaybackService : IAudioPlaybackService
 {
+    private readonly MobileAnalyticsService _analytics;
+
+    public AudioPlaybackService(MobileAnalyticsService analytics)
+    {
+        _analytics = analytics;
+    }
+
     public bool IsPlaying => false;
 
     public double PlaybackSpeed { get; private set; } = 1;
@@ -616,22 +688,35 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
     public Task<TimeSpan?> GetDurationAsync(string audioUrl, CancellationToken cancellationToken = default) =>
         Task.FromResult<TimeSpan?>(null);
 
-    public Task PlayAsync(string audioUrl, AudioPlaybackMetadata? metadata = null) => Task.CompletedTask;
+    public Task PlayAsync(string audioUrl, AudioPlaybackMetadata? metadata = null)
+    {
+        _analytics.TrackEvent("mobile_audio_played", new Dictionary<string, object>
+        {
+            ["title"] = string.IsNullOrWhiteSpace(metadata?.Title) ? "Schink Stories" : metadata.Title
+        });
+        return Task.CompletedTask;
+    }
 
     public void SetPlaybackSpeed(double speed)
     {
         PlaybackSpeed = speed;
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
+        _analytics.TrackEvent("mobile_audio_speed_changed", new Dictionary<string, object>
+        {
+            ["playback_speed"] = PlaybackSpeed
+        });
     }
 
     public void Pause()
     {
+        _analytics.TrackEvent("mobile_audio_paused");
     }
 
     public void Stop()
     {
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
         PlaybackEnded?.Invoke(this, EventArgs.Empty);
+        _analytics.TrackEvent("mobile_audio_stopped");
     }
 }
 #endif

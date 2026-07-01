@@ -71,13 +71,18 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
     private static readonly TimeSpan AccessRefreshWindow = TimeSpan.FromDays(30);
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
+    private readonly MobileAnalyticsService _analytics;
     private readonly SemaphoreSlim _metadataLock = new(1, 1);
     private readonly HashSet<string> _activeDownloads = new(StringComparer.OrdinalIgnoreCase);
 
-    public OfflineStoryDownloadService(MobileApiClient apiClient, SessionState sessionState)
+    public OfflineStoryDownloadService(
+        MobileApiClient apiClient,
+        SessionState sessionState,
+        MobileAnalyticsService analytics)
     {
         _apiClient = apiClient;
         _sessionState = sessionState;
+        _analytics = analytics;
         _sessionState.Changed += session =>
         {
             if (!session.IsSignedIn)
@@ -164,6 +169,12 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
 
         try
         {
+            _analytics.TrackEvent("mobile_story_download_started", new Dictionary<string, object>
+            {
+                ["story_slug"] = detail.Story.Slug,
+                ["story_source"] = detail.Story.Source,
+                ["duration_seconds"] = detail.Story.DurationSeconds ?? 0
+            });
             Directory.CreateDirectory(AudioDirectory);
             var audioUrl = _apiClient.BuildAbsoluteUrl(detail.AudioUrl);
             var audioFileName = $"{BuildStableKey(key)}{ResolveAudioExtensionFromUrl(audioUrl)}";
@@ -213,11 +224,23 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
 
             await SaveDownloadAsync(download, cancellationToken);
             DownloadsChanged?.Invoke(this, EventArgs.Empty);
+            _analytics.TrackEvent("mobile_story_download_completed", new Dictionary<string, object>
+            {
+                ["story_slug"] = download.Slug,
+                ["story_source"] = download.Source,
+                ["file_size_bytes"] = download.FileSizeBytes,
+                ["requires_subscription"] = download.RequiresSubscription
+            });
             return download;
         }
-        catch
+        catch (Exception ex)
         {
             CleanupTempFiles(key);
+            _analytics.TrackException(ex, "mobile_story_download_failed", new Dictionary<string, object>
+            {
+                ["story_slug"] = detail.Story.Slug,
+                ["story_source"] = detail.Story.Source
+            });
             throw;
         }
         finally
@@ -245,6 +268,11 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
 
             downloads[index] = downloads[index] with { LastAccessVerifiedAt = DateTimeOffset.UtcNow };
             await SaveDownloadsUnsafeAsync(downloads, cancellationToken);
+            _analytics.TrackEvent("mobile_story_download_access_refreshed", new Dictionary<string, object>
+            {
+                ["story_slug"] = detail.Story.Slug,
+                ["story_source"] = detail.Story.Source
+            });
         }
         finally
         {
@@ -267,6 +295,12 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
             DeleteAudioFile(download);
             downloads.Remove(download);
             await SaveDownloadsUnsafeAsync(downloads, cancellationToken);
+            _analytics.TrackEvent("mobile_story_download_removed", new Dictionary<string, object>
+            {
+                ["story_slug"] = download.Slug,
+                ["story_source"] = download.Source,
+                ["file_size_bytes"] = download.FileSizeBytes
+            });
         }
         finally
         {
@@ -290,6 +324,13 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
             }
 
             await SaveDownloadsUnsafeAsync(downloads, cancellationToken);
+            if (paidDownloads.Length > 0)
+            {
+                _analytics.TrackEvent("mobile_paid_downloads_deleted", new Dictionary<string, object>
+                {
+                    ["deleted_count"] = paidDownloads.Length
+                });
+            }
         }
         finally
         {

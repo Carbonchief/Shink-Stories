@@ -137,25 +137,32 @@ public class MobileAbsoluteUrlSourceTests
     {
         var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
 
-        StringAssert.Contains(luisterPage, "private readonly ScrollView _scrollView;");
+        StringAssert.Contains(luisterPage, "private readonly CollectionView _feedView;");
+        StringAssert.Contains(luisterPage, "ItemsSource = Array.Empty<LuisterFeedItem>()");
         StringAssert.Contains(luisterPage, "private readonly Grid _topBarOverlay;");
         StringAssert.Contains(luisterPage, "private Border? _floatingTopBarHost;");
         StringAssert.Contains(luisterPage, "_topBarOverlay = new Grid");
         StringAssert.Contains(luisterPage, "HeightRequest = FloatingTopBarContentInset");
         StringAssert.Contains(luisterPage, "ZIndex = 100");
         StringAssert.Contains(luisterPage, "_refreshView,\n                _topBarOverlay");
-        StringAssert.Contains(luisterPage, "_scrollView.Scrolled += OnContentScrolled;");
+        StringAssert.Contains(luisterPage, "_feedView.Scrolled += OnContentScrolled;");
         StringAssert.Contains(luisterPage, "RenderFloatingTopBar();");
         StringAssert.Contains(luisterPage, "_topBarOverlay.Children.Add(_floatingTopBarHost);");
         StringAssert.Contains(luisterPage, "_topBarOverlay.InputTransparent = _isTopBarHidden;");
-        StringAssert.Contains(luisterPage, "private void OnContentScrolled(object? sender, ScrolledEventArgs e)");
-        StringAssert.Contains(luisterPage, "var delta = e.ScrollY - _lastScrollY;");
-        StringAssert.Contains(luisterPage, "_ = SetTopBarHiddenAsync(delta > 0);");
-        StringAssert.Contains(luisterPage, "private async Task SetTopBarHiddenAsync(bool hidden)");
+        StringAssert.Contains(luisterPage, "private void OnContentScrolled(object? sender, ItemsViewScrolledEventArgs e)");
+        StringAssert.Contains(luisterPage, "var scrollY = e.VerticalOffset;");
+        StringAssert.Contains(luisterPage, "var delta = scrollY - _lastScrollY;");
+        StringAssert.Contains(luisterPage, "SetTopBarHidden(delta > 0);");
+        StringAssert.Contains(luisterPage, "private void SetTopBarHidden(bool hidden)");
+        StringAssert.Contains(luisterPage, "if (IsAndroid)");
+        StringAssert.Contains(luisterPage, "topBar.TranslationY = hidden ? FloatingTopBarHiddenOffset : 0;");
+        StringAssert.Contains(luisterPage, "private static async Task AnimateTopBarHiddenAsync(View topBar, bool hidden)");
         StringAssert.Contains(luisterPage, "topBar.TranslateToAsync(0, hidden ? FloatingTopBarHiddenOffset : 0");
         StringAssert.Contains(luisterPage, "topBar.FadeToAsync(hidden ? 0 : 1");
-        StringAssert.Contains(luisterPage, "Padding = new Thickness(18, FloatingTopBarContentInset, 18, 28)");
+        StringAssert.Contains(luisterPage, "Header = new BoxView");
+        StringAssert.Contains(luisterPage, "ItemSizingStrategy = ItemSizingStrategy.MeasureAllItems");
         Assert.IsFalse(luisterPage.Contains("_content.Children.Add(BuildLuisterTopBar());", StringComparison.Ordinal));
+        Assert.IsFalse(luisterPage.Contains("private readonly ScrollView _scrollView;", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -341,8 +348,8 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(helper, "Text = story.IsLocked ? \"Maak oop\" : \"Luister nou\"");
         Assert.IsFalse(helper.Contains("Text = story.IsFavorite ? \"Hartjie af\" : \"Hartjie\"", StringComparison.Ordinal));
         Assert.IsFalse(helper.Contains("new HorizontalStackLayout", StringComparison.Ordinal));
-        StringAssert.Contains(luisterPage, "WidthRequest = 168");
-        StringAssert.Contains(luisterPage, "StrokeShape = new RoundRectangle { CornerRadius = 16 }");
+        StringAssert.Contains(luisterPage, "WidthRequest = IsAndroid ? 148 : 168");
+        StringAssert.Contains(luisterPage, "StrokeShape = BuildArtworkShape(16)");
         StringAssert.Contains(luisterPage, "TextColor = story.IsFavorite ? Color.FromArgb(\"#E11D48\") : Color.FromArgb(\"#8A938D\")");
         StringAssert.Contains(luisterPage, "Color = story.IsFavorite ? Color.FromArgb(\"#E11D48\") : Color.FromArgb(\"#8A938D\")");
     }
@@ -1143,7 +1150,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(apiClient, "private const string MobileAppHeaderName = \"X-Schink-Mobile-App\";");
         StringAssert.Contains(apiClient, "private const string MobileAppHeaderValue = \"1\";");
         StringAssert.Contains(apiClient, "private static void AddMobileAppHeaderIfNeeded(HttpRequestMessage request, string path)");
-        StringAssert.Contains(apiClient, "path.StartsWith(\"/api/mobile/\", StringComparison.OrdinalIgnoreCase)");
+        StringAssert.Contains(apiClient, "requestPath.StartsWith(\"/api/mobile/\", StringComparison.OrdinalIgnoreCase)");
         StringAssert.Contains(apiClient, "request.Headers.TryAddWithoutValidation(MobileAppHeaderName, MobileAppHeaderValue);");
         StringAssert.Contains(apiClient, "AddMobileAppHeaderIfNeeded(request, path);");
 
@@ -1272,7 +1279,37 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "await OpenContinueListeningAsync(item)");
         StringAssert.Contains(luisterPage, "MergeContinueListeningMetadata(resolvedStory.Value.Story, item)");
         StringAssert.Contains(luisterPage, "DurationSeconds = story.DurationSeconds is > 0 ? story.DurationSeconds : item.DurationSeconds");
-        StringAssert.Contains(luisterPage, "_playlistContent.Children.Add(continueListeningCard);");
+        StringAssert.Contains(luisterPage, "nextItems.Add(LuisterFeedItem.ContinueListening());");
+    }
+
+    [TestMethod]
+    public void MobileLuisterAndroidFeedAvoidsScrollJankWork()
+    {
+        var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
+
+        StringAssert.Contains(luisterPage, "ItemsSource = Array.Empty<LuisterFeedItem>()");
+        StringAssert.Contains(luisterPage, "ItemTemplate = new DataTemplate(BuildFeedItemView)");
+        StringAssert.Contains(luisterPage, "private View BuildFeedItemView()");
+        StringAssert.Contains(luisterPage, "private void ReplaceFeedItems(IReadOnlyList<LuisterFeedItem> nextItems)");
+        StringAssert.Contains(luisterPage, "_feedView.ItemsSource = nextItems.ToArray();");
+        StringAssert.Contains(luisterPage, "MainThread.BeginInvokeOnMainThread(RenderFloatingTopBar);");
+        StringAssert.Contains(luisterPage, "private ImageSource BuildLuisterImageSource(string? url, string? fallbackFile = null)");
+        StringAssert.Contains(luisterPage, "private static Shadow BuildScrollContentShadow(Brush brush, Point offset, float radius, float opacity)");
+        StringAssert.Contains(luisterPage, "private static IShape? BuildArtworkShape(double cornerRadius)");
+        StringAssert.Contains(luisterPage, "IsAndroid ? null : new RoundRectangle { CornerRadius = cornerRadius };");
+        StringAssert.Contains(luisterPage, "private static bool IsAndroid => DeviceInfo.Current.Platform == DevicePlatform.Android;");
+        StringAssert.Contains(luisterPage, "Brush = Brush.Transparent");
+        StringAssert.Contains(luisterPage, "IsAndroid ? 188 : 218");
+        StringAssert.Contains(luisterPage, "IsAndroid ? 252 : 286");
+        StringAssert.Contains(luisterPage, "StrokeShape = BuildArtworkShape(16)");
+        StringAssert.Contains(luisterPage, "if (IsAndroid)\n        {\n            return;\n        }");
+        StringAssert.Contains(luisterPage, "maxImages: 80");
+        StringAssert.Contains(luisterPage, "maxDegreeOfParallelism: 4");
+        StringAssert.Contains(luisterPage, "if (Math.Abs(cover.HeightRequest - targetHeight) > 0.5)");
+        StringAssert.Contains(luisterPage, "ResolveVisibleDownloadedStories()");
+        Assert.IsFalse(luisterPage.Contains("_playlistContent.Children.Clear();", StringComparison.Ordinal));
+        Assert.IsFalse(luisterPage.Contains("_content.Children.Clear();", StringComparison.Ordinal));
+        Assert.IsFalse(luisterPage.Contains("ObservableCollection<LuisterFeedItem>", StringComparison.Ordinal));
     }
 
     [TestMethod]
@@ -1280,6 +1317,7 @@ public class MobileAbsoluteUrlSourceTests
     {
         var client = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
         var project = File.ReadAllText(GetRepoPath("Shink.Mobile", "Shink.Mobile.csproj"));
+        var demoBuildScript = File.ReadAllText(GetRepoPath("scripts", "build-mobile-demo-apk.sh"));
         var agents = File.ReadAllText(GetRepoPath("AGENTS.md"));
 
         StringAssert.Contains(client, "private readonly CookieContainer _cookieContainer;");
@@ -1291,8 +1329,17 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(client, "private sealed record PersistedAuthCookie(");
 
         StringAssert.Contains(project, "<ApplicationId>com.schink.stories.mobile</ApplicationId>");
-        StringAssert.Contains(project, "<ApplicationVersion>2</ApplicationVersion>");
+        StringAssert.Contains(project, "<ApplicationVersion>3</ApplicationVersion>");
         StringAssert.Contains(project, "<EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>");
+        StringAssert.Contains(project, "SCHINK_ANDROID_DEMO_KEYSTORE");
+        StringAssert.Contains(project, "<AndroidKeyStore>true</AndroidKeyStore>");
+        StringAssert.Contains(project, "<AndroidSigningKeyStore>$(SchinkAndroidDemoKeyStore)</AndroidSigningKeyStore>");
+        StringAssert.Contains(project, "<AndroidSigningKeyAlias>$(SchinkAndroidDemoKeyAlias)</AndroidSigningKeyAlias>");
+
+        StringAssert.Contains(demoBuildScript, "$HOME/.android/schink-stories-demo.keystore");
+        StringAssert.Contains(demoBuildScript, "Schink Stories Android Demo Keystore");
+        StringAssert.Contains(demoBuildScript, "SCHINK_ANDROID_DEMO_STORE_PASS");
+        StringAssert.Contains(demoBuildScript, "-p:AndroidPackageFormat=apk");
 
         StringAssert.Contains(agents, "Keep the mobile package ID fixed at `com.schink.stories.mobile`.");
         StringAssert.Contains(agents, "same stable release/demo keystore");
