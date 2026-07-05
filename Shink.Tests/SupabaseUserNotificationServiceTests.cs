@@ -95,6 +95,79 @@ public class SupabaseUserNotificationServiceTests
     }
 
     [TestMethod]
+    public async Task CreatePublishedStoryNotificationsAsync_BatchesLargeSubscriberInserts()
+    {
+        var subscriberRows = Enumerable.Range(1, 450)
+            .Select(index => new
+            {
+                subscriber_id = $"00000000-0000-0000-0000-{index:000000000000}",
+                subscriptions = new[]
+                {
+                    new { status = "active", next_renewal_at = (string?)null, cancelled_at = (string?)null }
+                }
+            })
+            .ToArray();
+
+        var handler = new RecordingHandler(request =>
+        {
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath.EndsWith("/rest/v1/subscribers", StringComparison.Ordinal) == true)
+            {
+                return JsonResponse(JsonSerializer.Serialize(subscriberRows));
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath.EndsWith("/rest/v1/subscriber_notifications", StringComparison.Ordinal) == true)
+            {
+                var payload = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? "[]";
+                var rows = JsonSerializer.Deserialize<JsonElement>(payload);
+                var responseRows = Enumerable.Range(1, rows.GetArrayLength())
+                    .Select(index => new { notification_id = $"11111111-1111-1111-1111-{index:000000000000}" })
+                    .ToArray();
+
+                return JsonResponse(JsonSerializer.Serialize(responseRows));
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        using var httpClient = new HttpClient(handler)
+        {
+            BaseAddress = new Uri("https://example.supabase.co/")
+        };
+        using var memoryCache = new MemoryCache(new MemoryCacheOptions());
+        var service = new SupabaseUserNotificationService(
+            httpClient,
+            Options.Create(new SupabaseOptions
+            {
+                Url = "https://example.supabase.co/",
+                SecretKey = "secret-key"
+            }),
+            memoryCache,
+            null!,
+            null!,
+            null!,
+            NullLogger<SupabaseUserNotificationService>.Instance);
+
+        var created = await service.CreatePublishedStoryNotificationsAsync(
+            new PublishedStoryNotificationRequest(
+                Guid.Parse("44444444-4444-4444-4444-444444444444"),
+                "nuwe-storie",
+                "Nuwe Storie",
+                "subscriber",
+                null,
+                null,
+                null));
+
+        Assert.AreEqual(450, created);
+        CollectionAssert.AreEqual(
+            new[] { 200, 200, 50 },
+            handler.InsertPayloads
+                .Select(payload => JsonSerializer.Deserialize<JsonElement>(payload).GetArrayLength())
+                .ToArray());
+    }
+
+    [TestMethod]
     public async Task CreatePublishedBlogNotificationsAsync_UsesBlogTitleAsBody()
     {
         var handler = new RecordingHandler(request =>
@@ -255,14 +328,15 @@ public class SupabaseUserNotificationServiceTests
 
     private sealed class RecordingHandler(Func<HttpRequestMessage, HttpResponseMessage> responseFactory) : HttpMessageHandler
     {
-        public string? InsertPayload { get; private set; }
+        public List<string> InsertPayloads { get; } = [];
+        public string? InsertPayload => InsertPayloads.LastOrDefault();
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             if (request.Method == HttpMethod.Post &&
                 request.RequestUri?.AbsolutePath.EndsWith("/rest/v1/subscriber_notifications", StringComparison.Ordinal) == true)
             {
-                InsertPayload = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+                InsertPayloads.Add(request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult() ?? string.Empty);
             }
 
             return Task.FromResult(responseFactory(request));

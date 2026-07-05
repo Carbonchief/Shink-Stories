@@ -69,6 +69,36 @@
             Jy het reeds 'n aktiewe betaalde intekening. Bestuur eers jou huidige intekening voordat jy 'n ander plan begin.
         </p>
     }
+    else if (string.Equals(PaymentStatus, "herinnering-verval", StringComparison.OrdinalIgnoreCase))
+    {
+        <p class="opsies-payment-status opsies-payment-blocked" role="status" aria-live="polite">
+            Hierdie betaalherinnering is reeds afgehandel of het verval. As jou intekening reeds aktief is, kan jy sommer voortgaan luister.
+        </p>
+    }
+    else if (string.Equals(PaymentStatus, "kode-toegepas", StringComparison.OrdinalIgnoreCase))
+    {
+        <p class="opsies-payment-status opsies-payment-success" role="status" aria-live="polite">
+            Jou kode is toegepas en jou toegang is nou aktief.
+        </p>
+    }
+    else if (string.Equals(PaymentStatus, "kode-ongeldig", StringComparison.OrdinalIgnoreCase))
+    {
+        <p class="opsies-payment-status opsies-payment-cancelled" role="status" aria-live="polite">
+            Hierdie kode is nie geldig vir die plan wat jy gekies het nie. Kontroleer die kode en probeer weer.
+        </p>
+    }
+    else if (string.Equals(PaymentStatus, "kode-misluk", StringComparison.OrdinalIgnoreCase))
+    {
+        <p class="opsies-payment-status opsies-payment-cancelled" role="status" aria-live="polite">
+            Ons kon nie hierdie kode nou toepas nie. Probeer asseblief weer of kontak ons vir hulp.
+        </p>
+    }
+    else if (string.Equals(PaymentStatus, "kode-betaalplan", StringComparison.OrdinalIgnoreCase))
+    {
+        <p class="opsies-payment-status opsies-payment-blocked" role="status" aria-live="polite">
+            Hierdie kode gee afslag op 'n nuwe Paystack-betaling. Jou huidige betaalde intekening gebruik steeds die gewone planverandering.
+        </p>
+    }
     else if (string.Equals(PaymentStatus, "plan-opgradeer", StringComparison.OrdinalIgnoreCase))
     {
         <p class="opsies-payment-status opsies-payment-success" role="status" aria-live="polite">
@@ -136,6 +166,22 @@
             </p>
         </div>
 
+        <section class="opsies-code-panel" aria-labelledby="opsies-code-title">
+            <div>
+                <p class="opsies-section-kicker">Promosiekode</p>
+                <h3 id="opsies-code-title">Het jy 'n kode?</h3>
+                <p>Vul dit hier in voor jy 'n plan kies. Ons vat die kode saam na jou rekening- of betaalstap.</p>
+            </div>
+            <label class="sr-only" for="opsies-discount-code">Kode of voucher</label>
+            <input id="opsies-discount-code"
+                   class="opsies-code-input"
+                   autocomplete="off"
+                   placeholder="Voer promosiekode in"
+                   aria-label="Kode of voucher"
+                   @bind="DiscountCode"
+                   @bind:event="oninput" />
+        </section>
+
         <div class="opsies-grid" aria-label="Plan opsies">
 
             <article class="@GetPlanCardClass("opsie-card featured opsie-monthly", "storie-hoekie-maandeliks", IsStoryCornerPlanUnavailable)">
@@ -170,7 +216,7 @@
                 }
                 else
                 {
-                    <a href='@BuildPlanSignUpHref("storie-hoekie-maandeliks", StoryCornerCheckoutReturnPath)' class="opsie-btn">@(IsSelectedPlan("storie-hoekie-maandeliks") ? "Gaan voort" : "Kies hierdie plan")</a>
+                    <a href='@BuildPlanSignUpHref("storie-hoekie-maandeliks", StoryCornerCheckoutReturnPath, DiscountCode)' class="opsie-btn">@(IsSelectedPlan("storie-hoekie-maandeliks") ? "Gaan voort" : "Kies hierdie plan")</a>
                 }
             </article>
 
@@ -229,7 +275,7 @@
                         </button>
                     </div>
 
-                    <a href='@BuildPlanSignUpHref(CurrentAllStoriesPlanSlug, SafeStoryReturnPath)' class="opsie-btn">@(IsSelectedPlan(CurrentAllStoriesPlanSlug) ? "Gaan voort" : "Kies hierdie plan")</a>
+                    <a href='@BuildPlanSignUpHref(CurrentAllStoriesPlanSlug, SafeStoryReturnPath, DiscountCode)' class="opsie-btn">@(IsSelectedPlan(CurrentAllStoriesPlanSlug) ? "Gaan voort" : "Kies hierdie plan")</a>
                 </article>
             }
         </div>
@@ -437,6 +483,9 @@
 
     [SupplyParameterFromQuery(Name = "plan")]
     public string? Plan { get; set; }
+
+    [SupplyParameterFromQuery(Name = "discountCode")]
+    public string? DiscountCode { get; set; }
 
     private bool IsUserAuthenticated { get; set; }
     private bool IsYearlyAllStoriesPlan { get; set; }
@@ -649,7 +698,7 @@
         IsStoryCornerPlanForceEnabled = true;
     }
 
-    private static string BuildPlanSignUpHref(string planSlug, string? safeStoryReturnPath)
+    private static string BuildPlanSignUpHref(string planSlug, string? safeStoryReturnPath, string? discountCode)
     {
         if (string.IsNullOrWhiteSpace(planSlug))
         {
@@ -658,9 +707,21 @@
 
         var normalizedPlanSlug = planSlug.Trim();
         var checkoutPath = $"/betaal/{Uri.EscapeDataString(normalizedPlanSlug)}";
+        var checkoutQuery = new Dictionary<string, string?>();
         if (!string.IsNullOrWhiteSpace(safeStoryReturnPath))
         {
-            checkoutPath = QueryHelpers.AddQueryString(checkoutPath, "returnUrl", safeStoryReturnPath);
+            checkoutQuery["returnUrl"] = safeStoryReturnPath;
+        }
+
+        var normalizedDiscountCode = NormalizeOptionalCode(discountCode);
+        if (!string.IsNullOrWhiteSpace(normalizedDiscountCode))
+        {
+            checkoutQuery["discountCode"] = normalizedDiscountCode;
+        }
+
+        if (checkoutQuery.Count > 0)
+        {
+            checkoutPath = QueryHelpers.AddQueryString(checkoutPath, checkoutQuery);
         }
 
         var signUpQuery = new Dictionary<string, string?>
@@ -668,8 +729,23 @@
             ["plan"] = normalizedPlanSlug,
             ["returnUrl"] = checkoutPath
         };
+        if (!string.IsNullOrWhiteSpace(normalizedDiscountCode))
+        {
+            signUpQuery["discountCode"] = normalizedDiscountCode;
+        }
 
         return QueryHelpers.AddQueryString("/teken-op", signUpQuery);
+    }
+
+    private static string? NormalizeOptionalCode(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        var trimmed = value.Trim();
+        return trimmed.Length == 0 ? null : trimmed;
     }
 
     private static string? NormalizePlanSlug(string? value)

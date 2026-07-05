@@ -44,6 +44,7 @@
 .opsies-payment-status,
 .opsies-hero,
 .opsies-plan-shell,
+.opsies-code-panel,
 .opsies-compare,
 .opsies-faq,
 .opsies-testimonials,
@@ -90,6 +91,48 @@
     display: grid;
     gap: clamp(1.5rem, 3vw, 2.4rem);
     padding: clamp(1.4rem, 2.6vw, 2.3rem);
+}
+
+.opsies-code-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 340px);
+    gap: 1rem;
+    align-items: center;
+    padding: 1rem;
+    border-radius: 18px;
+    box-shadow: none;
+}
+
+.opsies-code-panel h3 {
+    margin: 0.12rem 0 0.35rem;
+    color: var(--opsies-ink);
+    font-size: clamp(1.08rem, 1.5vw, 1.28rem);
+    line-height: 1.2;
+}
+
+.opsies-code-panel p:last-child {
+    margin: 0;
+    color: var(--opsies-muted);
+    font-weight: 600;
+    line-height: 1.5;
+}
+
+.opsies-code-input {
+    width: 100%;
+    min-height: 48px;
+    border: 1px solid rgba(35, 52, 40, 0.14);
+    border-radius: 12px;
+    padding: 0.75rem 0.9rem;
+    background: rgba(255, 255, 255, 0.88);
+    color: var(--opsies-ink);
+    font: inherit;
+    font-weight: 700;
+    box-sizing: border-box;
+}
+
+.opsies-code-input:focus {
+    outline: 3px solid rgba(216, 111, 52, 0.18);
+    border-color: rgba(216, 111, 52, 0.52);
 }
 
 .opsies-hero {
@@ -820,6 +863,7 @@ body.schink-night-mode .opsies-page {
 
 body.schink-night-mode .opsies-payment-status,
 body.schink-night-mode .opsies-plan-shell,
+body.schink-night-mode .opsies-code-panel,
 body.schink-night-mode .opsies-compare,
 body.schink-night-mode .opsies-school-cta,
 body.schink-night-mode .opsies-faq,
@@ -843,6 +887,8 @@ body.schink-night-mode .opsies-school-cta h2,
 body.schink-night-mode .opsie-card h2,
 body.schink-night-mode .opsie-price,
 body.schink-night-mode .opsie-detail strong,
+body.schink-night-mode .opsies-code-panel h3,
+body.schink-night-mode .opsies-code-input,
 body.schink-night-mode .opsie-plan-option,
 body.schink-night-mode .opsie-plan-option-price,
 body.schink-night-mode .opsie-card ul,
@@ -857,6 +903,7 @@ body.schink-night-mode .opsies-review-author {
 body.schink-night-mode .opsies-hero-lead,
 body.schink-night-mode .opsies-section-heading p:last-child,
 body.schink-night-mode .opsies-school-cta p:last-child,
+body.schink-night-mode .opsies-code-panel p:last-child,
 body.schink-night-mode .opsies-hero-point span,
 body.schink-night-mode .opsie-summary,
 body.schink-night-mode .opsie-detail,
@@ -880,6 +927,7 @@ body.schink-night-mode .opsies-review-stars {
 
 body.schink-night-mode .opsies-hero-point,
 body.schink-night-mode .opsies-section-heading h2,
+body.schink-night-mode .opsies-code-input,
 body.schink-night-mode .opsie-head,
 body.schink-night-mode .opsie-plan-option,
 body.schink-night-mode .opsie-note,
@@ -888,6 +936,10 @@ body.schink-night-mode .opsies-faq-item,
 body.schink-night-mode .opsies-review-card {
     border-color: rgba(247, 241, 231, 0.16);
     background: rgba(30, 43, 51, 0.92);
+}
+
+body.schink-night-mode .opsies-code-input::placeholder {
+    color: rgba(198, 208, 202, 0.72);
 }
 
 body.schink-night-mode .opsie-card {
@@ -1044,6 +1096,7 @@ body.schink-night-mode .opsies-faq-item summary::before {
     .opsies-payment-status,
     .opsies-hero,
     .opsies-plan-shell,
+    .opsies-code-panel,
     .opsies-compare,
     .opsies-school-cta,
     .opsies-faq,
@@ -1059,6 +1112,11 @@ body.schink-night-mode .opsies-faq-item summary::before {
     .opsies-testimonials {
         gap: 0.55rem;
         padding: 0.58rem;
+    }
+
+    .opsies-code-panel {
+        grid-template-columns: 1fr;
+        gap: 0.7rem;
     }
 
     .opsies-page-logo {

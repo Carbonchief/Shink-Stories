@@ -273,6 +273,9 @@
     [SupplyParameterFromQuery(Name = "plan")]
     public string? Plan { get; set; }
 
+    [SupplyParameterFromQuery(Name = "discountCode")]
+    public string? DiscountCode { get; set; }
+
     [SupplyParameterFromQuery(Name = "source")]
     public string? Source { get; set; }
 
@@ -304,6 +307,11 @@
     {
         SelectedPlan = ResolveSelectedPlan();
         IsSchoolOptionsSignupFlow = IsSchoolOptionsSource(Source) || SelectedPlan?.IsSchoolPlan == true;
+        if (!string.IsNullOrWhiteSpace(DiscountCode) &&
+            string.IsNullOrWhiteSpace(SignUpForm.DiscountCode))
+        {
+            SignUpForm.DiscountCode = DiscountCode.Trim();
+        }
 
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         if (authState.User.Identity?.IsAuthenticated == true)
@@ -569,7 +577,7 @@
             query["returnUrl"] = requestedReturnPath;
         }
 
-        if (HasValidPercentageDiscount && !string.IsNullOrWhiteSpace(SignUpForm.DiscountCode))
+        if (!string.IsNullOrWhiteSpace(SignUpForm.DiscountCode))
         {
             query["discountCode"] = SignUpForm.DiscountCode.Trim();
         }

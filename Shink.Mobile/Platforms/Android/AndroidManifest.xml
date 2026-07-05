@@ -2,8 +2,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <application
     android:allowBackup="false"
-    android:icon="@mipmap/schink_appicon"
-    android:roundIcon="@mipmap/schink_appicon_round"
     android:supportsRtl="true"
     android:usesCleartextTraffic="false" />
   <uses-permission android:name="android.permission.INTERNET" />

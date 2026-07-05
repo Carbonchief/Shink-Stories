@@ -104,6 +104,30 @@ public sealed class SubscriptionDuplicateCheckoutSourceTests
     }
 
     [TestMethod]
+    public void AbandonedCartSubscriptionRecoveryShowsMessageWhenLinkIsNoLongerActive()
+    {
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+        var opsies = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Opsies.razor"));
+        var routeStart = program.IndexOf("app.MapGet(\"/betaalherinneringe/gaan\"", StringComparison.Ordinal);
+        var routeBlock = ExtractBlock(
+            program,
+            "app.MapGet(\"/betaalherinneringe/gaan\"",
+            "app.MapPost(\"/rekening/skuif-na-gratis\"",
+            startOffset: routeStart);
+
+        StringAssert.Contains(routeBlock, "\"herinnering-verval\"");
+        StringAssert.Contains(routeBlock, "GetActiveRecoveryAsync(id, token");
+        StringAssert.Contains(opsies, "string.Equals(PaymentStatus, \"herinnering-verval\", StringComparison.OrdinalIgnoreCase)");
+        StringAssert.Contains(opsies, "Hierdie betaalherinnering is reeds afgehandel of het verval.");
+
+        var inactiveRecoveryIndex = routeBlock.IndexOf("if (recovery is null)", StringComparison.Ordinal);
+        var inactiveMessageIndex = routeBlock.IndexOf("\"herinnering-verval\"", inactiveRecoveryIndex, StringComparison.Ordinal);
+        Assert.IsTrue(
+            inactiveRecoveryIndex >= 0 && inactiveMessageIndex > inactiveRecoveryIndex,
+            "Inactive or already-resolved recovery links must redirect to /opsies with a visible status message.");
+    }
+
+    [TestMethod]
     public void AbandonedCartSubscriptionRecoveryChangesAnyActivePaidPlanBeforeStartingDifferentTierCheckout()
     {
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));

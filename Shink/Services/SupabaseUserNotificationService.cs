@@ -31,6 +31,7 @@ public sealed class SupabaseUserNotificationService(
     private readonly ILogger<SupabaseUserNotificationService> _logger = logger;
     private const int DefaultNotificationPageSize = 10;
     private const int MaxNotificationPageSize = 25;
+    private const int NotificationInsertBatchSize = 200;
 
     public async Task<UserNotificationPageResult> GetNotificationsAsync(
         string? email,
@@ -803,6 +804,31 @@ public sealed class SupabaseUserNotificationService(
     }
 
     private async Task<int> InsertNotificationsAsync(
+        Uri baseUri,
+        string apiKey,
+        object[] notifications,
+        CancellationToken cancellationToken)
+    {
+        if (notifications.Length == 0)
+        {
+            return 0;
+        }
+
+        if (notifications.Length > NotificationInsertBatchSize)
+        {
+            var insertedCount = 0;
+            foreach (var batch in notifications.Chunk(NotificationInsertBatchSize))
+            {
+                insertedCount += await InsertNotificationBatchAsync(baseUri, apiKey, batch, cancellationToken);
+            }
+
+            return insertedCount;
+        }
+
+        return await InsertNotificationBatchAsync(baseUri, apiKey, notifications, cancellationToken);
+    }
+
+    private async Task<int> InsertNotificationBatchAsync(
         Uri baseUri,
         string apiKey,
         object[] notifications,

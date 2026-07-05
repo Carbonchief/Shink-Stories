@@ -56,6 +56,28 @@ public class SignupSourceTests
     }
 
     [TestMethod]
+    public void OpsiesDiscountCodeTravelsThroughSignupAndCheckout()
+    {
+        var opsies = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Opsies.razor"));
+        var signup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Signup.razor"));
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+
+        StringAssert.Contains(opsies, "id=\"opsies-discount-code\"");
+        StringAssert.Contains(opsies, "[SupplyParameterFromQuery(Name = \"discountCode\")]");
+        StringAssert.Contains(opsies, "checkoutQuery[\"discountCode\"] = normalizedDiscountCode;");
+        StringAssert.Contains(opsies, "signUpQuery[\"discountCode\"] = normalizedDiscountCode;");
+
+        StringAssert.Contains(signup, "[SupplyParameterFromQuery(Name = \"discountCode\")]");
+        StringAssert.Contains(signup, "SignUpForm.DiscountCode = DiscountCode.Trim();");
+        StringAssert.Contains(signup, "query[\"discountCode\"] = SignUpForm.DiscountCode.Trim();");
+
+        StringAssert.Contains(program, "PreviewSignupDiscountCodeAsync(");
+        StringAssert.Contains(program, "ApplySignupDiscountCodeAsync(");
+        StringAssert.Contains(program, "BuildSubscriptionPaymentRedirectPath(\"kode-toegepas\"");
+        StringAssert.Contains(program, "BuildSubscriptionPaymentRedirectPath(\"kode-betaalplan\"");
+    }
+
+    [TestMethod]
     public void SignupMembershipSelectorSwitchesPlanListBySchoolSource()
     {
         var signup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Signup.razor"));

@@ -463,6 +463,61 @@ public class SupabaseAdminManagementSelfServiceTests
     }
 
     [TestMethod]
+    public async Task CreateStoryAsync_CreatesPublishedStoryNotificationByDefault()
+    {
+        var storyId = Guid.Parse("88888888-8888-8888-8888-888888888888");
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/admin_users"))
+            {
+                return JsonResponse("""[{ "email": "admin@example.com" }]""");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/stories")
+            {
+                return JsonResponse($$"""[{ "story_id": "{{storyId}}" }]""");
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+        var notificationService = new RecordingUserNotificationService();
+        var service = CreateService(handler, notificationService);
+
+        var result = await service.CreateStoryAsync(
+            "admin@example.com",
+            new AdminStoryCreateRequest(
+                Slug: "nuwe-gepubliseerde-storie",
+                Title: "Nuwe gepubliseerde storie",
+                Summary: "Kort opsomming",
+                Description: "Beskrywing",
+                YouTubeUrl: null,
+                TestQuestions: [],
+                CoverImagePath: "/stories/nuwe/cover.webp",
+                ThumbnailImagePath: "/stories/nuwe/thumb.webp",
+                AudioBucket: "stories",
+                AudioObjectKey: "nuwe-gepubliseerde-storie/audio.mp3",
+                AudioContentType: "audio/mpeg",
+                StoryType: "story",
+                AccessLevel: "subscriber",
+                Status: "published",
+                SortOrder: 10,
+                PublishedAt: DateTimeOffset.UtcNow,
+                DurationSeconds: 60));
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.AreEqual(storyId, result.EntityId);
+        Assert.IsNotNull(notificationService.PublishedStoryRequest);
+        Assert.AreEqual(storyId, notificationService.PublishedStoryRequest.StoryId);
+        Assert.AreEqual("nuwe-gepubliseerde-storie", notificationService.PublishedStoryRequest.Slug);
+        Assert.AreEqual("Nuwe gepubliseerde storie", notificationService.PublishedStoryRequest.Title);
+        Assert.AreEqual("subscriber", notificationService.PublishedStoryRequest.AccessLevel);
+        Assert.AreEqual("Kort opsomming", notificationService.PublishedStoryRequest.Summary);
+        Assert.AreEqual("/stories/nuwe/thumb.webp", notificationService.PublishedStoryRequest.ThumbnailImagePath);
+        Assert.AreEqual("/stories/nuwe/cover.webp", notificationService.PublishedStoryRequest.CoverImagePath);
+    }
+
+    [TestMethod]
     public async Task CreateStoryAsync_SkipsPublishedStoryNotificationWhenAdminDisablesIt()
     {
         var storyId = Guid.Parse("99999999-9999-9999-9999-999999999999");

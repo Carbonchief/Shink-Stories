@@ -820,13 +820,13 @@ app.MapGet("/betaalherinneringe/gaan", async (
 {
     if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(token))
     {
-        return Results.Redirect("/opsies");
+        return Results.Redirect(QueryHelpers.AddQueryString("/opsies", "betaling", "herinnering-verval"));
     }
 
     var recovery = await abandonedCartRecoveryService.GetActiveRecoveryAsync(id, token, httpContext.RequestAborted);
     if (recovery is null)
     {
-        return Results.Redirect("/opsies");
+        return Results.Redirect(QueryHelpers.AddQueryString("/opsies", "betaling", "herinnering-verval"));
     }
 
     if (string.Equals(recovery.SourceType, "subscription", StringComparison.OrdinalIgnoreCase))
@@ -1223,6 +1223,35 @@ app.MapGet("/betaal/{planSlug}", async (
     }
 
     var requestBaseUrl = BuildPublicAbsoluteUrl(siteOptions.Value, "/");
+    SubscriptionCodeSignupPreviewResult? discountPreview = null;
+    if (!string.IsNullOrWhiteSpace(discountCode))
+    {
+        discountPreview = await subscriptionLedgerService.PreviewSignupDiscountCodeAsync(
+            discountCode,
+            plan.TierCode,
+            httpContext.RequestAborted);
+        if (!discountPreview.IsValid)
+        {
+            return Results.Redirect(BuildSubscriptionPaymentRedirectPath("kode-ongeldig", plan.Slug, safeReturnUrl));
+        }
+
+        if (string.Equals(discountPreview.DiscountKind, SubscriptionDiscountKinds.FreeAccess, StringComparison.Ordinal) &&
+            discountPreview.BypassesPayment)
+        {
+            var applyResult = await subscriptionLedgerService.ApplySignupDiscountCodeAsync(
+                signedInEmail,
+                discountCode,
+                plan.TierCode,
+                httpContext.RequestAborted);
+            if (!applyResult.IsSuccess)
+            {
+                return Results.Redirect(BuildSubscriptionPaymentRedirectPath("kode-misluk", plan.Slug, safeReturnUrl));
+            }
+
+            return Results.Redirect(BuildSubscriptionPaymentRedirectPath("kode-toegepas", plan.Slug, safeReturnUrl));
+        }
+    }
+
     var hasActiveTierSubscription = await subscriptionLedgerService.HasBillableSubscriptionForTierAsync(
         signedInEmail,
         plan.TierCode,
@@ -1253,6 +1282,11 @@ app.MapGet("/betaal/{planSlug}", async (
         httpContext.RequestAborted);
     if (hasActivePaidSubscription)
     {
+        if (discountPreview is not null)
+        {
+            return Results.Redirect(BuildSubscriptionPaymentRedirectPath("kode-betaalplan", plan.Slug, safeReturnUrl));
+        }
+
         var planChangeResult = await subscriptionLedgerService.ChangePaidSubscriptionPlanAsync(
             signedInEmail,
             plan.Slug,
@@ -1302,10 +1336,10 @@ app.MapGet("/betaal/{planSlug}", async (
     {
         if (!string.IsNullOrWhiteSpace(discountCode))
         {
-            var discountPreview = await subscriptionLedgerService.PreviewSignupDiscountCodeAsync(
-                discountCode,
-                plan.TierCode,
-                httpContext.RequestAborted);
+            discountPreview ??= await subscriptionLedgerService.PreviewSignupDiscountCodeAsync(
+                    discountCode,
+                    plan.TierCode,
+                    httpContext.RequestAborted);
             if (!discountPreview.IsValid ||
                 !string.Equals(discountPreview.DiscountKind, SubscriptionDiscountKinds.Percentage, StringComparison.Ordinal))
             {
