@@ -151,13 +151,13 @@ internal static class MobileTopBar
 
     private static async Task ShowMenuAsync(Page hostPage)
     {
-        var choice = await hostPage.DisplayActionSheetAsync("Menu", "Kanselleer", null, "Settings", "Manage Account");
+        var choice = await MobileMenuSheet.ShowAsync(hostPage, "Menu", "Instellings", "Bestuur rekening");
         switch (choice)
         {
-            case "Settings":
-                await hostPage.DisplayAlertAsync("Settings", "Instellings kom binnekort.", "Reg so");
+            case "Instellings":
+                await hostPage.DisplayAlertAsync("Instellings", "Instellings kom binnekort.", "Reg so");
                 break;
-            case "Manage Account":
+            case "Bestuur rekening":
                 await OpenAccountAsync();
                 break;
         }

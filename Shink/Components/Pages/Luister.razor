@@ -41,6 +41,16 @@
              alt="Luister stories banner" loading="eager" fetchpriority="high" decoding="async" />
     </section>
 
+    <img class="luister-peek-mascot"
+         src="/branding/Oortjies_Website.png"
+         alt=""
+         aria-hidden="true"
+         width="643"
+         height="714"
+         loading="lazy"
+         decoding="async"
+         data-luister-peek-mascot />
+
     <section class="luister-search-section" aria-labelledby="luister-soek-heading">
         <h2 id="luister-soek-heading" class="sr-only">Soek stories</h2>
         <form class="luister-search-form" role="search" @onsubmit:preventDefault="true">
@@ -933,7 +943,7 @@ else
 
         try
         {
-            await module.InvokeVoidAsync("initializeHomeStoryLoading");
+            await module.InvokeVoidAsync("initializeLuisterPage");
         }
         catch (OperationCanceledException)
         {
@@ -1088,7 +1098,7 @@ else
 
         try
         {
-            _luisterModule = await JS.InvokeAsync<IJSObjectReference>("import", "/Components/Pages/Home.razor.js");
+            _luisterModule = await JS.InvokeAsync<IJSObjectReference>("import", "/Components/Pages/Luister.razor.js");
             return _luisterModule;
         }
         catch (OperationCanceledException)
@@ -1119,6 +1129,7 @@ else
 
         try
         {
+            await _luisterModule.InvokeVoidAsync("disposeLuisterPage");
             await _luisterModule.DisposeAsync();
         }
         catch (OperationCanceledException)

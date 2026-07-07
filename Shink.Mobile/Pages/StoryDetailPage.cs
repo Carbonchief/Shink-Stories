@@ -835,7 +835,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         var actions = string.IsNullOrWhiteSpace(detail.ShareUrl)
             ? new[] { "Storie info", "Maak speler toe" }
             : new[] { "Storie info", "Deel storie", "Maak speler toe" };
-        var selected = await DisplayActionSheetAsync("Storie opsies", "Kanselleer", null, actions);
+        var selected = await MobileMenuSheet.ShowAsync(this, "Storie opsies", actions);
 
         if (string.Equals(selected, "Storie info", StringComparison.Ordinal))
         {
@@ -1571,7 +1571,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         var state = await _offlineDownloadService.GetStateAsync(detail);
         if (state == OfflineDownloadState.Downloaded)
         {
-            var action = await DisplayActionSheetAsync("Afgelaai", "Kanselleer", null, "Verwyder aflaai");
+            var action = await MobileMenuSheet.ShowAsync(this, "Afgelaai", "Verwyder aflaai");
             if (string.Equals(action, "Verwyder aflaai", StringComparison.Ordinal))
             {
                 await _offlineDownloadService.RemoveAsync(detail.Story.Slug, detail.Story.Source);

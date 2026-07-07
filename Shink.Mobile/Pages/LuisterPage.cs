@@ -1158,16 +1158,16 @@ public sealed class LuisterPage : ContentPage
     {
         await _navigationGate.RunAsync(async () =>
         {
-            var choice = await DisplayActionSheetAsync("Menu", "Kanselleer", null, "Downloaded", "Settings", "Manage Account");
+            var choice = await MobileMenuSheet.ShowAsync(this, "Menu", "Afgelaai", "Instellings", "Bestuur rekening");
             switch (choice)
             {
-                case "Downloaded":
+                case "Afgelaai":
                     await Shell.Current.GoToAsync(nameof(DownloadedPage), animate: true);
                     break;
-                case "Settings":
-                    await DisplayAlertAsync("Settings", "Instellings kom binnekort.", "Reg so");
+                case "Instellings":
+                    await DisplayAlertAsync("Instellings", "Instellings kom binnekort.", "Reg so");
                     break;
-                case "Manage Account":
+                case "Bestuur rekening":
                     await OpenAccountCoreAsync();
                     break;
             }

@@ -31,6 +31,7 @@ public sealed class AccountPage : ContentPage
     private Label? _authTaglineLabel;
     private Image? _authCharacterImage;
     private Grid? _authPanelFrame;
+    private Border? _authPanelBackground;
     private View? _authHero;
     private AuthPanelMode _authPanelMode = AuthPanelMode.Landing;
     private double _lastLandingLayoutHeight = -1;
@@ -80,8 +81,8 @@ public sealed class AccountPage : ContentPage
                 },
                 new BoxView
                 {
-                    Color = Color.FromArgb("#0B4E52"),
-                    Opacity = 0.24,
+                    Color = Color.FromArgb("#15B5BC"),
+                    Opacity = 0.16,
                     InputTransparent = true
                 },
                 new MauiScrollView
@@ -187,9 +188,9 @@ public sealed class AccountPage : ContentPage
         _authWelcomeLabel = new Label
         {
             FontSize = metrics.TitleFontSize,
-            FontFamily = "sans-serif",
-            LineHeight = 0.92,
-            TextColor = Colors.White,
+            FontFamily = "serif",
+            LineHeight = 1.02,
+            TextColor = Color.FromArgb("#F9FBFA"),
             HorizontalTextAlignment = TextAlignment.Center,
             Margin = metrics.TitleMargin,
             FormattedText = new FormattedString
@@ -198,13 +199,13 @@ public sealed class AccountPage : ContentPage
                 {
                     new Span
                     {
-                        Text = "Bou jou kind se karakter -",
+                        Text = "\"Rustige, opbouende",
                         FontAttributes = FontAttributes.Bold
                     },
                     new Span
                     {
-                        Text = "\neen storie op 'n slag.",
-                        FontAttributes = FontAttributes.Italic,
+                        Text = "\nAfrikaanse storietyd.\"",
+                        FontAttributes = FontAttributes.Bold | FontAttributes.Italic,
                         FontSize = metrics.TitleSublineFontSize
                     }
                 }
@@ -247,16 +248,17 @@ public sealed class AccountPage : ContentPage
         };
         _authTaglineLabel = new Label
         {
-            Text = "Minder skerms. Rustiger aande. Stories wat waardes bou.",
+            Text = "R 79 per maand. Kanselleer enige tyd.",
             TextColor = Color.FromArgb("#FFF7E8"),
             FontSize = metrics.TaglineFontSize,
+            FontAttributes = FontAttributes.Bold | FontAttributes.Italic,
             HorizontalTextAlignment = TextAlignment.Center,
             LineHeight = 1.1,
             Margin = metrics.TaglineMargin
         };
         _authCharacterImage = new Image
         {
-            Source = "schink_stories_home_hero.png",
+            Source = "oortjies_02.png",
             HeightRequest = metrics.CharacterHeight,
             Aspect = Aspect.AspectFit,
             Margin = metrics.CharacterMargin
@@ -267,11 +269,9 @@ public sealed class AccountPage : ContentPage
             Spacing = metrics.HeroSpacing,
             Children =
             {
-                _authLogoImage,
                 _authCharacterImage,
-                _authWelcomeLabel,
-                _authIntroLabel,
-                _authTaglineLabel
+                _authLogoImage,
+                _authWelcomeLabel
             }
         };
         return _authHeroStack;
@@ -288,19 +288,22 @@ public sealed class AccountPage : ContentPage
         };
         RenderAuthFormContent();
 
+        _authPanelBackground = new Border
+        {
+            BackgroundColor = _authPanelMode == AuthPanelMode.Landing
+                ? Colors.Transparent
+                : Color.FromArgb("#FFF7E8"),
+            StrokeThickness = 0,
+            StrokeShape = new RoundRectangle { CornerRadius = 34 },
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalOptions = LayoutOptions.Fill
+        };
         _authPanelFrame = new Grid
         {
             Margin = metrics.PanelMargin,
             Children =
             {
-                new Border
-                {
-                    BackgroundColor = Color.FromArgb("#FFF7E8"),
-                    StrokeThickness = 0,
-                    StrokeShape = new RoundRectangle { CornerRadius = 44 },
-                    HorizontalOptions = LayoutOptions.Fill,
-                    VerticalOptions = LayoutOptions.Fill
-                },
+                _authPanelBackground,
                 _authPanelContentHost
             }
         };
@@ -311,6 +314,44 @@ public sealed class AccountPage : ContentPage
     {
         var metrics = GetLandingLayoutMetrics();
         var isLanding = _authPanelMode == AuthPanelMode.Landing;
+        if (isLanding)
+        {
+            var landingLabel = new Label
+            {
+                Text = text,
+                TextColor = Colors.White,
+                FontAttributes = FontAttributes.Bold,
+                FontFamily = "sans-serif",
+                FontSize = metrics.ModeButtonFontSize,
+                HorizontalTextAlignment = TextAlignment.Center,
+                VerticalTextAlignment = TextAlignment.Center,
+                InputTransparent = true
+            };
+            var landingButton = new Border
+            {
+                BackgroundColor = Color.FromArgb("#383A48"),
+                Stroke = Color.FromArgb("#30323F"),
+                StrokeThickness = 1,
+                StrokeShape = new RoundRectangle { CornerRadius = 18 },
+                HeightRequest = metrics.ModeButtonHeight,
+                MinimumHeightRequest = metrics.ModeButtonHeight,
+                Padding = metrics.ModeButtonPadding,
+                HorizontalOptions = LayoutOptions.Fill,
+                Content = landingLabel,
+                Shadow = new Shadow
+                {
+                    Brush = Brush.Black,
+                    Offset = new Point(0, 4),
+                    Radius = 12,
+                    Opacity = 0.18f
+                }
+            };
+            var landingTap = new TapGestureRecognizer();
+            landingTap.Tapped += (_, _) => SetAuthPanelMode(mode);
+            landingButton.GestureRecognizers.Add(landingTap);
+            return landingButton;
+        }
+
         var buttonHeight = isLanding ? metrics.ModeButtonHeight : 78;
         var labelColor = isPrimary ? Colors.White : Color.FromArgb("#243238");
         var icon = new Image
@@ -384,34 +425,24 @@ public sealed class AccountPage : ContentPage
 
         if (_authPanelMode == AuthPanelMode.Landing)
         {
-            var landingContent = new Grid
+            var landingContent = new VerticalStackLayout
             {
-                RowSpacing = metrics.PanelContentSpacing,
-                RowDefinitions =
+                Spacing = metrics.PanelContentSpacing,
+                Children =
                 {
-                    new RowDefinition { Height = GridLength.Auto },
-                    new RowDefinition { Height = GridLength.Auto },
-                    new RowDefinition { Height = GridLength.Auto },
-                    new RowDefinition { Height = GridLength.Auto },
-                    new RowDefinition { Height = GridLength.Auto }
+                    BuildModeButton("Teken In", AuthPanelMode.SignIn, true),
+                    BuildModeButton("Kies ’n plan", AuthPanelMode.SignUp, true),
+                    _authTaglineLabel ?? new Label
+                    {
+                        Text = "R 79 per maand. Kanselleer enige tyd.",
+                        TextColor = Color.FromArgb("#FFF7E8"),
+                        FontSize = metrics.TaglineFontSize,
+                        FontAttributes = FontAttributes.Bold | FontAttributes.Italic,
+                        HorizontalTextAlignment = TextAlignment.Center,
+                        Margin = metrics.TaglineMargin
+                    }
                 }
             };
-            landingContent.Add(BuildModeButton("Teken in", AuthPanelMode.SignIn, true), 0, 0);
-            landingContent.Add(BuildModeButton("Skep rekening", AuthPanelMode.SignUp, false), 0, 1);
-            landingContent.Add(new BoxView
-            {
-                HeightRequest = 1,
-                Color = Color.FromArgb("#DDD1B8"),
-                Margin = metrics.SeparatorMargin
-            }, 0, 2);
-            landingContent.Add(new Label
-            {
-                Text = "Jou stories. Jou plek.\nVeilig, privaat en altyd kind-vriendelik.",
-                TextColor = Color.FromArgb("#243238"),
-                FontSize = metrics.PanelInfoFontSize,
-                HorizontalTextAlignment = TextAlignment.Center,
-                LineHeight = 1.18
-            }, 0, 3);
             _authPanelContentHost.Content = landingContent;
             return;
         }
@@ -625,7 +656,37 @@ public sealed class AccountPage : ContentPage
 
         SetStatus(null);
         UpdateAuthPanelTopSpacer();
+        UpdateAuthPanelChrome();
         RenderAuthFormContent();
+    }
+
+    private void UpdateAuthPanelChrome()
+    {
+        var metrics = GetLandingLayoutMetrics();
+        if (_authPanelFrame is not null)
+        {
+            _authPanelFrame.Margin = _authPanelMode == AuthPanelMode.Landing
+                ? metrics.PanelMargin
+                : new Thickness(18, 0, 18, 18);
+        }
+
+        if (_authPanelContentHost is not null)
+        {
+            _authPanelContentHost.Padding = _authPanelMode == AuthPanelMode.Landing
+                ? metrics.PanelPadding
+                : new Thickness(26, 24, 26, 28);
+        }
+
+        if (_authPanelBackground is not null)
+        {
+            _authPanelBackground.BackgroundColor = _authPanelMode == AuthPanelMode.Landing
+                ? Colors.Transparent
+                : Color.FromArgb("#FFF7E8");
+            _authPanelBackground.StrokeShape = new RoundRectangle
+            {
+                CornerRadius = _authPanelMode == AuthPanelMode.Landing ? 0 : 34
+            };
+        }
     }
 
     private void ApplyLandingLayoutMetrics()
@@ -671,14 +732,7 @@ public sealed class AccountPage : ContentPage
             _authCharacterImage.Margin = metrics.CharacterMargin;
         }
 
-        if (_authPanelFrame is not null && _authPanelMode == AuthPanelMode.Landing)
-        {
-            _authPanelFrame.Margin = metrics.PanelMargin;
-            if (_authPanelContentHost is not null)
-            {
-                _authPanelContentHost.Padding = metrics.PanelPadding;
-            }
-        }
+        UpdateAuthPanelChrome();
     }
 
     private LandingLayoutMetrics GetLandingLayoutMetrics()
@@ -690,25 +744,25 @@ public sealed class AccountPage : ContentPage
         var tight = height < 680;
 
         return new LandingLayoutMetrics(
-            HeroPadding: new Thickness(14, tight ? 10 : compact ? 16 : 22, 14, 0),
-            HeroSpacing: tight ? 0 : 1,
-            LogoHeight: Math.Clamp(height * (tight ? 0.135 : 0.155), 96, 144),
-            LogoMargin: new Thickness(-18, 0, -18, tight ? -18 : -24),
-            TitleFontSize: Math.Clamp(height * (tight ? 0.039 : 0.043), 26, 36),
-            TitleSublineFontSize: Math.Clamp(height * (tight ? 0.035 : 0.039), 23, 32),
-            TitleMargin: new Thickness(0, tight ? -34 : compact ? -42 : -52, 0, 0),
+            HeroPadding: new Thickness(16, Math.Clamp(height * (tight ? 0.21 : compact ? 0.24 : 0.27), 132, 252), 16, 0),
+            HeroSpacing: tight ? -3 : -2,
+            LogoHeight: Math.Clamp(height * (tight ? 0.17 : 0.2), 124, 194),
+            LogoMargin: new Thickness(-24, tight ? -16 : -18, -24, tight ? 6 : 10),
+            TitleFontSize: Math.Clamp(height * (tight ? 0.031 : 0.034), 21, 31),
+            TitleSublineFontSize: Math.Clamp(height * (tight ? 0.033 : 0.037), 22, 34),
+            TitleMargin: new Thickness(0, tight ? 2 : 6, 0, 0),
             IntroFontSize: Math.Clamp(height * 0.019, 14, 18),
             IntroMargin: new Thickness(0, tight ? 7 : 9, 0, 0),
-            TaglineFontSize: Math.Clamp(height * 0.017, 13, 16),
-            TaglineMargin: new Thickness(tight ? 8 : 10, tight ? 6 : 8, tight ? 8 : 10, 0),
-            CharacterHeight: Math.Clamp(height * (tight ? 0.23 : 0.27), 154, 246),
-            CharacterMargin: new Thickness(-36, tight ? -12 : -18, -36, tight ? -18 : -26),
-            PanelMargin: new Thickness(18, tight ? 8 : compact ? 12 : 16, 18, tight ? 8 : 14),
-            PanelPadding: new Thickness(26, tight ? 18 : compact ? 21 : 24, 26, tight ? 20 : compact ? 24 : 28),
-            PanelContentSpacing: tight ? 10 : compact ? 12 : 14,
-            ModeButtonHeight: tight ? 64 : compact ? 70 : 78,
-            ModeButtonFontSize: tight ? 22 : compact ? 24 : 25,
-            ModeButtonPadding: new Thickness(tight ? 14 : 18, tight ? 9 : 12),
+            TaglineFontSize: Math.Clamp(height * 0.018, 14, 18),
+            TaglineMargin: new Thickness(0, tight ? 2 : 4, 0, 0),
+            CharacterHeight: Math.Clamp(height * (tight ? 0.085 : 0.105), 64, 112),
+            CharacterMargin: new Thickness(0, 0, 0, tight ? -4 : -6),
+            PanelMargin: new Thickness(tight ? 50 : 54, tight ? 18 : compact ? 24 : 30, tight ? 50 : 54, tight ? 18 : 28),
+            PanelPadding: new Thickness(0),
+            PanelContentSpacing: tight ? 9 : 11,
+            ModeButtonHeight: tight ? 58 : compact ? 62 : 68,
+            ModeButtonFontSize: tight ? 21 : compact ? 23 : 25,
+            ModeButtonPadding: new Thickness(tight ? 14 : 18, tight ? 8 : 10),
             ModeIconSize: tight ? 38 : compact ? 42 : 46,
             ModeIconColumnWidth: tight ? 42 : compact ? 46 : 48,
             SeparatorMargin: new Thickness(16, tight ? 3 : compact ? 5 : 8),
