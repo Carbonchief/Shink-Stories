@@ -32,7 +32,7 @@
 }
 
 .luister-peek-mascot {
-    --peek-size: clamp(5.4rem, 13vw, 8.9rem);
+    --peek-size: clamp(2.7rem, 6.5vw, 4.45rem);
     --peek-x: 50vw;
     --peek-y: 50svh;
     --peek-top-clearance: max(4.2rem, calc(env(safe-area-inset-top, 0px) + 3.9rem));
@@ -839,7 +839,7 @@ h1 {
     }
 
     .luister-peek-mascot {
-        --peek-size: clamp(4.7rem, 24vw, 6.6rem);
+        --peek-size: clamp(2.35rem, 12vw, 3.3rem);
         --peek-top-clearance: max(4rem, calc(env(safe-area-inset-top, 0px) + 3.65rem));
         --peek-bottom-clearance: max(3.8rem, calc(env(safe-area-inset-bottom, 0px) + 3.6rem));
     }

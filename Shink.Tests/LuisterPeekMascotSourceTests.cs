@@ -33,6 +33,8 @@ public sealed class LuisterPeekMascotSourceTests
 
         StringAssert.Contains(css, ".luister-peek-mascot");
         StringAssert.Contains(css, "--peek-top-clearance");
+        StringAssert.Contains(css, "--peek-size: clamp(2.7rem, 6.5vw, 4.45rem);");
+        StringAssert.Contains(css, "--peek-size: clamp(2.35rem, 12vw, 3.3rem);");
         StringAssert.Contains(css, "--peek-x");
         StringAssert.Contains(css, "--peek-y");
         StringAssert.Contains(css, "z-index: 230;");
