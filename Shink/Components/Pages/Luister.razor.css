@@ -82,12 +82,12 @@
 }
 
 .luister-peek-mascot.peek-side-top {
-    top: var(--peek-top-clearance);
+    top: calc(env(safe-area-inset-top, 0px) + 0.35rem);
     left: clamp(calc(var(--peek-size) * 0.7), var(--peek-x), calc(100vw - (var(--peek-size) * 0.7)));
     --peek-hidden-transform: translate(-50%, -108%) rotate(180deg);
-    --peek-visible-transform: translate(-50%, -94%) rotate(180deg);
-    --peek-wiggle-transform: translate(-51.5%, -80%) rotate(186deg);
-    --peek-jump-transform: translate(-54%, -76%) rotate(194deg);
+    --peek-visible-transform: translate(-50%, -42%) rotate(180deg);
+    --peek-wiggle-transform: translate(-51.5%, -34%) rotate(186deg);
+    --peek-jump-transform: translate(-54%, -28%) rotate(194deg);
 }
 
 .luister-peek-mascot.peek-side-bottom {

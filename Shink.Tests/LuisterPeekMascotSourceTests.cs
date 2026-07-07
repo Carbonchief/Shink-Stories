@@ -44,7 +44,7 @@ public sealed class LuisterPeekMascotSourceTests
         StringAssert.Contains(css, "--peek-jump-transform");
         StringAssert.Contains(css, "translate(-42%, -50%) rotate(90deg)");
         StringAssert.Contains(css, "translate(42%, -50%) rotate(-90deg)");
-        StringAssert.Contains(css, "translate(-50%, -94%) rotate(180deg)");
+        StringAssert.Contains(css, "translate(-50%, -42%) rotate(180deg)");
         StringAssert.Contains(css, "translate(-50%, 42%) rotate(0deg)");
         StringAssert.Contains(css, "rotate(90deg)");
         StringAssert.Contains(css, "rotate(-90deg)");
