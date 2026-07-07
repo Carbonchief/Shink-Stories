@@ -85,7 +85,7 @@
     top: var(--peek-top-clearance);
     left: clamp(calc(var(--peek-size) * 0.7), var(--peek-x), calc(100vw - (var(--peek-size) * 0.7)));
     --peek-hidden-transform: translate(-50%, -108%) rotate(180deg);
-    --peek-visible-transform: translate(-50%, -86%) rotate(180deg);
+    --peek-visible-transform: translate(-50%, -94%) rotate(180deg);
     --peek-wiggle-transform: translate(-51.5%, -80%) rotate(186deg);
     --peek-jump-transform: translate(-54%, -76%) rotate(194deg);
 }
