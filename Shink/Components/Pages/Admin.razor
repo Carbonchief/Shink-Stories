@@ -2483,6 +2483,43 @@
 	                            </section>
 	                        </MudTabPanel>
 
+                        <MudTabPanel Text='@T("Toekennings", "Awards")'>
+                            <section class="admin-awards-analytics-section admin-analytics-panel admin-analytics-panel-wide">
+                                <div class="admin-analytics-panel-head">
+                                    <div>
+                                        <h3>@T("Toekennings", "Awards")</h3>
+                                        <p>
+                                            @T(
+                                                "Interaksies met Oortjies en ander belonings wat op die webwerf nagespoor word.",
+                                                "Interactions with Oortjies and other rewards tracked on the website.")
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div class="admin-analytics-grid">
+                                    <article class="admin-analytics-card">
+                                        <p class="admin-analytics-label">@T("Oortjies geklik", "Oortjies clicked")</p>
+                                        <p class="admin-analytics-value">@FormatAnalyticsNumber(AwardSummary.OortjiesClicked)</p>
+                                        <div class="admin-analytics-meta">
+                                            <span>@T("Vandag", "Today")</span>
+                                            <strong>@FormatAnalyticsNumber(AwardSummary.OortjiesClickedToday)</strong>
+                                        </div>
+                                        <div class="admin-analytics-meta">
+                                            <span>@T("Laaste 30 dae", "Last 30 days")</span>
+                                            <strong>@FormatAnalyticsNumber(AwardSummary.OortjiesClickedLast30Days)</strong>
+                                        </div>
+                                        <div class="admin-analytics-meta">
+                                            <span>@T("Ingetekende mense", "Signed-in people")</span>
+                                            <strong>@FormatAnalyticsNumber(AwardSummary.UniqueSubscribers)</strong>
+                                        </div>
+                                        <p class="admin-analytics-footnote">
+                                            @T("Laaste klik", "Last click"): @FormatAdminDateTime(AwardSummary.LastOortjiesClickedAt)
+                                        </p>
+                                    </article>
+                                </div>
+                            </section>
+                        </MudTabPanel>
+
                         <MudTabPanel Text='@T("Gebruik", "Usage")'>
                             @if (!HasAnalyticsData)
                             {
@@ -5078,7 +5115,11 @@
         Analytics.StorySummary.TotalViews > 0 ||
         Analytics.StorySummary.TotalListenEvents > 0 ||
         Analytics.StorySummary.TotalFavorites > 0 ||
-        Analytics.CharacterSummary.TotalAudioPlays > 0;
+        Analytics.CharacterSummary.TotalAudioPlays > 0 ||
+        AwardSummary.OortjiesClicked > 0;
+
+    private AdminAwardAnalyticsSummary AwardSummary =>
+        Analytics.AwardSummary ?? AdminAnalyticsSnapshot.Empty.AwardSummary!;
 
     private IReadOnlyList<AdminAnalyticsStoryDetailRecord> AnalyticsStoryDetails =>
         BuildAnalyticsStoryDetails();

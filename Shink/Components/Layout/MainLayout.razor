@@ -581,6 +581,19 @@
         </div>
     </main>
 
+    @if (ShouldShowOortjiesMascot)
+    {
+        <img class="luister-peek-mascot"
+             src="/branding/Oortjies_Website.png"
+             alt=""
+             aria-hidden="true"
+             width="643"
+             height="714"
+             loading="lazy"
+             decoding="async"
+             data-luister-peek-mascot />
+    }
+
     <footer class="site-footer">
         <div class="site-container footer-wrap">
             <a class="footer-brand" href="/">
@@ -731,6 +744,18 @@
         {
             var relativePath = GetCurrentRelativePathWithoutQuery();
             return string.Equals(relativePath, "luister", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private bool ShouldShowOortjiesMascot
+    {
+        get
+        {
+            var relativePath = GetCurrentRelativePathWithoutQuery();
+            return string.IsNullOrEmpty(relativePath) ||
+                   string.Equals(relativePath, "luister", StringComparison.OrdinalIgnoreCase) ||
+                   relativePath.StartsWith("luister/", StringComparison.OrdinalIgnoreCase) ||
+                   string.Equals(relativePath, "karakters", StringComparison.OrdinalIgnoreCase);
         }
     }
 

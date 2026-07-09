@@ -14,4 +14,10 @@ public interface IEngagementTrackingService
         string? postSlug,
         string? visitPath,
         CancellationToken cancellationToken = default);
+
+    Task<bool> RecordOortjiesClickAsync(
+        string? email,
+        string? pagePath,
+        string? side,
+        CancellationToken cancellationToken = default);
 }

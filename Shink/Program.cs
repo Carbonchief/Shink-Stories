@@ -2981,6 +2981,27 @@ app.MapPost("/api/stories/{slug}/listen", async (
     });
 }).RequireRateLimiting("story-tracking").DisableAntiforgery();
 
+app.MapPost("/api/oortjies/click", async (
+    OortjiesClickTrackApiRequest request,
+    IEngagementTrackingService engagementTrackingService,
+    HttpContext httpContext) =>
+{
+    if (!IsLikelySameSiteRequest(httpContext))
+    {
+        return Results.Forbid();
+    }
+
+    var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
+                       ?? httpContext.User.Identity?.Name;
+    var tracked = await engagementTrackingService.RecordOortjiesClickAsync(
+        signedInEmail,
+        ResolveOptionalTrackingPath(request.PagePath) ?? "/luister",
+        NormalizeOortjiesClickSide(request.Side),
+        httpContext.RequestAborted);
+
+    return Results.Ok(new { tracked });
+}).RequireRateLimiting("story-tracking").DisableAntiforgery();
+
 app.MapGet("/api/notifications", async (
     IUserNotificationService userNotificationService,
     int? limit,
@@ -4614,6 +4635,19 @@ static string? ResolveOptionalTrackingPath(string? value)
     }
 
     return candidate;
+}
+
+static string? NormalizeOortjiesClickSide(string? side)
+{
+    if (string.IsNullOrWhiteSpace(side))
+    {
+        return null;
+    }
+
+    var normalizedSide = side.Trim().ToLowerInvariant();
+    return normalizedSide is "top" or "right" or "bottom" or "left"
+        ? normalizedSide
+        : null;
 }
 
 static decimal NormalizeListenSeconds(decimal? listenedSeconds)
@@ -7102,6 +7136,7 @@ sealed record StoryListenTrackApiRequest(
     decimal? PositionSeconds,
     decimal? DurationSeconds,
     bool? IsCompleted);
+sealed record OortjiesClickTrackApiRequest(string? PagePath, string? Side);
 sealed record SearchSiteCandidate(
     string Title,
     string Description,

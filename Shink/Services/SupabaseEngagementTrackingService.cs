@@ -108,6 +108,44 @@ public sealed class SupabaseEngagementTrackingService(
         }
     }
 
+    public async Task<bool> RecordOortjiesClickAsync(
+        string? email,
+        string? pagePath,
+        string? side,
+        CancellationToken cancellationToken = default)
+    {
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            _logger.LogWarning("Supabase Oortjies click tracking skipped: URL is not configured.");
+            return false;
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            _logger.LogWarning("Supabase Oortjies click tracking skipped: SecretKey is not configured.");
+            return false;
+        }
+
+        try
+        {
+            var subscriberId = await ResolveSubscriberIdIfAvailableAsync(baseUri, apiKey, email, cancellationToken);
+            var payload = new
+            {
+                subscriber_id = subscriberId,
+                page_path = NormalizeOptionalText(pagePath) ?? "/luister",
+                side = NormalizeOptionalText(side)
+            };
+
+            return await InsertAsync(baseUri, apiKey, "rest/v1/oortjies_click_events", payload, cancellationToken);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(exception, "Supabase Oortjies click tracking failed unexpectedly.");
+            return false;
+        }
+    }
+
     private async Task<string?> ResolveSubscriberIdIfAvailableAsync(
         Uri baseUri,
         string apiKey,

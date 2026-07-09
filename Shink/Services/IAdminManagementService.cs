@@ -858,6 +858,13 @@ public sealed record AdminAnalyticsBlogVisitPageRecord(
     [property: JsonPropertyName("visits_last_30_days")] int VisitsLast30Days,
     [property: JsonPropertyName("last_visit_at")] DateTimeOffset? LastVisitAt);
 
+public sealed record AdminAwardAnalyticsSummary(
+    [property: JsonPropertyName("oortjies_clicked")] int OortjiesClicked,
+    [property: JsonPropertyName("oortjies_clicked_today")] int OortjiesClickedToday,
+    [property: JsonPropertyName("oortjies_clicked_last_30_days")] int OortjiesClickedLast30Days,
+    [property: JsonPropertyName("unique_subscribers")] int UniqueSubscribers,
+    [property: JsonPropertyName("last_oortjies_clicked_at")] DateTimeOffset? LastOortjiesClickedAt);
+
 public sealed record AdminAnalyticsSnapshot(
     [property: JsonPropertyName("generated_at")] DateTimeOffset? GeneratedAt,
     [property: JsonPropertyName("story_summary")] AdminStoryAnalyticsSummary StorySummary,
@@ -868,7 +875,8 @@ public sealed record AdminAnalyticsSnapshot(
     [property: JsonPropertyName("character_summary")] AdminCharacterAnalyticsSummary CharacterSummary,
     [property: JsonPropertyName("top_characters")] IReadOnlyList<AdminAnalyticsTopCharacterRecord> TopCharacters,
     [property: JsonPropertyName("resource_download_summary")] AdminAnalyticsResourceDownloadSummary ResourceDownloadSummary,
-    [property: JsonPropertyName("blog_visit_summary")] AdminAnalyticsBlogVisitSummary BlogVisitSummary)
+    [property: JsonPropertyName("blog_visit_summary")] AdminAnalyticsBlogVisitSummary BlogVisitSummary,
+    [property: JsonPropertyName("award_summary")] AdminAwardAnalyticsSummary? AwardSummary)
 {
     public static AdminAnalyticsSnapshot Empty { get; } = new(
         GeneratedAt: null,
@@ -907,7 +915,13 @@ public sealed record AdminAnalyticsSnapshot(
             VisitsLast30Days: 0,
             PostVisits: 0,
             LastVisitAt: null,
-            Pages: []));
+            Pages: []),
+        AwardSummary: new AdminAwardAnalyticsSummary(
+            OortjiesClicked: 0,
+            OortjiesClickedToday: 0,
+            OortjiesClickedLast30Days: 0,
+            UniqueSubscribers: 0,
+            LastOortjiesClickedAt: null));
 }
 
 public sealed record AdminSubscriberReportsSnapshot(

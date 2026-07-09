@@ -373,6 +373,45 @@ public class AdminAnalyticsSourceTests
     }
 
     [TestMethod]
+    public void AnalyticsTabShowsOortjiesClickAwardsCounter()
+    {
+        var admin = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Admin.razor"));
+        var service = File.ReadAllText(GetRepoPath("Shink", "Services", "IAdminManagementService.cs"));
+        var engagementService = File.ReadAllText(GetRepoPath("Shink", "Services", "IEngagementTrackingService.cs"));
+        var supabaseEngagementService = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseEngagementTrackingService.cs"));
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+        var migration = File.ReadAllText(GetRepoPath("Shink", "Database", "migrations", "20260708_oortjies_click_analytics.sql"));
+
+        StringAssert.Contains(admin, "<MudTabPanel Text='@T(\"Toekennings\", \"Awards\")'>");
+        StringAssert.Contains(admin, "admin-awards-analytics-section");
+        StringAssert.Contains(admin, "@T(\"Oortjies geklik\", \"Oortjies clicked\")");
+        StringAssert.Contains(admin, "AwardSummary.OortjiesClicked");
+        StringAssert.Contains(admin, "AwardSummary.OortjiesClickedToday");
+        StringAssert.Contains(admin, "AwardSummary.OortjiesClickedLast30Days");
+        StringAssert.Contains(admin, "AwardSummary.UniqueSubscribers");
+        StringAssert.Contains(admin, "AwardSummary.LastOortjiesClickedAt");
+        StringAssert.Contains(admin, "private AdminAwardAnalyticsSummary AwardSummary =>");
+
+        StringAssert.Contains(service, "AdminAwardAnalyticsSummary");
+        StringAssert.Contains(service, "JsonPropertyName(\"award_summary\")");
+        StringAssert.Contains(service, "JsonPropertyName(\"oortjies_clicked\")");
+
+        StringAssert.Contains(engagementService, "RecordOortjiesClickAsync");
+        StringAssert.Contains(supabaseEngagementService, "rest/v1/oortjies_click_events");
+        StringAssert.Contains(program, "app.MapPost(\"/api/oortjies/click\"");
+        StringAssert.Contains(program, "OortjiesClickTrackApiRequest");
+        StringAssert.Contains(program, "NormalizeOortjiesClickSide");
+        StringAssert.Contains(program, "RecordOortjiesClickAsync");
+
+        StringAssert.Contains(migration, "create table if not exists public.oortjies_click_events");
+        StringAssert.Contains(migration, "get_admin_analytics_snapshot_before_oortjies");
+        StringAssert.Contains(migration, "{award_summary}");
+        StringAssert.Contains(migration, "'oortjies_clicked'");
+        StringAssert.Contains(migration, "grant select, insert, update, delete on table public.oortjies_click_events to service_role;");
+        StringAssert.Contains(migration, "grant execute on function public.get_admin_analytics_snapshot() to service_role;");
+    }
+
+    [TestMethod]
     public void AnalyticsSnapshotFunctionsAreServiceRoleOnly()
     {
         var migration = File.ReadAllText(GetRepoPath("Shink", "Database", "migrations", "20260528_security_hardening.sql"));

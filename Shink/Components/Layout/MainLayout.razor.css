@@ -60,9 +60,91 @@
     background: #ffffff;
 }
 
+.luister-peek-mascot {
+    --peek-size: clamp(2.7rem, 6.5vw, 4.45rem);
+    --peek-x: 50vw;
+    --peek-y: 50svh;
+    --peek-top-clearance: max(4.2rem, calc(env(safe-area-inset-top, 0px) + 3.9rem));
+    --peek-bottom-clearance: max(4.4rem, calc(env(safe-area-inset-bottom, 0px) + 4.2rem));
+    position: fixed;
+    z-index: 230;
+    width: var(--peek-size);
+    height: auto;
+    pointer-events: none;
+    user-select: none;
+    opacity: 0;
+    filter: drop-shadow(0 12px 18px rgba(30, 32, 36, 0.18));
+    transform: var(--peek-hidden-transform, translateX(-110%));
+    transition:
+        transform 0.74s cubic-bezier(0.22, 1, 0.36, 1),
+        opacity 0.24s ease;
+    will-change: transform, opacity;
+}
+
+.luister-peek-mascot.is-positioning {
+    transition: none;
+}
+
+.luister-peek-mascot.is-peeking {
+    opacity: 1;
+    pointer-events: auto;
+    cursor: pointer;
+    transform: var(--peek-visible-transform, translateX(-50%));
+}
+
+.luister-peek-mascot.peek-side-left {
+    top: clamp(var(--peek-top-clearance), var(--peek-y), calc(100svh - var(--peek-bottom-clearance)));
+    left: 0;
+    --peek-hidden-transform: translate(-108%, -50%) rotate(90deg);
+    --peek-visible-transform: translate(-42%, -50%) rotate(90deg);
+    --peek-wiggle-transform: translate(-34%, -51.5%) rotate(96deg);
+    --peek-jump-transform: translate(-28%, -54%) rotate(104deg);
+}
+
+.luister-peek-mascot.peek-side-right {
+    top: clamp(var(--peek-top-clearance), var(--peek-y), calc(100svh - var(--peek-bottom-clearance)));
+    right: 0;
+    --peek-hidden-transform: translate(108%, -50%) rotate(-90deg);
+    --peek-visible-transform: translate(42%, -50%) rotate(-90deg);
+    --peek-wiggle-transform: translate(34%, -51.5%) rotate(-96deg);
+    --peek-jump-transform: translate(28%, -54%) rotate(-104deg);
+}
+
+.luister-peek-mascot.peek-side-top {
+    top: calc(env(safe-area-inset-top, 0px) + 0.35rem);
+    left: clamp(calc(var(--peek-size) * 0.7), var(--peek-x), calc(100vw - (var(--peek-size) * 0.7)));
+    --peek-hidden-transform: translate(-50%, -108%) rotate(180deg);
+    --peek-visible-transform: translate(-50%, -42%) rotate(180deg);
+    --peek-wiggle-transform: translate(-51.5%, -34%) rotate(186deg);
+    --peek-jump-transform: translate(-54%, -28%) rotate(194deg);
+}
+
+.luister-peek-mascot.peek-side-bottom {
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 0.35rem);
+    left: clamp(calc(var(--peek-size) * 0.7), var(--peek-x), calc(100vw - (var(--peek-size) * 0.7)));
+    --peek-hidden-transform: translate(-50%, 108%) rotate(0deg);
+    --peek-visible-transform: translate(-50%, 42%) rotate(0deg);
+    --peek-wiggle-transform: translate(-51.5%, 34%) rotate(6deg);
+    --peek-jump-transform: translate(-54%, 28%) rotate(14deg);
+}
+
 .site-container {
     width: min(1080px, 100% - 2rem);
     margin-inline: auto;
+}
+
+@media (max-width: 680px) {
+    .luister-peek-mascot {
+        --peek-size: clamp(2.35rem, 12vw, 3.3rem);
+        --peek-top-clearance: max(4rem, calc(env(safe-area-inset-top, 0px) + 3.65rem));
+        --peek-bottom-clearance: max(3.8rem, calc(env(safe-area-inset-bottom, 0px) + 3.6rem));
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .luister-peek-mascot {
+        display: none;
+    }
 }
 
 .skip-link {

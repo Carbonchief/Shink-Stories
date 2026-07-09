@@ -10,26 +10,35 @@ public sealed class LuisterPeekMascotSourceTests
     private static readonly string LuisterRazorPath = Path.Combine(RepositoryRoot, "Shink", "Components", "Pages", "Luister.razor");
     private static readonly string LuisterCssPath = Path.Combine(RepositoryRoot, "Shink", "Components", "Pages", "Luister.razor.css");
     private static readonly string LuisterJsPath = Path.Combine(RepositoryRoot, "Shink", "Components", "Pages", "Luister.razor.js");
+    private static readonly string MainLayoutRazorPath = Path.Combine(RepositoryRoot, "Shink", "Components", "Layout", "MainLayout.razor");
+    private static readonly string MainLayoutCssPath = Path.Combine(RepositoryRoot, "Shink", "Components", "Layout", "MainLayout.razor.css");
+    private static readonly string MainLayoutJsPath = Path.Combine(RepositoryRoot, "Shink", "Components", "Layout", "MainLayout.razor.js");
     private static readonly string MascotAssetPath = Path.Combine(RepositoryRoot, "Shink", "wwwroot", "branding", "Oortjies_Website.png");
 
     [TestMethod]
-    public void LuisterPageUsesPageScopedPeekMascotModuleAndAsset()
+    public void SharedLayoutShowsPeekMascotOnRequestedRoutes()
     {
-        var razor = File.ReadAllText(LuisterRazorPath);
+        var layout = File.ReadAllText(MainLayoutRazorPath);
+        var luister = File.ReadAllText(LuisterRazorPath);
 
-        StringAssert.Contains(razor, "data-luister-peek-mascot");
-        StringAssert.Contains(razor, "/branding/Oortjies_Website.png");
-        StringAssert.Contains(razor, "/Components/Pages/Luister.razor.js");
-        StringAssert.Contains(razor, "initializeLuisterPage");
-        StringAssert.Contains(razor, "disposeLuisterPage");
+        StringAssert.Contains(layout, "ShouldShowOortjiesMascot");
+        StringAssert.Contains(layout, "data-luister-peek-mascot");
+        StringAssert.Contains(layout, "/branding/Oortjies_Website.png");
+        StringAssert.Contains(layout, "string.IsNullOrEmpty(relativePath)");
+        StringAssert.Contains(layout, "string.Equals(relativePath, \"luister\", StringComparison.OrdinalIgnoreCase)");
+        StringAssert.Contains(layout, "relativePath.StartsWith(\"luister/\", StringComparison.OrdinalIgnoreCase)");
+        StringAssert.Contains(layout, "string.Equals(relativePath, \"karakters\", StringComparison.OrdinalIgnoreCase)");
+        Assert.IsFalse(luister.Contains("data-luister-peek-mascot", StringComparison.Ordinal));
         Assert.IsTrue(File.Exists(MascotAssetPath));
     }
 
     [TestMethod]
     public void LuisterPeekMascotIsBoundedAndAnimatedFromScreenEdges()
     {
-        var css = File.ReadAllText(LuisterCssPath);
-        var js = File.ReadAllText(LuisterJsPath);
+        var css = File.ReadAllText(MainLayoutCssPath);
+        var js = File.ReadAllText(MainLayoutJsPath);
+        var luisterCss = File.ReadAllText(LuisterCssPath);
+        var luisterJs = File.ReadAllText(LuisterJsPath);
 
         StringAssert.Contains(css, ".luister-peek-mascot");
         StringAssert.Contains(css, "--peek-top-clearance");
@@ -61,11 +70,16 @@ public sealed class LuisterPeekMascotSourceTests
         StringAssert.Contains(js, "const MAX_PEEKS_PER_WINDOW = 2;");
         StringAssert.Contains(js, "recentPeekTimes.length >= MAX_PEEKS_PER_WINDOW");
         StringAssert.Contains(js, "window.schinkForceLuisterPeek = forceLuisterPeekMascot;");
-        StringAssert.Contains(js, "export function forceLuisterPeekMascot");
+        StringAssert.Contains(js, "function forceLuisterPeekMascot");
         StringAssert.Contains(js, "PEEK_HIDE_WIGGLE_MS");
         StringAssert.Contains(js, "PEEK_CLICK_JUMP_MS");
         StringAssert.Contains(js, "handlePeekMascotClick");
         StringAssert.Contains(js, "peekMascotElement.addEventListener(\"click\", handlePeekMascotClick);");
+        StringAssert.Contains(js, "const OORTJIES_CLICK_ENDPOINT = \"/api/oortjies/click\";");
+        StringAssert.Contains(js, "trackOortjiesClick();");
+        StringAssert.Contains(js, "navigator.sendBeacon(OORTJIES_CLICK_ENDPOINT");
+        StringAssert.Contains(js, "credentials: \"same-origin\"");
+        StringAssert.Contains(js, "readCurrentPeekSide");
         StringAssert.Contains(js, "animatePeekAway({ jump: false });");
         StringAssert.Contains(js, "animatePeekAway({ jump: true });");
         StringAssert.Contains(js, "readPeekTransform(computedStyle, \"--peek-wiggle-transform\"");
@@ -80,5 +94,7 @@ public sealed class LuisterPeekMascotSourceTests
         StringAssert.Contains(js, "peekMascotElement.style.setProperty(\"--peek-y\", nextEdgePosition.y);");
         StringAssert.Contains(js, "if (!isForced)");
         Assert.IsTrue(Regex.IsMatch(js, @"randomBetween\(NEXT_DELAY_MIN_MS,\s*NEXT_DELAY_MAX_MS\)", RegexOptions.Multiline));
+        Assert.IsFalse(luisterCss.Contains(".luister-peek-mascot", StringComparison.Ordinal));
+        Assert.IsFalse(luisterJs.Contains("PEEK_MASCOT_SELECTOR", StringComparison.Ordinal));
     }
 }
