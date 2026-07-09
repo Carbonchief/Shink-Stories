@@ -32,6 +32,7 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(nameof(ProfilePage), typeof(ProfilePage));
         Routing.RegisterRoute(nameof(StoryDetailPage), typeof(StoryDetailPage));
         Routing.RegisterRoute(nameof(DownloadedPage), typeof(DownloadedPage));
+        Routing.RegisterRoute(nameof(KaraktersPage), typeof(KaraktersPage));
 
         _sessionState.Changed += _ => MainThread.BeginInvokeOnMainThread(RenderShellFromSessionState);
         Navigated += OnShellNavigated;

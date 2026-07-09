@@ -69,6 +69,43 @@ public sealed record MobileLuisterSection(
     MobilePlaylist? Playlist,
     IReadOnlyList<MobilePlaylist> Playlists);
 
+public sealed record MobileCharactersResponse(
+    bool IsSignedIn,
+    int UnlockedCount,
+    int TotalCount,
+    IReadOnlyList<MobileCharacterCard> Characters);
+
+public sealed record MobileCharacterCard(
+    string Slug,
+    string DisplayName,
+    string Heading,
+    string SummaryText,
+    string ImageUrl,
+    string ImageAlt,
+    bool IsUnlocked,
+    int DisplayOrder,
+    string? Tagline,
+    string? Species,
+    string? Habitat,
+    string? Catchphrase,
+    string? FavoriteThing,
+    string? CharacterTrait,
+    string? GoldenLesson,
+    string? CoreValue,
+    string? FirstAppearance,
+    string? Friends,
+    string? ReflectionQuestion,
+    string? ChallengeText,
+    MobileCharacterStoryLink? PrimaryStory,
+    IReadOnlyList<MobileCharacterStoryLink> RelatedStories,
+    string CallToActionLabel);
+
+public sealed record MobileCharacterStoryLink(
+    string Slug,
+    string Title,
+    string Source,
+    string ImageUrl);
+
 public sealed record MobileStoryDetailResponse(
     MobileStorySummary Story,
     string? AudioUrl,

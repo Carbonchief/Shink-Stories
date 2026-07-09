@@ -151,9 +151,12 @@ internal static class MobileTopBar
 
     private static async Task ShowMenuAsync(Page hostPage)
     {
-        var choice = await MobileMenuSheet.ShowAsync(hostPage, "Menu", "Instellings", "Bestuur rekening");
+        var choice = await MobileMenuSheet.ShowAsync(hostPage, "Menu", "Karakters", "Instellings", "Bestuur rekening");
         switch (choice)
         {
+            case "Karakters":
+                await Shell.Current.GoToAsync(nameof(KaraktersPage), animate: true);
+                break;
             case "Instellings":
                 await hostPage.DisplayAlertAsync("Instellings", "Instellings kom binnekort.", "Reg so");
                 break;

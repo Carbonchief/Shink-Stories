@@ -744,7 +744,7 @@ public sealed class AccountPage : ContentPage
         var tight = height < 680;
 
         return new LandingLayoutMetrics(
-            HeroPadding: new Thickness(16, Math.Clamp(height * (tight ? 0.21 : compact ? 0.24 : 0.27), 132, 252), 16, 0),
+            HeroPadding: new Thickness(16, Math.Clamp(height * (tight ? 0.14 : compact ? 0.16 : 0.17), 92, 168), 16, 0),
             HeroSpacing: tight ? -3 : -2,
             LogoHeight: Math.Clamp(height * (tight ? 0.17 : 0.2), 124, 194),
             LogoMargin: new Thickness(-24, tight ? -16 : -18, -24, tight ? 6 : 10),
@@ -781,7 +781,7 @@ public sealed class AccountPage : ContentPage
         var screenHeight = Height > 0
             ? Height
             : DeviceDisplay.MainDisplayInfo.Height / DeviceDisplay.MainDisplayInfo.Density;
-        var estimatedPanelHeight = _authPanelMode == AuthPanelMode.SignIn ? 330 : 620;
+        var estimatedPanelHeight = _authPanelMode == AuthPanelMode.SignIn ? 470 : 620;
         var topInset = Math.Max(24, Math.Floor((screenHeight - estimatedPanelHeight) / 2));
 
         _authPanelTopSpacer.IsVisible = true;

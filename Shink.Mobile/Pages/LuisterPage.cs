@@ -10,9 +10,19 @@ namespace Shink.Mobile.Pages;
 public sealed class LuisterPage : ContentPage
 {
     private static readonly Color LuisterBackgroundColor = Color.FromArgb("#FFF7E8");
+    private const double PageHorizontalPadding = 18;
     private const double FloatingTopBarContentInset = 86;
     private const double FloatingTopBarHiddenOffset = -82;
     private const double ScrollDirectionThreshold = 4;
+    private const double OortjiesPeekWidth = 64;
+    private const double OortjiesPeekHeight = 71;
+    private const int MaxOortjiesPeeksPerWindow = 2;
+    private static readonly TimeSpan OortjiesPeekWindow = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan OortjiesPeekVisibleDuration = TimeSpan.FromMilliseconds(3600);
+    private static readonly TimeSpan OortjiesInitialDelayMin = TimeSpan.FromMilliseconds(22000);
+    private static readonly TimeSpan OortjiesInitialDelayMax = TimeSpan.FromMilliseconds(58000);
+    private static readonly TimeSpan OortjiesNextDelayMin = TimeSpan.FromMilliseconds(78000);
+    private static readonly TimeSpan OortjiesNextDelayMax = TimeSpan.FromMilliseconds(178000);
     private static readonly TimeSpan NotificationBadgeRefreshInterval = TimeSpan.FromSeconds(45);
     private static bool IsAndroid => DeviceInfo.Current.Platform == DevicePlatform.Android;
     private readonly MobileApiClient _apiClient;
@@ -24,6 +34,7 @@ public sealed class LuisterPage : ContentPage
     private readonly NavigationGate _navigationGate = new();
     private readonly Grid _rootLayout;
     private readonly Grid _topBarOverlay;
+    private readonly Image _oortjiesPeekMascot;
     private readonly VerticalStackLayout? _content;
     private readonly VerticalStackLayout? _playlistContent;
     private readonly RefreshView _refreshView;
@@ -46,10 +57,15 @@ public sealed class LuisterPage : ContentPage
     private double _lastScrollY;
     private Border? _floatingTopBarHost;
     private IDispatcherTimer? _notificationRefreshTimer;
+    private IDispatcherTimer? _oortjiesPeekTimer;
+    private IDispatcherTimer? _oortjiesHideTimer;
     private CancellationTokenSource? _imageWarmupCancellation;
     private CancellationTokenSource? _loadCancellation;
     private CancellationTokenSource? _searchDebounceCancellation;
     private readonly HashSet<string> _favoriteRequestsInFlight = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<DateTimeOffset> _recentOortjiesPeekTimes = new();
+    private OortjiesPeekSide? _lastOortjiesPeekSide;
+    private bool _isOortjiesPeekVisible;
     private bool _isPageEventsSubscribed;
 
     public LuisterPage(
@@ -120,7 +136,7 @@ public sealed class LuisterPage : ContentPage
                     HeightRequest = 28,
                     Color = Colors.Transparent
                 },
-                Margin = new Thickness(18, 0, 18, 0),
+                Margin = new Thickness(PageHorizontalPadding, 0, PageHorizontalPadding, 0),
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Never,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Never
             };
@@ -130,7 +146,7 @@ public sealed class LuisterPage : ContentPage
         {
             _content = new VerticalStackLayout
             {
-                Padding = new Thickness(18, FloatingTopBarContentInset, 18, 28),
+                Padding = new Thickness(PageHorizontalPadding, FloatingTopBarContentInset, PageHorizontalPadding, 28),
                 Spacing = 16
             };
             _playlistContent = new VerticalStackLayout
@@ -161,13 +177,31 @@ public sealed class LuisterPage : ContentPage
             ZIndex = 100
         };
 
+        _oortjiesPeekMascot = new Image
+        {
+            Source = "oortjies_website.png",
+            Aspect = Aspect.AspectFit,
+            WidthRequest = OortjiesPeekWidth,
+            HeightRequest = OortjiesPeekHeight,
+            HorizontalOptions = LayoutOptions.Start,
+            VerticalOptions = LayoutOptions.Start,
+            Opacity = 0,
+            IsVisible = false,
+            ZIndex = 230,
+            Shadow = BuildScrollContentShadow(new SolidColorBrush(Color.FromArgb("#303032")), new Point(0, 10), 16, 0.20f)
+        };
+        var oortjiesTap = new TapGestureRecognizer();
+        oortjiesTap.Tapped += (_, _) => HideOortjiesPeekMascot(jump: true);
+        _oortjiesPeekMascot.GestureRecognizers.Add(oortjiesTap);
+
         _rootLayout = new Grid
         {
             BackgroundColor = LuisterBackgroundColor,
             Children =
             {
                 _refreshView,
-                _topBarOverlay
+                _topBarOverlay,
+                _oortjiesPeekMascot
             }
         };
         Content = _rootLayout;
@@ -190,6 +224,7 @@ public sealed class LuisterPage : ContentPage
         }
 
         StartNotificationRefreshTimer();
+        StartOortjiesPeekMascot();
     }
 
     protected override void OnDisappearing()
@@ -200,6 +235,7 @@ public sealed class LuisterPage : ContentPage
         _loadCancellation?.Cancel();
         _imageWarmupCancellation?.Cancel();
         _searchDebounceCancellation?.Cancel();
+        StopOortjiesPeekMascot();
         base.OnDisappearing();
     }
 
@@ -866,7 +902,7 @@ public sealed class LuisterPage : ContentPage
             };
 
     private static IShape? BuildArtworkShape(double cornerRadius) =>
-        IsAndroid ? null : new RoundRectangle { CornerRadius = cornerRadius };
+        new RoundRectangle { CornerRadius = cornerRadius };
 
     private void QueueSearchRender()
     {
@@ -1158,9 +1194,12 @@ public sealed class LuisterPage : ContentPage
     {
         await _navigationGate.RunAsync(async () =>
         {
-            var choice = await MobileMenuSheet.ShowAsync(this, "Menu", "Afgelaai", "Instellings", "Bestuur rekening");
+            var choice = await MobileMenuSheet.ShowAsync(this, "Menu", "Karakters", "Afgelaai", "Instellings", "Bestuur rekening");
             switch (choice)
             {
+                case "Karakters":
+                    await Shell.Current.GoToAsync(nameof(KaraktersPage), animate: true);
+                    break;
                 case "Afgelaai":
                     await Shell.Current.GoToAsync(nameof(DownloadedPage), animate: true);
                     break;
@@ -1220,6 +1259,240 @@ public sealed class LuisterPage : ContentPage
     private void StopNotificationRefreshTimer()
     {
         _notificationRefreshTimer?.Stop();
+    }
+
+    private void StartOortjiesPeekMascot()
+    {
+        _recentOortjiesPeekTimes.Clear();
+        ScheduleOortjiesPeek(RandomDelay(OortjiesInitialDelayMin, OortjiesInitialDelayMax));
+    }
+
+    private void StopOortjiesPeekMascot()
+    {
+        _oortjiesPeekTimer?.Stop();
+        _oortjiesHideTimer?.Stop();
+        _oortjiesPeekMascot.CancelAnimations();
+        _oortjiesPeekMascot.Opacity = 0;
+        _oortjiesPeekMascot.IsVisible = false;
+        _oortjiesPeekMascot.InputTransparent = true;
+        _isOortjiesPeekVisible = false;
+        _lastOortjiesPeekSide = null;
+        _recentOortjiesPeekTimes.Clear();
+    }
+
+    private void ScheduleOortjiesPeek(TimeSpan delay)
+    {
+        _oortjiesPeekTimer?.Stop();
+        _oortjiesPeekTimer = Dispatcher.CreateTimer();
+        _oortjiesPeekTimer.Interval = delay < TimeSpan.FromSeconds(1) ? TimeSpan.FromSeconds(1) : delay;
+        _oortjiesPeekTimer.Tick += (_, _) =>
+        {
+            _oortjiesPeekTimer?.Stop();
+            ShowOortjiesPeekMascot();
+        };
+        _oortjiesPeekTimer.Start();
+    }
+
+    private void ScheduleOortjiesHide()
+    {
+        _oortjiesHideTimer?.Stop();
+        _oortjiesHideTimer = Dispatcher.CreateTimer();
+        _oortjiesHideTimer.Interval = OortjiesPeekVisibleDuration;
+        _oortjiesHideTimer.Tick += (_, _) =>
+        {
+            _oortjiesHideTimer?.Stop();
+            HideOortjiesPeekMascot(jump: false);
+        };
+        _oortjiesHideTimer.Start();
+    }
+
+    private void ShowOortjiesPeekMascot()
+    {
+        if (!_isPageActive || Handler is null)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        _recentOortjiesPeekTimes.RemoveAll(timestamp => now - timestamp >= OortjiesPeekWindow);
+        if (_recentOortjiesPeekTimes.Count >= MaxOortjiesPeeksPerWindow)
+        {
+            var nextAllowedAt = _recentOortjiesPeekTimes[0] + OortjiesPeekWindow;
+            ScheduleOortjiesPeek(nextAllowedAt - now + RandomDelay(TimeSpan.FromSeconds(6), TimeSpan.FromSeconds(24)));
+            return;
+        }
+
+        var placement = BuildOortjiesPeekPlacement(ChooseOortjiesPeekSide());
+        _recentOortjiesPeekTimes.Add(now);
+        _oortjiesPeekMascot.CancelAnimations();
+        _oortjiesPeekMascot.WidthRequest = OortjiesPeekWidth;
+        _oortjiesPeekMascot.HeightRequest = OortjiesPeekHeight;
+        _oortjiesPeekMascot.Rotation = placement.Rotation;
+        _oortjiesPeekMascot.TranslationX = placement.HiddenX;
+        _oortjiesPeekMascot.TranslationY = placement.HiddenY;
+        _oortjiesPeekMascot.Opacity = 0;
+        _oortjiesPeekMascot.InputTransparent = false;
+        _oortjiesPeekMascot.IsVisible = true;
+        _isOortjiesPeekVisible = true;
+
+        MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            try
+            {
+                await Task.WhenAll(
+                    _oortjiesPeekMascot.TranslateToAsync(placement.VisibleX, placement.VisibleY, 740, Easing.CubicOut),
+                    _oortjiesPeekMascot.FadeToAsync(1, 240, Easing.CubicOut));
+            }
+            catch
+            {
+                _oortjiesPeekMascot.TranslationX = placement.VisibleX;
+                _oortjiesPeekMascot.TranslationY = placement.VisibleY;
+                _oortjiesPeekMascot.Opacity = 1;
+            }
+
+            if (_isPageActive && _isOortjiesPeekVisible)
+            {
+                ScheduleOortjiesHide();
+            }
+        });
+    }
+
+    private void HideOortjiesPeekMascot(bool jump)
+    {
+        if (!_isOortjiesPeekVisible)
+        {
+            return;
+        }
+
+        _oortjiesHideTimer?.Stop();
+        _isOortjiesPeekVisible = false;
+        _oortjiesPeekMascot.InputTransparent = true;
+        var placement = BuildOortjiesPeekPlacement(_lastOortjiesPeekSide ?? OortjiesPeekSide.Left);
+
+        MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            try
+            {
+                _oortjiesPeekMascot.CancelAnimations();
+                var awayStart = jump
+                    ? _oortjiesPeekMascot.TranslateToAsync(placement.JumpX, placement.JumpY, 180, Easing.CubicOut)
+                    : _oortjiesPeekMascot.TranslateToAsync(placement.WiggleX, placement.WiggleY, 220, Easing.CubicOut);
+                await awayStart;
+                await Task.WhenAll(
+                    _oortjiesPeekMascot.TranslateToAsync(placement.HiddenX, placement.HiddenY, jump ? 360u : 520u, Easing.CubicIn),
+                    _oortjiesPeekMascot.FadeToAsync(0, 220, Easing.CubicOut));
+            }
+            catch
+            {
+                _oortjiesPeekMascot.TranslationX = placement.HiddenX;
+                _oortjiesPeekMascot.TranslationY = placement.HiddenY;
+                _oortjiesPeekMascot.Opacity = 0;
+            }
+
+            _oortjiesPeekMascot.IsVisible = false;
+            if (_isPageActive)
+            {
+                ScheduleOortjiesPeek(RandomDelay(OortjiesNextDelayMin, OortjiesNextDelayMax));
+            }
+        });
+    }
+
+    private OortjiesPeekSide ChooseOortjiesPeekSide()
+    {
+        var sides = new[]
+        {
+            OortjiesPeekSide.Left,
+            OortjiesPeekSide.Right,
+            OortjiesPeekSide.Top,
+            OortjiesPeekSide.Bottom
+        };
+        var candidates = sides.Where(side => side != _lastOortjiesPeekSide).ToArray();
+        var side = candidates[Random.Shared.Next(candidates.Length)];
+        _lastOortjiesPeekSide = side;
+        return side;
+    }
+
+    private OortjiesPeekPlacement BuildOortjiesPeekPlacement(OortjiesPeekSide side)
+    {
+        var viewport = GetOortjiesViewportSize();
+        var topClearance = FloatingTopBarContentInset + 8;
+        var bottomClearance = 88d;
+        var verticalCenter = RandomBetween(
+            Math.Min(viewport.Height - bottomClearance, topClearance + OortjiesPeekHeight / 2),
+            Math.Max(topClearance + OortjiesPeekHeight / 2, viewport.Height - bottomClearance));
+        var horizontalCenter = RandomBetween(
+            OortjiesPeekWidth * 0.7,
+            Math.Max(OortjiesPeekWidth * 0.7, viewport.Width - OortjiesPeekWidth * 0.7));
+
+        return side switch
+        {
+            OortjiesPeekSide.Right => new OortjiesPeekPlacement(
+                HiddenX: viewport.Width + OortjiesPeekWidth * 0.08,
+                HiddenY: verticalCenter - OortjiesPeekHeight / 2,
+                VisibleX: viewport.Width - OortjiesPeekWidth * 0.58,
+                VisibleY: verticalCenter - OortjiesPeekHeight / 2,
+                WiggleX: viewport.Width - OortjiesPeekWidth * 0.66,
+                WiggleY: verticalCenter - OortjiesPeekHeight * 0.515,
+                JumpX: viewport.Width - OortjiesPeekWidth * 0.72,
+                JumpY: verticalCenter - OortjiesPeekHeight * 0.54,
+                Rotation: -90),
+            OortjiesPeekSide.Top => new OortjiesPeekPlacement(
+                HiddenX: horizontalCenter - OortjiesPeekWidth / 2,
+                HiddenY: -OortjiesPeekHeight * 1.08,
+                VisibleX: horizontalCenter - OortjiesPeekWidth / 2,
+                VisibleY: -OortjiesPeekHeight * 0.42,
+                WiggleX: horizontalCenter - OortjiesPeekWidth * 0.515,
+                WiggleY: -OortjiesPeekHeight * 0.34,
+                JumpX: horizontalCenter - OortjiesPeekWidth * 0.54,
+                JumpY: -OortjiesPeekHeight * 0.28,
+                Rotation: 180),
+            OortjiesPeekSide.Bottom => new OortjiesPeekPlacement(
+                HiddenX: horizontalCenter - OortjiesPeekWidth / 2,
+                HiddenY: viewport.Height + OortjiesPeekHeight * 0.08,
+                VisibleX: horizontalCenter - OortjiesPeekWidth / 2,
+                VisibleY: viewport.Height - OortjiesPeekHeight * 0.58,
+                WiggleX: horizontalCenter - OortjiesPeekWidth * 0.515,
+                WiggleY: viewport.Height - OortjiesPeekHeight * 0.66,
+                JumpX: horizontalCenter - OortjiesPeekWidth * 0.54,
+                JumpY: viewport.Height - OortjiesPeekHeight * 0.72,
+                Rotation: 0),
+            _ => new OortjiesPeekPlacement(
+                HiddenX: -OortjiesPeekWidth * 1.08,
+                HiddenY: verticalCenter - OortjiesPeekHeight / 2,
+                VisibleX: -OortjiesPeekWidth * 0.42,
+                VisibleY: verticalCenter - OortjiesPeekHeight / 2,
+                WiggleX: -OortjiesPeekWidth * 0.34,
+                WiggleY: verticalCenter - OortjiesPeekHeight * 0.515,
+                JumpX: -OortjiesPeekWidth * 0.28,
+                JumpY: verticalCenter - OortjiesPeekHeight * 0.54,
+                Rotation: 90)
+        };
+    }
+
+    private (double Width, double Height) GetOortjiesViewportSize()
+    {
+        var width = _rootLayout.Width;
+        var height = _rootLayout.Height;
+        if (width > 0 && height > 0)
+        {
+            return (width, height);
+        }
+
+        var display = DeviceDisplay.MainDisplayInfo;
+        return (display.Width / display.Density, display.Height / display.Density);
+    }
+
+    private static TimeSpan RandomDelay(TimeSpan min, TimeSpan max) =>
+        TimeSpan.FromMilliseconds(RandomBetween(min.TotalMilliseconds, max.TotalMilliseconds));
+
+    private static double RandomBetween(double min, double max)
+    {
+        if (max <= min)
+        {
+            return min;
+        }
+
+        return min + Random.Shared.NextDouble() * (max - min);
     }
 
     private async Task ShowNotificationsAsync()
@@ -2079,7 +2352,7 @@ public sealed class LuisterPage : ContentPage
             ? BuildRankedStoryCarousel(playlist)
             : BuildHorizontalCarousel(
                 playlist.Stories,
-                IsAndroid ? 252 : 286,
+                GetStoryCarouselHeight(),
                 story => BuildLuisterStoryCarouselCard(playlist, story)));
 
         return section;
@@ -2169,8 +2442,32 @@ public sealed class LuisterPage : ContentPage
 
         return BuildHorizontalCarousel(
             rankedStories,
-            IsAndroid ? 266 : 304,
+            GetStoryCarouselHeight(isRanked: true),
             rankedStory => BuildLuisterStoryCarouselCard(playlist, rankedStory.Story, rankedStory.Rank));
+    }
+
+    private double GetStoryCarouselCardWidth()
+    {
+        var pageWidth = Width > 0
+            ? Width
+            : DeviceDisplay.MainDisplayInfo.Width / DeviceDisplay.MainDisplayInfo.Density;
+        var availableWidth = Math.Max(280, pageWidth - (PageHorizontalPadding * 2));
+        const double visibleCards = 7d / 3d;
+        const double itemSpacing = 14d;
+        var targetWidth = (availableWidth - (itemSpacing * 2)) / visibleCards;
+        return Math.Clamp(targetWidth, IsAndroid ? 126 : 132, IsAndroid ? 148 : 168);
+    }
+
+    private double GetStoryCarouselCoverHeight()
+    {
+        var width = GetStoryCarouselCardWidth();
+        return Math.Round(width * (IsAndroid ? 1.27 : 1.30));
+    }
+
+    private double GetStoryCarouselHeight(bool isRanked = false)
+    {
+        var coverHeight = GetStoryCarouselCoverHeight();
+        return coverHeight + (isRanked ? 84 : 70);
     }
 
     private static CollectionView BuildHorizontalCarousel<T>(
@@ -2182,6 +2479,17 @@ public sealed class LuisterPage : ContentPage
         {
             ItemsSource = items,
             HeightRequest = heightRequest,
+            Margin = new Thickness(-PageHorizontalPadding, 0),
+            Header = new BoxView
+            {
+                WidthRequest = PageHorizontalPadding,
+                Color = Colors.Transparent
+            },
+            Footer = new BoxView
+            {
+                WidthRequest = PageHorizontalPadding,
+                Color = Colors.Transparent
+            },
             ItemsLayout = new LinearItemsLayout(ItemsLayoutOrientation.Horizontal)
             {
                 ItemSpacing = 14,
@@ -2225,9 +2533,11 @@ public sealed class LuisterPage : ContentPage
     private View BuildLuisterStoryCarouselCard(MobilePlaylist playlist, MobileStorySummary story, int? rank = null)
     {
         var isRanked = rank is not null;
+        var cardWidth = GetStoryCarouselCardWidth();
+        var coverHeight = GetStoryCarouselCoverHeight();
         var coverGrid = new Grid
         {
-            HeightRequest = IsAndroid ? 188 : 218,
+            HeightRequest = coverHeight,
             Children =
             {
                 new Image
@@ -2235,7 +2545,7 @@ public sealed class LuisterPage : ContentPage
                     Source = BuildLuisterImageSource(
                         PageHelpers.ResolveStoryCardImageSource(story, _apiClient)),
                     Aspect = Aspect.AspectFill,
-                    HeightRequest = IsAndroid ? 188 : 218
+                    HeightRequest = coverHeight
                 },
                 BuildLockedBadge(story),
                 BuildFavoriteOverlay(story),
@@ -2247,7 +2557,7 @@ public sealed class LuisterPage : ContentPage
         {
             StrokeThickness = 0,
             StrokeShape = BuildArtworkShape(16),
-            HeightRequest = IsAndroid ? 188 : 218,
+            HeightRequest = coverHeight,
             Margin = isRanked ? new Thickness(0, 13, 0, 0) : Thickness.Zero,
             Content = coverGrid
         };
@@ -2283,7 +2593,7 @@ public sealed class LuisterPage : ContentPage
 
         var card = new Border
         {
-            WidthRequest = IsAndroid ? 148 : 168,
+            WidthRequest = cardWidth,
             BackgroundColor = Colors.Transparent,
             StrokeThickness = 0,
             Padding = 0,
@@ -3206,6 +3516,25 @@ public sealed class LuisterPage : ContentPage
             : story;
 
     private sealed record RankedLuisterStory(MobileStorySummary Story, int Rank);
+
+    private enum OortjiesPeekSide
+    {
+        Left,
+        Right,
+        Top,
+        Bottom
+    }
+
+    private sealed record OortjiesPeekPlacement(
+        double HiddenX,
+        double HiddenY,
+        double VisibleX,
+        double VisibleY,
+        double WiggleX,
+        double WiggleY,
+        double JumpX,
+        double JumpY,
+        double Rotation);
 
     private enum LuisterFeedItemKind
     {

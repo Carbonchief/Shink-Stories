@@ -14,6 +14,8 @@ public sealed class LuisterPeekMascotSourceTests
     private static readonly string MainLayoutCssPath = Path.Combine(RepositoryRoot, "Shink", "Components", "Layout", "MainLayout.razor.css");
     private static readonly string MainLayoutJsPath = Path.Combine(RepositoryRoot, "Shink", "Components", "Layout", "MainLayout.razor.js");
     private static readonly string MascotAssetPath = Path.Combine(RepositoryRoot, "Shink", "wwwroot", "branding", "Oortjies_Website.png");
+    private static readonly string MobileLuisterPagePath = Path.Combine(RepositoryRoot, "Shink.Mobile", "Pages", "LuisterPage.cs");
+    private static readonly string MobileMascotAssetPath = Path.Combine(RepositoryRoot, "Shink.Mobile", "Resources", "Images", "oortjies_website.png");
 
     [TestMethod]
     public void SharedLayoutShowsPeekMascotOnRequestedRoutes()
@@ -96,5 +98,28 @@ public sealed class LuisterPeekMascotSourceTests
         Assert.IsTrue(Regex.IsMatch(js, @"randomBetween\(NEXT_DELAY_MIN_MS,\s*NEXT_DELAY_MAX_MS\)", RegexOptions.Multiline));
         Assert.IsFalse(luisterCss.Contains(".luister-peek-mascot", StringComparison.Ordinal));
         Assert.IsFalse(luisterJs.Contains("PEEK_MASCOT_SELECTOR", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void MobileLuisterPageShowsOortjiesAtRandomIntervals()
+    {
+        var page = File.ReadAllText(MobileLuisterPagePath);
+
+        StringAssert.Contains(page, "Source = \"oortjies_website.png\"");
+        StringAssert.Contains(page, "StartOortjiesPeekMascot();");
+        StringAssert.Contains(page, "StopOortjiesPeekMascot();");
+        StringAssert.Contains(page, "OortjiesInitialDelayMin = TimeSpan.FromMilliseconds(22000)");
+        StringAssert.Contains(page, "OortjiesInitialDelayMax = TimeSpan.FromMilliseconds(58000)");
+        StringAssert.Contains(page, "OortjiesNextDelayMin = TimeSpan.FromMilliseconds(78000)");
+        StringAssert.Contains(page, "OortjiesNextDelayMax = TimeSpan.FromMilliseconds(178000)");
+        StringAssert.Contains(page, "MaxOortjiesPeeksPerWindow = 2");
+        StringAssert.Contains(page, "OortjiesPeekWindow = TimeSpan.FromMinutes(5)");
+        StringAssert.Contains(page, "OortjiesPeekSide.Left");
+        StringAssert.Contains(page, "OortjiesPeekSide.Right");
+        StringAssert.Contains(page, "OortjiesPeekSide.Top");
+        StringAssert.Contains(page, "OortjiesPeekSide.Bottom");
+        StringAssert.Contains(page, "HideOortjiesPeekMascot(jump: true)");
+        StringAssert.Contains(page, "ScheduleOortjiesPeek(RandomDelay(OortjiesNextDelayMin, OortjiesNextDelayMax))");
+        Assert.IsTrue(File.Exists(MobileMascotAssetPath));
     }
 }

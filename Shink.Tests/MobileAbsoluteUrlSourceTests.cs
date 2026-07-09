@@ -739,6 +739,49 @@ public class MobileAbsoluteUrlSourceTests
     }
 
     [TestMethod]
+    public void MobileKaraktersPageUsesNativeCharacterEndpointAndMenuRoute()
+    {
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+        var models = File.ReadAllText(GetRepoPath("Shink.Mobile", "Models", "MobileApiModels.cs"));
+        var client = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
+        var karaktersPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KaraktersPage.cs"));
+        var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
+        var mobileTopBar = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileTopBar.cs"));
+        var appShell = File.ReadAllText(GetRepoPath("Shink.Mobile", "AppShell.xaml.cs"));
+        var mauiProgram = File.ReadAllText(GetRepoPath("Shink.Mobile", "MauiProgram.cs"));
+
+        StringAssert.Contains(program, "app.MapGet(\"/api/mobile/karakters\"");
+        StringAssert.Contains(program, "sealed record MobileCharactersResponse(");
+        StringAssert.Contains(program, "sealed record MobileCharacterCardResponse(");
+        StringAssert.Contains(program, "BuildMobileCharacterCard(");
+        StringAssert.Contains(program, "CharacterUnlockEvaluator.EvaluateUnlockStates(");
+        StringAssert.Contains(program, "ResolveMobileCharacterImageUrl(httpContext, imagePath, character.UpdatedAt)");
+        StringAssert.Contains(program, "PrimaryStory: primaryStory");
+        StringAssert.Contains(program, "CallToActionLabel: callToActionLabel");
+
+        StringAssert.Contains(models, "public sealed record MobileCharactersResponse(");
+        StringAssert.Contains(models, "public sealed record MobileCharacterCard(");
+        StringAssert.Contains(client, "GetCharactersAsync");
+        StringAssert.Contains(client, "\"/api/mobile/karakters\"");
+        StringAssert.Contains(client, "ReadJsonResponseAsync<T>(response, path, cancellationToken)");
+        StringAssert.Contains(client, "IsHtmlResponse(response)");
+        StringAssert.Contains(client, "LooksLikeHtml(body)");
+        StringAssert.Contains(client, "Die app se Karakters-data is nog nie op die webbediener beskikbaar nie.");
+        StringAssert.Contains(karaktersPage, "public sealed class KaraktersPage : ContentPage");
+        StringAssert.Contains(karaktersPage, "await _apiClient.GetCharactersAsync()");
+        StringAssert.Contains(karaktersPage, "BuildHero(response)");
+        StringAssert.Contains(karaktersPage, "BuildCharacterCard(character)");
+        StringAssert.Contains(karaktersPage, "OpenPrimaryStoryAsync(character)");
+        StringAssert.Contains(karaktersPage, "nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source={Uri.EscapeDataString(story.Source)}");
+        StringAssert.Contains(luisterPage, "\"Karakters\", \"Afgelaai\", \"Instellings\", \"Bestuur rekening\"");
+        StringAssert.Contains(luisterPage, "await Shell.Current.GoToAsync(nameof(KaraktersPage), animate: true)");
+        StringAssert.Contains(mobileTopBar, "\"Karakters\", \"Instellings\", \"Bestuur rekening\"");
+        StringAssert.Contains(mobileTopBar, "await Shell.Current.GoToAsync(nameof(KaraktersPage), animate: true)");
+        StringAssert.Contains(appShell, "Routing.RegisterRoute(nameof(KaraktersPage), typeof(KaraktersPage));");
+        StringAssert.Contains(mauiProgram, "builder.Services.AddTransient<KaraktersPage>();");
+    }
+
+    [TestMethod]
     public void MobileStoryAudioUsesSignedMediaRouteForR2AndLocalProviders()
     {
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
@@ -1291,12 +1334,13 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "ItemTemplate = new DataTemplate(BuildFeedItemView)");
         StringAssert.Contains(luisterPage, "private View BuildFeedItemView()");
         StringAssert.Contains(luisterPage, "private void ReplaceFeedItems(IReadOnlyList<LuisterFeedItem> nextItems)");
-        StringAssert.Contains(luisterPage, "_feedView.ItemsSource = nextItems.ToArray();");
+        StringAssert.Contains(luisterPage, "_feedView!.ItemsSource = nextItems.ToArray();");
         StringAssert.Contains(luisterPage, "MainThread.BeginInvokeOnMainThread(RenderFloatingTopBar);");
         StringAssert.Contains(luisterPage, "private ImageSource BuildLuisterImageSource(string? url, string? fallbackFile = null)");
         StringAssert.Contains(luisterPage, "private static Shadow BuildScrollContentShadow(Brush brush, Point offset, float radius, float opacity)");
         StringAssert.Contains(luisterPage, "private static IShape? BuildArtworkShape(double cornerRadius)");
-        StringAssert.Contains(luisterPage, "IsAndroid ? null : new RoundRectangle { CornerRadius = cornerRadius };");
+        StringAssert.Contains(luisterPage, "new RoundRectangle { CornerRadius = cornerRadius };");
+        Assert.IsFalse(luisterPage.Contains("IsAndroid ? null : new RoundRectangle { CornerRadius = cornerRadius };", StringComparison.Ordinal));
         StringAssert.Contains(luisterPage, "private static bool IsAndroid => DeviceInfo.Current.Platform == DevicePlatform.Android;");
         StringAssert.Contains(luisterPage, "Brush = Brush.Transparent");
         StringAssert.Contains(luisterPage, "IsAndroid ? 188 : 218");

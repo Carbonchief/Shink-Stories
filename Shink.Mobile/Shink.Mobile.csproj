@@ -65,8 +65,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <MauiIcon Include="Resources/AppIcon/appicon.svg" Color="#222222" />
-    <MauiSplashScreen Include="Resources/Splash/schink_stories_logo_white.png" Color="#023333" BaseSize="320,140" />
+    <MauiIcon Include="Resources/AppIcon/schink_appicon.png" />
+    <MauiSplashScreen Include="Resources/Splash/schink_stories_full_splash.png" Color="#13AFC1" BaseSize="360,640" />
     <MauiImage Include="Resources/Images/*" />
     <MauiImage Update="Resources/Images/schink_stories_logo_white.png" Resize="False" />
     <MauiAsset Include="Resources/Images/schink_stories_logo_white.png" LogicalName="schink_stories_logo_white_raw.png" />

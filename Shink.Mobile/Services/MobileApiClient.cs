@@ -312,6 +312,9 @@ public sealed class MobileApiClient
     public Task<MobileLuisterResponse?> GetLuisterAsync(CancellationToken cancellationToken = default) =>
         GetAndCacheLuisterAsync(cancellationToken);
 
+    public Task<MobileCharactersResponse?> GetCharactersAsync(CancellationToken cancellationToken = default) =>
+        GetAsync<MobileCharactersResponse>("/api/mobile/karakters", cancellationToken);
+
     public Task<MobileLuisterResponse?> GetCachedLuisterAsync(CancellationToken cancellationToken = default) =>
         GetCachedLuisterAsync(DefaultLuisterCacheMaxAge, cancellationToken);
 
@@ -723,7 +726,7 @@ public sealed class MobileApiClient
             using var response = await _httpClient.SendAsync(request, cancellationToken);
             await SaveAuthCookiesAsync(cancellationToken);
             await EnsureSuccessAsync(response, cancellationToken);
-            var result = await response.Content.ReadFromJsonAsync<T>(JsonOptions, cancellationToken);
+            var result = await ReadJsonResponseAsync<T>(response, path, cancellationToken);
             TrackMobileApiRequest("GET", path, response.StatusCode, startedAt, true);
             _ = FlushQueuedStoryListensAsync();
             return result;
@@ -1448,6 +1451,37 @@ public sealed class MobileApiClient
 
     private Uri BuildUri(string path) => new($"{_settings.BaseUrl.TrimEnd('/')}{path}", UriKind.Absolute);
 
+    private static async Task<T?> ReadJsonResponseAsync<T>(
+        HttpResponseMessage response,
+        string path,
+        CancellationToken cancellationToken)
+    {
+        if (IsMobileApiPath(path) && IsHtmlResponse(response))
+        {
+            throw new InvalidOperationException("Die app se Karakters-data is nog nie op die webbediener beskikbaar nie. Probeer weer nadat die webwerf opgedateer is.");
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (IsMobileApiPath(path) && LooksLikeHtml(body))
+        {
+            throw new InvalidOperationException("Die app se Karakters-data is nog nie op die webbediener beskikbaar nie. Probeer weer nadat die webwerf opgedateer is.");
+        }
+
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return default;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<T>(body, JsonOptions);
+        }
+        catch (JsonException ex)
+        {
+            throw new InvalidOperationException("Kon nie die app-data lees nie. Probeer asseblief weer.", ex);
+        }
+    }
+
     private static void AddMobileAppHeaderIfNeeded(HttpRequestMessage request, string path)
     {
         var requestPath = path;
@@ -1456,10 +1490,39 @@ public sealed class MobileApiClient
             requestPath = uri.AbsolutePath;
         }
 
-        if (requestPath.StartsWith("/api/mobile/", StringComparison.OrdinalIgnoreCase))
+        if (IsMobileApiPath(requestPath))
         {
             request.Headers.TryAddWithoutValidation(MobileAppHeaderName, MobileAppHeaderValue);
         }
+    }
+
+    private static bool IsMobileApiPath(string path)
+    {
+        var requestPath = path;
+        if (Uri.TryCreate(path, UriKind.Absolute, out var uri))
+        {
+            requestPath = uri.AbsolutePath;
+        }
+
+        return requestPath.StartsWith("/api/mobile/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsHtmlResponse(HttpResponseMessage response)
+    {
+        var mediaType = response.Content.Headers.ContentType?.MediaType;
+        return string.Equals(mediaType, "text/html", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool LooksLikeHtml(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body))
+        {
+            return false;
+        }
+
+        var trimmed = body.TrimStart();
+        return trimmed.StartsWith("<!DOCTYPE html", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.StartsWith("<html", StringComparison.OrdinalIgnoreCase);
     }
 
     private void TrackMobileApiRequest(

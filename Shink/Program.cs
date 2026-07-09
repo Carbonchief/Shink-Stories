@@ -3506,6 +3506,51 @@ app.MapGet("/api/mobile/luister", async (
         Sections: orderedSections));
 }).DisableAntiforgery();
 
+app.MapGet("/api/mobile/karakters", async (
+    HttpContext httpContext,
+    ICharacterCatalogService characterCatalogService,
+    ICharacterTrackingService characterTrackingService,
+    IStoryCatalogService storyCatalogService,
+    IStoryTrackingService storyTrackingService) =>
+{
+    var signedInEmail = GetSignedInEmail(httpContext.User);
+    var charactersTask = characterCatalogService.GetPublishedCharactersAsync(httpContext.RequestAborted);
+    var freeStoriesTask = storyCatalogService.GetFreeStoriesAsync(httpContext.RequestAborted);
+    var luisterStoriesTask = storyCatalogService.GetLuisterStoriesAsync(httpContext.RequestAborted);
+    var unlockProgressTask = TryLoadMobileCharacterUnlockProgressAsync(
+        signedInEmail,
+        characterTrackingService,
+        storyTrackingService,
+        httpContext.RequestAborted);
+
+    await Task.WhenAll(charactersTask, freeStoriesTask, luisterStoriesTask, unlockProgressTask);
+
+    var characters = charactersTask.Result
+        .OrderBy(character => character.SortOrder)
+        .ThenBy(character => character.DisplayName, StringComparer.OrdinalIgnoreCase)
+        .ToArray();
+    var storyLookup = BuildMobileCharacterStoryLookup(freeStoriesTask.Result, luisterStoriesTask.Result);
+    var unlockProgress = unlockProgressTask.Result;
+    var unlockStates = CharacterUnlockEvaluator.EvaluateUnlockStates(
+        characters,
+        unlockProgress.ProgressLookup,
+        unlockProgress.ProfileListenLookup);
+    var characterCards = characters
+        .Select((character, index) => BuildMobileCharacterCard(
+            httpContext,
+            character,
+            storyLookup,
+            unlockStates,
+            index + 1))
+        .ToArray();
+
+    return Results.Ok(new MobileCharactersResponse(
+        IsSignedIn: !string.IsNullOrWhiteSpace(signedInEmail),
+        UnlockedCount: characterCards.Count(character => character.IsUnlocked),
+        TotalCount: characterCards.Length,
+        Characters: characterCards));
+}).DisableAntiforgery();
+
 app.MapGet("/api/mobile/stories/{slug}", async (
     string slug,
     string? source,
@@ -7038,6 +7083,26 @@ static async Task<MobileCharacterUnlockProgress> LoadMobileCharacterUnlockProgre
     return new MobileCharacterUnlockProgress(progressLookup, profileListenLookup);
 }
 
+static async Task<MobileCharacterUnlockProgress> TryLoadMobileCharacterUnlockProgressAsync(
+    string? email,
+    ICharacterTrackingService characterTrackingService,
+    IStoryTrackingService storyTrackingService,
+    CancellationToken cancellationToken)
+{
+    try
+    {
+        return await LoadMobileCharacterUnlockProgressAsync(
+            email,
+            characterTrackingService,
+            storyTrackingService,
+            cancellationToken);
+    }
+    catch
+    {
+        return MobileCharacterUnlockProgress.Empty;
+    }
+}
+
 static MobileStoryCharacterResponse BuildMobileStoryCharacterTile(
     HttpContext httpContext,
     string characterName,
@@ -7065,6 +7130,100 @@ static MobileStoryCharacterResponse BuildMobileStoryCharacterTile(
         imageUrl,
         imageAlt,
         string.IsNullOrWhiteSpace(imageUrl));
+}
+
+static IReadOnlyDictionary<string, MobileCharacterStoryLinkResponse> BuildMobileCharacterStoryLookup(
+    IReadOnlyList<StoryItem> freeStories,
+    IReadOnlyList<StoryItem> luisterStories)
+{
+    return freeStories
+        .Select(story => BuildMobileCharacterStoryLink(story, "gratis"))
+        .Concat(luisterStories.Select(story => BuildMobileCharacterStoryLink(story, "luister")))
+        .GroupBy(story => story.Slug, StringComparer.OrdinalIgnoreCase)
+        .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+}
+
+static MobileCharacterStoryLinkResponse BuildMobileCharacterStoryLink(StoryItem story, string source) =>
+    new(
+        Slug: story.Slug,
+        Title: story.Title,
+        Source: source,
+        ImageUrl: story.ImagePath);
+
+static MobileCharacterCardResponse BuildMobileCharacterCard(
+    HttpContext httpContext,
+    StoryCharacterItem character,
+    IReadOnlyDictionary<string, MobileCharacterStoryLinkResponse> storyLookup,
+    IReadOnlyDictionary<Guid, bool> unlockStates,
+    int displayOrder)
+{
+    var relatedStories = CharacterUnlockEvaluator.GetRelevantStorySlugs(character)
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .Select(slug => storyLookup.TryGetValue(slug, out var story) ? story : null)
+        .Where(static story => story is not null)
+        .Cast<MobileCharacterStoryLinkResponse>()
+        .Select(story => story with { ImageUrl = ToMobileMediaUri(httpContext, story.ImageUrl) })
+        .ToArray();
+    var primaryStory = ResolveMobileCharacterPrimaryStory(character, relatedStories);
+    var isUnlocked = unlockStates.TryGetValue(character.CharacterId, out var unlocked) && unlocked;
+    var hasStoryDrivenUnlockRule = CharacterUnlockEvaluator.HasStoryDrivenUnlockRule(character);
+    var imagePath = isUnlocked ? character.ImagePath : character.MysteryImagePath;
+    var summaryText = isUnlocked
+        ? character.Tagline ?? "Hierdie karakter se profiel is nou oop."
+        : hasStoryDrivenUnlockRule
+            ? "Luister volgens die reël om oop te sluit."
+            : "Hou aan luister en verken om oop te sluit.";
+    var callToActionLabel = isUnlocked
+        ? "Luister weer na storie"
+        : primaryStory is null
+            ? string.Empty
+            : hasStoryDrivenUnlockRule
+                ? "Luister en sluit oop"
+                : "Luister storie";
+
+    return new MobileCharacterCardResponse(
+        Slug: character.Slug,
+        DisplayName: character.DisplayName,
+        Heading: isUnlocked ? character.DisplayName : "?????",
+        SummaryText: summaryText,
+        ImageUrl: ResolveMobileCharacterImageUrl(httpContext, imagePath, character.UpdatedAt),
+        ImageAlt: isUnlocked
+            ? $"Illustrasie van {character.DisplayName}"
+            : $"Mysterie illustrasie vir {character.DisplayName}",
+        IsUnlocked: isUnlocked,
+        DisplayOrder: displayOrder,
+        Tagline: isUnlocked ? character.Tagline : null,
+        Species: isUnlocked ? character.Species : null,
+        Habitat: isUnlocked ? character.Habitat : null,
+        Catchphrase: isUnlocked ? character.Catchphrase : null,
+        FavoriteThing: isUnlocked ? character.FavoriteThing : null,
+        CharacterTrait: isUnlocked ? character.CharacterTrait : null,
+        GoldenLesson: isUnlocked ? character.GoldenLesson : null,
+        CoreValue: isUnlocked ? character.CoreValue : null,
+        FirstAppearance: isUnlocked ? character.FirstAppearance : null,
+        Friends: isUnlocked ? character.Friends : null,
+        ReflectionQuestion: isUnlocked ? character.ReflectionQuestion : null,
+        ChallengeText: isUnlocked ? character.ChallengeText : null,
+        PrimaryStory: primaryStory,
+        RelatedStories: relatedStories,
+        CallToActionLabel: callToActionLabel);
+}
+
+static MobileCharacterStoryLinkResponse? ResolveMobileCharacterPrimaryStory(
+    StoryCharacterItem character,
+    IReadOnlyList<MobileCharacterStoryLinkResponse> relatedStories)
+{
+    if (!string.IsNullOrWhiteSpace(character.UnlockStorySlug))
+    {
+        var unlockStory = relatedStories.FirstOrDefault(story =>
+            string.Equals(story.Slug, character.UnlockStorySlug, StringComparison.OrdinalIgnoreCase));
+        if (unlockStory is not null)
+        {
+            return unlockStory;
+        }
+    }
+
+    return relatedStories.FirstOrDefault();
 }
 
 static StoryCharacterItem? FindMobilePublishedCharacter(
@@ -7228,6 +7387,40 @@ static class MobileLuisterSectionKinds
     public const string Playlist = "playlist";
     public const string Speellyste = "speellyste";
 }
+sealed record MobileCharactersResponse(
+    bool IsSignedIn,
+    int UnlockedCount,
+    int TotalCount,
+    IReadOnlyList<MobileCharacterCardResponse> Characters);
+sealed record MobileCharacterCardResponse(
+    string Slug,
+    string DisplayName,
+    string Heading,
+    string SummaryText,
+    string ImageUrl,
+    string ImageAlt,
+    bool IsUnlocked,
+    int DisplayOrder,
+    string? Tagline,
+    string? Species,
+    string? Habitat,
+    string? Catchphrase,
+    string? FavoriteThing,
+    string? CharacterTrait,
+    string? GoldenLesson,
+    string? CoreValue,
+    string? FirstAppearance,
+    string? Friends,
+    string? ReflectionQuestion,
+    string? ChallengeText,
+    MobileCharacterStoryLinkResponse? PrimaryStory,
+    IReadOnlyList<MobileCharacterStoryLinkResponse> RelatedStories,
+    string CallToActionLabel);
+sealed record MobileCharacterStoryLinkResponse(
+    string Slug,
+    string Title,
+    string Source,
+    string ImageUrl);
 sealed record MobileStoryDetailResponse(
     MobileStorySummaryResponse Story,
     string? AudioUrl,
