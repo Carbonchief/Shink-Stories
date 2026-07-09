@@ -3267,11 +3267,7 @@ public sealed class LuisterPage : ContentPage
         _imageWarmupCancellation?.Dispose();
         _imageWarmupCancellation = new CancellationTokenSource();
         var token = _imageWarmupCancellation.Token;
-        var imageUrls = EnumerateLuisterImageUrls().ToArray();
-        if (IsAndroid)
-        {
-            return;
-        }
+        var imageUrls = EnumeratePrioritizedLuisterImageUrls().ToArray();
 
         _ = Task.Run(async () =>
         {
@@ -3280,8 +3276,23 @@ public sealed class LuisterPage : ContentPage
                 await _apiClient.CacheImagesAsync(
                     imageUrls,
                     token,
-                    maxImages: 80,
-                    maxDegreeOfParallelism: 4);
+                    maxImages: IsAndroid ? 56 : 80,
+                    maxDegreeOfParallelism: IsAndroid ? 3 : 4);
+                if (token.IsCancellationRequested || !_isPageActive)
+                {
+                    return;
+                }
+
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    if (token.IsCancellationRequested || !_isPageActive)
+                    {
+                        return;
+                    }
+
+                    _imageSourceCache.Clear();
+                    RenderPlaylistContent();
+                });
             }
             catch (OperationCanceledException)
             {
@@ -3291,6 +3302,60 @@ public sealed class LuisterPage : ContentPage
                 // Image warmup is best-effort; the remote image source remains available.
             }
         }, token);
+    }
+
+    private IEnumerable<string?> EnumeratePrioritizedLuisterImageUrls()
+    {
+        if (_continueListeningState.Current is { } continueListening)
+        {
+            var resolvedStory = ResolveContinueListeningStory(continueListening);
+            yield return PageHelpers.ResolveStoryCardImageSource(
+                resolvedStory?.Story ?? ToMobileStorySummary(continueListening),
+                _apiClient);
+        }
+
+        foreach (var download in ResolveVisibleDownloadedStories().Take(8))
+        {
+            yield return PageHelpers.ResolveStoryCardImageSource(ToMobileStorySummary(download), _apiClient);
+        }
+
+        foreach (var section in FilterSections(_sections, _searchEntry.Text))
+        {
+            if (IsSpeellysteSection(section))
+            {
+                foreach (var playlist in section.Playlists.Take(8))
+                {
+                    yield return playlist.ArtworkUrl;
+                    if (playlist.ShowcaseStory is not null)
+                    {
+                        yield return PageHelpers.ResolveStoryCardImageSource(playlist.ShowcaseStory, _apiClient);
+                    }
+                }
+
+                continue;
+            }
+
+            if (section.Playlist is null)
+            {
+                continue;
+            }
+
+            yield return section.Playlist.ArtworkUrl;
+            if (section.Playlist.ShowcaseStory is not null)
+            {
+                yield return PageHelpers.ResolveStoryCardImageSource(section.Playlist.ShowcaseStory, _apiClient);
+            }
+
+            foreach (var story in section.Playlist.Stories.Take(10))
+            {
+                yield return PageHelpers.ResolveStoryCardImageSource(story, _apiClient);
+            }
+        }
+
+        foreach (var imageUrl in EnumerateLuisterImageUrls())
+        {
+            yield return imageUrl;
+        }
     }
 
     private IEnumerable<string?> EnumerateLuisterImageUrls()

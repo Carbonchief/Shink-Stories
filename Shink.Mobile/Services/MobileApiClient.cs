@@ -1217,13 +1217,13 @@ public sealed class MobileApiClient
                 : ImageSource.FromFile(fallbackFile);
         }
 
-        var normalizedUrl = NormalizeIncomingUrl(url.Trim());
+        var normalizedUrl = NormalizeIncomingImageUrl(url);
         if (IsBundledImageName(normalizedUrl))
         {
             return ImageSource.FromFile(normalizedUrl);
         }
 
-        var imageUrl = BuildImageUrl(normalizedUrl);
+        var imageUrl = BuildAbsoluteImageUrl(normalizedUrl);
         if (TryGetCachedImagePath(imageUrl, out var cachedPath))
         {
             return ImageSource.FromFile(cachedPath);
@@ -1250,7 +1250,9 @@ public sealed class MobileApiClient
 
         var imageUrls = urls
             .Where(url => !string.IsNullOrWhiteSpace(url))
-            .Select(url => BuildImageUrl(url!))
+            .Select(NormalizeIncomingImageUrl)
+            .Where(url => !IsBundledImageName(url))
+            .Select(BuildAbsoluteImageUrl)
             .Where(url => Uri.TryCreate(url, UriKind.Absolute, out var uri) && IsWebUri(uri))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Take(maxImages)
@@ -1760,6 +1762,18 @@ public sealed class MobileApiClient
 
         return false;
     }
+
+    private string NormalizeIncomingImageUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return string.Empty;
+        }
+
+        return NormalizeIncomingUrl(url.Trim());
+    }
+
+    private string BuildAbsoluteImageUrl(string url) => BuildImageUrl(url);
 
     private static bool IsWebUri(Uri uri) =>
         string.Equals(uri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||

@@ -9,6 +9,8 @@ public sealed class KaraktersPage : ContentPage
     private readonly SessionState _sessionState;
     private readonly VerticalStackLayout _content;
     private readonly RefreshView _refreshView;
+    private readonly Dictionary<string, ImageSource> _imageSourceCache = new(StringComparer.OrdinalIgnoreCase);
+    private CancellationTokenSource? _imageWarmupCancellation;
 
     public KaraktersPage(MobileApiClient apiClient, SessionState sessionState)
     {
@@ -44,8 +46,15 @@ public sealed class KaraktersPage : ContentPage
         }
     }
 
+    protected override void OnDisappearing()
+    {
+        _imageWarmupCancellation?.Cancel();
+        base.OnDisappearing();
+    }
+
     private async Task LoadAsync()
     {
+        _imageWarmupCancellation?.Cancel();
         _content.Children.Clear();
         _content.Children.Add(MobileTopBar.Build(this, _apiClient, _sessionState.Current, leftAction: "back"));
         _content.Children.Add(new ActivityIndicator
@@ -67,17 +76,8 @@ public sealed class KaraktersPage : ContentPage
                 return;
             }
 
-            _content.Children.Add(BuildHero(response));
-            if (response.Characters.Count == 0)
-            {
-                _content.Children.Add(BuildState("Geen karakters is nog beskikbaar nie."));
-                return;
-            }
-
-            foreach (var character in response.Characters)
-            {
-                _content.Children.Add(BuildCharacterCard(character));
-            }
+            RenderCharacters(response);
+            StartImageWarmup(response);
         }
         catch (Exception ex)
         {
@@ -88,6 +88,23 @@ public sealed class KaraktersPage : ContentPage
         finally
         {
             _refreshView.IsRefreshing = false;
+        }
+    }
+
+    private void RenderCharacters(MobileCharactersResponse response)
+    {
+        _content.Children.Clear();
+        _content.Children.Add(MobileTopBar.Build(this, _apiClient, _sessionState.Current, leftAction: "back"));
+        _content.Children.Add(BuildHero(response));
+        if (response.Characters.Count == 0)
+        {
+            _content.Children.Add(BuildState("Geen karakters is nog beskikbaar nie."));
+            return;
+        }
+
+        foreach (var character in response.Characters)
+        {
+            _content.Children.Add(BuildCharacterCard(character));
         }
     }
 
@@ -216,7 +233,7 @@ public sealed class KaraktersPage : ContentPage
                     Padding = 8,
                     Content = new Image
                     {
-                        Source = _apiClient.BuildImageUrl(character.ImageUrl),
+                        Source = BuildCharacterImageSource(character.ImageUrl),
                         Aspect = Aspect.AspectFit,
                         AutomationId = $"character-image-{character.Slug}"
                     }
@@ -390,6 +407,71 @@ public sealed class KaraktersPage : ContentPage
                 LineBreakMode = LineBreakMode.WordWrap
             }
         };
+
+    private ImageSource BuildCharacterImageSource(string? url)
+    {
+        var cacheKey = url?.Trim() ?? string.Empty;
+        if (_imageSourceCache.TryGetValue(cacheKey, out var source))
+        {
+            return source;
+        }
+
+        source = _apiClient.BuildCachedImageSource(url, "schink_background.jpeg");
+        _imageSourceCache[cacheKey] = source;
+        return source;
+    }
+
+    private void StartImageWarmup(MobileCharactersResponse response)
+    {
+        _imageWarmupCancellation?.Cancel();
+        _imageWarmupCancellation?.Dispose();
+        _imageWarmupCancellation = new CancellationTokenSource();
+        var token = _imageWarmupCancellation.Token;
+        var imageUrls = response.Characters
+            .Select(character => character.ImageUrl)
+            .Where(url => !string.IsNullOrWhiteSpace(url))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (imageUrls.Length == 0)
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await _apiClient.CacheImagesAsync(
+                    imageUrls,
+                    token,
+                    maxImages: 48,
+                    maxDegreeOfParallelism: 3);
+                if (token.IsCancellationRequested || Handler is null)
+                {
+                    return;
+                }
+
+                MainThread.BeginInvokeOnMainThread(() =>
+                {
+                    if (token.IsCancellationRequested || Handler is null)
+                    {
+                        return;
+                    }
+
+                    _imageSourceCache.Clear();
+                    RenderCharacters(response);
+                });
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            catch
+            {
+                // Character artwork warmup is best-effort; remote image sources remain available.
+            }
+        }, token);
+    }
 
     private static string BuildLoadErrorMessage(Exception ex)
     {

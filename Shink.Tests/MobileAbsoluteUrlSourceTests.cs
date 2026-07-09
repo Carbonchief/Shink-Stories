@@ -771,6 +771,14 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(karaktersPage, "await _apiClient.GetCharactersAsync()");
         StringAssert.Contains(karaktersPage, "BuildHero(response)");
         StringAssert.Contains(karaktersPage, "BuildCharacterCard(character)");
+        StringAssert.Contains(karaktersPage, "BuildCharacterImageSource(character.ImageUrl)");
+        StringAssert.Contains(karaktersPage, "_apiClient.BuildCachedImageSource(url, \"schink_background.jpeg\")");
+        StringAssert.Contains(karaktersPage, "StartImageWarmup(response)");
+        StringAssert.Contains(karaktersPage, "await _apiClient.CacheImagesAsync(");
+        StringAssert.Contains(karaktersPage, "maxImages: 48");
+        StringAssert.Contains(karaktersPage, "maxDegreeOfParallelism: 3");
+        StringAssert.Contains(karaktersPage, "_imageSourceCache.Clear();");
+        StringAssert.Contains(karaktersPage, "RenderCharacters(response);");
         StringAssert.Contains(karaktersPage, "OpenPrimaryStoryAsync(character)");
         StringAssert.Contains(karaktersPage, "nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source={Uri.EscapeDataString(story.Source)}");
         StringAssert.Contains(luisterPage, "\"Karakters\", \"Afgelaai\", \"Instellings\", \"Bestuur rekening\"");
@@ -1329,6 +1337,7 @@ public class MobileAbsoluteUrlSourceTests
     public void MobileLuisterAndroidFeedAvoidsScrollJankWork()
     {
         var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
+        var client = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
 
         StringAssert.Contains(luisterPage, "ItemsSource = Array.Empty<LuisterFeedItem>()");
         StringAssert.Contains(luisterPage, "ItemTemplate = new DataTemplate(BuildFeedItemView)");
@@ -1346,9 +1355,18 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "IsAndroid ? 188 : 218");
         StringAssert.Contains(luisterPage, "IsAndroid ? 252 : 286");
         StringAssert.Contains(luisterPage, "StrokeShape = BuildArtworkShape(16)");
-        StringAssert.Contains(luisterPage, "if (IsAndroid)\n        {\n            return;\n        }");
-        StringAssert.Contains(luisterPage, "maxImages: 80");
-        StringAssert.Contains(luisterPage, "maxDegreeOfParallelism: 4");
+        StringAssert.Contains(luisterPage, "var imageUrls = EnumeratePrioritizedLuisterImageUrls().ToArray();");
+        StringAssert.Contains(luisterPage, "maxImages: IsAndroid ? 56 : 80");
+        StringAssert.Contains(luisterPage, "maxDegreeOfParallelism: IsAndroid ? 3 : 4");
+        StringAssert.Contains(luisterPage, "_imageSourceCache.Clear();");
+        StringAssert.Contains(luisterPage, "RenderPlaylistContent();");
+        StringAssert.Contains(luisterPage, "private IEnumerable<string?> EnumeratePrioritizedLuisterImageUrls()");
+        StringAssert.Contains(luisterPage, "foreach (var download in ResolveVisibleDownloadedStories().Take(8))");
+        Assert.IsFalse(luisterPage.Contains("if (IsAndroid)\n        {\n            return;\n        }", StringComparison.Ordinal));
+        StringAssert.Contains(client, "NormalizeIncomingImageUrl(url)");
+        StringAssert.Contains(client, ".Select(NormalizeIncomingImageUrl)");
+        StringAssert.Contains(client, ".Where(url => !IsBundledImageName(url))");
+        StringAssert.Contains(client, ".Select(BuildAbsoluteImageUrl)");
         StringAssert.Contains(luisterPage, "if (Math.Abs(cover.HeightRequest - targetHeight) > 0.5)");
         StringAssert.Contains(luisterPage, "ResolveVisibleDownloadedStories()");
         Assert.IsFalse(luisterPage.Contains("_playlistContent.Children.Clear();", StringComparison.Ordinal));
