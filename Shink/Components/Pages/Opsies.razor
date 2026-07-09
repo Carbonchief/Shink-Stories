@@ -75,6 +75,12 @@
             Hierdie betaalherinnering is reeds afgehandel of het verval. As jou intekening reeds aktief is, kan jy sommer voortgaan luister.
         </p>
     }
+    else if (string.Equals(PaymentStatus, "herinnering-misluk", StringComparison.OrdinalIgnoreCase))
+    {
+        <p class="opsies-payment-status opsies-payment-cancelled" role="status" aria-live="polite">
+            Ons kon nie die veilige betaalblad nou gereed kry nie. Kies jou plan hieronder en probeer weer.
+        </p>
+    }
     else if (string.Equals(PaymentStatus, "kode-toegepas", StringComparison.OrdinalIgnoreCase))
     {
         <p class="opsies-payment-status opsies-payment-success" role="status" aria-live="polite">

@@ -818,6 +818,8 @@ app.MapGet("/betaalherinneringe/gaan", async (
     HttpContext httpContext,
     ILogger<Program> logger) =>
 {
+    SetAbandonedCartRecoveryResponseHeaders(httpContext);
+
     if (string.IsNullOrWhiteSpace(id) || string.IsNullOrWhiteSpace(token))
     {
         return Results.Redirect(QueryHelpers.AddQueryString("/opsies", "betaling", "herinnering-verval"));
@@ -834,7 +836,7 @@ app.MapGet("/betaalherinneringe/gaan", async (
         var plan = PaymentPlanCatalog.FindByTierCode(recovery.SourceKey);
         if (plan is null)
         {
-            return Results.Redirect("/opsies");
+            return Results.Redirect(QueryHelpers.AddQueryString("/opsies", "betaling", "herinnering-verval"));
         }
 
         var hasActiveTierSubscription = await subscriptionLedgerService.HasBillableSubscriptionForTierAsync(
@@ -874,11 +876,14 @@ app.MapGet("/betaalherinneringe/gaan", async (
                 recovery.CustomerEmail,
                 plan.Slug,
                 httpContext.RequestAborted);
-            await abandonedCartRecoveryService.ResolveSubscriptionRecoveriesAsync(
-                recovery.CustomerEmail,
-                plan.TierCode,
-                planChangeResult.IsSuccess ? "paid_plan_changed" : "paid_plan_change_failed",
-                httpContext.RequestAborted);
+            if (planChangeResult.IsSuccess)
+            {
+                await abandonedCartRecoveryService.ResolveSubscriptionRecoveriesAsync(
+                    recovery.CustomerEmail,
+                    plan.TierCode,
+                    "paid",
+                    httpContext.RequestAborted);
+            }
 
             logger.LogInformation(
                 "Handled abandoned-cart paid plan change. recovery_id={RecoveryId} tier={TierCode} email={Email} success={Success} change_type={ChangeType}",
@@ -933,14 +938,20 @@ app.MapGet("/betaalherinneringe/gaan", async (
                 httpContext.RequestAborted);
             if (checkoutResult.IsSuccess && !string.IsNullOrWhiteSpace(checkoutResult.AuthorizationUrl))
             {
-                return Results.Redirect(checkoutResult.AuthorizationUrl);
+                var html = BuildAbandonedCartRecoveryCheckoutPageHtml(
+                    plan,
+                    "Paystack",
+                    checkoutResult.AuthorizationUrl,
+                    payFastCheckoutForm: null,
+                    CspConstants.GetNonce(httpContext));
+                return Results.Content(html, "text/html; charset=utf-8");
             }
 
             logger.LogWarning(
                 "Abandoned subscription Paystack continue failed. recovery_id={RecoveryId} error={Error}",
                 recovery.RecoveryId,
                 checkoutResult.ErrorMessage);
-            return Results.Redirect($"/betaal/{Uri.EscapeDataString(plan.Slug)}?provider=paystack");
+            return Results.Redirect(BuildAbandonedCartRecoveryFailureRedirectPath(plan));
         }
 
         var (firstName, lastName) = SplitRecoveryName(recovery.CustomerName);
@@ -954,14 +965,12 @@ app.MapGet("/betaalherinneringe/gaan", async (
             out var checkoutForm,
             out var errorMessage))
         {
-            var html = payFastCheckoutService.BuildAutoSubmitFormHtml(
+            var html = BuildAbandonedCartRecoveryCheckoutPageHtml(
+                plan,
+                "PayFast",
+                checkoutUrl: null,
                 checkoutForm,
-                $"Jy betaal nou vir {plan.Name}.",
                 CspConstants.GetNonce(httpContext));
-            httpContext.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
-            httpContext.Response.Headers.Pragma = "no-cache";
-            httpContext.Response.Headers.Expires = "0";
-            httpContext.Response.Headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet";
             return Results.Content(html, "text/html; charset=utf-8");
         }
 
@@ -969,7 +978,7 @@ app.MapGet("/betaalherinneringe/gaan", async (
             "Abandoned subscription PayFast continue failed. recovery_id={RecoveryId} error={Error}",
             recovery.RecoveryId,
             errorMessage);
-        return Results.Redirect($"/betaal/{Uri.EscapeDataString(plan.Slug)}?provider=payfast");
+        return Results.Redirect(BuildAbandonedCartRecoveryFailureRedirectPath(plan));
     }
 
     if (string.Equals(recovery.SourceType, "store_order", StringComparison.OrdinalIgnoreCase))
@@ -5184,6 +5193,120 @@ static string BuildSubscriptionPaymentRedirectPath(
     }
 
     return QueryHelpers.AddQueryString("/opsies", query);
+}
+
+static string BuildAbandonedCartRecoveryFailureRedirectPath(PaymentPlan plan) =>
+    QueryHelpers.AddQueryString(
+        "/opsies",
+        new Dictionary<string, string?>
+        {
+            ["betaling"] = "herinnering-misluk",
+            ["plan"] = plan.Slug,
+            ["tier"] = plan.TierCode
+        });
+
+static void SetAbandonedCartRecoveryResponseHeaders(HttpContext httpContext)
+{
+    httpContext.Response.Headers.CacheControl = "private, no-store, no-cache, must-revalidate";
+    httpContext.Response.Headers.Pragma = "no-cache";
+    httpContext.Response.Headers.Expires = "0";
+    httpContext.Response.Headers["Referrer-Policy"] = "no-referrer";
+    httpContext.Response.Headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet";
+}
+
+static string BuildAbandonedCartRecoveryCheckoutPageHtml(
+    PaymentPlan plan,
+    string providerName,
+    string? checkoutUrl,
+    PayFastCheckoutForm? payFastCheckoutForm,
+    string? cspNonce)
+{
+    var encodedPlanName = WebUtility.HtmlEncode(plan.Name);
+    var encodedProviderName = WebUtility.HtmlEncode(providerName);
+    var billingPeriod = plan.BillingPeriodMonths == 12 ? "per jaar" : "per maand";
+    var alternativePlanUrl = QueryHelpers.AddQueryString(
+        "/opsies",
+        new Dictionary<string, string?>
+        {
+            ["plan"] = plan.Slug
+        }) + "#plan-opsies";
+    var paymentControl = new StringBuilder();
+
+    if (!string.IsNullOrWhiteSpace(checkoutUrl) &&
+        Uri.TryCreate(checkoutUrl, UriKind.Absolute, out var checkoutUri) &&
+        string.Equals(checkoutUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+    {
+        paymentControl.AppendLine($$"""
+            <a href="{{WebUtility.HtmlEncode(checkoutUri.ToString())}}" rel="nofollow noreferrer" style="display:block;width:100%;border-radius:999px;padding:15px 20px;background:#f3b23f;color:#222;font-weight:800;text-align:center;text-decoration:none;">
+              Gaan voort na veilige betaling
+            </a>
+            """);
+    }
+    else if (payFastCheckoutForm is not null &&
+             Uri.TryCreate(payFastCheckoutForm.ActionUrl, UriKind.Absolute, out var payFastUri) &&
+             string.Equals(payFastUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+    {
+        paymentControl.AppendLine($"<form action=\"{WebUtility.HtmlEncode(payFastUri.ToString())}\" method=\"post\">");
+        foreach (var field in payFastCheckoutForm.Fields)
+        {
+            paymentControl.AppendLine(
+                $"  <input type=\"hidden\" name=\"{WebUtility.HtmlEncode(field.Key)}\" value=\"{WebUtility.HtmlEncode(field.Value)}\" />");
+        }
+
+        paymentControl.AppendLine("  <button type=\"submit\" style=\"display:block;width:100%;border:0;border-radius:999px;padding:15px 20px;background:#f3b23f;color:#222;cursor:pointer;font:inherit;font-weight:800;text-align:center;\">Gaan voort na veilige betaling</button>");
+        paymentControl.AppendLine("</form>");
+    }
+
+    var script = string.IsNullOrWhiteSpace(cspNonce)
+        ? string.Empty
+        : $$"""
+          <script nonce="{{WebUtility.HtmlEncode(cspNonce)}}">
+            window.addEventListener('pageshow', function (event) {
+              var entries = window.performance && window.performance.getEntriesByType
+                ? window.performance.getEntriesByType('navigation')
+                : [];
+              var navigation = entries.length > 0 ? entries[0] : null;
+              if (event.persisted || (navigation && navigation.type === 'back_forward')) {
+                window.location.reload();
+              }
+            });
+          </script>
+          """;
+
+    return $$"""
+        <!doctype html>
+        <html lang="af">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <meta name="referrer" content="no-referrer" />
+          <meta name="robots" content="noindex,nofollow,noarchive,nosnippet" />
+          <title>Schink Stories | Voltooi betaling</title>
+        </head>
+        <body style="margin:0;background:#f4eee6;color:#222;font-family:Arial,Helvetica,sans-serif;">
+          <main style="width:calc(100% - 32px);max-width:620px;margin:40px auto;">
+            <section aria-labelledby="recovery-title" style="overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 18px 48px rgba(41,54,48,.14);">
+              <div style="display:flex;justify-content:center;padding:22px 24px;background:#2f5d50;">
+                <img src="/branding/schink-logo-text.png" alt="Schink" style="display:block;width:70%;max-width:210px;height:auto;" />
+              </div>
+              <div style="padding:34px;">
+                <p style="margin:0 0 8px;color:#c8801e;font-size:13px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;">Jou plan is gereed</p>
+                <h1 id="recovery-title" style="margin:0 0 12px;color:#2f5d50;font-family:Georgia,'Times New Roman',serif;font-size:clamp(30px,7vw,42px);line-height:1.08;">Voltooi jou intekening</h1>
+                <p style="margin:0 0 24px;color:#545454;font-size:17px;line-height:1.6;">Kontroleer jou plan hieronder en gaan dan voort na {{encodedProviderName}} se veilige betaalblad.</p>
+                <div style="margin:0 0 24px;padding:20px;border:1px solid #eadfce;border-radius:16px;background:#fffaf4;">
+                  <strong style="display:block;margin-bottom:6px;color:#2f5d50;font-size:21px;">{{encodedPlanName}}</strong>
+                  <span style="color:#4f4f4f;font-size:16px;">R {{plan.AmountDisplay}} {{billingPeriod}}</span>
+                </div>
+                {{paymentControl}}
+                <a href="{{WebUtility.HtmlEncode(alternativePlanUrl)}}" style="display:block;margin-top:18px;color:#2f5d50;font-weight:700;text-align:center;text-underline-offset:3px;">Kies 'n ander plan</a>
+                <p style="margin:24px 0 0;color:#696969;font-size:14px;line-height:1.55;text-align:center;">As jy van die betaalblad af terugkom, maak ons outomaties 'n vars betaalpoging gereed.</p>
+              </div>
+            </section>
+          </main>
+          {{script}}
+        </body>
+        </html>
+        """;
 }
 
 static string BuildPlanChangeRedirectPath(

@@ -128,6 +128,58 @@ public sealed class SubscriptionDuplicateCheckoutSourceTests
     }
 
     [TestMethod]
+    public void AbandonedCartSubscriptionRecoveryReturnsToAStableCheckoutPageInsteadOfRedirectLooping()
+    {
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+        var routeStart = program.IndexOf("app.MapGet(\"/betaalherinneringe/gaan\"", StringComparison.Ordinal);
+        var routeBlock = ExtractBlock(
+            program,
+            "app.MapGet(\"/betaalherinneringe/gaan\"",
+            "app.MapPost(\"/rekening/skuif-na-gratis\"",
+            startOffset: routeStart);
+
+        StringAssert.Contains(routeBlock, "BuildAbandonedCartRecoveryCheckoutPageHtml(");
+        StringAssert.Contains(routeBlock, "SetAbandonedCartRecoveryResponseHeaders(httpContext)");
+        Assert.DoesNotContain(
+            "return Results.Redirect(checkoutResult.AuthorizationUrl);",
+            routeBlock,
+            "The email recovery route must render an on-site checkout handoff instead of immediately redirecting back to Paystack.");
+        Assert.DoesNotContain(
+            "BuildAutoSubmitFormHtml(",
+            routeBlock,
+            "PayFast recovery must also wait for an explicit user action so browser-back returns to the Schink page.");
+
+        StringAssert.Contains(program, "Gaan voort na veilige betaling");
+        StringAssert.Contains(program, "Kies 'n ander plan");
+        StringAssert.Contains(program, "back_forward");
+        StringAssert.Contains(program, "window.location.reload()");
+
+        var recoveryMarkupStart = program.IndexOf("static string BuildAbandonedCartRecoveryCheckoutPageHtml(", StringComparison.Ordinal);
+        var recoveryMarkupEnd = program.IndexOf("static string BuildPlanChangeRedirectPath(", recoveryMarkupStart, StringComparison.Ordinal);
+        var recoveryMarkup = program[recoveryMarkupStart..recoveryMarkupEnd];
+        Assert.DoesNotContain("<style>", recoveryMarkup, "The recovery page must stay compatible with the site's strict style-src-elem policy.");
+        StringAssert.Contains(recoveryMarkup, "style=\\\"");
+    }
+
+    [TestMethod]
+    public void AbandonedCartSubscriptionRecoveryCheckoutFailureKeepsAVisiblePlanRetryPath()
+    {
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+        var opsies = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Opsies.razor"));
+        var routeStart = program.IndexOf("app.MapGet(\"/betaalherinneringe/gaan\"", StringComparison.Ordinal);
+        var routeBlock = ExtractBlock(
+            program,
+            "app.MapGet(\"/betaalherinneringe/gaan\"",
+            "app.MapPost(\"/rekening/skuif-na-gratis\"",
+            startOffset: routeStart);
+
+        StringAssert.Contains(routeBlock, "BuildAbandonedCartRecoveryFailureRedirectPath(plan)");
+        StringAssert.Contains(program, "\"herinnering-misluk\"");
+        StringAssert.Contains(opsies, "PaymentStatus, \"herinnering-misluk\"");
+        StringAssert.Contains(opsies, "Kies jou plan hieronder en probeer weer");
+    }
+
+    [TestMethod]
     public void AbandonedCartSubscriptionRecoveryChangesAnyActivePaidPlanBeforeStartingDifferentTierCheckout()
     {
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
@@ -141,7 +193,10 @@ public sealed class SubscriptionDuplicateCheckoutSourceTests
         StringAssert.Contains(routeBlock, "HasBillablePaidSubscriptionAsync(");
         StringAssert.Contains(routeBlock, "ChangePaidSubscriptionPlanAsync(");
         StringAssert.Contains(routeBlock, "BuildPlanChangeRedirectPath(");
-        StringAssert.Contains(routeBlock, "paid_plan_changed");
+        StringAssert.Contains(routeBlock, "if (planChangeResult.IsSuccess)");
+        StringAssert.Contains(routeBlock, "\"paid\"");
+        Assert.DoesNotContain("paid_plan_changed", routeBlock);
+        Assert.DoesNotContain("paid_plan_change_failed", routeBlock);
 
         var paidCheckIndex = routeBlock.IndexOf("HasBillablePaidSubscriptionAsync(", StringComparison.Ordinal);
         var planChangeIndex = routeBlock.IndexOf("ChangePaidSubscriptionPlanAsync(", StringComparison.Ordinal);
