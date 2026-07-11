@@ -212,6 +212,7 @@ public sealed class LuisterPage : ContentPage
         base.OnAppearing();
         _isPageActive = true;
         SubscribePageEvents();
+        _ = _apiClient.WarmCharactersCacheAsync();
         if (!_hasLoaded)
         {
             await LoadAsync();

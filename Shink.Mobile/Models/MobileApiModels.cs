@@ -76,6 +76,7 @@ public sealed record MobileCharactersResponse(
     IReadOnlyList<MobileCharacterCard> Characters);
 
 public sealed record MobileCharacterCard(
+    Guid CharacterId,
     string Slug,
     string DisplayName,
     string Heading,
@@ -96,9 +97,15 @@ public sealed record MobileCharacterCard(
     string? Friends,
     string? ReflectionQuestion,
     string? ChallengeText,
+    IReadOnlyList<MobileCharacterAudioClip> PreviewAudioClips,
     MobileCharacterStoryLink? PrimaryStory,
     IReadOnlyList<MobileCharacterStoryLink> RelatedStories,
     string CallToActionLabel);
+
+public sealed record MobileCharacterAudioClip(
+    string Title,
+    string StreamSlug,
+    string AudioUrl);
 
 public sealed record MobileCharacterStoryLink(
     string Slug,

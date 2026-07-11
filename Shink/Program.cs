@@ -3520,7 +3520,8 @@ app.MapGet("/api/mobile/karakters", async (
     ICharacterCatalogService characterCatalogService,
     ICharacterTrackingService characterTrackingService,
     IStoryCatalogService storyCatalogService,
-    IStoryTrackingService storyTrackingService) =>
+    IStoryTrackingService storyTrackingService,
+    IAudioAccessService audioAccessService) =>
 {
     var signedInEmail = GetSignedInEmail(httpContext.User);
     var charactersTask = characterCatalogService.GetPublishedCharactersAsync(httpContext.RequestAborted);
@@ -3550,7 +3551,8 @@ app.MapGet("/api/mobile/karakters", async (
             character,
             storyLookup,
             unlockStates,
-            index + 1))
+            index + 1,
+            audioAccessService))
         .ToArray();
 
     return Results.Ok(new MobileCharactersResponse(
@@ -3559,6 +3561,63 @@ app.MapGet("/api/mobile/karakters", async (
         TotalCount: characterCards.Length,
         Characters: characterCards));
 }).DisableAntiforgery();
+
+app.MapPost("/api/mobile/karakters/{slug}/listen", async (
+    string slug,
+    MobileCharacterListenRequest request,
+    HttpContext httpContext,
+    ICharacterCatalogService characterCatalogService,
+    ICharacterTrackingService characterTrackingService,
+    IUserNotificationService userNotificationService) =>
+{
+    if (!IsMobileAppRequest(httpContext) || !IsLikelySameSiteRequest(httpContext))
+    {
+        return Results.Forbid();
+    }
+
+    var signedInEmail = GetSignedInEmail(httpContext.User);
+    if (string.IsNullOrWhiteSpace(signedInEmail))
+    {
+        return Results.Unauthorized();
+    }
+
+    var normalizedSlug = slug.Trim();
+    var normalizedStreamSlug = request.StreamSlug?.Trim();
+    if (string.IsNullOrWhiteSpace(normalizedSlug) || string.IsNullOrWhiteSpace(normalizedStreamSlug))
+    {
+        return Results.BadRequest(new { message = "Ongeldige karakterklank." });
+    }
+
+    var characters = await characterCatalogService.GetPublishedCharactersAsync(httpContext.RequestAborted);
+    var character = characters.FirstOrDefault(candidate =>
+        string.Equals(candidate.Slug, normalizedSlug, StringComparison.OrdinalIgnoreCase));
+    var clip = character?.AudioClips.FirstOrDefault(candidate =>
+        string.Equals(candidate.StreamSlug, normalizedStreamSlug, StringComparison.OrdinalIgnoreCase));
+    if (character is null || clip is null)
+    {
+        return Results.NotFound();
+    }
+
+    var tracked = await characterTrackingService.RecordProfileListenAsync(
+        signedInEmail,
+        new CharacterProfileListenTrackingRequest(
+            character.CharacterId,
+            character.Slug,
+            clip.StreamSlug,
+            "profile"),
+        httpContext.RequestAborted);
+    var notificationSyncResult = tracked
+        ? await userNotificationService.SyncCharacterUnlockNotificationsAsync(
+            signedInEmail,
+            cancellationToken: httpContext.RequestAborted)
+        : new NotificationSyncResult(0);
+
+    return Results.Ok(new
+    {
+        tracked,
+        newNotificationsCreated = notificationSyncResult.CreatedCount
+    });
+}).RequireRateLimiting("story-tracking").DisableAntiforgery();
 
 app.MapGet("/api/mobile/stories/{slug}", async (
     string slug,
@@ -7278,7 +7337,8 @@ static MobileCharacterCardResponse BuildMobileCharacterCard(
     StoryCharacterItem character,
     IReadOnlyDictionary<string, MobileCharacterStoryLinkResponse> storyLookup,
     IReadOnlyDictionary<Guid, bool> unlockStates,
-    int displayOrder)
+    int displayOrder,
+    IAudioAccessService audioAccessService)
 {
     var relatedStories = CharacterUnlockEvaluator.GetRelevantStorySlugs(character)
         .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -7303,8 +7363,19 @@ static MobileCharacterCardResponse BuildMobileCharacterCard(
             : hasStoryDrivenUnlockRule
                 ? "Luister en sluit oop"
                 : "Luister storie";
+    var previewAudioClips = isUnlocked
+        ? character.AudioClips
+            .OrderBy(clip => clip.SortOrder)
+            .ThenBy(clip => clip.Title, StringComparer.OrdinalIgnoreCase)
+            .Select(clip => new MobileCharacterAudioClipResponse(
+                clip.Title,
+                clip.StreamSlug,
+                ToAbsoluteUri(httpContext, audioAccessService.CreateSignedAudioUrl(clip.StreamSlug, TimeSpan.FromHours(2)))))
+            .ToArray()
+        : Array.Empty<MobileCharacterAudioClipResponse>();
 
     return new MobileCharacterCardResponse(
+        CharacterId: character.CharacterId,
         Slug: character.Slug,
         DisplayName: character.DisplayName,
         Heading: isUnlocked ? character.DisplayName : "?????",
@@ -7327,6 +7398,7 @@ static MobileCharacterCardResponse BuildMobileCharacterCard(
         Friends: isUnlocked ? character.Friends : null,
         ReflectionQuestion: isUnlocked ? character.ReflectionQuestion : null,
         ChallengeText: isUnlocked ? character.ChallengeText : null,
+        PreviewAudioClips: previewAudioClips,
         PrimaryStory: primaryStory,
         RelatedStories: relatedStories,
         CallToActionLabel: callToActionLabel);
@@ -7409,6 +7481,7 @@ sealed record AuthSignUpApiRequest(
     string? DiscountCode);
 sealed record SignupDiscountPreviewApiRequest(string? DiscountCode, string? SelectedTierCode);
 sealed record StoryViewTrackApiRequest(string? StoryPath, string? Source, string? ReferrerPath);
+sealed record MobileCharacterListenRequest(string? StreamSlug);
 sealed record StoryListenTrackApiRequest(
     string? StoryPath,
     string? Source,
@@ -7516,6 +7589,7 @@ sealed record MobileCharactersResponse(
     int TotalCount,
     IReadOnlyList<MobileCharacterCardResponse> Characters);
 sealed record MobileCharacterCardResponse(
+    Guid CharacterId,
     string Slug,
     string DisplayName,
     string Heading,
@@ -7536,9 +7610,14 @@ sealed record MobileCharacterCardResponse(
     string? Friends,
     string? ReflectionQuestion,
     string? ChallengeText,
+    IReadOnlyList<MobileCharacterAudioClipResponse> PreviewAudioClips,
     MobileCharacterStoryLinkResponse? PrimaryStory,
     IReadOnlyList<MobileCharacterStoryLinkResponse> RelatedStories,
     string CallToActionLabel);
+sealed record MobileCharacterAudioClipResponse(
+    string Title,
+    string StreamSlug,
+    string AudioUrl);
 sealed record MobileCharacterStoryLinkResponse(
     string Slug,
     string Title,

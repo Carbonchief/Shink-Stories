@@ -245,6 +245,7 @@ public sealed class MobileApiClient
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly TimeSpan DefaultLuisterCacheMaxAge = TimeSpan.FromHours(12);
+    private static readonly TimeSpan DefaultCharactersCacheMaxAge = TimeSpan.FromDays(7);
     private static readonly TimeSpan DefaultStoryDetailCacheMaxAge = TimeSpan.FromHours(12);
     private static readonly TimeSpan DefaultNotificationCacheMaxAge = TimeSpan.FromDays(7);
 
@@ -255,11 +256,13 @@ public sealed class MobileApiClient
     private readonly MobileAnalyticsService _analytics;
     private readonly SemaphoreSlim _authCookieStorageLock = new(1, 1);
     private readonly SemaphoreSlim _luisterCacheLock = new(1, 1);
+    private readonly SemaphoreSlim _charactersCacheLock = new(1, 1);
     private readonly SemaphoreSlim _storyDetailCacheLock = new(1, 1);
     private readonly SemaphoreSlim _notificationCacheLock = new(1, 1);
     private readonly SemaphoreSlim _offlineStoryListenQueueLock = new(1, 1);
     private readonly SemaphoreSlim _offlineStoryListenFlushLock = new(1, 1);
     private MobileLuisterCacheEntry? _memoryLuisterCache;
+    private MobileCharactersCacheEntry? _memoryCharactersCache;
     private MobileNotificationCacheEntry? _memoryNotificationCache;
     private readonly Dictionary<string, MobileStoryDetailCacheEntry> _memoryStoryDetailCache = new(StringComparer.OrdinalIgnoreCase);
     private bool _authCookiesLoaded;
@@ -313,7 +316,91 @@ public sealed class MobileApiClient
         GetAndCacheLuisterAsync(cancellationToken);
 
     public Task<MobileCharactersResponse?> GetCharactersAsync(CancellationToken cancellationToken = default) =>
-        GetAsync<MobileCharactersResponse>("/api/mobile/karakters", cancellationToken);
+        GetAndCacheCharactersAsync(cancellationToken);
+
+    public Task<MobileCharactersResponse?> GetCachedCharactersAsync(CancellationToken cancellationToken = default) =>
+        GetCachedCharactersAsync(DefaultCharactersCacheMaxAge, cancellationToken);
+
+    public async Task<MobileCharactersResponse?> GetCachedCharactersAsync(
+        TimeSpan maxAge,
+        CancellationToken cancellationToken = default)
+    {
+        var cacheKey = BuildCharactersCacheKey();
+        if (_memoryCharactersCache is { Response: { } memoryResponse } &&
+            string.Equals(_memoryCharactersCache.CacheKey, cacheKey, StringComparison.Ordinal) &&
+            DateTimeOffset.UtcNow - _memoryCharactersCache.CachedAtUtc <= maxAge)
+        {
+            return memoryResponse;
+        }
+
+        var cachePath = BuildCharactersCachePath();
+        if (!File.Exists(cachePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            await using var stream = File.OpenRead(cachePath);
+            var cacheEntry = await JsonSerializer.DeserializeAsync<MobileCharactersCacheEntry>(
+                stream,
+                JsonOptions,
+                cancellationToken);
+            if (cacheEntry?.Response is null ||
+                !string.Equals(cacheEntry.CacheKey, cacheKey, StringComparison.Ordinal) ||
+                DateTimeOffset.UtcNow - cacheEntry.CachedAtUtc > maxAge)
+            {
+                return null;
+            }
+
+            _memoryCharactersCache = cacheEntry;
+            return cacheEntry.Response;
+        }
+        catch
+        {
+            TryDeleteFile(cachePath);
+            return null;
+        }
+    }
+
+    public async Task WarmCharactersCacheAsync(CancellationToken cancellationToken = default)
+    {
+        if (await GetCachedCharactersAsync(TimeSpan.FromMinutes(10), cancellationToken) is not null)
+        {
+            return;
+        }
+
+        try
+        {
+            await GetCharactersAsync(cancellationToken);
+        }
+        catch
+        {
+            // Prefetching is best-effort and must not affect the page already on screen.
+        }
+    }
+
+    public async Task TrackCharacterProfileListenAsync(
+        string characterSlug,
+        string streamSlug,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var result = await PostAsync<TrackingResponse>(
+                $"/api/mobile/karakters/{Uri.EscapeDataString(characterSlug)}/listen",
+                new { streamSlug },
+                cancellationToken);
+            if (result?.NewNotificationsCreated > 0)
+            {
+                NewNotificationsAvailable?.Invoke(result.NewNotificationsCreated);
+            }
+        }
+        catch
+        {
+            // Character listen tracking must never interrupt voice playback.
+        }
+    }
 
     public Task<MobileLuisterResponse?> GetCachedLuisterAsync(CancellationToken cancellationToken = default) =>
         GetCachedLuisterAsync(DefaultLuisterCacheMaxAge, cancellationToken);
@@ -749,6 +836,17 @@ public sealed class MobileApiClient
         return response;
     }
 
+    private async Task<MobileCharactersResponse?> GetAndCacheCharactersAsync(CancellationToken cancellationToken)
+    {
+        var response = await GetAsync<MobileCharactersResponse>("/api/mobile/karakters", cancellationToken);
+        if (response is not null)
+        {
+            await SaveCharactersCacheAsync(response, cancellationToken);
+        }
+
+        return response;
+    }
+
     private async Task<MobileStoryDetailResponse?> GetAndCacheStoryAsync(
         string slug,
         string source,
@@ -820,6 +918,53 @@ public sealed class MobileApiClient
             if (cacheLockAcquired)
             {
                 _luisterCacheLock.Release();
+            }
+        }
+    }
+
+    private async Task SaveCharactersCacheAsync(
+        MobileCharactersResponse response,
+        CancellationToken cancellationToken)
+    {
+        var cacheEntry = new MobileCharactersCacheEntry(
+            BuildCharactersCacheKey(),
+            DateTimeOffset.UtcNow,
+            response);
+        _memoryCharactersCache = cacheEntry;
+
+        var cacheLockAcquired = false;
+        try
+        {
+            await _charactersCacheLock.WaitAsync(cancellationToken);
+            cacheLockAcquired = true;
+            var cachePath = BuildCharactersCachePath();
+            Directory.CreateDirectory(System.IO.Path.GetDirectoryName(cachePath)!);
+            var temporaryPath = $"{cachePath}.tmp";
+            await using (var stream = File.Create(temporaryPath))
+            {
+                await JsonSerializer.SerializeAsync(
+                    stream,
+                    cacheEntry,
+                    JsonOptions,
+                    cancellationToken);
+            }
+
+            if (File.Exists(cachePath))
+            {
+                File.Delete(cachePath);
+            }
+
+            File.Move(temporaryPath, cachePath);
+        }
+        catch
+        {
+            // Character data caching is an optimization only.
+        }
+        finally
+        {
+            if (cacheLockAcquired)
+            {
+                _charactersCacheLock.Release();
             }
         }
     }
@@ -1805,6 +1950,20 @@ public sealed class MobileApiClient
         return System.IO.Path.Combine(cacheDirectory, $"luister-{cacheKey}.json");
     }
 
+    private string BuildCharactersCachePath()
+    {
+        var cacheDirectory = System.IO.Path.Combine(FileSystem.CacheDirectory, "story-data");
+        return System.IO.Path.Combine(cacheDirectory, $"characters-{BuildStableCacheKey(BuildCharactersCacheKey())}.json");
+    }
+
+    private string BuildCharactersCacheKey()
+    {
+        var accountKey = _sessionState.Current.IsSignedIn
+            ? _sessionState.Current.Email?.Trim().ToLowerInvariant() ?? "signed-in"
+            : "signed-out";
+        return $"{_settings.BaseUrl}|{accountKey}";
+    }
+
     private string BuildStoryDetailCachePath(string slug, string source)
     {
         var cacheDirectory = System.IO.Path.Combine(FileSystem.CacheDirectory, "story-data");
@@ -1952,6 +2111,11 @@ public sealed class MobileApiClient
     private sealed record FavoriteResponse(bool IsFavorite);
     private sealed record TrackingResponse(bool Tracked, int NewNotificationsCreated = 0);
     private sealed record MobileLuisterCacheEntry(DateTimeOffset CachedAtUtc, MobileLuisterResponse Response);
+
+    private sealed record MobileCharactersCacheEntry(
+        string CacheKey,
+        DateTimeOffset CachedAtUtc,
+        MobileCharactersResponse Response);
 
     private sealed record MobileStoryDetailCacheEntry(DateTimeOffset CachedAtUtc, MobileStoryDetailResponse Response);
 
