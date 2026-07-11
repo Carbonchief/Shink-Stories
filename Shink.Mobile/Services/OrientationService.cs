@@ -50,13 +50,11 @@ public sealed class OrientationService : IOrientationService
                 .OfType<UIWindowScene>()
                 .SelectMany(scene => scene.Windows)
                 .FirstOrDefault(window => window.IsKeyWindow)
-                ?.RootViewController
-                ?? UIApplication.SharedApplication.KeyWindow?.RootViewController;
-
-            rootViewController?.SetNeedsUpdateOfSupportedInterfaceOrientations();
+                ?.RootViewController;
 
             if (OperatingSystem.IsIOSVersionAtLeast(16))
             {
+                rootViewController?.SetNeedsUpdateOfSupportedInterfaceOrientations();
                 var windowScene = rootViewController?.View?.Window?.WindowScene
                     ?? UIApplication.SharedApplication.ConnectedScenes
                         .OfType<UIWindowScene>()

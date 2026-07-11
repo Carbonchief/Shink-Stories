@@ -248,6 +248,7 @@ public sealed class MobileApiClient
     private static readonly TimeSpan DefaultCharactersCacheMaxAge = TimeSpan.FromDays(7);
     private static readonly TimeSpan DefaultStoryDetailCacheMaxAge = TimeSpan.FromHours(12);
     private static readonly TimeSpan DefaultNotificationCacheMaxAge = TimeSpan.FromDays(7);
+    private static readonly TimeSpan TransientGetRetryDelay = TimeSpan.FromMilliseconds(300);
 
     private readonly HttpClient _httpClient;
     private readonly CookieContainer _cookieContainer;
@@ -266,6 +267,7 @@ public sealed class MobileApiClient
     private MobileNotificationCacheEntry? _memoryNotificationCache;
     private readonly Dictionary<string, MobileStoryDetailCacheEntry> _memoryStoryDetailCache = new(StringComparer.OrdinalIgnoreCase);
     private bool _authCookiesLoaded;
+    private string? _lastPersistedAuthCookies;
 
     public event Action<int>? NewNotificationsAvailable;
 
@@ -808,9 +810,7 @@ public sealed class MobileApiClient
 
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, BuildUri(path));
-            AddMobileAppHeaderIfNeeded(request, path);
-            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            using var response = await SendGetWithTransientRetryAsync(path, cancellationToken);
             await SaveAuthCookiesAsync(cancellationToken);
             await EnsureSuccessAsync(response, cancellationToken);
             var result = await ReadJsonResponseAsync<T>(response, path, cancellationToken);
@@ -824,6 +824,43 @@ public sealed class MobileApiClient
             throw;
         }
     }
+
+    private async Task<HttpResponseMessage> SendGetWithTransientRetryAsync(
+        string path,
+        CancellationToken cancellationToken)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Get, BuildUri(path));
+                AddMobileAppHeaderIfNeeded(request, path);
+                var response = await _httpClient.SendAsync(
+                    request,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    cancellationToken);
+                if (attempt > 0 || !IsTransientGetStatusCode(response.StatusCode))
+                {
+                    return response;
+                }
+
+                response.Dispose();
+            }
+            catch (HttpRequestException) when (attempt == 0 && !cancellationToken.IsCancellationRequested)
+            {
+            }
+
+            await Task.Delay(TransientGetRetryDelay, cancellationToken);
+        }
+    }
+
+    private static bool IsTransientGetStatusCode(HttpStatusCode statusCode) =>
+        statusCode is HttpStatusCode.RequestTimeout or
+            HttpStatusCode.TooManyRequests or
+            HttpStatusCode.InternalServerError or
+            HttpStatusCode.BadGateway or
+            HttpStatusCode.ServiceUnavailable or
+            HttpStatusCode.GatewayTimeout;
 
     private async Task<MobileLuisterResponse?> GetAndCacheLuisterAsync(CancellationToken cancellationToken)
     {
@@ -1729,6 +1766,8 @@ public sealed class MobileApiClient
                 RestoreAuthCookies(serializedCookies);
             }
 
+            _lastPersistedAuthCookies = serializedCookies;
+
             _authCookiesLoaded = true;
         }
         catch
@@ -1755,12 +1794,22 @@ public sealed class MobileApiClient
 
             if (cookies.Length == 0)
             {
-                SecureStorage.Default.Remove(BuildAuthCookieStorageKey());
+                if (!string.IsNullOrEmpty(_lastPersistedAuthCookies))
+                {
+                    SecureStorage.Default.Remove(BuildAuthCookieStorageKey());
+                    _lastPersistedAuthCookies = null;
+                }
                 return;
             }
 
             var serializedCookies = JsonSerializer.Serialize(cookies, JsonOptions);
+            if (string.Equals(serializedCookies, _lastPersistedAuthCookies, StringComparison.Ordinal))
+            {
+                return;
+            }
+
             await SecureStorage.Default.SetAsync(BuildAuthCookieStorageKey(), serializedCookies);
+            _lastPersistedAuthCookies = serializedCookies;
         }
         catch
         {
@@ -1778,6 +1827,7 @@ public sealed class MobileApiClient
         try
         {
             SecureStorage.Default.Remove(BuildAuthCookieStorageKey());
+            _lastPersistedAuthCookies = null;
         }
         catch
         {

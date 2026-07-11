@@ -351,8 +351,8 @@ public sealed class LuisterPage : ContentPage
 
         try
         {
-            var sessionTask = _apiClient.GetSessionAsync();
-            var luisterTask = _apiClient.GetLuisterAsync();
+            var sessionTask = _apiClient.GetSessionAsync(cancellationToken);
+            var luisterTask = _apiClient.GetLuisterAsync(cancellationToken);
             await Task.WhenAll(sessionTask, luisterTask, downloadsTask);
 
             var response = await luisterTask;
