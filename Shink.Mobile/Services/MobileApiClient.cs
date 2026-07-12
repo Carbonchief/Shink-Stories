@@ -68,28 +68,54 @@ public sealed class SessionState
     private const string PlansUrlPreferenceKey = "mobile_session_plans_url";
 
     public MobileSession Current { get; private set; } = LoadCachedSession();
+    private int _updateVersion;
 
     public event Action<MobileSession>? Changed;
 
     public void Update(MobileSession session)
     {
+        Interlocked.Increment(ref _updateVersion);
         Current = session;
         SaveCachedSession(session);
         Changed?.Invoke(session);
     }
 
+    public async Task HydrateSensitiveCacheAsync()
+    {
+        var startingVersion = Volatile.Read(ref _updateVersion);
+        var sensitiveSession = await LoadSensitiveCachedSessionAsync();
+        if (sensitiveSession is null ||
+            startingVersion != Volatile.Read(ref _updateVersion) ||
+            !Current.IsSignedIn)
+        {
+            return;
+        }
+
+        var hydratedSession = Current with
+        {
+            Email = sensitiveSession.Email,
+            DisplayName = sensitiveSession.DisplayName,
+            ProfileImageUrl = sensitiveSession.ProfileImageUrl,
+            FirstName = sensitiveSession.FirstName,
+            LastName = sensitiveSession.LastName,
+            MobileNumber = sensitiveSession.MobileNumber
+        };
+        Current = hydratedSession;
+        Changed?.Invoke(hydratedSession);
+    }
+
     private static MobileSession LoadCachedSession()
     {
         var isSignedIn = Preferences.Get(IsSignedInPreferenceKey, false);
-        var sensitiveSession = isSignedIn ? LoadSensitiveCachedSession() : null;
+        var legacySession = isSignedIn ? LoadLegacySensitivePreferences() : null;
         return new MobileSession(
             IsSignedIn: isSignedIn,
-            Email: sensitiveSession?.Email,
-            DisplayName: sensitiveSession?.DisplayName,
-            ProfileImageUrl: sensitiveSession?.ProfileImageUrl,
-            FirstName: sensitiveSession?.FirstName,
-            LastName: sensitiveSession?.LastName,
-            MobileNumber: sensitiveSession?.MobileNumber,
+            Email: legacySession?.Email,
+            DisplayName: legacySession?.DisplayName,
+            ProfileImageUrl: legacySession?.ProfileImageUrl,
+            FirstName: legacySession?.FirstName,
+            LastName: legacySession?.LastName,
+            MobileNumber: legacySession?.MobileNumber,
             HasPaidSubscription: Preferences.Get(HasPaidSubscriptionPreferenceKey, false),
             FavoriteStorySlugs: LoadFavoriteStorySlugs(),
             LoginUrl: Preferences.Get(LoginUrlPreferenceKey, string.Empty),
@@ -140,11 +166,11 @@ public sealed class SessionState
             JsonSerializer.Serialize(session.FavoriteStorySlugs ?? Array.Empty<string>(), SessionJsonOptions));
     }
 
-    private static CachedSensitiveSession? LoadSensitiveCachedSession()
+    private static async Task<CachedSensitiveSession?> LoadSensitiveCachedSessionAsync()
     {
         try
         {
-            var serializedSession = SecureStorage.Default.GetAsync(SensitiveSessionPreferenceKey).GetAwaiter().GetResult();
+            var serializedSession = await SecureStorage.Default.GetAsync(SensitiveSessionPreferenceKey);
             if (!string.IsNullOrWhiteSpace(serializedSession))
             {
                 return JsonSerializer.Deserialize<CachedSensitiveSession>(serializedSession, SessionJsonOptions);

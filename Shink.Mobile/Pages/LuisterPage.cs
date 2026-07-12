@@ -62,6 +62,7 @@ public sealed class LuisterPage : ContentPage
     private CancellationTokenSource? _imageWarmupCancellation;
     private CancellationTokenSource? _loadCancellation;
     private CancellationTokenSource? _searchDebounceCancellation;
+    private CancellationTokenSource? _pageActivityCancellation;
     private readonly HashSet<string> _favoriteRequestsInFlight = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<DateTimeOffset> _recentOortjiesPeekTimes = new();
     private OortjiesPeekSide? _lastOortjiesPeekSide;
@@ -211,8 +212,11 @@ public sealed class LuisterPage : ContentPage
     {
         base.OnAppearing();
         _isPageActive = true;
+        _pageActivityCancellation?.Cancel();
+        _pageActivityCancellation?.Dispose();
+        _pageActivityCancellation = new CancellationTokenSource();
         SubscribePageEvents();
-        _ = _apiClient.WarmCharactersCacheAsync();
+        _ = _apiClient.WarmCharactersCacheAsync(_pageActivityCancellation.Token);
         if (!_hasLoaded)
         {
             await LoadAsync();
@@ -236,6 +240,7 @@ public sealed class LuisterPage : ContentPage
         _loadCancellation?.Cancel();
         _imageWarmupCancellation?.Cancel();
         _searchDebounceCancellation?.Cancel();
+        _pageActivityCancellation?.Cancel();
         StopOortjiesPeekMascot();
         base.OnDisappearing();
     }
@@ -489,10 +494,11 @@ public sealed class LuisterPage : ContentPage
 
     private async Task RefreshDownloadsInBackgroundAsync()
     {
+        var cancellationToken = _pageActivityCancellation?.Token ?? default;
         IReadOnlyList<OfflineStoryDownload> downloads;
         try
         {
-            downloads = await _offlineDownloadService.GetPlayableDownloadsAsync();
+            downloads = await _offlineDownloadService.GetPlayableDownloadsAsync(cancellationToken);
         }
         catch
         {
@@ -532,9 +538,10 @@ public sealed class LuisterPage : ContentPage
 
     private async Task RefreshSessionInBackgroundAsync()
     {
+        var cancellationToken = _pageActivityCancellation?.Token ?? default;
         try
         {
-            await _apiClient.GetSessionAsync();
+            await _apiClient.GetSessionAsync(cancellationToken);
             MainThread.BeginInvokeOnMainThread(IsAndroid ? RenderFloatingTopBar : RenderContent);
             await RefreshNotificationsInBackgroundAsync();
         }
@@ -1216,6 +1223,7 @@ public sealed class LuisterPage : ContentPage
 
     private async Task RefreshNotificationsInBackgroundAsync()
     {
+        var cancellationToken = _pageActivityCancellation?.Token ?? default;
         if (!_sessionState.Current.IsSignedIn || _isRefreshingNotifications)
         {
             return;
@@ -1224,7 +1232,7 @@ public sealed class LuisterPage : ContentPage
         _isRefreshingNotifications = true;
         try
         {
-            _notificationPage = await _apiClient.GetNotificationsAsync();
+            _notificationPage = await _apiClient.GetNotificationsAsync(cancellationToken: cancellationToken);
             MainThread.BeginInvokeOnMainThread(RenderFloatingTopBar);
         }
         catch

@@ -147,9 +147,8 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
             }
         });
 
-        var artworkLoadTask = LoadArtworkForMetadataAsync(metadata);
+        _ = LoadArtworkForMetadataAsync(metadata);
         await WaitUntilReadyToPlayAsync(playerItem);
-        await artworkLoadTask;
 
         await MainThread.InvokeOnMainThreadAsync(() =>
         {
@@ -188,7 +187,8 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         var metadata = _metadata;
         var position = CurrentPosition.TotalSeconds;
         var duration = Duration?.TotalSeconds ?? 0;
-        _player?.Pause();
+        var player = _player;
+        player?.Pause();
         _player = null;
         _currentAudioUrl = null;
         _metadata = null;
@@ -207,6 +207,8 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
             Foundation.NSNotificationCenter.DefaultCenter.RemoveObserver(_endedObserver);
             _endedObserver = null;
         }
+
+        player?.Dispose();
     }
 
     private void OnPlaybackEnded()
@@ -457,6 +459,7 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
 #elif ANDROID
 public sealed class AudioPlaybackService : IAudioPlaybackService
 {
+    private static readonly TimeSpan ReadyTimeout = TimeSpan.FromSeconds(10);
     private Android.Media.MediaPlayer? _player;
     private readonly MobileAnalyticsService _analytics;
     private string? _currentAudioUrl;
@@ -472,16 +475,36 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
 
     public double PlaybackSpeed => _playbackSpeed;
 
-    public TimeSpan CurrentPosition => TimeSpan.FromMilliseconds(_player?.CurrentPosition ?? 0);
+    public TimeSpan CurrentPosition
+    {
+        get
+        {
+            try
+            {
+                return TimeSpan.FromMilliseconds(_player?.CurrentPosition ?? 0);
+            }
+            catch (Java.Lang.IllegalStateException)
+            {
+                return TimeSpan.Zero;
+            }
+        }
+    }
 
     public TimeSpan? Duration
     {
         get
         {
-            var durationMilliseconds = _player?.Duration ?? 0;
-            return durationMilliseconds > 0
-                ? TimeSpan.FromMilliseconds(durationMilliseconds)
-                : null;
+            try
+            {
+                var durationMilliseconds = _player?.Duration ?? 0;
+                return durationMilliseconds > 0
+                    ? TimeSpan.FromMilliseconds(durationMilliseconds)
+                    : null;
+            }
+            catch (Java.Lang.IllegalStateException)
+            {
+                return null;
+            }
         }
     }
 
@@ -522,9 +545,18 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
                 args.Handled = true;
                 ready.TrySetResult();
             };
-            using var registration = cancellationToken.Register(() => ready.TrySetCanceled(cancellationToken));
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(ReadyTimeout);
+            using var registration = timeout.Token.Register(() => ready.TrySetCanceled(timeout.Token));
             player.PrepareAsync();
-            await ready.Task;
+            try
+            {
+                await ready.Task;
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new TimeoutException("Die audio het nie betyds begin laai nie.");
+            }
 
             var durationMilliseconds = player.Duration;
             return durationMilliseconds > 0
@@ -533,8 +565,7 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         }
         finally
         {
-            player.Release();
-            player.Dispose();
+            ReleasePlayer(player, stopFirst: false);
         }
     }
 
@@ -586,8 +617,26 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
             _analytics.TrackEvent("mobile_audio_completed", BuildPlaybackProperties(_metadata));
             MainThread.BeginInvokeOnMainThread(() => PlaybackEnded?.Invoke(this, EventArgs.Empty));
         };
+        using var timeout = new CancellationTokenSource(ReadyTimeout);
+        using var registration = timeout.Token.Register(() =>
+            ready.TrySetException(new TimeoutException("Die audio het nie betyds begin laai nie.")));
         player.PrepareAsync();
-        await ready.Task;
+        try
+        {
+            await ready.Task;
+        }
+        catch
+        {
+            if (ReferenceEquals(_player, player))
+            {
+                _player = null;
+                _currentAudioUrl = null;
+                _metadata = null;
+            }
+
+            ReleasePlayer(player, stopFirst: false);
+            throw;
+        }
         player.Start();
         IsPlaying = true;
         ApplyPlaybackSpeed();
@@ -619,15 +668,42 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         var metadata = _metadata;
         var position = CurrentPosition.TotalSeconds;
         var duration = Duration?.TotalSeconds ?? 0;
-        _player?.Stop();
-        _player?.Release();
-        _player?.Dispose();
+        var player = _player;
         _player = null;
         _currentAudioUrl = null;
         _metadata = null;
         IsPlaying = false;
+        if (player is not null)
+        {
+            ReleasePlayer(player, stopFirst: true);
+        }
+
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
         _analytics.TrackEvent("mobile_audio_stopped", BuildPlaybackProperties(metadata, position, duration));
+    }
+
+    private static void ReleasePlayer(Android.Media.MediaPlayer player, bool stopFirst)
+    {
+        if (stopFirst)
+        {
+            try
+            {
+                player.Stop();
+            }
+            catch (Java.Lang.IllegalStateException)
+            {
+                // MediaPlayer can be stopped while it is still preparing or after an error.
+            }
+        }
+
+        try
+        {
+            player.Release();
+        }
+        finally
+        {
+            player.Dispose();
+        }
     }
 
     private void ApplyPlaybackSpeed()

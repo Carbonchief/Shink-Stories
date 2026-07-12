@@ -38,6 +38,7 @@ public partial class AppShell : Shell
         Navigated += OnShellNavigated;
         _isSignedInRendered = null;
         RenderShellFromSessionState();
+        _ = _sessionState.HydrateSensitiveCacheAsync();
     }
 
     protected override void OnAppearing()

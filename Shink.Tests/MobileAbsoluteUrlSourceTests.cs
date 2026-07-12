@@ -59,7 +59,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(helper, "return apiClient.BuildImageUrl(story.ImageUrl);");
         StringAssert.Contains(helper, "normalized.StartsWith(\"/stories/\", StringComparison.OrdinalIgnoreCase)");
         StringAssert.Contains(luisterPage, "playlist.ArtworkUrl");
-        StringAssert.Contains(luisterPage, "_apiClient.BuildCachedImageSource(playlist.ArtworkUrl, \"schink_background.jpeg\")");
+        StringAssert.Contains(luisterPage, "BuildLuisterImageSource(playlist.ArtworkUrl, \"schink_background.jpeg\")");
         Assert.IsFalse(luisterPage.Contains("firstStory?.ImageUrl", StringComparison.Ordinal));
         Assert.IsFalse(luisterPage.Contains("firstStory?.ThumbnailUrl", StringComparison.Ordinal));
         Assert.IsFalse(luisterPage.Contains("IsBundledPlaylistFallback", StringComparison.Ordinal));
@@ -100,7 +100,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "private async Task DebounceSearchRenderAsync(CancellationToken cancellationToken)");
         StringAssert.Contains(luisterPage, "await Task.Delay(220, cancellationToken);");
         StringAssert.Contains(luisterPage, "private async Task ResetScrollPositionAsync()");
-        StringAssert.Contains(luisterPage, "await _scrollView.ScrollToAsync(0, 0, false);");
+        StringAssert.Contains(luisterPage, "await _scrollView!.ScrollToAsync(0, 0, false);");
         StringAssert.Contains(luisterPage, "if (!_hasLoaded || !_isPageActive || Handler is null)");
         StringAssert.Contains(luisterPage, "catch (ObjectDisposedException)");
         StringAssert.Contains(luisterPage, "_isPageActive = false;");
@@ -137,7 +137,7 @@ public class MobileAbsoluteUrlSourceTests
     {
         var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
 
-        StringAssert.Contains(luisterPage, "private readonly CollectionView _feedView;");
+        StringAssert.Contains(luisterPage, "private readonly CollectionView? _feedView;");
         StringAssert.Contains(luisterPage, "ItemsSource = Array.Empty<LuisterFeedItem>()");
         StringAssert.Contains(luisterPage, "private readonly Grid _topBarOverlay;");
         StringAssert.Contains(luisterPage, "private Border? _floatingTopBarHost;");
@@ -150,7 +150,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "_topBarOverlay.Children.Add(_floatingTopBarHost);");
         StringAssert.Contains(luisterPage, "_topBarOverlay.InputTransparent = _isTopBarHidden;");
         StringAssert.Contains(luisterPage, "private void OnContentScrolled(object? sender, ItemsViewScrolledEventArgs e)");
-        StringAssert.Contains(luisterPage, "var scrollY = e.VerticalOffset;");
+        StringAssert.Contains(luisterPage, "HandleScrollOffset(e.VerticalOffset);");
         StringAssert.Contains(luisterPage, "var delta = scrollY - _lastScrollY;");
         StringAssert.Contains(luisterPage, "SetTopBarHidden(delta > 0);");
         StringAssert.Contains(luisterPage, "private void SetTopBarHidden(bool hidden)");
@@ -366,7 +366,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "private static bool IsWeeklyPopularPlaylist(MobilePlaylist playlist) =>");
         StringAssert.Contains(luisterPage, "\"popular-stories-this-week\"");
         StringAssert.Contains(luisterPage, "BuildRankedStoryCarousel(playlist)");
-        StringAssert.Contains(luisterPage, "rankedStories,\n            304,");
+        StringAssert.Contains(luisterPage, "rankedStories,\n            GetStoryCarouselHeight(isRanked: true),");
         StringAssert.Contains(luisterPage, "new RankedLuisterStory(story, index + 1)");
         StringAssert.Contains(luisterPage, "BuildLuisterStoryCarouselCard(playlist, rankedStory.Story, rankedStory.Rank)");
         StringAssert.Contains(luisterPage, "if (rank is not null)");
@@ -709,9 +709,9 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "_downloadedStories");
         StringAssert.Contains(luisterPage, "ShouldShowInlineDownloadedSection()");
         StringAssert.Contains(luisterPage, "Connectivity.Current.NetworkAccess != NetworkAccess.Internet");
-        StringAssert.Contains(luisterPage, "BuildDownloadedSection()");
+        StringAssert.Contains(luisterPage, "BuildDownloadedSection(item.Downloads)");
         StringAssert.Contains(luisterPage, "Afgelaai");
-        StringAssert.Contains(luisterPage, "GetPlayableDownloadsAsync()");
+        StringAssert.Contains(luisterPage, "GetPlayableDownloadsAsync(cancellationToken)");
         StringAssert.Contains(luisterPage, "RefreshDownloadsInBackgroundAsync()");
         StringAssert.Contains(luisterPage, "OpenDownloadedStoryAsync(");
         StringAssert.Contains(luisterPage, "source={Uri.EscapeDataString(download.Source)}");
@@ -727,7 +727,7 @@ public class MobileAbsoluteUrlSourceTests
         var appShell = File.ReadAllText(GetRepoPath("Shink.Mobile", "AppShell.xaml.cs"));
         var mauiProgram = File.ReadAllText(GetRepoPath("Shink.Mobile", "MauiProgram.cs"));
 
-        StringAssert.Contains(luisterPage, "\"Downloaded\", \"Settings\", \"Manage Account\"");
+        StringAssert.Contains(luisterPage, "\"Karakters\", \"Afgelaai\", \"Instellings\", \"Bestuur rekening\"");
         StringAssert.Contains(luisterPage, "await Shell.Current.GoToAsync(nameof(DownloadedPage), animate: true)");
         StringAssert.Contains(appShell, "Routing.RegisterRoute(nameof(DownloadedPage), typeof(DownloadedPage));");
         StringAssert.Contains(mauiProgram, "builder.Services.AddTransient<DownloadedPage>();");
@@ -801,7 +801,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(karaktersPage, "nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source={Uri.EscapeDataString(story.Source)}");
         StringAssert.Contains(luisterPage, "\"Karakters\", \"Afgelaai\", \"Instellings\", \"Bestuur rekening\"");
         StringAssert.Contains(luisterPage, "await Shell.Current.GoToAsync(nameof(KaraktersPage), animate: true)");
-        StringAssert.Contains(luisterPage, "_ = _apiClient.WarmCharactersCacheAsync();");
+        StringAssert.Contains(luisterPage, "_ = _apiClient.WarmCharactersCacheAsync(_pageActivityCancellation.Token);");
         StringAssert.Contains(mobileTopBar, "\"Karakters\", \"Instellings\", \"Bestuur rekening\"");
         StringAssert.Contains(mobileTopBar, "await Shell.Current.GoToAsync(nameof(KaraktersPage), animate: true)");
         StringAssert.Contains(appShell, "Routing.RegisterRoute(nameof(KaraktersPage), typeof(KaraktersPage));");
@@ -1063,7 +1063,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(accountPage, "UpdateAuthPanelTopSpacer();");
         StringAssert.Contains(accountPage, "_signedOutState.Children.Add(_authPanelTopSpacer);");
         StringAssert.Contains(accountPage, "if (_authPanelMode == AuthPanelMode.Landing)");
-        StringAssert.Contains(accountPage, "var estimatedPanelHeight = _authPanelMode == AuthPanelMode.SignIn ? 330 : 620;");
+        StringAssert.Contains(accountPage, "var estimatedPanelHeight = _authPanelMode == AuthPanelMode.SignIn ? 470 : 620;");
         StringAssert.Contains(accountPage, "Math.Floor((screenHeight - estimatedPanelHeight) / 2)");
         StringAssert.Contains(accountPage, "_authPanelTopSpacer.IsVisible = true;");
     }
@@ -1109,19 +1109,19 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(accountPage, "GetLandingLayoutMetrics()");
         StringAssert.Contains(accountPage, "var compact = height < 740;");
         StringAssert.Contains(accountPage, "var tight = height < 680;");
-        StringAssert.Contains(accountPage, "Text = \"Bou jou kind se karakter -\"");
-        StringAssert.Contains(accountPage, "Text = \"\\neen storie op 'n slag.\"");
-        StringAssert.Contains(accountPage, "FontAttributes = FontAttributes.Italic");
+        StringAssert.Contains(accountPage, "Text = \"\\\"Rustige, opbouende\"");
+        StringAssert.Contains(accountPage, "Text = \"\\nAfrikaanse storietyd.\\\"\"");
+        StringAssert.Contains(accountPage, "FontAttributes = FontAttributes.Bold | FontAttributes.Italic");
         StringAssert.Contains(accountPage, "Text = \"Rustige, opbouende \"");
         StringAssert.Contains(accountPage, "Text = \"Afrikaanse storietyd\"");
-        StringAssert.Contains(accountPage, "Text = \"Minder skerms. Rustiger aande. Stories wat waardes bou.\"");
-        StringAssert.Contains(accountPage, "Source = \"schink_stories_home_hero.png\"");
-        StringAssert.Contains(accountPage, "LogoHeight: Math.Clamp(height * (tight ? 0.135 : 0.155), 96, 144)");
-        StringAssert.Contains(accountPage, "TitleSublineFontSize: Math.Clamp(height * (tight ? 0.035 : 0.039), 23, 32)");
-        StringAssert.Contains(accountPage, "TitleMargin: new Thickness(0, tight ? -34 : compact ? -42 : -52, 0, 0)");
-        StringAssert.Contains(accountPage, "CharacterHeight: Math.Clamp(height * (tight ? 0.23 : 0.27), 154, 246)");
-        StringAssert.Contains(accountPage, "ModeButtonHeight: tight ? 64 : compact ? 70 : 78");
-        StringAssert.Contains(accountPage, "RowSpacing = metrics.PanelContentSpacing");
+        StringAssert.Contains(accountPage, "Text = \"R 79 per maand. Kanselleer enige tyd.\"");
+        StringAssert.Contains(accountPage, "Source = \"oortjies_02.png\"");
+        StringAssert.Contains(accountPage, "LogoHeight: Math.Clamp(height * (tight ? 0.17 : 0.2), 124, 194)");
+        StringAssert.Contains(accountPage, "TitleSublineFontSize: Math.Clamp(height * (tight ? 0.033 : 0.037), 22, 34)");
+        StringAssert.Contains(accountPage, "TitleMargin: new Thickness(0, tight ? 2 : 6, 0, 0)");
+        StringAssert.Contains(accountPage, "CharacterHeight: Math.Clamp(height * (tight ? 0.085 : 0.105), 64, 112)");
+        StringAssert.Contains(accountPage, "ModeButtonHeight: tight ? 58 : compact ? 62 : 68");
+        StringAssert.Contains(accountPage, "Spacing = metrics.PanelContentSpacing");
         StringAssert.Contains(accountPage, "ApplyLandingLayoutMetrics();");
     }
 
@@ -1287,10 +1287,8 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(project, "<MauiIcon Include=\"Resources/AppIcon/schink_appicon.png\" />");
         StringAssert.Contains(infoPlist, "<key>XSAppIconAssets</key>");
         StringAssert.Contains(infoPlist, "<string>Assets.xcassets/schink_appicon.appiconset</string>");
-        StringAssert.Contains(androidManifest, "android:icon=\"@mipmap/schink_appicon\"");
-        StringAssert.Contains(androidManifest, "android:roundIcon=\"@mipmap/schink_appicon_round\"");
-        StringAssert.Contains(androidMainActivity, "Icon = \"@mipmap/schink_appicon\"");
-        StringAssert.Contains(androidMainActivity, "RoundIcon = \"@mipmap/schink_appicon_round\"");
+        Assert.IsFalse(androidManifest.Contains("android:icon=", StringComparison.Ordinal));
+        Assert.IsFalse(androidMainActivity.Contains("Icon =", StringComparison.Ordinal));
         CollectionAssert.AreEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47 }, iconBytes.Take(4).ToArray());
         Assert.IsTrue(iconBytes.Length > 100_000);
     }
@@ -1299,13 +1297,13 @@ public class MobileAbsoluteUrlSourceTests
     public void MobileSplashScreenUsesGeneratedSchinkStoriesArtwork()
     {
         var project = File.ReadAllText(GetRepoPath("Shink.Mobile", "Shink.Mobile.csproj"));
-        var splashPath = GetRepoPath("Shink.Mobile", "Resources", "Splash", "schink_stories_logo_white.png");
+        var splashPath = GetRepoPath("Shink.Mobile", "Resources", "Splash", "schink_stories_full_splash.png");
         var splashBytes = File.ReadAllBytes(splashPath);
 
-        StringAssert.Contains(project, "<MauiSplashScreen Include=\"Resources/Splash/schink_stories_logo_white.png\" Color=\"#023333\" BaseSize=\"320,140\" />");
+        StringAssert.Contains(project, "<MauiSplashScreen Include=\"Resources/Splash/schink_stories_full_splash.png\" Color=\"#13AFC1\" BaseSize=\"360,640\" />");
         Assert.IsFalse(project.Contains("<MauiSplashScreen Include=\"Resources/Splash/splash.svg\"", StringComparison.Ordinal));
         CollectionAssert.AreEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47 }, splashBytes.Take(4).ToArray());
-        Assert.IsTrue(splashBytes.Length > 20_000);
+        Assert.IsTrue(splashBytes.Length > 100_000);
     }
 
     [TestMethod]
@@ -1410,7 +1408,11 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(client, "private sealed record PersistedAuthCookie(");
 
         StringAssert.Contains(project, "<ApplicationId>com.schink.stories.mobile</ApplicationId>");
-        StringAssert.Contains(project, "<ApplicationVersion>3</ApplicationVersion>");
+        var applicationVersionMatch = System.Text.RegularExpressions.Regex.Match(
+            project,
+            @"<ApplicationVersion>(\d+)</ApplicationVersion>");
+        Assert.IsTrue(applicationVersionMatch.Success);
+        Assert.IsGreaterThan(0, int.Parse(applicationVersionMatch.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture));
         StringAssert.Contains(project, "<EmbedAssembliesIntoApk>true</EmbedAssembliesIntoApk>");
         StringAssert.Contains(project, "SCHINK_ANDROID_DEMO_KEYSTORE");
         StringAssert.Contains(project, "<AndroidKeyStore>true</AndroidKeyStore>");

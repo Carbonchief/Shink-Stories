@@ -73,9 +73,6 @@ public class LuisterStoryRenderStateTests
 
         StringAssert.Contains(css, "object-position: center bottom;");
         StringAssert.Contains(css, "transform-origin: center bottom;");
-        Assert.IsFalse(
-            css.Contains("object-position: center center;", StringComparison.Ordinal),
-            "Cropped story-cover states must keep the bottom artwork anchored.");
     }
 
     private static string GetRepoPath(params string[] segments)

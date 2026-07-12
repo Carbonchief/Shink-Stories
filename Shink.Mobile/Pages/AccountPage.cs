@@ -172,7 +172,7 @@ public sealed class AccountPage : ContentPage
     }
 
     private static ImageSource CreatePackageImageSource(string fileName) =>
-        ImageSource.FromStream(() => FileSystem.OpenAppPackageFileAsync(fileName).GetAwaiter().GetResult());
+        ImageSource.FromStream(_ => FileSystem.OpenAppPackageFileAsync(fileName));
 
     private View BuildAuthHero()
     {

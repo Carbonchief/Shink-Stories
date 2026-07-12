@@ -7,10 +7,11 @@ public sealed class ContinueListeningState
 {
     private const string PreferenceKey = "schink_continue_listening_story_v1";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private ContinueListeningItem? _current = LoadCurrent();
 
     public event Action<ContinueListeningItem?>? Changed;
 
-    public ContinueListeningItem? Current => LoadCurrent();
+    public ContinueListeningItem? Current => _current;
 
     public void Save(
         MobileStorySummary story,
@@ -24,7 +25,7 @@ public sealed class ContinueListeningState
             return;
         }
 
-        var current = LoadCurrent();
+        var current = _current;
         var preservedDurationSeconds = current is not null &&
             string.Equals(current.Slug, story.Slug, StringComparison.OrdinalIgnoreCase) &&
             (string.IsNullOrWhiteSpace(story.Source) ||
@@ -51,7 +52,7 @@ public sealed class ContinueListeningState
 
     public void UpdateProgress(string slug, string source, decimal? positionSeconds, decimal? durationSeconds)
     {
-        var current = LoadCurrent();
+        var current = _current;
         if (current is null ||
             !string.Equals(current.Slug, slug, StringComparison.OrdinalIgnoreCase) ||
             !string.Equals(current.Source, source, StringComparison.OrdinalIgnoreCase))
@@ -70,6 +71,7 @@ public sealed class ContinueListeningState
     public void Clear()
     {
         Preferences.Default.Remove(PreferenceKey);
+        _current = null;
         Changed?.Invoke(null);
     }
 
@@ -83,7 +85,7 @@ public sealed class ContinueListeningState
         return decimal.Round(seconds.Value, 3, MidpointRounding.AwayFromZero);
     }
 
-    private ContinueListeningItem? LoadCurrent()
+    private static ContinueListeningItem? LoadCurrent()
     {
         var json = Preferences.Default.Get(PreferenceKey, string.Empty);
         if (string.IsNullOrWhiteSpace(json))
@@ -105,6 +107,7 @@ public sealed class ContinueListeningState
     private void SaveItem(ContinueListeningItem item)
     {
         Preferences.Default.Set(PreferenceKey, JsonSerializer.Serialize(item, JsonOptions));
+        _current = item;
         Changed?.Invoke(item);
     }
 }

@@ -74,6 +74,7 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
     private readonly MobileAnalyticsService _analytics;
     private readonly SemaphoreSlim _metadataLock = new(1, 1);
     private readonly HashSet<string> _activeDownloads = new(StringComparer.OrdinalIgnoreCase);
+    private IReadOnlyList<OfflineStoryDownload>? _cachedDownloads;
 
     public OfflineStoryDownloadService(
         MobileApiClient apiClient,
@@ -416,26 +417,35 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
         }
     }
 
-    private static async Task<IReadOnlyList<OfflineStoryDownload>> LoadDownloadsUnsafeAsync(CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<OfflineStoryDownload>> LoadDownloadsUnsafeAsync(CancellationToken cancellationToken)
     {
+        if (_cachedDownloads is not null)
+        {
+            return _cachedDownloads;
+        }
+
         if (!File.Exists(MetadataPath))
         {
-            return Array.Empty<OfflineStoryDownload>();
+            return _cachedDownloads = Array.Empty<OfflineStoryDownload>();
         }
 
         try
         {
             await using var stream = File.OpenRead(MetadataPath);
-            return await JsonSerializer.DeserializeAsync<OfflineStoryDownload[]>(stream, JsonOptions, cancellationToken)
-                   ?? Array.Empty<OfflineStoryDownload>();
+            _cachedDownloads = await JsonSerializer.DeserializeAsync<OfflineStoryDownload[]>(
+                    stream,
+                    JsonOptions,
+                    cancellationToken)
+                ?? Array.Empty<OfflineStoryDownload>();
+            return _cachedDownloads;
         }
         catch
         {
-            return Array.Empty<OfflineStoryDownload>();
+            return _cachedDownloads = Array.Empty<OfflineStoryDownload>();
         }
     }
 
-    private static async Task SaveDownloadsUnsafeAsync(
+    private async Task SaveDownloadsUnsafeAsync(
         IReadOnlyList<OfflineStoryDownload> downloads,
         CancellationToken cancellationToken)
     {
@@ -452,6 +462,7 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
         }
 
         File.Move(temporaryPath, MetadataPath);
+        _cachedDownloads = downloads.ToArray();
     }
 
     private static bool IsPlayable(OfflineStoryDownload download) =>
