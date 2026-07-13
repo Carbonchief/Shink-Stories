@@ -53,7 +53,7 @@
                 </div>
                 <div class="billing-hero-point">
                     <strong>Beheer jou rekening veilig</strong>
-                    <span>Verander jou e-pos met Supabase bevestiging en hou jou toegang veilig.</span>
+                    <span>Verander jou e-pos of wagwoord veilig en hou beheer oor jou toegang.</span>
                 </div>
             </div>
         </div>
@@ -221,6 +221,11 @@
                                 class="btn btn-outline-secondary btn-lg billing-secondary-btn"
                                 @onclick="OpenEmailChangeModal">
                             Verander e-posadres
+                        </button>
+                        <button type="button"
+                                class="btn btn-outline-secondary btn-lg billing-secondary-btn"
+                                @onclick="OpenPasswordChangeModal">
+                            Verander wagwoord
                         </button>
                         <a class="btn btn-outline-secondary btn-lg billing-secondary-btn" href="/opsies">Sien plan opsies</a>
                     </div>
@@ -391,6 +396,100 @@
                                  role="@(EmailChangeStatusIsSuccess ? "status" : "alert")"
                                  aria-live="polite">
                                 @EmailChangeStatusMessage
+                            </div>
+                        }
+                    </EditForm>
+                </div>
+            </div>
+        }
+
+        @if (IsPasswordChangeModalOpen)
+        {
+            <div class="billing-modal-backdrop" @onclick="ClosePasswordChangeModal">
+                <div class="billing-modal"
+                     role="dialog"
+                     aria-modal="true"
+                     aria-labelledby="billing-password-modal-title"
+                     @onclick:stopPropagation="true">
+                    <div class="billing-modal-header">
+                        <div class="billing-modal-heading">
+                            <p class="billing-section-kicker">Rekeningsekuriteit</p>
+                            <h2 id="billing-password-modal-title">Verander jou wagwoord</h2>
+                            <p>
+                                Bevestig jou huidige wagwoord en kies dan 'n nuwe wagwoord vir jou Schink Stories rekening.
+                            </p>
+                        </div>
+
+                        <button type="button"
+                                class="billing-modal-close"
+                                aria-label="Maak toe"
+                                @onclick="ClosePasswordChangeModal">
+                            ×
+                        </button>
+                    </div>
+
+                    <EditForm FormName="billing-password-change-form"
+                              class="billing-profile-form billing-email-form"
+                              EditContext="PasswordChangeEditContext"
+                              OnSubmit="HandlePasswordChangeSubmitAsync"
+                              aria-busy="@IsSubmittingPasswordChange">
+                        <DataAnnotationsValidator />
+
+                        <div class="row g-3">
+                            <div class="col-12">
+                                <label class="form-label" for="billing-password-current">Huidige wagwoord</label>
+                                <InputText id="billing-password-current"
+                                           class="form-control form-control-lg"
+                                           type="password"
+                                           autocomplete="current-password"
+                                           @bind-Value="PasswordChangeForm.CurrentPassword" />
+                                <ValidationMessage class="invalid-feedback d-block" For="@(() => PasswordChangeForm.CurrentPassword)" />
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label" for="billing-password-new">Nuwe wagwoord</label>
+                                <InputText id="billing-password-new"
+                                           class="form-control form-control-lg"
+                                           type="password"
+                                           autocomplete="new-password"
+                                           @bind-Value="PasswordChangeForm.NewPassword" />
+                                <ValidationMessage class="invalid-feedback d-block" For="@(() => PasswordChangeForm.NewPassword)" />
+                            </div>
+
+                            <div class="col-12">
+                                <label class="form-label" for="billing-password-confirm">Bevestig nuwe wagwoord</label>
+                                <InputText id="billing-password-confirm"
+                                           class="form-control form-control-lg"
+                                           type="password"
+                                           autocomplete="new-password"
+                                           @bind-Value="PasswordChangeForm.ConfirmPassword" />
+                                <ValidationMessage class="invalid-feedback d-block" For="@(() => PasswordChangeForm.ConfirmPassword)" />
+                            </div>
+                        </div>
+
+                        <p class="billing-email-note">
+                            Het jy met Google ingeteken of ken jy nie jou huidige wagwoord nie?
+                            <a href="/herstel-wagwoord">Stel eerder jou wagwoord terug.</a>
+                        </p>
+
+                        <div class="billing-form-actions d-flex flex-wrap gap-2">
+                            <button type="submit" class="btn btn-warning btn-lg billing-primary-btn" disabled="@IsSubmittingPasswordChange">
+                                @(IsSubmittingPasswordChange ? "Verander..." : "Verander wagwoord")
+                            </button>
+                            <button type="button"
+                                    class="btn btn-outline-secondary btn-lg billing-secondary-btn"
+                                    disabled="@IsSubmittingPasswordChange"
+                                    @onclick="ClosePasswordChangeModal">
+                                Kanselleer
+                            </button>
+                        </div>
+
+                        @if (!string.IsNullOrWhiteSpace(PasswordChangeStatusMessage))
+                        {
+                            <div class="alert @(PasswordChangeStatusIsSuccess ? "alert-success" : "alert-danger") billing-profile-status"
+                                 role="@(PasswordChangeStatusIsSuccess ? "status" : "alert")"
+                                 aria-live="polite">
+                                @PasswordChangeStatusMessage
                             </div>
                         }
                     </EditForm>
@@ -738,14 +837,18 @@
     private CurrentPaidSubscription? CurrentPaidSubscription { get; set; }
     private bool IsCompletingEmailChange { get; set; }
     private bool IsEmailChangeModalOpen { get; set; }
+    private bool IsPasswordChangeModalOpen { get; set; }
     private bool IsCancelSubscriptionModalOpen { get; set; }
     private bool IsCloseAccountModalOpen { get; set; }
     private string UserEmail { get; set; } = string.Empty;
     private ProfileFormModel ProfileForm { get; set; } = new();
     private EmailChangeFormModel EmailChangeForm { get; set; } = new();
     private EditContext EmailChangeEditContext { get; set; } = default!;
+    private PasswordChangeFormModel PasswordChangeForm { get; set; } = new();
+    private EditContext PasswordChangeEditContext { get; set; } = default!;
     private bool IsSavingProfile { get; set; }
     private bool IsSubmittingEmailChange { get; set; }
+    private bool IsSubmittingPasswordChange { get; set; }
     private bool IsCancellingSubscription { get; set; }
     private bool IsClosingAccount { get; set; }
     private bool IsOpeningCardUpdate { get; set; }
@@ -758,10 +861,12 @@
     private bool IsPlanCheckoutPending => !string.IsNullOrWhiteSpace(PendingPlanSlug);
     private bool ProfileSaveSucceeded { get; set; }
     private bool EmailChangeStatusIsSuccess { get; set; }
+    private bool PasswordChangeStatusIsSuccess { get; set; }
     private bool EmailChangeCallbackIsSuccess { get; set; }
     private bool AccountActionSucceeded { get; set; }
     private string? ProfileStatusMessage { get; set; }
     private string? EmailChangeStatusMessage { get; set; }
+    private string? PasswordChangeStatusMessage { get; set; }
     private string? EmailChangeCallbackMessage { get; set; }
     private string? AccountActionStatusMessage { get; set; }
     private string? SelectedCancellationReasonCode { get; set; }
@@ -782,6 +887,7 @@
     protected override void OnInitialized()
     {
         EmailChangeEditContext = new EditContext(EmailChangeForm);
+        PasswordChangeEditContext = new EditContext(PasswordChangeForm);
     }
 
     protected override async Task OnInitializedAsync()
@@ -948,6 +1054,79 @@
     {
         IsEmailChangeModalOpen = false;
         EmailChangeForm.CurrentPassword = string.Empty;
+    }
+
+    private async Task HandlePasswordChangeSubmitAsync(EditContext editContext)
+    {
+        await SyncPasswordChangeInputsFromDomAsync();
+
+        if (!editContext.Validate() || IsSubmittingPasswordChange)
+        {
+            return;
+        }
+
+        IsSubmittingPasswordChange = true;
+        PasswordChangeStatusIsSuccess = false;
+        PasswordChangeStatusMessage = null;
+        await ShowSubmittingStateAsync();
+
+        try
+        {
+            var authModule = await EnsureAuthModuleAsync();
+            var response = await authModule.InvokeAsync<AuthBrowserResponse>(
+                "postAuthJson",
+                "/api/auth/password-change",
+                new PasswordChangeRequestPayload(
+                    PasswordChangeForm.CurrentPassword,
+                    PasswordChangeForm.NewPassword));
+
+            PasswordChangeStatusIsSuccess = response.Ok;
+            PasswordChangeStatusMessage = response.Message ?? (response.Ok
+                ? "Jou wagwoord is suksesvol verander."
+                : "Kon nie jou wagwoord nou verander nie. Probeer asseblief weer.");
+
+            if (response.Ok)
+            {
+                PasswordChangeForm.CurrentPassword = string.Empty;
+                PasswordChangeForm.NewPassword = string.Empty;
+                PasswordChangeForm.ConfirmPassword = string.Empty;
+            }
+        }
+        catch
+        {
+            PasswordChangeStatusIsSuccess = false;
+            PasswordChangeStatusMessage = "Kon nie jou wagwoord nou verander nie. Probeer asseblief weer.";
+        }
+        finally
+        {
+            IsSubmittingPasswordChange = false;
+        }
+    }
+
+    private void OpenPasswordChangeModal()
+    {
+        ResetPasswordChangeForm();
+        IsEmailChangeModalOpen = false;
+        IsPasswordChangeModalOpen = true;
+    }
+
+    private void ClosePasswordChangeModal()
+    {
+        if (IsSubmittingPasswordChange)
+        {
+            return;
+        }
+
+        IsPasswordChangeModalOpen = false;
+        ResetPasswordChangeForm();
+    }
+
+    private void ResetPasswordChangeForm()
+    {
+        PasswordChangeForm = new PasswordChangeFormModel();
+        PasswordChangeEditContext = new EditContext(PasswordChangeForm);
+        PasswordChangeStatusIsSuccess = false;
+        PasswordChangeStatusMessage = null;
     }
 
     private void OpenCancelSubscriptionModal()
@@ -1212,6 +1391,36 @@
             if (values.TryGetValue("billing-email-change-password", out var passwordValue))
             {
                 EmailChangeForm.CurrentPassword = passwordValue ?? string.Empty;
+            }
+        }
+        catch
+        {
+            // Keep existing bound values if DOM reads fail.
+        }
+    }
+
+    private async Task SyncPasswordChangeInputsFromDomAsync()
+    {
+        try
+        {
+            var authModule = await EnsureAuthModuleAsync();
+            var values = await authModule.InvokeAsync<Dictionary<string, string>>(
+                "readInputValues",
+                new[] { "billing-password-current", "billing-password-new", "billing-password-confirm" });
+
+            if (values.TryGetValue("billing-password-current", out var currentPasswordValue))
+            {
+                PasswordChangeForm.CurrentPassword = currentPasswordValue ?? string.Empty;
+            }
+
+            if (values.TryGetValue("billing-password-new", out var newPasswordValue))
+            {
+                PasswordChangeForm.NewPassword = newPasswordValue ?? string.Empty;
+            }
+
+            if (values.TryGetValue("billing-password-confirm", out var confirmPasswordValue))
+            {
+                PasswordChangeForm.ConfirmPassword = confirmPasswordValue ?? string.Empty;
             }
         }
         catch
@@ -1560,6 +1769,8 @@
 
     private sealed record EmailChangeRequestPayload(string NewEmail, string CurrentPassword);
 
+    private sealed record PasswordChangeRequestPayload(string CurrentPassword, string NewPassword);
+
     private sealed record EmailChangeCompletePayload(string? AccessToken, string? RefreshToken, string? EmailChangeState);
 
     private sealed record SignupDiscountPreviewRequest(
@@ -1606,5 +1817,31 @@
         [Required(ErrorMessage = "Vul asseblief jou huidige wagwoord in.")]
         [StringLength(200, MinimumLength = 6, ErrorMessage = "Jou wagwoord moet tussen 6 en 200 karakters wees.")]
         public string CurrentPassword { get; set; } = string.Empty;
+    }
+
+    private sealed class PasswordChangeFormModel : IValidatableObject
+    {
+        [Required(ErrorMessage = "Vul asseblief jou huidige wagwoord in.")]
+        [StringLength(200, MinimumLength = 6, ErrorMessage = "Jou huidige wagwoord moet tussen 6 en 200 karakters wees.")]
+        public string CurrentPassword { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Vul asseblief jou nuwe wagwoord in.")]
+        [StringLength(200, MinimumLength = 6, ErrorMessage = "Jou nuwe wagwoord moet tussen 6 en 200 karakters wees.")]
+        public string NewPassword { get; set; } = string.Empty;
+
+        [Required(ErrorMessage = "Bevestig asseblief jou nuwe wagwoord.")]
+        [Compare(nameof(NewPassword), ErrorMessage = "Die nuwe wagwoorde stem nie ooreen nie.")]
+        public string ConfirmPassword { get; set; } = string.Empty;
+
+        public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+        {
+            if (!string.IsNullOrEmpty(CurrentPassword) &&
+                string.Equals(CurrentPassword, NewPassword, StringComparison.Ordinal))
+            {
+                yield return new ValidationResult(
+                    "Kies asseblief 'n nuwe wagwoord wat van jou huidige wagwoord verskil.",
+                    [nameof(NewPassword)]);
+            }
+        }
     }
 }

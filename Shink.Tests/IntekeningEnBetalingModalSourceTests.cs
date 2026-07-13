@@ -6,6 +6,37 @@ namespace Shink.Tests;
 public class IntekeningEnBetalingModalSourceTests
 {
     [TestMethod]
+    public void PasswordChangeModal_RequiresCurrentAndMatchingNewPasswords()
+    {
+        var pagePath = FindRepositoryFile("Shink", "Components", "Pages", "IntekeningEnBetaling.razor");
+        var programPath = FindRepositoryFile("Shink", "Program.cs");
+        var authServicePath = FindRepositoryFile("Shink", "Services", "SupabaseAuthService.cs");
+        var source = File.ReadAllText(pagePath);
+        var program = File.ReadAllText(programPath);
+        var authService = File.ReadAllText(authServicePath);
+
+        var passwordModal = ExtractBetween(
+            source,
+            "@if (IsPasswordChangeModalOpen)",
+            "@if (IsCancelSubscriptionModalOpen)");
+
+        StringAssert.Contains(source, "Verander wagwoord");
+        StringAssert.Contains(passwordModal, "billing-password-current");
+        StringAssert.Contains(passwordModal, "autocomplete=\"current-password\"");
+        StringAssert.Contains(passwordModal, "billing-password-new");
+        StringAssert.Contains(passwordModal, "billing-password-confirm");
+        StringAssert.Contains(passwordModal, "autocomplete=\"new-password\"");
+        StringAssert.Contains(passwordModal, "HandlePasswordChangeSubmitAsync");
+        StringAssert.Contains(source, "[Compare(nameof(NewPassword)");
+        StringAssert.Contains(source, "\"/api/auth/password-change\"");
+        StringAssert.Contains(program, "app.MapPost(\"/api/auth/password-change\"");
+        StringAssert.Contains(program, "httpContext.User.Identity?.IsAuthenticated");
+        StringAssert.Contains(program, "supabaseAuthService.ChangePasswordAsync(");
+        StringAssert.Contains(authService, "TryAuthenticateSessionAsync(");
+        StringAssert.Contains(authService, "TryUpdatePasswordAsync(");
+    }
+
+    [TestMethod]
     public void CancelSubscriptionModal_RendersAccountActionErrorsInsideModal()
     {
         var pagePath = FindRepositoryFile("Shink", "Components", "Pages", "IntekeningEnBetaling.razor");

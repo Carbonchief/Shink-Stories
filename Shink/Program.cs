@@ -2432,6 +2432,49 @@ app.MapPost("/api/auth/password-reset/complete", async (
     });
 }).RequireRateLimiting("auth-submit").DisableAntiforgery();
 
+app.MapPost("/api/auth/password-change", async (
+    AuthPasswordChangeApiRequest request,
+    ISupabaseAuthService supabaseAuthService,
+    HttpContext httpContext) =>
+{
+    if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
+    {
+        return Results.Unauthorized();
+    }
+
+    var currentEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
+                       ?? httpContext.User.Identity?.Name;
+    request = request with
+    {
+        CurrentPassword = request.CurrentPassword ?? string.Empty,
+        NewPassword = request.NewPassword ?? string.Empty
+    };
+
+    var validationError = ValidatePasswordChangeRequest(currentEmail, request);
+    if (validationError is not null)
+    {
+        return Results.BadRequest(new { message = validationError });
+    }
+
+    var changeResult = await supabaseAuthService.ChangePasswordAsync(
+        currentEmail!,
+        request.CurrentPassword!,
+        request.NewPassword!,
+        httpContext.RequestAborted);
+    if (!changeResult.IsSuccess)
+    {
+        return Results.BadRequest(new
+        {
+            message = changeResult.ErrorMessage ?? "Kon nie jou wagwoord nou opdateer nie. Probeer asseblief weer."
+        });
+    }
+
+    return Results.Ok(new
+    {
+        message = "Jou wagwoord is suksesvol verander."
+    });
+}).RequireRateLimiting("auth-submit").DisableAntiforgery();
+
 app.MapPost("/api/auth/email-change/request", async (
     AuthEmailChangeRequestApiRequest request,
     ISupabaseAuthService supabaseAuthService,
@@ -6420,6 +6463,31 @@ static string? ValidatePasswordResetCompletion(AuthPasswordResetCompleteApiReque
     return null;
 }
 
+static string? ValidatePasswordChangeRequest(string? currentEmail, AuthPasswordChangeApiRequest request)
+{
+    if (string.IsNullOrWhiteSpace(currentEmail) || !IsValidEmail(currentEmail))
+    {
+        return "Jy moet ingeteken wees om jou wagwoord te verander.";
+    }
+
+    if (string.IsNullOrWhiteSpace(request.CurrentPassword) || request.CurrentPassword.Length is < 6 or > 200)
+    {
+        return "Vul asseblief jou huidige wagwoord in.";
+    }
+
+    if (string.IsNullOrWhiteSpace(request.NewPassword) || request.NewPassword.Length is < 6 or > 200)
+    {
+        return "Jou nuwe wagwoord moet tussen 6 en 200 karakters wees.";
+    }
+
+    if (string.Equals(request.CurrentPassword, request.NewPassword, StringComparison.Ordinal))
+    {
+        return "Kies asseblief 'n nuwe wagwoord wat van jou huidige wagwoord verskil.";
+    }
+
+    return null;
+}
+
 static string? ValidateEmailChangeRequest(string? currentEmail, AuthEmailChangeRequestApiRequest request)
 {
     if (string.IsNullOrWhiteSpace(currentEmail) || !IsValidEmail(currentEmail))
@@ -7467,6 +7535,7 @@ sealed record ContactApiRequest(string? Name, string? Email, string? Subject, st
 sealed record AuthSignInApiRequest(string? Email, string? Password);
 sealed record AuthPasswordResetRequestApiRequest(string? Email, string? ReturnUrl);
 sealed record AuthPasswordResetCompleteApiRequest(string? AccessToken, string? RefreshToken, string? Password);
+sealed record AuthPasswordChangeApiRequest(string? CurrentPassword, string? NewPassword);
 sealed record AuthEmailChangeRequestApiRequest(string? NewEmail, string? CurrentPassword);
 sealed record AuthEmailChangeCompleteApiRequest(string? AccessToken, string? RefreshToken, string? EmailChangeState);
 sealed record EmailChangeCallbackStatePayload(DateTimeOffset ExpiresAtUtc, string CurrentEmail, string NewEmail);

@@ -408,6 +408,62 @@ public sealed class SupabaseAuthService(
             updateResult.ErrorMessage ?? "Kon nie jou wagwoord nou opdateer nie. Probeer asseblief weer.");
     }
 
+    public async Task<SupabasePasswordResetResult> ChangePasswordAsync(
+        string currentEmail,
+        string currentPassword,
+        string newPassword,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedEmail = currentEmail.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedEmail) || !normalizedEmail.Contains('@', StringComparison.Ordinal))
+        {
+            return SupabasePasswordResetResult.Failure("Jy moet ingeteken wees om jou wagwoord te verander.");
+        }
+
+        if (string.IsNullOrWhiteSpace(currentPassword) || currentPassword.Length is < 6 or > 200)
+        {
+            return SupabasePasswordResetResult.Failure("Vul asseblief jou huidige wagwoord in.");
+        }
+
+        if (string.IsNullOrWhiteSpace(newPassword) || newPassword.Length is < 6 or > 200)
+        {
+            return SupabasePasswordResetResult.Failure("Jou nuwe wagwoord moet tussen 6 en 200 karakters wees.");
+        }
+
+        if (string.Equals(currentPassword, newPassword, StringComparison.Ordinal))
+        {
+            return SupabasePasswordResetResult.Failure("Kies asseblief 'n nuwe wagwoord wat van jou huidige wagwoord verskil.");
+        }
+
+        if (!TryBuildTokenEndpoint(out var tokenEndpoint) ||
+            !TryBuildUserEndpoint(out var userEndpoint))
+        {
+            return SupabasePasswordResetResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en publishable key op.");
+        }
+
+        var authenticatedSession = await TryAuthenticateSessionAsync(
+            tokenEndpoint,
+            normalizedEmail,
+            currentPassword,
+            cancellationToken);
+        if (!authenticatedSession.IsSuccess)
+        {
+            return SupabasePasswordResetResult.Failure(
+                authenticatedSession.ErrorMessage ?? "Kon nie jou identiteit bevestig nie. Kontroleer jou huidige wagwoord en probeer weer.");
+        }
+
+        var updateResult = await TryUpdatePasswordAsync(
+            userEndpoint,
+            authenticatedSession.AccessToken!,
+            newPassword,
+            cancellationToken);
+
+        return updateResult.IsSuccess
+            ? SupabasePasswordResetResult.Success(updateResult.UserEmail ?? authenticatedSession.UserEmail ?? normalizedEmail)
+            : SupabasePasswordResetResult.Failure(
+                updateResult.ErrorMessage ?? "Kon nie jou wagwoord nou opdateer nie. Probeer asseblief weer.");
+    }
+
     public async Task<SupabasePasswordResetResult> ForceUpdatePasswordByEmailAsync(
         string email,
         string newPassword,

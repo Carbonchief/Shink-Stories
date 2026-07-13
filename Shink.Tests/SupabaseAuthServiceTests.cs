@@ -219,6 +219,109 @@ public class SupabaseAuthServiceTests
         StringAssert.Contains(requestBodies[0], "\"password\":\"NewPassword123!\"");
     }
 
+    [TestMethod]
+    public async Task ChangePasswordAsync_ReauthenticatesCurrentPasswordBeforeUpdatingPassword()
+    {
+        var requestUris = new List<string>();
+        var requestBodies = new List<string>();
+        var handler = new RecordingHandler(request =>
+        {
+            requestUris.Add(request.RequestUri?.ToString() ?? string.Empty);
+            requestBodies.Add(request.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? string.Empty);
+
+            if (request.RequestUri?.AbsolutePath == "/auth/v1/token")
+            {
+                Assert.AreEqual(HttpMethod.Post, request.Method);
+                Assert.AreEqual("publishable-key", request.Headers.Authorization?.Parameter);
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        """
+                        {
+                          "access_token": "fresh-access-token",
+                          "refresh_token": "fresh-refresh-token",
+                          "user": { "email": "ouer@example.com" }
+                        }
+                        """,
+                        Encoding.UTF8,
+                        "application/json")
+                };
+            }
+
+            Assert.AreEqual(HttpMethod.Put, request.Method);
+            Assert.AreEqual("/auth/v1/user", request.RequestUri?.AbsolutePath);
+            Assert.AreEqual("fresh-access-token", request.Headers.Authorization?.Parameter);
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"email":"ouer@example.com"}""", Encoding.UTF8, "application/json")
+            };
+        });
+        using var httpClient = new HttpClient(handler);
+        var service = CreateService(httpClient);
+
+        var result = await service.ChangePasswordAsync(
+            "ouer@example.com",
+            "CurrentPassword123!",
+            "NewPassword123!");
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.AreEqual("ouer@example.com", result.UserEmail);
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "https://example.supabase.co/auth/v1/token?grant_type=password",
+                "https://example.supabase.co/auth/v1/user"
+            },
+            requestUris);
+        StringAssert.Contains(requestBodies[0], "\"email\":\"ouer@example.com\"");
+        StringAssert.Contains(requestBodies[0], "\"password\":\"CurrentPassword123!\"");
+        StringAssert.Contains(requestBodies[1], "\"password\":\"NewPassword123!\"");
+    }
+
+    [TestMethod]
+    public async Task ChangePasswordAsync_RejectsReusingCurrentPasswordWithoutCallingSupabase()
+    {
+        var handler = new RecordingHandler(_ => throw new AssertFailedException("Supabase should not be called for invalid input."));
+        using var httpClient = new HttpClient(handler);
+        var service = CreateService(httpClient);
+
+        var result = await service.ChangePasswordAsync(
+            "ouer@example.com",
+            "SamePassword123!",
+            "SamePassword123!");
+
+        Assert.IsFalse(result.IsSuccess);
+        Assert.AreEqual(
+            "Kies asseblief 'n nuwe wagwoord wat van jou huidige wagwoord verskil.",
+            result.ErrorMessage);
+    }
+
+    [TestMethod]
+    public async Task ChangePasswordAsync_DoesNotUpdateWhenCurrentPasswordIsRejected()
+    {
+        var requestCount = 0;
+        var handler = new RecordingHandler(request =>
+        {
+            requestCount++;
+            Assert.AreEqual("/auth/v1/token", request.RequestUri?.AbsolutePath);
+            return new HttpResponseMessage(HttpStatusCode.BadRequest)
+            {
+                Content = new StringContent("""{"msg":"Invalid login credentials"}""", Encoding.UTF8, "application/json")
+            };
+        });
+        using var httpClient = new HttpClient(handler);
+        var service = CreateService(httpClient);
+
+        var result = await service.ChangePasswordAsync(
+            "ouer@example.com",
+            "WrongPassword123!",
+            "NewPassword123!");
+
+        Assert.IsFalse(result.IsSuccess);
+        Assert.AreEqual(1, requestCount);
+        Assert.AreEqual("Ongeldige e-pos of wagwoord. Probeer asseblief weer.", result.ErrorMessage);
+    }
+
     private static SupabaseAuthService CreateService(
         HttpClient httpClient,
         string secretKey = "",

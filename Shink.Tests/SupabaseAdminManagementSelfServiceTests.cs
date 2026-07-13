@@ -1140,6 +1140,13 @@ public class SupabaseAdminManagementSelfServiceTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult(SupabasePasswordResetResult.Failure("Not implemented."));
 
+        public Task<SupabasePasswordResetResult> ChangePasswordAsync(
+            string currentEmail,
+            string currentPassword,
+            string newPassword,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(SupabasePasswordResetResult.Failure("Not implemented."));
+
         public Task<SupabasePasswordResetResult> ForceUpdatePasswordByEmailAsync(
             string email,
             string newPassword,
