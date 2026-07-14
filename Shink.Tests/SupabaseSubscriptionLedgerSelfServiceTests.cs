@@ -3461,6 +3461,139 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     }
 
     [TestMethod]
+    public async Task RecordPaystackEventAsync_InvoiceUpdatePreservesExistingOwnerWhenCustomerEmailDiffers()
+    {
+        const string subscriptionId = "22222222-2222-2222-2222-222222222222";
+        const string accessSubscriberId = "11111111-1111-1111-1111-111111111111";
+        const string payerSubscriberId = "33333333-3333-3333-3333-333333333333";
+        const string subscriptionCode = "SUB_existingowner";
+        const string renewalReference = "renewal-reference";
+
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                var query = request.RequestUri!.Query;
+                if (query.Contains($"provider_transaction_id=eq.{renewalReference}", StringComparison.Ordinal))
+                {
+                    return JsonResponse("[]");
+                }
+
+                if (query.Contains($"provider_payment_id=eq.{subscriptionCode}", StringComparison.Ordinal))
+                {
+                    return JsonResponse(
+                        $$"""
+                        [
+                          {
+                            "subscription_id": "{{subscriptionId}}",
+                            "subscriber_id": "{{accessSubscriberId}}",
+                            "tier_code": "all_stories_monthly",
+                            "provider": "paystack",
+                            "provider_payment_id": "{{subscriptionCode}}",
+                            "provider_transaction_id": "1191765",
+                            "provider_token": "AUTH_existing",
+                            "source_system": "shink_app",
+                            "status": "active",
+                            "billing_amount_zar": 79.00,
+                            "billing_period_months": 1,
+                            "billing_amount_source": "paystack_payload"
+                          }
+                        ]
+                        """);
+                }
+
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "subscriber_id": "{{accessSubscriberId}}",
+                        "email": "listener@example.com",
+                        "first_name": "Listener",
+                        "display_name": "Current Listener"
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscribers")
+            {
+                return JsonResponse($$"""[{ "subscriber_id": "{{payerSubscriberId}}" }]""");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                return JsonResponse($$"""[{ "subscription_id": "{{subscriptionId}}" }]""");
+            }
+
+            if (request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return request.Method == HttpMethod.Post
+                    ? new HttpResponseMessage(HttpStatusCode.Created)
+                    : new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var result = await service.RecordPaystackEventAsync(
+            $$"""
+            {
+              "event": "invoice.update",
+              "data": {
+                "paid": 1,
+                "amount": 7900,
+                "status": "success",
+                "paid_at": "2026-07-05T17:15:17.000Z",
+                "customer": {
+                  "email": "payer@example.com"
+                },
+                "transaction": {
+                  "amount": 7900,
+                  "status": "success",
+                  "reference": "{{renewalReference}}"
+                },
+                "subscription": {
+                  "amount": 7900,
+                  "status": "active",
+                  "subscription_code": "{{subscriptionCode}}",
+                  "next_payment_date": "2026-08-05T17:06:00.000Z"
+                },
+                "authorization": {
+                  "authorization_code": "AUTH_existing",
+                  "reusable": true
+                }
+              }
+            }
+            """);
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.AreEqual(subscriptionId, result.SubscriptionId);
+        Assert.IsNull(handler.SubscriberCreatePayload, "An existing Paystack subscription must not reassign ownership from the webhook customer email.");
+
+        var subscriptionPayload = handler.SubscriptionCreatePayloads.Single(payload =>
+            payload.Contains($"\"provider_payment_id\":\"{subscriptionCode}\"", StringComparison.Ordinal));
+        StringAssert.Contains(subscriptionPayload, $"\"subscriber_id\":\"{accessSubscriberId}\"");
+        Assert.IsFalse(
+            subscriptionPayload.Contains(payerSubscriberId, StringComparison.Ordinal),
+            "The renewal must remain attached to the existing access subscriber.");
+        StringAssert.Contains(subscriptionPayload, "\"next_renewal_at\":\"2026-08-05T17:06:00Z\"");
+    }
+
+    [TestMethod]
     public async Task RecordPaystackEventAsync_DuplicateInProgressEventDoesNotRunSideEffects()
     {
         var handler = new RecordingHandler(request =>

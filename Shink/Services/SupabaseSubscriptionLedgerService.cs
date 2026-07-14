@@ -3699,6 +3699,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var email = TryReadNestedString(data, "customer", "email");
         var providerPaymentId = ResolvePaystackProviderPaymentId(data);
         var providerTransactionId = ResolvePaystackProviderTransactionId(data);
+        var providerToken = ResolvePaystackProviderToken(data);
 
         if (string.IsNullOrWhiteSpace(email))
         {
@@ -3710,17 +3711,26 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             return new PaystackUpsertResult(false, "No Paystack payment identifier was present in the payload.");
         }
 
+        // Keep an existing app-side owner when Paystack still sends an older billing email.
+        var ownershipContext = await TryGetPaystackPayloadSubscriptionContextAsync(
+            baseUri,
+            apiKey,
+            providerPaymentId,
+            providerTransactionId,
+            providerToken: null,
+            cancellationToken);
+
         var plan = await ResolvePaystackPlanAsync(baseUri, apiKey, data, cancellationToken);
         if (plan is null)
         {
-            var existingContext = await TryGetPaystackPayloadSubscriptionContextAsync(
+            var planContext = ownershipContext ?? await TryGetPaystackPayloadSubscriptionContextAsync(
                 baseUri,
                 apiKey,
                 providerPaymentId,
                 providerTransactionId,
-                providerToken: ResolvePaystackProviderToken(data),
+                providerToken,
                 cancellationToken);
-            plan = PaymentPlanCatalog.FindByTierCode(existingContext?.TierCode);
+            plan = PaymentPlanCatalog.FindByTierCode(planContext?.TierCode);
         }
 
         if (plan is null)
@@ -3728,27 +3738,30 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             return new PaystackUpsertResult(false, "Could not resolve subscription plan from Paystack payload.");
         }
 
-        var subscriberId = await UpsertSubscriberAsync(
-            baseUri,
-            apiKey,
-            email,
-            TryReadNestedString(data, "customer", "first_name") ?? string.Empty,
-            TryReadNestedString(data, "customer", "last_name") ?? string.Empty,
-            displayName: TryReadNestedString(data, "customer", "display_name"),
-            mobileNumber: TryReadNestedString(data, "customer", "phone"),
-            profileImageUrl: null,
-            profileImageObjectKey: null,
-            profileImageContentType: null,
-            lastLoginAtUtc: null,
-            cancellationToken,
-            reactivateSelfClosedAccount: true);
+        var subscriberId = ownershipContext?.SubscriberId;
+        if (string.IsNullOrWhiteSpace(subscriberId))
+        {
+            subscriberId = await UpsertSubscriberAsync(
+                baseUri,
+                apiKey,
+                email,
+                TryReadNestedString(data, "customer", "first_name") ?? string.Empty,
+                TryReadNestedString(data, "customer", "last_name") ?? string.Empty,
+                displayName: TryReadNestedString(data, "customer", "display_name"),
+                mobileNumber: TryReadNestedString(data, "customer", "phone"),
+                profileImageUrl: null,
+                profileImageObjectKey: null,
+                profileImageContentType: null,
+                lastLoginAtUtc: null,
+                cancellationToken,
+                reactivateSelfClosedAccount: true);
+        }
 
         if (subscriberId is null)
         {
             return new PaystackUpsertResult(false, "Could not upsert subscriber profile.");
         }
 
-        var providerToken = ResolvePaystackProviderToken(data);
         var providerEmailToken = TryReadNestedString(data, "subscription", "email_token")
             ?? TryReadString(data, "email_token");
 
