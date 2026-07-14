@@ -498,7 +498,7 @@ public class SupabaseAdminManagementSelfServiceTests
                 AudioBucket: "stories",
                 AudioObjectKey: "nuwe-gepubliseerde-storie/audio.mp3",
                 AudioContentType: "audio/mpeg",
-                StoryType: "story",
+                StoryType: "video",
                 AccessLevel: "subscriber",
                 Status: "published",
                 SortOrder: 10,
@@ -515,6 +515,9 @@ public class SupabaseAdminManagementSelfServiceTests
         Assert.AreEqual("Kort opsomming", notificationService.PublishedStoryRequest.Summary);
         Assert.AreEqual("/stories/nuwe/thumb.webp", notificationService.PublishedStoryRequest.ThumbnailImagePath);
         Assert.AreEqual("/stories/nuwe/cover.webp", notificationService.PublishedStoryRequest.CoverImagePath);
+        Assert.IsNotNull(handler.StoryPostPayload);
+        var storyPayload = JsonSerializer.Deserialize<JsonElement>(handler.StoryPostPayload);
+        Assert.AreEqual("video", storyPayload.GetProperty("story_type").GetString());
     }
 
     [TestMethod]
@@ -966,6 +969,7 @@ public class SupabaseAdminManagementSelfServiceTests
         public PayFastCancelRequest? PayFastCancelRequest { get; private set; }
         public string? SubscriptionPatchPayload { get; private set; }
         public string? ResourceDocumentPatchPayload { get; private set; }
+        public string? StoryPostPayload { get; private set; }
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -988,6 +992,11 @@ public class SupabaseAdminManagementSelfServiceTests
                      request.RequestUri?.AbsolutePath == "/rest/v1/subscriber_admin_audit")
             {
                 AuditPayload = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
+            }
+            else if (request.Method == HttpMethod.Post &&
+                     request.RequestUri?.AbsolutePath == "/rest/v1/stories")
+            {
+                StoryPostPayload = request.Content?.ReadAsStringAsync(cancellationToken).GetAwaiter().GetResult();
             }
             else if (request.Method == HttpMethod.Put &&
                      request.RequestUri?.AbsolutePath.StartsWith("/subscriptions/", StringComparison.Ordinal) == true)

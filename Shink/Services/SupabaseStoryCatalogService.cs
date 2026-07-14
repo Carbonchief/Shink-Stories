@@ -1466,6 +1466,7 @@ public sealed class SupabaseStoryCatalogService(
         value?.Trim().ToLowerInvariant() switch
         {
             "music" => "music",
+            "video" => "video",
             _ => "story"
         };
 

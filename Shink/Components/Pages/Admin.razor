@@ -3608,6 +3608,7 @@
                                        Margin="Margin.Dense">
                                 <MudSelectItem Value="@("story")">@T("Storie", "Story")</MudSelectItem>
                                 <MudSelectItem Value="@("music")">@T("Musiek", "Music")</MudSelectItem>
+                                <MudSelectItem Value="@("video")">@T("Video", "Video")</MudSelectItem>
                             </MudSelect>
                             <MudCheckBox T="bool"
                                          Class="admin-span-2"
@@ -3932,6 +3933,7 @@
                                    Margin="Margin.Dense">
                             <MudSelectItem Value="@("story")">@T("Storie", "Story")</MudSelectItem>
                             <MudSelectItem Value="@("music")">@T("Musiek", "Music")</MudSelectItem>
+                            <MudSelectItem Value="@("video")">@T("Video", "Video")</MudSelectItem>
                         </MudSelect>
                         <MudSelect T="string"
                                    Label='@T("Status", "Status")'
@@ -8712,6 +8714,7 @@
         value?.Trim().ToLowerInvariant() switch
         {
             "music" => "music",
+            "video" => "video",
             _ => "story"
         };
 

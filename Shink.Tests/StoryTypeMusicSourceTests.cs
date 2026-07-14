@@ -24,7 +24,7 @@ public class StoryTypeMusicSourceTests
         StringAssert.Contains(catalogService, "[JsonPropertyName(\"story_type\")]");
         StringAssert.Contains(adminService, "[\"story_type\"] = normalizedStoryType");
         StringAssert.Contains(adminService, "NormalizeStoryType(request.StoryType, allowDefault: false)");
-        StringAssert.Contains(adminService, "Storie tipe moet 'story' of 'music' wees.");
+        StringAssert.Contains(adminService, "Storie tipe moet 'story', 'music' of 'video' wees.");
     }
 
     [TestMethod]

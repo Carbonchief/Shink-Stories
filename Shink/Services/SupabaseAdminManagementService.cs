@@ -1307,7 +1307,7 @@ public sealed partial class SupabaseAdminManagementService(
         var normalizedStoryType = NormalizeStoryType(request.StoryType, allowDefault: false);
         if (string.IsNullOrWhiteSpace(normalizedStoryType))
         {
-            return new AdminOperationResult(false, "Storie tipe moet 'story' of 'music' wees.");
+            return new AdminOperationResult(false, "Storie tipe moet 'story', 'music' of 'video' wees.");
         }
 
         var normalizedSortOrder = Math.Clamp(request.SortOrder, -500_000, 500_000);
@@ -1586,7 +1586,7 @@ public sealed partial class SupabaseAdminManagementService(
         var normalizedStoryType = NormalizeStoryType(request.StoryType, allowDefault: false);
         if (string.IsNullOrWhiteSpace(normalizedStoryType))
         {
-            return new AdminOperationResult(false, "Storie tipe moet 'story' of 'music' wees.");
+            return new AdminOperationResult(false, "Storie tipe moet 'story', 'music' of 'video' wees.");
         }
 
         var normalizedSortOrder = Math.Clamp(request.SortOrder, -500_000, 500_000);
@@ -6795,6 +6795,7 @@ public sealed partial class SupabaseAdminManagementService(
         {
             "story" => "story",
             "music" => "music",
+            "video" => "video",
             _ => allowDefault ? "story" : string.Empty
         };
 

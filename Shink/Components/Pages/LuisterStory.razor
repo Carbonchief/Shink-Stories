@@ -579,7 +579,7 @@ else
     private Dictionary<int, string> SelectedStoryTestOptions { get; } = new();
 
     private IEnumerable<StoryItem> RelatedLuisterStories =>
-        LuisterStories.Where(story => !IsMusicStory(story));
+        LuisterStories.Where(story => !IsExcludedFromRelatedStories(story));
 
     private string? StoryArtworkUrl =>
         CurrentStory is null ? null : NavigationManager.ToAbsoluteUri(CurrentStory.ImagePath).ToString();
@@ -1445,6 +1445,11 @@ else
 
     private static bool IsMusicStory(StoryItem story) =>
         string.Equals(story.StoryType, "music", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsExcludedFromRelatedStories(StoryItem story) =>
+        story.StoryType is not null &&
+        (story.StoryType.Equals("music", StringComparison.OrdinalIgnoreCase) ||
+         story.StoryType.Equals("video", StringComparison.OrdinalIgnoreCase));
 
     private static bool HasStoryCharacters(StoryItem? story) =>
         story?.Characters is { Count: > 0 };
