@@ -73,6 +73,7 @@ const PEEK_VISIBLE_MS = 3600;
 const PEEK_TRANSITION_BUFFER_MS = 850;
 const PEEK_HIDE_WIGGLE_MS = 940;
 const PEEK_CLICK_JUMP_MS = 560;
+const PEEK_HIDE_FAILSAFE_MS = 1200;
 const INITIAL_DELAY_MIN_MS = 22000;
 const INITIAL_DELAY_MAX_MS = 58000;
 const NEXT_DELAY_MIN_MS = 78000;
@@ -94,6 +95,8 @@ let peekMascotElement = null;
 let recentPeekTimes = [];
 let lastSideClass = "";
 let activePeekAnimation = null;
+let peekCycleId = 0;
+let hideFallbackTimerId = 0;
 const characterProfileCelebrateTimers = new WeakMap();
 const notificationCenterState = new WeakMap();
 const headerSearchState = new WeakMap();
@@ -199,6 +202,7 @@ function initializeOortjiesPeekMascot() {
 }
 
 function disposeOortjiesPeekMascot() {
+    peekCycleId += 1;
     clearLuisterPeekTimers();
 
     if (peekMascotElement instanceof HTMLElement) {
@@ -235,6 +239,15 @@ function clearLuisterPeekTimers() {
         window.clearTimeout(hideTimerId);
         hideTimerId = 0;
     }
+
+    clearPeekHideFallbackTimer();
+}
+
+function clearPeekHideFallbackTimer() {
+    if (hideFallbackTimerId !== 0) {
+        window.clearTimeout(hideFallbackTimerId);
+        hideFallbackTimerId = 0;
+    }
 }
 
 function scheduleNextPeek(delayMs) {
@@ -257,7 +270,11 @@ function showPeekMascot(options = {}) {
         return;
     }
 
+    const element = peekMascotElement;
+    peekCycleId += 1;
     cancelActivePeekAnimation();
+    clearPeekHideFallbackTimer();
+    const cycleId = peekCycleId;
     const isForced = options.force === true;
     const now = Date.now();
     recentPeekTimes = recentPeekTimes.filter((timestamp) => now - timestamp < FIVE_MINUTES_MS);
@@ -287,8 +304,10 @@ function showPeekMascot(options = {}) {
     peekMascotElement.classList.remove(PEEK_POSITIONING_CLASS);
 
     window.requestAnimationFrame(() => {
-        if (peekMascotElement instanceof HTMLElement) {
-            peekMascotElement.classList.add(PEEK_VISIBLE_CLASS);
+        if (cycleId === peekCycleId &&
+            peekMascotElement === element &&
+            document.body.contains(element)) {
+            element.classList.add(PEEK_VISIBLE_CLASS);
         }
     });
 
@@ -377,16 +396,18 @@ function animatePeekAway(options = {}) {
     const wiggleTransform = readPeekTransform(computedStyle, "--peek-wiggle-transform", visibleTransform);
     const jumpTransform = readPeekTransform(computedStyle, "--peek-jump-transform", wiggleTransform);
     const isJump = options.jump === true;
+    const cycleId = ++peekCycleId;
 
     cancelActivePeekAnimation();
+    clearPeekHideFallbackTimer();
 
     if (typeof element.animate !== "function") {
-        element.classList.remove(PEEK_VISIBLE_CLASS);
+        element.classList.remove(PEEK_VISIBLE_CLASS, PEEK_POSITIONING_CLASS);
         scheduleNextPeek(PEEK_TRANSITION_BUFFER_MS + randomBetween(NEXT_DELAY_MIN_MS, NEXT_DELAY_MAX_MS));
         return;
     }
 
-    activePeekAnimation = element.animate(
+    const animation = element.animate(
         isJump
             ? [
                 { transform: visibleTransform, opacity: 1, offset: 0 },
@@ -404,31 +425,53 @@ function animatePeekAway(options = {}) {
             easing: isJump ? "cubic-bezier(0.22, 1, 0.36, 1)" : "cubic-bezier(0.34, 1.56, 0.64, 1)",
             fill: "forwards"
         });
+    activePeekAnimation = animation;
 
-    activePeekAnimation.onfinish = () => {
-        const completedAnimation = activePeekAnimation;
-        if (activePeekAnimation) {
-            activePeekAnimation = null;
+    const finishDuration = (isJump ? PEEK_CLICK_JUMP_MS : PEEK_HIDE_WIGGLE_MS) + PEEK_HIDE_FAILSAFE_MS;
+    hideFallbackTimerId = window.setTimeout(() => {
+        if (activePeekAnimation === animation && cycleId === peekCycleId) {
+            finishPeekAway(element, animation, cycleId);
         }
+    }, finishDuration);
 
-        if (element === peekMascotElement) {
-            element.classList.add(PEEK_POSITIONING_CLASS);
-            element.classList.remove(PEEK_VISIBLE_CLASS);
-            completedAnimation?.cancel();
-            void element.offsetWidth;
-            element.classList.remove(PEEK_POSITIONING_CLASS);
-            scheduleNextPeek(PEEK_TRANSITION_BUFFER_MS + randomBetween(NEXT_DELAY_MIN_MS, NEXT_DELAY_MAX_MS));
+    animation.onfinish = () => {
+        finishPeekAway(element, animation, cycleId);
+    };
+
+    animation.oncancel = () => {
+        if (activePeekAnimation !== animation) {
             return;
         }
 
-        completedAnimation?.cancel();
-    };
-
-    activePeekAnimation.oncancel = () => {
-        if (activePeekAnimation) {
-            activePeekAnimation = null;
+        if (element === peekMascotElement && cycleId === peekCycleId) {
+            finishPeekAway(element, animation, cycleId);
+            return;
         }
+
+        activePeekAnimation = null;
+        clearPeekHideFallbackTimer();
     };
+}
+
+function finishPeekAway(element, animation, cycleId) {
+    if (activePeekAnimation !== animation || cycleId !== peekCycleId) {
+        return;
+    }
+
+    activePeekAnimation = null;
+    clearPeekHideFallbackTimer();
+
+    if (element !== peekMascotElement || !document.body.contains(element)) {
+        animation?.cancel();
+        return;
+    }
+
+    element.classList.add(PEEK_POSITIONING_CLASS);
+    element.classList.remove(PEEK_VISIBLE_CLASS);
+    animation?.cancel();
+    void element.offsetWidth;
+    element.classList.remove(PEEK_POSITIONING_CLASS);
+    scheduleNextPeek(PEEK_TRANSITION_BUFFER_MS + randomBetween(NEXT_DELAY_MIN_MS, NEXT_DELAY_MAX_MS));
 }
 
 function readPeekTransform(computedStyle, propertyName, fallback) {

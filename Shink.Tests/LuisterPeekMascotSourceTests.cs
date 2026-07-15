@@ -75,6 +75,11 @@ public sealed class LuisterPeekMascotSourceTests
         StringAssert.Contains(js, "function forceLuisterPeekMascot");
         StringAssert.Contains(js, "PEEK_HIDE_WIGGLE_MS");
         StringAssert.Contains(js, "PEEK_CLICK_JUMP_MS");
+        StringAssert.Contains(js, "PEEK_HIDE_FAILSAFE_MS");
+        StringAssert.Contains(js, "peekCycleId");
+        StringAssert.Contains(js, "clearPeekHideFallbackTimer");
+        StringAssert.Contains(js, "finishPeekAway");
+        StringAssert.Contains(js, "cycleId === peekCycleId");
         StringAssert.Contains(js, "handlePeekMascotClick");
         StringAssert.Contains(js, "peekMascotElement.addEventListener(\"click\", handlePeekMascotClick);");
         StringAssert.Contains(js, "const OORTJIES_CLICK_ENDPOINT = \"/api/oortjies/click\";");
@@ -86,7 +91,7 @@ public sealed class LuisterPeekMascotSourceTests
         StringAssert.Contains(js, "animatePeekAway({ jump: true });");
         StringAssert.Contains(js, "readPeekTransform(computedStyle, \"--peek-wiggle-transform\"");
         StringAssert.Contains(js, "readPeekTransform(computedStyle, \"--peek-jump-transform\"");
-        StringAssert.Contains(js, "completedAnimation?.cancel();");
+        StringAssert.Contains(js, "animation?.cancel();");
         StringAssert.Contains(js, "element.classList.add(PEEK_POSITIONING_CLASS);");
         StringAssert.Contains(js, "void element.offsetWidth;");
         StringAssert.Contains(js, "PEEK_POSITION_ALIASES");
