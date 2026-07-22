@@ -1552,6 +1552,108 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     }
 
     [TestMethod]
+    public async Task HasBillableSubscriptionForTierAsync_BlocksCheckoutWhileRenewalWebhookIsDelayed()
+    {
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                        "disabled_at": null
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "tier_code": "all_stories_monthly",
+                        "next_renewal_at": "2000-01-01T00:00:00Z",
+                        "cancelled_at": null,
+                        "source_system": "shink_app",
+                        "status": "active"
+                      }
+                    ]
+                    """);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var hasAccess = await service.HasActiveSubscriptionForTierAsync(
+            "ouer@example.com",
+            "all_stories_monthly");
+        var isStillBillable = await service.HasBillableSubscriptionForTierAsync(
+            "ouer@example.com",
+            "all_stories_monthly");
+
+        Assert.IsFalse(
+            hasAccess,
+            "A past renewal boundary must still end access until the renewal webhook arrives.");
+        Assert.IsTrue(
+            isStillBillable,
+            "An active provider subscription must block another checkout while its renewal webhook is delayed.");
+    }
+
+    [TestMethod]
+    public async Task HasBillableSubscriptionForTierAsync_AllowsCheckoutAfterScheduledCancellationEnds()
+    {
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                        "disabled_at": null
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "tier_code": "all_stories_monthly",
+                        "next_renewal_at": "2099-01-01T00:00:00Z",
+                        "cancelled_at": "2000-01-01T00:00:00Z",
+                        "source_system": "shink_app",
+                        "status": "active"
+                      }
+                    ]
+                    """);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var isStillBillable = await service.HasBillableSubscriptionForTierAsync(
+            "ouer@example.com",
+            "all_stories_monthly");
+
+        Assert.IsFalse(
+            isStillBillable,
+            "A completed scheduled cancellation must not block a later checkout.");
+    }
+
+    [TestMethod]
     public async Task RecordPaystackEventAsync_SuccessfulPaymentReopensSelfClosedSubscriber()
     {
         var handler = new RecordingHandler(request =>

@@ -45,6 +45,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             tierCode: null,
             excludeGratisTier: true,
             includeClosedAccountSubscriptions: false,
+            useBillingStatus: false,
             cancellationToken);
     }
 
@@ -55,6 +56,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             tierCode,
             excludeGratisTier: false,
             includeClosedAccountSubscriptions: false,
+            useBillingStatus: false,
             cancellationToken);
     }
 
@@ -65,6 +67,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             tierCode: null,
             excludeGratisTier: true,
             includeClosedAccountSubscriptions: true,
+            useBillingStatus: true,
             cancellationToken);
     }
 
@@ -75,6 +78,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             tierCode,
             excludeGratisTier: false,
             includeClosedAccountSubscriptions: true,
+            useBillingStatus: true,
             cancellationToken);
     }
 
@@ -139,6 +143,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var activeSubscriptions = await GetActiveSubscriptionsAsync(
             email,
             includeClosedAccountSubscriptions: false,
+            useBillingStatus: false,
             cancellationToken);
         if (activeSubscriptions.Count == 0)
         {
@@ -2047,6 +2052,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string? tierCode,
         bool excludeGratisTier,
         bool includeClosedAccountSubscriptions,
+        bool useBillingStatus,
         CancellationToken cancellationToken)
     {
         var normalizedTierCode = string.IsNullOrWhiteSpace(tierCode)
@@ -2055,6 +2061,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var activeSubscriptions = await GetActiveSubscriptionsAsync(
             email,
             includeClosedAccountSubscriptions,
+            useBillingStatus,
             cancellationToken);
         return activeSubscriptions.Any(row =>
         {
@@ -2077,6 +2084,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     private async Task<IReadOnlyList<SubscriptionStatusRow>> GetActiveSubscriptionsAsync(
         string? email,
         bool includeClosedAccountSubscriptions,
+        bool useBillingStatus,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(email))
@@ -2151,7 +2159,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             var nowUtc = DateTimeOffset.UtcNow;
 
             return subscriptions
-                .Where(row => IsCurrentlyActiveSubscription(row, nowUtc))
+                .Where(row => useBillingStatus
+                    ? IsCurrentlyBillableSubscription(row, nowUtc)
+                    : IsCurrentlyActiveSubscription(row, nowUtc))
                 .ToArray();
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
@@ -2742,6 +2752,19 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         }
 
         return true;
+    }
+
+    private static bool IsCurrentlyBillableSubscription(SubscriptionStatusRow row, DateTimeOffset nowUtc)
+    {
+        // A past renewal timestamp can end access, but it does not prove that the
+        // provider stopped billing. Keep duplicate checkout protection in place
+        // until the subscription is cancelled or its status is no longer active.
+        if (!string.Equals(row.Status, "active", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        return row.CancelledAt is null || row.CancelledAt > nowUtc;
     }
 
     private static bool IsCurrentlyActiveSelfServiceSubscription(SelfServiceSubscriptionRow row, DateTimeOffset nowUtc)
