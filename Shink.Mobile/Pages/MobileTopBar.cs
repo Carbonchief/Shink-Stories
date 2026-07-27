@@ -151,18 +151,42 @@ internal static class MobileTopBar
 
     private static async Task ShowMenuAsync(Page hostPage)
     {
-        var choice = await MobileMenuSheet.ShowAsync(hostPage, "Menu", "Karakters", "Instellings", "Bestuur rekening");
-        switch (choice)
+        var choice = await MobileMenuSheet.ShowAsync(
+            hostPage,
+            "Menu",
+            "Karakters",
+            "Karakter-pare",
+            "Wie is dié Karakter?",
+            "Instellings",
+            "Bestuur rekening");
+
+        try
         {
-            case "Karakters":
-                await Shell.Current.GoToAsync(nameof(KaraktersPage), animate: true);
-                break;
-            case "Instellings":
-                await hostPage.DisplayAlertAsync("Instellings", "Instellings kom binnekort.", "Reg so");
-                break;
-            case "Bestuur rekening":
-                await OpenAccountAsync();
-                break;
+            switch (choice)
+            {
+                case "Karakters":
+                    await Shell.Current.GoToAsync("//Karakters", animate: false);
+                    break;
+                case "Karakter-pare":
+                    await Shell.Current.GoToAsync(nameof(KarakterPareGamePage), animate: true);
+                    break;
+                case "Wie is dié Karakter?":
+                    await Shell.Current.GoToAsync(nameof(KarakterRaaiGamePage), animate: true);
+                    break;
+                case "Instellings":
+                    await hostPage.DisplayAlertAsync("Instellings", "Instellings kom binnekort.", "Reg so");
+                    break;
+                case "Bestuur rekening":
+                    await OpenAccountAsync();
+                    break;
+            }
+        }
+        catch (Exception)
+        {
+            await hostPage.DisplayAlertAsync(
+                "Kon nie oopmaak nie",
+                "Dié blad kon nie nou oopmaak nie. Probeer asseblief weer.",
+                "Reg so");
         }
     }
 
@@ -171,23 +195,8 @@ internal static class MobileTopBar
             ? OpenLuisterAsync()
             : ShowMenuAsync(hostPage);
 
-    private static async Task OpenLuisterAsync()
-    {
-        var navigation = Shell.Current.Navigation;
-        if (navigation.ModalStack.Count > 0)
-        {
-            await navigation.PopModalAsync();
-            return;
-        }
-
-        if (navigation.NavigationStack.Count > 1)
-        {
-            await navigation.PopAsync();
-            return;
-        }
-
-        await Shell.Current.GoToAsync("//Luister", animate: true);
-    }
+    private static Task OpenLuisterAsync() =>
+        Shell.Current.GoToAsync("//Luister", animate: false);
 
     private static Task OpenAccountAsync() =>
         Shell.Current.GoToAsync(nameof(AccountPage), animate: true);

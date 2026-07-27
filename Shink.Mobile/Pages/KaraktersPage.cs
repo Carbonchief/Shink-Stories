@@ -9,8 +9,11 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
     private readonly IAudioPlaybackService _audioPlaybackService;
+    private readonly Grid _rootLayout;
+    private readonly Grid _topBarOverlay;
     private readonly CollectionView _charactersView;
     private readonly RefreshView _refreshView;
+    private readonly Grid _profileOverlay;
     private readonly Dictionary<string, ImageSource> _imageSourceCache = new(StringComparer.OrdinalIgnoreCase);
     private MobileCharactersResponse? _response;
     private string? _pendingCharacterSlug;
@@ -27,7 +30,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         _sessionState = sessionState;
         _audioPlaybackService = audioPlaybackService;
         Title = "Karakters";
-        BackgroundColor = Color.FromArgb("#FFF7E8");
+        BackgroundColor = Color.FromArgb("#46969E");
         SafeAreaEdges = new SafeAreaEdges(SafeAreaRegions.Container);
         Shell.SetNavBarIsVisible(this, false);
 
@@ -35,14 +38,15 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         {
             Background = Brush.Transparent,
             ItemsSource = Array.Empty<MobileCharacterCard>(),
-            ItemSizingStrategy = ItemSizingStrategy.MeasureAllItems,
+            ItemSizingStrategy = ItemSizingStrategy.MeasureFirstItem,
             SelectionMode = SelectionMode.None,
-            ItemsLayout = new LinearItemsLayout(ItemsLayoutOrientation.Vertical)
+            ItemsLayout = new GridItemsLayout(2, ItemsLayoutOrientation.Vertical)
             {
-                ItemSpacing = 16
+                HorizontalItemSpacing = 10,
+                VerticalItemSpacing = 12
             },
             ItemTemplate = new DataTemplate(BuildCharacterItemView),
-            Margin = new Thickness(18, 0, 18, 0),
+            Margin = new Thickness(10, 0, 10, 0),
             HorizontalScrollBarVisibility = ScrollBarVisibility.Never,
             VerticalScrollBarVisibility = ScrollBarVisibility.Never
         };
@@ -54,7 +58,39 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             Command = new Command(async () => await LoadAsync(forceRefresh: true))
         };
 
-        Content = _refreshView;
+        _profileOverlay = new Grid
+        {
+            IsVisible = false,
+            InputTransparent = true,
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalOptions = LayoutOptions.Fill,
+            ZIndex = 100,
+            AutomationId = "character-profile-overlay"
+        };
+        _topBarOverlay = new Grid
+        {
+            HeightRequest = 70,
+            Padding = new Thickness(10, 12, 10, 0),
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalOptions = LayoutOptions.Start,
+            ZIndex = 50,
+            Children =
+            {
+                MobileTopBar.Build(this, _apiClient, _sessionState.Current, leftAction: "back")
+            }
+        };
+        _rootLayout = new Grid
+        {
+            Children =
+            {
+                _refreshView,
+                _topBarOverlay,
+                _profileOverlay
+            }
+        };
+
+        Content = _rootLayout;
+        RenderLoadingState();
     }
 
     public void ApplyQueryAttributes(IDictionary<string, object> query)
@@ -64,6 +100,32 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             _pendingCharacterSlug = Uri.UnescapeDataString(value?.ToString() ?? string.Empty);
             _ = TryOpenPendingCharacterAsync();
         }
+    }
+
+    internal async Task PreloadCachedContentAsync(CancellationToken cancellationToken)
+    {
+        if (_response is not null)
+        {
+            return;
+        }
+
+        var cachedResponse = await _apiClient.GetCachedCharactersAsync(cancellationToken);
+        if (cachedResponse is null || cancellationToken.IsCancellationRequested)
+        {
+            return;
+        }
+
+        await MainThread.InvokeOnMainThreadAsync(() =>
+        {
+            if (_response is not null || cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+
+            _response = cachedResponse;
+            RenderCharacters(cachedResponse);
+            StartImageWarmup(cachedResponse);
+        });
     }
 
     protected override async void OnAppearing()
@@ -85,6 +147,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         _isPageActive = false;
         _loadCancellation?.Cancel();
         _imageWarmupCancellation?.Cancel();
+        CloseCharacterProfile();
         base.OnDisappearing();
     }
 
@@ -96,6 +159,11 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         var cancellationToken = _loadCancellation.Token;
         _imageWarmupCancellation?.Cancel();
         var renderedCachedData = _response is not null;
+        if (!renderedCachedData)
+        {
+            RenderLoadingState();
+        }
+
         if (!forceRefresh && !renderedCachedData)
         {
             var cachedResponse = await _apiClient.GetCachedCharactersAsync(cancellationToken);
@@ -106,11 +174,6 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
                 StartImageWarmup(cachedResponse);
                 renderedCachedData = true;
             }
-        }
-
-        if (!renderedCachedData)
-        {
-            RenderLoadingState();
         }
 
         try
@@ -175,11 +238,9 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     private View BuildPageHeader(MobileCharactersResponse response) =>
         new VerticalStackLayout
         {
-            Padding = new Thickness(0, 18, 0, 16),
-            Spacing = 16,
+            Padding = new Thickness(0, 82, 0, 18),
             Children =
             {
-                MobileTopBar.Build(this, _apiClient, _sessionState.Current, leftAction: "back"),
                 BuildHero(response)
             }
         };
@@ -188,11 +249,9 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     {
         _charactersView.Header = new VerticalStackLayout
         {
-            Padding = new Thickness(0, 18, 0, 16),
-            Spacing = 16,
+            Padding = new Thickness(0, 82, 0, 18),
             Children =
             {
-                MobileTopBar.Build(this, _apiClient, _sessionState.Current, leftAction: "back"),
                 new ActivityIndicator
                 {
                     IsRunning = true,
@@ -209,11 +268,9 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     {
         _charactersView.Header = new VerticalStackLayout
         {
-            Padding = new Thickness(0, 18, 0, 16),
-            Spacing = 16,
+            Padding = new Thickness(0, 82, 0, 18),
             Children =
             {
-                MobileTopBar.Build(this, _apiClient, _sessionState.Current, leftAction: "back"),
                 BuildState(message, isError)
             }
         };
@@ -225,7 +282,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     {
         var summary = new VerticalStackLayout
         {
-            Spacing = 6,
+            Spacing = 4,
             HorizontalOptions = LayoutOptions.Center,
             Children =
             {
@@ -234,9 +291,9 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
                     Text = response.IsSignedIn
                         ? $"{response.UnlockedCount} van {response.TotalCount} karakters is oop"
                         : "Teken in om julle ontsluitings te sien.",
-                    FontSize = 13,
+                    FontSize = 15,
                     FontAttributes = FontAttributes.Bold,
-                    TextColor = Color.FromArgb("#243238"),
+                    TextColor = Colors.White,
                     HorizontalTextAlignment = TextAlignment.Center
                 }
             }
@@ -248,7 +305,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             {
                 Text = "Teken in",
                 BackgroundColor = Colors.Transparent,
-                TextColor = Color.FromArgb("#146D69"),
+                TextColor = Colors.White,
                 FontAttributes = FontAttributes.Bold,
                 Padding = new Thickness(10, 2),
                 HeightRequest = 36
@@ -259,34 +316,53 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
 
         return new Border
         {
-            BackgroundColor = Color.FromArgb("#222222"),
-            StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = 24 },
-            Padding = new Thickness(18, 18, 18, 20),
+            Background = new LinearGradientBrush
+            {
+                StartPoint = new Point(0, 0),
+                EndPoint = new Point(1, 1),
+                GradientStops =
+                {
+                    new GradientStop(Color.FromArgb("#166476"), 0),
+                    new GradientStop(Color.FromArgb("#0F4A59"), 0.44f),
+                    new GradientStop(Color.FromArgb("#0F2F3B"), 1)
+                }
+            },
+            Stroke = Color.FromArgb("#30FFFFFF"),
+            StrokeThickness = 1,
+            StrokeShape = new RoundRectangle { CornerRadius = 28 },
+            Padding = new Thickness(18, 18, 18, 24),
+            Shadow = new Shadow
+            {
+                Brush = Brush.Black,
+                Offset = new Point(0, 12),
+                Radius = 24,
+                Opacity = 0.18f
+            },
             Content = new VerticalStackLayout
             {
-                Spacing = 10,
+                Spacing = 11,
                 Children =
                 {
                     new Image
                     {
                         Source = "schink_character_lineup.png",
-                        HeightRequest = 150,
+                        HeightRequest = 128,
                         Aspect = Aspect.AspectFit,
                         HorizontalOptions = LayoutOptions.Fill
                     },
                     new Label
                     {
-                        Text = "Schink Stories Karakters",
+                        Text = "SCHINK STORIES KARAKTERS",
                         FontSize = 12,
                         FontAttributes = FontAttributes.Bold,
-                        TextColor = Color.FromArgb("#FFD45A"),
+                        CharacterSpacing = 2.2,
+                        TextColor = Color.FromArgb("#BCFFFFFF"),
                         HorizontalTextAlignment = TextAlignment.Center
                     },
                     new Label
                     {
                         Text = "Ontmoet die karakters",
-                        FontSize = 28,
+                        FontSize = 30,
                         FontAttributes = FontAttributes.Bold,
                         TextColor = Colors.White,
                         HorizontalTextAlignment = TextAlignment.Center
@@ -294,17 +370,19 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
                     new Label
                     {
                         Text = "Op hierdie blad kan jy die Schink Stories-karakters sien, verken en hoor. Luister na stories om elke karakter se profiel oop te sluit. Of luister meer as een keer na spesifieke stories en ontdek bonuskarakters.",
-                        FontSize = 14,
-                        TextColor = Color.FromArgb("#F8E9C9"),
+                        FontSize = 15,
+                        LineHeight = 1.35,
+                        TextColor = Color.FromArgb("#E0FFFFFF"),
                         HorizontalTextAlignment = TextAlignment.Center,
                         LineBreakMode = LineBreakMode.WordWrap
                     },
                     new Border
                     {
-                        BackgroundColor = Color.FromArgb("#FFF7E8"),
-                        StrokeThickness = 0,
-                        StrokeShape = new RoundRectangle { CornerRadius = 18 },
-                        Padding = new Thickness(14, 8),
+                        BackgroundColor = Color.FromArgb("#20FFFFFF"),
+                        Stroke = Color.FromArgb("#32FFFFFF"),
+                        StrokeThickness = 1,
+                        StrokeShape = new RoundRectangle { CornerRadius = 999 },
+                        Padding = new Thickness(18, 11),
                         HorizontalOptions = LayoutOptions.Center,
                         Content = summary
                     }
@@ -315,42 +393,129 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
 
     private View BuildCharacterCard(MobileCharacterCard character)
     {
-        var body = new VerticalStackLayout
+        var mediaSize = ResolveCharacterMediaSize();
+        var media = new Grid
         {
-            Spacing = 12,
+            HeightRequest = mediaSize,
             Children =
             {
-                BuildCharacterHeader(character),
-                new Label
+                new Border
                 {
-                    Text = character.SummaryText,
-                    FontSize = 14,
-                    TextColor = Color.FromArgb("#52605C"),
-                    LineBreakMode = LineBreakMode.WordWrap
+                    Background = new LinearGradientBrush
+                    {
+                        StartPoint = new Point(0, 0),
+                        EndPoint = new Point(0, 1),
+                        GradientStops =
+                        {
+                            new GradientStop(
+                                character.IsUnlocked
+                                    ? Color.FromArgb("#D9E7EA")
+                                    : Color.FromArgb("#345D68"),
+                                0),
+                            new GradientStop(
+                                character.IsUnlocked
+                                    ? Color.FromArgb("#E8EFF0")
+                                    : Color.FromArgb("#274B56"),
+                                1)
+                        }
+                    },
+                    StrokeThickness = 0,
+                    StrokeShape = new RoundRectangle { CornerRadius = 18 },
+                    Padding = 7,
+                    Content = new Image
+                    {
+                        Source = BuildCharacterImageSource(character.ImageUrl),
+                        Aspect = Aspect.AspectFit,
+                        AutomationId = $"character-image-{character.Slug}"
+                    }
                 }
             }
         };
 
+        if (!character.IsUnlocked)
+        {
+            media.Children.Add(BuildCharacterIconButton(
+                new LockDrawable(),
+                Color.FromArgb("#F39A32"),
+                Color.FromArgb("#1B1207"),
+                "Nog gesluit",
+                CharacterIconPlacement.TopRight));
+        }
+        else if (character.PreviewAudioClips.Count > 0)
+        {
+            var audioButton = BuildCharacterIconButton(
+                new SpeakerDrawable(),
+                Color.FromArgb("#F5FAFB"),
+                Color.FromArgb("#103C49"),
+                $"Speel {character.DisplayName} se stem",
+                CharacterIconPlacement.TopRight);
+            var audioTap = new TapGestureRecognizer();
+            audioTap.Tapped += async (_, _) =>
+            {
+                SafeHapticFeedback.TryPerform(HapticFeedbackType.Click);
+                await audioButton.ScaleToAsync(1.1, 90, Easing.CubicOut);
+                await audioButton.ScaleToAsync(1, 120, Easing.CubicIn);
+                await PlayCharacterAudioAsync(character);
+            };
+            audioButton.GestureRecognizers.Add(audioTap);
+            media.Children.Add(audioButton);
+        }
+
         if (character.PrimaryStory is not null && !string.IsNullOrWhiteSpace(character.CallToActionLabel))
         {
-            body.Children.Add(BuildStoryButton(character));
+            var storyButton = BuildCharacterIconButton(
+                new PlayDrawable(),
+                character.IsUnlocked ? Color.FromArgb("#F39A32") : Color.FromArgb("#8DC66F"),
+                character.IsUnlocked ? Color.FromArgb("#1D1306") : Color.FromArgb("#113420"),
+                character.CallToActionLabel,
+                CharacterIconPlacement.BottomRight);
+            var storyTap = new TapGestureRecognizer();
+            storyTap.Tapped += async (_, _) => await OpenPrimaryStoryAsync(character);
+            storyButton.GestureRecognizers.Add(storyTap);
+            media.Children.Add(storyButton);
         }
 
         var card = new Border
         {
-            BackgroundColor = Color.FromArgb("#FFFDF7"),
-            Stroke = character.IsUnlocked ? Color.FromArgb("#E7D1A2") : Color.FromArgb("#D7CDC0"),
+            BackgroundColor = character.IsUnlocked
+                ? Color.FromArgb("#F2F8F8")
+                : Color.FromArgb("#1F4A56"),
+            Stroke = character.IsUnlocked
+                ? Color.FromArgb("#22103945")
+                : Color.FromArgb("#263C7180"),
             StrokeThickness = 1,
-            StrokeShape = new RoundRectangle { CornerRadius = 22 },
-            Padding = 14,
+            StrokeShape = new RoundRectangle { CornerRadius = 24 },
+            Padding = 10,
             Shadow = new Shadow
             {
                 Brush = Brush.Black,
-                Offset = new Point(0, 8),
-                Radius = 18,
-                Opacity = 0.08f
+                Offset = new Point(0, 10),
+                Radius = 20,
+                Opacity = 0.14f
             },
-            Content = body
+            Content = new VerticalStackLayout
+            {
+                Spacing = 0,
+                Children =
+                {
+                    media,
+                    new Label
+                    {
+                        Text = character.Heading,
+                        HeightRequest = 50,
+                        Margin = new Thickness(2, 8, 2, 0),
+                        FontSize = 16,
+                        FontAttributes = FontAttributes.Bold,
+                        TextColor = character.IsUnlocked
+                            ? Color.FromArgb("#203236")
+                            : Color.FromArgb("#F4F8F9"),
+                        HorizontalTextAlignment = TextAlignment.Center,
+                        VerticalTextAlignment = TextAlignment.Center,
+                        MaxLines = 2,
+                        LineBreakMode = LineBreakMode.TailTruncation
+                    }
+                }
+            }
         };
 
         var tap = new TapGestureRecognizer();
@@ -368,127 +533,51 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         return card;
     }
 
-    private View BuildCharacterHeader(MobileCharacterCard character)
+    private double ResolveCharacterMediaSize()
     {
-        var imageFrame = new Grid
-        {
-            WidthRequest = 114,
-            HeightRequest = 132,
-            Children =
-            {
-                new Border
-                {
-                    BackgroundColor = Color.FromArgb("#F3E6CC"),
-                    StrokeThickness = 0,
-                    StrokeShape = new RoundRectangle { CornerRadius = 20 },
-                    Padding = 8,
-                    Content = new Image
-                    {
-                        Source = BuildCharacterImageSource(character.ImageUrl),
-                        Aspect = Aspect.AspectFit,
-                        AutomationId = $"character-image-{character.Slug}"
-                    }
-                }
-            }
-        };
-
-        if (!character.IsUnlocked)
-        {
-            imageFrame.Children.Add(BuildRoundBadge("🔒", "Nog gesluit", Color.FromArgb("#AA222222")));
-        }
-        else if (character.PreviewAudioClips.Count > 0)
-        {
-            var audioButton = BuildRoundButton("🔊", $"Speel {character.DisplayName} se stem");
-            audioButton.Clicked += async (_, _) => await PlayCharacterAudioAsync(character);
-            imageFrame.Children.Add(audioButton);
-        }
-
-        var textStack = new VerticalStackLayout
-        {
-            Spacing = 7,
-            VerticalOptions = LayoutOptions.Center,
-            Children =
-            {
-                new Label
-                {
-                    Text = character.Heading,
-                    FontSize = 24,
-                    FontAttributes = FontAttributes.Bold,
-                    TextColor = Color.FromArgb("#243238"),
-                    LineBreakMode = LineBreakMode.WordWrap
-                },
-                new Label
-                {
-                    Text = character.IsUnlocked ? "Profiel oop" : "Nog gesluit",
-                    FontSize = 12,
-                    FontAttributes = FontAttributes.Bold,
-                    TextColor = character.IsUnlocked ? Color.FromArgb("#146D69") : Color.FromArgb("#7B6553")
-                }
-            }
-        };
-
-        var header = new Grid
-        {
-            ColumnDefinitions =
-            {
-                new ColumnDefinition(GridLength.Auto),
-                new ColumnDefinition(GridLength.Star)
-            },
-            ColumnSpacing = 14,
-            Children = { imageFrame, textStack }
-        };
-        Grid.SetColumn(textStack, 1);
-        return header;
+        var pageWidth = Width > 0
+            ? Width
+            : DeviceDisplay.MainDisplayInfo.Width / DeviceDisplay.MainDisplayInfo.Density;
+        var columnWidth = (Math.Max(320, pageWidth) - 30) / 2;
+        return Math.Clamp(columnWidth - 20, 132, 190);
     }
 
-    private static Border BuildRoundBadge(string text, string automationName, Color backgroundColor) =>
-        new()
+    private static Border BuildCharacterIconButton(
+        IDrawable drawable,
+        Color backgroundColor,
+        Color iconColor,
+        string automationName,
+        CharacterIconPlacement placement)
+    {
+        var button = new Border
         {
             BackgroundColor = backgroundColor,
             StrokeThickness = 0,
             StrokeShape = new RoundRectangle { CornerRadius = 999 },
-            WidthRequest = 40,
-            HeightRequest = 40,
+            WidthRequest = 34,
+            HeightRequest = 34,
+            Margin = 8,
             HorizontalOptions = LayoutOptions.End,
-            VerticalOptions = LayoutOptions.Start,
+            VerticalOptions = placement == CharacterIconPlacement.TopRight
+                ? LayoutOptions.Start
+                : LayoutOptions.End,
             AutomationId = automationName,
-            Content = new Label
+            Shadow = new Shadow
             {
-                Text = text,
-                FontSize = 17,
-                HorizontalTextAlignment = TextAlignment.Center,
-                VerticalTextAlignment = TextAlignment.Center
+                Brush = Brush.Black,
+                Offset = new Point(0, 5),
+                Radius = 10,
+                Opacity = 0.16f
+            },
+            Content = new GraphicsView
+            {
+                Drawable = new TintedDrawable(drawable, iconColor),
+                WidthRequest = 18,
+                HeightRequest = 18,
+                Margin = 8,
+                InputTransparent = true
             }
         };
-
-    private static Button BuildRoundButton(string text, string automationName) =>
-        new()
-        {
-            Text = text,
-            FontSize = 17,
-            BackgroundColor = Color.FromArgb("#146D69"),
-            TextColor = Colors.White,
-            CornerRadius = 20,
-            WidthRequest = 40,
-            HeightRequest = 40,
-            Padding = 0,
-            HorizontalOptions = LayoutOptions.End,
-            VerticalOptions = LayoutOptions.Start,
-            AutomationId = automationName
-        };
-
-    private View BuildStoryButton(MobileCharacterCard character)
-    {
-        var button = new Button
-        {
-            Text = character.CallToActionLabel,
-            BackgroundColor = Color.FromArgb("#146D69"),
-            TextColor = Colors.White,
-            FontAttributes = FontAttributes.Bold,
-            CornerRadius = 16,
-            HeightRequest = 50
-        };
-        button.Clicked += async (_, _) => await OpenPrimaryStoryAsync(character);
         return button;
     }
 
@@ -502,14 +591,15 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         var closeButton = new Button
         {
             Text = "✕",
-            FontSize = 20,
-            BackgroundColor = Color.FromArgb("#146D69"),
-            TextColor = Colors.White,
+            FontSize = 18,
+            BackgroundColor = Color.FromArgb("#F7FFFFFF"),
+            TextColor = Color.FromArgb("#C63B36"),
             CornerRadius = 22,
             WidthRequest = 44,
             HeightRequest = 44,
             Padding = 0,
-            HorizontalOptions = LayoutOptions.End
+            HorizontalOptions = LayoutOptions.End,
+            AutomationId = "Maak karakterprofiel toe"
         };
         var profileImage = new Image
         {
@@ -531,7 +621,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             var imageTap = new TapGestureRecognizer();
             imageTap.Tapped += async (_, _) =>
             {
-                HapticFeedback.Default.Perform(HapticFeedbackType.Click);
+                SafeHapticFeedback.TryPerform(HapticFeedbackType.Click);
                 await imageButton.ScaleToAsync(1.04, 100, Easing.CubicOut);
                 await imageButton.ScaleToAsync(1, 140, Easing.CubicIn);
                 await PlayCharacterAudioAsync(character);
@@ -541,11 +631,10 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
 
         var profileContent = new VerticalStackLayout
         {
-            Padding = new Thickness(18, 12, 18, 32),
+            Padding = new Thickness(16, 14, 16, 28),
             Spacing = 14,
             Children =
             {
-                closeButton,
                 imageButton,
                 new Label
                 {
@@ -596,16 +685,97 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             profileContent.Children.Add(relatedStories);
         }
 
-        var page = new ContentPage
+        var pageWidth = Width > 0
+            ? Width
+            : DeviceDisplay.MainDisplayInfo.Width / DeviceDisplay.MainDisplayInfo.Density;
+        var pageHeight = Height > 0
+            ? Height
+            : DeviceDisplay.MainDisplayInfo.Height / DeviceDisplay.MainDisplayInfo.Density;
+        var profileScroll = new ScrollView
         {
-            Title = character.DisplayName,
-            BackgroundColor = Color.FromArgb("#FFF7E8"),
-            SafeAreaEdges = new SafeAreaEdges(SafeAreaRegions.Container),
-            Content = new ScrollView { Content = profileContent }
+            VerticalOptions = LayoutOptions.Fill,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Never,
+            Content = profileContent
         };
-        Shell.SetNavBarIsVisible(page, false);
-        closeButton.Clicked += async (_, _) => await Navigation.PopModalAsync(true);
-        await Navigation.PushModalAsync(page, true);
+        var closeHeader = new Grid
+        {
+            Padding = new Thickness(16, 14, 16, 4),
+            HorizontalOptions = LayoutOptions.Fill,
+            Children =
+            {
+                closeButton
+            }
+        };
+        var profileLayout = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = GridLength.Auto },
+                new RowDefinition { Height = GridLength.Star }
+            },
+            Children =
+            {
+                closeHeader,
+                profileScroll
+            }
+        };
+        Grid.SetRow(profileScroll, 1);
+        var profileCard = new Border
+        {
+            WidthRequest = Math.Min(420, pageWidth - 28),
+            HeightRequest = Math.Min(760, pageHeight - 56),
+            Margin = new Thickness(14, 28),
+            Padding = 0,
+            BackgroundColor = Colors.White,
+            Stroke = Color.FromArgb("#26103945"),
+            StrokeThickness = 1,
+            StrokeShape = new RoundRectangle { CornerRadius = 28 },
+            HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.Center,
+            ZIndex = 1,
+            Shadow = new Shadow
+            {
+                Brush = Brush.Black,
+                Offset = new Point(0, 18),
+                Radius = 34,
+                Opacity = 0.3f
+            },
+            Content = profileLayout
+        };
+        var backdrop = new BoxView
+        {
+            Color = Color.FromArgb("#88073742"),
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalOptions = LayoutOptions.Fill
+        };
+        var backdropTap = new TapGestureRecognizer();
+        backdropTap.Tapped += (_, _) => CloseCharacterProfile();
+        backdrop.GestureRecognizers.Add(backdropTap);
+        closeButton.Clicked += (_, _) => CloseCharacterProfile();
+
+        _profileOverlay.Children.Clear();
+        _profileOverlay.Children.Add(backdrop);
+        _profileOverlay.Children.Add(profileCard);
+        _refreshView.InputTransparent = true;
+        _topBarOverlay.InputTransparent = true;
+        _profileOverlay.InputTransparent = false;
+        _profileOverlay.Opacity = 1;
+        profileCard.Scale = 0.94;
+        profileCard.Opacity = 0;
+        _profileOverlay.IsVisible = true;
+        await Task.WhenAll(
+            profileCard.FadeToAsync(1, 120, Easing.CubicOut),
+            profileCard.ScaleToAsync(1, 180, Easing.CubicOut));
+    }
+
+    private void CloseCharacterProfile()
+    {
+        _profileOverlay.InputTransparent = true;
+        _profileOverlay.IsVisible = false;
+        _profileOverlay.Opacity = 1;
+        _profileOverlay.Children.Clear();
+        _refreshView.InputTransparent = false;
+        _topBarOverlay.InputTransparent = false;
     }
 
     private static void AddProfilePanel(
@@ -687,7 +857,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
                 var tap = new TapGestureRecognizer();
                 tap.Tapped += async (_, _) =>
                 {
-                    await Navigation.PopModalAsync(false);
+                    CloseCharacterProfile();
                     await ShowCharacterProfileAsync(friend);
                 };
                 tile.GestureRecognizers.Add(tap);
@@ -870,14 +1040,11 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
 
     private async Task OpenStoryAsync(MobileCharacterStoryLink story)
     {
-        if (Navigation.ModalStack.Count > 0)
-        {
-            await Navigation.PopModalAsync(false);
-        }
+        CloseCharacterProfile();
 
         await Shell.Current.GoToAsync(
             $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source={Uri.EscapeDataString(story.Source)}",
-            animate: true);
+            animate: false);
     }
 
     private async Task TryOpenPendingCharacterAsync()
@@ -899,7 +1066,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
 
     private static async Task ShakeLockedCardAsync(VisualElement card)
     {
-        HapticFeedback.Default.Perform(HapticFeedbackType.Click);
+        SafeHapticFeedback.TryPerform(HapticFeedbackType.Click);
         foreach (var offset in new[] { -10d, 10d, -8d, 8d, -4d, 4d, 0d })
         {
             await card.TranslateToAsync(offset, 0, 55, Easing.CubicInOut);
@@ -1015,5 +1182,104 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         }
 
         return "Kon nie die Karakters-data laai nie. Probeer asseblief weer.";
+    }
+
+    private enum CharacterIconPlacement
+    {
+        TopRight,
+        BottomRight
+    }
+
+    private sealed class TintedDrawable(IDrawable drawable, Color color) : IDrawable
+    {
+        public void Draw(ICanvas canvas, RectF dirtyRect)
+        {
+            canvas.StrokeColor = color;
+            canvas.FillColor = color;
+            drawable.Draw(canvas, dirtyRect);
+        }
+    }
+
+    private sealed class PlayDrawable : IDrawable
+    {
+        public void Draw(ICanvas canvas, RectF dirtyRect)
+        {
+            var triangle = new PathF();
+            triangle.MoveTo(dirtyRect.Width * 0.34f, dirtyRect.Height * 0.22f);
+            triangle.LineTo(dirtyRect.Width * 0.34f, dirtyRect.Height * 0.78f);
+            triangle.LineTo(dirtyRect.Width * 0.76f, dirtyRect.Height * 0.50f);
+            triangle.Close();
+            canvas.FillPath(triangle);
+        }
+    }
+
+    private sealed class LockDrawable : IDrawable
+    {
+        public void Draw(ICanvas canvas, RectF dirtyRect)
+        {
+            canvas.StrokeSize = 2.2f;
+            canvas.StrokeLineCap = LineCap.Round;
+            canvas.StrokeLineJoin = LineJoin.Round;
+            var shackle = new PathF();
+            shackle.MoveTo(dirtyRect.Width * 0.30f, dirtyRect.Height * 0.47f);
+            shackle.LineTo(dirtyRect.Width * 0.30f, dirtyRect.Height * 0.35f);
+            shackle.CurveTo(
+                dirtyRect.Width * 0.30f,
+                dirtyRect.Height * 0.12f,
+                dirtyRect.Width * 0.70f,
+                dirtyRect.Height * 0.12f,
+                dirtyRect.Width * 0.70f,
+                dirtyRect.Height * 0.35f);
+            shackle.LineTo(dirtyRect.Width * 0.70f, dirtyRect.Height * 0.47f);
+            canvas.DrawPath(shackle);
+            canvas.FillRoundedRectangle(
+                new RectF(
+                    dirtyRect.Width * 0.20f,
+                    dirtyRect.Height * 0.42f,
+                    dirtyRect.Width * 0.60f,
+                    dirtyRect.Height * 0.45f),
+                3);
+        }
+    }
+
+    private sealed class SpeakerDrawable : IDrawable
+    {
+        public void Draw(ICanvas canvas, RectF dirtyRect)
+        {
+            canvas.StrokeSize = 1.9f;
+            canvas.StrokeLineCap = LineCap.Round;
+            canvas.StrokeLineJoin = LineJoin.Round;
+
+            canvas.FillRoundedRectangle(
+                new RectF(
+                    dirtyRect.Width * 0.16f,
+                    dirtyRect.Height * 0.39f,
+                    dirtyRect.Width * 0.22f,
+                    dirtyRect.Height * 0.22f),
+                2);
+            var cone = new PathF();
+            cone.MoveTo(dirtyRect.Width * 0.34f, dirtyRect.Height * 0.40f);
+            cone.LineTo(dirtyRect.Width * 0.56f, dirtyRect.Height * 0.22f);
+            cone.LineTo(dirtyRect.Width * 0.56f, dirtyRect.Height * 0.78f);
+            cone.LineTo(dirtyRect.Width * 0.34f, dirtyRect.Height * 0.60f);
+            cone.Close();
+            canvas.FillPath(cone);
+
+            canvas.DrawLine(
+                dirtyRect.Width * 0.67f,
+                dirtyRect.Height * 0.36f,
+                dirtyRect.Width * 0.75f,
+                dirtyRect.Height * 0.28f);
+            canvas.DrawLine(
+                dirtyRect.Width * 0.67f,
+                dirtyRect.Height * 0.64f,
+                dirtyRect.Width * 0.75f,
+                dirtyRect.Height * 0.72f);
+            canvas.DrawLine(
+                dirtyRect.Width * 0.72f,
+                dirtyRect.Height * 0.50f,
+                dirtyRect.Width * 0.84f,
+                dirtyRect.Height * 0.50f);
+        }
     }
 }

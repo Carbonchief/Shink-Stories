@@ -18,4 +18,10 @@
     <ProjectReference Include="..\Shink\Shink.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Compile Include="..\Shink.Mobile\Games\CharacterMatchGame.cs" Link="Mobile\CharacterMatchGame.cs" />
+    <Compile Include="..\Shink.Mobile\Games\CharacterGuessGame.cs" Link="Mobile\CharacterGuessGame.cs" />
+    <Compile Include="..\Shink.Mobile\Services\OfflineDownloadAccessPolicy.cs" Link="Mobile\OfflineDownloadAccessPolicy.cs" />
+  </ItemGroup>
+
 </Project>

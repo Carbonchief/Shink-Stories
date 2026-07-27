@@ -1,3 +1,5 @@
+using Shink.Mobile.Services;
+
 namespace Shink.Mobile.Pages;
 
 internal static class MobileMenuSheet
@@ -12,7 +14,7 @@ internal static class MobileMenuSheet
         var completion = new TaskCompletionSource<string?>(TaskCreationOptions.RunContinuationsAsynchronously);
         var sheetPage = new ContentPage
         {
-            BackgroundColor = Color.FromRgba(4, 47, 50, 0.42),
+            BackgroundColor = Colors.Transparent,
             SafeAreaEdges = SafeAreaEdges.None
         };
 
@@ -27,7 +29,7 @@ internal static class MobileMenuSheet
             isCompleting = true;
             try
             {
-                await sheetPage.Navigation.PopModalAsync(animated: true);
+                await sheetPage.Navigation.PopModalAsync(animated: false);
             }
             catch
             {
@@ -37,6 +39,17 @@ internal static class MobileMenuSheet
             completion.TrySetResult(choice);
         }
 
+        sheetPage.Content = BuildOverlay(title, CompleteAsync, actions);
+
+        await hostPage.Navigation.PushModalAsync(sheetPage, animated: false);
+        return await completion.Task;
+    }
+
+    public static Grid BuildOverlay(
+        string title,
+        Func<string?, Task> onSelection,
+        params string[] actions)
+    {
         var stack = new VerticalStackLayout
         {
             Spacing = 11
@@ -44,10 +57,10 @@ internal static class MobileMenuSheet
 
         foreach (var action in actions)
         {
-            stack.Children.Add(BuildActionButton(action, () => CompleteAsync(action)));
+            stack.Children.Add(BuildActionButton(action, () => onSelection(action)));
         }
 
-        var cancelButton = BuildActionButton("Kanselleer", () => CompleteAsync(null), isCancel: true);
+        var cancelButton = BuildActionButton("Kanselleer", () => onSelection(null), isCancel: true);
         var card = new Border
         {
             BackgroundColor = Color.FromArgb("#FFF7E8"),
@@ -63,29 +76,33 @@ internal static class MobileMenuSheet
                 Radius = 26,
                 Opacity = 0.2f
             },
-            Content = new VerticalStackLayout
+            Content = new ScrollView
             {
-                Spacing = 14,
-                Children =
+                VerticalScrollBarVisibility = ScrollBarVisibility.Never,
+                Content = new VerticalStackLayout
                 {
-                    new Image
+                    Spacing = 14,
+                    Children =
                     {
-                        Source = "oortjies_01.png",
-                        HeightRequest = 74,
-                        Aspect = Aspect.AspectFit,
-                        HorizontalOptions = LayoutOptions.Center,
-                        Margin = new Thickness(0, -4, 0, -2)
-                    },
-                    new Label
-                    {
-                        Text = title,
-                        FontSize = 26,
-                        FontAttributes = FontAttributes.Bold,
-                        TextColor = Color.FromArgb("#27313A"),
-                        HorizontalTextAlignment = TextAlignment.Center
-                    },
-                    stack,
-                    cancelButton
+                        new Image
+                        {
+                            Source = "oortjies_01.png",
+                            HeightRequest = 74,
+                            Aspect = Aspect.AspectFit,
+                            HorizontalOptions = LayoutOptions.Center,
+                            Margin = new Thickness(0, -4, 0, -2)
+                        },
+                        new Label
+                        {
+                            Text = title,
+                            FontSize = 26,
+                            FontAttributes = FontAttributes.Bold,
+                            TextColor = Color.FromArgb("#27313A"),
+                            HorizontalTextAlignment = TextAlignment.Center
+                        },
+                        stack,
+                        cancelButton
+                    }
                 }
             }
         };
@@ -95,8 +112,9 @@ internal static class MobileMenuSheet
             Color = Colors.Transparent
         };
 
-        sheetPage.Content = new Grid
+        var overlay = new Grid
         {
+            BackgroundColor = Color.FromRgba(4, 47, 50, 0.42),
             Padding = new Thickness(0),
             Children =
             {
@@ -113,11 +131,9 @@ internal static class MobileMenuSheet
         };
 
         var dismissTap = new TapGestureRecognizer();
-        dismissTap.Tapped += async (_, _) => await CompleteAsync(null);
+        dismissTap.Tapped += async (_, _) => await onSelection(null);
         dismissLayer.GestureRecognizers.Add(dismissTap);
-
-        await hostPage.Navigation.PushModalAsync(sheetPage, animated: true);
-        return await completion.Task;
+        return overlay;
     }
 
     private static Border BuildActionButton(string text, Func<Task> onTap, bool isCancel = false)
@@ -142,7 +158,21 @@ internal static class MobileMenuSheet
             }
         };
         var tap = new TapGestureRecognizer();
-        tap.Tapped += async (_, _) => await onTap();
+        tap.Tapped += async (_, _) =>
+        {
+            button.IsEnabled = false;
+            button.Opacity = 0.72;
+            SafeHapticFeedback.TryPerform(HapticFeedbackType.Click);
+            try
+            {
+                await onTap();
+            }
+            finally
+            {
+                button.IsEnabled = true;
+                button.Opacity = 1;
+            }
+        };
         button.GestureRecognizers.Add(tap);
         return button;
     }

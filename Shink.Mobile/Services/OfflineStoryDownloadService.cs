@@ -35,7 +35,8 @@ public sealed record OfflineStoryDownload(
     DateTimeOffset DownloadedAt,
     DateTimeOffset LastAccessVerifiedAt,
     long FileSizeBytes,
-    string AudioFileName);
+    string AudioFileName,
+    string? OwnerKey = null);
 
 public interface IOfflineStoryDownloadService
 {
@@ -58,8 +59,6 @@ public interface IOfflineStoryDownloadService
 
     Task RemoveAsync(string slug, string source, CancellationToken cancellationToken = default);
 
-    Task DeletePaidDownloadsAsync(CancellationToken cancellationToken = default);
-
     Task<string?> ResolvePlayableAudioAsync(MobileStoryDetailResponse detail, CancellationToken cancellationToken = default);
 
     MobileStoryDetailResponse CreateOfflineDetail(OfflineStoryDownload download);
@@ -69,6 +68,7 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
     private static readonly TimeSpan AccessRefreshWindow = TimeSpan.FromDays(30);
+    private const string LastSignedInOwnerKeyPreferenceKey = "offline_download_last_signed_in_owner_v1";
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
     private readonly MobileAnalyticsService _analytics;
@@ -84,12 +84,11 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
         _apiClient = apiClient;
         _sessionState = sessionState;
         _analytics = analytics;
+        RememberCurrentOwnerKey(_sessionState.Current);
         _sessionState.Changed += session =>
         {
-            if (!session.IsSignedIn)
-            {
-                _ = DeletePaidDownloadsAsync();
-            }
+            RememberCurrentOwnerKey(session);
+            DownloadsChanged?.Invoke(this, EventArgs.Empty);
         };
     }
 
@@ -111,8 +110,13 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
     public async Task<IReadOnlyList<OfflineStoryDownload>> GetPlayableDownloadsAsync(CancellationToken cancellationToken = default)
     {
         var downloads = await GetDownloadsAsync(cancellationToken);
+        var currentOwnerKey = ResolveCurrentOwnerKey();
+        var session = _sessionState.Current;
+        var now = DateTimeOffset.UtcNow;
         return downloads
-            .Where(download => IsPlayable(download) && File.Exists(BuildAudioPath(download.AudioFileName)))
+            .Where(download =>
+                IsPlayable(download, session, currentOwnerKey, now) &&
+                File.Exists(BuildAudioPath(download.AudioFileName)))
             .OrderByDescending(download => download.DownloadedAt)
             .ToArray();
     }
@@ -123,14 +127,20 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
         CancellationToken cancellationToken = default)
     {
         var downloads = await GetDownloadsAsync(cancellationToken);
-        return downloads.FirstOrDefault(download => IsSameStory(download, slug, source));
+        var currentOwnerKey = ResolveCurrentOwnerKey();
+        return downloads.FirstOrDefault(download =>
+            IsSameStory(download, slug, source) &&
+            IsOwnedByCurrentAccount(download, currentOwnerKey));
     }
 
     public async Task<OfflineDownloadState> GetStateAsync(
         MobileStoryDetailResponse detail,
         CancellationToken cancellationToken = default)
     {
-        var key = BuildStoryKey(detail.Story.Slug, detail.Story.Source);
+        var ownerKey = RequiresSubscription(detail.Story.Source)
+            ? ResolveCurrentOwnerKey()
+            : null;
+        var key = BuildDownloadKey(detail.Story.Slug, detail.Story.Source, ownerKey);
         if (_activeDownloads.Contains(key))
         {
             return OfflineDownloadState.Downloading;
@@ -162,7 +172,19 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
             throw new InvalidOperationException("Hierdie storie kan nie tans afgelaai word nie.");
         }
 
-        var key = BuildStoryKey(detail.Story.Slug, detail.Story.Source);
+        var requiresSubscription = RequiresSubscription(detail.Story.Source);
+        var ownerKey = requiresSubscription
+            ? ResolveCurrentOwnerKey()
+            : null;
+        if (requiresSubscription &&
+            (!_sessionState.Current.IsSignedIn ||
+             !_sessionState.Current.HasPaidSubscription ||
+             string.IsNullOrWhiteSpace(ownerKey)))
+        {
+            throw new InvalidOperationException("Teken asseblief in met jou aktiewe rekening om hierdie storie af te laai.");
+        }
+
+        var key = BuildDownloadKey(detail.Story.Slug, detail.Story.Source, ownerKey);
         if (!_activeDownloads.Add(key))
         {
             throw new InvalidOperationException("Hierdie storie is reeds besig om af te laai.");
@@ -221,7 +243,8 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
                 DownloadedAt: now,
                 LastAccessVerifiedAt: now,
                 FileSizeBytes: fileInfo.Length,
-                AudioFileName: audioFileName);
+                AudioFileName: audioFileName,
+                OwnerKey: ownerKey);
 
             await SaveDownloadAsync(download, cancellationToken);
             DownloadsChanged?.Invoke(this, EventArgs.Empty);
@@ -261,7 +284,10 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
         try
         {
             var downloads = (await LoadDownloadsUnsafeAsync(cancellationToken)).ToList();
-            var index = downloads.FindIndex(download => IsSameStory(download, detail.Story.Slug, detail.Story.Source));
+            var currentOwnerKey = ResolveCurrentOwnerKey();
+            var index = downloads.FindIndex(download =>
+                IsSameStory(download, detail.Story.Slug, detail.Story.Source) &&
+                IsOwnedByCurrentAccount(download, currentOwnerKey));
             if (index < 0)
             {
                 return;
@@ -287,7 +313,10 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
         try
         {
             var downloads = (await LoadDownloadsUnsafeAsync(cancellationToken)).ToList();
-            var download = downloads.FirstOrDefault(item => IsSameStory(item, slug, source));
+            var currentOwnerKey = ResolveCurrentOwnerKey();
+            var download = downloads.FirstOrDefault(item =>
+                IsSameStory(item, slug, source) &&
+                IsOwnedByCurrentAccount(item, currentOwnerKey));
             if (download is null)
             {
                 return;
@@ -302,36 +331,6 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
                 ["story_source"] = download.Source,
                 ["file_size_bytes"] = download.FileSizeBytes
             });
-        }
-        finally
-        {
-            _metadataLock.Release();
-        }
-
-        DownloadsChanged?.Invoke(this, EventArgs.Empty);
-    }
-
-    public async Task DeletePaidDownloadsAsync(CancellationToken cancellationToken = default)
-    {
-        await _metadataLock.WaitAsync(cancellationToken);
-        try
-        {
-            var downloads = (await LoadDownloadsUnsafeAsync(cancellationToken)).ToList();
-            var paidDownloads = downloads.Where(download => download.RequiresSubscription).ToArray();
-            foreach (var download in paidDownloads)
-            {
-                DeleteAudioFile(download);
-                downloads.Remove(download);
-            }
-
-            await SaveDownloadsUnsafeAsync(downloads, cancellationToken);
-            if (paidDownloads.Length > 0)
-            {
-                _analytics.TrackEvent("mobile_paid_downloads_deleted", new Dictionary<string, object>
-                {
-                    ["deleted_count"] = paidDownloads.Length
-                });
-            }
         }
         finally
         {
@@ -405,8 +404,20 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
         await _metadataLock.WaitAsync(cancellationToken);
         try
         {
-            var downloads = (await LoadDownloadsUnsafeAsync(cancellationToken))
-                .Where(item => !IsSameStory(item, download.Slug, download.Source))
+            var existingDownloads = await LoadDownloadsUnsafeAsync(cancellationToken);
+            var replacedDownloads = existingDownloads
+                .Where(item => IsSameOwnedStory(item, download))
+                .ToArray();
+            foreach (var replacedDownload in replacedDownloads)
+            {
+                if (!string.Equals(replacedDownload.AudioFileName, download.AudioFileName, StringComparison.Ordinal))
+                {
+                    DeleteAudioFile(replacedDownload);
+                }
+            }
+
+            var downloads = existingDownloads
+                .Where(item => !IsSameOwnedStory(item, download))
                 .Append(download)
                 .ToArray();
             await SaveDownloadsUnsafeAsync(downloads, cancellationToken);
@@ -421,7 +432,7 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
     {
         if (_cachedDownloads is not null)
         {
-            return _cachedDownloads;
+            return await ClaimLegacyPaidDownloadsUnsafeAsync(_cachedDownloads, cancellationToken);
         }
 
         if (!File.Exists(MetadataPath))
@@ -437,12 +448,13 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
                     JsonOptions,
                     cancellationToken)
                 ?? Array.Empty<OfflineStoryDownload>();
-            return _cachedDownloads;
         }
         catch
         {
             return _cachedDownloads = Array.Empty<OfflineStoryDownload>();
         }
+
+        return await ClaimLegacyPaidDownloadsUnsafeAsync(_cachedDownloads, cancellationToken);
     }
 
     private async Task SaveDownloadsUnsafeAsync(
@@ -456,25 +468,118 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
             await JsonSerializer.SerializeAsync(stream, downloads, JsonOptions, cancellationToken);
         }
 
-        if (File.Exists(MetadataPath))
-        {
-            File.Delete(MetadataPath);
-        }
-
-        File.Move(temporaryPath, MetadataPath);
+        File.Move(temporaryPath, MetadataPath, overwrite: true);
         _cachedDownloads = downloads.ToArray();
     }
 
-    private static bool IsPlayable(OfflineStoryDownload download) =>
-        !download.RequiresSubscription ||
-        DateTimeOffset.UtcNow - download.LastAccessVerifiedAt <= AccessRefreshWindow;
+    private async Task<IReadOnlyList<OfflineStoryDownload>> ClaimLegacyPaidDownloadsUnsafeAsync(
+        IReadOnlyList<OfflineStoryDownload> downloads,
+        CancellationToken cancellationToken)
+    {
+        var currentOwnerKey = ResolveCurrentOwnerKey();
+        var legacyDownloadCount = downloads.Count(download =>
+            download.RequiresSubscription &&
+            string.IsNullOrWhiteSpace(download.OwnerKey));
+        if (string.IsNullOrWhiteSpace(currentOwnerKey) || legacyDownloadCount == 0)
+        {
+            return downloads;
+        }
+
+        var claimedDownloads = downloads
+            .Select(download =>
+                download.RequiresSubscription && string.IsNullOrWhiteSpace(download.OwnerKey)
+                    ? download with { OwnerKey = currentOwnerKey }
+                    : download)
+            .ToArray();
+        await SaveDownloadsUnsafeAsync(claimedDownloads, cancellationToken);
+        _analytics.TrackEvent("mobile_legacy_downloads_claimed", new Dictionary<string, object>
+        {
+            ["claimed_count"] = legacyDownloadCount
+        });
+        return claimedDownloads;
+    }
+
+    private bool IsPlayable(OfflineStoryDownload download)
+    {
+        var session = _sessionState.Current;
+        return IsPlayable(download, session, ResolveCurrentOwnerKey(), DateTimeOffset.UtcNow);
+    }
+
+    private static bool IsPlayable(
+        OfflineStoryDownload download,
+        MobileSession session,
+        string? currentOwnerKey,
+        DateTimeOffset now) =>
+        OfflineDownloadAccessPolicy.IsPlayable(
+            download.RequiresSubscription,
+            download.OwnerKey,
+            download.LastAccessVerifiedAt,
+            session.IsSignedIn,
+            session.HasPaidSubscription,
+            currentOwnerKey,
+            now,
+            AccessRefreshWindow);
+
+    private static bool IsOwnedByCurrentAccount(OfflineStoryDownload download, string? currentOwnerKey) =>
+        OfflineDownloadAccessPolicy.IsOwnedByCurrentAccount(
+            download.RequiresSubscription,
+            download.OwnerKey,
+            currentOwnerKey);
+
+    private string? ResolveCurrentOwnerKey()
+    {
+        var session = _sessionState.Current;
+        if (!session.IsSignedIn)
+        {
+            return null;
+        }
+
+        var ownerKey = OfflineDownloadAccessPolicy.BuildOwnerKey(session.Email);
+        if (!string.IsNullOrWhiteSpace(ownerKey))
+        {
+            Preferences.Default.Set(LastSignedInOwnerKeyPreferenceKey, ownerKey);
+            return ownerKey;
+        }
+
+        var rememberedOwnerKey = Preferences.Default.Get(LastSignedInOwnerKeyPreferenceKey, string.Empty);
+        return string.IsNullOrWhiteSpace(rememberedOwnerKey) ? null : rememberedOwnerKey;
+    }
+
+    private static void RememberCurrentOwnerKey(MobileSession session)
+    {
+        if (!session.IsSignedIn)
+        {
+            return;
+        }
+
+        var ownerKey = OfflineDownloadAccessPolicy.BuildOwnerKey(session.Email);
+        if (!string.IsNullOrWhiteSpace(ownerKey))
+        {
+            Preferences.Default.Set(LastSignedInOwnerKeyPreferenceKey, ownerKey);
+        }
+    }
 
     private static bool IsSameStory(OfflineStoryDownload download, string slug, string source) =>
         string.Equals(download.Slug, slug, StringComparison.OrdinalIgnoreCase) &&
         string.Equals(download.Source, source, StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsSameOwnedStory(OfflineStoryDownload left, OfflineStoryDownload right) =>
+        IsSameStory(left, right.Slug, right.Source) &&
+        string.Equals(left.OwnerKey, right.OwnerKey, StringComparison.Ordinal);
+
+    private static bool RequiresSubscription(string source) =>
+        !string.Equals(source, "gratis", StringComparison.OrdinalIgnoreCase);
+
     private static string BuildStoryKey(string slug, string source) =>
         $"{source.Trim().ToLowerInvariant()}:{slug.Trim().ToLowerInvariant()}";
+
+    private static string BuildDownloadKey(string slug, string source, string? ownerKey)
+    {
+        var storyKey = BuildStoryKey(slug, source);
+        return string.IsNullOrWhiteSpace(ownerKey)
+            ? storyKey
+            : $"{storyKey}:{ownerKey}";
+    }
 
     private static string BuildStableKey(string value) =>
         Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value))).ToLowerInvariant()[..24];

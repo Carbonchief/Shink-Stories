@@ -82,6 +82,7 @@ public sealed record MobileCharacterCard(
     string Heading,
     string SummaryText,
     string ImageUrl,
+    string? MysteryImageUrl,
     string ImageAlt,
     bool IsUnlocked,
     int DisplayOrder,

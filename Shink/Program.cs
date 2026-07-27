@@ -7460,6 +7460,9 @@ static MobileCharacterCardResponse BuildMobileCharacterCard(
         Heading: isUnlocked ? character.DisplayName : "?????",
         SummaryText: summaryText,
         ImageUrl: ResolveMobileCharacterImageUrl(httpContext, imagePath, character.UpdatedAt),
+        MysteryImageUrl: string.IsNullOrWhiteSpace(character.MysteryImagePath)
+            ? null
+            : ResolveMobileCharacterImageUrl(httpContext, character.MysteryImagePath, character.UpdatedAt),
         ImageAlt: isUnlocked
             ? $"Illustrasie van {character.DisplayName}"
             : $"Mysterie illustrasie vir {character.DisplayName}",
@@ -7675,6 +7678,7 @@ sealed record MobileCharacterCardResponse(
     string Heading,
     string SummaryText,
     string ImageUrl,
+    string? MysteryImageUrl,
     string ImageAlt,
     bool IsUnlocked,
     int DisplayOrder,

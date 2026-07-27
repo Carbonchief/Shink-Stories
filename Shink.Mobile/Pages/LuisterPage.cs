@@ -26,6 +26,8 @@ public sealed class LuisterPage : ContentPage
     private static readonly TimeSpan NotificationBadgeRefreshInterval = TimeSpan.FromSeconds(45);
     private static bool IsAndroid => DeviceInfo.Current.Platform == DevicePlatform.Android;
     private readonly MobileApiClient _apiClient;
+    private readonly IServiceProvider _services;
+    private readonly MobileAnalyticsService _analytics;
     private readonly SessionState _sessionState;
     private readonly IOfflineStoryDownloadService _offlineDownloadService;
     private readonly PlaylistPlaybackState _playlistPlaybackState;
@@ -35,6 +37,7 @@ public sealed class LuisterPage : ContentPage
     private readonly Grid _rootLayout;
     private readonly Grid _topBarOverlay;
     private readonly Image _oortjiesPeekMascot;
+    private Grid? _menuOverlay;
     private readonly VerticalStackLayout? _content;
     private readonly VerticalStackLayout? _playlistContent;
     private readonly RefreshView _refreshView;
@@ -68,9 +71,12 @@ public sealed class LuisterPage : ContentPage
     private OortjiesPeekSide? _lastOortjiesPeekSide;
     private bool _isOortjiesPeekVisible;
     private bool _isPageEventsSubscribed;
+    private bool _hasStartedKaraktersDestinationWarmup;
 
     public LuisterPage(
         MobileApiClient apiClient,
+        IServiceProvider services,
+        MobileAnalyticsService analytics,
         SessionState sessionState,
         IOfflineStoryDownloadService offlineDownloadService,
         PlaylistPlaybackState playlistPlaybackState,
@@ -78,6 +84,8 @@ public sealed class LuisterPage : ContentPage
         PlayerTransitionBackdropState transitionBackdropState)
     {
         _apiClient = apiClient;
+        _services = services;
+        _analytics = analytics;
         _sessionState = sessionState;
         _offlineDownloadService = offlineDownloadService;
         _playlistPlaybackState = playlistPlaybackState;
@@ -127,10 +135,15 @@ public sealed class LuisterPage : ContentPage
                     ItemSpacing = 14
                 },
                 ItemTemplate = new DataTemplate(BuildFeedItemView),
-                Header = new BoxView
+                Header = new Grid
                 {
+                    SafeAreaEdges = new SafeAreaEdges(
+                        SafeAreaRegions.None,
+                        SafeAreaRegions.Container,
+                        SafeAreaRegions.None,
+                        SafeAreaRegions.None),
                     HeightRequest = FloatingTopBarContentInset - 14,
-                    Color = Colors.Transparent
+                    BackgroundColor = Colors.Transparent
                 },
                 Footer = new BoxView
                 {
@@ -147,6 +160,11 @@ public sealed class LuisterPage : ContentPage
         {
             _content = new VerticalStackLayout
             {
+                SafeAreaEdges = new SafeAreaEdges(
+                    SafeAreaRegions.None,
+                    SafeAreaRegions.Container,
+                    SafeAreaRegions.None,
+                    SafeAreaRegions.None),
                 Padding = new Thickness(PageHorizontalPadding, FloatingTopBarContentInset, PageHorizontalPadding, 28),
                 Spacing = 16
             };
@@ -156,6 +174,7 @@ public sealed class LuisterPage : ContentPage
             };
             _scrollView = new ScrollView
             {
+                SafeAreaEdges = SafeAreaEdges.None,
                 Background = Brush.Transparent,
                 Content = _content
             };
@@ -164,6 +183,7 @@ public sealed class LuisterPage : ContentPage
 
         _refreshView = new RefreshView
         {
+            SafeAreaEdges = SafeAreaEdges.None,
             Background = Brush.Transparent,
             Content = IsAndroid ? _feedView : _scrollView,
             Command = new Command(() => _ = TriggerRefreshAsync())
@@ -171,6 +191,7 @@ public sealed class LuisterPage : ContentPage
 
         _topBarOverlay = new Grid
         {
+            SafeAreaEdges = new SafeAreaEdges(SafeAreaRegions.Container),
             BackgroundColor = Colors.Transparent,
             HeightRequest = FloatingTopBarContentInset,
             HorizontalOptions = LayoutOptions.Fill,
@@ -197,6 +218,7 @@ public sealed class LuisterPage : ContentPage
 
         _rootLayout = new Grid
         {
+            SafeAreaEdges = SafeAreaEdges.None,
             BackgroundColor = LuisterBackgroundColor,
             Children =
             {
@@ -216,16 +238,14 @@ public sealed class LuisterPage : ContentPage
         _pageActivityCancellation?.Dispose();
         _pageActivityCancellation = new CancellationTokenSource();
         SubscribePageEvents();
-        _ = _apiClient.WarmCharactersCacheAsync(_pageActivityCancellation.Token);
+        StartKaraktersDestinationWarmup(_pageActivityCancellation.Token);
         if (!_hasLoaded)
         {
             await LoadAsync();
         }
         else
         {
-            RenderContent();
-            _ = RefreshDownloadsInBackgroundAsync();
-            _ = RefreshSessionInBackgroundAsync();
+            _ = RefreshVisibleStateAfterNavigationAsync(_pageActivityCancellation.Token);
         }
 
         StartNotificationRefreshTimer();
@@ -241,6 +261,7 @@ public sealed class LuisterPage : ContentPage
         _imageWarmupCancellation?.Cancel();
         _searchDebounceCancellation?.Cancel();
         _pageActivityCancellation?.Cancel();
+        HideMenu();
         StopOortjiesPeekMascot();
         base.OnDisappearing();
     }
@@ -507,7 +528,7 @@ public sealed class LuisterPage : ContentPage
 
         await MainThread.InvokeOnMainThreadAsync(() =>
         {
-            if (!_isPageActive)
+            if (!_isPageActive || DownloadsMatch(_downloadedStories, downloads))
             {
                 return;
             }
@@ -522,6 +543,46 @@ public sealed class LuisterPage : ContentPage
                 RenderContent();
             }
         });
+    }
+
+    private async Task RefreshVisibleStateAfterNavigationAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Do not let cached file checks or session work run inside the Shell switch.
+            await Task.Delay(120, cancellationToken);
+            await Task.WhenAll(
+                RefreshDownloadsInBackgroundAsync(),
+                RefreshSessionInBackgroundAsync());
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    private static bool DownloadsMatch(
+        IReadOnlyList<OfflineStoryDownload> current,
+        IReadOnlyList<OfflineStoryDownload> next)
+    {
+        if (ReferenceEquals(current, next))
+        {
+            return true;
+        }
+
+        if (current.Count != next.Count)
+        {
+            return false;
+        }
+
+        for (var index = 0; index < current.Count; index++)
+        {
+            if (current[index] != next[index])
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private async Task TriggerRefreshAsync()
@@ -542,7 +603,7 @@ public sealed class LuisterPage : ContentPage
         try
         {
             await _apiClient.GetSessionAsync(cancellationToken);
-            MainThread.BeginInvokeOnMainThread(IsAndroid ? RenderFloatingTopBar : RenderContent);
+            MainThread.BeginInvokeOnMainThread(RenderFloatingTopBar);
             await RefreshNotificationsInBackgroundAsync();
         }
         catch
@@ -975,7 +1036,7 @@ public sealed class LuisterPage : ContentPage
     {
         var menuButton = BuildMenuCircleButton(Colors.White, Color.FromArgb("#123F3F"));
         var menuTap = new TapGestureRecognizer();
-        menuTap.Tapped += async (_, _) => await ShowMenuAsync();
+        menuTap.Tapped += (_, _) => ShowMenu();
         menuButton.GestureRecognizers.Add(menuTap);
 
         var searchButton = BuildHeaderCircleButton("⌕", 25, Color.FromArgb("#0B3534"), Color.FromArgb("#F4E9D1"));
@@ -1198,27 +1259,121 @@ public sealed class LuisterPage : ContentPage
         };
     }
 
-    private async Task ShowMenuAsync()
+    private void ShowMenu()
     {
-        await _navigationGate.RunAsync(async () =>
+        if (_menuOverlay is null)
         {
-            var choice = await MobileMenuSheet.ShowAsync(this, "Menu", "Karakters", "Afgelaai", "Instellings", "Bestuur rekening");
-            switch (choice)
+            _menuOverlay = MobileMenuSheet.BuildOverlay(
+                "Menu",
+                HandleMenuChoiceAsync,
+                "Karakters",
+                "Karakter-pare",
+                "Wie is dié Karakter?",
+                "Afgelaai",
+                "Instellings",
+                "Bestuur rekening");
+            _menuOverlay.IsVisible = false;
+            _menuOverlay.ZIndex = 300;
+            _rootLayout.Children.Add(_menuOverlay);
+        }
+
+        _menuOverlay.IsVisible = true;
+    }
+
+    private void HideMenu()
+    {
+        if (_menuOverlay is not null)
+        {
+            _menuOverlay.IsVisible = false;
+        }
+    }
+
+    private Task HandleMenuChoiceAsync(string? choice)
+    {
+        HideMenu();
+        if (choice is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        return _navigationGate.RunAsync(async () =>
+        {
+            try
             {
-                case "Karakters":
-                    await Shell.Current.GoToAsync(nameof(KaraktersPage), animate: true);
-                    break;
-                case "Afgelaai":
-                    await Shell.Current.GoToAsync(nameof(DownloadedPage), animate: true);
-                    break;
-                case "Instellings":
-                    await DisplayAlertAsync("Instellings", "Instellings kom binnekort.", "Reg so");
-                    break;
-                case "Bestuur rekening":
-                    await OpenAccountCoreAsync();
-                    break;
+                switch (choice)
+                {
+                    case "Karakters":
+                        await Shell.Current.GoToAsync("//Karakters", animate: false);
+                        break;
+                    case "Karakter-pare":
+                        await Shell.Current.GoToAsync(nameof(KarakterPareGamePage), animate: true);
+                        break;
+                    case "Wie is dié Karakter?":
+                        await Shell.Current.GoToAsync(nameof(KarakterRaaiGamePage), animate: true);
+                        break;
+                    case "Afgelaai":
+                        await Shell.Current.GoToAsync(nameof(DownloadedPage), animate: true);
+                        break;
+                    case "Instellings":
+                        await DisplayAlertAsync("Instellings", "Instellings kom binnekort.", "Reg so");
+                        break;
+                    case "Bestuur rekening":
+                        await OpenAccountCoreAsync();
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                _analytics.TrackException(ex, "mobile_menu_navigation_failed", new Dictionary<string, object>
+                {
+                    ["menu_choice"] = choice
+                });
+                await DisplayAlertAsync(
+                    "Kon nie oopmaak nie",
+                    "Dié blad kon nie nou oopmaak nie. Probeer asseblief weer.",
+                    "Reg so");
             }
         });
+    }
+
+    private void StartKaraktersDestinationWarmup(CancellationToken cancellationToken)
+    {
+        if (_hasStartedKaraktersDestinationWarmup)
+        {
+            return;
+        }
+
+        _hasStartedKaraktersDestinationWarmup = true;
+        _ = WarmKaraktersDestinationAsync(cancellationToken);
+    }
+
+    private async Task WarmKaraktersDestinationAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            // Let Luister finish its first frame before constructing the hidden destination.
+            await Task.Delay(180, cancellationToken);
+
+            KaraktersPage? karaktersPage = null;
+            await MainThread.InvokeOnMainThreadAsync(() =>
+                karaktersPage = _services.GetRequiredService<KaraktersPage>());
+
+            await _apiClient.WarmCharactersCacheAsync(cancellationToken);
+            if (karaktersPage is not null)
+            {
+                await karaktersPage.PreloadCachedContentAsync(cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // A direct tap can win the warmup race; the visible page then loads normally.
+            _hasStartedKaraktersDestinationWarmup = false;
+        }
+        catch
+        {
+            // Preloading is best-effort and must never affect Luister.
+            _hasStartedKaraktersDestinationWarmup = false;
+        }
     }
 
     private async Task RefreshNotificationsInBackgroundAsync()
@@ -3000,11 +3155,6 @@ public sealed class LuisterPage : ContentPage
 
     private IReadOnlyList<OfflineStoryDownload> ResolveVisibleDownloadedStories()
     {
-        if (!ShouldShowInlineDownloadedSection())
-        {
-            return Array.Empty<OfflineStoryDownload>();
-        }
-
         var downloads = _downloadedStories;
         var normalizedQuery = NormalizeSearchValue(_searchEntry.Text);
         if (!string.IsNullOrWhiteSpace(normalizedQuery))
@@ -3046,9 +3196,6 @@ public sealed class LuisterPage : ContentPage
             }
         };
     }
-
-    private static bool ShouldShowInlineDownloadedSection() =>
-        Connectivity.Current.NetworkAccess != NetworkAccess.Internet;
 
     private View BuildDownloadedStoryCard(OfflineStoryDownload download)
     {

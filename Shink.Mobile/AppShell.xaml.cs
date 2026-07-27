@@ -32,7 +32,8 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(nameof(ProfilePage), typeof(ProfilePage));
         Routing.RegisterRoute(nameof(StoryDetailPage), typeof(StoryDetailPage));
         Routing.RegisterRoute(nameof(DownloadedPage), typeof(DownloadedPage));
-        Routing.RegisterRoute(nameof(KaraktersPage), typeof(KaraktersPage));
+        Routing.RegisterRoute(nameof(KarakterPareGamePage), typeof(KarakterPareGamePage));
+        Routing.RegisterRoute(nameof(KarakterRaaiGamePage), typeof(KarakterRaaiGamePage));
 
         _sessionState.Changed += _ => MainThread.BeginInvokeOnMainThread(RenderShellFromSessionState);
         Navigated += OnShellNavigated;
@@ -149,6 +150,14 @@ public partial class AppShell : Shell
             Route = "Luister",
             ContentTemplate = new DataTemplate(() => _services.GetRequiredService<LuisterPage>())
         });
+        var karaktersContent = new ShellContent
+        {
+            Title = "Karakters",
+            Route = "Karakters",
+            ContentTemplate = new DataTemplate(() => _services.GetRequiredService<KaraktersPage>())
+        };
+        Shell.SetFlyoutItemIsVisible(karaktersContent, false);
+        Items.Add(karaktersContent);
         _isSignedInRendered = true;
     }
 

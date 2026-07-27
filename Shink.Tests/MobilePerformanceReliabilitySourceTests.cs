@@ -136,7 +136,12 @@ public sealed class MobilePerformanceReliabilitySourceTests
             "LuisterPage.cs"));
 
         StringAssert.Contains(source, "_pageActivityCancellation?.Cancel();");
-        StringAssert.Contains(source, "WarmCharactersCacheAsync(_pageActivityCancellation.Token)");
+        StringAssert.Contains(source, "StartKaraktersDestinationWarmup(_pageActivityCancellation.Token)");
+        StringAssert.Contains(source, "WarmCharactersCacheAsync(cancellationToken)");
+        StringAssert.Contains(source, "PreloadCachedContentAsync(cancellationToken)");
+        StringAssert.Contains(source, "RefreshVisibleStateAfterNavigationAsync(_pageActivityCancellation.Token)");
+        StringAssert.Contains(source, "await Task.Delay(120, cancellationToken);");
+        StringAssert.Contains(source, "DownloadsMatch(_downloadedStories, downloads)");
         StringAssert.Contains(source, "GetPlayableDownloadsAsync(cancellationToken)");
         StringAssert.Contains(source, "GetSessionAsync(cancellationToken)");
         StringAssert.Contains(source, "GetNotificationsAsync(cancellationToken: cancellationToken)");

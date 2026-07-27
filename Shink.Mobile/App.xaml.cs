@@ -1,4 +1,5 @@
 using Shink.Mobile.Services;
+using Shink.Mobile.Pages;
 
 namespace Shink.Mobile;
 
@@ -18,12 +19,26 @@ public partial class App : Application
 
     protected override Window CreateWindow(IActivationState? activationState)
     {
-        var window = new Window(_shell);
+        var splashPage = new FullScreenSplashPage();
+        var window = new Window(splashPage);
+        splashPage.Loaded += ShowShellAfterSplash;
         window.Stopped += (_, _) => _lifecycleService.OnStopped();
         window.Resumed += (_, _) => _lifecycleService.OnResumed();
         window.Destroying += (_, _) => _lifecycleService.OnDestroying();
         _analytics.TrackAppOpened();
         _analytics.IdentifyCurrentSession();
         return window;
+
+        async void ShowShellAfterSplash(object? sender, EventArgs args)
+        {
+            splashPage.Loaded -= ShowShellAfterSplash;
+            await Task.Delay(300);
+            await splashPage.FadeToAsync(0, 150, Easing.CubicIn);
+
+            if (ReferenceEquals(window.Page, splashPage))
+            {
+                window.Page = _shell;
+            }
+        }
     }
 }
