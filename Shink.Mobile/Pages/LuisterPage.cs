@@ -58,7 +58,7 @@ public sealed class LuisterPage : ContentPage
     private bool _isRefreshingNotifications;
     private bool _isTopBarHidden;
     private double _lastScrollY;
-    private Border? _floatingTopBarHost;
+    private readonly Border _floatingTopBarHost;
     private IDispatcherTimer? _notificationRefreshTimer;
     private IDispatcherTimer? _oortjiesPeekTimer;
     private IDispatcherTimer? _oortjiesHideTimer;
@@ -193,11 +193,26 @@ public sealed class LuisterPage : ContentPage
         {
             SafeAreaEdges = new SafeAreaEdges(SafeAreaRegions.Container),
             BackgroundColor = Colors.Transparent,
-            HeightRequest = FloatingTopBarContentInset,
+            Padding = new Thickness(0, 0, 0, 16),
             HorizontalOptions = LayoutOptions.Fill,
             VerticalOptions = LayoutOptions.Start,
+            InputTransparent = false,
             ZIndex = 100
         };
+
+        _floatingTopBarHost = new Border
+        {
+            BackgroundColor = Colors.Transparent,
+            StrokeThickness = 0,
+            Padding = 0,
+            Margin = new Thickness(18, 0, 18, 0),
+            HeightRequest = 52,
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalOptions = LayoutOptions.Start,
+            InputTransparent = false,
+            ZIndex = 101
+        };
+        _topBarOverlay.Children.Add(_floatingTopBarHost);
 
         _oortjiesPeekMascot = new Image
         {
@@ -672,22 +687,6 @@ public sealed class LuisterPage : ContentPage
 
     private void RenderFloatingTopBar()
     {
-        if (_floatingTopBarHost is null)
-        {
-            _floatingTopBarHost = new Border
-            {
-                BackgroundColor = Colors.Transparent,
-                StrokeThickness = 0,
-                Padding = 0,
-                Margin = new Thickness(18, 18, 18, 0),
-                HeightRequest = 52,
-                HorizontalOptions = LayoutOptions.Fill,
-                VerticalOptions = LayoutOptions.Start,
-                ZIndex = 101
-            };
-            _topBarOverlay.Children.Add(_floatingTopBarHost);
-        }
-
         _floatingTopBarHost.Content = BuildLuisterTopBar();
         _floatingTopBarHost.TranslationY = _isTopBarHidden ? FloatingTopBarHiddenOffset : 0;
         _floatingTopBarHost.Opacity = _isTopBarHidden ? 0 : 1;
@@ -726,7 +725,7 @@ public sealed class LuisterPage : ContentPage
 
     private void SetTopBarHidden(bool hidden)
     {
-        if (_floatingTopBarHost is null || _isTopBarHidden == hidden)
+        if (_isTopBarHidden == hidden)
         {
             return;
         }
@@ -1130,6 +1129,7 @@ public sealed class LuisterPage : ContentPage
                 HeightRequest = 14,
                 HorizontalOptions = LayoutOptions.Center,
                 VerticalOptions = LayoutOptions.Center,
+                InputTransparent = true,
                 Children =
                 {
                     BuildMenuLine(lineColor),
@@ -1165,7 +1165,8 @@ public sealed class LuisterPage : ContentPage
                 TextColor = textColor,
                 HorizontalTextAlignment = TextAlignment.Center,
                 VerticalTextAlignment = TextAlignment.Center,
-                Margin = text == "⌕" ? new Thickness(0, -2, 0, 0) : Thickness.Zero
+                Margin = text == "⌕" ? new Thickness(0, -2, 0, 0) : Thickness.Zero,
+                InputTransparent = true
             }
         };
 
@@ -1178,7 +1179,9 @@ public sealed class LuisterPage : ContentPage
             HeightRequest = 50,
             VerticalOptions = LayoutOptions.Center
         };
-        container.Children.Add(BuildHeaderCircleButton("🔔", 20, Color.FromArgb("#0B3534"), Color.FromArgb("#F4E9D1")));
+        var notificationSurface = BuildHeaderCircleButton("🔔", 20, Color.FromArgb("#0B3534"), Color.FromArgb("#F4E9D1"));
+        notificationSurface.InputTransparent = true;
+        container.Children.Add(notificationSurface);
 
         if (unreadCount > 0)
         {
@@ -1193,6 +1196,7 @@ public sealed class LuisterPage : ContentPage
                 Padding = 0,
                 HorizontalOptions = LayoutOptions.End,
                 VerticalOptions = LayoutOptions.Start,
+                InputTransparent = true,
                 Content = new Label
                 {
                     Text = FormatNotificationCount(unreadCount),
@@ -1254,7 +1258,8 @@ public sealed class LuisterPage : ContentPage
                 Source = BuildLuisterImageSource(session.ProfileImageUrl),
                 Aspect = Aspect.AspectFill,
                 WidthRequest = 46,
-                HeightRequest = 46
+                HeightRequest = 46,
+                InputTransparent = true
             }
         };
     }
@@ -2541,7 +2546,6 @@ public sealed class LuisterPage : ContentPage
                             PageHelpers.ResolveStoryCardImageSource(story, _apiClient)),
                         Aspect = Aspect.AspectFill
                     },
-                    BuildLockedBadge(story),
                     BuildFavoriteOverlay(story),
                     BuildCoverPlayBadge("▶", 52, 22, 3)
                 }
@@ -2711,7 +2715,6 @@ public sealed class LuisterPage : ContentPage
                     Aspect = Aspect.AspectFill,
                     HeightRequest = coverHeight
                 },
-                BuildLockedBadge(story),
                 BuildFavoriteOverlay(story),
                 BuildCoverPlayBadge("▶", 38, 17, 2)
             }
@@ -2785,26 +2788,6 @@ public sealed class LuisterPage : ContentPage
             VerticalOptions = LayoutOptions.Start,
             InputTransparent = true,
             Shadow = BuildScrollContentShadow(new SolidColorBrush(Color.FromArgb("#344146")), new Point(0, 6), 12, 0.24f)
-        };
-
-    private static View BuildLockedBadge(MobileStorySummary story) =>
-        new Border
-        {
-            IsVisible = story.IsLocked,
-            BackgroundColor = Color.FromArgb("#D9222222"),
-            StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = 999 },
-            Padding = new Thickness(9, 4),
-            Margin = new Thickness(10),
-            HorizontalOptions = LayoutOptions.Start,
-            VerticalOptions = LayoutOptions.Start,
-            Content = new Label
-            {
-                Text = "Gesluit",
-                TextColor = Colors.White,
-                FontSize = 10,
-                FontAttributes = FontAttributes.Bold
-            }
         };
 
     private View BuildFavoriteOverlay(MobileStorySummary story)

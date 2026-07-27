@@ -140,9 +140,9 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "private readonly CollectionView? _feedView;");
         StringAssert.Contains(luisterPage, "ItemsSource = Array.Empty<LuisterFeedItem>()");
         StringAssert.Contains(luisterPage, "private readonly Grid _topBarOverlay;");
-        StringAssert.Contains(luisterPage, "private Border? _floatingTopBarHost;");
+        StringAssert.Contains(luisterPage, "private readonly Border _floatingTopBarHost;");
         StringAssert.Contains(luisterPage, "_topBarOverlay = new Grid");
-        StringAssert.Contains(luisterPage, "HeightRequest = FloatingTopBarContentInset");
+        StringAssert.Contains(luisterPage, "Padding = new Thickness(0, 0, 0, 16)");
         StringAssert.Contains(luisterPage, "ZIndex = 100");
         StringAssert.Contains(luisterPage, "_refreshView,\n                _topBarOverlay");
         StringAssert.Contains(luisterPage, "_feedView.Scrolled += OnContentScrolled;");
@@ -159,7 +159,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "private static async Task AnimateTopBarHiddenAsync(View topBar, bool hidden)");
         StringAssert.Contains(luisterPage, "topBar.TranslateToAsync(0, hidden ? FloatingTopBarHiddenOffset : 0");
         StringAssert.Contains(luisterPage, "topBar.FadeToAsync(hidden ? 0 : 1");
-        StringAssert.Contains(luisterPage, "Header = new BoxView");
+        StringAssert.Contains(luisterPage, "Header = new Grid");
         StringAssert.Contains(luisterPage, "ItemSizingStrategy = ItemSizingStrategy.MeasureAllItems");
         Assert.IsFalse(luisterPage.Contains("_content.Children.Add(BuildLuisterTopBar());", StringComparison.Ordinal));
         Assert.IsFalse(luisterPage.Contains("private readonly ScrollView _scrollView;", StringComparison.Ordinal));
