@@ -4096,13 +4096,22 @@ static string BuildMediaSources(CloudflareR2Options cloudflareR2Options)
     var sources = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         "'self'",
-        "blob:"
+        "blob:",
+        "https://*.cloudflarestream.com",
+        "https://iframe.videodelivery.net",
+        "https://videodelivery.net"
     };
 
     var accountId = cloudflareR2Options.AccountId.Trim();
     if (Regex.IsMatch(accountId, "^[a-z0-9]+$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase))
     {
         sources.Add($"https://{accountId}.r2.cloudflarestorage.com");
+    }
+
+    var publicBaseOrigin = TryGetCspHostOrigin(cloudflareR2Options.PublicBaseUrl);
+    if (!string.IsNullOrWhiteSpace(publicBaseOrigin))
+    {
+        sources.Add(publicBaseOrigin);
     }
 
     return string.Join(' ', sources);
@@ -4221,7 +4230,9 @@ static string BuildFrameSources()
     {
         "'self'",
         "https://www.youtube-nocookie.com",
-        "https://www.youtube.com"
+        "https://www.youtube.com",
+        "https://iframe.videodelivery.net",
+        "https://*.cloudflarestream.com"
     };
 
     return string.Join(' ', sources);

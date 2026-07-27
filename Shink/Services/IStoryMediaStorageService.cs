@@ -15,6 +15,12 @@ public interface IStoryMediaStorageService
         string? contentType,
         CancellationToken cancellationToken = default);
 
+    Task<DirectStoryMediaUpload> CreateVideoDirectUploadAsync(
+        string slug,
+        string fileName,
+        string? contentType,
+        CancellationToken cancellationToken = default);
+
     Task<Uri?> CreateAudioReadUrlAsync(
         string? bucket,
         string objectKey,
@@ -60,5 +66,6 @@ public sealed record DirectStoryMediaUpload(
 public enum StoryImageKind
 {
     Cover,
-    Thumbnail
+    Thumbnail,
+    Inline
 }

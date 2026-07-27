@@ -1,7 +1,10 @@
 using System.Net;
 using System.Text.RegularExpressions;
+using AngleSharp.Dom;
 using Ganss.Xss;
 using Markdig;
+using Microsoft.Extensions.Options;
+using Shink.Utilities;
 
 namespace Shink.Services;
 
@@ -11,7 +14,17 @@ public sealed partial class BlogContentRenderer : IBlogContentRenderer
         .UseAdvancedExtensions()
         .Build();
 
-    private readonly HtmlSanitizer _sanitizer = BuildSanitizer();
+    private readonly HtmlSanitizer _sanitizer;
+
+    public BlogContentRenderer(IOptions<CloudflareR2Options> cloudflareR2Options)
+    {
+        _sanitizer = BuildSanitizer(cloudflareR2Options.Value.PublicBaseUrl);
+    }
+
+    public BlogContentRenderer()
+        : this(Options.Create(new CloudflareR2Options()))
+    {
+    }
 
     public string RenderHtml(string? markdown)
     {
@@ -76,7 +89,7 @@ public sealed partial class BlogContentRenderer : IBlogContentRenderer
         return Math.Max(1, (int)Math.Ceiling(words / 220d));
     }
 
-    private static HtmlSanitizer BuildSanitizer()
+    private static HtmlSanitizer BuildSanitizer(string? cloudflarePublicBaseUrl)
     {
         var sanitizer = new HtmlSanitizer();
         sanitizer.AllowedSchemes.Clear();
@@ -85,10 +98,80 @@ public sealed partial class BlogContentRenderer : IBlogContentRenderer
         sanitizer.AllowedSchemes.Add("mailto");
         sanitizer.AllowedSchemes.Add("tel");
 
-        foreach (var tag in new[] { "figure", "figcaption", "u", "s" })
+        foreach (var tag in new[] { "figure", "figcaption", "iframe", "video", "u", "s" })
         {
             sanitizer.AllowedTags.Add(tag);
         }
+
+        foreach (var attribute in new[]
+                 {
+                     "allow",
+                     "allowfullscreen",
+                     "class",
+                     "controls",
+                     "decoding",
+                     "frameborder",
+                     "loading",
+                     "playsinline",
+                     "preload",
+                     "referrerpolicy"
+                 })
+        {
+            sanitizer.AllowedAttributes.Add(attribute);
+        }
+
+        foreach (var className in new[]
+                 {
+                     "blog-media-cloudflare",
+                     "blog-media-image",
+                     "blog-media-video",
+                     "blog-media-youtube"
+                 })
+        {
+            sanitizer.AllowedClasses.Add(className);
+        }
+
+        sanitizer.FilterUrl += (_, args) =>
+        {
+            if (string.Equals(args.Tag.LocalName, "iframe", StringComparison.OrdinalIgnoreCase))
+            {
+                var youtubeEmbedUrl = YouTubeUrlHelper.BuildEmbedUrl(args.OriginalUrl);
+                if (!string.IsNullOrWhiteSpace(youtubeEmbedUrl))
+                {
+                    args.SanitizedUrl = youtubeEmbedUrl;
+                    return;
+                }
+
+                var cloudflareEmbed = BlogVideoUrlHelper.ResolveCloudflareVideo(
+                    args.OriginalUrl,
+                    cloudflarePublicBaseUrl);
+                args.SanitizedUrl = cloudflareEmbed?.Kind == BlogVideoEmbedKind.Iframe
+                    ? cloudflareEmbed.Url
+                    : null;
+                return;
+            }
+
+            if (string.Equals(args.Tag.LocalName, "video", StringComparison.OrdinalIgnoreCase))
+            {
+                var cloudflareVideo = BlogVideoUrlHelper.ResolveCloudflareVideo(
+                    args.OriginalUrl,
+                    cloudflarePublicBaseUrl);
+                args.SanitizedUrl = cloudflareVideo?.Kind == BlogVideoEmbedKind.DirectVideo
+                    ? cloudflareVideo.Url
+                    : null;
+            }
+        };
+
+        sanitizer.PostProcessDom += (_, args) =>
+        {
+            foreach (var mediaElement in args.Document.QuerySelectorAll("iframe, video").ToArray())
+            {
+                if (!mediaElement.HasAttribute("src"))
+                {
+                    mediaElement.Remove();
+                }
+            }
+        };
 
         return sanitizer;
     }
@@ -119,7 +202,7 @@ public sealed partial class BlogContentRenderer : IBlogContentRenderer
     private static string CollapseWhitespace(string value) =>
         WhitespaceRegex().Replace(value, " ").Trim();
 
-    [GeneratedRegex(@"<\s*(p|div|h[1-6]|ul|ol|li|blockquote|pre|code|strong|em|u|s|a|br|figure|figcaption|img)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    [GeneratedRegex(@"<\s*(p|div|h[1-6]|ul|ol|li|blockquote|pre|code|strong|em|u|s|a|br|figure|figcaption|img|iframe|video)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex HtmlContentRegex();
 
     [GeneratedRegex("<[^>]+>", RegexOptions.CultureInvariant)]

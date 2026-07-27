@@ -451,6 +451,77 @@
     filter: brightness(1.06);
 }
 
+.blog-admin-media-tools {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.blog-admin-media-tool {
+    min-width: 0;
+    display: grid;
+    gap: 0.7rem;
+    align-content: start;
+    padding: 0.85rem;
+    border: 1px solid var(--admin-border);
+    border-radius: 14px;
+    background: #12202d;
+}
+
+.blog-admin-media-tool-head {
+    display: flex;
+    gap: 0.65rem;
+    align-items: flex-start;
+}
+
+.blog-admin-media-tool-head > i {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 2rem;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 10px;
+    color: #8dc66f;
+    background: rgba(141, 198, 111, 0.1);
+}
+
+.blog-admin-media-tool h5,
+.blog-admin-media-tool p {
+    margin: 0;
+}
+
+.blog-admin-media-tool h5 {
+    color: var(--admin-text);
+    font-size: 0.98rem;
+}
+
+.blog-admin-media-tool-head p {
+    margin-top: 0.25rem;
+    color: var(--admin-muted);
+    font-size: 0.84rem;
+    line-height: 1.5;
+}
+
+.blog-admin-file-picker-compact {
+    padding: 0.7rem;
+}
+
+.blog-admin-media-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+}
+
+.blog-admin-media-insert {
+    width: fit-content;
+    max-width: 100%;
+}
+
+.blog-admin-media-feedback {
+    margin: 0;
+}
+
 .blog-admin-rich-editor-shell {
     display: grid;
     gap: 0.75rem;
@@ -596,6 +667,42 @@
     color: #8dc66f;
 }
 
+.blog-admin-markdown-editor.ql-container.ql-snow :global(.ql-editor figure.blog-media-image),
+.blog-admin-markdown-editor.ql-container.ql-snow :global(.ql-editor figure.blog-media-video),
+.blog-admin-markdown-editor.ql-container.ql-snow ::deep .ql-editor figure.blog-media-image,
+.blog-admin-markdown-editor.ql-container.ql-snow ::deep .ql-editor figure.blog-media-video {
+    margin: 1.25rem 0;
+}
+
+.blog-admin-markdown-editor.ql-container.ql-snow :global(.ql-editor figure.blog-media-image img),
+.blog-admin-markdown-editor.ql-container.ql-snow ::deep .ql-editor figure.blog-media-image img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: 14px;
+}
+
+.blog-admin-markdown-editor.ql-container.ql-snow :global(.ql-editor figure.blog-media-video),
+.blog-admin-markdown-editor.ql-container.ql-snow ::deep .ql-editor figure.blog-media-video {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border-radius: 14px;
+    background: #080d12;
+}
+
+.blog-admin-markdown-editor.ql-container.ql-snow :global(.ql-editor figure.blog-media-video iframe),
+.blog-admin-markdown-editor.ql-container.ql-snow :global(.ql-editor figure.blog-media-video video),
+.blog-admin-markdown-editor.ql-container.ql-snow ::deep .ql-editor figure.blog-media-video iframe,
+.blog-admin-markdown-editor.ql-container.ql-snow ::deep .ql-editor figure.blog-media-video video {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    object-fit: contain;
+}
+
 .blog-admin-markdown-editor.ql-container.ql-snow :global(.ql-tooltip) {
     border-radius: 12px;
     border: 1px solid var(--admin-border);
@@ -670,6 +777,34 @@
     border-radius: 1rem;
 }
 
+.blog-admin-preview-body :global(figure.blog-media-image),
+.blog-admin-preview-body :global(figure.blog-media-video),
+.blog-admin-preview-body ::deep figure.blog-media-image,
+.blog-admin-preview-body ::deep figure.blog-media-video {
+    margin: 1.35rem 0;
+}
+
+.blog-admin-preview-body :global(figure.blog-media-video),
+.blog-admin-preview-body ::deep figure.blog-media-video {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    overflow: hidden;
+    border-radius: 1rem;
+    background: #080d12;
+}
+
+.blog-admin-preview-body :global(figure.blog-media-video iframe),
+.blog-admin-preview-body :global(figure.blog-media-video video),
+.blog-admin-preview-body ::deep figure.blog-media-video iframe,
+.blog-admin-preview-body ::deep figure.blog-media-video video {
+    display: block;
+    width: 100%;
+    height: 100%;
+    border: 0;
+    object-fit: contain;
+}
+
 .blog-admin-preview-body :global(blockquote) {
     margin: 1.6rem 0;
     padding: 1rem 1.25rem;
@@ -741,7 +876,8 @@
 
 @media (max-width: 1100px) {
     .blog-admin-layout,
-    .blog-admin-form-grid {
+    .blog-admin-form-grid,
+    .blog-admin-media-tools {
         grid-template-columns: 1fr;
     }
 }
@@ -777,9 +913,15 @@
     }
 
     .blog-admin-editor-actions,
+    .blog-admin-media-actions,
     .blog-admin-card-head,
     .blog-admin-editor-head {
         flex-direction: column;
         align-items: stretch;
+    }
+
+    .blog-admin-media-insert {
+        width: 100%;
+        justify-content: center;
     }
 }

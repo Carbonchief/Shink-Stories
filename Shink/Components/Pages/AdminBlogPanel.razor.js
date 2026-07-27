@@ -7,6 +7,7 @@ export async function syncRichTextEditor(shellElement, dotNetReference, html) {
     }
 
     await ensureQuillLoaded();
+    registerBlogMediaBlots();
 
     const editorElement = shellElement.querySelector(".blog-admin-markdown-editor");
     const toolbarElement = shellElement.querySelector(".blog-admin-rich-toolbar");
@@ -51,6 +52,8 @@ export async function syncRichTextEditor(shellElement, dotNetReference, html) {
         state = {
             dotNetReference,
             isApplying: false,
+            lastSelectionIndex: 0,
+            onSelectionChange: null,
             onTextChange: null,
             quill
         };
@@ -64,7 +67,14 @@ export async function syncRichTextEditor(shellElement, dotNetReference, html) {
             state.dotNetReference?.invokeMethodAsync("OnRichTextEditorInput", currentHtml);
         };
 
+        state.onSelectionChange = (range) => {
+            if (range) {
+                state.lastSelectionIndex = range.index;
+            }
+        };
+
         quill.on("text-change", state.onTextChange);
+        quill.on("selection-change", state.onSelectionChange);
         editorStates.set(shellElement, state);
     } else {
         state.dotNetReference = dotNetReference;
@@ -87,7 +97,99 @@ export function disposeRichTextEditor(shellElement) {
         state.quill.off("text-change", state.onTextChange);
     }
 
+    if (state.onSelectionChange) {
+        state.quill.off("selection-change", state.onSelectionChange);
+    }
+
     editorStates.delete(shellElement);
+}
+
+export async function insertBlogImage(shellElement, url, alt) {
+    const state = editorStates.get(shellElement);
+    if (!state || !isSafeMediaUrl(url)) {
+        throw new Error("The blog editor is not ready for an image.");
+    }
+
+    const insertionIndex = resolveInsertionIndex(state);
+    state.quill.insertEmbed(
+        insertionIndex,
+        "blogImage",
+        {
+            url,
+            alt: typeof alt === "string" && alt.trim() ? alt.trim() : "Blog image"
+        },
+        "user");
+    state.quill.insertText(insertionIndex + 1, "\n", "user");
+    state.quill.setSelection(insertionIndex + 2, 0, "silent");
+    state.lastSelectionIndex = insertionIndex + 2;
+    await notifyContentChanged(state);
+}
+
+export async function insertBlogVideo(shellElement, provider, url, title) {
+    const state = editorStates.get(shellElement);
+    if (!state || !isSafeMediaUrl(url)) {
+        throw new Error("The blog editor is not ready for a video.");
+    }
+
+    const supportedProvider =
+        provider === "youtube" ||
+        provider === "cloudflare" ||
+        provider === "cloudflare-iframe";
+    if (!supportedProvider) {
+        throw new Error("Unsupported blog video provider.");
+    }
+
+    const insertionIndex = resolveInsertionIndex(state);
+    state.quill.insertEmbed(
+        insertionIndex,
+        "blogVideo",
+        {
+            provider,
+            url,
+            title: typeof title === "string" && title.trim() ? title.trim() : "Blog video"
+        },
+        "user");
+    state.quill.insertText(insertionIndex + 1, "\n", "user");
+    state.quill.setSelection(insertionIndex + 2, 0, "silent");
+    state.lastSelectionIndex = insertionIndex + 2;
+    await notifyContentChanged(state);
+}
+
+export async function uploadSelectedFileToR2(inputId, uploadUrl, contentType) {
+    const input = document.getElementById(inputId);
+    if (!(input instanceof HTMLInputElement) || !input.files || input.files.length === 0) {
+        throw new Error("No file selected for upload.");
+    }
+
+    const file = input.files[0];
+    const resolvedContentType =
+        (typeof contentType === "string" && contentType.trim() ? contentType.trim() : "") ||
+        file.type ||
+        "application/octet-stream";
+
+    const response = await fetch(uploadUrl, {
+        method: "PUT",
+        mode: "cors",
+        headers: {
+            "Content-Type": resolvedContentType
+        },
+        body: file
+    });
+
+    if (!response.ok) {
+        const message = await response.text().catch(() => "");
+        throw new Error(
+            message && message.trim()
+                ? `Direct upload failed: ${message}`
+                : `Direct upload failed with status ${response.status}.`);
+    }
+}
+
+export function clearFileInput(inputId) {
+    const input = document.getElementById(inputId);
+    if (input instanceof HTMLInputElement) {
+        input.value = "";
+    }
 }
 
 async function ensureQuillLoaded() {
@@ -110,6 +212,103 @@ async function ensureQuillLoaded() {
     }
 
     return quillLoaderPromise;
+}
+
+function registerBlogMediaBlots() {
+    if (window.__shinkBlogMediaBlotsRegistered) {
+        return;
+    }
+
+    const BlockEmbed = window.Quill.import("blots/block/embed");
+
+    class BlogImageBlot extends BlockEmbed {
+        static create(value) {
+            const node = super.create();
+            const image = document.createElement("img");
+            image.src = value?.url ?? "";
+            image.alt = value?.alt ?? "Blog image";
+            image.loading = "lazy";
+            image.decoding = "async";
+            node.appendChild(image);
+            return node;
+        }
+
+        static value(node) {
+            const image = node.querySelector("img");
+            return {
+                url: image?.getAttribute("src") ?? "",
+                alt: image?.getAttribute("alt") ?? "Blog image"
+            };
+        }
+    }
+
+    BlogImageBlot.blotName = "blogImage";
+    BlogImageBlot.tagName = "figure";
+    BlogImageBlot.className = "blog-media-image";
+
+    class BlogVideoBlot extends BlockEmbed {
+        static create(value) {
+            const node = super.create();
+            const provider = value?.provider ?? "cloudflare";
+            const title = value?.title ?? "Blog video";
+            const url = value?.url ?? "";
+
+            if (provider === "youtube" || provider === "cloudflare-iframe") {
+                const frame = document.createElement("iframe");
+                frame.src = url;
+                frame.title = title;
+                frame.loading = "lazy";
+                frame.frameBorder = "0";
+                frame.referrerPolicy = "strict-origin-when-cross-origin";
+                frame.setAttribute(
+                    "allow",
+                    "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share");
+                frame.setAttribute("allowfullscreen", "");
+                node.classList.add(
+                    provider === "youtube" ? "blog-media-youtube" : "blog-media-cloudflare");
+                node.appendChild(frame);
+                return node;
+            }
+
+            const video = document.createElement("video");
+            video.src = url;
+            video.title = title;
+            video.controls = true;
+            video.playsInline = true;
+            video.preload = "metadata";
+            node.classList.add("blog-media-cloudflare");
+            node.appendChild(video);
+            return node;
+        }
+
+        static value(node) {
+            const frame = node.querySelector("iframe");
+            if (frame) {
+                return {
+                    provider: node.classList.contains("blog-media-youtube")
+                        ? "youtube"
+                        : "cloudflare-iframe",
+                    url: frame.getAttribute("src") ?? "",
+                    title: frame.getAttribute("title") ?? "Blog video"
+                };
+            }
+
+            const video = node.querySelector("video");
+            return {
+                provider: "cloudflare",
+                url: video?.getAttribute("src") ?? "",
+                title: video?.getAttribute("title") ?? "Blog video"
+            };
+        }
+    }
+
+    BlogVideoBlot.blotName = "blogVideo";
+    BlogVideoBlot.tagName = "figure";
+    BlogVideoBlot.className = "blog-media-video";
+
+    window.Quill.register(BlogImageBlot, true);
+    window.Quill.register(BlogVideoBlot, true);
+    window.__shinkBlogMediaBlotsRegistered = true;
 }
 
 function ensureQuillStylesheet() {
@@ -189,6 +388,32 @@ function getEditorHtml(quill) {
         : quill.root.innerHTML;
 
     return normalizeHtml(exportedHtml);
+}
+
+function resolveInsertionIndex(state) {
+    const currentRange = state.quill.getSelection();
+    const requestedIndex = currentRange?.index ?? state.lastSelectionIndex ?? state.quill.getLength() - 1;
+    return Math.max(0, Math.min(requestedIndex, state.quill.getLength() - 1));
+}
+
+async function notifyContentChanged(state) {
+    const currentHtml = getEditorHtml(state.quill);
+    await state.dotNetReference?.invokeMethodAsync("OnRichTextEditorInput", currentHtml);
+}
+
+function isSafeMediaUrl(value) {
+    if (typeof value !== "string" || !value.trim()) {
+        return false;
+    }
+
+    try {
+        const url = new URL(value, window.location.origin);
+        return url.protocol === "https:" ||
+            (url.protocol === "http:" && url.origin === window.location.origin) ||
+            (url.origin === window.location.origin && value.startsWith("/"));
+    } catch {
+        return false;
+    }
 }
 
 function normalizeHtml(html) {

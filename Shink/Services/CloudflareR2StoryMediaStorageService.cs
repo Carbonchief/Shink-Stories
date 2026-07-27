@@ -44,11 +44,31 @@ public sealed class CloudflareR2StoryMediaStorageService(
 
         var normalizedSlug = NormalizeSlug(slug);
         var normalizedContentType = ResolveImageContentType(contentType, fileName);
-        var suffix = kind == StoryImageKind.Thumbnail ? "thumbnail" : "cover";
+        var suffix = ResolveImageSuffix(kind);
         var objectKey = BuildObjectKey(
             "uploaded/stories/images",
             normalizedSlug,
             suffix,
+            fileName,
+            normalizedContentType);
+
+        return Task.FromResult(BuildDirectUpload(objectKey, normalizedContentType, includePublicUrl: true));
+    }
+
+    public Task<DirectStoryMediaUpload> CreateVideoDirectUploadAsync(
+        string slug,
+        string fileName,
+        string? contentType,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        var normalizedSlug = NormalizeSlug(slug);
+        var normalizedContentType = ResolveVideoContentType(contentType, fileName);
+        var objectKey = BuildObjectKey(
+            "uploaded/stories/video",
+            normalizedSlug,
+            "video",
             fileName,
             normalizedContentType);
 
@@ -123,7 +143,7 @@ public sealed class CloudflareR2StoryMediaStorageService(
     {
         var normalizedSlug = NormalizeSlug(slug);
         var normalizedContentType = ResolveImageContentType(contentType, fileName);
-        var suffix = kind == StoryImageKind.Thumbnail ? "thumbnail" : "cover";
+        var suffix = ResolveImageSuffix(kind);
         var objectKey = BuildObjectKey(
             "uploaded/stories/images",
             normalizedSlug,
@@ -545,6 +565,40 @@ public sealed class CloudflareR2StoryMediaStorageService(
         };
     }
 
+    private static string ResolveVideoContentType(string? contentType, string fileName)
+    {
+        var normalized = NormalizeContentType(contentType);
+        if (!string.IsNullOrWhiteSpace(normalized))
+        {
+            return normalized switch
+            {
+                "video/mp4" => "video/mp4",
+                "video/webm" => "video/webm",
+                _ => Path.GetExtension(fileName).Trim().ToLowerInvariant() switch
+                {
+                    ".mp4" => "video/mp4",
+                    ".webm" => "video/webm",
+                    _ => throw new InvalidOperationException("Unsupported video file type. Use MP4 or WEBM.")
+                }
+            };
+        }
+
+        return Path.GetExtension(fileName).Trim().ToLowerInvariant() switch
+        {
+            ".mp4" => "video/mp4",
+            ".webm" => "video/webm",
+            _ => throw new InvalidOperationException("Unsupported video file type. Use MP4 or WEBM.")
+        };
+    }
+
+    private static string ResolveImageSuffix(StoryImageKind kind) =>
+        kind switch
+        {
+            StoryImageKind.Thumbnail => "thumbnail",
+            StoryImageKind.Inline => "inline",
+            _ => "cover"
+        };
+
     private static string ResolveExtension(string fileName, string contentType)
     {
         var extension = Path.GetExtension(fileName).Trim().ToLowerInvariant();
@@ -562,6 +616,8 @@ public sealed class CloudflareR2StoryMediaStorageService(
             "image/jpeg" => ".jpg",
             "image/png" => ".png",
             "image/webp" => ".webp",
+            "video/mp4" => ".mp4",
+            "video/webm" => ".webm",
             _ => ".bin"
         };
     }

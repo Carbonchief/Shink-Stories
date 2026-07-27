@@ -49,8 +49,8 @@ public static class YouTubeUrlHelper
         candidate = host switch
         {
             "youtu.be" or "www.youtu.be" => uri.AbsolutePath.Trim('/'),
-            _ when host.EndsWith("youtube.com", StringComparison.OrdinalIgnoreCase) ||
-                   host.EndsWith("youtube-nocookie.com", StringComparison.OrdinalIgnoreCase)
+            _ when IsHostOrSubdomain(host, "youtube.com") ||
+                   IsHostOrSubdomain(host, "youtube-nocookie.com")
                 => ResolveFromYouTubeUri(uri),
             _ => null
         };
@@ -63,6 +63,10 @@ public static class YouTubeUrlHelper
         videoId = candidate;
         return true;
     }
+
+    private static bool IsHostOrSubdomain(string host, string expectedHost) =>
+        string.Equals(host, expectedHost, StringComparison.OrdinalIgnoreCase) ||
+        host.EndsWith($".{expectedHost}", StringComparison.OrdinalIgnoreCase);
 
     private static string? ResolveFromYouTubeUri(Uri uri)
     {

@@ -4,6 +4,7 @@
 @using Microsoft.AspNetCore.Components.Forms
 @using Microsoft.JSInterop
 @using Microsoft.Extensions.Options
+@using Shink.Utilities
 @implements IAsyncDisposable
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IBlogAdminService BlogAdminService
@@ -299,9 +300,156 @@
                             <div class="blog-admin-card-head">
                                 <div>
                                     <h4>@T("Inhoud", "Content")</h4>
-                                    <p>@T("Gebruik die nutsbalk om ryk teks te formateer. Die inhoud word veilig vir die publieke blog gerender.", "Use the toolbar to format rich text. The content is safely rendered for the public blog.")</p>
+                                    <p>@T("Gebruik die nutsbalk om ryk teks te formateer en voeg prente of video's by waar jou wyser staan.", "Use the toolbar to format rich text and add images or videos wherever your cursor is placed.")</p>
                                 </div>
                             </div>
+
+                            <div class="blog-admin-media-tools">
+                                <section class="blog-admin-media-tool">
+                                    <div class="blog-admin-media-tool-head">
+                                        <i class="fa-regular fa-image" aria-hidden="true"></i>
+                                        <div>
+                                            <h5>@T("Prent in die inhoud", "Image in the content")</h5>
+                                            <p>@T("Laai 'n ekstra prent op en plaas dit by jou wyser.", "Upload an additional image and place it at your cursor.")</p>
+                                        </div>
+                                    </div>
+
+                                    <label class="blog-admin-file-picker blog-admin-file-picker-compact">
+                                        <span>@T("Kies prent", "Choose image")</span>
+                                        <InputFile id="@InlineImageInputId"
+                                                   OnChange="OnInlineImageSelected"
+                                                   accept="image/png,image/jpeg,image/webp" />
+                                    </label>
+
+                                    <label class="blog-admin-field">
+                                        <span>@T("Alternatiewe teks", "Alternative text")</span>
+                                        <input type="text"
+                                               @bind="InlineImageAlt"
+                                               placeholder="@T("Beskryf die prent kortliks", "Briefly describe the image")" />
+                                    </label>
+
+                                    @if (!string.IsNullOrWhiteSpace(InlineImageFileName))
+                                    {
+                                        <p class="blog-admin-hint">
+                                            @T($"Geselekteer: {InlineImageFileName}", $"Selected: {InlineImageFileName}")
+                                        </p>
+                                    }
+
+                                    <button type="button"
+                                            class="blog-admin-btn blog-admin-media-insert"
+                                            @onclick="UploadAndInsertInlineImageAsync"
+                                            disabled="@(InlineImageFile is null || IsUploadingMedia)">
+                                        <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                                        <span>@T("Laai op en voeg hier in", "Upload and insert here")</span>
+                                    </button>
+                                </section>
+
+                                <section class="blog-admin-media-tool">
+                                    <div class="blog-admin-media-tool-head">
+                                        <i class="fa-brands fa-youtube" aria-hidden="true"></i>
+                                        <div>
+                                            <h5>@T("YouTube-video", "YouTube video")</h5>
+                                            <p>@T("Plak 'n YouTube-skakel en plaas die video by jou wyser.", "Paste a YouTube link and place the video at your cursor.")</p>
+                                        </div>
+                                    </div>
+
+                                    <label class="blog-admin-field">
+                                        <span>@T("YouTube-skakel", "YouTube link")</span>
+                                        <input type="url"
+                                               @bind="YouTubeVideoUrl"
+                                               placeholder="https://www.youtube.com/watch?v=..." />
+                                    </label>
+
+                                    <label class="blog-admin-field">
+                                        <span>@T("Videotitel", "Video title")</span>
+                                        <input type="text"
+                                               @bind="YouTubeVideoTitle"
+                                               placeholder="@T("Titel vir toeganklikheid", "Title for accessibility")" />
+                                    </label>
+
+                                    <button type="button"
+                                            class="blog-admin-btn blog-admin-media-insert"
+                                            @onclick="InsertYouTubeVideoAsync"
+                                            disabled="@(string.IsNullOrWhiteSpace(YouTubeVideoUrl) || IsUploadingMedia)">
+                                        <i class="fa-solid fa-plus" aria-hidden="true"></i>
+                                        <span>@T("Voeg video hier in", "Insert video here")</span>
+                                    </button>
+                                </section>
+
+                                <section class="blog-admin-media-tool">
+                                    <div class="blog-admin-media-tool-head">
+                                        <i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i>
+                                        <div>
+                                            <h5>@T("Cloudflare-video", "Cloudflare video")</h5>
+                                            <p>@T("Laai 'n MP4- of WEBM-video na Cloudflare op, of gebruik 'n bestaande Cloudflare-videoskakel.", "Upload an MP4 or WEBM video to Cloudflare, or use an existing Cloudflare video link.")</p>
+                                        </div>
+                                    </div>
+
+                                    <label class="blog-admin-file-picker blog-admin-file-picker-compact">
+                                        <span>@T("Kies video (maksimum 512 MB)", "Choose video (maximum 512 MB)")</span>
+                                        <InputFile id="@CloudflareVideoInputId"
+                                                   OnChange="OnCloudflareVideoSelected"
+                                                   accept="video/mp4,video/webm" />
+                                    </label>
+
+                                    @if (!string.IsNullOrWhiteSpace(CloudflareVideoFileName))
+                                    {
+                                        <p class="blog-admin-hint">
+                                            @T($"Geselekteer: {CloudflareVideoFileName}", $"Selected: {CloudflareVideoFileName}")
+                                        </p>
+                                    }
+
+                                    <label class="blog-admin-field">
+                                        <span>@T("Of bestaande Cloudflare-videoskakel", "Or existing Cloudflare video link")</span>
+                                        <input type="url"
+                                               @bind="CloudflareVideoUrl"
+                                               placeholder="https://..." />
+                                    </label>
+
+                                    <label class="blog-admin-field">
+                                        <span>@T("Videotitel", "Video title")</span>
+                                        <input type="text"
+                                               @bind="CloudflareVideoTitle"
+                                               placeholder="@T("Titel vir toeganklikheid", "Title for accessibility")" />
+                                    </label>
+
+                                    <div class="blog-admin-media-actions">
+                                        <button type="button"
+                                                class="blog-admin-btn blog-admin-media-insert"
+                                                @onclick="UploadAndInsertCloudflareVideoAsync"
+                                                disabled="@(CloudflareVideoFile is null || IsUploadingMedia || !IsR2UploadConfigured)">
+                                            <i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i>
+                                            <span>@(IsUploadingVideo
+                                                ? T("Laai op...", "Uploading...")
+                                                : T("Laai op en voeg hier in", "Upload and insert here"))</span>
+                                        </button>
+
+                                        <button type="button"
+                                                class="blog-admin-btn blog-admin-btn-secondary blog-admin-media-insert"
+                                                @onclick="InsertExistingCloudflareVideoAsync"
+                                                disabled="@(string.IsNullOrWhiteSpace(CloudflareVideoUrl) || IsUploadingMedia)">
+                                            <i class="fa-solid fa-link" aria-hidden="true"></i>
+                                            <span>@T("Gebruik skakel", "Use link")</span>
+                                        </button>
+                                    </div>
+
+                                    @if (!IsR2UploadConfigured)
+                                    {
+                                        <p class="blog-admin-hint">
+                                            @T("Cloudflare R2-oplaai is nie in hierdie omgewing opgestel nie. Jy kan steeds 'n bestaande Cloudflare-skakel gebruik.", "Cloudflare R2 upload is not configured in this environment. You can still use an existing Cloudflare link.")
+                                        </p>
+                                    }
+                                </section>
+                            </div>
+
+                            @if (!string.IsNullOrWhiteSpace(MediaErrorMessage))
+                            {
+                                <p class="admin-feedback is-error blog-admin-media-feedback">@MediaErrorMessage</p>
+                            }
+                            else if (!string.IsNullOrWhiteSpace(MediaStatusMessage))
+                            {
+                                <p class="admin-feedback is-success blog-admin-media-feedback">@MediaStatusMessage</p>
+                            }
 
                             <div class="blog-admin-rich-editor-shell" @ref="_richTextEditorShell">
                                 <div class="blog-admin-rich-toolbar"
@@ -415,6 +563,9 @@
 
 @code {
     private const long MaxImageUploadBytes = 10 * 1024 * 1024;
+    private const long MaxVideoUploadBytes = 512 * 1024 * 1024;
+    private const string InlineImageInputId = "blog-inline-image-input";
+    private const string CloudflareVideoInputId = "blog-cloudflare-video-input";
 
     [Parameter]
     public string CurrentLanguageCode { get; set; } = "af";
@@ -428,8 +579,21 @@
     private bool IsLoading { get; set; } = true;
     private bool IsSaving { get; set; }
     private bool IsDeleting { get; set; }
+    private bool IsUploadingMedia { get; set; }
+    private bool IsUploadingVideo { get; set; }
     private string? ErrorMessage { get; set; }
     private string? StatusMessage { get; set; }
+    private string? MediaErrorMessage { get; set; }
+    private string? MediaStatusMessage { get; set; }
+    private IBrowserFile? InlineImageFile { get; set; }
+    private string? InlineImageFileName { get; set; }
+    private string? InlineImageAlt { get; set; }
+    private string? YouTubeVideoUrl { get; set; }
+    private string? YouTubeVideoTitle { get; set; }
+    private IBrowserFile? CloudflareVideoFile { get; set; }
+    private string? CloudflareVideoFileName { get; set; }
+    private string? CloudflareVideoUrl { get; set; }
+    private string? CloudflareVideoTitle { get; set; }
     private ElementReference _richTextEditorShell;
     private IJSObjectReference? _richTextEditorModule;
     private DotNetObjectReference<AdminBlogPanel>? _dotNetReference;
@@ -475,13 +639,11 @@
             return;
         }
 
-        _richTextEditorModule ??= await JSRuntime.InvokeAsync<IJSObjectReference>(
-            "import",
-            "/Components/Pages/AdminBlogPanel.razor.js");
+        var richTextEditorModule = await GetRichTextEditorModuleAsync();
 
         _dotNetReference ??= DotNetObjectReference.Create(this);
         var renderedHtml = BlogContentRenderer.RenderHtml(Editor.ContentMarkdown);
-        await _richTextEditorModule.InvokeVoidAsync(
+        await richTextEditorModule.InvokeVoidAsync(
             "syncRichTextEditor",
             _richTextEditorShell,
             _dotNetReference,
@@ -520,6 +682,7 @@
                     : Posts.FirstOrDefault();
 
             Editor = selected is null ? null : EditableBlogPost.From(selected);
+            ResetMediaInputs();
             MarkRichTextEditorDirty();
         }
         catch (Exception exception)
@@ -541,6 +704,7 @@
         ErrorMessage = null;
         StatusMessage = null;
         Editor = EditableBlogPost.CreateEmpty();
+        ResetMediaInputs();
         MarkRichTextEditorDirty();
     }
 
@@ -549,6 +713,7 @@
         ErrorMessage = null;
         StatusMessage = null;
         Editor = EditableBlogPost.From(post);
+        ResetMediaInputs();
         MarkRichTextEditorDirty();
     }
 
@@ -615,6 +780,234 @@
         Editor.FeaturedImageFileName = file.Name;
         Editor.FeaturedImagePreviewUrl = await ReadImageFileAsDataUrlAsync(file)
             ?? ResolvePreviewImageUrl(Editor.FeaturedImageUrl);
+    }
+
+    private void OnInlineImageSelected(InputFileChangeEventArgs args)
+    {
+        MediaErrorMessage = null;
+        MediaStatusMessage = null;
+
+        var file = args.File;
+        if (file is null || file.Size <= 0 || file.Size > MaxImageUploadBytes)
+        {
+            InlineImageFile = null;
+            InlineImageFileName = null;
+            MediaErrorMessage = T("Kies asseblief 'n geldige prent tot 10 MB.", "Please choose a valid image up to 10 MB.");
+            return;
+        }
+
+        if (!IsSupportedImageContentType(NormalizeImageContentType(file)))
+        {
+            InlineImageFile = null;
+            InlineImageFileName = null;
+            MediaErrorMessage = T("Gebruik asseblief JPG, PNG of WEBP vir die inhoudsprent.", "Please use JPG, PNG, or WEBP for the content image.");
+            return;
+        }
+
+        InlineImageFile = file;
+        InlineImageFileName = file.Name;
+    }
+
+    private void OnCloudflareVideoSelected(InputFileChangeEventArgs args)
+    {
+        MediaErrorMessage = null;
+        MediaStatusMessage = null;
+
+        var file = args.File;
+        if (file is null || file.Size <= 0 || file.Size > MaxVideoUploadBytes)
+        {
+            CloudflareVideoFile = null;
+            CloudflareVideoFileName = null;
+            MediaErrorMessage = T("Kies asseblief 'n geldige video tot 512 MB.", "Please choose a valid video up to 512 MB.");
+            return;
+        }
+
+        if (!IsSupportedVideoContentType(NormalizeVideoContentType(file)))
+        {
+            CloudflareVideoFile = null;
+            CloudflareVideoFileName = null;
+            MediaErrorMessage = T("Gebruik asseblief MP4 of WEBM vir die video.", "Please use MP4 or WEBM for the video.");
+            return;
+        }
+
+        CloudflareVideoFile = file;
+        CloudflareVideoFileName = file.Name;
+    }
+
+    private async Task UploadAndInsertInlineImageAsync()
+    {
+        if (Editor is null || InlineImageFile is null || IsUploadingMedia)
+        {
+            return;
+        }
+
+        IsUploadingMedia = true;
+        MediaErrorMessage = null;
+        MediaStatusMessage = null;
+
+        try
+        {
+            var slug = ResolveMediaUploadSlug();
+            var imageUrl = await UploadInlineImageAsync(slug, InlineImageFile);
+            var module = await GetRichTextEditorModuleAsync();
+            await module.InvokeVoidAsync(
+                "insertBlogImage",
+                _richTextEditorShell,
+                imageUrl,
+                string.IsNullOrWhiteSpace(InlineImageAlt)
+                    ? T("Blogprent", "Blog image")
+                    : InlineImageAlt.Trim());
+            await module.InvokeVoidAsync("clearFileInput", InlineImageInputId);
+
+            InlineImageFile = null;
+            InlineImageFileName = null;
+            InlineImageAlt = null;
+            MediaStatusMessage = T("Die prent is by die blog inhoud gevoeg.", "The image was added to the blog content.");
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to upload and insert an inline blog image.");
+            MediaErrorMessage = T("Kon nie die prent oplaai en invoeg nie.", "Could not upload and insert the image.");
+        }
+        finally
+        {
+            IsUploadingMedia = false;
+        }
+    }
+
+    private async Task InsertYouTubeVideoAsync()
+    {
+        if (Editor is null || IsUploadingMedia)
+        {
+            return;
+        }
+
+        var embedUrl = YouTubeUrlHelper.BuildEmbedUrl(YouTubeVideoUrl);
+        if (string.IsNullOrWhiteSpace(embedUrl))
+        {
+            MediaErrorMessage = T("Gebruik asseblief 'n geldige YouTube-skakel.", "Please use a valid YouTube link.");
+            MediaStatusMessage = null;
+            return;
+        }
+
+        IsUploadingMedia = true;
+        MediaErrorMessage = null;
+        MediaStatusMessage = null;
+        try
+        {
+            await InsertBlogVideoAsync(
+                provider: "youtube",
+                embedUrl,
+                string.IsNullOrWhiteSpace(YouTubeVideoTitle)
+                    ? T("YouTube-video", "YouTube video")
+                    : YouTubeVideoTitle.Trim());
+
+            YouTubeVideoUrl = null;
+            YouTubeVideoTitle = null;
+            MediaStatusMessage = T("Die YouTube-video is by die blog inhoud gevoeg.", "The YouTube video was added to the blog content.");
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to insert a YouTube blog video.");
+            MediaErrorMessage = T("Kon nie die YouTube-video invoeg nie.", "Could not insert the YouTube video.");
+        }
+        finally
+        {
+            IsUploadingMedia = false;
+        }
+    }
+
+    private async Task UploadAndInsertCloudflareVideoAsync()
+    {
+        if (Editor is null || CloudflareVideoFile is null || IsUploadingMedia)
+        {
+            return;
+        }
+
+        if (!IsR2UploadConfigured)
+        {
+            MediaErrorMessage = T("Cloudflare R2-oplaai is nie opgestel nie.", "Cloudflare R2 upload is not configured.");
+            MediaStatusMessage = null;
+            return;
+        }
+
+        IsUploadingMedia = true;
+        IsUploadingVideo = true;
+        MediaErrorMessage = null;
+        MediaStatusMessage = null;
+
+        try
+        {
+            var slug = ResolveMediaUploadSlug();
+            var videoUrl = await UploadCloudflareVideoAsync(slug, CloudflareVideoFile);
+            await InsertBlogVideoAsync(
+                provider: "cloudflare",
+                videoUrl,
+                string.IsNullOrWhiteSpace(CloudflareVideoTitle)
+                    ? T("Cloudflare-video", "Cloudflare video")
+                    : CloudflareVideoTitle.Trim());
+
+            var module = await GetRichTextEditorModuleAsync();
+            await module.InvokeVoidAsync("clearFileInput", CloudflareVideoInputId);
+            CloudflareVideoFile = null;
+            CloudflareVideoFileName = null;
+            CloudflareVideoTitle = null;
+            MediaStatusMessage = T("Die video is na Cloudflare opgelaai en by die blog gevoeg.", "The video was uploaded to Cloudflare and added to the blog.");
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to upload and insert a Cloudflare blog video.");
+            MediaErrorMessage = T("Kon nie die video na Cloudflare oplaai en invoeg nie.", "Could not upload and insert the video from Cloudflare.");
+        }
+        finally
+        {
+            IsUploadingVideo = false;
+            IsUploadingMedia = false;
+        }
+    }
+
+    private async Task InsertExistingCloudflareVideoAsync()
+    {
+        if (Editor is null || IsUploadingMedia)
+        {
+            return;
+        }
+
+        var embed = BlogVideoUrlHelper.ResolveCloudflareVideo(
+            CloudflareVideoUrl,
+            CloudflareR2OptionsAccessor.Value.PublicBaseUrl);
+        if (embed is null)
+        {
+            MediaErrorMessage = T("Gebruik asseblief 'n geldige Cloudflare Stream- of Cloudflare R2-videoskakel.", "Please use a valid Cloudflare Stream or Cloudflare R2 video link.");
+            MediaStatusMessage = null;
+            return;
+        }
+
+        IsUploadingMedia = true;
+        MediaErrorMessage = null;
+        MediaStatusMessage = null;
+        try
+        {
+            await InsertBlogVideoAsync(
+                embed.Kind == BlogVideoEmbedKind.Iframe ? "cloudflare-iframe" : "cloudflare",
+                embed.Url,
+                string.IsNullOrWhiteSpace(CloudflareVideoTitle)
+                    ? T("Cloudflare-video", "Cloudflare video")
+                    : CloudflareVideoTitle.Trim());
+
+            CloudflareVideoUrl = null;
+            CloudflareVideoTitle = null;
+            MediaStatusMessage = T("Die Cloudflare-video is by die blog inhoud gevoeg.", "The Cloudflare video was added to the blog content.");
+        }
+        catch (Exception exception)
+        {
+            Logger.LogError(exception, "Failed to insert an existing Cloudflare blog video.");
+            MediaErrorMessage = T("Kon nie die Cloudflare-video invoeg nie.", "Could not insert the Cloudflare video.");
+        }
+        finally
+        {
+            IsUploadingMedia = false;
+        }
     }
 
     private bool CanRemoveFeaturedImage() =>
@@ -792,6 +1185,90 @@
                (post.Summary?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false);
     }
 
+    private async Task<IJSObjectReference> GetRichTextEditorModuleAsync()
+    {
+        if (_richTextEditorModule is not null)
+        {
+            return _richTextEditorModule;
+        }
+
+        _richTextEditorModule = await JSRuntime.InvokeAsync<IJSObjectReference>(
+            "import",
+            "/Components/Pages/AdminBlogPanel.razor.js");
+        return _richTextEditorModule;
+    }
+
+    private async Task InsertBlogVideoAsync(string provider, string url, string title)
+    {
+        var module = await GetRichTextEditorModuleAsync();
+        await module.InvokeVoidAsync(
+            "insertBlogVideo",
+            _richTextEditorShell,
+            provider,
+            url,
+            title);
+    }
+
+    private async Task<string> UploadInlineImageAsync(string slug, IBrowserFile file)
+    {
+        var normalizedContentType = NormalizeImageContentType(file);
+        if (IsR2UploadConfigured)
+        {
+            var directUpload = await StoryMediaStorageService.CreateImageDirectUploadAsync(
+                $"blog-{slug}",
+                StoryImageKind.Inline,
+                file.Name,
+                normalizedContentType);
+
+            try
+            {
+                await UploadSelectedFileToR2Async(InlineImageInputId, directUpload);
+                return directUpload.PublicUrl
+                       ?? throw new InvalidOperationException("Direct inline image upload did not provide a public URL.");
+            }
+            catch (Exception exception)
+            {
+                Logger.LogWarning(
+                    exception,
+                    "Direct inline image upload failed for blog {BlogSlug}. Falling back to server-side upload.",
+                    slug);
+
+                await using var stream = file.OpenReadStream(MaxImageUploadBytes);
+                var uploaded = await StoryMediaStorageService.UploadImageAsync(
+                    $"blog-{slug}",
+                    StoryImageKind.Inline,
+                    file.Name,
+                    normalizedContentType,
+                    stream);
+                return uploaded.PublicUrl;
+            }
+        }
+
+        var localUpload = await SaveInlineImageToLocalAsync(slug, file);
+        return localUpload.PublicPath;
+    }
+
+    private async Task<string> UploadCloudflareVideoAsync(string slug, IBrowserFile file)
+    {
+        var directUpload = await StoryMediaStorageService.CreateVideoDirectUploadAsync(
+            $"blog-{slug}",
+            file.Name,
+            NormalizeVideoContentType(file));
+        await UploadSelectedFileToR2Async(CloudflareVideoInputId, directUpload);
+        return directUpload.PublicUrl
+               ?? throw new InvalidOperationException("Direct video upload did not provide a public URL.");
+    }
+
+    private async Task UploadSelectedFileToR2Async(string inputId, DirectStoryMediaUpload upload)
+    {
+        var module = await GetRichTextEditorModuleAsync();
+        await module.InvokeVoidAsync(
+            "uploadSelectedFileToR2",
+            inputId,
+            upload.UploadUrl,
+            upload.ContentType);
+    }
+
     private async Task<string> UploadFeaturedImageAsync(string slug, IBrowserFile file)
     {
         var normalizedContentType = NormalizeImageContentType(file);
@@ -811,6 +1288,29 @@
 
         var localUpload = await SaveFeaturedImageToLocalAsync(slug, file);
         return localUpload.PublicPath;
+    }
+
+    private async Task<(string PublicPath, string PhysicalPath)> SaveInlineImageToLocalAsync(
+        string slug,
+        IBrowserFile file)
+    {
+        var extension = ResolveSafeImageExtension(file.Name);
+        var safeSlug = BuildEffectiveSlug(slug, slug);
+        var year = DateTime.UtcNow.ToString("yyyy", CultureInfo.InvariantCulture);
+        var month = DateTime.UtcNow.ToString("MM", CultureInfo.InvariantCulture);
+        var fileSuffix = Guid.NewGuid().ToString("N")[..10];
+        var fileName = $"{safeSlug}-blog-inline-{DateTime.UtcNow:yyyyMMddHHmmss}-{fileSuffix}{extension}";
+        var relativeDirectory = Path.Combine("branding", "uploaded", "blog", year, month);
+        var physicalDirectory = Path.Combine(WebHostEnvironment.WebRootPath, relativeDirectory);
+        Directory.CreateDirectory(physicalDirectory);
+
+        var physicalPath = Path.Combine(physicalDirectory, fileName);
+        await using var sourceStream = file.OpenReadStream(MaxImageUploadBytes);
+        await using var destinationStream = File.Create(physicalPath);
+        await sourceStream.CopyToAsync(destinationStream);
+
+        var publicPath = $"/branding/uploaded/blog/{year}/{month}/{fileName}";
+        return (publicPath, physicalPath);
     }
 
     private async Task<(string PublicPath, string PhysicalPath)> SaveFeaturedImageToLocalAsync(string slug, IBrowserFile file)
@@ -934,6 +1434,29 @@
         _richTextEditorSyncPending = true;
     }
 
+    private void ResetMediaInputs()
+    {
+        InlineImageFile = null;
+        InlineImageFileName = null;
+        InlineImageAlt = null;
+        YouTubeVideoUrl = null;
+        YouTubeVideoTitle = null;
+        CloudflareVideoFile = null;
+        CloudflareVideoFileName = null;
+        CloudflareVideoUrl = null;
+        CloudflareVideoTitle = null;
+        MediaErrorMessage = null;
+        MediaStatusMessage = null;
+        IsUploadingMedia = false;
+        IsUploadingVideo = false;
+    }
+
+    private string ResolveMediaUploadSlug()
+    {
+        var slug = BuildEffectiveSlug(Editor?.Slug, Editor?.Title);
+        return string.IsNullOrWhiteSpace(slug) ? "blog" : slug;
+    }
+
     private string BuildStatusLabel(bool isPublished, DateTimeOffset? publishedAt) =>
         !isPublished
             ? T("Konsep", "Draft")
@@ -1028,6 +1551,22 @@
 
     private static bool IsSupportedImageContentType(string normalizedContentType) =>
         normalizedContentType is "image/jpeg" or "image/png" or "image/webp";
+
+    private static string NormalizeVideoContentType(IBrowserFile file) =>
+        file.ContentType?.Trim().ToLowerInvariant() switch
+        {
+            "video/mp4" => "video/mp4",
+            "video/webm" => "video/webm",
+            _ => Path.GetExtension(file.Name).Trim().ToLowerInvariant() switch
+            {
+                ".mp4" => "video/mp4",
+                ".webm" => "video/webm",
+                _ => file.ContentType ?? string.Empty
+            }
+        };
+
+    private static bool IsSupportedVideoContentType(string normalizedContentType) =>
+        normalizedContentType is "video/mp4" or "video/webm";
 
     private static string ResolveSafeImageExtension(string fileName)
     {
