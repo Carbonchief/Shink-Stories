@@ -267,6 +267,69 @@ public sealed class SupabaseAuthService(
         }
     }
 
+    public async Task<SupabasePasswordRecoveryLinkResult> GeneratePasswordRecoveryLinkAsync(
+        string email,
+        string redirectTo,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return SupabasePasswordRecoveryLinkResult.Failure("Gebruik asseblief 'n geldige e-posadres.");
+        }
+
+        if (string.IsNullOrWhiteSpace(redirectTo))
+        {
+            return SupabasePasswordRecoveryLinkResult.Failure("Kon nie die herstel-skakel voorberei nie. Probeer asseblief weer.");
+        }
+
+        if (!TryBuildAdminGenerateLinkEndpoint(out var generateLinkEndpoint))
+        {
+            _logger.LogWarning("Supabase password recovery link generation skipped because SecretKey or URL is not configured.");
+            return SupabasePasswordRecoveryLinkResult.Failure("Supabase SecretKey is nog nie opgestel nie.");
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, generateLinkEndpoint)
+        {
+            Content = JsonContent.Create(new SupabaseAdminGenerateLinkRequest(
+                Type: "recovery",
+                Email: email.Trim(),
+                RedirectTo: redirectTo.Trim()))
+        };
+        request.Headers.TryAddWithoutValidation("apikey", _options.SecretKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.SecretKey);
+
+        try
+        {
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var generatedLink = JsonSerializer.Deserialize<SupabaseAdminGenerateLinkResponse>(responseBody);
+                if (!string.IsNullOrWhiteSpace(generatedLink?.ActionLink))
+                {
+                    return SupabasePasswordRecoveryLinkResult.Success(generatedLink.ActionLink);
+                }
+            }
+
+            var errorMessage = ReadErrorMessage(responseBody) ?? "Kon nie nou 'n herstel-skakel voorberei nie. Probeer asseblief weer.";
+            _logger.LogWarning(
+                "Supabase password recovery link generation rejected: {StatusCode} {Message}",
+                (int)response.StatusCode,
+                errorMessage);
+            return SupabasePasswordRecoveryLinkResult.Failure(errorMessage);
+        }
+        catch (HttpRequestException exception)
+        {
+            _logger.LogWarning(exception, "Supabase password recovery link generation failed.");
+            return SupabasePasswordRecoveryLinkResult.Failure("Kon nie nou met Supabase koppel nie. Probeer asseblief weer.");
+        }
+        catch (JsonException exception)
+        {
+            _logger.LogWarning(exception, "Supabase password recovery link response could not be read.");
+            return SupabasePasswordRecoveryLinkResult.Failure("Kon nie nou die herstel-skakel voorberei nie. Probeer asseblief weer.");
+        }
+    }
+
     private async Task<ImportedPasswordResetMigrationResult> TryPrepareImportedWordPressUserPasswordResetAsync(
         string email,
         CancellationToken cancellationToken)
@@ -864,6 +927,24 @@ public sealed class SupabaseAuthService(
         }
 
         adminUsersEndpoint = new Uri(supabaseUri, "auth/v1/admin/users");
+        return true;
+    }
+
+    private bool TryBuildAdminGenerateLinkEndpoint(out Uri generateLinkEndpoint)
+    {
+        generateLinkEndpoint = default!;
+        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.SecretKey))
+        {
+            return false;
+        }
+
+        if (!Uri.TryCreate(_options.Url, UriKind.Absolute, out var supabaseUri))
+        {
+            _logger.LogWarning("Supabase URL is invalid: {SupabaseUrl}", _options.Url);
+            return false;
+        }
+
+        generateLinkEndpoint = new Uri(supabaseUri, "auth/v1/admin/generate_link");
         return true;
     }
 
@@ -1569,6 +1650,12 @@ public sealed class SupabaseAuthService(
     private sealed record SupabasePasswordRecoveryRequest(
         string Email,
         [property: JsonPropertyName("redirect_to")] string RedirectTo);
+    private sealed record SupabaseAdminGenerateLinkRequest(
+        string Type,
+        string Email,
+        [property: JsonPropertyName("redirect_to")] string RedirectTo);
+    private sealed record SupabaseAdminGenerateLinkResponse(
+        [property: JsonPropertyName("action_link")] string? ActionLink);
     private sealed record SupabaseTokenHashVerifyRequest(
         string Type,
         [property: JsonPropertyName("token_hash")] string TokenHash);

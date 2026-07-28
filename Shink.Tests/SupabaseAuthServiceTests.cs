@@ -74,6 +74,38 @@ public class SupabaseAuthServiceTests
     }
 
     [TestMethod]
+    public async Task GeneratePasswordRecoveryLinkAsync_UsesSupabaseAdminGenerateLinkWithoutSendingItsOwnEmail()
+    {
+        string? requestBody = null;
+        var handler = new RecordingHandler(request =>
+        {
+            Assert.AreEqual(HttpMethod.Post, request.Method);
+            Assert.AreEqual("https://example.supabase.co/auth/v1/admin/generate_link", request.RequestUri?.ToString());
+            Assert.AreEqual("secret-key", request.Headers.Authorization?.Parameter);
+            requestBody = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """{"action_link":"https://example.supabase.co/auth/v1/verify?token=one-time&type=recovery"}""",
+                    Encoding.UTF8,
+                    "application/json")
+            };
+        });
+        using var httpClient = new HttpClient(handler);
+        var service = CreateService(httpClient, secretKey: "secret-key");
+
+        var result = await service.GeneratePasswordRecoveryLinkAsync(
+            "juffrou@example.com",
+            "https://www.schink.co.za/herstel-wagwoord");
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        StringAssert.Contains(result.ActionLink!, "type=recovery");
+        StringAssert.Contains(requestBody!, "\"type\":\"recovery\"");
+        StringAssert.Contains(requestBody!, "\"email\":\"juffrou@example.com\"");
+        StringAssert.Contains(requestBody!, "\"redirect_to\":\"https://www.schink.co.za/herstel-wagwoord\"");
+    }
+
+    [TestMethod]
     public async Task ExchangeRecoveryTokenHashAsync_PostsVerifyRequestAndReturnsSession()
     {
         string? requestBody = null;

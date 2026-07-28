@@ -16,10 +16,12 @@ namespace Shink.Services;
 public sealed partial class SupabaseAdminManagementService(
     HttpClient httpClient,
     IOptions<SupabaseOptions> supabaseOptions,
+    IOptions<SiteOptions> siteOptions,
     IMemoryCache memoryCache,
     IUserNotificationService userNotificationService,
     IWordPressMigrationService wordPressMigrationService,
     ISupabaseAuthService supabaseAuthService,
+    ISchoolSeatNotificationEmailService schoolSeatNotificationEmailService,
     IAuthSessionService authSessionService,
     ISubscriptionPaymentRecoveryEmailService subscriptionPaymentRecoveryEmailService,
     PaystackCheckoutService paystackCheckoutService,
@@ -31,10 +33,12 @@ public sealed partial class SupabaseAdminManagementService(
 
     private readonly HttpClient _httpClient = httpClient;
     private readonly SupabaseOptions _options = supabaseOptions.Value;
+    private readonly SiteOptions _siteOptions = siteOptions.Value;
     private readonly IMemoryCache _memoryCache = memoryCache;
     private readonly IUserNotificationService _userNotificationService = userNotificationService;
     private readonly IWordPressMigrationService _wordPressMigrationService = wordPressMigrationService;
     private readonly ISupabaseAuthService _supabaseAuthService = supabaseAuthService;
+    private readonly ISchoolSeatNotificationEmailService _schoolSeatNotificationEmailService = schoolSeatNotificationEmailService;
     private readonly IAuthSessionService _authSessionService = authSessionService;
     private readonly ISubscriptionPaymentRecoveryEmailService _subscriptionPaymentRecoveryEmailService = subscriptionPaymentRecoveryEmailService;
     private readonly PaystackCheckoutService _paystackCheckoutService = paystackCheckoutService;

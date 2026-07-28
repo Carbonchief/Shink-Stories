@@ -1,0 +1,37 @@
+Geagte {{{RECIPIENT_NAME_TEXT}}},
+
+Baie welkom by Schink Stories!
+
+Dit is vir ons 'n voorreg dat {{{SCHOOL_NAME_TEXT}}} deel van die Schink Stories-platform is. Dit is vir ons 'n groot voorreg om saam met juffrouens stories te gebruik om kinders se verbeelding, taalvaardighede en karakter te help ontwikkel.
+
+KOM ONS BEGIN!
+
+Jou rekening is reeds geskep. Die enigste stap wat oorbly, is om jou wagwoord in te stel.
+
+Stel jou wagwoord hier in:
+{{{PASSWORD_SETUP_URL_TEXT}}}
+
+🎧 Luister na stories
+Blaai deur ons groeiende versameling oorspronklike Afrikaanse stories:
+{{{LISTEN_URL_TEXT}}}
+
+📄 Laai hulpbronne af
+Gebruik ons aktiwiteitsblaaie tydens storietyd of stuur dit saam huis toe om luister-, taal- en fynmotoriese vaardighede verder te ontwikkel.
+{{{RESOURCES_URL_TEXT}}}
+
+ONS HOOR GRAAG VAN JOU
+
+Ons wil juffrouens prakties ondersteun. As daar stories, temas of hulpbronne is wat jou sal help, laat weet ons gerus.
+{{{SUPPORT_EMAIL_TEXT}}}
+
+Kyk uit vir Oortjies! 🐭
+Ons storiemaatjie-muis loer gereeld op verrassende plekke op die webtuiste uit!
+
+Dankie dat jy Schink Stories deel van jou klaskamer maak.
+
+Sien julle vir storietyd!
+
+Die Schink Stories-span
+
+www.schink.co.za
+'n Produk van Schink PTY. LTD. Alle regte gereserveer.

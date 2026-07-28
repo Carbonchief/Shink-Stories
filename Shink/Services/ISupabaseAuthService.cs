@@ -17,6 +17,10 @@ public interface ISupabaseAuthService
         string email,
         string redirectTo,
         CancellationToken cancellationToken = default);
+    Task<SupabasePasswordRecoveryLinkResult> GeneratePasswordRecoveryLinkAsync(
+        string email,
+        string redirectTo,
+        CancellationToken cancellationToken = default);
     Task<SupabaseRecoverySessionResult> ExchangeRecoveryTokenHashAsync(
         string tokenHash,
         CancellationToken cancellationToken = default);
@@ -75,6 +79,13 @@ public sealed record SupabasePasswordResetResult(bool IsSuccess, string? UserEma
     public static SupabasePasswordResetResult Success(string? userEmail = null) => new(true, userEmail, null);
 
     public static SupabasePasswordResetResult Failure(string errorMessage) => new(false, null, errorMessage);
+}
+
+public sealed record SupabasePasswordRecoveryLinkResult(bool IsSuccess, string? ActionLink, string? ErrorMessage)
+{
+    public static SupabasePasswordRecoveryLinkResult Success(string actionLink) => new(true, actionLink, null);
+
+    public static SupabasePasswordRecoveryLinkResult Failure(string errorMessage) => new(false, null, errorMessage);
 }
 
 public sealed record SupabaseRecoverySessionResult(
