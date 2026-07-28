@@ -10,7 +10,8 @@ public sealed record PaymentPlan(
     bool IsSubscription,
     int BillingPeriodMonths,
     int BillingFrequency,
-    int? SchoolSlotLimit = null)
+    int? SchoolSlotLimit = null,
+    bool IsAdminOnly = false)
 {
     public string AmountDisplay => Amount.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
     public bool IsSchoolPlan => SchoolSlotLimit.HasValue;
@@ -82,11 +83,26 @@ public static class PaymentPlanCatalog
             IsSubscription: false,
             BillingPeriodMonths: 12,
             BillingFrequency: 6,
-            SchoolSlotLimit: 8)
+            SchoolSlotLimit: 8),
+        new(
+            Slug: "skool-20-jaarliks",
+            Name: "Skool 20",
+            TierCode: "school_20_yearly",
+            ItemName: "Schink Stories Skool 20",
+            ItemDescription: "Jaarlikse skooltoegang vir 20 klaskamers.",
+            Amount: 28800.00m,
+            IsSubscription: false,
+            BillingPeriodMonths: 12,
+            BillingFrequency: 6,
+            SchoolSlotLimit: 20,
+            IsAdminOnly: true)
     ];
 
     public static IReadOnlyList<PaymentPlan> SchoolPlans { get; } =
         All.Where(plan => plan.IsSchoolPlan).ToArray();
+
+    public static IReadOnlyList<PaymentPlan> PublicSchoolPlans { get; } =
+        SchoolPlans.Where(plan => !plan.IsAdminOnly).ToArray();
 
     public static PaymentPlan? FindBySlug(string? slug) =>
         All.FirstOrDefault(plan => string.Equals(plan.Slug, slug, StringComparison.OrdinalIgnoreCase));

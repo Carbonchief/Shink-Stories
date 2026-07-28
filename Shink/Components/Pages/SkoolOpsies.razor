@@ -152,7 +152,7 @@
 </section>
 
 @code {
-    private static IReadOnlyList<PaymentPlan> SchoolPlans => PaymentPlanCatalog.SchoolPlans;
+    private static IReadOnlyList<PaymentPlan> SchoolPlans => PaymentPlanCatalog.PublicSchoolPlans;
     private string SkoolOpsiesCanonicalUrl => NavigationManager.ToAbsoluteUri("/skoolopsies").ToString();
 
     private MarkupString SkoolOpsiesJsonLd => new(JsonSerializer.Serialize(new Dictionary<string, object?>

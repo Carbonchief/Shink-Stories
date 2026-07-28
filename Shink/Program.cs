@@ -1210,7 +1210,7 @@ app.MapGet("/betaal/{planSlug}", async (
     }
 
     var plan = PaymentPlanCatalog.FindBySlug(planSlug);
-    if (plan is null)
+    if (plan is null || plan.IsAdminOnly)
     {
         return Results.NotFound();
     }

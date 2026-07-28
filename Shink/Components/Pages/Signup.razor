@@ -294,7 +294,7 @@
         DiscountPreview.OriginalAmountZar is not null;
     private string SignInHref => BuildSignInHref(GetSafeReturnUrl(ReturnUrl), GetSelectedPlanCheckoutPath());
     private IReadOnlyList<PaymentPlan> AvailablePlans =>
-        IsSchoolOptionsSignupFlow ? PaymentPlanCatalog.SchoolPlans : HouseholdPlans;
+        IsSchoolOptionsSignupFlow ? PaymentPlanCatalog.PublicSchoolPlans : HouseholdPlans;
     private static IReadOnlyList<PaymentPlan> HouseholdPlans { get; } =
         PaymentPlanCatalog.All.Where(plan => !plan.IsSchoolPlan).ToArray();
 
@@ -552,14 +552,17 @@
     private PaymentPlan? ResolveSelectedPlan()
     {
         var planFromQuery = PaymentPlanCatalog.FindBySlug(NormalizePlanSlug(Plan));
-        if (planFromQuery is not null)
+        if (planFromQuery is not null && !planFromQuery.IsAdminOnly)
         {
             return planFromQuery;
         }
 
         var safeReturnUrl = GetSafeReturnUrl(ReturnUrl);
         var extractedPlanSlug = TryExtractPlanSlugFromReturnUrl(safeReturnUrl);
-        return PaymentPlanCatalog.FindBySlug(extractedPlanSlug);
+        var planFromReturnUrl = PaymentPlanCatalog.FindBySlug(extractedPlanSlug);
+        return planFromReturnUrl is not null && !planFromReturnUrl.IsAdminOnly
+            ? planFromReturnUrl
+            : null;
     }
 
     private string? GetSelectedPlanCheckoutPath()

@@ -12,10 +12,17 @@ public class SchoolOptionsSourceTests
     {
         var schoolPlans = PaymentPlanCatalog.SchoolPlans;
 
-        Assert.AreEqual(3, schoolPlans.Count);
+        Assert.AreEqual(4, schoolPlans.Count);
         Assert.IsTrue(schoolPlans.Any(plan => plan.Slug == "skool-klein-jaarliks" && plan.Amount == 6250.00m && plan.SchoolSlotLimit == 4));
         Assert.IsTrue(schoolPlans.Any(plan => plan.Slug == "skool-medium-jaarliks" && plan.Amount == 8640.00m && plan.SchoolSlotLimit == 6));
         Assert.IsTrue(schoolPlans.Any(plan => plan.Slug == "skool-groot-jaarliks" && plan.Amount == 11520.00m && plan.SchoolSlotLimit == 8));
+        Assert.IsTrue(schoolPlans.Any(plan =>
+            plan.Slug == "skool-20-jaarliks" &&
+            plan.TierCode == "school_20_yearly" &&
+            plan.SchoolSlotLimit == 20 &&
+            plan.IsAdminOnly));
+        Assert.AreEqual(3, PaymentPlanCatalog.PublicSchoolPlans.Count);
+        Assert.IsFalse(PaymentPlanCatalog.PublicSchoolPlans.Any(plan => plan.SchoolSlotLimit == 20));
         Assert.IsTrue(schoolPlans.All(plan => !plan.IsSubscription));
     }
 
@@ -27,6 +34,7 @@ public class SchoolOptionsSourceTests
         CollectionAssert.Contains(allStoriesTierCodes.ToList(), StoryAccessPolicy.SchoolSmallYearlyTierCode);
         CollectionAssert.Contains(allStoriesTierCodes.ToList(), StoryAccessPolicy.SchoolMediumYearlyTierCode);
         CollectionAssert.Contains(allStoriesTierCodes.ToList(), StoryAccessPolicy.SchoolLargeYearlyTierCode);
+        CollectionAssert.Contains(allStoriesTierCodes.ToList(), StoryAccessPolicy.SchoolTwentyYearlyTierCode);
     }
 
     [TestMethod]
@@ -59,6 +67,7 @@ public class SchoolOptionsSourceTests
         StringAssert.Contains(skoolOpsies, "Skool admin bestuursportaal vir uitnodigings");
         Assert.IsFalse(skoolOpsies.Contains("Skool admin dashboard", StringComparison.OrdinalIgnoreCase));
         StringAssert.Contains(skoolOpsies, "[\"source\"] = \"skoolopsies\"");
+        StringAssert.Contains(skoolOpsies, "PaymentPlanCatalog.PublicSchoolPlans");
     }
 
     [TestMethod]
@@ -156,6 +165,17 @@ public class SchoolOptionsSourceTests
         StringAssert.Contains(layout, "@if (HasSchoolOption)");
         StringAssert.Contains(layout, "href=\"/skool-admin\"");
         StringAssert.Contains(layout, "HasSchoolAdminAccessAsync(email)");
+    }
+
+    [TestMethod]
+    public void AdminOnlySchoolPackageIsExcludedFromPublicSignupAndCheckout()
+    {
+        var signup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Signup.razor"));
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+
+        StringAssert.Contains(signup, "IsSchoolOptionsSignupFlow ? PaymentPlanCatalog.PublicSchoolPlans : HouseholdPlans");
+        StringAssert.Contains(signup, "!planFromQuery.IsAdminOnly");
+        StringAssert.Contains(program, "if (plan is null || plan.IsAdminOnly)");
     }
 
     [TestMethod]

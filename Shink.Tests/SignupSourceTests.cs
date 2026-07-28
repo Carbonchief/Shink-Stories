@@ -83,7 +83,7 @@ public class SignupSourceTests
         var signup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Signup.razor"));
 
         StringAssert.Contains(signup, "[SupplyParameterFromQuery(Name = \"source\")]");
-        StringAssert.Contains(signup, "IsSchoolOptionsSignupFlow ? PaymentPlanCatalog.SchoolPlans : HouseholdPlans");
+        StringAssert.Contains(signup, "IsSchoolOptionsSignupFlow ? PaymentPlanCatalog.PublicSchoolPlans : HouseholdPlans");
         StringAssert.Contains(signup, "IsSchoolOptionsSignupFlow = IsSchoolOptionsSource(Source) || SelectedPlan?.IsSchoolPlan == true;");
         StringAssert.Contains(signup, "PaymentPlanCatalog.All.Where(plan => !plan.IsSchoolPlan).ToArray()");
         StringAssert.Contains(signup, "@foreach (var plan in AvailablePlans)");
