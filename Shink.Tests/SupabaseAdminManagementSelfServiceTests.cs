@@ -940,10 +940,15 @@ public class SupabaseAdminManagementSelfServiceTests
                 Url = "https://example.supabase.co/",
                 SecretKey = "secret-key"
             }),
+            Options.Create(new SiteOptions
+            {
+                PublicBaseUrl = "https://www.schink.co.za"
+            }),
             new MemoryCache(Options.Create(new MemoryCacheOptions())),
             userNotificationService ?? new NoopUserNotificationService(),
             new NoopWordPressMigrationService(),
             new NoopSupabaseAuthService(),
+            new NoopSchoolSeatNotificationEmailService(),
             new NoopAuthSessionService(),
             subscriptionPaymentRecoveryEmailService ?? new NoopSubscriptionPaymentRecoveryEmailService(),
             paystackService,
@@ -1137,6 +1142,12 @@ public class SupabaseAdminManagementSelfServiceTests
             CancellationToken cancellationToken = default) =>
             Task.FromResult(SupabasePasswordResetResult.Failure("Not implemented."));
 
+        public Task<SupabasePasswordRecoveryLinkResult> GeneratePasswordRecoveryLinkAsync(
+            string email,
+            string redirectTo,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(SupabasePasswordRecoveryLinkResult.Failure("Not implemented."));
+
         public Task<SupabaseRecoverySessionResult> ExchangeRecoveryTokenHashAsync(
             string tokenHash,
             CancellationToken cancellationToken = default) =>
@@ -1192,6 +1203,14 @@ public class SupabaseAdminManagementSelfServiceTests
             Uri callbackUri,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(SupabaseOAuthExchangeResult.Failure("Not implemented."));
+    }
+
+    private sealed class NoopSchoolSeatNotificationEmailService : ISchoolSeatNotificationEmailService
+    {
+        public Task SendSeatAssignedEmailAsync(
+            SchoolSeatAssignmentEmailRequest request,
+            CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
     }
 
     private sealed class NoopAuthSessionService : IAuthSessionService

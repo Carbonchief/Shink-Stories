@@ -326,7 +326,49 @@ public sealed partial class SupabaseAdminManagementService
 
         await UpsertSchoolSubscriberAsync(context.AdminContext, normalizedEmail, cancellationToken);
         await GrantAdminSchoolSeatAccessAsync(context, seatResult.EntityId.Value, normalizedEmail, cancellationToken);
+        await SendAdminSchoolSeatNotificationAsync(
+            normalizedEmail,
+            request.DisplayName,
+            context.Account.SchoolName,
+            cancellationToken);
         return seatResult;
+    }
+
+    private async Task SendAdminSchoolSeatNotificationAsync(
+        string recipientEmail,
+        string? recipientName,
+        string? schoolName,
+        CancellationToken cancellationToken)
+    {
+        var redirectTo = BuildAdminSchoolSeatRecoveryRedirectUrl();
+        var linkResult = await _supabaseAuthService.GeneratePasswordRecoveryLinkAsync(
+            recipientEmail,
+            redirectTo,
+            cancellationToken);
+        if (!linkResult.IsSuccess || string.IsNullOrWhiteSpace(linkResult.ActionLink))
+        {
+            _logger.LogWarning(
+                "School seat assignment email skipped because a password recovery link could not be generated. email={Email} reason={Reason}",
+                recipientEmail,
+                linkResult.ErrorMessage);
+            return;
+        }
+
+        await _schoolSeatNotificationEmailService.SendSeatAssignedEmailAsync(
+            new SchoolSeatAssignmentEmailRequest(
+                RecipientEmail: recipientEmail,
+                RecipientName: recipientName,
+                SchoolName: schoolName,
+                PasswordSetupUrl: linkResult.ActionLink),
+            cancellationToken);
+    }
+
+    private string BuildAdminSchoolSeatRecoveryRedirectUrl()
+    {
+        var baseUrl = _siteOptions.PublicBaseUrl?.Trim().TrimEnd('/');
+        return Uri.TryCreate(baseUrl, UriKind.Absolute, out _)
+            ? $"{baseUrl}/herstel-wagwoord"
+            : "https://www.schink.co.za/herstel-wagwoord";
     }
 
     public async Task<SchoolOperationResult> RemoveAdminSchoolSeatAsync(

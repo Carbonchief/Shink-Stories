@@ -19,6 +19,7 @@ public sealed class ResendTemplateOptions
     public SubscriptionNotificationTemplateOptions SubscriptionNotifications { get; set; } = new();
     public StoreOrderTemplateOptions StoreOrder { get; set; } = new();
     public AdminOpsTemplateOptions AdminOps { get; set; } = new();
+    public SchoolSeatNotificationTemplateOptions SchoolSeatNotifications { get; set; } = new();
 }
 
 public sealed class AbandonedCartRecoveryTemplateOptions
@@ -54,4 +55,9 @@ public sealed class StoreOrderTemplateOptions
 public sealed class AdminOpsTemplateOptions
 {
     public string AlertTemplateId { get; set; } = "shink-admin-ops-alert";
+}
+
+public sealed class SchoolSeatNotificationTemplateOptions
+{
+    public string SeatAssignedTemplateId { get; set; } = "shink-school-seat-assigned";
 }
