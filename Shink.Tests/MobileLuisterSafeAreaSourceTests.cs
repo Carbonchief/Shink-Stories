@@ -10,7 +10,7 @@ public sealed class MobileLuisterSafeAreaSourceTests
     {
         var source = File.ReadAllText(FindLuisterPage());
 
-        StringAssert.Contains(source, "private const double FloatingTopBarContentInset = 86;");
+        StringAssert.Contains(source, "private const double FloatingTopBarContentInset = 132;");
         StringAssert.Contains(source, "Margin = new Thickness(18, 0, 18, 0),");
         StringAssert.Contains(source, "Padding = new Thickness(0, 0, 0, 16),");
         StringAssert.Contains(source, "InputTransparent = false,");
@@ -37,7 +37,7 @@ public sealed class MobileLuisterSafeAreaSourceTests
     {
         var source = File.ReadAllText(FindLuisterPage());
 
-        StringAssert.Contains(source, "private const double FloatingTopBarContentInset = 86;");
+        StringAssert.Contains(source, "private const double FloatingTopBarContentInset = 132;");
         StringAssert.Contains(source, "HeightRequest = FloatingTopBarContentInset - 14,");
         StringAssert.Contains(
             source,

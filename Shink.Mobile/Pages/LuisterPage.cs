@@ -11,7 +11,9 @@ public sealed class LuisterPage : ContentPage
 {
     private static readonly Color LuisterBackgroundColor = Color.FromArgb("#FFF7E8");
     private const double PageHorizontalPadding = 18;
-    private const double FloatingTopBarContentInset = 86;
+    // The floating controls occupy the upper safe-area band. Keep enough initial
+    // clearance that the first playlist title and description never render behind them.
+    private const double FloatingTopBarContentInset = 132;
     private const double FloatingTopBarHiddenOffset = -82;
     private const double ScrollDirectionThreshold = 4;
     private const double OortjiesPeekWidth = 64;
@@ -1355,7 +1357,7 @@ public sealed class LuisterPage : ContentPage
                         await Shell.Current.GoToAsync(nameof(DownloadedPage), animate: true);
                         break;
                     case "Instellings":
-                        await DisplayAlertAsync("Instellings", "Instellings kom binnekort.", "Reg so");
+                        await Shell.Current.GoToAsync(nameof(SettingsPage), animate: true);
                         break;
                     case "Bestuur rekening":
                         await OpenAccountCoreAsync();

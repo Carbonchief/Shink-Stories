@@ -174,7 +174,7 @@ internal static class MobileTopBar
                     await Shell.Current.GoToAsync(nameof(KarakterRaaiGamePage), animate: true);
                     break;
                 case "Instellings":
-                    await hostPage.DisplayAlertAsync("Instellings", "Instellings kom binnekort.", "Reg so");
+                    await Shell.Current.GoToAsync(nameof(SettingsPage), animate: true);
                     break;
                 case "Bestuur rekening":
                     await OpenAccountAsync();
