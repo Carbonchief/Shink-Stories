@@ -19,6 +19,8 @@ public sealed class AboutPage : ContentPage
             Padding = new Thickness(20, 24),
             Spacing = 16
         };
+        MobileResponsiveLayout.ApplyCenteredContent(_content, Width, 980);
+        SizeChanged += (_, _) => MobileResponsiveLayout.ApplyCenteredContent(_content, Width, 980);
 
         Content = new ScrollView { Content = _content };
     }

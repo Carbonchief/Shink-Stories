@@ -38,6 +38,8 @@ public sealed class DownloadedPage : ContentPage
             Padding = new Thickness(20, 18, 20, 28),
             Spacing = 18
         };
+        MobileResponsiveLayout.ApplyCenteredContent(_content, Width, 820);
+        SizeChanged += (_, _) => MobileResponsiveLayout.ApplyCenteredContent(_content, Width, 820);
 
         Content = new ScrollView
         {

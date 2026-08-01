@@ -59,6 +59,10 @@ public interface ISupabaseAuthService
     Task<SupabaseOAuthExchangeResult> ExchangeGoogleImplicitSessionAsync(
         Uri callbackUri,
         CancellationToken cancellationToken = default);
+    Task<SupabaseOAuthExchangeResult> ExchangeAppleIdentityTokenAsync(
+        string identityToken,
+        string nonce,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record SignUpProfileData(

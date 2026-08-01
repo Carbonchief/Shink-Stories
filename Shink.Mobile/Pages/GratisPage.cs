@@ -22,6 +22,8 @@ public sealed class GratisPage : ContentPage
             Padding = new Thickness(20, 24),
             Spacing = 12
         };
+        MobileResponsiveLayout.ApplyCenteredContent(_content, Width, 980);
+        SizeChanged += (_, _) => MobileResponsiveLayout.ApplyCenteredContent(_content, Width, 980);
 
         Content = new ScrollView { Content = _content };
     }
@@ -58,10 +60,11 @@ public sealed class GratisPage : ContentPage
                 TextColor = Color.FromArgb("#5F5F5F")
             });
 
-            foreach (var story in response.Stories)
-            {
-                _content.Children.Add(PageHelpers.BuildStoryCard(story, _apiClient, OpenStoryAsync));
-            }
+            _content.Children.Add(PageHelpers.BuildStoryCollection(
+                response.Stories,
+                _apiClient,
+                OpenStoryAsync,
+                Width));
         }
         catch (Exception ex)
         {

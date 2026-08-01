@@ -5,6 +5,50 @@ namespace Shink.Mobile.Pages;
 
 internal static class PageHelpers
 {
+    public static View BuildStoryCollection(
+        IReadOnlyList<MobileStorySummary> stories,
+        MobileApiClient apiClient,
+        Func<MobileStorySummary, Task> onTap,
+        double width)
+    {
+        if (!MobileResponsiveLayout.IsWide(width))
+        {
+            var stack = new VerticalStackLayout { Spacing = 0 };
+            foreach (var story in stories)
+            {
+                stack.Children.Add(BuildStoryCard(story, apiClient, onTap));
+            }
+
+            return stack;
+        }
+
+        var columns = MobileResponsiveLayout.ResolveWidth(width) >= 960 ? 3 : 2;
+        var grid = new Grid
+        {
+            ColumnSpacing = 14,
+            RowSpacing = 14
+        };
+        for (var column = 0; column < columns; column++)
+        {
+            grid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+        }
+
+        for (var row = 0; row < (stories.Count + columns - 1) / columns; row++)
+        {
+            grid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+        }
+
+        for (var index = 0; index < stories.Count; index++)
+        {
+            var card = BuildStoryCard(stories[index], apiClient, onTap);
+            grid.Children.Add(card);
+            Grid.SetColumn(card, index % columns);
+            Grid.SetRow(card, index / columns);
+        }
+
+        return grid;
+    }
+
     public static View BuildStoryCard(
         MobileStorySummary story,
         MobileApiClient apiClient,

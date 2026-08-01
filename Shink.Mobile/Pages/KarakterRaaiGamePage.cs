@@ -172,6 +172,15 @@ public sealed class KarakterRaaiGamePage : ContentPage
         Grid.SetRowSpan(_stateOverlay, 5);
         Grid.SetRowSpan(_celebrationOverlay, 6);
         Content = root;
+        SizeChanged += (_, _) => ApplyResponsiveLayout();
+        ApplyResponsiveLayout();
+    }
+
+    private void ApplyResponsiveLayout()
+    {
+        MobileResponsiveLayout.ApplyCenteredContent(_imageStage, Width, 640);
+        MobileResponsiveLayout.ApplyCenteredContent(_choicesGrid, Width, 640);
+        MobileResponsiveLayout.ApplyCenteredContent(_actionButton, Width, 640);
     }
 
     protected override async void OnAppearing()

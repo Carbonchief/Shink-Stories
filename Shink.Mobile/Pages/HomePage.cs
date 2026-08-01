@@ -22,6 +22,8 @@ public sealed class HomePage : ContentPage
             Padding = new Thickness(20, 24),
             Spacing = 18
         };
+        MobileResponsiveLayout.ApplyCenteredContent(_content, Width, 980);
+        SizeChanged += (_, _) => MobileResponsiveLayout.ApplyCenteredContent(_content, Width, 980);
 
         Content = new RefreshView
         {
@@ -59,10 +61,11 @@ public sealed class HomePage : ContentPage
             _content.Children.Add(BuildPreviewSection("Bybelstories", home.BibleStories));
             _content.Children.Add(PageHelpers.BuildSectionTitle("Begin gratis"));
 
-            foreach (var story in home.FreeStories)
-            {
-                _content.Children.Add(PageHelpers.BuildStoryCard(story, _apiClient, OpenStoryAsync));
-            }
+            _content.Children.Add(PageHelpers.BuildStoryCollection(
+                home.FreeStories,
+                _apiClient,
+                OpenStoryAsync,
+                Width));
         }
         catch (Exception ex)
         {
@@ -77,7 +80,7 @@ public sealed class HomePage : ContentPage
 
     private View BuildHero(MobileHomeResponse home)
     {
-        return new Border
+        var hero = new Border
         {
             BackgroundColor = Color.FromArgb("#222222"),
             StrokeThickness = 0,
@@ -89,7 +92,12 @@ public sealed class HomePage : ContentPage
                 Children =
                 {
                     new Image { Source = _apiClient.BuildImageUrl(home.LogoImageUrl), HeightRequest = 84, Aspect = Aspect.AspectFit },
-                    new Image { Source = _apiClient.BuildImageUrl(home.HeroImageUrl), HeightRequest = 220, Aspect = Aspect.AspectFit },
+                    new Image
+                    {
+                        Source = _apiClient.BuildImageUrl(home.HeroImageUrl),
+                        HeightRequest = MobileResponsiveLayout.IsWide(Width) ? 300 : 220,
+                        Aspect = Aspect.AspectFit
+                    },
                     new Label
                     {
                         Text = home.HeroTitle,
@@ -106,6 +114,8 @@ public sealed class HomePage : ContentPage
                 }
             }
         };
+        MobileResponsiveLayout.ApplyCenteredContent(hero, Width, 820);
+        return hero;
     }
 
     private View BuildPreviewSection(string title, IReadOnlyList<MobileStoryPreview> items)
@@ -114,11 +124,13 @@ public sealed class HomePage : ContentPage
         stack.Children.Add(PageHelpers.BuildSectionTitle(title));
 
         var row = new HorizontalStackLayout { Spacing = 14 };
+        var cardWidth = MobileResponsiveLayout.IsWide(Width) ? 220 : 180;
+        var imageHeight = MobileResponsiveLayout.IsWide(Width) ? 145 : 120;
         foreach (var item in items)
         {
             var card = new Border
             {
-                WidthRequest = 180,
+                WidthRequest = cardWidth,
                 BackgroundColor = Colors.White,
                 StrokeThickness = 0,
                 StrokeShape = new RoundRectangle { CornerRadius = 22 },
@@ -128,7 +140,12 @@ public sealed class HomePage : ContentPage
                     Spacing = 10,
                     Children =
                     {
-                        new Image { Source = _apiClient.BuildImageUrl(item.ImageUrl), HeightRequest = 120, Aspect = Aspect.AspectFill },
+                        new Image
+                        {
+                            Source = _apiClient.BuildImageUrl(item.ImageUrl),
+                            HeightRequest = imageHeight,
+                            Aspect = Aspect.AspectFill
+                        },
                         new Label
                         {
                             Text = item.Title,

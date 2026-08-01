@@ -1,5 +1,8 @@
 using Shink.Mobile.Models;
 using Shink.Mobile.Services;
+#if IOS
+using Shink.Mobile.Platforms.iOS;
+#endif
 using Microsoft.Maui.Authentication;
 using MauiEntry = Microsoft.Maui.Controls.Entry;
 using MauiScrollView = Microsoft.Maui.Controls.ScrollView;
@@ -19,6 +22,9 @@ public sealed class AccountPage : ContentPage
 
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
+#if IOS
+    private readonly AppleSignInService _appleSignInService = new();
+#endif
     private readonly Label _statusLabel;
     private readonly VerticalStackLayout _signedInState;
     private readonly VerticalStackLayout _signedOutState;
@@ -274,6 +280,7 @@ public sealed class AccountPage : ContentPage
                 _authWelcomeLabel
             }
         };
+        MobileResponsiveLayout.ApplyCenteredContent(_authHeroStack, Width, 760);
         return _authHeroStack;
     }
 
@@ -307,6 +314,7 @@ public sealed class AccountPage : ContentPage
                 _authPanelContentHost
             }
         };
+        MobileResponsiveLayout.ApplyCenteredContent(_authPanelFrame, Width, 720);
         return _authPanelFrame;
     }
 
@@ -498,6 +506,14 @@ public sealed class AccountPage : ContentPage
                 }
             };
             var googleButton = BuildGoogleSignInButton(out var googleLabel, out var googleSpinner);
+#if IOS
+            var appleButton = new AppleSignInButton
+            {
+                HeightRequest = 58,
+                HorizontalOptions = LayoutOptions.Fill,
+                VerticalOptions = LayoutOptions.Start
+            };
+#endif
             var loginTap = new TapGestureRecognizer();
             loginTap.Tapped += async (_, _) =>
             {
@@ -569,6 +585,64 @@ public sealed class AccountPage : ContentPage
             };
             googleButton.GestureRecognizers.Add(googleTap);
 
+#if IOS
+            appleButton.Pressed += async (_, _) =>
+            {
+                if (_isAuthRequestInFlight)
+                {
+                    return;
+                }
+
+                _isAuthRequestInFlight = true;
+                appleButton.IsEnabled = false;
+                googleButton.IsEnabled = false;
+                loginButton.IsEnabled = false;
+                try
+                {
+                    var result = await _appleSignInService.SignInAsync();
+                    if (result.IsCancelled)
+                    {
+                        SetStatus(null);
+                        return;
+                    }
+
+                    if (!result.IsSuccess ||
+                        string.IsNullOrWhiteSpace(result.IdentityToken) ||
+                        string.IsNullOrWhiteSpace(result.Nonce))
+                    {
+                        SetStatus(result.ErrorMessage ?? "Apple aanmelding kon nie bevestig word nie. Probeer asseblief weer.", isError: true);
+                        return;
+                    }
+
+                    var signInResult = await _apiClient.CompleteAppleSignInAsync(
+                        result.IdentityToken,
+                        result.Nonce,
+                        result.FirstName,
+                        result.LastName,
+                        result.DisplayName);
+                    await RefreshSessionAsync(signInResult.Message);
+                }
+                catch (TaskCanceledException)
+                {
+                    SetStatus(null);
+                }
+                catch (Exception ex)
+                {
+                    SetStatus(ex.Message, isError: true);
+                }
+                finally
+                {
+                    _isAuthRequestInFlight = false;
+                    appleButton.IsEnabled = true;
+                    googleButton.IsEnabled = true;
+                    loginButton.IsEnabled = true;
+                }
+            };
+#endif
+
+#if IOS
+            formContent.Children.Add(appleButton);
+#endif
             formContent.Children.Add(googleButton);
             formContent.Children.Add(BuildAuthDivider("of"));
             formContent.Children.Add(BuildField(loginEmailEntry));
@@ -611,6 +685,10 @@ public sealed class AccountPage : ContentPage
                         signupMobileEntry.Text ?? string.Empty,
                         signupPasswordEntry.Text ?? string.Empty);
                     await RefreshSessionAsync(result.Message);
+                    if (_sessionState.Current.IsSignedIn)
+                    {
+                        await Shell.Current.GoToAsync(nameof(PlansPage), animate: true);
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -668,6 +746,7 @@ public sealed class AccountPage : ContentPage
             _authPanelFrame.Margin = _authPanelMode == AuthPanelMode.Landing
                 ? metrics.PanelMargin
                 : new Thickness(18, 0, 18, 18);
+            MobileResponsiveLayout.ApplyCenteredContent(_authPanelFrame, Width, 720);
         }
 
         if (_authPanelContentHost is not null)
@@ -696,6 +775,7 @@ public sealed class AccountPage : ContentPage
         {
             _authHeroStack.Padding = metrics.HeroPadding;
             _authHeroStack.Spacing = metrics.HeroSpacing;
+            MobileResponsiveLayout.ApplyCenteredContent(_authHeroStack, Width, 760);
         }
 
         if (_authLogoImage is not null)
@@ -1152,13 +1232,24 @@ public sealed class AccountPage : ContentPage
                 await RefreshSessionAsync("Jy is nou afgeteken.");
             };
 
+            var plansButton = new Button
+            {
+                Text = "Sien opsies",
+                BackgroundColor = Color.FromArgb("#146D69"),
+                TextColor = Colors.White,
+                FontAttributes = FontAttributes.Bold,
+                CornerRadius = 22,
+                HeightRequest = 50
+            };
+            plansButton.Clicked += async (_, _) => await Shell.Current.GoToAsync(nameof(PlansPage), animate: true);
+
             _signedInState.Children.Add(MobileTopBar.Build(
                 this,
                 _apiClient,
                 session,
                 SignedInTopBarMargin,
                 "back"));
-            _signedInState.Children.Add(new Border
+            var signedInCard = new Border
             {
                 BackgroundColor = Color.FromArgb("#FFF7E8"),
                 StrokeThickness = 0,
@@ -1201,10 +1292,13 @@ public sealed class AccountPage : ContentPage
                             TextColor = Color.FromArgb("#5F5F5F"),
                             HorizontalTextAlignment = TextAlignment.Center
                         },
+                        plansButton,
                         logoutButton
                     }
                 }
-            });
+            };
+            MobileResponsiveLayout.ApplyCenteredContent(signedInCard, Width, 720);
+            _signedInState.Children.Add(signedInCard);
         }
         else
         {

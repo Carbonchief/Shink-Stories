@@ -14,6 +14,31 @@ public sealed record MobileSession(
     string SignupUrl,
     string PlansUrl);
 
+public sealed record MobilePlansResponse(IReadOnlyList<MobilePlan> Plans);
+
+public sealed record MobilePlan(
+    string ProductId,
+    string Slug,
+    string Name,
+    string Description,
+    decimal Amount,
+    int BillingPeriodMonths);
+
+public sealed record MobileStorePurchaseRequest(
+    string Provider,
+    string ProductId,
+    string ProviderPaymentId,
+    string? ProviderTransactionId,
+    string? ProviderToken,
+    string? ReceiptData);
+
+public sealed record MobileStoreEntitlementResponse(
+    bool IsActive,
+    string Message,
+    string? Provider,
+    string? ProductId,
+    DateTimeOffset? AccessEndsAtUtc);
+
 public sealed record MobileProfileUpdateResponse(string Message, MobileSession Session);
 
 public sealed record MobileStoryPreview(
@@ -157,6 +182,8 @@ public sealed record MobileAboutResponse(IReadOnlyList<MobileContentBlock> Block
 public sealed record AuthResponse(string? Message, string? RedirectPath);
 
 public sealed record MobileGoogleAuthCompleteResponse(string Message, MobileSession Session);
+
+public sealed record MobileAppleAuthCompleteResponse(string Message, MobileSession Session);
 
 public sealed record MobileNotificationPage(
     int Count,

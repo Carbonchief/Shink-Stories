@@ -97,6 +97,11 @@ public sealed class ProfilePage : ContentPage
                 }
             }
         };
+        if (Content is ScrollView profileScroll && profileScroll.Content is View profileContent)
+        {
+            MobileResponsiveLayout.ApplyCenteredContent(profileContent, Width, 720);
+            SizeChanged += (_, _) => MobileResponsiveLayout.ApplyCenteredContent(profileContent, Width, 720);
+        }
 
         ApplySession(_sessionState.Current);
     }

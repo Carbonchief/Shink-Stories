@@ -1299,6 +1299,36 @@ public class MobileAbsoluteUrlSourceTests
     }
 
     [TestMethod]
+    public void MobileSignInSupportsNativeAppleIdentityTokenFlowOnIos()
+    {
+        var accountPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "AccountPage.cs"));
+        var appleButton = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "AppleSignInButton.cs"));
+        var appleService = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "iOS", "AppleSignInService.cs"));
+        var buttonHandler = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "iOS", "AppleSignInButtonHandler.cs"));
+        var apiClient = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
+        var entitlements = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "iOS", "Entitlements.plist"));
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+        var supabaseAuth = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseAuthService.cs"));
+
+        StringAssert.Contains(accountPage, "AppleSignInService");
+        StringAssert.Contains(accountPage, "CompleteAppleSignInAsync");
+        StringAssert.Contains(appleButton, "RaisePressed");
+        StringAssert.Contains(buttonHandler, "ASAuthorizationAppleIdButton");
+        StringAssert.Contains(appleService, "ASAuthorizationAppleIdProvider");
+        StringAssert.Contains(appleService, "request.Nonce = HashNonce(_rawNonce)");
+        StringAssert.Contains(appleService, "ASAuthorizationScope.FullName");
+        StringAssert.Contains(appleService, "SHA256.HashData");
+        StringAssert.Contains(apiClient, "\"/api/mobile/auth/apple/complete\"");
+        StringAssert.Contains(entitlements, "com.apple.developer.applesignin");
+        StringAssert.Contains(entitlements, "<string>Default</string>");
+        StringAssert.Contains(program, "app.MapPost(\"/api/mobile/auth/apple/complete\"");
+        StringAssert.Contains(program, "ExchangeAppleIdentityTokenAsync");
+        StringAssert.Contains(program, "GetSubscriberProfileAsync");
+        StringAssert.Contains(supabaseAuth, "grant_type=id_token");
+        StringAssert.Contains(supabaseAuth, "JsonPropertyName(\"id_token\")");
+    }
+
+    [TestMethod]
     public void MobileApiMutationsRequireMobileAppHeader()
     {
         var apiClient = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));

@@ -187,6 +187,14 @@ public sealed class KarakterPareGamePage : ContentPage
         Grid.SetRowSpan(_setupView, 3);
         Grid.SetRowSpan(_celebrationOverlay, 5);
         Content = root;
+        SizeChanged += (_, _) => ApplyResponsiveLayout();
+        ApplyResponsiveLayout();
+    }
+
+    private void ApplyResponsiveLayout()
+    {
+        MobileResponsiveLayout.ApplyCenteredContent(_board, Width, 760);
+        MobileResponsiveLayout.ApplyCenteredContent(_newGameButton, Width, 440);
     }
 
     protected override void OnAppearing()

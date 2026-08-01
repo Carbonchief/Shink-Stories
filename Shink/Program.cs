@@ -150,6 +150,7 @@ builder.Services.Configure<AuthSessionOptions>(builder.Configuration.GetSection(
 builder.Services.Configure<SiteOptions>(builder.Configuration.GetSection(SiteOptions.SectionName));
 builder.Services.Configure<PayFastOptions>(builder.Configuration.GetSection(PayFastOptions.SectionName));
 builder.Services.Configure<PaystackOptions>(builder.Configuration.GetSection(PaystackOptions.SectionName));
+builder.Services.Configure<MobileStoreOptions>(builder.Configuration.GetSection(MobileStoreOptions.SectionName));
 builder.Services.AddHttpClient("audio-origin", client =>
 {
     // Audio responses can be long-lived streams. Keep timeout above default 100 seconds.
@@ -165,6 +166,7 @@ builder.Services.AddHttpClient<PayFastCheckoutService>();
 builder.Services.AddHttpClient<PaystackCheckoutService>();
 builder.Services.AddHttpClient<PaystackAuthorizationRetryBatchService>();
 builder.Services.AddHttpClient<ISubscriptionLedgerService, SupabaseSubscriptionLedgerService>();
+builder.Services.AddHttpClient<MobileStoreEntitlementService>();
 builder.Services.AddHttpClient<IStoreOrderService, SupabaseStoreOrderService>();
 builder.Services.AddHttpClient<IStoreOrderNotificationService, ResendStoreOrderNotificationService>();
 builder.Services.AddHttpClient<ISubscriptionNotificationEmailService, ResendSubscriptionNotificationEmailService>();
@@ -3286,6 +3288,47 @@ app.MapGet("/api/mobile/session", async (
     return Results.Ok(session);
 }).DisableAntiforgery();
 
+app.MapGet("/api/mobile/plans", () =>
+{
+    var plans = PaymentPlanCatalog.All
+        .Where(plan => !plan.IsSchoolPlan && !plan.IsAdminOnly)
+        .Select(plan => new MobilePlanResponse(
+            ProductId: plan.StoreProductId,
+            Slug: plan.Slug,
+            Name: plan.Name,
+            Description: plan.ItemDescription,
+            Amount: plan.Amount,
+            BillingPeriodMonths: plan.BillingPeriodMonths))
+        .ToArray();
+
+    return Results.Ok(new MobilePlansResponse(plans));
+}).DisableAntiforgery();
+
+app.MapPost("/api/mobile/store/entitlement", async (
+    HttpContext httpContext,
+    MobileStorePurchaseRequest? request,
+    MobileStoreEntitlementService mobileStoreEntitlementService) =>
+{
+    if (!IsMobileAppRequest(httpContext))
+    {
+        return Results.Forbid();
+    }
+
+    var signedInEmail = GetSignedInEmail(httpContext.User);
+    if (string.IsNullOrWhiteSpace(signedInEmail))
+    {
+        return Results.Unauthorized();
+    }
+
+    var entitlement = await mobileStoreEntitlementService.VerifyAndRecordAsync(
+        signedInEmail,
+        request,
+        httpContext.RequestAborted);
+    return entitlement.IsActive
+        ? Results.Ok(entitlement)
+        : Results.BadRequest(entitlement);
+}).DisableAntiforgery();
+
 app.MapPost("/api/mobile/auth/google/complete", async (
     HttpContext httpContext,
     MobileGoogleAuthCompleteRequest request,
@@ -3348,6 +3391,95 @@ app.MapPost("/api/mobile/auth/google/complete", async (
         storyFavoriteService);
 
     return Results.Ok(new MobileGoogleAuthCompleteResponse("Welkom terug! Jy is nou ingeteken.", session));
+}).RequireRateLimiting("auth-submit").DisableAntiforgery();
+
+app.MapPost("/api/mobile/auth/apple/complete", async (
+    HttpContext httpContext,
+    MobileAppleAuthCompleteRequest request,
+    ISupabaseAuthService supabaseAuthService,
+    IAuthSessionService authSessionService,
+    IAdminManagementService adminManagementService,
+    ISubscriptionLedgerService subscriptionLedgerService,
+    IStoryFavoriteService storyFavoriteService) =>
+{
+    if (!IsMobileAppRequest(httpContext))
+    {
+        return Results.Forbid();
+    }
+
+    if (!IsLikelySameSiteRequest(httpContext))
+    {
+        return Results.Forbid();
+    }
+
+    if (string.IsNullOrWhiteSpace(request.IdentityToken) ||
+        string.IsNullOrWhiteSpace(request.Nonce))
+    {
+        return Results.BadRequest(new { message = "Apple aanmelding kon nie bevestig word nie. Probeer asseblief weer." });
+    }
+
+    var exchangeResult = await supabaseAuthService.ExchangeAppleIdentityTokenAsync(
+        request.IdentityToken,
+        request.Nonce,
+        httpContext.RequestAborted);
+    if (!exchangeResult.IsSuccess || string.IsNullOrWhiteSpace(exchangeResult.UserEmail))
+    {
+        return Results.BadRequest(new
+        {
+            message = exchangeResult.ErrorMessage ?? "Apple aanmelding het misluk. Probeer asseblief weer."
+        });
+    }
+
+    var signedInEmail = exchangeResult.UserEmail;
+    var existingProfile = await subscriptionLedgerService.GetSubscriberProfileAsync(
+        signedInEmail,
+        httpContext.RequestAborted);
+    var firstName = TrimOrNull(request.FirstName) ?? existingProfile?.FirstName;
+    var lastName = TrimOrNull(request.LastName) ?? existingProfile?.LastName;
+    var displayName = TrimOrNull(request.DisplayName) ?? existingProfile?.DisplayName;
+
+    var profileStored = await subscriptionLedgerService.UpsertSubscriberProfileAsync(
+        signedInEmail,
+        firstName,
+        lastName,
+        displayName,
+        null,
+        cancellationToken: httpContext.RequestAborted);
+    var gratisProvisioned = await subscriptionLedgerService.EnsureGratisAccessAsync(
+        signedInEmail,
+        firstName,
+        lastName,
+        displayName,
+        null,
+        cancellationToken: httpContext.RequestAborted);
+
+    if (!profileStored || !gratisProvisioned)
+    {
+        return Results.Json(
+            new { message = "Kon nie jou gratis toegang nou aktiveer nie. Probeer asseblief weer." },
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
+    var signInCookieResult = await SignInUserAsync(
+        httpContext,
+        signedInEmail,
+        authSessionService,
+        adminManagementService,
+        subscriptionLedgerService,
+        httpContext.RequestServices.GetRequiredService<IWordPressMigrationService>());
+    if (!signInCookieResult.IsSuccess)
+    {
+        return Results.Json(
+            new { message = signInCookieResult.ErrorMessage ?? "Kon nie nou jou sessie begin nie. Probeer asseblief weer." },
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
+    var session = await BuildMobileSessionResponseAsync(
+        httpContext,
+        subscriptionLedgerService,
+        storyFavoriteService);
+
+    return Results.Ok(new MobileAppleAuthCompleteResponse("Welkom terug! Jy is nou ingeteken.", session));
 }).RequireRateLimiting("auth-submit").DisableAntiforgery();
 
 app.MapPost("/api/mobile/profile", async (
@@ -7602,6 +7734,13 @@ sealed record WinkelAddressSuggestion(
 sealed record MobileFavoriteMutationRequest(bool IsFavorite, string? Source, string? PlaylistSlug);
 sealed record MobileGoogleAuthCompleteRequest(string? Token);
 sealed record MobileGoogleAuthCompleteResponse(string Message, MobileSessionResponse Session);
+sealed record MobileAppleAuthCompleteRequest(
+    string? IdentityToken,
+    string? Nonce,
+    string? FirstName,
+    string? LastName,
+    string? DisplayName);
+sealed record MobileAppleAuthCompleteResponse(string Message, MobileSessionResponse Session);
 sealed record MobileGoogleAuthTokenPayload(DateTimeOffset ExpiresAtUtc, string Email);
 sealed record MobileProfileUpdateRequest(string? FirstName, string? LastName, string? DisplayName, string? MobileNumber);
 sealed record MobileProfileUpdateResponse(string Message, MobileSessionResponse Session);
@@ -7618,6 +7757,14 @@ sealed record MobileSessionResponse(
     string LoginUrl,
     string SignupUrl,
     string PlansUrl);
+sealed record MobilePlansResponse(IReadOnlyList<MobilePlanResponse> Plans);
+sealed record MobilePlanResponse(
+    string ProductId,
+    string Slug,
+    string Name,
+    string Description,
+    decimal Amount,
+    int BillingPeriodMonths);
 sealed record MobileStoryPreview(string Title, string ImageUrl, string DetailUrl);
 sealed record MobileStoryAccess(bool IsAuthenticated, bool HasPaidSubscription);
 sealed record MobileStorySummaryResponse(

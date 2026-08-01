@@ -142,6 +142,39 @@ public class SupabaseAuthServiceTests
     }
 
     [TestMethod]
+    public async Task ExchangeAppleIdentityTokenAsync_PostsNativeIdTokenWithRawNonceAndReturnsUserEmail()
+    {
+        string? requestBody = null;
+        var handler = new RecordingHandler(request =>
+        {
+            Assert.AreEqual(HttpMethod.Post, request.Method);
+            Assert.AreEqual("https://example.supabase.co/auth/v1/token?grant_type=id_token", request.RequestUri?.ToString());
+            Assert.AreEqual("publishable-key", request.Headers.Authorization?.Parameter);
+            Assert.AreEqual("publishable-key", request.Headers.GetValues("apikey").Single());
+            requestBody = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """{"access_token":"access-token","refresh_token":"refresh-token","user":{"email":"apple-relay@example.com"}}""",
+                    Encoding.UTF8,
+                    "application/json")
+            };
+        });
+        using var httpClient = new HttpClient(handler);
+        var service = CreateService(httpClient);
+
+        var result = await service.ExchangeAppleIdentityTokenAsync(
+            "apple-identity-token",
+            "raw-nonce");
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.AreEqual("apple-relay@example.com", result.UserEmail);
+        StringAssert.Contains(requestBody!, "\"provider\":\"apple\"");
+        StringAssert.Contains(requestBody!, "\"id_token\":\"apple-identity-token\"");
+        StringAssert.Contains(requestBody!, "\"nonce\":\"raw-nonce\"");
+    }
+
+    [TestMethod]
     public async Task SignInWithPasswordAsync_TranslatesEmailNotConfirmedMessage()
     {
         var handler = new RecordingHandler(_ =>

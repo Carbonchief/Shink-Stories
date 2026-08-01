@@ -41,6 +41,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     private readonly MobileAppLifecycleService _lifecycleService;
     private readonly IOrientationService _orientationService;
     private readonly PlayerTransitionBackdropState _transitionBackdropState;
+    private Border? _coverArt;
     private readonly NavigationGate _navigationGate = new();
     private readonly Grid _root;
     private readonly Grid _playerSurface;
@@ -117,6 +118,8 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             Padding = new Thickness(20, 16, 20, 20),
             Spacing = 14
         };
+        MobileResponsiveLayout.ApplyCenteredContent(_content, Width, 820);
+        SizeChanged += (_, _) => HandleResponsiveSizeChanged();
 
         var scrollView = new ScrollView
         {
@@ -145,6 +148,29 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         };
 
         Content = _root;
+    }
+
+    private void HandleResponsiveSizeChanged()
+    {
+        MobileResponsiveLayout.ApplyCenteredContent(_content, Width, 820);
+        if (_coverArt is null)
+        {
+            return;
+        }
+
+        var width = MobileResponsiveLayout.ResolveWidth(Width);
+        if (MobileResponsiveLayout.IsWide(width))
+        {
+            var coverWidth = Math.Min(560, Math.Max(320, width - 48));
+            _coverArt.WidthRequest = coverWidth;
+            _coverArt.HeightRequest = ResolveCoverArtHeight(coverWidth, wideLayout: true);
+            _coverArt.HorizontalOptions = LayoutOptions.Center;
+            return;
+        }
+
+        _coverArt.WidthRequest = -1;
+        _coverArt.HeightRequest = CoverArtHeight;
+        _coverArt.HorizontalOptions = LayoutOptions.Fill;
     }
 
     public string? StorySlug { get; set; }
@@ -1025,9 +1051,13 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         fullscreenTap.Tapped += async (_, _) => await ShowFullscreenCoverAsync(detail);
         fullscreenButton.GestureRecognizers.Add(fullscreenTap);
 
-        return new Border
+        var width = MobileResponsiveLayout.ResolveWidth(Width);
+        var wideLayout = MobileResponsiveLayout.IsWide(width);
+        var coverArt = new Border
         {
-            HeightRequest = CoverArtHeight,
+            HeightRequest = wideLayout
+                ? ResolveCoverArtHeight(Math.Min(560, Math.Max(320, width - 48)), wideLayout: true)
+                : CoverArtHeight,
             BackgroundColor = Color.FromArgb("#0C211F"),
             StrokeThickness = 0,
             StrokeShape = new RoundRectangle { CornerRadius = 16 },
@@ -1052,6 +1082,14 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 }
             }
         };
+        if (wideLayout)
+        {
+            coverArt.WidthRequest = Math.Min(560, Math.Max(320, width - 48));
+            coverArt.HorizontalOptions = LayoutOptions.Center;
+        }
+
+        _coverArt = coverArt;
+        return coverArt;
     }
 
     private View BuildFavoriteOverlay(MobileStoryDetailResponse detail)
@@ -1369,6 +1407,11 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             return Math.Clamp(height * 0.36, 260, 330);
         }
     }
+
+    private static double ResolveCoverArtHeight(double width, bool wideLayout) =>
+        wideLayout
+            ? Math.Clamp(width * 0.9, 360, 520)
+            : CoverArtHeight;
 
     private static double ScreenHeight
     {
@@ -1726,7 +1769,16 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         loginButton.Clicked += async (_, _) => await Browser.OpenAsync(detail.LoginUrl, BrowserLaunchMode.External);
 
         var plansButton = BuildSecondaryButton("Sien planne");
-        plansButton.Clicked += async (_, _) => await Browser.OpenAsync(detail.PlansUrl, BrowserLaunchMode.External);
+        plansButton.Clicked += async (_, _) =>
+        {
+            var source = string.Equals(detail.Story.Source, "gratis", StringComparison.OrdinalIgnoreCase)
+                ? "gratis"
+                : "luister";
+            var returnUrl = $"/{source}/{Uri.EscapeDataString(detail.Story.Slug)}";
+            await Shell.Current.GoToAsync(
+                $"{nameof(PlansPage)}?returnUrl={Uri.EscapeDataString(returnUrl)}",
+                animate: true);
+        };
 
         return new Border
         {

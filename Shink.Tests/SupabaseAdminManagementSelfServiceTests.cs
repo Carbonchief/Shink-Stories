@@ -1203,6 +1203,12 @@ public class SupabaseAdminManagementSelfServiceTests
             Uri callbackUri,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(SupabaseOAuthExchangeResult.Failure("Not implemented."));
+
+        public Task<SupabaseOAuthExchangeResult> ExchangeAppleIdentityTokenAsync(
+            string identityToken,
+            string nonce,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(SupabaseOAuthExchangeResult.Failure("Not implemented."));
     }
 
     private sealed class NoopSchoolSeatNotificationEmailService : ISchoolSeatNotificationEmailService

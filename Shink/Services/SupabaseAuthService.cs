@@ -763,6 +763,62 @@ public sealed class SupabaseAuthService(
         }
     }
 
+    public async Task<SupabaseOAuthExchangeResult> ExchangeAppleIdentityTokenAsync(
+        string identityToken,
+        string nonce,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(identityToken) || string.IsNullOrWhiteSpace(nonce))
+        {
+            return SupabaseOAuthExchangeResult.Failure("Apple aanmelding kon nie bevestig word nie. Probeer asseblief weer.");
+        }
+
+        if (!TryBuildIdTokenEndpoint(out var tokenEndpoint))
+        {
+            return SupabaseOAuthExchangeResult.Failure("Supabase is nog nie opgestel nie. Stel asseblief die Supabase URL en publishable key op.");
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, tokenEndpoint)
+        {
+            Content = JsonContent.Create(new SupabaseAppleIdTokenRequest(
+                Provider: "apple",
+                IdentityToken: identityToken.Trim(),
+                Nonce: nonce.Trim()))
+        };
+        request.Headers.TryAddWithoutValidation("apikey", _options.PublishableKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.PublishableKey);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(request, cancellationToken);
+        }
+        catch (HttpRequestException exception)
+        {
+            _logger.LogWarning(exception, "Supabase Apple identity-token exchange failed.");
+            return SupabaseOAuthExchangeResult.Failure("Kon nie nou met Apple koppel nie. Probeer asseblief weer.");
+        }
+
+        using (response)
+        {
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var email = ReadUserEmail(responseBody);
+                return string.IsNullOrWhiteSpace(email)
+                    ? SupabaseOAuthExchangeResult.Failure("Kon nie jou Apple-profiel lees nie. Probeer asseblief weer.")
+                    : SupabaseOAuthExchangeResult.Success(email, null, null, null);
+            }
+
+            var errorMessage = ReadErrorMessage(responseBody) ?? "Apple aanmelding het misluk. Probeer asseblief weer.";
+            _logger.LogInformation(
+                "Supabase Apple identity-token exchange rejected: {StatusCode} {Message}",
+                (int)response.StatusCode,
+                errorMessage);
+            return SupabaseOAuthExchangeResult.Failure(errorMessage);
+        }
+    }
+
     private async Task<SupabaseSignInResult> ExecuteAuthRequestAsync(
         Uri endpoint,
         object requestPayload,
@@ -819,6 +875,24 @@ public sealed class SupabaseAuthService(
         }
 
         tokenEndpoint = new Uri(supabaseUri, "auth/v1/token?grant_type=password");
+        return true;
+    }
+
+    private bool TryBuildIdTokenEndpoint(out Uri tokenEndpoint)
+    {
+        tokenEndpoint = default!;
+        if (string.IsNullOrWhiteSpace(_options.Url) || string.IsNullOrWhiteSpace(_options.PublishableKey))
+        {
+            return false;
+        }
+
+        if (!Uri.TryCreate(_options.Url, UriKind.Absolute, out var supabaseUri))
+        {
+            _logger.LogWarning("Supabase URL is invalid: {SupabaseUrl}", _options.Url);
+            return false;
+        }
+
+        tokenEndpoint = new Uri(supabaseUri, "auth/v1/token?grant_type=id_token");
         return true;
     }
 
@@ -1646,6 +1720,10 @@ public sealed class SupabaseAuthService(
             : null;
 
     private sealed record SupabasePasswordSignInRequest(string Email, string Password);
+    private sealed record SupabaseAppleIdTokenRequest(
+        string Provider,
+        [property: JsonPropertyName("id_token")] string IdentityToken,
+        string Nonce);
     private sealed record SupabasePasswordSignUpRequest(string Email, string Password, SupabasePasswordSignUpMetadata? Data = null);
     private sealed record SupabasePasswordRecoveryRequest(
         string Email,

@@ -17,6 +17,7 @@ public static class MauiProgram
             {
 #if IOS
                 handlers.AddHandler<CastRoutePickerView, Shink.Mobile.Platforms.iOS.CastRoutePickerViewHandler>();
+                handlers.AddHandler<AppleSignInButton, Shink.Mobile.Platforms.iOS.AppleSignInButtonHandler>();
 #endif
             });
         ConfigureEntryChrome();
@@ -49,6 +50,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<PlayerTransitionBackdropState>();
         builder.Services.AddSingleton<MobileAppLifecycleService>();
         builder.Services.AddSingleton<MobileApiClient>();
+        builder.Services.AddSingleton<IMobileStoreBillingService, MobileStoreBillingService>();
         builder.Services.AddSingleton<IOfflineStoryDownloadService, OfflineStoryDownloadService>();
         builder.Services.AddSingleton<IAudioPlaybackService, AudioPlaybackService>();
         builder.Services.AddSingleton<IOrientationService, OrientationService>();
@@ -64,6 +66,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<KaraktersPage>();
         builder.Services.AddTransient<AboutPage>();
         builder.Services.AddTransient<AccountPage>();
+        builder.Services.AddTransient<PlansPage>();
         builder.Services.AddTransient<ProfilePage>();
         builder.Services.AddTransient<StoryDetailPage>();
 

@@ -1,0 +1,163 @@
+{
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [
+      {
+        "locale" : "en_ZA",
+        "policyText" : "",
+        "policyURL" : ""
+      }
+    ]
+  },
+  "identifier" : "8F5F3D52",
+  "nonRenewingSubscriptions" : [
+  ],
+  "products" : [
+  ],
+  "settings" : {
+    "_askToBuyEnabled" : false,
+    "_billingGracePeriodEnabled" : false,
+    "_billingIssuesEnabled" : false,
+    "_disableDialogs" : false,
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_ZA",
+    "_renewalBillingIssuesEnabled" : false,
+    "_storefront" : "ZAF",
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Purchase"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Verification"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Store Sync"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Subscription Status"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Transaction"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Manage Subscriptions Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Refund Request Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Offer Code Redeem Sheet"
+      }
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "F3F1AC5C",
+      "localizations" : [
+      ],
+      "name" : "Schink Stories Household Plans",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+          ],
+          "codeOffers" : [
+          ],
+          "displayPrice" : "59.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "1D6A7B4C",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Maandelikse toegang tot Storie Hoekie.",
+              "displayName" : "Storie Hoekie",
+              "locale" : "en_ZA"
+            }
+          ],
+          "productID" : "storie_hoekie_maandeliks",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Storie Hoekie Maandeliks",
+          "subscriptionGroupID" : "F3F1AC5C",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+          ]
+        },
+        {
+          "adHocOffers" : [
+          ],
+          "codeOffers" : [
+          ],
+          "displayPrice" : "79.99",
+          "familyShareable" : false,
+          "groupNumber" : 2,
+          "internalID" : "2E7B8C5D",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Maandelikse toegang tot alle Schink Stories.",
+              "displayName" : "Schink Stories",
+              "locale" : "en_ZA"
+            }
+          ],
+          "productID" : "schink_stories_maandeliks",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Schink Stories Maandeliks",
+          "subscriptionGroupID" : "F3F1AC5C",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+          ]
+        },
+        {
+          "adHocOffers" : [
+          ],
+          "codeOffers" : [
+          ],
+          "displayPrice" : "799.99",
+          "familyShareable" : false,
+          "groupNumber" : 3,
+          "internalID" : "3F8C9D6E",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Jaarlikse toegang tot alle Schink Stories.",
+              "displayName" : "Schink Stories Jaar",
+              "locale" : "en_ZA"
+            }
+          ],
+          "productID" : "schink_stories_jaarliks",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Schink Stories Jaarliks",
+          "subscriptionGroupID" : "F3F1AC5C",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

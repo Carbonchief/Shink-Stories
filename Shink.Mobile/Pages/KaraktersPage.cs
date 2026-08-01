@@ -12,6 +12,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     private readonly Grid _rootLayout;
     private readonly Grid _topBarOverlay;
     private readonly CollectionView _charactersView;
+    private readonly GridItemsLayout _charactersGridLayout;
     private readonly RefreshView _refreshView;
     private readonly Grid _profileOverlay;
     private readonly Dictionary<string, ImageSource> _imageSourceCache = new(StringComparer.OrdinalIgnoreCase);
@@ -20,6 +21,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     private bool _isPageActive;
     private CancellationTokenSource? _imageWarmupCancellation;
     private CancellationTokenSource? _loadCancellation;
+    private double _lastResponsiveWidth = -1;
 
     public KaraktersPage(
         MobileApiClient apiClient,
@@ -57,6 +59,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             Content = _charactersView,
             Command = new Command(async () => await LoadAsync(forceRefresh: true))
         };
+        _charactersGridLayout = (GridItemsLayout)_charactersView.ItemsLayout;
 
         _profileOverlay = new Grid
         {
@@ -91,6 +94,8 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
 
         Content = _rootLayout;
         RenderLoadingState();
+        SizeChanged += (_, _) => ApplyResponsiveLayout();
+        ApplyResponsiveLayout();
     }
 
     public void ApplyQueryAttributes(IDictionary<string, object> query)
@@ -221,6 +226,46 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         _charactersView.Footer = response.Characters.Count == 0
             ? BuildState("Geen karakters is nog beskikbaar nie.")
             : new BoxView { HeightRequest = 28, Color = Colors.Transparent };
+        ApplyResponsiveLayout();
+    }
+
+    private void ApplyResponsiveLayout()
+    {
+        var width = MobileResponsiveLayout.ResolveWidth(Width);
+        MobileResponsiveLayout.ApplyCenteredContent(_topBarOverlay, width, 1040);
+
+        var span = MobileResponsiveLayout.ResolveCharacterGridSpan(width);
+        var widthChanged = _lastResponsiveWidth < 0 || Math.Abs(width - _lastResponsiveWidth) > 24;
+        var spanChanged = _charactersGridLayout.Span != span;
+        _lastResponsiveWidth = width;
+
+        if (!spanChanged)
+        {
+            if (widthChanged && _response is not null)
+            {
+                RefreshCharacterItemsForLayout();
+            }
+
+            return;
+        }
+
+        _charactersGridLayout.Span = span;
+        if (_response is not null)
+        {
+            RefreshCharacterItemsForLayout();
+        }
+    }
+
+    private void RefreshCharacterItemsForLayout()
+    {
+        if (_response is null)
+        {
+            return;
+        }
+
+        _charactersView.ItemsSource = Array.Empty<MobileCharacterCard>();
+        _charactersView.ItemsSource = _response.Characters;
+        _charactersView.Header = BuildPageHeader(_response);
     }
 
     private View BuildCharacterItemView()
@@ -236,14 +281,21 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     }
 
     private View BuildPageHeader(MobileCharactersResponse response) =>
-        new VerticalStackLayout
+        BuildPageHeaderContent(response);
+
+    private View BuildPageHeaderContent(MobileCharactersResponse response)
+    {
+        var hero = BuildHero(response);
+        MobileResponsiveLayout.ApplyCenteredContent(hero, Width, 780);
+        return new VerticalStackLayout
         {
             Padding = new Thickness(0, 82, 0, 18),
             Children =
             {
-                BuildHero(response)
+                hero
             }
         };
+    }
 
     private void RenderLoadingState()
     {
@@ -535,11 +587,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
 
     private double ResolveCharacterMediaSize()
     {
-        var pageWidth = Width > 0
-            ? Width
-            : DeviceDisplay.MainDisplayInfo.Width / DeviceDisplay.MainDisplayInfo.Density;
-        var columnWidth = (Math.Max(320, pageWidth) - 30) / 2;
-        return Math.Clamp(columnWidth - 20, 132, 190);
+        return MobileResponsiveLayout.ResolveCharacterMediaSize(Width, _charactersGridLayout.Span);
     }
 
     private static Border BuildCharacterIconButton(
@@ -601,10 +649,11 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             HorizontalOptions = LayoutOptions.End,
             AutomationId = "Maak karakterprofiel toe"
         };
+        var wideLayout = MobileResponsiveLayout.IsWide(Width);
         var profileImage = new Image
         {
             Source = BuildCharacterImageSource(character.ImageUrl),
-            HeightRequest = 260,
+            HeightRequest = wideLayout ? 340 : 260,
             Aspect = Aspect.AspectFit,
             HorizontalOptions = LayoutOptions.Fill
         };
@@ -722,8 +771,8 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         Grid.SetRow(profileScroll, 1);
         var profileCard = new Border
         {
-            WidthRequest = Math.Min(420, pageWidth - 28),
-            HeightRequest = Math.Min(760, pageHeight - 56),
+            WidthRequest = Math.Min(wideLayout ? 560 : 420, pageWidth - 28),
+            HeightRequest = Math.Min(wideLayout ? 860 : 760, pageHeight - 56),
             Margin = new Thickness(14, 28),
             Padding = 0,
             BackgroundColor = Colors.White,

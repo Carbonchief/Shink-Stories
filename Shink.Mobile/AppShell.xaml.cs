@@ -29,6 +29,7 @@ public partial class AppShell : Shell
 
         Items.Clear();
         Routing.RegisterRoute(nameof(AccountPage), typeof(AccountPage));
+        Routing.RegisterRoute(nameof(PlansPage), typeof(PlansPage));
         Routing.RegisterRoute(nameof(ProfilePage), typeof(ProfilePage));
         Routing.RegisterRoute(nameof(StoryDetailPage), typeof(StoryDetailPage));
         Routing.RegisterRoute(nameof(DownloadedPage), typeof(DownloadedPage));

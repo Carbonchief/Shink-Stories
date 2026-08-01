@@ -475,6 +475,17 @@ public sealed class MobileApiClient
     public Task<MobileAboutResponse?> GetAboutAsync(CancellationToken cancellationToken = default) =>
         GetAsync<MobileAboutResponse>("/api/mobile/meer-oor-ons", cancellationToken);
 
+    public Task<MobilePlansResponse?> GetPlansAsync(CancellationToken cancellationToken = default) =>
+        GetAsync<MobilePlansResponse>("/api/mobile/plans", cancellationToken);
+
+    public Task<MobileStoreEntitlementResponse?> SyncStorePurchaseAsync(
+        MobileStorePurchaseRequest purchase,
+        CancellationToken cancellationToken = default) =>
+        PostAsync<MobileStoreEntitlementResponse>(
+            "/api/mobile/store/entitlement",
+            purchase,
+            cancellationToken);
+
     public Task<MobileStoryDetailResponse?> GetStoryAsync(string slug, string source, CancellationToken cancellationToken = default) =>
         GetAndCacheStoryAsync(slug, source, cancellationToken);
 
@@ -654,6 +665,42 @@ public sealed class MobileApiClient
         _analytics.TrackEvent("mobile_auth_signed_in", new Dictionary<string, object>
         {
             ["auth_method"] = "google"
+        });
+        return (true, result?.Message ?? "Welkom terug!");
+    }
+
+    public async Task<(bool IsSuccess, string Message)> CompleteAppleSignInAsync(
+        string identityToken,
+        string nonce,
+        string? firstName,
+        string? lastName,
+        string? displayName,
+        CancellationToken cancellationToken = default)
+    {
+        var result = await PostAsync<MobileAppleAuthCompleteResponse>(
+            "/api/mobile/auth/apple/complete",
+            new
+            {
+                identityToken,
+                nonce,
+                firstName,
+                lastName,
+                displayName
+            },
+            cancellationToken);
+
+        if (result?.Session is not null)
+        {
+            _sessionState.Update(result.Session);
+        }
+        else
+        {
+            await GetSessionAsync(cancellationToken);
+        }
+
+        _analytics.TrackEvent("mobile_auth_signed_in", new Dictionary<string, object>
+        {
+            ["auth_method"] = "apple"
         });
         return (true, result?.Message ?? "Welkom terug!");
     }

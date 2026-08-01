@@ -38,6 +38,87 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     private readonly PayFastCheckoutService _payFastCheckoutService = payFastCheckoutService;
     private readonly ILogger<SupabaseSubscriptionLedgerService> _logger = logger;
 
+    public async Task<SubscriptionPersistResult> RecordVerifiedStoreSubscriptionAsync(
+        string? email,
+        string provider,
+        string productId,
+        string providerPaymentId,
+        string? providerTransactionId,
+        string? providerToken,
+        DateTimeOffset subscribedAtUtc,
+        DateTimeOffset? nextRenewalAtUtc,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedProvider = provider?.Trim().ToLowerInvariant();
+        var normalizedProductId = productId?.Trim();
+        var plan = PaymentPlanCatalog.FindBySlug(normalizedProductId) ??
+                   PaymentPlanCatalog.FindByStoreProductId(normalizedProductId);
+        if (normalizedProvider is not ("apple" or "google_play") ||
+            plan is null ||
+            plan.IsSchoolPlan ||
+            plan.IsAdminOnly ||
+            !plan.IsSubscription)
+        {
+            return new SubscriptionPersistResult(false, "Die winkelintekening kon nie aan 'n geldige plan gekoppel word nie.");
+        }
+
+        var normalizedPaymentId = providerPaymentId?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedPaymentId))
+        {
+            return new SubscriptionPersistResult(false, "Die winkelbetaling het nie 'n geldige verwysing bevat nie.");
+        }
+
+        var context = await TryResolveSelfServiceContextAsync(email, cancellationToken);
+        if (context is null)
+        {
+            return new SubscriptionPersistResult(false, "Jou rekening kon nie vir die winkelintekening gevind word nie.");
+        }
+
+        if (context.DisabledAt is not null)
+        {
+            return new SubscriptionPersistResult(false, "Hierdie rekening is nie beskikbaar vir intekeninge nie.");
+        }
+
+        var existingOwner = await FindSubscriptionOwnerAsync(
+            context.BaseUri,
+            context.ApiKey,
+            normalizedProvider,
+            normalizedPaymentId,
+            cancellationToken);
+        if (existingOwner is not null &&
+            !string.Equals(existingOwner.SubscriberId, context.SubscriberId, StringComparison.OrdinalIgnoreCase))
+        {
+            _logger.LogWarning(
+                "Rejected store subscription ownership transfer. provider={Provider} payment_id={PaymentId} current_subscriber={CurrentSubscriberId} requested_subscriber={RequestedSubscriberId}",
+                normalizedProvider,
+                normalizedPaymentId,
+                existingOwner.SubscriberId,
+                context.SubscriberId);
+            return new SubscriptionPersistResult(false, "Hierdie winkelintekening is reeds aan 'n ander rekening gekoppel.");
+        }
+
+        var subscriptionId = await UpsertSubscriptionAsync(
+            context.BaseUri,
+            context.ApiKey,
+            context.SubscriberId,
+            plan.TierCode,
+            normalizedProvider,
+            normalizedPaymentId,
+            providerTransactionId,
+            providerToken,
+            providerEmailToken: null,
+            subscribedAtUtc,
+            nextRenewalAtUtc,
+            cancellationToken,
+            billingAmountZar: plan.Amount,
+            billingPeriodMonths: plan.BillingPeriodMonths,
+            billingAmountSource: normalizedProvider == "apple" ? "app_store" : "google_play");
+
+        return string.IsNullOrWhiteSpace(subscriptionId)
+            ? new SubscriptionPersistResult(false, "Die winkelintekening kon nie nou gestoor word nie.")
+            : new SubscriptionPersistResult(true, SubscriptionId: subscriptionId);
+    }
+
     public async Task<bool> HasActivePaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default)
     {
         return await HasActiveSubscriptionAsync(
@@ -2197,6 +2278,40 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         var lookupBody = await response.Content.ReadAsStringAsync(cancellationToken);
         return ReadFirstStringProperty(lookupBody, "subscriber_id");
+    }
+
+    private async Task<SubscriptionOwnershipRow?> FindSubscriptionOwnerAsync(
+        Uri baseUri,
+        string apiKey,
+        string provider,
+        string providerPaymentId,
+        CancellationToken cancellationToken)
+    {
+        var escapedProvider = Uri.EscapeDataString(provider);
+        var escapedPaymentId = Uri.EscapeDataString(providerPaymentId);
+        var lookupUri = new Uri(
+            baseUri,
+            $"rest/v1/subscriptions?select=subscriber_id,subscription_id&provider=eq.{escapedProvider}&provider_payment_id=eq.{escapedPaymentId}&limit=1");
+
+        using var request = CreateRequest(HttpMethod.Get, lookupUri, apiKey);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Supabase store subscription ownership lookup failed. provider={Provider} payment_id={PaymentId} Status={StatusCode} Body={Body}",
+                provider,
+                providerPaymentId,
+                (int)response.StatusCode,
+                responseBody);
+            return null;
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        var rows = await JsonSerializer.DeserializeAsync<List<SubscriptionOwnershipRow>>(
+            stream,
+            cancellationToken: cancellationToken) ?? [];
+        return rows.FirstOrDefault();
     }
 
     private async Task<SelfServiceSubscriptionContext?> TryResolveSelfServiceContextAsync(
@@ -7259,6 +7374,15 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     {
         [JsonPropertyName("subscription_id")]
         public string? SubscriptionId { get; set; }
+    }
+
+    private sealed class SubscriptionOwnershipRow
+    {
+        [JsonPropertyName("subscription_id")]
+        public string? SubscriptionId { get; set; }
+
+        [JsonPropertyName("subscriber_id")]
+        public string? SubscriberId { get; set; }
     }
 
     private sealed class SubscriptionEventClaimRow

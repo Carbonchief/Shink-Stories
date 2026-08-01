@@ -15,6 +15,7 @@ public sealed record PaymentPlan(
 {
     public string AmountDisplay => Amount.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
     public bool IsSchoolPlan => SchoolSlotLimit.HasValue;
+    public string StoreProductId => Slug.Replace('-', '_');
 }
 
 public static class PaymentPlanCatalog
@@ -106,6 +107,9 @@ public static class PaymentPlanCatalog
 
     public static PaymentPlan? FindBySlug(string? slug) =>
         All.FirstOrDefault(plan => string.Equals(plan.Slug, slug, StringComparison.OrdinalIgnoreCase));
+
+    public static PaymentPlan? FindByStoreProductId(string? productId) =>
+        All.FirstOrDefault(plan => string.Equals(plan.StoreProductId, productId, StringComparison.OrdinalIgnoreCase));
 
     public static PaymentPlan? FindByTierCode(string? tierCode) =>
         All.FirstOrDefault(plan => string.Equals(plan.TierCode, tierCode, StringComparison.OrdinalIgnoreCase));
