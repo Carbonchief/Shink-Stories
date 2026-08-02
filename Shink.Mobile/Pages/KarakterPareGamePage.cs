@@ -52,7 +52,7 @@ public sealed class KarakterPareGamePage : ContentPage
         _apiClient = apiClient;
         _analytics = analytics;
         Title = "Karakter-pare";
-        BackgroundColor = Color.FromArgb("#46969E");
+        Background = BuildGameBackground();
         SafeAreaEdges = new SafeAreaEdges(SafeAreaRegions.Container);
         Shell.SetNavBarIsVisible(this, false);
 
@@ -133,15 +133,7 @@ public sealed class KarakterPareGamePage : ContentPage
         var root = new Grid
         {
             SafeAreaEdges = SafeAreaEdges.None,
-            Background = new LinearGradientBrush(
-                new GradientStopCollection
-                {
-                    new(Color.FromArgb("#166476"), 0),
-                    new(Color.FromArgb("#46969E"), 0.48f),
-                    new(Color.FromArgb("#68B6B5"), 1)
-                },
-                new Point(0, 0),
-                new Point(0, 1)),
+            Background = BuildGameBackground(),
             RowDefinitions =
             {
                 new RowDefinition(new GridLength(64)),
@@ -196,6 +188,17 @@ public sealed class KarakterPareGamePage : ContentPage
         MobileResponsiveLayout.ApplyCenteredContent(_board, Width, 760);
         MobileResponsiveLayout.ApplyCenteredContent(_newGameButton, Width, 440);
     }
+
+    private static LinearGradientBrush BuildGameBackground() =>
+        new(
+            new GradientStopCollection
+            {
+                new(Color.FromArgb("#166476"), 0),
+                new(Color.FromArgb("#46969E"), 0.48f),
+                new(Color.FromArgb("#68B6B5"), 1)
+            },
+            new Point(0, 0),
+            new Point(0, 1));
 
     protected override void OnAppearing()
     {

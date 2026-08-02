@@ -48,7 +48,7 @@ public sealed class KarakterRaaiGamePage : ContentPage
         _apiClient = apiClient;
         _analytics = analytics;
         Title = "Wie is dié Karakter?";
-        BackgroundColor = Color.FromArgb("#166476");
+        Background = BuildGameBackground();
         SafeAreaEdges = new SafeAreaEdges(SafeAreaRegions.Container);
         Shell.SetNavBarIsVisible(this, false);
 
@@ -124,15 +124,7 @@ public sealed class KarakterRaaiGamePage : ContentPage
         var root = new Grid
         {
             SafeAreaEdges = SafeAreaEdges.None,
-            Background = new LinearGradientBrush(
-                new GradientStopCollection
-                {
-                    new(Color.FromArgb("#166476"), 0),
-                    new(Color.FromArgb("#46969E"), 0.52f),
-                    new(Color.FromArgb("#68B6B5"), 1)
-                },
-                new Point(0, 0),
-                new Point(0, 1)),
+            Background = BuildGameBackground(),
             RowDefinitions =
             {
                 new RowDefinition(new GridLength(62)),
@@ -182,6 +174,17 @@ public sealed class KarakterRaaiGamePage : ContentPage
         MobileResponsiveLayout.ApplyCenteredContent(_choicesGrid, Width, 640);
         MobileResponsiveLayout.ApplyCenteredContent(_actionButton, Width, 640);
     }
+
+    private static LinearGradientBrush BuildGameBackground() =>
+        new(
+            new GradientStopCollection
+            {
+                new(Color.FromArgb("#166476"), 0),
+                new(Color.FromArgb("#46969E"), 0.52f),
+                new(Color.FromArgb("#68B6B5"), 1)
+            },
+            new Point(0, 0),
+            new Point(0, 1));
 
     protected override async void OnAppearing()
     {
