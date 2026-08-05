@@ -228,7 +228,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                         SubscriptionCheckoutTransitionKinds.PlanChange,
                         provider,
                         current.Subscription.TierCode,
-                        current.Subscription.NextRenewalAt);
+                        current.Subscription.NextRenewalAt,
+                        CanAutomaticallyCancelCurrentProvider: true);
                 }
 
                 return new SubscriptionCheckoutAssessment(
@@ -244,7 +245,10 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                     : SubscriptionCheckoutTransitionKinds.ProviderConversion,
                 provider,
                 current.Subscription.TierCode,
-                current.Subscription.NextRenewalAt);
+                current.Subscription.NextRenewalAt,
+                CanAutomaticallyCancelCurrentProvider:
+                    string.Equals(provider, "payfast", StringComparison.OrdinalIgnoreCase) &&
+                    !string.IsNullOrWhiteSpace(current.Subscription.ProviderToken));
         }
 
         var activeFreeAccess = subscriptions
@@ -377,6 +381,24 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string? email,
         CancellationToken cancellationToken = default)
     {
+        var selfServiceContext = await TryResolveSelfServiceContextAsync(email, cancellationToken);
+        if (selfServiceContext is not null)
+        {
+            var payFastCancellationFailure = await TryGetPayFastProviderSwitchCancellationFailureAsync(
+                selfServiceContext,
+                cancellationToken);
+            if (payFastCancellationFailure is not null)
+            {
+                return new PaidSubscriptionAttention(
+                    RequiresAttention: true,
+                    Reason: "provider_switch_cancel_failed",
+                    SubscriptionId: payFastCancellationFailure.SubscriptionId,
+                    TierCode: payFastCancellationFailure.TierCode,
+                    PlanSlug: PaymentPlanCatalog.FindByTierCode(payFastCancellationFailure.TierCode)?.Slug,
+                    Provider: "payfast");
+            }
+        }
+
         var candidate = await TryResolvePaidSubscriptionAttentionCandidateAsync(email, cancellationToken);
         if (candidate is null)
         {
@@ -407,6 +429,43 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             PlanSlug: plan?.Slug,
             Provider: subscription?.Provider,
             CanAttemptAutomaticRetry: canAttemptAutomaticRetry);
+    }
+
+    private async Task<SelfServiceSubscriptionRow?> TryGetPayFastProviderSwitchCancellationFailureAsync(
+        SelfServiceSubscriptionContext context,
+        CancellationToken cancellationToken)
+    {
+        var payFastSubscriptions = (await FetchSelfServicePaidSubscriptionsAsync(
+                context.BaseUri,
+                context.ApiKey,
+                context.SubscriberId,
+                cancellationToken))
+            .Where(subscription => string.Equals(subscription.Provider, "payfast", StringComparison.OrdinalIgnoreCase))
+            .Where(subscription => subscription.CancelledAt is null)
+            .ToArray();
+        foreach (var subscription in payFastSubscriptions)
+        {
+            var uri = new Uri(
+                context.BaseUri,
+                "rest/v1/subscription_events" +
+                "?select=event_id" +
+                $"&subscription_id=eq.{Uri.EscapeDataString(subscription.SubscriptionId)}" +
+                "&event_type=eq.provider_switch_cancel_failed&event_status=eq.failed&order=received_at.desc&limit=1");
+            using var request = CreateRequest(HttpMethod.Get, uri, context.ApiKey);
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                continue;
+            }
+
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (!string.Equals(body.Trim(), "[]", StringComparison.Ordinal))
+            {
+                return subscription;
+            }
+        }
+
+        return null;
     }
 
     public async Task<SubscriptionPlanChangeResult> ChangePaidSubscriptionPlanAsync(
@@ -485,7 +544,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var targetRank = ResolvePaidPlanAccessRank(targetPlan);
         var changeType = targetRank > currentRank
             ? "upgrade"
-            : targetRank < currentRank ? "downgrade" : "billing-change";
+            : targetRank < currentRank || targetPlan.BillingPeriodMonths < current.Plan.BillingPeriodMonths
+                ? "downgrade"
+                : "billing-change";
         var chargeImmediately = ShouldChargePlanChangeImmediately(changeType);
         var chargedAmountZar = chargeImmediately
             ? decimal.Round(targetPlan.Amount, 2, MidpointRounding.AwayFromZero)
@@ -498,15 +559,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var targetNextRenewalAtUtc = chargeImmediately
             ? nowUtc.AddMonths(targetPlan.BillingPeriodMonths).Add(carriedForwardAccess)
             : accessEndsAtUtc.AddMonths(targetPlan.BillingPeriodMonths);
-        string? planChangeChargeReference = null;
-
-        if (chargeImmediately)
-        {
-            if (chargedAmountZar >= 1m)
-            {
-                planChangeChargeReference = BuildPlanChangeReference(currentSubscription.SubscriptionId, targetPlan.TierCode, accessEndsAtUtc);
-            }
-        }
+        var planChangeChargeReference = chargeImmediately && chargedAmountZar >= 1m
+            ? BuildPlanChangeReference(currentSubscription.SubscriptionId, targetPlan.TierCode, accessEndsAtUtc)
+            : null;
 
         var planChangeAttempt = await BeginSubscriptionPlanChangeAttemptAsync(
             context.BaseUri,
@@ -525,11 +580,51 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             return new SubscriptionPlanChangeResult(false, targetPlan.Slug, changeType, accessEndsAtUtc, chargedAmountZar, planChangeAttempt.ErrorMessage ?? "Kon nie die planverandering veilig begin nie.");
         }
 
+        if (string.Equals(planChangeAttempt.Status, "completed", StringComparison.OrdinalIgnoreCase))
+        {
+            return new SubscriptionPlanChangeResult(true, targetPlan.Slug, changeType, accessEndsAtUtc, chargedAmountZar);
+        }
+
+        if (string.Equals(planChangeAttempt.Status, "failed", StringComparison.OrdinalIgnoreCase))
+        {
+            return BuildExistingFailedPlanChangeResult(planChangeAttempt, targetPlan, changeType, accessEndsAtUtc, chargedAmountZar);
+        }
+
         if (chargeImmediately)
         {
-            if (chargedAmountZar >= 1m &&
-                !IsPlanChangeChargeAlreadyAccepted(planChangeAttempt))
+            if (chargedAmountZar >= 1m && !IsPlanChangeChargeConfirmed(planChangeAttempt))
             {
+                if (IsPlanChangeChargePending(planChangeAttempt))
+                {
+                    return new SubscriptionPlanChangeResult(
+                        false,
+                        targetPlan.Slug,
+                        changeType,
+                        accessEndsAtUtc,
+                        chargedAmountZar,
+                        "Ons verwerk reeds jou planverandering. Wag asseblief totdat Paystack die betaling bevestig.",
+                        IsPending: true,
+                        ResolutionStatus: "charge_pending");
+                }
+
+                var claimedCharge = await TryClaimSubscriptionPlanChangeChargeAsync(
+                    context.BaseUri,
+                    context.ApiKey,
+                    planChangeAttempt.PlanChangeId,
+                    cancellationToken);
+                if (!claimedCharge)
+                {
+                    return new SubscriptionPlanChangeResult(
+                        false,
+                        targetPlan.Slug,
+                        changeType,
+                        accessEndsAtUtc,
+                        chargedAmountZar,
+                        "Ons verwerk reeds jou planverandering. Wag asseblief totdat Paystack die betaling bevestig.",
+                        IsPending: true,
+                        ResolutionStatus: "charge_pending");
+                }
+
                 var reference = planChangeChargeReference ?? BuildPlanChangeReference(currentSubscription.SubscriptionId, targetPlan.TierCode, accessEndsAtUtc);
                 var chargeResult = await _paystackCheckoutService.ChargeAuthorizationAsync(
                     targetPlan,
@@ -582,11 +677,39 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                         chargeStatus: "duplicate_reference",
                         chargeReference: chargeResult.Reference ?? reference,
                         failureMessage: chargeResult.ErrorMessage);
-                    return new SubscriptionPlanChangeResult(false, targetPlan.Slug, changeType, accessEndsAtUtc, chargedAmountZar, "Ons verwerk reeds jou planverandering. Wag asseblief 'n oomblik voor jy weer probeer.");
+                    return new SubscriptionPlanChangeResult(
+                        false,
+                        targetPlan.Slug,
+                        changeType,
+                        accessEndsAtUtc,
+                        chargedAmountZar,
+                        "Ons verwerk reeds jou planverandering. Wag asseblief totdat Paystack die betaling bevestig.",
+                        IsPending: true,
+                        ResolutionStatus: "charge_pending");
                 }
 
-                if (!chargeResult.IsSuccess &&
-                    !IsPendingPaystackStatus(chargeResult.TransactionStatus))
+                if (!chargeResult.IsSuccess && IsPendingPaystackStatus(chargeResult.TransactionStatus))
+                {
+                    await MarkSubscriptionPlanChangeAttemptAsync(
+                        context.BaseUri,
+                        context.ApiKey,
+                        planChangeAttempt.PlanChangeId,
+                        "charge_pending",
+                        cancellationToken,
+                        chargeStatus: chargeResult.TransactionStatus ?? "pending",
+                        chargeReference: chargeResult.Reference ?? reference);
+                    return new SubscriptionPlanChangeResult(
+                        false,
+                        targetPlan.Slug,
+                        changeType,
+                        accessEndsAtUtc,
+                        chargedAmountZar,
+                        "Paystack verwerk nog die betaling. Ons verander niks totdat die sukses-webhook ontvang is nie.",
+                        IsPending: true,
+                        ResolutionStatus: "charge_pending");
+                }
+
+                if (!chargeResult.IsSuccess)
                 {
                     await MarkSubscriptionPlanChangeAttemptAsync(
                         context.BaseUri,
@@ -608,60 +731,158 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                     cancellationToken,
                     chargeStatus: chargeResult.TransactionStatus ?? "success",
                     chargeReference: chargeResult.Reference ?? reference);
+
+                planChangeAttempt = planChangeAttempt with
+                {
+                    Status = "charge_accepted",
+                    ChargeStatus = "success",
+                    ChargeReference = chargeResult.Reference ?? reference
+                };
             }
         }
 
-        var providerEmailToken = currentSubscription.ProviderEmailToken;
-        var disableResult = await _paystackCheckoutService.DisableSubscriptionAsync(
+        return await ContinueSubscriptionPlanChangeAsync(
+            context,
+            normalizedEmail,
+            currentSubscription,
+            current.Plan,
+            targetPlan,
             paystackSubscriptionCode,
-            providerEmailToken,
-            cancellationToken);
-        if (!disableResult.IsSuccess)
-        {
-            await MarkSubscriptionPlanChangeAttemptAsync(
-                context.BaseUri,
-                context.ApiKey,
-                planChangeAttempt.PlanChangeId,
-                "failed",
-                cancellationToken,
-                failureMessage: disableResult.ErrorMessage ?? "Paystack kon nie die bestaande intekening stop nie.");
-            return new SubscriptionPlanChangeResult(false, targetPlan.Slug, changeType, accessEndsAtUtc, chargedAmountZar, disableResult.ErrorMessage ?? "Paystack kon nie die bestaande intekening stop nie.");
-        }
-
-        providerEmailToken = disableResult.EmailToken ?? providerEmailToken;
-        await MarkSubscriptionPlanChangeAttemptAsync(
-            context.BaseUri,
-            context.ApiKey,
-            planChangeAttempt.PlanChangeId,
-            "old_subscription_disabled",
-            cancellationToken,
-            providerEmailToken: providerEmailToken);
-
-        var cancellationScheduled = await ScheduleSubscriptionCancellationAsync(
-            context.BaseUri,
-            context.ApiKey,
-            currentSubscription.SubscriptionId,
+            changeType,
             accessEndsAtUtc,
-            providerEmailToken,
+            targetNextRenewalAtUtc,
+            chargedAmountZar,
+            chargeImmediately,
+            planChangeAttempt,
             cancellationToken);
-        if (!cancellationScheduled)
+    }
+
+    private async Task<SubscriptionPlanChangeResult> ContinueSubscriptionPlanChangeAsync(
+        SelfServiceSubscriptionContext context,
+        string normalizedEmail,
+        SelfServiceSubscriptionRow currentSubscription,
+        PaymentPlan currentPlan,
+        PaymentPlan targetPlan,
+        string paystackSubscriptionCode,
+        string changeType,
+        DateTimeOffset accessEndsAtUtc,
+        DateTimeOffset targetNextRenewalAtUtc,
+        decimal chargedAmountZar,
+        bool chargeImmediately,
+        SubscriptionPlanChangeAttemptResult planChangeAttempt,
+        CancellationToken cancellationToken)
+    {
+        if (string.Equals(planChangeAttempt.Status, "completed", StringComparison.OrdinalIgnoreCase))
         {
+            return new SubscriptionPlanChangeResult(true, targetPlan.Slug, changeType, accessEndsAtUtc, chargedAmountZar);
+        }
+
+        if (chargeImmediately && !IsPlanChangeChargeConfirmed(planChangeAttempt))
+        {
+            return new SubscriptionPlanChangeResult(
+                false,
+                targetPlan.Slug,
+                changeType,
+                accessEndsAtUtc,
+                chargedAmountZar,
+                "Paystack verwerk nog die betaling. Ons verander niks totdat die betaling bevestig is nie.",
+                IsPending: true,
+                ResolutionStatus: "charge_pending");
+        }
+
+        var providerEmailToken = planChangeAttempt.ProviderEmailToken ?? currentSubscription.ProviderEmailToken;
+        var oldSubscriptionDisabledByThisAttempt = false;
+        if (!IsPlanChangeAtOrBeyond(planChangeAttempt.Status, "old_subscription_disabled"))
+        {
+            var providerAlreadyStopped = currentSubscription.CancelledAt is not null;
+            if (!providerAlreadyStopped)
+            {
+                var liveSubscription = await _paystackCheckoutService.GetSubscriptionAsync(
+                    paystackSubscriptionCode,
+                    cancellationToken);
+                providerAlreadyStopped = liveSubscription.IsSuccess && IsNonRenewingPaystackStatus(liveSubscription.Status);
+                providerEmailToken = liveSubscription.EmailToken ?? providerEmailToken;
+            }
+
+            if (!providerAlreadyStopped)
+            {
+                var disableResult = await _paystackCheckoutService.DisableSubscriptionAsync(
+                    paystackSubscriptionCode,
+                    providerEmailToken,
+                    cancellationToken);
+                if (!disableResult.IsSuccess)
+                {
+                    return await FailAndCompensatePlanChangeAsync(
+                        context,
+                        planChangeAttempt,
+                        currentSubscription,
+                        targetPlan,
+                        paystackSubscriptionCode,
+                        changeType,
+                        accessEndsAtUtc,
+                        chargedAmountZar,
+                        chargeImmediately,
+                        oldSubscriptionDisabledByThisAttempt: false,
+                        newProviderPaymentId: null,
+                        newProviderEmailToken: null,
+                        disableResult.ErrorMessage ?? "Paystack kon nie die bestaande intekening stop nie.",
+                        cancellationToken);
+                }
+
+                providerEmailToken = disableResult.EmailToken ?? providerEmailToken;
+                oldSubscriptionDisabledByThisAttempt = true;
+            }
+
             await MarkSubscriptionPlanChangeAttemptAsync(
                 context.BaseUri,
                 context.ApiKey,
                 planChangeAttempt.PlanChangeId,
-                "failed",
+                "old_subscription_disabled",
                 cancellationToken,
-                failureMessage: "Kon nie die bestaande intekening tot die hernuwingsdatum skeduleer nie.");
-            return new SubscriptionPlanChangeResult(false, targetPlan.Slug, changeType, accessEndsAtUtc, chargedAmountZar, "Kon nie die bestaande intekening tot die hernuwingsdatum skeduleer nie.");
+                providerEmailToken: providerEmailToken);
+            planChangeAttempt = planChangeAttempt with
+            {
+                Status = "old_subscription_disabled",
+                ProviderEmailToken = providerEmailToken
+            };
         }
 
-        await MarkSubscriptionPlanChangeAttemptAsync(
-            context.BaseUri,
-            context.ApiKey,
-            planChangeAttempt.PlanChangeId,
-            "old_subscription_scheduled",
-            cancellationToken);
+        if (!IsPlanChangeAtOrBeyond(planChangeAttempt.Status, "old_subscription_scheduled"))
+        {
+            var cancellationScheduled = await ScheduleSubscriptionCancellationAsync(
+                context.BaseUri,
+                context.ApiKey,
+                currentSubscription.SubscriptionId,
+                accessEndsAtUtc,
+                providerEmailToken,
+                cancellationToken);
+            if (!cancellationScheduled)
+            {
+                return await FailAndCompensatePlanChangeAsync(
+                    context,
+                    planChangeAttempt,
+                    currentSubscription,
+                    targetPlan,
+                    paystackSubscriptionCode,
+                    changeType,
+                    accessEndsAtUtc,
+                    chargedAmountZar,
+                    chargeImmediately,
+                    oldSubscriptionDisabledByThisAttempt,
+                    newProviderPaymentId: null,
+                    newProviderEmailToken: null,
+                    "Kon nie die bestaande intekening tot die hernuwingsdatum skeduleer nie.",
+                    cancellationToken);
+            }
+
+            await MarkSubscriptionPlanChangeAttemptAsync(
+                context.BaseUri,
+                context.ApiKey,
+                planChangeAttempt.PlanChangeId,
+                "old_subscription_scheduled",
+                cancellationToken);
+            planChangeAttempt = planChangeAttempt with { Status = "old_subscription_scheduled" };
+        }
 
         var newProviderPaymentId = planChangeAttempt.NewProviderPaymentId;
         var newProviderEmailToken = planChangeAttempt.NewProviderEmailToken;
@@ -675,14 +896,21 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 cancellationToken);
             if (!createResult.IsSuccess || string.IsNullOrWhiteSpace(createResult.SubscriptionCode))
             {
-                await MarkSubscriptionPlanChangeAttemptAsync(
-                    context.BaseUri,
-                    context.ApiKey,
-                    planChangeAttempt.PlanChangeId,
-                    "failed",
-                    cancellationToken,
-                    failureMessage: createResult.ErrorMessage ?? "Paystack kon nie die nuwe intekening skep nie.");
-                return new SubscriptionPlanChangeResult(false, targetPlan.Slug, changeType, accessEndsAtUtc, chargedAmountZar, createResult.ErrorMessage ?? "Paystack kon nie die nuwe intekening skep nie.");
+                return await FailAndCompensatePlanChangeAsync(
+                    context,
+                    planChangeAttempt,
+                    currentSubscription,
+                    targetPlan,
+                    paystackSubscriptionCode,
+                    changeType,
+                    accessEndsAtUtc,
+                    chargedAmountZar,
+                    chargeImmediately,
+                    oldSubscriptionDisabledByThisAttempt,
+                    newProviderPaymentId: null,
+                    newProviderEmailToken: null,
+                    createResult.ErrorMessage ?? "Paystack kon nie die nuwe intekening skep nie.",
+                    cancellationToken);
             }
 
             newProviderPaymentId = createResult.SubscriptionCode;
@@ -695,6 +923,12 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 cancellationToken,
                 newProviderPaymentId: newProviderPaymentId,
                 newProviderEmailToken: newProviderEmailToken);
+            planChangeAttempt = planChangeAttempt with
+            {
+                Status = "provider_subscription_created",
+                NewProviderPaymentId = newProviderPaymentId,
+                NewProviderEmailToken = newProviderEmailToken
+            };
         }
 
         var targetSubscriptionId = await UpsertSubscriptionAsync(
@@ -707,7 +941,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             providerTransactionId: newProviderPaymentId,
             providerToken: currentSubscription.ProviderToken,
             providerEmailToken: newProviderEmailToken,
-            subscribedAtUtc: chargeImmediately ? nowUtc : accessEndsAtUtc,
+            subscribedAtUtc: chargeImmediately ? DateTimeOffset.UtcNow : accessEndsAtUtc,
             nextRenewalAtUtc: targetNextRenewalAtUtc,
             cancellationToken,
             billingAmountZar: targetPlan.Amount,
@@ -715,14 +949,21 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             billingAmountSource: "plan_change");
         if (string.IsNullOrWhiteSpace(targetSubscriptionId))
         {
-            await MarkSubscriptionPlanChangeAttemptAsync(
-                context.BaseUri,
-                context.ApiKey,
-                planChangeAttempt.PlanChangeId,
-                "failed",
-                cancellationToken,
-                failureMessage: "Kon nie die nuwe intekening in die ledger stoor nie.");
-            return new SubscriptionPlanChangeResult(false, targetPlan.Slug, changeType, accessEndsAtUtc, chargedAmountZar, "Kon nie die nuwe intekening in die ledger stoor nie.");
+            return await FailAndCompensatePlanChangeAsync(
+                context,
+                planChangeAttempt,
+                currentSubscription,
+                targetPlan,
+                paystackSubscriptionCode,
+                changeType,
+                accessEndsAtUtc,
+                chargedAmountZar,
+                chargeImmediately,
+                oldSubscriptionDisabledByThisAttempt,
+                newProviderPaymentId,
+                newProviderEmailToken,
+                "Kon nie die nuwe intekening in die ledger stoor nie.",
+                cancellationToken);
         }
 
         await MarkSubscriptionPlanChangeAttemptAsync(
@@ -734,6 +975,366 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             targetSubscriptionId: targetSubscriptionId);
 
         return new SubscriptionPlanChangeResult(true, targetPlan.Slug, changeType, accessEndsAtUtc, chargedAmountZar);
+    }
+
+    private async Task<SubscriptionPlanChangeResult> FailAndCompensatePlanChangeAsync(
+        SelfServiceSubscriptionContext context,
+        SubscriptionPlanChangeAttemptResult planChangeAttempt,
+        SelfServiceSubscriptionRow currentSubscription,
+        PaymentPlan targetPlan,
+        string paystackSubscriptionCode,
+        string changeType,
+        DateTimeOffset accessEndsAtUtc,
+        decimal chargedAmountZar,
+        bool chargeWasConfirmed,
+        bool oldSubscriptionDisabledByThisAttempt,
+        string? newProviderPaymentId,
+        string? newProviderEmailToken,
+        string failureMessage,
+        CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(newProviderPaymentId))
+        {
+            await _paystackCheckoutService.DisableSubscriptionAsync(
+                newProviderPaymentId,
+                newProviderEmailToken,
+                cancellationToken);
+        }
+
+        if (oldSubscriptionDisabledByThisAttempt)
+        {
+            await _paystackCheckoutService.EnableSubscriptionAsync(
+                paystackSubscriptionCode,
+                planChangeAttempt.ProviderEmailToken ?? currentSubscription.ProviderEmailToken,
+                cancellationToken);
+        }
+
+        if (chargeWasConfirmed && chargedAmountZar >= 1m)
+        {
+            return await RequestPlanChangeRefundAsync(
+                context,
+                planChangeAttempt,
+                targetPlan,
+                changeType,
+                accessEndsAtUtc,
+                chargedAmountZar,
+                failureMessage,
+                cancellationToken);
+        }
+
+        await MarkSubscriptionPlanChangeAttemptAsync(
+            context.BaseUri,
+            context.ApiKey,
+            planChangeAttempt.PlanChangeId,
+            "failed",
+            cancellationToken,
+            failureMessage: failureMessage);
+        return new SubscriptionPlanChangeResult(
+            false,
+            targetPlan.Slug,
+            changeType,
+            accessEndsAtUtc,
+            chargedAmountZar,
+            failureMessage);
+    }
+
+    private async Task<SubscriptionPlanChangeResult> RequestPlanChangeRefundAsync(
+        SelfServiceSubscriptionContext context,
+        SubscriptionPlanChangeAttemptResult planChangeAttempt,
+        PaymentPlan targetPlan,
+        string changeType,
+        DateTimeOffset accessEndsAtUtc,
+        decimal chargedAmountZar,
+        string failureMessage,
+        CancellationToken cancellationToken)
+    {
+        var latestAttempt = await GetSubscriptionPlanChangeAttemptByIdAsync(
+            context.BaseUri,
+            context.ApiKey,
+            planChangeAttempt.PlanChangeId,
+            cancellationToken) ?? planChangeAttempt;
+        if (IsPlanChangeRefundInProgressOrCompleted(latestAttempt.ChargeStatus))
+        {
+            return BuildExistingFailedPlanChangeResult(latestAttempt, targetPlan, changeType, accessEndsAtUtc, chargedAmountZar);
+        }
+
+        if (string.IsNullOrWhiteSpace(latestAttempt.ChargeReference))
+        {
+            await MarkSubscriptionPlanChangeAttemptAsync(
+                context.BaseUri,
+                context.ApiKey,
+                latestAttempt.PlanChangeId,
+                "failed",
+                cancellationToken,
+                chargeStatus: "refund_failed",
+                failureMessage: $"{failureMessage} Geen betaalverwysing was beskikbaar vir die outomatiese terugbetaling nie.");
+            return new SubscriptionPlanChangeResult(
+                false,
+                targetPlan.Slug,
+                changeType,
+                accessEndsAtUtc,
+                chargedAmountZar,
+                "Die planverandering het misluk en die outomatiese terugbetaling kon nie begin nie. Kontak ons voordat jy weer probeer.",
+                ResolutionStatus: "refund_failed");
+        }
+
+        var claimedRefund = await TryClaimSubscriptionPlanChangeRefundAsync(
+            context.BaseUri,
+            context.ApiKey,
+            latestAttempt.PlanChangeId,
+            failureMessage,
+            cancellationToken);
+        if (!claimedRefund)
+        {
+            var claimedByAnotherRequest = await GetSubscriptionPlanChangeAttemptByIdAsync(
+                context.BaseUri,
+                context.ApiKey,
+                latestAttempt.PlanChangeId,
+                cancellationToken) ?? latestAttempt;
+            return BuildExistingFailedPlanChangeResult(
+                claimedByAnotherRequest,
+                targetPlan,
+                changeType,
+                accessEndsAtUtc,
+                chargedAmountZar);
+        }
+
+        var refundResult = await _paystackCheckoutService.RefundTransactionAsync(
+            latestAttempt.ChargeReference,
+            chargedAmountZar,
+            $"Automatic compensation for plan change {latestAttempt.PlanChangeId}",
+            cancellationToken);
+        var refundStatus = refundResult.IsSuccess
+            ? NormalizePlanChangeRefundStatus(refundResult.Status)
+            : "refund_failed";
+        await MarkSubscriptionPlanChangeAttemptAsync(
+            context.BaseUri,
+            context.ApiKey,
+            latestAttempt.PlanChangeId,
+            "failed",
+            cancellationToken,
+            chargeStatus: refundStatus,
+            chargeReference: latestAttempt.ChargeReference,
+            failureMessage: refundResult.IsSuccess
+                ? failureMessage
+                : $"{failureMessage} {refundResult.ErrorMessage}");
+
+        if (refundResult.IsSuccess)
+        {
+            return new SubscriptionPlanChangeResult(
+                false,
+                targetPlan.Slug,
+                changeType,
+                accessEndsAtUtc,
+                chargedAmountZar,
+                "Die planverandering kon nie voltooi nie. 'n Volle terugbetaling is outomaties aangevra; moenie weer probeer terwyl dit verwerk word nie.",
+                IsPending: true,
+                ResolutionStatus: "refund_pending");
+        }
+
+        return new SubscriptionPlanChangeResult(
+            false,
+            targetPlan.Slug,
+            changeType,
+            accessEndsAtUtc,
+            chargedAmountZar,
+            "Die planverandering het misluk en Paystack kon nie die outomatiese terugbetaling begin nie. Kontak ons voordat jy weer probeer.",
+            ResolutionStatus: "refund_failed");
+    }
+
+    private static SubscriptionPlanChangeResult BuildExistingFailedPlanChangeResult(
+        SubscriptionPlanChangeAttemptResult attempt,
+        PaymentPlan targetPlan,
+        string changeType,
+        DateTimeOffset accessEndsAtUtc,
+        decimal chargedAmountZar)
+    {
+        if (IsPlanChangeRefundInProgressOrCompleted(attempt.ChargeStatus))
+        {
+            return new SubscriptionPlanChangeResult(
+                false,
+                targetPlan.Slug,
+                changeType,
+                accessEndsAtUtc,
+                chargedAmountZar,
+                string.Equals(attempt.ChargeStatus, "refunded", StringComparison.OrdinalIgnoreCase)
+                    ? "Die betaling is reeds terugbetaal. Geen nuwe plan is geaktiveer nie."
+                    : "Die terugbetaling word reeds verwerk. Moenie die planverandering weer probeer nie.",
+                IsPending: !string.Equals(attempt.ChargeStatus, "refunded", StringComparison.OrdinalIgnoreCase),
+                ResolutionStatus: string.Equals(attempt.ChargeStatus, "refunded", StringComparison.OrdinalIgnoreCase)
+                    ? "refunded"
+                    : "refund_pending");
+        }
+
+        return new SubscriptionPlanChangeResult(
+            false,
+            targetPlan.Slug,
+            changeType,
+            accessEndsAtUtc,
+            chargedAmountZar,
+            attempt.ErrorMessage ?? "Hierdie planverandering het reeds misluk. Kontak ons voordat jy weer probeer.");
+    }
+
+    private static bool IsPlanChangeChargeConfirmed(SubscriptionPlanChangeAttemptResult attempt) =>
+        string.Equals(attempt.ChargeStatus, "success", StringComparison.OrdinalIgnoreCase) ||
+        IsPlanChangeAtOrBeyond(attempt.Status, "charge_accepted");
+
+    private static bool IsPlanChangeChargePending(SubscriptionPlanChangeAttemptResult attempt) =>
+        string.Equals(attempt.Status, "charge_pending", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(attempt.ChargeStatus, "initiating", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(attempt.ChargeStatus, "duplicate_reference", StringComparison.OrdinalIgnoreCase) ||
+        IsPendingPaystackStatus(attempt.ChargeStatus);
+
+    private static bool IsPlanChangeAtOrBeyond(string? status, string expectedStatus)
+    {
+        string[] orderedStatuses =
+        [
+            "pending",
+            "charge_pending",
+            "charge_accepted",
+            "old_subscription_disabled",
+            "old_subscription_scheduled",
+            "provider_subscription_created",
+            "completed"
+        ];
+        var currentIndex = Array.FindIndex(orderedStatuses, value => string.Equals(value, status, StringComparison.OrdinalIgnoreCase));
+        var expectedIndex = Array.FindIndex(orderedStatuses, value => string.Equals(value, expectedStatus, StringComparison.OrdinalIgnoreCase));
+        return currentIndex >= expectedIndex && expectedIndex >= 0;
+    }
+
+    private static bool IsNonRenewingPaystackStatus(string? status) =>
+        status?.Trim().ToLowerInvariant() is "non-renewing" or "cancelled" or "complete" or "completed" or "disabled";
+
+    private static bool IsPlanChangeRefundInProgressOrCompleted(string? chargeStatus) =>
+        chargeStatus?.Trim().ToLowerInvariant() is
+            "refund_starting" or "refund_pending" or "refund_processing" or "refunded";
+
+    private static string NormalizePlanChangeRefundStatus(string? status) =>
+        status?.Trim().ToLowerInvariant() switch
+        {
+            "processed" or "success" or "successful" => "refunded",
+            "processing" => "refund_processing",
+            "pending" or "queued" => "refund_pending",
+            _ => "refund_pending"
+        };
+
+    private async Task<SubscriptionPlanChangeResult> ResumeSubscriptionPlanChangeAttemptAsync(
+        Uri baseUri,
+        string apiKey,
+        SubscriptionPlanChangeAttemptResult attempt,
+        CancellationToken cancellationToken)
+    {
+        var targetPlan = PaymentPlanCatalog.FindBySlug(attempt.TargetPlanSlug)
+                         ?? PaymentPlanCatalog.FindByTierCode(attempt.TargetTierCode);
+        var currentPlan = PaymentPlanCatalog.FindByTierCode(attempt.CurrentTierCode);
+        var changeType = attempt.ChangeType ?? "billing-change";
+        var accessEndsAtUtc = attempt.EffectiveAt ?? DateTimeOffset.UtcNow;
+        if (targetPlan is null || currentPlan is null || string.IsNullOrWhiteSpace(attempt.CurrentSubscriptionId))
+        {
+            if (targetPlan is not null && attempt.ChargedAmountZar >= 1m)
+            {
+                return await RequestPlanChangeRefundAsync(
+                    new SelfServiceSubscriptionContext(baseUri, apiKey, attempt.SubscriberId ?? string.Empty, null),
+                    attempt,
+                    targetPlan,
+                    changeType,
+                    accessEndsAtUtc,
+                    attempt.ChargedAmountZar,
+                    "Kon nie die gestoorde planverandering hervat nie.",
+                    cancellationToken);
+            }
+
+            return new SubscriptionPlanChangeResult(false, targetPlan?.Slug, changeType, accessEndsAtUtc, attempt.ChargedAmountZar, "Kon nie die gestoorde planverandering hervat nie.");
+        }
+
+        if (string.Equals(attempt.Status, "completed", StringComparison.OrdinalIgnoreCase))
+        {
+            return new SubscriptionPlanChangeResult(true, targetPlan.Slug, changeType, accessEndsAtUtc, attempt.ChargedAmountZar);
+        }
+
+        if (string.Equals(attempt.Status, "failed", StringComparison.OrdinalIgnoreCase))
+        {
+            return BuildExistingFailedPlanChangeResult(attempt, targetPlan, changeType, accessEndsAtUtc, attempt.ChargedAmountZar);
+        }
+
+        var subscriptionContext = await TryGetSubscriptionContextByIdAsync(
+            baseUri,
+            apiKey,
+            attempt.CurrentSubscriptionId,
+            cancellationToken);
+        if (subscriptionContext is null)
+        {
+            return await RequestPlanChangeRefundAsync(
+                new SelfServiceSubscriptionContext(baseUri, apiKey, attempt.SubscriberId ?? string.Empty, null),
+                attempt,
+                targetPlan,
+                changeType,
+                accessEndsAtUtc,
+                attempt.ChargedAmountZar,
+                "Kon nie die bestaande intekening vir die planverandering vind nie.",
+                cancellationToken);
+        }
+
+        var currentSubscription = (await FetchSelfServicePaidSubscriptionsAsync(
+                baseUri,
+                apiKey,
+                subscriptionContext.SubscriberId,
+                cancellationToken))
+            .FirstOrDefault(row => string.Equals(row.SubscriptionId, attempt.CurrentSubscriptionId, StringComparison.OrdinalIgnoreCase));
+        if (currentSubscription is null)
+        {
+            return await RequestPlanChangeRefundAsync(
+                new SelfServiceSubscriptionContext(baseUri, apiKey, subscriptionContext.SubscriberId, null),
+                attempt,
+                targetPlan,
+                changeType,
+                accessEndsAtUtc,
+                attempt.ChargedAmountZar,
+                "Kon nie die bestaande intekening vir die planverandering lees nie.",
+                cancellationToken);
+        }
+
+        var paystackSubscriptionCode = PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
+            currentSubscription.Provider,
+            currentSubscription.SourceSystem,
+            currentSubscription.ProviderPaymentId,
+            currentSubscription.ProviderTransactionId);
+        if (string.IsNullOrWhiteSpace(paystackSubscriptionCode) || string.IsNullOrWhiteSpace(currentSubscription.ProviderToken))
+        {
+            return await RequestPlanChangeRefundAsync(
+                new SelfServiceSubscriptionContext(baseUri, apiKey, subscriptionContext.SubscriberId, null),
+                attempt,
+                targetPlan,
+                changeType,
+                accessEndsAtUtc,
+                attempt.ChargedAmountZar,
+                "Paystack se intekeningbesonderhede ontbreek vir die planverandering.",
+                cancellationToken);
+        }
+
+        var chargeImmediately = attempt.ChargedAmountZar >= 1m;
+        var carriedForwardAccess = CalculateCarriedForwardPlanChangeAccess(
+            currentPlan,
+            changeType,
+            DateTimeOffset.UtcNow,
+            accessEndsAtUtc);
+        var targetNextRenewalAtUtc = chargeImmediately
+            ? DateTimeOffset.UtcNow.AddMonths(targetPlan.BillingPeriodMonths).Add(carriedForwardAccess)
+            : accessEndsAtUtc.AddMonths(targetPlan.BillingPeriodMonths);
+        return await ContinueSubscriptionPlanChangeAsync(
+            new SelfServiceSubscriptionContext(baseUri, apiKey, subscriptionContext.SubscriberId, null),
+            subscriptionContext.Email,
+            currentSubscription,
+            currentPlan,
+            targetPlan,
+            paystackSubscriptionCode,
+            changeType,
+            accessEndsAtUtc,
+            targetNextRenewalAtUtc,
+            attempt.ChargedAmountZar,
+            chargeImmediately,
+            attempt,
+            cancellationToken);
     }
 
     public async Task<SubscriptionCardUpdateLinkResult> CreatePaystackCardUpdateLinkAsync(
@@ -2797,6 +3398,18 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string? chargeReference,
         CancellationToken cancellationToken)
     {
+        var existingAttempt = await GetSubscriptionPlanChangeAttemptAsync(
+            baseUri,
+            apiKey,
+            currentSubscription.SubscriptionId,
+            targetPlan.TierCode,
+            effectiveAtUtc,
+            cancellationToken);
+        if (existingAttempt is not null)
+        {
+            return existingAttempt;
+        }
+
         var payload = new
         {
             subscriber_id = subscriberId,
@@ -2818,8 +3431,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             baseUri,
             "rest/v1/subscription_plan_changes" +
             "?on_conflict=current_subscription_id,target_tier_code,effective_at" +
-            "&select=plan_change_id,status,charge_status,charge_reference,new_provider_payment_id,new_provider_email_token,target_subscription_id");
-        using var request = CreateJsonRequest(HttpMethod.Post, uri, apiKey, payload, "resolution=merge-duplicates,return=representation");
+            $"&select={SubscriptionPlanChangeAttemptSelect}");
+        using var request = CreateJsonRequest(HttpMethod.Post, uri, apiKey, payload, "resolution=ignore-duplicates,return=representation");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         var body = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -2836,18 +3449,188 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var row = DeserializeRows<SubscriptionPlanChangeAttemptRow>(body).FirstOrDefault();
         if (string.IsNullOrWhiteSpace(row?.PlanChangeId))
         {
-            return new SubscriptionPlanChangeAttemptResult(false, ErrorMessage: "Kon nie die planverandering veilig begin nie.");
+            return await GetSubscriptionPlanChangeAttemptAsync(
+                       baseUri,
+                       apiKey,
+                       currentSubscription.SubscriptionId,
+                       targetPlan.TierCode,
+                       effectiveAtUtc,
+                       cancellationToken)
+                   ?? new SubscriptionPlanChangeAttemptResult(false, ErrorMessage: "Kon nie die planverandering veilig begin nie.");
         }
 
-        return new SubscriptionPlanChangeAttemptResult(
+        return MapSubscriptionPlanChangeAttempt(row);
+    }
+
+    private const string SubscriptionPlanChangeAttemptSelect =
+        "plan_change_id,subscriber_id,current_subscription_id,target_subscription_id,target_plan_slug,current_tier_code,target_tier_code,change_type,status,effective_at,charged_amount_zar,charge_status,charge_reference,provider_email_token,new_provider_payment_id,new_provider_email_token,failure_message";
+
+    private async Task<SubscriptionPlanChangeAttemptResult?> GetSubscriptionPlanChangeAttemptAsync(
+        Uri baseUri,
+        string apiKey,
+        string currentSubscriptionId,
+        string targetTierCode,
+        DateTimeOffset effectiveAtUtc,
+        CancellationToken cancellationToken)
+    {
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/subscription_plan_changes" +
+            $"?select={SubscriptionPlanChangeAttemptSelect}" +
+            $"&current_subscription_id=eq.{Uri.EscapeDataString(currentSubscriptionId)}" +
+            $"&target_tier_code=eq.{Uri.EscapeDataString(targetTierCode)}" +
+            $"&effective_at=eq.{Uri.EscapeDataString(effectiveAtUtc.UtcDateTime.ToString("O", CultureInfo.InvariantCulture))}" +
+            "&limit=1");
+        return await GetSubscriptionPlanChangeAttemptAsync(baseUri, apiKey, uri, cancellationToken);
+    }
+
+    private async Task<SubscriptionPlanChangeAttemptResult?> GetSubscriptionPlanChangeAttemptByIdAsync(
+        Uri baseUri,
+        string apiKey,
+        string? planChangeId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(planChangeId))
+        {
+            return null;
+        }
+
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/subscription_plan_changes" +
+            $"?select={SubscriptionPlanChangeAttemptSelect}" +
+            $"&plan_change_id=eq.{Uri.EscapeDataString(planChangeId)}&limit=1");
+        return await GetSubscriptionPlanChangeAttemptAsync(baseUri, apiKey, uri, cancellationToken);
+    }
+
+    private async Task<SubscriptionPlanChangeAttemptResult?> GetSubscriptionPlanChangeAttemptByChargeReferenceAsync(
+        Uri baseUri,
+        string apiKey,
+        string? chargeReference,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(chargeReference))
+        {
+            return null;
+        }
+
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/subscription_plan_changes" +
+            $"?select={SubscriptionPlanChangeAttemptSelect}" +
+            $"&charge_reference=eq.{Uri.EscapeDataString(chargeReference)}&order=created_at.desc&limit=1");
+        return await GetSubscriptionPlanChangeAttemptAsync(baseUri, apiKey, uri, cancellationToken);
+    }
+
+    private async Task<SubscriptionPlanChangeAttemptResult?> GetSubscriptionPlanChangeAttemptAsync(
+        Uri baseUri,
+        string apiKey,
+        Uri uri,
+        CancellationToken cancellationToken)
+    {
+        using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return null;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        var row = DeserializeRows<SubscriptionPlanChangeAttemptRow>(body).FirstOrDefault();
+        return string.IsNullOrWhiteSpace(row?.PlanChangeId)
+            ? null
+            : MapSubscriptionPlanChangeAttempt(row);
+    }
+
+    private static SubscriptionPlanChangeAttemptResult MapSubscriptionPlanChangeAttempt(SubscriptionPlanChangeAttemptRow row) =>
+        new(
             true,
             row.PlanChangeId,
             row.Status,
             row.ChargeStatus,
             row.ChargeReference,
+            row.ProviderEmailToken,
             row.NewProviderPaymentId,
             row.NewProviderEmailToken,
-            row.TargetSubscriptionId);
+            row.TargetSubscriptionId,
+            row.SubscriberId,
+            row.CurrentSubscriptionId,
+            row.TargetPlanSlug,
+            row.CurrentTierCode,
+            row.TargetTierCode,
+            row.ChangeType,
+            row.EffectiveAt,
+            row.ChargedAmountZar,
+            row.FailureMessage);
+
+    private async Task<bool> TryClaimSubscriptionPlanChangeChargeAsync(
+        Uri baseUri,
+        string apiKey,
+        string? planChangeId,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(planChangeId))
+        {
+            return false;
+        }
+
+        var payload = new
+        {
+            status = "charge_pending",
+            charge_status = "initiating",
+            updated_at = DateTime.UtcNow
+        };
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/subscription_plan_changes" +
+            $"?plan_change_id=eq.{Uri.EscapeDataString(planChangeId)}" +
+            "&status=eq.pending&charge_status=is.null" +
+            "&select=plan_change_id");
+        using var request = CreateJsonRequest(new HttpMethod("PATCH"), uri, apiKey, payload, "return=representation");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return false;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        return !string.IsNullOrWhiteSpace(ReadFirstStringProperty(body, "plan_change_id"));
+    }
+
+    private async Task<bool> TryClaimSubscriptionPlanChangeRefundAsync(
+        Uri baseUri,
+        string apiKey,
+        string? planChangeId,
+        string failureMessage,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(planChangeId))
+        {
+            return false;
+        }
+
+        var payload = new
+        {
+            status = "failed",
+            charge_status = "refund_starting",
+            failure_message = failureMessage,
+            failed_at = DateTime.UtcNow,
+            updated_at = DateTime.UtcNow
+        };
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/subscription_plan_changes" +
+            $"?plan_change_id=eq.{Uri.EscapeDataString(planChangeId)}" +
+            "&charge_status=eq.success&select=plan_change_id");
+        using var request = CreateJsonRequest(new HttpMethod("PATCH"), uri, apiKey, payload, "return=representation");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            return false;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        return !string.IsNullOrWhiteSpace(ReadFirstStringProperty(body, "plan_change_id"));
     }
 
     private async Task MarkSubscriptionPlanChangeAttemptAsync(
@@ -2937,10 +3720,6 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             (int)response.StatusCode,
             body);
     }
-
-    private static bool IsPlanChangeChargeAlreadyAccepted(SubscriptionPlanChangeAttemptResult attempt) =>
-        string.Equals(attempt.ChargeStatus, "success", StringComparison.OrdinalIgnoreCase) ||
-        IsPendingPaystackStatus(attempt.ChargeStatus);
 
     private static bool IsCurrentlyActiveSubscription(SubscriptionStatusRow row, DateTimeOffset nowUtc)
     {
@@ -3315,6 +4094,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             var nowUtc = DateTimeOffset.UtcNow;
             PaymentRecoverySubscriptionContext? authorizationRetryContext = null;
             PaymentRecoverySubscriptionContext? recurringChargeContext = null;
+            SubscriptionPlanChangeAttemptResult? planChangeAttempt = null;
             string? planChangeSubscriptionId = null;
             if (IsPaystackAuthorizationRetrySuccess(eventType, data))
             {
@@ -3353,9 +4133,27 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             }
             else if (IsPaystackPlanChangeChargeSuccess(eventType, data))
             {
-                planChangeSubscriptionId = TryReadNestedString(data, "metadata", "subscription_id")
+                var chargeReference = TryReadString(data, "reference") ?? providerTransactionId;
+                planChangeAttempt = await GetSubscriptionPlanChangeAttemptByChargeReferenceAsync(
+                    baseUri,
+                    apiKey,
+                    chargeReference,
+                    cancellationToken);
+                planChangeSubscriptionId = planChangeAttempt?.CurrentSubscriptionId
+                    ?? TryReadNestedString(data, "metadata", "subscription_id")
                     ?? TryReadNestedString(data, "metadata", "previous_subscription_id");
                 providerPaymentId = TryReadNestedString(data, "metadata", "provider_payment_id") ?? providerPaymentId;
+            }
+            else if (IsPaystackRefundEvent(eventType))
+            {
+                var transactionReference = ResolvePaystackRefundTransactionReference(data);
+                planChangeAttempt = await GetSubscriptionPlanChangeAttemptByChargeReferenceAsync(
+                    baseUri,
+                    apiKey,
+                    transactionReference,
+                    cancellationToken);
+                planChangeSubscriptionId = planChangeAttempt?.CurrentSubscriptionId;
+                providerTransactionId = transactionReference ?? providerTransactionId;
             }
 
             var normalizedPayload = DeserializePayloadObject(payloadJson);
@@ -3407,6 +4205,49 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             if (!string.IsNullOrWhiteSpace(planChangeSubscriptionId))
             {
                 subscriptionId = planChangeSubscriptionId;
+            }
+
+            if (IsPaystackPlanChangeChargeSuccess(eventType, data) &&
+                planChangeAttempt is not null &&
+                !string.Equals(planChangeAttempt.Status, "completed", StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(planChangeAttempt.Status, "failed", StringComparison.OrdinalIgnoreCase))
+            {
+                await MarkSubscriptionPlanChangeAttemptAsync(
+                    baseUri,
+                    apiKey,
+                    planChangeAttempt.PlanChangeId,
+                    "charge_accepted",
+                    cancellationToken,
+                    chargeStatus: "success",
+                    chargeReference: TryReadString(data, "reference") ?? planChangeAttempt.ChargeReference);
+                planChangeAttempt = planChangeAttempt with { Status = "charge_accepted", ChargeStatus = "success" };
+                var resumeResult = await ResumeSubscriptionPlanChangeAttemptAsync(
+                    baseUri,
+                    apiKey,
+                    planChangeAttempt,
+                    cancellationToken);
+                subscriptionId = planChangeAttempt.CurrentSubscriptionId ?? subscriptionId;
+                if (!resumeResult.IsSuccess && !resumeResult.IsPending)
+                {
+                    _logger.LogWarning(
+                        "Paystack plan-change webhook could not complete the plan change. plan_change_id={PlanChangeId} resolution={Resolution} error={Error}",
+                        planChangeAttempt.PlanChangeId,
+                        resumeResult.ResolutionStatus,
+                        resumeResult.ErrorMessage);
+                }
+            }
+            else if (IsPaystackRefundEvent(eventType) && planChangeAttempt is not null)
+            {
+                await MarkSubscriptionPlanChangeAttemptAsync(
+                    baseUri,
+                    apiKey,
+                    planChangeAttempt.PlanChangeId,
+                    "failed",
+                    cancellationToken,
+                    chargeStatus: ResolvePlanChangeRefundWebhookStatus(eventType, eventStatus),
+                    chargeReference: planChangeAttempt.ChargeReference,
+                    failureMessage: planChangeAttempt.ErrorMessage ?? "Plan change was compensated by refund.");
+                subscriptionId = planChangeAttempt.CurrentSubscriptionId ?? subscriptionId;
             }
 
             if (paystackContext is not null)
@@ -7211,6 +8052,25 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string.Equals(eventType, "charge.success", StringComparison.OrdinalIgnoreCase) &&
         string.Equals(TryReadNestedString(data, "metadata", "source"), "subscription_plan_change", StringComparison.OrdinalIgnoreCase);
 
+    private static bool IsPaystackRefundEvent(string eventType) =>
+        eventType?.Trim().ToLowerInvariant() is
+            "refund.pending" or "refund.processing" or "refund.processed" or "refund.failed";
+
+    private static string? ResolvePaystackRefundTransactionReference(JsonElement data) =>
+        TryReadString(data, "transaction_reference")
+        ?? TryReadNestedString(data, "transaction", "reference")
+        ?? TryReadNestedString(data, "transaction", "id");
+
+    private static string ResolvePlanChangeRefundWebhookStatus(string eventType, string? eventStatus) =>
+        eventType?.Trim().ToLowerInvariant() switch
+        {
+            "refund.processed" => "refunded",
+            "refund.processing" => "refund_processing",
+            "refund.pending" => "refund_pending",
+            "refund.failed" => "refund_failed",
+            _ => NormalizePlanChangeRefundStatus(eventStatus)
+        };
+
     private static bool IsPaystackRecurringChargeSuccessWithoutSubscriptionCode(string eventType, JsonElement data) =>
         string.Equals(eventType, "charge.success", StringComparison.OrdinalIgnoreCase) &&
         string.IsNullOrWhiteSpace(TryReadNestedString(data, "metadata", "subscription_key")) &&
@@ -7652,9 +8512,18 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string? Status = null,
         string? ChargeStatus = null,
         string? ChargeReference = null,
+        string? ProviderEmailToken = null,
         string? NewProviderPaymentId = null,
         string? NewProviderEmailToken = null,
         string? TargetSubscriptionId = null,
+        string? SubscriberId = null,
+        string? CurrentSubscriptionId = null,
+        string? TargetPlanSlug = null,
+        string? CurrentTierCode = null,
+        string? TargetTierCode = null,
+        string? ChangeType = null,
+        DateTimeOffset? EffectiveAt = null,
+        decimal ChargedAmountZar = 0m,
         string? ErrorMessage = null);
 
     private sealed record SelfServiceSubscriptionContext(
@@ -7782,6 +8651,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         [JsonPropertyName("charge_reference")]
         public string? ChargeReference { get; set; }
 
+        [JsonPropertyName("provider_email_token")]
+        public string? ProviderEmailToken { get; set; }
+
         [JsonPropertyName("new_provider_payment_id")]
         public string? NewProviderPaymentId { get; set; }
 
@@ -7790,6 +8662,33 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         [JsonPropertyName("target_subscription_id")]
         public string? TargetSubscriptionId { get; set; }
+
+        [JsonPropertyName("subscriber_id")]
+        public string? SubscriberId { get; set; }
+
+        [JsonPropertyName("current_subscription_id")]
+        public string? CurrentSubscriptionId { get; set; }
+
+        [JsonPropertyName("target_plan_slug")]
+        public string? TargetPlanSlug { get; set; }
+
+        [JsonPropertyName("current_tier_code")]
+        public string? CurrentTierCode { get; set; }
+
+        [JsonPropertyName("target_tier_code")]
+        public string? TargetTierCode { get; set; }
+
+        [JsonPropertyName("change_type")]
+        public string? ChangeType { get; set; }
+
+        [JsonPropertyName("effective_at")]
+        public DateTimeOffset? EffectiveAt { get; set; }
+
+        [JsonPropertyName("charged_amount_zar")]
+        public decimal ChargedAmountZar { get; set; }
+
+        [JsonPropertyName("failure_message")]
+        public string? FailureMessage { get; set; }
     }
 
     private sealed class PendingRepairSubscriptionRow

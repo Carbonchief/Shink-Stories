@@ -163,6 +163,17 @@
     }
     else
     {
+        @if (string.Equals(SubscriptionAttention.Reason, "provider_switch_cancel_failed", StringComparison.OrdinalIgnoreCase))
+        {
+            <section class="billing-state-card billing-state-card-warning" role="alert" aria-live="polite">
+                <div class="billing-state-copy">
+                    <p class="billing-section-kicker">PayFast kort aandag</p>
+                    <h2>Jou nuwe plan is aktief, maar die ou PayFast-intekening kon nie outomaties gekanselleer word nie.</h2>
+                    <p>Kanselleer die ou intekening in jou PayFast-rekening om 'n dubbele heffing te voorkom. Kontak ons voordat jy nog 'n planverandering probeer as jy onseker is.</p>
+                </div>
+            </section>
+        }
+
         <div class="billing-content-grid">
             <section class="billing-panel billing-profile-card" aria-label="Jou profiel">
                 <div class="billing-panel-heading">
@@ -835,6 +846,7 @@
     private bool IsAuthenticatedUser { get; set; }
     private bool HasActivePaidSubscription { get; set; }
     private CurrentPaidSubscription? CurrentPaidSubscription { get; set; }
+    private PaidSubscriptionAttention SubscriptionAttention { get; set; } = new(false);
     private bool IsCompletingEmailChange { get; set; }
     private bool IsEmailChangeModalOpen { get; set; }
     private bool IsPasswordChangeModalOpen { get; set; }
@@ -924,10 +936,12 @@
             var hasActivePaidSubscriptionTask = SubscriptionLedgerService.HasActivePaidSubscriptionAsync(UserEmail);
             var currentPaidSubscriptionTask = SubscriptionLedgerService.GetCurrentPaidSubscriptionAsync(UserEmail);
             var subscriberProfileTask = SubscriptionLedgerService.GetSubscriberProfileAsync(UserEmail);
-            await Task.WhenAll(hasActivePaidSubscriptionTask, currentPaidSubscriptionTask, subscriberProfileTask);
+            var subscriptionAttentionTask = SubscriptionLedgerService.GetPaidSubscriptionAttentionAsync(UserEmail);
+            await Task.WhenAll(hasActivePaidSubscriptionTask, currentPaidSubscriptionTask, subscriberProfileTask, subscriptionAttentionTask);
 
             HasActivePaidSubscription = hasActivePaidSubscriptionTask.Result;
             CurrentPaidSubscription = currentPaidSubscriptionTask.Result;
+            SubscriptionAttention = subscriptionAttentionTask.Result;
             HydrateProfileForm(subscriberProfileTask.Result, authState.User);
 
             if (string.Equals(EmailChange, "success", StringComparison.OrdinalIgnoreCase))

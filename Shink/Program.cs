@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.ResponseCompression;
@@ -1201,6 +1202,7 @@ app.MapGet("/betaal/{planSlug}", async (
     PaystackCheckoutService paystackCheckoutService,
     ISubscriptionLedgerService subscriptionLedgerService,
     IAbandonedCartRecoveryService abandonedCartRecoveryService,
+    IAntiforgery antiforgery,
     IOptions<SiteOptions> siteOptions,
     HttpContext httpContext,
     ILogger<Program> logger) =>
@@ -1251,17 +1253,22 @@ app.MapGet("/betaal/{planSlug}", async (
         if (string.Equals(discountPreview.DiscountKind, SubscriptionDiscountKinds.FreeAccess, StringComparison.Ordinal) &&
             discountPreview.BypassesPayment)
         {
-            var applyResult = await subscriptionLedgerService.ApplySignupDiscountCodeAsync(
+            var currentAccess = await subscriptionLedgerService.AssessSubscriptionCheckoutAsync(
                 signedInEmail,
-                discountCode,
                 plan.TierCode,
                 httpContext.RequestAborted);
-            if (!applyResult.IsSuccess)
-            {
-                return Results.Redirect(BuildSubscriptionPaymentRedirectPath("kode-misluk", plan.Slug, safeReturnUrl));
-            }
-
-            return Results.Redirect(BuildSubscriptionPaymentRedirectPath("kode-toegepas", plan.Slug, safeReturnUrl));
+            SetPlanChangeConfirmationResponseHeaders(httpContext);
+            var antiforgeryTokens = antiforgery.GetAndStoreTokens(httpContext);
+            return Results.Content(
+                BuildPlanChangeConfirmationPage(
+                    plan,
+                    currentAccess with { TransitionKind = SubscriptionCheckoutTransitionKinds.FreeAccess },
+                    selectedProvider: "paystack",
+                    discountCode,
+                    safeReturnUrl,
+                    antiforgeryTokens,
+                    isFreeAccessCode: true),
+                "text/html; charset=utf-8");
         }
     }
 
@@ -1337,32 +1344,18 @@ app.MapGet("/betaal/{planSlug}", async (
             SubscriptionCheckoutTransitionKinds.PlanChange,
             StringComparison.OrdinalIgnoreCase))
     {
-        const string discountNotCarriedWarning = "discount-code-not-carried";
-        if (discountPreview is not null &&
-            !string.Equals(bevestigOorgang, discountNotCarriedWarning, StringComparison.OrdinalIgnoreCase))
-        {
-            return Results.Redirect(BuildUpgradeWarningRedirectPath(
-                checkoutAssessment with { TransitionKind = discountNotCarriedWarning },
+        SetPlanChangeConfirmationResponseHeaders(httpContext);
+        var antiforgeryTokens = antiforgery.GetAndStoreTokens(httpContext);
+        return Results.Content(
+            BuildPlanChangeConfirmationPage(
                 plan,
+                checkoutAssessment,
                 selectedProvider,
                 discountCode,
-                safeReturnUrl));
-        }
-
-        var planChangeResult = await subscriptionLedgerService.ChangePaidSubscriptionPlanAsync(
-            signedInEmail,
-            plan.Slug,
-            httpContext.RequestAborted);
-
-        logger.LogInformation(
-            "Handled paid plan change from checkout route. plan={PlanSlug} tier={TierCode} email={Email} success={Success} change_type={ChangeType}",
-            plan.Slug,
-            plan.TierCode,
-            signedInEmail,
-            planChangeResult.IsSuccess,
-            planChangeResult.ChangeType);
-
-        return Results.Redirect(BuildPlanChangeRedirectPath(planChangeResult, plan, safeReturnUrl));
+                safeReturnUrl,
+                antiforgeryTokens,
+                isFreeAccessCode: false),
+            "text/html; charset=utf-8");
     }
 
     if (!string.Equals(
@@ -1531,6 +1524,141 @@ app.MapGet("/betaal/{planSlug}", async (
     httpContext.Response.Headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet";
     return Results.Content(html, "text/html; charset=utf-8");
 });
+
+app.MapPost("/betaal/{planSlug}/verander", async (
+    string planSlug,
+    IAntiforgery antiforgery,
+    ISubscriptionLedgerService subscriptionLedgerService,
+    HttpContext httpContext,
+    ILogger<Program> logger) =>
+{
+    if (!(httpContext.User.Identity?.IsAuthenticated ?? false))
+    {
+        return Results.Redirect($"/teken-in?returnUrl={Uri.EscapeDataString($"/betaal/{planSlug}")}");
+    }
+
+    try
+    {
+        await antiforgery.ValidateRequestAsync(httpContext);
+    }
+    catch (AntiforgeryValidationException)
+    {
+        return Results.BadRequest(new { message = "Hierdie bevestiging het verval. Gaan terug na die planblad en probeer weer." });
+    }
+
+    if (!httpContext.Request.HasFormContentType)
+    {
+        return Results.BadRequest(new { message = "Ongeldige planbevestiging." });
+    }
+
+    var plan = PaymentPlanCatalog.FindBySlug(planSlug);
+    if (plan is null || plan.IsAdminOnly)
+    {
+        return Results.NotFound();
+    }
+
+    var form = await httpContext.Request.ReadFormAsync(httpContext.RequestAborted);
+    var provider = form["provider"].ToString();
+    var discountCode = form["discountCode"].ToString();
+    var safeReturnUrl = GetSafeCheckoutReturnUrl(form["returnUrl"].ToString(), plan);
+    if (!TryResolvePaymentProvider(provider, out var selectedProvider) ||
+        !string.Equals(selectedProvider, "paystack", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new { message = "Hierdie planverandering moet veilig deur Paystack verwerk word." });
+    }
+
+    var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
+                       ?? httpContext.User.Identity?.Name;
+    if (string.IsNullOrWhiteSpace(signedInEmail))
+    {
+        return Results.Redirect("/teken-in");
+    }
+
+    if (!string.IsNullOrWhiteSpace(discountCode))
+    {
+        var discountPreview = await subscriptionLedgerService.PreviewSignupDiscountCodeAsync(
+            discountCode,
+            plan.TierCode,
+            httpContext.RequestAborted);
+        if (!discountPreview.IsValid)
+        {
+            return Results.Redirect(BuildSubscriptionPaymentRedirectPath("kode-ongeldig", plan.Slug, safeReturnUrl));
+        }
+
+        if (string.Equals(discountPreview.DiscountKind, SubscriptionDiscountKinds.FreeAccess, StringComparison.Ordinal) &&
+            discountPreview.BypassesPayment)
+        {
+            var applyResult = await subscriptionLedgerService.ApplySignupDiscountCodeAsync(
+                signedInEmail,
+                discountCode,
+                plan.TierCode,
+                httpContext.RequestAborted);
+            if (applyResult.IsSuccess)
+            {
+                return Results.Redirect(BuildSubscriptionPaymentRedirectPath("kode-toegepas", plan.Slug, safeReturnUrl));
+            }
+
+            return Results.Redirect(BuildSubscriptionPaymentRedirectPath("kode-misluk", plan.Slug, safeReturnUrl));
+        }
+    }
+
+    var hasActiveTierSubscription = await subscriptionLedgerService.HasBillableSubscriptionForTierAsync(
+        signedInEmail,
+        plan.TierCode,
+        httpContext.RequestAborted);
+    if (hasActiveTierSubscription)
+    {
+        return Results.Redirect(QueryHelpers.AddQueryString(
+            "/opsies",
+            new Dictionary<string, string?>
+            {
+                ["betaling"] = "reeds-ingeteken",
+                ["tier"] = plan.TierCode,
+                ["returnUrl"] = safeReturnUrl
+            }));
+    }
+
+    var checkoutAssessment = await subscriptionLedgerService.AssessSubscriptionCheckoutAsync(
+        signedInEmail,
+        plan.TierCode,
+        httpContext.RequestAborted);
+    if (!string.Equals(
+            checkoutAssessment.TransitionKind,
+            SubscriptionCheckoutTransitionKinds.PlanChange,
+            StringComparison.OrdinalIgnoreCase))
+    {
+        var restartQuery = new Dictionary<string, string?>
+        {
+            ["provider"] = selectedProvider,
+            ["returnUrl"] = safeReturnUrl
+        };
+        if (!string.IsNullOrWhiteSpace(discountCode))
+        {
+            restartQuery["discountCode"] = discountCode.Trim();
+        }
+
+        return Results.Redirect(QueryHelpers.AddQueryString(
+            $"/betaal/{Uri.EscapeDataString(plan.Slug)}",
+            restartQuery));
+    }
+
+    var planChangeResult = await subscriptionLedgerService.ChangePaidSubscriptionPlanAsync(
+        signedInEmail,
+        plan.Slug,
+        httpContext.RequestAborted);
+
+    logger.LogInformation(
+        "Handled confirmed paid plan change. plan={PlanSlug} tier={TierCode} email={Email} success={Success} pending={Pending} change_type={ChangeType}",
+        plan.Slug,
+        plan.TierCode,
+        signedInEmail,
+        planChangeResult.IsSuccess,
+        planChangeResult.IsPending,
+        planChangeResult.ChangeType);
+
+    return Results.Redirect(BuildPlanChangeRedirectPath(planChangeResult, plan, safeReturnUrl));
+})
+.RequireRateLimiting("auth-submit");
 
 app.MapPost("/winkel/koop/paystack", async (
     HttpContext httpContext,
@@ -5611,12 +5739,117 @@ static string BuildAbandonedCartRecoveryCheckoutPageHtml(
         """;
 }
 
+static void SetPlanChangeConfirmationResponseHeaders(HttpContext httpContext)
+{
+    httpContext.Response.Headers.CacheControl = "no-store, no-cache, must-revalidate";
+    httpContext.Response.Headers.Pragma = "no-cache";
+    httpContext.Response.Headers.Expires = "0";
+    httpContext.Response.Headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet";
+    httpContext.Response.Headers["Referrer-Policy"] = "no-referrer";
+}
+
+static string BuildPlanChangeConfirmationPage(
+    PaymentPlan plan,
+    SubscriptionCheckoutAssessment assessment,
+    string selectedProvider,
+    string? discountCode,
+    string? returnUrl,
+    AntiforgeryTokenSet antiforgeryTokens,
+    bool isFreeAccessCode)
+{
+    var currentPlan = PaymentPlanCatalog.FindByTierCode(assessment.CurrentTierCode);
+    var isDowngrade = currentPlan is not null &&
+        !string.Equals(currentPlan.TierCode, plan.TierCode, StringComparison.OrdinalIgnoreCase) &&
+        (string.Equals(plan.TierCode, StoryAccessPolicy.StoryCornerMonthlyTierCode, StringComparison.OrdinalIgnoreCase) ||
+         plan.BillingPeriodMonths < currentPlan.BillingPeriodMonths);
+    var heading = isFreeAccessCode
+        ? "Bevestig jou gratis toegang"
+        : isDowngrade ? "Bevestig jou afgradering" : "Bevestig jou planverandering";
+    var actionText = isFreeAccessCode
+        ? "Pas gratis kode toe"
+        : isDowngrade ? "Skeduleer afgradering" : $"Bevestig en betaal R {plan.AmountDisplay}";
+    var timingMessage = isFreeAccessCode
+        ? "Jou kode word eers toegepas wanneer jy die knoppie hieronder kies. As jy reeds betaal, kan jou huidige herhalende betaling tydelik gestop word volgens die kode se tydperk."
+        : isDowngrade
+            ? "Geen bedrag word nou gehef nie. Jou huidige toegang bly beskikbaar tot die hernuwingsdatum; die laer plan begin daarna."
+            : $"R {plan.AmountDisplay} word een keer gehef nadat jy bevestig. Ons verander eers jou ou intekening nadat Paystack die betaling as suksesvol bevestig het.";
+    var safetyMessage = isFreeAccessCode
+        ? "Niks verander as jy teruggaan sonder om te bevestig nie."
+        : "As enige latere stap misluk nadat die betaling bevestig is, vra ons outomaties 'n volle terugbetaling aan. Moenie die knoppie herhaaldelik kies terwyl verwerking aan die gang is nie.";
+    if (!isFreeAccessCode && !string.IsNullOrWhiteSpace(discountCode))
+    {
+        safetyMessage = $"Die afslagkode word nie op hierdie bestaande planverandering toegepas nie. {safetyMessage}";
+    }
+    var currentPlanName = currentPlan?.ItemName ?? assessment.CurrentTierCode ?? "Geen betaalplan";
+    var providerName = assessment.CurrentProvider?.Trim().ToLowerInvariant() switch
+    {
+        "paystack" => "Paystack",
+        "payfast" => "PayFast",
+        "apple" or "app_store" => "Apple App Store",
+        "google" or "google_play" => "Google Play",
+        _ => "Nie van toepassing nie"
+    };
+    var formFieldName = WebUtility.HtmlEncode(antiforgeryTokens.FormFieldName);
+    var requestToken = WebUtility.HtmlEncode(antiforgeryTokens.RequestToken);
+    var encodedAction = WebUtility.HtmlEncode($"/betaal/{Uri.EscapeDataString(plan.Slug)}/verander");
+    var encodedProvider = WebUtility.HtmlEncode(selectedProvider);
+    var encodedDiscountCode = WebUtility.HtmlEncode(discountCode?.Trim() ?? string.Empty);
+    var encodedReturnUrl = WebUtility.HtmlEncode(returnUrl ?? string.Empty);
+
+    return $$"""
+        <!doctype html>
+        <html lang="af">
+        <head>
+          <meta charset="utf-8" />
+          <meta name="viewport" content="width=device-width, initial-scale=1" />
+          <meta name="referrer" content="no-referrer" />
+          <meta name="robots" content="noindex,nofollow,noarchive,nosnippet" />
+          <title>Schink Stories | {{WebUtility.HtmlEncode(heading)}}</title>
+        </head>
+        <body style="margin:0;background:#f4eee6;color:#222;font-family:Arial,Helvetica,sans-serif;">
+          <main style="width:calc(100% - 32px);max-width:620px;margin:40px auto;">
+            <section aria-labelledby="plan-change-title" style="overflow:hidden;background:#fff;border-radius:24px;box-shadow:0 18px 48px rgba(41,54,48,.14);">
+              <div style="display:flex;justify-content:center;padding:22px 24px;background:#2f5d50;">
+                <img src="/branding/schink-logo-text.png" alt="Schink" style="display:block;width:70%;max-width:210px;height:auto;" />
+              </div>
+              <div style="padding:clamp(24px,6vw,36px);">
+                <p style="margin:0 0 8px;color:#c8801e;font-size:13px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;">Kontroleer voor jy voortgaan</p>
+                <h1 id="plan-change-title" style="margin:0 0 12px;color:#2f5d50;font-family:Georgia,'Times New Roman',serif;font-size:clamp(30px,7vw,42px);line-height:1.08;">{{WebUtility.HtmlEncode(heading)}}</h1>
+                <p style="margin:0 0 22px;color:#545454;font-size:17px;line-height:1.6;">{{WebUtility.HtmlEncode(timingMessage)}}</p>
+                <div style="margin:0 0 20px;padding:20px;border:1px solid #eadfce;border-radius:16px;background:#fffaf4;">
+                  <p style="margin:0 0 10px;color:#696969;font-size:14px;">Huidige plan: <strong style="color:#2f5d50;">{{WebUtility.HtmlEncode(currentPlanName)}}</strong> · {{WebUtility.HtmlEncode(providerName)}}</p>
+                  <strong style="display:block;margin-bottom:6px;color:#2f5d50;font-size:21px;">Nuwe plan: {{WebUtility.HtmlEncode(plan.ItemName)}}</strong>
+                  <span style="color:#4f4f4f;font-size:16px;">{{(isFreeAccessCode ? "Geen nuwe betaling" : $"R {WebUtility.HtmlEncode(plan.AmountDisplay)}")}}</span>
+                </div>
+                <p style="margin:0 0 22px;padding:14px 16px;border-radius:12px;background:#edf6f2;color:#315b50;font-size:14px;line-height:1.55;">{{WebUtility.HtmlEncode(safetyMessage)}}</p>
+                <form method="post" action="{{encodedAction}}">
+                  <input type="hidden" name="{{formFieldName}}" value="{{requestToken}}" />
+                  <input type="hidden" name="provider" value="{{encodedProvider}}" />
+                  <input type="hidden" name="discountCode" value="{{encodedDiscountCode}}" />
+                  <input type="hidden" name="returnUrl" value="{{encodedReturnUrl}}" />
+                  <button type="submit" style="width:100%;border:0;border-radius:12px;background:#f3b23f;color:#222;cursor:pointer;font:inherit;font-weight:800;padding:15px 18px;">{{WebUtility.HtmlEncode(actionText)}}</button>
+                </form>
+                <a href="/opsies#plan-opsies" style="display:block;margin-top:18px;color:#2f5d50;font-weight:700;text-align:center;text-underline-offset:3px;">Kies 'n ander plan</a>
+              </div>
+            </section>
+          </main>
+        </body>
+        </html>
+        """;
+}
+
 static string BuildPlanChangeRedirectPath(
     SubscriptionPlanChangeResult result,
     PaymentPlan plan,
     string? returnUrl = null)
 {
-    var paymentStatus = result.IsSuccess
+    var paymentStatus = string.Equals(result.ResolutionStatus, "refunded", StringComparison.OrdinalIgnoreCase)
+        ? "plan-terugbetaal"
+        : result.IsPending
+        ? string.Equals(result.ResolutionStatus, "refund_pending", StringComparison.OrdinalIgnoreCase)
+            ? "plan-terugbetaling"
+            : "plan-verwerk"
+        : result.IsSuccess
         ? result.ChangeType switch
         {
             "upgrade" => "plan-opgradeer",
@@ -5631,7 +5864,8 @@ static string BuildPlanChangeRedirectPath(
         ["plan"] = plan.Slug
     };
 
-    if (!result.IsSuccess)
+    if (!result.IsSuccess && !result.IsPending &&
+        !string.Equals(result.ResolutionStatus, "refunded", StringComparison.OrdinalIgnoreCase))
     {
         query["planFout"] = ResolvePlanChangeFailureCode(result.ErrorMessage);
     }
@@ -5659,7 +5893,8 @@ static string BuildUpgradeWarningRedirectPath(
         ["tier"] = plan.TierCode,
         ["provider"] = selectedProvider,
         ["huidigeVerskaffer"] = assessment.CurrentProvider,
-        ["huidigeTier"] = assessment.CurrentTierCode
+        ["huidigeTier"] = assessment.CurrentTierCode,
+        ["kanOutomatiesKanselleer"] = assessment.CanAutomaticallyCancelCurrentProvider ? "true" : "false"
     };
 
     if (assessment.CurrentAccessEndsAtUtc is not null)
@@ -5690,6 +5925,11 @@ static string ResolvePlanChangeFailureCode(string? errorMessage)
     if (errorMessage.Contains("aktiewe betaalde intekening", StringComparison.OrdinalIgnoreCase))
     {
         return "geen-aktiewe-plan";
+    }
+
+    if (errorMessage.Contains("terugbetaling", StringComparison.OrdinalIgnoreCase))
+    {
+        return "terugbetaling";
     }
 
     if (errorMessage.Contains("betaalverskaffer", StringComparison.OrdinalIgnoreCase) ||

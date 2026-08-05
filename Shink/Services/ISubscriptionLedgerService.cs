@@ -105,12 +105,15 @@ public sealed record SubscriptionPlanChangeResult(
     string? ChangeType = null,
     DateTimeOffset? EffectiveAtUtc = null,
     decimal? ChargedAmountZar = null,
-    string? ErrorMessage = null);
+    string? ErrorMessage = null,
+    bool IsPending = false,
+    string? ResolutionStatus = null);
 public sealed record SubscriptionCheckoutAssessment(
     string TransitionKind,
     string? CurrentProvider = null,
     string? CurrentTierCode = null,
-    DateTimeOffset? CurrentAccessEndsAtUtc = null);
+    DateTimeOffset? CurrentAccessEndsAtUtc = null,
+    bool CanAutomaticallyCancelCurrentProvider = false);
 public static class SubscriptionCheckoutTransitionKinds
 {
     public const string NewCheckout = "new-checkout";

@@ -74,7 +74,7 @@ public class SignupSourceTests
         StringAssert.Contains(program, "PreviewSignupDiscountCodeAsync(");
         StringAssert.Contains(program, "ApplySignupDiscountCodeAsync(");
         StringAssert.Contains(program, "BuildSubscriptionPaymentRedirectPath(\"kode-toegepas\"");
-        StringAssert.Contains(program, "const string discountNotCarriedWarning = \"discount-code-not-carried\"");
+        StringAssert.Contains(program, "Die afslagkode word nie op hierdie bestaande planverandering toegepas nie.");
         StringAssert.Contains(program, "BuildUpgradeWarningRedirectPath(");
         StringAssert.Contains(opsies, "Die kode word nie op hierdie planverandering toegepas nie.");
     }

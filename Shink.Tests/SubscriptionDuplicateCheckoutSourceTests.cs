@@ -12,7 +12,7 @@ public sealed class SubscriptionDuplicateCheckoutSourceTests
         var routeBlock = ExtractBlock(
             program,
             "app.MapGet(\"/betaal/{planSlug}\"",
-            ".DisableAntiforgery();",
+            "app.MapPost(\"/betaal/{planSlug}/verander\"",
             startOffset: program.IndexOf("app.MapGet(\"/betaal/{planSlug}\"", StringComparison.Ordinal));
 
         StringAssert.Contains(routeBlock, "HasBillableSubscriptionForTierAsync(");
@@ -28,37 +28,86 @@ public sealed class SubscriptionDuplicateCheckoutSourceTests
     }
 
     [TestMethod]
-    public void PaymentRouteAssessesEverySubscriptionBeforeChangingOrStartingCheckout()
+    public void PaymentGetRouteAssessesAndConfirmsWithoutChangingTheSubscription()
     {
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
         var routeBlock = ExtractBlock(
             program,
             "app.MapGet(\"/betaal/{planSlug}\"",
-            ".DisableAntiforgery();",
+            "app.MapPost(\"/betaal/{planSlug}/verander\"",
             startOffset: program.IndexOf("app.MapGet(\"/betaal/{planSlug}\"", StringComparison.Ordinal));
 
         StringAssert.Contains(routeBlock, "AssessSubscriptionCheckoutAsync(");
         StringAssert.Contains(routeBlock, "SubscriptionCheckoutTransitionKinds.PlanChange");
         StringAssert.Contains(routeBlock, "shouldBlockDuplicateTier");
-        StringAssert.Contains(routeBlock, "ChangePaidSubscriptionPlanAsync(");
+        StringAssert.Contains(routeBlock, "BuildPlanChangeConfirmationPage(");
         StringAssert.Contains(routeBlock, "BuildUpgradeWarningRedirectPath(");
-        StringAssert.Contains(routeBlock, "BuildPlanChangeRedirectPath(");
+        Assert.DoesNotContain("ChangePaidSubscriptionPlanAsync(", routeBlock);
         StringAssert.Contains(program, "\"plan-opgradeer\"");
         StringAssert.Contains(program, "\"plan-afgradeer\"");
 
         var paidCheckIndex = routeBlock.IndexOf("AssessSubscriptionCheckoutAsync(", StringComparison.Ordinal);
-        var planChangeIndex = routeBlock.IndexOf("ChangePaidSubscriptionPlanAsync(", StringComparison.Ordinal);
         var pendingRepairCheckIndex = routeBlock.IndexOf("HasPendingPaystackRepairForTierAsync(", StringComparison.Ordinal);
         var providerCheckoutIndex = routeBlock.IndexOf("InitializeCheckoutAsync(", StringComparison.Ordinal);
-        Assert.IsTrue(
-            paidCheckIndex >= 0 && planChangeIndex > paidCheckIndex,
-            "The subscription assessment must trigger a supported plan change before pending repair checks.");
         Assert.IsTrue(
             paidCheckIndex >= 0 && pendingRepairCheckIndex > paidCheckIndex,
             "The subscription assessment must run before pending repair checks.");
         Assert.IsTrue(
             paidCheckIndex >= 0 && providerCheckoutIndex > paidCheckIndex,
             "The subscription assessment must run before any payment provider can start a new checkout.");
+    }
+
+    [TestMethod]
+    public void ConfirmedPlanChangeUsesAntiforgeryProtectedPost()
+    {
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+        var postBlock = ExtractBlock(
+            program,
+            "app.MapPost(\"/betaal/{planSlug}/verander\"",
+            "app.MapPost(\"/winkel/koop/paystack\"",
+            startOffset: program.IndexOf("app.MapPost(\"/betaal/{planSlug}/verander\"", StringComparison.Ordinal));
+
+        StringAssert.Contains(postBlock, "antiforgery.ValidateRequestAsync(httpContext)");
+        StringAssert.Contains(postBlock, "HasBillableSubscriptionForTierAsync(");
+        StringAssert.Contains(postBlock, "AssessSubscriptionCheckoutAsync(");
+        StringAssert.Contains(postBlock, "ChangePaidSubscriptionPlanAsync(");
+        StringAssert.Contains(postBlock, ".RequireRateLimiting(\"auth-submit\")");
+        Assert.DoesNotContain("DisableAntiforgery", postBlock);
+    }
+
+    [TestMethod]
+    public void SignedInOptionsGoDirectlyToConfirmationAndCurrentTierIsDisabled()
+    {
+        var opsies = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Opsies.razor"));
+
+        StringAssert.Contains(opsies, "if (IsUserAuthenticated)");
+        StringAssert.Contains(opsies, "return checkoutPath;");
+        StringAssert.Contains(opsies, "GetCurrentPaidSubscriptionAsync(userEmail)");
+        StringAssert.Contains(opsies, "IsCurrentPlan(CurrentAllStoriesPlanSlug)");
+        StringAssert.Contains(opsies, "aria-disabled=\"true\">Huidige plan");
+
+        var directIndex = opsies.IndexOf("if (IsUserAuthenticated)", StringComparison.Ordinal);
+        var signupIndex = opsies.IndexOf("return QueryHelpers.AddQueryString(\"/teken-op\"", directIndex, StringComparison.Ordinal);
+        Assert.IsTrue(directIndex >= 0 && signupIndex > directIndex, "Signed-in users must bypass signup while anonymous users retain the signup path.");
+    }
+
+    [TestMethod]
+    public void FreeAccessCodeApplicationAlsoRequiresTheConfirmedPost()
+    {
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+        var getBlock = ExtractBlock(
+            program,
+            "app.MapGet(\"/betaal/{planSlug}\"",
+            "app.MapPost(\"/betaal/{planSlug}/verander\"",
+            startOffset: program.IndexOf("app.MapGet(\"/betaal/{planSlug}\"", StringComparison.Ordinal));
+        var postBlock = ExtractBlock(
+            program,
+            "app.MapPost(\"/betaal/{planSlug}/verander\"",
+            "app.MapPost(\"/winkel/koop/paystack\"",
+            startOffset: program.IndexOf("app.MapPost(\"/betaal/{planSlug}/verander\"", StringComparison.Ordinal));
+
+        Assert.DoesNotContain("ApplySignupDiscountCodeAsync(", getBlock);
+        StringAssert.Contains(postBlock, "ApplySignupDiscountCodeAsync(");
     }
 
     [TestMethod]
@@ -117,7 +166,7 @@ public sealed class SubscriptionDuplicateCheckoutSourceTests
         var routeBlock = ExtractBlock(
             program,
             "app.MapGet(\"/betaal/{planSlug}\"",
-            ".DisableAntiforgery();",
+            "app.MapPost(\"/betaal/{planSlug}/verander\"",
             startOffset: program.IndexOf("app.MapGet(\"/betaal/{planSlug}\"", StringComparison.Ordinal));
 
         StringAssert.Contains(routeBlock, "HasPendingPaystackRepairForTierAsync(");
@@ -332,7 +381,7 @@ public sealed class SubscriptionDuplicateCheckoutSourceTests
         var paymentRouteBlock = ExtractBlock(
             program,
             "app.MapGet(\"/betaal/{planSlug}\"",
-            ".DisableAntiforgery();",
+            "app.MapPost(\"/betaal/{planSlug}/verander\"",
             startOffset: program.IndexOf("app.MapGet(\"/betaal/{planSlug}\"", StringComparison.Ordinal));
         AssertCallOrder(
             paymentRouteBlock,

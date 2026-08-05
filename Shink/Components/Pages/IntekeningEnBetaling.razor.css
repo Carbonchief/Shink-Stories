@@ -178,6 +178,11 @@
     box-shadow: 0 16px 30px rgba(17, 31, 38, 0.06);
 }
 
+.billing-state-card-warning {
+    border-color: #e4b25f;
+    background: #fff8e8;
+}
+
 .billing-state-card h2 {
     margin: 0;
     color: #162a34;
