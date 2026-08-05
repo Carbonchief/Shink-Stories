@@ -1606,6 +1606,476 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     }
 
     [TestMethod]
+    public async Task HasBillablePaidSubscriptionAsync_AllowsCheckoutAfterGiftedAccessExpires()
+    {
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                        "disabled_at": null
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                StringAssert.Contains(request.RequestUri!.Query, "provider");
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "tier_code": "all_stories_monthly",
+                        "provider": "free",
+                        "next_renewal_at": "2000-01-01T00:00:00Z",
+                        "cancelled_at": null,
+                        "source_system": "wordpress_pmpro",
+                        "status": "active"
+                      }
+                    ]
+                    """);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+
+        var hasBillablePaidSubscription = await service.HasBillablePaidSubscriptionAsync("ouer@example.com");
+
+        Assert.IsFalse(
+            hasBillablePaidSubscription,
+            "Expired gifted access must start a fresh paid checkout instead of entering the provider plan-change flow.");
+    }
+
+    [TestMethod]
+    public async Task AssessSubscriptionCheckoutAsync_RequiresConfirmationForActiveFreeAccess()
+    {
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [{ "subscriber_id": "11111111-1111-1111-1111-111111111111", "disabled_at": null }]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "free",
+                        "source_system": "discount_code",
+                        "provider_payment_id": "discount-code-gift",
+                        "next_renewal_at": "2099-01-01T00:00:00Z",
+                        "cancelled_at": null,
+                        "status": "active"
+                      }
+                    ]
+                    """);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+        var assessment = await service.AssessSubscriptionCheckoutAsync(
+            "ouer@example.com",
+            "all_stories_yearly");
+
+        Assert.AreEqual(SubscriptionCheckoutTransitionKinds.FreeAccess, assessment.TransitionKind);
+        Assert.AreEqual(new DateTimeOffset(2099, 1, 1, 0, 0, 0, TimeSpan.Zero), assessment.CurrentAccessEndsAtUtc);
+    }
+
+    [TestMethod]
+    public async Task AssessSubscriptionCheckoutAsync_AllowsPayFastConversionAfterWarning()
+    {
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [{ "subscriber_id": "11111111-1111-1111-1111-111111111111", "disabled_at": null }]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "tier_code": "story_corner_monthly",
+                        "provider": "payfast",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "payfast-subscription",
+                        "next_renewal_at": "2099-01-01T00:00:00Z",
+                        "cancelled_at": null,
+                        "status": "active"
+                      }
+                    ]
+                    """);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+        var assessment = await service.AssessSubscriptionCheckoutAsync(
+            "ouer@example.com",
+            "all_stories_monthly");
+
+        Assert.AreEqual(SubscriptionCheckoutTransitionKinds.PayFastConversion, assessment.TransitionKind);
+        Assert.AreEqual("payfast", assessment.CurrentProvider);
+    }
+
+    [TestMethod]
+    public async Task AssessSubscriptionCheckoutAsync_UsesAutomaticPlanChangeForCompletePaystackSubscription()
+    {
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [{ "subscriber_id": "11111111-1111-1111-1111-111111111111", "disabled_at": null }]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "tier_code": "story_corner_monthly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "SUB_current",
+                        "provider_token": "AUTH_current",
+                        "next_renewal_at": "2099-01-01T00:00:00Z",
+                        "cancelled_at": null,
+                        "status": "active"
+                      }
+                    ]
+                    """);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+        var assessment = await service.AssessSubscriptionCheckoutAsync(
+            "ouer@example.com",
+            "all_stories_monthly");
+
+        Assert.AreEqual(SubscriptionCheckoutTransitionKinds.PlanChange, assessment.TransitionKind);
+    }
+
+    [TestMethod]
+    public async Task RecordVerifiedStoreSubscriptionAsync_SupersedesFreeAccessOnlyAfterPaidUpsert()
+    {
+        var requestOrder = new List<string>();
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [{ "subscriber_id": "11111111-1111-1111-1111-111111111111", "disabled_at": null }]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                requestOrder.Add("paid-upsert");
+                return JsonResponse(
+                    """
+                    [{ "subscription_id": "33333333-3333-3333-3333-333333333333" }]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Patch &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions" &&
+                request.RequestUri.Query.Contains("provider=eq.free", StringComparison.Ordinal))
+            {
+                requestOrder.Add("free-access-superseded");
+                var payload = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+                StringAssert.Contains(payload, "\"status\":\"cancelled\"");
+                StringAssert.Contains(request.RequestUri.Query, "tier_code=neq.gratis");
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+        var result = await service.RecordVerifiedStoreSubscriptionAsync(
+            "ouer@example.com",
+            "apple",
+            "schink_stories_maandeliks",
+            "apple-transaction-one",
+            providerTransactionId: null,
+            providerToken: null,
+            subscribedAtUtc: DateTimeOffset.UtcNow,
+            nextRenewalAtUtc: DateTimeOffset.UtcNow.AddMonths(1));
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        CollectionAssert.AreEqual(
+            new[] { "paid-upsert", "free-access-superseded" },
+            requestOrder,
+            "Free access must remain untouched unless the new paid subscription was persisted first.");
+    }
+
+    [TestMethod]
+    public async Task RecordVerifiedStoreSubscriptionAsync_CancelsSupersededPayFastOnlyAfterPaidActivation()
+    {
+        var requestOrder = new List<string>();
+        var paidSubscriptionPersisted = false;
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [{ "subscriber_id": "11111111-1111-1111-1111-111111111111", "disabled_at": null }]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions") &&
+                request.RequestUri!.Query.Contains("provider=eq.apple", StringComparison.Ordinal))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions") &&
+                request.RequestUri!.Query.Contains("provider=eq.payfast", StringComparison.Ordinal))
+            {
+                Assert.IsTrue(paidSubscriptionPersisted, "The old provider may only be cancelled after the replacement subscription is active.");
+                StringAssert.Contains(request.RequestUri.Query, "subscription_id=neq.33333333-3333-3333-3333-333333333333");
+                requestOrder.Add("payfast-lookup");
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "provider_payment_id": "old-payfast-payment",
+                        "provider_transaction_id": "old-payfast-transaction",
+                        "provider_token": "old-payfast-token"
+                      },
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222223",
+                        "provider_payment_id": "duplicate-payfast-payment",
+                        "provider_transaction_id": "duplicate-payfast-transaction",
+                        "provider_token": "old-payfast-token"
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                paidSubscriptionPersisted = true;
+                requestOrder.Add("paid-upsert");
+                return JsonResponse(
+                    """
+                    [{ "subscription_id": "33333333-3333-3333-3333-333333333333" }]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Patch &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions" &&
+                request.RequestUri.Query.Contains("provider=eq.free", StringComparison.Ordinal))
+            {
+                requestOrder.Add("free-access-superseded");
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            if (request.Method == HttpMethod.Put &&
+                request.RequestUri?.AbsolutePath == "/subscriptions/old-payfast-token/cancel")
+            {
+                requestOrder.Add("payfast-provider-cancelled");
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            if (request.Method == HttpMethod.Patch &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions" &&
+                request.RequestUri.Query.Contains("subscription_id=eq.22222222-2222-2222-2222-222222222222", StringComparison.Ordinal))
+            {
+                requestOrder.Add("payfast-ledger-one-closed");
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            if (request.Method == HttpMethod.Patch &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions" &&
+                request.RequestUri.Query.Contains("subscription_id=eq.22222222-2222-2222-2222-222222222223", StringComparison.Ordinal))
+            {
+                requestOrder.Add("payfast-ledger-two-closed");
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                requestOrder.Add("cancellation-event-recorded");
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+        var result = await service.RecordVerifiedStoreSubscriptionAsync(
+            "ouer@example.com",
+            "apple",
+            "schink_stories_maandeliks",
+            "apple-transaction-one",
+            providerTransactionId: null,
+            providerToken: null,
+            subscribedAtUtc: DateTimeOffset.UtcNow,
+            nextRenewalAtUtc: DateTimeOffset.UtcNow.AddMonths(1));
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        CollectionAssert.AreEqual(
+            new[]
+            {
+                "paid-upsert",
+                "payfast-lookup",
+                "payfast-provider-cancelled",
+                "payfast-ledger-one-closed",
+                "cancellation-event-recorded",
+                "payfast-ledger-two-closed",
+                "cancellation-event-recorded",
+                "free-access-superseded"
+            },
+            requestOrder);
+        Assert.AreEqual(
+            1,
+            requestOrder.Count(item => string.Equals(item, "payfast-provider-cancelled", StringComparison.Ordinal)),
+            "Duplicate ledger rows for one PayFast token must produce one provider cancellation call.");
+        Assert.IsTrue(
+            handler.SubscriptionEventPayloads.Any(payload =>
+                payload.Contains("\"event_type\":\"provider_switch_cancelled\"", StringComparison.Ordinal) &&
+                payload.Contains("\"activated_subscription_id\":\"33333333-3333-3333-3333-333333333333\"", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
+    public async Task RecordVerifiedStoreSubscriptionAsync_KeepsPayFastActiveWhenProviderCancellationThrows()
+    {
+        var paidSubscriptionPersisted = false;
+        var oldPayFastLedgerClosed = false;
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [{ "subscriber_id": "11111111-1111-1111-1111-111111111111", "disabled_at": null }]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions") &&
+                request.RequestUri!.Query.Contains("provider=eq.apple", StringComparison.Ordinal))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions") &&
+                request.RequestUri!.Query.Contains("provider=eq.payfast", StringComparison.Ordinal))
+            {
+                Assert.IsTrue(paidSubscriptionPersisted);
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "provider_payment_id": "old-payfast-payment",
+                        "provider_transaction_id": "old-payfast-transaction",
+                        "provider_token": "old-payfast-token"
+                      }
+                    ]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions")
+            {
+                paidSubscriptionPersisted = true;
+                return JsonResponse(
+                    """
+                    [{ "subscription_id": "33333333-3333-3333-3333-333333333333" }]
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Patch &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions" &&
+                request.RequestUri.Query.Contains("provider=eq.free", StringComparison.Ordinal))
+            {
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            if (request.Method == HttpMethod.Put &&
+                request.RequestUri?.AbsolutePath == "/subscriptions/old-payfast-token/cancel")
+            {
+                throw new HttpRequestException("PayFast unavailable");
+            }
+
+            if (request.Method == HttpMethod.Patch &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscriptions" &&
+                request.RequestUri.Query.Contains("subscription_id=eq.22222222-2222-2222-2222-222222222222", StringComparison.Ordinal))
+            {
+                oldPayFastLedgerClosed = true;
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var service = CreateService(handler);
+        var result = await service.RecordVerifiedStoreSubscriptionAsync(
+            "ouer@example.com",
+            "apple",
+            "schink_stories_maandeliks",
+            "apple-transaction-one",
+            providerTransactionId: null,
+            providerToken: null,
+            subscribedAtUtc: DateTimeOffset.UtcNow,
+            nextRenewalAtUtc: DateTimeOffset.UtcNow.AddMonths(1));
+
+        Assert.IsTrue(result.IsSuccess, "The new paid activation must remain successful even if old-provider cleanup needs follow-up.");
+        Assert.IsFalse(oldPayFastLedgerClosed, "The old ledger row must not be marked cancelled when PayFast rejected the cancellation.");
+        Assert.IsTrue(
+            handler.SubscriptionEventPayloads.Any(payload =>
+                payload.Contains("\"event_type\":\"provider_switch_cancel_failed\"", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
     public async Task HasBillableSubscriptionForTierAsync_AllowsCheckoutAfterScheduledCancellationEnds()
     {
         var handler = new RecordingHandler(request =>

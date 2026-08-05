@@ -51,6 +51,19 @@ public class StoryTrackingSourceTests
     }
 
     [TestMethod]
+    public void SharedStoryPlayerQueuesFinalListenFlushWhileAnotherRequestIsInFlight()
+    {
+        var script = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "GratisStory.razor.js"));
+
+        StringAssert.Contains(script, "deferredFlushEventType: null");
+        StringAssert.Contains(script, "function deferStoryListenFlush(audioElement, trackingState, eventType, useKeepalive)");
+        StringAssert.Contains(script, "if (force || eventType === \"ended\")");
+        StringAssert.Contains(script, "deferredEventType,");
+        StringAssert.Contains(script, "flushStoryListen(audioElement, trackingState, \"ended\", true, true);");
+        StringAssert.Contains(script, "const listenedSeconds = pendingSeconds >= LISTEN_MIN_EVENT_SECONDS");
+    }
+
+    [TestMethod]
     public void MobileStoryPlayerPostsViewAndListenTracking()
     {
         var page = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "StoryDetailPage.cs"));

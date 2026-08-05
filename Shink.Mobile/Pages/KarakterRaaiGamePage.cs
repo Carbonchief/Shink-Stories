@@ -124,7 +124,7 @@ public sealed class KarakterRaaiGamePage : ContentPage
         var root = new Grid
         {
             SafeAreaEdges = SafeAreaEdges.None,
-            Background = BuildGameBackground(),
+            Background = Brush.Transparent,
             RowDefinitions =
             {
                 new RowDefinition(new GridLength(62)),

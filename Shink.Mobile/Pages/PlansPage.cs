@@ -107,19 +107,22 @@ public sealed class PlansPage : ContentPage
             _content.Children.Add(BuildHeader());
             _content.Children.Add(BuildIntro());
 
-            var availablePlans = plans
-                .Where(plan => _storeProducts.ContainsKey(plan.ProductId))
-                .ToArray();
-            if (availablePlans.Length == 0)
+            if (plans.Length == 0)
             {
-                _content.Children.Add(BuildNotice("Die winkelprodukte is tans nie beskikbaar nie. Probeer asseblief weer."));
+                _content.Children.Add(BuildNotice("Geen planne is tans beskikbaar nie. Probeer asseblief weer."));
                 _content.Children.Add(BuildRestoreButton());
                 return;
             }
 
-            foreach (var plan in availablePlans)
+            foreach (var plan in plans)
             {
-                _content.Children.Add(BuildPlanCard(plan, _storeProducts[plan.ProductId]));
+                _storeProducts.TryGetValue(plan.ProductId, out var product);
+                _content.Children.Add(BuildPlanCard(plan, product));
+            }
+
+            if (_storeProducts.Count < plans.Length)
+            {
+                _content.Children.Add(BuildNotice("Die winkelpryse is tans nie beskikbaar nie. Probeer asseblief weer voordat jy aankoop."));
             }
 
             _content.Children.Add(new Label
@@ -233,19 +236,31 @@ public sealed class PlansPage : ContentPage
             }
         };
 
-    private View BuildPlanCard(MobilePlan plan, MobileStoreProduct product)
+    private View BuildPlanCard(MobilePlan plan, MobileStoreProduct? product)
     {
         var isYearly = plan.BillingPeriodMonths >= 12;
+        var hasStoreProduct = product is not null;
         var actionButton = new Button
         {
-            Text = _sessionState.Current.IsSignedIn ? "Kies hierdie plan" : "Skep rekening",
-            BackgroundColor = isYearly ? GoldColor : AccentColor,
-            TextColor = isYearly ? TextColor : Colors.White,
+            Text = hasStoreProduct
+                ? (_sessionState.Current.IsSignedIn ? "Kies hierdie plan" : "Skep rekening")
+                : "Tans nie beskikbaar nie",
+            BackgroundColor = hasStoreProduct
+                ? (isYearly ? GoldColor : AccentColor)
+                : Color.FromArgb("#E7E1D7"),
+            TextColor = hasStoreProduct
+                ? (isYearly ? TextColor : Colors.White)
+                : MutedTextColor,
             FontAttributes = FontAttributes.Bold,
             CornerRadius = 22,
-            HeightRequest = 50
+            HeightRequest = 50,
+            IsEnabled = hasStoreProduct,
+            Opacity = hasStoreProduct ? 1 : 0.78
         };
-        actionButton.Clicked += async (_, _) => await OpenPlanAsync(plan, product);
+        if (product is not null)
+        {
+            actionButton.Clicked += async (_, _) => await OpenPlanAsync(plan, product);
+        }
 
         var card = new Border
         {
@@ -282,10 +297,10 @@ public sealed class PlansPage : ContentPage
                         {
                             new Label
                             {
-                                Text = product.LocalizedPrice,
+                                Text = product?.LocalizedPrice ?? "Prys word gelaai",
                                 FontSize = 24,
                                 FontAttributes = FontAttributes.Bold,
-                                TextColor = AccentColor
+                                TextColor = hasStoreProduct ? AccentColor : MutedTextColor
                             },
                             new Label
                             {

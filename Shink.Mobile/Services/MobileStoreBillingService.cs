@@ -1,6 +1,11 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Plugin.InAppBilling;
+#if IOS
+using Foundation;
+using StoreKit;
+#endif
 
 namespace Shink.Mobile.Services;
 
@@ -64,6 +69,29 @@ public sealed class MobileStoreBillingService : IMobileStoreBillingService
             return Array.Empty<MobileStoreProduct>();
         }
 
+#if IOS
+        var appleProducts = await GetAppleProductsAsync(normalizedProductIds, cancellationToken);
+#if DEBUG
+        var localStoreKitProducts = GetDebugStoreKitProducts(normalizedProductIds);
+        if (localStoreKitProducts.Count > 0)
+        {
+            var mergedProducts = appleProducts
+                .Concat(localStoreKitProducts)
+                .GroupBy(product => product.ProductId, StringComparer.Ordinal)
+                .Select(group => group.First())
+                .ToArray();
+            if (mergedProducts.Length > appleProducts.Count)
+            {
+                return mergedProducts;
+            }
+        }
+#endif
+        if (appleProducts.Count > 0)
+        {
+            return appleProducts;
+        }
+#endif
+
         var billing = CrossInAppBilling.Current;
         try
         {
@@ -96,6 +124,166 @@ public sealed class MobileStoreBillingService : IMobileStoreBillingService
             await DisconnectAsync(billing, cancellationToken);
         }
     }
+
+#if IOS
+    private static async Task<IReadOnlyList<MobileStoreProduct>> GetAppleProductsAsync(
+        IReadOnlyList<string> productIds,
+        CancellationToken cancellationToken)
+    {
+        var completion = new TaskCompletionSource<IReadOnlyList<MobileStoreProduct>>(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        SKProductsRequest? request = null;
+        EventHandler<SKProductsRequestResponseEventArgs>? responseHandler = null;
+        EventHandler<SKRequestErrorEventArgs>? errorHandler = null;
+
+        void Finish()
+        {
+            if (request is null)
+            {
+                return;
+            }
+
+            if (responseHandler is not null)
+            {
+                request.ReceivedResponse -= responseHandler;
+            }
+
+            if (errorHandler is not null)
+            {
+                request.RequestFailed -= errorHandler;
+            }
+        }
+
+        responseHandler = (_, args) =>
+        {
+            Finish();
+            var products = args.Response.Products
+                .Select(ToMobileStoreProduct)
+                .ToArray();
+            completion.TrySetResult(products);
+            request?.Dispose();
+        };
+        errorHandler = (_, _) =>
+        {
+            Finish();
+            completion.TrySetResult(Array.Empty<MobileStoreProduct>());
+            request?.Dispose();
+        };
+
+        try
+        {
+            request = new SKProductsRequest(new NSSet(productIds.ToArray()));
+            request.ReceivedResponse += responseHandler;
+            request.RequestFailed += errorHandler;
+            request.Start();
+
+            using var registration = cancellationToken.Register(() =>
+            {
+                request?.Cancel();
+                Finish();
+                completion.TrySetCanceled(cancellationToken);
+            });
+
+            return await completion.Task.ConfigureAwait(false);
+        }
+        catch
+        {
+            Finish();
+            request?.Dispose();
+            return Array.Empty<MobileStoreProduct>();
+        }
+    }
+
+    private static MobileStoreProduct ToMobileStoreProduct(SKProduct product)
+    {
+        using var formatter = new NSNumberFormatter
+        {
+            FormatterBehavior = NSNumberFormatterBehavior.Version_10_4,
+            NumberStyle = NSNumberFormatterStyle.Currency,
+            Locale = product.PriceLocale
+        };
+
+        return new MobileStoreProduct(
+            product.ProductIdentifier,
+            product.LocalizedTitle ?? string.Empty,
+            product.LocalizedDescription ?? string.Empty,
+            formatter.StringFromNumber(product.Price) ?? product.Price.StringValue,
+            product.PriceLocale?.CurrencyCode,
+            null);
+    }
+
+#if DEBUG
+    private static IReadOnlyList<MobileStoreProduct> GetDebugStoreKitProducts(
+        IReadOnlyList<string> productIds)
+    {
+        try
+        {
+            var path = NSBundle.MainBundle.PathForResource("SchinkStories", "storekit");
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return Array.Empty<MobileStoreProduct>();
+            }
+
+            var wantedProductIds = productIds.ToHashSet(StringComparer.Ordinal);
+            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            if (!document.RootElement.TryGetProperty("subscriptionGroups", out var groups))
+            {
+                return Array.Empty<MobileStoreProduct>();
+            }
+
+            var products = new List<MobileStoreProduct>();
+            foreach (var group in groups.EnumerateArray())
+            {
+                if (!group.TryGetProperty("subscriptions", out var subscriptions))
+                {
+                    continue;
+                }
+
+                foreach (var subscription in subscriptions.EnumerateArray())
+                {
+                    if (!subscription.TryGetProperty("productID", out var productIdElement))
+                    {
+                        continue;
+                    }
+
+                    var productId = productIdElement.GetString();
+                    if (string.IsNullOrWhiteSpace(productId) || !wantedProductIds.Contains(productId))
+                    {
+                        continue;
+                    }
+
+                    if (!subscription.TryGetProperty("displayPrice", out var priceElement))
+                    {
+                        continue;
+                    }
+
+                    var displayPrice = priceElement.GetString();
+                    if (string.IsNullOrWhiteSpace(displayPrice))
+                    {
+                        continue;
+                    }
+
+                    products.Add(new MobileStoreProduct(
+                        productId,
+                        string.Empty,
+                        string.Empty,
+                        displayPrice.StartsWith("R", StringComparison.OrdinalIgnoreCase)
+                            ? displayPrice
+                            : $"R{displayPrice}",
+                        "ZAR",
+                        null));
+                }
+            }
+
+            return products;
+        }
+        catch
+        {
+            return Array.Empty<MobileStoreProduct>();
+        }
+    }
+#endif
+#endif
 
     public async Task<MobileStorePurchaseResult> PurchaseAsync(
         string productId,

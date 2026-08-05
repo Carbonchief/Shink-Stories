@@ -21,6 +21,10 @@ public interface ISubscriptionLedgerService
     Task<bool> HasActiveSubscriptionForTierAsync(string? email, string? tierCode, CancellationToken cancellationToken = default);
     Task<bool> HasBillablePaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default);
     Task<bool> HasBillableSubscriptionForTierAsync(string? email, string? tierCode, CancellationToken cancellationToken = default);
+    Task<SubscriptionCheckoutAssessment> AssessSubscriptionCheckoutAsync(
+        string? email,
+        string? targetTierCode,
+        CancellationToken cancellationToken = default);
     Task<bool> HasPendingPaystackRepairForTierAsync(string? email, string? tierCode, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<string>> GetActiveTierCodesAsync(string? email, CancellationToken cancellationToken = default);
     Task<CurrentPaidSubscription?> GetCurrentPaidSubscriptionAsync(string? email, CancellationToken cancellationToken = default);
@@ -102,6 +106,22 @@ public sealed record SubscriptionPlanChangeResult(
     DateTimeOffset? EffectiveAtUtc = null,
     decimal? ChargedAmountZar = null,
     string? ErrorMessage = null);
+public sealed record SubscriptionCheckoutAssessment(
+    string TransitionKind,
+    string? CurrentProvider = null,
+    string? CurrentTierCode = null,
+    DateTimeOffset? CurrentAccessEndsAtUtc = null);
+public static class SubscriptionCheckoutTransitionKinds
+{
+    public const string NewCheckout = "new-checkout";
+    public const string PlanChange = "plan-change";
+    public const string FreeAccess = "free-access";
+    public const string PayFastConversion = "payfast-conversion";
+    public const string ProviderConversion = "provider-conversion";
+    public const string LegacyPaystack = "legacy-paystack";
+    public const string BillingStatusUncertain = "billing-status-uncertain";
+    public const string AccountClosed = "account-closed";
+}
 public sealed record SubscriptionCardUpdateLinkResult(bool IsSuccess, string? Link = null, string? ErrorMessage = null);
 public sealed record SubscriptionRepairResult(
     bool IsRecovered,

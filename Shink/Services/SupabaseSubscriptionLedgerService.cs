@@ -163,6 +163,108 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             cancellationToken);
     }
 
+    public async Task<SubscriptionCheckoutAssessment> AssessSubscriptionCheckoutAsync(
+        string? email,
+        string? targetTierCode,
+        CancellationToken cancellationToken = default)
+    {
+        var context = await TryResolveSelfServiceContextAsync(email, cancellationToken);
+        if (context is null)
+        {
+            return new SubscriptionCheckoutAssessment(SubscriptionCheckoutTransitionKinds.NewCheckout);
+        }
+
+        if (context.DisabledAt is not null)
+        {
+            return new SubscriptionCheckoutAssessment(SubscriptionCheckoutTransitionKinds.AccountClosed);
+        }
+
+        var nowUtc = DateTimeOffset.UtcNow;
+        var subscriptions = await FetchSelfServicePaidSubscriptionsAsync(
+            context.BaseUri,
+            context.ApiKey,
+            context.SubscriberId,
+            cancellationToken);
+        var billablePaidSubscriptions = subscriptions
+            .Where(subscription => IsCurrentlyBillableSelfServiceSubscription(subscription, nowUtc))
+            .ToArray();
+
+        if (billablePaidSubscriptions.Length > 0)
+        {
+            var current = billablePaidSubscriptions
+                .Where(subscription => IsCurrentlyActiveSelfServiceSubscription(subscription, nowUtc))
+                .Select(subscription => new
+                {
+                    Subscription = subscription,
+                    Plan = PaymentPlanCatalog.FindByTierCode(subscription.TierCode)
+                })
+                .Where(candidate => candidate.Plan is not null)
+                .OrderByDescending(candidate => ResolvePaidPlanAccessRank(candidate.Plan!))
+                .ThenByDescending(candidate => candidate.Subscription.NextRenewalAt ?? DateTimeOffset.MaxValue)
+                .FirstOrDefault();
+
+            if (current is null)
+            {
+                var latest = billablePaidSubscriptions[0];
+                return new SubscriptionCheckoutAssessment(
+                    SubscriptionCheckoutTransitionKinds.BillingStatusUncertain,
+                    latest.Provider,
+                    latest.TierCode,
+                    latest.NextRenewalAt);
+            }
+
+            var provider = current.Subscription.Provider;
+            if (string.Equals(provider, "paystack", StringComparison.OrdinalIgnoreCase))
+            {
+                var subscriptionCode = PaystackSubscriptionCodeResolver.ResolveSubscriptionCode(
+                    current.Subscription.Provider,
+                    current.Subscription.SourceSystem,
+                    current.Subscription.ProviderPaymentId,
+                    current.Subscription.ProviderTransactionId);
+                if (!string.IsNullOrWhiteSpace(subscriptionCode) &&
+                    !string.IsNullOrWhiteSpace(current.Subscription.ProviderToken))
+                {
+                    return new SubscriptionCheckoutAssessment(
+                        SubscriptionCheckoutTransitionKinds.PlanChange,
+                        provider,
+                        current.Subscription.TierCode,
+                        current.Subscription.NextRenewalAt);
+                }
+
+                return new SubscriptionCheckoutAssessment(
+                    SubscriptionCheckoutTransitionKinds.LegacyPaystack,
+                    provider,
+                    current.Subscription.TierCode,
+                    current.Subscription.NextRenewalAt);
+            }
+
+            return new SubscriptionCheckoutAssessment(
+                string.Equals(provider, "payfast", StringComparison.OrdinalIgnoreCase)
+                    ? SubscriptionCheckoutTransitionKinds.PayFastConversion
+                    : SubscriptionCheckoutTransitionKinds.ProviderConversion,
+                provider,
+                current.Subscription.TierCode,
+                current.Subscription.NextRenewalAt);
+        }
+
+        var activeFreeAccess = subscriptions
+            .Where(subscription =>
+                string.Equals(subscription.Provider, "free", StringComparison.OrdinalIgnoreCase) &&
+                IsCurrentlyActiveSelfServiceSubscription(subscription, nowUtc))
+            .OrderByDescending(subscription => subscription.NextRenewalAt ?? DateTimeOffset.MaxValue)
+            .FirstOrDefault();
+        if (activeFreeAccess is not null)
+        {
+            return new SubscriptionCheckoutAssessment(
+                SubscriptionCheckoutTransitionKinds.FreeAccess,
+                activeFreeAccess.Provider,
+                activeFreeAccess.TierCode,
+                activeFreeAccess.NextRenewalAt);
+        }
+
+        return new SubscriptionCheckoutAssessment(SubscriptionCheckoutTransitionKinds.NewCheckout);
+    }
+
     public async Task<bool> HasPendingPaystackRepairForTierAsync(
         string? email,
         string? tierCode,
@@ -252,7 +354,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var subscriptions = await FetchSelfServicePaidSubscriptionsAsync(context.BaseUri, context.ApiKey, context.SubscriberId, cancellationToken);
         var nowUtc = DateTimeOffset.UtcNow;
         var current = subscriptions
-            .Where(subscription => IsCurrentlyActiveSelfServiceSubscription(subscription, nowUtc))
+            .Where(subscription =>
+                !string.Equals(subscription.Provider, "free", StringComparison.OrdinalIgnoreCase) &&
+                IsCurrentlyActiveSelfServiceSubscription(subscription, nowUtc))
             .OrderBy(subscription => subscription.CancelledAt is not null)
             .ThenByDescending(subscription => subscription.NextRenewalAt ?? DateTimeOffset.MaxValue)
             .ThenByDescending(subscription => subscription.CancelledAt ?? DateTimeOffset.MaxValue)
@@ -2220,7 +2324,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             var escapedSubscriberId = Uri.EscapeDataString(subscriberId);
             var subscriptionsUri = new Uri(
                 baseUri,
-                $"rest/v1/subscriptions?select=status,next_renewal_at,cancelled_at,tier_code,source_system&subscriber_id=eq.{escapedSubscriberId}&status=eq.active&order=subscribed_at.desc&limit=25");
+                $"rest/v1/subscriptions?select=status,next_renewal_at,cancelled_at,tier_code,provider,source_system&subscriber_id=eq.{escapedSubscriberId}&status=eq.active&order=subscribed_at.desc&limit=25");
 
             using var subscriptionsRequest = CreateRequest(HttpMethod.Get, subscriptionsUri, apiKey);
             using var subscriptionsResponse = await _httpClient.SendAsync(subscriptionsRequest, cancellationToken);
@@ -2871,6 +2975,15 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
     private static bool IsCurrentlyBillableSubscription(SubscriptionStatusRow row, DateTimeOffset nowUtc)
     {
+        // Gifted and other free-access rows never represent recurring provider
+        // billing. Once their access ends they must not be routed through the
+        // paid plan-change flow, and while active they may still start a paid
+        // checkout without requiring provider self-service credentials.
+        if (string.Equals(row.Provider, "free", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
         // A past renewal timestamp can end access, but it does not prove that the
         // provider stopped billing. Keep duplicate checkout protection in place
         // until the subscription is cancelled or its status is no longer active.
@@ -2912,6 +3025,11 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         return true;
     }
+
+    private static bool IsCurrentlyBillableSelfServiceSubscription(SelfServiceSubscriptionRow row, DateTimeOffset nowUtc) =>
+        !string.Equals(row.Provider, "free", StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(row.Status, "active", StringComparison.OrdinalIgnoreCase) &&
+        (row.CancelledAt is null || row.CancelledAt > nowUtc);
 
     private static bool HasOpenEndedImportedPaidAccess(SelfServiceSubscriptionRow row) =>
         HasOpenEndedImportedPaidAccess(row.TierCode, row.SourceSystem, row.Status, row.CancelledAt, row.NextRenewalAt);
@@ -4576,7 +4694,245 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         }
 
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
-        return ReadFirstStringProperty(responseBody, "subscription_id");
+        var subscriptionId = ReadFirstStringProperty(responseBody, "subscription_id");
+        if (!string.IsNullOrWhiteSpace(subscriptionId) &&
+            !string.Equals(provider, "free", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(tierCode, GratisTierCode, StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                await CancelSupersededPayFastSubscriptionsAsync(
+                    baseUri,
+                    apiKey,
+                    subscriberId,
+                    subscriptionId,
+                    provider,
+                    providerToken,
+                    tierCode,
+                    cancellationToken);
+                await EndSupersededFreeAccessAsync(baseUri, apiKey, subscriberId, cancellationToken);
+            }
+            catch (Exception exception) when (
+                exception is HttpRequestException ||
+                exception is TaskCanceledException && !cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning(
+                    exception,
+                    "Post-activation subscription cleanup failed without reverting paid access. subscriber_id={SubscriberId} activated_subscription_id={ActivatedSubscriptionId}",
+                    subscriberId,
+                    subscriptionId);
+            }
+        }
+
+        return subscriptionId;
+    }
+
+    private async Task EndSupersededFreeAccessAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriberId,
+        CancellationToken cancellationToken)
+    {
+        var nowUtc = DateTimeOffset.UtcNow;
+        var escapedSubscriberId = Uri.EscapeDataString(subscriberId);
+        var escapedGratisTier = Uri.EscapeDataString(GratisTierCode);
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/subscriptions" +
+            $"?subscriber_id=eq.{escapedSubscriberId}&provider=eq.free&tier_code=neq.{escapedGratisTier}&status=eq.active");
+        var payload = new
+        {
+            status = "cancelled",
+            cancelled_at = nowUtc.UtcDateTime
+        };
+
+        using var request = CreateJsonRequest(new HttpMethod("PATCH"), uri, apiKey, payload, "return=minimal");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Supabase paid activation could not supersede free access. subscriber_id={SubscriberId} Status={StatusCode} Body={Body}",
+            subscriberId,
+            (int)response.StatusCode,
+            body);
+    }
+
+    private async Task CancelSupersededPayFastSubscriptionsAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriberId,
+        string activatedSubscriptionId,
+        string activatedProvider,
+        string? activatedProviderToken,
+        string activatedTierCode,
+        CancellationToken cancellationToken)
+    {
+        if (string.Equals(activatedProvider, "payfast", StringComparison.OrdinalIgnoreCase) &&
+            string.IsNullOrWhiteSpace(activatedProviderToken))
+        {
+            _logger.LogWarning(
+                "Skipped superseded PayFast cancellation because the newly activated PayFast mandate has no token. subscriber_id={SubscriberId} activated_subscription_id={ActivatedSubscriptionId}",
+                subscriberId,
+                activatedSubscriptionId);
+            return;
+        }
+
+        var escapedSubscriberId = Uri.EscapeDataString(subscriberId);
+        var escapedActivatedSubscriptionId = Uri.EscapeDataString(activatedSubscriptionId);
+        var uri = new Uri(
+            baseUri,
+            "rest/v1/subscriptions" +
+            "?select=subscription_id,provider_payment_id,provider_transaction_id,provider_token" +
+            $"&subscriber_id=eq.{escapedSubscriberId}&provider=eq.payfast&status=eq.active" +
+            $"&cancelled_at=is.null&subscription_id=neq.{escapedActivatedSubscriptionId}");
+
+        using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogWarning(
+                "Supabase paid activation could not find superseded PayFast subscriptions. subscriber_id={SubscriberId} activated_subscription_id={ActivatedSubscriptionId} Status={StatusCode} Body={Body}",
+                subscriberId,
+                activatedSubscriptionId,
+                (int)response.StatusCode,
+                body);
+            return;
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+        IReadOnlyList<SupersededPayFastSubscriptionRow> subscriptions;
+        try
+        {
+            subscriptions = await JsonSerializer.DeserializeAsync<List<SupersededPayFastSubscriptionRow>>(
+                stream,
+                cancellationToken: cancellationToken) ?? [];
+        }
+        catch (JsonException exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "Supabase superseded PayFast subscription response was invalid. subscriber_id={SubscriberId} activated_subscription_id={ActivatedSubscriptionId}",
+                subscriberId,
+                activatedSubscriptionId);
+            return;
+        }
+
+        var cancellationResultsByToken = new Dictionary<string, PayFastSubscriptionCancelResult>(StringComparer.OrdinalIgnoreCase);
+        foreach (var subscription in subscriptions)
+        {
+            if (string.IsNullOrWhiteSpace(subscription.SubscriptionId))
+            {
+                continue;
+            }
+
+            if (string.Equals(activatedProvider, "payfast", StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(
+                    activatedProviderToken?.Trim(),
+                    subscription.ProviderToken?.Trim(),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                _logger.LogInformation(
+                    "Skipped PayFast cancellation for a duplicate ledger row pointing at the newly activated mandate. old_subscription_id={OldSubscriptionId} activated_subscription_id={ActivatedSubscriptionId}",
+                    subscription.SubscriptionId,
+                    activatedSubscriptionId);
+                continue;
+            }
+
+            var normalizedProviderToken = subscription.ProviderToken?.Trim();
+            PayFastSubscriptionCancelResult cancelResult;
+            if (!string.IsNullOrWhiteSpace(normalizedProviderToken) &&
+                cancellationResultsByToken.TryGetValue(normalizedProviderToken, out var existingResult))
+            {
+                cancelResult = existingResult;
+            }
+            else
+            {
+                try
+                {
+                    cancelResult = await _payFastCheckoutService.CancelSubscriptionAsync(
+                        normalizedProviderToken,
+                        cancellationToken);
+                }
+                catch (Exception exception) when (
+                    exception is HttpRequestException ||
+                    exception is TaskCanceledException && !cancellationToken.IsCancellationRequested)
+                {
+                    _logger.LogWarning(
+                        exception,
+                        "PayFast provider cancellation request failed after replacement subscription activation. old_subscription_id={OldSubscriptionId} activated_subscription_id={ActivatedSubscriptionId}",
+                        subscription.SubscriptionId,
+                        activatedSubscriptionId);
+                    cancelResult = new PayFastSubscriptionCancelResult(
+                        false,
+                        "PayFast cancellation request failed before a response was received.");
+                }
+
+                if (!string.IsNullOrWhiteSpace(normalizedProviderToken))
+                {
+                    cancellationResultsByToken[normalizedProviderToken] = cancelResult;
+                }
+            }
+
+            if (!cancelResult.IsSuccess)
+            {
+                _logger.LogWarning(
+                    "PayFast provider cancellation failed after replacement subscription activation. old_subscription_id={OldSubscriptionId} activated_subscription_id={ActivatedSubscriptionId} error={Error}",
+                    subscription.SubscriptionId,
+                    activatedSubscriptionId,
+                    cancelResult.ErrorMessage);
+                await InsertSubscriptionEventAsync(
+                    baseUri,
+                    apiKey,
+                    subscription.SubscriptionId,
+                    provider: "payfast",
+                    providerPaymentId: subscription.ProviderPaymentId,
+                    providerTransactionId: subscription.ProviderTransactionId,
+                    eventType: "provider_switch_cancel_failed",
+                    eventStatus: "failed",
+                    payload: new
+                    {
+                        activated_subscription_id = activatedSubscriptionId,
+                        activated_provider = activatedProvider,
+                        activated_tier_code = activatedTierCode,
+                        error = cancelResult.ErrorMessage ?? "PayFast cancellation failed."
+                    },
+                    cancellationToken);
+                continue;
+            }
+
+            var cancelledAtUtc = DateTimeOffset.UtcNow;
+            var locallyCancelled = await MarkSelfServiceSubscriptionCancelledNowAsync(
+                baseUri,
+                apiKey,
+                subscription.SubscriptionId,
+                cancelledAtUtc,
+                providerEmailToken: null,
+                cancellationToken);
+            await InsertSubscriptionEventAsync(
+                baseUri,
+                apiKey,
+                subscription.SubscriptionId,
+                provider: "payfast",
+                providerPaymentId: subscription.ProviderPaymentId,
+                providerTransactionId: subscription.ProviderTransactionId,
+                eventType: locallyCancelled
+                    ? "provider_switch_cancelled"
+                    : "provider_switch_local_close_failed",
+                eventStatus: locallyCancelled ? "success" : "failed",
+                payload: new
+                {
+                    activated_subscription_id = activatedSubscriptionId,
+                    activated_provider = activatedProvider,
+                    activated_tier_code = activatedTierCode,
+                    cancelled_at = cancelledAtUtc.UtcDateTime
+                },
+                cancellationToken);
+        }
     }
 
     private async Task<string?> MarkSubscriptionStatusAsync(
@@ -7370,6 +7726,21 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         public string? RecurringBillingMode { get; set; }
     }
 
+    private sealed class SupersededPayFastSubscriptionRow
+    {
+        [JsonPropertyName("subscription_id")]
+        public string SubscriptionId { get; set; } = string.Empty;
+
+        [JsonPropertyName("provider_payment_id")]
+        public string? ProviderPaymentId { get; set; }
+
+        [JsonPropertyName("provider_transaction_id")]
+        public string? ProviderTransactionId { get; set; }
+
+        [JsonPropertyName("provider_token")]
+        public string? ProviderToken { get; set; }
+    }
+
     private sealed class ExistingEventLookupRow
     {
         [JsonPropertyName("subscription_id")]
@@ -7586,6 +7957,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         [JsonPropertyName("tier_code")]
         public string? TierCode { get; set; }
+
+        [JsonPropertyName("provider")]
+        public string? Provider { get; set; }
 
         [JsonPropertyName("source_system")]
         public string? SourceSystem { get; set; }

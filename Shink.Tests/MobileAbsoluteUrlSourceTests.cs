@@ -1415,7 +1415,6 @@ public class MobileAbsoluteUrlSourceTests
     {
         var project = File.ReadAllText(GetRepoPath("Shink.Mobile", "Shink.Mobile.csproj"));
         var app = File.ReadAllText(GetRepoPath("Shink.Mobile", "App.xaml.cs"));
-        var splashPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "FullScreenSplashPage.cs"));
         var infoPlist = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "iOS", "Info.plist"));
         var launchScreen = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "iOS", "LaunchScreen.storyboard"));
         var splashPath = GetRepoPath("Shink.Mobile", "Resources", "Splash", "schink_stories_full_splash.png");
@@ -1430,10 +1429,9 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(launchScreen, "contentMode=\"scaleAspectFill\"");
         StringAssert.Contains(launchScreen, "firstAttribute=\"top\" secondItem=\"launch-view\" secondAttribute=\"top\"");
         StringAssert.Contains(launchScreen, "firstAttribute=\"bottom\" secondItem=\"launch-image\" secondAttribute=\"bottom\"");
-        StringAssert.Contains(splashPage, "SafeAreaEdges = SafeAreaEdges.None;");
-        StringAssert.Contains(splashPage, "Aspect = Aspect.AspectFill");
-        StringAssert.Contains(app, "var splashPage = new FullScreenSplashPage();");
-        StringAssert.Contains(app, "window.Page = _shell;");
+        StringAssert.Contains(app, "var window = new Window(_shell);");
+        Assert.IsFalse(app.Contains("FullScreenSplashPage", StringComparison.Ordinal));
+        Assert.IsFalse(app.Contains("MainThread.BeginInvokeOnMainThread", StringComparison.Ordinal));
         CollectionAssert.AreEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47 }, splashBytes.Take(4).ToArray());
         Assert.IsTrue(splashBytes.Length > 100_000);
     }

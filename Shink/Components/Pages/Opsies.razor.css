@@ -42,6 +42,7 @@
 }
 
 .opsies-payment-status,
+.opsies-plan-change-alert,
 .opsies-hero,
 .opsies-plan-shell,
 .opsies-code-panel,
@@ -62,6 +63,106 @@
     margin: 0;
     padding: 0.95rem 1.1rem;
     font-weight: 700;
+}
+
+.opsies-plan-change-alert {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1rem 1.5rem;
+    align-items: center;
+    padding: clamp(1.15rem, 2.4vw, 1.65rem);
+    border-color: rgba(183, 86, 56, 0.24);
+    background: linear-gradient(135deg, rgba(255, 239, 231, 0.98) 0%, rgba(255, 250, 247, 0.98) 100%);
+}
+
+.opsies-upgrade-warning {
+    border-color: rgba(184, 126, 26, 0.3);
+    background: linear-gradient(135deg, rgba(255, 247, 218, 0.98) 0%, rgba(255, 252, 240, 0.98) 100%);
+}
+
+.opsies-upgrade-warning h2 {
+    color: #6f4b0d;
+}
+
+.opsies-upgrade-warning .opsies-plan-change-kicker {
+    color: #926313;
+}
+
+.opsies-plan-change-alert-copy {
+    display: grid;
+    gap: 0.45rem;
+}
+
+.opsies-plan-change-alert h2,
+.opsies-plan-change-alert p {
+    margin: 0;
+}
+
+.opsies-plan-change-alert h2 {
+    color: #713716;
+    font-size: clamp(1.2rem, 2.2vw, 1.55rem);
+    line-height: 1.25;
+}
+
+.opsies-plan-change-kicker {
+    color: #a74a1f;
+    font-size: 0.76rem;
+    font-weight: 800;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+}
+
+.opsies-plan-change-alert-copy > p:not(.opsies-plan-change-kicker) {
+    color: #6f4a36;
+    line-height: 1.55;
+}
+
+.opsies-plan-change-guidance {
+    font-weight: 750;
+}
+
+.opsies-plan-change-actions {
+    display: grid;
+    gap: 0.6rem;
+    min-width: min(100%, 220px);
+}
+
+.opsies-plan-change-primary,
+.opsies-plan-change-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 0.7rem 1rem;
+    border-radius: 999px;
+    font-weight: 800;
+    line-height: 1.2;
+    text-align: center;
+    text-decoration: none;
+}
+
+.opsies-plan-change-primary {
+    background: #a74a1f;
+    color: #ffffff;
+}
+
+.opsies-plan-change-secondary {
+    border: 1px solid rgba(167, 74, 31, 0.28);
+    background: rgba(255, 255, 255, 0.72);
+    color: #7b3b1b;
+}
+
+.opsies-plan-change-primary:hover,
+.opsies-plan-change-primary:focus-visible {
+    background: #873917;
+    color: #ffffff;
+}
+
+.opsies-plan-change-secondary:hover,
+.opsies-plan-change-secondary:focus-visible {
+    border-color: rgba(167, 74, 31, 0.5);
+    background: #ffffff;
+    color: #652f16;
 }
 
 .opsies-payment-success {
@@ -862,6 +963,7 @@ body.schink-night-mode .opsies-page {
 }
 
 body.schink-night-mode .opsies-payment-status,
+body.schink-night-mode .opsies-plan-change-alert,
 body.schink-night-mode .opsies-plan-shell,
 body.schink-night-mode .opsies-code-panel,
 body.schink-night-mode .opsies-compare,
@@ -879,6 +981,26 @@ body.schink-night-mode .opsies-testimonials {
 body.schink-night-mode .opsies-hero {
     background: transparent;
     box-shadow: none;
+}
+
+body.schink-night-mode .opsies-plan-change-alert h2,
+body.schink-night-mode .opsies-plan-change-kicker {
+    color: #ffd39b;
+}
+
+body.schink-night-mode .opsies-upgrade-warning {
+    border-color: rgba(255, 211, 112, 0.3);
+    background: linear-gradient(135deg, rgba(92, 67, 16, 0.42) 0%, rgba(57, 46, 23, 0.5) 100%);
+}
+
+body.schink-night-mode .opsies-plan-change-alert-copy > p:not(.opsies-plan-change-kicker) {
+    color: #f2d5c2;
+}
+
+body.schink-night-mode .opsies-plan-change-secondary {
+    border-color: rgba(255, 211, 155, 0.34);
+    background: rgba(255, 255, 255, 0.06);
+    color: #ffd39b;
 }
 
 body.schink-night-mode .opsies-hero-copy h1,
@@ -1094,6 +1216,7 @@ body.schink-night-mode .opsies-faq-item summary::before {
     }
 
     .opsies-payment-status,
+    .opsies-plan-change-alert,
     .opsies-hero,
     .opsies-plan-shell,
     .opsies-code-panel,
@@ -1103,6 +1226,15 @@ body.schink-night-mode .opsies-faq-item summary::before {
     .opsies-testimonials,
     .opsie-card {
         border-radius: 20px;
+    }
+
+    .opsies-plan-change-alert {
+        grid-template-columns: 1fr;
+        padding: 1rem;
+    }
+
+    .opsies-plan-change-actions {
+        width: 100%;
     }
 
     .opsies-hero,

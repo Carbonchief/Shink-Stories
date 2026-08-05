@@ -58,6 +58,11 @@ public class MobilePlansSourceTests
         StringAssert.Contains(plans, "FinalizePurchaseAsync");
         StringAssert.Contains(billing, "CrossInAppBilling.Current");
         StringAssert.Contains(billing, "ItemType.Subscription");
+        StringAssert.Contains(billing, "GetAppleProductsAsync");
+        StringAssert.Contains(billing, "SKProductsRequest");
+        StringAssert.Contains(billing, "GetDebugStoreKitProducts");
+        StringAssert.Contains(billing, "PathForResource(\"SchinkStories\", \"storekit\")");
+        StringAssert.Contains(billing, "displayPrice");
         StringAssert.Contains(api, "/api/mobile/store/entitlement");
         StringAssert.Contains(program, "app.MapPost(\"/api/mobile/store/entitlement\"");
         StringAssert.Contains(program, "MobileStoreEntitlementService");
@@ -68,6 +73,18 @@ public class MobilePlansSourceTests
         StringAssert.Contains(migration, "'apple'");
         StringAssert.Contains(migration, "'google_play'");
         StringAssert.Contains(migration, "'app_store'");
+    }
+
+    [TestMethod]
+    public void MobilePlansRemainVisibleWhenStoreProductsHaveNotLoaded()
+    {
+        var plans = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "PlansPage.cs"));
+
+        StringAssert.Contains(plans, "foreach (var plan in plans)");
+        StringAssert.Contains(plans, "_storeProducts.TryGetValue(plan.ProductId, out var product)");
+        StringAssert.Contains(plans, "Prys word gelaai");
+        StringAssert.Contains(plans, "Tans nie beskikbaar nie");
+        StringAssert.Contains(plans, "Die winkelpryse is tans nie beskikbaar nie.");
     }
 
     private static string GetRepoPath(params string[] segments)

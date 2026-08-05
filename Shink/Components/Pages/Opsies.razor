@@ -1,5 +1,6 @@
 @page "/opsies"
 @rendermode InteractiveServer
+@using System.Globalization
 @using System.Text.Json
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components
@@ -123,11 +124,42 @@
             Jou planverandering is geskeduleer.
         </p>
     }
+    else if (string.Equals(PaymentStatus, "opgradeer-waarskuwing", StringComparison.OrdinalIgnoreCase))
+    {
+        <section class="opsies-plan-change-alert opsies-upgrade-warning" role="alert" aria-live="assertive" aria-labelledby="upgrade-warning-title">
+            <div class="opsies-plan-change-alert-copy">
+                <p class="opsies-plan-change-kicker">Lees voor jy voortgaan</p>
+                <h2 id="upgrade-warning-title">@UpgradeWarningTitle</h2>
+                <p>@UpgradeWarningMessage</p>
+                <p class="opsies-plan-change-guidance">@UpgradeWarningGuidance</p>
+            </div>
+            <div class="opsies-plan-change-actions">
+                @if (CanContinueUpgrade)
+                {
+                    <a class="opsies-plan-change-primary" href="@ConfirmedUpgradeCheckoutHref">@UpgradeContinueButtonText</a>
+                }
+                <a class="opsies-plan-change-secondary" href="#plan-opsies">Kies 'n ander plan</a>
+                @if (!CanContinueUpgrade)
+                {
+                    <a class="opsies-plan-change-primary" href="/#kontak-ons">Kontak ons om die rekening te heropen</a>
+                }
+            </div>
+        </section>
+    }
     else if (string.Equals(PaymentStatus, "plan-verander-misluk", StringComparison.OrdinalIgnoreCase))
     {
-        <p class="opsies-payment-status opsies-payment-cancelled" role="status" aria-live="polite">
-            Ons kon nie jou plan nou verander nie. Probeer asseblief weer of kontak ons vir hulp.
-        </p>
+        <section class="opsies-plan-change-alert" role="alert" aria-live="assertive" aria-labelledby="plan-change-error-title">
+            <div class="opsies-plan-change-alert-copy">
+                <p class="opsies-plan-change-kicker">Planverandering nie voltooi nie</p>
+                <h2 id="plan-change-error-title">@PlanChangeFailureTitle</h2>
+                <p>@PlanChangeFailureMessage</p>
+                <p class="opsies-plan-change-guidance">@PlanChangeFailureGuidance</p>
+            </div>
+            <div class="opsies-plan-change-actions">
+                <a class="opsies-plan-change-primary" href="@PlanChangePrimaryActionHref">@PlanChangePrimaryActionText</a>
+                <a class="opsies-plan-change-secondary" href="/#kontak-ons">Kontak ons vir hulp</a>
+            </div>
+        </section>
     }
     else if (string.Equals(PaymentStatus, "verwerk", StringComparison.OrdinalIgnoreCase))
     {
@@ -493,6 +525,24 @@
     [SupplyParameterFromQuery(Name = "discountCode")]
     public string? DiscountCode { get; set; }
 
+    [SupplyParameterFromQuery(Name = "planFout")]
+    public string? PlanChangeFailureCode { get; set; }
+
+    [SupplyParameterFromQuery(Name = "oorgang")]
+    public string? UpgradeTransitionKind { get; set; }
+
+    [SupplyParameterFromQuery(Name = "provider")]
+    public string? CheckoutProvider { get; set; }
+
+    [SupplyParameterFromQuery(Name = "huidigeVerskaffer")]
+    public string? CurrentSubscriptionProvider { get; set; }
+
+    [SupplyParameterFromQuery(Name = "huidigeTier")]
+    public string? CurrentSubscriptionTier { get; set; }
+
+    [SupplyParameterFromQuery(Name = "toegangTot")]
+    public string? CurrentAccessEndsAt { get; set; }
+
     private bool IsUserAuthenticated { get; set; }
     private bool IsYearlyAllStoriesPlan { get; set; }
     private string? SafeStoryReturnPath { get; set; }
@@ -538,6 +588,119 @@
     private string? PaymentSuccessAutoRedirectPath => IsPaymentSuccess
         ? GetSafeReturnUrl(ReturnUrl) ?? "/luister"
         : null;
+    private bool CanContinueUpgrade => !string.Equals(
+        UpgradeTransitionKind,
+        SubscriptionCheckoutTransitionKinds.AccountClosed,
+        StringComparison.OrdinalIgnoreCase);
+    private bool IsPayFastPaymentProviderSwitch =>
+        string.Equals(
+            UpgradeTransitionKind,
+            SubscriptionCheckoutTransitionKinds.PayFastConversion,
+            StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(CurrentSubscriptionTier, PlanChangeTargetTier, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(CheckoutProvider, "paystack", StringComparison.OrdinalIgnoreCase);
+    private string UpgradeWarningTitle => UpgradeTransitionKind?.Trim().ToLowerInvariant() switch
+    {
+        SubscriptionCheckoutTransitionKinds.FreeAccess => "Jou gratis toegang sal nie saam met die nuwe plan voortgaan nie.",
+        SubscriptionCheckoutTransitionKinds.PayFastConversion when IsPayFastPaymentProviderSwitch => "Skuif jou betaling veilig van PayFast na Paystack.",
+        SubscriptionCheckoutTransitionKinds.PayFastConversion => "Jou ou PayFast-intekening word eers ná suksesvolle aktivering gekanselleer.",
+        SubscriptionCheckoutTransitionKinds.ProviderConversion => "Jou bestaande intekening word deur 'n ander betaalverskaffer bestuur.",
+        SubscriptionCheckoutTransitionKinds.LegacyPaystack => "Ons kan nie jou ou Paystack-intekening outomaties verander nie.",
+        SubscriptionCheckoutTransitionKinds.BillingStatusUncertain => "Ons kon nie bevestig dat jou vorige betaling reeds gestop het nie.",
+        SubscriptionCheckoutTransitionKinds.AccountClosed => "Hierdie rekening is tans gesluit.",
+        "discount-code-not-carried" => "Hierdie afslagkode kan nie na 'n bestaande intekening oorgedra word nie.",
+        _ => "Bevestig asseblief die verandering voordat jy betaal."
+    };
+    private string UpgradeWarningMessage => UpgradeTransitionKind?.Trim().ToLowerInvariant() switch
+    {
+        SubscriptionCheckoutTransitionKinds.FreeAccess =>
+            $"Wanneer {PlanChangeTargetName} suksesvol betaal en geaktiveer is, eindig die gratis toegang wat jy met jou kode of geskenk ontvang het{FormattedCurrentAccessEnd}. Oorblywende gratis dae word nie as krediet oorgedra nie.",
+        SubscriptionCheckoutTransitionKinds.PayFastConversion when IsPayFastPaymentProviderSwitch =>
+            $"Jou plan en toegang bly dieselfde. Ons aktiveer eers jou nuwe Paystack-betaling vir {PlanChangeTargetName}; daarna kanselleer ons die ou PayFast-intekening en merk dit as gesluit.",
+        SubscriptionCheckoutTransitionKinds.PayFastConversion =>
+            $"Ons aktiveer eers {PlanChangeTargetName} nadat die nuwe betaling slaag. Daarna kanselleer ons die ou PayFast-intekening en merk dit as gesluit, sodat die nuwe toegang nie afhanklik is van die kansellasie nie.",
+        SubscriptionCheckoutTransitionKinds.ProviderConversion =>
+            $"Jy kan met {PlanChangeTargetName} voortgaan, maar jou huidige {FriendlyCurrentProviderName}-intekening moet steeds by daardie verskaffer bestuur of gekanselleer word.",
+        SubscriptionCheckoutTransitionKinds.LegacyPaystack =>
+            $"Jy kan 'n nuwe betaling vir {PlanChangeTargetName} begin, maar ons het nie al die ou intekeningbesonderhede om die vorige Paystack-heffing outomaties te stop nie.",
+        SubscriptionCheckoutTransitionKinds.BillingStatusUncertain =>
+            $"Jy kan met {PlanChangeTargetName} voortgaan, maar die vorige intekening kan dalk steeds by {FriendlyCurrentProviderName} aktief wees en jou weer hef.",
+        SubscriptionCheckoutTransitionKinds.AccountClosed =>
+            "Ons sal nie 'n betaling neem terwyl die rekening gesluit is nie, omdat die nuwe toegang dan nie veilig geaktiveer kan word nie.",
+        "discount-code-not-carried" =>
+            $"As jy voortgaan, verander ons jou bestaande intekening na {PlanChangeTargetName} teen die gewone planprys. Die kode word nie op hierdie planverandering toegepas nie.",
+        _ => "Kontroleer die besonderhede van jou huidige intekening voordat jy voortgaan."
+    };
+    private string UpgradeWarningGuidance => UpgradeTransitionKind?.Trim().ToLowerInvariant() switch
+    {
+        SubscriptionCheckoutTransitionKinds.FreeAccess => "Niks verander as jy nie die nuwe betaling voltooi nie.",
+        SubscriptionCheckoutTransitionKinds.PayFastConversion => "PayFast sal jou ook per e-pos van die kansellasie in kennis stel. As PayFast nie die kansellasie aanvaar nie, bly die ou intekening sigbaar vir opvolg eerder as om die fout weg te steek. Niks verander as jy nie die nuwe betaling voltooi nie.",
+        SubscriptionCheckoutTransitionKinds.ProviderConversion => "Om dubbele heffings te vermy, kanselleer die ou intekening by die huidige verskaffer.",
+        SubscriptionCheckoutTransitionKinds.LegacyPaystack => "Kontak ons eers as jy onseker is of die ou Paystack-intekening nog geld aftrek.",
+        SubscriptionCheckoutTransitionKinds.BillingStatusUncertain => "Kontroleer jou bankstaat of kontak ons eers om 'n dubbele heffing te vermy.",
+        SubscriptionCheckoutTransitionKinds.AccountClosed => "Kontak ons om die rekening te heropen; daarna kan jy enige plan kies.",
+        "discount-code-not-carried" => "Niks word gehef totdat die planverandering suksesvol verwerk is nie.",
+        _ => "Niks verander totdat jy die volgende stap voltooi nie."
+    };
+    private string UpgradeContinueButtonText => IsPayFastPaymentProviderSwitch
+        ? "Skuif betaling na Paystack"
+        : "Ek verstaan, gaan voort";
+    private string FriendlyCurrentProviderName => CurrentSubscriptionProvider?.Trim().ToLowerInvariant() switch
+    {
+        "apple" or "app_store" => "Apple App Store",
+        "google" or "google_play" => "Google Play",
+        "payfast" => "PayFast",
+        "paystack" => "Paystack",
+        _ => "ander betaalverskaffer"
+    };
+    private string FormattedCurrentAccessEnd =>
+        DateTimeOffset.TryParseExact(
+            CurrentAccessEndsAt,
+            "yyyy-MM-dd",
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.AssumeUniversal,
+            out var accessEnd)
+            ? $" (tans geldig tot {accessEnd.ToString("d MMMM yyyy", CultureInfo.GetCultureInfo("af-ZA"))})"
+            : string.Empty;
+    private string ConfirmedUpgradeCheckoutHref => BuildConfirmedUpgradeCheckoutHref(
+        NormalizePlanSlug(Plan),
+        CheckoutProvider,
+        UpgradeTransitionKind,
+        DiscountCode,
+        GetSafeReturnUrl(ReturnUrl));
+    private bool PlanChangeFailedBecauseNoActivePlan =>
+        string.Equals(PlanChangeFailureCode, "geen-aktiewe-plan", StringComparison.OrdinalIgnoreCase);
+    private bool PlanChangeIsStillProcessing =>
+        string.Equals(PlanChangeFailureCode, "verwerk", StringComparison.OrdinalIgnoreCase);
+    private string PlanChangeTargetName =>
+        PaymentPlanCatalog.FindBySlug(NormalizePlanSlug(Plan))?.ItemName ?? "die gekose plan";
+    private string? PlanChangeTargetTier =>
+        PaymentPlanCatalog.FindBySlug(NormalizePlanSlug(Plan))?.TierCode;
+    private string PlanChangeFailureTitle => PlanChangeFailureCode?.Trim().ToLowerInvariant() switch
+    {
+        "geen-aktiewe-plan" => "Ons kon nie 'n aktiewe betaalplan vind om te verander nie.",
+        "verskaffer" => "Hierdie plan kan nie outomaties verander word nie.",
+        "verwerk" => "Jou planverandering word reeds verwerk.",
+        _ => "Ons kon nie die planverandering klaarmaak nie."
+    };
+    private string PlanChangeFailureMessage => PlanChangeFailureCode?.Trim().ToLowerInvariant() switch
+    {
+        "geen-aktiewe-plan" => $"Kies {PlanChangeTargetName} hieronder om 'n nuwe, veilige betaling te begin.",
+        "verskaffer" => "Jou huidige betaalverskaffer ondersteun nie hierdie selfdiens-planverandering nie. Ons kan jou help om die regte volgende stap te neem.",
+        "verwerk" => "Wag asseblief 'n paar minute voordat jy jou rekening weer nagaan. Nog 'n poging kan 'n dubbele betaling veroorsaak.",
+        _ => "Moenie dieselfde verandering herhaaldelik probeer nie. Gaan eers jou rekening na of kontak ons sodat ons die betaalstatus kan bevestig."
+    };
+    private string PlanChangeFailureGuidance => PlanChangeFailedBecauseNoActivePlan
+        ? "Geen bestaande plan is deur hierdie poging verander nie."
+        : PlanChangeIsStillProcessing
+            ? "Jou huidige toegang bly beskikbaar terwyl ons die verandering verwerk."
+            : "As 'n bedrag op jou bankstaat verskyn of jou toegang verander het, kontak ons voordat jy weer probeer.";
+    private string PlanChangePrimaryActionHref => PlanChangeFailedBecauseNoActivePlan
+        ? "#plan-opsies"
+        : "/intekening-en-betaling";
+    private string PlanChangePrimaryActionText => PlanChangeFailedBecauseNoActivePlan
+        ? "Kies 'n plan hieronder"
+        : "Gaan na my rekening";
 
     private MarkupString OpsiesJsonLd => new(JsonSerializer.Serialize(new Dictionary<string, object?>
     {
@@ -741,6 +904,40 @@
         }
 
         return QueryHelpers.AddQueryString("/teken-op", signUpQuery);
+    }
+
+    private static string BuildConfirmedUpgradeCheckoutHref(
+        string? planSlug,
+        string? provider,
+        string? transitionKind,
+        string? discountCode,
+        string? returnUrl)
+    {
+        var selectedPlan = PaymentPlanCatalog.FindBySlug(planSlug);
+        if (selectedPlan is null || string.IsNullOrWhiteSpace(transitionKind))
+        {
+            return "/opsies#plan-opsies";
+        }
+
+        var query = new Dictionary<string, string?>
+        {
+            ["provider"] = string.Equals(provider, "payfast", StringComparison.OrdinalIgnoreCase) ? "payfast" : "paystack",
+            ["bevestigOorgang"] = transitionKind
+        };
+        var normalizedDiscountCode = NormalizeOptionalCode(discountCode);
+        if (!string.IsNullOrWhiteSpace(normalizedDiscountCode))
+        {
+            query["discountCode"] = normalizedDiscountCode;
+        }
+
+        if (!string.IsNullOrWhiteSpace(returnUrl))
+        {
+            query["returnUrl"] = returnUrl;
+        }
+
+        return QueryHelpers.AddQueryString(
+            $"/betaal/{Uri.EscapeDataString(selectedPlan.Slug)}",
+            query);
     }
 
     private static string? NormalizeOptionalCode(string? value)

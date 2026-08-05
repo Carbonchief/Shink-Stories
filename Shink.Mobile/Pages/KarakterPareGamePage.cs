@@ -133,7 +133,7 @@ public sealed class KarakterPareGamePage : ContentPage
         var root = new Grid
         {
             SafeAreaEdges = SafeAreaEdges.None,
-            Background = BuildGameBackground(),
+            Background = Brush.Transparent,
             RowDefinitions =
             {
                 new RowDefinition(new GridLength(64)),

@@ -1196,6 +1196,7 @@ app.MapGet("/betaal/{planSlug}", async (
     string? provider,
     string? discountCode,
     string? returnUrl,
+    string? bevestigOorgang,
     PayFastCheckoutService payFastCheckoutService,
     PaystackCheckoutService paystackCheckoutService,
     ISubscriptionLedgerService subscriptionLedgerService,
@@ -1264,11 +1265,40 @@ app.MapGet("/betaal/{planSlug}", async (
         }
     }
 
+    if (!TryResolvePaymentProvider(provider, out var selectedProvider))
+    {
+        return Results.BadRequest(new { message = "Ongeldige betaalverskaffer. Gebruik 'paystack' of 'payfast'." });
+    }
+
+    if (!string.IsNullOrWhiteSpace(discountCode) &&
+        !string.Equals(selectedProvider, "paystack", StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.BadRequest(new { message = "Afslagkodes werk net met Paystack-betalings." });
+    }
+
+    var checkoutAssessment = await subscriptionLedgerService.AssessSubscriptionCheckoutAsync(
+        signedInEmail,
+        plan.TierCode,
+        httpContext.RequestAborted);
     var hasActiveTierSubscription = await subscriptionLedgerService.HasBillableSubscriptionForTierAsync(
         signedInEmail,
         plan.TierCode,
         httpContext.RequestAborted);
-    if (hasActiveTierSubscription)
+    var isSameBillingProvider = string.Equals(
+        checkoutAssessment.CurrentProvider,
+        selectedProvider,
+        StringComparison.OrdinalIgnoreCase);
+    var shouldBlockDuplicateTier = hasActiveTierSubscription &&
+        (isSameBillingProvider ||
+         string.Equals(
+             checkoutAssessment.TransitionKind,
+             SubscriptionCheckoutTransitionKinds.PlanChange,
+             StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(
+             checkoutAssessment.TransitionKind,
+             SubscriptionCheckoutTransitionKinds.NewCheckout,
+             StringComparison.OrdinalIgnoreCase));
+    if (shouldBlockDuplicateTier)
     {
         logger.LogInformation(
             "Blocked duplicate checkout for active tier. plan={PlanSlug} tier={TierCode} email={Email}",
@@ -1289,14 +1319,34 @@ app.MapGet("/betaal/{planSlug}", async (
         return Results.Redirect(duplicateRedirectPath);
     }
 
-    var hasActivePaidSubscription = await subscriptionLedgerService.HasBillablePaidSubscriptionAsync(
-        signedInEmail,
-        httpContext.RequestAborted);
-    if (hasActivePaidSubscription)
+    if (string.Equals(
+            checkoutAssessment.TransitionKind,
+            SubscriptionCheckoutTransitionKinds.AccountClosed,
+            StringComparison.OrdinalIgnoreCase))
     {
-        if (discountPreview is not null)
+        return Results.Redirect(BuildUpgradeWarningRedirectPath(
+            checkoutAssessment,
+            plan,
+            selectedProvider,
+            discountCode,
+            safeReturnUrl));
+    }
+
+    if (string.Equals(
+            checkoutAssessment.TransitionKind,
+            SubscriptionCheckoutTransitionKinds.PlanChange,
+            StringComparison.OrdinalIgnoreCase))
+    {
+        const string discountNotCarriedWarning = "discount-code-not-carried";
+        if (discountPreview is not null &&
+            !string.Equals(bevestigOorgang, discountNotCarriedWarning, StringComparison.OrdinalIgnoreCase))
         {
-            return Results.Redirect(BuildSubscriptionPaymentRedirectPath("kode-betaalplan", plan.Slug, safeReturnUrl));
+            return Results.Redirect(BuildUpgradeWarningRedirectPath(
+                checkoutAssessment with { TransitionKind = discountNotCarriedWarning },
+                plan,
+                selectedProvider,
+                discountCode,
+                safeReturnUrl));
         }
 
         var planChangeResult = await subscriptionLedgerService.ChangePaidSubscriptionPlanAsync(
@@ -1315,6 +1365,23 @@ app.MapGet("/betaal/{planSlug}", async (
         return Results.Redirect(BuildPlanChangeRedirectPath(planChangeResult, plan, safeReturnUrl));
     }
 
+    if (!string.Equals(
+            checkoutAssessment.TransitionKind,
+            SubscriptionCheckoutTransitionKinds.NewCheckout,
+            StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(
+            bevestigOorgang,
+            checkoutAssessment.TransitionKind,
+            StringComparison.OrdinalIgnoreCase))
+    {
+        return Results.Redirect(BuildUpgradeWarningRedirectPath(
+            checkoutAssessment,
+            plan,
+            selectedProvider,
+            discountCode,
+            safeReturnUrl));
+    }
+
     var hasPendingPaystackRepair = await subscriptionLedgerService.HasPendingPaystackRepairForTierAsync(
         signedInEmail,
         plan.TierCode,
@@ -1331,17 +1398,6 @@ app.MapGet("/betaal/{planSlug}", async (
             "/intekening-en-betaling",
             "rekening",
             "herstel-besig"));
-    }
-
-    if (!TryResolvePaymentProvider(provider, out var selectedProvider))
-    {
-        return Results.BadRequest(new { message = "Ongeldige betaalverskaffer. Gebruik 'paystack' of 'payfast'." });
-    }
-
-    if (!string.IsNullOrWhiteSpace(discountCode) &&
-        !string.Equals(selectedProvider, "paystack", StringComparison.OrdinalIgnoreCase))
-    {
-        return Results.BadRequest(new { message = "Afslagkodes werk net met Paystack-betalings." });
     }
 
     if (string.Equals(selectedProvider, "paystack", StringComparison.OrdinalIgnoreCase))
@@ -5575,12 +5631,80 @@ static string BuildPlanChangeRedirectPath(
         ["plan"] = plan.Slug
     };
 
+    if (!result.IsSuccess)
+    {
+        query["planFout"] = ResolvePlanChangeFailureCode(result.ErrorMessage);
+    }
+
     if (!string.IsNullOrWhiteSpace(returnUrl))
     {
         query["returnUrl"] = returnUrl;
     }
 
     return QueryHelpers.AddQueryString("/opsies", query);
+}
+
+static string BuildUpgradeWarningRedirectPath(
+    SubscriptionCheckoutAssessment assessment,
+    PaymentPlan plan,
+    string selectedProvider,
+    string? discountCode,
+    string? returnUrl)
+{
+    var query = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["betaling"] = "opgradeer-waarskuwing",
+        ["oorgang"] = assessment.TransitionKind,
+        ["plan"] = plan.Slug,
+        ["tier"] = plan.TierCode,
+        ["provider"] = selectedProvider,
+        ["huidigeVerskaffer"] = assessment.CurrentProvider,
+        ["huidigeTier"] = assessment.CurrentTierCode
+    };
+
+    if (assessment.CurrentAccessEndsAtUtc is not null)
+    {
+        query["toegangTot"] = assessment.CurrentAccessEndsAtUtc.Value.UtcDateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture);
+    }
+
+    if (!string.IsNullOrWhiteSpace(discountCode))
+    {
+        query["discountCode"] = discountCode.Trim();
+    }
+
+    if (!string.IsNullOrWhiteSpace(returnUrl))
+    {
+        query["returnUrl"] = returnUrl;
+    }
+
+    return QueryHelpers.AddQueryString("/opsies", query);
+}
+
+static string ResolvePlanChangeFailureCode(string? errorMessage)
+{
+    if (string.IsNullOrWhiteSpace(errorMessage))
+    {
+        return "tegnies";
+    }
+
+    if (errorMessage.Contains("aktiewe betaalde intekening", StringComparison.OrdinalIgnoreCase))
+    {
+        return "geen-aktiewe-plan";
+    }
+
+    if (errorMessage.Contains("betaalverskaffer", StringComparison.OrdinalIgnoreCase) ||
+        errorMessage.Contains("Paystack-intekening", StringComparison.OrdinalIgnoreCase))
+    {
+        return "verskaffer";
+    }
+
+    if (errorMessage.Contains("verwerk reeds", StringComparison.OrdinalIgnoreCase) ||
+        errorMessage.Contains("oomblik", StringComparison.OrdinalIgnoreCase))
+    {
+        return "verwerk";
+    }
+
+    return "tegnies";
 }
 
 static async Task<IResult?> TryRedirectRecoveredPaystackSubscriptionAsync(

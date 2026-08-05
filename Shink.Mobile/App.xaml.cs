@@ -1,5 +1,4 @@
 using Shink.Mobile.Services;
-using Shink.Mobile.Pages;
 
 namespace Shink.Mobile;
 
@@ -19,26 +18,15 @@ public partial class App : Application
 
     protected override Window CreateWindow(IActivationState? activationState)
     {
-        var splashPage = new FullScreenSplashPage();
-        var window = new Window(splashPage);
-        splashPage.Loaded += ShowShellAfterSplash;
+        // Let iOS dismiss the native launch screen as soon as the Shell window
+        // is ready. A second runtime splash page can remain visible when page
+        // lifecycle callbacks are missed during native startup.
+        var window = new Window(_shell);
         window.Stopped += (_, _) => _lifecycleService.OnStopped();
         window.Resumed += (_, _) => _lifecycleService.OnResumed();
         window.Destroying += (_, _) => _lifecycleService.OnDestroying();
         _analytics.TrackAppOpened();
         _analytics.IdentifyCurrentSession();
         return window;
-
-        async void ShowShellAfterSplash(object? sender, EventArgs args)
-        {
-            splashPage.Loaded -= ShowShellAfterSplash;
-            await Task.Delay(300);
-            await splashPage.FadeToAsync(0, 150, Easing.CubicIn);
-
-            if (ReferenceEquals(window.Page, splashPage))
-            {
-                window.Page = _shell;
-            }
-        }
     }
 }

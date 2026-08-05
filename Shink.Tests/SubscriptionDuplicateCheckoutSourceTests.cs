@@ -17,16 +17,18 @@ public sealed class SubscriptionDuplicateCheckoutSourceTests
 
         StringAssert.Contains(routeBlock, "HasBillableSubscriptionForTierAsync(");
         StringAssert.Contains(routeBlock, "betaling\"] = \"reeds-ingeteken\"");
+        StringAssert.Contains(routeBlock, "isSameBillingProvider");
+        StringAssert.Contains(routeBlock, "checkoutAssessment.CurrentProvider");
 
         var activeCheckIndex = routeBlock.IndexOf("HasBillableSubscriptionForTierAsync(", StringComparison.Ordinal);
-        var providerResolutionIndex = routeBlock.IndexOf("TryResolvePaymentProvider(", StringComparison.Ordinal);
+        var providerCheckoutIndex = routeBlock.IndexOf("InitializeCheckoutAsync(", StringComparison.Ordinal);
         Assert.IsTrue(
-            activeCheckIndex >= 0 && providerResolutionIndex > activeCheckIndex,
-            "The duplicate subscription check must run before any payment provider is selected.");
+            activeCheckIndex >= 0 && providerCheckoutIndex > activeCheckIndex,
+            "The duplicate subscription check must run before any payment provider starts checkout.");
     }
 
     [TestMethod]
-    public void PaymentRouteChangesAnyActivePaidPlanBeforeStartingDifferentTierCheckout()
+    public void PaymentRouteAssessesEverySubscriptionBeforeChangingOrStartingCheckout()
     {
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
         var routeBlock = ExtractBlock(
@@ -35,25 +37,77 @@ public sealed class SubscriptionDuplicateCheckoutSourceTests
             ".DisableAntiforgery();",
             startOffset: program.IndexOf("app.MapGet(\"/betaal/{planSlug}\"", StringComparison.Ordinal));
 
-        StringAssert.Contains(routeBlock, "HasBillablePaidSubscriptionAsync(");
+        StringAssert.Contains(routeBlock, "AssessSubscriptionCheckoutAsync(");
+        StringAssert.Contains(routeBlock, "SubscriptionCheckoutTransitionKinds.PlanChange");
+        StringAssert.Contains(routeBlock, "shouldBlockDuplicateTier");
         StringAssert.Contains(routeBlock, "ChangePaidSubscriptionPlanAsync(");
+        StringAssert.Contains(routeBlock, "BuildUpgradeWarningRedirectPath(");
         StringAssert.Contains(routeBlock, "BuildPlanChangeRedirectPath(");
         StringAssert.Contains(program, "\"plan-opgradeer\"");
         StringAssert.Contains(program, "\"plan-afgradeer\"");
 
-        var paidCheckIndex = routeBlock.IndexOf("HasBillablePaidSubscriptionAsync(", StringComparison.Ordinal);
+        var paidCheckIndex = routeBlock.IndexOf("AssessSubscriptionCheckoutAsync(", StringComparison.Ordinal);
         var planChangeIndex = routeBlock.IndexOf("ChangePaidSubscriptionPlanAsync(", StringComparison.Ordinal);
         var pendingRepairCheckIndex = routeBlock.IndexOf("HasPendingPaystackRepairForTierAsync(", StringComparison.Ordinal);
-        var providerResolutionIndex = routeBlock.IndexOf("TryResolvePaymentProvider(", StringComparison.Ordinal);
+        var providerCheckoutIndex = routeBlock.IndexOf("InitializeCheckoutAsync(", StringComparison.Ordinal);
         Assert.IsTrue(
             paidCheckIndex >= 0 && planChangeIndex > paidCheckIndex,
-            "The broader paid-subscription check must trigger a plan change before pending repair checks.");
+            "The subscription assessment must trigger a supported plan change before pending repair checks.");
         Assert.IsTrue(
             paidCheckIndex >= 0 && pendingRepairCheckIndex > paidCheckIndex,
-            "The broader paid-subscription check must run before pending repair checks.");
+            "The subscription assessment must run before pending repair checks.");
         Assert.IsTrue(
-            paidCheckIndex >= 0 && providerResolutionIndex > paidCheckIndex,
-            "The broader paid-subscription check must run before any payment provider can start a new checkout.");
+            paidCheckIndex >= 0 && providerCheckoutIndex > paidCheckIndex,
+            "The subscription assessment must run before any payment provider can start a new checkout.");
+    }
+
+    [TestMethod]
+    public void UpgradeWarningsKeepAConfirmedPathToCheckoutWithoutTakingAccessEarly()
+    {
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+        var opsies = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Opsies.razor"));
+        var ledger = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseSubscriptionLedgerService.cs"));
+
+        StringAssert.Contains(program, "bevestigOorgang");
+        StringAssert.Contains(program, "BuildUpgradeWarningRedirectPath(");
+        StringAssert.Contains(opsies, "Skuif betaling na Paystack");
+        StringAssert.Contains(opsies, "bevestigOorgang");
+        StringAssert.Contains(opsies, "Ons aktiveer eers jou nuwe Paystack-betaling");
+        StringAssert.Contains(opsies, "Jou gratis toegang sal nie saam met die nuwe plan voortgaan nie");
+        StringAssert.Contains(ledger, "EndSupersededFreeAccessAsync(");
+        StringAssert.Contains(ledger, "CancelSupersededPayFastSubscriptionsAsync(");
+        StringAssert.Contains(ledger, "activatedProviderToken");
+        StringAssert.Contains(ledger, "duplicate ledger row pointing at the newly activated mandate");
+
+        var upsertIndex = ledger.IndexOf("var subscriptionId = ReadFirstStringProperty(responseBody, \"subscription_id\")", StringComparison.Ordinal);
+        var supersedeIndex = ledger.IndexOf("await EndSupersededFreeAccessAsync(", upsertIndex, StringComparison.Ordinal);
+        Assert.IsTrue(
+            upsertIndex >= 0 && supersedeIndex > upsertIndex,
+            "Free access may only be superseded after the paid subscription was persisted successfully.");
+    }
+
+    [TestMethod]
+    public void FailedPlanChangeShowsARecoveryMessageWithSafeActions()
+    {
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+        var opsies = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Opsies.razor"));
+        var css = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Opsies.razor.css"));
+
+        var redirectStart = program.IndexOf("static string BuildPlanChangeRedirectPath(", StringComparison.Ordinal);
+        var redirectEnd = program.IndexOf("static async Task<IResult?> TryRedirectRecoveredPaystackSubscriptionAsync(", redirectStart, StringComparison.Ordinal);
+        var redirectBlock = program[redirectStart..redirectEnd];
+
+        StringAssert.Contains(redirectBlock, "planFout");
+        StringAssert.Contains(redirectBlock, "ResolvePlanChangeFailureCode(result.ErrorMessage)");
+        Assert.DoesNotContain("[\"planFout\"] = result.ErrorMessage", redirectBlock);
+
+        StringAssert.Contains(opsies, "Planverandering nie voltooi nie");
+        StringAssert.Contains(opsies, "Moenie dieselfde verandering herhaaldelik probeer nie");
+        StringAssert.Contains(opsies, "Gaan na my rekening");
+        StringAssert.Contains(opsies, "Kontak ons vir hulp");
+        StringAssert.Contains(opsies, "[SupplyParameterFromQuery(Name = \"planFout\")]");
+        StringAssert.Contains(css, ".opsies-plan-change-alert");
+        StringAssert.Contains(css, "grid-template-columns: 1fr;");
     }
 
     [TestMethod]

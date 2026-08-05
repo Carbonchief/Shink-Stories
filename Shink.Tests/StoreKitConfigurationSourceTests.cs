@@ -51,6 +51,24 @@ public class StoreKitConfigurationSourceTests
         StringAssert.Contains(project, "<BundleResource");
     }
 
+    [TestMethod]
+    public void LocalStoreKitRunnerSelectsTheDebugConfigurationFile()
+    {
+        var scheme = File.ReadAllText(GetRepoPath(
+            "Shink.Mobile.StoreKitRunner.xcodeproj",
+            "xcshareddata",
+            "xcschemes",
+            "SchinkStories-StoreKit.xcscheme"));
+
+        StringAssert.Contains(
+            scheme,
+            "identifier = \"../../Shink.Mobile/Platforms/iOS/StoreKit/SchinkStories.storekit\"");
+        StringAssert.Contains(scheme, "selectedDebuggerIdentifier = \"\"");
+        StringAssert.Contains(
+            scheme,
+            "selectedLauncherIdentifier = \"Xcode.IDEFoundation.Launcher.PosixSpawn\"");
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var parts = new[]

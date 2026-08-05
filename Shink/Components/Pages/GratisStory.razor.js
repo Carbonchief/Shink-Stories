@@ -36,6 +36,13 @@ const LISTEN_FLUSH_THRESHOLD_SECONDS = 12;
 const LISTEN_MAX_DELTA_SECONDS = 30;
 const LISTEN_MAX_EVENT_SECONDS = 600;
 const LISTEN_MIN_EVENT_SECONDS = 0.2;
+const STORY_LISTEN_EVENT_PRIORITY = Object.freeze({
+    progress: 0,
+    pause: 1,
+    visibilityhidden: 2,
+    pagehide: 3,
+    ended: 4
+});
 const STORY_CAROUSEL_SELECTOR = ".story-carousel";
 const STORY_CAROUSEL_DRAGGING_CLASS = "is-dragging";
 const STORY_CAROUSEL_DRAG_THRESHOLD_PX = 8;
@@ -1001,7 +1008,10 @@ function buildStoryTrackingState(audioElement) {
         viewTracked: false,
         pendingListenSeconds: 0,
         lastTickAtMs: null,
-        sendInFlight: false
+        sendInFlight: false,
+        deferredFlushEventType: null,
+        deferredFlushUseKeepalive: false,
+        deferredFlushMetrics: null
     };
 }
 
@@ -1194,25 +1204,59 @@ function captureListenDelta(trackingState) {
     trackingState.pendingListenSeconds += elapsedSeconds;
 }
 
-function flushStoryListen(audioElement, trackingState, eventType, force, useKeepalive) {
-    if (!trackingState || trackingState.sendInFlight) {
+function captureStoryAudioMetrics(audioElement) {
+    return {
+        positionSeconds: Number.isFinite(audioElement.currentTime) ? audioElement.currentTime : null,
+        durationSeconds: Number.isFinite(audioElement.duration) && audioElement.duration > 0
+            ? audioElement.duration
+            : null
+    };
+}
+
+function deferStoryListenFlush(audioElement, trackingState, eventType, useKeepalive) {
+    const currentEventType = trackingState.deferredFlushEventType;
+    const currentPriority = currentEventType
+        ? (STORY_LISTEN_EVENT_PRIORITY[currentEventType] ?? 0)
+        : -1;
+    const nextPriority = STORY_LISTEN_EVENT_PRIORITY[eventType] ?? 0;
+
+    if (!currentEventType || nextPriority >= currentPriority) {
+        trackingState.deferredFlushEventType = eventType;
+        trackingState.deferredFlushMetrics = captureStoryAudioMetrics(audioElement);
+    }
+
+    trackingState.deferredFlushUseKeepalive = trackingState.deferredFlushUseKeepalive || Boolean(useKeepalive);
+}
+
+function flushStoryListen(audioElement, trackingState, eventType, force, useKeepalive, metricsOverride = null) {
+    if (!trackingState) {
+        return;
+    }
+
+    if (trackingState.sendInFlight) {
+        if (force || eventType === "ended") {
+            deferStoryListenFlush(audioElement, trackingState, eventType, useKeepalive);
+        }
+
         return;
     }
 
     const pendingSeconds = trackingState.pendingListenSeconds;
+    const isTerminalEvent = eventType === "ended";
     const shouldFlush = force || pendingSeconds >= LISTEN_FLUSH_THRESHOLD_SECONDS;
-    if (!shouldFlush || pendingSeconds < LISTEN_MIN_EVENT_SECONDS) {
+    if (!shouldFlush || (!isTerminalEvent && pendingSeconds < LISTEN_MIN_EVENT_SECONDS)) {
         return;
     }
 
     trackingState.pendingListenSeconds = 0;
     trackingState.sendInFlight = true;
 
-    const listenedSeconds = Math.min(pendingSeconds, LISTEN_MAX_EVENT_SECONDS);
-    const positionSeconds = Number.isFinite(audioElement.currentTime) ? audioElement.currentTime : null;
-    const durationSeconds = Number.isFinite(audioElement.duration) && audioElement.duration > 0
-        ? audioElement.duration
-        : null;
+    const listenedSeconds = pendingSeconds >= LISTEN_MIN_EVENT_SECONDS
+        ? Math.min(pendingSeconds, LISTEN_MAX_EVENT_SECONDS)
+        : LISTEN_MIN_EVENT_SECONDS;
+    const audioMetrics = metricsOverride ?? captureStoryAudioMetrics(audioElement);
+    const positionSeconds = audioMetrics.positionSeconds;
+    const durationSeconds = audioMetrics.durationSeconds;
 
     const payload = {
         storyPath: trackingState.storyPath,
@@ -1242,6 +1286,28 @@ function flushStoryListen(audioElement, trackingState, eventType, force, useKeep
         })
         .finally(() => {
             trackingState.sendInFlight = false;
+
+            const deferredEventType = trackingState.deferredFlushEventType;
+            const deferredUseKeepalive = trackingState.deferredFlushUseKeepalive;
+            const deferredMetrics = trackingState.deferredFlushMetrics;
+            trackingState.deferredFlushEventType = null;
+            trackingState.deferredFlushUseKeepalive = false;
+            trackingState.deferredFlushMetrics = null;
+
+            if (deferredEventType) {
+                flushStoryListen(
+                    audioElement,
+                    trackingState,
+                    deferredEventType,
+                    true,
+                    deferredUseKeepalive,
+                    deferredMetrics);
+                return;
+            }
+
+            if (trackingState.pendingListenSeconds >= LISTEN_FLUSH_THRESHOLD_SECONDS) {
+                flushStoryListen(audioElement, trackingState, "progress", false, false);
+            }
         });
 }
 
@@ -1695,7 +1761,7 @@ function bindAudioEvents(audioElement, dotNetRef) {
         const trackingState = getStoryTrackingState(audioElement);
         if (trackingState) {
             captureListenDelta(trackingState);
-            flushStoryListen(audioElement, trackingState, "ended", true, false);
+            flushStoryListen(audioElement, trackingState, "ended", true, true);
             stopListenTimer(trackingState);
         }
 
