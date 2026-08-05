@@ -24,6 +24,7 @@ const MUTE_TOGGLE_SELECTOR = ".story-mute-toggle";
 const MUTE_ICON_SELECTOR = ".story-mute-icon";
 const SPEED_TOGGLE_SELECTOR = ".story-speed-toggle";
 const SPEED_LABEL_SELECTOR = ".story-speed-label";
+const REPEAT_TOGGLE_SELECTOR = ".story-repeat-toggle";
 const SHARE_TOGGLE_SELECTOR = ".story-share-toggle";
 const SPEED_STEPS = [1, 1.25, 1.5, 0.8];
 const MEDIA_HAVE_METADATA = 1;
@@ -1380,6 +1381,7 @@ function getCustomPlayerElements(audioElement) {
         muteIcon: customPlayer.querySelector(MUTE_ICON_SELECTOR),
         speedToggle: customPlayer.querySelector(SPEED_TOGGLE_SELECTOR),
         speedLabel: customPlayer.querySelector(SPEED_LABEL_SELECTOR),
+        repeatToggle: customPlayer.querySelector(REPEAT_TOGGLE_SELECTOR),
         shareToggle: customPlayer.querySelector(SHARE_TOGGLE_SELECTOR)
     };
 }
@@ -1536,6 +1538,12 @@ function bindAudioEvents(audioElement, dotNetRef) {
         if (customPlayerElements.speedLabel instanceof HTMLElement) {
             customPlayerElements.speedLabel.textContent = `${audioElement.playbackRate.toFixed(2).replace(/\.00$/, ".0")}x`;
         }
+
+        if (customPlayerElements.repeatToggle instanceof HTMLButtonElement) {
+            const repeatEnabled = audioElement.dataset.repeatEnabled === "true";
+            customPlayerElements.repeatToggle.classList.toggle("is-active", repeatEnabled);
+            customPlayerElements.repeatToggle.setAttribute("aria-pressed", String(repeatEnabled));
+        }
     };
 
     const updateAll = () => {
@@ -1646,6 +1654,13 @@ function bindAudioEvents(audioElement, dotNetRef) {
                 const currentIndex = SPEED_STEPS.findIndex((rate) => Math.abs(rate - audioElement.playbackRate) < 0.001);
                 const nextIndex = currentIndex < 0 ? 0 : (currentIndex + 1) % SPEED_STEPS.length;
                 audioElement.playbackRate = SPEED_STEPS[nextIndex];
+                updateCustomPlayerState();
+            });
+        }
+
+        if (customPlayerElements.repeatToggle instanceof HTMLButtonElement) {
+            customPlayerElements.repeatToggle.addEventListener("click", () => {
+                audioElement.dataset.repeatEnabled = String(audioElement.dataset.repeatEnabled !== "true");
                 updateCustomPlayerState();
             });
         }
@@ -1767,6 +1782,12 @@ function bindAudioEvents(audioElement, dotNetRef) {
 
         clearStoryProgress(audioElement);
         updateAll();
+
+        if (audioElement.dataset.repeatEnabled === "true") {
+            audioElement.currentTime = 0;
+            playAudioSafely(audioElement);
+            return;
+        }
 
         if (shouldAutoplayNextTrack(audioElement)) {
             void (async () => {

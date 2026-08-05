@@ -64,6 +64,35 @@ public class StoryTrackingSourceTests
     }
 
     [TestMethod]
+    public void LuisterStoryUsesRepeatToggleInsteadOfSpeedControl()
+    {
+        var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "LuisterStory.razor"));
+        var styles = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "LuisterStory.razor.css"));
+        var script = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "GratisStory.razor.js"));
+
+        StringAssert.Contains(markup, "story-repeat-toggle");
+        StringAssert.Contains(markup, "aria-pressed=\"false\"");
+        StringAssert.Contains(markup, "fa-solid fa-repeat");
+        Assert.IsFalse(markup.Contains("story-speed-toggle", StringComparison.Ordinal));
+        StringAssert.Contains(styles, ".story-repeat-toggle.is-active");
+        StringAssert.Contains(script, "const REPEAT_TOGGLE_SELECTOR = \".story-repeat-toggle\";");
+        StringAssert.Contains(script, "audioElement.dataset.repeatEnabled = String(audioElement.dataset.repeatEnabled !== \"true\");");
+        StringAssert.Contains(script, "setAttribute(\"aria-pressed\", String(repeatEnabled));");
+        StringAssert.Contains(script, "if (audioElement.dataset.repeatEnabled === \"true\")");
+        StringAssert.Contains(script, "flushStoryListen(audioElement, trackingState, \"ended\", true, true);");
+        Assert.IsFalse(script.Contains("audioElement.loop", StringComparison.Ordinal));
+
+        var completionFlushIndex = script.IndexOf(
+            "flushStoryListen(audioElement, trackingState, \"ended\", true, true);",
+            StringComparison.Ordinal);
+        var repeatRestartIndex = script.IndexOf(
+            "if (audioElement.dataset.repeatEnabled === \"true\")",
+            completionFlushIndex,
+            StringComparison.Ordinal);
+        Assert.IsGreaterThan(completionFlushIndex, repeatRestartIndex);
+    }
+
+    [TestMethod]
     public void MobileStoryPlayerPostsViewAndListenTracking()
     {
         var page = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "StoryDetailPage.cs"));

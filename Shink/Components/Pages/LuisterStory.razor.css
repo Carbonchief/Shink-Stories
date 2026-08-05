@@ -484,18 +484,14 @@
     display: none;
 }
 
-.story-custom-player.speed-unsupported .story-speed-toggle {
-    opacity: 0.55;
-}
-
 .story-mute-icon {
     font-size: 1rem;
     line-height: 1;
 }
 
-.story-speed-label {
-    font-size: 0.83rem;
-    letter-spacing: 0.02em;
+.story-repeat-toggle.is-active {
+    background: #222222;
+    color: #ffffff;
 }
 
 .story-summary-card {
@@ -1518,9 +1514,12 @@
     color: #f2f5f9;
 }
 
-.story-player-page.manual-fullscreen-focus .story-speed-toggle {
+.story-player-page.manual-fullscreen-focus .story-repeat-toggle {
     font-size: 1rem;
-    font-weight: 800;
+}
+
+.story-player-page.manual-fullscreen-focus .story-repeat-toggle.is-active {
+    color: var(--accent);
 }
 
 .story-player-page.manual-fullscreen-focus .story-volume-slider {
