@@ -570,6 +570,96 @@ public sealed class PaystackCheckoutService(
         }
     }
 
+    public async Task<PaystackRefundResult> RefundTransactionAsync(
+        string transactionReference,
+        decimal amountZar,
+        string merchantNote,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(_options.SecretKey))
+        {
+            return new PaystackRefundResult(false, ErrorMessage: "Paystack is nog nie volledig opgestel nie.");
+        }
+
+        if (string.IsNullOrWhiteSpace(transactionReference) || amountZar <= 0m)
+        {
+            return new PaystackRefundResult(false, ErrorMessage: "Paystack terugbetalingsbesonderhede ontbreek.");
+        }
+
+        var payload = new
+        {
+            transaction = transactionReference.Trim(),
+            amount = (long)Math.Round(amountZar * 100m, MidpointRounding.AwayFromZero),
+            currency = "ZAR",
+            customer_note = "Volle terugbetaling omdat die planverandering nie voltooi kon word nie.",
+            merchant_note = merchantNote
+        };
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.paystack.co/refund")
+        {
+            Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
+        };
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.SecretKey);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _httpClient.SendAsync(request, cancellationToken);
+        }
+        catch (Exception exception) when (
+            exception is HttpRequestException ||
+            exception is TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            return new PaystackRefundResult(
+                false,
+                ErrorMessage: "Paystack kon nie vir die terugbetaling bereik word nie.");
+        }
+
+        using (response)
+        {
+            var body = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                return new PaystackRefundResult(
+                    false,
+                    ErrorMessage: $"Paystack kon nie die terugbetaling begin nie (HTTP {(int)response.StatusCode}).",
+                    RawPayload: body);
+            }
+
+            try
+            {
+                using var document = JsonDocument.Parse(body);
+                var root = document.RootElement;
+                var status = root.TryGetProperty("status", out var statusNode) &&
+                             statusNode.ValueKind == JsonValueKind.True;
+                var dataNode = root.TryGetProperty("data", out var parsedData) &&
+                               parsedData.ValueKind == JsonValueKind.Object
+                    ? parsedData
+                    : default;
+                if (!status || dataNode.ValueKind != JsonValueKind.Object)
+                {
+                    return new PaystackRefundResult(
+                        false,
+                        ErrorMessage: TryReadString(root, "message") ?? "Paystack kon nie die terugbetaling begin nie.",
+                        RawPayload: body);
+                }
+
+                return new PaystackRefundResult(
+                    true,
+                    RefundId: TryReadString(dataNode, "id"),
+                    Status: TryReadString(dataNode, "status") ?? "pending",
+                    RawPayload: body);
+            }
+            catch (JsonException)
+            {
+                return new PaystackRefundResult(
+                    false,
+                    ErrorMessage: "Paystack terugbetalingsantwoord kon nie gelees word nie.",
+                    RawPayload: body);
+            }
+        }
+    }
+
     public async Task<PaystackAuthorizationChargeResult> ChargeAuthorizationAsync(
         PaymentPlan plan,
         string email,
@@ -1634,6 +1724,13 @@ public sealed record PaystackSubscriptionDisableResult(
 public sealed record PaystackSubscriptionEnableResult(
     bool IsSuccess,
     string? EmailToken = null,
+    string? ErrorMessage = null,
+    string? RawPayload = null);
+
+public sealed record PaystackRefundResult(
+    bool IsSuccess,
+    string? RefundId = null,
+    string? Status = null,
     string? ErrorMessage = null,
     string? RawPayload = null);
 

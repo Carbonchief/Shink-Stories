@@ -124,6 +124,40 @@
             Jou planverandering is geskeduleer.
         </p>
     }
+    else if (string.Equals(PaymentStatus, "plan-verwerk", StringComparison.OrdinalIgnoreCase))
+    {
+        <section class="opsies-plan-change-alert opsies-upgrade-warning" role="status" aria-live="polite">
+            <div class="opsies-plan-change-alert-copy">
+                <p class="opsies-plan-change-kicker">Betaling word bevestig</p>
+                <h2>Jou planverandering word veilig verwerk.</h2>
+                <p>Paystack het nog nie die betaling as suksesvol bevestig nie. Jou huidige plan bly onveranderd totdat die bevestiging aankom.</p>
+                <p class="opsies-plan-change-guidance">Moenie die verandering weer probeer nie—dit kan 'n dubbele betaling veroorsaak.</p>
+            </div>
+            <div class="opsies-plan-change-actions">
+                <a class="opsies-plan-change-primary" href="/intekening-en-betaling">Gaan na my rekening</a>
+            </div>
+        </section>
+    }
+    else if (string.Equals(PaymentStatus, "plan-terugbetaling", StringComparison.OrdinalIgnoreCase))
+    {
+        <section class="opsies-plan-change-alert opsies-upgrade-warning" role="alert" aria-live="assertive">
+            <div class="opsies-plan-change-alert-copy">
+                <p class="opsies-plan-change-kicker">Terugbetaling aangevra</p>
+                <h2>Die planverandering het nie voltooi nie, maar jou betaling word terugbetaal.</h2>
+                <p>Ons het outomaties 'n volle Paystack-terugbetaling aangevra. Die nuwe plan is nie geaktiveer nie.</p>
+                <p class="opsies-plan-change-guidance">Moenie die planverandering weer probeer terwyl die terugbetaling verwerk word nie.</p>
+            </div>
+            <div class="opsies-plan-change-actions">
+                <a class="opsies-plan-change-primary" href="/intekening-en-betaling">Gaan na my rekening</a>
+            </div>
+        </section>
+    }
+    else if (string.Equals(PaymentStatus, "plan-terugbetaal", StringComparison.OrdinalIgnoreCase))
+    {
+        <p class="opsies-payment-status opsies-payment-success" role="status" aria-live="polite">
+            Die betaling is terugbetaal en geen nuwe plan is geaktiveer nie.
+        </p>
+    }
     else if (string.Equals(PaymentStatus, "opgradeer-waarskuwing", StringComparison.OrdinalIgnoreCase))
     {
         <section class="opsies-plan-change-alert opsies-upgrade-warning" role="alert" aria-live="assertive" aria-labelledby="upgrade-warning-title">
@@ -267,6 +301,10 @@
                         <p class="opsie-summary">Vir volle toegang tot alles</p>
                         <h2>Schink Stories</h2>
                     </div>
+                    @if (IsCurrentPlan(CurrentAllStoriesPlanSlug))
+                    {
+                        <p class="opsie-selected-indicator">Huidige plan</p>
+                    }
                     <p class="opsie-detail"><strong>Geniet toegang tot ALLES!</strong></p>
                     <ul>
                         <li>Onbeperkte toegang tot alle stories en reekse</li>
@@ -313,7 +351,14 @@
                         </button>
                     </div>
 
-                    <a href='@BuildPlanSignUpHref(CurrentAllStoriesPlanSlug, SafeStoryReturnPath, DiscountCode)' class="opsie-btn">@(IsSelectedPlan(CurrentAllStoriesPlanSlug) ? "Gaan voort" : "Kies hierdie plan")</a>
+                    @if (IsCurrentPlan(CurrentAllStoriesPlanSlug))
+                    {
+                        <span class="opsie-btn opsie-btn-disabled" aria-disabled="true">Huidige plan</span>
+                    }
+                    else
+                    {
+                        <a href='@BuildPlanSignUpHref(CurrentAllStoriesPlanSlug, SafeStoryReturnPath, DiscountCode)' class="opsie-btn">@(IsSelectedPlan(CurrentAllStoriesPlanSlug) ? "Gaan voort" : "Kies hierdie plan")</a>
+                    }
                 </article>
             }
         </div>
@@ -543,6 +588,9 @@
     [SupplyParameterFromQuery(Name = "toegangTot")]
     public string? CurrentAccessEndsAt { get; set; }
 
+    [SupplyParameterFromQuery(Name = "kanOutomatiesKanselleer")]
+    public bool CanAutomaticallyCancelCurrentProvider { get; set; }
+
     private bool IsUserAuthenticated { get; set; }
     private bool IsYearlyAllStoriesPlan { get; set; }
     private string? SafeStoryReturnPath { get; set; }
@@ -550,6 +598,7 @@
     private StoryAccessRequirement RequiredAccess { get; set; } = StoryAccessRequirement.Unknown;
     private string? SelectedPlanSlug { get; set; }
     private bool HasActiveStoryCornerPlan { get; set; }
+    private string? CurrentPaidTierCode { get; set; }
     private bool IsStoryCornerPlanForceEnabled { get; set; }
 
     private bool ShouldShowAllStoriesPlanOptions => true;
@@ -616,9 +665,13 @@
         SubscriptionCheckoutTransitionKinds.FreeAccess =>
             $"Wanneer {PlanChangeTargetName} suksesvol betaal en geaktiveer is, eindig die gratis toegang wat jy met jou kode of geskenk ontvang het{FormattedCurrentAccessEnd}. Oorblywende gratis dae word nie as krediet oorgedra nie.",
         SubscriptionCheckoutTransitionKinds.PayFastConversion when IsPayFastPaymentProviderSwitch =>
-            $"Jou plan en toegang bly dieselfde. Ons aktiveer eers jou nuwe Paystack-betaling vir {PlanChangeTargetName}; daarna kanselleer ons die ou PayFast-intekening en merk dit as gesluit.",
+            CanAutomaticallyCancelCurrentProvider
+                ? $"Jou plan en toegang bly dieselfde. Ons aktiveer eers jou nuwe Paystack-betaling vir {PlanChangeTargetName}; daarna kanselleer ons die ou PayFast-intekening en merk dit as gesluit."
+                : $"Jou plan en toegang bly dieselfde, maar hierdie ou PayFast-intekening het nie die kansellasietoken wat ons nodig het nie. Jy kan met {PlanChangeTargetName} voortgaan, maar jy sal die PayFast-intekening self moet kanselleer.",
         SubscriptionCheckoutTransitionKinds.PayFastConversion =>
-            $"Ons aktiveer eers {PlanChangeTargetName} nadat die nuwe betaling slaag. Daarna kanselleer ons die ou PayFast-intekening en merk dit as gesluit, sodat die nuwe toegang nie afhanklik is van die kansellasie nie.",
+            CanAutomaticallyCancelCurrentProvider
+                ? $"Ons aktiveer eers {PlanChangeTargetName} nadat die nuwe betaling slaag. Daarna kanselleer ons die ou PayFast-intekening en merk dit as gesluit, sodat die nuwe toegang nie afhanklik is van die kansellasie nie."
+                : $"Ons kan {PlanChangeTargetName} aktiveer, maar die ou PayFast-intekening het nie 'n kansellasietoken nie. Jy sal dit self by PayFast moet kanselleer om 'n dubbele heffing te voorkom.",
         SubscriptionCheckoutTransitionKinds.ProviderConversion =>
             $"Jy kan met {PlanChangeTargetName} voortgaan, maar jou huidige {FriendlyCurrentProviderName}-intekening moet steeds by daardie verskaffer bestuur of gekanselleer word.",
         SubscriptionCheckoutTransitionKinds.LegacyPaystack =>
@@ -634,7 +687,9 @@
     private string UpgradeWarningGuidance => UpgradeTransitionKind?.Trim().ToLowerInvariant() switch
     {
         SubscriptionCheckoutTransitionKinds.FreeAccess => "Niks verander as jy nie die nuwe betaling voltooi nie.",
-        SubscriptionCheckoutTransitionKinds.PayFastConversion => "PayFast sal jou ook per e-pos van die kansellasie in kennis stel. As PayFast nie die kansellasie aanvaar nie, bly die ou intekening sigbaar vir opvolg eerder as om die fout weg te steek. Niks verander as jy nie die nuwe betaling voltooi nie.",
+        SubscriptionCheckoutTransitionKinds.PayFastConversion => CanAutomaticallyCancelCurrentProvider
+            ? "PayFast sal jou ook per e-pos van die kansellasie in kennis stel. As PayFast nie die kansellasie aanvaar nie, bly die ou intekening sigbaar vir opvolg eerder as om die fout weg te steek. Niks verander as jy nie die nuwe betaling voltooi nie."
+            : "Kanselleer die ou PayFast-intekening direk ná die nuwe plan aktief word. Niks verander as jy nie die nuwe betaling voltooi nie.",
         SubscriptionCheckoutTransitionKinds.ProviderConversion => "Om dubbele heffings te vermy, kanselleer die ou intekening by die huidige verskaffer.",
         SubscriptionCheckoutTransitionKinds.LegacyPaystack => "Kontak ons eers as jy onseker is of die ou Paystack-intekening nog geld aftrek.",
         SubscriptionCheckoutTransitionKinds.BillingStatusUncertain => "Kontroleer jou bankstaat of kontak ons eers om 'n dubbele heffing te vermy.",
@@ -681,6 +736,7 @@
         "geen-aktiewe-plan" => "Ons kon nie 'n aktiewe betaalplan vind om te verander nie.",
         "verskaffer" => "Hierdie plan kan nie outomaties verander word nie.",
         "verwerk" => "Jou planverandering word reeds verwerk.",
+        "terugbetaling" => "Die outomatiese terugbetaling kort aandag.",
         _ => "Ons kon nie die planverandering klaarmaak nie."
     };
     private string PlanChangeFailureMessage => PlanChangeFailureCode?.Trim().ToLowerInvariant() switch
@@ -688,6 +744,7 @@
         "geen-aktiewe-plan" => $"Kies {PlanChangeTargetName} hieronder om 'n nuwe, veilige betaling te begin.",
         "verskaffer" => "Jou huidige betaalverskaffer ondersteun nie hierdie selfdiens-planverandering nie. Ons kan jou help om die regte volgende stap te neem.",
         "verwerk" => "Wag asseblief 'n paar minute voordat jy jou rekening weer nagaan. Nog 'n poging kan 'n dubbele betaling veroorsaak.",
+        "terugbetaling" => "Die planverandering het misluk, maar Paystack kon nie die outomatiese terugbetaling begin nie. Kontak ons voordat jy weer probeer.",
         _ => "Moenie dieselfde verandering herhaaldelik probeer nie. Gaan eers jou rekening na of kontak ons sodat ons die betaalstatus kan bevestig."
     };
     private string PlanChangeFailureGuidance => PlanChangeFailedBecauseNoActivePlan
@@ -727,6 +784,7 @@
         SelectedPlanSlug = ResolveSelectedPlanSlug();
         IsYearlyAllStoriesPlan = string.Equals(SelectedPlanSlug, "schink-stories-jaarliks", StringComparison.OrdinalIgnoreCase);
         HasActiveStoryCornerPlan = false;
+        CurrentPaidTierCode = null;
 
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         IsUserAuthenticated = authState.User.Identity?.IsAuthenticated == true;
@@ -738,9 +796,11 @@
         var userEmail = authState.User.FindFirst(ClaimTypes.Email)?.Value
                         ?? authState.User.Identity?.Name;
 
-        HasActiveStoryCornerPlan = await SubscriptionLedgerService.HasActiveSubscriptionForTierAsync(
-            userEmail,
-            StoryAccessPolicy.StoryCornerMonthlyTierCode);
+        CurrentPaidTierCode = (await SubscriptionLedgerService.GetCurrentPaidSubscriptionAsync(userEmail))?.TierCode;
+        HasActiveStoryCornerPlan = string.Equals(
+            CurrentPaidTierCode,
+            StoryAccessPolicy.StoryCornerMonthlyTierCode,
+            StringComparison.OrdinalIgnoreCase);
 
         if (string.IsNullOrWhiteSpace(SafeStoryReturnPath))
         {
@@ -867,7 +927,7 @@
         IsStoryCornerPlanForceEnabled = true;
     }
 
-    private static string BuildPlanSignUpHref(string planSlug, string? safeStoryReturnPath, string? discountCode)
+    private string BuildPlanSignUpHref(string planSlug, string? safeStoryReturnPath, string? discountCode)
     {
         if (string.IsNullOrWhiteSpace(planSlug))
         {
@@ -891,6 +951,11 @@
         if (checkoutQuery.Count > 0)
         {
             checkoutPath = QueryHelpers.AddQueryString(checkoutPath, checkoutQuery);
+        }
+
+        if (IsUserAuthenticated)
+        {
+            return checkoutPath;
         }
 
         var signUpQuery = new Dictionary<string, string?>
@@ -965,6 +1030,13 @@
     private bool IsSelectedPlan(string planSlug) =>
         !string.IsNullOrWhiteSpace(SelectedPlanSlug) &&
         string.Equals(SelectedPlanSlug, planSlug, StringComparison.OrdinalIgnoreCase);
+
+    private bool IsCurrentPlan(string planSlug)
+    {
+        var plan = PaymentPlanCatalog.FindBySlug(planSlug);
+        return plan is not null &&
+               string.Equals(CurrentPaidTierCode, plan.TierCode, StringComparison.OrdinalIgnoreCase);
+    }
 
     private string GetCompareColumnClass(string planSlug) =>
         IsSelectedPlan(planSlug)
