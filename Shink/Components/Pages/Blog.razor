@@ -13,6 +13,10 @@
 <PageTitle>@PageTitleText</PageTitle>
 <HeadContent>
     <meta name="description" content="@PageDescription" />
+    @if (HasActiveFilters || CurrentPage > 1)
+    {
+        <meta name="robots" content="noindex, follow, noarchive, nosnippet" />
+    }
     <link rel="canonical" href="@CanonicalUrl" />
     <link rel="alternate" type="application/rss+xml" title="Schink Stories Blog RSS" href="@RssUrl" />
     <meta property="og:type" content="website" />
@@ -257,7 +261,7 @@
     private string? ErrorMessage { get; set; }
     private int CurrentPage { get; set; } = 1;
     private int TotalPages { get; set; } = 1;
-    private string CanonicalUrl => NavigationManager.ToAbsoluteUri(BuildBlogUrl(CurrentQuery, CurrentCategorySlug, CurrentTagSlug, CurrentPage)).ToString();
+    private string CanonicalUrl => NavigationManager.ToAbsoluteUri("/blog").ToString();
     private string RssUrl => NavigationManager.ToAbsoluteUri("/blog/rss.xml").ToString();
     private bool HasActiveFilters =>
         !string.IsNullOrWhiteSpace(CurrentQuery) ||

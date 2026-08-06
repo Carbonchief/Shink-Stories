@@ -18,15 +18,14 @@
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
-<PageTitle>Schink Stories | Tuis</PageTitle>
+<PageTitle>Schink Stories | Afrikaanse kinderstories</PageTitle>
 <HeadContent>
-    <link rel="preload" href="/branding/Schink_Background.avif" as="image" type="image/avif" fetchpriority="high" />
     <link rel="preload" href="/branding/Schink_Stories_01.png" as="image" fetchpriority="high" />
-    <link rel="preload" href="/branding/schink-stories-logo-white.png" as="image" />
     <link rel="canonical" href="@HomeCanonicalUrl" />
+    <meta name="description" content="Afrikaanse kinderstories en veilige oudiostories vir gesinne. Luister saam en bou karakter, een storie op 'n slag." />
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Schink Stories | Tuis" />
-    <meta property="og:description" content="Afrikaanse oudiostories vir gesinne. Luister veilig en bou karakter, een storie op 'n slag." />
+    <meta property="og:title" content="Schink Stories | Afrikaanse kinderstories" />
+    <meta property="og:description" content="Afrikaanse kinderstories en veilige oudiostories vir gesinne. Luister saam en bou karakter, een storie op 'n slag." />
     <meta property="og:url" content="@NavigationManager.ToAbsoluteUri("/").ToString()" />
     <meta property="og:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
     <meta property="og:image:secure_url" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
@@ -35,8 +34,8 @@
     <meta property="og:image:height" content="512" />
     <meta property="og:image:alt" content="Schink Stories logo" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Schink Stories | Tuis" />
-    <meta name="twitter:description" content="Afrikaanse oudiostories vir gesinne. Luister veilig en bou karakter, een storie op 'n slag." />
+    <meta name="twitter:title" content="Schink Stories | Afrikaanse kinderstories" />
+    <meta name="twitter:description" content="Afrikaanse kinderstories en veilige oudiostories vir gesinne. Luister saam en bou karakter, een storie op 'n slag." />
     <meta name="twitter:image" content="@NavigationManager.ToAbsoluteUri("/branding/schink-logo-green.png").ToString()" />
     <meta name="twitter:image:alt" content="Schink Stories logo" />
     <JsonLdScript Json="@HomeOrganizationJsonLd" />
@@ -70,7 +69,10 @@
         <div class="hero-actions">
             @if (!HasResolvedAuthState)
             {
-                <span class="cta cta-placeholder" aria-hidden="true"></span>
+                <span class="hero-cta-placeholder" aria-hidden="true">
+                    <span class="hero-cta-placeholder-bar"></span>
+                    <span class="hero-cta-placeholder-bar"></span>
+                </span>
             }
             else if (IsSignedIn)
             {
@@ -92,7 +94,7 @@
 <section class="join-promo home-scroll-reveal home-reveal-delay-fast">
     <div class="join-promo-media">
         <img src="/branding/Kom_Luister_Saam.png"
-             alt="Kom Luister Saam by Schink Stories" width="800" height="600" loading="eager" decoding="async" />
+             alt="Kom Luister Saam by Schink Stories" width="800" height="600" loading="lazy" decoding="async" />
     </div>
 
     <div class="join-promo-copy">
