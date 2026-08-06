@@ -5782,6 +5782,329 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     }
 
     [TestMethod]
+    public async Task RecordPaystackEventAsync_ProcessedUpdateCardRefundBelowR3RetriesFailedSubscriptionOnce()
+    {
+        const string subscriptionId = "22222222-2222-2222-2222-222222222222";
+        const string subscriptionCode = "SUB_cardupdate";
+        const string transactionReference = "update-card-transaction";
+        var webhookClaimCount = 0;
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscription_plan_changes"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events" &&
+                request.RequestUri.Query.Contains("on_conflict=provider,event_dedupe_key", StringComparison.Ordinal))
+            {
+                webhookClaimCount++;
+                return new HttpResponseMessage(HttpStatusCode.Created)
+                {
+                    Content = new StringContent(
+                        webhookClaimCount == 1
+                            ? """[{ "event_id": "refund-event", "subscription_id": null, "processing_status": "processing" }]"""
+                            : "[]",
+                        Encoding.UTF8,
+                        "application/json")
+                };
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
+            {
+                return JsonResponse(
+                    webhookClaimCount > 1
+                        ? $$"""[{ "event_id": "refund-event", "subscription_id": "{{subscriptionId}}", "processing_status": "processed" }]"""
+                        : "[]");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == $"/transaction/verify/{transactionReference}")
+            {
+                return JsonResponse(
+                    $$"""
+                    {
+                      "status": true,
+                      "data": {
+                        "id": 6430040278,
+                        "status": "reversed",
+                        "reference": "{{transactionReference}}",
+                        "amount": 100,
+                        "currency": "ZAR",
+                        "customer": {
+                          "email": "ouer@example.com"
+                        },
+                        "authorization": {
+                          "authorization_code": "AUTH_updated_card",
+                          "reusable": true
+                        },
+                        "metadata": {
+                          "transaction_type": "update_card",
+                          "custom_fields": [
+                            {
+                              "variable_name": "subscription_code",
+                              "value": "{{subscriptionCode}}"
+                            }
+                          ]
+                        }
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == $"/subscription/{subscriptionCode}")
+            {
+                return JsonResponse(
+                    $$"""
+                    {
+                      "status": true,
+                      "data": {
+                        "subscription_code": "{{subscriptionCode}}",
+                        "status": "attention",
+                        "next_payment_date": "2099-09-02T05:14:00Z",
+                        "email_token": "email-token",
+                        "authorization": {
+                          "authorization_code": "AUTH_updated_card"
+                        },
+                        "most_recent_invoice": {
+                          "status": "failed"
+                        }
+                      }
+                    }
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [{
+                      "subscription_id": "{{subscriptionId}}",
+                      "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                      "tier_code": "all_stories_monthly",
+                      "provider": "paystack",
+                      "source_system": "shink_app",
+                      "provider_payment_id": "{{subscriptionCode}}",
+                      "provider_transaction_id": null,
+                      "provider_token": "AUTH_old_card",
+                      "status": "active",
+                      "cancelled_at": null,
+                      "billing_amount_zar": 79.00,
+                      "billing_period_months": 1,
+                      "billing_amount_source": "paystack_payload"
+                    }]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """[{ "email": "ouer@example.com", "first_name": "Ouer", "display_name": "Ouer Een" }]""");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/transaction/charge_authorization")
+            {
+                return JsonResponse(
+                    """
+                    {
+                      "status": true,
+                      "data": {
+                        "id": 6430040999,
+                        "status": "success",
+                        "reference": "card-update-retry-result",
+                        "paid_at": "2026-08-06T08:00:00Z"
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath is "/rest/v1/subscriptions" or "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+        var service = CreateService(handler);
+        var payload =
+            $$"""
+            {
+              "event": "refund.processed",
+              "data": {
+                "id": 17868401,
+                "status": "processed",
+                "transaction_reference": "{{transactionReference}}",
+                "amount": 100,
+                "currency": "ZAR"
+              }
+            }
+            """;
+
+        var first = await service.RecordPaystackEventAsync(payload);
+        var duplicate = await service.RecordPaystackEventAsync(payload);
+
+        Assert.IsTrue(first.IsSuccess, first.ErrorMessage);
+        Assert.IsTrue(duplicate.IsSuccess, duplicate.ErrorMessage);
+        Assert.AreEqual(subscriptionId, first.SubscriptionId);
+        Assert.AreEqual(subscriptionId, duplicate.SubscriptionId);
+        Assert.HasCount(1, handler.PaystackChargePayloads, "A duplicate refund webhook must not create another payment attempt.");
+        using var chargeDocument = JsonDocument.Parse(handler.PaystackChargePayloads.Single());
+        var chargePayload = chargeDocument.RootElement;
+        Assert.AreEqual(7900, chargePayload.GetProperty("amount").GetInt64());
+        Assert.AreEqual("AUTH_updated_card", chargePayload.GetProperty("authorization_code").GetString());
+        StringAssert.StartsWith(chargePayload.GetProperty("reference").GetString(), "card-update-retry-");
+        Assert.AreEqual(
+            "subscription_authorization_retry",
+            chargePayload.GetProperty("metadata").GetProperty("source").GetString());
+        Assert.AreEqual(
+            "card_update_refund",
+            chargePayload.GetProperty("metadata").GetProperty("retry_trigger").GetString());
+        Assert.IsTrue(handler.SubscriptionPatchPayloads.Any(value =>
+            value.Contains("\"provider_token\":\"AUTH_updated_card\"", StringComparison.Ordinal) &&
+            value.Contains("\"authorization_reusable\":true", StringComparison.Ordinal)));
+        Assert.IsTrue(handler.SubscriptionPatchPayloads.Any(value =>
+            value.Contains("\"status\":\"active\"", StringComparison.Ordinal) &&
+            value.Contains("\"next_renewal_at\"", StringComparison.Ordinal)));
+        Assert.IsTrue(handler.SubscriptionEventPayloads.Any(value =>
+            value.Contains("\"event_type\":\"paystack.card_update_refund_retry\"", StringComparison.Ordinal)));
+    }
+
+    [TestMethod]
+    public async Task RecordPaystackEventAsync_RefundOfExactlyR3DoesNotRetryPayment()
+    {
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscription_plan_changes") ||
+                IsSupabaseGet(request, "/rest/v1/subscription_events"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            if (request.RequestUri?.Host == "api.paystack.co")
+            {
+                Assert.Fail("A refund of exactly R3 must not call Paystack's verify or charge APIs.");
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var result = await CreateService(handler).RecordPaystackEventAsync(
+            """
+            {
+              "event": "refund.processed",
+              "data": {
+                "id": 17868402,
+                "status": "processed",
+                "transaction_reference": "three-rand-refund",
+                "amount": 300,
+                "currency": "ZAR"
+              }
+            }
+            """);
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.IsEmpty(handler.PaystackChargePayloads);
+    }
+
+    [TestMethod]
+    public async Task RecordPaystackEventAsync_UnrelatedRefundBelowR3DoesNotRetryPayment()
+    {
+        const string transactionReference = "unrelated-small-refund";
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscription_plan_changes") ||
+                IsSupabaseGet(request, "/rest/v1/subscription_events"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            if (request.Method == HttpMethod.Get &&
+                request.RequestUri?.AbsolutePath == $"/transaction/verify/{transactionReference}")
+            {
+                return JsonResponse(
+                    $$"""
+                    {
+                      "status": true,
+                      "data": {
+                        "status": "reversed",
+                        "reference": "{{transactionReference}}",
+                        "amount": 100,
+                        "currency": "ZAR",
+                        "customer": { "email": "ouer@example.com" },
+                        "authorization": {
+                          "authorization_code": "AUTH_unrelated",
+                          "reusable": true
+                        },
+                        "metadata": {
+                          "transaction_type": "manual_refund"
+                        }
+                      }
+                    }
+                    """);
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var result = await CreateService(handler).RecordPaystackEventAsync(
+            $$"""
+            {
+              "event": "refund.processed",
+              "data": {
+                "id": 17868403,
+                "status": "processed",
+                "transaction_reference": "{{transactionReference}}",
+                "amount": 100,
+                "currency": "ZAR"
+              }
+            }
+            """);
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.IsEmpty(handler.PaystackChargePayloads);
+        Assert.IsEmpty(handler.SubscriptionPatchPayloads);
+    }
+
+    [TestMethod]
     public async Task RecordPaystackEventAsync_RecurringChargeSuccessWithAuthorizationTokenRenewsOriginalSubscription()
     {
         var originalSubscriptionId = "22222222-2222-2222-2222-222222222222";

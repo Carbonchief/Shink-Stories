@@ -29,6 +29,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     private static readonly TimeSpan FollowUpAuthorizationRetryDelay = TimeSpan.FromDays(1);
     private static readonly TimeSpan PaymentRecoveryGracePeriod = TimeSpan.FromDays(4);
     private static readonly TimeSpan SubscriptionPaymentPauseResumeGrace = TimeSpan.FromHours(72);
+    private const long PaystackCardUpdateRefundRetryLimitInSubunits = 300;
 
     private readonly HttpClient _httpClient = httpClient;
     private readonly SupabaseOptions _options = supabaseOptions.Value;
@@ -4249,6 +4250,24 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                     failureMessage: planChangeAttempt.ErrorMessage ?? "Plan change was compensated by refund.");
                 subscriptionId = planChangeAttempt.CurrentSubscriptionId ?? subscriptionId;
             }
+            else if (planChangeAttempt is null &&
+                     IsPaystackProcessedRefundBelowCardUpdateRetryLimit(eventType, eventStatus, data))
+            {
+                var cardUpdateRetry = await TryRetryPaystackChargeAfterCardUpdateRefundAsync(
+                    baseUri,
+                    apiKey,
+                    data,
+                    nowUtc,
+                    cancellationToken);
+                subscriptionId = cardUpdateRetry.SubscriptionId ?? subscriptionId;
+                providerPaymentId = cardUpdateRetry.ProviderPaymentId ?? providerPaymentId;
+                if (cardUpdateRetry.ShouldFailWebhook)
+                {
+                    return await FailClaimedEventAsync(
+                        cardUpdateRetry.ErrorMessage ?? "Could not process the Paystack card-update refund retry.",
+                        subscriptionId);
+                }
+            }
 
             if (paystackContext is not null)
             {
@@ -4539,6 +4558,313 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
             return new SubscriptionPersistResult(true, null, subscriptionId);
         }
+    }
+
+    private async Task<PaystackCardUpdateRefundRetryResult> TryRetryPaystackChargeAfterCardUpdateRefundAsync(
+        Uri baseUri,
+        string apiKey,
+        JsonElement refundData,
+        DateTimeOffset nowUtc,
+        CancellationToken cancellationToken)
+    {
+        var refundTransactionReference = ResolvePaystackRefundTransactionReference(refundData);
+        var refundAmountInSubunits = ResolvePaystackEventAmountInCents(refundData);
+        if (string.IsNullOrWhiteSpace(refundTransactionReference) ||
+            refundAmountInSubunits is null ||
+            refundAmountInSubunits != decimal.Truncate(refundAmountInSubunits.Value))
+        {
+            return PaystackCardUpdateRefundRetryResult.NotApplicable;
+        }
+
+        PaystackVerifyResult verification;
+        try
+        {
+            verification = await _paystackCheckoutService.VerifyTransactionAsync(
+                refundTransactionReference,
+                cancellationToken);
+        }
+        catch (Exception exception) when (
+            exception is HttpRequestException ||
+            exception is TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(
+                exception,
+                "Paystack card-update refund transaction verification failed unexpectedly. transaction_reference={TransactionReference}",
+                refundTransactionReference);
+            return PaystackCardUpdateRefundRetryResult.Failed(
+                "Could not verify the Paystack card-update refund transaction.");
+        }
+
+        if (!verification.IsSuccess)
+        {
+            return PaystackCardUpdateRefundRetryResult.Failed(
+                verification.ErrorMessage ?? "Could not verify the Paystack card-update refund transaction.");
+        }
+
+        var refundAmount = (long)refundAmountInSubunits.Value;
+        var subscriptionCode = ResolveVerifiedPaystackCardUpdateSubscriptionCode(verification);
+        if (!string.Equals(verification.TransactionStatus, "reversed", StringComparison.OrdinalIgnoreCase) ||
+            verification.AmountInCents != refundAmount ||
+            !string.Equals(verification.Currency, "ZAR", StringComparison.OrdinalIgnoreCase) ||
+            verification.AuthorizationReusable != true ||
+            string.IsNullOrWhiteSpace(subscriptionCode))
+        {
+            return PaystackCardUpdateRefundRetryResult.NotApplicable;
+        }
+
+        PaystackSubscriptionLookupResult liveSubscription;
+        try
+        {
+            liveSubscription = await _paystackCheckoutService.GetSubscriptionAsync(
+                subscriptionCode,
+                cancellationToken);
+        }
+        catch (Exception exception) when (
+            exception is HttpRequestException ||
+            exception is TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(
+                exception,
+                "Paystack card-update refund subscription lookup failed unexpectedly. subscription_code={SubscriptionCode}",
+                subscriptionCode);
+            return PaystackCardUpdateRefundRetryResult.Failed(
+                "Could not load the Paystack subscription after the card update.");
+        }
+
+        if (!liveSubscription.IsSuccess)
+        {
+            return PaystackCardUpdateRefundRetryResult.Failed(
+                liveSubscription.ErrorMessage ?? "Could not load the Paystack subscription after the card update.");
+        }
+
+        var mostRecentInvoiceStatus = TryReadMostRecentPaystackInvoiceStatus(liveSubscription.RawPayload);
+        if (!string.Equals(liveSubscription.SubscriptionCode, subscriptionCode, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(liveSubscription.Status, "attention", StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(mostRecentInvoiceStatus, "failed", StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(liveSubscription.AuthorizationCode))
+        {
+            return PaystackCardUpdateRefundRetryResult.NotApplicable;
+        }
+
+        var subscriptionContext = await TryGetSubscriptionContextByProviderPaymentIdAsync(
+            baseUri,
+            apiKey,
+            provider: "paystack",
+            subscriptionCode,
+            cancellationToken);
+        if (subscriptionContext is null ||
+            !string.Equals(subscriptionContext.Status, "active", StringComparison.OrdinalIgnoreCase) ||
+            subscriptionContext.CancelledAt is not null ||
+            !string.Equals(subscriptionContext.ProviderPaymentId, subscriptionCode, StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(subscriptionContext.Email.Trim(), verification.CustomerEmail?.Trim(), StringComparison.OrdinalIgnoreCase) ||
+            subscriptionContext.BillingAmountZar is not > 0m)
+        {
+            return PaystackCardUpdateRefundRetryResult.NotApplicable;
+        }
+
+        if (!string.IsNullOrWhiteSpace(verification.AuthorizationCode) &&
+            !string.Equals(
+                verification.AuthorizationCode.Trim(),
+                liveSubscription.AuthorizationCode.Trim(),
+                StringComparison.Ordinal))
+        {
+            return PaystackCardUpdateRefundRetryResult.NotApplicable;
+        }
+
+        var plan = PaymentPlanCatalog.FindByTierCode(subscriptionContext.TierCode);
+        if (plan is null)
+        {
+            return PaystackCardUpdateRefundRetryResult.NotApplicable;
+        }
+
+        var authorizationStored = await UpdatePaystackAuthorizationAfterCardUpdateAsync(
+            baseUri,
+            apiKey,
+            subscriptionContext.SubscriptionId,
+            liveSubscription.AuthorizationCode,
+            liveSubscription.EmailToken,
+            cancellationToken);
+        if (!authorizationStored)
+        {
+            return PaystackCardUpdateRefundRetryResult.Failed(
+                "Could not store the updated Paystack card authorization.",
+                subscriptionContext.SubscriptionId,
+                subscriptionCode);
+        }
+
+        var retryReference = BuildCardUpdateRefundRetryReference(
+            subscriptionContext.SubscriptionId,
+            refundTransactionReference);
+        PaystackAuthorizationChargeResult chargeResult;
+        try
+        {
+            chargeResult = await _paystackCheckoutService.ChargeAuthorizationAsync(
+                plan,
+                subscriptionContext.Email,
+                liveSubscription.AuthorizationCode,
+                retryReference,
+                subscriptionContext.SubscriptionId,
+                subscriptionCode,
+                subscriptionContext.BillingAmountZar.Value,
+                cancellationToken,
+                new Dictionary<string, object?>
+                {
+                    ["source"] = "subscription_authorization_retry",
+                    ["retry_trigger"] = "card_update_refund",
+                    ["card_update_transaction_reference"] = refundTransactionReference
+                });
+        }
+        catch (Exception exception) when (
+            exception is HttpRequestException ||
+            exception is TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            _logger.LogWarning(
+                exception,
+                "Paystack card-update refund payment retry failed unexpectedly. subscription_id={SubscriptionId} transaction_reference={TransactionReference}",
+                subscriptionContext.SubscriptionId,
+                refundTransactionReference);
+            return PaystackCardUpdateRefundRetryResult.Failed(
+                "Could not start the Paystack payment retry after the card update.",
+                subscriptionContext.SubscriptionId,
+                subscriptionCode);
+        }
+
+        var retrySucceeded = chargeResult.IsSuccess;
+        var retryStatus = chargeResult.IsSuccess
+            ? chargeResult.TransactionStatus ?? "success"
+            : chargeResult.TransactionStatus ?? "failed";
+        var retryProviderTransactionId = chargeResult.ProviderTransactionId ?? chargeResult.Reference ?? retryReference;
+        var retryPaidAtUtc = chargeResult.PaidAt;
+        if (!chargeResult.IsSuccess)
+        {
+            PaystackVerifyResult? retryVerification = null;
+            try
+            {
+                retryVerification = await _paystackCheckoutService.VerifyTransactionAsync(
+                    retryReference,
+                    cancellationToken);
+            }
+            catch (Exception exception) when (
+                exception is HttpRequestException ||
+                exception is TaskCanceledException && !cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning(
+                    exception,
+                    "Paystack card-update payment retry could not be verified. subscription_id={SubscriptionId} retry_reference={RetryReference}",
+                    subscriptionContext.SubscriptionId,
+                    retryReference);
+                if (IsDuplicatePaystackReferenceFailure(chargeResult))
+                {
+                    return PaystackCardUpdateRefundRetryResult.Failed(
+                        "Could not verify the existing Paystack payment retry.",
+                        subscriptionContext.SubscriptionId,
+                        subscriptionCode);
+                }
+            }
+
+            if (retryVerification?.IsSuccess == true)
+            {
+                retrySucceeded = IsSuccessfulPaystackStatus(retryVerification.TransactionStatus);
+                retryStatus = retryVerification.TransactionStatus ?? retryStatus;
+                retryProviderTransactionId = retryVerification.ProviderTransactionId
+                                             ?? retryVerification.Reference
+                                             ?? retryProviderTransactionId;
+                retryPaidAtUtc = retryVerification.PaidAt ?? retryPaidAtUtc;
+            }
+            else if (IsDuplicatePaystackReferenceFailure(chargeResult))
+            {
+                return PaystackCardUpdateRefundRetryResult.Failed(
+                    retryVerification?.ErrorMessage ?? "Could not verify the existing Paystack payment retry.",
+                    subscriptionContext.SubscriptionId,
+                    subscriptionCode);
+            }
+        }
+
+        await InsertSubscriptionEventAsync(
+            baseUri,
+            apiKey,
+            subscriptionContext.SubscriptionId,
+            provider: "paystack",
+            providerPaymentId: subscriptionCode,
+            providerTransactionId: retryProviderTransactionId,
+            eventType: "paystack.card_update_refund_retry",
+            eventStatus: retryStatus,
+            payload: new
+            {
+                source = "refund.processed",
+                trigger = "card_update_refund",
+                refund_transaction_reference = refundTransactionReference,
+                refund_amount_in_subunits = refundAmount,
+                retry_reference = retryReference,
+                retry_status = retryStatus,
+                retry_error = retrySucceeded ? null : chargeResult.ErrorMessage
+            },
+            cancellationToken);
+
+        if (retrySucceeded)
+        {
+            var nextRenewalAtUtc = liveSubscription.NextPaymentDate is { } nextPaymentDate && nextPaymentDate > nowUtc
+                ? nextPaymentDate
+                : (retryPaidAtUtc ?? nowUtc).AddMonths(plan.BillingPeriodMonths);
+            await MarkSubscriptionRecoveredByIdAsync(
+                baseUri,
+                apiKey,
+                subscriptionContext.SubscriptionId,
+                nextRenewalAtUtc,
+                cancellationToken);
+            await TryResolvePaymentRecoveryAfterSuccessfulChargeAsync(
+                baseUri,
+                apiKey,
+                subscriptionContext with { ProviderToken = liveSubscription.AuthorizationCode },
+                nowUtc,
+                cancellationToken,
+                retryReference);
+        }
+
+        return new PaystackCardUpdateRefundRetryResult(
+            subscriptionContext.SubscriptionId,
+            subscriptionCode);
+    }
+
+    private async Task<bool> UpdatePaystackAuthorizationAfterCardUpdateAsync(
+        Uri baseUri,
+        string apiKey,
+        string subscriptionId,
+        string authorizationCode,
+        string? providerEmailToken,
+        CancellationToken cancellationToken)
+    {
+        var escapedSubscriptionId = Uri.EscapeDataString(subscriptionId);
+        var uri = new Uri(baseUri, $"rest/v1/subscriptions?subscription_id=eq.{escapedSubscriptionId}");
+        var payload = new Dictionary<string, object?>
+        {
+            ["provider_token"] = authorizationCode.Trim(),
+            ["authorization_reusable"] = true
+        };
+        if (!string.IsNullOrWhiteSpace(providerEmailToken))
+        {
+            payload["provider_email_token"] = providerEmailToken.Trim();
+        }
+
+        using var request = CreateJsonRequest(
+            new HttpMethod("PATCH"),
+            uri,
+            apiKey,
+            payload,
+            "return=minimal");
+        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return true;
+        }
+
+        var body = await response.Content.ReadAsStringAsync(cancellationToken);
+        _logger.LogWarning(
+            "Supabase Paystack card authorization update failed. subscription_id={SubscriptionId} Status={StatusCode} Body={Body}",
+            subscriptionId,
+            (int)response.StatusCode,
+            body);
+        return false;
     }
 
     private async Task<SubscriptionPersistResult> UpsertActivePayFastSubscriptionAsync(
@@ -5984,7 +6310,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         var escapedPaymentId = Uri.EscapeDataString(providerPaymentId);
         var uri = new Uri(
             baseUri,
-            $"rest/v1/subscriptions?provider=eq.{escapedProvider}&provider_payment_id=eq.{escapedPaymentId}&select=subscription_id,subscriber_id,tier_code,provider,provider_payment_id,provider_transaction_id,provider_token,source_system,status,billing_amount_zar,billing_period_months,billing_amount_source&limit=1");
+            $"rest/v1/subscriptions?provider=eq.{escapedProvider}&provider_payment_id=eq.{escapedPaymentId}&select=subscription_id,subscriber_id,tier_code,provider,provider_payment_id,provider_transaction_id,provider_token,source_system,status,cancelled_at,billing_amount_zar,billing_period_months,billing_amount_source&limit=1");
         using var request = CreateRequest(HttpMethod.Get, uri, apiKey);
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
@@ -6037,7 +6363,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             row.Status,
             row.BillingAmountZar,
             row.BillingPeriodMonths,
-            row.BillingAmountSource);
+            row.BillingAmountSource,
+            row.CancelledAt);
     }
 
     private async Task<PaymentRecoverySubscriptionContext?> TryGetSubscriptionContextByProviderTransactionIdAsync(
@@ -7675,6 +8002,11 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         return $"retry-{DateTimeOffset.UtcNow:yyyyMMddHHmmss}-{safeRecoveryId}";
     }
 
+    private static string BuildCardUpdateRefundRetryReference(
+        string subscriptionId,
+        string refundTransactionReference) =>
+        $"card-update-retry-{ComputeSha256Hex($"{subscriptionId}:{refundTransactionReference}")[..32]}";
+
     private static string BuildAccountRepairReference(string subscriptionId)
     {
         var safeSubscriptionId = new string(
@@ -8055,6 +8387,98 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     private static bool IsPaystackRefundEvent(string eventType) =>
         eventType?.Trim().ToLowerInvariant() is
             "refund.pending" or "refund.processing" or "refund.processed" or "refund.failed";
+
+    private static bool IsPaystackProcessedRefundBelowCardUpdateRetryLimit(
+        string eventType,
+        string? eventStatus,
+        JsonElement data)
+    {
+        if (!string.Equals(eventType, "refund.processed", StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(eventStatus, "processed", StringComparison.OrdinalIgnoreCase) ||
+            !string.Equals(TryReadString(data, "currency"), "ZAR", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var amountInSubunits = ResolvePaystackEventAmountInCents(data);
+        return amountInSubunits is > 0m and < PaystackCardUpdateRefundRetryLimitInSubunits &&
+               amountInSubunits == decimal.Truncate(amountInSubunits.Value);
+    }
+
+    private static string? ResolveVerifiedPaystackCardUpdateSubscriptionCode(PaystackVerifyResult verification)
+    {
+        if (string.IsNullOrWhiteSpace(verification.RawPayload))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(verification.RawPayload);
+            if (!document.RootElement.TryGetProperty("data", out var dataNode) ||
+                dataNode.ValueKind != JsonValueKind.Object ||
+                !string.Equals(
+                    TryReadNestedString(dataNode, "metadata", "transaction_type"),
+                    "update_card",
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            if (dataNode.TryGetProperty("metadata", out var metadataNode) &&
+                metadataNode.ValueKind == JsonValueKind.Object &&
+                metadataNode.TryGetProperty("custom_fields", out var customFieldsNode) &&
+                customFieldsNode.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var customField in customFieldsNode.EnumerateArray())
+                {
+                    if (customField.ValueKind != JsonValueKind.Object ||
+                        !string.Equals(
+                            TryReadString(customField, "variable_name"),
+                            "subscription_code",
+                            StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    var customFieldValue = TryReadString(customField, "value");
+                    if (PaystackSubscriptionCodeResolver.IsSubscriptionCode(customFieldValue))
+                    {
+                        return customFieldValue!.Trim();
+                    }
+                }
+            }
+
+            return PaystackSubscriptionCodeResolver.IsSubscriptionCode(verification.SubscriptionCode)
+                ? verification.SubscriptionCode!.Trim()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static string? TryReadMostRecentPaystackInvoiceStatus(string? rawPayload)
+    {
+        if (string.IsNullOrWhiteSpace(rawPayload))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(rawPayload);
+            return document.RootElement.TryGetProperty("data", out var dataNode) &&
+                   dataNode.ValueKind == JsonValueKind.Object
+                ? TryReadNestedString(dataNode, "most_recent_invoice", "status")
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 
     private static string? ResolvePaystackRefundTransactionReference(JsonElement data) =>
         TryReadString(data, "transaction_reference")
@@ -8747,6 +9171,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         [JsonPropertyName("status")]
         public string? Status { get; set; }
 
+        [JsonPropertyName("cancelled_at")]
+        public DateTimeOffset? CancelledAt { get; set; }
+
         [JsonPropertyName("billing_amount_zar")]
         public decimal? BillingAmountZar { get; set; }
 
@@ -8782,11 +9209,27 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         string? Status,
         decimal? BillingAmountZar,
         int? BillingPeriodMonths,
-        string? BillingAmountSource);
+        string? BillingAmountSource,
+        DateTimeOffset? CancelledAt = null);
 
     private sealed record LivePaystackPayment(
         string? Reference,
         DateTimeOffset? PaidAtUtc);
+
+    private sealed record PaystackCardUpdateRefundRetryResult(
+        string? SubscriptionId = null,
+        string? ProviderPaymentId = null,
+        bool ShouldFailWebhook = false,
+        string? ErrorMessage = null)
+    {
+        public static PaystackCardUpdateRefundRetryResult NotApplicable { get; } = new();
+
+        public static PaystackCardUpdateRefundRetryResult Failed(
+            string errorMessage,
+            string? subscriptionId = null,
+            string? providerPaymentId = null) =>
+            new(subscriptionId, providerPaymentId, true, errorMessage);
+    }
 
     private sealed record PaystackDiscountedSubscriptionTerms(
         Guid DiscountCodeId,
