@@ -30,7 +30,7 @@ public sealed class CloudflareR2StoryMediaStorageService(
             fileName,
             normalizedContentType);
 
-        return Task.FromResult(BuildDirectUpload(objectKey, normalizedContentType, includePublicUrl: false));
+        return Task.FromResult(BuildDirectUpload(objectKey, normalizedContentType, includePublicUrl: true));
     }
 
     public Task<DirectStoryMediaUpload> CreateImageDirectUploadAsync(
@@ -52,7 +52,7 @@ public sealed class CloudflareR2StoryMediaStorageService(
             fileName,
             normalizedContentType);
 
-        return Task.FromResult(BuildDirectUpload(objectKey, normalizedContentType, includePublicUrl: true));
+        return Task.FromResult(BuildDirectUpload(objectKey, normalizedContentType, includePublicUrl: false));
     }
 
     public Task<DirectStoryMediaUpload> CreateVideoDirectUploadAsync(
@@ -72,7 +72,7 @@ public sealed class CloudflareR2StoryMediaStorageService(
             fileName,
             normalizedContentType);
 
-        return Task.FromResult(BuildDirectUpload(objectKey, normalizedContentType, includePublicUrl: true));
+        return Task.FromResult(BuildDirectUpload(objectKey, normalizedContentType, includePublicUrl: false));
     }
 
     public Task<Uri?> CreateAudioReadUrlAsync(
@@ -80,6 +80,19 @@ public sealed class CloudflareR2StoryMediaStorageService(
         string objectKey,
         TimeSpan lifetime,
         CancellationToken cancellationToken = default)
+        => CreateReadUrlAsync(bucket, objectKey, lifetime);
+
+    public Task<Uri?> CreateVideoReadUrlAsync(
+        string? bucket,
+        string objectKey,
+        TimeSpan lifetime,
+        CancellationToken cancellationToken = default)
+        => CreateReadUrlAsync(bucket, objectKey, lifetime);
+
+    private Task<Uri?> CreateReadUrlAsync(
+        string? bucket,
+        string objectKey,
+        TimeSpan lifetime)
     {
         // Presigning is local and cheap; media preload aborts should not surface as endpoint exceptions.
         EnsureUploadConfigured();
@@ -128,6 +141,30 @@ public sealed class CloudflareR2StoryMediaStorageService(
         await UploadObjectAsync(objectKey, normalizedContentType, content, cancellationToken);
 
         return new UploadedStoryAudio(
+            Bucket: _options.BucketName.Trim(),
+            ObjectKey: objectKey,
+            ContentType: normalizedContentType);
+    }
+
+    public async Task<UploadedStoryVideo> UploadVideoAsync(
+        string slug,
+        string fileName,
+        string? contentType,
+        Stream content,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedSlug = NormalizeSlug(slug);
+        var normalizedContentType = ResolveVideoContentType(contentType, fileName);
+        var objectKey = BuildObjectKey(
+            "uploaded/stories/video",
+            normalizedSlug,
+            "video",
+            fileName,
+            normalizedContentType);
+
+        await UploadObjectAsync(objectKey, normalizedContentType, content, cancellationToken);
+
+        return new UploadedStoryVideo(
             Bucket: _options.BucketName.Trim(),
             ObjectKey: objectKey,
             ContentType: normalizedContentType);

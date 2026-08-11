@@ -495,15 +495,18 @@ public class SupabaseAdminManagementSelfServiceTests
                 TestQuestions: [],
                 CoverImagePath: "/stories/nuwe/cover.webp",
                 ThumbnailImagePath: "/stories/nuwe/thumb.webp",
-                AudioBucket: "stories",
-                AudioObjectKey: "nuwe-gepubliseerde-storie/audio.mp3",
-                AudioContentType: "audio/mpeg",
+                AudioBucket: null,
+                AudioObjectKey: null,
+                AudioContentType: null,
                 StoryType: "video",
                 AccessLevel: "subscriber",
                 Status: "published",
                 SortOrder: 10,
                 PublishedAt: DateTimeOffset.UtcNow,
-                DurationSeconds: 60));
+                DurationSeconds: 60,
+                VideoBucket: "stories",
+                VideoObjectKey: "uploaded/stories/video/nuwe-gepubliseerde-storie/video.mp4",
+                VideoContentType: "video/mp4"));
 
         Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
         Assert.AreEqual(storyId, result.EntityId);
@@ -518,6 +521,10 @@ public class SupabaseAdminManagementSelfServiceTests
         Assert.IsNotNull(handler.StoryPostPayload);
         var storyPayload = JsonSerializer.Deserialize<JsonElement>(handler.StoryPostPayload);
         Assert.AreEqual("video", storyPayload.GetProperty("story_type").GetString());
+        Assert.AreEqual(JsonValueKind.Null, storyPayload.GetProperty("audio_object_key").ValueKind);
+        Assert.AreEqual(
+            "uploaded/stories/video/nuwe-gepubliseerde-storie/video.mp4",
+            storyPayload.GetProperty("video_object_key").GetString());
     }
 
     [TestMethod]

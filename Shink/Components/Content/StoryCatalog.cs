@@ -25,7 +25,10 @@ public sealed record StoryItem(
     IReadOnlyList<StoryTestQuestion>? TestQuestions = null,
     decimal? DurationSeconds = null,
     IReadOnlyList<string>? PlaylistSlugs = null,
-    string StoryType = "story")
+    string StoryType = "story",
+    string? VideoBucket = null,
+    string? VideoObjectKey = null,
+    string? VideoContentType = null)
 {
     public string ImagePath => ResolveAssetPath(ImageFileName);
     public string ThumbnailPath => string.IsNullOrWhiteSpace(ThumbnailFileName)

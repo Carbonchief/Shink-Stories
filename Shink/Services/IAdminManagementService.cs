@@ -511,7 +511,10 @@ public sealed record AdminStoryRecord(
     DateTimeOffset? PublishedAt,
     int? DurationSeconds,
     DateTimeOffset? UpdatedAt,
-    AdminStorySummaryDetails? SummaryDetails = null);
+    AdminStorySummaryDetails? SummaryDetails = null,
+    string? VideoBucket = null,
+    string? VideoObjectKey = null,
+    string? VideoContentType = null);
 
 public sealed record AdminStoryUpdateRequest(
     Guid StoryId,
@@ -533,7 +536,10 @@ public sealed record AdminStoryUpdateRequest(
     int SortOrder,
     DateTimeOffset? PublishedAt,
     int? DurationSeconds,
-    AdminStorySummaryDetails? SummaryDetails = null);
+    AdminStorySummaryDetails? SummaryDetails = null,
+    string? VideoBucket = null,
+    string? VideoObjectKey = null,
+    string? VideoContentType = null);
 
 public sealed record AdminStoryCreateRequest(
     string Slug,
@@ -544,8 +550,8 @@ public sealed record AdminStoryCreateRequest(
     IReadOnlyList<AdminStoryTestQuestion> TestQuestions,
     string? CoverImagePath,
     string? ThumbnailImagePath,
-    string AudioBucket,
-    string AudioObjectKey,
+    string? AudioBucket,
+    string? AudioObjectKey,
     string? AudioContentType,
     string StoryType,
     string AccessLevel,
@@ -554,7 +560,10 @@ public sealed record AdminStoryCreateRequest(
     DateTimeOffset? PublishedAt,
     int? DurationSeconds,
     AdminStorySummaryDetails? SummaryDetails = null,
-    bool SendPublishedNotification = true);
+    bool SendPublishedNotification = true,
+    string? VideoBucket = null,
+    string? VideoObjectKey = null,
+    string? VideoContentType = null);
 
 public sealed record AdminStorySummaryDetails(
     string? Synopsis,

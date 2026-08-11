@@ -5511,6 +5511,114 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     }
 
     [TestMethod]
+    public async Task RecordPaystackEventAsync_CardUpdateRetrySuccessPreservesProviderNextPaymentDate()
+    {
+        const string subscriptionId = "22222222-2222-2222-2222-222222222222";
+        const string providerPaymentId = "SUB_cardupdate";
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscriptions"))
+            {
+                return JsonResponse(
+                    $$"""
+                    [
+                      {
+                        "subscription_id": "{{subscriptionId}}",
+                        "subscriber_id": "11111111-1111-1111-1111-111111111111",
+                        "tier_code": "all_stories_monthly",
+                        "provider": "paystack",
+                        "source_system": "shink_app",
+                        "provider_payment_id": "{{providerPaymentId}}",
+                        "provider_transaction_id": "6431144713",
+                        "provider_token": "AUTH_updated_card",
+                        "status": "active",
+                        "billing_amount_zar": 55.00,
+                        "billing_period_months": 1,
+                        "billing_amount_source": "paystack_payload"
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "email": "ouer@example.com",
+                        "first_name": "Ouer",
+                        "display_name": "Ouer Een"
+                      }
+                    ]
+                    """);
+            }
+
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries"))
+            {
+                return JsonResponse("[]");
+            }
+
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath is "/rest/v1/subscriptions" or "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_events")
+            {
+                return new HttpResponseMessage(HttpStatusCode.Created);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var result = await CreateService(handler).RecordPaystackEventAsync(
+            $$"""
+            {
+              "event": "charge.success",
+              "data": {
+                "id": 6431144713,
+                "status": "success",
+                "reference": "card-update-retry-result",
+                "amount": 5500,
+                "paid_at": "2026-08-06T12:54:33Z",
+                "customer": {
+                  "email": "ouer@example.com"
+                },
+                "metadata": {
+                  "source": "subscription_authorization_retry",
+                  "retry_trigger": "card_update_refund",
+                  "provider_next_payment_date": "2026-08-20T16:44:00Z",
+                  "subscription_id": "{{subscriptionId}}",
+                  "provider_payment_id": "{{providerPaymentId}}",
+                  "tier_code": "all_stories_monthly",
+                  "billing_period_months": 1
+                }
+              }
+            }
+            """);
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.AreEqual(subscriptionId, result.SubscriptionId);
+        Assert.IsTrue(
+            handler.SubscriptionPatchPayloads.Any(payload =>
+                payload.Contains("\"status\":\"active\"", StringComparison.Ordinal) &&
+                payload.Contains("\"next_renewal_at\":\"2026-08-20T16:44:00Z\"", StringComparison.Ordinal)),
+            "The async card-update success webhook must preserve Paystack's scheduled payment date.");
+        Assert.IsFalse(
+            handler.SubscriptionPatchPayloads.Any(payload =>
+                payload.Contains("\"next_renewal_at\":\"2026-09-06T12:54:33Z\"", StringComparison.Ordinal)),
+            "The card-update success webhook must not extend renewal from the standalone recovery charge date.");
+    }
+
+    [TestMethod]
     public async Task RecordPaystackEventAsync_PlanChangeTopUpChargeDoesNotCreateDuplicateSubscriptionRow()
     {
         var originalSubscriptionId = "22222222-2222-2222-2222-222222222222";
@@ -5974,6 +6082,9 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
         Assert.AreEqual(
             "card_update_refund",
             chargePayload.GetProperty("metadata").GetProperty("retry_trigger").GetString());
+        Assert.AreEqual(
+            DateTimeOffset.Parse("2099-09-02T05:14:00Z"),
+            chargePayload.GetProperty("metadata").GetProperty("provider_next_payment_date").GetDateTimeOffset());
         Assert.IsTrue(handler.SubscriptionPatchPayloads.Any(value =>
             value.Contains("\"provider_token\":\"AUTH_updated_card\"", StringComparison.Ordinal) &&
             value.Contains("\"authorization_reusable\":true", StringComparison.Ordinal)));

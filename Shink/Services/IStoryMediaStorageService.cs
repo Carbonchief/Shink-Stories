@@ -27,7 +27,20 @@ public interface IStoryMediaStorageService
         TimeSpan lifetime,
         CancellationToken cancellationToken = default);
 
+    Task<Uri?> CreateVideoReadUrlAsync(
+        string? bucket,
+        string objectKey,
+        TimeSpan lifetime,
+        CancellationToken cancellationToken = default);
+
     Task<UploadedStoryAudio> UploadAudioAsync(
+        string slug,
+        string fileName,
+        string? contentType,
+        Stream content,
+        CancellationToken cancellationToken = default);
+
+    Task<UploadedStoryVideo> UploadVideoAsync(
         string slug,
         string fileName,
         string? contentType,
@@ -46,6 +59,11 @@ public interface IStoryMediaStorageService
 }
 
 public sealed record UploadedStoryAudio(
+    string Bucket,
+    string ObjectKey,
+    string ContentType);
+
+public sealed record UploadedStoryVideo(
     string Bucket,
     string ObjectKey,
     string ContentType);

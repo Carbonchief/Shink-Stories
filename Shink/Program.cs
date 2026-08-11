@@ -128,6 +128,7 @@ builder.Services.AddHsts(options =>
     options.IncludeSubDomains = true;
 });
 builder.Services.AddSingleton<IAudioAccessService, AudioAccessService>();
+builder.Services.AddSingleton<IVideoAccessService, VideoAccessService>();
 builder.Services.AddSingleton<IStoryMediaStorageService, CloudflareR2StoryMediaStorageService>();
 builder.Services.AddSingleton<ISubscriberAvatarStorageService, CloudflareR2SubscriberAvatarStorageService>();
 builder.Services.AddSingleton<IResourceDocumentStorageService, CloudflareR2ResourceDocumentStorageService>();
@@ -200,6 +201,17 @@ builder.Services.AddRateLimiter(options =>
     {
         var clientId = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown-client";
         return RateLimitPartition.GetFixedWindowLimiter(clientId, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 180,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            AutoReplenishment = true
+        });
+    });
+    options.AddPolicy("video-stream", httpContext =>
+    {
+        var clientId = httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown-client";
+        return RateLimitPartition.GetFixedWindowLimiter($"video:{clientId}", _ => new FixedWindowRateLimiterOptions
         {
             PermitLimit = 180,
             Window = TimeSpan.FromMinutes(1),
@@ -668,6 +680,62 @@ app.MapGet("/media/audio/{slug}", async (
     var characterAudioMimeType = ResolveAudioMimeType(characterClip.AudioContentType, characterClip.AudioObjectKey);
     return Results.File(characterAudioFilePath, characterAudioMimeType, enableRangeProcessing: true);
 }).RequireRateLimiting("audio-stream");
+
+app.MapGet("/media/video/{slug}", async (
+    string slug,
+    string? token,
+    IVideoAccessService videoAccessService,
+    IStoryCatalogService storyCatalogService,
+    ISubscriptionLedgerService subscriptionLedgerService,
+    IStoryMediaStorageService storyMediaStorageService,
+    HttpContext httpContext) =>
+{
+    if (!IsLikelySameSiteMediaRequest(httpContext))
+    {
+        return Results.Forbid();
+    }
+
+    if (!videoAccessService.IsTokenValid(slug, token))
+    {
+        return Results.Unauthorized();
+    }
+
+    var story = await storyCatalogService.FindAnyBySlugAsync(slug, httpContext.RequestAborted);
+    if (story is null ||
+        !string.Equals(story.StoryType, "video", StringComparison.OrdinalIgnoreCase) ||
+        string.IsNullOrWhiteSpace(story.VideoObjectKey))
+    {
+        return Results.NotFound();
+    }
+
+    var signedInEmail = httpContext.User.FindFirst(ClaimTypes.Email)?.Value
+                        ?? httpContext.User.Identity?.Name;
+    var requirement = StoryAccessPolicy.ResolveRequirement("luister", story);
+    var hasStoryAccess = await HasRequiredStoryAccessAsync(
+        subscriptionLedgerService,
+        signedInEmail,
+        requirement,
+        httpContext.RequestAborted);
+    if (!hasStoryAccess)
+    {
+        return httpContext.User.Identity?.IsAuthenticated == true
+            ? Results.Forbid()
+            : Results.Unauthorized();
+    }
+
+    ApplyVideoResponseSecurityHeaders(httpContext);
+    var readUri = await storyMediaStorageService.CreateVideoReadUrlAsync(
+        story.VideoBucket,
+        story.VideoObjectKey,
+        TimeSpan.FromMinutes(30),
+        httpContext.RequestAborted);
+    if (readUri is null)
+    {
+        return Results.NotFound();
+    }
+
+    return Results.Redirect(readUri.ToString(), permanent: false, preserveMethod: true);
+}).RequireRateLimiting("video-stream");
 
 app.MapGet("/media/resources/{resourceDocumentId:guid}", async (
     Guid resourceDocumentId,
@@ -3987,6 +4055,7 @@ app.MapGet("/api/mobile/stories/{slug}", async (
     ISubscriptionLedgerService subscriptionLedgerService,
     IStoryFavoriteService storyFavoriteService,
     IAudioAccessService audioAccessService,
+    IVideoAccessService videoAccessService,
     IStoryMediaStorageService storyMediaStorageService,
     ICharacterCatalogService characterCatalogService,
     ICharacterTrackingService characterTrackingService,
@@ -4022,13 +4091,17 @@ app.MapGet("/api/mobile/stories/{slug}", async (
     var storyPath = normalizedSource == "gratis"
         ? $"/gratis/{Uri.EscapeDataString(story.Slug)}"
         : $"/luister/{Uri.EscapeDataString(story.Slug)}";
-    var audioUrl = isLocked
+    var isVideoStory = string.Equals(story.StoryType, "video", StringComparison.OrdinalIgnoreCase);
+    var audioUrl = isLocked || isVideoStory
         ? null
         : await ResolveMobileAudioUrlAsync(
             httpContext,
             story,
             audioAccessService,
             storyMediaStorageService);
+    var videoUrl = isLocked || !isVideoStory
+        ? null
+        : ToAbsoluteUri(httpContext, videoAccessService.CreateSignedVideoUrl(story.Slug));
     var characterTiles = await BuildMobileStoryCharacterTilesAsync(
         httpContext,
         story,
@@ -4040,6 +4113,7 @@ app.MapGet("/api/mobile/stories/{slug}", async (
     return Results.Ok(new MobileStoryDetailResponse(
         Story: BuildMobileStorySummary(httpContext, story, normalizedSource, isLocked, isFavorite),
         AudioUrl: audioUrl,
+        VideoUrl: videoUrl,
         ShareUrl: ToAbsoluteUri(httpContext, $"/luister/{Uri.EscapeDataString(story.Slug)}"),
         RequiresSubscription: isLocked,
         PreviousStory: previousStory is null ? null : BuildMobileStorySummary(httpContext, previousStory, normalizedSource, !CanAccessStory(previousStory, access), favoriteSlugs.Contains(previousStory.Slug, StringComparer.OrdinalIgnoreCase)),
@@ -4691,6 +4765,9 @@ static void ApplyAudioResponseSecurityHeaders(HttpContext httpContext)
     httpContext.Response.Headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet";
     httpContext.Response.Headers["Content-Disposition"] = "inline";
 }
+
+static void ApplyVideoResponseSecurityHeaders(HttpContext httpContext) =>
+    ApplyAudioResponseSecurityHeaders(httpContext);
 
 static bool IsAllowedImageProxySource(Uri sourceUri)
 {
@@ -7768,7 +7845,8 @@ static MobileStorySummaryResponse BuildMobileStorySummary(
         DetailUrl: ToAbsoluteUri(
             httpContext,
             $"/luister/{Uri.EscapeDataString(story.Slug)}"),
-        DurationSeconds: story.DurationSeconds);
+        DurationSeconds: story.DurationSeconds,
+        StoryType: story.StoryType);
 
 static async Task<IReadOnlyList<MobileStoryCharacterResponse>> BuildMobileStoryCharacterTilesAsync(
     HttpContext httpContext,
@@ -8141,7 +8219,8 @@ sealed record MobileStorySummaryResponse(
     bool IsLocked,
     bool IsFavorite,
     string DetailUrl,
-    decimal? DurationSeconds);
+    decimal? DurationSeconds,
+    string StoryType);
 sealed record MobileHomeResponse(
     string HeroTitle,
     string HeroSubtitle,
@@ -8222,6 +8301,7 @@ sealed record MobileCharacterStoryLinkResponse(
 sealed record MobileStoryDetailResponse(
     MobileStorySummaryResponse Story,
     string? AudioUrl,
+    string? VideoUrl,
     string ShareUrl,
     bool RequiresSubscription,
     MobileStorySummaryResponse? PreviousStory,

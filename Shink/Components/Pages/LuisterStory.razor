@@ -8,6 +8,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Shink.Utilities
 @inject IAudioAccessService AudioAccessService
+@inject IVideoAccessService VideoAccessService
 @inject ICharacterCatalogService CharacterCatalogService
 @inject ICharacterTrackingService CharacterTrackingService
 @inject IStoryCatalogService StoryCatalogService
@@ -63,7 +64,37 @@ else
 {
     <section class="story-player-page @(IsManualFullscreenFocus ? "manual-fullscreen-focus" : null)">
         <div class="story-player-content story-player-enhanced" oncontextmenu="return false;">
-            <div class="story-cover-wrap">
+            @if (IsVideoStory(CurrentStory))
+            {
+                <div class="story-video-player-wrap">
+                    <video controls controlslist="nodownload noplaybackrate noremoteplayback"
+                           disablepictureinpicture
+                           playsinline
+                           preload="metadata"
+                           class="story-video-player"
+                           poster="@CurrentStory.ImagePath"
+                           src="@VideoUrl"
+                           data-story-slug="@CurrentStory.Slug"
+                           data-story-title="@CurrentStory.Title"
+                           oncontextmenu="return false;"
+                           aria-label="@($"Video van {CurrentStory.Title}")">
+                        Jou blaaier ondersteun nie die videoplayer nie.
+                    </video>
+
+                    <button type="button"
+                            class="story-favorite-toggle @(IsStoryFavorite(CurrentStory.Slug) ? "is-favorite" : null)"
+                            @onclick="() => ToggleStoryFavoriteAsync(CurrentStory)"
+                            aria-label="@(IsStoryFavorite(CurrentStory.Slug) ? $"Verwyder {CurrentStory.Title} uit jou gunstelinge" : $"Voeg {CurrentStory.Title} by jou gunstelinge")"
+                            title="@(IsStoryFavorite(CurrentStory.Slug) ? "Verwyder uit gunstelinge" : "Voeg by gunstelinge")"
+                            aria-pressed="@IsStoryFavorite(CurrentStory.Slug)"
+                            disabled="@IsFavoriteBusy(CurrentStory.Slug)">
+                        <i class="fa-@(IsStoryFavorite(CurrentStory.Slug) ? "solid" : "regular") fa-heart" aria-hidden="true"></i>
+                    </button>
+                </div>
+            }
+            else
+            {
+                <div class="story-cover-wrap">
                 <img src="@CurrentStory.ThumbnailPath"
                      srcset="@($"{CurrentStory.ThumbnailPath} 640w, {CurrentStory.ImagePath} 1024w")"
                      sizes="(max-width: 640px) 100vw, (max-width: 1200px) 94vw, 1180px"
@@ -95,9 +126,9 @@ else
                         disabled="@IsFavoriteBusy(CurrentStory.Slug)">
                     <i class="fa-@(IsStoryFavorite(CurrentStory.Slug) ? "solid" : "regular") fa-heart" aria-hidden="true"></i>
                 </button>
-            </div>
+                </div>
 
-            <audio controls controlslist="nodownload noplaybackrate"
+                <audio controls controlslist="nodownload noplaybackrate"
                    disablepictureinpicture preload="auto" class="story-audio story-audio-native"
                    playsinline webkit-playsinline="true"
                    src="@AudioUrl"
@@ -109,9 +140,9 @@ else
                    data-story-duration-seconds="@FormatStoryDurationSeconds(CurrentStory.DurationSeconds)"
                    oncontextmenu="return false;">
                 Jou blaaier ondersteun nie die oudioplayer nie.
-            </audio>
+                </audio>
 
-            <div class="story-custom-player" role="group" aria-label="Storie speler">
+                <div class="story-custom-player" role="group" aria-label="Storie speler">
                 <div class="story-progress-wrap">
                     <input class="story-progress-slider"
                            type="range"
@@ -177,7 +208,8 @@ else
                         </button>
                     </div>
                 </div>
-            </div>
+                </div>
+            }
 
             
 
@@ -558,6 +590,7 @@ else
 
     private StoryItem? CurrentStory { get; set; }
     private string? AudioUrl { get; set; }
+    private string? VideoUrl { get; set; }
     private IJSObjectReference? _mediaSessionModule;
     private DotNetObjectReference<LuisterStory>? _dotNetRef;
     private bool _mediaSessionModuleLoadFailed;
@@ -734,6 +767,7 @@ else
         {
             IsRedirectingToOpsies = true;
             AudioUrl = null;
+            VideoUrl = null;
             FavoriteStorySlugs.Clear();
             FavoriteStoryBusySlugs.Clear();
             ResolveAdjacentStories();
@@ -752,6 +786,7 @@ else
             IsRedirectingToOpsies = true;
             CurrentStory = null;
             AudioUrl = null;
+            VideoUrl = null;
             LuisterStories = Array.Empty<StoryItem>();
             PublishedCharacters = Array.Empty<StoryCharacterItem>();
             CharacterUnlockStates = new Dictionary<Guid, bool>();
@@ -766,7 +801,12 @@ else
         }
 
         _ = LoadFavoriteStorySlugsInBackgroundAsync();
-        AudioUrl = CurrentStory is null ? null : AudioAccessService.CreateSignedAudioUrl(CurrentStory.Slug);
+        AudioUrl = CurrentStory is not null && !IsVideoStory(CurrentStory)
+            ? AudioAccessService.CreateSignedAudioUrl(CurrentStory.Slug)
+            : null;
+        VideoUrl = CurrentStory is not null && IsVideoStory(CurrentStory)
+            ? VideoAccessService.CreateSignedVideoUrl(CurrentStory.Slug)
+            : null;
         ResolveAdjacentStories();
         IsManualFullscreenFocus = false;
         ShowStoryAccessPopup = false;
@@ -792,6 +832,7 @@ else
 
         CurrentStory = state.CurrentStory;
         AudioUrl = state.AudioUrl;
+        VideoUrl = state.VideoUrl;
         PreviousStory = state.PreviousStory;
         NextStory = state.NextStory;
         IsRedirectingToOpsies = state.IsRedirectingToOpsies;
@@ -815,6 +856,7 @@ else
             new PersistedLuisterStoryState(
                 CurrentStory,
                 AudioUrl,
+                VideoUrl,
                 PreviousStory,
                 NextStory,
                 IsRedirectingToOpsies,
@@ -1088,7 +1130,7 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (CurrentStory is null || IsRedirectingToOpsies || _isDisposed)
+        if (CurrentStory is null || IsRedirectingToOpsies || IsVideoStory(CurrentStory) || _isDisposed)
         {
             return;
         }
@@ -1313,11 +1355,16 @@ else
     private sealed record PersistedLuisterStoryState(
         StoryItem CurrentStory,
         string? AudioUrl,
+        string? VideoUrl,
         StoryItem? PreviousStory,
         StoryItem? NextStory,
         bool IsRedirectingToOpsies,
         string PendingLockedStoryPath,
         bool ShowStoryAccessPopup);
+
+    private static bool IsVideoStory(StoryItem? story) =>
+        story is not null &&
+        string.Equals(story.StoryType, "video", StringComparison.OrdinalIgnoreCase);
 
     private static string GetImageMimeType(string fileName)
     {

@@ -99,6 +99,22 @@ public class R2AudioDeliverySourceTests
         Assert.IsNull(traversalUri);
     }
 
+    [TestMethod]
+    public async Task R2StorageServiceCreatesSignedVideoGetUrls()
+    {
+        using var storageService = CreateStorageService();
+
+        var signedUri = await storageService.CreateVideoReadUrlAsync(
+            "schink-test-media",
+            "uploaded/stories/video/demo.mp4",
+            TimeSpan.FromMinutes(30));
+
+        Assert.IsNotNull(signedUri);
+        Assert.AreEqual("https", signedUri.Scheme);
+        StringAssert.Contains(signedUri.AbsoluteUri, "X-Amz-Signature=");
+        StringAssert.Contains(signedUri.AbsolutePath, "/schink-test-media/uploaded/stories/video/demo.mp4");
+    }
+
     private static int CountOccurrences(string value, string search)
     {
         var count = 0;

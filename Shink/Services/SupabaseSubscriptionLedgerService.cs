@@ -4711,7 +4711,8 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 {
                     ["source"] = "subscription_authorization_retry",
                     ["retry_trigger"] = "card_update_refund",
-                    ["card_update_transaction_reference"] = refundTransactionReference
+                    ["card_update_transaction_reference"] = refundTransactionReference,
+                    ["provider_next_payment_date"] = liveSubscription.NextPaymentDate?.UtcDateTime
                 });
         }
         catch (Exception exception) when (
@@ -8515,6 +8516,18 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         PaymentRecoverySubscriptionContext subscriptionContext,
         DateTimeOffset nowUtc)
     {
+        var providerNextPaymentDate = string.Equals(
+                TryReadNestedString(data, "metadata", "retry_trigger"),
+                "card_update_refund",
+                StringComparison.OrdinalIgnoreCase)
+            ? TryParseDateTimeOffset(TryReadNestedString(data, "metadata", "provider_next_payment_date"))
+            : null;
+        if (providerNextPaymentDate is { } futureProviderNextPaymentDate &&
+            futureProviderNextPaymentDate > nowUtc)
+        {
+            return futureProviderNextPaymentDate;
+        }
+
         var paidAtUtc = TryParseDateTimeOffset(
             TryReadString(data, "paid_at") ??
             TryReadString(data, "transaction_date")) ?? nowUtc;

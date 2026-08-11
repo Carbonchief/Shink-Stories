@@ -3846,20 +3846,40 @@
                                 <p class="admin-upload-file-name">@GetSelectedFileLabel(NewStoryEditor.ThumbnailFileName, T("As jy dit leeg laat, skep ons outomaties 'n kleiner thumbnail vanaf die cover.", "If left empty, we automatically create a smaller thumbnail from the cover."))</p>
                             </div>
 
-                            <div class="admin-upload-card admin-span-2">
-                                <div class="admin-upload-head">
-                                    <h4>@T("Audio file", "Audio file")</h4>
-                                    <p>@T("Laai op na Cloudflare R2", "Uploads to Cloudflare R2")</p>
+                            @if (IsVideoStoryType(NewStoryEditor.StoryType))
+                            {
+                                <div class="admin-upload-card admin-span-2">
+                                    <div class="admin-upload-head">
+                                        <h4>@T("Video file", "Video file")</h4>
+                                        <p>@T("Laai op na Cloudflare R2", "Uploads to Cloudflare R2")</p>
+                                    </div>
+                                    <label class="admin-upload-btn">
+                                        @T("Kies video", "Choose video")
+                                        <InputFile id="@NewStoryVideoInputId"
+                                                   class="admin-file-input"
+                                                   OnChange="OnNewStoryVideoSelected"
+                                                   accept=".mp4,.webm,video/mp4,video/webm" />
+                                    </label>
+                                    <p class="admin-upload-file-name">@GetSelectedFileLabel(NewStoryEditor.VideoFileName, T("Nog geen file gekies nie.", "No file selected yet."))</p>
                                 </div>
-                                <label class="admin-upload-btn">
-                                    @T("Kies audio", "Choose audio")
-                                    <InputFile id="@NewStoryAudioInputId"
-                                               class="admin-file-input"
-                                               OnChange="OnNewStoryAudioSelected"
-                                               accept=".mp3,.mpeg,.m4a,.wav,.ogg,audio/*" />
-                                </label>
-                                <p class="admin-upload-file-name">@GetSelectedFileLabel(NewStoryEditor.AudioFileName, T("Nog geen file gekies nie.", "No file selected yet."))</p>
-                            </div>
+                            }
+                            else
+                            {
+                                <div class="admin-upload-card admin-span-2">
+                                    <div class="admin-upload-head">
+                                        <h4>@T("Audio file", "Audio file")</h4>
+                                        <p>@T("Laai op na Cloudflare R2", "Uploads to Cloudflare R2")</p>
+                                    </div>
+                                    <label class="admin-upload-btn">
+                                        @T("Kies audio", "Choose audio")
+                                        <InputFile id="@NewStoryAudioInputId"
+                                                   class="admin-file-input"
+                                                   OnChange="OnNewStoryAudioSelected"
+                                                   accept=".mp3,.mpeg,.m4a,.wav,.ogg,audio/*" />
+                                    </label>
+                                    <p class="admin-upload-file-name">@GetSelectedFileLabel(NewStoryEditor.AudioFileName, T("Nog geen file gekies nie.", "No file selected yet."))</p>
+                                </div>
+                            }
                         </div>
                     </div>
                 </DialogContent>
@@ -4009,20 +4029,40 @@
                                 </label>
                                 <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.ThumbnailFileName, T("As jy niks kies nie, skep ons 'n nuwe thumbnail van die cover wanneer die cover verander; anders hou ons die huidige thumbnail.", "If you do not choose a file, we create a new thumbnail from the cover when the cover changes; otherwise we keep the current thumbnail."))</p>
                             </div>
-                            <div class="admin-upload-card">
-                                <div class="admin-upload-head">
-                                    <h4>@T("Vervang audio file", "Replace audio file")</h4>
-                                    <p>@T("Laai op na Cloudflare R2", "Uploads to Cloudflare R2")</p>
+                            @if (IsVideoStoryType(StoryEditor.StoryType))
+                            {
+                                <div class="admin-upload-card">
+                                    <div class="admin-upload-head">
+                                        <h4>@T("Vervang video file", "Replace video file")</h4>
+                                        <p>@T("Laai op na Cloudflare R2", "Uploads to Cloudflare R2")</p>
+                                    </div>
+                                    <label class="admin-upload-btn">
+                                        @T("Kies video", "Choose video")
+                                        <InputFile id="@EditStoryVideoInputId"
+                                                   class="admin-file-input"
+                                                   OnChange="OnStoryVideoSelected"
+                                                   accept=".mp4,.webm,video/mp4,video/webm" />
+                                    </label>
+                                    <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.VideoFileName, T("Hou huidige video as jy niks kies nie.", "Keeps the current video if you do not choose a file."))</p>
                                 </div>
-                                <label class="admin-upload-btn">
-                                    @T("Kies audio", "Choose audio")
-                                    <InputFile id="@EditStoryAudioInputId"
-                                               class="admin-file-input"
-                                               OnChange="OnStoryAudioSelected"
-                                               accept=".mp3,.mpeg,.m4a,.wav,.ogg,audio/*" />
-                                </label>
-                                <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.AudioFileName, T("Hou huidige audio as jy niks kies nie.", "Keeps the current audio if you do not choose a file."))</p>
-                            </div>
+                            }
+                            else
+                            {
+                                <div class="admin-upload-card">
+                                    <div class="admin-upload-head">
+                                        <h4>@T("Vervang audio file", "Replace audio file")</h4>
+                                        <p>@T("Laai op na Cloudflare R2", "Uploads to Cloudflare R2")</p>
+                                    </div>
+                                    <label class="admin-upload-btn">
+                                        @T("Kies audio", "Choose audio")
+                                        <InputFile id="@EditStoryAudioInputId"
+                                                   class="admin-file-input"
+                                                   OnChange="OnStoryAudioSelected"
+                                                   accept=".mp3,.mpeg,.m4a,.wav,.ogg,audio/*" />
+                                    </label>
+                                    <p class="admin-upload-file-name">@GetSelectedFileLabel(StoryEditor.AudioFileName, T("Hou huidige audio as jy niks kies nie.", "Keeps the current audio if you do not choose a file."))</p>
+                                </div>
+                            }
                         </div>
                         <div class="admin-image-preview-grid admin-span-2 admin-playlist-preview-grid">
                             <article class="admin-image-preview-card admin-playlist-preview-card">
@@ -4792,9 +4832,11 @@
     private const string NewStoryCoverInputId = "admin-new-story-cover";
     private const string NewStoryThumbnailInputId = "admin-new-story-thumbnail";
     private const string NewStoryAudioInputId = "admin-new-story-audio";
+    private const string NewStoryVideoInputId = "admin-new-story-video";
     private const string EditStoryCoverInputId = "admin-edit-story-cover";
     private const string EditStoryThumbnailInputId = "admin-edit-story-thumbnail";
     private const string EditStoryAudioInputId = "admin-edit-story-audio";
+    private const string EditStoryVideoInputId = "admin-edit-story-video";
     private const string EditPlaylistLogoInputId = "admin-edit-playlist-logo";
     private const string EditPlaylistBackdropInputId = "admin-edit-playlist-backdrop";
     private const string EditPlaylistShowcaseInputId = "admin-edit-playlist-showcase";
@@ -4846,6 +4888,7 @@
     private IDisposable? AdminLocationChangingRegistration { get; set; }
     private const long MaxImageUploadBytes = 10 * 1024 * 1024;
     private const long MaxAudioUploadBytes = 256L * 1024 * 1024;
+    private const long MaxVideoUploadBytes = 512L * 1024 * 1024;
     private const int GeneratedThumbnailMaxDimension = 640;
     private const int GeneratedThumbnailQuality = 78;
     private static readonly DialogOptions EditorDialogOptions = new()
@@ -7257,6 +7300,19 @@
         return Task.CompletedTask;
     }
 
+    private Task OnNewStoryVideoSelected(InputFileChangeEventArgs args)
+    {
+        if (NewStoryEditor is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var file = args.File;
+        NewStoryEditor.VideoFile = file;
+        NewStoryEditor.VideoFileName = file?.Name;
+        return Task.CompletedTask;
+    }
+
     private void AddNewStoryTestQuestion()
     {
         NewStoryEditor?.TestQuestions.Add(new EditableStoryTestQuestion());
@@ -7319,6 +7375,19 @@
         var file = args.File;
         StoryEditor.AudioFile = file;
         StoryEditor.AudioFileName = file?.Name;
+        return Task.CompletedTask;
+    }
+
+    private Task OnStoryVideoSelected(InputFileChangeEventArgs args)
+    {
+        if (StoryEditor is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var file = args.File;
+        StoryEditor.VideoFile = file;
+        StoryEditor.VideoFileName = file?.Name;
         return Task.CompletedTask;
     }
 
@@ -7533,7 +7602,6 @@
             }
 
             var coverFile = NewStoryEditor.CoverFile!;
-            var audioFile = NewStoryEditor.AudioFile!;
             var summary = AutofillStorySummary(NewStoryEditor.Synopsis ?? NewStoryEditor.Summary, NewStoryEditor.Description);
             var description = AutofillStoryDescription(NewStoryEditor.Description, summary);
 
@@ -7562,11 +7630,26 @@
                 thumbnailPath = thumbnailUpload.PublicUrl;
             }
 
-            var audioUpload = await UploadAudioWithFallbackAsync(
-                generatedSlug,
-                audioFile,
-                NewStoryAudioInputId);
-            uploadedObjectKeys.Add(audioUpload.ObjectKey);
+            UploadedStoryAudio? audioUpload = null;
+            UploadedStoryVideo? videoUpload = null;
+            if (IsVideoStoryType(NewStoryEditor.StoryType))
+            {
+                var uploadedVideo = await UploadVideoWithFallbackAsync(
+                    generatedSlug,
+                    NewStoryEditor.VideoFile!,
+                    NewStoryVideoInputId);
+                videoUpload = uploadedVideo;
+                uploadedObjectKeys.Add(uploadedVideo.ObjectKey);
+            }
+            else
+            {
+                var uploadedAudio = await UploadAudioWithFallbackAsync(
+                    generatedSlug,
+                    NewStoryEditor.AudioFile!,
+                    NewStoryAudioInputId);
+                audioUpload = uploadedAudio;
+                uploadedObjectKeys.Add(uploadedAudio.ObjectKey);
+            }
 
             var result = await AdminManagementService.CreateStoryAsync(
                 CurrentAdminEmail,
@@ -7579,17 +7662,20 @@
                     TestQuestions: BuildAdminStoryTestQuestions(NewStoryEditor.TestQuestions),
                     CoverImagePath: coverUpload.PublicUrl,
                     ThumbnailImagePath: thumbnailPath,
-                    AudioBucket: audioUpload.Bucket,
-                    AudioObjectKey: audioUpload.ObjectKey,
-                    AudioContentType: audioUpload.ContentType,
-                    StoryType: NewStoryEditor.StoryType,
+                    AudioBucket: audioUpload?.Bucket,
+                    AudioObjectKey: audioUpload?.ObjectKey,
+                    AudioContentType: audioUpload?.ContentType,
+                    StoryType: NormalizeStoryType(NewStoryEditor.StoryType),
                     AccessLevel: NewStoryEditor.AccessLevel,
                     Status: NewStoryEditor.PublishNow ? "published" : "draft",
                     SortOrder: BuildNextStorySortOrder(allStories),
                     PublishedAt: NewStoryEditor.PublishNow ? DateTimeOffset.Now : null,
                     DurationSeconds: null,
                     SummaryDetails: BuildStorySummaryDetails(NewStoryEditor),
-                    SendPublishedNotification: NewStoryEditor.SendPublishedNotification));
+                    SendPublishedNotification: NewStoryEditor.SendPublishedNotification,
+                    VideoBucket: videoUpload?.Bucket,
+                    VideoObjectKey: videoUpload?.ObjectKey,
+                    VideoContentType: videoUpload?.ContentType));
 
             if (!result.IsSuccess)
             {
@@ -7639,12 +7725,23 @@
         IsSavingStory = true;
         ClearFeedback();
         var uploadedObjectKeys = new List<string>();
+        var storyUpdateSucceeded = false;
         var originalCoverImagePath = StoryEditor.CoverImagePath;
         var originalThumbnailImagePath = StoryEditor.ThumbnailImagePath;
+        var originalAudioProvider = StoryEditor.AudioProvider;
+        var originalAudioBucket = StoryEditor.AudioBucket;
+        var originalAudioObjectKey = StoryEditor.AudioObjectKey;
+        var originalAudioContentType = StoryEditor.AudioContentType;
+        var originalVideoBucket = StoryEditor.VideoBucket;
+        var originalVideoObjectKey = StoryEditor.VideoObjectKey;
+        var originalVideoContentType = StoryEditor.VideoContentType;
 
         try
         {
-            if ((StoryEditor.CoverFile is not null || StoryEditor.ThumbnailFile is not null) &&
+            if ((StoryEditor.CoverFile is not null ||
+                 StoryEditor.ThumbnailFile is not null ||
+                 StoryEditor.AudioFile is not null ||
+                 StoryEditor.VideoFile is not null) &&
                 string.IsNullOrWhiteSpace(StoryEditor.Slug))
             {
                 SetError(T("Storie slug ontbreek. Verfris asseblief en probeer weer.", "Story slug is missing. Please refresh and try again."));
@@ -7686,7 +7783,26 @@
                 StoryEditor.ThumbnailImagePath = thumbnailUpload.PublicUrl;
             }
 
-            if (StoryEditor.AudioFile is not null)
+            if (IsVideoStoryType(StoryEditor.StoryType))
+            {
+                if (StoryEditor.VideoFile is not null)
+                {
+                    var videoUpload = await UploadVideoWithFallbackAsync(
+                        StoryEditor.Slug,
+                        StoryEditor.VideoFile,
+                        EditStoryVideoInputId);
+                    uploadedObjectKeys.Add(videoUpload.ObjectKey);
+                    StoryEditor.VideoBucket = videoUpload.Bucket;
+                    StoryEditor.VideoObjectKey = videoUpload.ObjectKey;
+                    StoryEditor.VideoContentType = videoUpload.ContentType;
+                }
+
+                StoryEditor.AudioProvider = "local";
+                StoryEditor.AudioBucket = null;
+                StoryEditor.AudioObjectKey = null;
+                StoryEditor.AudioContentType = null;
+            }
+            else if (StoryEditor.AudioFile is not null)
             {
                 var audioUpload = await UploadAudioWithFallbackAsync(
                     StoryEditor.Slug,
@@ -7697,6 +7813,13 @@
                 StoryEditor.AudioBucket = audioUpload.Bucket;
                 StoryEditor.AudioObjectKey = audioUpload.ObjectKey;
                 StoryEditor.AudioContentType = audioUpload.ContentType;
+            }
+
+            if (!IsVideoStoryType(StoryEditor.StoryType))
+            {
+                StoryEditor.VideoBucket = null;
+                StoryEditor.VideoObjectKey = null;
+                StoryEditor.VideoContentType = null;
             }
 
             var publishedAt = ParseOptionalLocalDateTime(StoryEditor.PublishedAtLocal);
@@ -7717,20 +7840,32 @@
                     AudioBucket: StoryEditor.AudioBucket,
                     AudioObjectKey: StoryEditor.AudioObjectKey,
                     AudioContentType: StoryEditor.AudioContentType,
-                    StoryType: StoryEditor.StoryType,
+                    StoryType: NormalizeStoryType(StoryEditor.StoryType),
                     AccessLevel: StoryEditor.AccessLevel,
                     Status: StoryEditor.Status,
                     SortOrder: StoryEditor.SortOrder,
                     PublishedAt: publishedAt,
                     DurationSeconds: StoryEditor.DurationSeconds,
-                    SummaryDetails: BuildStorySummaryDetails(StoryEditor)));
+                    SummaryDetails: BuildStorySummaryDetails(StoryEditor),
+                    VideoBucket: StoryEditor.VideoBucket,
+                    VideoObjectKey: StoryEditor.VideoObjectKey,
+                    VideoContentType: StoryEditor.VideoContentType));
 
             if (!result.IsSuccess)
             {
                 await CleanupUploadedStoryObjectsAsync(uploadedObjectKeys);
+                StoryEditor.AudioProvider = originalAudioProvider;
+                StoryEditor.AudioBucket = originalAudioBucket;
+                StoryEditor.AudioObjectKey = originalAudioObjectKey;
+                StoryEditor.AudioContentType = originalAudioContentType;
+                StoryEditor.VideoBucket = originalVideoBucket;
+                StoryEditor.VideoObjectKey = originalVideoObjectKey;
+                StoryEditor.VideoContentType = originalVideoContentType;
                 SetError(result.ErrorMessage ?? T("Kon nie storie nou stoor nie.", "Could not save story right now."));
                 return;
             }
+
+            storyUpdateSucceeded = true;
 
             var playlistResult = await SaveStoryPlaylistAssignmentsAsync(StoryEditor.StoryId, StoryEditor.SelectedPlaylistIds);
             if (!playlistResult.IsSuccess)
@@ -7748,9 +7883,19 @@
             StoryEditor.ThumbnailPreviewDataUrl = null;
             StoryEditor.AudioFile = null;
             StoryEditor.AudioFileName = null;
+            StoryEditor.VideoFile = null;
+            StoryEditor.VideoFileName = null;
 
             await CleanupReplacedImageAssetAsync(originalCoverImagePath, StoryEditor.CoverImagePath);
             await CleanupReplacedImageAssetAsync(originalThumbnailImagePath, StoryEditor.ThumbnailImagePath);
+            await CleanupReplacedStoryMediaObjectAsync(
+                originalVideoObjectKey,
+                StoryEditor.VideoObjectKey,
+                shouldDelete: true);
+            await CleanupReplacedStoryMediaObjectAsync(
+                originalAudioObjectKey,
+                StoryEditor.AudioObjectKey,
+                shouldDelete: string.Equals(originalAudioProvider, "r2", StringComparison.OrdinalIgnoreCase));
             await RefreshStoriesAsync(StoryEditor.StoryId);
             await RefreshPlaylistsAsync();
             if (playlistResult.IsSuccess && string.IsNullOrWhiteSpace(ErrorMessage))
@@ -7760,7 +7905,17 @@
         }
         catch (Exception exception)
         {
-            await CleanupUploadedStoryObjectsAsync(uploadedObjectKeys);
+            if (!storyUpdateSucceeded)
+            {
+                await CleanupUploadedStoryObjectsAsync(uploadedObjectKeys);
+                StoryEditor.AudioProvider = originalAudioProvider;
+                StoryEditor.AudioBucket = originalAudioBucket;
+                StoryEditor.AudioObjectKey = originalAudioObjectKey;
+                StoryEditor.AudioContentType = originalAudioContentType;
+                StoryEditor.VideoBucket = originalVideoBucket;
+                StoryEditor.VideoObjectKey = originalVideoObjectKey;
+                StoryEditor.VideoContentType = originalVideoContentType;
+            }
             Logger.LogError(exception, "Failed to save story.");
             SetError(LocalizeStoryEditException(exception));
         }
@@ -8718,6 +8873,9 @@
             _ => "story"
         };
 
+    private static bool IsVideoStoryType(string? value) =>
+        string.Equals(NormalizeStoryType(value), "video", StringComparison.OrdinalIgnoreCase);
+
     private string? ValidateNewStoryDraft(NewStoryDraft draft)
     {
         if (string.IsNullOrWhiteSpace(draft.Title))
@@ -8741,14 +8899,34 @@
             return T("Die thumbnail image moet kleiner as 10 MB wees.", "The thumbnail image must be smaller than 10 MB.");
         }
 
-        if (draft.AudioFile is null)
+        if (IsVideoStoryType(draft.StoryType))
         {
-            return T("Kies asseblief 'n audio file.", "Please choose an audio file.");
-        }
+            if (draft.VideoFile is null)
+            {
+                return T("Kies asseblief 'n video file.", "Please choose a video file.");
+            }
 
-        if (draft.AudioFile.Size <= 0 || draft.AudioFile.Size > MaxAudioUploadBytes)
+            if (draft.VideoFile.Size <= 0 || draft.VideoFile.Size > MaxVideoUploadBytes)
+            {
+                return T("Die video file moet kleiner as 512 MB wees.", "The video file must be smaller than 512 MB.");
+            }
+
+            if (!IsSupportedVideoFile(draft.VideoFile))
+            {
+                return T("Gebruik asseblief MP4 of WEBM vir die video.", "Please use MP4 or WEBM for the video.");
+            }
+        }
+        else
         {
-            return T("Die audio file moet kleiner as 256 MB wees.", "The audio file must be smaller than 256 MB.");
+            if (draft.AudioFile is null)
+            {
+                return T("Kies asseblief 'n audio file.", "Please choose an audio file.");
+            }
+
+            if (draft.AudioFile.Size <= 0 || draft.AudioFile.Size > MaxAudioUploadBytes)
+            {
+                return T("Die audio file moet kleiner as 256 MB wees.", "The audio file must be smaller than 256 MB.");
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(draft.YouTubeUrl) &&
@@ -8774,10 +8952,37 @@
             return T("Die thumbnail image moet kleiner as 10 MB wees.", "The thumbnail image must be smaller than 10 MB.");
         }
 
-        if (draft.AudioFile is not null &&
-            (draft.AudioFile.Size <= 0 || draft.AudioFile.Size > MaxAudioUploadBytes))
+        if (IsVideoStoryType(draft.StoryType))
         {
-            return T("Die audio file moet kleiner as 256 MB wees.", "The audio file must be smaller than 256 MB.");
+            if (draft.VideoFile is not null &&
+                (draft.VideoFile.Size <= 0 || draft.VideoFile.Size > MaxVideoUploadBytes))
+            {
+                return T("Die video file moet kleiner as 512 MB wees.", "The video file must be smaller than 512 MB.");
+            }
+
+            if (draft.VideoFile is not null && !IsSupportedVideoFile(draft.VideoFile))
+            {
+                return T("Gebruik asseblief MP4 of WEBM vir die video.", "Please use MP4 or WEBM for the video.");
+            }
+
+            if (draft.VideoFile is null &&
+                (string.IsNullOrWhiteSpace(draft.VideoBucket) || string.IsNullOrWhiteSpace(draft.VideoObjectKey)))
+            {
+                return T("Kies asseblief 'n video file.", "Please choose a video file.");
+            }
+        }
+        else
+        {
+            if (draft.AudioFile is null && string.IsNullOrWhiteSpace(draft.AudioObjectKey))
+            {
+                return T("Kies asseblief 'n audio file.", "Please choose an audio file.");
+            }
+
+            if (draft.AudioFile is not null &&
+                (draft.AudioFile.Size <= 0 || draft.AudioFile.Size > MaxAudioUploadBytes))
+            {
+                return T("Die audio file moet kleiner as 256 MB wees.", "The audio file must be smaller than 256 MB.");
+            }
         }
 
         if (!string.IsNullOrWhiteSpace(draft.YouTubeUrl) &&
@@ -9063,6 +9268,41 @@
         }
     }
 
+    private async Task<UploadedStoryVideo> UploadVideoWithFallbackAsync(
+        string slug,
+        IBrowserFile file,
+        string inputId)
+    {
+        var normalizedContentType = NormalizeVideoContentType(file);
+        var directUpload = await StoryMediaStorageService.CreateVideoDirectUploadAsync(
+            slug,
+            file.Name,
+            normalizedContentType);
+
+        try
+        {
+            await UploadSelectedFileToR2Async(inputId, directUpload);
+            return new UploadedStoryVideo(
+                directUpload.Bucket,
+                directUpload.ObjectKey,
+                directUpload.ContentType);
+        }
+        catch (Exception exception)
+        {
+            Logger.LogWarning(
+                exception,
+                "Direct video upload failed for story {StorySlug}. Falling back to server-side upload.",
+                slug);
+
+            await using var stream = file.OpenReadStream(MaxVideoUploadBytes);
+            return await StoryMediaStorageService.UploadVideoAsync(
+                slug,
+                file.Name,
+                normalizedContentType,
+                stream);
+        }
+    }
+
     private async Task<IJSObjectReference> GetAdminUploadModuleAsync()
     {
         if (AdminUploadModule is not null)
@@ -9093,6 +9333,21 @@
         {
             await StoryMediaStorageService.DeleteObjectIfExistsAsync(objectKey);
         }
+    }
+
+    private async Task CleanupReplacedStoryMediaObjectAsync(
+        string? originalObjectKey,
+        string? currentObjectKey,
+        bool shouldDelete)
+    {
+        if (!shouldDelete ||
+            string.IsNullOrWhiteSpace(originalObjectKey) ||
+            string.Equals(originalObjectKey, currentObjectKey, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        await StoryMediaStorageService.DeleteObjectIfExistsAsync(originalObjectKey);
     }
 
     private Task CleanupUploadedLocalFilesAsync(IEnumerable<string> localFilePaths)
@@ -10355,6 +10610,8 @@
                 T("Kies asseblief eers 'n file om op te laai.", "Please choose a file to upload first."),
             "Unsupported audio file type. Use MP3, M4A, WAV, or OGG." =>
                 T("Ondersteunde audio files is MP3, M4A, WAV of OGG.", "Supported audio files are MP3, M4A, WAV, or OGG."),
+            "Unsupported video file type. Use MP4 or WEBM." =>
+                T("Ondersteunde video files is MP4 of WEBM.", "Supported video files are MP4 or WEBM."),
             "Unsupported image file type. Use JPG, PNG, or WEBP." =>
                 T("Ondersteunde images is JPG, PNG of WEBP.", "Supported image types are JPG, PNG, or WEBP."),
             "Story slug is required for media uploads." =>
@@ -10379,6 +10636,8 @@
                 T("Kies asseblief eers 'n file om op te laai.", "Please choose a file to upload first."),
             "Unsupported audio file type. Use MP3, M4A, WAV, or OGG." =>
                 T("Ondersteunde audio files is MP3, M4A, WAV of OGG.", "Supported audio files are MP3, M4A, WAV, or OGG."),
+            "Unsupported video file type. Use MP4 or WEBM." =>
+                T("Ondersteunde video files is MP4 of WEBM.", "Supported video files are MP4 or WEBM."),
             "Unsupported image file type. Use JPG, PNG, or WEBP." =>
                 T("Ondersteunde images is JPG, PNG of WEBP.", "Supported image types are JPG, PNG, or WEBP."),
             "Story slug is required for media uploads." =>
@@ -10517,6 +10776,19 @@
             }
         };
 
+    private static string NormalizeVideoContentType(IBrowserFile file) =>
+        file.ContentType?.Trim().ToLowerInvariant() switch
+        {
+            "video/mp4" => "video/mp4",
+            "video/webm" => "video/webm",
+            _ => Path.GetExtension(file.Name).Trim().ToLowerInvariant() switch
+            {
+                ".mp4" => "video/mp4",
+                ".webm" => "video/webm",
+                _ => file.ContentType ?? string.Empty
+            }
+        };
+
     private static string NormalizeImageContentType(IBrowserFile file) =>
         file.ContentType?.Trim().ToLowerInvariant() switch
         {
@@ -10563,6 +10835,9 @@
 
     private static bool IsSupportedImageContentType(string normalizedContentType) =>
         normalizedContentType is "image/jpeg" or "image/png" or "image/webp";
+
+    private static bool IsSupportedVideoFile(IBrowserFile file) =>
+        NormalizeVideoContentType(file) is "video/mp4" or "video/webm";
 
     private static string CreateUniqueStorySlug(string? value, IReadOnlyList<AdminStoryRecord> existingStories)
     {
@@ -10682,10 +10957,14 @@
             CoverFile = BuildBrowserFileState(editor.CoverFile, editor.CoverFileName),
             ThumbnailFile = BuildBrowserFileState(editor.ThumbnailFile, editor.ThumbnailFileName),
             AudioFile = BuildBrowserFileState(editor.AudioFile, editor.AudioFileName),
+            VideoFile = BuildBrowserFileState(editor.VideoFile, editor.VideoFileName),
             AudioProvider = NormalizeDirtyText(editor.AudioProvider),
             AudioBucket = NormalizeDirtyText(editor.AudioBucket),
             AudioObjectKey = NormalizeDirtyText(editor.AudioObjectKey),
             AudioContentType = NormalizeDirtyText(editor.AudioContentType),
+            VideoBucket = NormalizeDirtyText(editor.VideoBucket),
+            VideoObjectKey = NormalizeDirtyText(editor.VideoObjectKey),
+            VideoContentType = NormalizeDirtyText(editor.VideoContentType),
             StoryType = NormalizeDirtyText(editor.StoryType),
             AccessLevel = NormalizeDirtyText(editor.AccessLevel),
             Status = NormalizeDirtyText(editor.Status),
@@ -10723,7 +11002,8 @@
                 .ToArray(),
             CoverFile = BuildBrowserFileState(editor.CoverFile, editor.CoverFileName),
             ThumbnailFile = BuildBrowserFileState(editor.ThumbnailFile, editor.ThumbnailFileName),
-            AudioFile = BuildBrowserFileState(editor.AudioFile, editor.AudioFileName)
+            AudioFile = BuildBrowserFileState(editor.AudioFile, editor.AudioFileName),
+            VideoFile = BuildBrowserFileState(editor.VideoFile, editor.VideoFileName)
         });
     }
 
@@ -11293,6 +11573,11 @@
         public string? AudioBucket { get; set; }
         public string? AudioObjectKey { get; set; }
         public string? AudioContentType { get; set; }
+        public IBrowserFile? VideoFile { get; set; }
+        public string? VideoFileName { get; set; }
+        public string? VideoBucket { get; set; }
+        public string? VideoObjectKey { get; set; }
+        public string? VideoContentType { get; set; }
         public string StoryType { get; set; } = "story";
         public string AccessLevel { get; set; } = "subscriber";
         public string Status { get; set; } = "draft";
@@ -11321,6 +11606,9 @@
             AudioBucket = story.AudioBucket,
             AudioObjectKey = story.AudioObjectKey,
             AudioContentType = story.AudioContentType,
+            VideoBucket = story.VideoBucket,
+            VideoObjectKey = story.VideoObjectKey,
+            VideoContentType = story.VideoContentType,
             StoryType = NormalizeStoryType(story.StoryType),
             AccessLevel = story.AccessLevel,
             Status = story.Status,
@@ -11353,6 +11641,8 @@
         public string? ThumbnailFileName { get; set; }
         public IBrowserFile? AudioFile { get; set; }
         public string? AudioFileName { get; set; }
+        public IBrowserFile? VideoFile { get; set; }
+        public string? VideoFileName { get; set; }
     }
 
     private sealed class EditableStoryTestQuestion

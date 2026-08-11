@@ -37,8 +37,8 @@ public class StoryTypeMusicSourceTests
         StringAssert.Contains(markup, "@bind-Value=\"StoryEditor.StoryType\"");
         StringAssert.Contains(markup, "<MudSelectItem Value=\"@(\"story\")\">@T(\"Storie\", \"Story\")</MudSelectItem>");
         StringAssert.Contains(markup, "<MudSelectItem Value=\"@(\"music\")\">@T(\"Musiek\", \"Music\")</MudSelectItem>");
-        StringAssert.Contains(markup, "StoryType: NewStoryEditor.StoryType");
-        StringAssert.Contains(markup, "StoryType: StoryEditor.StoryType");
+        StringAssert.Contains(markup, "StoryType: NormalizeStoryType(NewStoryEditor.StoryType)");
+        StringAssert.Contains(markup, "StoryType: NormalizeStoryType(StoryEditor.StoryType)");
         StringAssert.Contains(markup, "StoryType = NormalizeDirtyText(editor.StoryType)");
     }
 

@@ -245,9 +245,13 @@ public sealed class SupabaseStoryCatalogService(
 
     private async Task<IReadOnlyList<StoryCatalogRow>> FetchPublishedRowsAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
     {
-        const string storySelectWithTestQuestions =
+        const string storySelectWithVideoAndTestQuestions =
+            "story_id,slug,title,summary,description,youtube_url,test_questions,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,video_bucket,video_object_key,video_content_type,story_type,access_level,status,sort_order,published_at,duration_seconds,tags,metadata";
+        const string storySelectWithVideoWithoutTestQuestions =
+            "story_id,slug,title,summary,description,youtube_url,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,video_bucket,video_object_key,video_content_type,story_type,access_level,status,sort_order,published_at,duration_seconds,tags,metadata";
+        const string storySelectWithoutVideoWithTestQuestions =
             "story_id,slug,title,summary,description,youtube_url,test_questions,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,story_type,access_level,status,sort_order,published_at,duration_seconds,tags,metadata";
-        const string storySelectWithoutTestQuestions =
+        const string storySelectWithoutVideoWithoutTestQuestions =
             "story_id,slug,title,summary,description,youtube_url,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,story_type,access_level,status,sort_order,published_at,duration_seconds,tags,metadata";
         const string storySelectLegacyColumns =
             "story_id,slug,title,summary,description,youtube_url,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,access_level,status,sort_order,published_at,duration_seconds,tags,metadata";
@@ -255,7 +259,7 @@ public sealed class SupabaseStoryCatalogService(
         var rows = await FetchPublishedRowsWithSelectAsync(
             baseUri,
             apiKey,
-            storySelectWithTestQuestions,
+            storySelectWithVideoAndTestQuestions,
             retryWithoutTestQuestionsOnMissingColumn: true,
             cancellationToken);
 
@@ -264,16 +268,40 @@ public sealed class SupabaseStoryCatalogService(
             return rows;
         }
 
-        var rowsWithoutTestQuestions = await FetchPublishedRowsWithSelectAsync(
+        var rowsWithVideoWithoutTestQuestions = await FetchPublishedRowsWithSelectAsync(
                 baseUri,
                 apiKey,
-                storySelectWithoutTestQuestions,
+                storySelectWithVideoWithoutTestQuestions,
                 retryWithoutTestQuestionsOnMissingColumn: false,
                 cancellationToken);
 
-        if (rowsWithoutTestQuestions is not null)
+        if (rowsWithVideoWithoutTestQuestions is not null)
         {
-            return rowsWithoutTestQuestions;
+            return rowsWithVideoWithoutTestQuestions;
+        }
+
+        var rowsWithoutVideo = await FetchPublishedRowsWithSelectAsync(
+            baseUri,
+            apiKey,
+            storySelectWithoutVideoWithTestQuestions,
+            retryWithoutTestQuestionsOnMissingColumn: true,
+            cancellationToken);
+
+        if (rowsWithoutVideo is not null)
+        {
+            return rowsWithoutVideo;
+        }
+
+        var rowsWithoutVideoOrTestQuestions = await FetchPublishedRowsWithSelectAsync(
+            baseUri,
+            apiKey,
+            storySelectWithoutVideoWithoutTestQuestions,
+            retryWithoutTestQuestionsOnMissingColumn: false,
+            cancellationToken);
+
+        if (rowsWithoutVideoOrTestQuestions is not null)
+        {
+            return rowsWithoutVideoOrTestQuestions;
         }
 
         return await FetchPublishedRowsWithSelectAsync(
@@ -737,12 +765,18 @@ public sealed class SupabaseStoryCatalogService(
         return value.Trim().ToLowerInvariant();
     }
 
-    private static bool IsPublishedAndUsable(StoryCatalogRow row) =>
-        row.StoryId != Guid.Empty &&
-        string.Equals(row.Status, "published", StringComparison.OrdinalIgnoreCase) &&
-        !string.IsNullOrWhiteSpace(row.Slug) &&
-        !string.IsNullOrWhiteSpace(row.Title) &&
-        !string.IsNullOrWhiteSpace(row.AudioObjectKey);
+    private static bool IsPublishedAndUsable(StoryCatalogRow row)
+    {
+        var hasRequiredMedia = string.Equals(NormalizeStoryType(row.StoryType), "video", StringComparison.Ordinal)
+            ? !string.IsNullOrWhiteSpace(row.VideoObjectKey)
+            : !string.IsNullOrWhiteSpace(row.AudioObjectKey);
+
+        return row.StoryId != Guid.Empty &&
+               string.Equals(row.Status, "published", StringComparison.OrdinalIgnoreCase) &&
+               !string.IsNullOrWhiteSpace(row.Slug) &&
+               !string.IsNullOrWhiteSpace(row.Title) &&
+               hasRequiredMedia;
+    }
 
     private static bool IsSubscriberStoryRow(StoryCatalogRow row) =>
         string.Equals(row.AccessLevel, "subscriber", StringComparison.OrdinalIgnoreCase) &&
@@ -855,7 +889,7 @@ public sealed class SupabaseStoryCatalogService(
             Title: title,
             Description: description,
             ImageFileName: imageFileName,
-            AudioFileName: row.AudioObjectKey.Trim(),
+            AudioFileName: row.AudioObjectKey?.Trim() ?? string.Empty,
             ThumbnailFileName: thumbnailFileName,
             AudioProvider: string.IsNullOrWhiteSpace(row.AudioProvider) ? "local" : row.AudioProvider.Trim(),
             AudioBucket: string.IsNullOrWhiteSpace(row.AudioBucket) ? null : row.AudioBucket.Trim(),
@@ -870,7 +904,10 @@ public sealed class SupabaseStoryCatalogService(
             TestQuestions: ReadStoryTestQuestions(row.TestQuestions),
             DurationSeconds: row.DurationSeconds,
             PlaylistSlugs: playlistSlugs,
-            StoryType: NormalizeStoryType(row.StoryType));
+            StoryType: NormalizeStoryType(row.StoryType),
+            VideoBucket: NormalizeOptionalText(row.VideoBucket),
+            VideoObjectKey: NormalizeOptionalText(row.VideoObjectKey),
+            VideoContentType: NormalizeOptionalText(row.VideoContentType));
     }
 
     private static IReadOnlyDictionary<Guid, IReadOnlyList<string>> BuildPlaylistSlugLookup(
@@ -1545,6 +1582,9 @@ public sealed class SupabaseStoryCatalogService(
                 AudioBucket = story.AudioBucket,
                 AudioObjectKey = story.AudioFileName,
                 AudioContentType = story.AudioContentType,
+                VideoBucket = story.VideoBucket,
+                VideoObjectKey = story.VideoObjectKey,
+                VideoContentType = story.VideoContentType,
                 StoryType = NormalizeStoryType(story.StoryType),
                 AccessLevel = isFree ? "free" : "subscriber",
                 Status = "published",
@@ -1644,10 +1684,19 @@ public sealed class SupabaseStoryCatalogService(
         public string? AudioBucket { get; set; }
 
         [JsonPropertyName("audio_object_key")]
-        public string AudioObjectKey { get; set; } = string.Empty;
+        public string? AudioObjectKey { get; set; }
 
         [JsonPropertyName("audio_content_type")]
         public string? AudioContentType { get; set; }
+
+        [JsonPropertyName("video_bucket")]
+        public string? VideoBucket { get; set; }
+
+        [JsonPropertyName("video_object_key")]
+        public string? VideoObjectKey { get; set; }
+
+        [JsonPropertyName("video_content_type")]
+        public string? VideoContentType { get; set; }
 
         [JsonPropertyName("access_level")]
         public string AccessLevel { get; set; } = "subscriber";

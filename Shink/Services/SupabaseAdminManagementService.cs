@@ -1225,7 +1225,10 @@ public sealed partial class SupabaseAdminManagementService(
                 PublishedAt: row.PublishedAt,
                 DurationSeconds: row.DurationSeconds,
                 UpdatedAt: row.UpdatedAt,
-                SummaryDetails: ReadStorySummaryDetails(row.Metadata)))
+                SummaryDetails: ReadStorySummaryDetails(row.Metadata),
+                VideoBucket: NormalizeOptionalText(row.VideoBucket, 120),
+                VideoObjectKey: NormalizeOptionalText(row.VideoObjectKey, 1024),
+                VideoContentType: NormalizeOptionalText(row.VideoContentType, 100)))
             .OrderByDescending(row => row.UpdatedAt ?? row.PublishedAt ?? DateTimeOffset.MinValue)
             .ThenBy(row => row.SortOrder)
             .ThenBy(row => row.Title, StringComparer.OrdinalIgnoreCase)
@@ -1257,17 +1260,6 @@ public sealed partial class SupabaseAdminManagementService(
         if (string.IsNullOrWhiteSpace(normalizedTitle))
         {
             return new AdminOperationResult(false, "Storie titel is verpligtend.");
-        }
-
-        var normalizedAudioProvider = request.AudioProvider?.Trim().ToLowerInvariant() switch
-        {
-            "local" => "local",
-            "r2" => "r2",
-            _ => string.Empty
-        };
-        if (string.IsNullOrWhiteSpace(normalizedAudioProvider))
-        {
-            return new AdminOperationResult(false, "Audio provider moet 'local' of 'r2' wees.");
         }
 
         var normalizedAccessLevel = request.AccessLevel?.Trim().ToLowerInvariant() switch
@@ -1308,10 +1300,43 @@ public sealed partial class SupabaseAdminManagementService(
         var normalizedAudioBucket = NormalizeOptionalText(request.AudioBucket, 120);
         var normalizedAudioObjectKey = NormalizeOptionalText(request.AudioObjectKey, 1024);
         var normalizedAudioContentType = NormalizeOptionalText(request.AudioContentType, 100);
+        var normalizedVideoBucket = NormalizeOptionalText(request.VideoBucket, 120);
+        var normalizedVideoObjectKey = NormalizeOptionalText(request.VideoObjectKey, 1024);
+        var normalizedVideoContentType = NormalizeOptionalText(request.VideoContentType, 100);
         var normalizedStoryType = NormalizeStoryType(request.StoryType, allowDefault: false);
         if (string.IsNullOrWhiteSpace(normalizedStoryType))
         {
             return new AdminOperationResult(false, "Storie tipe moet 'story', 'music' of 'video' wees.");
+        }
+
+        var normalizedAudioProvider = request.AudioProvider?.Trim().ToLowerInvariant() switch
+        {
+            "local" => "local",
+            "r2" => "r2",
+            _ => string.Empty
+        };
+        if (string.Equals(normalizedStoryType, "video", StringComparison.OrdinalIgnoreCase))
+        {
+            normalizedAudioProvider = "local";
+            normalizedAudioBucket = null;
+            normalizedAudioObjectKey = null;
+            normalizedAudioContentType = null;
+        }
+        else if (string.IsNullOrWhiteSpace(normalizedAudioProvider))
+        {
+            return new AdminOperationResult(false, "Audio provider moet 'local' of 'r2' wees.");
+        }
+        else
+        {
+            normalizedVideoBucket = null;
+            normalizedVideoObjectKey = null;
+            normalizedVideoContentType = null;
+        }
+
+        if (string.Equals(normalizedStoryType, "video", StringComparison.OrdinalIgnoreCase) &&
+            (string.IsNullOrWhiteSpace(normalizedVideoBucket) || string.IsNullOrWhiteSpace(normalizedVideoObjectKey)))
+        {
+            return new AdminOperationResult(false, "Video stories vereis beide video bucket en object key.");
         }
 
         var normalizedSortOrder = Math.Clamp(request.SortOrder, -500_000, 500_000);
@@ -1321,9 +1346,15 @@ public sealed partial class SupabaseAdminManagementService(
         if (string.Equals(normalizedStatus, "published", StringComparison.OrdinalIgnoreCase))
         {
             normalizedPublishedAt ??= DateTimeOffset.UtcNow;
-            if (string.IsNullOrWhiteSpace(normalizedAudioObjectKey))
+            if (string.Equals(normalizedStoryType, "video", StringComparison.OrdinalIgnoreCase)
+                    ? string.IsNullOrWhiteSpace(normalizedVideoObjectKey)
+                    : string.IsNullOrWhiteSpace(normalizedAudioObjectKey))
             {
-                return new AdminOperationResult(false, "Gepubliseerde stories vereis 'n audio object key.");
+                return new AdminOperationResult(
+                    false,
+                    string.Equals(normalizedStoryType, "video", StringComparison.OrdinalIgnoreCase)
+                        ? "Gepubliseerde video stories vereis 'n video object key."
+                        : "Gepubliseerde stories vereis 'n audio object key.");
             }
         }
 
@@ -1377,6 +1408,17 @@ public sealed partial class SupabaseAdminManagementService(
             ["published_at"] = normalizedPublishedAt?.UtcDateTime,
             ["duration_seconds"] = normalizedDurationSeconds
         };
+
+        if (string.Equals(normalizedStoryType, "video", StringComparison.OrdinalIgnoreCase) ||
+            !string.IsNullOrWhiteSpace(existingStory?.VideoObjectKey) ||
+            request.VideoBucket is not null ||
+            request.VideoObjectKey is not null ||
+            request.VideoContentType is not null)
+        {
+            payload["video_bucket"] = normalizedVideoBucket;
+            payload["video_object_key"] = normalizedVideoObjectKey;
+            payload["video_content_type"] = normalizedVideoContentType;
+        }
 
         if (request.SummaryDetails is not null)
         {
@@ -1587,10 +1629,31 @@ public sealed partial class SupabaseAdminManagementService(
         var normalizedAudioBucket = NormalizeOptionalText(request.AudioBucket, 120);
         var normalizedAudioObjectKey = NormalizeOptionalText(request.AudioObjectKey, 1024);
         var normalizedAudioContentType = NormalizeOptionalText(request.AudioContentType, 100);
+        var normalizedVideoBucket = NormalizeOptionalText(request.VideoBucket, 120);
+        var normalizedVideoObjectKey = NormalizeOptionalText(request.VideoObjectKey, 1024);
+        var normalizedVideoContentType = NormalizeOptionalText(request.VideoContentType, 100);
         var normalizedStoryType = NormalizeStoryType(request.StoryType, allowDefault: false);
         if (string.IsNullOrWhiteSpace(normalizedStoryType))
         {
             return new AdminOperationResult(false, "Storie tipe moet 'story', 'music' of 'video' wees.");
+        }
+
+        if (string.Equals(normalizedStoryType, "video", StringComparison.OrdinalIgnoreCase))
+        {
+            normalizedAudioBucket = null;
+            normalizedAudioObjectKey = null;
+            normalizedAudioContentType = null;
+            if (string.IsNullOrWhiteSpace(normalizedVideoBucket) ||
+                string.IsNullOrWhiteSpace(normalizedVideoObjectKey))
+            {
+                return new AdminOperationResult(false, "Video stories vereis beide video bucket en object key.");
+            }
+        }
+        else
+        {
+            normalizedVideoBucket = null;
+            normalizedVideoObjectKey = null;
+            normalizedVideoContentType = null;
         }
 
         var normalizedSortOrder = Math.Clamp(request.SortOrder, -500_000, 500_000);
@@ -1600,14 +1663,21 @@ public sealed partial class SupabaseAdminManagementService(
         if (string.Equals(normalizedStatus, "published", StringComparison.OrdinalIgnoreCase))
         {
             normalizedPublishedAt ??= DateTimeOffset.UtcNow;
-            if (string.IsNullOrWhiteSpace(normalizedAudioObjectKey))
+            if (string.Equals(normalizedStoryType, "video", StringComparison.OrdinalIgnoreCase)
+                    ? string.IsNullOrWhiteSpace(normalizedVideoObjectKey)
+                    : string.IsNullOrWhiteSpace(normalizedAudioObjectKey))
             {
-                return new AdminOperationResult(false, "Gepubliseerde stories vereis 'n audio object key.");
+                return new AdminOperationResult(
+                    false,
+                    string.Equals(normalizedStoryType, "video", StringComparison.OrdinalIgnoreCase)
+                        ? "Gepubliseerde video stories vereis 'n video object key."
+                        : "Gepubliseerde stories vereis 'n audio object key.");
             }
         }
 
-        if (string.IsNullOrWhiteSpace(normalizedAudioBucket) ||
-            string.IsNullOrWhiteSpace(normalizedAudioObjectKey))
+        if (!string.Equals(normalizedStoryType, "video", StringComparison.OrdinalIgnoreCase) &&
+            (string.IsNullOrWhiteSpace(normalizedAudioBucket) ||
+             string.IsNullOrWhiteSpace(normalizedAudioObjectKey)))
         {
             return new AdminOperationResult(false, "R2 stories vereis beide bucket en object key.");
         }
@@ -1637,7 +1707,7 @@ public sealed partial class SupabaseAdminManagementService(
             ["test_questions"] = normalizedTestQuestions.Count == 0 ? null : normalizedTestQuestions,
             ["cover_image_path"] = normalizedCoverImagePath,
             ["thumbnail_image_path"] = normalizedThumbnailPath,
-            ["audio_provider"] = "r2",
+            ["audio_provider"] = string.Equals(normalizedStoryType, "video", StringComparison.OrdinalIgnoreCase) ? "local" : "r2",
             ["audio_bucket"] = normalizedAudioBucket,
             ["audio_object_key"] = normalizedAudioObjectKey,
             ["audio_content_type"] = normalizedAudioContentType,
@@ -1648,6 +1718,13 @@ public sealed partial class SupabaseAdminManagementService(
             ["published_at"] = normalizedPublishedAt?.UtcDateTime,
             ["duration_seconds"] = normalizedDurationSeconds
         };
+
+        if (string.Equals(normalizedStoryType, "video", StringComparison.OrdinalIgnoreCase))
+        {
+            payload["video_bucket"] = normalizedVideoBucket;
+            payload["video_object_key"] = normalizedVideoObjectKey;
+            payload["video_content_type"] = normalizedVideoContentType;
+        }
 
         if (request.SummaryDetails is not null)
         {
@@ -3650,9 +3727,13 @@ public sealed partial class SupabaseAdminManagementService(
 
     private async Task<IReadOnlyList<StoryRow>> FetchStoriesAsync(Uri baseUri, string apiKey, CancellationToken cancellationToken)
     {
-        const string storySelectWithTestQuestions =
+        const string storySelectWithVideoAndTestQuestions =
+            "story_id,slug,title,summary,description,youtube_url,test_questions,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,video_bucket,video_object_key,video_content_type,story_type,access_level,status,sort_order,published_at,duration_seconds,updated_at,metadata";
+        const string storySelectWithVideoWithoutTestQuestions =
+            "story_id,slug,title,summary,description,youtube_url,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,video_bucket,video_object_key,video_content_type,story_type,access_level,status,sort_order,published_at,duration_seconds,updated_at,metadata";
+        const string storySelectWithoutVideoWithTestQuestions =
             "story_id,slug,title,summary,description,youtube_url,test_questions,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,story_type,access_level,status,sort_order,published_at,duration_seconds,updated_at,metadata";
-        const string storySelectWithoutTestQuestions =
+        const string storySelectWithoutVideoWithoutTestQuestions =
             "story_id,slug,title,summary,description,youtube_url,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,story_type,access_level,status,sort_order,published_at,duration_seconds,updated_at,metadata";
         const string storySelectLegacyColumns =
             "story_id,slug,title,summary,description,youtube_url,cover_image_path,thumbnail_image_path,audio_provider,audio_bucket,audio_object_key,audio_content_type,access_level,status,sort_order,published_at,duration_seconds,updated_at,metadata";
@@ -3660,7 +3741,7 @@ public sealed partial class SupabaseAdminManagementService(
         var rows = await FetchStoriesWithSelectAsync(
             baseUri,
             apiKey,
-            storySelectWithTestQuestions,
+            storySelectWithVideoAndTestQuestions,
             retryWithoutTestQuestionsOnMissingColumn: true,
             cancellationToken);
 
@@ -3669,16 +3750,40 @@ public sealed partial class SupabaseAdminManagementService(
             return rows;
         }
 
-        var rowsWithoutTestQuestions = await FetchStoriesWithSelectAsync(
+        var rowsWithVideoWithoutTestQuestions = await FetchStoriesWithSelectAsync(
                 baseUri,
                 apiKey,
-                storySelectWithoutTestQuestions,
+                storySelectWithVideoWithoutTestQuestions,
                 retryWithoutTestQuestionsOnMissingColumn: false,
                 cancellationToken);
 
-        if (rowsWithoutTestQuestions is not null)
+        if (rowsWithVideoWithoutTestQuestions is not null)
         {
-            return rowsWithoutTestQuestions;
+            return rowsWithVideoWithoutTestQuestions;
+        }
+
+        var rowsWithoutVideo = await FetchStoriesWithSelectAsync(
+            baseUri,
+            apiKey,
+            storySelectWithoutVideoWithTestQuestions,
+            retryWithoutTestQuestionsOnMissingColumn: true,
+            cancellationToken);
+
+        if (rowsWithoutVideo is not null)
+        {
+            return rowsWithoutVideo;
+        }
+
+        var rowsWithoutVideoOrTestQuestions = await FetchStoriesWithSelectAsync(
+            baseUri,
+            apiKey,
+            storySelectWithoutVideoWithoutTestQuestions,
+            retryWithoutTestQuestionsOnMissingColumn: false,
+            cancellationToken);
+
+        if (rowsWithoutVideoOrTestQuestions is not null)
+        {
+            return rowsWithoutVideoOrTestQuestions;
         }
 
         return await FetchStoriesWithSelectAsync(
@@ -7668,6 +7773,15 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("audio_content_type")]
         public string? AudioContentType { get; set; }
+
+        [JsonPropertyName("video_bucket")]
+        public string? VideoBucket { get; set; }
+
+        [JsonPropertyName("video_object_key")]
+        public string? VideoObjectKey { get; set; }
+
+        [JsonPropertyName("video_content_type")]
+        public string? VideoContentType { get; set; }
 
         [JsonPropertyName("story_type")]
         public string? StoryType { get; set; }
