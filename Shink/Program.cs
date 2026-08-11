@@ -2225,6 +2225,7 @@ app.MapGet("/api/auth/google/start", async (
     IOptions<SiteOptions> siteOptions,
     HttpContext httpContext) =>
 {
+    httpContext.Response.Headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet";
     var safeReturnUrl = GetSafeAuthReturnUrl(returnUrl);
     var callbackUri = BuildPublicAbsoluteUrl(siteOptions.Value, "/auth/callback");
     var useImplicitFlow = ShouldUseImplicitGoogleAuthFlow(flowType, httpContext.Request.Headers.UserAgent.ToString());
@@ -3549,6 +3550,7 @@ app.MapGet("/api/search/suggest", async (
 
 app.MapGet("/blog/rss.xml", async (IBlogCatalogService blogCatalogService, HttpContext httpContext) =>
 {
+    httpContext.Response.Headers["X-Robots-Tag"] = "noindex, nofollow, noarchive, nosnippet";
     var posts = await blogCatalogService.GetPublishedPostsAsync(httpContext.RequestAborted);
     var feedDocument = BuildBlogRssDocument(httpContext.Request, posts);
     return Results.Content(feedDocument, "application/rss+xml; charset=utf-8", Encoding.UTF8);
@@ -4295,10 +4297,12 @@ app.MapGet("/sitemap.xml", async (HttpContext httpContext, IStoryCatalogService 
         "/",
         "/luister",
         "/resources",
-        "/luister",
         "/opsies",
         "/meer-oor-ons",
-        "/soek"
+        "/blog",
+        "/gratis",
+        "/karakters",
+        "/winkel"
     };
 
     var freeStoriesTask = storyCatalogService.GetFreeStoriesAsync(httpContext.RequestAborted);
@@ -4310,6 +4314,7 @@ app.MapGet("/sitemap.xml", async (HttpContext httpContext, IStoryCatalogService 
     paths.AddRange(luisterStoriesTask.Result.Select(story => $"/luister/{Uri.EscapeDataString(story.Slug)}"));
     paths.AddRange(luisterPlaylistsTask.Result.Select(playlist => $"/luister/speellys/{Uri.EscapeDataString(playlist.Slug)}"));
     paths.AddRange(luisterPlaylistsTask.Result.Select(playlist => $"/luister/speellys/{Uri.EscapeDataString(playlist.Slug)}/stories"));
+    paths = paths.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
     XNamespace ns = "http://www.sitemaps.org/schemas/sitemap/0.9";
     var document = new XDocument(
