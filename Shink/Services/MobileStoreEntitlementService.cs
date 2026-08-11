@@ -36,7 +36,8 @@ public sealed class MobileStoreEntitlementService(
     HttpClient httpClient,
     IOptions<MobileStoreOptions> options,
     ISubscriptionLedgerService subscriptionLedgerService,
-    ILogger<MobileStoreEntitlementService> logger)
+    ILogger<MobileStoreEntitlementService> logger,
+    IGratisSubscriberEmailSequenceService? gratisSubscriberEmailSequenceService = null)
 {
     private const string AppleProductionReceiptUrl = "https://buy.itunes.apple.com/verifyReceipt";
     private const string AppleSandboxReceiptUrl = "https://sandbox.itunes.apple.com/verifyReceipt";
@@ -48,6 +49,7 @@ public sealed class MobileStoreEntitlementService(
     private readonly MobileStoreOptions _options = options.Value;
     private readonly ISubscriptionLedgerService _subscriptionLedgerService = subscriptionLedgerService;
     private readonly ILogger<MobileStoreEntitlementService> _logger = logger;
+    private readonly IGratisSubscriberEmailSequenceService? _gratisSubscriberEmailSequenceService = gratisSubscriberEmailSequenceService;
 
     public async Task<MobileStoreEntitlementResponse> VerifyAndRecordAsync(
         string email,
@@ -103,6 +105,11 @@ public sealed class MobileStoreEntitlementService(
                 persistResult.ErrorMessage ?? "Die winkelintekening kon nie nou geaktiveer word nie.",
                 provider,
                 productId);
+        }
+
+        if (_gratisSubscriberEmailSequenceService is not null)
+        {
+            await _gratisSubscriberEmailSequenceService.MarkPaidAsync(email, cancellationToken);
         }
 
         return new MobileStoreEntitlementResponse(

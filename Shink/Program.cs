@@ -174,6 +174,7 @@ builder.Services.AddHttpClient<IStoreOrderNotificationService, ResendStoreOrderN
 builder.Services.AddHttpClient<ISubscriptionNotificationEmailService, ResendSubscriptionNotificationEmailService>();
 builder.Services.AddHttpClient<ISubscriptionPaymentRecoveryEmailService, ResendSubscriptionPaymentRecoveryEmailService>();
 builder.Services.AddHttpClient<ISchoolSeatNotificationEmailService, ResendSchoolSeatNotificationEmailService>();
+builder.Services.AddHttpClient<IGratisSubscriberEmailSequenceService, ResendGratisSubscriberEmailSequenceService>();
 builder.Services.AddHttpClient<IAbandonedCartRecoveryService, SupabaseAbandonedCartRecoveryService>();
 builder.Services.AddHttpClient<IStoryTrackingService, SupabaseStoryTrackingService>();
 builder.Services.AddHttpClient<IEngagementTrackingService, SupabaseEngagementTrackingService>();
@@ -1663,6 +1664,9 @@ app.MapPost("/betaal/{planSlug}/verander", async (
                 httpContext.RequestAborted);
             if (applyResult.IsSuccess)
             {
+                await httpContext.RequestServices
+                    .GetRequiredService<IGratisSubscriberEmailSequenceService>()
+                    .MarkPaidAsync(signedInEmail, httpContext.RequestAborted);
                 return Results.Redirect(BuildSubscriptionPaymentRedirectPath("kode-toegepas", plan.Slug, safeReturnUrl));
             }
 
@@ -2086,6 +2090,9 @@ app.MapGet("/betaal/paystack/callback", async (
         selectedPlan?.TierCode,
         "paid",
         CancellationToken.None);
+    await httpContext.RequestServices
+        .GetRequiredService<IGratisSubscriberEmailSequenceService>()
+        .MarkPaidAsync(verifyResult.CustomerEmail, CancellationToken.None);
 
     return Results.Redirect(ResolveSuccessfulSubscriptionPaymentReturnPath(plan, returnUrl));
 });
@@ -2164,6 +2171,9 @@ app.MapPost("/api/payfast/notify", async (
                     form["custom_str2"].ToString(),
                     "paid",
                     CancellationToken.None);
+                await httpContext.RequestServices
+                    .GetRequiredService<IGratisSubscriberEmailSequenceService>()
+                    .MarkPaidAsync(form["email_address"].ToString(), CancellationToken.None);
             }
 
             logger.LogInformation(
@@ -2925,6 +2935,7 @@ app.MapPost("/api/auth/signup", async (
     IAuthSessionService authSessionService,
     IAdminManagementService adminManagementService,
     ISubscriptionLedgerService subscriptionLedgerService,
+    IGratisSubscriberEmailSequenceService gratisSubscriberEmailSequenceService,
     HttpContext httpContext) =>
 {
     request = request with
@@ -3057,6 +3068,18 @@ app.MapPost("/api/auth/signup", async (
         discountCodeApplied = true;
     }
 
+    if (request.MarketingConsent &&
+        string.IsNullOrWhiteSpace(request.SelectedTierCode) &&
+        gratisProvisioned &&
+        !await subscriptionLedgerService.HasActivePaidSubscriptionAsync(signedInEmail, httpContext.RequestAborted))
+    {
+        await gratisSubscriberEmailSequenceService.TryStartAsync(
+            signedInEmail,
+            request.FirstName,
+            request.LastName,
+            httpContext.RequestAborted);
+    }
+
     var signInCookieResult = await SignInUserAsync(httpContext, signedInEmail, authSessionService, adminManagementService, subscriptionLedgerService, httpContext.RequestServices.GetRequiredService<IWordPressMigrationService>());
     if (!signInCookieResult.IsSuccess)
     {
@@ -3152,6 +3175,10 @@ app.MapPost("/api/account/discount-code/apply", async (
             new { message = applyResult.ErrorMessage ?? "Kon nie die kode nou toepas nie." },
             statusCode: StatusCodes.Status503ServiceUnavailable);
     }
+
+    await httpContext.RequestServices
+        .GetRequiredService<IGratisSubscriberEmailSequenceService>()
+        .MarkPaidAsync(signedInEmail, httpContext.RequestAborted);
 
     return Results.Ok(new
     {
@@ -5615,10 +5642,13 @@ static async Task<IResult> HandlePaystackWebhookAsync(
 
         var (subscriptionRecoveryEmail, subscriptionRecoveryTierCode) = ResolveSubscriptionCustomerFromPaystackPayload(payload);
         await abandonedCartRecoveryService.ResolveSubscriptionRecoveriesAsync(
-        subscriptionRecoveryEmail,
-        subscriptionRecoveryTierCode,
-        "paid",
-        CancellationToken.None);
+            subscriptionRecoveryEmail,
+            subscriptionRecoveryTierCode,
+            "paid",
+            CancellationToken.None);
+        await httpContext.RequestServices
+            .GetRequiredService<IGratisSubscriberEmailSequenceService>()
+            .MarkPaidAsync(subscriptionRecoveryEmail, CancellationToken.None);
 
         logger.LogInformation(
             "Paystack subscription persisted. subscription_id={SubscriptionId}",
@@ -6099,6 +6129,9 @@ static async Task<IResult?> TryRedirectRecoveredPaystackSubscriptionAsync(
         plan.TierCode,
         "paid",
         CancellationToken.None);
+    await httpContext.RequestServices
+        .GetRequiredService<IGratisSubscriberEmailSequenceService>()
+        .MarkPaidAsync(recoveryResult.CustomerEmail ?? customerEmail, CancellationToken.None);
 
     logger.LogInformation(
         "Recovered paid Paystack checkout before retry. plan={PlanSlug} reference={Reference} email={Email}",
@@ -8136,7 +8169,8 @@ sealed record AuthSignUpApiRequest(
     string? MobileNumber,
     string? Password,
     string? SelectedTierCode,
-    string? DiscountCode);
+    string? DiscountCode,
+    bool MarketingConsent);
 sealed record SignupDiscountPreviewApiRequest(string? DiscountCode, string? SelectedTierCode);
 sealed record StoryViewTrackApiRequest(string? StoryPath, string? Source, string? ReferrerPath);
 sealed record MobileCharacterListenRequest(string? StreamSlug);

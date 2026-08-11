@@ -100,6 +100,17 @@
                     </div>
                 </div>
 
+                @if (!IsSchoolOptionsSignupFlow && SelectedPlan is null)
+                {
+                    <label class="signup-email-consent" for="signup-email-consent">
+                        <InputCheckbox id="signup-email-consent" @bind-Value="SignUpForm.MarketingConsent" />
+                        <span>
+                            Ek wil die gratis Schink Stories-e-posreeks ontvang: een e-pos per dag vir ses dae.
+                            Ek kan enige tyd met een klik uitteken.
+                        </span>
+                    </label>
+                }
+
                 <div class="signup-actions">
                     <p class="signup-selected-option" aria-live="polite">
                         Gekose opsie:
@@ -351,7 +362,8 @@
                 MobileNumber: SignUpForm.MobileNumber.Trim(),
                 Password: SignUpForm.Password,
                 SelectedTierCode: SelectedPlan?.TierCode,
-                DiscountCode: SignUpForm.DiscountCode.Trim());
+                DiscountCode: SignUpForm.DiscountCode.Trim(),
+                MarketingConsent: !IsSchoolOptionsSignupFlow && SelectedPlan is null && SignUpForm.MarketingConsent);
 
             var response = await authModule.InvokeAsync<AuthBrowserResponse>("postAuthJson", "/api/auth/signup", payload);
             if (response.Ok)
@@ -927,7 +939,8 @@
         string MobileNumber,
         string Password,
         string? SelectedTierCode,
-        string? DiscountCode);
+        string? DiscountCode,
+        bool MarketingConsent);
 
     private sealed record SignupDiscountPreviewRequest(
         string? DiscountCode,
@@ -981,5 +994,7 @@
 
         [StringLength(80, ErrorMessage = "Jou kode mag nie langer as 80 karakters wees nie.")]
         public string DiscountCode { get; set; } = string.Empty;
+
+        public bool MarketingConsent { get; set; }
     }
 }
