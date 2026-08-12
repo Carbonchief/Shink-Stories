@@ -171,7 +171,9 @@
             <div class="opsies-plan-change-actions">
                 @if (CanContinueUpgrade)
                 {
-                    <a class="opsies-plan-change-primary" href="@ConfirmedUpgradeCheckoutHref">@UpgradeContinueButtonText</a>
+                    <a class="opsies-plan-change-primary"
+                       href="@ConfirmedUpgradeCheckoutHref"
+                       data-enhance-nav="false">@UpgradeContinueButtonText</a>
                 }
                 <a class="opsies-plan-change-secondary" href="#plan-opsies">Kies 'n ander plan</a>
                 @if (!CanContinueUpgrade)
@@ -289,7 +291,9 @@
                 }
                 else
                 {
-                    <a href='@BuildPlanSignUpHref("storie-hoekie-maandeliks", StoryCornerCheckoutReturnPath, DiscountCode)' class="opsie-btn">@(IsSelectedPlan("storie-hoekie-maandeliks") ? "Gaan voort" : "Kies hierdie plan")</a>
+                    <a href='@BuildPlanSignUpHref("storie-hoekie-maandeliks", StoryCornerCheckoutReturnPath, DiscountCode)'
+                       class="opsie-btn"
+                       data-enhance-nav="false">@(IsSelectedPlan("storie-hoekie-maandeliks") ? "Gaan voort" : "Kies hierdie plan")</a>
                 }
             </article>
 
@@ -358,7 +362,9 @@
                     }
                     else
                     {
-                        <a href='@BuildPlanSignUpHref(CurrentAllStoriesPlanSlug, SafeStoryReturnPath, DiscountCode)' class="opsie-btn">@(IsSelectedPlan(CurrentAllStoriesPlanSlug) ? "Gaan voort" : "Kies hierdie plan")</a>
+                        <a href='@BuildPlanSignUpHref(CurrentAllStoriesPlanSlug, SafeStoryReturnPath, DiscountCode)'
+                           class="opsie-btn"
+                           data-enhance-nav="false">@(IsSelectedPlan(CurrentAllStoriesPlanSlug) ? "Gaan voort" : "Kies hierdie plan")</a>
                     }
                 </article>
             }

@@ -94,6 +94,21 @@ public class SignupSourceTests
             "The signup plan selector should not render every catalog plan because that mixes household and school options.");
     }
 
+    [TestMethod]
+    public void GratisMembershipCardCanSelectFreeAccessWithoutAddingACheckbox()
+    {
+        var signup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Signup.razor"));
+        var css = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Signup.razor.css"));
+
+        StringAssert.Contains(signup, "class=\"@GetGratisMembershipClass()\"\n                    @onclick=\"SelectGratisPlan\"\n                    aria-pressed=\"@IsGratisSelected\"");
+        StringAssert.Contains(signup, "private void SelectGratisPlan()");
+        StringAssert.Contains(signup, "private bool IsGratisSelected => SelectedPlan is null;");
+        StringAssert.Contains(signup, "DiscountPreview = null;");
+        Assert.IsFalse(signup.Contains("<article class=\"@GetGratisMembershipClass()\">", StringComparison.Ordinal));
+        StringAssert.Contains(css, ".membership-plan-gratis:hover");
+        StringAssert.Contains(css, ".membership-plan-gratis:focus-visible");
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var parts = new[]

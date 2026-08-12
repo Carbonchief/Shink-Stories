@@ -92,6 +92,20 @@ public sealed class SubscriptionDuplicateCheckoutSourceTests
     }
 
     [TestMethod]
+    public void OptionsCheckoutRedirectsUseFullDocumentNavigation()
+    {
+        var opsies = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Opsies.razor"));
+
+        StringAssert.Contains(opsies, "href=\"@ConfirmedUpgradeCheckoutHref\"");
+        StringAssert.Contains(opsies, "href='@BuildPlanSignUpHref(\"storie-hoekie-maandeliks\", StoryCornerCheckoutReturnPath, DiscountCode)'");
+        StringAssert.Contains(opsies, "href='@BuildPlanSignUpHref(CurrentAllStoriesPlanSlug, SafeStoryReturnPath, DiscountCode)'");
+
+        AssertLinkUsesFullDocumentNavigation(opsies, "href=\"@ConfirmedUpgradeCheckoutHref\"");
+        AssertLinkUsesFullDocumentNavigation(opsies, "href='@BuildPlanSignUpHref(\"storie-hoekie-maandeliks\", StoryCornerCheckoutReturnPath, DiscountCode)'");
+        AssertLinkUsesFullDocumentNavigation(opsies, "href='@BuildPlanSignUpHref(CurrentAllStoriesPlanSlug, SafeStoryReturnPath, DiscountCode)'");
+    }
+
+    [TestMethod]
     public void FreeAccessCodeApplicationAlsoRequiresTheConfirmedPost()
     {
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
@@ -419,6 +433,18 @@ public sealed class SubscriptionDuplicateCheckoutSourceTests
         Assert.IsTrue(
             firstIndex >= 0 && secondIndex > firstIndex,
             message);
+    }
+
+    private static void AssertLinkUsesFullDocumentNavigation(string source, string hrefMarker)
+    {
+        var hrefIndex = source.IndexOf(hrefMarker, StringComparison.Ordinal);
+        Assert.IsTrue(hrefIndex >= 0, $"Could not find checkout link '{hrefMarker}'.");
+
+        var linkEndIndex = source.IndexOf("</a>", hrefIndex, StringComparison.Ordinal);
+        Assert.IsTrue(linkEndIndex > hrefIndex, $"Could not find the end of checkout link '{hrefMarker}'.");
+
+        var linkMarkup = source[hrefIndex..linkEndIndex];
+        StringAssert.Contains(linkMarkup, "data-enhance-nav=\"false\"");
     }
 
     private static string ExtractBlock(string source, string startMarker, string endMarker, int startOffset = 0)

@@ -164,11 +164,14 @@
                 }
             </div>
 
-            <article class="@GetGratisMembershipClass()">
+            <button type="button"
+                    class="@GetGratisMembershipClass()"
+                    @onclick="SelectGratisPlan"
+                    aria-pressed="@IsGratisSelected">
                 <p class="membership-plan-label">GRATIS</p>
                 <h3>Gratis stories is onmiddellik aktief</h3>
                 <p>As betaling misluk of gekanselleer word, behou jy steeds toegang tot die gratis stories.</p>
-            </article>
+            </button>
 
             @if (SelectedPlan is not null)
             {
@@ -484,6 +487,12 @@
 
         SelectedPlan = plan;
         await PreviewDiscountCodeAsync();
+    }
+
+    private void SelectGratisPlan()
+    {
+        SelectedPlan = null;
+        DiscountPreview = null;
     }
 
     private async Task PreviewDiscountCodeAsync()
@@ -894,6 +903,8 @@
         SelectedPlan is not null &&
         string.Equals(SelectedPlan.Slug, plan.Slug, StringComparison.OrdinalIgnoreCase);
 
+    private bool IsGratisSelected => SelectedPlan is null;
+
     private string GetMembershipPlanOptionClass(PaymentPlan plan)
     {
         var classNames = new List<string> { "membership-plan-option" };
@@ -908,7 +919,7 @@
     private string GetGratisMembershipClass()
     {
         var classNames = new List<string> { "membership-plan", "membership-plan-gratis" };
-        if (SelectedPlan is null)
+        if (IsGratisSelected)
         {
             classNames.Add("membership-plan-gratis-selected");
         }
