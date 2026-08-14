@@ -3,6 +3,7 @@ namespace Shink.Mobile.Pages;
 internal static class MobileResponsiveLayout
 {
     private const double WideLayoutBreakpoint = 600;
+    private const double ThreeColumnStoryBreakpoint = 960;
 
     public static double ResolveWidth(double width)
     {
@@ -16,6 +17,39 @@ internal static class MobileResponsiveLayout
     }
 
     public static bool IsWide(double width) => ResolveWidth(width) >= WideLayoutBreakpoint;
+
+    public static int ResolveStoryGridColumns(double width)
+    {
+        var availableWidth = ResolveWidth(width);
+        if (!IsWide(availableWidth))
+        {
+            return 1;
+        }
+
+        return availableWidth >= ThreeColumnStoryBreakpoint ? 3 : 2;
+    }
+
+    public static double ResolveStoryCardArtworkHeight(double width, int columns)
+    {
+        if (!IsWide(width))
+        {
+            return 172;
+        }
+
+        var availableWidth = Math.Max(320, ResolveWidth(width) - 40);
+        var columnWidth = (availableWidth - (Math.Max(1, columns) - 1) * 14) / Math.Max(1, columns);
+        return Math.Clamp(columnWidth * 0.68, 184, 228);
+    }
+
+    public static double ResolveHomePreviewCardWidth(double width) =>
+        IsWide(width)
+            ? Math.Clamp((ResolveWidth(width) - 56) / 3.8, 220, 260)
+            : 180;
+
+    public static double ResolveHomePreviewImageHeight(double width) =>
+        IsWide(width)
+            ? Math.Clamp(ResolveHomePreviewCardWidth(width) * 0.66, 145, 172)
+            : 120;
 
     public static int ResolveCharacterGridSpan(double width)
     {

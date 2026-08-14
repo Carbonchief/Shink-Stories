@@ -22,7 +22,8 @@ internal static class PageHelpers
             return stack;
         }
 
-        var columns = MobileResponsiveLayout.ResolveWidth(width) >= 960 ? 3 : 2;
+        var columns = MobileResponsiveLayout.ResolveStoryGridColumns(width);
+        var artworkHeight = MobileResponsiveLayout.ResolveStoryCardArtworkHeight(width, columns);
         var grid = new Grid
         {
             ColumnSpacing = 14,
@@ -40,7 +41,7 @@ internal static class PageHelpers
 
         for (var index = 0; index < stories.Count; index++)
         {
-            var card = BuildStoryCard(stories[index], apiClient, onTap);
+            var card = BuildStoryCard(stories[index], apiClient, onTap, artworkHeight: artworkHeight);
             grid.Children.Add(card);
             Grid.SetColumn(card, index % columns);
             Grid.SetRow(card, index / columns);
@@ -53,14 +54,16 @@ internal static class PageHelpers
         MobileStorySummary story,
         MobileApiClient apiClient,
         Func<MobileStorySummary, Task> onTap,
-        Func<MobileStorySummary, Task>? onFavoriteTap = null)
+        Func<MobileStorySummary, Task>? onFavoriteTap = null,
+        double? artworkHeight = null)
     {
         var imageSource = ResolveStoryCardImageSource(story, apiClient);
+        var resolvedArtworkHeight = artworkHeight ?? 172;
         var artwork = new Image
         {
             Source = imageSource,
             Aspect = Aspect.AspectFill,
-            HeightRequest = 172
+            HeightRequest = resolvedArtworkHeight
         };
         var lockBadge = new Border
         {
@@ -84,7 +87,7 @@ internal static class PageHelpers
 
         var imageLayer = new Grid
         {
-            HeightRequest = 172,
+            HeightRequest = resolvedArtworkHeight,
             Children =
             {
                 artwork,
@@ -97,7 +100,7 @@ internal static class PageHelpers
         {
             StrokeThickness = 0,
             StrokeShape = new RoundRectangle { CornerRadius = 24 },
-            HeightRequest = 172,
+            HeightRequest = resolvedArtworkHeight,
             Content = imageLayer
         };
 

@@ -8,6 +8,9 @@ public sealed class HomePage : ContentPage
     private readonly MobileApiClient _apiClient;
     private readonly PlayerTransitionBackdropState _transitionBackdropState;
     private readonly VerticalStackLayout _content;
+    private MobileHomeResponse? _homeResponse;
+    private double _lastResponsiveWidth = -1;
+    private bool _responsiveRenderQueued;
 
     public HomePage(MobileApiClient apiClient, PlayerTransitionBackdropState transitionBackdropState)
     {
@@ -23,7 +26,7 @@ public sealed class HomePage : ContentPage
             Spacing = 18
         };
         MobileResponsiveLayout.ApplyCenteredContent(_content, Width, 980);
-        SizeChanged += (_, _) => MobileResponsiveLayout.ApplyCenteredContent(_content, Width, 980);
+        SizeChanged += (_, _) => HandleResponsiveSizeChanged();
 
         Content = new RefreshView
         {
@@ -35,7 +38,7 @@ public sealed class HomePage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
-        if (_content.Children.Count == 0)
+        if (_homeResponse is null)
         {
             await LoadAsync();
         }
@@ -56,16 +59,9 @@ public sealed class HomePage : ContentPage
                 return;
             }
 
-            _content.Children.Add(BuildHero(home));
-            _content.Children.Add(BuildPreviewSection("Nuut op Schink", home.NewestStories));
-            _content.Children.Add(BuildPreviewSection("Bybelstories", home.BibleStories));
-            _content.Children.Add(PageHelpers.BuildSectionTitle("Begin gratis"));
-
-            _content.Children.Add(PageHelpers.BuildStoryCollection(
-                home.FreeStories,
-                _apiClient,
-                OpenStoryAsync,
-                Width));
+            _homeResponse = home;
+            _lastResponsiveWidth = MobileResponsiveLayout.ResolveWidth(Width);
+            RenderHome(home);
         }
         catch (Exception ex)
         {
@@ -76,6 +72,48 @@ public sealed class HomePage : ContentPage
                 TextColor = Color.FromArgb("#B42318")
             });
         }
+    }
+
+    private void RenderHome(MobileHomeResponse home)
+    {
+        _content.Children.Clear();
+        _content.Children.Add(BuildHero(home));
+        _content.Children.Add(BuildPreviewSection("Nuut op Schink", home.NewestStories));
+        _content.Children.Add(BuildPreviewSection("Bybelstories", home.BibleStories));
+        _content.Children.Add(PageHelpers.BuildSectionTitle("Begin gratis"));
+        _content.Children.Add(PageHelpers.BuildStoryCollection(
+            home.FreeStories,
+            _apiClient,
+            OpenStoryAsync,
+            Width));
+    }
+
+    private void HandleResponsiveSizeChanged()
+    {
+        var width = MobileResponsiveLayout.ResolveWidth(Width);
+        MobileResponsiveLayout.ApplyCenteredContent(_content, width, 980);
+
+        if (_homeResponse is null || _lastResponsiveWidth < 0 ||
+            Math.Abs(width - _lastResponsiveWidth) < 32 || _responsiveRenderQueued)
+        {
+            if (_lastResponsiveWidth < 0)
+            {
+                _lastResponsiveWidth = width;
+            }
+
+            return;
+        }
+
+        _lastResponsiveWidth = width;
+        _responsiveRenderQueued = true;
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            _responsiveRenderQueued = false;
+            if (_homeResponse is not null)
+            {
+                RenderHome(_homeResponse);
+            }
+        });
     }
 
     private View BuildHero(MobileHomeResponse home)
@@ -124,8 +162,8 @@ public sealed class HomePage : ContentPage
         stack.Children.Add(PageHelpers.BuildSectionTitle(title));
 
         var row = new HorizontalStackLayout { Spacing = 14 };
-        var cardWidth = MobileResponsiveLayout.IsWide(Width) ? 220 : 180;
-        var imageHeight = MobileResponsiveLayout.IsWide(Width) ? 145 : 120;
+        var cardWidth = MobileResponsiveLayout.ResolveHomePreviewCardWidth(Width);
+        var imageHeight = MobileResponsiveLayout.ResolveHomePreviewImageHeight(Width);
         foreach (var item in items)
         {
             var card = new Border

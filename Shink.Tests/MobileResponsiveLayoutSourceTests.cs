@@ -23,6 +23,25 @@ public sealed class MobileResponsiveLayoutSourceTests
                 StringComparison.Ordinal));
     }
 
+    [TestMethod]
+    public void StoryCollectionsUseTabletColumnsAndProportionalArtwork()
+    {
+        var responsiveLayout = File.ReadAllText(GetRepoPath(
+            "Shink.Mobile",
+            "Pages",
+            "MobileResponsiveLayout.cs"));
+        var pageHelpers = File.ReadAllText(GetRepoPath(
+            "Shink.Mobile",
+            "Pages",
+            "PageHelpers.cs"));
+
+        StringAssert.Contains(responsiveLayout, "ResolveStoryGridColumns");
+        StringAssert.Contains(responsiveLayout, "ThreeColumnStoryBreakpoint = 960");
+        StringAssert.Contains(responsiveLayout, "ResolveStoryCardArtworkHeight");
+        StringAssert.Contains(pageHelpers, "var columns = MobileResponsiveLayout.ResolveStoryGridColumns(width);");
+        StringAssert.Contains(pageHelpers, "artworkHeight: artworkHeight");
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var parts = new[]

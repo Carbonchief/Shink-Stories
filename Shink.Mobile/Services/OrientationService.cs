@@ -18,7 +18,11 @@ public sealed class OrientationService : IOrientationService
 {
 #if IOS || MACCATALYST
     internal static UIInterfaceOrientationMask CurrentIosOrientationMask { get; private set; } =
-        UIInterfaceOrientationMask.Portrait;
+        IsIPad
+            ? UIInterfaceOrientationMask.All
+            : UIInterfaceOrientationMask.Portrait;
+
+    private static bool IsIPad => UIDevice.CurrentDevice.UserInterfaceIdiom == UIUserInterfaceIdiom.Pad;
 #endif
 
     public void RequestLandscape()
@@ -34,10 +38,14 @@ public sealed class OrientationService : IOrientationService
     public void RequestPortrait()
     {
 #if IOS || MACCATALYST
-        CurrentIosOrientationMask = UIInterfaceOrientationMask.Portrait;
+        CurrentIosOrientationMask = IsIPad
+            ? UIInterfaceOrientationMask.All
+            : UIInterfaceOrientationMask.Portrait;
         RequestIosOrientation(UIInterfaceOrientation.Portrait);
 #elif ANDROID
-        RequestAndroidOrientation(ScreenOrientation.Portrait);
+        RequestAndroidOrientation(DeviceInfo.Current.Idiom == DeviceIdiom.Tablet
+            ? ScreenOrientation.Unspecified
+            : ScreenOrientation.Portrait);
 #endif
     }
 

@@ -2549,7 +2549,9 @@ public sealed class LuisterPage : ContentPage
             {
                 Text = playlist.Description,
                 FontSize = 14,
-                TextColor = Color.FromArgb("#5F5F5F")
+                TextColor = Color.FromArgb("#5F5F5F"),
+                HorizontalOptions = LayoutOptions.Fill,
+                HorizontalTextAlignment = TextAlignment.Center
             });
         }
 
