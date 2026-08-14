@@ -103,7 +103,43 @@ Project-specific instructions for agents working in this repository.
 - Increment `Shink.Mobile/Shink.Mobile.csproj` `ApplicationVersion` before producing every shareable APK so Android can install it over the previous APK as an update.
 - Tell demo clients to install the new APK over the old one instead of uninstalling first, otherwise Android removes the remembered account/session data.
 
-## 12) Verification
+## 12) Google Play Console
+- Sign in to Google Play Console with `admin@prioritybit.co.za` and select the `Schink` organization developer account.
+- Confirmed Play Console identifiers:
+  - Developer account ID: `8275093652983572360`
+  - App name: `Schink Stories`
+  - Play app ID: `4973766880920266709`
+  - Android package: `com.schink.stories.mobile`
+- The app is configured as an `App`, `Free`, with `Afrikaans – af` as its default language.
+- Use the `Internal testing` track for non-production Google Play testing. It supports up to 100 testers and must remain separate from Production.
+- The `Schink Internal Testers` list contains `admin@prioritybit.co.za` and `schinkpicsend@gmail.com`.
+- Tester opt-in URL: `https://play.google.com/apps/internaltest/4700359835935368853`.
+- Current setup state as of 2026-08-14: internal release `11 (1.0) – Ikon regstelling` is active and available to internal testers. The app is not released to Production, open testing, or another public track.
+- Android app icons are wired explicitly in `Shink.Mobile/Platforms/Android/AndroidManifest.xml` to `@mipmap/schink_appicon` and `@mipmap/schink_appicon_round`; keep both references so Android does not fall back to the default puzzle-block icon.
+- Google Play's store-listing icon is a separate asset from the launcher icon. Keep `Shink.Mobile/Resources/AppIcon/schink_appicon_playstore.png` at 512x512px and under 1 MB, and submit it through the Default store listing after the required descriptions, feature graphic, and screenshots are complete.
+- The Default store listing draft now contains the Afrikaans descriptions, the store-listing icon, and a 1024x500 feature graphic. The listing still needs truthful phone screenshots before it can be completed; do not invent screenshots or submit the draft as a public release.
+- On 2026-08-12 the user explicitly approved a fresh Google Play signing lineage because no existing demo installs need in-place upgrades. Google Play may generate and retain the app-signing key for this app.
+- The Google-managed app-signing private key is not required on development machines. Windows and macOS use the shared upload keystore to sign bundles submitted to Play.
+- Upload key details (never commit the keystore or password):
+  - Filename: `schink-stories-play-upload.keystore`
+  - Alias: `schink-stories-play-upload`
+  - Windows path: `%USERPROFILE%\.android\schink-stories-play-upload.keystore`
+  - Windows recovery backup: `%USERPROFILE%\Documents\Schink\Google Play Signing Backup\schink-stories-play-upload.keystore`
+  - Google Drive recovery backup: `admin@prioritybit.co.za` My Drive root, filename `schink-stories-play-upload.keystore`
+  - Windows Credential Manager target: `Schink Stories Google Play Upload Key`
+  - Google Password Manager account: `admin@prioritybit.co.za`
+  - Google Password Manager entry: website `https://play.google.com`, username `schink-stories-play-upload`
+  - macOS path: `$HOME/.android/schink-stories-play-upload.keystore`
+  - macOS Keychain service: `Schink Stories Google Play Upload Key`
+  - macOS Keychain account: `schink-stories-play-upload`
+  - Upload certificate SHA-256: `88:22:D2:69:CF:3E:81:EE:E0:9C:02:B1:EF:64:6F:59:91:AF:03:7C:9A:D5:F0:0C:13:B8:70:8C:F6:89:60:B0`
+- Use `scripts/build-mobile-play-aab.ps1` on Windows and `scripts/build-mobile-play-aab.sh` on macOS. Both read the upload-key password from the operating-system credential store and do not print or commit it.
+- On a new Mac, download the encrypted keystore from the `admin@prioritybit.co.za` Google Drive backup, place it at `$HOME/.android/schink-stories-play-upload.keystore`, retrieve the saved password from that account's Google Password Manager entry, and add it in Keychain Access using the documented service and account. Then run `scripts/build-mobile-play-aab.sh`.
+- Before submitting a bundle from any new machine, verify that the upload certificate SHA-256 matches the documented fingerprint.
+- Never upload a bundle signed with an unverified local default/debug certificate.
+- Never roll out to `Production`, open testing, or another public track without explicit user approval.
+
+## 13) Verification
 - Run the narrowest relevant verification for the change, such as focused source tests, `dotnet test`, or a targeted build.
 - If auth-gated pages prevent browser verification, report the limitation and use source assertions, compiled scoped CSS, or focused tests as evidence.
 - Before finishing, report what was changed and what verification was run.
