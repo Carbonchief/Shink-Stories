@@ -13,7 +13,7 @@
     <ApplicationTitle>Schink Stories</ApplicationTitle>
     <ApplicationId>com.schink.stories.mobile</ApplicationId>
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-    <ApplicationVersion>11</ApplicationVersion>
+    <ApplicationVersion>12</ApplicationVersion>
 
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">21.0</SupportedOSPlatformVersion>
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">15.0</SupportedOSPlatformVersion>

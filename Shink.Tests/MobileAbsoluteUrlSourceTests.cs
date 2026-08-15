@@ -1262,9 +1262,9 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(accountPage, "new Uri(MobileApiClient.GoogleCallbackUrl)");
         StringAssert.Contains(accountPage, "CompleteGoogleSignInAsync(token)");
         StringAssert.Contains(apiClient, "public const string GoogleCallbackUrl = \"schinkstories://auth/google\";");
-        StringAssert.Contains(apiClient, "public const string GoogleCallbackUrl = \"https://www.schink.co.za/mobile-auth/google/callback\";");
         StringAssert.Contains(apiClient, "private const string GoogleStartPath = \"/api/mobile/auth/google/start?callback=custom-scheme\";");
-        StringAssert.Contains(apiClient, "private const string GoogleStartPath = \"/api/mobile/auth/google/start\";");
+        Assert.IsFalse(apiClient.Contains("#if DEBUG", StringComparison.Ordinal));
+        Assert.IsFalse(apiClient.Contains("GoogleCallbackUrl = \"https://www.schink.co.za/mobile-auth/google/callback\"", StringComparison.Ordinal));
         StringAssert.Contains(apiClient, "BuildUri(GoogleStartPath)");
         StringAssert.Contains(apiClient, "\"/api/mobile/auth/google/complete\"");
         StringAssert.Contains(iOSEntitlements, "applinks:www.schink.co.za");
