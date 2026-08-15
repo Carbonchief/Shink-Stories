@@ -112,9 +112,10 @@ Project-specific instructions for agents working in this repository.
   - Android package: `com.schink.stories.mobile`
 - The app is configured as an `App`, `Free`, with `Afrikaans – af` as its default language.
 - Use the `Internal testing` track for non-production Google Play testing. It supports up to 100 testers and must remain separate from Production.
-- The `Schink Internal Testers` list contains `admin@prioritybit.co.za` and `schinkpicsend@gmail.com`.
+- The `Schink Internal Testers` list contains `admin@prioritybit.co.za`, `schinkpicsend@gmail.com`, and `simoneschwella@gmail.com`.
 - Tester opt-in URL: `https://play.google.com/apps/internaltest/4700359835935368853`.
-- Current setup state as of 2026-08-14: internal release `11 (1.0) – Ikon regstelling` is active and available to internal testers. The app is not released to Production, open testing, or another public track.
+- Current setup state as of 2026-08-15: internal release `12 (1.0) – Google-aanmelding regstelling` is active and available to internal testers. The app is not released to Production, open testing, or another public track.
+- Mobile Google OAuth uses the registered `schinkstories://auth/google` callback in every build configuration; the server's HTTPS callback remains the OAuth-provider bridge before returning the short-lived mobile token to the app.
 - Android app icons are wired explicitly in `Shink.Mobile/Platforms/Android/AndroidManifest.xml` to `@mipmap/schink_appicon` and `@mipmap/schink_appicon_round`; keep both references so Android does not fall back to the default puzzle-block icon.
 - Google Play's store-listing icon is a separate asset from the launcher icon. Keep `Shink.Mobile/Resources/AppIcon/schink_appicon_playstore.png` at 512x512px and under 1 MB, and submit it through the Default store listing after the required descriptions, feature graphic, and screenshots are complete.
 - The Default store listing draft now contains the Afrikaans descriptions, the store-listing icon, and a 1024x500 feature graphic. The listing still needs truthful phone screenshots before it can be completed; do not invent screenshots or submit the draft as a public release.

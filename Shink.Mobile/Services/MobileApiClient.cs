@@ -257,13 +257,11 @@ public sealed record MobileAudioDownloadProgress(long BytesReceived, long? Total
 
 public sealed class MobileApiClient
 {
-#if DEBUG
+    // Keep the mobile callback on the registered app-owned scheme in every
+    // configuration. The server uses HTTPS only for the OAuth provider
+    // callback, then returns the short-lived mobile token to this scheme.
     public const string GoogleCallbackUrl = "schinkstories://auth/google";
     private const string GoogleStartPath = "/api/mobile/auth/google/start?callback=custom-scheme";
-#else
-    public const string GoogleCallbackUrl = "https://www.schink.co.za/mobile-auth/google/callback";
-    private const string GoogleStartPath = "/api/mobile/auth/google/start";
-#endif
 
     private const string AuthCookieStorageKeyPrefix = "mobile_auth_cookies";
     private const string MobileAppHeaderName = "X-Schink-Mobile-App";
