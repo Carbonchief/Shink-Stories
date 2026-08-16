@@ -139,7 +139,25 @@ Project-specific instructions for agents working in this repository.
 - Never upload a bundle signed with an unverified local default/debug certificate.
 - Never roll out to `Production`, open testing, or another public track without explicit user approval.
 
-## 13) Verification
+## 13) iOS TestFlight Publishing
+- Use Xcode Organizer for Schink Stories TestFlight uploads. The verified workflow is Xcode, not Transporter.
+- App identity:
+  - Bundle ID: `com.schink.stories.mobile`
+  - Team: `SCHINK PTY. LTD. (6DP8F4CY29)`
+  - App version: `1.0`
+- Before every upload, increment `Shink.Mobile/Shink.Mobile.csproj` `ApplicationVersion`; never reuse an App Store Connect build number.
+- Build and sign Release for `ios-arm64` with the Schink Apple Distribution certificate/profile. Verify the IPA/archive bundle ID, version, build number, team, architecture, and code signature before uploading.
+- Open the signed archive in Xcode Organizer. If the normal MAUI archive/export is blocked by temporary macOS `com.apple.FinderInfo` or resizetizer artifacts, use a temporary archive workspace and preserve the signed app; do not change unrelated source files or signing assets.
+- In Organizer choose: `Distribute App` → `App Store Connect` → `Distribute`. Wait for Xcode to confirm the app upload completed before closing Organizer.
+- In App Store Connect, wait for `Build Uploads` to show `Complete` and the build to appear under version `1.0`. Complete export compliance before adding the build to testers. For this app, select `None of the algorithms mentioned above` only when current source/build verification still confirms there is no custom or non-Apple encryption.
+- Attach the new build to the existing `Schink Team` internal group and `Public` external group. Verify tester counts and build status first; adding a build to a group is separate from adding testers.
+- Add internal or external testers only when the user provides the tester addresses. Do not invent addresses or send invitations without user approval.
+- For external testing, fill in `What to Test`, keep `Automatically notify testers` aligned with the user’s instruction, and submit for beta review if App Store Connect requires it.
+- Report these states separately: local archive/IPA, Xcode upload complete, App Store Connect processing, export compliance complete, TestFlight `Testing`/availability, external beta review, and production App Review/release. TestFlight publishing does not release the app to Production.
+- After the replacement build is confirmed active in the required groups, open the old build’s detail page, choose `Expire Build`, confirm, and verify that the old build is `Expired` while the new build remains active.
+- Do not use the App Store Connect API-key or `xcrun altool` route as the default for this team. The API route currently requires Account Holder access, and Apple password prompts must never be handled in chat or an invisible terminal.
+
+## 14) Verification
 - Run the narrowest relevant verification for the change, such as focused source tests, `dotnet test`, or a targeted build.
 - If auth-gated pages prevent browser verification, report the limitation and use source assertions, compiled scoped CSS, or focused tests as evidence.
 - Before finishing, report what was changed and what verification was run.
