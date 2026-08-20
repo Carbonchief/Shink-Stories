@@ -7,7 +7,7 @@ concurrency:
 on:
   push:
     branches:
-      - master
+      - main
 
   workflow_dispatch:
 
@@ -77,7 +77,7 @@ jobs:
               owner: context.repo.owner,
               repo: context.repo.repo,
               workflow_id: 'master_schink.yml',
-              branch: 'master',
+              branch: context.ref.replace('refs/heads/', ''),
               status: 'completed',
               per_page: 100,
             });
