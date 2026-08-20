@@ -80,6 +80,32 @@ public sealed class SessionState
         Changed?.Invoke(session);
     }
 
+    public void SetFavoriteStory(string slug, bool isFavorite)
+    {
+        if (string.IsNullOrWhiteSpace(slug) || !Current.IsSignedIn)
+        {
+            return;
+        }
+
+        var currentFavoriteSlugs = Current.FavoriteStorySlugs ?? Array.Empty<string>();
+        var wasFavorite = currentFavoriteSlugs.Any(
+            existingSlug => string.Equals(existingSlug, slug, StringComparison.OrdinalIgnoreCase));
+        if (wasFavorite == isFavorite)
+        {
+            return;
+        }
+
+        var favoriteSlugs = currentFavoriteSlugs
+            .Where(existingSlug => !string.Equals(existingSlug, slug, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (isFavorite)
+        {
+            favoriteSlugs.Add(slug);
+        }
+
+        Update(Current with { FavoriteStorySlugs = favoriteSlugs });
+    }
+
     public async Task HydrateSensitiveCacheAsync()
     {
         var startingVersion = Volatile.Read(ref _updateVersion);
@@ -257,13 +283,12 @@ public sealed record MobileAudioDownloadProgress(long BytesReceived, long? Total
 
 public sealed class MobileApiClient
 {
-#if DEBUG
+    // Use the registered app scheme for both Debug and Release. The server's
+    // callback bridge already returns this URI when callback=custom-scheme is used,
+    // and keeping WebAuthenticator on one callback prevents Android/iOS release
+    // builds from expecting HTTPS while receiving the app scheme.
     public const string GoogleCallbackUrl = "schinkstories://auth/google";
     private const string GoogleStartPath = "/api/mobile/auth/google/start?callback=custom-scheme";
-#else
-    public const string GoogleCallbackUrl = "https://www.schink.co.za/mobile-auth/google/callback";
-    private const string GoogleStartPath = "/api/mobile/auth/google/start";
-#endif
 
     private const string AuthCookieStorageKeyPrefix = "mobile_auth_cookies";
     private const string MobileAppHeaderName = "X-Schink-Mobile-App";
@@ -778,14 +803,17 @@ public sealed class MobileApiClient
             $"/api/mobile/stories/{Uri.EscapeDataString(slug)}/favorite",
             new { isFavorite, source },
             cancellationToken);
-        await GetSessionAsync(cancellationToken);
+        var resolvedIsFavorite = isFavorite
+            ? result?.IsFavorite ?? false
+            : false;
+        _sessionState.SetFavoriteStory(slug, resolvedIsFavorite);
         _analytics.TrackEvent("mobile_story_favorite_changed", new Dictionary<string, object>
         {
             ["story_slug"] = slug,
             ["story_source"] = source,
-            ["is_favorite"] = result?.IsFavorite ?? isFavorite
+            ["is_favorite"] = resolvedIsFavorite
         });
-        return result?.IsFavorite ?? false;
+        return resolvedIsFavorite;
     }
 
     public async Task TrackStoryViewAsync(string slug, string source, CancellationToken cancellationToken = default)

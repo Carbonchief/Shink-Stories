@@ -18,7 +18,8 @@ public class MobileAndroidInteractionSafetySourceTests
                      new[] { "Pages", "MobileMenuSheet.cs" },
                      new[] { "Pages", "KarakterPareGamePage.cs" },
                      new[] { "Pages", "KarakterRaaiGamePage.cs" },
-                     new[] { "Pages", "KaraktersPage.cs" }
+                     new[] { "Pages", "KaraktersPage.cs" },
+                     new[] { "Pages", "MobileBottomBar.cs" }
                  })
         {
             var source = ReadMobileSource(relativePath);

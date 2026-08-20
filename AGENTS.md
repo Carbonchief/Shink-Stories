@@ -139,7 +139,20 @@ Project-specific instructions for agents working in this repository.
 - Never upload a bundle signed with an unverified local default/debug certificate.
 - Never roll out to `Production`, open testing, or another public track without explicit user approval.
 
-## 13) iOS TestFlight Publishing
+## 13) Physical Install on Luan iPhone 15 Pro
+- Use the connected device `Luan iPhone 15 Pro` with identifier `14ED89FE-8F9D-5A68-ABFF-2E70A158253C`. Confirm it is available with `xcrun devicectl list devices` before building.
+- Preserve the installed app and its local data: it is signed as `6DP8F4CY29.com.schink.stories.mobile`. A build signed by another team cannot update it; do not uninstall it just to work around a signing mismatch without explicit approval.
+- Sign an in-place device build with the `SCHINK PTY. LTD. (6DP8F4CY29)` Apple Distribution identity and the active `Schink Stories Luan iPhone Ad Hoc` profile. That profile includes the registered phone and the required Associated Domains, In-App Purchase, and Sign in with Apple capabilities.
+- If the Ad Hoc profile is not installed locally, download it from Apple Developer → Certificates, Identifiers & Profiles → Profiles, then copy it to `~/Library/MobileDevice/Provisioning Profiles/` immediately before the build. Never substitute a Personal Team or another project profile.
+- Build the current source for `net10.0-ios`, `Debug`, and `ios-arm64`, explicitly supplying the Schink team, distribution identity, and the Ad Hoc profile UUID. Verify the build output reports `App Id: 6DP8F4CY29.com.schink.stories.mobile` and the `Schink Stories Luan iPhone Ad Hoc` profile.
+- macOS may reject the generated app bundle because of `com.apple.FinderInfo` metadata even after compiling it. In that case, make a fresh temporary copy with `ditto --norsrc --noextattr`, then re-sign the copy with the Schink distribution identity before installing. The re-signing entitlements must include the profile's `application-identifier`, team identifier, `get-task-allow=false`, and keychain-access groups, in addition to the app's Associated Domains and Sign in with Apple entitlements; otherwise iOS rejects the app.
+- Install and launch with:
+  - `xcrun devicectl device install app --device 14ED89FE-8F9D-5A68-ABFF-2E70A158253C <signed-app-path>`
+  - `xcrun devicectl device process launch --device 14ED89FE-8F9D-5A68-ABFF-2E70A158253C com.schink.stories.mobile`
+- Verify both states separately: `xcrun devicectl device info apps --device 14ED89FE-8F9D-5A68-ABFF-2E70A158253C` confirms installation; the launch command confirms the handoff to iOS. A console-attached launch stops the app when the console session is terminated, so finish with one normal launch.
+- This is a local Ad Hoc device install only. It does not upload to TestFlight or release anything to Production.
+
+## 14) iOS TestFlight Publishing
 - Use Xcode Organizer for Schink Stories TestFlight uploads. The verified workflow is Xcode, not Transporter.
 - App identity:
   - Bundle ID: `com.schink.stories.mobile`
@@ -157,7 +170,7 @@ Project-specific instructions for agents working in this repository.
 - After the replacement build is confirmed active in the required groups, open the old build’s detail page, choose `Expire Build`, confirm, and verify that the old build is `Expired` while the new build remains active.
 - Do not use the App Store Connect API-key or `xcrun altool` route as the default for this team. The API route currently requires Account Holder access, and Apple password prompts must never be handled in chat or an invisible terminal.
 
-## 14) Verification
+## 15) Verification
 - Run the narrowest relevant verification for the change, such as focused source tests, `dotnet test`, or a targeted build.
 - If auth-gated pages prevent browser verification, report the limitation and use source assertions, compiled scoped CSS, or focused tests as evidence.
 - Before finishing, report what was changed and what verification was run.

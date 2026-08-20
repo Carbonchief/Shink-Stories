@@ -69,7 +69,8 @@ public sealed record SignUpProfileData(
     string? FirstName,
     string? LastName,
     string? DisplayName,
-    string? MobileNumber);
+    string? MobileNumber,
+    string? ReferralCode = null);
 
 public sealed record SupabaseSignInResult(bool IsSuccess, string? UserEmail, string? ErrorMessage)
 {

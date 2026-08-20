@@ -170,43 +170,34 @@ internal static class PageHelpers
         MobileStorySummary story,
         Func<MobileStorySummary, Task>? onFavoriteTap)
     {
-        var heart = new Border
+        var heart = MobileFavoriteHeart.CreateButton(story.IsFavorite, 24);
+        heart.IsVisible = onFavoriteTap is not null;
+        heart.WidthRequest = 42;
+        heart.HeightRequest = 42;
+        heart.BackgroundColor = Color.FromArgb("#F7FFFFFF");
+        heart.BorderColor = story.IsFavorite ? Color.FromArgb("#FEE4E2") : Color.FromArgb("#D8DED8");
+        heart.BorderWidth = 1;
+        heart.CornerRadius = 21;
+        heart.Padding = 0;
+        heart.Margin = new Thickness(0, 10, 10, 0);
+        heart.HorizontalOptions = LayoutOptions.End;
+        heart.VerticalOptions = LayoutOptions.Start;
+        heart.ZIndex = 20;
+        heart.AutomationId = $"favorite-{story.Slug}";
+        SemanticProperties.SetDescription(
+            heart,
+            story.IsFavorite ? "Verwyder gunsteling" : "Voeg by gunsteling");
+        heart.Shadow = new Shadow
         {
-            IsVisible = onFavoriteTap is not null,
-            WidthRequest = 42,
-            HeightRequest = 42,
-            BackgroundColor = Color.FromArgb("#F7FFFFFF"),
-            Stroke = story.IsFavorite ? Color.FromArgb("#FEE4E2") : Color.FromArgb("#D8DED8"),
-            StrokeThickness = 1,
-            StrokeShape = new RoundRectangle { CornerRadius = 999 },
-            Padding = 0,
-            Margin = new Thickness(0, 10, 10, 0),
-            HorizontalOptions = LayoutOptions.End,
-            VerticalOptions = LayoutOptions.Start,
-            Shadow = new Shadow
-            {
-                Brush = Brush.Black,
-                Offset = new Point(0, 3),
-                Radius = 8,
-                Opacity = 0.12f
-            },
-            Content = new Label
-            {
-                Text = story.IsFavorite ? "♥" : "♡",
-                TextColor = story.IsFavorite ? Color.FromArgb("#E11D48") : Color.FromArgb("#8A938D"),
-                FontSize = 24,
-                FontAttributes = FontAttributes.Bold,
-                HorizontalTextAlignment = TextAlignment.Center,
-                VerticalTextAlignment = TextAlignment.Center,
-                Margin = new Thickness(0, -2, 0, 0)
-            }
+            Brush = Brush.Black,
+            Offset = new Point(0, 3),
+            Radius = 8,
+            Opacity = 0.12f
         };
 
         if (onFavoriteTap is not null)
         {
-            var favoriteTap = new TapGestureRecognizer();
-            favoriteTap.Tapped += async (_, _) => await onFavoriteTap(story);
-            heart.GestureRecognizers.Add(favoriteTap);
+            heart.Clicked += async (_, _) => await onFavoriteTap(story);
         }
 
         return heart;

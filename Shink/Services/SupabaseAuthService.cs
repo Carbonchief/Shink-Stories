@@ -126,7 +126,8 @@ public sealed class SupabaseAuthService(
                 LastName: profileData.LastName?.Trim(),
                 DisplayName: string.IsNullOrWhiteSpace(normalizedDisplayName) ? null : normalizedDisplayName,
                 FullName: string.IsNullOrWhiteSpace(normalizedDisplayName) ? null : normalizedDisplayName,
-                MobileNumber: profileData.MobileNumber?.Trim());
+                MobileNumber: profileData.MobileNumber?.Trim(),
+                ReferralCode: ReferralCodeRules.Normalize(profileData.ReferralCode));
 
         if (TryBuildAdminUsersEndpoint(out _))
         {
@@ -191,7 +192,8 @@ public sealed class SupabaseAuthService(
                 LastName: profileData.LastName?.Trim(),
                 DisplayName: string.IsNullOrWhiteSpace(normalizedDisplayName) ? null : normalizedDisplayName,
                 FullName: string.IsNullOrWhiteSpace(normalizedDisplayName) ? null : normalizedDisplayName,
-                MobileNumber: profileData.MobileNumber?.Trim());
+                MobileNumber: profileData.MobileNumber?.Trim(),
+                ReferralCode: ReferralCodeRules.Normalize(profileData.ReferralCode));
 
         return await TryCreateConfirmedUserWithAdminApiAsync(
             email,
@@ -1758,7 +1760,8 @@ public sealed class SupabaseAuthService(
         string? LastName,
         string? DisplayName,
         string? FullName,
-        string? MobileNumber);
+        string? MobileNumber,
+        [property: JsonPropertyName("referral_code")] string? ReferralCode = null);
     private sealed record ImportedPasswordResetMigrationResult(
         bool IsSuccess,
         long? WordPressUserId,

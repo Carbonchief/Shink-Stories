@@ -649,6 +649,7 @@ public sealed record AdminStoreProductRecord(
     decimal UnitPriceZar,
     int SortOrder,
     bool IsEnabled,
+    bool WaivesDeliveryFee,
     DateTimeOffset? UpdatedAt);
 
 public sealed record AdminStoreProductSaveRequest(
@@ -661,7 +662,8 @@ public sealed record AdminStoreProductSaveRequest(
     string? ThemeClass,
     decimal UnitPriceZar,
     int SortOrder,
-    bool IsEnabled);
+    bool IsEnabled,
+    bool WaivesDeliveryFee);
 
 public sealed record AdminSubscriptionSettingsSnapshot(
     bool SignupCodeBypassEnabled,

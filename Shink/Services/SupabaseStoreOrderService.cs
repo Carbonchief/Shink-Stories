@@ -41,6 +41,7 @@ public sealed class SupabaseStoreOrderService(
                 quantity = draft.Quantity,
                 unit_price_zar = draft.UnitPriceZar,
                 total_price_zar = draft.Items.Sum(item => item.LineTotalZar),
+                delivery_fee_waived = draft.DeliveryFeeWaived,
                 items = draft.Items.Select(item => new
                 {
                     product_slug = item.ProductSlug,
@@ -371,6 +372,7 @@ public sealed class SupabaseStoreOrderService(
                 row.ProductName,
                 row.Quantity,
                 row.UnitPriceZar),
+            DeliveryFeeWaived: row.DeliveryFeeWaived,
             CustomerName: row.CustomerName?.Trim() ?? string.Empty,
             CustomerEmail: row.CustomerEmail?.Trim().ToLowerInvariant() ?? string.Empty,
             CustomerPhone: row.CustomerPhone?.Trim() ?? string.Empty,
@@ -592,6 +594,7 @@ public sealed class SupabaseStoreOrderService(
         [property: JsonPropertyName("unit_price_zar")] decimal UnitPriceZar,
         [property: JsonPropertyName("total_price_zar")] decimal TotalPriceZar,
         [property: JsonPropertyName("items")] JsonElement Items,
+        [property: JsonPropertyName("delivery_fee_waived")] bool DeliveryFeeWaived,
         [property: JsonPropertyName("customer_name")] string? CustomerName,
         [property: JsonPropertyName("customer_email")] string? CustomerEmail,
         [property: JsonPropertyName("customer_phone")] string? CustomerPhone,

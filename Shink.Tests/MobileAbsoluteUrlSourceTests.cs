@@ -100,8 +100,10 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "private async Task DebounceSearchRenderAsync(CancellationToken cancellationToken)");
         StringAssert.Contains(luisterPage, "await Task.Delay(220, cancellationToken);");
         StringAssert.Contains(luisterPage, "private async Task ResetScrollPositionAsync()");
-        StringAssert.Contains(luisterPage, "await _scrollView!.ScrollToAsync(0, 0, false);");
+        StringAssert.Contains(luisterPage, "_feedView!.ScrollTo(0, position: ScrollToPosition.Start, animate: false);");
         StringAssert.Contains(luisterPage, "if (!_hasLoaded || !_isPageActive || Handler is null)");
+        StringAssert.Contains(luisterPage, "HandlerChanged += (_, _) =>");
+        StringAssert.Contains(luisterPage, "if (_isPageActive && _hasLoaded)");
         StringAssert.Contains(luisterPage, "catch (ObjectDisposedException)");
         StringAssert.Contains(luisterPage, "_isPageActive = false;");
         StringAssert.Contains(luisterPage, "MainThread.BeginInvokeOnMainThread(() =>");
@@ -133,44 +135,47 @@ public class MobileAbsoluteUrlSourceTests
     }
 
     [TestMethod]
-    public void MobileLuisterTopButtonsSlideBackWhenUserScrollsUp()
+    public void MobileLuisterUsesPersistentNativeStyleAppBarAndBottomBar()
     {
         var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
+        var bottomBar = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileBottomBar.cs"));
 
         StringAssert.Contains(luisterPage, "private readonly CollectionView? _feedView;");
         StringAssert.Contains(luisterPage, "ItemsSource = Array.Empty<LuisterFeedItem>()");
         StringAssert.Contains(luisterPage, "private readonly Grid _topBarOverlay;");
+        StringAssert.Contains(luisterPage, "private readonly Grid _bottomBarOverlay;");
         StringAssert.Contains(luisterPage, "private readonly Border _floatingTopBarHost;");
+        StringAssert.Contains(luisterPage, "private readonly ContentView _bottomBarHost;");
         StringAssert.Contains(luisterPage, "_topBarOverlay = new Grid");
-        StringAssert.Contains(luisterPage, "Padding = new Thickness(0, 0, 0, 16)");
+        StringAssert.Contains(luisterPage, "_bottomBarOverlay = new Grid");
         StringAssert.Contains(luisterPage, "ZIndex = 100");
-        StringAssert.Contains(luisterPage, "_refreshView,\n                _topBarOverlay");
-        StringAssert.Contains(luisterPage, "_feedView.Scrolled += OnContentScrolled;");
+        StringAssert.Contains(luisterPage, "_refreshView,\n                _topBarOverlay,\n                _bottomBarOverlay");
         StringAssert.Contains(luisterPage, "RenderFloatingTopBar();");
+        StringAssert.Contains(luisterPage, "RenderBottomBar();");
         StringAssert.Contains(luisterPage, "_topBarOverlay.Children.Add(_floatingTopBarHost);");
-        StringAssert.Contains(luisterPage, "_topBarOverlay.InputTransparent = _isTopBarHidden;");
-        StringAssert.Contains(luisterPage, "private void OnContentScrolled(object? sender, ItemsViewScrolledEventArgs e)");
-        StringAssert.Contains(luisterPage, "HandleScrollOffset(e.VerticalOffset);");
-        StringAssert.Contains(luisterPage, "var delta = scrollY - _lastScrollY;");
-        StringAssert.Contains(luisterPage, "SetTopBarHidden(delta > 0);");
-        StringAssert.Contains(luisterPage, "private void SetTopBarHidden(bool hidden)");
-        StringAssert.Contains(luisterPage, "if (IsAndroid)");
-        StringAssert.Contains(luisterPage, "topBar.TranslationY = hidden ? FloatingTopBarHiddenOffset : 0;");
-        StringAssert.Contains(luisterPage, "private static async Task AnimateTopBarHiddenAsync(View topBar, bool hidden)");
-        StringAssert.Contains(luisterPage, "topBar.TranslateToAsync(0, hidden ? FloatingTopBarHiddenOffset : 0");
-        StringAssert.Contains(luisterPage, "topBar.FadeToAsync(hidden ? 0 : 1");
-        StringAssert.Contains(luisterPage, "Header = new Grid");
+        StringAssert.Contains(luisterPage, "return MobileTopBar.Build(");
+        StringAssert.Contains(luisterPage, "notificationAction: ShowNotificationsAsync");
+        StringAssert.Contains(luisterPage, "Header = BuildStoriesPageHeader(),");
         StringAssert.Contains(luisterPage, "ItemSizingStrategy = ItemSizingStrategy.MeasureAllItems");
+        StringAssert.Contains(bottomBar, "Label: \"Soek\"");
+        StringAssert.Contains(bottomBar, "Label: \"Afgelaai\"");
+        StringAssert.Contains(bottomBar, "Label: \"Karakters\"");
+        StringAssert.Contains(bottomBar, "SafeAreaEdges = SafeAreaEdges.None,");
+        StringAssert.Contains(bottomBar, "nameof(DownloadedPage)");
+        StringAssert.Contains(bottomBar, "OpenRouteAsync(\"//Karakters\")");
+        Assert.IsFalse(luisterPage.Contains("OnContentScrolled", StringComparison.Ordinal));
+        Assert.IsFalse(luisterPage.Contains("SetTopBarHidden", StringComparison.Ordinal));
         Assert.IsFalse(luisterPage.Contains("_content.Children.Add(BuildLuisterTopBar());", StringComparison.Ordinal));
         Assert.IsFalse(luisterPage.Contains("private readonly ScrollView _scrollView;", StringComparison.Ordinal));
     }
 
     [TestMethod]
-    public void MobileSignedInShellDoesNotRenderBottomTabBar()
+    public void MobileSignedInShellUsesSharedBottomNavigationWithoutShellTabDuplication()
     {
         var appShell = File.ReadAllText(GetRepoPath("Shink.Mobile", "AppShell.xaml.cs"));
         var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
         var mobileTopBar = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileTopBar.cs"));
+        var bottomBar = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileBottomBar.cs"));
 
         StringAssert.Contains(appShell, "Routing.RegisterRoute(nameof(AccountPage), typeof(AccountPage));");
         StringAssert.Contains(appShell, "Routing.RegisterRoute(nameof(ProfilePage), typeof(ProfilePage));");
@@ -179,12 +184,13 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "Shell.Current.GoToAsync(nameof(ProfilePage), animate: true)");
         StringAssert.Contains(mobileTopBar, "Shell.Current.GoToAsync(nameof(AccountPage), animate: true)");
         StringAssert.Contains(mobileTopBar, "Shell.Current.GoToAsync(nameof(ProfilePage), animate: true)");
+        StringAssert.Contains(luisterPage, "MobileBottomBar.Build(this, \"listen\", ToggleSearchAsync)");
+        StringAssert.Contains(bottomBar, "Destination: \"search\"");
+        StringAssert.Contains(bottomBar, "Destination: \"downloads\"");
+        StringAssert.Contains(bottomBar, "Destination: \"characters\"");
         Assert.IsFalse(appShell.Contains("new TabBar()", StringComparison.Ordinal));
         Assert.IsFalse(appShell.Contains("CreateTab(", StringComparison.Ordinal));
-        Assert.IsFalse(appShell.Contains("tab_luister.png", StringComparison.Ordinal));
-        Assert.IsFalse(appShell.Contains("tab_rekening.png", StringComparison.Ordinal));
         Assert.IsFalse(appShell.Contains("SetTabBar", StringComparison.Ordinal));
-        Assert.IsFalse(luisterPage.Contains("OpenAccountTab", StringComparison.Ordinal));
         Assert.IsFalse(mobileTopBar.Contains("TabBar", StringComparison.Ordinal));
     }
 
@@ -202,7 +208,8 @@ public class MobileAbsoluteUrlSourceTests
 
         StringAssert.Contains(appShell, "Routing.RegisterRoute(nameof(ProfilePage), typeof(ProfilePage));");
         StringAssert.Contains(mauiProgram, "builder.Services.AddTransient<ProfilePage>();");
-        StringAssert.Contains(luisterPage, "profileTap.Tapped += async (_, _) => await OpenProfileAsync();");
+        StringAssert.Contains(luisterPage, "return MobileTopBar.Build(");
+        StringAssert.Contains(luisterPage, "title: \"Schink Stories\"");
         StringAssert.Contains(mobileTopBar, "profileTap.Tapped += async (_, _) => await navigationGate.RunAsync(OpenProfileAsync);");
         StringAssert.Contains(mobileTopBar, "var navigationGate = new NavigationGate();");
         StringAssert.Contains(profilePage, "public sealed class ProfilePage : ContentPage");
@@ -262,7 +269,7 @@ public class MobileAbsoluteUrlSourceTests
         var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
 
         StringAssert.Contains(luisterPage, "if (!_sessionState.Current.IsSignedIn)");
-        StringAssert.Contains(luisterPage, "_content.Children.Add(BuildAccountPanel());");
+        StringAssert.Contains(luisterPage, "nextItems.Add(LuisterFeedItem.Account());");
         Assert.IsFalse(luisterPage.Contains("\"Alles oop\"", StringComparison.Ordinal));
         Assert.IsFalse(luisterPage.Contains("\"Gratis toegang\"", StringComparison.Ordinal));
         Assert.IsFalse(luisterPage.Contains("Text = session.Email ?? \"Ingeteken\"", StringComparison.Ordinal));
@@ -273,15 +280,17 @@ public class MobileAbsoluteUrlSourceTests
     public void MobileLuisterTopBarMirrorsWebNotificationCenter()
     {
         var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
+        var mobileTopBar = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileTopBar.cs"));
+        var bottomBar = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileBottomBar.cs"));
         var client = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
         var models = File.ReadAllText(GetRepoPath("Shink.Mobile", "Models", "MobileApiModels.cs"));
 
-        StringAssert.Contains(luisterPage, "BuildNotificationButton()");
-        StringAssert.Contains(luisterPage, "searchButton,");
-        StringAssert.Contains(luisterPage, "notificationButton,");
-        StringAssert.Contains(luisterPage, "profileButton");
+        StringAssert.Contains(luisterPage, "notificationAction: ShowNotificationsAsync");
+        StringAssert.Contains(mobileTopBar, "BuildNotificationButton(notificationCount)");
+        StringAssert.Contains(mobileTopBar, "notificationAction");
+        StringAssert.Contains(bottomBar, "Destination: \"search\"");
         StringAssert.Contains(luisterPage, "_notificationPage?.UnreadCount");
-        StringAssert.Contains(luisterPage, "FormatNotificationCount(unreadCount)");
+        StringAssert.Contains(mobileTopBar, "unreadCount > 99 ? \"99+\"");
         StringAssert.Contains(luisterPage, "NotificationBadgeRefreshInterval = TimeSpan.FromSeconds(45)");
         StringAssert.Contains(luisterPage, "private IDispatcherTimer? _notificationRefreshTimer;");
         StringAssert.Contains(luisterPage, "_apiClient.NewNotificationsAvailable += OnNewNotificationsAvailable;");
@@ -338,20 +347,37 @@ public class MobileAbsoluteUrlSourceTests
     {
         var helper = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "PageHelpers.cs"));
         var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
+        var favoriteHeart = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileFavoriteHeart.cs"));
+        var mobileProject = File.ReadAllText(GetRepoPath("Shink.Mobile", "Shink.Mobile.csproj"));
+        var webLuister = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Luister.razor"));
+        var webStyles = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "LuisterPlaylist.razor.css"));
 
         StringAssert.Contains(helper, "BuildFavoriteHeart(story, onFavoriteTap)");
-        StringAssert.Contains(helper, "Text = story.IsFavorite ? \"♥\" : \"♡\"");
-        StringAssert.Contains(helper, "TextColor = story.IsFavorite ? Color.FromArgb(\"#E11D48\") : Color.FromArgb(\"#8A938D\")");
+        StringAssert.Contains(helper, "var heart = MobileFavoriteHeart.CreateButton(story.IsFavorite, 24);");
+        StringAssert.Contains(favoriteHeart, "public const string Glyph = \"\\uf004\"");
+        StringAssert.Contains(favoriteHeart, "RegularFontFamilyName = \"Font Awesome 6 Free Regular\"");
+        StringAssert.Contains(favoriteHeart, "SolidFontFamilyName = \"Font Awesome 6 Free Solid\"");
+        StringAssert.Contains(favoriteHeart, "FontFamily = ResolveFontFamily(isFavorite)");
+        StringAssert.Contains(favoriteHeart, "isFavorite ? SolidFontFamilyName : RegularFontFamilyName");
+        StringAssert.Contains(favoriteHeart, "FontAttributes = FontAttributes.None");
+        StringAssert.Contains(favoriteHeart, "isFavorite ? Color.FromArgb(\"#FFE6EF\") : Color.FromArgb(\"#E6FFFFFF\")");
+        StringAssert.Contains(favoriteHeart, "public static Button CreateButton(bool isFavorite, double fontSize)");
+        StringAssert.Contains(mobileProject, "fa-regular-400.ttf");
+        StringAssert.Contains(mobileProject, "fa-solid-900.ttf");
         StringAssert.Contains(helper, "HorizontalOptions = LayoutOptions.End");
         StringAssert.Contains(helper, "VerticalOptions = LayoutOptions.Start");
-        StringAssert.Contains(helper, "StrokeShape = new RoundRectangle { CornerRadius = 24 }");
+        StringAssert.Contains(helper, "heart.Clicked += async (_, _) => await onFavoriteTap(story);");
         StringAssert.Contains(helper, "Text = story.IsLocked ? \"Maak oop\" : \"Luister nou\"");
         Assert.IsFalse(helper.Contains("Text = story.IsFavorite ? \"Hartjie af\" : \"Hartjie\"", StringComparison.Ordinal));
         Assert.IsFalse(helper.Contains("new HorizontalStackLayout", StringComparison.Ordinal));
         StringAssert.Contains(luisterPage, "WidthRequest = IsAndroid ? 148 : 168");
         StringAssert.Contains(luisterPage, "StrokeShape = BuildArtworkShape(16)");
-        StringAssert.Contains(luisterPage, "TextColor = story.IsFavorite ? Color.FromArgb(\"#E11D48\") : Color.FromArgb(\"#8A938D\")");
-        StringAssert.Contains(luisterPage, "Color = story.IsFavorite ? Color.FromArgb(\"#E11D48\") : Color.FromArgb(\"#8A938D\")");
+        StringAssert.Contains(luisterPage, "var target = MobileFavoriteHeart.CreateButton(story.IsFavorite, 25);");
+        StringAssert.Contains(luisterPage, "target.ZIndex = 20;");
+        StringAssert.Contains(luisterPage, "target.Clicked += async (_, _) => await ToggleFavoriteAsync(story);");
+        StringAssert.Contains(webLuister, "fa-@(IsStoryFavorite(story.Slug) ? \"solid\" : \"regular\") fa-heart");
+        StringAssert.Contains(webStyles, "color: rgba(255, 255, 255, 0.9)");
+        StringAssert.Contains(webStyles, "color: #ffe6ef");
     }
 
     [TestMethod]
@@ -381,34 +407,45 @@ public class MobileAbsoluteUrlSourceTests
     }
 
     [TestMethod]
-    public void MobileLuisterUsesSolidBackgroundColor()
+    public void MobileLuisterUsesTheWebsiteLuisterGradientBackground()
     {
         var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
 
-        StringAssert.Contains(luisterPage, "LuisterBackgroundColor = Color.FromArgb(\"#FFF7E8\")");
-        StringAssert.Contains(luisterPage, "BackgroundColor = LuisterBackgroundColor;");
-        Assert.IsFalse(luisterPage.Contains("BuildLuisterWebBackgroundBrush", StringComparison.Ordinal));
-        Assert.IsFalse(luisterPage.Contains("BuildLuisterWebBaseBackgroundBrush", StringComparison.Ordinal));
-        Assert.IsFalse(luisterPage.Contains("BuildLuisterWebOverlayBackgroundBrush", StringComparison.Ordinal));
-        Assert.IsFalse(luisterPage.Contains("LinearGradientBrush", StringComparison.Ordinal));
+        StringAssert.Contains(luisterPage, "LuisterBackgroundBrush = new LinearGradientBrush");
+        StringAssert.Contains(luisterPage, "new GradientStop(Color.FromArgb(\"#408D93\"), 0)");
+        StringAssert.Contains(luisterPage, "new GradientStop(Color.FromArgb(\"#4F9DB3\"), 0.22f)");
+        StringAssert.Contains(luisterPage, "new GradientStop(Color.FromArgb(\"#D4CF69\"), 0.56f)");
+        StringAssert.Contains(luisterPage, "new GradientStop(Color.FromArgb(\"#EFEFEF\"), 0.86f)");
+        StringAssert.Contains(luisterPage, "Background = LuisterBackgroundBrush,");
+        StringAssert.Contains(luisterPage, "_feedView.Scrolled += OnFeedViewScrolled;");
+        StringAssert.Contains(luisterPage, "private void UpdateLuisterGradientForScroll(double scrollOffset)");
+        StringAssert.Contains(luisterPage, "LuisterBackgroundBrush.StartPoint = new Point(0, -_lastGradientScrollOffset / viewportHeight);");
+        StringAssert.Contains(luisterPage, "(travelDistance - _lastGradientScrollOffset) / viewportHeight");
+        Assert.IsFalse(luisterPage.Contains("BackgroundColor = LuisterBackgroundColor", StringComparison.Ordinal));
         StringAssert.Contains(luisterPage, "Background = Brush.Transparent");
     }
 
     [TestMethod]
     public void MobileLuisterFavoriteHeartPersistsAndUpdatesVisibleStoryState()
     {
+        var client = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
         var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
+        var favoriteService = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseStoryFavoriteService.cs"));
         var favoriteMethodStart = luisterPage.IndexOf("private async Task ToggleFavoriteAsync", StringComparison.Ordinal);
-        var favoriteMethodEnd = luisterPage.IndexOf("private bool IsFavoriteRequestInFlight", StringComparison.Ordinal);
+        var favoriteMethodEnd = luisterPage.IndexOf("private static string BuildFavoriteRequestKey", StringComparison.Ordinal);
         var favoriteMethod = luisterPage[favoriteMethodStart..favoriteMethodEnd];
 
-        StringAssert.Contains(luisterPage, "var isFavorite = await _apiClient.SetFavoriteAsync(story.Slug, story.Source, !story.IsFavorite);");
+        StringAssert.Contains(client, "var resolvedIsFavorite = isFavorite\n            ? result?.IsFavorite ?? false\n            : false;");
+        StringAssert.Contains(client, "_sessionState.SetFavoriteStory(slug, resolvedIsFavorite);");
+        StringAssert.Contains(client, "return resolvedIsFavorite;");
+        StringAssert.Contains(favoriteService, "if (deleteResponse.IsSuccessStatusCode)\n                {\n                    return false;");
+        StringAssert.Contains(luisterPage, "var previousIsFavorite = story.IsFavorite;");
+        StringAssert.Contains(luisterPage, "UpdateFavoriteState(story.Slug, !previousIsFavorite);");
+        StringAssert.Contains(luisterPage, "var isFavorite = await _apiClient.SetFavoriteAsync(story.Slug, story.Source, !previousIsFavorite);");
         StringAssert.Contains(luisterPage, "_favoriteRequestsInFlight.Add(favoriteKey)");
         StringAssert.Contains(luisterPage, "_favoriteRequestsInFlight.Remove(favoriteKey)");
-        StringAssert.Contains(luisterPage, "IsFavoriteRequestInFlight(story)");
-        StringAssert.Contains(luisterPage, "new ActivityIndicator");
-        StringAssert.Contains(luisterPage, "IsRunning = true");
         StringAssert.Contains(luisterPage, "UpdateFavoriteState(story.Slug, isFavorite);");
+        StringAssert.Contains(luisterPage, "UpdateFavoriteState(story.Slug, previousIsFavorite);");
         StringAssert.Contains(luisterPage, "RenderPlaylistContent();");
         StringAssert.Contains(luisterPage, "private void UpdateFavoriteState(string slug, bool isFavorite)");
         StringAssert.Contains(luisterPage, "playlist.ShowcaseStory is null ? null : UpdateStoryFavoriteState(playlist.ShowcaseStory, slug, isFavorite)");
@@ -826,27 +863,38 @@ public class MobileAbsoluteUrlSourceTests
     }
 
     [TestMethod]
-    public void MobileKaraktersPageMatchesWebMobileGalleryAndProfileBehavior()
+    public void MobileKaraktersPageMatchesReferenceGalleryAndProfileBehavior()
     {
         var karaktersPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KaraktersPage.cs"));
 
         StringAssert.Contains(karaktersPage, "BackgroundColor = Color.FromArgb(\"#46969E\")");
         StringAssert.Contains(karaktersPage, "ItemSizingStrategy = ItemSizingStrategy.MeasureFirstItem");
-        StringAssert.Contains(karaktersPage, "ItemsLayout = new GridItemsLayout(2, ItemsLayoutOrientation.Vertical)");
-        StringAssert.Contains(karaktersPage, "HorizontalItemSpacing = 10");
+        StringAssert.Contains(karaktersPage, "ItemsLayout = new GridItemsLayout(3, ItemsLayoutOrientation.Vertical)");
+        StringAssert.Contains(karaktersPage, "HorizontalItemSpacing = 8");
+        StringAssert.Contains(karaktersPage, "VerticalItemSpacing = 10");
+        StringAssert.Contains(karaktersPage, "Margin = new Thickness(16, 0, 16, 0)");
         StringAssert.Contains(karaktersPage, "private readonly Grid _topBarOverlay;");
-        StringAssert.Contains(karaktersPage, "Padding = new Thickness(0, 82, 0, 18)");
+        StringAssert.Contains(karaktersPage, "Padding = new Thickness(0, 76, 0, 16)");
         StringAssert.Contains(karaktersPage, "ZIndex = 50");
         StringAssert.Contains(karaktersPage, "_topBarOverlay,");
-        StringAssert.Contains(karaktersPage, "Text = \"SCHINK STORIES KARAKTERS\"");
-        StringAssert.Contains(karaktersPage, "Text = \"Ontmoet die karakters\"");
-        StringAssert.Contains(karaktersPage, "new GradientStop(Color.FromArgb(\"#166476\"), 0)");
+        StringAssert.Contains(karaktersPage, "Source = \"karakters_title.png\"");
+        StringAssert.Contains(karaktersPage, "Aspect = Aspect.AspectFill");
+        StringAssert.Contains(karaktersPage, "Source = \"schink_character_lineup.png\"");
+        StringAssert.Contains(karaktersPage, "BuildUnlockProgressText(response)");
+        StringAssert.Contains(karaktersPage, "Text = \" oopgesluit\"");
+        StringAssert.Contains(karaktersPage, "BuildCharacterCardContent(character, media)");
+        StringAssert.Contains(karaktersPage, "Text = character.SummaryText");
+        StringAssert.Contains(karaktersPage, "Text = character.CallToActionLabel");
+        StringAssert.Contains(karaktersPage, "BackgroundColor = character.IsUnlocked ? Color.FromArgb(\"#F6A227\") : Color.FromArgb(\"#8DCD65\")");
+        StringAssert.Contains(karaktersPage, "searchAction: OpenStoriesSearchAsync");
+        StringAssert.Contains(karaktersPage, "notificationAction: OpenStoriesNotificationsAsync");
+        StringAssert.Contains(karaktersPage, "Shell.Current.GoToAsync(\"//Luister?surface=search\", animate: false)");
+        StringAssert.Contains(karaktersPage, "Shell.Current.GoToAsync(\"//Luister?surface=notifications\", animate: false)");
         StringAssert.Contains(karaktersPage, "CharacterIconPlacement.TopRight");
-        StringAssert.Contains(karaktersPage, "CharacterIconPlacement.BottomRight");
         StringAssert.Contains(karaktersPage, "new SpeakerDrawable()");
         StringAssert.Contains(karaktersPage, "new LockDrawable()");
-        StringAssert.Contains(karaktersPage, "new PlayDrawable()");
-        StringAssert.Contains(karaktersPage, "HeightRequest = 50");
+        StringAssert.Contains(karaktersPage, "HeightRequest = 28");
+        StringAssert.Contains(karaktersPage, "FontFamily = PoppinsBoldFontFamily");
         StringAssert.Contains(karaktersPage, "AutomationId = \"character-profile-overlay\"");
         StringAssert.Contains(karaktersPage, "_profileOverlay.Children.Add(backdrop);");
         StringAssert.Contains(karaktersPage, "_profileOverlay.Children.Add(profileCard);");
@@ -893,6 +941,9 @@ public class MobileAbsoluteUrlSourceTests
         Assert.IsGreaterThan(onAppearingStart, onDisappearingStart);
         var onAppearingSource = luisterPage[onAppearingStart..onDisappearingStart];
         Assert.IsFalse(onAppearingSource.Contains("RenderContent();", StringComparison.Ordinal));
+        StringAssert.Contains(luisterPage, "RenderFloatingTopBar();\n        RenderLoadingState();");
+        StringAssert.Contains(luisterPage, "Loaded += (_, _) => _ = StartPageActivityAsync();");
+        StringAssert.Contains(luisterPage, "private async Task StartPageActivityAsync()");
     }
 
     [TestMethod]
@@ -972,7 +1023,9 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(storyDetail, "DownCaretDrawable");
         StringAssert.Contains(storyDetail, "CastIconDrawable");
         StringAssert.Contains(storyDetail, "BuildFavoriteOverlay(detail)");
-        StringAssert.Contains(storyDetail, "Text = detail.Story.IsFavorite ? \"♥\" : \"♡\"");
+        StringAssert.Contains(storyDetail, "var target = MobileFavoriteHeart.CreateButton(detail.Story.IsFavorite, 25);");
+        StringAssert.Contains(storyDetail, "target.ZIndex = 20;");
+        StringAssert.Contains(storyDetail, "target.Clicked += async (_, _) => await ToggleFavoriteAsync(detail);");
         StringAssert.Contains(storyDetail, "BuildInfoPillButton()");
         StringAssert.Contains(storyDetail, "Drawable = new InfoIconDrawable()");
         StringAssert.Contains(storyDetail, "Text = \"Info\"");
@@ -1202,12 +1255,13 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(accountPage, "Text = \"Rustige, opbouende \"");
         StringAssert.Contains(accountPage, "Text = \"Afrikaanse storietyd\"");
         StringAssert.Contains(accountPage, "Text = \"R 79 per maand. Kanselleer enige tyd.\"");
-        StringAssert.Contains(accountPage, "Source = \"oortjies_02.png\"");
+        StringAssert.Contains(accountPage, "Source = \"schink_login_mouse.png\"");
         StringAssert.Contains(accountPage, "LogoHeight: Math.Clamp(height * (tight ? 0.17 : 0.2), 124, 194)");
-        StringAssert.Contains(accountPage, "TitleSublineFontSize: Math.Clamp(height * (tight ? 0.033 : 0.037), 22, 34)");
+        StringAssert.Contains(accountPage, "TitleSublineFontSize: Math.Clamp(height * (tight ? 0.0231 : 0.0259), 16, 24)");
         StringAssert.Contains(accountPage, "TitleMargin: new Thickness(0, tight ? 2 : 6, 0, 0)");
         StringAssert.Contains(accountPage, "CharacterHeight: Math.Clamp(height * (tight ? 0.085 : 0.105), 64, 112)");
-        StringAssert.Contains(accountPage, "ModeButtonHeight: tight ? 58 : compact ? 62 : 68");
+        StringAssert.Contains(accountPage, "ModeButtonHeight: tight ? 44 : compact ? 44 : 48");
+        StringAssert.Contains(accountPage, "var landingControlWidth = Math.Clamp(fullLandingWidth * 0.7, 240, 360);");
         StringAssert.Contains(accountPage, "Spacing = metrics.PanelContentSpacing");
         StringAssert.Contains(accountPage, "ApplyLandingLayoutMetrics();");
     }
@@ -1262,9 +1316,9 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(accountPage, "new Uri(MobileApiClient.GoogleCallbackUrl)");
         StringAssert.Contains(accountPage, "CompleteGoogleSignInAsync(token)");
         StringAssert.Contains(apiClient, "public const string GoogleCallbackUrl = \"schinkstories://auth/google\";");
-        StringAssert.Contains(apiClient, "public const string GoogleCallbackUrl = \"https://www.schink.co.za/mobile-auth/google/callback\";");
         StringAssert.Contains(apiClient, "private const string GoogleStartPath = \"/api/mobile/auth/google/start?callback=custom-scheme\";");
-        StringAssert.Contains(apiClient, "private const string GoogleStartPath = \"/api/mobile/auth/google/start\";");
+        Assert.IsFalse(apiClient.Contains("public const string GoogleCallbackUrl = \"https://www.schink.co.za/mobile-auth/google/callback\";", StringComparison.Ordinal));
+        Assert.IsFalse(apiClient.Contains("private const string GoogleStartPath = \"/api/mobile/auth/google/start\";", StringComparison.Ordinal));
         StringAssert.Contains(apiClient, "BuildUri(GoogleStartPath)");
         StringAssert.Contains(apiClient, "\"/api/mobile/auth/google/complete\"");
         StringAssert.Contains(iOSEntitlements, "applinks:www.schink.co.za");

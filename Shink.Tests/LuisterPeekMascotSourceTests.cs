@@ -124,6 +124,9 @@ public sealed class LuisterPeekMascotSourceTests
         StringAssert.Contains(page, "OortjiesPeekSide.Top");
         StringAssert.Contains(page, "OortjiesPeekSide.Bottom");
         StringAssert.Contains(page, "HideOortjiesPeekMascot(jump: true)");
+        StringAssert.Contains(page, "private OortjiesPeekPlacement? _activeOortjiesPeekPlacement;");
+        StringAssert.Contains(page, "_activeOortjiesPeekPlacement = placement;");
+        StringAssert.Contains(page, "if (_activeOortjiesPeekPlacement is not { } placement)");
         StringAssert.Contains(page, "ScheduleOortjiesPeek(RandomDelay(OortjiesNextDelayMin, OortjiesNextDelayMax))");
         Assert.IsTrue(File.Exists(MobileMascotAssetPath));
     }

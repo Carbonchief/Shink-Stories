@@ -5,28 +5,98 @@ namespace Shink.Mobile.Pages;
 
 internal static class MobileTopBar
 {
+    // Matches the website header's Font Awesome `fa-solid fa-bell` exactly.
+    private const string NotificationBellGlyph = "\uf0f3";
+    private const string NotificationBellAppleFontFamily = "Font Awesome 6 Free Solid";
+    private const string NotificationBellAndroidFontFamily = "FontAwesomeSolid";
+
     public static View Build(
         Page hostPage,
         MobileApiClient apiClient,
         MobileSession session,
         Thickness? margin = null,
-        string leftAction = "menu")
+        string leftAction = "menu",
+        string? title = null,
+        Func<Task>? searchAction = null,
+        Func<Task>? notificationAction = null,
+        int notificationCount = 0,
+        Color? backgroundColor = null,
+        bool showProfile = true,
+        double brandLeadingInset = 16)
     {
         var navigationGate = new NavigationGate();
-        var leftButton = string.Equals(leftAction, "back", StringComparison.OrdinalIgnoreCase)
-            ? BuildBackCircleButton(Colors.White, Color.FromArgb("#123F3F"))
-            : BuildMenuCircleButton(Colors.White, Color.FromArgb("#123F3F"));
-        var leftTap = new TapGestureRecognizer();
-        leftTap.Tapped += async (_, _) => await navigationGate.RunAsync(() => HandleLeftActionAsync(hostPage, leftAction));
-        leftButton.GestureRecognizers.Add(leftTap);
+        var isBackAction = string.Equals(leftAction, "back", StringComparison.OrdinalIgnoreCase);
+        var navigationButton = BuildChromeIconButton(
+            isBackAction ? MobileAndroidIcon.Back : MobileAndroidIcon.Menu,
+            MobileAndroidChromePalette.TopBarIcon,
+            44,
+            29);
+        var navigationTap = new TapGestureRecognizer();
+        navigationTap.Tapped += async (_, _) => await navigationGate.RunAsync(() => HandleLeftActionAsync(hostPage, leftAction));
+        navigationButton.GestureRecognizers.Add(navigationTap);
 
-        var profileButton = BuildProfileButton(apiClient, session);
-        var profileTap = new TapGestureRecognizer();
-        profileTap.Tapped += async (_, _) => await navigationGate.RunAsync(OpenProfileAsync);
-        profileButton.GestureRecognizers.Add(profileTap);
+        var titleLabel = new Label
+        {
+            Text = string.IsNullOrWhiteSpace(title) ? hostPage.Title : title,
+            FontSize = 18,
+            FontAttributes = FontAttributes.Bold,
+            TextColor = Colors.White,
+            HorizontalTextAlignment = TextAlignment.Start,
+            VerticalTextAlignment = TextAlignment.Center,
+            LineBreakMode = LineBreakMode.TailTruncation,
+            Margin = new Thickness(8, 0, 12, 0),
+            InputTransparent = true
+        };
+
+        var rightActions = new HorizontalStackLayout
+        {
+            Spacing = 0,
+            HorizontalOptions = LayoutOptions.End,
+            VerticalOptions = LayoutOptions.Center
+        };
+
+        if (searchAction is not null)
+        {
+            var searchButton = BuildChromeIconButton(MobileAndroidIcon.Search, MobileAndroidChromePalette.TopBarIcon, 42, 28);
+            var searchTap = new TapGestureRecognizer();
+            searchTap.Tapped += async (_, _) => await navigationGate.RunAsync(searchAction);
+            searchButton.GestureRecognizers.Add(searchTap);
+            rightActions.Children.Add(searchButton);
+        }
+
+        if (notificationAction is not null)
+        {
+            var notificationButton = BuildNotificationButton(notificationCount);
+            var notificationTap = new TapGestureRecognizer();
+            notificationTap.Tapped += async (_, _) => await navigationGate.RunAsync(notificationAction);
+            notificationButton.GestureRecognizers.Add(notificationTap);
+            rightActions.Children.Add(notificationButton);
+        }
+
+        if (showProfile)
+        {
+            var profileButton = BuildProfileButton(apiClient, session);
+            var profileTap = new TapGestureRecognizer();
+            profileTap.Tapped += async (_, _) => await navigationGate.RunAsync(OpenProfileAsync);
+            profileButton.GestureRecognizers.Add(profileTap);
+            rightActions.Children.Add(profileButton);
+
+            var profileCaret = BuildChromeIconButton(MobileAndroidIcon.CaretDown, MobileAndroidChromePalette.TopBarIcon, 28, 20);
+            var caretTap = new TapGestureRecognizer();
+            caretTap.Tapped += async (_, _) => await navigationGate.RunAsync(OpenProfileAsync);
+            profileCaret.GestureRecognizers.Add(caretTap);
+            rightActions.Children.Add(profileCaret);
+        }
+
+        if (!isBackAction)
+        {
+            rightActions.Children.Add(navigationButton);
+        }
 
         var grid = new Grid
         {
+            HeightRequest = 62,
+            ColumnSpacing = 0,
             Margin = margin ?? new Thickness(0),
             ColumnDefinitions =
             {
@@ -36,86 +106,108 @@ internal static class MobileTopBar
             },
             Children =
             {
-                leftButton,
-                profileButton
+                isBackAction ? navigationButton : BuildBrandMark(),
+                isBackAction ? titleLabel : new ContentView { InputTransparent = true },
+                rightActions
             }
         };
 
-        Grid.SetColumn(profileButton, 2);
-        return grid;
+        Grid.SetColumn(titleLabel, 1);
+        Grid.SetColumn(rightActions, 2);
+        var bar = new Border
+        {
+            BackgroundColor = backgroundColor ?? Colors.Transparent,
+            Stroke = Colors.Transparent,
+            StrokeThickness = 0,
+            StrokeShape = new RoundRectangle { CornerRadius = isBackAction ? 26 : 0 },
+            Padding = new Thickness(isBackAction ? 16 : brandLeadingInset, 6, 12, 6),
+            Content = grid
+        };
+
+        return bar;
     }
 
-    private static Border BuildMenuCircleButton(Color lineColor, Color backgroundColor) =>
-        new()
+    private static Grid BuildNotificationButton(int unreadCount)
+    {
+        var container = new Grid
         {
-            BackgroundColor = backgroundColor,
-            StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = 23 },
-            WidthRequest = 46,
-            HeightRequest = 46,
-            VerticalOptions = LayoutOptions.Center,
-            Content = new VerticalStackLayout
+            WidthRequest = 42,
+            HeightRequest = 42,
+            VerticalOptions = LayoutOptions.Center
+        };
+        container.Children.Add(new Label
+        {
+            Text = NotificationBellGlyph,
+            FontFamily = DeviceInfo.Current.Platform == DevicePlatform.Android
+                ? NotificationBellAndroidFontFamily
+                : NotificationBellAppleFontFamily,
+            FontAttributes = FontAttributes.None,
+            FontSize = 28,
+            TextColor = MobileAndroidChromePalette.TopBarIcon,
+            HorizontalTextAlignment = TextAlignment.Center,
+            VerticalTextAlignment = TextAlignment.Center,
+            InputTransparent = true
+        });
+
+        if (unreadCount > 0)
+        {
+            container.Children.Add(new Border
             {
-                Spacing = 4,
-                WidthRequest = 18,
-                HeightRequest = 14,
-                HorizontalOptions = LayoutOptions.Center,
-                VerticalOptions = LayoutOptions.Center,
-                Children =
+                BackgroundColor = Color.FromArgb("#E11D48"),
+                Stroke = Colors.White,
+                StrokeThickness = 1,
+                StrokeShape = new RoundRectangle { CornerRadius = 999 },
+                WidthRequest = unreadCount > 9 ? 27 : 20,
+                HeightRequest = 20,
+                Padding = 0,
+                HorizontalOptions = LayoutOptions.End,
+                VerticalOptions = LayoutOptions.Start,
+                InputTransparent = true,
+                Content = new Label
                 {
-                    BuildMenuLine(lineColor),
-                    BuildMenuLine(lineColor),
-                    BuildMenuLine(lineColor)
+                    Text = unreadCount > 99 ? "99+" : unreadCount.ToString(),
+                    FontSize = 10,
+                    FontAttributes = FontAttributes.Bold,
+                    TextColor = Colors.White,
+                    HorizontalTextAlignment = TextAlignment.Center,
+                    VerticalTextAlignment = TextAlignment.Center
                 }
-            }
-        };
+            });
+        }
 
-    private static BoxView BuildMenuLine(Color color) =>
+        return container;
+    }
+
+    private static Border BuildChromeIconButton(MobileAndroidIcon icon, Color color, double touchTarget, double iconSize) =>
         new()
         {
-            Color = color,
-            WidthRequest = 18,
-            HeightRequest = 2,
-            HorizontalOptions = LayoutOptions.Center
-        };
-
-    private static Border BuildBackCircleButton(Color lineColor, Color backgroundColor) =>
-        new()
-        {
-            BackgroundColor = backgroundColor,
+            BackgroundColor = Colors.Transparent,
             StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = 23 },
-            WidthRequest = 46,
-            HeightRequest = 46,
+            WidthRequest = touchTarget,
+            HeightRequest = touchTarget,
+            Padding = 0,
             VerticalOptions = LayoutOptions.Center,
             Content = new GraphicsView
             {
-                Drawable = new DownCaretDrawable(lineColor),
-                WidthRequest = 19,
-                HeightRequest = 19,
+                Drawable = new MobileAndroidIconDrawable(icon, color),
+                WidthRequest = iconSize,
+                HeightRequest = iconSize,
                 HorizontalOptions = LayoutOptions.Center,
-                VerticalOptions = LayoutOptions.Center
+                VerticalOptions = LayoutOptions.Center,
+                InputTransparent = true
             }
         };
 
-    private static Border BuildCircleButton(string text, double fontSize, Color textColor, Color backgroundColor) =>
+    private static Image BuildBrandMark() =>
         new()
         {
-            BackgroundColor = backgroundColor,
-            StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = 23 },
-            WidthRequest = 46,
-            HeightRequest = 46,
+            Source = "schink_stories_logo_white.png",
+            WidthRequest = 124,
+            HeightRequest = 42,
+            Aspect = Aspect.AspectFit,
+            HorizontalOptions = LayoutOptions.Start,
             VerticalOptions = LayoutOptions.Center,
-            Content = new Label
-            {
-                Text = text,
-                FontSize = fontSize,
-                FontAttributes = FontAttributes.Bold,
-                TextColor = textColor,
-                HorizontalTextAlignment = TextAlignment.Center,
-                VerticalTextAlignment = TextAlignment.Center
-            }
+            InputTransparent = true
         };
 
     private static Border BuildProfileButton(MobileApiClient apiClient, MobileSession session)
@@ -126,25 +218,50 @@ internal static class MobileTopBar
 
         if (string.IsNullOrWhiteSpace(imageUrl))
         {
-            return BuildCircleButton(BuildInitials(session), 15, Color.FromArgb("#0B3534"), Color.FromArgb("#FFD45A"));
+            return new Border
+            {
+                BackgroundColor = MobileAndroidChromePalette.ProfileBackground,
+                StrokeThickness = 0,
+                StrokeShape = new RoundRectangle { CornerRadius = 14 },
+                WidthRequest = 48,
+                HeightRequest = 48,
+                Padding = 0,
+                VerticalOptions = LayoutOptions.Center,
+                Shadow = new Shadow
+                {
+                    Brush = Brush.Black,
+                    Offset = new Point(0, 4),
+                    Radius = 10,
+                    Opacity = 0.22f
+                },
+                Content = new Label
+                {
+                    Text = BuildInitials(session),
+                    FontSize = 17,
+                    FontAttributes = FontAttributes.Bold,
+                    TextColor = Colors.White,
+                    HorizontalTextAlignment = TextAlignment.Center,
+                    VerticalTextAlignment = TextAlignment.Center,
+                    InputTransparent = true
+                }
+            };
         }
 
         return new Border
         {
-            BackgroundColor = Color.FromArgb("#F7EAD0"),
-            Stroke = Colors.White,
-            StrokeThickness = 2,
-            StrokeShape = new RoundRectangle { CornerRadius = 23 },
-            WidthRequest = 46,
-            HeightRequest = 46,
+            BackgroundColor = MobileAndroidChromePalette.ProfileBackground,
+            StrokeThickness = 0,
+            StrokeShape = new RoundRectangle { CornerRadius = 14 },
+            WidthRequest = 48,
+            HeightRequest = 48,
             Padding = 0,
             VerticalOptions = LayoutOptions.Center,
             Content = new Image
             {
                 Source = ImageSource.FromUri(new Uri(imageUrl, UriKind.Absolute)),
                 Aspect = Aspect.AspectFill,
-                WidthRequest = 46,
-                HeightRequest = 46
+                WidthRequest = 48,
+                HeightRequest = 48
             }
         };
     }
@@ -157,6 +274,7 @@ internal static class MobileTopBar
             "Karakters",
             "Karakter-pare",
             "Wie is dié Karakter?",
+            "Afgelaai",
             "Instellings",
             "Bestuur rekening");
 
@@ -172,6 +290,9 @@ internal static class MobileTopBar
                     break;
                 case "Wie is dié Karakter?":
                     await Shell.Current.GoToAsync(nameof(KarakterRaaiGamePage), animate: true);
+                    break;
+                case "Afgelaai":
+                    await Shell.Current.GoToAsync(nameof(DownloadedPage), animate: true);
                     break;
                 case "Instellings":
                     await Shell.Current.GoToAsync(nameof(SettingsPage), animate: true);
@@ -239,25 +360,4 @@ internal static class MobileTopBar
         return "S";
     }
 
-    private sealed class DownCaretDrawable(Color strokeColor) : IDrawable
-    {
-        public void Draw(ICanvas canvas, RectF dirtyRect)
-        {
-            canvas.StrokeColor = strokeColor;
-            canvas.StrokeSize = 3.2f;
-            canvas.StrokeLineCap = LineCap.Round;
-            canvas.StrokeLineJoin = LineJoin.Round;
-
-            var centerX = dirtyRect.Center.X;
-            var centerY = dirtyRect.Center.Y + 1;
-            var halfWidth = MathF.Min(dirtyRect.Width, dirtyRect.Height) * 0.28f;
-            var halfHeight = MathF.Min(dirtyRect.Width, dirtyRect.Height) * 0.18f;
-
-            var path = new PathF();
-            path.MoveTo(centerX - halfWidth, centerY - halfHeight);
-            path.LineTo(centerX, centerY + halfHeight);
-            path.LineTo(centerX + halfWidth, centerY - halfHeight);
-            canvas.DrawPath(path);
-        }
-    }
 }

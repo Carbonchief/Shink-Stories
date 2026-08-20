@@ -2286,6 +2286,7 @@ public sealed partial class SupabaseAdminManagementService(
                     UnitPriceZar: row.UnitPriceZar,
                     SortOrder: Math.Clamp(row.SortOrder, -500_000, 500_000),
                     IsEnabled: row.IsEnabled,
+                    WaivesDeliveryFee: row.WaivesDeliveryFee,
                     UpdatedAt: row.UpdatedAt);
             })
             .OrderBy(row => row.SortOrder)
@@ -2352,7 +2353,8 @@ public sealed partial class SupabaseAdminManagementService(
             ["theme_class"] = NormalizeOptionalText(request.ThemeClass, 80),
             ["unit_price_zar"] = normalizedPrice,
             ["sort_order"] = Math.Clamp(request.SortOrder, -500_000, 500_000),
-            ["is_enabled"] = request.IsEnabled
+            ["is_enabled"] = request.IsEnabled,
+            ["waives_delivery_fee"] = request.WaivesDeliveryFee
         };
 
         if (request.StoreProductId is null || request.StoreProductId == Guid.Empty)
@@ -3937,7 +3939,7 @@ public sealed partial class SupabaseAdminManagementService(
         var uri = new Uri(
             baseUri,
             "rest/v1/store_products" +
-            "?select=store_product_id,slug,name,description,image_path,alt_text,theme_class,unit_price_zar,sort_order,is_enabled,updated_at" +
+            "?select=store_product_id,slug,name,description,image_path,alt_text,theme_class,unit_price_zar,sort_order,is_enabled,waives_delivery_fee,updated_at" +
             "&order=sort_order.asc" +
             "&order=name.asc" +
             "&limit=1000");
@@ -3960,6 +3962,7 @@ public sealed partial class SupabaseAdminManagementService(
                 UnitPriceZar: product.UnitPriceZar,
                 SortOrder: product.SortOrder,
                 IsEnabled: product.IsEnabled,
+                WaivesDeliveryFee: product.WaivesDeliveryFee,
                 UpdatedAt: null))
             .ToArray();
 
@@ -7950,6 +7953,9 @@ public sealed partial class SupabaseAdminManagementService(
 
         [JsonPropertyName("is_enabled")]
         public bool IsEnabled { get; set; }
+
+        [JsonPropertyName("waives_delivery_fee")]
+        public bool WaivesDeliveryFee { get; set; }
 
         [JsonPropertyName("updated_at")]
         public DateTimeOffset? UpdatedAt { get; set; }

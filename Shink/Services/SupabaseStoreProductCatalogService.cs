@@ -102,7 +102,7 @@ public sealed class SupabaseStoreProductCatalogService(
         var requestUri = new Uri(
             baseUri,
             "rest/v1/store_products" +
-            "?select=store_product_id,slug,name,description,image_path,alt_text,theme_class,unit_price_zar,sort_order,is_enabled,updated_at" +
+            "?select=store_product_id,slug,name,description,image_path,alt_text,theme_class,unit_price_zar,sort_order,is_enabled,waives_delivery_fee,updated_at" +
             "&order=sort_order.asc" +
             "&order=name.asc" +
             "&limit=500");
@@ -203,7 +203,8 @@ public sealed class SupabaseStoreProductCatalogService(
             ThemeClass: normalizedThemeClass,
             UnitPriceZar: row.UnitPriceZar,
             SortOrder: normalizedSortOrder,
-            IsEnabled: row.IsEnabled);
+            IsEnabled: row.IsEnabled,
+            WaivesDeliveryFee: row.WaivesDeliveryFee);
     }
 
     private static string? NormalizeOptionalText(string? value, int maxLength)
@@ -318,5 +319,8 @@ public sealed class SupabaseStoreProductCatalogService(
 
         [JsonPropertyName("is_enabled")]
         public bool IsEnabled { get; set; }
+
+        [JsonPropertyName("waives_delivery_fee")]
+        public bool WaivesDeliveryFee { get; set; }
     }
 }

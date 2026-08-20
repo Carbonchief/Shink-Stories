@@ -191,6 +191,14 @@
                             </span>
                         </label>
 
+                        <label class="store-admin-field">
+                            <span>@T("Afleweringsfooi oorskryf", "Delivery fee override")</span>
+                            <span class="store-admin-switch">
+                                <input type="checkbox" @bind="Editor.WaivesDeliveryFee" />
+                                <strong>@(Editor.WaivesDeliveryFee ? T("Geen R80 by Paystack", "No R80 sent to Paystack") : T("Standaard R80", "Standard R80"))</strong>
+                            </span>
+                        </label>
+
                         <label class="store-admin-field store-admin-field-wide">
                             <span>@T("Image pad", "Image path")</span>
                             <input type="text" maxlength="1024" @bind="Editor.ImagePath" />
@@ -416,7 +424,8 @@
                 ThemeClass: Editor.ThemeClass,
                 UnitPriceZar: Editor.UnitPriceZar,
                 SortOrder: Editor.SortOrder,
-                IsEnabled: Editor.IsEnabled);
+                IsEnabled: Editor.IsEnabled,
+                WaivesDeliveryFee: Editor.WaivesDeliveryFee);
 
             var result = await AdminManagementService.SaveStoreProductAsync(SignedInEmail, request);
             if (!result.IsSuccess)
@@ -552,6 +561,7 @@
             editor.UnitPriceZar,
             editor.SortOrder,
             editor.IsEnabled,
+            editor.WaivesDeliveryFee,
             HasNewImage = editor.ImageFile is not null
         });
 
@@ -770,6 +780,7 @@
         public decimal UnitPriceZar { get; set; } = 250.00m;
         public int SortOrder { get; set; } = 100;
         public bool IsEnabled { get; set; } = true;
+        public bool WaivesDeliveryFee { get; set; }
         public IBrowserFile? ImageFile { get; set; }
         public string? ImageFileName { get; set; }
         public string? ImagePreviewPath { get; set; }
@@ -785,7 +796,8 @@
                 ThemeClass = string.Empty,
                 UnitPriceZar = 250.00m,
                 SortOrder = 100,
-                IsEnabled = true
+                IsEnabled = true,
+                WaivesDeliveryFee = false
             };
 
         public static StoreProductEditorModel FromRecord(AdminStoreProductRecord record) =>
@@ -801,6 +813,7 @@
                 UnitPriceZar = record.UnitPriceZar,
                 SortOrder = record.SortOrder,
                 IsEnabled = record.IsEnabled,
+                WaivesDeliveryFee = record.WaivesDeliveryFee,
                 ImagePreviewPath = record.ImagePath
             };
     }

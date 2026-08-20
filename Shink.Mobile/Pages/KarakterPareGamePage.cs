@@ -185,7 +185,10 @@ public sealed class KarakterPareGamePage : ContentPage
 
     private void ApplyResponsiveLayout()
     {
-        MobileResponsiveLayout.ApplyCenteredContent(_board, Width, 760);
+        // Fill the complete board host so wide screens do not leave a narrow
+        // centered strip of unused space around the cards.
+        _board.WidthRequest = -1;
+        _board.HorizontalOptions = LayoutOptions.Fill;
         MobileResponsiveLayout.ApplyCenteredContent(_newGameButton, Width, 440);
     }
 
@@ -674,13 +677,13 @@ public sealed class KarakterPareGamePage : ContentPage
 
             _availableCharacters = response.Characters
                 .Where(character => !string.IsNullOrWhiteSpace(character.Slug))
-                .Where(character => !string.IsNullOrWhiteSpace(character.ImageUrl))
+                .Where(IsUsableMatchCharacter)
                 .DistinctBy(character => character.Slug, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
             if (_availableCharacters.Count < _selectedDifficulty.PairCount)
             {
                 ShowErrorState(
-                    $"Ons benodig minstens {_selectedDifficulty.PairCount} verskillende Karakters vir {_selectedDifficulty.DisplayName.ToLowerInvariant()}.");
+                    $"Ons benodig minstens {_selectedDifficulty.PairCount} Karakters met gewone prente vir {_selectedDifficulty.DisplayName.ToLowerInvariant()}.");
                 return;
             }
 
@@ -766,7 +769,7 @@ public sealed class KarakterPareGamePage : ContentPage
         });
 
         _ = _apiClient.CacheImagesAsync(
-            selectedCharacters.Select(character => character.ImageUrl),
+            selectedCharacters.Select(character => GetMatchImageUrl(character)!),
             _loadCancellation?.Token ?? default,
             maxImages: difficulty.PairCount,
             maxDegreeOfParallelism: 2);
@@ -777,7 +780,31 @@ public sealed class KarakterPareGamePage : ContentPage
             Guid.NewGuid(),
             character.Slug,
             character.DisplayName,
-            _apiClient.BuildCachedImageSource(character.ImageUrl, "schink_character_lineup.png"));
+            _apiClient.BuildCachedImageSource(GetMatchImageUrl(character)!, "schink_character_lineup.png"));
+
+    private static bool IsUsableMatchCharacter(MobileCharacterCard character) =>
+        !string.IsNullOrWhiteSpace(GetMatchImageUrl(character)) &&
+        !IsMysteryImageUrl(GetMatchImageUrl(character)!);
+
+    private static string? GetMatchImageUrl(MobileCharacterCard character) =>
+        string.IsNullOrWhiteSpace(character.MatchImageUrl)
+            ? character.ImageUrl
+            : character.MatchImageUrl;
+
+    private static bool IsMysteryImageUrl(string imageUrl)
+    {
+        var normalizedUrl = imageUrl.Trim();
+        var queryIndex = normalizedUrl.IndexOf('?');
+        var fragmentIndex = normalizedUrl.IndexOf('#');
+        var suffixIndex = queryIndex < 0
+            ? fragmentIndex
+            : fragmentIndex < 0
+                ? queryIndex
+                : Math.Min(queryIndex, fragmentIndex);
+        var path = suffixIndex < 0 ? normalizedUrl : normalizedUrl[..suffixIndex];
+
+        return path.Contains("mystery", StringComparison.OrdinalIgnoreCase);
+    }
 
     private void RenderBoard()
     {

@@ -181,6 +181,7 @@ builder.Services.AddHttpClient<IEngagementTrackingService, SupabaseEngagementTra
 builder.Services.AddHttpClient<IStoryFavoriteService, SupabaseStoryFavoriteService>();
 builder.Services.AddHttpClient<IResourceCatalogService, SupabaseResourceCatalogService>();
 builder.Services.AddHttpClient<IAdminManagementService, SupabaseAdminManagementService>();
+builder.Services.AddHttpClient<IReferralService, SupabaseReferralService>();
 builder.Services.AddHttpClient<ISchoolManagementService, SupabaseSchoolManagementService>();
 builder.Services.AddHttpClient<IWordPressMigrationService, WordPressMigrationService>();
 builder.Services.AddHttpClient<IResourceDocumentPreviewBackfillService, SupabaseResourceDocumentPreviewBackfillService>();
@@ -1076,7 +1077,7 @@ app.MapGet("/betaalherinneringe/gaan", async (
             item.ProductSlug,
             item.ProductName,
             item.Quantity,
-            item.UnitPriceZar)).ToArray());
+            item.UnitPriceZar)).ToArray(), order.DeliveryFeeWaived);
 
         var freshDraft = new StoreOrderDraft(
             OrderReference: BuildStoreOrderReference(order.ProductSlug),
@@ -1085,6 +1086,7 @@ app.MapGet("/betaalherinneringe/gaan", async (
             Quantity: order.Quantity,
             UnitPriceZar: order.UnitPriceZar,
             Items: freshOrderItems,
+            DeliveryFeeWaived: order.DeliveryFeeWaived,
             CustomerName: order.CustomerName,
             CustomerEmail: order.CustomerEmail,
             CustomerPhone: order.CustomerPhone,
@@ -2948,7 +2950,8 @@ app.MapPost("/api/auth/signup", async (
         MobileNumber = request.MobileNumber?.Trim() ?? string.Empty,
         Password = request.Password ?? string.Empty,
         SelectedTierCode = request.SelectedTierCode?.Trim(),
-        DiscountCode = request.DiscountCode?.Trim()
+        DiscountCode = request.DiscountCode?.Trim(),
+        ReferralCode = ReferralCodeRules.Normalize(request.ReferralCode)
     };
 
     var validationError = ValidateSignUpRequest(request);
@@ -2981,7 +2984,8 @@ app.MapPost("/api/auth/signup", async (
             request.FirstName,
             request.LastName,
             request.DisplayName,
-            request.MobileNumber),
+            request.MobileNumber,
+            request.ReferralCode),
         httpContext.RequestAborted);
     if (!signUpResult.IsSuccess)
     {
@@ -5334,6 +5338,7 @@ static bool TryBuildStoreCheckoutDraft(
     }
 
     var items = new List<StoreOrderItemDraft>();
+    var deliveryFeeWaived = false;
     foreach (var product in availableProducts)
     {
         var fieldName = $"qty-{product.Slug}";
@@ -5360,6 +5365,7 @@ static bool TryBuildStoreCheckoutDraft(
             ProductName: product.Name,
             Quantity: quantity,
             UnitPriceZar: product.UnitPriceZar));
+        deliveryFeeWaived |= product.WaivesDeliveryFee;
     }
 
     if (items.Count == 0)
@@ -5419,7 +5425,7 @@ static bool TryBuildStoreCheckoutDraft(
         return false;
     }
 
-    var checkoutItems = AddStoreDeliveryLineItem(items);
+    var checkoutItems = AddStoreDeliveryLineItem(items, deliveryFeeWaived);
     var summarySlug = items.Count == 1 ? items[0].ProductSlug : "multi-item-order";
     var summaryName = items.Count == 1 ? items[0].ProductName : "Gemengde StorieTjommie bestelling";
     var summaryUnitPriceZar = items.Count == 1 ? items[0].UnitPriceZar : 0m;
@@ -5433,6 +5439,7 @@ static bool TryBuildStoreCheckoutDraft(
         Quantity: totalQuantity,
         UnitPriceZar: summaryUnitPriceZar,
         Items: checkoutItems,
+        DeliveryFeeWaived: deliveryFeeWaived,
         CustomerName: customerName,
         CustomerEmail: customerEmail,
         CustomerPhone: customerPhone,
@@ -5445,9 +5452,12 @@ static bool TryBuildStoreCheckoutDraft(
     return true;
 }
 
-static IReadOnlyList<StoreOrderItemDraft> AddStoreDeliveryLineItem(IReadOnlyList<StoreOrderItemDraft> items)
+static IReadOnlyList<StoreOrderItemDraft> AddStoreDeliveryLineItem(
+    IReadOnlyList<StoreOrderItemDraft> items,
+    bool deliveryFeeWaived = false)
 {
-    if (items.Any(item => string.Equals(item.ProductSlug, StoreDeliveryProductSlug, StringComparison.OrdinalIgnoreCase)))
+    if (deliveryFeeWaived ||
+        items.Any(item => string.Equals(item.ProductSlug, StoreDeliveryProductSlug, StringComparison.OrdinalIgnoreCase)))
     {
         return items;
     }
@@ -8073,6 +8083,7 @@ static MobileCharacterCardResponse BuildMobileCharacterCard(
         Heading: isUnlocked ? character.DisplayName : "?????",
         SummaryText: summaryText,
         ImageUrl: ResolveMobileCharacterImageUrl(httpContext, imagePath, character.UpdatedAt),
+        MatchImageUrl: ResolveMobileCharacterImageUrl(httpContext, character.ImagePath, character.UpdatedAt),
         MysteryImageUrl: string.IsNullOrWhiteSpace(character.MysteryImagePath)
             ? null
             : ResolveMobileCharacterImageUrl(httpContext, character.MysteryImagePath, character.UpdatedAt),
@@ -8175,7 +8186,8 @@ sealed record AuthSignUpApiRequest(
     string? Password,
     string? SelectedTierCode,
     string? DiscountCode,
-    bool MarketingConsent);
+    bool MarketingConsent,
+    string? ReferralCode = null);
 sealed record SignupDiscountPreviewApiRequest(string? DiscountCode, string? SelectedTierCode);
 sealed record StoryViewTrackApiRequest(string? StoryPath, string? Source, string? ReferrerPath);
 sealed record MobileCharacterListenRequest(string? StreamSlug);
@@ -8308,6 +8320,7 @@ sealed record MobileCharacterCardResponse(
     string Heading,
     string SummaryText,
     string ImageUrl,
+    string MatchImageUrl,
     string? MysteryImageUrl,
     string ImageAlt,
     bool IsUnlocked,

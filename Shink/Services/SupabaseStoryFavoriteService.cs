@@ -187,7 +187,7 @@ public sealed class SupabaseStoryFavoriteService(
                 using var deleteResponse = await _httpClient.SendAsync(deleteRequest, cancellationToken);
                 if (deleteResponse.IsSuccessStatusCode)
                 {
-                    return true;
+                    return false;
                 }
 
                 var deleteBody = await deleteResponse.Content.ReadAsStringAsync(cancellationToken);

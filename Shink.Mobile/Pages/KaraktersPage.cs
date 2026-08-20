@@ -6,6 +6,10 @@ namespace Shink.Mobile.Pages;
 
 public sealed class KaraktersPage : ContentPage, IQueryAttributable
 {
+    private const double BottomBarContentInset = 136;
+    private const string PoppinsFontFamily = "Poppins";
+    private const string PoppinsSemiBoldFontFamily = "PoppinsSemiBold";
+    private const string PoppinsBoldFontFamily = "PoppinsBold";
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
     private readonly IAudioPlaybackService _audioPlaybackService;
@@ -42,13 +46,16 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             ItemsSource = Array.Empty<MobileCharacterCard>(),
             ItemSizingStrategy = ItemSizingStrategy.MeasureFirstItem,
             SelectionMode = SelectionMode.None,
-            ItemsLayout = new GridItemsLayout(2, ItemsLayoutOrientation.Vertical)
+            // The character gallery is deliberately dense on phones, matching the
+            // three-card layout from the product artwork rather than the two-card
+            // story grid used elsewhere in the app.
+            ItemsLayout = new GridItemsLayout(3, ItemsLayoutOrientation.Vertical)
             {
-                HorizontalItemSpacing = 10,
-                VerticalItemSpacing = 12
+                HorizontalItemSpacing = 8,
+                VerticalItemSpacing = 10
             },
             ItemTemplate = new DataTemplate(BuildCharacterItemView),
-            Margin = new Thickness(10, 0, 10, 0),
+            Margin = new Thickness(16, 0, 16, 0),
             HorizontalScrollBarVisibility = ScrollBarVisibility.Never,
             VerticalScrollBarVisibility = ScrollBarVisibility.Never
         };
@@ -79,7 +86,12 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             ZIndex = 50,
             Children =
             {
-                MobileTopBar.Build(this, _apiClient, _sessionState.Current, leftAction: "back")
+                MobileTopBar.Build(
+                    this,
+                    _apiClient,
+                    _sessionState.Current,
+                    searchAction: OpenStoriesSearchAsync,
+                    notificationAction: OpenStoriesNotificationsAsync)
             }
         };
         _rootLayout = new Grid
@@ -88,6 +100,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             {
                 _refreshView,
                 _topBarOverlay,
+                MobileBottomBar.Build(this, "characters"),
                 _profileOverlay
             }
         };
@@ -225,7 +238,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         _charactersView.ItemsSource = response.Characters;
         _charactersView.Footer = response.Characters.Count == 0
             ? BuildState("Geen karakters is nog beskikbaar nie.")
-            : new BoxView { HeightRequest = 28, Color = Colors.Transparent };
+            : new BoxView { HeightRequest = BottomBarContentInset, Color = Colors.Transparent };
         ApplyResponsiveLayout();
     }
 
@@ -289,7 +302,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         MobileResponsiveLayout.ApplyCenteredContent(hero, Width, 780);
         return new VerticalStackLayout
         {
-            Padding = new Thickness(0, 82, 0, 18),
+            Padding = new Thickness(0, 76, 0, 16),
             Children =
             {
                 hero
@@ -301,7 +314,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     {
         _charactersView.Header = new VerticalStackLayout
         {
-            Padding = new Thickness(0, 82, 0, 18),
+            Padding = new Thickness(0, 76, 0, 16),
             Children =
             {
                 new ActivityIndicator
@@ -320,7 +333,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     {
         _charactersView.Header = new VerticalStackLayout
         {
-            Padding = new Thickness(0, 82, 0, 18),
+            Padding = new Thickness(0, 76, 0, 16),
             Children =
             {
                 BuildState(message, isError)
@@ -334,17 +347,23 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     {
         var summary = new VerticalStackLayout
         {
-            Spacing = 4,
+            Spacing = 0,
             HorizontalOptions = LayoutOptions.Center,
             Children =
             {
                 new Label
                 {
-                    Text = response.IsSignedIn
-                        ? $"{response.UnlockedCount} van {response.TotalCount} karakters is oop"
-                        : "Teken in om julle ontsluitings te sien.",
-                    FontSize = 15,
-                    FontAttributes = FontAttributes.Bold,
+                    FormattedText = response.IsSignedIn
+                        ? BuildUnlockProgressText(response)
+                        : new FormattedString
+                        {
+                            Spans =
+                            {
+                                new Span { Text = "Teken in om julle ontsluitings te sien." }
+                            }
+                        },
+                    FontSize = 17,
+                    FontFamily = PoppinsSemiBoldFontFamily,
                     TextColor = Colors.White,
                     HorizontalTextAlignment = TextAlignment.Center
                 }
@@ -358,90 +377,61 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
                 Text = "Teken in",
                 BackgroundColor = Colors.Transparent,
                 TextColor = Colors.White,
-                FontAttributes = FontAttributes.Bold,
+                FontFamily = PoppinsBoldFontFamily,
                 Padding = new Thickness(10, 2),
-                HeightRequest = 36
+                HeightRequest = 30
             };
             signInButton.Clicked += async (_, _) => await Shell.Current.GoToAsync(nameof(AccountPage), animate: true);
             summary.Children.Add(signInButton);
         }
 
-        return new Border
+        return new VerticalStackLayout
         {
-            Background = new LinearGradientBrush
+            Spacing = 0,
+            HorizontalOptions = LayoutOptions.Fill,
+            Children =
             {
-                StartPoint = new Point(0, 0),
-                EndPoint = new Point(1, 1),
-                GradientStops =
+                new Image
                 {
-                    new GradientStop(Color.FromArgb("#166476"), 0),
-                    new GradientStop(Color.FromArgb("#0F4A59"), 0.44f),
-                    new GradientStop(Color.FromArgb("#0F2F3B"), 1)
-                }
-            },
-            Stroke = Color.FromArgb("#30FFFFFF"),
-            StrokeThickness = 1,
-            StrokeShape = new RoundRectangle { CornerRadius = 28 },
-            Padding = new Thickness(18, 18, 18, 24),
-            Shadow = new Shadow
-            {
-                Brush = Brush.Black,
-                Offset = new Point(0, 12),
-                Radius = 24,
-                Opacity = 0.18f
-            },
-            Content = new VerticalStackLayout
-            {
-                Spacing = 11,
-                Children =
+                    Source = "schink_character_lineup.png",
+                    HeightRequest = 112,
+                    Aspect = Aspect.AspectFit,
+                    HorizontalOptions = LayoutOptions.Fill,
+                    Margin = new Thickness(0, 0, 0, -6)
+                },
+                new Image
                 {
-                    new Image
-                    {
-                        Source = "schink_character_lineup.png",
-                        HeightRequest = 128,
-                        Aspect = Aspect.AspectFit,
-                        HorizontalOptions = LayoutOptions.Fill
-                    },
-                    new Label
-                    {
-                        Text = "SCHINK STORIES KARAKTERS",
-                        FontSize = 12,
-                        FontAttributes = FontAttributes.Bold,
-                        CharacterSpacing = 2.2,
-                        TextColor = Color.FromArgb("#BCFFFFFF"),
-                        HorizontalTextAlignment = TextAlignment.Center
-                    },
-                    new Label
-                    {
-                        Text = "Ontmoet die karakters",
-                        FontSize = 30,
-                        FontAttributes = FontAttributes.Bold,
-                        TextColor = Colors.White,
-                        HorizontalTextAlignment = TextAlignment.Center
-                    },
-                    new Label
-                    {
-                        Text = "Op hierdie blad kan jy die Schink Stories-karakters sien, verken en hoor. Luister na stories om elke karakter se profiel oop te sluit. Of luister meer as een keer na spesifieke stories en ontdek bonuskarakters.",
-                        FontSize = 15,
-                        LineHeight = 1.35,
-                        TextColor = Color.FromArgb("#E0FFFFFF"),
-                        HorizontalTextAlignment = TextAlignment.Center,
-                        LineBreakMode = LineBreakMode.WordWrap
-                    },
-                    new Border
-                    {
-                        BackgroundColor = Color.FromArgb("#20FFFFFF"),
-                        Stroke = Color.FromArgb("#32FFFFFF"),
-                        StrokeThickness = 1,
-                        StrokeShape = new RoundRectangle { CornerRadius = 999 },
-                        Padding = new Thickness(18, 11),
-                        HorizontalOptions = LayoutOptions.Center,
-                        Content = summary
-                    }
+                    Source = "karakters_title.png",
+                    WidthRequest = 300,
+                    HeightRequest = 62,
+                    Aspect = Aspect.AspectFill,
+                    HorizontalOptions = LayoutOptions.Center,
+                    Margin = new Thickness(0, -4, 0, -6)
+                },
+                new ContentView
+                {
+                    Margin = new Thickness(0, 7, 0, 0),
+                    HorizontalOptions = LayoutOptions.Center,
+                    Content = summary
                 }
             }
         };
     }
+
+    private static FormattedString BuildUnlockProgressText(MobileCharactersResponse response) =>
+        new()
+        {
+            Spans =
+            {
+                new Span
+                {
+                    Text = $"{response.UnlockedCount} van {response.TotalCount}",
+                    FontFamily = PoppinsBoldFontFamily,
+                    FontAttributes = FontAttributes.Bold
+                },
+                new Span { Text = " oopgesluit" }
+            }
+        };
 
     private View BuildCharacterCard(MobileCharacterCard character)
     {
@@ -453,27 +443,12 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             {
                 new Border
                 {
-                    Background = new LinearGradientBrush
-                    {
-                        StartPoint = new Point(0, 0),
-                        EndPoint = new Point(0, 1),
-                        GradientStops =
-                        {
-                            new GradientStop(
-                                character.IsUnlocked
-                                    ? Color.FromArgb("#D9E7EA")
-                                    : Color.FromArgb("#345D68"),
-                                0),
-                            new GradientStop(
-                                character.IsUnlocked
-                                    ? Color.FromArgb("#E8EFF0")
-                                    : Color.FromArgb("#274B56"),
-                                1)
-                        }
-                    },
+                    BackgroundColor = character.IsUnlocked
+                        ? Color.FromArgb("#DDE9EA")
+                        : Color.FromArgb("#1B4651"),
                     StrokeThickness = 0,
-                    StrokeShape = new RoundRectangle { CornerRadius = 18 },
-                    Padding = 7,
+                    StrokeShape = new RoundRectangle { CornerRadius = 15 },
+                    Padding = 4,
                     Content = new Image
                     {
                         Source = BuildCharacterImageSource(character.ImageUrl),
@@ -513,61 +488,25 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             media.Children.Add(audioButton);
         }
 
-        if (character.PrimaryStory is not null && !string.IsNullOrWhiteSpace(character.CallToActionLabel))
-        {
-            var storyButton = BuildCharacterIconButton(
-                new PlayDrawable(),
-                character.IsUnlocked ? Color.FromArgb("#F39A32") : Color.FromArgb("#8DC66F"),
-                character.IsUnlocked ? Color.FromArgb("#1D1306") : Color.FromArgb("#113420"),
-                character.CallToActionLabel,
-                CharacterIconPlacement.BottomRight);
-            var storyTap = new TapGestureRecognizer();
-            storyTap.Tapped += async (_, _) => await OpenPrimaryStoryAsync(character);
-            storyButton.GestureRecognizers.Add(storyTap);
-            media.Children.Add(storyButton);
-        }
-
         var card = new Border
         {
             BackgroundColor = character.IsUnlocked
-                ? Color.FromArgb("#F2F8F8")
-                : Color.FromArgb("#1F4A56"),
+                ? Color.FromArgb("#F7FBFB")
+                : Color.FromArgb("#1D4A56"),
             Stroke = character.IsUnlocked
-                ? Color.FromArgb("#22103945")
-                : Color.FromArgb("#263C7180"),
+                ? Color.FromArgb("#334E7680")
+                : Color.FromArgb("#356C9AAA"),
             StrokeThickness = 1,
-            StrokeShape = new RoundRectangle { CornerRadius = 24 },
-            Padding = 10,
+            StrokeShape = new RoundRectangle { CornerRadius = 18 },
+            Padding = new Thickness(6, 6, 6, 8),
             Shadow = new Shadow
             {
                 Brush = Brush.Black,
-                Offset = new Point(0, 10),
-                Radius = 20,
-                Opacity = 0.14f
+                Offset = new Point(0, 5),
+                Radius = 10,
+                Opacity = 0.12f
             },
-            Content = new VerticalStackLayout
-            {
-                Spacing = 0,
-                Children =
-                {
-                    media,
-                    new Label
-                    {
-                        Text = character.Heading,
-                        HeightRequest = 50,
-                        Margin = new Thickness(2, 8, 2, 0),
-                        FontSize = 16,
-                        FontAttributes = FontAttributes.Bold,
-                        TextColor = character.IsUnlocked
-                            ? Color.FromArgb("#203236")
-                            : Color.FromArgb("#F4F8F9"),
-                        HorizontalTextAlignment = TextAlignment.Center,
-                        VerticalTextAlignment = TextAlignment.Center,
-                        MaxLines = 2,
-                        LineBreakMode = LineBreakMode.TailTruncation
-                    }
-                }
-            }
+            Content = BuildCharacterCardContent(character, media)
         };
 
         var tap = new TapGestureRecognizer();
@@ -585,10 +524,88 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         return card;
     }
 
+    private View BuildCharacterCardContent(MobileCharacterCard character, View media)
+    {
+        var content = new VerticalStackLayout
+        {
+            Spacing = 2,
+            Children =
+            {
+                media,
+                new Label
+                {
+                    Text = character.Heading,
+                    HeightRequest = 24,
+                    Margin = new Thickness(1, 4, 1, 0),
+                    FontSize = 10.5,
+                    FontFamily = PoppinsBoldFontFamily,
+                    FontAttributes = FontAttributes.Bold,
+                    TextColor = character.IsUnlocked
+                        ? Color.FromArgb("#203236")
+                        : Color.FromArgb("#F4F8F9"),
+                    HorizontalTextAlignment = TextAlignment.Center,
+                    VerticalTextAlignment = TextAlignment.Center,
+                    MaxLines = 2,
+                    LineBreakMode = LineBreakMode.TailTruncation
+                },
+                new Label
+                {
+                    Text = character.SummaryText,
+                    HeightRequest = 34,
+                    Margin = new Thickness(2, 0),
+                    FontSize = 8.5,
+                    FontFamily = PoppinsFontFamily,
+                    LineHeight = 1.1,
+                    TextColor = character.IsUnlocked
+                        ? Color.FromArgb("#3D5359")
+                        : Color.FromArgb("#E1EEF0"),
+                    HorizontalTextAlignment = TextAlignment.Center,
+                    VerticalTextAlignment = TextAlignment.Center,
+                    MaxLines = 3,
+                    LineBreakMode = LineBreakMode.TailTruncation
+                }
+            }
+        };
+
+        if (character.PrimaryStory is null || string.IsNullOrWhiteSpace(character.CallToActionLabel))
+        {
+            return content;
+        }
+
+        var storyButton = new Button
+        {
+            Text = character.CallToActionLabel,
+            HeightRequest = 28,
+            Margin = new Thickness(2, 3, 2, 0),
+            Padding = new Thickness(3, 0),
+            CornerRadius = 14,
+            BackgroundColor = character.IsUnlocked ? Color.FromArgb("#F6A227") : Color.FromArgb("#8DCD65"),
+            TextColor = character.IsUnlocked ? Color.FromArgb("#243023") : Color.FromArgb("#153718"),
+            FontSize = 8,
+            FontFamily = PoppinsBoldFontFamily,
+            FontAttributes = FontAttributes.Bold,
+            LineBreakMode = LineBreakMode.TailTruncation,
+            AutomationId = character.CallToActionLabel
+        };
+        storyButton.Clicked += async (_, _) =>
+        {
+            SafeHapticFeedback.TryPerform(HapticFeedbackType.Click);
+            await OpenPrimaryStoryAsync(character);
+        };
+        content.Children.Add(storyButton);
+        return content;
+    }
+
     private double ResolveCharacterMediaSize()
     {
         return MobileResponsiveLayout.ResolveCharacterMediaSize(Width, _charactersGridLayout.Span);
     }
+
+    private static Task OpenStoriesSearchAsync() =>
+        Shell.Current.GoToAsync("//Luister?surface=search", animate: false);
+
+    private static Task OpenStoriesNotificationsAsync() =>
+        Shell.Current.GoToAsync("//Luister?surface=notifications", animate: false);
 
     private static Border BuildCharacterIconButton(
         IDrawable drawable,
@@ -602,9 +619,9 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             BackgroundColor = backgroundColor,
             StrokeThickness = 0,
             StrokeShape = new RoundRectangle { CornerRadius = 999 },
-            WidthRequest = 34,
-            HeightRequest = 34,
-            Margin = 8,
+            WidthRequest = 26,
+            HeightRequest = 26,
+            Margin = 5,
             HorizontalOptions = LayoutOptions.End,
             VerticalOptions = placement == CharacterIconPlacement.TopRight
                 ? LayoutOptions.Start
@@ -613,16 +630,16 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             Shadow = new Shadow
             {
                 Brush = Brush.Black,
-                Offset = new Point(0, 5),
-                Radius = 10,
-                Opacity = 0.16f
+                Offset = new Point(0, 3),
+                Radius = 6,
+                Opacity = 0.14f
             },
             Content = new GraphicsView
             {
                 Drawable = new TintedDrawable(drawable, iconColor),
-                WidthRequest = 18,
-                HeightRequest = 18,
-                Margin = 8,
+                WidthRequest = 14,
+                HeightRequest = 14,
+                Margin = 6,
                 InputTransparent = true
             }
         };
@@ -1235,8 +1252,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
 
     private enum CharacterIconPlacement
     {
-        TopRight,
-        BottomRight
+        TopRight
     }
 
     private sealed class TintedDrawable(IDrawable drawable, Color color) : IDrawable
@@ -1246,19 +1262,6 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             canvas.StrokeColor = color;
             canvas.FillColor = color;
             drawable.Draw(canvas, dirtyRect);
-        }
-    }
-
-    private sealed class PlayDrawable : IDrawable
-    {
-        public void Draw(ICanvas canvas, RectF dirtyRect)
-        {
-            var triangle = new PathF();
-            triangle.MoveTo(dirtyRect.Width * 0.34f, dirtyRect.Height * 0.22f);
-            triangle.LineTo(dirtyRect.Width * 0.34f, dirtyRect.Height * 0.78f);
-            triangle.LineTo(dirtyRect.Width * 0.76f, dirtyRect.Height * 0.50f);
-            triangle.Close();
-            canvas.FillPath(triangle);
         }
     }
 
