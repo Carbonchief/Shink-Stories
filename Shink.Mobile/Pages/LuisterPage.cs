@@ -7,15 +7,30 @@ using Shink.Mobile.Services;
 
 namespace Shink.Mobile.Pages;
 
-public sealed class LuisterPage : ContentPage
+public sealed class LuisterPage : ContentPage, IQueryAttributable
 {
-    private static readonly Color LuisterBackgroundColor = Color.FromArgb("#FFF7E8");
+    private static readonly Color LuisterModalBackgroundColor = Color.FromArgb("#FFF7E8");
+    private static readonly LinearGradientBrush LuisterBackgroundBrush = new LinearGradientBrush
+    {
+        StartPoint = new Point(0, 0),
+        EndPoint = new Point(0, 1),
+        GradientStops =
+        {
+            new GradientStop(Color.FromArgb("#408D93"), 0),
+            new GradientStop(Color.FromArgb("#4F9DB3"), 0.22f),
+            new GradientStop(Color.FromArgb("#D4CF69"), 0.56f),
+            new GradientStop(Color.FromArgb("#EFEFEF"), 0.86f),
+            new GradientStop(Color.FromArgb("#EFEFEF"), 1)
+        }
+    };
     private const double PageHorizontalPadding = 18;
-    // The floating controls occupy the upper safe-area band. Keep enough initial
-    // clearance that the first playlist title and description never render behind them.
-    private const double FloatingTopBarContentInset = 132;
-    private const double FloatingTopBarHiddenOffset = -82;
-    private const double ScrollDirectionThreshold = 4;
+    private const double LuisterGradientMinimumTravelDistance = 4200;
+    // Keep the first feed item below the native-style app bar and the last item
+    // above the persistent bottom navigation on every device size.
+    private const double FloatingTopBarContentInset = 92;
+    private const double BottomBarContentInset = 136;
+    private const double BottomBarOverlayHeight = 152;
+    private const double StoriesHeroHeight = 262;
     private const double OortjiesPeekWidth = 64;
     private const double OortjiesPeekHeight = 71;
     private const int MaxOortjiesPeeksPerWindow = 2;
@@ -27,6 +42,7 @@ public sealed class LuisterPage : ContentPage
     private static readonly TimeSpan OortjiesNextDelayMax = TimeSpan.FromMilliseconds(178000);
     private static readonly TimeSpan NotificationBadgeRefreshInterval = TimeSpan.FromSeconds(45);
     private static bool IsAndroid => DeviceInfo.Current.Platform == DevicePlatform.Android;
+    private static bool UsesCollectionViewFeed => IsAndroid;
     private readonly MobileApiClient _apiClient;
     private readonly IServiceProvider _services;
     private readonly MobileAnalyticsService _analytics;
@@ -38,12 +54,13 @@ public sealed class LuisterPage : ContentPage
     private readonly NavigationGate _navigationGate = new();
     private readonly Grid _rootLayout;
     private readonly Grid _topBarOverlay;
+    private readonly Grid _bottomBarOverlay;
     private readonly Image _oortjiesPeekMascot;
     private Grid? _menuOverlay;
-    private readonly VerticalStackLayout? _content;
-    private readonly VerticalStackLayout? _playlistContent;
+    private VerticalStackLayout? _content;
     private readonly RefreshView _refreshView;
     private readonly ScrollView? _scrollView;
+    private ScrollView? _activeScrollView;
     private readonly CollectionView? _feedView;
     private readonly Entry _searchEntry;
     private readonly Entry _loginEmailEntry;
@@ -58,9 +75,8 @@ public sealed class LuisterPage : ContentPage
     private bool _isPageActive;
     private bool _isSearchVisible;
     private bool _isRefreshingNotifications;
-    private bool _isTopBarHidden;
-    private double _lastScrollY;
     private readonly Border _floatingTopBarHost;
+    private readonly ContentView _bottomBarHost;
     private IDispatcherTimer? _notificationRefreshTimer;
     private IDispatcherTimer? _oortjiesPeekTimer;
     private IDispatcherTimer? _oortjiesHideTimer;
@@ -71,12 +87,16 @@ public sealed class LuisterPage : ContentPage
     private readonly HashSet<string> _favoriteRequestsInFlight = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<DateTimeOffset> _recentOortjiesPeekTimes = new();
     private OortjiesPeekSide? _lastOortjiesPeekSide;
+    private OortjiesPeekPlacement? _activeOortjiesPeekPlacement;
     private bool _isOortjiesPeekVisible;
     private bool _isPageEventsSubscribed;
     private bool _hasStartedKaraktersDestinationWarmup;
+    private string? _pendingSurface;
+    private bool _isApplyingPendingSurface;
     private double _lastResponsiveWidth = -1;
+    private double _lastGradientScrollOffset;
+    private double _lastGradientViewportHeight;
     private bool _responsiveRenderQueued;
-
     public LuisterPage(
         MobileApiClient apiClient,
         IServiceProvider services,
@@ -96,7 +116,6 @@ public sealed class LuisterPage : ContentPage
         _continueListeningState = continueListeningState;
         _transitionBackdropState = transitionBackdropState;
         Title = "Luister";
-        BackgroundColor = LuisterBackgroundColor;
         SafeAreaEdges = SafeAreaEdges.None;
         Shell.SetNavBarIsVisible(this, false);
 
@@ -126,7 +145,7 @@ public sealed class LuisterPage : ContentPage
             FontSize = 13
         };
 
-        if (IsAndroid)
+        if (UsesCollectionViewFeed)
         {
             _feedView = new CollectionView
             {
@@ -139,26 +158,20 @@ public sealed class LuisterPage : ContentPage
                     ItemSpacing = 14
                 },
                 ItemTemplate = new DataTemplate(BuildFeedItemView),
-                Header = new Grid
-                {
-                    SafeAreaEdges = new SafeAreaEdges(
-                        SafeAreaRegions.None,
-                        SafeAreaRegions.Container,
-                        SafeAreaRegions.None,
-                        SafeAreaRegions.None),
-                    HeightRequest = FloatingTopBarContentInset - 14,
-                    BackgroundColor = Colors.Transparent
-                },
+                Header = BuildStoriesPageHeader(),
                 Footer = new BoxView
                 {
-                    HeightRequest = 28,
+                    HeightRequest = BottomBarContentInset,
                     Color = Colors.Transparent
                 },
-                Margin = new Thickness(PageHorizontalPadding, 0, PageHorizontalPadding, 0),
+                // Keep the feed itself edge-to-edge on Android so a carousel's
+                // negative side margin can reach the screen edge. Individual
+                // feed items apply the normal page gutter below.
+                Margin = Thickness.Zero,
                 HorizontalScrollBarVisibility = ScrollBarVisibility.Never,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Never
             };
-            _feedView.Scrolled += OnContentScrolled;
+            _feedView.Scrolled += OnFeedViewScrolled;
         }
         else
         {
@@ -169,12 +182,8 @@ public sealed class LuisterPage : ContentPage
                     SafeAreaRegions.Container,
                     SafeAreaRegions.None,
                     SafeAreaRegions.None),
-                Padding = new Thickness(PageHorizontalPadding, FloatingTopBarContentInset, PageHorizontalPadding, 28),
+                Padding = new Thickness(0, 0, 0, 28),
                 Spacing = 16
-            };
-            _playlistContent = new VerticalStackLayout
-            {
-                Spacing = 14
             };
             _scrollView = new ScrollView
             {
@@ -182,20 +191,24 @@ public sealed class LuisterPage : ContentPage
                 Background = Brush.Transparent,
                 Content = _content
             };
-            _scrollView.Scrolled += OnContentScrolled;
+            _scrollView.Scrolled += OnScrollViewScrolled;
         }
 
         _refreshView = new RefreshView
         {
             SafeAreaEdges = SafeAreaEdges.None,
             Background = Brush.Transparent,
-            Content = IsAndroid ? _feedView : _scrollView,
+            Content = UsesCollectionViewFeed ? _feedView : _scrollView,
             Command = new Command(() => _ = TriggerRefreshAsync())
         };
 
         _topBarOverlay = new Grid
         {
-            SafeAreaEdges = new SafeAreaEdges(SafeAreaRegions.Container),
+            SafeAreaEdges = new SafeAreaEdges(
+                SafeAreaRegions.Container,
+                SafeAreaRegions.Container,
+                SafeAreaRegions.Container,
+                SafeAreaRegions.None),
             BackgroundColor = Colors.Transparent,
             Padding = new Thickness(0, 0, 0, 16),
             HorizontalOptions = LayoutOptions.Fill,
@@ -209,14 +222,34 @@ public sealed class LuisterPage : ContentPage
             BackgroundColor = Colors.Transparent,
             StrokeThickness = 0,
             Padding = 0,
-            Margin = new Thickness(18, 0, 18, 0),
-            HeightRequest = 52,
+            Margin = Thickness.Zero,
+            HeightRequest = 62,
             HorizontalOptions = LayoutOptions.Fill,
             VerticalOptions = LayoutOptions.Start,
             InputTransparent = false,
             ZIndex = 101
         };
         _topBarOverlay.Children.Add(_floatingTopBarHost);
+
+        _bottomBarOverlay = new Grid
+        {
+            SafeAreaEdges = SafeAreaEdges.None,
+            BackgroundColor = Colors.Transparent,
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalOptions = LayoutOptions.End,
+            HeightRequest = BottomBarOverlayHeight,
+            InputTransparent = false,
+            ZIndex = 100
+        };
+        _bottomBarHost = new ContentView
+        {
+            Content = MobileBottomBar.Build(this, "listen", ToggleSearchAsync),
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalOptions = LayoutOptions.End,
+            HeightRequest = BottomBarOverlayHeight,
+            ZIndex = 101
+        };
+        _bottomBarOverlay.Children.Add(_bottomBarHost);
 
         _oortjiesPeekMascot = new Image
         {
@@ -238,22 +271,100 @@ public sealed class LuisterPage : ContentPage
         _rootLayout = new Grid
         {
             SafeAreaEdges = SafeAreaEdges.None,
-            BackgroundColor = LuisterBackgroundColor,
+            Background = LuisterBackgroundBrush,
             Children =
             {
                 _refreshView,
                 _topBarOverlay,
+                _bottomBarOverlay,
                 _oortjiesPeekMascot
             }
         };
         Content = _rootLayout;
+        RenderFloatingTopBar();
+        RenderLoadingState();
+        Loaded += (_, _) => _ = StartPageActivityAsync();
+        HandlerChanged += (_, _) =>
+        {
+            if (!_isPageActive || !_hasLoaded)
+            {
+                return;
+            }
+
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                if (_isPageActive && _hasLoaded)
+                {
+                    RenderContent();
+                }
+            });
+        };
         SizeChanged += (_, _) => HandleResponsiveSizeChanged();
+        SizeChanged += (_, _) => UpdateLuisterGradientForScroll(_lastGradientScrollOffset);
         HandleResponsiveSizeChanged();
     }
 
     protected override async void OnAppearing()
     {
         base.OnAppearing();
+        await StartPageActivityAsync();
+        await ApplyPendingSurfaceAsync();
+    }
+
+    public void ApplyQueryAttributes(IDictionary<string, object> query)
+    {
+        if (!query.TryGetValue("surface", out var value))
+        {
+            return;
+        }
+
+        var surface = Uri.UnescapeDataString(value?.ToString() ?? string.Empty);
+        if (surface is not ("search" or "notifications"))
+        {
+            return;
+        }
+
+        _pendingSurface = surface;
+        _ = ApplyPendingSurfaceAsync();
+    }
+
+    private async Task ApplyPendingSurfaceAsync()
+    {
+        if (!_isPageActive || _isApplyingPendingSurface || string.IsNullOrWhiteSpace(_pendingSurface))
+        {
+            return;
+        }
+
+        var surface = _pendingSurface;
+        _pendingSurface = null;
+        _isApplyingPendingSurface = true;
+        try
+        {
+            if (surface == "search")
+            {
+                if (!_isSearchVisible)
+                {
+                    await ToggleSearchAsync();
+                }
+
+                return;
+            }
+
+            await ShowNotificationsAsync();
+        }
+        finally
+        {
+            _isApplyingPendingSurface = false;
+        }
+    }
+
+    private async Task StartPageActivityAsync()
+    {
+        if (_isPageActive)
+        {
+            return;
+        }
+
         _isPageActive = true;
         _pageActivityCancellation?.Cancel();
         _pageActivityCancellation?.Dispose();
@@ -555,7 +666,7 @@ public sealed class LuisterPage : ContentPage
             }
 
             _downloadedStories = downloads;
-            if (IsAndroid)
+            if (UsesCollectionViewFeed)
             {
                 RenderPlaylistContent();
             }
@@ -643,23 +754,15 @@ public sealed class LuisterPage : ContentPage
         try
         {
             RenderFloatingTopBar();
-            if (!IsAndroid)
+            RenderBottomBar();
+            if (UsesCollectionViewFeed)
             {
-                _content!.Children.Clear();
-                if (_isSearchVisible || !string.IsNullOrWhiteSpace(_searchEntry.Text))
-                {
-                    _content.Children.Add(BuildSearchBox());
-                }
-
-                if (!_sessionState.Current.IsSignedIn)
-                {
-                    _content.Children.Add(BuildAccountPanel());
-                }
-
-                _content.Children.Add(_playlistContent!);
+                RenderPlaylistContent();
             }
-
-            RenderPlaylistContent();
+            else
+            {
+                RebuildIOSFeedRoot();
+            }
         }
         catch (ObjectDisposedException)
         {
@@ -669,107 +772,124 @@ public sealed class LuisterPage : ContentPage
 
     private void RenderLoadingState()
     {
-        if (IsAndroid)
+        if (UsesCollectionViewFeed)
         {
-            _feedView!.ItemsSource = new[] { LuisterFeedItem.Loading() };
+            ReplaceFeedItems(new[] { LuisterFeedItem.Loading() });
             return;
         }
 
         _content!.Children.Clear();
+        _content.Children.Add(BuildStoriesPageHeader());
         _content.Children.Add(new ActivityIndicator { IsRunning = true, Color = Color.FromArgb("#0F766E") });
     }
 
     private void RenderNoticeState(string message)
     {
-        if (IsAndroid)
+        if (UsesCollectionViewFeed)
         {
-            _feedView!.ItemsSource = new[] { LuisterFeedItem.Notice(message) };
+            ReplaceFeedItems(new[] { LuisterFeedItem.Notice(message) });
             return;
         }
 
         _content!.Children.Clear();
-        _content.Children.Add(new Label { Text = message });
+        _content.Children.Add(BuildStoriesPageHeader());
+        _content.Children.Add(new Label { Text = message, Margin = new Thickness(PageHorizontalPadding, 0) });
+    }
+
+    private void RebuildIOSFeedRoot()
+    {
+        var content = new VerticalStackLayout
+        {
+            SafeAreaEdges = SafeAreaEdges.None,
+            Padding = new Thickness(0, 0, 0, BottomBarContentInset),
+            Spacing = 16
+        };
+        content.Children.Add(BuildStoriesPageHeader());
+        var feedContent = new VerticalStackLayout
+        {
+            Padding = new Thickness(PageHorizontalPadding, 0),
+            Spacing = 16
+        };
+        foreach (var item in BuildFeedItems())
+        {
+            feedContent.Children.Add(BuildFeedItemContent(item));
+        }
+        content.Children.Add(feedContent);
+
+        var scrollView = new ScrollView
+        {
+            SafeAreaEdges = SafeAreaEdges.None,
+            Background = Brush.Transparent,
+            Content = content
+        };
+        scrollView.Scrolled += OnScrollViewScrolled;
+        _activeScrollView = scrollView;
+        _refreshView.Content = scrollView;
     }
 
     private void RenderFloatingTopBar()
     {
         _floatingTopBarHost.Content = BuildLuisterTopBar();
-        _floatingTopBarHost.TranslationY = _isTopBarHidden ? FloatingTopBarHiddenOffset : 0;
-        _floatingTopBarHost.Opacity = _isTopBarHidden ? 0 : 1;
-        _floatingTopBarHost.InputTransparent = _isTopBarHidden;
-        _topBarOverlay.InputTransparent = _isTopBarHidden;
+        _floatingTopBarHost.TranslationY = 0;
+        _floatingTopBarHost.Opacity = 1;
+        _floatingTopBarHost.InputTransparent = false;
+        _topBarOverlay.InputTransparent = false;
     }
 
-    private void OnContentScrolled(object? sender, ItemsViewScrolledEventArgs e)
+    private void OnFeedViewScrolled(object? sender, ItemsViewScrolledEventArgs args)
     {
-        HandleScrollOffset(e.VerticalOffset);
+        UpdateLuisterGradientForScroll(args.VerticalOffset);
     }
 
-    private void OnContentScrolled(object? sender, ScrolledEventArgs e)
+    private void OnScrollViewScrolled(object? sender, ScrolledEventArgs args) =>
+        UpdateLuisterGradientForScroll(args.ScrollY);
+
+    private void UpdateLuisterGradientForScroll(double scrollOffset)
     {
-        HandleScrollOffset(e.ScrollY);
-    }
-
-    private void HandleScrollOffset(double scrollY)
-    {
-        var delta = scrollY - _lastScrollY;
-        _lastScrollY = scrollY;
-
-        if (scrollY <= 2)
-        {
-            SetTopBarHidden(false);
-            return;
-        }
-
-        if (Math.Abs(delta) < ScrollDirectionThreshold)
+        var viewportHeight = Height > 0 ? Height : _rootLayout.Height;
+        if (viewportHeight <= 0)
         {
             return;
         }
 
-        SetTopBarHidden(delta > 0);
-    }
+        var measuredContentHeight = _feedView?.Height ?? _activeScrollView?.Content?.Height ?? _scrollView?.Content?.Height ?? 0;
+        var travelDistance = Math.Max(
+            measuredContentHeight,
+            Math.Max(viewportHeight * 4, LuisterGradientMinimumTravelDistance));
 
-    private void SetTopBarHidden(bool hidden)
-    {
-        if (_isTopBarHidden == hidden)
+        if (Math.Abs(scrollOffset - _lastGradientScrollOffset) < 1 &&
+            Math.Abs(viewportHeight - _lastGradientViewportHeight) < 1)
         {
             return;
         }
 
-        _isTopBarHidden = hidden;
-        var topBar = _floatingTopBarHost;
-        topBar.AbortAnimation(nameof(AnimateTopBarHiddenAsync));
-        topBar.InputTransparent = hidden;
-        _topBarOverlay.InputTransparent = hidden;
-
-        if (IsAndroid)
-        {
-            topBar.TranslationY = hidden ? FloatingTopBarHiddenOffset : 0;
-            topBar.Opacity = hidden ? 0 : 1;
-            return;
-        }
-
-        if (!hidden)
-        {
-            topBar.Opacity = 1;
-        }
-
-        _ = AnimateTopBarHiddenAsync(topBar, hidden);
+        _lastGradientScrollOffset = Math.Max(0, scrollOffset);
+        _lastGradientViewportHeight = viewportHeight;
+        LuisterBackgroundBrush.StartPoint = new Point(0, -_lastGradientScrollOffset / viewportHeight);
+        LuisterBackgroundBrush.EndPoint = new Point(
+            0,
+            (travelDistance - _lastGradientScrollOffset) / viewportHeight);
     }
 
-    private static async Task AnimateTopBarHiddenAsync(View topBar, bool hidden)
+    private void RenderBottomBar()
     {
-        try
+        _bottomBarHost.Content = MobileBottomBar.Build(
+            this,
+            _isSearchVisible || !string.IsNullOrWhiteSpace(_searchEntry.Text) ? "search" : "listen",
+            ToggleSearchAsync);
+    }
+
+    private Task ToggleSearchAsync()
+    {
+        _isSearchVisible = !_isSearchVisible;
+        _ = ResetScrollPositionAsync();
+        RenderContent();
+        if (_isSearchVisible)
         {
-            await Task.WhenAll(
-                topBar.TranslateToAsync(0, hidden ? FloatingTopBarHiddenOffset : 0, 180, hidden ? Easing.CubicIn : Easing.CubicOut),
-                topBar.FadeToAsync(hidden ? 0 : 1, hidden ? 120u : 160u, Easing.CubicOut));
+            MainThread.BeginInvokeOnMainThread(() => _searchEntry.Focus());
         }
-        catch
-        {
-            topBar.TranslationY = hidden ? FloatingTopBarHiddenOffset : 0;
-            topBar.Opacity = hidden ? 0 : 1;
-        }
+
+        return Task.CompletedTask;
     }
 
     private void RenderPlaylistContent()
@@ -780,12 +900,19 @@ public sealed class LuisterPage : ContentPage
         }
 
         _searchDebounceCancellation?.Cancel();
-        if (!IsAndroid)
+        var nextItems = BuildFeedItems();
+        if (UsesCollectionViewFeed)
         {
-            RenderStackPlaylistContent();
-            return;
+            ReplaceFeedItems(nextItems);
         }
+        else
+        {
+            RebuildIOSFeedRoot();
+        }
+    }
 
+    private List<LuisterFeedItem> BuildFeedItems()
+    {
         var nextItems = new List<LuisterFeedItem>();
         if (_isSearchVisible || !string.IsNullOrWhiteSpace(_searchEntry.Text))
         {
@@ -818,22 +945,20 @@ public sealed class LuisterPage : ContentPage
                     nextItems.Add(LuisterFeedItem.Notice("Jy is offline. Jou afgelaaide stories is beskikbaar."));
                 }
 
-                ReplaceFeedItems(nextItems);
-                return;
+                return nextItems;
             }
 
             nextItems.Add(LuisterFeedItem.Notice(string.IsNullOrWhiteSpace(_loadErrorMessage)
                 ? "Geen stories pas by jou soektog nie."
                 : _loadErrorMessage));
-            ReplaceFeedItems(nextItems);
-            return;
+            return nextItems;
         }
 
         foreach (var section in filteredSections)
         {
             if (IsSpeellysteSection(section))
             {
-                nextItems.Add(LuisterFeedItem.PlaylistShowcase(section.Title, section.Playlists));
+                nextItems.Add(LuisterFeedItem.PlaylistShowcase(section));
                 continue;
             }
 
@@ -843,13 +968,23 @@ public sealed class LuisterPage : ContentPage
             }
         }
 
-        ReplaceFeedItems(nextItems);
+        return nextItems;
     }
 
     private void HandleResponsiveSizeChanged()
     {
         var width = MobileResponsiveLayout.ResolveWidth(Width);
-        MobileResponsiveLayout.ApplyCenteredContent(_floatingTopBarHost, width, 1040);
+        if (IsAndroid)
+        {
+            var phoneChromeWidth = Math.Max(280, width - 36);
+            _floatingTopBarHost.WidthRequest = phoneChromeWidth;
+            _floatingTopBarHost.MaximumWidthRequest = phoneChromeWidth;
+            _floatingTopBarHost.HorizontalOptions = LayoutOptions.Center;
+        }
+        else
+        {
+            MobileResponsiveLayout.ApplyCenteredContent(_floatingTopBarHost, width, 1040);
+        }
 
         if (_lastResponsiveWidth < 0)
         {
@@ -879,7 +1014,10 @@ public sealed class LuisterPage : ContentPage
 
     private View BuildFeedItemView()
     {
-        var container = new ContentView();
+        var container = new ContentView
+        {
+            Padding = new Thickness(PageHorizontalPadding, 0)
+        };
         container.BindingContextChanged += (_, _) =>
         {
             container.Content = container.BindingContext is LuisterFeedItem item
@@ -888,6 +1026,34 @@ public sealed class LuisterPage : ContentPage
         };
         return container;
     }
+
+    private static View BuildStoriesPageHeader() => new VerticalStackLayout
+    {
+        Spacing = 0,
+        Children =
+        {
+            // Keep the hero fully below the persistent top action row at first render.
+            new BoxView { HeightRequest = FloatingTopBarContentInset, Color = Colors.Transparent },
+            BuildStoriesHero()
+        }
+    };
+
+    private static View BuildStoriesHero() => new Grid
+    {
+        HeightRequest = StoriesHeroHeight,
+        BackgroundColor = Colors.Transparent,
+        Children =
+        {
+            new Image
+            {
+                Source = "stories_hero_overlay.png",
+                Aspect = Aspect.AspectFit,
+                HorizontalOptions = LayoutOptions.Fill,
+                VerticalOptions = LayoutOptions.Fill,
+                InputTransparent = true
+            }
+        }
+    };
 
     private View BuildFeedItemContent(LuisterFeedItem item) =>
         item.Kind switch
@@ -903,77 +1069,18 @@ public sealed class LuisterPage : ContentPage
             LuisterFeedItemKind.ContinueListening => BuildContinueListeningCard() ?? new BoxView { HeightRequest = 0 },
             LuisterFeedItemKind.Downloaded => BuildDownloadedSection(item.Downloads) ?? new BoxView { HeightRequest = 0 },
             LuisterFeedItemKind.Notice => BuildInlineNotice(item.Message ?? string.Empty),
+            LuisterFeedItemKind.PlaylistShowcase when item.Section is not null => BuildPlaylistShowcase(item.Section),
             LuisterFeedItemKind.PlaylistShowcase => BuildPlaylistShowcase(item.Title, item.Playlists),
             LuisterFeedItemKind.PlaylistSection when item.Playlist is not null => BuildPlaylistSection(item.Playlist),
             _ => new BoxView { HeightRequest = 0 }
         };
 
+    private View BuildPlaylistShowcase(MobileLuisterSection section) =>
+        BuildPlaylistShowcase(section.Title, section.Playlists);
+
     private void ReplaceFeedItems(IReadOnlyList<LuisterFeedItem> nextItems)
     {
         _feedView!.ItemsSource = nextItems.ToArray();
-    }
-
-    private void RenderStackPlaylistContent()
-    {
-        _playlistContent!.Children.Clear();
-        var continueListeningCard = BuildContinueListeningCard();
-        if (continueListeningCard is not null)
-        {
-            _playlistContent.Children.Add(continueListeningCard);
-        }
-
-        var downloadedStories = ResolveVisibleDownloadedStories();
-        var downloadedSection = downloadedStories.Count > 0
-            ? BuildDownloadedSection(downloadedStories)
-            : null;
-        if (downloadedSection is not null)
-        {
-            _playlistContent.Children.Add(downloadedSection);
-        }
-
-        var filteredSections = FilterSections(_sections, _searchEntry.Text).ToArray();
-        if (filteredSections.Length == 0)
-        {
-            if (downloadedSection is not null)
-            {
-                if (!string.IsNullOrWhiteSpace(_loadErrorMessage))
-                {
-                    _playlistContent.Children.Add(BuildInlineNotice("Jy is offline. Jou afgelaaide stories is beskikbaar."));
-                }
-
-                return;
-            }
-
-            _playlistContent.Children.Add(new Border
-            {
-                BackgroundColor = Colors.White,
-                StrokeThickness = 0,
-                StrokeShape = new RoundRectangle { CornerRadius = 18 },
-                Padding = 16,
-                Content = new Label
-                {
-                    Text = string.IsNullOrWhiteSpace(_loadErrorMessage)
-                        ? "Geen stories pas by jou soektog nie."
-                        : _loadErrorMessage,
-                    TextColor = Color.FromArgb("#5F5F5F")
-                }
-            });
-            return;
-        }
-
-        foreach (var section in filteredSections)
-        {
-            if (IsSpeellysteSection(section))
-            {
-                _playlistContent.Children.Add(BuildPlaylistShowcase(section.Title, section.Playlists));
-                continue;
-            }
-
-            if (section.Playlist is not null)
-            {
-                _playlistContent.Children.Add(BuildPlaylistSection(section.Playlist));
-            }
-        }
     }
 
     private ImageSource BuildLuisterImageSource(string? url, string? fallbackFile = null)
@@ -1053,15 +1160,16 @@ public sealed class LuisterPage : ContentPage
 
         try
         {
-            if (IsAndroid)
+            if (UsesCollectionViewFeed)
             {
                 _feedView!.ScrollTo(0, position: ScrollToPosition.Start, animate: false);
-                await Task.CompletedTask;
             }
             else
             {
-                await _scrollView!.ScrollToAsync(0, 0, false);
+                await (_activeScrollView ?? _scrollView)!.ScrollToAsync(0, 0, false);
             }
+
+            await Task.CompletedTask;
         }
         catch
         {
@@ -1070,64 +1178,16 @@ public sealed class LuisterPage : ContentPage
 
     private View BuildLuisterTopBar()
     {
-        var menuButton = BuildMenuCircleButton(Colors.White, Color.FromArgb("#123F3F"));
-        var menuTap = new TapGestureRecognizer();
-        menuTap.Tapped += (_, _) => ShowMenu();
-        menuButton.GestureRecognizers.Add(menuTap);
-
-        var searchButton = BuildHeaderCircleButton("⌕", 25, Color.FromArgb("#0B3534"), Color.FromArgb("#F4E9D1"));
-        var searchTap = new TapGestureRecognizer();
-        searchTap.Tapped += (_, _) =>
-        {
-            _isSearchVisible = !_isSearchVisible;
-            _ = ResetScrollPositionAsync();
-            RenderContent();
-            if (_isSearchVisible)
-            {
-                MainThread.BeginInvokeOnMainThread(() => _searchEntry.Focus());
-            }
-        };
-        searchButton.GestureRecognizers.Add(searchTap);
-
-        var notificationButton = BuildNotificationButton();
-        var notificationTap = new TapGestureRecognizer();
-        notificationTap.Tapped += async (_, _) => await ShowNotificationsAsync();
-        notificationButton.GestureRecognizers.Add(notificationTap);
-
-        var profileButton = BuildProfileButton();
-        var profileTap = new TapGestureRecognizer();
-        profileTap.Tapped += async (_, _) => await OpenProfileAsync();
-        profileButton.GestureRecognizers.Add(profileTap);
-
-        var rightActions = new HorizontalStackLayout
-        {
-            Spacing = 10,
-            HorizontalOptions = LayoutOptions.End,
-            Children =
-            {
-                searchButton,
-                notificationButton,
-                profileButton
-            }
-        };
-
-        var grid = new Grid
-        {
-            ColumnDefinitions =
-            {
-                new ColumnDefinition { Width = GridLength.Auto },
-                new ColumnDefinition { Width = GridLength.Star },
-                new ColumnDefinition { Width = GridLength.Auto }
-            },
-            Children =
-            {
-                menuButton,
-                rightActions
-            }
-        };
-
-        Grid.SetColumn(rightActions, 2);
-        return grid;
+        return MobileTopBar.Build(
+            this,
+            _apiClient,
+            _sessionState.Current,
+            title: "Schink Stories",
+            notificationAction: ShowNotificationsAsync,
+            notificationCount: _notificationPage?.UnreadCount ?? 0,
+            backgroundColor: MobileAndroidChromePalette.TopBarBackground,
+            showProfile: false,
+            brandLeadingInset: 4);
     }
 
     private View BuildSearchBox()
@@ -1483,6 +1543,7 @@ public sealed class LuisterPage : ContentPage
         _oortjiesPeekMascot.InputTransparent = true;
         _isOortjiesPeekVisible = false;
         _lastOortjiesPeekSide = null;
+        _activeOortjiesPeekPlacement = null;
         _recentOortjiesPeekTimes.Clear();
     }
 
@@ -1529,6 +1590,7 @@ public sealed class LuisterPage : ContentPage
         }
 
         var placement = BuildOortjiesPeekPlacement(ChooseOortjiesPeekSide());
+        _activeOortjiesPeekPlacement = placement;
         _recentOortjiesPeekTimes.Add(now);
         _oortjiesPeekMascot.CancelAnimations();
         _oortjiesPeekMascot.WidthRequest = OortjiesPeekWidth;
@@ -1573,7 +1635,12 @@ public sealed class LuisterPage : ContentPage
         _oortjiesHideTimer?.Stop();
         _isOortjiesPeekVisible = false;
         _oortjiesPeekMascot.InputTransparent = true;
-        var placement = BuildOortjiesPeekPlacement(_lastOortjiesPeekSide ?? OortjiesPeekSide.Left);
+        if (_activeOortjiesPeekPlacement is not { } placement)
+        {
+            _oortjiesPeekMascot.Opacity = 0;
+            _oortjiesPeekMascot.IsVisible = false;
+            return;
+        }
 
         MainThread.BeginInvokeOnMainThread(async () =>
         {
@@ -1596,6 +1663,7 @@ public sealed class LuisterPage : ContentPage
             }
 
             _oortjiesPeekMascot.IsVisible = false;
+            _activeOortjiesPeekPlacement = null;
             if (_isPageActive)
             {
                 ScheduleOortjiesPeek(RandomDelay(OortjiesNextDelayMin, OortjiesNextDelayMax));
@@ -1622,7 +1690,7 @@ public sealed class LuisterPage : ContentPage
     {
         var viewport = GetOortjiesViewportSize();
         var topClearance = FloatingTopBarContentInset + 8;
-        var bottomClearance = 88d;
+        var bottomClearance = BottomBarContentInset;
         var verticalCenter = RandomBetween(
             Math.Min(viewport.Height - bottomClearance, topClearance + OortjiesPeekHeight / 2),
             Math.Max(topClearance + OortjiesPeekHeight / 2, viewport.Height - bottomClearance));
@@ -1808,7 +1876,7 @@ public sealed class LuisterPage : ContentPage
         var modal = new ContentPage
         {
             Title = "Kennisgewings",
-            BackgroundColor = Color.FromArgb("#FFF7E8"),
+            BackgroundColor = LuisterModalBackgroundColor,
             Content = modalLayout
         };
 
@@ -2575,6 +2643,31 @@ public sealed class LuisterPage : ContentPage
     {
         var wideLayout = MobileResponsiveLayout.IsWide(Width);
         var pageWidth = MobileResponsiveLayout.ResolveWidth(Width);
+        var image = new Image
+        {
+            Source = BuildLuisterImageSource(
+                PageHelpers.ResolveStoryCardImageSource(story, _apiClient)),
+            Aspect = Aspect.AspectFill,
+            InputTransparent = false,
+            ZIndex = 0
+        };
+        var title = new Label
+        {
+            Text = string.IsNullOrWhiteSpace(story.Title) ? playlist.Title : story.Title,
+            FontSize = 17,
+            FontAttributes = FontAttributes.Bold,
+            TextColor = Color.FromArgb("#1B2231"),
+            HorizontalTextAlignment = TextAlignment.Center,
+            MaxLines = 2,
+            LineBreakMode = LineBreakMode.TailTruncation,
+            LineHeight = 1.2
+        };
+        var openStoryTap = new TapGestureRecognizer();
+        openStoryTap.Tapped += async (_, _) => await OpenPlaylistStoryAsync(story, playlist);
+        image.GestureRecognizers.Add(openStoryTap);
+        var openStoryFromTitleTap = new TapGestureRecognizer();
+        openStoryFromTitleTap.Tapped += async (_, _) => await OpenPlaylistStoryAsync(story, playlist);
+        title.GestureRecognizers.Add(openStoryFromTitleTap);
         var cover = new Border
         {
             Stroke = Color.FromArgb("#AA0F766E"),
@@ -2588,12 +2681,7 @@ public sealed class LuisterPage : ContentPage
             {
                 Children =
                 {
-                    new Image
-                    {
-                        Source = BuildLuisterImageSource(
-                            PageHelpers.ResolveStoryCardImageSource(story, _apiClient)),
-                        Aspect = Aspect.AspectFill
-                    },
+                    image,
                     BuildFavoriteOverlay(story),
                     BuildCoverPlayBadge("▶", 52, 22, 3)
                 }
@@ -2625,25 +2713,10 @@ public sealed class LuisterPage : ContentPage
             Children =
             {
                 cover,
-                new Label
-                {
-                    Text = string.IsNullOrWhiteSpace(story.Title) ? playlist.Title : story.Title,
-                    FontSize = 17,
-                    FontAttributes = FontAttributes.Bold,
-                    TextColor = Color.FromArgb("#1B2231"),
-                    InputTransparent = true,
-                    HorizontalTextAlignment = TextAlignment.Center,
-                    MaxLines = 2,
-                    LineBreakMode = LineBreakMode.TailTruncation,
-                    LineHeight = 1.2
-                }
+                title
             }
         };
         MobileResponsiveLayout.ApplyCenteredContent(showcase, Width, wideLayout ? 720 : 1100);
-
-        var tap = new TapGestureRecognizer();
-        tap.Tapped += async (_, _) => await OpenPlaylistStoryAsync(story, playlist);
-        showcase.GestureRecognizers.Add(tap);
         return showcase;
     }
 
@@ -2762,18 +2835,37 @@ public sealed class LuisterPage : ContentPage
         var isRanked = rank is not null;
         var cardWidth = GetStoryCarouselCardWidth();
         var coverHeight = GetStoryCarouselCoverHeight();
+        var artwork = new Image
+        {
+            Source = BuildLuisterImageSource(
+                PageHelpers.ResolveStoryCardImageSource(story, _apiClient)),
+            Aspect = Aspect.AspectFill,
+            HeightRequest = coverHeight,
+            InputTransparent = false,
+            ZIndex = 0
+        };
+        var openStoryTap = new TapGestureRecognizer();
+        openStoryTap.Tapped += async (_, _) => await OpenPlaylistStoryAsync(story, playlist);
+        artwork.GestureRecognizers.Add(openStoryTap);
+        var title = new Label
+        {
+            Text = story.Title,
+            FontSize = 16,
+            TextColor = Color.FromArgb("#1B2231"),
+            InputTransparent = false,
+            MaxLines = 2,
+            LineBreakMode = LineBreakMode.TailTruncation,
+            LineHeight = 1.16
+        };
+        var openStoryFromTitleTap = new TapGestureRecognizer();
+        openStoryFromTitleTap.Tapped += async (_, _) => await OpenPlaylistStoryAsync(story, playlist);
+        title.GestureRecognizers.Add(openStoryFromTitleTap);
         var coverGrid = new Grid
         {
             HeightRequest = coverHeight,
             Children =
             {
-                new Image
-                {
-                    Source = BuildLuisterImageSource(
-                        PageHelpers.ResolveStoryCardImageSource(story, _apiClient)),
-                    Aspect = Aspect.AspectFill,
-                    HeightRequest = coverHeight
-                },
+                artwork,
                 BuildFavoriteOverlay(story),
                 BuildCoverPlayBadge("▶", 38, 17, 2)
             }
@@ -2798,16 +2890,7 @@ public sealed class LuisterPage : ContentPage
                     Children =
                     {
                         cover,
-                        new Label
-                        {
-                            Text = story.Title,
-                            FontSize = 16,
-                            TextColor = Color.FromArgb("#1B2231"),
-                            InputTransparent = true,
-                            MaxLines = 2,
-                            LineBreakMode = LineBreakMode.TailTruncation,
-                            LineHeight = 1.16
-                        }
+                        title
                     }
                 }
             }
@@ -2830,10 +2913,6 @@ public sealed class LuisterPage : ContentPage
         {
             card.WidthRequest = cardWidth;
         }
-
-        var tap = new TapGestureRecognizer();
-        tap.Tapped += async (_, _) => await OpenPlaylistStoryAsync(story, playlist);
-        card.GestureRecognizers.Add(tap);
         return card;
     }
 
@@ -2855,44 +2934,23 @@ public sealed class LuisterPage : ContentPage
 
     private View BuildFavoriteOverlay(MobileStorySummary story)
     {
-        var isFavoriteRequestInFlight = IsFavoriteRequestInFlight(story);
-        var heart = new Label
-        {
-            Text = story.IsFavorite ? "♥" : "♡",
-            TextColor = story.IsFavorite ? Color.FromArgb("#E11D48") : Color.FromArgb("#8A938D"),
-            FontSize = 25,
-            FontAttributes = FontAttributes.Bold,
-            Shadow = BuildScrollContentShadow(Brush.Black, new Point(0, 2), 7, 0.88f),
-            HorizontalTextAlignment = TextAlignment.Center,
-            VerticalTextAlignment = TextAlignment.Center
-        };
-
-        var indicator = new ActivityIndicator
-        {
-            IsRunning = true,
-            Color = story.IsFavorite ? Color.FromArgb("#E11D48") : Color.FromArgb("#8A938D"),
-            WidthRequest = 24,
-            HeightRequest = 24,
-            HorizontalOptions = LayoutOptions.Center,
-            VerticalOptions = LayoutOptions.Center
-        };
-
-        var target = new Grid
-        {
-            WidthRequest = 44,
-            HeightRequest = 44,
-            Margin = new Thickness(0, 6, 6, 0),
-            HorizontalOptions = LayoutOptions.End,
-            VerticalOptions = LayoutOptions.Start,
-            Children =
-            {
-                isFavoriteRequestInFlight ? indicator : heart
-            }
-        };
-
-        var tap = new TapGestureRecognizer();
-        tap.Tapped += async (_, _) => await ToggleFavoriteAsync(story);
-        target.GestureRecognizers.Add(tap);
+        var target = MobileFavoriteHeart.CreateButton(story.IsFavorite, 25);
+        target.Shadow = BuildScrollContentShadow(
+            Brush.Black,
+            new Point(0, 2),
+            7,
+            story.IsFavorite ? 0.28f : 0.95f);
+        target.WidthRequest = 44;
+        target.HeightRequest = 44;
+        target.Margin = new Thickness(0, 6, 6, 0);
+        target.HorizontalOptions = LayoutOptions.End;
+        target.VerticalOptions = LayoutOptions.Start;
+        target.ZIndex = 20;
+        target.AutomationId = $"favorite-{story.Slug}";
+        SemanticProperties.SetDescription(
+            target,
+            story.IsFavorite ? "Verwyder gunsteling" : "Voeg by gunsteling");
+        target.Clicked += async (_, _) => await ToggleFavoriteAsync(story);
         return target;
     }
 
@@ -3739,15 +3797,19 @@ public sealed class LuisterPage : ContentPage
             return;
         }
 
+        var previousIsFavorite = story.IsFavorite;
+        UpdateFavoriteState(story.Slug, !previousIsFavorite);
         RenderPlaylistContent();
         try
         {
-            var isFavorite = await _apiClient.SetFavoriteAsync(story.Slug, story.Source, !story.IsFavorite);
+            var isFavorite = await _apiClient.SetFavoriteAsync(story.Slug, story.Source, !previousIsFavorite);
             UpdateFavoriteState(story.Slug, isFavorite);
             RenderPlaylistContent();
         }
         catch (Exception ex)
         {
+            UpdateFavoriteState(story.Slug, previousIsFavorite);
+            RenderPlaylistContent();
             await DisplayAlertAsync("Kon nie stoor nie", ex.Message, "Reg so");
         }
         finally
@@ -3756,9 +3818,6 @@ public sealed class LuisterPage : ContentPage
             RenderPlaylistContent();
         }
     }
-
-    private bool IsFavoriteRequestInFlight(MobileStorySummary story) =>
-        _favoriteRequestsInFlight.Contains(BuildFavoriteRequestKey(story));
 
     private static string BuildFavoriteRequestKey(MobileStorySummary story) =>
         $"{story.Source}:{story.Slug}";
@@ -3871,7 +3930,8 @@ public sealed class LuisterPage : ContentPage
         string Title = "",
         IReadOnlyList<MobilePlaylist>? PlaylistsValue = null,
         MobilePlaylist? Playlist = null,
-        IReadOnlyList<OfflineStoryDownload>? DownloadsValue = null)
+        IReadOnlyList<OfflineStoryDownload>? DownloadsValue = null,
+        MobileLuisterSection? Section = null)
     {
         public IReadOnlyList<MobilePlaylist> Playlists => PlaylistsValue ?? Array.Empty<MobilePlaylist>();
 
@@ -3890,8 +3950,12 @@ public sealed class LuisterPage : ContentPage
 
         public static LuisterFeedItem Notice(string message) => new(LuisterFeedItemKind.Notice, Message: message);
 
-        public static LuisterFeedItem PlaylistShowcase(string title, IReadOnlyList<MobilePlaylist> playlists) =>
-            new(LuisterFeedItemKind.PlaylistShowcase, Title: title, PlaylistsValue: playlists);
+        public static LuisterFeedItem PlaylistShowcase(MobileLuisterSection section) =>
+            new(
+                LuisterFeedItemKind.PlaylistShowcase,
+                Title: section.Title,
+                PlaylistsValue: section.Playlists,
+                Section: section);
 
         public static LuisterFeedItem PlaylistSection(MobilePlaylist playlist) =>
             new(LuisterFeedItemKind.PlaylistSection, Playlist: playlist);

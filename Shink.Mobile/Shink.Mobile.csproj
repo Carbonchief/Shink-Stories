@@ -13,7 +13,7 @@
     <ApplicationTitle>Schink Stories</ApplicationTitle>
     <ApplicationId>com.schink.stories.mobile</ApplicationId>
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-    <ApplicationVersion>12</ApplicationVersion>
+    <ApplicationVersion>14</ApplicationVersion>
 
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">21.0</SupportedOSPlatformVersion>
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">15.0</SupportedOSPlatformVersion>
@@ -67,6 +67,16 @@
 
   <ItemGroup>
     <MauiIcon Include="Resources/AppIcon/schink_appicon.png" />
+    <MauiFont Include="../Shink/wwwroot/lib/fontawesome/webfonts/fa-regular-400.ttf"
+              Alias="FontAwesomeRegular" />
+    <MauiFont Include="../Shink/wwwroot/lib/fontawesome/webfonts/fa-solid-900.ttf"
+              Alias="FontAwesomeSolid" />
+    <MauiFont Include="../Shink/wwwroot/fonts/poppins/Poppins-Regular.ttf"
+              Alias="Poppins" />
+    <MauiFont Include="../Shink/wwwroot/fonts/poppins/Poppins-SemiBold.ttf"
+              Alias="PoppinsSemiBold" />
+    <MauiFont Include="../Shink/wwwroot/fonts/poppins/Poppins-Bold.ttf"
+              Alias="PoppinsBold" />
     <MauiSplashScreen Include="Resources/Splash/schink_stories_logo_white.png"
                       Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'"
                       Color="#13AFC1"

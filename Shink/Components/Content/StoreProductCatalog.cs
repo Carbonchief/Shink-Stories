@@ -12,7 +12,8 @@ public sealed record StoreProduct(
     string ThemeClass,
     decimal UnitPriceZar,
     int SortOrder = 0,
-    bool IsEnabled = true)
+    bool IsEnabled = true,
+    bool WaivesDeliveryFee = false)
 {
     public string UnitPriceDisplay => UnitPriceZar.ToString("0.00", CultureInfo.InvariantCulture);
 }

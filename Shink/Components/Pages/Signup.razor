@@ -293,6 +293,9 @@
     [SupplyParameterFromQuery(Name = "source")]
     public string? Source { get; set; }
 
+    [SupplyParameterFromQuery(Name = "ref")]
+    public string? ReferralCode { get; set; }
+
     private bool IsSubmitting { get; set; }
     private bool SignUpSucceeded { get; set; }
     private bool ShowAccountCreatedPopup { get; set; }
@@ -366,7 +369,8 @@
                 Password: SignUpForm.Password,
                 SelectedTierCode: SelectedPlan?.TierCode,
                 DiscountCode: SignUpForm.DiscountCode.Trim(),
-                MarketingConsent: !IsSchoolOptionsSignupFlow && SelectedPlan is null && SignUpForm.MarketingConsent);
+                MarketingConsent: !IsSchoolOptionsSignupFlow && SelectedPlan is null && SignUpForm.MarketingConsent,
+                ReferralCode: ReferralCode);
 
             var response = await authModule.InvokeAsync<AuthBrowserResponse>("postAuthJson", "/api/auth/signup", payload);
             if (response.Ok)
@@ -951,7 +955,8 @@
         string Password,
         string? SelectedTierCode,
         string? DiscountCode,
-        bool MarketingConsent);
+        bool MarketingConsent,
+        string? ReferralCode);
 
     private sealed record SignupDiscountPreviewRequest(
         string? DiscountCode,

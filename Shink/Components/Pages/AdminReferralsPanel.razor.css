@@ -1,0 +1,164 @@
+.admin-referrals-panel {
+    display: grid;
+    gap: 1.25rem;
+}
+
+.admin-referrals-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .85rem;
+}
+
+.admin-referrals-summary article,
+.admin-referrals-create-card,
+.admin-referrals-card {
+    border: 1px solid rgba(37, 81, 89, .16);
+    border-radius: 16px;
+    background: #fff;
+}
+
+.admin-referrals-summary article {
+    display: grid;
+    gap: .2rem;
+    padding: 1rem 1.15rem;
+}
+
+.admin-referrals-summary span,
+.admin-referrals-meta dt,
+.admin-referrals-link-field > span {
+    color: #587076;
+    font-size: .82rem;
+    font-weight: 700;
+}
+
+.admin-referrals-summary strong {
+    color: #24646d;
+    font-size: 1.8rem;
+}
+
+.admin-referrals-create-card {
+    display: grid;
+    gap: 1rem;
+    padding: 1.15rem;
+}
+
+.admin-referrals-create-copy h3,
+.admin-referrals-card h3 {
+    margin: 0;
+    color: #24464d;
+}
+
+.admin-referrals-create-copy p,
+.admin-referrals-card header p,
+.admin-referrals-empty {
+    margin: .35rem 0 0;
+    color: #587076;
+}
+
+.admin-referrals-form-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+    align-items: end;
+    gap: .85rem;
+}
+
+.admin-referrals-field,
+.admin-referrals-link-field {
+    display: grid;
+    gap: .35rem;
+    color: #24464d;
+    font-weight: 700;
+}
+
+.admin-referrals-field input,
+.admin-referrals-link-field input {
+    width: 100%;
+    min-height: 42px;
+    border: 1px solid rgba(37, 81, 89, .25);
+    border-radius: 9px;
+    padding: .55rem .7rem;
+    color: #24464d;
+    background: #fff;
+}
+
+.admin-referrals-field .validation-message {
+    color: #a13d35;
+    font-size: .8rem;
+}
+
+.admin-referrals-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+    gap: 1rem;
+}
+
+.admin-referrals-card {
+    display: grid;
+    gap: 1rem;
+    padding: 1.15rem;
+}
+
+.admin-referrals-card header {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.admin-referrals-signup-count {
+    display: grid;
+    place-items: center;
+    min-width: 72px;
+    min-height: 64px;
+    border-radius: 12px;
+    background: #eaf5f2;
+    color: #24646d;
+}
+
+.admin-referrals-signup-count strong {
+    font-size: 1.35rem;
+    line-height: 1;
+}
+
+.admin-referrals-signup-count small {
+    font-size: .72rem;
+}
+
+.admin-referrals-meta {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: .65rem;
+    margin: 0;
+}
+
+.admin-referrals-meta div {
+    display: grid;
+    gap: .2rem;
+}
+
+.admin-referrals-meta dd {
+    margin: 0;
+    color: #24464d;
+    font-size: .88rem;
+    overflow-wrap: anywhere;
+}
+
+.admin-referrals-meta code {
+    color: #24646d;
+    font-weight: 800;
+}
+
+.admin-referrals-link-field input {
+    color: #426167;
+    font-size: .83rem;
+}
+
+@media (max-width: 760px) {
+    .admin-referrals-form-grid,
+    .admin-referrals-meta {
+        grid-template-columns: 1fr;
+    }
+
+    .admin-referrals-form-grid .admin-action-btn {
+        width: 100%;
+    }
+}

@@ -128,7 +128,7 @@ public class CharacterMatchGameTests
         StringAssert.Contains(gamePage, "AnimateBoardOutAsync()");
         StringAssert.Contains(gamePage, "AnimateBoardBuildAsync()");
         StringAssert.Contains(gamePage, "AnimateTileIntoBoardAsync");
-        StringAssert.Contains(gamePage, "_apiClient.BuildCachedImageSource(character.ImageUrl");
+        StringAssert.Contains(gamePage, "_apiClient.BuildCachedImageSource(GetMatchImageUrl(character)!");
         StringAssert.Contains(gamePage, "Text = \"KARAKTER-PARE\"");
         StringAssert.Contains(luisterPage, "\"Karakter-pare\",");
         StringAssert.Contains(luisterPage, "GoToAsync(nameof(KarakterPareGamePage), animate: true)");
@@ -159,6 +159,34 @@ public class CharacterMatchGameTests
         StringAssert.Contains(gamePage, "await StartNewGameAsync(animateBoard: true);");
         Assert.IsFalse(gamePage.Contains("StartNewGameAsync(animateBoard: false)", StringComparison.Ordinal));
         StringAssert.Contains(gamePage, "public int PairCount => Columns * Rows / 2;");
+    }
+
+    [TestMethod]
+    public void MatchGameBoardUsesTheFullAvailableWidth()
+    {
+        var gamePage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KarakterPareGamePage.cs"));
+
+        StringAssert.Contains(gamePage, "_board.WidthRequest = -1;");
+        StringAssert.Contains(gamePage, "_board.HorizontalOptions = LayoutOptions.Fill;");
+        Assert.IsFalse(gamePage.Contains("Math.Min(760, Math.Max(320, availableWidth - 48))", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void MatchGameUsesRegularNonMysteryCharacterImagesWithoutUnlockRequirement()
+    {
+        var gamePage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KarakterPareGamePage.cs"));
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+        var models = File.ReadAllText(GetRepoPath("Shink.Mobile", "Models", "MobileApiModels.cs"));
+
+        StringAssert.Contains(gamePage, ".Where(IsUsableMatchCharacter)");
+        StringAssert.Contains(gamePage, "character.MatchImageUrl");
+        StringAssert.Contains(gamePage, "GetMatchImageUrl(character)");
+        StringAssert.Contains(gamePage, "path.Contains(\"mystery\", StringComparison.OrdinalIgnoreCase)");
+        Assert.IsFalse(gamePage.Contains("character.IsUnlocked &&", StringComparison.Ordinal));
+        Assert.IsFalse(gamePage.Contains("character.MysteryImageUrl", StringComparison.Ordinal));
+        Assert.IsFalse(gamePage.Contains("CharacterMysteryImageResolver", StringComparison.Ordinal));
+        StringAssert.Contains(program, "MatchImageUrl: ResolveMobileCharacterImageUrl(httpContext, character.ImagePath, character.UpdatedAt)");
+        StringAssert.Contains(models, "string? MatchImageUrl,");
     }
 
     private static CharacterMatchGame CreateGame(

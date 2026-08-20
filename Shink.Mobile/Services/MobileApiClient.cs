@@ -80,6 +80,32 @@ public sealed class SessionState
         Changed?.Invoke(session);
     }
 
+    public void SetFavoriteStory(string slug, bool isFavorite)
+    {
+        if (string.IsNullOrWhiteSpace(slug) || !Current.IsSignedIn)
+        {
+            return;
+        }
+
+        var currentFavoriteSlugs = Current.FavoriteStorySlugs ?? Array.Empty<string>();
+        var wasFavorite = currentFavoriteSlugs.Any(
+            existingSlug => string.Equals(existingSlug, slug, StringComparison.OrdinalIgnoreCase));
+        if (wasFavorite == isFavorite)
+        {
+            return;
+        }
+
+        var favoriteSlugs = currentFavoriteSlugs
+            .Where(existingSlug => !string.Equals(existingSlug, slug, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        if (isFavorite)
+        {
+            favoriteSlugs.Add(slug);
+        }
+
+        Update(Current with { FavoriteStorySlugs = favoriteSlugs });
+    }
+
     public async Task HydrateSensitiveCacheAsync()
     {
         var startingVersion = Volatile.Read(ref _updateVersion);
@@ -257,9 +283,9 @@ public sealed record MobileAudioDownloadProgress(long BytesReceived, long? Total
 
 public sealed class MobileApiClient
 {
-    // Keep the mobile callback on the registered app-owned scheme in every
-    // configuration. The server uses HTTPS only for the OAuth provider
-    // callback, then returns the short-lived mobile token to this scheme.
+    // Keep WebAuthenticator on the registered app-owned scheme in every
+    // configuration. The server's HTTPS callback bridge returns the short-lived
+    // mobile token to this scheme, preventing release builds from expecting HTTPS.
     public const string GoogleCallbackUrl = "schinkstories://auth/google";
     private const string GoogleStartPath = "/api/mobile/auth/google/start?callback=custom-scheme";
 
@@ -776,14 +802,17 @@ public sealed class MobileApiClient
             $"/api/mobile/stories/{Uri.EscapeDataString(slug)}/favorite",
             new { isFavorite, source },
             cancellationToken);
-        await GetSessionAsync(cancellationToken);
+        var resolvedIsFavorite = isFavorite
+            ? result?.IsFavorite ?? false
+            : false;
+        _sessionState.SetFavoriteStory(slug, resolvedIsFavorite);
         _analytics.TrackEvent("mobile_story_favorite_changed", new Dictionary<string, object>
         {
             ["story_slug"] = slug,
             ["story_source"] = source,
-            ["is_favorite"] = result?.IsFavorite ?? isFavorite
+            ["is_favorite"] = resolvedIsFavorite
         });
-        return result?.IsFavorite ?? false;
+        return resolvedIsFavorite;
     }
 
     public async Task TrackStoryViewAsync(string slug, string source, CancellationToken cancellationToken = default)

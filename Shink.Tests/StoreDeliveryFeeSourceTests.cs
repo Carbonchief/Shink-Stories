@@ -7,10 +7,13 @@ namespace Shink.Tests;
 public class StoreDeliveryFeeSourceTests
 {
     [TestMethod]
-    public void WinkelCheckoutAddsPudoDeliveryFeeBeforePaystackAmount()
+    public void WinkelCheckoutAddsPudoDeliveryFeeUnlessAnySelectedProductOverridesIt()
     {
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
-        var migration = File.ReadAllText(GetRepoPath("Shink", "Database", "migrations", "20260429_store_orders_allow_delivery_fee_total.sql"));
+        var storeProductMigration = File.ReadAllText(GetRepoPath("Shink", "Database", "migrations", "20260820_store_product_delivery_fee_override.sql"));
+        var storeProductCatalog = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseStoreProductCatalogService.cs"));
+        var adminStorePanel = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "AdminStorePanel.razor"));
+        var storeOrderService = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseStoreOrderService.cs"));
         var checkoutStart = program.IndexOf("static bool TryBuildStoreCheckoutDraft", StringComparison.Ordinal);
         Assert.IsGreaterThanOrEqualTo(0, checkoutStart, "The Winkel checkout draft builder must exist.");
 
@@ -20,10 +23,19 @@ public class StoreDeliveryFeeSourceTests
         var checkoutBlock = program[checkoutStart..checkoutEnd];
         StringAssert.Contains(program, "const string StoreDeliveryProductSlug = \"pudo-locker-delivery\";");
         StringAssert.Contains(program, "const decimal StoreDeliveryFeeZar = 80m;");
-        StringAssert.Contains(checkoutBlock, "var checkoutItems = AddStoreDeliveryLineItem(items);");
+        StringAssert.Contains(checkoutBlock, "deliveryFeeWaived |= product.WaivesDeliveryFee;");
+        StringAssert.Contains(checkoutBlock, "var checkoutItems = AddStoreDeliveryLineItem(items, deliveryFeeWaived);");
         StringAssert.Contains(checkoutBlock, "var totalPriceZar = checkoutItems.Sum(item => item.LineTotalZar);");
         StringAssert.Contains(checkoutBlock, "Items: checkoutItems");
-        StringAssert.Contains(migration, "drop constraint if exists store_orders_check");
+        StringAssert.Contains(checkoutBlock, "DeliveryFeeWaived: deliveryFeeWaived");
+        StringAssert.Contains(program, "deliveryFeeWaived ||");
+        StringAssert.Contains(program, "order.DeliveryFeeWaived");
+        StringAssert.Contains(storeProductMigration, "waives_delivery_fee boolean not null default false");
+        StringAssert.Contains(storeProductMigration, "delivery_fee_waived boolean not null default false");
+        StringAssert.Contains(storeProductCatalog, "waives_delivery_fee");
+        StringAssert.Contains(adminStorePanel, "Afleweringsfooi oorskryf");
+        StringAssert.Contains(adminStorePanel, "Delivery fee override");
+        StringAssert.Contains(storeOrderService, "delivery_fee_waived = draft.DeliveryFeeWaived");
     }
 
     [TestMethod]

@@ -82,13 +82,13 @@ public sealed class AccountPage : ContentPage
                 {
                     Source = "schink_background.jpeg",
                     Aspect = Aspect.AspectFill,
-                    Opacity = 0.92,
+                    Opacity = 0.48,
                     InputTransparent = true
                 },
                 new BoxView
                 {
                     Color = Color.FromArgb("#15B5BC"),
-                    Opacity = 0.16,
+                    Opacity = 0.48,
                     InputTransparent = true
                 },
                 new MauiScrollView
@@ -264,7 +264,7 @@ public sealed class AccountPage : ContentPage
         };
         _authCharacterImage = new Image
         {
-            Source = "oortjies_02.png",
+            Source = "schink_login_mouse.png",
             HeightRequest = metrics.CharacterHeight,
             Aspect = Aspect.AspectFit,
             Margin = metrics.CharacterMargin
@@ -314,7 +314,7 @@ public sealed class AccountPage : ContentPage
                 _authPanelContentHost
             }
         };
-        MobileResponsiveLayout.ApplyCenteredContent(_authPanelFrame, Width, 720);
+        ApplyAuthPanelFrameLayout();
         return _authPanelFrame;
     }
 
@@ -746,7 +746,7 @@ public sealed class AccountPage : ContentPage
             _authPanelFrame.Margin = _authPanelMode == AuthPanelMode.Landing
                 ? metrics.PanelMargin
                 : new Thickness(18, 0, 18, 18);
-            MobileResponsiveLayout.ApplyCenteredContent(_authPanelFrame, Width, 720);
+            ApplyAuthPanelFrameLayout();
         }
 
         if (_authPanelContentHost is not null)
@@ -815,6 +815,27 @@ public sealed class AccountPage : ContentPage
         UpdateAuthPanelChrome();
     }
 
+    private void ApplyAuthPanelFrameLayout()
+    {
+        if (_authPanelFrame is null)
+        {
+            return;
+        }
+
+        MobileResponsiveLayout.ApplyCenteredContent(_authPanelFrame, Width, 720);
+
+        if (_authPanelMode != AuthPanelMode.Landing || MobileResponsiveLayout.IsWide(Width))
+        {
+            return;
+        }
+
+        var fullLandingWidth = Math.Max(320, MobileResponsiveLayout.ResolveWidth(Width) - 36);
+        var landingControlWidth = Math.Clamp(fullLandingWidth * 0.7, 240, 360);
+        _authPanelFrame.WidthRequest = landingControlWidth;
+        _authPanelFrame.MaximumWidthRequest = landingControlWidth;
+        _authPanelFrame.HorizontalOptions = LayoutOptions.Center;
+    }
+
     private LandingLayoutMetrics GetLandingLayoutMetrics()
     {
         var height = Height > 0
@@ -828,8 +849,8 @@ public sealed class AccountPage : ContentPage
             HeroSpacing: tight ? -3 : -2,
             LogoHeight: Math.Clamp(height * (tight ? 0.17 : 0.2), 124, 194),
             LogoMargin: new Thickness(-24, tight ? -16 : -18, -24, tight ? 6 : 10),
-            TitleFontSize: Math.Clamp(height * (tight ? 0.031 : 0.034), 21, 31),
-            TitleSublineFontSize: Math.Clamp(height * (tight ? 0.033 : 0.037), 22, 34),
+            TitleFontSize: Math.Clamp(height * (tight ? 0.0217 : 0.0238), 15, 22),
+            TitleSublineFontSize: Math.Clamp(height * (tight ? 0.0231 : 0.0259), 16, 24),
             TitleMargin: new Thickness(0, tight ? 2 : 6, 0, 0),
             IntroFontSize: Math.Clamp(height * 0.019, 14, 18),
             IntroMargin: new Thickness(0, tight ? 7 : 9, 0, 0),
@@ -840,9 +861,9 @@ public sealed class AccountPage : ContentPage
             PanelMargin: new Thickness(tight ? 50 : 54, tight ? 18 : compact ? 24 : 30, tight ? 50 : 54, tight ? 18 : 28),
             PanelPadding: new Thickness(0),
             PanelContentSpacing: tight ? 9 : 11,
-            ModeButtonHeight: tight ? 58 : compact ? 62 : 68,
-            ModeButtonFontSize: tight ? 21 : compact ? 23 : 25,
-            ModeButtonPadding: new Thickness(tight ? 14 : 18, tight ? 8 : 10),
+            ModeButtonHeight: tight ? 44 : compact ? 44 : 48,
+            ModeButtonFontSize: tight ? 15 : compact ? 16 : 18,
+            ModeButtonPadding: new Thickness(tight ? 10 : 13, tight ? 6 : 7),
             ModeIconSize: tight ? 38 : compact ? 42 : 46,
             ModeIconColumnWidth: tight ? 42 : compact ? 46 : 48,
             SeparatorMargin: new Thickness(16, tight ? 3 : compact ? 5 : 8),

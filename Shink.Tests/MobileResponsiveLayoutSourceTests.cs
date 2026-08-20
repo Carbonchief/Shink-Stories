@@ -7,7 +7,7 @@ namespace Shink.Tests;
 public sealed class MobileResponsiveLayoutSourceTests
 {
     [TestMethod]
-    public void PhoneLayoutsRestoreAnUnboundedMaximumWidth()
+    public void PhoneLayoutsUseFiniteMaximumWidth()
     {
         var responsiveLayout = File.ReadAllText(GetRepoPath(
             "Shink.Mobile",
@@ -16,10 +16,10 @@ public sealed class MobileResponsiveLayoutSourceTests
 
         StringAssert.Contains(
             responsiveLayout,
-            "view.MaximumWidthRequest = double.PositiveInfinity;");
+            "var phoneContentWidth = Math.Max(320, availableWidth - 36);");
         Assert.IsFalse(
             responsiveLayout.Contains(
-                "view.MaximumWidthRequest = -1;",
+                "view.MaximumWidthRequest = double.PositiveInfinity;",
                 StringComparison.Ordinal));
     }
 
@@ -40,6 +40,19 @@ public sealed class MobileResponsiveLayoutSourceTests
         StringAssert.Contains(responsiveLayout, "ResolveStoryCardArtworkHeight");
         StringAssert.Contains(pageHelpers, "var columns = MobileResponsiveLayout.ResolveStoryGridColumns(width);");
         StringAssert.Contains(pageHelpers, "artworkHeight: artworkHeight");
+    }
+
+    [TestMethod]
+    public void CharacterGalleryUsesThreeColumnsOnPhonesAndScalesItsArtwork()
+    {
+        var responsiveLayout = File.ReadAllText(GetRepoPath(
+            "Shink.Mobile",
+            "Pages",
+            "MobileResponsiveLayout.cs"));
+
+        StringAssert.Contains(responsiveLayout, "public static int ResolveCharacterGridSpan(double width)");
+        StringAssert.Contains(responsiveLayout, "_ => 3");
+        StringAssert.Contains(responsiveLayout, "Math.Clamp(cardWidth * 0.86, 88");
     }
 
     private static string GetRepoPath(params string[] segments)

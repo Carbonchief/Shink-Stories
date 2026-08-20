@@ -58,8 +58,7 @@ internal static class MobileResponsiveLayout
         {
             >= 1160 => 5,
             >= 820 => 4,
-            >= 560 => 3,
-            _ => 2
+            _ => 3
         };
     }
 
@@ -67,7 +66,7 @@ internal static class MobileResponsiveLayout
     {
         var availableWidth = Math.Max(320, ResolveWidth(width) - 20);
         var cardWidth = (availableWidth - (Math.Max(1, span) - 1) * 10) / Math.Max(1, span);
-        return Math.Clamp(cardWidth - 20, 132, IsWide(availableWidth) ? 220 : 190);
+        return Math.Clamp(cardWidth * 0.86, 88, IsWide(availableWidth) ? 196 : 128);
     }
 
     public static void ApplyCenteredContent(View view, double width, double maximumWidth)
@@ -80,7 +79,12 @@ internal static class MobileResponsiveLayout
             return;
         }
 
-        view.MaximumWidthRequest = double.PositiveInfinity;
+        // Keep the phone layout within the page gutters without passing an
+        // infinite measure through native iOS stacks. iOS 26.6 can propagate
+        // infinity as NaN, which collapses otherwise valid playlist sections.
+        var phoneContentWidth = Math.Max(320, availableWidth - 36);
+        view.WidthRequest = phoneContentWidth;
+        view.MaximumWidthRequest = phoneContentWidth;
         view.HorizontalOptions = LayoutOptions.Fill;
     }
 

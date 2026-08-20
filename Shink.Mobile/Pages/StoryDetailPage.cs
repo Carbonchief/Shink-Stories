@@ -1094,49 +1094,25 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
     private View BuildFavoriteOverlay(MobileStoryDetailResponse detail)
     {
-        var heart = new Label
+        var target = MobileFavoriteHeart.CreateButton(detail.Story.IsFavorite, 25);
+        target.Shadow = new Shadow
         {
-            Text = detail.Story.IsFavorite ? "♥" : "♡",
-            TextColor = detail.Story.IsFavorite ? Color.FromArgb("#FFE6EF") : Colors.White,
-            FontSize = 25,
-            FontAttributes = FontAttributes.Bold,
-            Shadow = new Shadow
-            {
-                Brush = Brush.Black,
-                Offset = new Point(0, 2),
-                Radius = 7,
-                Opacity = 0.88f
-            },
-            HorizontalTextAlignment = TextAlignment.Center,
-            VerticalTextAlignment = TextAlignment.Center
+            Brush = Brush.Black,
+            Offset = new Point(0, 2),
+            Radius = 7,
+            Opacity = detail.Story.IsFavorite ? 0.28f : 0.95f
         };
-
-        var indicator = new ActivityIndicator
-        {
-            IsRunning = true,
-            Color = detail.Story.IsFavorite ? Color.FromArgb("#FFE6EF") : Colors.White,
-            WidthRequest = 24,
-            HeightRequest = 24,
-            HorizontalOptions = LayoutOptions.Center,
-            VerticalOptions = LayoutOptions.Center
-        };
-
-        var target = new Grid
-        {
-            WidthRequest = 44,
-            HeightRequest = 44,
-            Margin = new Thickness(0, 6, 6, 0),
-            HorizontalOptions = LayoutOptions.End,
-            VerticalOptions = LayoutOptions.Start,
-            Children =
-            {
-                _isFavoriteRequestInFlight ? indicator : heart
-            }
-        };
-
-        var tap = new TapGestureRecognizer();
-        tap.Tapped += async (_, _) => await ToggleFavoriteAsync(detail);
-        target.GestureRecognizers.Add(tap);
+        target.WidthRequest = 44;
+        target.HeightRequest = 44;
+        target.Margin = new Thickness(0, 6, 6, 0);
+        target.HorizontalOptions = LayoutOptions.End;
+        target.VerticalOptions = LayoutOptions.Start;
+        target.ZIndex = 20;
+        target.AutomationId = $"favorite-{detail.Story.Slug}";
+        SemanticProperties.SetDescription(
+            target,
+            detail.Story.IsFavorite ? "Verwyder gunsteling" : "Voeg by gunsteling");
+        target.Clicked += async (_, _) => await ToggleFavoriteAsync(detail);
         return target;
     }
 
@@ -1700,14 +1676,16 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         }
 
         _isFavoriteRequestInFlight = true;
-        RenderFavoriteState(detail, detail.Story.IsFavorite);
+        var previousIsFavorite = detail.Story.IsFavorite;
+        RenderFavoriteState(detail, !previousIsFavorite);
         try
         {
-            var isFavorite = await _apiClient.SetFavoriteAsync(detail.Story.Slug, detail.Story.Source, !detail.Story.IsFavorite);
+            var isFavorite = await _apiClient.SetFavoriteAsync(detail.Story.Slug, detail.Story.Source, !previousIsFavorite);
             RenderFavoriteState(detail, isFavorite);
         }
         catch (Exception ex)
         {
+            RenderFavoriteState(detail, previousIsFavorite);
             await DisplayAlertAsync("Kon nie stoor nie", ex.Message, "Reg so");
         }
         finally

@@ -1,0 +1,239 @@
+@using System.Globalization
+@inject IReferralService ReferralService
+@inject NavigationManager NavigationManager
+
+@if (IsLoading)
+{
+    <section class="admin-section">
+        <div class="admin-section-head">
+            <div>
+                <h2>@T("Verwysings", "Referrals")</h2>
+                <p>@T("Laai verwysingskodes...", "Loading referral codes...")</p>
+            </div>
+        </div>
+    </section>
+}
+else
+{
+    <section class="admin-section admin-referrals-panel">
+        <div class="admin-section-head">
+            <div>
+                <h2>@T("Verwysings", "Referrals")</h2>
+                <p>@T("Skep 'n unieke skakel vir elke persoon en sien hoeveel nuwe rekeninge daardeur geskep is.", "Create a unique link for each person and see how many new accounts were created through it.")</p>
+            </div>
+            <button type="button"
+                    class="admin-icon-btn admin-action-btn admin-icon-only"
+                    @onclick="LoadAsync"
+                    disabled="@IsSaving"
+                    aria-label='@T("Verfris verwysings", "Refresh referrals")'
+                    title='@T("Verfris verwysings", "Refresh referrals")'>
+                <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
+                <span class="admin-btn-text">@T("Verfris", "Refresh")</span>
+            </button>
+        </div>
+
+        @if (!string.IsNullOrWhiteSpace(StatusMessage))
+        {
+            <p class="admin-feedback is-success" role="status">@StatusMessage</p>
+        }
+        else if (!string.IsNullOrWhiteSpace(ErrorMessage))
+        {
+            <p class="admin-feedback is-error" role="alert">@ErrorMessage</p>
+        }
+
+        <div class="admin-referrals-summary" aria-label='@T("Verwysingsopsomming", "Referral summary")'>
+            <article>
+                <span>@T("Skakels", "Links")</span>
+                <strong>@Snapshot.TotalReferrals</strong>
+            </article>
+            <article>
+                <span>@T("Nuwe rekeninge", "New accounts")</span>
+                <strong>@Snapshot.TotalSignups</strong>
+            </article>
+        </div>
+
+        <EditForm Model="Editor" OnSubmit="CreateAsync" class="admin-referrals-create-card" novalidate>
+            <div class="admin-referrals-create-copy">
+                <h3>@T("Nuwe verwysingskakel", "New referral link")</h3>
+                <p>@T("'n Naam is nodig. E-pos is opsioneel en word net vir jou rekord gehou.", "A name is required. Email is optional and is kept only for your records.")</p>
+            </div>
+            <div class="admin-referrals-form-grid">
+                <label class="admin-referrals-field">
+                    <span>@T("Naam", "Name")</span>
+                    <input @bind="Editor.ReferrerName" maxlength="120" autocomplete="name" />
+                </label>
+                <label class="admin-referrals-field">
+                    <span>@T("E-pos opsioneel", "Email optional")</span>
+                    <input @bind="Editor.ReferrerEmail" type="email" maxlength="254" autocomplete="email" />
+                </label>
+                <button type="submit" class="admin-icon-btn admin-action-btn" disabled="@IsSaving">
+                    <i class="fa-solid fa-link" aria-hidden="true"></i>
+                    <span>@(IsSaving ? T("Skep...", "Creating...") : T("Skep skakel", "Create link"))</span>
+                </button>
+            </div>
+        </EditForm>
+
+        @if (Snapshot.Referrals.Count == 0)
+        {
+            <p class="admin-referrals-empty">@T("Nog geen verwysingskakels nie.", "There are no referral links yet.")</p>
+        }
+        else
+        {
+            <div class="admin-referrals-list" role="list">
+                @foreach (var referral in Snapshot.Referrals)
+                {
+                    <article class="admin-referrals-card" role="listitem">
+                        <header>
+                            <div>
+                                <h3>@referral.ReferrerName</h3>
+                                @if (!string.IsNullOrWhiteSpace(referral.ReferrerEmail))
+                                {
+                                    <p>@referral.ReferrerEmail</p>
+                                }
+                            </div>
+                            <span class="admin-referrals-signup-count">
+                                <strong>@referral.SignupCount</strong>
+                                <small>@T("rekeninge", "accounts")</small>
+                            </span>
+                        </header>
+
+                        <dl class="admin-referrals-meta">
+                            <div>
+                                <dt>@T("Kode", "Code")</dt>
+                                <dd><code>@referral.Code</code></dd>
+                            </div>
+                            <div>
+                                <dt>@T("Geskep", "Created")</dt>
+                                <dd>@FormatDate(referral.CreatedAt)</dd>
+                            </div>
+                            <div>
+                                <dt>@T("Laaste inskrywing", "Latest signup")</dt>
+                                <dd>@(referral.LastSignupAt is null ? T("Nog geen", "None yet") : FormatDate(referral.LastSignupAt.Value))</dd>
+                            </div>
+                        </dl>
+
+                        <label class="admin-referrals-link-field">
+                            <span>@T("Deelbare skakel", "Shareable link")</span>
+                            <input value="@BuildReferralLink(referral.Code)" readonly aria-label='@T("Deelbare verwysingskakel", "Shareable referral link")' />
+                        </label>
+                    </article>
+                }
+            </div>
+        }
+    </section>
+}
+
+@code {
+    [Parameter]
+    public string? AdminEmail { get; set; }
+
+    [Parameter]
+    public string? LanguageCode { get; set; }
+
+    private AdminReferralSnapshot Snapshot { get; set; } = AdminReferralSnapshot.Empty;
+    private ReferralEditor Editor { get; } = new();
+    private bool IsLoading { get; set; } = true;
+    private bool IsSaving { get; set; }
+    private string? LoadedForAdminEmail { get; set; }
+    private string? StatusMessage { get; set; }
+    private string? ErrorMessage { get; set; }
+    private bool IsEnglish => string.Equals(LanguageCode, "en", StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!string.Equals(LoadedForAdminEmail, AdminEmail, StringComparison.OrdinalIgnoreCase))
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        IsLoading = true;
+        ErrorMessage = null;
+        StatusMessage = null;
+        try
+        {
+            Snapshot = await ReferralService.GetAdminReferralsAsync(AdminEmail);
+            LoadedForAdminEmail = AdminEmail;
+        }
+        catch
+        {
+            Snapshot = AdminReferralSnapshot.Empty;
+            ErrorMessage = T("Kon nie verwysings laai nie. Probeer asseblief weer.", "Could not load referrals. Please try again.");
+        }
+        finally
+        {
+            IsLoading = false;
+        }
+    }
+
+    private async Task CreateAsync(EditContext _)
+    {
+        if (IsSaving)
+        {
+            return;
+        }
+
+        IsSaving = true;
+        ErrorMessage = null;
+        StatusMessage = null;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(Editor.ReferrerName) || Editor.ReferrerName.Trim().Length is < 2 or > 120)
+            {
+                ErrorMessage = T("Vul asseblief 'n naam van 2 tot 120 karakters in.", "Enter a name with 2 to 120 characters.");
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(Editor.ReferrerEmail) && !IsValidEmail(Editor.ReferrerEmail))
+            {
+                ErrorMessage = T("Gebruik asseblief 'n geldige e-posadres, of laat dit leeg.", "Use a valid email address, or leave it blank.");
+                return;
+            }
+
+            var result = await ReferralService.CreateReferralAsync(
+                AdminEmail,
+                new ReferralCreateRequest(Editor.ReferrerName, Editor.ReferrerEmail));
+            if (!result.IsSuccess)
+            {
+                ErrorMessage = T("Kon nie die verwysing nou skep nie. Probeer asseblief weer.", "Could not create the referral right now. Please try again.");
+                return;
+            }
+
+            Editor.ReferrerName = string.Empty;
+            Editor.ReferrerEmail = string.Empty;
+            await LoadAsync();
+            StatusMessage = T("Verwysingskakel is geskep.", "Referral link was created.");
+        }
+        finally
+        {
+            IsSaving = false;
+        }
+    }
+
+    private string BuildReferralLink(string code) =>
+        NavigationManager.ToAbsoluteUri($"/teken-op?ref={Uri.EscapeDataString(code)}").ToString();
+
+    private string FormatDate(DateTimeOffset value) =>
+        value.ToLocalTime().ToString("d MMM yyyy, HH:mm", IsEnglish ? CultureInfo.GetCultureInfo("en-ZA") : CultureInfo.GetCultureInfo("af-ZA"));
+
+    private static bool IsValidEmail(string value)
+    {
+        var trimmed = value.Trim();
+        var atIndex = trimmed.IndexOf('@');
+        return atIndex > 0 &&
+               trimmed.Count(character => character == '@') == 1 &&
+               trimmed.LastIndexOf('.') > atIndex + 1 &&
+               trimmed.Length <= 254;
+    }
+
+    private string T(string afrikaans, string english) => IsEnglish ? english : afrikaans;
+
+    private sealed class ReferralEditor
+    {
+        public string ReferrerName { get; set; } = string.Empty;
+
+        public string ReferrerEmail { get; set; } = string.Empty;
+    }
+}

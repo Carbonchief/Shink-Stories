@@ -6,16 +6,20 @@ namespace Shink.Tests;
 public sealed class MobileLuisterSafeAreaSourceTests
 {
     [TestMethod]
-    public void LuisterTopMenuRowSitsAtTheTopOfTheSafeArea()
+    public void LuisterNativeAppChromeUsesSeparateTopAndBottomSafeAreas()
     {
         var source = File.ReadAllText(FindLuisterPage());
 
-        StringAssert.Contains(source, "private const double FloatingTopBarContentInset = 132;");
-        StringAssert.Contains(source, "Margin = new Thickness(18, 0, 18, 0),");
-        StringAssert.Contains(source, "Padding = new Thickness(0, 0, 0, 16),");
+        StringAssert.Contains(source, "private const double FloatingTopBarContentInset = 92;");
+        StringAssert.Contains(source, "private const double BottomBarContentInset = 136;");
+        StringAssert.Contains(source, "private const double BottomBarOverlayHeight = 152;");
+        StringAssert.Contains(source, "Margin = Thickness.Zero,");
+        StringAssert.Contains(source, "HeightRequest = 62,");
+        StringAssert.Contains(source, "BackgroundColor = Colors.Transparent,");
         StringAssert.Contains(source, "InputTransparent = false,");
-        Assert.DoesNotContain("Margin = new Thickness(18, 18, 18, 0),", source, StringComparison.Ordinal);
-        Assert.DoesNotContain("HeightRequest = FloatingTopBarContentInset,", source, StringComparison.Ordinal);
+        StringAssert.Contains(source, "_bottomBarOverlay = new Grid");
+        StringAssert.Contains(source, "HeightRequest = BottomBarOverlayHeight,");
+        StringAssert.Contains(source, "MobileBottomBar.Build(this, \"listen\", ToggleSearchAsync)");
     }
 
     [TestMethod]
@@ -33,27 +37,35 @@ public sealed class MobileLuisterSafeAreaSourceTests
     }
 
     [TestMethod]
-    public void LuisterInitialContentStartsBelowTheTopButtons()
+    public void LuisterStoriesHeroStartsBelowTheTransparentTopButtons()
     {
         var source = File.ReadAllText(FindLuisterPage());
 
-        StringAssert.Contains(source, "private const double FloatingTopBarContentInset = 132;");
-        StringAssert.Contains(source, "HeightRequest = FloatingTopBarContentInset - 14,");
-        StringAssert.Contains(
-            source,
-            "Padding = new Thickness(PageHorizontalPadding, FloatingTopBarContentInset, PageHorizontalPadding, 28),");
+        StringAssert.Contains(source, "private const double FloatingTopBarContentInset = 92;");
+        StringAssert.Contains(source, "Header = BuildStoriesPageHeader(),");
+        StringAssert.Contains(source, "content.Children.Add(BuildStoriesPageHeader());");
+        StringAssert.Contains(source, "private static View BuildStoriesPageHeader()");
+        StringAssert.Contains(source, "new BoxView { HeightRequest = FloatingTopBarContentInset, Color = Colors.Transparent },");
+        StringAssert.Contains(source, "private static View BuildStoriesHero()");
+        StringAssert.Contains(source, "Source = \"stories_hero_overlay.png\"");
+        StringAssert.Contains(source, "BackgroundColor = Colors.Transparent,");
+        StringAssert.Contains(source, "HeightRequest = StoriesHeroHeight,");
+        StringAssert.Contains(source, "ItemSizingStrategy = ItemSizingStrategy.MeasureAllItems,");
+        StringAssert.Contains(source, "Margin = Thickness.Zero,");
+        StringAssert.Contains(source, "HeightRequest = BottomBarContentInset,");
     }
 
     [TestMethod]
-    public void LuisterTopMenuDecorationsDoNotInterceptTaps()
+    public void LuisterNativeAppBarKeepsMenuNotificationsAndProfileActions()
     {
         var source = File.ReadAllText(FindLuisterPage());
 
-        StringAssert.Contains(source, "var notificationSurface = BuildHeaderCircleButton");
-        StringAssert.Contains(source, "notificationSurface.InputTransparent = true;");
-        StringAssert.Contains(source, "VerticalOptions = LayoutOptions.Center,\n                InputTransparent = true,\n                Children =");
-        StringAssert.Contains(source, "Margin = text == \"⌕\" ? new Thickness(0, -2, 0, 0) : Thickness.Zero,\n                InputTransparent = true");
-        StringAssert.Contains(source, "HeightRequest = 46,\n                InputTransparent = true");
+        StringAssert.Contains(source, "return MobileTopBar.Build(");
+        StringAssert.Contains(source, "title: \"Schink Stories\"");
+        StringAssert.Contains(source, "showProfile: false,");
+        StringAssert.Contains(source, "brandLeadingInset: 4");
+        StringAssert.Contains(source, "notificationAction: ShowNotificationsAsync");
+        StringAssert.Contains(source, "notificationCount: _notificationPage?.UnreadCount ?? 0");
     }
 
     [TestMethod]
@@ -66,19 +78,14 @@ public sealed class MobileLuisterSafeAreaSourceTests
     }
 
     [TestMethod]
-    public void LuisterScrollsEdgeToEdgeWhileKeepingTheTopBarInsideTheSafeArea()
+    public void LuisterScrollsEdgeToEdgeWhileKeepingBothBarsInsideTheSafeArea()
     {
         var source = File.ReadAllText(FindLuisterPage());
 
         StringAssert.Contains(
             source,
-            "Header = new Grid\n                {\n                    SafeAreaEdges = new SafeAreaEdges(\n                        SafeAreaRegions.None,\n                        SafeAreaRegions.Container,\n                        SafeAreaRegions.None,\n                        SafeAreaRegions.None),");
-        StringAssert.Contains(
-            source,
-            "_content = new VerticalStackLayout\n            {\n                SafeAreaEdges = new SafeAreaEdges(\n                    SafeAreaRegions.None,\n                    SafeAreaRegions.Container,\n                    SafeAreaRegions.None,\n                    SafeAreaRegions.None),");
-        StringAssert.Contains(
-            source,
-            "_scrollView = new ScrollView\n            {\n                SafeAreaEdges = SafeAreaEdges.None,");
+            "Header = BuildStoriesPageHeader(),");
+        StringAssert.Contains(source, "SafeAreaRegions.Container,");
         StringAssert.Contains(
             source,
             "_refreshView = new RefreshView\n        {\n            SafeAreaEdges = SafeAreaEdges.None,");
@@ -87,7 +94,23 @@ public sealed class MobileLuisterSafeAreaSourceTests
             "_rootLayout = new Grid\n        {\n            SafeAreaEdges = SafeAreaEdges.None,");
         StringAssert.Contains(
             source,
-            "_topBarOverlay = new Grid\n        {\n            SafeAreaEdges = new SafeAreaEdges(SafeAreaRegions.Container),");
+            "_topBarOverlay = new Grid\n        {\n            SafeAreaEdges = new SafeAreaEdges(\n                SafeAreaRegions.Container,\n                SafeAreaRegions.Container,\n                SafeAreaRegions.Container,\n                SafeAreaRegions.None),");
+        StringAssert.Contains(source, "_bottomBarOverlay = new Grid");
+        StringAssert.Contains(source, "SafeAreaEdges = SafeAreaEdges.None,");
+    }
+
+    [TestMethod]
+    public void AndroidFeedKeepsGuttersOnItemsSoCarouselsCanReachTheScreenEdge()
+    {
+        var source = File.ReadAllText(FindLuisterPage());
+
+        StringAssert.Contains(
+            source,
+            "// Keep the feed itself edge-to-edge on Android so a carousel's\n                // negative side margin can reach the screen edge.");
+        StringAssert.Contains(source, "Margin = Thickness.Zero,");
+        StringAssert.Contains(
+            source,
+            "var container = new ContentView\n        {\n            Padding = new Thickness(PageHorizontalPadding, 0)\n        };");
     }
 
     private static string FindLuisterPage()
