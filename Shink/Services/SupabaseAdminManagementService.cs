@@ -2271,10 +2271,11 @@ public sealed partial class SupabaseAdminManagementService(
             {
                 var normalizedSlug = row.Slug.Trim().ToLowerInvariant();
                 var normalizedName = row.Name.Trim();
-                var normalizedImagePath = NormalizeStoreProductImagePath(row.ImagePath);
+                var canonicalImagePath = StoreProductCatalog.FindBySlug(normalizedSlug)?.ImagePath;
+                var normalizedImagePath = canonicalImagePath ?? NormalizeStoreProductImagePath(row.ImagePath);
                 if (string.IsNullOrWhiteSpace(normalizedImagePath))
                 {
-                    normalizedImagePath = StoreProductCatalog.FindBySlug(normalizedSlug)?.ImagePath ?? string.Empty;
+                    normalizedImagePath = NormalizeStoreProductImagePath(row.ImagePath);
                 }
 
                 var normalizedAltText = NormalizeOptionalText(row.AltText, 220) ?? $"{normalizedName} produk";

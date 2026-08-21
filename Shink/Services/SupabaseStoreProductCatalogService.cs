@@ -180,7 +180,8 @@ public sealed class SupabaseStoreProductCatalogService(
         row.StoreProductId != Guid.Empty &&
         !string.IsNullOrWhiteSpace(row.Slug) &&
         !string.IsNullOrWhiteSpace(row.Name) &&
-        !string.IsNullOrWhiteSpace(row.ImagePath) &&
+        (!string.IsNullOrWhiteSpace(row.ImagePath) ||
+         !string.IsNullOrWhiteSpace(StoreProductCatalog.FindBySlug(row.Slug)?.ImagePath)) &&
         row.UnitPriceZar > 0m;
 
     private static StoreProduct MapRow(StoreProductRow row)
@@ -188,7 +189,8 @@ public sealed class SupabaseStoreProductCatalogService(
         var normalizedSlug = row.Slug.Trim().ToLowerInvariant();
         var normalizedName = row.Name.Trim();
         var normalizedDescription = NormalizeOptionalText(row.Description, 600);
-        var normalizedImagePath = NormalizeImagePath(row.ImagePath);
+        var normalizedImagePath = StoreProductCatalog.FindBySlug(normalizedSlug)?.ImagePath
+                                  ?? NormalizeImagePath(row.ImagePath);
         var normalizedAltText = NormalizeOptionalText(row.AltText, 220) ?? $"{normalizedName} produk";
         var normalizedThemeClass = NormalizeOptionalText(row.ThemeClass, 80) ?? string.Empty;
         var normalizedSortOrder = Math.Clamp(row.SortOrder, -500_000, 500_000);

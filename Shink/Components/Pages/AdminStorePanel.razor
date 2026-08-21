@@ -3,11 +3,14 @@
 @using System.Text.Json
 @using Microsoft.AspNetCore.Components.Authorization
 @using Microsoft.AspNetCore.Components.Forms
+@using Microsoft.Extensions.Options
 @using Microsoft.JSInterop
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IAdminManagementService AdminManagementService
+@inject IStoryMediaStorageService StoryMediaStorageService
 @inject IWebHostEnvironment WebHostEnvironment
 @inject IJSRuntime JSRuntime
+@inject IOptions<CloudflareR2Options> CloudflareR2OptionsAccessor
 @inject ILogger<AdminStorePanel> Logger
 
 <section class="admin-section store-admin-section">
@@ -262,6 +265,21 @@
 
     private bool IsNewProduct => Editor?.StoreProductId is null || Editor.StoreProductId == Guid.Empty;
 
+    private bool IsR2UploadConfigured
+    {
+        get
+        {
+            var options = CloudflareR2OptionsAccessor.Value;
+            return !string.IsNullOrWhiteSpace(options.AccountId) &&
+                   !string.IsNullOrWhiteSpace(options.BucketName) &&
+                   !string.IsNullOrWhiteSpace(options.AccessKeyId) &&
+                   !string.IsNullOrWhiteSpace(options.SecretAccessKey) &&
+                   Uri.TryCreate(options.PublicBaseUrl, UriKind.Absolute, out var publicBaseUri) &&
+                   (string.Equals(publicBaseUri.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(publicBaseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
     private IReadOnlyList<AdminStoreProductRecord> FilteredProducts =>
         string.IsNullOrWhiteSpace(ProductSearch)
             ? Products
@@ -413,9 +431,10 @@
         {
             if (Editor.ImageFile is not null)
             {
-                uploadedImagePath = await SaveUploadedImageToDiskAsync(Editor.ImageFile, Editor.Slug);
-                Editor.ImagePath = uploadedImagePath;
-                Editor.ImagePreviewPath = uploadedImagePath;
+                var uploadedImage = await SaveUploadedImageAsync(Editor.ImageFile, Editor.Slug);
+                uploadedImagePath = uploadedImage.PublicPath;
+                Editor.ImagePath = uploadedImage.PublicPath;
+                Editor.ImagePreviewPath = uploadedImage.PublicPath;
             }
             else if (!IsNewProduct &&
                      string.IsNullOrWhiteSpace(Editor.ImagePath) &&
@@ -443,7 +462,7 @@
             {
                 if (!string.IsNullOrWhiteSpace(uploadedImagePath))
                 {
-                    DeleteManagedUploadedImage(uploadedImagePath);
+                    await DeleteManagedImageAssetAsync(uploadedImagePath);
                 }
 
                 ErrorMessage = LocalizeServiceMessage(result.ErrorMessage ?? T("Kon nie winkel produk nou stoor nie.", "Could not save shop product right now."));
@@ -453,7 +472,7 @@
             if (!string.IsNullOrWhiteSpace(originalImagePath) &&
                 !AdminManagedImageAssetHelper.AreEquivalent(originalImagePath, Editor.ImagePath))
             {
-                DeleteManagedUploadedImage(originalImagePath);
+                await DeleteManagedImageAssetAsync(originalImagePath);
             }
 
             var successMessage = IsNewProduct
@@ -490,7 +509,7 @@
         {
             if (!string.IsNullOrWhiteSpace(uploadedImagePath))
             {
-                DeleteManagedUploadedImage(uploadedImagePath);
+                await DeleteManagedImageAssetAsync(uploadedImagePath);
             }
 
             Logger.LogWarning(exception, "Failed to save store product.");
@@ -533,7 +552,7 @@
                 return;
             }
 
-            DeleteManagedUploadedImage(imagePathToDelete);
+            await DeleteManagedImageAssetAsync(imagePathToDelete);
             var successMessage = T("Winkel produk is verwyder.", "Shop product was removed.");
             Editor = null;
             EditorStateSignature = null;
@@ -599,12 +618,36 @@
         }
     }
 
-    private async Task<string> SaveUploadedImageToDiskAsync(IBrowserFile file, string? productSlug)
+    private async Task<StoreProductImageUpload> SaveUploadedImageAsync(IBrowserFile file, string? productSlug)
     {
         var normalizedContentType = NormalizeImageContentType(file);
         if (!IsSupportedImageContentType(normalizedContentType))
         {
             throw new InvalidOperationException("Unsupported image file type. Use JPG, PNG, or WEBP.");
+        }
+
+        if (IsR2UploadConfigured)
+        {
+            try
+            {
+                await using var sourceStream = file.OpenReadStream(MaxImageUploadBytes);
+                var uploaded = await StoryMediaStorageService.UploadImageAsync(
+                    $"winkel-{BuildSafeFileSlug(productSlug)}",
+                    StoryImageKind.Cover,
+                    file.Name,
+                    normalizedContentType,
+                    sourceStream);
+
+                return new StoreProductImageUpload(
+                    PublicPath: uploaded.PublicUrl);
+            }
+            catch (Exception exception)
+            {
+                Logger.LogWarning(
+                    exception,
+                    "R2 product image upload failed for {ProductSlug}; falling back to local upload.",
+                    productSlug);
+            }
         }
 
         var safeSlug = BuildSafeFileSlug(productSlug);
@@ -636,11 +679,21 @@
             await sourceStream.CopyToAsync(targetStream);
         }
 
-        return $"/branding/uploaded/winkel/{year}/{month}/{fileName}";
+        return new StoreProductImageUpload(
+            PublicPath: $"/branding/uploaded/winkel/{year}/{month}/{fileName}");
     }
 
-    private void DeleteManagedUploadedImage(string? imagePath)
+    private async Task DeleteManagedImageAssetAsync(string? imagePath)
     {
+        var r2ObjectKey = AdminManagedImageAssetHelper.TryResolveR2ObjectKey(
+            imagePath,
+            CloudflareR2OptionsAccessor.Value.PublicBaseUrl);
+        if (!string.IsNullOrWhiteSpace(r2ObjectKey))
+        {
+            await StoryMediaStorageService.DeleteObjectIfExistsAsync(r2ObjectKey);
+            return;
+        }
+
         var localFilePath = AdminManagedImageAssetHelper.TryResolveLocalUploadedFilePath(
             imagePath,
             WebHostEnvironment.WebRootPath);
@@ -695,8 +748,8 @@
         normalizedContentType is "image/jpeg" or "image/png" or "image/webp";
 
     private static string ResolveStoreProductImageUrl(AdminStoreProductRecord product) =>
-        ResolvePreviewImageUrl(product.ImagePath)
-        ?? ResolveStoreProductFallbackImageUrl(product.Slug)
+        ResolveStoreProductFallbackImageUrl(product.Slug)
+        ?? ResolvePreviewImageUrl(product.ImagePath)
         ?? "/branding/schink-logo-green.png";
 
     private static string? ResolveStoreProductFallbackImageUrl(string? productSlug) =>
@@ -840,4 +893,6 @@
                 ImagePreviewPath = record.ImagePath
             };
     }
+
+    private sealed record StoreProductImageUpload(string PublicPath);
 }
