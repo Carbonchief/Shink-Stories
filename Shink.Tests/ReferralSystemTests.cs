@@ -70,6 +70,10 @@ public class ReferralSystemTests
         StringAssert.Contains(panel, "@T(\"E-pos opsioneel\", \"Email optional\")");
         StringAssert.Contains(panel, "BuildReferralLink(referral.Code)");
         StringAssert.Contains(panel, "ref={Uri.EscapeDataString(code)}");
+        StringAssert.Contains(css, ".admin-referrals-panel.admin-section");
+        StringAssert.Contains(css, "background: var(--admin-surface)");
+        StringAssert.Contains(css, "background: var(--admin-surface-soft)");
+        StringAssert.Contains(css, "background: var(--admin-input-bg)");
         StringAssert.Contains(css, ".admin-referrals-form-grid");
         StringAssert.Contains(css, "@media (max-width: 760px)");
     }

@@ -2267,12 +2267,16 @@ public sealed partial class SupabaseAdminManagementService(
             .Where(row => row.StoreProductId != Guid.Empty)
             .Where(row => !string.IsNullOrWhiteSpace(row.Slug))
             .Where(row => !string.IsNullOrWhiteSpace(row.Name))
-            .Where(row => !string.IsNullOrWhiteSpace(row.ImagePath))
             .Select(row =>
             {
                 var normalizedSlug = row.Slug.Trim().ToLowerInvariant();
                 var normalizedName = row.Name.Trim();
                 var normalizedImagePath = NormalizeStoreProductImagePath(row.ImagePath);
+                if (string.IsNullOrWhiteSpace(normalizedImagePath))
+                {
+                    normalizedImagePath = StoreProductCatalog.FindBySlug(normalizedSlug)?.ImagePath ?? string.Empty;
+                }
+
                 var normalizedAltText = NormalizeOptionalText(row.AltText, 220) ?? $"{normalizedName} produk";
 
                 return new AdminStoreProductRecord(
@@ -2289,6 +2293,7 @@ public sealed partial class SupabaseAdminManagementService(
                     WaivesDeliveryFee: row.WaivesDeliveryFee,
                     UpdatedAt: row.UpdatedAt);
             })
+            .Where(record => !string.IsNullOrWhiteSpace(record.ImagePath))
             .OrderBy(row => row.SortOrder)
             .ThenBy(row => row.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -2320,8 +2325,9 @@ public sealed partial class SupabaseAdminManagementService(
             return new AdminOperationResult(false, "Winkel produk naam is verpligtend.");
         }
 
+        var isNewProduct = request.StoreProductId is null || request.StoreProductId == Guid.Empty;
         var normalizedImagePath = NormalizeStoreProductImagePath(request.ImagePath);
-        if (string.IsNullOrWhiteSpace(normalizedImagePath))
+        if (isNewProduct && string.IsNullOrWhiteSpace(normalizedImagePath))
         {
             return new AdminOperationResult(false, "Winkel produk image is verpligtend.");
         }
@@ -2348,7 +2354,6 @@ public sealed partial class SupabaseAdminManagementService(
             ["slug"] = normalizedSlug,
             ["name"] = normalizedName,
             ["description"] = NormalizeOptionalText(request.Description, 600),
-            ["image_path"] = normalizedImagePath,
             ["alt_text"] = NormalizeOptionalText(request.AltText, 220) ?? $"{normalizedName} produk",
             ["theme_class"] = NormalizeOptionalText(request.ThemeClass, 80),
             ["unit_price_zar"] = normalizedPrice,
@@ -2357,7 +2362,12 @@ public sealed partial class SupabaseAdminManagementService(
             ["waives_delivery_fee"] = request.WaivesDeliveryFee
         };
 
-        if (request.StoreProductId is null || request.StoreProductId == Guid.Empty)
+        if (!string.IsNullOrWhiteSpace(normalizedImagePath))
+        {
+            payload["image_path"] = normalizedImagePath;
+        }
+
+        if (isNewProduct)
         {
             var createUri = new Uri(baseUri, "rest/v1/store_products");
             using var createRequest = CreateJsonRequest(HttpMethod.Post, createUri, apiKey, new[] { payload }, "return=representation");
@@ -2384,7 +2394,8 @@ public sealed partial class SupabaseAdminManagementService(
             return new AdminOperationResult(true, EntityId: TryReadFirstGuidProperty(responseBody, "store_product_id"));
         }
 
-        var escapedStoreProductId = Uri.EscapeDataString(request.StoreProductId.Value.ToString("D"));
+        var storeProductId = request.StoreProductId.GetValueOrDefault();
+        var escapedStoreProductId = Uri.EscapeDataString(storeProductId.ToString("D"));
         var updateUri = new Uri(baseUri, $"rest/v1/store_products?store_product_id=eq.{escapedStoreProductId}");
         using var updateRequest = CreateJsonRequest(new HttpMethod("PATCH"), updateUri, apiKey, payload, "return=representation");
         using var updateResponse = await _httpClient.SendAsync(updateRequest, cancellationToken);
@@ -2399,7 +2410,7 @@ public sealed partial class SupabaseAdminManagementService(
             }
 
             InvalidateStoreProductCatalogCache();
-            return new AdminOperationResult(true, EntityId: request.StoreProductId);
+            return new AdminOperationResult(true, EntityId: storeProductId);
         }
 
         _logger.LogWarning(

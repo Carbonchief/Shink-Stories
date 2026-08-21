@@ -74,15 +74,18 @@
                     @foreach (var product in FilteredProducts)
                     {
                         var isSelected = Editor?.StoreProductId == product.StoreProductId;
+                        var productImageUrl = ResolveStoreProductImageUrl(product);
+                        var productImageFallbackUrl = ResolveStoreProductFallbackImageUrl(product.Slug);
                         <button type="button"
                                 class="store-admin-list-item @(isSelected ? "is-selected" : null)"
                                 @onclick="() => SelectProduct(product)">
                             <img class="store-admin-list-image"
-                                 src="@ResolvePreviewImageUrl(product.ImagePath)"
+                                 src="@productImageUrl"
+                                 data-fallback-src="@productImageFallbackUrl"
                                  alt=""
                                  loading="eager"
                                  decoding="async"
-                                 onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                                 onerror="this.onerror=null;this.src=this.dataset.fallbackSrc || '/branding/schink-logo-green.png';" />
 
                             <span class="store-admin-list-copy">
                                 <span class="store-admin-list-title">@product.Name</span>
@@ -220,13 +223,14 @@
                         </div>
 
                         <div class="store-admin-image-preview">
-                            @if (!string.IsNullOrWhiteSpace(ResolvePreviewImageUrl(Editor.ImagePreviewPath ?? Editor.ImagePath)))
+                            @if (!string.IsNullOrWhiteSpace(ResolveEditorPreviewImageUrl(Editor)))
                             {
-                                <img src="@ResolvePreviewImageUrl(Editor.ImagePreviewPath ?? Editor.ImagePath)"
+                                <img src="@ResolveEditorPreviewImageUrl(Editor)"
+                                     data-fallback-src="@ResolveStoreProductFallbackImageUrl(Editor.Slug)"
                                      alt=""
                                      loading="eager"
                                      decoding="async"
-                                     onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                                     onerror="this.onerror=null;this.src=this.dataset.fallbackSrc || '/branding/schink-logo-green.png';" />
                             }
                             else
                             {
@@ -412,6 +416,13 @@
                 uploadedImagePath = await SaveUploadedImageToDiskAsync(Editor.ImageFile, Editor.Slug);
                 Editor.ImagePath = uploadedImagePath;
                 Editor.ImagePreviewPath = uploadedImagePath;
+            }
+            else if (!IsNewProduct &&
+                     string.IsNullOrWhiteSpace(Editor.ImagePath) &&
+                     !string.IsNullOrWhiteSpace(originalImagePath))
+            {
+                Editor.ImagePath = originalImagePath;
+                Editor.ImagePreviewPath ??= originalImagePath;
             }
 
             var request = new AdminStoreProductSaveRequest(
@@ -682,6 +693,18 @@
 
     private static bool IsSupportedImageContentType(string normalizedContentType) =>
         normalizedContentType is "image/jpeg" or "image/png" or "image/webp";
+
+    private static string ResolveStoreProductImageUrl(AdminStoreProductRecord product) =>
+        ResolvePreviewImageUrl(product.ImagePath)
+        ?? ResolveStoreProductFallbackImageUrl(product.Slug)
+        ?? "/branding/schink-logo-green.png";
+
+    private static string? ResolveStoreProductFallbackImageUrl(string? productSlug) =>
+        ResolvePreviewImageUrl(StoreProductCatalog.FindBySlug(productSlug)?.ImagePath);
+
+    private static string? ResolveEditorPreviewImageUrl(StoreProductEditorModel editor) =>
+        ResolvePreviewImageUrl(editor.ImagePreviewPath ?? editor.ImagePath)
+        ?? ResolveStoreProductFallbackImageUrl(editor.Slug);
 
     private static string? ResolvePreviewImageUrl(string? imagePath)
     {
