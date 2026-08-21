@@ -7,22 +7,22 @@ namespace Shink.Tests;
 public class GratisSubscriberEmailSeriesSourceTests
 {
     [TestMethod]
-    public void GratisSignupUsesAnExplicitOptionalSixDayEmailConsent()
+    public void GratisSignupUsesAnExplicitOptionalEmailConsentThatDefaultsToOn()
     {
         var signup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Signup.razor"));
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
 
         StringAssert.Contains(signup, "<InputCheckbox id=\"signup-email-consent\"");
-        StringAssert.Contains(signup, "een e-pos per dag vir ses dae");
+        StringAssert.Contains(signup, "Ontvang Schink-e-posse");
         StringAssert.Contains(signup, "SelectedPlan is null && SignUpForm.MarketingConsent");
-        StringAssert.Contains(signup, "public bool MarketingConsent { get; set; }");
+        StringAssert.Contains(signup, "public bool MarketingConsent { get; set; } = true;");
         var consentPropertyIndex = signup.IndexOf("public bool MarketingConsent", StringComparison.Ordinal);
         var consentPropertyWindow = signup[
             Math.Max(0, consentPropertyIndex - 160)..
             Math.Min(signup.Length, consentPropertyIndex + 120)];
         Assert.IsFalse(
             consentPropertyWindow.Contains("[Required", StringComparison.Ordinal),
-            "The marketing checkbox must remain optional and unchecked by default.");
+            "The marketing checkbox must remain optional so a person can opt out.");
 
         StringAssert.Contains(program, "request.MarketingConsent &&");
         StringAssert.Contains(program, "string.IsNullOrWhiteSpace(request.SelectedTierCode)");

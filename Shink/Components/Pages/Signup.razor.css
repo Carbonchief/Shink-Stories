@@ -130,6 +130,12 @@
     font-size: 0.83rem;
 }
 
+.signup-referral-code-help {
+    margin: 0;
+    color: color-mix(in srgb, var(--text) 74%, #37535e);
+    font-size: 0.82rem;
+}
+
 .signup-email-consent {
     display: grid;
     grid-template-columns: 1.15rem minmax(0, 1fr);
@@ -728,6 +734,10 @@ body.schink-night-mode .signup-grid-security {
 body.schink-night-mode .signup-field label,
 body.schink-night-mode .signup-link {
     color: #9ad8e6;
+}
+
+body.schink-night-mode .signup-referral-code-help {
+    color: #d2dadd;
 }
 
 body.schink-night-mode .signup-selected-option {

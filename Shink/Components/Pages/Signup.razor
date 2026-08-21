@@ -84,6 +84,20 @@
                         <InputText id="signup-mobile-number" class="form-control" autocomplete="tel" placeholder="Selfoonnommer" aria-label="Selfoonnommer" @bind-Value="SignUpForm.MobileNumber" />
                         <ValidationMessage class="invalid-feedback d-block" For="@(() => SignUpForm.MobileNumber)" />
                     </div>
+
+                    <div class="signup-field signup-field-full">
+                        <label class="form-label" for="signup-referral-code">Verwysingskode</label>
+                        <InputText id="signup-referral-code"
+                                   class="form-control"
+                                   autocomplete="off"
+                                   autocapitalize="characters"
+                                   spellcheck="false"
+                                   placeholder="Voer verwysingskode in"
+                                   aria-describedby="signup-referral-code-help"
+                                   @bind-Value="SignUpForm.ReferralCode" />
+                        <ValidationMessage class="invalid-feedback d-block" For="@(() => SignUpForm.ReferralCode)" />
+                        <p id="signup-referral-code-help" class="signup-referral-code-help">Het jy 'n kode per SMS of WhatsApp gekry? Tik dit hier in.</p>
+                    </div>
                 </div>
 
                 <div class="signup-grid signup-grid-security">
@@ -104,10 +118,7 @@
                 {
                     <label class="signup-email-consent" for="signup-email-consent">
                         <InputCheckbox id="signup-email-consent" @bind-Value="SignUpForm.MarketingConsent" />
-                        <span>
-                            Ek wil die gratis Schink Stories-e-posreeks ontvang: een e-pos per dag vir ses dae.
-                            Ek kan enige tyd met een klik uitteken.
-                        </span>
+                        <span>Ontvang Schink-e-posse</span>
                     </label>
                 }
 
@@ -330,6 +341,12 @@
             SignUpForm.DiscountCode = DiscountCode.Trim();
         }
 
+        if (!string.IsNullOrWhiteSpace(ReferralCode) &&
+            string.IsNullOrWhiteSpace(SignUpForm.ReferralCode))
+        {
+            SignUpForm.ReferralCode = ReferralCode.Trim();
+        }
+
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         if (authState.User.Identity?.IsAuthenticated == true)
         {
@@ -370,7 +387,7 @@
                 SelectedTierCode: SelectedPlan?.TierCode,
                 DiscountCode: SignUpForm.DiscountCode.Trim(),
                 MarketingConsent: !IsSchoolOptionsSignupFlow && SelectedPlan is null && SignUpForm.MarketingConsent,
-                ReferralCode: ReferralCode);
+                ReferralCode: SignUpForm.ReferralCode.Trim());
 
             var response = await authModule.InvokeAsync<AuthBrowserResponse>("postAuthJson", "/api/auth/signup", payload);
             if (response.Ok)
@@ -419,7 +436,8 @@
                     "signup-mobile-number",
                     "signup-password",
                     "signup-password-confirm",
-                    "signup-discount-code"
+                    "signup-discount-code",
+                    "signup-referral-code"
                 });
 
             if (values.TryGetValue("signup-first-name", out var firstNameValue))
@@ -460,6 +478,11 @@
             if (values.TryGetValue("signup-discount-code", out var discountCodeValue))
             {
                 SignUpForm.DiscountCode = discountCodeValue?.Trim() ?? string.Empty;
+            }
+
+            if (values.TryGetValue("signup-referral-code", out var referralCodeValue))
+            {
+                SignUpForm.ReferralCode = referralCodeValue?.Trim() ?? string.Empty;
             }
         }
         catch
@@ -1011,6 +1034,9 @@
         [StringLength(80, ErrorMessage = "Jou kode mag nie langer as 80 karakters wees nie.")]
         public string DiscountCode { get; set; } = string.Empty;
 
-        public bool MarketingConsent { get; set; }
+        [StringLength(80, ErrorMessage = "Jou verwysingskode mag nie langer as 80 karakters wees nie.")]
+        public string ReferralCode { get; set; } = string.Empty;
+
+        public bool MarketingConsent { get; set; } = true;
     }
 }

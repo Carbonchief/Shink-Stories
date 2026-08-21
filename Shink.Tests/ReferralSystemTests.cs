@@ -34,7 +34,11 @@ public class ReferralSystemTests
         var authService = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseAuthService.cs"));
 
         StringAssert.Contains(signup, "[SupplyParameterFromQuery(Name = \"ref\")]");
-        StringAssert.Contains(signup, "ReferralCode: ReferralCode");
+        StringAssert.Contains(signup, "id=\"signup-referral-code\"");
+        StringAssert.Contains(signup, "@bind-Value=\"SignUpForm.ReferralCode\"");
+        StringAssert.Contains(signup, "SignUpForm.ReferralCode = ReferralCode.Trim();");
+        StringAssert.Contains(signup, "ReferralCode: SignUpForm.ReferralCode.Trim()");
+        StringAssert.Contains(signup, "\"signup-referral-code\"");
         StringAssert.Contains(program, "ReferralCode = ReferralCodeRules.Normalize(request.ReferralCode)");
         StringAssert.Contains(authService, "[property: JsonPropertyName(\"referral_code\")] string? ReferralCode");
     }

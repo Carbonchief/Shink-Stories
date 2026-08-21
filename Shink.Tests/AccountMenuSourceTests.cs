@@ -24,6 +24,18 @@ public class AccountMenuSourceTests
     }
 
     [TestMethod]
+    public void AccountDropdown_SignOutForcesAFullNavigation()
+    {
+        var markup = File.ReadAllText(GetRepoPath("Shink", "Components", "Layout", "MainLayout.razor"));
+        const string signOutMarkup = "<a href=\"/teken-uit\" class=\"account-signout\" data-enhance-nav=\"false\">";
+
+        StringAssert.Contains(
+            markup,
+            signOutMarkup,
+            "Sign-out must reload the app after the server clears the authentication cookie.");
+    }
+
+    [TestMethod]
     public void NightModeToggle_ClosesContainingNavigationMenu()
     {
         var script = File.ReadAllText(GetRepoPath("Shink", "Components", "Layout", "MainLayout.razor.js"));
