@@ -31,6 +31,10 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     private const double BottomBarContentInset = 136;
     private const double BottomBarOverlayHeight = 152;
     private const double StoriesHeroHeight = 262;
+    // Keep native carousel artwork in lockstep with the web Luister page:
+    // story covers are portrait (3:4), while playlist artwork is widescreen (16:9).
+    private const double StoryCarouselImageAspectRatio = 3d / 4d;
+    private const double PlaylistCarouselImageAspectRatio = 16d / 9d;
     private const double OortjiesPeekWidth = 64;
     private const double OortjiesPeekHeight = 71;
     private const int MaxOortjiesPeeksPerWindow = 2;
@@ -70,6 +74,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     private IReadOnlyList<MobileLuisterSection> _sections = Array.Empty<MobileLuisterSection>();
     private IReadOnlyList<OfflineStoryDownload> _downloadedStories = Array.Empty<OfflineStoryDownload>();
     private MobileNotificationPage? _notificationPage;
+    private MobileSession? _lastRenderedSession;
     private string? _loadErrorMessage;
     private bool _hasLoaded;
     private bool _isPageActive;
@@ -471,7 +476,17 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 _notificationPage = null;
             }
 
-            RenderContent();
+            if (IsFeedSessionEquivalent(_lastRenderedSession, session))
+            {
+                // The session endpoint commonly returns the same state already
+                // used for the cached first render. Refresh only the lightweight
+                // chrome instead of rebuilding every native carousel.
+                RenderFloatingTopBar();
+            }
+            else
+            {
+                RenderContent();
+            }
             if (session.IsSignedIn)
             {
                 _ = RefreshNotificationsInBackgroundAsync();
@@ -763,11 +778,28 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             {
                 RebuildIOSFeedRoot();
             }
+
+            _lastRenderedSession = _sessionState.Current;
         }
         catch (ObjectDisposedException)
         {
             _isPageActive = false;
         }
+    }
+
+    private static bool IsFeedSessionEquivalent(MobileSession? previous, MobileSession current)
+    {
+        if (previous is null ||
+            previous.IsSignedIn != current.IsSignedIn ||
+            previous.HasPaidSubscription != current.HasPaidSubscription)
+        {
+            return false;
+        }
+
+        var previousFavorites = new HashSet<string>(
+            previous.FavoriteStorySlugs,
+            StringComparer.OrdinalIgnoreCase);
+        return previousFavorites.SetEquals(current.FavoriteStorySlugs);
     }
 
     private void RenderLoadingState()
@@ -2545,9 +2577,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     {
         var imageSource = BuildLuisterImageSource(playlist.ArtworkUrl, "schink_background.jpeg");
         var cardWidth = MobileResponsiveLayout.ResolvePlaylistCarouselCardWidth(Width, IsAndroid);
-        var artworkHeight = MobileResponsiveLayout.IsWide(Width)
-            ? Math.Clamp(cardWidth * 0.58, 150, 180)
-            : IsAndroid ? 126 : 138;
+        var artworkHeight = cardWidth / PlaylistCarouselImageAspectRatio;
         var card = new Border
         {
             WidthRequest = cardWidth,
@@ -2743,13 +2773,20 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
 
     private double GetStoryCarouselCardWidth()
     {
+        if (!MobileResponsiveLayout.IsWide(Width))
+        {
+            // These are the actual phone card widths used by the card shell below.
+            // Use them as the ratio source so the measured image box is exact.
+            return IsAndroid ? 148 : 168;
+        }
+
         return MobileResponsiveLayout.ResolveStoryCarouselCardWidth(Width, IsAndroid);
     }
 
     private double GetStoryCarouselCoverHeight()
     {
         var width = GetStoryCarouselCardWidth();
-        return Math.Round(width * (IsAndroid ? 1.27 : 1.30));
+        return width / StoryCarouselImageAspectRatio;
     }
 
     private double GetStoryCarouselHeight(bool isRanked = false)
@@ -2766,7 +2803,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         }
 
         var cardWidth = MobileResponsiveLayout.ResolvePlaylistCarouselCardWidth(Width, IsAndroid);
-        var artworkHeight = Math.Clamp(cardWidth * 0.58, 150, 180);
+        var artworkHeight = cardWidth / PlaylistCarouselImageAspectRatio;
         return artworkHeight + 70;
     }
 
@@ -3305,24 +3342,16 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
 
     private double GetDownloadedCarouselHeight()
     {
-        if (!MobileResponsiveLayout.IsWide(Width))
-        {
-            return IsAndroid ? 252 : 286;
-        }
-
         var cardWidth = MobileResponsiveLayout.ResolveDownloadedCardWidth(Width, IsAndroid);
-        var coverHeight = Math.Clamp(cardWidth * 1.27, 228, 300);
+        var coverHeight = cardWidth / StoryCarouselImageAspectRatio;
         return coverHeight + 70;
     }
 
     private View BuildDownloadedStoryCard(OfflineStoryDownload download)
     {
         var story = ToMobileStorySummary(download);
-        var wideLayout = MobileResponsiveLayout.IsWide(Width);
         var cardWidth = MobileResponsiveLayout.ResolveDownloadedCardWidth(Width, IsAndroid);
-        var coverHeight = wideLayout
-            ? Math.Clamp(cardWidth * 1.27, 228, 300)
-            : IsAndroid ? 188 : 218;
+        var coverHeight = cardWidth / StoryCarouselImageAspectRatio;
         var coverGrid = new Grid
         {
             HeightRequest = coverHeight,
@@ -3552,32 +3581,23 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         _imageWarmupCancellation?.Dispose();
         _imageWarmupCancellation = new CancellationTokenSource();
         var token = _imageWarmupCancellation.Token;
-        var imageUrls = EnumeratePrioritizedLuisterImageUrls().ToArray();
+        var imageWarmupMaxImages = IsAndroid ? 56 : 80;
 
         _ = Task.Run(async () =>
         {
             try
             {
+                // Let the first native layout and initial touches settle before
+                // starting nonessential disk/network work after launch.
+                await Task.Delay(TimeSpan.FromMilliseconds(750), token);
+                var imageUrls = EnumeratePrioritizedLuisterImageUrls()
+                    .Take(imageWarmupMaxImages)
+                    .ToArray();
                 await _apiClient.CacheImagesAsync(
                     imageUrls,
                     token,
-                    maxImages: IsAndroid ? 56 : 80,
+                    maxImages: imageWarmupMaxImages,
                     maxDegreeOfParallelism: IsAndroid ? 3 : 4);
-                if (token.IsCancellationRequested || !_isPageActive)
-                {
-                    return;
-                }
-
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    if (token.IsCancellationRequested || !_isPageActive)
-                    {
-                        return;
-                    }
-
-                    _imageSourceCache.Clear();
-                    RenderPlaylistContent();
-                });
             }
             catch (OperationCanceledException)
             {

@@ -55,6 +55,28 @@ public sealed class MobileResponsiveLayoutSourceTests
         StringAssert.Contains(responsiveLayout, "Math.Clamp(cardWidth * 0.86, 88");
     }
 
+    [TestMethod]
+    public void MobileLuisterCarouselsMatchWebArtworkAspectRatios()
+    {
+        var mobileLuister = File.ReadAllText(GetRepoPath(
+            "Shink.Mobile",
+            "Pages",
+            "LuisterPage.cs"));
+        var webLuisterStyles = File.ReadAllText(GetRepoPath(
+            "Shink",
+            "Components",
+            "Pages",
+            "Luister.razor.css"));
+
+        StringAssert.Contains(webLuisterStyles, "aspect-ratio: 3 / 4;");
+        StringAssert.Contains(webLuisterStyles, "aspect-ratio: 16 / 9;");
+        StringAssert.Contains(mobileLuister, "private const double StoryCarouselImageAspectRatio = 3d / 4d;");
+        StringAssert.Contains(mobileLuister, "private const double PlaylistCarouselImageAspectRatio = 16d / 9d;");
+        StringAssert.Contains(mobileLuister, "return width / StoryCarouselImageAspectRatio;");
+        StringAssert.Contains(mobileLuister, "var artworkHeight = cardWidth / PlaylistCarouselImageAspectRatio;");
+        StringAssert.Contains(mobileLuister, "var coverHeight = cardWidth / StoryCarouselImageAspectRatio;");
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var parts = new[]

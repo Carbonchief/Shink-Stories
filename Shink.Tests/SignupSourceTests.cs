@@ -109,6 +109,20 @@ public class SignupSourceTests
         StringAssert.Contains(css, ".membership-plan-gratis:focus-visible");
     }
 
+    [TestMethod]
+    public void SignupReferralAndGratisCopyStayVisuallyCompact()
+    {
+        var signup = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Signup.razor"));
+        var css = File.ReadAllText(GetRepoPath("Shink", "Components", "Pages", "Signup.razor.css"));
+
+        Assert.IsFalse(signup.Contains("signup-referral-code-help", StringComparison.Ordinal));
+        Assert.IsFalse(signup.Contains("Gratis stories is onmiddellik aktief", StringComparison.Ordinal));
+        StringAssert.Contains(signup, "<span class=\"membership-plan-label\">GRATIS</span>");
+        StringAssert.Contains(signup, "class=\"membership-plan-gratis-copy\"");
+        StringAssert.Contains(css, "grid-template-columns: auto minmax(0, 1fr);");
+        StringAssert.Contains(css, ".membership-plan-gratis-copy");
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var parts = new[]

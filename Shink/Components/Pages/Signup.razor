@@ -93,10 +93,8 @@
                                    autocapitalize="characters"
                                    spellcheck="false"
                                    placeholder="Voer verwysingskode in"
-                                   aria-describedby="signup-referral-code-help"
                                    @bind-Value="SignUpForm.ReferralCode" />
                         <ValidationMessage class="invalid-feedback d-block" For="@(() => SignUpForm.ReferralCode)" />
-                        <p id="signup-referral-code-help" class="signup-referral-code-help">Het jy 'n kode per SMS of WhatsApp gekry? Tik dit hier in.</p>
                     </div>
                 </div>
 
@@ -179,9 +177,8 @@
                     class="@GetGratisMembershipClass()"
                     @onclick="SelectGratisPlan"
                     aria-pressed="@IsGratisSelected">
-                <p class="membership-plan-label">GRATIS</p>
-                <h3>Gratis stories is onmiddellik aktief</h3>
-                <p>As betaling misluk of gekanselleer word, behou jy steeds toegang tot die gratis stories.</p>
+                <span class="membership-plan-label">GRATIS</span>
+                <span class="membership-plan-gratis-copy">As betaling misluk of gekanselleer word, behou jy steeds toegang tot die gratis stories.</span>
             </button>
 
             @if (SelectedPlan is not null)

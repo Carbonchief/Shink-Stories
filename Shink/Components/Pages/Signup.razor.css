@@ -130,12 +130,6 @@
     font-size: 0.83rem;
 }
 
-.signup-referral-code-help {
-    margin: 0;
-    color: color-mix(in srgb, var(--text) 74%, #37535e);
-    font-size: 0.82rem;
-}
-
 .signup-email-consent {
     display: grid;
     grid-template-columns: 1.15rem minmax(0, 1fr);
@@ -578,6 +572,10 @@
 .membership-plan-gratis {
     appearance: none;
     width: 100%;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 0.9rem;
     text-align: left;
     color: inherit;
     font: inherit;
@@ -604,7 +602,15 @@
 }
 
 .membership-plan-gratis .membership-plan-label {
+    margin: 0;
     color: #9ae6af;
+}
+
+.membership-plan-gratis-copy {
+    margin: 0;
+    color: rgba(240, 246, 250, 0.92);
+    font-size: 0.92rem;
+    line-height: 1.4;
 }
 
 .signup-discount-code-field {
@@ -734,10 +740,6 @@ body.schink-night-mode .signup-grid-security {
 body.schink-night-mode .signup-field label,
 body.schink-night-mode .signup-link {
     color: #9ad8e6;
-}
-
-body.schink-night-mode .signup-referral-code-help {
-    color: #d2dadd;
 }
 
 body.schink-night-mode .signup-selected-option {
