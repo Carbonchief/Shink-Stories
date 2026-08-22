@@ -3291,6 +3291,12 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (response.IsSuccessStatusCode)
         {
+            await TryResolvePaymentRecoveryAfterCancellationAsync(
+                baseUri,
+                apiKey,
+                subscriptionId,
+                DateTimeOffset.UtcNow,
+                cancellationToken);
             return true;
         }
 
@@ -3328,6 +3334,12 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (response.IsSuccessStatusCode)
         {
+            await TryResolvePaymentRecoveryAfterCancellationAsync(
+                baseUri,
+                apiKey,
+                subscriptionId,
+                DateTimeOffset.UtcNow,
+                cancellationToken);
             return true;
         }
 
@@ -3954,7 +3966,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 cancellationToken);
             if (payFastContext is not null)
             {
-                await TryResolvePaymentRecoveryAfterCancellationAsync(baseUri, apiKey, payFastContext, nowUtc, cancellationToken);
+                await TryResolvePaymentRecoveryAfterCancellationAsync(baseUri, apiKey, payFastContext.SubscriptionId, nowUtc, cancellationToken);
                 await TrySendSubscriptionEndedAsync(
                     payFastContext,
                     statusLabel: "gekanselleer",
@@ -4457,7 +4469,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                     cancellationToken);
                 if (paystackContext is not null)
                 {
-                    await TryResolvePaymentRecoveryAfterCancellationAsync(baseUri, apiKey, paystackContext, nowUtc, cancellationToken);
+                    await TryResolvePaymentRecoveryAfterCancellationAsync(baseUri, apiKey, paystackContext.SubscriptionId, nowUtc, cancellationToken);
                     await TrySendSubscriptionEndedAsync(
                         paystackContext,
                         statusLabel: "gekanselleer",
@@ -7800,23 +7812,37 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     private async Task TryResolvePaymentRecoveryAfterCancellationAsync(
         Uri baseUri,
         string apiKey,
-        PaymentRecoverySubscriptionContext subscriptionContext,
+        string subscriptionId,
         DateTimeOffset nowUtc,
         CancellationToken cancellationToken)
     {
-        var recovery = await GetActivePaymentRecoveryAsync(baseUri, apiKey, subscriptionContext.SubscriptionId, cancellationToken);
-        if (recovery is null)
+        try
         {
-            return;
-        }
+            var recovery = await GetActivePaymentRecoveryAsync(baseUri, apiKey, subscriptionId, cancellationToken);
+            if (recovery is null)
+            {
+                return;
+            }
 
-        await _subscriptionPaymentRecoveryEmailService.CancelSequenceAsync(
-            new SubscriptionPaymentRecoveryEmailSequence(
-                recovery.ImmediateEmailId,
-                recovery.WarningEmailId,
-                recovery.SuspensionEmailId),
-            cancellationToken);
-        await ResolvePaymentRecoveryAsync(baseUri, apiKey, recovery.RecoveryId, nowUtc, "cancelled", cancellationToken);
+            await _subscriptionPaymentRecoveryEmailService.CancelSequenceAsync(
+                new SubscriptionPaymentRecoveryEmailSequence(
+                    recovery.ImmediateEmailId,
+                    recovery.WarningEmailId,
+                    recovery.SuspensionEmailId),
+                cancellationToken);
+            await ResolvePaymentRecoveryAsync(baseUri, apiKey, recovery.RecoveryId, nowUtc, "cancelled", cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(
+                exception,
+                "Payment recovery cancellation cleanup failed. subscription_id={SubscriptionId}",
+                subscriptionId);
+        }
     }
 
     private async Task TrySendSubscriptionConfirmationAsync(

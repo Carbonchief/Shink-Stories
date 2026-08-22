@@ -354,6 +354,22 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                     """);
             }
 
+            if (IsSupabaseGet(request, "/rest/v1/subscription_payment_recoveries"))
+            {
+                return JsonResponse(
+                    """
+                    [
+                      {
+                        "recovery_id": "55555555-5555-5555-5555-555555555555",
+                        "subscription_id": "22222222-2222-2222-2222-222222222222",
+                        "immediate_email_id": "immediate-email",
+                        "warning_email_id": "warning-email",
+                        "suspension_email_id": "suspension-email"
+                      }
+                    ]
+                    """);
+            }
+
             if (request.Method == HttpMethod.Post &&
                 request.RequestUri?.AbsolutePath == "/subscription/disable")
             {
@@ -371,10 +387,17 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                     """);
             }
 
+            if (request.Method == new HttpMethod("PATCH") &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/subscription_payment_recoveries")
+            {
+                return new HttpResponseMessage(HttpStatusCode.NoContent);
+            }
+
             return new HttpResponseMessage(HttpStatusCode.NotFound);
         });
 
-        var service = CreateService(handler);
+        var recoveryEmailService = new TrackingSubscriptionPaymentRecoveryEmailService();
+        var service = CreateService(handler, recoveryEmailService);
 
         var result = await service.CancelPaidSubscriptionAsync(
             "ouer@example.com",
@@ -392,6 +415,18 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
         Assert.AreEqual("active", patchPayload.GetProperty("status").GetString());
         Assert.AreEqual(nextRenewalAt, patchPayload.GetProperty("cancelled_at").GetDateTimeOffset());
         Assert.AreEqual("email-token-123", patchPayload.GetProperty("provider_email_token").GetString());
+        CollectionAssert.AreEqual(
+            new[] { "immediate-email", "warning-email", "suspension-email" },
+            new[]
+            {
+                recoveryEmailService.CancelledSequences[0].ImmediateEmailId,
+                recoveryEmailService.CancelledSequences[0].WarningEmailId,
+                recoveryEmailService.CancelledSequences[0].SuspensionEmailId
+            });
+        Assert.IsTrue(
+            handler.PaymentRecoveryPatchPayloads.Any(payload =>
+                payload.Contains("\"resolution\":\"cancelled\"", StringComparison.Ordinal)),
+            "A self-service cancellation must resolve the matching payment recovery.");
 
         var feedbackPayload = JsonSerializer.Deserialize<JsonElement>(handler.CancellationFeedbackPayload!);
         Assert.AreEqual("11111111-1111-1111-1111-111111111111", feedbackPayload.GetProperty("subscriber_id").GetString());
