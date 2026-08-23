@@ -120,6 +120,20 @@ public class PayFastWebhookHardeningTests
     }
 
     [TestMethod]
+    public void PaystackAuthorizationScheduleBillingAmountSourceIsAllowedBySubscriptionConstraint()
+    {
+        var migration = File.ReadAllText(GetRepoPath(
+            "Shink",
+            "Database",
+            "migrations",
+            "20260822_allow_paystack_authorization_schedule_billing_source.sql"));
+
+        StringAssert.Contains(migration, "subscriptions_billing_amount_source_known");
+        StringAssert.Contains(migration, "'paystack_authorization_schedule'");
+        StringAssert.Contains(migration, "validate constraint subscriptions_billing_amount_source_known");
+    }
+
+    [TestMethod]
     public void PlanChangeUpgradeChargeReferencesAreStablePerRenewalWindow()
     {
         var ledgerService = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseSubscriptionLedgerService.cs"));
