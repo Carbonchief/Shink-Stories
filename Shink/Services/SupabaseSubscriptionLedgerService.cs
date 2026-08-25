@@ -887,6 +887,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         var newProviderPaymentId = planChangeAttempt.NewProviderPaymentId;
         var newProviderEmailToken = planChangeAttempt.NewProviderEmailToken;
+        DateTimeOffset? providerNextPaymentDateUtc = null;
         if (string.IsNullOrWhiteSpace(newProviderPaymentId))
         {
             var createResult = await _paystackCheckoutService.CreateSubscriptionAsync(
@@ -916,6 +917,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
             newProviderPaymentId = createResult.SubscriptionCode;
             newProviderEmailToken = createResult.EmailToken;
+            providerNextPaymentDateUtc = createResult.NextPaymentDate;
             await MarkSubscriptionPlanChangeAttemptAsync(
                 context.BaseUri,
                 context.ApiKey,
@@ -932,6 +934,24 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             };
         }
 
+        if (providerNextPaymentDateUtc is null &&
+            !string.IsNullOrWhiteSpace(newProviderPaymentId))
+        {
+            var liveTargetSubscription = await _paystackCheckoutService.GetSubscriptionAsync(
+                newProviderPaymentId,
+                cancellationToken);
+            if (liveTargetSubscription.IsSuccess)
+            {
+                providerNextPaymentDateUtc = liveTargetSubscription.NextPaymentDate;
+                newProviderEmailToken = liveTargetSubscription.EmailToken ?? newProviderEmailToken;
+            }
+        }
+
+        var ledgerNextRenewalAtUtc = providerNextPaymentDateUtc is { } providerNextPaymentDate &&
+                                     providerNextPaymentDate > targetNextRenewalAtUtc
+            ? providerNextPaymentDate
+            : targetNextRenewalAtUtc;
+
         var targetSubscriptionId = await UpsertSubscriptionAsync(
             context.BaseUri,
             context.ApiKey,
@@ -943,7 +963,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             providerToken: currentSubscription.ProviderToken,
             providerEmailToken: newProviderEmailToken,
             subscribedAtUtc: chargeImmediately ? DateTimeOffset.UtcNow : accessEndsAtUtc,
-            nextRenewalAtUtc: targetNextRenewalAtUtc,
+            nextRenewalAtUtc: ledgerNextRenewalAtUtc,
             cancellationToken,
             billingAmountZar: targetPlan.Amount,
             billingPeriodMonths: targetPlan.BillingPeriodMonths,

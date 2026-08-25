@@ -874,6 +874,7 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     {
         var nowBeforeCall = DateTimeOffset.UtcNow;
         var nextRenewalAt = nowBeforeCall.AddDays(20);
+        var providerNextPaymentAt = nowBeforeCall.AddMonths(2);
         var chargeAmountInCents = 0L;
         var handler = new RecordingHandler(request =>
         {
@@ -938,14 +939,14 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                 request.RequestUri?.AbsolutePath == "/subscription")
             {
                 return JsonResponse(
-                    """
+                    $$"""
                     {
                       "status": true,
                       "data": {
                         "subscription_code": "SUB_allstories",
                         "email_token": "email-token-new",
                         "status": "active",
-                        "next_payment_date": "2026-06-05T10:00:00.000Z"
+                        "next_payment_date": "{{providerNextPaymentAt:O}}"
                       }
                     }
                     """);
@@ -999,15 +1000,21 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
             payload.Contains("\"provider_payment_id\":\"SUB_allstories\"", StringComparison.Ordinal));
         var newSubscription = JsonSerializer.Deserialize<JsonElement>(newSubscriptionPayload);
         var targetNextRenewalAt = newSubscription.GetProperty("next_renewal_at").GetDateTimeOffset();
+        Assert.AreEqual(
+            providerNextPaymentAt,
+            targetNextRenewalAt,
+            "The local access boundary should follow a later next payment date returned by Paystack.");
+        var paystackSubscriptionPayload = handler.SubscriptionCreatePayloads.Single(payload =>
+            payload.Contains("\"plan\":\"PLN_allstories\"", StringComparison.Ordinal));
+        var paystackSubscription = JsonSerializer.Deserialize<JsonElement>(paystackSubscriptionPayload);
+        var requestedProviderStartAt = paystackSubscription.GetProperty("start_date").GetDateTimeOffset();
         var minimumExpectedRenewal = nowBeforeCall.AddMonths(1).Add(TimeSpan.FromTicks((nextRenewalAt - nowAfterCall).Ticks / 2));
         var maximumExpectedRenewal = nowAfterCall.AddMonths(1).Add(TimeSpan.FromTicks((nextRenewalAt - nowBeforeCall).Ticks / 2));
         Assert.IsTrue(
-            targetNextRenewalAt >= minimumExpectedRenewal && targetNextRenewalAt <= maximumExpectedRenewal,
-            $"Expected All Stories monthly renewal to include half the remaining Story Corner time. Actual: {targetNextRenewalAt:O}");
+            requestedProviderStartAt >= minimumExpectedRenewal && requestedProviderStartAt <= maximumExpectedRenewal,
+            $"Expected the requested All Stories monthly start to include half the remaining Story Corner time. Actual: {requestedProviderStartAt:O}");
         Assert.IsTrue(
-            handler.SubscriptionCreatePayloads.Any(payload =>
-                payload.Contains("\"plan\":\"PLN_allstories\"", StringComparison.Ordinal) &&
-                payload.Contains($"\"start_date\":\"{targetNextRenewalAt.UtcDateTime:O}\"", StringComparison.Ordinal)),
+            paystackSubscriptionPayload.Contains($"\"start_date\":\"{requestedProviderStartAt.UtcDateTime:O}\"", StringComparison.Ordinal),
             "The replacement Paystack subscription should only renew after the paid monthly period plus carried Story Corner time.");
     }
 
