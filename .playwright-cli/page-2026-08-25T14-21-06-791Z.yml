@@ -1,0 +1,24 @@
+- generic [ref=e3]:
+  - link "Spring na inhoud" [ref=e4] [cursor=pointer]:
+    - /url: "#main-content"
+  - link "Terug na luister" [ref=e5] [cursor=pointer]:
+    - /url: /luister
+    - generic [ref=e6]: 
+  - generic [ref=e8]:
+    - button "Maak navigasie oop" [ref=e9] [cursor=pointer]:
+      - generic [ref=e10]: 
+    - text:          
+  - main [ref=e12]
+  - contentinfo [ref=e13]:
+    - generic [ref=e14]:
+      - link [ref=e15] [cursor=pointer]:
+        - /url: /
+        - img "Schink Stories" [ref=e16]
+      - navigation "Sosiale skakels" [ref=e17]:
+        - link "Facebook" [ref=e18] [cursor=pointer]:
+          - /url: https://www.facebook.com/SchinkPublishing
+          - generic [ref=e19]: 
+        - link "Instagram" [ref=e20] [cursor=pointer]:
+          - /url: https://www.instagram.com/schinkpublishing/
+          - generic [ref=e21]: 
+      - paragraph [ref=e22]: © 2023 Schink

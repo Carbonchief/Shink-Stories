@@ -173,6 +173,58 @@ public sealed class MobilePerformanceReliabilitySourceTests
         StringAssert.Contains(appShell, "_ = _sessionState.HydrateSensitiveCacheAsync();");
     }
 
+    [TestMethod]
+    public void LuisterMomentumScrollDefersNonessentialCarouselWork()
+    {
+        var luisterPage = File.ReadAllText(Path.Combine(RepoRoot, "Shink.Mobile", "Pages", "LuisterPage.cs"));
+        var mauiProgram = File.ReadAllText(Path.Combine(RepoRoot, "Shink.Mobile", "MauiProgram.cs"));
+
+        StringAssert.Contains(luisterPage, "ScrollVisualUpdateInterval = TimeSpan.FromMilliseconds(100)");
+        StringAssert.Contains(luisterPage, "QueueLuisterScrollUpdate(args.VerticalOffset)");
+        StringAssert.Contains(luisterPage, "ApplyLuisterGradientForScroll(_pendingGradientScrollOffset)");
+        var scrollTickStart = luisterPage.IndexOf(
+            "private void OnScrollVisualUpdateTimerTick",
+            StringComparison.Ordinal);
+        var idleGuard = luisterPage.IndexOf(
+            "Environment.TickCount64 - _lastScrollEventTick < ScrollIdleThresholdMilliseconds",
+            scrollTickStart,
+            StringComparison.Ordinal);
+        var gradientUpdate = luisterPage.IndexOf(
+            "ApplyLuisterGradientForScroll(_pendingGradientScrollOffset)",
+            scrollTickStart,
+            StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(0, scrollTickStart);
+        Assert.IsGreaterThan(scrollTickStart, idleGuard);
+        Assert.IsGreaterThan(scrollTickStart, gradientUpdate);
+        Assert.IsGreaterThan(gradientUpdate, idleGuard);
+        StringAssert.Contains(luisterPage, "PauseImageWarmupForScroll();");
+        StringAssert.Contains(luisterPage, "ResumeImageWarmupAfterScroll();");
+        StringAssert.Contains(luisterPage, "ResolvePlaylistShowcaseCoverHeight(wideLayout, pageWidth)");
+        Assert.IsFalse(luisterPage.Contains("cover.SizeChanged +=", StringComparison.Ordinal));
+        StringAssert.Contains(luisterPage, "AutomationId = \"luister-feed\"");
+        StringAssert.Contains(luisterPage, "AutomationId = \"luister-carousel\"");
+        StringAssert.Contains(mauiProgram, "SchinkLuisterCollectionViewPerformance");
+        StringAssert.Contains(mauiProgram, "layoutManager.InitialPrefetchItemCount = 4;");
+    }
+
+    [TestMethod]
+    public void AndroidScrollingSurfacesAvoidPerItemShadows()
+    {
+        var search = File.ReadAllText(Path.Combine(RepoRoot, "Shink.Mobile", "Pages", "SearchPage.cs"));
+        var characters = File.ReadAllText(Path.Combine(RepoRoot, "Shink.Mobile", "Pages", "KaraktersPage.cs"));
+        var playlists = File.ReadAllText(Path.Combine(RepoRoot, "Shink.Mobile", "Pages", "PlaylistStoriesPage.cs"));
+        var helpers = File.ReadAllText(Path.Combine(RepoRoot, "Shink.Mobile", "Pages", "PageHelpers.cs"));
+        var storyDetail = File.ReadAllText(Path.Combine(RepoRoot, "Shink.Mobile", "Pages", "StoryDetailPage.cs"));
+
+        StringAssert.Contains(search, "Shadow = IsAndroid\n                ? null");
+        StringAssert.Contains(characters, "Shadow = IsAndroid\n                ? null");
+        StringAssert.Contains(playlists, "Shadow = IsAndroid\n                    ? null");
+        StringAssert.Contains(helpers, "Shadow = DeviceInfo.Current.Platform == DevicePlatform.Android\n                ? null");
+        StringAssert.Contains(storyDetail, "Shadow = IsAndroid\n                ? null");
+        StringAssert.Contains(storyDetail, "IsAndroid\n            ? new SolidColorBrush(Color.FromArgb(\"#F3F0EA\"))");
+        StringAssert.Contains(storyDetail, "IsAndroid\n            ? new SolidColorBrush(Colors.Transparent)");
+    }
+
     private static string FindRepoRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

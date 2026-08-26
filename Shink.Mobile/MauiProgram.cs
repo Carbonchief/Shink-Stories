@@ -17,6 +17,9 @@ public static class MauiProgram
             {
                 fonts.AddFont("fa-regular-400.ttf", "FontAwesomeRegular");
                 fonts.AddFont("fa-solid-900.ttf", "FontAwesomeSolid");
+                fonts.AddFont("Poppins-Regular.ttf", "Poppins");
+                fonts.AddFont("Poppins-SemiBold.ttf", "PoppinsSemiBold");
+                fonts.AddFont("Poppins-Bold.ttf", "PoppinsBold");
             })
             .ConfigureMauiHandlers(handlers =>
             {
@@ -26,6 +29,7 @@ public static class MauiProgram
 #endif
             });
         ConfigureEntryChrome();
+        ConfigureCollectionViewStability();
 
         var mobileAppSettings = new MobileAppSettings();
         mobileAppSettings.BaseUrl = ResolveMobileApiBaseUrl(mobileAppSettings.BaseUrl);
@@ -63,8 +67,11 @@ public static class MauiProgram
         builder.Services.AddTransient<HomePage>();
         builder.Services.AddTransient<GratisPage>();
         builder.Services.AddTransient<LuisterPage>();
+        builder.Services.AddTransient<SearchPage>();
         builder.Services.AddTransient<DownloadedPage>();
         builder.Services.AddTransient<KarakterPareGamePage>();
+        builder.Services.AddTransient<KarakterPareConfigPage>();
+        builder.Services.AddTransient<KarakterRaaiConfigPage>();
         builder.Services.AddTransient<KarakterRaaiGamePage>();
         // Shell keeps the hidden Karakters destination alive so opening it never has to
         // construct another large gallery page on the user's tap.
@@ -74,6 +81,8 @@ public static class MauiProgram
         builder.Services.AddTransient<PlansPage>();
         builder.Services.AddTransient<ProfilePage>();
         builder.Services.AddTransient<SettingsPage>();
+        builder.Services.AddTransient<PlaylistStoriesPage>();
+        builder.Services.AddTransient<PlaylistDetailPage>();
         builder.Services.AddTransient<StoryDetailPage>();
 
 #if DEBUG
@@ -141,5 +150,53 @@ public static class MauiProgram
             handler.PlatformView.SetPadding(0, 0, 0, 0);
 #endif
         });
+    }
+
+    private static void ConfigureCollectionViewStability()
+    {
+#if IOS
+        // Incident 5028E205-2F20-45B9-B759-5ADCB4B69A9B crashed while
+        // CollectionView2 was creating an off-screen prefetched cell. These feeds
+        // contain rich, nested templates, so build cells only when UIKit needs to
+        // display them instead of letting UICollectionView prefetch them while idle.
+        Microsoft.Maui.Handlers.ViewHandler.ViewMapper.AppendToMapping(
+            "SchinkDisableCollectionViewPrefetch",
+            (handler, view) =>
+            {
+                if (view is CollectionView &&
+                    handler.PlatformView is UIKit.UICollectionView collectionView)
+                {
+                    collectionView.PrefetchingEnabled = false;
+                }
+            });
+#elif ANDROID
+        // Luister nests fixed-height horizontal carousels inside its vertical feed.
+        // Keep a small native cache and prepare the first cards while the parent row
+        // is still approaching the viewport, so mounting a new carousel does not
+        // interrupt an in-progress fling.
+        Microsoft.Maui.Handlers.ViewHandler.ViewMapper.AppendToMapping(
+            "SchinkLuisterCollectionViewPerformance",
+            (handler, view) =>
+            {
+                if (view is not CollectionView collectionView ||
+                    handler.PlatformView is not AndroidX.RecyclerView.Widget.RecyclerView recyclerView ||
+                    collectionView.AutomationId is not ("luister-feed" or "luister-carousel"))
+                {
+                    return;
+                }
+
+                recyclerView.SetItemAnimator(null);
+                recyclerView.SetItemViewCacheSize(collectionView.AutomationId == "luister-carousel" ? 6 : 4);
+                if (collectionView.AutomationId == "luister-carousel")
+                {
+                    recyclerView.HasFixedSize = true;
+                    recyclerView.NestedScrollingEnabled = false;
+                    if (recyclerView.GetLayoutManager() is AndroidX.RecyclerView.Widget.LinearLayoutManager layoutManager)
+                    {
+                        layoutManager.InitialPrefetchItemCount = 4;
+                    }
+                }
+            });
+#endif
     }
 }

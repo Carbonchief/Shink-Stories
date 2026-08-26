@@ -5,13 +5,16 @@ using Shink.Mobile.Services;
 
 namespace Shink.Mobile.Pages;
 
-public sealed class KarakterPareGamePage : ContentPage
+public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
 {
+    private const int MatchedTileAnimationZIndex = 1_000;
+    private const int MergedTileAnimationZIndex = 1_001;
+    private static bool IsAndroid => DeviceInfo.Current.Platform == DevicePlatform.Android;
     private static readonly MatchDifficultyOption[] DifficultyOptions =
     [
-        new(MatchDifficultyLevel.Easy, "Maklik", 3, 4),
-        new(MatchDifficultyLevel.Medium, "Gemiddeld", 4, 4),
-        new(MatchDifficultyLevel.Hard, "Moeilik", 4, 5)
+        new(MatchDifficultyLevel.Easy, "Beginner", 3, 4),
+        new(MatchDifficultyLevel.Medium, "Kenner", 4, 4),
+        new(MatchDifficultyLevel.Hard, "Meester", 4, 6)
     ];
     private static readonly string[] PerfectScoreMessages =
     [
@@ -25,6 +28,8 @@ public sealed class KarakterPareGamePage : ContentPage
     private readonly Dictionary<Guid, VisualElement> _tileViews = [];
     private readonly Dictionary<MatchDifficultyLevel, DifficultyChoiceView> _difficultyChoices = [];
     private readonly Grid _board;
+    private readonly Grid _boardHost;
+    private readonly AbsoluteLayout _matchAnimationOverlay;
     private readonly Grid _setupView;
     private readonly Grid _stateOverlay;
     private readonly Border _scoreCard;
@@ -35,7 +40,7 @@ public sealed class KarakterPareGamePage : ContentPage
     private readonly Label _pairsLabel;
     private readonly Label _messageLabel;
     private readonly Button _startGameButton;
-    private readonly Button _newGameButton;
+    private readonly ImageButton _newGameButton;
     private readonly GameCelebrationOverlay _celebrationOverlay;
     private IReadOnlyList<MobileCharacterCard> _availableCharacters = Array.Empty<MobileCharacterCard>();
     private CharacterMatchGame? _game;
@@ -43,6 +48,8 @@ public sealed class KarakterPareGamePage : ContentPage
     private MatchDifficultyOption _selectedDifficulty = DifficultyOptions[0];
     private bool _hasLoaded;
     private bool _isPageActive;
+    private bool _startConfiguredGame;
+    private bool _isReturningToConfiguration;
 
     public KarakterPareGamePage(
         MobileApiClient apiClient,
@@ -56,8 +63,9 @@ public sealed class KarakterPareGamePage : ContentPage
         SafeAreaEdges = new SafeAreaEdges(SafeAreaRegions.Container);
         Shell.SetNavBarIsVisible(this, false);
 
-        _attemptsLabel = BuildScoreLabel("Draaie: 0");
-        _pairsLabel = BuildScoreLabel("Pare: 0 / 0");
+        _attemptsLabel = BuildScoreLabel("Beurte: 0");
+        _pairsLabel = BuildScoreLabel("0/0");
+        _pairsLabel.HorizontalTextAlignment = TextAlignment.End;
         _messageLabel = new Label
         {
             Text = "Kies jou eerste kaartjie.",
@@ -69,6 +77,14 @@ public sealed class KarakterPareGamePage : ContentPage
         };
 
         _board = BuildBoard();
+        _matchAnimationOverlay = new AbsoluteLayout
+        {
+            BackgroundColor = Colors.Transparent,
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalOptions = LayoutOptions.Fill,
+            InputTransparent = true,
+            ZIndex = MatchedTileAnimationZIndex
+        };
 
         _loadingIndicator = new ActivityIndicator
         {
@@ -113,12 +129,27 @@ public sealed class KarakterPareGamePage : ContentPage
         _setupView = BuildSetupView();
         UpdateDifficultyChoiceStyles();
 
-        _newGameButton = BuildPrimaryButton("Meng en speel weer");
-        _newGameButton.ImageSource = "replay_icon.svg";
-        _newGameButton.ContentLayout = new Button.ButtonContentLayout(
-            Button.ButtonContentLayout.ImagePosition.Left,
-            9);
-        _newGameButton.Margin = new Thickness(20, 4, 20, 8);
+        _newGameButton = new ImageButton
+        {
+            BackgroundColor = Colors.Transparent,
+            BorderWidth = 0,
+            CornerRadius = 22,
+            WidthRequest = 44,
+            HeightRequest = 44,
+            Padding = 9,
+            Source = new FontImageSource
+            {
+                Glyph = "\uf2f1",
+                FontFamily = "FontAwesomeSolid",
+                Color = Color.FromArgb("#5B7188"),
+                Size = 25
+            },
+            Aspect = Aspect.AspectFit,
+            HorizontalOptions = LayoutOptions.End,
+            VerticalOptions = LayoutOptions.Center,
+            AutomationId = "character-match-retry"
+        };
+        SemanticProperties.SetDescription(_newGameButton, "Speel weer");
         _newGameButton.IsVisible = false;
         _newGameButton.Clicked += async (_, _) =>
         {
@@ -137,76 +168,168 @@ public sealed class KarakterPareGamePage : ContentPage
             RowDefinitions =
             {
                 new RowDefinition(new GridLength(64)),
-                new RowDefinition(GridLength.Auto),
-                new RowDefinition(GridLength.Auto),
-                new RowDefinition(GridLength.Star),
-                new RowDefinition(GridLength.Auto)
+                new RowDefinition(new GridLength(66)),
+                new RowDefinition(GridLength.Star)
             }
         };
 
-        var topBar = new Grid
-        {
-            Padding = new Thickness(10, 8, 10, 0),
-            Children =
-            {
-                MobileTopBar.Build(this, _apiClient, sessionState.Current, leftAction: "back")
-            }
-        };
-        var heading = BuildHeading();
+        var topBar = BuildGameTopBar();
         _scoreCard = BuildScoreCard();
         _scoreCard.IsVisible = false;
-        var boardHost = new Grid
+        _boardHost = new Grid
         {
             Children =
             {
                 _board,
+                _matchAnimationOverlay,
                 _stateOverlay
             }
         };
 
         root.Children.Add(topBar);
-        root.Children.Add(heading);
         root.Children.Add(_scoreCard);
-        root.Children.Add(boardHost);
-        root.Children.Add(_newGameButton);
+        root.Children.Add(_boardHost);
         root.Children.Add(_setupView);
         root.Children.Add(_celebrationOverlay);
-        Grid.SetRow(heading, 1);
-        Grid.SetRow(_scoreCard, 2);
-        Grid.SetRow(boardHost, 3);
-        Grid.SetRow(_newGameButton, 4);
-        Grid.SetRow(_setupView, 2);
-        Grid.SetRowSpan(_setupView, 3);
-        Grid.SetRowSpan(_celebrationOverlay, 5);
+        Grid.SetRow(_scoreCard, 1);
+        Grid.SetRow(_boardHost, 2);
+        Grid.SetRow(_setupView, 1);
+        Grid.SetRowSpan(_setupView, 2);
+        Grid.SetRowSpan(_celebrationOverlay, 3);
         Content = root;
         SizeChanged += (_, _) => ApplyResponsiveLayout();
         ApplyResponsiveLayout();
     }
 
+    public void ApplyQueryAttributes(IDictionary<string, object> query)
+    {
+        if (!query.TryGetValue("difficulty", out var rawDifficulty))
+        {
+            return;
+        }
+
+        var level = rawDifficulty?.ToString();
+        var difficulty = DifficultyOptions.FirstOrDefault(option =>
+            option.Level.ToString().Equals(level, StringComparison.OrdinalIgnoreCase));
+        if (difficulty is null)
+        {
+            return;
+        }
+
+        _selectedDifficulty = difficulty;
+        _setupView.IsVisible = false;
+        _startConfiguredGame = true;
+        UpdateDifficultyChoiceStyles();
+        if (_isPageActive)
+        {
+            _startConfiguredGame = false;
+            _ = HandleStartGameAsync();
+        }
+    }
+
     private void ApplyResponsiveLayout()
     {
-        // Fill the complete board host so wide screens do not leave a narrow
-        // centered strip of unused space around the cards.
+        // Keep the board broad on tablets while preserving compact phone
+        // margins, and scale the score labels with the available width.
         _board.WidthRequest = -1;
         _board.HorizontalOptions = LayoutOptions.Fill;
-        MobileResponsiveLayout.ApplyCenteredContent(_newGameButton, Width, 440);
+        var scoreFontSize = Math.Clamp(Width * 0.06, 30, 44);
+        _attemptsLabel.FontSize = scoreFontSize;
+        _pairsLabel.FontSize = scoreFontSize;
+        _scoreCard.Margin = new Thickness(Width >= 600 ? 36 : 18, 0, Width >= 600 ? 36 : 18, 8);
     }
 
     private static LinearGradientBrush BuildGameBackground() =>
         new(
             new GradientStopCollection
             {
-                new(Color.FromArgb("#166476"), 0),
-                new(Color.FromArgb("#46969E"), 0.48f),
-                new(Color.FromArgb("#68B6B5"), 1)
+                new(Color.FromArgb("#C9EAE4"), 0),
+                new(Color.FromArgb("#E6F0D2"), 0.52f),
+                new(Color.FromArgb("#FFF0B8"), 1)
             },
             new Point(0, 0),
             new Point(0, 1));
+
+    private Grid BuildGameTopBar()
+    {
+        var backButton = BuildBackButton();
+        var topBar = new Grid
+        {
+            Padding = new Thickness(18, 4, 18, 0),
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Auto)
+            },
+            Children =
+            {
+                backButton,
+                _newGameButton
+            }
+        };
+        Grid.SetColumn(_newGameButton, 1);
+        return topBar;
+    }
+
+    private Border BuildBackButton()
+    {
+        var backButton = new Border
+        {
+            BackgroundColor = Colors.Transparent,
+            StrokeThickness = 0,
+            WidthRequest = 54,
+            HeightRequest = 54,
+            HorizontalOptions = LayoutOptions.Start,
+            VerticalOptions = LayoutOptions.Start,
+            Content = new GraphicsView
+            {
+                Drawable = new GameBackChevronDrawable(Color.FromArgb("#5B7188")),
+                WidthRequest = 32,
+                HeightRequest = 32,
+                InputTransparent = true
+            },
+            AutomationId = "character-match-back"
+        };
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += async (_, _) => await ReturnToConfigurationAsync();
+        backButton.GestureRecognizers.Add(tap);
+        return backButton;
+    }
+
+    private async Task ReturnToConfigurationAsync()
+    {
+        if (_isReturningToConfiguration)
+        {
+            return;
+        }
+
+        _isReturningToConfiguration = true;
+        _newGameButton.IsEnabled = false;
+        _loadCancellation?.Cancel();
+        SafeHapticFeedback.TryPerform(HapticFeedbackType.Click);
+        try
+        {
+            var parameters = new ShellNavigationQueryParameters
+            {
+                ["difficulty"] = _selectedDifficulty.Level.ToString().ToLowerInvariant()
+            };
+            await Shell.Current.GoToAsync("..", parameters);
+        }
+        finally
+        {
+            _isReturningToConfiguration = false;
+        }
+    }
 
     protected override void OnAppearing()
     {
         base.OnAppearing();
         _isPageActive = true;
+        if (_startConfiguredGame)
+        {
+            _startConfiguredGame = false;
+            _ = HandleStartGameAsync();
+        }
     }
 
     protected override void OnDisappearing()
@@ -445,29 +568,20 @@ public sealed class KarakterPareGamePage : ContentPage
                 new ColumnDefinition(GridLength.Star),
                 new ColumnDefinition(GridLength.Star)
             },
-            RowDefinitions =
-            {
-                new RowDefinition(GridLength.Auto),
-                new RowDefinition(GridLength.Auto)
-            },
             ColumnSpacing = 10,
-            RowSpacing = 2
+            RowSpacing = 0
         };
         scoreGrid.Children.Add(_attemptsLabel);
         scoreGrid.Children.Add(_pairsLabel);
-        scoreGrid.Children.Add(_messageLabel);
         Grid.SetColumn(_pairsLabel, 1);
-        Grid.SetRow(_messageLabel, 1);
-        Grid.SetColumnSpan(_messageLabel, 2);
 
         return new Border
         {
-            BackgroundColor = Color.FromArgb("#FFF7E8"),
-            Stroke = Color.FromArgb("#F3DEB4"),
-            StrokeThickness = 1,
-            StrokeShape = new RoundRectangle { CornerRadius = 17 },
-            Padding = new Thickness(12, 6),
-            Margin = new Thickness(12, 0, 12, 6),
+            BackgroundColor = Colors.Transparent,
+            Stroke = Colors.Transparent,
+            StrokeThickness = 0,
+            Padding = new Thickness(0),
+            Margin = new Thickness(36, 0, 36, 8),
             Content = scoreGrid
         };
     }
@@ -476,10 +590,10 @@ public sealed class KarakterPareGamePage : ContentPage
         new()
         {
             Text = text,
-            FontSize = 15,
+            FontSize = 40,
             FontAttributes = FontAttributes.Bold,
-            TextColor = Color.FromArgb("#27313A"),
-            HorizontalTextAlignment = TextAlignment.Center
+            TextColor = Color.FromArgb("#5B7188"),
+            HorizontalTextAlignment = TextAlignment.Start
         };
 
     private static Button BuildPrimaryButton(string text) =>
@@ -566,34 +680,14 @@ public sealed class KarakterPareGamePage : ContentPage
 
         var back = new Grid
         {
-            Background = new LinearGradientBrush(
-                new GradientStopCollection
-                {
-                    new(Color.FromArgb("#27313A"), 0),
-                    new(Color.FromArgb("#166476"), 1)
-                },
-                new Point(0, 0),
-                new Point(1, 1)),
             Children =
             {
                 new Image
                 {
-                    Source = "oortjies_01.png",
-                    HeightRequest = 42,
-                    Opacity = 0.94,
-                    Aspect = Aspect.AspectFit,
+                    Source = "karakter_pare_card_back.png",
+                    Aspect = Aspect.AspectFill,
                     HorizontalOptions = LayoutOptions.Center,
                     VerticalOptions = LayoutOptions.Center
-                },
-                new Label
-                {
-                    Text = "?",
-                    FontSize = 23,
-                    FontAttributes = FontAttributes.Bold,
-                    TextColor = Color.FromArgb("#F8C854"),
-                    HorizontalTextAlignment = TextAlignment.Center,
-                    VerticalTextAlignment = TextAlignment.End,
-                    Margin = new Thickness(0, 0, 0, 4)
                 }
             }
         };
@@ -615,16 +709,16 @@ public sealed class KarakterPareGamePage : ContentPage
             HorizontalOptions = LayoutOptions.Fill,
             VerticalOptions = LayoutOptions.Fill,
             BackgroundColor = Color.FromArgb("#27313A"),
-            Stroke = Color.FromArgb("#55FFFFFF"),
-            StrokeThickness = 1,
-            StrokeShape = new RoundRectangle { CornerRadius = 16 },
+            Stroke = Colors.Transparent,
+            StrokeThickness = 0,
+            StrokeShape = new RoundRectangle { CornerRadius = 22 },
             Padding = 0,
             Shadow = new Shadow
             {
                 Brush = Brush.Black,
                 Offset = new Point(0, 3),
-                Radius = 7,
-                Opacity = 0.18f
+                Radius = 9,
+                Opacity = 0.14f
             },
             Content = faces,
             AutomationId = "character-match-tile"
@@ -714,6 +808,7 @@ public sealed class KarakterPareGamePage : ContentPage
         _game = null;
         _newGameButton.IsEnabled = false;
         _board.InputTransparent = true;
+        _matchAnimationOverlay.Children.Clear();
         if (animateBoard)
         {
             await AnimateBoardOutAsync();
@@ -740,11 +835,10 @@ public sealed class KarakterPareGamePage : ContentPage
 
         _game = new CharacterMatchGame(
             tiles.Select(tile => new CharacterMatchCard(tile.Id, tile.PairKey)));
-        _attemptsLabel.Text = "Draaie: 0";
-        _pairsLabel.Text = $"Pare: 0 / {_game.PairCount}";
+        _attemptsLabel.Text = "Beurte: 0";
+        _pairsLabel.Text = $"0/{_game.PairCount}";
         _messageLabel.Text = "Kies jou eerste kaartjie.";
         _messageLabel.TextColor = Color.FromArgb("#166476");
-        _newGameButton.Text = "Meng en speel weer";
         _newGameButton.IsVisible = true;
         _stateOverlay.IsVisible = false;
         _scoreCard.IsVisible = true;
@@ -834,12 +928,11 @@ public sealed class KarakterPareGamePage : ContentPage
             _board.RowDefinitions.Add(new RowDefinition(GridLength.Star));
         }
 
-        var spacing = difficulty.Columns == 3 ? 8 : 6;
+        var spacing = difficulty.Columns == 3 ? 10 : 12;
         _board.ColumnSpacing = spacing;
         _board.RowSpacing = spacing;
-        _board.Margin = difficulty.Columns == 3
-            ? new Thickness(12, 0)
-            : new Thickness(9, 0);
+        var horizontalMargin = Width >= 600 ? 36 : 18;
+        _board.Margin = new Thickness(horizontalMargin, 0, horizontalMargin, 0);
     }
 
     private async Task AnimateBoardOutAsync()
@@ -879,8 +972,11 @@ public sealed class KarakterPareGamePage : ContentPage
         foreach (var tileView in tileViews)
         {
             tileView.Opacity = 0;
-            tileView.Scale = 0.72;
-            tileView.TranslationY = 22;
+            // Android can leave concurrent sibling ScaleTo animations at their
+            // initial value. Keep cards full-sized and in their final grid position
+            // there, while iOS keeps the existing spring-and-slide motion.
+            tileView.Scale = IsAndroid ? 1 : 0.72;
+            tileView.TranslationY = IsAndroid ? 0 : 22;
         }
 
         await Task.Yield();
@@ -910,6 +1006,13 @@ public sealed class KarakterPareGamePage : ContentPage
             return;
         }
 
+        if (IsAndroid)
+        {
+            await tileView.FadeToAsync(1, 180, Easing.CubicOut);
+            ResetTileTransform(tileView);
+            return;
+        }
+
         await Task.WhenAll(
             tileView.FadeToAsync(1, 180, Easing.CubicOut),
             tileView.ScaleToAsync(1, 320, Easing.SpringOut),
@@ -929,9 +1032,10 @@ public sealed class KarakterPareGamePage : ContentPage
             tileView.CancelAnimations();
             tile.PrepareForCompletionReveal();
             tileView.Opacity = 0;
-            tileView.Scale = 0.78;
+            tileView.Scale = IsAndroid ? 1 : 0.78;
             tileView.ScaleX = 1;
-            tileView.TranslationY = 16;
+            tileView.TranslationX = 0;
+            tileView.TranslationY = IsAndroid ? 0 : 16;
         }
 
         if (ShouldReduceMotion())
@@ -963,10 +1067,19 @@ public sealed class KarakterPareGamePage : ContentPage
             return;
         }
 
-        await Task.WhenAll(
-            tileView.FadeToAsync(1, 150, Easing.CubicOut),
-            tileView.ScaleToAsync(1, 240, Easing.SpringOut),
-            tileView.TranslateToAsync(0, 0, 200, Easing.CubicOut));
+        if (IsAndroid)
+        {
+            await tileView.FadeToAsync(1, 150, Easing.CubicOut);
+            ResetTileTransform(tileView);
+        }
+        else
+        {
+            await Task.WhenAll(
+                tileView.FadeToAsync(1, 150, Easing.CubicOut),
+                tileView.ScaleToAsync(1, 240, Easing.SpringOut),
+                tileView.TranslateToAsync(0, 0, 200, Easing.CubicOut));
+        }
+
         await AnimateFlipAsync(tile, tileView, faceUp: true);
     }
 
@@ -1019,7 +1132,7 @@ public sealed class KarakterPareGamePage : ContentPage
             return;
         }
 
-        _attemptsLabel.Text = $"Draaie: {game.AttemptCount}";
+        _attemptsLabel.Text = $"Beurte: {game.AttemptCount}";
         try
         {
             var firstTile = turn.FirstCardId is { } firstCardId
@@ -1032,7 +1145,7 @@ public sealed class KarakterPareGamePage : ContentPage
             if (turn.Outcome == CharacterMatchOutcome.Match)
             {
                 var isPerfectScore = turn.IsComplete && game.IsPerfectScore;
-                _pairsLabel.Text = $"Pare: {game.MatchedPairCount} / {game.PairCount}";
+                _pairsLabel.Text = $"{game.MatchedPairCount}/{game.PairCount}";
                 _messageLabel.Text = turn.IsComplete
                     ? isPerfectScore
                         ? "VOLPUNTE! Elke paar was reg!"
@@ -1040,7 +1153,10 @@ public sealed class KarakterPareGamePage : ContentPage
                     : $"Mooi so! {tile.DisplayName} is ’n paar.";
                 _messageLabel.TextColor = Color.FromArgb("#18794E");
                 SafeHapticFeedback.TryPerform(HapticFeedbackType.LongPress);
-                await Task.Delay(260);
+                if (!ShouldReduceMotion())
+                {
+                    await Task.Delay(320);
+                }
 
                 if (firstTile is not null)
                 {
@@ -1049,7 +1165,6 @@ public sealed class KarakterPareGamePage : ContentPage
 
                 if (turn.IsComplete)
                 {
-                    _newGameButton.Text = "Speel weer";
                     _analytics.TrackEvent("mobile_character_match_completed", new Dictionary<string, object>
                     {
                         ["attempt_count"] = game.AttemptCount,
@@ -1102,32 +1217,228 @@ public sealed class KarakterPareGamePage : ContentPage
         await tileView.ScaleXToAsync(1, 105, Easing.CubicOut);
     }
 
-    private static async Task AnimateMatchedPairAsync(
+    private async Task AnimateMatchedPairAsync(
         CharacterMatchTile firstTile,
         VisualElement? firstTileView,
         CharacterMatchTile secondTile,
         VisualElement secondTileView)
     {
+        var matchedViews = new[] { firstTileView, secondTileView }
+            .OfType<VisualElement>()
+            .Where(static tileView => tileView.Handler is not null)
+            .Distinct()
+            .ToArray();
+
+        if (matchedViews.Length < 2 || ShouldReduceMotion() || _board.Width <= 0 || _board.Height <= 0)
+        {
+            ResetTileTransforms(matchedViews);
+            firstTile.MarkMatched();
+            secondTile.MarkMatched();
+            return;
+        }
+
+        var placements = new Dictionary<VisualElement, MatchedTilePlacement>();
+        foreach (var tileView in matchedViews)
+        {
+            placements[tileView] = MoveMatchedTileToAnimationOverlay(tileView);
+        }
+
+        // This is a sibling layer above the board, rather than only a higher
+        // child ZIndex inside the board grid. That keeps the cards above every
+        // other card while their positions cross the grid cells.
+        await Task.Yield();
+
+        var cardWidth = matchedViews
+            .Select(static tileView => tileView.Width)
+            .Where(static width => width > 0)
+            .DefaultIfEmpty(84)
+            .Min();
+        var cardHeight = matchedViews
+            .Select(static tileView => tileView.Height)
+            .Where(static height => height > 0)
+            .DefaultIfEmpty(112)
+            .Min();
+        var overlayWidth = _matchAnimationOverlay.Width > 0 ? _matchAnimationOverlay.Width : _board.Width;
+        var overlayHeight = _matchAnimationOverlay.Height > 0 ? _matchAnimationOverlay.Height : _board.Height;
+        var pageCenterX = Width > 0 ? Width / 2 : _boardHost.X + overlayWidth / 2;
+        var pageCenterY = Height > 0 ? Height / 2 : _boardHost.Y + overlayHeight / 2;
+        var centerX = Math.Clamp(
+            pageCenterX - _boardHost.X,
+            cardWidth / 2,
+            Math.Max(cardWidth / 2, overlayWidth - cardWidth / 2));
+        var centerY = Math.Clamp(
+            pageCenterY - _boardHost.Y,
+            cardHeight / 2,
+            Math.Max(cardHeight / 2, overlayHeight - cardHeight / 2));
+        var pairSeparation = Math.Max(18, cardWidth * 0.64);
         var animations = new List<Task>();
+
         if (firstTileView?.Handler is not null)
         {
-            animations.Add(firstTileView.FadeToAsync(0, 220, Easing.CubicIn));
-            animations.Add(firstTileView.ScaleToAsync(0.82, 220, Easing.CubicIn));
+            animations.Add(AnimateMatchedTileToCenterAsync(
+                firstTileView,
+                centerX,
+                centerY,
+                -pairSeparation / 2,
+                duration: 420));
         }
 
         if (secondTileView.Handler is not null)
         {
-            animations.Add(secondTileView.FadeToAsync(0, 220, Easing.CubicIn));
-            animations.Add(secondTileView.ScaleToAsync(0.82, 220, Easing.CubicIn));
+            animations.Add(AnimateMatchedTileToCenterAsync(
+                secondTileView,
+                centerX,
+                centerY,
+                pairSeparation / 2,
+                duration: 420));
         }
 
-        if (animations.Count > 0)
+        await Task.WhenAll(animations);
+
+        // Close the last gap so the matching cards visually become one card.
+        await Task.WhenAll(
+            firstTileView?.Handler is not null
+                ? AnimateMatchedTileToCenterAsync(
+                    firstTileView,
+                    centerX,
+                    centerY,
+                    0,
+                    duration: 190)
+                : Task.CompletedTask,
+            secondTileView.Handler is not null
+                ? AnimateMatchedTileToCenterAsync(
+                    secondTileView,
+                    centerX,
+                    centerY,
+                    0,
+                    duration: 190)
+                : Task.CompletedTask);
+
+        var mergedTileView = secondTileView.Handler is not null
+            ? secondTileView
+            : firstTileView!;
+        var coveredTileView = ReferenceEquals(mergedTileView, firstTileView)
+            ? secondTileView
+            : firstTileView;
+        coveredTileView!.Opacity = 0;
+        mergedTileView.ZIndex = MergedTileAnimationZIndex;
+
+        await Task.Delay(45);
+        await AnimateMergedTilePopAsync(mergedTileView);
+        await WiggleMatchedTileAsync(mergedTileView, 1);
+        await AnimateMatchedTileAwayAsync(mergedTileView);
+
+        foreach (var (tileView, placement) in placements)
         {
-            await Task.WhenAll(animations);
+            RestoreMatchedTileFromAnimationOverlay(tileView, placement);
         }
 
         firstTile.MarkMatched();
         secondTile.MarkMatched();
+    }
+
+    private MatchedTilePlacement MoveMatchedTileToAnimationOverlay(VisualElement tileView)
+    {
+        var placement = new MatchedTilePlacement(
+            Grid.GetColumn(tileView),
+            Grid.GetRow(tileView),
+            tileView.WidthRequest,
+            tileView.HeightRequest);
+        var width = tileView.Width > 0 ? tileView.Width : 84;
+        var height = tileView.Height > 0 ? tileView.Height : 112;
+        var x = _board.X + tileView.X + tileView.TranslationX;
+        var y = _board.Y + tileView.Y + tileView.TranslationY;
+
+        _board.Children.Remove(tileView);
+        tileView.WidthRequest = width;
+        tileView.HeightRequest = height;
+        if (tileView is View view)
+        {
+            view.HorizontalOptions = LayoutOptions.Start;
+            view.VerticalOptions = LayoutOptions.Start;
+        }
+        tileView.Opacity = 1;
+        tileView.Scale = 1;
+        tileView.ScaleX = 1;
+        tileView.ScaleY = 1;
+        tileView.Rotation = 0;
+        tileView.TranslationX = 0;
+        tileView.TranslationY = 0;
+        tileView.ZIndex = MatchedTileAnimationZIndex;
+        AbsoluteLayout.SetLayoutBounds(tileView, new Rect(x, y, width, height));
+        _matchAnimationOverlay.Children.Add(tileView);
+        return placement;
+    }
+
+    private void RestoreMatchedTileFromAnimationOverlay(
+        VisualElement tileView,
+        MatchedTilePlacement placement)
+    {
+        _matchAnimationOverlay.Children.Remove(tileView);
+        tileView.WidthRequest = placement.WidthRequest;
+        tileView.HeightRequest = placement.HeightRequest;
+        if (tileView is View view)
+        {
+            view.HorizontalOptions = LayoutOptions.Fill;
+            view.VerticalOptions = LayoutOptions.Fill;
+        }
+        tileView.Opacity = 0;
+        tileView.Scale = 1;
+        tileView.ScaleX = 1;
+        tileView.ScaleY = 1;
+        tileView.Rotation = 0;
+        tileView.TranslationX = 0;
+        tileView.TranslationY = 0;
+        tileView.ZIndex = 0;
+        _board.Children.Add(tileView);
+        Grid.SetColumn(tileView, placement.Column);
+        Grid.SetRow(tileView, placement.Row);
+    }
+
+    private async Task AnimateMatchedTileToCenterAsync(
+        VisualElement tileView,
+        double centerX,
+        double centerY,
+        double centerOffsetX,
+        uint duration)
+    {
+        var layoutBounds = AbsoluteLayout.GetLayoutBounds(tileView);
+        var tileX = layoutBounds.Width > 0 ? layoutBounds.X : tileView.X;
+        var tileY = layoutBounds.Height > 0 ? layoutBounds.Y : tileView.Y;
+        var tileWidth = layoutBounds.Width > 0 ? layoutBounds.Width : tileView.Width;
+        var tileHeight = layoutBounds.Height > 0 ? layoutBounds.Height : tileView.Height;
+        // TranslateToAsync expects an absolute translation. Always calculate its
+        // target from the tile's fixed overlay bounds so the second merge phase
+        // continues toward center instead of jumping relative to phase one.
+        var tileCenterX = tileX + tileWidth / 2;
+        var tileCenterY = tileY + tileHeight / 2;
+        var targetX = centerX + centerOffsetX - tileCenterX;
+        var targetY = centerY - tileCenterY;
+
+        await Task.WhenAll(
+            tileView.TranslateToAsync(targetX, targetY, duration, Easing.SinInOut),
+            tileView.ScaleToAsync(1.03, duration, Easing.SinInOut));
+    }
+
+    private static async Task AnimateMergedTilePopAsync(VisualElement tileView)
+    {
+        await tileView.ScaleToAsync(1.19, 135, Easing.CubicOut);
+        await tileView.ScaleToAsync(1.04, 120, Easing.SinInOut);
+    }
+
+    private static async Task WiggleMatchedTileAsync(VisualElement tileView, double direction)
+    {
+        await tileView.RotateToAsync(5 * direction, 75, Easing.SinOut);
+        await tileView.RotateToAsync(-4 * direction, 95, Easing.SinInOut);
+        await tileView.RotateToAsync(3 * direction, 85, Easing.SinInOut);
+        await tileView.RotateToAsync(0, 95, Easing.SinOut);
+    }
+
+    private static async Task AnimateMatchedTileAwayAsync(VisualElement tileView)
+    {
+        await Task.WhenAll(
+            tileView.FadeToAsync(0, 220, Easing.CubicIn),
+            tileView.ScaleToAsync(0.78, 220, Easing.CubicIn));
     }
 
     private CharacterMatchTile? FindTile(Guid tileId) =>
@@ -1201,6 +1512,24 @@ public sealed class KarakterPareGamePage : ContentPage
 #endif
     }
 
+    private sealed class GameBackChevronDrawable(Color color) : IDrawable
+    {
+        public void Draw(ICanvas canvas, RectF dirtyRect)
+        {
+            canvas.StrokeColor = color;
+            canvas.StrokeSize = 5;
+            canvas.StrokeLineCap = LineCap.Round;
+            canvas.StrokeLineJoin = LineJoin.Round;
+
+            var centerX = dirtyRect.Width * 0.55f;
+            var centerY = dirtyRect.Height * 0.5f;
+            var halfWidth = dirtyRect.Width * 0.24f;
+            var halfHeight = dirtyRect.Height * 0.22f;
+            canvas.DrawLine(centerX + halfWidth, centerY - halfHeight, centerX - halfWidth, centerY);
+            canvas.DrawLine(centerX - halfWidth, centerY, centerX + halfWidth, centerY + halfHeight);
+        }
+    }
+
     private enum MatchDifficultyLevel
     {
         Easy,
@@ -1224,6 +1553,12 @@ public sealed class KarakterPareGamePage : ContentPage
         Label Title,
         Label Details,
         Label Checkmark);
+
+    private sealed record MatchedTilePlacement(
+        int Column,
+        int Row,
+        double WidthRequest,
+        double HeightRequest);
 
     internal sealed class CharacterMatchTile(
         Guid id,

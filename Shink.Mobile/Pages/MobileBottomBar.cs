@@ -10,7 +10,7 @@ internal static class MobileBottomBar
         var items = new[]
         {
             (Destination: "listen", Label: "Stories", AndroidIcon: MobileAndroidIcon.Home, Action: (Func<Task>)(() => OpenRouteAsync("//Luister"))),
-            (Destination: "search", Label: "Soek", AndroidIcon: MobileAndroidIcon.Search, Action: searchAction ?? (Func<Task>)(() => OpenRouteAsync("//Luister"))),
+            (Destination: "search", Label: "Soek", AndroidIcon: MobileAndroidIcon.Search, Action: searchAction ?? (Func<Task>)(() => OpenRouteAsync(nameof(SearchPage)))),
             (Destination: "downloads", Label: "Afgelaai", AndroidIcon: MobileAndroidIcon.Download, Action: (Func<Task>)(() => OpenRouteAsync(nameof(DownloadedPage)))),
             (Destination: "characters", Label: "Karakters", AndroidIcon: MobileAndroidIcon.Profile, Action: (Func<Task>)(() => OpenRouteAsync("//Karakters")))
         };
@@ -57,7 +57,7 @@ internal static class MobileBottomBar
             Content = itemGrid
         };
         bar.HeightRequest = 114;
-        MobileLiquidGlass.Apply(bar, 0, MobileAndroidChromePalette.BarBackground);
+        MobileLiquidGlass.Apply(bar, 0, Colors.Transparent);
 
         var host = new Grid
         {

@@ -3921,10 +3921,14 @@ app.MapGet("/api/mobile/luister", async (
             Title: playlist.Title,
             Description: playlist.Description,
             ArtworkUrl: BuildMobilePlaylistArtworkUri(httpContext, playlist),
-            BackdropUrl: ToAbsoluteUri(httpContext, playlist.BackdropImagePath ?? playlist.LogoImagePath ?? "/branding/Schink_Stories_01.png"),
+            BackdropUrl: BuildMobilePlaylistBackdropUri(httpContext, playlist),
             Stories: playlist.Stories.Select(MapStory).ToArray(),
             ShowShowcaseImageOnLuisterPage: playlist.ShowShowcaseImageOnLuisterPage,
-            ShowcaseStory: playlist.PreferredStory is null ? null : MapStory(playlist.PreferredStory));
+            ShowcaseStory: playlist.PreferredStory is null ? null : MapStory(playlist.PreferredStory),
+            LogoUrl: BuildMobilePlaylistLogoUri(httpContext, playlist),
+            BackgroundStartColorHex: playlist.AccentColorHex,
+            BackgroundEndColorHex: playlist.AccentColorEndHex ?? playlist.AccentColorHex,
+            FontColorHex: playlist.FontColorHex);
 
     var displayPlaylists = playlists
         .Where(playlist => !IsMobileSpeellysteSystemPlaylist(playlist))
@@ -7818,6 +7822,29 @@ static string BuildMobilePlaylistArtworkUri(HttpContext httpContext, StoryPlayli
     return ToMobileMediaUri(httpContext, "/branding/Schink_Stories_01.png");
 }
 
+static string BuildMobilePlaylistBackdropUri(HttpContext httpContext, StoryPlaylist playlist)
+{
+    var configuredBackdrop = NormalizeMobilePlaylistImagePath(playlist.BackdropImagePath);
+    if (!string.IsNullOrWhiteSpace(configuredBackdrop))
+    {
+        return ToMobileMediaUri(httpContext, configuredBackdrop);
+    }
+
+    var configuredLogo = NormalizeMobilePlaylistImagePath(playlist.LogoImagePath);
+    var fallback = !string.IsNullOrWhiteSpace(configuredLogo)
+        ? StoryPlaylist.DefaultBackdropImagePath
+        : playlist.Stories.FirstOrDefault()?.ImagePath ?? StoryPlaylist.DefaultBackdropImagePath;
+    return ToMobileMediaUri(httpContext, NormalizeMobilePlaylistImagePath(fallback) ?? StoryPlaylist.DefaultBackdropImagePath);
+}
+
+static string? BuildMobilePlaylistLogoUri(HttpContext httpContext, StoryPlaylist playlist)
+{
+    var configuredLogo = NormalizeMobilePlaylistImagePath(playlist.LogoImagePath);
+    return string.IsNullOrWhiteSpace(configuredLogo)
+        ? null
+        : ToMobileMediaUri(httpContext, configuredLogo);
+}
+
 static string? NormalizeMobilePlaylistImagePath(string? value) =>
     string.IsNullOrWhiteSpace(value)
         ? null
@@ -8292,7 +8319,11 @@ sealed record MobilePlaylistResponse(
     string BackdropUrl,
     IReadOnlyList<MobileStorySummaryResponse> Stories,
     bool ShowShowcaseImageOnLuisterPage,
-    MobileStorySummaryResponse? ShowcaseStory);
+    MobileStorySummaryResponse? ShowcaseStory,
+    string? LogoUrl,
+    string? BackgroundStartColorHex,
+    string? BackgroundEndColorHex,
+    string? FontColorHex);
 sealed record MobileLuisterResponse(
     bool HasPaidSubscription,
     IReadOnlyList<MobilePlaylistResponse> Playlists,

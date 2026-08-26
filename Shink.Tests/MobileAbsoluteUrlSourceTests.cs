@@ -153,7 +153,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "RenderFloatingTopBar();");
         StringAssert.Contains(luisterPage, "RenderBottomBar();");
         StringAssert.Contains(luisterPage, "_topBarOverlay.Children.Add(_floatingTopBarHost);");
-        StringAssert.Contains(luisterPage, "return MobileTopBar.Build(");
+        StringAssert.Contains(luisterPage, "return MobileTopBar.BuildStoriesTopBar(");
         StringAssert.Contains(luisterPage, "notificationAction: ShowNotificationsAsync");
         StringAssert.Contains(luisterPage, "Header = BuildStoriesPageHeader(),");
         StringAssert.Contains(luisterPage, "ItemSizingStrategy = ItemSizingStrategy.MeasureAllItems");
@@ -184,7 +184,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "Shell.Current.GoToAsync(nameof(ProfilePage), animate: true)");
         StringAssert.Contains(mobileTopBar, "Shell.Current.GoToAsync(nameof(AccountPage), animate: true)");
         StringAssert.Contains(mobileTopBar, "Shell.Current.GoToAsync(nameof(ProfilePage), animate: true)");
-        StringAssert.Contains(luisterPage, "MobileBottomBar.Build(this, \"listen\", ToggleSearchAsync)");
+        StringAssert.Contains(luisterPage, "MobileBottomBar.Build(this, \"listen\", OpenStoriesSearchAsync)");
         StringAssert.Contains(bottomBar, "Destination: \"search\"");
         StringAssert.Contains(bottomBar, "Destination: \"downloads\"");
         StringAssert.Contains(bottomBar, "Destination: \"characters\"");
@@ -208,8 +208,7 @@ public class MobileAbsoluteUrlSourceTests
 
         StringAssert.Contains(appShell, "Routing.RegisterRoute(nameof(ProfilePage), typeof(ProfilePage));");
         StringAssert.Contains(mauiProgram, "builder.Services.AddTransient<ProfilePage>();");
-        StringAssert.Contains(luisterPage, "return MobileTopBar.Build(");
-        StringAssert.Contains(luisterPage, "title: \"Schink Stories\"");
+        StringAssert.Contains(luisterPage, "return MobileTopBar.BuildStoriesTopBar(");
         StringAssert.Contains(mobileTopBar, "profileTap.Tapped += async (_, _) => await navigationGate.RunAsync(OpenProfileAsync);");
         StringAssert.Contains(mobileTopBar, "var navigationGate = new NavigationGate();");
         StringAssert.Contains(profilePage, "public sealed class ProfilePage : ContentPage");
@@ -397,13 +396,16 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "BuildLuisterStoryCarouselCard(playlist, rankedStory.Story, rankedStory.Rank)");
         StringAssert.Contains(luisterPage, "if (rank is not null)");
         StringAssert.Contains(luisterPage, "cardShell.Children.Add(BuildStoryRankBadge(rank.Value));");
-        StringAssert.Contains(luisterPage, "private static View BuildStoryRankBadge(int rank) =>");
+        StringAssert.Contains(luisterPage, "private static View BuildStoryRankBadge(int rank)");
         StringAssert.Contains(luisterPage, "Text = rank.ToString(CultureInfo.InvariantCulture)");
         StringAssert.Contains(luisterPage, "FontFamily = \"Arial Rounded MT Bold\"");
         StringAssert.Contains(luisterPage, "FontSize = 76");
         StringAssert.Contains(luisterPage, "LineHeight = 0.82");
+        StringAssert.Contains(luisterPage, "TranslationY = IsAndroid ? -13 : 0");
         StringAssert.Contains(luisterPage, "HorizontalOptions = LayoutOptions.Start");
         StringAssert.Contains(luisterPage, "VerticalOptions = LayoutOptions.Start");
+        StringAssert.Contains(luisterPage, "ZIndex = 6");
+        StringAssert.Contains(luisterPage, "nativeLabel.SetIncludeFontPadding(false);");
     }
 
     [TestMethod]
@@ -418,7 +420,8 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "new GradientStop(Color.FromArgb(\"#EFEFEF\"), 0.86f)");
         StringAssert.Contains(luisterPage, "Background = LuisterBackgroundBrush,");
         StringAssert.Contains(luisterPage, "_feedView.Scrolled += OnFeedViewScrolled;");
-        StringAssert.Contains(luisterPage, "private void UpdateLuisterGradientForScroll(double scrollOffset)");
+        StringAssert.Contains(luisterPage, "private void QueueLuisterScrollUpdate(double scrollOffset)");
+        StringAssert.Contains(luisterPage, "private void ApplyLuisterGradientForScroll(double scrollOffset)");
         StringAssert.Contains(luisterPage, "LuisterBackgroundBrush.StartPoint = new Point(0, -_lastGradientScrollOffset / viewportHeight);");
         StringAssert.Contains(luisterPage, "(travelDistance - _lastGradientScrollOffset) / viewportHeight");
         Assert.IsFalse(luisterPage.Contains("BackgroundColor = LuisterBackgroundColor", StringComparison.Ordinal));
@@ -546,8 +549,8 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(storyDetail, "HeightRequest = CoverArtHeight");
         StringAssert.Contains(storyDetail, "return Math.Clamp(height * 0.36, 260, 330);");
         StringAssert.Contains(storyDetail, "BuildTransportControls(detail, playButton)");
-        StringAssert.Contains(storyDetail, "HeightRequest = 82");
-        StringAssert.Contains(storyDetail, "WidthRequest = 76");
+        StringAssert.Contains(storyDetail, "HeightRequest = 56");
+        StringAssert.Contains(storyDetail, "WidthRequest = 50");
         StringAssert.Contains(storyDetail, "private static double CoverArtHeight");
         StringAssert.Contains(storyDetail, "var height = ScreenHeight;");
         StringAssert.Contains(storyDetail, "_activeCatalogDuration = ResolveCatalogDuration(detail);");
@@ -874,8 +877,9 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(karaktersPage, "VerticalItemSpacing = 10");
         StringAssert.Contains(karaktersPage, "Margin = new Thickness(16, 0, 16, 0)");
         StringAssert.Contains(karaktersPage, "private readonly Grid _topBarOverlay;");
-        StringAssert.Contains(karaktersPage, "Padding = new Thickness(0, 76, 0, 16)");
-        StringAssert.Contains(karaktersPage, "ZIndex = 50");
+        StringAssert.Contains(karaktersPage, "private const double FloatingTopBarContentInset = 92;");
+        StringAssert.Contains(karaktersPage, "Padding = new Thickness(0, FloatingTopBarContentInset, 0, 16)");
+        StringAssert.Contains(karaktersPage, "ZIndex = 100");
         StringAssert.Contains(karaktersPage, "_topBarOverlay,");
         StringAssert.Contains(karaktersPage, "Source = \"karakters_title.png\"");
         StringAssert.Contains(karaktersPage, "Aspect = Aspect.AspectFill");
@@ -886,9 +890,9 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(karaktersPage, "Text = character.SummaryText");
         StringAssert.Contains(karaktersPage, "Text = character.CallToActionLabel");
         StringAssert.Contains(karaktersPage, "BackgroundColor = character.IsUnlocked ? Color.FromArgb(\"#F6A227\") : Color.FromArgb(\"#8DCD65\")");
-        StringAssert.Contains(karaktersPage, "searchAction: OpenStoriesSearchAsync");
+        StringAssert.Contains(karaktersPage, "MobileTopBar.BuildStoriesTopBar(");
         StringAssert.Contains(karaktersPage, "notificationAction: OpenStoriesNotificationsAsync");
-        StringAssert.Contains(karaktersPage, "Shell.Current.GoToAsync(\"//Luister?surface=search\", animate: false)");
+        StringAssert.Contains(karaktersPage, "Shell.Current.GoToAsync(nameof(SearchPage), animate: false)");
         StringAssert.Contains(karaktersPage, "Shell.Current.GoToAsync(\"//Luister?surface=notifications\", animate: false)");
         StringAssert.Contains(karaktersPage, "CharacterIconPlacement.TopRight");
         StringAssert.Contains(karaktersPage, "new SpeakerDrawable()");
@@ -1065,7 +1069,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(storyDetail, "BuildFullscreenTransportControls(detail, playButton)");
         StringAssert.Contains(storyDetail, "private async Task ToggleFullscreenPlaybackAsync(MobileStoryDetailResponse detail)");
         StringAssert.Contains(storyDetail, "BuildCompactPlaybackButton(playButton.Text)");
-        StringAssert.Contains(storyDetail, "BuildCompactTransportButton(\"|‹\")");
+        StringAssert.Contains(storyDetail, "BuildCompactTransportButton(PlaybackTransportDirection.Previous)");
         StringAssert.Contains(storyDetail, "RestoreFullscreenPlaybackUi(detail);");
         StringAssert.Contains(storyDetail, "IOrientationService _orientationService");
         StringAssert.Contains(storyDetail, "_orientationService.RequestLandscape();");
@@ -1099,10 +1103,10 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(storyDetail, "BuildPlaybackModeButton(");
         StringAssert.Contains(storyDetail, "FormatPlaybackSpeed(_audioPlaybackService.PlaybackSpeed)");
         StringAssert.Contains(storyDetail, "CyclePlaybackSpeed(detail)");
-        StringAssert.Contains(storyDetail, "\"Auto\"");
+        StringAssert.Contains(storyDetail, "AutoplayIconGlyph");
         StringAssert.Contains(storyDetail, "FormatAutoplayLimit()");
         StringAssert.Contains(storyDetail, "CycleAutoplayLimit(detail)");
-        StringAssert.Contains(storyDetail, "\"Skommel\"");
+        StringAssert.Contains(storyDetail, "ShuffleIconGlyph");
         StringAssert.Contains(storyDetail, "_playlistPlaybackState.SetAutoplay(!_playlistPlaybackState.IsAutoplayEnabled);");
         StringAssert.Contains(storyDetail, "_playlistPlaybackState.SetAutoplayLimit(nextLimit, detail.Story);");
         StringAssert.Contains(storyDetail, "_playlistPlaybackState.SetShuffle(!_playlistPlaybackState.IsShuffleEnabled, detail.Story);");
@@ -1544,7 +1548,7 @@ public class MobileAbsoluteUrlSourceTests
         var client = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
 
         StringAssert.Contains(luisterPage, "ItemsSource = Array.Empty<LuisterFeedItem>()");
-        StringAssert.Contains(luisterPage, "ItemTemplate = new DataTemplate(BuildFeedItemView)");
+        StringAssert.Contains(luisterPage, ": new DataTemplate(BuildFeedItemView)");
         StringAssert.Contains(luisterPage, "private View BuildFeedItemView()");
         StringAssert.Contains(luisterPage, "private void ReplaceFeedItems(IReadOnlyList<LuisterFeedItem> nextItems)");
         StringAssert.Contains(luisterPage, "_feedView!.ItemsSource = nextItems.ToArray();");
@@ -1566,7 +1570,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "var imageWarmupMaxImages = IsAndroid ? 56 : 80;");
         StringAssert.Contains(luisterPage, "Take(imageWarmupMaxImages)");
         StringAssert.Contains(luisterPage, "maxImages: imageWarmupMaxImages");
-        StringAssert.Contains(luisterPage, "maxDegreeOfParallelism: IsAndroid ? 3 : 4");
+        StringAssert.Contains(luisterPage, "maxDegreeOfParallelism: IsAndroid ? 3 : IsIOS ? 1 : 4");
         StringAssert.Contains(luisterPage, "await Task.Delay(TimeSpan.FromMilliseconds(750), token);");
         Assert.IsFalse(luisterPage.Contains("_imageSourceCache.Clear();", StringComparison.Ordinal));
         StringAssert.Contains(luisterPage, "private IEnumerable<string?> EnumeratePrioritizedLuisterImageUrls()");
@@ -1576,7 +1580,8 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(client, ".Select(NormalizeIncomingImageUrl)");
         StringAssert.Contains(client, ".Where(url => !IsBundledImageName(url))");
         StringAssert.Contains(client, ".Select(BuildAbsoluteImageUrl)");
-        StringAssert.Contains(luisterPage, "if (Math.Abs(cover.HeightRequest - targetHeight) > 0.5)");
+        StringAssert.Contains(luisterPage, "ResolvePlaylistShowcaseCoverHeight(wideLayout, pageWidth)");
+        Assert.IsFalse(luisterPage.Contains("cover.SizeChanged +=", StringComparison.Ordinal));
         StringAssert.Contains(luisterPage, "ResolveVisibleDownloadedStories()");
         Assert.IsFalse(luisterPage.Contains("_playlistContent.Children.Clear();", StringComparison.Ordinal));
         Assert.IsFalse(luisterPage.Contains("_content.Children.Clear();", StringComparison.Ordinal));

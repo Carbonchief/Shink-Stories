@@ -5,6 +5,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Shink.Mobile.Models;
+#if IOS
+using Shink.Mobile.Platforms.iOS;
+#endif
 
 namespace Shink.Mobile.Services;
 
@@ -1508,6 +1511,9 @@ public sealed class MobileApiClient
         var imageUrl = BuildAbsoluteImageUrl(normalizedUrl);
         if (TryGetCachedImagePath(imageUrl, out var cachedPath))
         {
+#if IOS
+            cachedPath = IosImageCacheOptimizer.ResolveDisplayPath(cachedPath);
+#endif
             return ImageSource.FromFile(cachedPath);
         }
 
@@ -1701,6 +1707,9 @@ public sealed class MobileApiClient
         var cachePath = BuildImageCachePath(imageUrl);
         if (File.Exists(cachePath) && new FileInfo(cachePath).Length > 0)
         {
+#if IOS
+            IosImageCacheOptimizer.EnsureOptimized(cachePath, cancellationToken);
+#endif
             return;
         }
 
@@ -1731,6 +1740,9 @@ public sealed class MobileApiClient
         }
 
         File.Move(temporaryPath, cachePath);
+#if IOS
+        IosImageCacheOptimizer.EnsureOptimized(cachePath, cancellationToken);
+#endif
     }
 
     private Uri BuildUri(string path) => new($"{_settings.BaseUrl.TrimEnd('/')}{path}", UriKind.Absolute);

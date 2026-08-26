@@ -4,10 +4,11 @@ using Shink.Mobile.Services;
 
 namespace Shink.Mobile.Pages;
 
-public sealed class KarakterRaaiGamePage : ContentPage
+public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
 {
     private const int DesiredChoiceCount = 4;
-    private const int TotalRoundCount = 10;
+    private const int DefaultRoundCount = 10;
+    private const string PoppinsBoldFontFamily = "PoppinsBold";
     private static readonly string[] PerfectScoreMessages =
     [
         "Geen Karakter kon vir jou wegkruip nie!",
@@ -24,12 +25,14 @@ public sealed class KarakterRaaiGamePage : ContentPage
     private readonly Border _imageStage;
     private readonly Grid _choicesGrid;
     private readonly Button _actionButton;
+    private readonly ImageButton _newGameButton;
     private readonly Grid _stateOverlay;
     private readonly ActivityIndicator _loadingIndicator;
     private readonly Label _stateLabel;
     private readonly Button _retryButton;
     private readonly GameCelebrationOverlay _celebrationOverlay;
     private readonly Dictionary<string, Border> _choiceButtons = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Label> _choiceLabels = new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyList<MobileCharacterCard> _availableCharacters = Array.Empty<MobileCharacterCard>();
     private CharacterGuessGame? _game;
     private MobileCharacterCard? _targetCharacter;
@@ -39,6 +42,8 @@ public sealed class KarakterRaaiGamePage : ContentPage
     private bool _isPageActive;
     private bool _roundAnswered;
     private bool _hintShown;
+    private bool _isReturningToConfiguration;
+    private int _selectedRoundCount = DefaultRoundCount;
 
     public KarakterRaaiGamePage(
         MobileApiClient apiClient,
@@ -47,24 +52,25 @@ public sealed class KarakterRaaiGamePage : ContentPage
     {
         _apiClient = apiClient;
         _analytics = analytics;
-        Title = "Wie is dié Karakter?";
+        Title = "Karakter Raai";
         Background = BuildGameBackground();
         SafeAreaEdges = new SafeAreaEdges(SafeAreaRegions.Container);
         Shell.SetNavBarIsVisible(this, false);
 
-        _roundLabel = BuildScoreLabel("Rondte: 1 / 10");
-        _scoreLabel = BuildScoreLabel("Punte: 0");
+        _roundLabel = BuildScoreLabel("Rondte 1");
+        _scoreLabel = BuildScoreLabel("0/10");
+        _scoreLabel.HorizontalTextAlignment = TextAlignment.End;
         _messageLabel = new Label
         {
-            Text = "Kyk mooi na die skaduwee!",
-            FontSize = 15,
-            FontAttributes = FontAttributes.Bold,
-            TextColor = Color.FromArgb("#166476"),
+            Text = "???",
+            FontFamily = PoppinsBoldFontFamily,
+            FontSize = 52,
+            TextColor = Color.FromArgb("#5B7188"),
             HorizontalTextAlignment = TextAlignment.Center,
             VerticalTextAlignment = TextAlignment.Center,
             MaxLines = 2,
             LineBreakMode = LineBreakMode.WordWrap,
-            Margin = new Thickness(8, 3, 8, 0)
+            Margin = new Thickness(0)
         };
 
         _revealImage = BuildCharacterImage();
@@ -73,6 +79,42 @@ public sealed class KarakterRaaiGamePage : ContentPage
         _mysteryImage = BuildCharacterImage();
         _imageStage = BuildImageStage();
         _choicesGrid = BuildChoicesGrid();
+
+        _newGameButton = new ImageButton
+        {
+            BackgroundColor = Colors.Transparent,
+            BorderWidth = 0,
+            CornerRadius = 22,
+            WidthRequest = 44,
+            HeightRequest = 44,
+            Padding = 9,
+            Source = new FontImageSource
+            {
+                Glyph = "\uf2f1",
+                FontFamily = "FontAwesomeSolid",
+                Color = Color.FromArgb("#5B7188"),
+                Size = 25
+            },
+            Aspect = Aspect.AspectFit,
+            HorizontalOptions = LayoutOptions.End,
+            VerticalOptions = LayoutOptions.Center,
+            AutomationId = "character-guess-retry",
+            IsVisible = false
+        };
+        SemanticProperties.SetDescription(_newGameButton, "Speel weer");
+        _newGameButton.Clicked += async (_, _) =>
+        {
+            if (!_newGameButton.IsEnabled)
+            {
+                return;
+            }
+
+            SafeHapticFeedback.TryPerform(HapticFeedbackType.Click);
+            _newGameButton.IsEnabled = false;
+            StartNewGame();
+            _newGameButton.IsEnabled = true;
+            await Task.CompletedTask;
+        };
 
         _actionButton = BuildPrimaryButton("Gee my ’n leidraad");
         _actionButton.Margin = new Thickness(18, 4, 18, 8);
@@ -127,23 +169,16 @@ public sealed class KarakterRaaiGamePage : ContentPage
             Background = Brush.Transparent,
             RowDefinitions =
             {
-                new RowDefinition(new GridLength(62)),
-                new RowDefinition(GridLength.Auto),
-                new RowDefinition(GridLength.Auto),
+                new RowDefinition(new GridLength(112)),
+                new RowDefinition(new GridLength(174)),
+                new RowDefinition(new GridLength(68)),
                 new RowDefinition(GridLength.Star),
-                new RowDefinition(new GridLength(114)),
+                new RowDefinition(new GridLength(190)),
                 new RowDefinition(GridLength.Auto)
             }
         };
 
-        var topBar = new Grid
-        {
-            Padding = new Thickness(10, 8, 10, 0),
-            Children =
-            {
-                MobileTopBar.Build(this, _apiClient, sessionState.Current, leftAction: "back")
-            }
-        };
+        var topBar = BuildGameTopBar();
         var heading = BuildHeading();
         var scoreCard = BuildScoreCard();
 
@@ -170,21 +205,88 @@ public sealed class KarakterRaaiGamePage : ContentPage
 
     private void ApplyResponsiveLayout()
     {
-        MobileResponsiveLayout.ApplyCenteredContent(_imageStage, Width, 640);
-        MobileResponsiveLayout.ApplyCenteredContent(_choicesGrid, Width, 640);
+        MobileResponsiveLayout.ApplyCenteredContent(_imageStage, Width, 720);
+        MobileResponsiveLayout.ApplyCenteredContent(_choicesGrid, Width, 720);
         MobileResponsiveLayout.ApplyCenteredContent(_actionButton, Width, 640);
+        _choicesGrid.Margin = new Thickness(Width >= 600 ? 24 : 14, 0, Width >= 600 ? 24 : 14, 12);
     }
 
     private static LinearGradientBrush BuildGameBackground() =>
         new(
             new GradientStopCollection
             {
-                new(Color.FromArgb("#166476"), 0),
-                new(Color.FromArgb("#46969E"), 0.52f),
-                new(Color.FromArgb("#68B6B5"), 1)
+                new(Color.FromArgb("#C9EAE4"), 0),
+                new(Color.FromArgb("#E6F0D2"), 0.52f),
+                new(Color.FromArgb("#FFF0B8"), 1)
             },
             new Point(0, 0),
             new Point(0, 1));
+
+    private Grid BuildGameTopBar()
+    {
+        var topBar = new Grid
+        {
+            Padding = new Thickness(18, 20, 18, 0),
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Auto)
+            },
+            Children =
+            {
+                BuildBackButton(),
+                _newGameButton
+            }
+        };
+        Grid.SetColumn(_newGameButton, 1);
+        return topBar;
+    }
+
+    private Border BuildBackButton()
+    {
+        var backButton = new Border
+        {
+            BackgroundColor = Colors.Transparent,
+            StrokeThickness = 0,
+            WidthRequest = 54,
+            HeightRequest = 54,
+            HorizontalOptions = LayoutOptions.Start,
+            VerticalOptions = LayoutOptions.Start,
+            Content = new GraphicsView
+            {
+                Drawable = new GuessBackChevronDrawable(Color.FromArgb("#5B7188")),
+                WidthRequest = 32,
+                HeightRequest = 32,
+                InputTransparent = true
+            },
+            AutomationId = "character-guess-back"
+        };
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += async (_, _) => await ReturnToConfigurationAsync();
+        backButton.GestureRecognizers.Add(tap);
+        return backButton;
+    }
+
+    private async Task ReturnToConfigurationAsync()
+    {
+        if (_isReturningToConfiguration)
+        {
+            return;
+        }
+
+        _isReturningToConfiguration = true;
+        _newGameButton.IsEnabled = false;
+        _loadCancellation?.Cancel();
+        SafeHapticFeedback.TryPerform(HapticFeedbackType.Click);
+        try
+        {
+            await Shell.Current.GoToAsync("..", animate: false);
+        }
+        finally
+        {
+            _isReturningToConfiguration = false;
+        }
+    }
 
     protected override async void OnAppearing()
     {
@@ -204,31 +306,20 @@ public sealed class KarakterRaaiGamePage : ContentPage
         base.OnDisappearing();
     }
 
-    private static VerticalStackLayout BuildHeading() =>
+    private static Label BuildHeading() =>
         new()
         {
-            Padding = new Thickness(18, 0, 18, 5),
-            Spacing = 1,
-            Children =
-            {
-                new Label
-                {
-                    Text = "WIE IS DIÉ KARAKTER?",
-                    FontSize = 24,
-                    FontAttributes = FontAttributes.Bold,
-                    TextColor = Colors.White,
-                    HorizontalTextAlignment = TextAlignment.Center,
-                    CharacterSpacing = 1
-                },
-                new Label
-                {
-                    Text = "Raai wie agter die skaduwee wegkruip.",
-                    FontSize = 13,
-                    TextColor = Color.FromArgb("#F4FFFE"),
-                    HorizontalTextAlignment = TextAlignment.Center,
-                    LineBreakMode = LineBreakMode.TailTruncation
-                }
-            }
+            Text = "Wie is die\nkarakter?",
+            FontFamily = PoppinsBoldFontFamily,
+            FontSize = 50,
+            TextColor = Color.FromArgb("#5B7188"),
+            HorizontalTextAlignment = TextAlignment.Center,
+            VerticalTextAlignment = TextAlignment.Center,
+            HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.Center,
+            MaxLines = 2,
+            LineBreakMode = LineBreakMode.WordWrap,
+            AutomationId = "character-guess-heading"
         };
 
     private Border BuildScoreCard()
@@ -251,52 +342,28 @@ public sealed class KarakterRaaiGamePage : ContentPage
 
         return new Border
         {
-            BackgroundColor = Color.FromArgb("#FFF7E8"),
-            Stroke = Color.FromArgb("#F3DEB4"),
-            StrokeThickness = 1,
-            StrokeShape = new RoundRectangle { CornerRadius = 17 },
-            Padding = new Thickness(12, 7),
-            Margin = new Thickness(12, 0, 12, 6),
+            BackgroundColor = Colors.Transparent,
+            Stroke = Colors.Transparent,
+            StrokeThickness = 0,
+            Padding = new Thickness(0),
+            Margin = new Thickness(38, 0, 38, 4),
             Content = scoreGrid
         };
     }
 
     private Border BuildImageStage()
     {
-        var imageBackdrop = new Border
-        {
-            Background = new LinearGradientBrush(
-                new GradientStopCollection
-                {
-                    new(Color.FromArgb("#C9EFED"), 0),
-                    new(Color.FromArgb("#F9E8B7"), 1)
-                },
-                new Point(0, 0),
-                new Point(1, 1)),
-            Stroke = Color.FromArgb("#E7D1A2"),
-            StrokeThickness = 1,
-            StrokeShape = new RoundRectangle { CornerRadius = 32 },
-            Margin = new Thickness(12, 4),
-            Content = new Grid
-            {
-                Children =
-                {
-                    _revealImage,
-                    _mysteryImage
-                }
-            }
-        };
-
         var stageGrid = new Grid
         {
             RowDefinitions =
             {
                 new RowDefinition(GridLength.Star),
-                new RowDefinition(new GridLength(42))
+                new RowDefinition(new GridLength(76))
             },
             Children =
             {
-                imageBackdrop,
+                _revealImage,
+                _mysteryImage,
                 _messageLabel
             }
         };
@@ -304,12 +371,11 @@ public sealed class KarakterRaaiGamePage : ContentPage
 
         return new Border
         {
-            BackgroundColor = Color.FromArgb("#FFFDF7"),
-            Stroke = Color.FromArgb("#E7D1A2"),
-            StrokeThickness = 1,
-            StrokeShape = new RoundRectangle { CornerRadius = 24 },
-            Padding = new Thickness(5),
-            Margin = new Thickness(12, 0, 12, 6),
+            BackgroundColor = Colors.Transparent,
+            Stroke = Colors.Transparent,
+            StrokeThickness = 0,
+            Padding = new Thickness(0),
+            Margin = new Thickness(0),
             Content = stageGrid,
             IsVisible = false,
             AutomationId = "character-guess-stage"
@@ -320,7 +386,7 @@ public sealed class KarakterRaaiGamePage : ContentPage
         new()
         {
             Aspect = Aspect.AspectFit,
-            Margin = new Thickness(8, 3),
+            Margin = new Thickness(18, 0),
             HorizontalOptions = LayoutOptions.Fill,
             VerticalOptions = LayoutOptions.Fill,
             InputTransparent = true
@@ -332,16 +398,16 @@ public sealed class KarakterRaaiGamePage : ContentPage
             ColumnDefinitions =
             {
                 new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Star),
                 new ColumnDefinition(GridLength.Star)
             },
             RowDefinitions =
             {
-                new RowDefinition(GridLength.Star),
                 new RowDefinition(GridLength.Star)
             },
-            ColumnSpacing = 8,
-            RowSpacing = 8,
-            Margin = new Thickness(12, 0),
+            ColumnSpacing = 4,
+            Margin = new Thickness(24, 0, 24, 12),
             IsVisible = false,
             AutomationId = "character-guess-choices"
         };
@@ -350,10 +416,11 @@ public sealed class KarakterRaaiGamePage : ContentPage
         new()
         {
             Text = text,
-            FontSize = 15,
-            FontAttributes = FontAttributes.Bold,
-            TextColor = Color.FromArgb("#27313A"),
-            HorizontalTextAlignment = TextAlignment.Center
+            FontFamily = PoppinsBoldFontFamily,
+            FontSize = 42,
+            TextColor = Color.FromArgb("#5B7188"),
+            HorizontalTextAlignment = TextAlignment.Start,
+            VerticalTextAlignment = TextAlignment.Center
         };
 
     private static Button BuildPrimaryButton(string text) =>
@@ -446,17 +513,19 @@ public sealed class KarakterRaaiGamePage : ContentPage
 
         _game = new CharacterGuessGame(
             _availableCharacters.Select(static character => character.Slug),
-            TotalRoundCount,
+            _selectedRoundCount,
             DesiredChoiceCount);
         _stateOverlay.IsVisible = false;
         _imageStage.IsVisible = true;
         _choicesGrid.IsVisible = true;
-        _actionButton.IsVisible = true;
+        _actionButton.IsVisible = false;
+        _newGameButton.IsVisible = true;
+        _newGameButton.IsEnabled = true;
 
         _analytics.TrackEvent("mobile_character_guess_started", new Dictionary<string, object>
         {
             ["available_character_count"] = _availableCharacters.Count,
-            ["round_count"] = TotalRoundCount
+            ["round_count"] = _selectedRoundCount
         });
         StartNextRound();
     }
@@ -484,10 +553,11 @@ public sealed class KarakterRaaiGamePage : ContentPage
 
         _roundAnswered = false;
         _hintShown = false;
-        _roundLabel.Text = $"Rondte: {round.RoundNumber} / {game.TotalRounds}";
-        _scoreLabel.Text = $"Punte: {game.Score}";
-        _messageLabel.Text = "Kyk mooi na die skaduwee!";
-        _messageLabel.TextColor = Color.FromArgb("#166476");
+        _roundLabel.Text = $"Rondte {round.RoundNumber}";
+        _scoreLabel.Text = $"{game.Score}/{game.TotalRounds}";
+        _messageLabel.Text = "???";
+        _messageLabel.FontSize = 52;
+        _messageLabel.TextColor = Color.FromArgb("#5B7188");
         _mysteryImage.Source = _apiClient.BuildCachedImageSource(
             _targetMysteryImageUrl,
             "schink_character_lineup.png");
@@ -500,7 +570,7 @@ public sealed class KarakterRaaiGamePage : ContentPage
         _revealImage.Scale = 0.94;
         RenderChoices(round);
 
-        _actionButton.Text = "Gee my ’n leidraad";
+        _actionButton.IsVisible = false;
         _actionButton.IsEnabled = true;
         _actionButton.Opacity = 1;
 
@@ -514,6 +584,7 @@ public sealed class KarakterRaaiGamePage : ContentPage
     private void RenderChoices(CharacterGuessRound round)
     {
         _choiceButtons.Clear();
+        _choiceLabels.Clear();
         _choicesGrid.Children.Clear();
 
         for (var index = 0; index < round.ChoiceKeys.Count; index++)
@@ -527,35 +598,60 @@ public sealed class KarakterRaaiGamePage : ContentPage
             var choice = BuildChoiceButton(character);
             _choiceButtons[character.Slug] = choice;
             _choicesGrid.Children.Add(choice);
-            Grid.SetColumn(choice, index % 2);
-            Grid.SetRow(choice, index / 2);
+            Grid.SetColumn(choice, index);
+            Grid.SetRow(choice, 0);
         }
     }
 
     private Border BuildChoiceButton(MobileCharacterCard character)
     {
+        var image = new Image
+        {
+            Source = _apiClient.BuildCachedImageSource(character.ImageUrl, "schink_character_lineup.png"),
+            Aspect = Aspect.AspectFit,
+            HeightRequest = 138,
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalOptions = LayoutOptions.Fill,
+            InputTransparent = true
+        };
         var label = new Label
         {
             Text = character.DisplayName,
-            FontSize = 15,
-            FontAttributes = FontAttributes.Bold,
-            TextColor = Color.FromArgb("#27313A"),
+            FontFamily = PoppinsBoldFontFamily,
+            FontSize = 16,
+            TextColor = Color.FromArgb("#5B7188"),
             HorizontalTextAlignment = TextAlignment.Center,
             VerticalTextAlignment = TextAlignment.Center,
             MaxLines = 2,
             LineBreakMode = LineBreakMode.WordWrap,
             InputTransparent = true
         };
+        _choiceLabels[character.Slug] = label;
+
+        var content = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition(GridLength.Star),
+                new RowDefinition(new GridLength(28))
+            },
+            Children =
+            {
+                image,
+                label
+            }
+        };
+        Grid.SetRow(label, 1);
+
         var button = new Border
         {
-            BackgroundColor = Color.FromArgb("#FFF7E8"),
-            Stroke = Color.FromArgb("#E7D1A2"),
-            StrokeThickness = 1,
-            StrokeShape = new RoundRectangle { CornerRadius = 16 },
-            Padding = new Thickness(8, 2),
+            BackgroundColor = Colors.Transparent,
+            Stroke = Colors.Transparent,
+            StrokeThickness = 0,
+            Padding = new Thickness(0),
             HorizontalOptions = LayoutOptions.Fill,
             VerticalOptions = LayoutOptions.Fill,
-            Content = label,
+            Content = content,
             AutomationId = $"character-guess-choice-{character.Slug}"
         };
         SemanticProperties.SetDescription(button, $"Kies {character.DisplayName}");
@@ -595,17 +691,24 @@ public sealed class KarakterRaaiGamePage : ContentPage
 
         if (_choiceButtons.TryGetValue(result.CorrectKey, out var correctChoice))
         {
-            ApplyChoiceResultStyle(correctChoice, isCorrect: true);
+            ApplyChoiceResultStyle(
+                correctChoice,
+                isCorrect: true,
+                label: _choiceLabels.GetValueOrDefault(result.CorrectKey));
         }
 
         if (result.Outcome == CharacterGuessOutcome.Incorrect &&
             _choiceButtons.TryGetValue(characterKey, out var incorrectChoice))
         {
-            ApplyChoiceResultStyle(incorrectChoice, isCorrect: false);
+            ApplyChoiceResultStyle(
+                incorrectChoice,
+                isCorrect: false,
+                label: _choiceLabels.GetValueOrDefault(characterKey));
         }
 
         await RevealCharacterAsync();
-        _scoreLabel.Text = $"Punte: {result.Score}";
+        _scoreLabel.Text = $"{result.Score}/{game.TotalRounds}";
+        _messageLabel.FontSize = 18;
         _messageLabel.TextColor = result.Outcome == CharacterGuessOutcome.Correct
             ? Color.FromArgb("#18794E")
             : Color.FromArgb("#B14D32");
@@ -620,6 +723,7 @@ public sealed class KarakterRaaiGamePage : ContentPage
         _actionButton.Text = result.IsComplete ? "Speel weer" : "Volgende Karakter";
         _actionButton.IsEnabled = true;
         _actionButton.Opacity = 1;
+        _actionButton.IsVisible = true;
 
         _analytics.TrackEvent("mobile_character_guess_answered", new Dictionary<string, object>
         {
@@ -645,13 +749,13 @@ public sealed class KarakterRaaiGamePage : ContentPage
         }
     }
 
-    private static void ApplyChoiceResultStyle(Border choice, bool isCorrect)
+    private static void ApplyChoiceResultStyle(Border choice, bool isCorrect, Label? label)
     {
         choice.BackgroundColor = Color.FromArgb(isCorrect ? "#D9F3E4" : "#FDE4DE");
         choice.Stroke = Color.FromArgb(isCorrect ? "#18794E" : "#B14D32");
         choice.StrokeThickness = 2;
         choice.Opacity = 1;
-        if (choice.Content is Label label)
+        if (label is not null)
         {
             label.TextColor = Color.FromArgb(isCorrect ? "#11643F" : "#8E3526");
         }
@@ -697,6 +801,7 @@ public sealed class KarakterRaaiGamePage : ContentPage
 
         SafeHapticFeedback.TryPerform(HapticFeedbackType.Click);
         _hintShown = true;
+        _messageLabel.FontSize = 18;
         _messageLabel.Text = BuildHintText(_targetCharacter);
         _messageLabel.TextColor = Color.FromArgb("#166476");
         _actionButton.Text = "Leidraad gewys";
@@ -736,11 +841,26 @@ public sealed class KarakterRaaiGamePage : ContentPage
         _availableCharacters.FirstOrDefault(character =>
             string.Equals(character.Slug, key, StringComparison.OrdinalIgnoreCase));
 
+    public void ApplyQueryAttributes(IDictionary<string, object> query)
+    {
+        if (!query.TryGetValue("rounds", out var value))
+        {
+            return;
+        }
+
+        if (int.TryParse(value?.ToString(), out var roundCount) && roundCount > 0)
+        {
+            _selectedRoundCount = CharacterGuessDifficultyCatalog.FromRoundCount(roundCount).TotalRounds;
+            _roundLabel.Text = "Rondte 1";
+        }
+    }
+
     private void ShowLoadingState()
     {
         _imageStage.IsVisible = false;
         _choicesGrid.IsVisible = false;
         _actionButton.IsVisible = false;
+        _newGameButton.IsVisible = false;
         _stateOverlay.IsVisible = true;
         _loadingIndicator.IsRunning = true;
         _loadingIndicator.IsVisible = true;
@@ -753,10 +873,29 @@ public sealed class KarakterRaaiGamePage : ContentPage
         _imageStage.IsVisible = false;
         _choicesGrid.IsVisible = false;
         _actionButton.IsVisible = false;
+        _newGameButton.IsVisible = false;
         _stateOverlay.IsVisible = true;
         _loadingIndicator.IsRunning = false;
         _loadingIndicator.IsVisible = false;
         _retryButton.IsVisible = true;
         _stateLabel.Text = message;
+    }
+
+    private sealed class GuessBackChevronDrawable(Color color) : IDrawable
+    {
+        public void Draw(ICanvas canvas, RectF dirtyRect)
+        {
+            canvas.StrokeColor = color;
+            canvas.StrokeSize = 5;
+            canvas.StrokeLineCap = LineCap.Round;
+            canvas.StrokeLineJoin = LineJoin.Round;
+
+            var centerX = dirtyRect.Width * 0.55f;
+            var centerY = dirtyRect.Height * 0.5f;
+            var halfWidth = dirtyRect.Width * 0.24f;
+            var halfHeight = dirtyRect.Height * 0.22f;
+            canvas.DrawLine(centerX + halfWidth, centerY - halfHeight, centerX - halfWidth, centerY);
+            canvas.DrawLine(centerX - halfWidth, centerY, centerX + halfWidth, centerY + halfHeight);
+        }
     }
 }

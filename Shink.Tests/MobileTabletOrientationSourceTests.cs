@@ -59,7 +59,7 @@ public sealed class MobileTabletOrientationSourceTests
             "Pages",
             "LuisterPage.cs"));
         var descriptionStart = luisterPage.IndexOf(
-            "Text = playlist.Description",
+            "Text = playlist.Description,",
             StringComparison.Ordinal);
 
         Assert.IsTrue(descriptionStart >= 0);

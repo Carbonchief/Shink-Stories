@@ -103,6 +103,8 @@ public class CharacterGuessGameTests
     public void MobileGuessGameUsesMysteryArtworkAndIsAvailableFromBothMenus()
     {
         var gamePage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KarakterRaaiGamePage.cs"));
+        var configPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KarakterRaaiConfigPage.cs"));
+        var difficultyCatalog = File.ReadAllText(GetRepoPath("Shink.Mobile", "Games", "CharacterGuessDifficulty.cs"));
         var models = File.ReadAllText(GetRepoPath("Shink.Mobile", "Models", "MobileApiModels.cs"));
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
         var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
@@ -111,9 +113,19 @@ public class CharacterGuessGameTests
         var mauiProgram = File.ReadAllText(GetRepoPath("Shink.Mobile", "MauiProgram.cs"));
 
         StringAssert.Contains(gamePage, "public sealed class KarakterRaaiGamePage : ContentPage");
-        StringAssert.Contains(gamePage, "Text = \"WIE IS DIÉ KARAKTER?\"");
+        StringAssert.Contains(gamePage, "Text = \"Wie is die\\nkarakter?\"");
+        StringAssert.Contains(gamePage, "IQueryAttributable");
         StringAssert.Contains(gamePage, "private readonly Image _mysteryImage;");
         StringAssert.Contains(gamePage, "private readonly Image _revealImage;");
+        StringAssert.Contains(gamePage, "private readonly ImageButton _newGameButton;");
+        StringAssert.Contains(gamePage, "AutomationId = \"character-guess-retry\"");
+        StringAssert.Contains(gamePage, "Glyph = \"\\uf2f1\"");
+        StringAssert.Contains(gamePage, "FontFamily = \"FontAwesomeSolid\"");
+        StringAssert.Contains(gamePage, "Text = \"???\"");
+        StringAssert.Contains(gamePage, "Text = \"Rondte 1\"");
+        StringAssert.Contains(gamePage, "BuildScoreLabel(\"0/10\")");
+        StringAssert.Contains(gamePage, "Grid.SetColumn(choice, index);");
+        StringAssert.Contains(gamePage, "Grid.SetRow(choice, 0);");
         StringAssert.Contains(gamePage, "CharacterMysteryImageResolver.Resolve(");
         StringAssert.Contains(gamePage, "await RevealCharacterAsync()");
         StringAssert.Contains(gamePage, "new RowDefinition(GridLength.Star)");
@@ -121,11 +133,25 @@ public class CharacterGuessGameTests
         Assert.IsFalse(gamePage.Contains("CollectionView", StringComparison.Ordinal));
         StringAssert.Contains(models, "string? MysteryImageUrl,");
         StringAssert.Contains(program, "MysteryImageUrl: string.IsNullOrWhiteSpace(character.MysteryImagePath)");
-        StringAssert.Contains(luisterPage, "\"Wie is dié Karakter?\",");
-        StringAssert.Contains(luisterPage, "GoToAsync(nameof(KarakterRaaiGamePage), animate: true)");
-        StringAssert.Contains(mobileTopBar, "\"Wie is dié Karakter?\",");
-        StringAssert.Contains(mobileTopBar, "GoToAsync(nameof(KarakterRaaiGamePage), animate: true)");
+        StringAssert.Contains(configPage, "karakter_raai_logo_cropped.png");
+        StringAssert.Contains(configPage, "WidthRequest = 62,");
+        StringAssert.Contains(configPage, "HeightRequest = 64,");
+        StringAssert.Contains(configPage, "Children = { card, character }");
+        Assert.IsFalse(configPage.Contains("ScrollView", StringComparison.Ordinal));
+        StringAssert.Contains(configPage, "Margin = new Thickness(14, 44, 0, 0)");
+        StringAssert.Contains(difficultyCatalog, "BEGINNER");
+        StringAssert.Contains(difficultyCatalog, "KENNER");
+        StringAssert.Contains(difficultyCatalog, "MEESTER");
+        StringAssert.Contains(difficultyCatalog, "10, \"karakter_raai_beginner.png\"");
+        StringAssert.Contains(difficultyCatalog, "20, \"karakter_raai_kenner.png\"");
+        StringAssert.Contains(difficultyCatalog, "30, \"karakter_raai_meester.png\"");
+        StringAssert.Contains(luisterPage, "\"Karakter Raai\",");
+        StringAssert.Contains(luisterPage, "GoToAsync(nameof(KarakterRaaiConfigPage), animate: true)");
+        StringAssert.Contains(mobileTopBar, "\"Karakter Raai\",");
+        StringAssert.Contains(mobileTopBar, "GoToAsync(nameof(KarakterRaaiConfigPage), animate: true)");
         StringAssert.Contains(appShell, "Routing.RegisterRoute(nameof(KarakterRaaiGamePage), typeof(KarakterRaaiGamePage));");
+        StringAssert.Contains(appShell, "Routing.RegisterRoute(nameof(KarakterRaaiConfigPage), typeof(KarakterRaaiConfigPage));");
+        StringAssert.Contains(mauiProgram, "builder.Services.AddTransient<KarakterRaaiConfigPage>();");
         StringAssert.Contains(mauiProgram, "builder.Services.AddTransient<KarakterRaaiGamePage>();");
     }
 

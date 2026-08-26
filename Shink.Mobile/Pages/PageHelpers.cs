@@ -150,13 +150,15 @@ internal static class PageHelpers
             StrokeShape = new RoundRectangle { CornerRadius = 28 },
             Padding = 10,
             Margin = new Thickness(0, 0, 0, 8),
-            Shadow = new Shadow
-            {
-                Brush = Brush.Black,
-                Offset = new Point(0, 8),
-                Radius = 18,
-                Opacity = 0.08f
-            },
+            Shadow = DeviceInfo.Current.Platform == DevicePlatform.Android
+                ? null!
+                : new Shadow
+                {
+                    Brush = Brush.Black,
+                    Offset = new Point(0, 8),
+                    Radius = 18,
+                    Opacity = 0.08f
+                },
             Content = body
         };
 
@@ -187,13 +189,15 @@ internal static class PageHelpers
         SemanticProperties.SetDescription(
             heart,
             story.IsFavorite ? "Verwyder gunsteling" : "Voeg by gunsteling");
-        heart.Shadow = new Shadow
-        {
-            Brush = Brush.Black,
-            Offset = new Point(0, 3),
-            Radius = 8,
-            Opacity = 0.12f
-        };
+        heart.Shadow = DeviceInfo.Current.Platform == DevicePlatform.Android
+            ? null!
+            : new Shadow
+            {
+                Brush = Brush.Black,
+                Offset = new Point(0, 3),
+                Radius = 8,
+                Opacity = 0.12f
+            };
 
         if (onFavoriteTap is not null)
         {

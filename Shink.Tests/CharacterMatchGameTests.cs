@@ -105,13 +105,23 @@ public class CharacterMatchGameTests
     public void MobileGameIsRegisteredAndAvailableFromBothMenuImplementations()
     {
         var gamePage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KarakterPareGamePage.cs"));
+        var configPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KarakterPareConfigPage.cs"));
         var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
         var mobileTopBar = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileTopBar.cs"));
         var mobileMenuSheet = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileMenuSheet.cs"));
         var appShell = File.ReadAllText(GetRepoPath("Shink.Mobile", "AppShell.xaml.cs"));
         var mauiProgram = File.ReadAllText(GetRepoPath("Shink.Mobile", "MauiProgram.cs"));
 
-        StringAssert.Contains(gamePage, "public sealed class KarakterPareGamePage : ContentPage");
+        StringAssert.Contains(gamePage, "public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable");
+        StringAssert.Contains(gamePage, "ApplyQueryAttributes(IDictionary<string, object> query)");
+        StringAssert.Contains(configPage, "public sealed class KarakterPareConfigPage : ContentPage");
+        StringAssert.Contains(configPage, "karakter_pare_logo_cropped.png");
+        StringAssert.Contains(configPage, "karakter_pare_beginner.png");
+        StringAssert.Contains(configPage, "karakter_pare_kenner.png");
+        StringAssert.Contains(configPage, "karakter_pare_meester.png");
+        StringAssert.Contains(configPage, "Text = \"SPEEL NOU\"");
+        Assert.IsFalse(configPage.Contains("ScrollView", StringComparison.Ordinal));
+        StringAssert.Contains(configPage, "Margin = new Thickness(14, 44, 0, 0)");
         StringAssert.Contains(gamePage, "private readonly Grid _board;");
         StringAssert.Contains(gamePage, "private static Grid BuildBoard()");
         StringAssert.Contains(gamePage, "Grid.SetColumn(tileView, index % difficulty.Columns);");
@@ -123,21 +133,44 @@ public class CharacterMatchGameTests
         StringAssert.Contains(gamePage, "await Task.Delay(780);");
         StringAssert.Contains(gamePage, "AnimateFlipAsync(firstTile, firstTileView, faceUp: false)");
         StringAssert.Contains(gamePage, "AnimateMatchedPairAsync(firstTile, firstTileView, tile, tileView)");
-        StringAssert.Contains(gamePage, "_newGameButton.ImageSource = \"replay_icon.svg\"");
+        StringAssert.Contains(gamePage, "AnimateMatchedTileToCenterAsync");
+        StringAssert.Contains(gamePage, "private const int MatchedTileAnimationZIndex = 1_000;");
+        StringAssert.Contains(gamePage, "private readonly AbsoluteLayout _matchAnimationOverlay;");
+        StringAssert.Contains(gamePage, "_matchAnimationOverlay.Children.Add(tileView);");
+        StringAssert.Contains(gamePage, "RestoreMatchedTileFromAnimationOverlay");
+        StringAssert.Contains(gamePage, "ZIndex = MatchedTileAnimationZIndex");
+        StringAssert.Contains(gamePage, "mergedTileView.ZIndex = MergedTileAnimationZIndex;");
+        StringAssert.Contains(gamePage, "AbsoluteLayout.GetLayoutBounds(tileView)");
+        StringAssert.Contains(gamePage, "private static async Task AnimateMergedTilePopAsync");
+        StringAssert.Contains(gamePage, "coveredTileView!.Opacity = 0;");
+        StringAssert.Contains(gamePage, "WiggleMatchedTileAsync");
+        StringAssert.Contains(gamePage, "AnimateMatchedTileAwayAsync");
+        StringAssert.Contains(gamePage, "private readonly ImageButton _newGameButton;");
+        StringAssert.Contains(gamePage, "Glyph = \"\\uf2f1\"");
+        StringAssert.Contains(gamePage, "FontFamily = \"FontAwesomeSolid\"");
         StringAssert.Contains(gamePage, "StartNewGameAsync(animateBoard: true)");
         StringAssert.Contains(gamePage, "AnimateBoardOutAsync()");
         StringAssert.Contains(gamePage, "AnimateBoardBuildAsync()");
         StringAssert.Contains(gamePage, "AnimateTileIntoBoardAsync");
         StringAssert.Contains(gamePage, "_apiClient.BuildCachedImageSource(GetMatchImageUrl(character)!");
         StringAssert.Contains(gamePage, "Text = \"KARAKTER-PARE\"");
+        StringAssert.Contains(configPage, "private const string PoppinsFontFamily = \"Poppins\";");
+        StringAssert.Contains(configPage, "private const string PoppinsBoldFontFamily = \"PoppinsBold\";");
+        StringAssert.Contains(configPage, "FontFamily = PoppinsFontFamily");
+        StringAssert.Contains(configPage, "FontFamily = PoppinsBoldFontFamily");
         StringAssert.Contains(luisterPage, "\"Karakter-pare\",");
-        StringAssert.Contains(luisterPage, "GoToAsync(nameof(KarakterPareGamePage), animate: true)");
+        StringAssert.Contains(luisterPage, "GoToAsync(nameof(KarakterPareConfigPage), animate: true)");
         StringAssert.Contains(mobileTopBar, "\"Karakter-pare\",");
-        StringAssert.Contains(mobileTopBar, "GoToAsync(nameof(KarakterPareGamePage), animate: true)");
+        StringAssert.Contains(mobileTopBar, "GoToAsync(nameof(KarakterPareConfigPage), animate: true)");
         StringAssert.Contains(mobileMenuSheet, "Content = new ScrollView");
         StringAssert.Contains(mobileMenuSheet, "VerticalScrollBarVisibility = ScrollBarVisibility.Never");
         StringAssert.Contains(appShell, "Routing.RegisterRoute(nameof(KarakterPareGamePage), typeof(KarakterPareGamePage));");
+        StringAssert.Contains(appShell, "Routing.RegisterRoute(nameof(KarakterPareConfigPage), typeof(KarakterPareConfigPage));");
+        StringAssert.Contains(mauiProgram, "builder.Services.AddTransient<KarakterPareConfigPage>();");
         StringAssert.Contains(mauiProgram, "builder.Services.AddTransient<KarakterPareGamePage>();");
+        StringAssert.Contains(mauiProgram, "fonts.AddFont(\"Poppins-Regular.ttf\", \"Poppins\");");
+        StringAssert.Contains(mauiProgram, "fonts.AddFont(\"Poppins-SemiBold.ttf\", \"PoppinsSemiBold\");");
+        StringAssert.Contains(mauiProgram, "fonts.AddFont(\"Poppins-Bold.ttf\", \"PoppinsBold\");");
         Assert.IsTrue(File.Exists(GetRepoPath(
             "Shink.Mobile",
             "Resources",
@@ -150,9 +183,9 @@ public class CharacterMatchGameTests
     {
         var gamePage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KarakterPareGamePage.cs"));
 
-        StringAssert.Contains(gamePage, "new(MatchDifficultyLevel.Easy, \"Maklik\", 3, 4)");
-        StringAssert.Contains(gamePage, "new(MatchDifficultyLevel.Medium, \"Gemiddeld\", 4, 4)");
-        StringAssert.Contains(gamePage, "new(MatchDifficultyLevel.Hard, \"Moeilik\", 4, 5)");
+        StringAssert.Contains(gamePage, "new(MatchDifficultyLevel.Easy, \"Beginner\", 3, 4)");
+        StringAssert.Contains(gamePage, "new(MatchDifficultyLevel.Medium, \"Kenner\", 4, 4)");
+        StringAssert.Contains(gamePage, "new(MatchDifficultyLevel.Hard, \"Meester\", 4, 6)");
         StringAssert.Contains(gamePage, "AutomationId = \"character-match-setup\"");
         StringAssert.Contains(gamePage, "Text = \"KIES JOU UITDAGING\"");
         StringAssert.Contains(gamePage, "Text = $\"{difficulty.Columns} × {difficulty.Rows} rooster · {difficulty.PairCount} pare\"");
@@ -169,6 +202,59 @@ public class CharacterMatchGameTests
         StringAssert.Contains(gamePage, "_board.WidthRequest = -1;");
         StringAssert.Contains(gamePage, "_board.HorizontalOptions = LayoutOptions.Fill;");
         Assert.IsFalse(gamePage.Contains("Math.Min(760, Math.Max(320, availableWidth - 48))", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void AndroidMatchGameDoesNotLeaveCardsAtTheDealAnimationScale()
+    {
+        var gamePage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KarakterPareGamePage.cs"));
+
+        StringAssert.Contains(
+            gamePage,
+            "private static bool IsAndroid => DeviceInfo.Current.Platform == DevicePlatform.Android;");
+        StringAssert.Contains(gamePage, "tileView.Scale = IsAndroid ? 1 : 0.72;");
+        StringAssert.Contains(gamePage, "tileView.Scale = IsAndroid ? 1 : 0.78;");
+        StringAssert.Contains(gamePage, "tileView.TranslationY = IsAndroid ? 0 : 22;");
+        StringAssert.Contains(gamePage, "tileView.TranslationY = IsAndroid ? 0 : 16;");
+        StringAssert.Contains(
+            gamePage,
+            "if (IsAndroid)\n        {\n            await tileView.FadeToAsync(1, 180, Easing.CubicOut);\n            ResetTileTransform(tileView);");
+    }
+
+    [TestMethod]
+    public void MatchedCardsMergeAtThePhoneCenterBeforePoppingAndDisappearing()
+    {
+        var gamePage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KarakterPareGamePage.cs"));
+
+        StringAssert.Contains(gamePage, "private readonly Grid _boardHost;");
+        StringAssert.Contains(gamePage, "var pageCenterX = Width > 0 ? Width / 2");
+        StringAssert.Contains(gamePage, "var pageCenterY = Height > 0 ? Height / 2");
+        StringAssert.Contains(gamePage, "pageCenterY - _boardHost.Y");
+        StringAssert.Contains(gamePage, "var pairSeparation = Math.Max(18, cardWidth * 0.64);");
+        StringAssert.Contains(gamePage, "var tileCenterX = tileX + tileWidth / 2;");
+        StringAssert.Contains(gamePage, "var tileCenterY = tileY + tileHeight / 2;");
+        Assert.DoesNotContain(
+            "tileX + tileWidth / 2 + tileView.TranslationX",
+            gamePage,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "tileY + tileHeight / 2 + tileView.TranslationY",
+            gamePage,
+            StringComparison.Ordinal);
+
+        var approachIndex = gamePage.IndexOf("await Task.WhenAll(animations);", StringComparison.Ordinal);
+        var mergeIndex = gamePage.IndexOf("// Close the last gap", approachIndex, StringComparison.Ordinal);
+        var becomeOneIndex = gamePage.IndexOf("coveredTileView!.Opacity = 0;", mergeIndex, StringComparison.Ordinal);
+        var popIndex = gamePage.IndexOf("await AnimateMergedTilePopAsync", becomeOneIndex, StringComparison.Ordinal);
+        var wiggleIndex = gamePage.IndexOf("await WiggleMatchedTileAsync", popIndex, StringComparison.Ordinal);
+        var disappearIndex = gamePage.IndexOf("await AnimateMatchedTileAwayAsync", wiggleIndex, StringComparison.Ordinal);
+
+        Assert.IsGreaterThanOrEqualTo(0, approachIndex);
+        Assert.IsGreaterThan(approachIndex, mergeIndex);
+        Assert.IsGreaterThan(mergeIndex, becomeOneIndex);
+        Assert.IsGreaterThan(becomeOneIndex, popIndex);
+        Assert.IsGreaterThan(popIndex, wiggleIndex);
+        Assert.IsGreaterThan(wiggleIndex, disappearIndex);
     }
 
     [TestMethod]

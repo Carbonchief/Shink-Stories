@@ -14,8 +14,9 @@ internal enum MobileAndroidIcon
 
 internal static class MobileAndroidChromePalette
 {
-    // The story carousel supplies the colour; the tab chrome must not add a wash of its own.
-    public static readonly Color BarBackground = Colors.Transparent;
+    // Live backdrop capture makes every Android scroll redraw the whole page.
+    // Keep the same dark-glass contrast with a compositor-friendly solid tint.
+    public static readonly Color BarBackground = Color.FromArgb("#E612343B");
     public static readonly Color PrimaryIcon = Colors.White;
     public static readonly Color SecondaryIcon = Colors.White;
     public static readonly Color SelectedBackground = Colors.Transparent;

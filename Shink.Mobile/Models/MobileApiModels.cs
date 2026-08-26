@@ -56,7 +56,8 @@ public sealed record MobileStorySummary(
     bool IsLocked,
     bool IsFavorite,
     string DetailUrl,
-    decimal? DurationSeconds);
+    decimal? DurationSeconds,
+    string StoryType = "story");
 
 public sealed record MobileHomeResponse(
     string HeroTitle,
@@ -80,7 +81,11 @@ public sealed record MobilePlaylist(
     string BackdropUrl,
     IReadOnlyList<MobileStorySummary> Stories,
     bool? ShowShowcaseImageOnLuisterPage = null,
-    MobileStorySummary? ShowcaseStory = null);
+    MobileStorySummary? ShowcaseStory = null,
+    string? LogoUrl = null,
+    string? BackgroundStartColorHex = null,
+    string? BackgroundEndColorHex = null,
+    string? FontColorHex = null);
 
 public sealed record MobileLuisterResponse(
     bool HasPaidSubscription,

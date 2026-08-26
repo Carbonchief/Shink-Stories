@@ -21,7 +21,11 @@ internal static class MobileLiquidGlass
         }
     }
 
-    public static void Apply(View view, double cornerRadius, Color? tint = null, bool topCornersOnly = false)
+    public static void Apply(
+        Microsoft.Maui.Controls.View view,
+        double cornerRadius,
+        Microsoft.Maui.Graphics.Color? tint = null,
+        bool topCornersOnly = false)
     {
 #if IOS
         if (!IsEnabled)

@@ -12,7 +12,8 @@ public sealed class MobilePlatformChromeSourceTests
 
         StringAssert.Contains(source, "Func<Task>? searchAction = null,");
         StringAssert.Contains(source, "BuildBrandMark()");
-        StringAssert.Contains(source, "schink_stories_logo_white.png");
+        StringAssert.Contains(source, "CreatePackageImageSource(\"schink_stories_logo_white_raw.png\")");
+        StringAssert.Contains(source, "BackgroundColor = Colors.Transparent");
         StringAssert.Contains(source, "MobileAndroidIcon.Search");
         StringAssert.Contains(source, "BuildNotificationButton(notificationCount)");
         StringAssert.Contains(source, "MobileAndroidIcon.CaretDown");
@@ -50,10 +51,30 @@ public sealed class MobilePlatformChromeSourceTests
         StringAssert.Contains(source, "Padding = new Thickness(10, 2, 10, 4),");
         StringAssert.Contains(source, "Margin = Thickness.Zero,");
         StringAssert.Contains(source, "bar.HeightRequest = 114;");
-        StringAssert.Contains(source, "MobileLiquidGlass.Apply(bar, 0, MobileAndroidChromePalette.BarBackground);");
+        StringAssert.Contains(source, "MobileLiquidGlass.Apply(bar, 0, Colors.Transparent);");
         StringAssert.Contains(source, "SafeAreaEdges = SafeAreaEdges.None,");
         StringAssert.Contains(source, "WidthRequest = 32,");
         StringAssert.Contains(source, "FontSize = 14,");
+    }
+
+    [TestMethod]
+    public void KaraktersUsesTheStoriesSafeAreaChromeHosts()
+    {
+        var karakters = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KaraktersPage.cs"));
+
+        StringAssert.Contains(karakters, "private const double FloatingTopBarContentInset = 92;");
+        StringAssert.Contains(karakters, "private const double BottomBarOverlayHeight = 152;");
+        StringAssert.Contains(karakters, "private readonly Border _floatingTopBarHost;");
+        StringAssert.Contains(karakters, "private readonly Grid _bottomBarOverlay;");
+        StringAssert.Contains(karakters, "private readonly ContentView _bottomBarHost;");
+        StringAssert.Contains(karakters, "_topBarOverlay.Children.Add(_floatingTopBarHost);");
+        StringAssert.Contains(karakters, "MobileTopBar.BuildStoriesTopBar(");
+        StringAssert.Contains(karakters, "MobileBottomBar.Build(this, \"characters\", OpenStoriesSearchAsync)");
+        Assert.DoesNotContain("searchAction: OpenStoriesSearchAsync", karakters, StringComparison.Ordinal);
+        StringAssert.Contains(karakters, "_refreshView,\n                _topBarOverlay,\n                _bottomBarOverlay");
+        StringAssert.Contains(karakters, "SafeAreaEdges = SafeAreaEdges.None,");
+        Assert.DoesNotContain("HeightRequest = 70", karakters, StringComparison.Ordinal);
+        Assert.DoesNotContain("MobileBottomBar.Build(this, \"characters\")", karakters, StringComparison.Ordinal);
     }
 
     [TestMethod]
@@ -67,7 +88,7 @@ public sealed class MobilePlatformChromeSourceTests
         StringAssert.Contains(source, "MobileAndroidIcon.Download");
         StringAssert.Contains(source, "MobileAndroidIcon.CaretDown");
         StringAssert.Contains(source, "canvas.DrawCircle");
-        StringAssert.Contains(source, "BarBackground = Colors.Transparent");
+        StringAssert.Contains(source, "BarBackground = Color.FromArgb(\"#E612343B\")");
         StringAssert.Contains(source, "SecondaryIcon = Colors.White");
         StringAssert.Contains(source, "TopBarBackground = Colors.Transparent");
     }
@@ -79,6 +100,32 @@ public sealed class MobilePlatformChromeSourceTests
 
         StringAssert.Contains(source, "UIBlurEffectStyle.SystemUltraThinMaterialDark");
         Assert.IsFalse(source.Contains("UIGlassEffectStyle.Regular", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void AndroidBottomBarAvoidsLiveBackdropCaptureDuringScrolling()
+    {
+        var source = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileLiquidGlass.cs"));
+        var chrome = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileAndroidIcons.cs"));
+        var project = File.ReadAllText(GetRepoPath("Shink.Mobile", "Shink.Mobile.csproj"));
+
+        Assert.DoesNotContain("BlurView-version-2.0.6.aar", project, StringComparison.Ordinal);
+        Assert.DoesNotContain("Eightbitlab.Com.Blurview.BlurView", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("PostInvalidateOnAnimation", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("#elif ANDROID", source, StringComparison.Ordinal);
+        StringAssert.Contains(chrome, "BarBackground = Color.FromArgb(\"#E612343B\")");
+    }
+
+    [TestMethod]
+    public void IosAppIconKeepsCanonicalScaleWhileRemovingAlpha()
+    {
+        var project = File.ReadAllText(GetRepoPath("Shink.Mobile", "Shink.Mobile.csproj"));
+
+        StringAssert.Contains(project, "<MauiIcon Include=\"Resources/AppIcon/schink_appicon.png\" />");
+        Assert.IsFalse(project.Contains("<MauiIcon Include=\"Resources/AppIcon/schink_appicon.png\" Resize=\"False\"", StringComparison.Ordinal));
+        StringAssert.Contains(project, "sips -s format pbm");
+        StringAssert.Contains(project, "sips -s format png");
+        Assert.IsFalse(project.Contains("pngcrush", StringComparison.Ordinal));
     }
 
     private static string GetRepoPath(params string[] segments)

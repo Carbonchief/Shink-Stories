@@ -10,6 +10,23 @@ internal static class MobileTopBar
     private const string NotificationBellAppleFontFamily = "Font Awesome 6 Free Solid";
     private const string NotificationBellAndroidFontFamily = "FontAwesomeSolid";
 
+    public static View BuildStoriesTopBar(
+        Page hostPage,
+        MobileApiClient apiClient,
+        MobileSession session,
+        Func<Task>? notificationAction = null,
+        int notificationCount = 0) =>
+        Build(
+            hostPage,
+            apiClient,
+            session,
+            title: "Schink Stories",
+            notificationAction: notificationAction,
+            notificationCount: notificationCount,
+            backgroundColor: MobileAndroidChromePalette.TopBarBackground,
+            showProfile: false,
+            brandLeadingInset: 4);
+
     public static View Build(
         Page hostPage,
         MobileApiClient apiClient,
@@ -198,10 +215,18 @@ internal static class MobileTopBar
             }
         };
 
+    private static ImageSource CreatePackageImageSource(string fileName) =>
+        ImageSource.FromStream(_ => FileSystem.OpenAppPackageFileAsync(fileName));
+
     private static Image BuildBrandMark() =>
         new()
         {
-            Source = "schink_stories_logo_white.png",
+            // Load the unprocessed package asset. The Android splash screen uses the
+            // same source artwork and generates an opaque, teal-backed density asset
+            // with the same filename; resolving the drawable by name can therefore
+            // show the splash version here instead of the transparent logo.
+            Source = CreatePackageImageSource("schink_stories_logo_white_raw.png"),
+            BackgroundColor = Colors.Transparent,
             WidthRequest = 124,
             HeightRequest = 42,
             Aspect = Aspect.AspectFit,
@@ -273,7 +298,7 @@ internal static class MobileTopBar
             "Menu",
             "Karakters",
             "Karakter-pare",
-            "Wie is dié Karakter?",
+            "Karakter Raai",
             "Afgelaai",
             "Instellings",
             "Bestuur rekening");
@@ -286,10 +311,10 @@ internal static class MobileTopBar
                     await Shell.Current.GoToAsync("//Karakters", animate: false);
                     break;
                 case "Karakter-pare":
-                    await Shell.Current.GoToAsync(nameof(KarakterPareGamePage), animate: true);
+                    await Shell.Current.GoToAsync(nameof(KarakterPareConfigPage), animate: true);
                     break;
-                case "Wie is dié Karakter?":
-                    await Shell.Current.GoToAsync(nameof(KarakterRaaiGamePage), animate: true);
+                case "Karakter Raai":
+                    await Shell.Current.GoToAsync(nameof(KarakterRaaiConfigPage), animate: true);
                     break;
                 case "Afgelaai":
                     await Shell.Current.GoToAsync(nameof(DownloadedPage), animate: true);

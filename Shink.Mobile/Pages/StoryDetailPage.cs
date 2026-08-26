@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using Shink.Mobile.Models;
 using Shink.Mobile.Services;
 using Shink.Mobile.Views;
@@ -13,18 +14,28 @@ namespace Shink.Mobile.Pages;
 [QueryProperty(nameof(Source), "source")]
 public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 {
+    private static bool IsAndroid => DeviceInfo.Current.Platform == DevicePlatform.Android;
     private const double TallScreenThreshold = 820;
     private const uint CloseAnimationDurationMs = 170;
     private const double ListenFlushThresholdSeconds = 12;
     private const double ListenMaxEventSeconds = 600;
     private const double ListenMinEventSeconds = 0.2;
+    private const double StoryCarouselImageAspectRatio = 3d / 4d;
+    private const double StoryCarouselEdgeSpacing = 20;
+    private const string AutoplayIconGlyph = "\uf144";
+    private const string InfinityIconGlyph = "\uf534";
+    private const string HourglassIconGlyph = "\uf252";
+    private const string ShuffleIconGlyph = "\uf074";
+    private const string PreviousStoryIconGlyph = "\uf048";
+    private const string NextStoryIconGlyph = "\uf051";
     private static readonly double[] PlaybackSpeedSteps = [0.75, 1.0, 1.25, 1.5];
-    private static readonly Color PlayerBackgroundColor = Color.FromArgb("#061816");
-    private static readonly Color PlayerPanelColor = Color.FromArgb("#102724");
-    private static readonly Color PlayerPillColor = Color.FromArgb("#1B302D");
-    private static readonly Color PlayerTextColor = Color.FromArgb("#F7FBF7");
-    private static readonly Color PlayerMutedTextColor = Color.FromArgb("#AAB7B2");
-    private static readonly Color PlayerAccentColor = Color.FromArgb("#FFFFFF");
+    private static readonly Color PlayerBackgroundColor = Color.FromArgb("#F6F3EE");
+    private static readonly Color PlayerPanelColor = Color.FromArgb("#ECE8E2");
+    private static readonly Color PlayerPillColor = Color.FromArgb("#1A222222");
+    private static readonly Color PlayerTextColor = Color.FromArgb("#1C1C1C");
+    private static readonly Color PlayerMutedTextColor = Color.FromArgb("#6A6660");
+    private static readonly Color PlayerAccentColor = Color.FromArgb("#1F1F1F");
+    private static readonly Color PlayerAccentTextColor = Color.FromArgb("#FAF7F2");
     private static readonly Color StorySummaryCardColor = Color.FromArgb("#222222");
     private static readonly Color StorySummaryTextColor = Color.FromArgb("#F6F1EA");
     private static readonly Color StorySummaryLeadColor = Color.FromArgb("#F0DDC8");
@@ -108,7 +119,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         _lifecycleService = lifecycleService;
         _orientationService = orientationService;
         _transitionBackdropState = transitionBackdropState;
-        BackgroundColor = PlayerBackgroundColor;
+        Background = BuildStoryPageBackground();
         SafeAreaEdges = SafeAreaEdges.None;
         Shell.SetNavBarIsVisible(this, false);
         Shell.SetTabBarIsVisible(this, false);
@@ -123,14 +134,14 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
         var scrollView = new ScrollView
         {
-            BackgroundColor = PlayerBackgroundColor,
+            BackgroundColor = Colors.Transparent,
             VerticalScrollBarVisibility = ScrollBarVisibility.Never,
             Content = _content
         };
 
         _playerSurface = new Grid
         {
-            BackgroundColor = PlayerBackgroundColor,
+            BackgroundColor = Colors.Transparent,
             Children = { scrollView }
         };
 
@@ -143,12 +154,50 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
         _root = new Grid
         {
-            BackgroundColor = PlayerBackgroundColor,
-            Children = { _closeBackdrop, _playerSurface }
+            Background = BuildStoryPageBackground(),
+            Children =
+            {
+                new BoxView
+                {
+                    Background = BuildStoryPageHighlight(),
+                    InputTransparent = true
+                },
+                _closeBackdrop,
+                _playerSurface
+            }
         };
 
         Content = _root;
     }
+
+    private static Brush BuildStoryPageBackground() =>
+        IsAndroid
+            ? new SolidColorBrush(Color.FromArgb("#F3F0EA"))
+            : new LinearGradientBrush
+        {
+            StartPoint = new Point(0, 0),
+            EndPoint = new Point(0, 1),
+            GradientStops =
+            {
+                new GradientStop(Color.FromArgb("#F6F3EE"), 0),
+                new GradientStop(Color.FromArgb("#ECE8E2"), 1)
+            }
+        };
+
+    private static Brush BuildStoryPageHighlight() =>
+        IsAndroid
+            ? new SolidColorBrush(Colors.Transparent)
+            : new RadialGradientBrush
+        {
+            Center = new Point(0.5, -0.12),
+            Radius = 1.2,
+            GradientStops =
+            {
+                new GradientStop(Color.FromArgb("#2E8DC66F"), 0),
+                new GradientStop(Color.FromArgb("#008DC66F"), 0.5f),
+                new GradientStop(Color.FromArgb("#008DC66F"), 1)
+            }
+        };
 
     private void HandleResponsiveSizeChanged()
     {
@@ -1061,13 +1110,15 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             BackgroundColor = Color.FromArgb("#0C211F"),
             StrokeThickness = 0,
             StrokeShape = new RoundRectangle { CornerRadius = 16 },
-            Shadow = new Shadow
-            {
-                Brush = Brush.Black,
-                Offset = new Point(0, 18),
-                Radius = 32,
-                Opacity = 0.22f
-            },
+            Shadow = IsAndroid
+                ? null!
+                : new Shadow
+                {
+                    Brush = Brush.Black,
+                    Offset = new Point(0, 18),
+                    Radius = 32,
+                    Opacity = 0.22f
+                },
             Content = new Grid
             {
                 Children =
@@ -1095,13 +1146,15 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     private View BuildFavoriteOverlay(MobileStoryDetailResponse detail)
     {
         var target = MobileFavoriteHeart.CreateButton(detail.Story.IsFavorite, 25);
-        target.Shadow = new Shadow
-        {
-            Brush = Brush.Black,
-            Offset = new Point(0, 2),
-            Radius = 7,
-            Opacity = detail.Story.IsFavorite ? 0.28f : 0.95f
-        };
+        target.Shadow = IsAndroid
+            ? null!
+            : new Shadow
+            {
+                Brush = Brush.Black,
+                Offset = new Point(0, 2),
+                Radius = 7,
+                Opacity = detail.Story.IsFavorite ? 0.28f : 0.95f
+            };
         target.WidthRequest = 44;
         target.HeightRequest = 44;
         target.Margin = new Thickness(0, 6, 6, 0);
@@ -1798,7 +1851,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         {
             Progress = 0,
             ProgressColor = PlayerAccentColor,
-            BackgroundColor = Color.FromArgb("#3D4B48"),
+            BackgroundColor = Color.FromArgb("#8F8A84"),
             HeightRequest = 4
         };
         var currentTimeLabel = BuildTimeLabel("0:00", TextAlignment.Start);
@@ -1963,18 +2016,21 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             false,
             true,
             () => CyclePlaybackSpeed(detail));
-        var autoplayButton = BuildPlaybackModeButton(
-            "Auto",
+        var autoplayButton = BuildPlaybackModeIconButton(
+            AutoplayIconGlyph,
+            _playlistPlaybackState.IsAutoplayEnabled ? "Skakel outospeel af" : "Skakel outospeel aan",
             _playlistPlaybackState.IsAutoplayEnabled,
             nextStoryAvailable,
             () => ToggleAutoplay(detail));
-        var autoplayLimitButton = BuildPlaybackModeButton(
+        var autoplayLimitButton = BuildPlaybackModeIconButton(
+            _playlistPlaybackState.AutoplayLimitStories is null ? InfinityIconGlyph : HourglassIconGlyph,
             FormatAutoplayLimit(),
             _playlistPlaybackState.AutoplayLimitStories.HasValue,
             _playlistPlaybackState.IsAutoplayEnabled && nextStoryAvailable,
             () => CycleAutoplayLimit(detail));
-        var shuffleButton = BuildPlaybackModeButton(
-            "Skommel",
+        var shuffleButton = BuildPlaybackModeIconButton(
+            ShuffleIconGlyph,
+            _playlistPlaybackState.IsShuffleEnabled ? "Skakel skommel af" : "Skakel skommel aan",
             _playlistPlaybackState.IsShuffleEnabled,
             canShuffle,
             () => ToggleShuffle(detail));
@@ -2036,7 +2092,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
     private string FormatAutoplayLimit() =>
         _playlistPlaybackState.AutoplayLimitStories is { } limit
-            ? $"Stop {limit}"
+            ? $"Stop na {limit} stories"
             : "Geen limiet";
 
     private static string FormatPlaybackSpeed(double speed) =>
@@ -2051,34 +2107,38 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         {
             ColumnDefinitions =
             {
-                new ColumnDefinition(GridLength.Star),
-                new ColumnDefinition(GridLength.Star),
-                new ColumnDefinition(GridLength.Star)
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Auto),
+                new ColumnDefinition(GridLength.Auto)
             },
-            HeightRequest = 82
+            ColumnSpacing = 10,
+            HeightRequest = 56,
+            HorizontalOptions = LayoutOptions.Center
         };
 
         var previousStory = ResolvePreviousStory(detail);
         var nextStory = ResolveNextStory(detail);
-        var previousButton = BuildTransportButton("|‹");
-        var nextButton = BuildTransportButton("›|");
+        var previousButton = BuildTransportButton(PlaybackTransportDirection.Previous);
+        var nextButton = BuildTransportButton(PlaybackTransportDirection.Next);
 
         previousButton.IsEnabled = previousStory is not null;
         nextButton.IsEnabled = nextStory is not null;
-        previousButton.Clicked += async (_, _) =>
+        previousButton.Opacity = previousStory is null ? 0.45 : 1;
+        nextButton.Opacity = nextStory is null ? 0.45 : 1;
+        if (previousStory is not null)
         {
-            if (previousStory is not null)
-            {
+            var previousTap = new TapGestureRecognizer();
+            previousTap.Tapped += async (_, _) =>
                 await OpenPlaylistStoryAsync(previousStory, autoplay: ShouldAutoplaySelection());
-            }
-        };
-        nextButton.Clicked += async (_, _) =>
+            previousButton.GestureRecognizers.Add(previousTap);
+        }
+        if (nextStory is not null)
         {
-            if (nextStory is not null)
-            {
+            var nextTap = new TapGestureRecognizer();
+            nextTap.Tapped += async (_, _) =>
                 await OpenPlaylistStoryAsync(nextStory, autoplay: ShouldAutoplaySelection());
-            }
-        };
+            nextButton.GestureRecognizers.Add(nextTap);
+        }
 
         grid.Children.Add(previousButton);
         grid.Children.Add(playButton);
@@ -2104,32 +2164,34 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
         var previousStory = ResolvePreviousStory(detail);
         var nextStory = ResolveNextStory(detail);
-        var previousButton = BuildCompactTransportButton("|‹");
-        var nextButton = BuildCompactTransportButton("›|");
+        var previousButton = BuildCompactTransportButton(PlaybackTransportDirection.Previous);
+        var nextButton = BuildCompactTransportButton(PlaybackTransportDirection.Next);
         var compactPlayButton = BuildCompactPlaybackButton(playButton.Text);
 
         _activePlayButton = compactPlayButton;
 
         previousButton.IsEnabled = previousStory is not null;
         nextButton.IsEnabled = nextStory is not null;
+        previousButton.Opacity = previousStory is null ? 0.45 : 1;
+        nextButton.Opacity = nextStory is null ? 0.45 : 1;
 
-        previousButton.Clicked += async (_, _) =>
+        if (previousStory is not null)
         {
-            if (previousStory is not null)
-            {
+            var previousTap = new TapGestureRecognizer();
+            previousTap.Tapped += async (_, _) =>
                 await ReplaceActiveStoryAsync(previousStory, autoplay: ShouldAutoplaySelection());
-            }
-        };
+            previousButton.GestureRecognizers.Add(previousTap);
+        }
 
         compactPlayButton.Clicked += (_, _) => _ = ToggleFullscreenPlaybackAsync(detail);
 
-        nextButton.Clicked += async (_, _) =>
+        if (nextStory is not null)
         {
-            if (nextStory is not null)
-            {
+            var nextTap = new TapGestureRecognizer();
+            nextTap.Tapped += async (_, _) =>
                 await ReplaceActiveStoryAsync(nextStory, autoplay: ShouldAutoplaySelection());
-            }
-        };
+            nextButton.GestureRecognizers.Add(nextTap);
+        }
 
         grid.Children.Add(previousButton);
         grid.Children.Add(compactPlayButton);
@@ -2199,117 +2261,173 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             return null;
         }
 
-        var list = new VerticalStackLayout
+        var cardWidth = ResolveStoryCarouselCardWidth();
+        var coverHeight = cardWidth / StoryCarouselImageAspectRatio;
+        var carousel = new CollectionView
         {
-            Spacing = 10
+            ItemsSource = new ObservableCollection<MobileStorySummary>(queuedStories),
+            HeightRequest = coverHeight + 70,
+            Margin = new Thickness(-StoryCarouselEdgeSpacing, 0),
+            Header = new BoxView
+            {
+                WidthRequest = StoryCarouselEdgeSpacing,
+                Color = Colors.Transparent
+            },
+            Footer = new BoxView
+            {
+                WidthRequest = StoryCarouselEdgeSpacing,
+                Color = Colors.Transparent
+            },
+            ItemsLayout = new LinearItemsLayout(ItemsLayoutOrientation.Horizontal)
+            {
+                ItemSpacing = 14,
+                SnapPointsType = SnapPointsType.None
+            },
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Never,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Never,
+            ItemSizingStrategy = ItemSizingStrategy.MeasureFirstItem,
+            SelectionMode = SelectionMode.None,
+            ItemTemplate = new DataTemplate(() =>
+                new PlaylistQueueCarouselItemView(story =>
+                    BuildPlaylistQueueCarouselCard(story, cardWidth, coverHeight)))
         };
-        list.Children.Add(new Label
-        {
-            Text = string.IsNullOrWhiteSpace(_playlistTitle) ? "Volgende stories" : $"Volgende in {_playlistTitle}",
-            FontSize = 18,
-            FontAttributes = FontAttributes.Bold,
-            TextColor = PlayerTextColor
-        });
-
-        foreach (var story in queuedStories)
-        {
-            list.Children.Add(BuildPlaylistQueueRow(story));
-        }
 
         return new VerticalStackLayout
         {
-            Spacing = 12,
+            Spacing = 10,
             Padding = new Thickness(0, 4, 0, 0),
-            Children = { list }
-        };
-    }
-
-    private View BuildPlaylistQueueRow(MobileStorySummary story)
-    {
-        var playButton = new Button
-        {
-            Text = "▶",
-            FontSize = 18,
-            FontAttributes = FontAttributes.Bold,
-            TextColor = Color.FromArgb("#061816"),
-            BackgroundColor = PlayerAccentColor,
-            CornerRadius = 24,
-            WidthRequest = 48,
-            HeightRequest = 48,
-            Padding = 0,
-            HorizontalOptions = LayoutOptions.End,
-            VerticalOptions = LayoutOptions.Center
-        };
-        playButton.Clicked += async (_, _) => await OpenPlaylistStoryAsync(story, autoplay: ShouldAutoplaySelection());
-
-        var row = new Grid
-        {
-            ColumnDefinitions =
-            {
-                new ColumnDefinition(GridLength.Auto),
-                new ColumnDefinition(GridLength.Star),
-                new ColumnDefinition(GridLength.Auto)
-            },
-            ColumnSpacing = 12,
-            Padding = new Thickness(10),
-            BackgroundColor = PlayerPanelColor
-        };
-
-        var imageSource = string.IsNullOrWhiteSpace(story.ThumbnailUrl) ? story.ImageUrl : story.ThumbnailUrl;
-        row.Children.Add(new Border
-        {
-            WidthRequest = 68,
-            HeightRequest = 68,
-            StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = 14 },
-            Content = new Image
-            {
-                Source = _apiClient.BuildImageUrl(imageSource),
-                Aspect = Aspect.AspectFill
-            }
-        });
-
-        var textStack = new VerticalStackLayout
-        {
-            Spacing = 3,
-            VerticalOptions = LayoutOptions.Center,
             Children =
             {
                 new Label
                 {
-                    Text = story.Title,
-                    FontSize = 15,
+                    Text = string.IsNullOrWhiteSpace(_playlistTitle) ? "Volgende stories" : $"Volgende in {_playlistTitle}",
+                    FontSize = 18,
                     FontAttributes = FontAttributes.Bold,
                     TextColor = PlayerTextColor,
-                    MaxLines = 2,
-                    LineBreakMode = LineBreakMode.TailTruncation
+                    HorizontalTextAlignment = TextAlignment.Center
                 },
-                new Label
+                carousel
+            }
+        };
+    }
+
+    private double ResolveStoryCarouselCardWidth()
+    {
+        if (!MobileResponsiveLayout.IsWide(Width))
+        {
+            return DeviceInfo.Current.Platform == DevicePlatform.Android ? 148 : 168;
+        }
+
+        return MobileResponsiveLayout.ResolveStoryCarouselCardWidth(
+            Width,
+            DeviceInfo.Current.Platform == DevicePlatform.Android);
+    }
+
+    private View BuildPlaylistQueueCarouselCard(MobileStorySummary story, double cardWidth, double coverHeight)
+    {
+        var cover = new Border
+        {
+            HeightRequest = coverHeight,
+            StrokeThickness = 0,
+            StrokeShape = new RoundRectangle { CornerRadius = 16 },
+            Shadow = null!,
+            Content = new Grid
+            {
+                HeightRequest = coverHeight,
+                Children =
                 {
-                    Text = ToTimeSpan(story.DurationSeconds) is { } duration ? FormatTime(duration) : "Storie",
-                    FontSize = 13,
-                    TextColor = PlayerMutedTextColor
+                    new Image
+                    {
+                        Source = PageHelpers.ResolveStoryCardImageSource(story, _apiClient),
+                        Aspect = Aspect.AspectFill,
+                        HeightRequest = coverHeight
+                    },
+                    BuildCarouselPlayBadge()
                 }
             }
         };
-        row.Children.Add(textStack);
-        row.Children.Add(playButton);
-        Grid.SetColumn(textStack, 1);
-        Grid.SetColumn(playButton, 2);
 
-        var frame = new Border
+        var card = new Border
         {
-            BackgroundColor = PlayerPanelColor,
+            WidthRequest = cardWidth,
+            BackgroundColor = Colors.Transparent,
             StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = 18 },
-            Content = row
+            Padding = 0,
+            Margin = new Thickness(0, 0, 0, 10),
+            Content = new VerticalStackLayout
+            {
+                Spacing = 9,
+                Children =
+                {
+                    cover,
+                    new Label
+                    {
+                        Text = story.Title,
+                        FontSize = 16,
+                        TextColor = Color.FromArgb("#1B2231"),
+                        MaxLines = 2,
+                        LineBreakMode = LineBreakMode.TailTruncation,
+                        LineHeight = 1.16
+                    }
+                }
+            }
         };
 
         var tap = new TapGestureRecognizer();
         tap.Tapped += async (_, _) => await OpenPlaylistStoryAsync(story, autoplay: ShouldAutoplaySelection());
-        frame.GestureRecognizers.Add(tap);
+        card.GestureRecognizers.Add(tap);
+        card.AutomationId = $"playlist-story-{story.Slug}";
+        SemanticProperties.SetDescription(card, $"Speel {story.Title}");
 
-        return frame;
+        return card;
+    }
+
+    private static View BuildCarouselPlayBadge() =>
+        new Border
+        {
+            WidthRequest = 38,
+            HeightRequest = 38,
+            BackgroundColor = Color.FromArgb("#8AF3B23F"),
+            StrokeThickness = 0,
+            StrokeShape = new RoundRectangle { CornerRadius = 999 },
+            HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.Center,
+            InputTransparent = true,
+            Content = new Label
+            {
+                Text = "▶",
+                Opacity = 0.78,
+                TextColor = Color.FromArgb("#2A1C05"),
+                FontSize = 17,
+                FontAttributes = FontAttributes.Bold,
+                HorizontalTextAlignment = TextAlignment.Center,
+                VerticalTextAlignment = TextAlignment.Center,
+                Margin = new Thickness(2, 0, 0, 0)
+            }
+        };
+
+    private sealed class PlaylistQueueCarouselItemView(Func<MobileStorySummary, View> buildItem) : ContentView
+    {
+        private MobileStorySummary? _renderedItem;
+
+        protected override void OnBindingContextChanged()
+        {
+            base.OnBindingContextChanged();
+            if (BindingContext is not MobileStorySummary item)
+            {
+                _renderedItem = null;
+                Content = null;
+                return;
+            }
+
+            if (EqualityComparer<MobileStorySummary>.Default.Equals(_renderedItem, item))
+            {
+                return;
+            }
+
+            _renderedItem = item;
+            Content = buildItem(item);
+        }
     }
 
     private static Label BuildTimeLabel(string text, TextAlignment alignment)
@@ -2330,20 +2448,8 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         return label;
     }
 
-    private static Button BuildTransportButton(string text) =>
-        new()
-        {
-            Text = text,
-            FontSize = 34,
-            FontAttributes = FontAttributes.Bold,
-            TextColor = PlayerTextColor,
-            BackgroundColor = Colors.Transparent,
-            WidthRequest = 56,
-            HeightRequest = 68,
-            Padding = 0,
-            HorizontalOptions = LayoutOptions.Center,
-            VerticalOptions = LayoutOptions.Center
-        };
+    private static Grid BuildTransportButton(PlaybackTransportDirection direction) =>
+        BuildTransportIconButton(direction, 46, 27, PlayerTextColor, LayoutOptions.Center);
 
     private static Button BuildMainPlaybackButton(string text) =>
         new()
@@ -2351,30 +2457,58 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             Text = text,
             FontSize = 32,
             FontAttributes = FontAttributes.Bold,
-            TextColor = Color.FromArgb("#061816"),
+            TextColor = PlayerAccentTextColor,
             BackgroundColor = PlayerAccentColor,
-            CornerRadius = 38,
-            WidthRequest = 76,
-            HeightRequest = 76,
+            CornerRadius = 25,
+            WidthRequest = 50,
+            HeightRequest = 50,
             Padding = 0,
             HorizontalOptions = LayoutOptions.Center,
             VerticalOptions = LayoutOptions.Center
         };
 
-    private static Button BuildCompactTransportButton(string text) =>
-        new()
+    private static Grid BuildCompactTransportButton(PlaybackTransportDirection direction) =>
+        BuildTransportIconButton(direction, 44, 24, Colors.White, LayoutOptions.End);
+
+    private static Grid BuildTransportIconButton(
+        PlaybackTransportDirection direction,
+        double buttonSize,
+        double iconSize,
+        Color color,
+        LayoutOptions verticalOptions)
+    {
+        var button = new Grid
         {
-            Text = text,
-            FontSize = 24,
-            FontAttributes = FontAttributes.Bold,
-            TextColor = PlayerTextColor,
-            BackgroundColor = Colors.Transparent,
-            WidthRequest = 44,
-            HeightRequest = 44,
-            Padding = 0,
+            WidthRequest = buttonSize,
+            HeightRequest = buttonSize,
             HorizontalOptions = LayoutOptions.Center,
-            VerticalOptions = LayoutOptions.End
+            VerticalOptions = verticalOptions,
+            BackgroundColor = Colors.Transparent,
+            Children =
+            {
+                new Label
+                {
+                    Text = direction == PlaybackTransportDirection.Previous
+                        ? PreviousStoryIconGlyph
+                        : NextStoryIconGlyph,
+                    FontFamily = "FontAwesomeSolid",
+                    FontSize = iconSize,
+                    TextColor = color,
+                    WidthRequest = iconSize,
+                    HeightRequest = iconSize,
+                    HorizontalTextAlignment = TextAlignment.Center,
+                    VerticalTextAlignment = TextAlignment.Center,
+                    HorizontalOptions = LayoutOptions.Center,
+                    VerticalOptions = LayoutOptions.Center,
+                    InputTransparent = true
+                }
+            }
         };
+        SemanticProperties.SetDescription(
+            button,
+            direction == PlaybackTransportDirection.Previous ? "Vorige storie" : "Volgende storie");
+        return button;
+    }
 
     private static Button BuildCompactPlaybackButton(string text) =>
         new()
@@ -2382,7 +2516,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             Text = text,
             FontSize = 22,
             FontAttributes = FontAttributes.Bold,
-            TextColor = Color.FromArgb("#061816"),
+            TextColor = PlayerAccentTextColor,
             BackgroundColor = PlayerAccentColor,
             CornerRadius = 26,
             WidthRequest = 52,
@@ -2398,7 +2532,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             Text = text,
             FontSize = 15,
             FontAttributes = FontAttributes.Bold,
-            TextColor = Color.FromArgb("#061816"),
+            TextColor = PlayerAccentTextColor,
             BackgroundColor = PlayerAccentColor,
             CornerRadius = 20,
             HeightRequest = 42,
@@ -2420,11 +2554,12 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
     private static Border BuildPlaybackModeButton(string text, bool isSelected, bool isEnabled, Action onTap)
     {
-        var backgroundColor = isSelected ? PlayerAccentColor : PlayerPillColor;
-        var textColor = isSelected ? Color.FromArgb("#061816") : PlayerTextColor;
+        var showSelectedState = isSelected && isEnabled;
+        var backgroundColor = showSelectedState ? PlayerAccentColor : PlayerPillColor;
+        var textColor = showSelectedState ? PlayerAccentTextColor : PlayerTextColor;
         var button = new Border
         {
-            BackgroundColor = isEnabled ? backgroundColor : Color.FromArgb("#142B28"),
+            BackgroundColor = isEnabled ? backgroundColor : PlayerPanelColor,
             StrokeThickness = 0,
             StrokeShape = new RoundRectangle { CornerRadius = 20 },
             HeightRequest = 38,
@@ -2440,6 +2575,52 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 HorizontalTextAlignment = TextAlignment.Center
             }
         };
+
+        if (isEnabled)
+        {
+            var tap = new TapGestureRecognizer();
+            tap.Tapped += (_, _) => onTap();
+            button.GestureRecognizers.Add(tap);
+        }
+
+        return button;
+    }
+
+    private static Border BuildPlaybackModeIconButton(
+        string glyph,
+        string accessibilityLabel,
+        bool isSelected,
+        bool isEnabled,
+        Action onTap)
+    {
+        var showSelectedState = isSelected && isEnabled;
+        var backgroundColor = showSelectedState ? PlayerAccentColor : PlayerPillColor;
+        var iconColor = showSelectedState ? PlayerAccentTextColor : PlayerTextColor;
+        var button = new Border
+        {
+            BackgroundColor = isEnabled ? backgroundColor : PlayerPanelColor,
+            StrokeThickness = 0,
+            StrokeShape = new RoundRectangle { CornerRadius = 20 },
+            WidthRequest = 42,
+            HeightRequest = 38,
+            Padding = 0,
+            Opacity = isEnabled ? 1 : 0.5,
+            Content = new Label
+            {
+                Text = glyph,
+                FontFamily = "FontAwesomeSolid",
+                FontSize = 17,
+                TextColor = iconColor,
+                WidthRequest = 21,
+                HeightRequest = 21,
+                HorizontalTextAlignment = TextAlignment.Center,
+                VerticalTextAlignment = TextAlignment.Center,
+                HorizontalOptions = LayoutOptions.Center,
+                VerticalOptions = LayoutOptions.Center,
+                InputTransparent = true
+            }
+        };
+        SemanticProperties.SetDescription(button, accessibilityLabel);
 
         if (isEnabled)
         {
@@ -2763,7 +2944,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 Text = text,
                 FontSize = 15,
                 FontAttributes = FontAttributes.Bold,
-                TextColor = isPrimary ? StorySummaryCardColor : Color.FromArgb("#061816"),
+                TextColor = isPrimary ? StorySummaryCardColor : PlayerAccentTextColor,
                 HorizontalTextAlignment = TextAlignment.Center,
                 VerticalTextAlignment = TextAlignment.Center
             }
@@ -3567,6 +3748,12 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
         _loadCts = new CancellationTokenSource();
         await LoadAsync(showLoading: false, cancellationToken: _loadCts.Token);
+    }
+
+    private enum PlaybackTransportDirection
+    {
+        Previous,
+        Next
     }
 
     private sealed class DownCaretDrawable : IDrawable

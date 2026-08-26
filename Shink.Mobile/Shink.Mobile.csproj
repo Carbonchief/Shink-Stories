@@ -5,6 +5,7 @@
     <OutputType>Exe</OutputType>
     <RootNamespace>Shink.Mobile</RootNamespace>
     <UseMaui>true</UseMaui>
+    <MauiVersion>10.0.100</MauiVersion>
     <SingleProject>true</SingleProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -13,7 +14,7 @@
     <ApplicationTitle>Schink Stories</ApplicationTitle>
     <ApplicationId>com.schink.stories.mobile</ApplicationId>
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-    <ApplicationVersion>14</ApplicationVersion>
+		<ApplicationVersion>20</ApplicationVersion>
 
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">21.0</SupportedOSPlatformVersion>
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">15.0</SupportedOSPlatformVersion>
@@ -103,5 +104,12 @@
     <PackageReference Include="PostHog" Version="2.8.4" />
     <PackageReference Include="Plugin.InAppBilling" Version="7.1.3" />
   </ItemGroup>
+
+  <Target Name="StripIosAppIconAlpha"
+          AfterTargets="ResizetizeImages"
+          BeforeTargets="_CoreCompileImageAssets"
+          Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios' and $([MSBuild]::IsOSPlatform('OSX'))">
+    <Exec Command="set -e; for icon_file in &quot;$(IntermediateOutputPath)resizetizer/r/Assets.xcassets/schink_appicon.appiconset/&quot;*.png; do pbm_file=&quot;$icon_file.opaque.pbm&quot;; png_file=&quot;$icon_file.opaque.png&quot;; /usr/bin/sips -s format pbm &quot;$icon_file&quot; --out &quot;$pbm_file&quot; &gt;/dev/null; /usr/bin/sips -s format png &quot;$pbm_file&quot; --out &quot;$png_file&quot; &gt;/dev/null; mv -f &quot;$png_file&quot; &quot;$icon_file&quot;; rm -f &quot;$pbm_file&quot;; done" />
+  </Target>
 
 </Project>

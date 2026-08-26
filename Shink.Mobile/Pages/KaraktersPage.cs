@@ -6,15 +6,21 @@ namespace Shink.Mobile.Pages;
 
 public sealed class KaraktersPage : ContentPage, IQueryAttributable
 {
+    private const double FloatingTopBarContentInset = 92;
     private const double BottomBarContentInset = 136;
+    private const double BottomBarOverlayHeight = 152;
     private const string PoppinsFontFamily = "Poppins";
     private const string PoppinsSemiBoldFontFamily = "PoppinsSemiBold";
     private const string PoppinsBoldFontFamily = "PoppinsBold";
+    private static bool IsAndroid => DeviceInfo.Current.Platform == DevicePlatform.Android;
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
     private readonly IAudioPlaybackService _audioPlaybackService;
     private readonly Grid _rootLayout;
     private readonly Grid _topBarOverlay;
+    private readonly Border _floatingTopBarHost;
+    private readonly Grid _bottomBarOverlay;
+    private readonly ContentView _bottomBarHost;
     private readonly CollectionView _charactersView;
     private readonly GridItemsLayout _charactersGridLayout;
     private readonly RefreshView _refreshView;
@@ -37,7 +43,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         _audioPlaybackService = audioPlaybackService;
         Title = "Karakters";
         BackgroundColor = Color.FromArgb("#46969E");
-        SafeAreaEdges = new SafeAreaEdges(SafeAreaRegions.Container);
+        SafeAreaEdges = SafeAreaEdges.None;
         Shell.SetNavBarIsVisible(this, false);
 
         _charactersView = new CollectionView
@@ -62,6 +68,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
 
         _refreshView = new RefreshView
         {
+            SafeAreaEdges = SafeAreaEdges.None,
             Background = Brush.Transparent,
             Content = _charactersView,
             Command = new Command(async () => await LoadAsync(forceRefresh: true))
@@ -79,28 +86,65 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         };
         _topBarOverlay = new Grid
         {
-            HeightRequest = 70,
-            Padding = new Thickness(10, 12, 10, 0),
+            SafeAreaEdges = new SafeAreaEdges(
+                SafeAreaRegions.Container,
+                SafeAreaRegions.Container,
+                SafeAreaRegions.Container,
+                SafeAreaRegions.None),
+            BackgroundColor = Colors.Transparent,
+            Padding = new Thickness(0, 0, 0, 16),
             HorizontalOptions = LayoutOptions.Fill,
             VerticalOptions = LayoutOptions.Start,
-            ZIndex = 50,
-            Children =
-            {
-                MobileTopBar.Build(
-                    this,
-                    _apiClient,
-                    _sessionState.Current,
-                    searchAction: OpenStoriesSearchAsync,
-                    notificationAction: OpenStoriesNotificationsAsync)
-            }
+            InputTransparent = false,
+            ZIndex = 100
         };
+        _floatingTopBarHost = new Border
+        {
+            BackgroundColor = Colors.Transparent,
+            StrokeThickness = 0,
+            Padding = 0,
+            Margin = Thickness.Zero,
+            HeightRequest = 62,
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalOptions = LayoutOptions.Start,
+            InputTransparent = false,
+            ZIndex = 101,
+            Content = MobileTopBar.BuildStoriesTopBar(
+                this,
+                _apiClient,
+                _sessionState.Current,
+                notificationAction: OpenStoriesNotificationsAsync)
+        };
+        _topBarOverlay.Children.Add(_floatingTopBarHost);
+
+        _bottomBarOverlay = new Grid
+        {
+            SafeAreaEdges = SafeAreaEdges.None,
+            BackgroundColor = Colors.Transparent,
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalOptions = LayoutOptions.End,
+            HeightRequest = BottomBarOverlayHeight,
+            InputTransparent = false,
+            ZIndex = 100
+        };
+        _bottomBarHost = new ContentView
+        {
+            Content = MobileBottomBar.Build(this, "characters", OpenStoriesSearchAsync),
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalOptions = LayoutOptions.End,
+            HeightRequest = BottomBarOverlayHeight,
+            ZIndex = 101
+        };
+        _bottomBarOverlay.Children.Add(_bottomBarHost);
+
         _rootLayout = new Grid
         {
+            SafeAreaEdges = SafeAreaEdges.None,
             Children =
             {
                 _refreshView,
                 _topBarOverlay,
-                MobileBottomBar.Build(this, "characters"),
+                _bottomBarOverlay,
                 _profileOverlay
             }
         };
@@ -245,7 +289,17 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     private void ApplyResponsiveLayout()
     {
         var width = MobileResponsiveLayout.ResolveWidth(Width);
-        MobileResponsiveLayout.ApplyCenteredContent(_topBarOverlay, width, 1040);
+        if (DeviceInfo.Current.Platform == DevicePlatform.Android)
+        {
+            var phoneChromeWidth = Math.Max(280, width - 36);
+            _floatingTopBarHost.WidthRequest = phoneChromeWidth;
+            _floatingTopBarHost.MaximumWidthRequest = phoneChromeWidth;
+            _floatingTopBarHost.HorizontalOptions = LayoutOptions.Center;
+        }
+        else
+        {
+            MobileResponsiveLayout.ApplyCenteredContent(_floatingTopBarHost, width, 1040);
+        }
 
         var span = MobileResponsiveLayout.ResolveCharacterGridSpan(width);
         var widthChanged = _lastResponsiveWidth < 0 || Math.Abs(width - _lastResponsiveWidth) > 24;
@@ -302,7 +356,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         MobileResponsiveLayout.ApplyCenteredContent(hero, Width, 780);
         return new VerticalStackLayout
         {
-            Padding = new Thickness(0, 76, 0, 16),
+            Padding = new Thickness(0, FloatingTopBarContentInset, 0, 16),
             Children =
             {
                 hero
@@ -314,7 +368,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     {
         _charactersView.Header = new VerticalStackLayout
         {
-            Padding = new Thickness(0, 76, 0, 16),
+            Padding = new Thickness(0, FloatingTopBarContentInset, 0, 16),
             Children =
             {
                 new ActivityIndicator
@@ -333,7 +387,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     {
         _charactersView.Header = new VerticalStackLayout
         {
-            Padding = new Thickness(0, 76, 0, 16),
+            Padding = new Thickness(0, FloatingTopBarContentInset, 0, 16),
             Children =
             {
                 BuildState(message, isError)
@@ -499,13 +553,15 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             StrokeThickness = 1,
             StrokeShape = new RoundRectangle { CornerRadius = 18 },
             Padding = new Thickness(6, 6, 6, 8),
-            Shadow = new Shadow
-            {
-                Brush = Brush.Black,
-                Offset = new Point(0, 5),
-                Radius = 10,
-                Opacity = 0.12f
-            },
+            Shadow = IsAndroid
+                ? null!
+                : new Shadow
+                {
+                    Brush = Brush.Black,
+                    Offset = new Point(0, 5),
+                    Radius = 10,
+                    Opacity = 0.12f
+                },
             Content = BuildCharacterCardContent(character, media)
         };
 
@@ -602,7 +658,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     }
 
     private static Task OpenStoriesSearchAsync() =>
-        Shell.Current.GoToAsync("//Luister?surface=search", animate: false);
+        Shell.Current.GoToAsync(nameof(SearchPage), animate: false);
 
     private static Task OpenStoriesNotificationsAsync() =>
         Shell.Current.GoToAsync("//Luister?surface=notifications", animate: false);
@@ -627,13 +683,15 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
                 ? LayoutOptions.Start
                 : LayoutOptions.End,
             AutomationId = automationName,
-            Shadow = new Shadow
-            {
-                Brush = Brush.Black,
-                Offset = new Point(0, 3),
-                Radius = 6,
-                Opacity = 0.14f
-            },
+            Shadow = IsAndroid
+                ? null!
+                : new Shadow
+                {
+                    Brush = Brush.Black,
+                    Offset = new Point(0, 3),
+                    Radius = 6,
+                    Opacity = 0.14f
+                },
             Content = new GraphicsView
             {
                 Drawable = new TintedDrawable(drawable, iconColor),

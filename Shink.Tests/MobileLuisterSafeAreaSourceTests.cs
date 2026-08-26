@@ -19,7 +19,7 @@ public sealed class MobileLuisterSafeAreaSourceTests
         StringAssert.Contains(source, "InputTransparent = false,");
         StringAssert.Contains(source, "_bottomBarOverlay = new Grid");
         StringAssert.Contains(source, "HeightRequest = BottomBarOverlayHeight,");
-        StringAssert.Contains(source, "MobileBottomBar.Build(this, \"listen\", ToggleSearchAsync)");
+        StringAssert.Contains(source, "MobileBottomBar.Build(this, \"listen\", OpenStoriesSearchAsync)");
     }
 
     [TestMethod]
@@ -60,10 +60,8 @@ public sealed class MobileLuisterSafeAreaSourceTests
     {
         var source = File.ReadAllText(FindLuisterPage());
 
-        StringAssert.Contains(source, "return MobileTopBar.Build(");
-        StringAssert.Contains(source, "title: \"Schink Stories\"");
-        StringAssert.Contains(source, "showProfile: false,");
-        StringAssert.Contains(source, "brandLeadingInset: 4");
+        StringAssert.Contains(source, "return MobileTopBar.BuildStoriesTopBar(");
+        Assert.DoesNotContain("searchAction: OpenStoriesSearchAsync", source, StringComparison.Ordinal);
         StringAssert.Contains(source, "notificationAction: ShowNotificationsAsync");
         StringAssert.Contains(source, "notificationCount: _notificationPage?.UnreadCount ?? 0");
     }
@@ -111,6 +109,22 @@ public sealed class MobileLuisterSafeAreaSourceTests
         StringAssert.Contains(
             source,
             "var container = new ContentView\n        {\n            Padding = new Thickness(PageHorizontalPadding, 0)\n        };");
+    }
+
+    [TestMethod]
+    public void LuisterCarouselArtworkAlignsWithShowcaseArtwork()
+    {
+        var source = File.ReadAllText(FindLuisterPage());
+
+        StringAssert.Contains(source, "private const double CarouselItemSpacing = 14;");
+        StringAssert.Contains(
+            source,
+            "private const double CarouselEdgeSpacerWidth = PageHorizontalPadding - CarouselItemSpacing;");
+        StringAssert.Contains(
+            source,
+            "private static double ResolveCarouselEdgeSpacerWidth() => CarouselEdgeSpacerWidth;");
+        StringAssert.Contains(source, "WidthRequest = ResolveCarouselEdgeSpacerWidth(),");
+        StringAssert.Contains(source, "ItemSpacing = CarouselItemSpacing,");
     }
 
     private static string FindLuisterPage()

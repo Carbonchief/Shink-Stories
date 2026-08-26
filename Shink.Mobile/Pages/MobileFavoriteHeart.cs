@@ -43,4 +43,11 @@ internal static class MobileFavoriteHeart
             VerticalOptions = LayoutOptions.Center,
             InputTransparent = false
         };
+
+    public static void UpdateButton(Button button, bool isFavorite)
+    {
+        button.Text = Glyph;
+        button.FontFamily = ResolveFontFamily(isFavorite);
+        button.TextColor = ResolveColor(isFavorite);
+    }
 }
