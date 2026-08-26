@@ -155,6 +155,17 @@ public class CharacterGuessGameTests
         StringAssert.Contains(mauiProgram, "builder.Services.AddTransient<KarakterRaaiGamePage>();");
     }
 
+    [TestMethod]
+    public void MobileGuessGameAutoAdvancesAfterAnsweredRounds()
+    {
+        var gamePage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KarakterRaaiGamePage.cs"));
+
+        StringAssert.Contains(gamePage, "TimeSpan.FromSeconds(3)");
+        StringAssert.Contains(gamePage, "ScheduleAutoAdvance();");
+        StringAssert.Contains(gamePage, "await Task.Delay(AutoAdvanceDelay, cancellation.Token);");
+        Assert.IsFalse(gamePage.Contains("Volgende Karakter", StringComparison.Ordinal));
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var path = AppContext.BaseDirectory;

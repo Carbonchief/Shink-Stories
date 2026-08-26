@@ -5,6 +5,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Shink.Mobile.Models;
+#if ANDROID
+using Shink.Mobile.Platforms.Android;
+#endif
 #if IOS
 using Shink.Mobile.Platforms.iOS;
 #endif
@@ -1511,6 +1514,9 @@ public sealed class MobileApiClient
         var imageUrl = BuildAbsoluteImageUrl(normalizedUrl);
         if (TryGetCachedImagePath(imageUrl, out var cachedPath))
         {
+#if ANDROID
+            cachedPath = AndroidImageCacheOptimizer.ResolveDisplayPath(cachedPath);
+#endif
 #if IOS
             cachedPath = IosImageCacheOptimizer.ResolveDisplayPath(cachedPath);
 #endif
@@ -1707,6 +1713,9 @@ public sealed class MobileApiClient
         var cachePath = BuildImageCachePath(imageUrl);
         if (File.Exists(cachePath) && new FileInfo(cachePath).Length > 0)
         {
+#if ANDROID
+            AndroidImageCacheOptimizer.EnsureOptimized(cachePath, cancellationToken);
+#endif
 #if IOS
             IosImageCacheOptimizer.EnsureOptimized(cachePath, cancellationToken);
 #endif
@@ -1740,6 +1749,9 @@ public sealed class MobileApiClient
         }
 
         File.Move(temporaryPath, cachePath);
+#if ANDROID
+        AndroidImageCacheOptimizer.EnsureOptimized(cachePath, cancellationToken);
+#endif
 #if IOS
         IosImageCacheOptimizer.EnsureOptimized(cachePath, cancellationToken);
 #endif

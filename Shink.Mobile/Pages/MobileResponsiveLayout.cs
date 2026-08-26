@@ -88,6 +88,23 @@ internal static class MobileResponsiveLayout
         view.HorizontalOptions = LayoutOptions.Fill;
     }
 
+    public static void ApplyStoriesTopBar(View view, double width, double maximumWidth)
+    {
+        var availableWidth = ResolveWidth(width);
+        if (DeviceInfo.Current.Platform == DevicePlatform.iOS &&
+            DeviceInfo.Current.Idiom == DeviceIdiom.Tablet)
+        {
+            // On iPad the brand and actions belong at the opposing safe-area edges,
+            // not inside the centered content column used by the page body.
+            view.WidthRequest = -1;
+            view.MaximumWidthRequest = Math.Max(320, availableWidth);
+            view.HorizontalOptions = LayoutOptions.Fill;
+            return;
+        }
+
+        ApplyCenteredContent(view, availableWidth, maximumWidth);
+    }
+
     public static double ResolveStoryCarouselCardWidth(double width, bool isAndroid)
     {
         var availableWidth = Math.Max(280, ResolveWidth(width) - 36);

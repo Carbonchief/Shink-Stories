@@ -122,7 +122,7 @@ public sealed class MobileLuisterSafeAreaSourceTests
             "private const double CarouselEdgeSpacerWidth = PageHorizontalPadding - CarouselItemSpacing;");
         StringAssert.Contains(
             source,
-            "private static double ResolveCarouselEdgeSpacerWidth() => CarouselEdgeSpacerWidth;");
+            "IsIOS ? PageHorizontalPadding : CarouselEdgeSpacerWidth;");
         StringAssert.Contains(source, "WidthRequest = ResolveCarouselEdgeSpacerWidth(),");
         StringAssert.Contains(source, "ItemSpacing = CarouselItemSpacing,");
     }

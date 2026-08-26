@@ -13,6 +13,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     private const string PoppinsSemiBoldFontFamily = "PoppinsSemiBold";
     private const string PoppinsBoldFontFamily = "PoppinsBold";
     private static bool IsAndroid => DeviceInfo.Current.Platform == DevicePlatform.Android;
+    private static bool IsIOS => DeviceInfo.Current.Platform == DevicePlatform.iOS;
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
     private readonly IAudioPlaybackService _audioPlaybackService;
@@ -48,6 +49,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
 
         _charactersView = new CollectionView
         {
+            AutomationId = "characters-grid",
             Background = Brush.Transparent,
             ItemsSource = Array.Empty<MobileCharacterCard>(),
             ItemSizingStrategy = ItemSizingStrategy.MeasureFirstItem,
@@ -298,7 +300,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         }
         else
         {
-            MobileResponsiveLayout.ApplyCenteredContent(_floatingTopBarHost, width, 1040);
+            MobileResponsiveLayout.ApplyStoriesTopBar(_floatingTopBarHost, width, 1040);
         }
 
         var span = MobileResponsiveLayout.ResolveCharacterGridSpan(width);
@@ -335,17 +337,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         _charactersView.Header = BuildPageHeader(_response);
     }
 
-    private View BuildCharacterItemView()
-    {
-        var host = new ContentView();
-        host.BindingContextChanged += (_, _) =>
-        {
-            host.Content = host.BindingContext is MobileCharacterCard character
-                ? BuildCharacterCard(character)
-                : null;
-        };
-        return host;
-    }
+    private View BuildCharacterItemView() => new ReusableCharacterCardView(this);
 
     private View BuildPageHeader(MobileCharactersResponse response) =>
         BuildPageHeaderContent(response);
@@ -487,169 +479,235 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             }
         };
 
-    private View BuildCharacterCard(MobileCharacterCard character)
+    private sealed class ReusableCharacterCardView : ContentView
     {
-        var mediaSize = ResolveCharacterMediaSize();
-        var media = new Grid
-        {
-            HeightRequest = mediaSize,
-            Children =
-            {
-                new Border
-                {
-                    BackgroundColor = character.IsUnlocked
-                        ? Color.FromArgb("#DDE9EA")
-                        : Color.FromArgb("#1B4651"),
-                    StrokeThickness = 0,
-                    StrokeShape = new RoundRectangle { CornerRadius = 15 },
-                    Padding = 4,
-                    Content = new Image
-                    {
-                        Source = BuildCharacterImageSource(character.ImageUrl),
-                        Aspect = Aspect.AspectFit,
-                        AutomationId = $"character-image-{character.Slug}"
-                    }
-                }
-            }
-        };
+        private readonly KaraktersPage _owner;
+        private readonly Border _card;
+        private readonly Grid _media;
+        private readonly Border _imageFrame;
+        private readonly Image _image;
+        private readonly Border _lockButton;
+        private readonly Border _speakerButton;
+        private readonly Label _heading;
+        private readonly Label _summary;
+        private readonly Button _storyButton;
+        private MobileCharacterCard? _character;
+        private string? _imageKey;
+        private double _lastWidth = -1;
 
-        if (!character.IsUnlocked)
+        public ReusableCharacterCardView(KaraktersPage owner)
         {
-            media.Children.Add(BuildCharacterIconButton(
+            _owner = owner;
+            _image = new Image
+            {
+                Aspect = Aspect.AspectFit,
+                HorizontalOptions = LayoutOptions.Fill,
+                VerticalOptions = LayoutOptions.Fill,
+                AutomationId = "character-image"
+            };
+            _imageFrame = new Border
+            {
+                StrokeThickness = 0,
+                StrokeShape = new RoundRectangle { CornerRadius = 15 },
+                Padding = 4,
+                Content = _image
+            };
+            _lockButton = BuildCharacterIconButton(
                 new LockDrawable(),
                 Color.FromArgb("#F39A32"),
                 Color.FromArgb("#1B1207"),
                 "Nog gesluit",
-                CharacterIconPlacement.TopRight));
-        }
-        else if (character.PreviewAudioClips.Count > 0)
-        {
-            var audioButton = BuildCharacterIconButton(
+                CharacterIconPlacement.TopRight);
+            _speakerButton = BuildCharacterIconButton(
                 new SpeakerDrawable(),
                 Color.FromArgb("#F5FAFB"),
                 Color.FromArgb("#103C49"),
-                $"Speel {character.DisplayName} se stem",
+                "Speel karakterstem",
                 CharacterIconPlacement.TopRight);
-            var audioTap = new TapGestureRecognizer();
-            audioTap.Tapped += async (_, _) =>
+            _media = new Grid
             {
-                SafeHapticFeedback.TryPerform(HapticFeedbackType.Click);
-                await audioButton.ScaleToAsync(1.1, 90, Easing.CubicOut);
-                await audioButton.ScaleToAsync(1, 120, Easing.CubicIn);
-                await PlayCharacterAudioAsync(character);
+                Children =
+                {
+                    _imageFrame,
+                    _lockButton,
+                    _speakerButton
+                }
             };
-            audioButton.GestureRecognizers.Add(audioTap);
-            media.Children.Add(audioButton);
+            _heading = new Label
+            {
+                HeightRequest = 24,
+                Margin = new Thickness(1, 4, 1, 0),
+                FontSize = 10.5,
+                FontFamily = PoppinsBoldFontFamily,
+                FontAttributes = FontAttributes.Bold,
+                HorizontalTextAlignment = TextAlignment.Center,
+                VerticalTextAlignment = TextAlignment.Center,
+                MaxLines = 2,
+                LineBreakMode = LineBreakMode.TailTruncation
+            };
+            _summary = new Label
+            {
+                HeightRequest = 34,
+                Margin = new Thickness(2, 0),
+                FontSize = 8.5,
+                FontFamily = PoppinsFontFamily,
+                LineHeight = 1.1,
+                HorizontalTextAlignment = TextAlignment.Center,
+                VerticalTextAlignment = TextAlignment.Center,
+                MaxLines = 3,
+                LineBreakMode = LineBreakMode.TailTruncation
+            };
+            _storyButton = new Button
+            {
+                HeightRequest = 28,
+                Margin = new Thickness(2, 3, 2, 0),
+                Padding = new Thickness(3, 0),
+                CornerRadius = 14,
+                FontSize = 8,
+                FontFamily = PoppinsBoldFontFamily,
+                FontAttributes = FontAttributes.Bold,
+                LineBreakMode = LineBreakMode.TailTruncation,
+                AutomationId = "character-primary-story",
+                IsVisible = false
+            };
+            _storyButton.Clicked += async (_, _) =>
+            {
+                if (_character?.PrimaryStory is null)
+                {
+                    return;
+                }
+
+                SafeHapticFeedback.TryPerform(HapticFeedbackType.Click);
+                await _owner.OpenPrimaryStoryAsync(_character);
+            };
+
+            _card = new Border
+            {
+                StrokeThickness = 1,
+                StrokeShape = new RoundRectangle { CornerRadius = 18 },
+                Padding = new Thickness(6, 6, 6, 8),
+                Shadow = IsAndroid
+                    ? null!
+                    : new Shadow
+                    {
+                        Brush = Brush.Black,
+                        Offset = new Point(0, 5),
+                        Radius = 10,
+                        Opacity = 0.12f
+                    },
+                Content = new VerticalStackLayout
+                {
+                    Spacing = 2,
+                    Children =
+                    {
+                        _media,
+                        _heading,
+                        _summary,
+                        _storyButton
+                    }
+                }
+            };
+            var cardTap = new TapGestureRecognizer();
+            cardTap.Tapped += async (_, _) =>
+            {
+                if (_character is null)
+                {
+                    return;
+                }
+
+                if (_character.IsUnlocked)
+                {
+                    await _owner.ShowCharacterProfileAsync(_character);
+                    return;
+                }
+
+                await ShakeLockedCardAsync(_card);
+            };
+            _card.GestureRecognizers.Add(cardTap);
+
+            var speakerTap = new TapGestureRecognizer();
+            speakerTap.Tapped += async (_, _) =>
+            {
+                if (_character is null || !_character.IsUnlocked || _character.PreviewAudioClips.Count == 0)
+                {
+                    return;
+                }
+
+                SafeHapticFeedback.TryPerform(HapticFeedbackType.Click);
+                await _speakerButton.ScaleToAsync(1.1, 90, Easing.CubicOut);
+                await _speakerButton.ScaleToAsync(1, 120, Easing.CubicIn);
+                await _owner.PlayCharacterAudioAsync(_character);
+            };
+            _speakerButton.GestureRecognizers.Add(speakerTap);
+            Content = _card;
         }
 
-        var card = new Border
+        protected override void OnBindingContextChanged()
         {
-            BackgroundColor = character.IsUnlocked
-                ? Color.FromArgb("#F7FBFB")
-                : Color.FromArgb("#1D4A56"),
-            Stroke = character.IsUnlocked
-                ? Color.FromArgb("#334E7680")
-                : Color.FromArgb("#356C9AAA"),
-            StrokeThickness = 1,
-            StrokeShape = new RoundRectangle { CornerRadius = 18 },
-            Padding = new Thickness(6, 6, 6, 8),
-            Shadow = IsAndroid
-                ? null!
-                : new Shadow
-                {
-                    Brush = Brush.Black,
-                    Offset = new Point(0, 5),
-                    Radius = 10,
-                    Opacity = 0.12f
-                },
-            Content = BuildCharacterCardContent(character, media)
-        };
-
-        var tap = new TapGestureRecognizer();
-        tap.Tapped += async (_, _) =>
-        {
-            if (character.IsUnlocked)
+            base.OnBindingContextChanged();
+            if (BindingContext is not MobileCharacterCard character)
             {
-                await ShowCharacterProfileAsync(character);
+                _character = null;
+                _imageKey = null;
+                _image.Source = null;
+                IsVisible = false;
                 return;
             }
 
-            await ShakeLockedCardAsync(card);
-        };
-        card.GestureRecognizers.Add(tap);
-        return card;
-    }
-
-    private View BuildCharacterCardContent(MobileCharacterCard character, View media)
-    {
-        var content = new VerticalStackLayout
-        {
-            Spacing = 2,
-            Children =
+            if (ReferenceEquals(_character, character) && Math.Abs(_lastWidth - _owner.Width) < 1)
             {
-                media,
-                new Label
-                {
-                    Text = character.Heading,
-                    HeightRequest = 24,
-                    Margin = new Thickness(1, 4, 1, 0),
-                    FontSize = 10.5,
-                    FontFamily = PoppinsBoldFontFamily,
-                    FontAttributes = FontAttributes.Bold,
-                    TextColor = character.IsUnlocked
-                        ? Color.FromArgb("#203236")
-                        : Color.FromArgb("#F4F8F9"),
-                    HorizontalTextAlignment = TextAlignment.Center,
-                    VerticalTextAlignment = TextAlignment.Center,
-                    MaxLines = 2,
-                    LineBreakMode = LineBreakMode.TailTruncation
-                },
-                new Label
-                {
-                    Text = character.SummaryText,
-                    HeightRequest = 34,
-                    Margin = new Thickness(2, 0),
-                    FontSize = 8.5,
-                    FontFamily = PoppinsFontFamily,
-                    LineHeight = 1.1,
-                    TextColor = character.IsUnlocked
-                        ? Color.FromArgb("#3D5359")
-                        : Color.FromArgb("#E1EEF0"),
-                    HorizontalTextAlignment = TextAlignment.Center,
-                    VerticalTextAlignment = TextAlignment.Center,
-                    MaxLines = 3,
-                    LineBreakMode = LineBreakMode.TailTruncation
-                }
+                return;
             }
-        };
 
-        if (character.PrimaryStory is null || string.IsNullOrWhiteSpace(character.CallToActionLabel))
-        {
-            return content;
+            IsVisible = true;
+            _character = character;
+            _lastWidth = _owner.Width;
+            var mediaSize = _owner.ResolveCharacterMediaSize();
+            var imageSize = Math.Max(1, mediaSize - 8);
+            _media.HeightRequest = mediaSize;
+            _imageFrame.HeightRequest = mediaSize;
+            _image.WidthRequest = imageSize;
+            _image.HeightRequest = imageSize;
+            var imageKey = character.ImageUrl.Trim();
+            if (!string.Equals(_imageKey, imageKey, StringComparison.Ordinal))
+            {
+                _image.Source = _owner.BuildCharacterImageSource(character.ImageUrl);
+                _imageKey = imageKey;
+            }
+
+            SemanticProperties.SetDescription(_image, character.DisplayName);
+            _imageFrame.BackgroundColor = character.IsUnlocked
+                ? Color.FromArgb("#DDE9EA")
+                : Color.FromArgb("#1B4651");
+            _card.BackgroundColor = character.IsUnlocked
+                ? Color.FromArgb("#F7FBFB")
+                : Color.FromArgb("#1D4A56");
+            _card.Stroke = character.IsUnlocked
+                ? Color.FromArgb("#334E7680")
+                : Color.FromArgb("#356C9AAA");
+            _heading.Text = character.Heading;
+            _heading.TextColor = character.IsUnlocked
+                ? Color.FromArgb("#203236")
+                : Color.FromArgb("#F4F8F9");
+            _summary.Text = character.SummaryText;
+            _summary.TextColor = character.IsUnlocked
+                ? Color.FromArgb("#3D5359")
+                : Color.FromArgb("#E1EEF0");
+            _lockButton.IsVisible = !character.IsUnlocked;
+            _speakerButton.IsVisible = character.IsUnlocked && character.PreviewAudioClips.Count > 0;
+            SemanticProperties.SetDescription(_speakerButton, $"Speel {character.DisplayName} se stem");
+
+            var showStoryButton = character.PrimaryStory is not null &&
+                !string.IsNullOrWhiteSpace(character.CallToActionLabel);
+            _storyButton.IsVisible = showStoryButton;
+            _storyButton.Text = character.CallToActionLabel;
+            _storyButton.BackgroundColor = character.IsUnlocked
+                ? Color.FromArgb("#F6A227")
+                : Color.FromArgb("#8DCD65");
+            _storyButton.TextColor = character.IsUnlocked
+                ? Color.FromArgb("#243023")
+                : Color.FromArgb("#153718");
         }
-
-        var storyButton = new Button
-        {
-            Text = character.CallToActionLabel,
-            HeightRequest = 28,
-            Margin = new Thickness(2, 3, 2, 0),
-            Padding = new Thickness(3, 0),
-            CornerRadius = 14,
-            BackgroundColor = character.IsUnlocked ? Color.FromArgb("#F6A227") : Color.FromArgb("#8DCD65"),
-            TextColor = character.IsUnlocked ? Color.FromArgb("#243023") : Color.FromArgb("#153718"),
-            FontSize = 8,
-            FontFamily = PoppinsBoldFontFamily,
-            FontAttributes = FontAttributes.Bold,
-            LineBreakMode = LineBreakMode.TailTruncation,
-            AutomationId = character.CallToActionLabel
-        };
-        storyButton.Clicked += async (_, _) =>
-        {
-            SafeHapticFeedback.TryPerform(HapticFeedbackType.Click);
-            await OpenPrimaryStoryAsync(character);
-        };
-        content.Children.Add(storyButton);
-        return content;
     }
 
     private double ResolveCharacterMediaSize()
@@ -1166,9 +1224,15 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     {
         CloseCharacterProfile();
 
+        var parameters = new ShellNavigationQueryParameters
+        {
+            ["slug"] = story.Slug,
+            ["source"] = story.Source
+        };
         await Shell.Current.GoToAsync(
-            $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(story.Slug)}&source={Uri.EscapeDataString(story.Source)}",
-            animate: false);
+            nameof(StoryDetailPage),
+            animate: false,
+            parameters);
     }
 
     private async Task TryOpenPendingCharacterAsync()
@@ -1234,13 +1298,17 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     private ImageSource BuildCharacterImageSource(string? url)
     {
         var cacheKey = url?.Trim() ?? string.Empty;
-        if (_imageSourceCache.TryGetValue(cacheKey, out var source))
+        if (!IsIOS && !IsAndroid && _imageSourceCache.TryGetValue(cacheKey, out var source))
         {
             return source;
         }
 
         source = _apiClient.BuildCachedImageSource(url, "schink_background.jpeg");
-        _imageSourceCache[cacheKey] = source;
+        if (!IsIOS && !IsAndroid)
+        {
+            _imageSourceCache[cacheKey] = source;
+        }
+
         return source;
     }
 
@@ -1251,9 +1319,9 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         _imageWarmupCancellation = new CancellationTokenSource();
         var token = _imageWarmupCancellation.Token;
         var imageUrls = response.Characters
-            .SelectMany(character => character.RelatedStories
-                .Select(story => story.ImageUrl)
-                .Prepend(character.ImageUrl))
+            .Select(character => character.ImageUrl)
+            .Concat(response.Characters.SelectMany(character =>
+                character.RelatedStories.Select(story => story.ImageUrl)))
             .Where(url => !string.IsNullOrWhiteSpace(url))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
@@ -1267,25 +1335,14 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         {
             try
             {
+                // Match Luister's cached-first path: allow the first layout to settle,
+                // then prepare every gallery portrait before secondary story artwork.
+                await Task.Delay(TimeSpan.FromMilliseconds(750), token);
                 await _apiClient.CacheImagesAsync(
                     imageUrls,
                     token,
                     maxImages: 64,
-                    maxDegreeOfParallelism: 3);
-                if (token.IsCancellationRequested || Handler is null)
-                {
-                    return;
-                }
-
-                MainThread.BeginInvokeOnMainThread(() =>
-                {
-                    if (token.IsCancellationRequested || Handler is null)
-                    {
-                        return;
-                    }
-
-                    _imageSourceCache.Clear();
-                });
+                    maxDegreeOfParallelism: IsAndroid || IsIOS ? 1 : 3);
             }
             catch (OperationCanceledException)
             {

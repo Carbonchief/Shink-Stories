@@ -939,7 +939,7 @@ public sealed class SearchPage : ContentPage
             return;
         }
 
-        MobileResponsiveLayout.ApplyCenteredContent(_topBarHost, width, 1040);
+        MobileResponsiveLayout.ApplyStoriesTopBar(_topBarHost, width, 1040);
     }
 
     private sealed record StorySearchCandidate(

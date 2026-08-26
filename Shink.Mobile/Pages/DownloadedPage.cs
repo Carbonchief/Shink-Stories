@@ -27,7 +27,7 @@ public sealed class DownloadedPage : ContentPage
         _playlistPlaybackState = playlistPlaybackState;
         _transitionBackdropState = transitionBackdropState;
 
-        Title = "Downloaded";
+        Title = "Afgelaai";
         BackgroundColor = PageBackgroundColor;
         SafeAreaEdges = new SafeAreaEdges(SafeAreaRegions.Container);
         Shell.SetNavBarIsVisible(this, false);
@@ -126,7 +126,7 @@ public sealed class DownloadedPage : ContentPage
             {
                 new Label
                 {
-                    Text = "Downloaded",
+                    Text = "Afgelaai",
                     FontSize = 26,
                     FontAttributes = FontAttributes.Bold,
                     TextColor = TextColor,

@@ -150,8 +150,10 @@ internal static class MobileTopBar
         {
             WidthRequest = 42,
             HeightRequest = 42,
-            VerticalOptions = LayoutOptions.Center
+            VerticalOptions = LayoutOptions.Center,
+            AutomationId = "mobile-top-notifications"
         };
+        SemanticProperties.SetDescription(container, "Kennisgewings");
         container.Children.Add(new Label
         {
             Text = NotificationBellGlyph,

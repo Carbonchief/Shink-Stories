@@ -31,8 +31,7 @@ public sealed class MobileIosCollectionViewCrashSourceTests
         StringAssert.Contains(
             luisterPage,
             "private static bool UsesCollectionViewFeed => IsAndroid || IsIOS;");
-        StringAssert.Contains(luisterPage, "? new LuisterFeedTemplateSelector(this)");
-        StringAssert.Contains(luisterPage, ": new DataTemplate(BuildFeedItemView)");
+        StringAssert.Contains(luisterPage, "ItemTemplate = new LuisterFeedTemplateSelector(this)");
         StringAssert.Contains(luisterPage, "ReplaceFeedItems(nextItems);");
     }
 
@@ -53,7 +52,7 @@ public sealed class MobileIosCollectionViewCrashSourceTests
             luisterPage,
             "if (!ReferenceEquals(_playlist, playlist) || Math.Abs(_lastWidth - _owner.Width) >= 1)");
         StringAssert.Contains(luisterPage, "if (!string.Equals(_imageKey, imageUrl, StringComparison.Ordinal))");
-        StringAssert.Contains(luisterPage, "if (!IsIOS && _imageSourceCache.TryGetValue(cacheKey, out var cachedSource))");
+        StringAssert.Contains(luisterPage, "if (!IsIOS && !IsAndroid && _imageSourceCache.TryGetValue(cacheKey, out var cachedSource))");
         StringAssert.Contains(luisterPage, "AutomationId = \"favorite-carousel-story\"");
         StringAssert.Contains(luisterPage, "ApplyFavoriteOverlayState(_favoriteButton, item.Story, updateAutomationId: false)");
         StringAssert.Contains(luisterPage, "_image.WidthRequest = coverWidth;");
@@ -62,8 +61,8 @@ public sealed class MobileIosCollectionViewCrashSourceTests
         StringAssert.Contains(luisterPage, "_artwork.HeightRequest = coverHeight;");
         StringAssert.Contains(luisterPage, "HorizontalOptions = LayoutOptions.Fill,");
         StringAssert.Contains(luisterPage, "VerticalOptions = LayoutOptions.Fill,");
-        StringAssert.Contains(luisterPage, "if (IsIOS)");
-        StringAssert.Contains(luisterPage, "maxDegreeOfParallelism: IsAndroid ? 3 : IsIOS ? 1 : 4");
+        StringAssert.Contains(luisterPage, "if (IsIOS || IsAndroid)");
+        StringAssert.Contains(luisterPage, "maxDegreeOfParallelism: IsAndroid || IsIOS ? 1 : 4");
         StringAssert.Contains(apiClient, "IosImageCacheOptimizer.ResolveDisplayPath(cachedPath)");
         StringAssert.Contains(apiClient, "IosImageCacheOptimizer.EnsureOptimized(cachePath, cancellationToken)");
         StringAssert.Contains(optimizer, "private const int MaxPixelDimension = 1280;");

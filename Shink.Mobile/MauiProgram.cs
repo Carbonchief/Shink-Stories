@@ -180,13 +180,18 @@ public static class MauiProgram
             {
                 if (view is not CollectionView collectionView ||
                     handler.PlatformView is not AndroidX.RecyclerView.Widget.RecyclerView recyclerView ||
-                    collectionView.AutomationId is not ("luister-feed" or "luister-carousel"))
+                    collectionView.AutomationId is not ("luister-feed" or "luister-carousel" or "characters-grid"))
                 {
                     return;
                 }
 
                 recyclerView.SetItemAnimator(null);
-                recyclerView.SetItemViewCacheSize(collectionView.AutomationId == "luister-carousel" ? 6 : 4);
+                recyclerView.SetItemViewCacheSize(collectionView.AutomationId switch
+                {
+                    "luister-carousel" => 6,
+                    "characters-grid" => 12,
+                    _ => 8
+                });
                 if (collectionView.AutomationId == "luister-carousel")
                 {
                     recyclerView.HasFixedSize = true;
@@ -194,6 +199,24 @@ public static class MauiProgram
                     if (recyclerView.GetLayoutManager() is AndroidX.RecyclerView.Widget.LinearLayoutManager layoutManager)
                     {
                         layoutManager.InitialPrefetchItemCount = 4;
+                    }
+                }
+                else if (collectionView.AutomationId == "characters-grid")
+                {
+                    recyclerView.HasFixedSize = true;
+                    if (recyclerView.GetLayoutManager() is AndroidX.RecyclerView.Widget.GridLayoutManager layoutManager)
+                    {
+                        layoutManager.ItemPrefetchEnabled = true;
+                        layoutManager.InitialPrefetchItemCount = 9;
+                    }
+                }
+                else if (collectionView.AutomationId == "luister-feed")
+                {
+                    recyclerView.HasFixedSize = true;
+                    if (recyclerView.GetLayoutManager() is AndroidX.RecyclerView.Widget.LinearLayoutManager layoutManager)
+                    {
+                        layoutManager.ItemPrefetchEnabled = true;
+                        layoutManager.InitialPrefetchItemCount = 3;
                     }
                 }
             });

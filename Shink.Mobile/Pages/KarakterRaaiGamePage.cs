@@ -8,6 +8,7 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
 {
     private const int DesiredChoiceCount = 4;
     private const int DefaultRoundCount = 10;
+    private static readonly TimeSpan AutoAdvanceDelay = TimeSpan.FromSeconds(3);
     private const string PoppinsBoldFontFamily = "PoppinsBold";
     private static readonly string[] PerfectScoreMessages =
     [
@@ -38,6 +39,7 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
     private MobileCharacterCard? _targetCharacter;
     private string? _targetMysteryImageUrl;
     private CancellationTokenSource? _loadCancellation;
+    private CancellationTokenSource? _autoAdvanceCancellation;
     private bool _hasLoaded;
     private bool _isPageActive;
     private bool _roundAnswered;
@@ -251,7 +253,7 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
             WidthRequest = 54,
             HeightRequest = 54,
             HorizontalOptions = LayoutOptions.Start,
-            VerticalOptions = LayoutOptions.Start,
+            VerticalOptions = LayoutOptions.Center,
             Content = new GraphicsView
             {
                 Drawable = new GuessBackChevronDrawable(Color.FromArgb("#5B7188")),
@@ -277,6 +279,7 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
         _isReturningToConfiguration = true;
         _newGameButton.IsEnabled = false;
         _loadCancellation?.Cancel();
+        CancelAutoAdvance();
         SafeHapticFeedback.TryPerform(HapticFeedbackType.Click);
         try
         {
@@ -296,12 +299,17 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
         {
             await LoadCharactersAsync();
         }
+        else if (_roundAnswered && _game?.IsComplete != true)
+        {
+            ScheduleAutoAdvance();
+        }
     }
 
     protected override void OnDisappearing()
     {
         _isPageActive = false;
         _loadCancellation?.Cancel();
+        CancelAutoAdvance();
         _celebrationOverlay.Hide();
         base.OnDisappearing();
     }
@@ -509,6 +517,7 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
             return;
         }
 
+        CancelAutoAdvance();
         _celebrationOverlay.Hide();
 
         _game = new CharacterGuessGame(
@@ -720,10 +729,18 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
                 ? $"Ja! Dis {target.DisplayName}!"
                 : $"Byna! Dis {target.DisplayName}.";
 
-        _actionButton.Text = result.IsComplete ? "Speel weer" : "Volgende Karakter";
-        _actionButton.IsEnabled = true;
-        _actionButton.Opacity = 1;
-        _actionButton.IsVisible = true;
+        if (result.IsComplete)
+        {
+            _actionButton.Text = "Speel weer";
+            _actionButton.IsEnabled = true;
+            _actionButton.Opacity = 1;
+            _actionButton.IsVisible = true;
+        }
+        else
+        {
+            _actionButton.IsVisible = false;
+            ScheduleAutoAdvance();
+        }
 
         _analytics.TrackEvent("mobile_character_guess_answered", new Dictionary<string, object>
         {
@@ -747,6 +764,50 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
                     BuildPerfectScoreMessage(game));
             }
         }
+    }
+
+    private void ScheduleAutoAdvance()
+    {
+        if (!_isPageActive || !_roundAnswered || _game?.IsComplete == true)
+        {
+            return;
+        }
+
+        CancelAutoAdvance();
+        var cancellation = new CancellationTokenSource();
+        _autoAdvanceCancellation = cancellation;
+        _ = AdvanceToNextRoundAsync(cancellation);
+    }
+
+    private async Task AdvanceToNextRoundAsync(CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await Task.Delay(AutoAdvanceDelay, cancellation.Token);
+            if (_isPageActive && _roundAnswered && _game?.IsComplete != true)
+            {
+                StartNextRound();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            if (ReferenceEquals(_autoAdvanceCancellation, cancellation))
+            {
+                _autoAdvanceCancellation = null;
+            }
+
+            cancellation.Dispose();
+        }
+    }
+
+    private void CancelAutoAdvance()
+    {
+        var cancellation = _autoAdvanceCancellation;
+        _autoAdvanceCancellation = null;
+        cancellation?.Cancel();
     }
 
     private static void ApplyChoiceResultStyle(Border choice, bool isCorrect, Label? label)

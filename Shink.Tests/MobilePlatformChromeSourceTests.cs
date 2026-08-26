@@ -33,6 +33,8 @@ public sealed class MobilePlatformChromeSourceTests
         StringAssert.Contains(mobileTopBar, "NotificationBellAppleFontFamily = \"Font Awesome 6 Free Solid\"");
         StringAssert.Contains(mobileTopBar, "NotificationBellAndroidFontFamily = \"FontAwesomeSolid\"");
         StringAssert.Contains(mobileTopBar, "Text = NotificationBellGlyph");
+        StringAssert.Contains(mobileTopBar, "AutomationId = \"mobile-top-notifications\"");
+        StringAssert.Contains(mobileTopBar, "SemanticProperties.SetDescription(container, \"Kennisgewings\")");
     }
 
     [TestMethod]
@@ -78,6 +80,25 @@ public sealed class MobilePlatformChromeSourceTests
     }
 
     [TestMethod]
+    public void StoriesTopBarsFillTheIpadSafeAreaWidth()
+    {
+        var responsiveLayout = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileResponsiveLayout.cs"));
+        var luister = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
+        var karakters = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KaraktersPage.cs"));
+        var search = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "SearchPage.cs"));
+
+        StringAssert.Contains(responsiveLayout, "public static void ApplyStoriesTopBar");
+        StringAssert.Contains(responsiveLayout, "DeviceInfo.Current.Platform == DevicePlatform.iOS");
+        StringAssert.Contains(responsiveLayout, "DeviceInfo.Current.Idiom == DeviceIdiom.Tablet");
+        StringAssert.Contains(responsiveLayout, "view.WidthRequest = -1;");
+        StringAssert.Contains(responsiveLayout, "view.MaximumWidthRequest = Math.Max(320, availableWidth);");
+        StringAssert.Contains(responsiveLayout, "view.HorizontalOptions = LayoutOptions.Fill;");
+        StringAssert.Contains(luister, "ApplyStoriesTopBar(_floatingTopBarHost, width, 1040)");
+        StringAssert.Contains(karakters, "ApplyStoriesTopBar(_floatingTopBarHost, width, 1040)");
+        StringAssert.Contains(search, "ApplyStoriesTopBar(_topBarHost, width, 1040)");
+    }
+
+    [TestMethod]
     public void AndroidChromeUsesSharedVectorIconDrawable()
     {
         var source = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileAndroidIcons.cs"));
@@ -88,7 +109,7 @@ public sealed class MobilePlatformChromeSourceTests
         StringAssert.Contains(source, "MobileAndroidIcon.Download");
         StringAssert.Contains(source, "MobileAndroidIcon.CaretDown");
         StringAssert.Contains(source, "canvas.DrawCircle");
-        StringAssert.Contains(source, "BarBackground = Color.FromArgb(\"#E612343B\")");
+        StringAssert.Contains(source, "BarBackground = Colors.Transparent");
         StringAssert.Contains(source, "SecondaryIcon = Colors.White");
         StringAssert.Contains(source, "TopBarBackground = Colors.Transparent");
     }
@@ -113,7 +134,7 @@ public sealed class MobilePlatformChromeSourceTests
         Assert.DoesNotContain("Eightbitlab.Com.Blurview.BlurView", source, StringComparison.Ordinal);
         Assert.DoesNotContain("PostInvalidateOnAnimation", source, StringComparison.Ordinal);
         Assert.DoesNotContain("#elif ANDROID", source, StringComparison.Ordinal);
-        StringAssert.Contains(chrome, "BarBackground = Color.FromArgb(\"#E612343B\")");
+        StringAssert.Contains(chrome, "BarBackground = Colors.Transparent");
     }
 
     [TestMethod]

@@ -26,11 +26,12 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     };
     private const double PageHorizontalPadding = 18;
     private const double CarouselItemSpacing = 14;
-    // CollectionView applies ItemSpacing between its header and first item too.
-    // Subtract it from the edge spacer so carousel artwork starts on the same
+    // Android applies ItemSpacing between the header and first item; iOS does not.
+    // Compensate per platform so the first carousel card starts on the same
     // vertical line as the showcase artwork above it.
     private const double CarouselEdgeSpacerWidth = PageHorizontalPadding - CarouselItemSpacing;
-    private static double ResolveCarouselEdgeSpacerWidth() => CarouselEdgeSpacerWidth;
+    private static double ResolveCarouselEdgeSpacerWidth() =>
+        IsIOS ? PageHorizontalPadding : CarouselEdgeSpacerWidth;
     private const double LuisterGradientMinimumTravelDistance = 4200;
     private static readonly TimeSpan ScrollVisualUpdateInterval = TimeSpan.FromMilliseconds(100);
     private const long ScrollIdleThresholdMilliseconds = 180;
@@ -65,7 +66,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     private readonly IServiceProvider _services;
     private readonly MobileAnalyticsService _analytics;
     private readonly SessionState _sessionState;
-    private readonly IOfflineStoryDownloadService _offlineDownloadService;
     private readonly PlaylistPlaybackState _playlistPlaybackState;
     private readonly ContinueListeningState _continueListeningState;
     private readonly PlayerTransitionBackdropState _transitionBackdropState;
@@ -86,14 +86,17 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     private readonly Label _loginStatusLabel;
     private readonly Dictionary<string, ImageSource> _imageSourceCache = new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyList<MobileLuisterSection> _sections = Array.Empty<MobileLuisterSection>();
-    private IReadOnlyList<OfflineStoryDownload> _downloadedStories = Array.Empty<OfflineStoryDownload>();
     private MobileNotificationPage? _notificationPage;
+    private ContentPage? _notificationModalPage;
+    private CancellationTokenSource? _notificationModalCancellation;
     private MobileSession? _lastRenderedSession;
     private string? _loadErrorMessage;
     private bool _hasLoaded;
     private bool _isPageActive;
     private bool _isSearchVisible;
     private bool _isRefreshingNotifications;
+    private bool _isOpeningNotificationModal;
+    private bool _isClosingNotificationModal;
     private readonly Border _floatingTopBarHost;
     private readonly ContentView _bottomBarHost;
     private IDispatcherTimer? _notificationRefreshTimer;
@@ -126,7 +129,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         IServiceProvider services,
         MobileAnalyticsService analytics,
         SessionState sessionState,
-        IOfflineStoryDownloadService offlineDownloadService,
         PlaylistPlaybackState playlistPlaybackState,
         ContinueListeningState continueListeningState,
         PlayerTransitionBackdropState transitionBackdropState)
@@ -135,7 +137,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         _services = services;
         _analytics = analytics;
         _sessionState = sessionState;
-        _offlineDownloadService = offlineDownloadService;
         _playlistPlaybackState = playlistPlaybackState;
         _continueListeningState = continueListeningState;
         _transitionBackdropState = transitionBackdropState;
@@ -182,12 +183,10 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 {
                     ItemSpacing = 14
                 },
-                // iOS keeps a dedicated recycled pool for the repeated rich
-                // playlist rows. Android retains its established RecyclerView
-                // templates and native cache behavior.
-                ItemTemplate = IsIOS
-                    ? new LuisterFeedTemplateSelector(this)
-                    : new DataTemplate(BuildFeedItemView),
+                // Both mobile handlers recycle the repeated rich playlist rows.
+                // Rebuilding the complete showcase and nested carousel when an
+                // Android row enters the viewport interrupts an active fling.
+                ItemTemplate = new LuisterFeedTemplateSelector(this),
                 Header = BuildStoriesPageHeader(),
                 Footer = new BoxView
                 {
@@ -437,7 +436,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             return;
         }
 
-        _offlineDownloadService.DownloadsChanged += OnDownloadsChanged;
         _apiClient.NewNotificationsAvailable += OnNewNotificationsAvailable;
         _continueListeningState.Changed += OnContinueListeningChanged;
         _sessionState.Changed += OnSessionStateChanged;
@@ -451,21 +449,10 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             return;
         }
 
-        _offlineDownloadService.DownloadsChanged -= OnDownloadsChanged;
         _apiClient.NewNotificationsAvailable -= OnNewNotificationsAvailable;
         _continueListeningState.Changed -= OnContinueListeningChanged;
         _sessionState.Changed -= OnSessionStateChanged;
         _isPageEventsSubscribed = false;
-    }
-
-    private void OnDownloadsChanged(object? sender, EventArgs args)
-    {
-        if (!_isPageActive)
-        {
-            return;
-        }
-
-        _ = RefreshDownloadsInBackgroundAsync();
     }
 
     private void OnNewNotificationsAvailable(int count)
@@ -533,8 +520,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         _loadCancellation?.Dispose();
         _loadCancellation = new CancellationTokenSource();
         var cancellationToken = _loadCancellation.Token;
-        var downloadsTask = LoadPlayableDownloadsSafelyAsync(cancellationToken);
-        var renderedCachedData = !forceRefresh && await TryRenderCachedLuisterAsync(downloadsTask, cancellationToken);
+        var renderedCachedData = !forceRefresh && await TryRenderCachedLuisterAsync(cancellationToken);
 
         if (!renderedCachedData)
         {
@@ -553,7 +539,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         {
             var sessionTask = _apiClient.GetSessionAsync(cancellationToken);
             var luisterTask = _apiClient.GetLuisterAsync(cancellationToken);
-            await Task.WhenAll(sessionTask, luisterTask, downloadsTask);
+            await Task.WhenAll(sessionTask, luisterTask);
 
             var response = await luisterTask;
             if (cancellationToken.IsCancellationRequested || !_isPageActive)
@@ -575,7 +561,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 return;
             }
 
-            ApplyLuisterResponse(response, await downloadsTask);
+            ApplyLuisterResponse(response);
             await MainThread.InvokeOnMainThreadAsync(() =>
             {
                 if (!_isPageActive || cancellationToken.IsCancellationRequested)
@@ -604,7 +590,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             }
 
             _sections = Array.Empty<MobileLuisterSection>();
-            _downloadedStories = await LoadPlayableDownloadsSafelyAsync(cancellationToken);
             _loadErrorMessage = ex.Message;
             _hasLoaded = true;
             await MainThread.InvokeOnMainThreadAsync(() =>
@@ -623,9 +608,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         }
     }
 
-    private async Task<bool> TryRenderCachedLuisterAsync(
-        Task<IReadOnlyList<OfflineStoryDownload>> downloadsTask,
-        CancellationToken cancellationToken)
+    private async Task<bool> TryRenderCachedLuisterAsync(CancellationToken cancellationToken)
     {
         try
         {
@@ -635,7 +618,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 return false;
             }
 
-            ApplyLuisterResponse(cachedResponse, await downloadsTask);
+            ApplyLuisterResponse(cachedResponse);
             await MainThread.InvokeOnMainThreadAsync(() =>
             {
                 if (!_isPageActive || cancellationToken.IsCancellationRequested)
@@ -658,105 +641,27 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         }
     }
 
-    private void ApplyLuisterResponse(
-        MobileLuisterResponse response,
-        IReadOnlyList<OfflineStoryDownload> downloadedStories)
+    private void ApplyLuisterResponse(MobileLuisterResponse response)
     {
         var sections = response.Sections is { Count: > 0 }
             ? response.Sections
             : BuildLegacySections(response.Playlists);
         _sections = ApplyCurrentFavoriteState(sections);
-        _downloadedStories = downloadedStories;
         _loadErrorMessage = null;
         _hasLoaded = true;
-    }
-
-    private async Task<IReadOnlyList<OfflineStoryDownload>> LoadPlayableDownloadsSafelyAsync(CancellationToken cancellationToken)
-    {
-        try
-        {
-            return await _offlineDownloadService.GetPlayableDownloadsAsync(cancellationToken);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-            throw;
-        }
-        catch
-        {
-            return Array.Empty<OfflineStoryDownload>();
-        }
-    }
-
-    private async Task RefreshDownloadsInBackgroundAsync()
-    {
-        var cancellationToken = _pageActivityCancellation?.Token ?? default;
-        IReadOnlyList<OfflineStoryDownload> downloads;
-        try
-        {
-            downloads = await _offlineDownloadService.GetPlayableDownloadsAsync(cancellationToken);
-        }
-        catch
-        {
-            return;
-        }
-
-        await MainThread.InvokeOnMainThreadAsync(() =>
-        {
-            if (!_isPageActive || DownloadsMatch(_downloadedStories, downloads))
-            {
-                return;
-            }
-
-            _downloadedStories = downloads;
-            if (UsesCollectionViewFeed)
-            {
-                RenderPlaylistContent();
-            }
-            else
-            {
-                RenderContent();
-            }
-        });
     }
 
     private async Task RefreshVisibleStateAfterNavigationAsync(CancellationToken cancellationToken)
     {
         try
         {
-            // Do not let cached file checks or session work run inside the Shell switch.
+            // Do not let background session work run inside the Shell switch.
             await Task.Delay(120, cancellationToken);
-            await Task.WhenAll(
-                RefreshDownloadsInBackgroundAsync(),
-                RefreshSessionInBackgroundAsync());
+            await RefreshSessionInBackgroundAsync();
         }
         catch (OperationCanceledException)
         {
         }
-    }
-
-    private static bool DownloadsMatch(
-        IReadOnlyList<OfflineStoryDownload> current,
-        IReadOnlyList<OfflineStoryDownload> next)
-    {
-        if (ReferenceEquals(current, next))
-        {
-            return true;
-        }
-
-        if (current.Count != next.Count)
-        {
-            return false;
-        }
-
-        for (var index = 0; index < current.Count; index++)
-        {
-            if (current[index] != next[index])
-            {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     private async Task TriggerRefreshAsync()
@@ -1024,25 +929,9 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             nextItems.Add(LuisterFeedItem.ContinueListening());
         }
 
-        var downloadedStories = ResolveVisibleDownloadedStories();
-        if (downloadedStories.Count > 0)
-        {
-            nextItems.Add(LuisterFeedItem.Downloaded(downloadedStories));
-        }
-
         var filteredSections = FilterSections(_sections, _searchEntry.Text).ToArray();
         if (filteredSections.Length == 0)
         {
-            if (downloadedStories.Count > 0)
-            {
-                if (!string.IsNullOrWhiteSpace(_loadErrorMessage))
-                {
-                    nextItems.Add(LuisterFeedItem.Notice("Jy is offline. Jou afgelaaide stories is beskikbaar."));
-                }
-
-                return nextItems;
-            }
-
             nextItems.Add(LuisterFeedItem.Notice(string.IsNullOrWhiteSpace(_loadErrorMessage)
                 ? "Geen stories pas by jou soektog nie."
                 : _loadErrorMessage));
@@ -1078,7 +967,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         }
         else
         {
-            MobileResponsiveLayout.ApplyCenteredContent(_floatingTopBarHost, width, 1040);
+            MobileResponsiveLayout.ApplyStoriesTopBar(_floatingTopBarHost, width, 1040);
         }
 
         if (_lastResponsiveWidth < 0)
@@ -1125,22 +1014,27 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     private sealed class LuisterFeedTemplateSelector : DataTemplateSelector
     {
         private readonly DataTemplate _defaultTemplate;
+        private readonly DataTemplate _continueListeningTemplate;
         private readonly DataTemplate _playlistSectionTemplate;
 
         public LuisterFeedTemplateSelector(LuisterPage owner)
         {
             _defaultTemplate = new DataTemplate(owner.BuildFeedItemView);
+            // Keep the stateful continue-listening row in its own recycled pool.
+            _continueListeningTemplate = new DataTemplate(owner.BuildFeedItemView);
             _playlistSectionTemplate = new DataTemplate(() => new ReusablePlaylistSectionView(owner));
         }
 
-        protected override DataTemplate OnSelectTemplate(object item, BindableObject container) =>
-            item is LuisterFeedItem
+        protected override DataTemplate OnSelectTemplate(object item, BindableObject container) => item switch
+        {
+            LuisterFeedItem { Kind: LuisterFeedItemKind.ContinueListening } => _continueListeningTemplate,
+            LuisterFeedItem
             {
                 Kind: LuisterFeedItemKind.PlaylistSection,
                 Playlist: not null
-            }
-                ? _playlistSectionTemplate
-                : _defaultTemplate;
+            } => _playlistSectionTemplate,
+            _ => _defaultTemplate
+        };
     }
 
     private sealed class ReusablePlaylistSectionView : ContentView
@@ -1314,7 +1208,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             LuisterFeedItemKind.Search => BuildSearchBox(),
             LuisterFeedItemKind.Account => BuildAccountPanel(),
             LuisterFeedItemKind.ContinueListening => BuildContinueListeningCard() ?? new BoxView { HeightRequest = 0 },
-            LuisterFeedItemKind.Downloaded => BuildDownloadedSection(item.Downloads) ?? new BoxView { HeightRequest = 0 },
             LuisterFeedItemKind.Notice => BuildInlineNotice(item.Message ?? string.Empty),
             LuisterFeedItemKind.PlaylistShowcase when item.Section is not null => BuildPlaylistShowcase(item.Section),
             LuisterFeedItemKind.PlaylistShowcase => BuildPlaylistShowcase(item.Title, item.Playlists),
@@ -1333,13 +1226,13 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     private ImageSource BuildLuisterImageSource(string? url, string? fallbackFile = null)
     {
         var cacheKey = $"{url?.Trim() ?? string.Empty}|{fallbackFile ?? string.Empty}";
-        if (!IsIOS && _imageSourceCache.TryGetValue(cacheKey, out var cachedSource))
+        if (!IsIOS && !IsAndroid && _imageSourceCache.TryGetValue(cacheKey, out var cachedSource))
         {
             return cachedSource;
         }
 
         var source = _apiClient.BuildCachedImageSource(url, fallbackFile);
-        if (!IsIOS)
+        if (!IsIOS && !IsAndroid)
         {
             _imageSourceCache[cacheKey] = source;
         }
@@ -1349,13 +1242,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
 
     private static Shadow BuildScrollContentShadow(Brush brush, Point offset, float radius, float opacity) =>
         IsAndroid
-            ? new Shadow
-            {
-                Brush = Brush.Transparent,
-                Offset = Point.Zero,
-                Radius = 0,
-                Opacity = 0
-            }
+            ? null!
             : new Shadow
             {
                 Brush = brush,
@@ -2024,6 +1911,13 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             return;
         }
 
+        if (_notificationModalPage is not null || _isOpeningNotificationModal)
+        {
+            return;
+        }
+
+        _isOpeningNotificationModal = true;
+
         var titleLabel = new Label
         {
             Text = "Kennisgewings",
@@ -2064,9 +1958,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             IsVisible = false
         };
         var closeButton = BuildNotificationCloseButton();
-        var closeTap = new TapGestureRecognizer();
-        closeTap.Tapped += async (_, _) => await Navigation.PopModalAsync();
-        closeButton.GestureRecognizers.Add(closeTap);
 
         var titleStack = new VerticalStackLayout
         {
@@ -2126,48 +2017,145 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             BackgroundColor = LuisterModalBackgroundColor,
             Content = modalLayout
         };
+        _notificationModalCancellation?.Cancel();
+        _notificationModalCancellation?.Dispose();
+        _notificationModalCancellation = new CancellationTokenSource();
+        var cancellationToken = _notificationModalCancellation.Token;
+        _notificationModalPage = modal;
 
+        modal.Disappearing += (_, _) => EndNotificationModalSession(modal);
+        var closeTap = new TapGestureRecognizer();
+        closeTap.Tapped += async (_, _) => await CloseNotificationModalAsync(modal);
+        closeButton.GestureRecognizers.Add(closeTap);
         clearButton.Clicked += async (_, _) =>
-            await ClearNotificationsAsync(list, countLabel, statusLabel, clearButton, loadMoreButton);
+            await ClearNotificationsAsync(modal, cancellationToken, list, countLabel, statusLabel, clearButton, loadMoreButton);
         loadMoreButton.Clicked += async (_, _) =>
-            await LoadMoreNotificationsAsync(list, countLabel, statusLabel, clearButton, loadMoreButton);
+            await LoadMoreNotificationsAsync(modal, cancellationToken, list, countLabel, statusLabel, clearButton, loadMoreButton);
 
-        var renderedCachedNotifications = await TryRenderCachedNotificationsAsync(
-            list,
-            countLabel,
-            statusLabel,
-            clearButton,
-            loadMoreButton);
+        try
+        {
+            var renderedCachedNotifications = await TryRenderCachedNotificationsAsync(
+                modal,
+                cancellationToken,
+                list,
+                countLabel,
+                statusLabel,
+                clearButton,
+                loadMoreButton);
+            if (!IsNotificationModalActive(modal, cancellationToken))
+            {
+                return;
+            }
 
-        await Navigation.PushModalAsync(modal, true);
-        _ = LoadNotificationsAsync(
-            list,
-            countLabel,
-            statusLabel,
-            clearButton,
-            loadMoreButton,
-            renderedCachedNotifications);
+            await Navigation.PushModalAsync(modal, animated: false);
+            if (IsNotificationModalActive(modal, cancellationToken))
+            {
+                _ = LoadNotificationsAsync(
+                    modal,
+                    cancellationToken,
+                    list,
+                    countLabel,
+                    statusLabel,
+                    clearButton,
+                    loadMoreButton,
+                    renderedCachedNotifications);
+            }
+        }
+        catch (Exception ex)
+        {
+            EndNotificationModalSession(modal);
+            _analytics.TrackException(ex, "mobile_notifications_open_failed");
+        }
+        finally
+        {
+            _isOpeningNotificationModal = false;
+        }
+    }
+
+    private async Task<bool> CloseNotificationModalAsync(ContentPage modal)
+    {
+        if (!ReferenceEquals(_notificationModalPage, modal) || _isClosingNotificationModal)
+        {
+            return false;
+        }
+
+        _isClosingNotificationModal = true;
+        _notificationModalCancellation?.Cancel();
+        var didClose = false;
+        try
+        {
+            var modalStack = modal.Navigation.ModalStack;
+            if (modalStack.Count > 0 && ReferenceEquals(modalStack[^1], modal))
+            {
+                await modal.Navigation.PopModalAsync(animated: false);
+                didClose = true;
+            }
+            else
+            {
+                didClose = !modalStack.Contains(modal);
+            }
+        }
+        catch (Exception ex)
+        {
+            _analytics.TrackException(ex, "mobile_notifications_close_failed");
+        }
+        finally
+        {
+            EndNotificationModalSession(modal);
+        }
+
+        return didClose;
+    }
+
+    private bool IsNotificationModalActive(ContentPage modal, CancellationToken cancellationToken) =>
+        !cancellationToken.IsCancellationRequested &&
+        ReferenceEquals(_notificationModalPage, modal);
+
+    private void EndNotificationModalSession(ContentPage modal)
+    {
+        if (!ReferenceEquals(_notificationModalPage, modal))
+        {
+            return;
+        }
+
+        _notificationModalCancellation?.Cancel();
+        _notificationModalCancellation?.Dispose();
+        _notificationModalCancellation = null;
+        _notificationModalPage = null;
+        _isClosingNotificationModal = false;
+
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (_isPageActive && Handler is not null)
+            {
+                RenderFloatingTopBar();
+            }
+        });
     }
 
     private async Task<bool> TryRenderCachedNotificationsAsync(
+        ContentPage modal,
+        CancellationToken cancellationToken,
         VerticalStackLayout list,
         Label countLabel,
         Label statusLabel,
         Button clearButton,
         Button loadMoreButton)
     {
-        var cachedPage = _notificationPage ?? await _apiClient.GetCachedNotificationsAsync();
-        if (cachedPage is null)
+        var cachedPage = _notificationPage ?? await _apiClient.GetCachedNotificationsAsync(cancellationToken);
+        if (cachedPage is null || !IsNotificationModalActive(modal, cancellationToken))
         {
             return false;
         }
 
         _notificationPage = cachedPage;
-        RenderNotificationModalState(list, countLabel, statusLabel, clearButton, loadMoreButton);
+        RenderNotificationModalState(modal, cancellationToken, list, countLabel, statusLabel, clearButton, loadMoreButton);
         return true;
     }
 
     private async Task LoadNotificationsAsync(
+        ContentPage modal,
+        CancellationToken cancellationToken,
         VerticalStackLayout list,
         Label countLabel,
         Label statusLabel,
@@ -2175,6 +2163,11 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         Button loadMoreButton,
         bool hasRenderedCachedNotifications = false)
     {
+        if (!IsNotificationModalActive(modal, cancellationToken))
+        {
+            return;
+        }
+
         if (!hasRenderedCachedNotifications)
         {
             SetNotificationControlsBusy(statusLabel, clearButton, loadMoreButton, "Laai kennisgewings...");
@@ -2182,33 +2175,47 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
 
         try
         {
-            _notificationPage = await _apiClient.GetNotificationsAsync();
-            RenderNotificationModalState(list, countLabel, statusLabel, clearButton, loadMoreButton);
+            var loadedPage = await _apiClient.GetNotificationsAsync(cancellationToken: cancellationToken);
+            if (!IsNotificationModalActive(modal, cancellationToken))
+            {
+                return;
+            }
+
+            _notificationPage = loadedPage;
+            RenderNotificationModalState(modal, cancellationToken, list, countLabel, statusLabel, clearButton, loadMoreButton);
 
             if (_notificationPage?.UnreadCount > 0)
             {
                 MarkAllNotificationsReadLocally();
-                RenderNotificationModalState(list, countLabel, statusLabel, clearButton, loadMoreButton);
-                RenderContent();
-                await _apiClient.MarkAllNotificationsReadAsync();
+                RenderNotificationModalState(modal, cancellationToken, list, countLabel, statusLabel, clearButton, loadMoreButton);
                 _ = _apiClient.SaveNotificationsCacheAsync(_notificationPage);
+                _ = TryMarkAllNotificationsReadAsync();
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
         }
         catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
         {
             _notificationPage = null;
-            statusLabel.IsVisible = true;
-            statusLabel.Text = "Teken in om kennisgewings te sien.";
+            if (IsNotificationModalActive(modal, cancellationToken))
+            {
+                statusLabel.IsVisible = true;
+                statusLabel.Text = "Teken in om kennisgewings te sien.";
+            }
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("status 401", StringComparison.OrdinalIgnoreCase))
         {
             _notificationPage = null;
-            statusLabel.IsVisible = true;
-            statusLabel.Text = "Teken in om kennisgewings te sien.";
+            if (IsNotificationModalActive(modal, cancellationToken))
+            {
+                statusLabel.IsVisible = true;
+                statusLabel.Text = "Teken in om kennisgewings te sien.";
+            }
         }
         catch
         {
-            if (!hasRenderedCachedNotifications)
+            if (!hasRenderedCachedNotifications && IsNotificationModalActive(modal, cancellationToken))
             {
                 statusLabel.IsVisible = true;
                 statusLabel.Text = "Ons kon nie nou die kennisgewings laai nie.";
@@ -2216,26 +2223,36 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         }
         finally
         {
-            clearButton.IsEnabled = true;
-            loadMoreButton.IsEnabled = true;
-            RenderContent();
+            if (IsNotificationModalActive(modal, cancellationToken))
+            {
+                clearButton.IsEnabled = true;
+                loadMoreButton.IsEnabled = true;
+            }
         }
     }
 
     private async Task LoadMoreNotificationsAsync(
+        ContentPage modal,
+        CancellationToken cancellationToken,
         VerticalStackLayout list,
         Label countLabel,
         Label statusLabel,
         Button clearButton,
         Button loadMoreButton)
     {
-        if (_notificationPage is null)
+        if (!IsNotificationModalActive(modal, cancellationToken))
         {
             return;
         }
 
-        var before = _notificationPage.Notifications.LastOrDefault()?.CreatedAt;
-        if (before is null)
+        var currentPage = _notificationPage;
+        if (currentPage is null)
+        {
+            return;
+        }
+
+        var before = currentPage.Notifications.LastOrDefault()?.CreatedAt;
+        if (before is null && !currentPage.HasHistory)
         {
             return;
         }
@@ -2243,28 +2260,48 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         SetNotificationControlsBusy(statusLabel, clearButton, loadMoreButton, "Laai vorige kennisgewings...");
         try
         {
-            var loadedPage = await _apiClient.GetNotificationsAsync(before: before, history: _notificationPage.HasHistory);
-            if (loadedPage is not null)
+            var loadedPage = await _apiClient.GetNotificationsAsync(
+                before: before,
+                history: currentPage.HasHistory,
+                cancellationToken: cancellationToken);
+            if (loadedPage is not null && IsNotificationModalActive(modal, cancellationToken))
             {
-                _notificationPage = MergeNotificationPages(_notificationPage, loadedPage);
-                RenderNotificationModalState(list, countLabel, statusLabel, clearButton, loadMoreButton);
+                _notificationPage = MergeNotificationPages(currentPage, loadedPage);
+                RenderNotificationModalState(modal, cancellationToken, list, countLabel, statusLabel, clearButton, loadMoreButton);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch
+        {
+            if (IsNotificationModalActive(modal, cancellationToken))
+            {
+                statusLabel.IsVisible = true;
+                statusLabel.Text = "Ons kon nie die vorige kennisgewings laai nie.";
             }
         }
         finally
         {
-            clearButton.IsEnabled = true;
-            loadMoreButton.IsEnabled = true;
+            if (IsNotificationModalActive(modal, cancellationToken))
+            {
+                clearButton.IsEnabled = true;
+                loadMoreButton.IsEnabled = true;
+            }
         }
     }
 
     private async Task ClearNotificationsAsync(
+        ContentPage modal,
+        CancellationToken cancellationToken,
         VerticalStackLayout list,
         Label countLabel,
         Label statusLabel,
         Button clearButton,
         Button loadMoreButton)
     {
-        if (_notificationPage?.Notifications.Count > 0 != true)
+        if (!IsNotificationModalActive(modal, cancellationToken) ||
+            _notificationPage?.Notifications.Count > 0 != true)
         {
             return;
         }
@@ -2272,7 +2309,12 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         clearButton.IsEnabled = false;
         try
         {
-            await _apiClient.ClearNotificationsAsync();
+            await _apiClient.ClearNotificationsAsync(cancellationToken);
+            if (!IsNotificationModalActive(modal, cancellationToken) || _notificationPage is null)
+            {
+                return;
+            }
+
             _notificationPage = _notificationPage with
             {
                 Count = 0,
@@ -2282,12 +2324,25 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 Notifications = Array.Empty<MobileNotificationItem>()
             };
             _ = _apiClient.SaveNotificationsCacheAsync(_notificationPage);
-            RenderNotificationModalState(list, countLabel, statusLabel, clearButton, loadMoreButton);
-            RenderContent();
+            RenderNotificationModalState(modal, cancellationToken, list, countLabel, statusLabel, clearButton, loadMoreButton);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch
+        {
+            if (IsNotificationModalActive(modal, cancellationToken))
+            {
+                statusLabel.IsVisible = true;
+                statusLabel.Text = "Ons kon nie die kennisgewings skoonmaak nie.";
+            }
         }
         finally
         {
-            clearButton.IsEnabled = true;
+            if (IsNotificationModalActive(modal, cancellationToken))
+            {
+                clearButton.IsEnabled = true;
+            }
         }
     }
 
@@ -2304,12 +2359,19 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     }
 
     private void RenderNotificationModalState(
+        ContentPage modal,
+        CancellationToken cancellationToken,
         VerticalStackLayout list,
         Label countLabel,
         Label statusLabel,
         Button clearButton,
         Button loadMoreButton)
     {
+        if (!IsNotificationModalActive(modal, cancellationToken))
+        {
+            return;
+        }
+
         var page = _notificationPage;
         var notifications = page?.Notifications ?? Array.Empty<MobileNotificationItem>();
         list.Children.Clear();
@@ -2330,12 +2392,22 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         statusLabel.IsVisible = false;
         foreach (var notification in notifications)
         {
-            list.Children.Add(BuildNotificationItem(notification, list, countLabel, statusLabel, clearButton, loadMoreButton));
+            list.Children.Add(BuildNotificationItem(
+                notification,
+                modal,
+                cancellationToken,
+                list,
+                countLabel,
+                statusLabel,
+                clearButton,
+                loadMoreButton));
         }
     }
 
     private View BuildNotificationItem(
         MobileNotificationItem notification,
+        ContentPage modal,
+        CancellationToken cancellationToken,
         VerticalStackLayout list,
         Label countLabel,
         Label statusLabel,
@@ -2356,7 +2428,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
 
         async Task ClearNotificationAsync()
         {
-            if (isClearing)
+            if (isClearing || !IsNotificationModalActive(modal, cancellationToken))
             {
                 return;
             }
@@ -2365,20 +2437,38 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             clearItemButton.IsEnabled = false;
             try
             {
-                await _apiClient.ClearNotificationAsync(notification.Id);
+                await _apiClient.ClearNotificationAsync(notification.Id, cancellationToken);
+                if (!IsNotificationModalActive(modal, cancellationToken))
+                {
+                    return;
+                }
+
                 RemoveNotificationLocally(notification.Id);
                 if (_notificationPage is not null)
                 {
                     _ = _apiClient.SaveNotificationsCacheAsync(_notificationPage);
                 }
 
-                RenderNotificationModalState(list, countLabel, statusLabel, clearButton, loadMoreButton);
-                RenderContent();
+                RenderNotificationModalState(modal, cancellationToken, list, countLabel, statusLabel, clearButton, loadMoreButton);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
+            catch
+            {
+                if (IsNotificationModalActive(modal, cancellationToken))
+                {
+                    statusLabel.IsVisible = true;
+                    statusLabel.Text = "Ons kon nie dié kennisgewing verwyder nie.";
+                }
             }
             finally
             {
                 isClearing = false;
-                clearItemButton.IsEnabled = true;
+                if (IsNotificationModalActive(modal, cancellationToken))
+                {
+                    clearItemButton.IsEnabled = true;
+                }
             }
         }
 
@@ -2469,9 +2559,16 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         var tap = new TapGestureRecognizer();
         tap.Tapped += async (_, _) =>
         {
-            await OpenNotificationAsync(notification);
-            RenderNotificationModalState(list, countLabel, statusLabel, clearButton, loadMoreButton);
-            RenderContent();
+            if (!IsNotificationModalActive(modal, cancellationToken))
+            {
+                return;
+            }
+
+            await OpenNotificationAsync(notification, modal);
+            if (IsNotificationModalActive(modal, cancellationToken))
+            {
+                RenderNotificationModalState(modal, cancellationToken, list, countLabel, statusLabel, clearButton, loadMoreButton);
+            }
         };
         row.GestureRecognizers.Add(tap);
 
@@ -2496,48 +2593,94 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         };
     }
 
-    private async Task OpenNotificationAsync(MobileNotificationItem notification)
+    private async Task OpenNotificationAsync(MobileNotificationItem notification, ContentPage modal)
     {
-        await _apiClient.MarkNotificationReadAsync(notification.Id);
         MarkNotificationReadLocally(notification.Id);
         if (_notificationPage is not null)
         {
             _ = _apiClient.SaveNotificationsCacheAsync(_notificationPage);
         }
 
+        // Reading a notification is a local UI action first. Persist the read state
+        // independently so a slow/offline mutation can never block its destination.
+        var markReadTask = TryMarkNotificationReadAsync(notification.Id);
         var target = MobileNotificationNavigation.Resolve(notification.Type, notification.Href);
-        switch (target.Kind)
+        try
         {
-            case MobileNotificationNavigationKind.Story:
-                await Navigation.PopModalAsync(true);
-                await _navigationGate.RunAsync(async () =>
-                {
-                    if (string.IsNullOrWhiteSpace(target.Value))
+            switch (target.Kind)
+            {
+                case MobileNotificationNavigationKind.Story:
+                    if (!await CloseNotificationModalAsync(modal))
                     {
-                        await Shell.Current.GoToAsync("//Luister", animate: false);
-                        return;
+                        break;
                     }
 
-                    _playlistPlaybackState.Clear();
-                    await CapturePlayerTransitionBackdropAsync();
-                    await Shell.Current.GoToAsync(
-                        $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(target.Value)}&source={Uri.EscapeDataString(target.Source ?? "luister")}",
-                        animate: false);
-                });
-                break;
-            case MobileNotificationNavigationKind.Character:
-                await Navigation.PopModalAsync(true);
-                var characterRoute = "//Karakters";
-                if (!string.IsNullOrWhiteSpace(target.Value))
-                {
-                    characterRoute += $"?karakter={Uri.EscapeDataString(target.Value)}";
-                }
+                    await _navigationGate.RunAsync(async () =>
+                    {
+                        if (string.IsNullOrWhiteSpace(target.Value))
+                        {
+                            await Shell.Current.GoToAsync("//Luister", animate: false);
+                            return;
+                        }
 
-                await _navigationGate.RunAsync(() => Shell.Current.GoToAsync(characterRoute, animate: false));
-                break;
-            case MobileNotificationNavigationKind.ResourceWebsite when !string.IsNullOrWhiteSpace(target.Value):
-                await Browser.OpenAsync(_apiClient.BuildAbsoluteUrl(target.Value), BrowserLaunchMode.External);
-                break;
+                        _playlistPlaybackState.Clear();
+                        await CapturePlayerTransitionBackdropAsync();
+                        await Shell.Current.GoToAsync(
+                            $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(target.Value)}&source={Uri.EscapeDataString(target.Source ?? "luister")}",
+                            animate: false);
+                    });
+                    break;
+                case MobileNotificationNavigationKind.Character:
+                    if (!await CloseNotificationModalAsync(modal))
+                    {
+                        break;
+                    }
+
+                    var characterRoute = "//Karakters";
+                    if (!string.IsNullOrWhiteSpace(target.Value))
+                    {
+                        characterRoute += $"?karakter={Uri.EscapeDataString(target.Value)}";
+                    }
+
+                    await _navigationGate.RunAsync(() => Shell.Current.GoToAsync(characterRoute, animate: false));
+                    break;
+                case MobileNotificationNavigationKind.ResourceWebsite when !string.IsNullOrWhiteSpace(target.Value):
+                    await Browser.OpenAsync(_apiClient.BuildAbsoluteUrl(target.Value), BrowserLaunchMode.External);
+                    break;
+            }
+        }
+        catch
+        {
+            await DisplayAlertAsync(
+                "Kon nie oopmaak nie",
+                "Dié kennisgewing kon nie nou oopmaak nie. Probeer asseblief weer.",
+                "Reg so");
+        }
+
+        await markReadTask;
+    }
+
+    private async Task TryMarkAllNotificationsReadAsync()
+    {
+        try
+        {
+            await _apiClient.MarkAllNotificationsReadAsync();
+        }
+        catch
+        {
+            // Local read state and navigation must remain usable while offline.
+        }
+    }
+
+    private async Task TryMarkNotificationReadAsync(Guid notificationId)
+    {
+        try
+        {
+            await _apiClient.MarkNotificationReadAsync(notificationId);
+        }
+        catch
+        {
+            // The next refresh can reconcile server state; never block the tap action.
         }
     }
 
@@ -3668,16 +3811,19 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
 
         var clearButton = new Button
         {
-            Text = "Maak skoon",
-            FontSize = 13,
+            Text = "×",
+            FontSize = 22,
             FontAttributes = FontAttributes.Bold,
             TextColor = Color.FromArgb("#0F766E"),
             BackgroundColor = Colors.Transparent,
-            Padding = new Thickness(8, 0),
+            Padding = 0,
+            WidthRequest = 34,
             HeightRequest = 34,
             HorizontalOptions = LayoutOptions.End,
             VerticalOptions = LayoutOptions.Center
         };
+        clearButton.AutomationId = "continue-listening-clear";
+        SemanticProperties.SetDescription(clearButton, "Maak skoon");
         clearButton.Clicked += (_, _) => ClearContinueListening();
 
         var heading = new Grid
@@ -3815,120 +3961,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             : $"{(int)value.TotalMinutes}:{value.Seconds:00}";
     }
 
-    private IReadOnlyList<OfflineStoryDownload> ResolveVisibleDownloadedStories()
-    {
-        var downloads = _downloadedStories;
-        var normalizedQuery = NormalizeSearchValue(_searchEntry.Text);
-        if (!string.IsNullOrWhiteSpace(normalizedQuery))
-        {
-            downloads = downloads
-                .Where(download =>
-                    ContainsNormalized(download.Title, normalizedQuery) ||
-                    ContainsNormalized(download.Description, normalizedQuery) ||
-                    ContainsNormalized(download.Slug, normalizedQuery) ||
-                    ContainsNormalized(download.Source, normalizedQuery))
-                .ToArray();
-        }
-
-        return downloads;
-    }
-
-    private View? BuildDownloadedSection(IReadOnlyList<OfflineStoryDownload> downloads)
-    {
-        if (downloads.Count == 0)
-        {
-            return null;
-        }
-
-        return new VerticalStackLayout
-        {
-            Spacing = 10,
-            Children =
-            {
-                new Label
-                {
-                    Text = "Afgelaai",
-                    FontSize = 22,
-                    FontAttributes = FontAttributes.Bold,
-                    TextColor = Color.FromArgb("#222222"),
-                    HorizontalOptions = LayoutOptions.Fill,
-                    HorizontalTextAlignment = TextAlignment.Center
-                },
-                BuildHorizontalCarousel(downloads, GetDownloadedCarouselHeight(), BuildDownloadedStoryCard)
-            }
-        };
-    }
-
-    private double GetDownloadedCarouselHeight()
-    {
-        var cardWidth = MobileResponsiveLayout.ResolveDownloadedCardWidth(Width, IsAndroid);
-        var coverHeight = cardWidth / StoryCarouselImageAspectRatio;
-        return coverHeight + 70;
-    }
-
-    private View BuildDownloadedStoryCard(OfflineStoryDownload download)
-    {
-        var story = ToMobileStorySummary(download);
-        var cardWidth = MobileResponsiveLayout.ResolveDownloadedCardWidth(Width, IsAndroid);
-        var coverHeight = cardWidth / StoryCarouselImageAspectRatio;
-        var coverGrid = new Grid
-        {
-            HeightRequest = coverHeight,
-            Children =
-            {
-                new Image
-                {
-                    Source = BuildLuisterImageSource(
-                        PageHelpers.ResolveStoryCardImageSource(story, _apiClient)),
-                    Aspect = Aspect.AspectFill,
-                    WidthRequest = cardWidth,
-                    HeightRequest = coverHeight,
-                    HorizontalOptions = LayoutOptions.Fill,
-                    VerticalOptions = LayoutOptions.Fill
-                },
-                BuildCoverPlayBadge("▶", 38, 17, 2)
-            }
-        };
-
-        var card = new Border
-        {
-            WidthRequest = cardWidth,
-            BackgroundColor = Colors.Transparent,
-            StrokeThickness = 0,
-            Padding = 0,
-            Margin = new Thickness(0, 0, 0, 10),
-            Content = new VerticalStackLayout
-            {
-                Spacing = 9,
-                Children =
-                {
-                    new Border
-                    {
-                        StrokeThickness = 0,
-                        StrokeShape = BuildArtworkShape(16),
-                        HeightRequest = coverHeight,
-                        Content = coverGrid
-                    },
-                    new Label
-                    {
-                        Text = download.Title,
-                        FontSize = 16,
-                        TextColor = Color.FromArgb("#1B2231"),
-                        InputTransparent = true,
-                        MaxLines = 2,
-                        LineBreakMode = LineBreakMode.TailTruncation,
-                        LineHeight = 1.16
-                    }
-                }
-            }
-        };
-
-        var tap = new TapGestureRecognizer();
-        tap.Tapped += async (_, _) => await OpenDownloadedStoryAsync(download);
-        card.GestureRecognizers.Add(tap);
-        return card;
-    }
-
     private static View BuildInlineNotice(string message) =>
         new Border
         {
@@ -3942,19 +3974,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 TextColor = Color.FromArgb("#5F5F5F")
             }
         };
-
-    private static MobileStorySummary ToMobileStorySummary(OfflineStoryDownload download) =>
-        new(
-            Slug: download.Slug,
-            Title: download.Title,
-            Description: download.Description,
-            ImageUrl: download.ImageUrl,
-            ThumbnailUrl: download.ThumbnailUrl,
-            Source: download.Source,
-            IsLocked: false,
-            IsFavorite: false,
-            DetailUrl: download.DetailUrl,
-            DurationSeconds: download.DurationSeconds);
 
     private static IReadOnlyList<MobileLuisterSection> BuildLegacySections(IReadOnlyList<MobilePlaylist> playlists) =>
         playlists
@@ -4080,23 +4099,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         });
     }
 
-    private async Task OpenDownloadedStoryAsync(OfflineStoryDownload download)
-    {
-        await _navigationGate.RunAsync(async () =>
-        {
-            _playlistPlaybackState.Clear();
-            await CapturePlayerTransitionBackdropAsync();
-            var story = ToMobileStorySummary(download);
-            await Shell.Current.GoToAsync(
-                $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(download.Slug)}&source={Uri.EscapeDataString(download.Source)}",
-                animate: false,
-                parameters: new Dictionary<string, object>
-                {
-                    ["preview"] = story
-                });
-        });
-    }
-
     private void StartImageWarmup()
     {
         _imageWarmupCancellation?.Cancel();
@@ -4121,7 +4123,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                     imageUrls,
                     token,
                     maxImages: imageWarmupMaxImages,
-                    maxDegreeOfParallelism: IsAndroid ? 3 : IsIOS ? 1 : 4);
+                    maxDegreeOfParallelism: IsAndroid || IsIOS ? 1 : 4);
             }
             catch (OperationCanceledException)
             {
@@ -4145,11 +4147,11 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
 
     private void PauseImageWarmupForScroll()
     {
-        if (IsIOS)
+        if (IsIOS || IsAndroid)
         {
-            // iOS uses a single background worker to prepare display-sized
-            // copies. Let it stay ahead of the viewport; cancelling it leaves
-            // full-resolution files to be decoded as each row appears.
+            // Mobile uses one background worker to prepare display-sized copies.
+            // Let it stay ahead of the viewport; cancelling it leaves full-size
+            // files to be decoded as each row appears.
             return;
         }
 
@@ -4181,11 +4183,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             yield return PageHelpers.ResolveStoryCardImageSource(
                 resolvedStory?.Story ?? ToMobileStorySummary(continueListening),
                 _apiClient);
-        }
-
-        foreach (var download in ResolveVisibleDownloadedStories().Take(8))
-        {
-            yield return PageHelpers.ResolveStoryCardImageSource(ToMobileStorySummary(download), _apiClient);
         }
 
         foreach (var section in FilterSections(_sections, _searchEntry.Text))
@@ -4520,7 +4517,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         Search,
         Account,
         ContinueListening,
-        Downloaded,
         Notice,
         PlaylistShowcase,
         PlaylistSection
@@ -4532,12 +4528,9 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         string Title = "",
         IReadOnlyList<MobilePlaylist>? PlaylistsValue = null,
         MobilePlaylist? Playlist = null,
-        IReadOnlyList<OfflineStoryDownload>? DownloadsValue = null,
         MobileLuisterSection? Section = null)
     {
         public IReadOnlyList<MobilePlaylist> Playlists => PlaylistsValue ?? Array.Empty<MobilePlaylist>();
-
-        public IReadOnlyList<OfflineStoryDownload> Downloads => DownloadsValue ?? Array.Empty<OfflineStoryDownload>();
 
         public static LuisterFeedItem Loading() => new(LuisterFeedItemKind.Loading);
 
@@ -4546,9 +4539,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         public static LuisterFeedItem Account() => new(LuisterFeedItemKind.Account);
 
         public static LuisterFeedItem ContinueListening() => new(LuisterFeedItemKind.ContinueListening);
-
-        public static LuisterFeedItem Downloaded(IReadOnlyList<OfflineStoryDownload> downloads) =>
-            new(LuisterFeedItemKind.Downloaded, DownloadsValue: downloads);
 
         public static LuisterFeedItem Notice(string message) => new(LuisterFeedItemKind.Notice, Message: message);
 

@@ -14,9 +14,9 @@ internal enum MobileAndroidIcon
 
 internal static class MobileAndroidChromePalette
 {
-    // Live backdrop capture makes every Android scroll redraw the whole page.
-    // Keep the same dark-glass contrast with a compositor-friendly solid tint.
-    public static readonly Color BarBackground = Color.FromArgb("#E612343B");
+    // Keep the page visible through the shared bottom bar on both platforms.
+    // Android stays compositor-friendly because this does not restore live blur.
+    public static readonly Color BarBackground = Colors.Transparent;
     public static readonly Color PrimaryIcon = Colors.White;
     public static readonly Color SecondaryIcon = Colors.White;
     public static readonly Color SelectedBackground = Colors.Transparent;
