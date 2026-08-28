@@ -11,7 +11,7 @@ public sealed class MobileLuisterSafeAreaSourceTests
         var source = File.ReadAllText(FindLuisterPage());
 
         StringAssert.Contains(source, "private const double FloatingTopBarContentInset = 92;");
-        StringAssert.Contains(source, "private const double BottomBarContentInset = 136;");
+        StringAssert.Contains(source, "private const double BottomBarContentInset = 216;");
         StringAssert.Contains(source, "private const double BottomBarOverlayHeight = 152;");
         StringAssert.Contains(source, "Margin = Thickness.Zero,");
         StringAssert.Contains(source, "HeightRequest = 62,");

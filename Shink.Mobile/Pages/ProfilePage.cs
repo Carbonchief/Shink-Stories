@@ -26,7 +26,10 @@ public sealed class ProfilePage : ContentPage
 
     private bool _isSaving;
 
-    public ProfilePage(MobileApiClient apiClient, SessionState sessionState)
+    public ProfilePage(
+        MobileApiClient apiClient,
+        SessionState sessionState,
+        StoryPlaybackSession storyPlaybackSession)
     {
         _apiClient = apiClient;
         _sessionState = sessionState;
@@ -80,7 +83,7 @@ public sealed class ProfilePage : ContentPage
             IsVisible = false
         };
 
-        Content = new ScrollView
+        var profileScroll = new ScrollView
         {
             BackgroundColor = PageBackgroundColor,
             Content = new VerticalStackLayout
@@ -97,7 +100,8 @@ public sealed class ProfilePage : ContentPage
                 }
             }
         };
-        if (Content is ScrollView profileScroll && profileScroll.Content is View profileContent)
+        Content = PersistentPlaybackHost.Wrap(profileScroll, storyPlaybackSession);
+        if (profileScroll.Content is View profileContent)
         {
             MobileResponsiveLayout.ApplyCenteredContent(profileContent, Width, 720);
             SizeChanged += (_, _) => MobileResponsiveLayout.ApplyCenteredContent(profileContent, Width, 720);
@@ -297,9 +301,10 @@ public sealed class ProfilePage : ContentPage
                 WidthRequest = 96,
                 HeightRequest = 96,
                 Padding = 0,
-                Content = new Image
+                Content = new ProgressiveCachedImage(
+                    _apiClient,
+                    new ProgressiveImageRequest(imageUrl))
                 {
-                    Source = ImageSource.FromUri(new Uri(imageUrl, UriKind.Absolute)),
                     Aspect = Aspect.AspectFill,
                     WidthRequest = 96,
                     HeightRequest = 96

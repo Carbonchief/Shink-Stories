@@ -58,7 +58,10 @@ public sealed class MobileSearchPageSourceTests
         StringAssert.Contains(source, "SetCompactSearchHeaderAsync(true)");
         StringAssert.Contains(source, "view.FadeToAsync(0, 130, Easing.CubicOut)");
         StringAssert.Contains(source, "_visibleResults.ReplaceWith(matches)");
-        StringAssert.Contains(source, "NotifyCollectionChangedAction.Reset");
+        StringAssert.Contains(source, "SetItem(index, replacement[index])");
+        StringAssert.Contains(source, "RemoveAt(Count - 1)");
+        StringAssert.Contains(source, "Add(replacement[index])");
+        Assert.DoesNotContain("NotifyCollectionChangedAction.Reset", source, StringComparison.Ordinal);
     }
 
     [TestMethod]

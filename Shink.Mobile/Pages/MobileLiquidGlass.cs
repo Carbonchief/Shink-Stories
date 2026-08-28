@@ -14,7 +14,8 @@ internal static class MobileLiquidGlass
         get
         {
 #if IOS
-            return DeviceInfo.Idiom == DeviceIdiom.Phone && OperatingSystem.IsIOSVersionAtLeast(26);
+            return (DeviceInfo.Idiom == DeviceIdiom.Phone || DeviceInfo.Idiom == DeviceIdiom.Tablet) &&
+                OperatingSystem.IsIOSVersionAtLeast(26);
 #else
             return false;
 #endif

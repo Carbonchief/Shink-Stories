@@ -1,3 +1,5 @@
+using Shink.Mobile.Services;
+
 namespace Shink.Mobile.Pages;
 
 public sealed class KarakterPareConfigPage : ContentPage, IQueryAttributable
@@ -13,6 +15,7 @@ public sealed class KarakterPareConfigPage : ContentPage, IQueryAttributable
     private static readonly Color UnselectedStrokeColor = Color.FromArgb("#E2E1D8");
     private const string PoppinsFontFamily = "Poppins";
     private const string PoppinsBoldFontFamily = "PoppinsBold";
+    private const double CompactLayoutHeight = 700;
 
     private static readonly DifficultyOption[] Options =
     [
@@ -25,7 +28,7 @@ public sealed class KarakterPareConfigPage : ContentPage, IQueryAttributable
     private readonly Button _playButton;
     private DifficultyOption _selectedOption;
 
-    public KarakterPareConfigPage()
+    public KarakterPareConfigPage(StoryPlaybackSession storyPlaybackSession)
     {
         Title = "Karakter Pare";
         Background = BuildBackground();
@@ -33,24 +36,27 @@ public sealed class KarakterPareConfigPage : ContentPage, IQueryAttributable
         Shell.SetNavBarIsVisible(this, false);
         _selectedOption = Options[0];
 
+        var heroLogo = new Image
+        {
+            Source = "karakter_pare_logo_cropped.png",
+            Aspect = Aspect.AspectFit,
+            WidthRequest = 282,
+            HeightRequest = 240,
+            Margin = new Thickness(0, 0, 0, 25),
+            HorizontalOptions = LayoutOptions.Center,
+            AutomationId = "karakter-pare-hero-logo"
+        };
+        var tagline = BuildTagline();
+        var difficultyOptions = BuildDifficultyOptions();
         var content = new VerticalStackLayout
         {
             Spacing = 0,
-            Padding = new Thickness(0, 128, 0, 52),
+            Padding = new Thickness(0, 68, 0, 8),
             Children =
             {
-                new Image
-                {
-                    Source = "karakter_pare_logo_cropped.png",
-                    Aspect = Aspect.AspectFit,
-                    WidthRequest = 282,
-                    HeightRequest = 240,
-                    Margin = new Thickness(0, 0, 0, 25),
-                    HorizontalOptions = LayoutOptions.Center,
-                    AutomationId = "karakter-pare-hero-logo"
-                },
-                BuildTagline(),
-                BuildDifficultyOptions(),
+                heroLogo,
+                tagline,
+                difficultyOptions,
             }
         };
 
@@ -72,18 +78,24 @@ public sealed class KarakterPareConfigPage : ContentPage, IQueryAttributable
         _playButton.Clicked += async (_, _) => await PlaySelectedDifficultyAsync();
         content.Children.Add(_playButton);
 
+        var contentScroll = new ScrollView
+        {
+            Content = content,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Never,
+            AutomationId = "karakter-pare-config-scroll"
+        };
         var root = new Grid
         {
             SafeAreaEdges = SafeAreaEdges.None,
             Children =
             {
-                content,
+                contentScroll,
                 BuildBackButton()
             }
         };
-        Content = root;
-        SizeChanged += (_, _) => ApplyResponsiveLayout(content);
-        ApplyResponsiveLayout(content);
+        Content = PersistentPlaybackHost.Wrap(root, storyPlaybackSession);
+        SizeChanged += (_, _) => ApplyResponsiveLayout(content, heroLogo, difficultyOptions);
+        ApplyResponsiveLayout(content, heroLogo, difficultyOptions);
         SelectDifficulty(_selectedOption);
     }
 
@@ -306,8 +318,26 @@ public sealed class KarakterPareConfigPage : ContentPage, IQueryAttributable
         }
     }
 
-    private static void ApplyResponsiveLayout(View content)
+    private void ApplyResponsiveLayout(
+        VerticalStackLayout content,
+        Image heroLogo,
+        VerticalStackLayout difficultyOptions)
     {
+        var useCompactLayout = Height > 0 && Height < CompactLayoutHeight;
+        content.Padding = useCompactLayout
+            ? new Thickness(0, 40, 0, 6)
+            : new Thickness(0, 68, 0, 8);
+        heroLogo.WidthRequest = useCompactLayout ? 260 : 282;
+        heroLogo.HeightRequest = useCompactLayout ? 220 : 240;
+        heroLogo.Margin = useCompactLayout
+            ? new Thickness(0, 0, 0, 14)
+            : new Thickness(0, 0, 0, 25);
+        difficultyOptions.Margin = useCompactLayout
+            ? new Thickness(0, 28, 0, 0)
+            : new Thickness(0, 47, 0, 0);
+        _playButton.Margin = useCompactLayout
+            ? new Thickness(0, 10, 0, 0)
+            : new Thickness(0, 12, 0, 0);
         MobileResponsiveLayout.ApplyCenteredContent(content, DeviceDisplay.MainDisplayInfo.Width / DeviceDisplay.MainDisplayInfo.Density, 640);
     }
 

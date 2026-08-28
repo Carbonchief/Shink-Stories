@@ -129,10 +129,17 @@ public sealed class HomePage : ContentPage
                 Spacing = 14,
                 Children =
                 {
-                    new Image { Source = _apiClient.BuildImageUrl(home.LogoImageUrl), HeightRequest = 84, Aspect = Aspect.AspectFit },
-                    new Image
+                    new ProgressiveCachedImage(
+                        _apiClient,
+                        new ProgressiveImageRequest(home.LogoImageUrl, FallbackFile: "schink_stories_logo_white.png"))
                     {
-                        Source = _apiClient.BuildImageUrl(home.HeroImageUrl),
+                        HeightRequest = 84,
+                        Aspect = Aspect.AspectFit
+                    },
+                    new ProgressiveCachedImage(
+                        _apiClient,
+                        new ProgressiveImageRequest(home.HeroImageUrl, FallbackFile: "schink_stories_home_hero.png"))
+                    {
                         HeightRequest = MobileResponsiveLayout.IsWide(Width) ? 300 : 220,
                         Aspect = Aspect.AspectFit
                     },
@@ -178,9 +185,10 @@ public sealed class HomePage : ContentPage
                     Spacing = 10,
                     Children =
                     {
-                        new Image
+                        new ProgressiveCachedImage(
+                            _apiClient,
+                            new ProgressiveImageRequest(item.ImageUrl, FallbackFile: "schink_background.jpeg"))
                         {
-                            Source = _apiClient.BuildImageUrl(item.ImageUrl),
                             HeightRequest = imageHeight,
                             Aspect = Aspect.AspectFill
                         },

@@ -50,6 +50,17 @@ public sealed class MobileStoryDetailVisualParitySourceTests
     }
 
     [TestMethod]
+    public void StoryDetailCoverImageTogglesAvailableAudioPlayback()
+    {
+        var source = File.ReadAllText(FindStoryDetailPage());
+
+        StringAssert.Contains(source, "var coverImage = new ProgressiveCachedImage(");
+        StringAssert.Contains(source, "if (!detail.RequiresSubscription && !string.IsNullOrWhiteSpace(detail.AudioUrl))");
+        StringAssert.Contains(source, "coverImageTap.Tapped += (_, _) => _ = ToggleFullscreenPlaybackAsync(detail);");
+        StringAssert.Contains(source, "coverImage.GestureRecognizers.Add(coverImageTap);");
+    }
+
+    [TestMethod]
     public void PlaylistQueueAppearsAfterInfoAsAStoryCarousel()
     {
         var source = File.ReadAllText(FindStoryDetailPage());

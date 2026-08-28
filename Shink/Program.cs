@@ -3986,7 +3986,8 @@ app.MapGet("/api/mobile/karakters", async (
     ICharacterTrackingService characterTrackingService,
     IStoryCatalogService storyCatalogService,
     IStoryTrackingService storyTrackingService,
-    IAudioAccessService audioAccessService) =>
+    IAudioAccessService audioAccessService,
+    IWebHostEnvironment environment) =>
 {
     var signedInEmail = GetSignedInEmail(httpContext.User);
     var charactersTask = characterCatalogService.GetPublishedCharactersAsync(httpContext.RequestAborted);
@@ -4017,7 +4018,8 @@ app.MapGet("/api/mobile/karakters", async (
             storyLookup,
             unlockStates,
             index + 1,
-            audioAccessService))
+            audioAccessService,
+            environment))
         .ToArray();
 
     return Results.Ok(new MobileCharactersResponse(
@@ -8067,7 +8069,8 @@ static MobileCharacterCardResponse BuildMobileCharacterCard(
     IReadOnlyDictionary<string, MobileCharacterStoryLinkResponse> storyLookup,
     IReadOnlyDictionary<Guid, bool> unlockStates,
     int displayOrder,
-    IAudioAccessService audioAccessService)
+    IAudioAccessService audioAccessService,
+    IWebHostEnvironment environment)
 {
     var relatedStories = CharacterUnlockEvaluator.GetRelevantStorySlugs(character)
         .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -8134,7 +8137,22 @@ static MobileCharacterCardResponse BuildMobileCharacterCard(
         PreviewAudioClips: previewAudioClips,
         PrimaryStory: primaryStory,
         RelatedStories: relatedStories,
-        CallToActionLabel: callToActionLabel);
+        CallToActionLabel: callToActionLabel,
+        PreviewImageUrl: ResolveMobileCharacterPreviewImageUrl(
+            httpContext,
+            environment,
+            imagePath,
+            character.UpdatedAt),
+        MatchPreviewImageUrl: ResolveMobileCharacterPreviewImageUrl(
+            httpContext,
+            environment,
+            character.ImagePath,
+            character.UpdatedAt),
+        MysteryPreviewImageUrl: ResolveMobileCharacterPreviewImageUrl(
+            httpContext,
+            environment,
+            character.MysteryImagePath,
+            character.UpdatedAt));
 }
 
 static MobileCharacterStoryLinkResponse? ResolveMobileCharacterPrimaryStory(
@@ -8194,6 +8212,45 @@ static string ResolveMobileCharacterImageUrl(
 
     var separator = imageUrl.Contains('?', StringComparison.Ordinal) ? '&' : '?';
     return $"{imageUrl}{separator}v={updatedAt.Value.ToUnixTimeSeconds()}";
+}
+
+static string? ResolveMobileCharacterPreviewImageUrl(
+    HttpContext httpContext,
+    IWebHostEnvironment environment,
+    string? path,
+    DateTimeOffset? updatedAt)
+{
+    if (string.IsNullOrWhiteSpace(path))
+    {
+        return null;
+    }
+
+    var browserPath = StoryItem.RewriteImagePathForBrowser(path.Trim());
+    var requestPath = Uri.TryCreate(browserPath, UriKind.Absolute, out var absoluteUri)
+        ? absoluteUri.AbsolutePath
+        : browserPath.Split('?', '#')[0];
+    if (!requestPath.StartsWith("/branding/characters/", StringComparison.OrdinalIgnoreCase) ||
+        requestPath.StartsWith("/branding/characters/thumbs/", StringComparison.OrdinalIgnoreCase))
+    {
+        return null;
+    }
+
+    var fileName = Path.GetFileNameWithoutExtension(Uri.UnescapeDataString(requestPath));
+    if (string.IsNullOrWhiteSpace(fileName))
+    {
+        return null;
+    }
+
+    var previewPath = $"/branding/characters/thumbs/{Uri.EscapeDataString(fileName)}.webp";
+    var physicalPath = Path.Combine(
+        environment.WebRootPath,
+        "branding",
+        "characters",
+        "thumbs",
+        $"{fileName}.webp");
+    return File.Exists(physicalPath)
+        ? ResolveMobileCharacterImageUrl(httpContext, previewPath, updatedAt)
+        : null;
 }
 
 sealed record ContactApiRequest(string? Name, string? Email, string? Subject, string? Message, string? Website);
@@ -8371,7 +8428,10 @@ sealed record MobileCharacterCardResponse(
     IReadOnlyList<MobileCharacterAudioClipResponse> PreviewAudioClips,
     MobileCharacterStoryLinkResponse? PrimaryStory,
     IReadOnlyList<MobileCharacterStoryLinkResponse> RelatedStories,
-    string CallToActionLabel);
+    string CallToActionLabel,
+    string? PreviewImageUrl,
+    string? MatchPreviewImageUrl,
+    string? MysteryPreviewImageUrl);
 sealed record MobileCharacterAudioClipResponse(
     string Title,
     string StreamSlug,

@@ -96,19 +96,23 @@ public class StoryTrackingSourceTests
     public void MobileStoryPlayerPostsViewAndListenTracking()
     {
         var page = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "StoryDetailPage.cs"));
+        var playbackSession = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "StoryPlaybackSession.cs"));
         var client = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
 
         StringAssert.Contains(page, "TrackStoryViewAsync(detail.Story.Slug, detail.Story.Source)");
-        StringAssert.Contains(page, "FlushPendingListen(\"progress\", force: false)");
-        StringAssert.Contains(page, "FlushPendingListen(\"pause\", force: true)");
-        StringAssert.Contains(page, "FlushPendingListen(\"ended\", force: true, isCompleted: true)");
-        StringAssert.Contains(page, "FlushPendingListen(\"pagehide\", force: true)");
-        StringAssert.Contains(page, "BeginListenTracking(detail, trackingSessionId);");
-        Assert.IsFalse(page.Contains("eventType,\n            \"play\",", StringComparison.Ordinal));
+        StringAssert.Contains(page, "_storyPlaybackSession.PlayAsync(");
+        StringAssert.Contains(page, "_storyPlaybackSession.NotifyPageHidden();");
+        StringAssert.Contains(playbackSession, "FlushPendingListen(\"progress\", force: false)");
+        StringAssert.Contains(playbackSession, "FlushPendingListen(\"pause\", force: true)");
+        StringAssert.Contains(playbackSession, "FlushPendingListen(\"ended\", force: true, isCompleted: true)");
+        StringAssert.Contains(playbackSession, "FlushPendingListen(\"pagehide\", force: true)");
+        StringAssert.Contains(playbackSession, "_lifecycleService.Stopping += OnAppStopping;");
+        Assert.IsFalse(playbackSession.Contains("eventType,\n            \"play\",", StringComparison.Ordinal));
         StringAssert.Contains(page, "StartProgressTimer()");
         StringAssert.Contains(page, "UpdateProgressState()");
         Assert.IsFalse(page.Contains("schink-track://listen?", StringComparison.Ordinal));
         Assert.IsFalse(page.Contains("visibilityhidden", StringComparison.Ordinal));
+        Assert.IsFalse(page.Contains("private void FlushPendingListen", StringComparison.Ordinal));
         StringAssert.Contains(client, "TrackStoryViewAsync(string slug, string source");
         StringAssert.Contains(client, "TrackStoryListenAsync(");
         StringAssert.Contains(client, "\"/api/stories/{Uri.EscapeDataString(slug)}/view\"");

@@ -56,6 +56,23 @@ public sealed class MobileResponsiveLayoutSourceTests
     }
 
     [TestMethod]
+    public void MobileMenuUsesCompactCloseControlAndTabletGrid()
+    {
+        var menuSheet = File.ReadAllText(GetRepoPath(
+            "Shink.Mobile",
+            "Pages",
+            "MobileMenuSheet.cs"));
+
+        StringAssert.Contains(menuSheet, "private const double TabletMenuMaximumWidth = 720;");
+        StringAssert.Contains(menuSheet, "private const string CloseIconGlyph = \"\\uf00d\";");
+        StringAssert.Contains(menuSheet, "AutomationId = \"mobile-menu-close\"");
+        StringAssert.Contains(menuSheet, "SemanticProperties.SetDescription(button, \"Maak menu toe\")");
+        StringAssert.Contains(menuSheet, "var columnCount = useTabletLayout ? 2 : 1;");
+        StringAssert.Contains(menuSheet, "cardHost.VerticalOptions = LayoutOptions.Center;");
+        Assert.IsFalse(menuSheet.Contains("BuildActionButton(\"Kanselleer\"", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public void MobileLuisterCarouselsMatchWebArtworkAspectRatios()
     {
         var mobileLuister = File.ReadAllText(GetRepoPath(
@@ -74,7 +91,7 @@ public sealed class MobileResponsiveLayoutSourceTests
         StringAssert.Contains(mobileLuister, "private const double PlaylistCarouselImageAspectRatio = 16d / 9d;");
         StringAssert.Contains(mobileLuister, "return width / StoryCarouselImageAspectRatio;");
         StringAssert.Contains(mobileLuister, "var artworkHeight = cardWidth / PlaylistCarouselImageAspectRatio;");
-        StringAssert.Contains(mobileLuister, "var coverHeight = cardWidth / StoryCarouselImageAspectRatio;");
+        StringAssert.Contains(mobileLuister, "var coverHeight = GetStoryCarouselCoverHeight();");
     }
 
     private static string GetRepoPath(params string[] segments)

@@ -47,6 +47,7 @@ public partial class AppShell : Shell
         _isSignedInRendered = null;
         RenderShellFromSessionState();
         _ = _sessionState.HydrateSensitiveCacheAsync();
+        _ = _apiClient.MaintainImageCacheAsync();
     }
 
     protected override void OnAppearing()

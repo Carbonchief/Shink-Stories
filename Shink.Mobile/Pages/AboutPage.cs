@@ -7,7 +7,7 @@ public sealed class AboutPage : ContentPage
     private readonly MobileApiClient _apiClient;
     private readonly VerticalStackLayout _content;
 
-    public AboutPage(MobileApiClient apiClient)
+    public AboutPage(MobileApiClient apiClient, StoryPlaybackSession storyPlaybackSession)
     {
         _apiClient = apiClient;
         Title = "Meer oor ons";
@@ -22,7 +22,7 @@ public sealed class AboutPage : ContentPage
         MobileResponsiveLayout.ApplyCenteredContent(_content, Width, 980);
         SizeChanged += (_, _) => MobileResponsiveLayout.ApplyCenteredContent(_content, Width, 980);
 
-        Content = new ScrollView { Content = _content };
+        Content = PersistentPlaybackHost.Wrap(new ScrollView { Content = _content }, storyPlaybackSession);
     }
 
     protected override async void OnAppearing()
@@ -62,7 +62,13 @@ public sealed class AboutPage : ContentPage
                         Spacing = 12,
                         Children =
                         {
-                            new Image { Source = _apiClient.BuildImageUrl(block.ImageUrl), HeightRequest = 220, Aspect = Aspect.AspectFit },
+                            new ProgressiveCachedImage(
+                                _apiClient,
+                                new ProgressiveImageRequest(block.ImageUrl, FallbackFile: "schink_background.jpeg"))
+                            {
+                                HeightRequest = 220,
+                                Aspect = Aspect.AspectFit
+                            },
                             new Label
                             {
                                 Text = block.Title,

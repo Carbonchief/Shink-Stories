@@ -62,6 +62,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<IMobileStoreBillingService, MobileStoreBillingService>();
         builder.Services.AddSingleton<IOfflineStoryDownloadService, OfflineStoryDownloadService>();
         builder.Services.AddSingleton<IAudioPlaybackService, AudioPlaybackService>();
+        builder.Services.AddSingleton<StoryPlaybackSession>();
         builder.Services.AddSingleton<IOrientationService, OrientationService>();
         builder.Services.AddSingleton<AppShell>();
         builder.Services.AddTransient<HomePage>();
@@ -188,7 +189,7 @@ public static class MauiProgram
                 recyclerView.SetItemAnimator(null);
                 recyclerView.SetItemViewCacheSize(collectionView.AutomationId switch
                 {
-                    "luister-carousel" => 6,
+                    "luister-carousel" => 2,
                     "characters-grid" => 12,
                     _ => 8
                 });
@@ -198,7 +199,11 @@ public static class MauiProgram
                     recyclerView.NestedScrollingEnabled = false;
                     if (recyclerView.GetLayoutManager() is AndroidX.RecyclerView.Widget.LinearLayoutManager layoutManager)
                     {
-                        layoutManager.InitialPrefetchItemCount = 4;
+                        // Keep only the row shell ahead of the vertical viewport.
+                        // Horizontal artwork is bound when its native cell is
+                        // attached, then fades in from the disk cache.
+                        layoutManager.ItemPrefetchEnabled = false;
+                        layoutManager.InitialPrefetchItemCount = 0;
                     }
                 }
                 else if (collectionView.AutomationId == "characters-grid")

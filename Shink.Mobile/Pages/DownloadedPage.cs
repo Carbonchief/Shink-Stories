@@ -20,6 +20,7 @@ public sealed class DownloadedPage : ContentPage
         MobileApiClient apiClient,
         IOfflineStoryDownloadService offlineDownloadService,
         PlaylistPlaybackState playlistPlaybackState,
+        StoryPlaybackSession storyPlaybackSession,
         PlayerTransitionBackdropState transitionBackdropState)
     {
         _apiClient = apiClient;
@@ -41,11 +42,12 @@ public sealed class DownloadedPage : ContentPage
         MobileResponsiveLayout.ApplyCenteredContent(_content, Width, 820);
         SizeChanged += (_, _) => MobileResponsiveLayout.ApplyCenteredContent(_content, Width, 820);
 
-        Content = new ScrollView
+        var scrollView = new ScrollView
         {
             BackgroundColor = PageBackgroundColor,
             Content = _content
         };
+        Content = PersistentPlaybackHost.Wrap(scrollView, storyPlaybackSession);
     }
 
     protected override async void OnAppearing()
@@ -264,10 +266,10 @@ public sealed class DownloadedPage : ContentPage
                     StrokeShape = new RoundRectangle { CornerRadius = 12 },
                     WidthRequest = 78,
                     HeightRequest = 78,
-                    Content = new Image
+                    Content = new ProgressiveCachedImage(
+                        _apiClient,
+                        PageHelpers.BuildStoryImageRequest(story, _apiClient, "schink_background.jpeg"))
                     {
-                        Source = _apiClient.BuildCachedImageSource(
-                            PageHelpers.ResolveStoryCardImageSource(story, _apiClient)),
                         Aspect = Aspect.AspectFill,
                         WidthRequest = 78,
                         HeightRequest = 78

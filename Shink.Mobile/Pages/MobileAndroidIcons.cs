@@ -15,8 +15,10 @@ internal enum MobileAndroidIcon
 internal static class MobileAndroidChromePalette
 {
     // Keep the page visible through the shared bottom bar on both platforms.
-    // Android stays compositor-friendly because this does not restore live blur.
+    // The static tint restores the dark translucent surface without asking iOS
+    // or Android to recalculate a live backdrop blur while the feed is moving.
     public static readonly Color BarBackground = Colors.Transparent;
+    public static readonly Color BarBackdropTint = Color.FromArgb("#CC12343B");
     public static readonly Color PrimaryIcon = Colors.White;
     public static readonly Color SecondaryIcon = Colors.White;
     public static readonly Color SelectedBackground = Colors.Transparent;

@@ -54,12 +54,13 @@ public class MobileAbsoluteUrlSourceTests
         var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
 
-        StringAssert.Contains(helper, "ResolveStoryCardImageSource(story, apiClient)");
+        StringAssert.Contains(helper, "BuildStoryImageRequest(story, apiClient");
         StringAssert.Contains(helper, "IsLegacyWebsiteAsset(story.ThumbnailUrl)");
         StringAssert.Contains(helper, "return apiClient.BuildImageUrl(story.ImageUrl);");
         StringAssert.Contains(helper, "normalized.StartsWith(\"/stories/\", StringComparison.OrdinalIgnoreCase)");
         StringAssert.Contains(luisterPage, "playlist.ArtworkUrl");
-        StringAssert.Contains(luisterPage, "BuildLuisterImageSource(playlist.ArtworkUrl, \"schink_background.jpeg\")");
+        StringAssert.Contains(luisterPage, "new ProgressiveImageRequest(");
+        StringAssert.Contains(luisterPage, "playlist.ArtworkUrl,");
         Assert.IsFalse(luisterPage.Contains("firstStory?.ImageUrl", StringComparison.Ordinal));
         Assert.IsFalse(luisterPage.Contains("firstStory?.ThumbnailUrl", StringComparison.Ordinal));
         Assert.IsFalse(luisterPage.Contains("IsBundledPlaylistFallback", StringComparison.Ordinal));
@@ -371,6 +372,34 @@ public class MobileAbsoluteUrlSourceTests
     }
 
     [TestMethod]
+    public void MobileCharacterUnlockNotificationRefreshesAndOpensExactProfile()
+    {
+        var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
+        var karaktersPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KaraktersPage.cs"));
+        var notificationStart = luisterPage.IndexOf("private async Task OpenNotificationAsync(", StringComparison.Ordinal);
+        var notificationEnd = luisterPage.IndexOf("private async Task TryMarkAllNotificationsReadAsync()", StringComparison.Ordinal);
+
+        Assert.IsGreaterThanOrEqualTo(0, notificationStart);
+        Assert.IsGreaterThan(notificationStart, notificationEnd);
+        var notificationSource = luisterPage[notificationStart..notificationEnd];
+        StringAssert.Contains(notificationSource, "case MobileNotificationNavigationKind.Character:");
+        StringAssert.Contains(notificationSource, "var parameters = new ShellNavigationQueryParameters");
+        StringAssert.Contains(notificationSource, "[\"karakter\"] = target.Value");
+        StringAssert.Contains(notificationSource, "Shell.Current.GoToAsync(\"//Karakters\", animate: false, parameters)");
+        Assert.IsFalse(notificationSource.Contains("characterRoute +=", StringComparison.Ordinal));
+
+        StringAssert.Contains(karaktersPage, "_ = ResolvePendingCharacterAsync();");
+        StringAssert.Contains(karaktersPage, "await ResolvePendingCharacterAsync();");
+        StringAssert.Contains(karaktersPage, "private async Task ResolvePendingCharacterAsync()");
+        StringAssert.Contains(karaktersPage, "await LoadAsync(forceRefresh: true);");
+        StringAssert.Contains(karaktersPage, "private async Task<bool> TryOpenPendingCharacterAsync()");
+        StringAssert.Contains(karaktersPage, "if (character is null || !character.IsUnlocked)");
+        var lockedGuard = karaktersPage.IndexOf("if (character is null || !character.IsUnlocked)", StringComparison.Ordinal);
+        var clearPending = karaktersPage.IndexOf("_pendingCharacterSlug = null;", lockedGuard, StringComparison.Ordinal);
+        Assert.IsTrue(clearPending > lockedGuard, "The requested slug must remain pending until the refreshed character is confirmed unlocked.");
+    }
+
+    [TestMethod]
     public void MobileLuisterStoryCardsUseNativeArtworkAndFavoriteHeartOverlay()
     {
         var helper = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "PageHelpers.cs"));
@@ -430,6 +459,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "FontFamily = \"Arial Rounded MT Bold\"");
         StringAssert.Contains(luisterPage, "FontSize = 76");
         StringAssert.Contains(luisterPage, "LineHeight = 0.82");
+        StringAssert.Contains(luisterPage, "MinimumWidthRequest = 112");
         StringAssert.Contains(luisterPage, "TranslationY = IsAndroid ? -13 : 0");
         StringAssert.Contains(luisterPage, "HorizontalOptions = LayoutOptions.Start");
         StringAssert.Contains(luisterPage, "VerticalOptions = LayoutOptions.Start");
@@ -562,6 +592,7 @@ public class MobileAbsoluteUrlSourceTests
         var models = File.ReadAllText(GetRepoPath("Shink.Mobile", "Models", "MobileApiModels.cs"));
         var storyDetail = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "StoryDetailPage.cs"));
         var audioService = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "AudioPlaybackService.cs"));
+        var playbackSession = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "StoryPlaybackSession.cs"));
         var mauiProgram = File.ReadAllText(GetRepoPath("Shink.Mobile", "MauiProgram.cs"));
 
         StringAssert.Contains(program, "IStoryMediaStorageService storyMediaStorageService");
@@ -570,9 +601,10 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(program, "DurationSeconds: story.DurationSeconds");
         StringAssert.Contains(program, "decimal? DurationSeconds");
         StringAssert.Contains(models, "decimal? DurationSeconds");
-        StringAssert.Contains(storyDetail, "IAudioPlaybackService _audioPlaybackService");
-        StringAssert.Contains(storyDetail, "await _audioPlaybackService.PlayAsync(");
-        StringAssert.Contains(storyDetail, "new AudioPlaybackMetadata(");
+        StringAssert.Contains(storyDetail, "StoryPlaybackSession _storyPlaybackSession");
+        StringAssert.Contains(storyDetail, "await _storyPlaybackSession.PlayAsync(");
+        StringAssert.Contains(playbackSession, "await _audioPlaybackService.PlayAsync(");
+        StringAssert.Contains(playbackSession, "new AudioPlaybackMetadata(");
         StringAssert.Contains(storyDetail, "Shell.SetTabBarIsVisible(this, false)");
         StringAssert.Contains(storyDetail, "BuildCoverArt(detail)");
         StringAssert.Contains(storyDetail, "HeightRequest = CoverArtHeight");
@@ -589,8 +621,8 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(storyDetail, "if (detail.Story.DurationSeconds is > 0)");
         StringAssert.Contains(storyDetail, "_previewStory is { DurationSeconds: > 0 } previewStory");
         StringAssert.Contains(storyDetail, "var playlistStory = _playlistStories.FirstOrDefault");
-        StringAssert.Contains(storyDetail, "var duration = _audioPlaybackService.Duration ?? _activeCatalogDuration;");
-        StringAssert.Contains(storyDetail, "var durationSeconds = NormalizeTrackingSeconds(duration?.TotalSeconds);");
+        StringAssert.Contains(storyDetail, "_storyPlaybackSession.Duration ?? _activeCatalogDuration");
+        StringAssert.Contains(playbackSession, "var durationSeconds = ResolveDurationSeconds(current);");
         StringAssert.Contains(storyDetail, "EnsureCatalogDurationVisibleAsync(detail);");
         StringAssert.Contains(storyDetail, "private void EnsureCatalogDurationVisibleAsync(MobileStoryDetailResponse detail)");
         StringAssert.Contains(storyDetail, "var audioUrl = _apiClient.BuildAbsoluteUrl(detail.AudioUrl);");
@@ -628,6 +660,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(audioService, "AVFoundation.AVPlayer");
         StringAssert.Contains(mauiProgram, "ConfigureEntryChrome();");
         StringAssert.Contains(mauiProgram, "builder.Services.AddSingleton<IAudioPlaybackService, AudioPlaybackService>();");
+        StringAssert.Contains(mauiProgram, "builder.Services.AddSingleton<StoryPlaybackSession>();");
     }
 
     [TestMethod]
@@ -665,7 +698,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(storyDetail, "BuildStoryInfoTagBlock(\"Waardes\", detail.ValueTags)");
         StringAssert.Contains(storyDetail, "BuildStoryInfoListBlock(\"Gesels 'n bietjie\", detail.ConversationQuestions)");
         StringAssert.Contains(storyDetail, "BuildStoryCharacterBlock(detail)");
-        StringAssert.Contains(storyDetail, "private static View BuildStoryCharacterTile(MobileStoryCharacter character)");
+        StringAssert.Contains(storyDetail, "private View BuildStoryCharacterTile(MobileStoryCharacter character)");
         StringAssert.Contains(storyDetail, "async () => await ShowStoryTestModalAsync(detail),");
         StringAssert.Contains(storyDetail, "isPrimary: true");
         StringAssert.Contains(storyDetail, "private async Task ShowStoryTestModalAsync(MobileStoryDetailResponse detail)");
@@ -755,11 +788,12 @@ public class MobileAbsoluteUrlSourceTests
     {
         var client = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
         var storyDetail = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "StoryDetailPage.cs"));
+        var playbackSession = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "StoryPlaybackSession.cs"));
         var offlineService = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "OfflineStoryDownloadService.cs"));
 
         StringAssert.Contains(storyDetail, "var offlinePlaybackUrl = await _offlineDownloadService.ResolvePlayableAudioAsync(detail);");
-        StringAssert.Contains(storyDetail, "await PlayPreparedAudioAsync(offlinePlaybackUrl, detail, ResolveTrackingSessionId(detail), playButton);");
-        StringAssert.Contains(storyDetail, "_apiClient.TrackStoryListenAsync(");
+        StringAssert.Contains(storyDetail, "await PlayPreparedAudioAsync(offlinePlaybackUrl, detail, playButton);");
+        StringAssert.Contains(playbackSession, "_apiClient.TrackStoryListenAsync(");
         StringAssert.Contains(offlineService, "FileSystem.AppDataDirectory");
         StringAssert.Contains(client, "private readonly SemaphoreSlim _offlineStoryListenQueueLock = new(1, 1);");
         StringAssert.Contains(client, "await EnqueueStoryListenAsync(");
@@ -834,6 +868,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(program, "PreviewAudioClips: previewAudioClips");
         StringAssert.Contains(program, "PrimaryStory: primaryStory");
         StringAssert.Contains(program, "CallToActionLabel: callToActionLabel");
+        StringAssert.Contains(program, "PreviewImageUrl: ResolveMobileCharacterPreviewImageUrl(");
 
         StringAssert.Contains(models, "public sealed record MobileCharactersResponse(");
         StringAssert.Contains(models, "public sealed record MobileCharacterCard(");
@@ -856,8 +891,8 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(karaktersPage, "ItemTemplate = new DataTemplate(BuildCharacterItemView)");
         StringAssert.Contains(karaktersPage, "BuildHero(response)");
         StringAssert.Contains(karaktersPage, "new ReusableCharacterCardView(this)");
-        StringAssert.Contains(karaktersPage, "_owner.BuildCharacterImageSource(character.ImageUrl)");
-        StringAssert.Contains(karaktersPage, "_apiClient.BuildCachedImageSource(url, \"schink_background.jpeg\")");
+        StringAssert.Contains(karaktersPage, "_image.SetImage(");
+        StringAssert.Contains(karaktersPage, "character.PreviewImageUrl,");
         StringAssert.Contains(karaktersPage, "StartImageWarmup(response)");
         StringAssert.Contains(karaktersPage, "await _apiClient.CacheImagesAsync(");
         StringAssert.Contains(karaktersPage, "maxImages: 64");
@@ -1008,7 +1043,8 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(storyDetail, "Shell.Current.GoToAsync(\"..\", animate: false)");
         StringAssert.Contains(storyDetail, "CancelActiveLoad();");
         StringAssert.Contains(storyDetail, "UnsubscribePlaybackEvents();");
-        StringAssert.Contains(storyDetail, "TryStopAudioPlayback();");
+        StringAssert.Contains(storyDetail, "_storyPlaybackSession.NotifyPageHidden();");
+        Assert.IsFalse(storyDetail.Contains("TryStopAudioPlayback();", StringComparison.Ordinal));
         StringAssert.Contains(storyDetail, "if (cancellationToken.IsCancellationRequested || !_isPageActive)");
         StringAssert.Contains(storyDetail, "if (!_isPageActive)");
         StringAssert.Contains(storyDetail, "_isClosing");
@@ -1546,6 +1582,7 @@ public class MobileAbsoluteUrlSourceTests
     {
         var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
         var storyDetail = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "StoryDetailPage.cs"));
+        var playbackSession = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "StoryPlaybackSession.cs"));
         var mauiProgram = File.ReadAllText(GetRepoPath("Shink.Mobile", "MauiProgram.cs"));
         var continueListeningState = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "ContinueListeningState.cs"));
 
@@ -1558,7 +1595,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(continueListeningState, "NormalizeSeconds(durationSeconds) ?? story.DurationSeconds ?? preservedDurationSeconds");
         StringAssert.Contains(storyDetail, "ContinueListeningState continueListeningState");
         StringAssert.Contains(storyDetail, "SaveContinueListening(detail);");
-        StringAssert.Contains(storyDetail, "_continueListeningState.UpdateProgress(");
+        StringAssert.Contains(playbackSession, "_continueListeningState.UpdateProgress(");
         StringAssert.Contains(luisterPage, "BuildContinueListeningCard()");
         StringAssert.Contains(luisterPage, "\"Gaan voort met luister\"");
         StringAssert.Contains(luisterPage, "Text = \"×\"");
@@ -1568,6 +1605,14 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "_continueListeningState.Clear();");
         StringAssert.Contains(luisterPage, "ResolveContinueListeningStory(item)");
         StringAssert.Contains(luisterPage, "await OpenContinueListeningAsync(item)");
+        StringAssert.Contains(luisterPage, "AutomationId = \"continue-listening-play\"");
+        StringAssert.Contains(luisterPage, "playTap.Tapped += async (_, _) => await StartContinueListeningAsync(item);");
+        Assert.DoesNotContain("playTap.Tapped += async (_, _) => await OpenContinueListeningAsync(item);", luisterPage, StringComparison.Ordinal);
+        StringAssert.Contains(luisterPage, "private async Task StartContinueListeningAsync(ContinueListeningItem item)");
+        StringAssert.Contains(luisterPage, "await _apiClient.GetStoryAsync(story.Slug, story.Source)");
+        StringAssert.Contains(luisterPage, "await _apiClient.PrepareAudioPlaybackSourceAsync(");
+        StringAssert.Contains(luisterPage, "await _storyPlaybackSession.PlayAsync(");
+        StringAssert.Contains(luisterPage, "originPlaylist: playlist");
         StringAssert.Contains(luisterPage, "MergeContinueListeningMetadata(resolvedStory.Value.Story, item)");
         StringAssert.Contains(luisterPage, "DurationSeconds = story.DurationSeconds is > 0 ? story.DurationSeconds : item.DurationSeconds");
         StringAssert.Contains(luisterPage, "nextItems.Add(LuisterFeedItem.ContinueListening());");
@@ -1587,7 +1632,8 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "private void ReplaceFeedItems(IReadOnlyList<LuisterFeedItem> nextItems)");
         StringAssert.Contains(luisterPage, "_feedView!.ItemsSource = nextItems.ToArray();");
         StringAssert.Contains(luisterPage, "MainThread.BeginInvokeOnMainThread(RenderFloatingTopBar);");
-        StringAssert.Contains(luisterPage, "private ImageSource BuildLuisterImageSource(string? url, string? fallbackFile = null)");
+        StringAssert.Contains(luisterPage, "PageHelpers.BuildStoryImageRequest(");
+        Assert.IsFalse(luisterPage.Contains("private ImageSource BuildLuisterImageSource", StringComparison.Ordinal));
         StringAssert.Contains(luisterPage, "private static Shadow BuildScrollContentShadow(Brush brush, Point offset, float radius, float opacity)");
         StringAssert.Contains(luisterPage, "private static IShape? BuildArtworkShape(double cornerRadius)");
         StringAssert.Contains(luisterPage, "new RoundRectangle { CornerRadius = cornerRadius };");

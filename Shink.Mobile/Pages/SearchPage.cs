@@ -1,6 +1,4 @@
 using System.Collections.ObjectModel;
-using System.Collections.Specialized;
-using System.ComponentModel;
 using System.Globalization;
 using System.Text;
 using Shink.Mobile.Models;
@@ -20,6 +18,7 @@ public sealed class SearchPage : ContentPage
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
     private readonly PlaylistPlaybackState _playlistPlaybackState;
+    private readonly StoryPlaybackSession _storyPlaybackSession;
     private readonly MobileAnalyticsService _analytics;
     private readonly NavigationGate _navigationGate = new();
     private readonly Image _backgroundImage;
@@ -48,11 +47,13 @@ public sealed class SearchPage : ContentPage
         MobileApiClient apiClient,
         SessionState sessionState,
         PlaylistPlaybackState playlistPlaybackState,
+        StoryPlaybackSession storyPlaybackSession,
         MobileAnalyticsService analytics)
     {
         _apiClient = apiClient;
         _sessionState = sessionState;
         _playlistPlaybackState = playlistPlaybackState;
+        _storyPlaybackSession = storyPlaybackSession;
         _analytics = analytics;
 
         Title = "Soek";
@@ -132,7 +133,7 @@ public sealed class SearchPage : ContentPage
             ItemTemplate = new DataTemplate(BuildResultContainer),
             Footer = new BoxView
             {
-                HeightRequest = 170,
+                HeightRequest = 250,
                 Color = Colors.Transparent
             },
             HorizontalScrollBarVisibility = ScrollBarVisibility.Never,
@@ -224,7 +225,12 @@ public sealed class SearchPage : ContentPage
                 },
                 searchContent,
                 topBarOverlay,
-                bottomBarOverlay
+                bottomBarOverlay,
+                new PersistentNowPlayingBar(_storyPlaybackSession)
+                {
+                    Margin = new Thickness(10, 0, 10, 124),
+                    ZIndex = 120
+                }
             }
         };
 
@@ -631,10 +637,10 @@ public sealed class SearchPage : ContentPage
             HeightRequest = 124,
             StrokeThickness = 0,
             StrokeShape = new RoundRectangle { CornerRadius = 14 },
-            Content = new Image
+            Content = new ProgressiveCachedImage(
+                _apiClient,
+                PageHelpers.BuildStoryImageRequest(story, _apiClient, "schink_background.jpeg"))
             {
-                Source = _apiClient.BuildCachedImageSource(
-                    string.IsNullOrWhiteSpace(story.ThumbnailUrl) ? story.ImageUrl : story.ThumbnailUrl),
                 Aspect = Aspect.AspectFill,
                 WidthRequest = 94,
                 HeightRequest = 124
@@ -958,15 +964,23 @@ public sealed class SearchPage : ContentPage
     {
         public void ReplaceWith(IEnumerable<StorySearchResult> results)
         {
-            Items.Clear();
-            foreach (var result in results)
+            var replacement = results.ToArray();
+            var sharedCount = Math.Min(Count, replacement.Length);
+
+            for (var index = 0; index < sharedCount; index++)
             {
-                Items.Add(result);
+                SetItem(index, replacement[index]);
             }
 
-            OnPropertyChanged(new PropertyChangedEventArgs(nameof(Count)));
-            OnPropertyChanged(new PropertyChangedEventArgs("Item[]"));
-            OnCollectionChanged(new NotifyCollectionChangedEventArgs(NotifyCollectionChangedAction.Reset));
+            while (Count > replacement.Length)
+            {
+                RemoveAt(Count - 1);
+            }
+
+            for (var index = sharedCount; index < replacement.Length; index++)
+            {
+                Add(replacement[index]);
+            }
         }
     }
 }

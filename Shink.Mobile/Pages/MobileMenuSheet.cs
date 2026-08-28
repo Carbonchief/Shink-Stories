@@ -4,6 +4,9 @@ namespace Shink.Mobile.Pages;
 
 internal static class MobileMenuSheet
 {
+    private const double TabletMenuMaximumWidth = 720;
+    private const string CloseIconGlyph = "\uf00d";
+
     public static async Task<string?> ShowAsync(Page hostPage, string title, params string[] actions)
     {
         if (actions.Length == 0)
@@ -50,17 +53,72 @@ internal static class MobileMenuSheet
         Func<string?, Task> onSelection,
         params string[] actions)
     {
-        var stack = new VerticalStackLayout
+        var actionGrid = new Grid
         {
-            Spacing = 11
+            RowSpacing = 11,
+            ColumnSpacing = 12
         };
 
-        foreach (var action in actions)
+        void ArrangeActions(bool useTabletLayout)
         {
-            stack.Children.Add(BuildActionButton(action, () => onSelection(action)));
+            actionGrid.Children.Clear();
+            actionGrid.RowDefinitions.Clear();
+            actionGrid.ColumnDefinitions.Clear();
+
+            var columnCount = useTabletLayout ? 2 : 1;
+            for (var column = 0; column < columnCount; column++)
+            {
+                actionGrid.ColumnDefinitions.Add(new ColumnDefinition(GridLength.Star));
+            }
+
+            for (var index = 0; index < actions.Length; index++)
+            {
+                var action = actions[index];
+                var row = index / columnCount;
+                while (actionGrid.RowDefinitions.Count <= row)
+                {
+                    actionGrid.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+                }
+
+                var button = BuildActionButton(action, () => onSelection(action));
+                actionGrid.Children.Add(button);
+                Grid.SetRow(button, row);
+                Grid.SetColumn(button, index % columnCount);
+            }
         }
 
-        var cancelButton = BuildActionButton("Kanselleer", () => onSelection(null), isCancel: true);
+        var closeButton = BuildCloseButton(() => onSelection(null));
+        var heading = new Grid
+        {
+            Children =
+            {
+                new VerticalStackLayout
+                {
+                    Spacing = 8,
+                    Children =
+                    {
+                        new Image
+                        {
+                            Source = "oortjies_01.png",
+                            HeightRequest = 70,
+                            Aspect = Aspect.AspectFit,
+                            HorizontalOptions = LayoutOptions.Center,
+                            Margin = new Thickness(0, -4, 0, -2)
+                        },
+                        new Label
+                        {
+                            Text = title,
+                            FontSize = 26,
+                            FontAttributes = FontAttributes.Bold,
+                            TextColor = Color.FromArgb("#27313A"),
+                            HorizontalTextAlignment = TextAlignment.Center
+                        }
+                    }
+                },
+                closeButton
+            }
+        };
+
         var card = new Border
         {
             BackgroundColor = Color.FromArgb("#FFF7E8"),
@@ -84,24 +142,8 @@ internal static class MobileMenuSheet
                     Spacing = 14,
                     Children =
                     {
-                        new Image
-                        {
-                            Source = "oortjies_01.png",
-                            HeightRequest = 74,
-                            Aspect = Aspect.AspectFit,
-                            HorizontalOptions = LayoutOptions.Center,
-                            Margin = new Thickness(0, -4, 0, -2)
-                        },
-                        new Label
-                        {
-                            Text = title,
-                            FontSize = 26,
-                            FontAttributes = FontAttributes.Bold,
-                            TextColor = Color.FromArgb("#27313A"),
-                            HorizontalTextAlignment = TextAlignment.Center
-                        },
-                        stack,
-                        cancelButton
+                        heading,
+                        actionGrid
                     }
                 }
             }
@@ -112,6 +154,15 @@ internal static class MobileMenuSheet
             Color = Colors.Transparent
         };
 
+        var cardHost = new Grid
+        {
+            VerticalOptions = LayoutOptions.End,
+            Children =
+            {
+                card
+            }
+        };
+
         var overlay = new Grid
         {
             BackgroundColor = Color.FromRgba(4, 47, 50, 0.42),
@@ -119,16 +170,42 @@ internal static class MobileMenuSheet
             Children =
             {
                 dismissLayer,
-                new Grid
-                {
-                    VerticalOptions = LayoutOptions.End,
-                    Children =
-                    {
-                        card
-                    }
-                }
+                cardHost
             }
         };
+
+        var usingTabletLayout = false;
+        void ApplyResponsiveLayout(double width)
+        {
+            var resolvedWidth = MobileResponsiveLayout.ResolveWidth(width);
+            var useTabletLayout = DeviceInfo.Current.Idiom == DeviceIdiom.Tablet ||
+                                  MobileResponsiveLayout.IsWide(resolvedWidth);
+
+            if (useTabletLayout != usingTabletLayout || actionGrid.Children.Count == 0)
+            {
+                usingTabletLayout = useTabletLayout;
+                ArrangeActions(useTabletLayout);
+            }
+
+            if (useTabletLayout)
+            {
+                card.WidthRequest = Math.Min(TabletMenuMaximumWidth, Math.Max(320, resolvedWidth - 64));
+                card.MaximumWidthRequest = TabletMenuMaximumWidth;
+                card.HorizontalOptions = LayoutOptions.Center;
+                card.Margin = new Thickness(0);
+                cardHost.VerticalOptions = LayoutOptions.Center;
+                return;
+            }
+
+            card.WidthRequest = -1;
+            card.MaximumWidthRequest = -1;
+            card.HorizontalOptions = LayoutOptions.Fill;
+            card.Margin = new Thickness(20, 0, 20, 22);
+            cardHost.VerticalOptions = LayoutOptions.End;
+        }
+
+        ApplyResponsiveLayout(DeviceDisplay.MainDisplayInfo.Width / DeviceDisplay.MainDisplayInfo.Density);
+        overlay.SizeChanged += (_, _) => ApplyResponsiveLayout(overlay.Width);
 
         var dismissTap = new TapGestureRecognizer();
         dismissTap.Tapped += async (_, _) => await onSelection(null);
@@ -136,12 +213,42 @@ internal static class MobileMenuSheet
         return overlay;
     }
 
-    private static Border BuildActionButton(string text, Func<Task> onTap, bool isCancel = false)
+    private static Border BuildCloseButton(Func<Task> onTap)
     {
         var button = new Border
         {
-            BackgroundColor = isCancel ? Color.FromArgb("#F4E9D1") : Color.FromArgb("#383A48"),
-            Stroke = isCancel ? Color.FromArgb("#E8DEC8") : Color.FromArgb("#30323F"),
+            AutomationId = "mobile-menu-close",
+            BackgroundColor = Color.FromArgb("#F4E9D1"),
+            Stroke = Color.FromArgb("#E8DEC8"),
+            StrokeThickness = 1,
+            StrokeShape = new RoundRectangle { CornerRadius = 21 },
+            WidthRequest = 42,
+            HeightRequest = 42,
+            Padding = 0,
+            HorizontalOptions = LayoutOptions.End,
+            VerticalOptions = LayoutOptions.Start,
+            Content = new Label
+            {
+                Text = CloseIconGlyph,
+                FontFamily = "FontAwesomeSolid",
+                FontSize = 18,
+                TextColor = Color.FromArgb("#27313A"),
+                HorizontalTextAlignment = TextAlignment.Center,
+                VerticalTextAlignment = TextAlignment.Center,
+                InputTransparent = true
+            }
+        };
+        SemanticProperties.SetDescription(button, "Maak menu toe");
+        AttachTapHandler(button, onTap);
+        return button;
+    }
+
+    private static Border BuildActionButton(string text, Func<Task> onTap)
+    {
+        var button = new Border
+        {
+            BackgroundColor = Color.FromArgb("#383A48"),
+            Stroke = Color.FromArgb("#30323F"),
             StrokeThickness = 1,
             StrokeShape = new RoundRectangle { CornerRadius = 18 },
             HeightRequest = 58,
@@ -151,12 +258,18 @@ internal static class MobileMenuSheet
                 Text = text,
                 FontSize = 20,
                 FontAttributes = FontAttributes.Bold,
-                TextColor = isCancel ? Color.FromArgb("#27313A") : Colors.White,
+                TextColor = Colors.White,
                 HorizontalTextAlignment = TextAlignment.Center,
                 VerticalTextAlignment = TextAlignment.Center,
                 InputTransparent = true
             }
         };
+        AttachTapHandler(button, onTap);
+        return button;
+    }
+
+    private static void AttachTapHandler(Border button, Func<Task> onTap)
+    {
         var tap = new TapGestureRecognizer();
         tap.Tapped += async (_, _) =>
         {
@@ -174,6 +287,5 @@ internal static class MobileMenuSheet
             }
         };
         button.GestureRecognizers.Add(tap);
-        return button;
     }
 }

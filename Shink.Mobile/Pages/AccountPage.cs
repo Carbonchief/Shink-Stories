@@ -45,7 +45,10 @@ public sealed class AccountPage : ContentPage
     private bool _isAuthRequestInFlight;
     private bool _isSessionStateSubscribed;
 
-    public AccountPage(MobileApiClient apiClient, SessionState sessionState)
+    public AccountPage(
+        MobileApiClient apiClient,
+        SessionState sessionState,
+        StoryPlaybackSession storyPlaybackSession)
     {
         _apiClient = apiClient;
         _sessionState = sessionState;
@@ -73,7 +76,7 @@ public sealed class AccountPage : ContentPage
         };
         ApplySessionState();
 
-        Content = new Grid
+        var pageContent = new Grid
         {
             SafeAreaEdges = SafeAreaEdges.None,
             Children =
@@ -106,6 +109,7 @@ public sealed class AccountPage : ContentPage
                 }
             }
         };
+        Content = PersistentPlaybackHost.Wrap(pageContent, storyPlaybackSession, edgeToEdge: true);
 
     }
 

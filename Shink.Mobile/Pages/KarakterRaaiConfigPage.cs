@@ -1,4 +1,5 @@
 using Shink.Mobile.Games;
+using Shink.Mobile.Services;
 
 namespace Shink.Mobile.Pages;
 
@@ -15,6 +16,7 @@ public sealed class KarakterRaaiConfigPage : ContentPage
     private static readonly Color UnselectedStrokeColor = Color.FromArgb("#E2E1D8");
     private const string PoppinsFontFamily = "Poppins";
     private const string PoppinsBoldFontFamily = "PoppinsBold";
+    private const double CompactLayoutHeight = 700;
 
     private readonly IReadOnlyList<CharacterGuessDifficultyOption> _options =
         CharacterGuessDifficultyCatalog.Options;
@@ -22,7 +24,7 @@ public sealed class KarakterRaaiConfigPage : ContentPage
     private readonly Button _playButton;
     private CharacterGuessDifficultyOption _selectedOption;
 
-    public KarakterRaaiConfigPage()
+    public KarakterRaaiConfigPage(StoryPlaybackSession storyPlaybackSession)
     {
         Title = "Karakter Raai";
         Background = BuildBackground();
@@ -30,24 +32,27 @@ public sealed class KarakterRaaiConfigPage : ContentPage
         Shell.SetNavBarIsVisible(this, false);
         _selectedOption = _options[0];
 
+        var heroLogo = new Image
+        {
+            Source = "karakter_raai_logo_cropped.png",
+            Aspect = Aspect.AspectFit,
+            WidthRequest = 270,
+            HeightRequest = 237,
+            Margin = new Thickness(0, 0, 0, 18),
+            HorizontalOptions = LayoutOptions.Center,
+            AutomationId = "karakter-raai-hero-logo"
+        };
+        var tagline = BuildTagline();
+        var difficultyOptions = BuildDifficultyOptions();
         var content = new VerticalStackLayout
         {
             Spacing = 0,
-            Padding = new Thickness(0, 140, 0, 52),
+            Padding = new Thickness(0, 80, 0, 8),
             Children =
             {
-                new Image
-                {
-                    Source = "karakter_raai_logo_cropped.png",
-                    Aspect = Aspect.AspectFit,
-                    WidthRequest = 270,
-                    HeightRequest = 237,
-                    Margin = new Thickness(0, 0, 0, 18),
-                    HorizontalOptions = LayoutOptions.Center,
-                    AutomationId = "karakter-raai-hero-logo"
-                },
-                BuildTagline(),
-                BuildDifficultyOptions(),
+                heroLogo,
+                tagline,
+                difficultyOptions,
             }
         };
 
@@ -69,18 +74,24 @@ public sealed class KarakterRaaiConfigPage : ContentPage
         _playButton.Clicked += async (_, _) => await PlaySelectedDifficultyAsync();
         content.Children.Add(_playButton);
 
+        var contentScroll = new ScrollView
+        {
+            Content = content,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Never,
+            AutomationId = "karakter-raai-config-scroll"
+        };
         var root = new Grid
         {
             SafeAreaEdges = SafeAreaEdges.None,
             Children =
             {
-                content,
+                contentScroll,
                 BuildBackButton()
             }
         };
-        Content = root;
-        SizeChanged += (_, _) => ApplyResponsiveLayout(content);
-        ApplyResponsiveLayout(content);
+        Content = PersistentPlaybackHost.Wrap(root, storyPlaybackSession);
+        SizeChanged += (_, _) => ApplyResponsiveLayout(content, heroLogo, difficultyOptions);
+        ApplyResponsiveLayout(content, heroLogo, difficultyOptions);
         SelectDifficulty(_selectedOption);
     }
 
@@ -289,8 +300,26 @@ public sealed class KarakterRaaiConfigPage : ContentPage
         }
     }
 
-    private static void ApplyResponsiveLayout(View content)
+    private void ApplyResponsiveLayout(
+        VerticalStackLayout content,
+        Image heroLogo,
+        VerticalStackLayout difficultyOptions)
     {
+        var useCompactLayout = Height > 0 && Height < CompactLayoutHeight;
+        content.Padding = useCompactLayout
+            ? new Thickness(0, 48, 0, 6)
+            : new Thickness(0, 80, 0, 8);
+        heroLogo.WidthRequest = useCompactLayout ? 254 : 270;
+        heroLogo.HeightRequest = useCompactLayout ? 215 : 237;
+        heroLogo.Margin = useCompactLayout
+            ? new Thickness(0, 0, 0, 12)
+            : new Thickness(0, 0, 0, 18);
+        difficultyOptions.Margin = useCompactLayout
+            ? new Thickness(0, 28, 0, 0)
+            : new Thickness(0, 47, 0, 0);
+        _playButton.Margin = useCompactLayout
+            ? new Thickness(0, 10, 0, 0)
+            : new Thickness(0, 12, 0, 0);
         MobileResponsiveLayout.ApplyCenteredContent(content, DeviceDisplay.MainDisplayInfo.Width / DeviceDisplay.MainDisplayInfo.Density, 640);
     }
 

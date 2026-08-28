@@ -57,11 +57,11 @@ internal static class PageHelpers
         Func<MobileStorySummary, Task>? onFavoriteTap = null,
         double? artworkHeight = null)
     {
-        var imageSource = ResolveStoryCardImageSource(story, apiClient);
         var resolvedArtworkHeight = artworkHeight ?? 172;
-        var artwork = new Image
+        var artwork = new ProgressiveCachedImage(
+            apiClient,
+            BuildStoryImageRequest(story, apiClient, "schink_background.jpeg"))
         {
-            Source = imageSource,
             Aspect = Aspect.AspectFill,
             HeightRequest = resolvedArtworkHeight
         };
@@ -228,6 +228,26 @@ internal static class PageHelpers
             ? story.ImageUrl
             : story.ThumbnailUrl);
     }
+
+    internal static ProgressiveImageRequest BuildStoryImageRequest(
+        MobileStorySummary story,
+        MobileApiClient apiClient,
+        string? fallbackFile = null)
+    {
+        var fullImageUrl = apiClient.BuildImageUrl(story.ImageUrl);
+        var previewImageUrl = IsLegacyWebsiteAsset(story.ThumbnailUrl)
+            ? null
+            : apiClient.BuildImageUrl(story.ThumbnailUrl);
+        return new ProgressiveImageRequest(fullImageUrl, previewImageUrl, fallbackFile);
+    }
+
+    internal static ProgressiveImageRequest BuildStoryCardImageRequest(
+        MobileStorySummary story,
+        MobileApiClient apiClient,
+        string? fallbackFile = null) =>
+        new(
+            ResolveStoryCardImageSource(story, apiClient),
+            FallbackFile: fallbackFile);
 
     private static bool IsLegacyWebsiteAsset(string? imageUrl)
     {

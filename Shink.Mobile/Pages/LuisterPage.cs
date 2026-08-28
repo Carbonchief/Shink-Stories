@@ -38,13 +38,14 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     // Keep the first feed item below the native-style app bar and the last item
     // above the persistent bottom navigation on every device size.
     private const double FloatingTopBarContentInset = 92;
-    private const double BottomBarContentInset = 136;
+    private const double BottomBarContentInset = 216;
     private const double BottomBarOverlayHeight = 152;
     private const double StoriesHeroHeight = 262;
     // Keep native carousel artwork in lockstep with the web Luister page:
     // story covers are portrait (3:4), while playlist artwork is widescreen (16:9).
     private const double StoryCarouselImageAspectRatio = 3d / 4d;
     private const double PlaylistCarouselImageAspectRatio = 16d / 9d;
+    private const int InitialCarouselWarmupItemCount = 3;
     private const double OortjiesPeekWidth = 64;
     private const double OortjiesPeekHeight = 71;
     private const int MaxOortjiesPeeksPerWindow = 2;
@@ -68,6 +69,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     private readonly SessionState _sessionState;
     private readonly PlaylistPlaybackState _playlistPlaybackState;
     private readonly ContinueListeningState _continueListeningState;
+    private readonly StoryPlaybackSession _storyPlaybackSession;
     private readonly PlayerTransitionBackdropState _transitionBackdropState;
     private readonly NavigationGate _navigationGate = new();
     private readonly Grid _rootLayout;
@@ -84,7 +86,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     private readonly Entry _loginEmailEntry;
     private readonly Entry _loginPasswordEntry;
     private readonly Label _loginStatusLabel;
-    private readonly Dictionary<string, ImageSource> _imageSourceCache = new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyList<MobileLuisterSection> _sections = Array.Empty<MobileLuisterSection>();
     private MobileNotificationPage? _notificationPage;
     private ContentPage? _notificationModalPage;
@@ -131,6 +132,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         SessionState sessionState,
         PlaylistPlaybackState playlistPlaybackState,
         ContinueListeningState continueListeningState,
+        StoryPlaybackSession storyPlaybackSession,
         PlayerTransitionBackdropState transitionBackdropState)
     {
         _apiClient = apiClient;
@@ -139,6 +141,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         _sessionState = sessionState;
         _playlistPlaybackState = playlistPlaybackState;
         _continueListeningState = continueListeningState;
+        _storyPlaybackSession = storyPlaybackSession;
         _transitionBackdropState = transitionBackdropState;
         Title = "Luister";
         SafeAreaEdges = SafeAreaEdges.None;
@@ -280,6 +283,12 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         };
         _bottomBarOverlay.Children.Add(_bottomBarHost);
 
+        var nowPlayingBar = new PersistentNowPlayingBar(_storyPlaybackSession)
+        {
+            Margin = new Thickness(10, 0, 10, 124),
+            ZIndex = 120
+        };
+
         _oortjiesPeekMascot = new Image
         {
             Source = "oortjies_website.png",
@@ -306,6 +315,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 _refreshView,
                 _topBarOverlay,
                 _bottomBarOverlay,
+                nowPlayingBar,
                 _oortjiesPeekMascot
             }
         };
@@ -1155,16 +1165,28 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             _carousel.HeightRequest = _owner.GetStoryCarouselHeight(ranked);
             if (!ReferenceEquals(_playlist, playlist) || Math.Abs(_lastWidth - _owner.Width) >= 1)
             {
-                _carousel.ItemsSource = playlist.Stories
-                    .Select((story, index) => new ReusableStoryCarouselItem(
-                        playlist,
-                        story,
-                        ranked ? index + 1 : null))
-                    .ToArray();
+                _carousel.ItemsSource = BuildReusableStoryCarouselItems(playlist, ranked);
             }
 
             _playlist = playlist;
             _lastWidth = _owner.Width;
+        }
+
+        private static ReusableStoryCarouselItem[] BuildReusableStoryCarouselItems(
+            MobilePlaylist playlist,
+            bool ranked)
+        {
+            var stories = playlist.Stories;
+            var items = new ReusableStoryCarouselItem[stories.Count];
+            for (var index = 0; index < stories.Count; index++)
+            {
+                items[index] = new ReusableStoryCarouselItem(
+                    playlist,
+                    stories[index],
+                    ranked ? index + 1 : null);
+            }
+
+            return items;
         }
     }
 
@@ -1221,23 +1243,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     private void ReplaceFeedItems(IReadOnlyList<LuisterFeedItem> nextItems)
     {
         _feedView!.ItemsSource = nextItems.ToArray();
-    }
-
-    private ImageSource BuildLuisterImageSource(string? url, string? fallbackFile = null)
-    {
-        var cacheKey = $"{url?.Trim() ?? string.Empty}|{fallbackFile ?? string.Empty}";
-        if (!IsIOS && !IsAndroid && _imageSourceCache.TryGetValue(cacheKey, out var cachedSource))
-        {
-            return cachedSource;
-        }
-
-        var source = _apiClient.BuildCachedImageSource(url, fallbackFile);
-        if (!IsIOS && !IsAndroid)
-        {
-            _imageSourceCache[cacheKey] = source;
-        }
-
-        return source;
     }
 
     private static Shadow BuildScrollContentShadow(Brush brush, Point offset, float radius, float opacity) =>
@@ -1484,9 +1489,10 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             HeightRequest = 46,
             Padding = 0,
             VerticalOptions = LayoutOptions.Center,
-            Content = new Image
+            Content = new ProgressiveCachedImage(
+                _apiClient,
+                new ProgressiveImageRequest(session.ProfileImageUrl))
             {
-                Source = BuildLuisterImageSource(session.ProfileImageUrl),
                 Aspect = Aspect.AspectFill,
                 WidthRequest = 46,
                 HeightRequest = 46,
@@ -1785,9 +1791,14 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                     ? _oortjiesPeekMascot.TranslateToAsync(placement.JumpX, placement.JumpY, 180, Easing.CubicOut)
                     : _oortjiesPeekMascot.TranslateToAsync(placement.WiggleX, placement.WiggleY, 220, Easing.CubicOut);
                 await awayStart;
-                await Task.WhenAll(
-                    _oortjiesPeekMascot.TranslateToAsync(placement.HiddenX, placement.HiddenY, jump ? 360u : 520u, Easing.CubicIn),
-                    _oortjiesPeekMascot.FadeToAsync(0, 220, Easing.CubicOut));
+                // Keep Oortjies opaque while he retreats so the screen edge
+                // progressively hides him instead of a fade making him vanish.
+                await _oortjiesPeekMascot.TranslateToAsync(
+                    placement.HiddenX,
+                    placement.HiddenY,
+                    jump ? 360u : 520u,
+                    Easing.CubicIn);
+                _oortjiesPeekMascot.Opacity = 0;
             }
             catch
             {
@@ -2519,9 +2530,12 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             HeightRequest = 58,
             StrokeThickness = 0,
             StrokeShape = new RoundRectangle { CornerRadius = 14 },
-            Content = new Image
+            Content = new ProgressiveCachedImage(
+                _apiClient,
+                new ProgressiveImageRequest(
+                    notification.ImagePath,
+                    FallbackFile: "schink_background.jpeg"))
             {
-                Source = BuildLuisterImageSource(notification.ImagePath, "schink_background.jpeg"),
                 Aspect = Aspect.AspectFill,
                 WidthRequest = 58,
                 HeightRequest = 58
@@ -2636,13 +2650,19 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                         break;
                     }
 
-                    var characterRoute = "//Karakters";
-                    if (!string.IsNullOrWhiteSpace(target.Value))
+                    await _navigationGate.RunAsync(() =>
                     {
-                        characterRoute += $"?karakter={Uri.EscapeDataString(target.Value)}";
-                    }
+                        if (string.IsNullOrWhiteSpace(target.Value))
+                        {
+                            return Shell.Current.GoToAsync("//Karakters", animate: false);
+                        }
 
-                    await _navigationGate.RunAsync(() => Shell.Current.GoToAsync(characterRoute, animate: false));
+                        var parameters = new ShellNavigationQueryParameters
+                        {
+                            ["karakter"] = target.Value
+                        };
+                        return Shell.Current.GoToAsync("//Karakters", animate: false, parameters);
+                    });
                     break;
                 case MobileNotificationNavigationKind.ResourceWebsite when !string.IsNullOrWhiteSpace(target.Value):
                     await Browser.OpenAsync(_apiClient.BuildAbsoluteUrl(target.Value), BrowserLaunchMode.External);
@@ -2920,7 +2940,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
 
     private View BuildPlaylistCard(MobilePlaylist playlist)
     {
-        var imageSource = BuildLuisterImageSource(playlist.ArtworkUrl, "schink_background.jpeg");
         var cardWidth = MobileResponsiveLayout.ResolvePlaylistCarouselCardWidth(Width, IsAndroid);
         var artworkHeight = cardWidth / PlaylistCarouselImageAspectRatio;
         var card = new Border
@@ -2943,9 +2962,12 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                         {
                             Children =
                             {
-                                new Image
+                                new ProgressiveCachedImage(
+                                    _apiClient,
+                                    new ProgressiveImageRequest(
+                                        playlist.ArtworkUrl,
+                                        FallbackFile: "schink_background.jpeg"))
                                 {
-                                    Source = imageSource,
                                     WidthRequest = cardWidth,
                                     HeightRequest = artworkHeight,
                                     Aspect = Aspect.AspectFill,
@@ -3023,10 +3045,10 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         var pageWidth = MobileResponsiveLayout.ResolveWidth(Width);
         var coverWidth = ResolvePlaylistShowcaseCoverWidth(wideLayout, pageWidth);
         var coverHeight = ResolvePlaylistShowcaseCoverHeight(wideLayout, pageWidth);
-        var image = new Image
+        var image = new ProgressiveCachedImage(
+            _apiClient,
+            PageHelpers.BuildStoryImageRequest(story, _apiClient, "schink_background.jpeg"))
         {
-            Source = BuildLuisterImageSource(
-                PageHelpers.ResolveStoryCardImageSource(story, _apiClient)),
             Aspect = Aspect.AspectFill,
             WidthRequest = coverWidth,
             HeightRequest = coverHeight,
@@ -3199,7 +3221,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     private sealed class ReusablePlaylistShowcaseView : ContentView
     {
         private readonly LuisterPage _owner;
-        private readonly Image _image;
+        private readonly ProgressiveCachedImage _image;
         private readonly Label _title;
         private readonly Button _favoriteButton;
         private readonly Border _cover;
@@ -3211,7 +3233,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         public ReusablePlaylistShowcaseView(LuisterPage owner)
         {
             _owner = owner;
-            _image = new Image
+            _image = new ProgressiveCachedImage(owner._apiClient)
             {
                 Aspect = Aspect.AspectFill,
                 HorizontalOptions = LayoutOptions.Fill,
@@ -3280,11 +3302,14 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         {
             _playlist = playlist;
             _story = story;
-            var imageUrl = PageHelpers.ResolveStoryCardImageSource(story, _owner._apiClient);
-            if (!string.Equals(_imageKey, imageUrl, StringComparison.Ordinal))
+            var imageKey = $"{story.ImageUrl}|{story.ThumbnailUrl}";
+            if (!string.Equals(_imageKey, imageKey, StringComparison.Ordinal))
             {
-                _image.Source = _owner.BuildLuisterImageSource(imageUrl);
-                _imageKey = imageUrl;
+                _image.Request = PageHelpers.BuildStoryImageRequest(
+                    story,
+                    _owner._apiClient,
+                    "schink_background.jpeg");
+                _imageKey = imageKey;
             }
 
             _title.Text = string.IsNullOrWhiteSpace(story.Title) ? playlist.Title : story.Title;
@@ -3316,7 +3341,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             _playlist = null;
             _story = null;
             _imageKey = null;
-            _image.Source = null;
+            _image.Request = null;
         }
 
         private async Task OpenCurrentStoryAsync()
@@ -3331,7 +3356,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     private sealed class ReusableStoryCarouselCardView : ContentView
     {
         private readonly LuisterPage _owner;
-        private readonly Image _artwork;
+        private readonly ProgressiveCachedImage _artwork;
         private readonly Label _title;
         private readonly Button _favoriteButton;
         private readonly Border _cover;
@@ -3344,7 +3369,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         public ReusableStoryCarouselCardView(LuisterPage owner)
         {
             _owner = owner;
-            _artwork = new Image
+            _artwork = new ProgressiveCachedImage(owner._apiClient)
             {
                 Aspect = Aspect.AspectFill,
                 HorizontalOptions = LayoutOptions.Fill,
@@ -3430,7 +3455,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 _playlist = null;
                 _story = null;
                 _imageKey = null;
-                _artwork.Source = null;
+                _artwork.Request = null;
                 IsVisible = false;
                 return;
             }
@@ -3438,11 +3463,14 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             IsVisible = true;
             _playlist = item.Playlist;
             _story = item.Story;
-            var imageUrl = PageHelpers.ResolveStoryCardImageSource(item.Story, _owner._apiClient);
-            if (!string.Equals(_imageKey, imageUrl, StringComparison.Ordinal))
+            var imageKey = $"{item.Story.ImageUrl}|{item.Story.ThumbnailUrl}";
+            if (!string.Equals(_imageKey, imageKey, StringComparison.Ordinal))
             {
-                _artwork.Source = _owner.BuildLuisterImageSource(imageUrl);
-                _imageKey = imageUrl;
+                _artwork.Request = PageHelpers.BuildStoryCardImageRequest(
+                    item.Story,
+                    _owner._apiClient,
+                    "schink_background.jpeg");
+                _imageKey = imageKey;
             }
 
             _title.Text = item.Story.Title;
@@ -3498,10 +3526,10 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         var isRanked = rank is not null;
         var cardWidth = GetStoryCarouselCardWidth();
         var coverHeight = GetStoryCarouselCoverHeight();
-        var artwork = new Image
+        var artwork = new ProgressiveCachedImage(
+            _apiClient,
+            PageHelpers.BuildStoryCardImageRequest(story, _apiClient, "schink_background.jpeg"))
         {
-            Source = BuildLuisterImageSource(
-                PageHelpers.ResolveStoryCardImageSource(story, _apiClient)),
             Aspect = Aspect.AspectFill,
             WidthRequest = cardWidth,
             HeightRequest = coverHeight,
@@ -3592,6 +3620,9 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             FontSize = 76,
             FontAttributes = FontAttributes.Bold,
             LineHeight = 0.82,
+            // Reusable carousel cards are initially created with rank 1. Reserve
+            // enough width up front so rank 10 is not clipped to its first digit.
+            MinimumWidthRequest = 112,
             Margin = new Thickness(0, -1, 0, 0),
             TranslationY = IsAndroid ? -13 : 0,
             HorizontalOptions = LayoutOptions.Start,
@@ -3694,7 +3725,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         var resolvedStory = ResolveContinueListeningStory(item);
         var story = resolvedStory?.Story ?? ToMobileStorySummary(item);
         var playlistTitle = resolvedStory?.Playlist?.Title ?? item.PlaylistTitle;
-        var imageUrl = PageHelpers.ResolveStoryCardImageSource(story, _apiClient);
         var progress = CalculateContinueProgress(item.PositionSeconds, story.DurationSeconds ?? item.DurationSeconds);
 
         var artwork = new Border
@@ -3703,15 +3733,17 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             HeightRequest = 82,
             StrokeThickness = 0,
             StrokeShape = BuildArtworkShape(14),
-            Content = new Image
+            Content = new ProgressiveCachedImage(
+                _apiClient,
+                PageHelpers.BuildStoryCardImageRequest(story, _apiClient, "schink_background.jpeg"))
             {
-                Source = BuildLuisterImageSource(imageUrl),
                 Aspect = Aspect.AspectFill
             }
         };
 
         var playButton = new Border
         {
+            AutomationId = "continue-listening-play",
             WidthRequest = 48,
             HeightRequest = 48,
             StrokeThickness = 0,
@@ -3729,9 +3761,10 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 VerticalTextAlignment = TextAlignment.Center
             }
         };
+        SemanticProperties.SetDescription(playButton, $"Speel {story.Title}");
 
         var playTap = new TapGestureRecognizer();
-        playTap.Tapped += async (_, _) => await OpenContinueListeningAsync(item);
+        playTap.Tapped += async (_, _) => await StartContinueListeningAsync(item);
         playButton.GestureRecognizers.Add(playTap);
 
         var details = new VerticalStackLayout
@@ -3775,25 +3808,43 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             }
         };
 
-        var cardGrid = new Grid
+        var openStorySurface = new Grid
         {
             ColumnDefinitions =
             {
                 new ColumnDefinition { Width = 94 },
+                new ColumnDefinition { Width = GridLength.Star }
+            },
+            ColumnSpacing = 8,
+            Children =
+            {
+                artwork,
+                details
+            }
+        };
+        Grid.SetColumn(artwork, 0);
+        Grid.SetColumn(details, 1);
+
+        var cardTap = new TapGestureRecognizer();
+        cardTap.Tapped += async (_, _) => await OpenContinueListeningAsync(item);
+        openStorySurface.GestureRecognizers.Add(cardTap);
+        SemanticProperties.SetDescription(openStorySurface, $"Maak {story.Title} oop");
+
+        var cardGrid = new Grid
+        {
+            ColumnDefinitions =
+            {
                 new ColumnDefinition { Width = GridLength.Star },
                 new ColumnDefinition { Width = 54 }
             },
             ColumnSpacing = 8,
             Children =
             {
-                artwork,
-                details,
+                openStorySurface,
                 playButton
             }
         };
-        Grid.SetColumn(artwork, 0);
-        Grid.SetColumn(details, 1);
-        Grid.SetColumn(playButton, 2);
+        Grid.SetColumn(playButton, 1);
 
         var card = new Border
         {
@@ -3804,10 +3855,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             Shadow = BuildScrollContentShadow(Brush.Black, new Point(0, 8), 18, 0.12f),
             Content = cardGrid
         };
-
-        var cardTap = new TapGestureRecognizer();
-        cardTap.Tapped += async (_, _) => await OpenContinueListeningAsync(item);
-        card.GestureRecognizers.Add(cardTap);
 
         var clearButton = new Button
         {
@@ -4147,19 +4194,13 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
 
     private void PauseImageWarmupForScroll()
     {
-        if (IsIOS || IsAndroid)
-        {
-            // Mobile uses one background worker to prepare display-sized copies.
-            // Let it stay ahead of the viewport; cancelling it leaves full-size
-            // files to be decoded as each row appears.
-            return;
-        }
-
         if (!_isImageWarmupActive || _imageWarmupCancellation is null)
         {
             return;
         }
 
+        // Treat this as idle-only prefetch. A fast fling gets the CPU and disk
+        // budget; visible cells load their own bounded artwork on demand.
         _shouldResumeImageWarmupAfterScroll = true;
         _imageWarmupCancellation.Cancel();
     }
@@ -4185,17 +4226,18 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 _apiClient);
         }
 
-        foreach (var section in FilterSections(_sections, _searchEntry.Text))
+        var visibleSections = FilterSections(_sections, _searchEntry.Text).ToArray();
+
+        // Prepare what a vertical fling will reveal first: the showcase and the
+        // first visible cards from every row. Previously one worker prepared ten
+        // cards from row one before it even reached row two.
+        foreach (var section in visibleSections)
         {
             if (IsSpeellysteSection(section))
             {
-                foreach (var playlist in section.Playlists.Take(8))
+                foreach (var playlist in section.Playlists.Take(InitialCarouselWarmupItemCount))
                 {
                     yield return playlist.ArtworkUrl;
-                    if (playlist.ShowcaseStory is not null)
-                    {
-                        yield return PageHelpers.ResolveStoryCardImageSource(playlist.ShowcaseStory, _apiClient);
-                    }
                 }
 
                 continue;
@@ -4210,9 +4252,39 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             if (section.Playlist.ShowcaseStory is not null)
             {
                 yield return PageHelpers.ResolveStoryCardImageSource(section.Playlist.ShowcaseStory, _apiClient);
+                yield return _apiClient.BuildImageUrl(section.Playlist.ShowcaseStory.ImageUrl);
             }
 
-            foreach (var story in section.Playlist.Stories.Take(10))
+            foreach (var story in section.Playlist.Stories.Take(InitialCarouselWarmupItemCount))
+            {
+                yield return PageHelpers.ResolveStoryCardImageSource(story, _apiClient);
+            }
+        }
+
+        // Fill the rest of each horizontal row only after every vertical row has
+        // its immediately visible artwork ready.
+        foreach (var section in visibleSections)
+        {
+            if (IsSpeellysteSection(section))
+            {
+                foreach (var playlist in section.Playlists
+                             .Skip(InitialCarouselWarmupItemCount)
+                             .Take(8 - InitialCarouselWarmupItemCount))
+                {
+                    yield return playlist.ArtworkUrl;
+                }
+
+                continue;
+            }
+
+            if (section.Playlist is null)
+            {
+                continue;
+            }
+
+            foreach (var story in section.Playlist.Stories
+                         .Skip(InitialCarouselWarmupItemCount)
+                         .Take(10 - InitialCarouselWarmupItemCount))
             {
                 yield return PageHelpers.ResolveStoryCardImageSource(story, _apiClient);
             }
@@ -4309,6 +4381,90 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 {
                     ["preview"] = story
                 });
+        });
+    }
+
+    private async Task StartContinueListeningAsync(ContinueListeningItem item)
+    {
+        await _navigationGate.RunAsync(async () =>
+        {
+            var resolvedStory = ResolveContinueListeningStory(item);
+            var story = resolvedStory is { } resolved
+                ? MergeContinueListeningMetadata(resolved.Story, item)
+                : ToMobileStorySummary(item);
+
+            if (_storyPlaybackSession.IsCurrentStory(story))
+            {
+                await _storyPlaybackSession.ResumeAsync();
+                return;
+            }
+
+            try
+            {
+                var detail = await _apiClient.GetStoryAsync(story.Slug, story.Source);
+                if (detail is null)
+                {
+                    await DisplayAlertAsync(
+                        "Kon nie speel nie",
+                        "Dié storie kon nie nou gelaai word nie. Probeer asseblief weer.",
+                        "Reg so");
+                    return;
+                }
+
+                if (detail.RequiresSubscription)
+                {
+                    await DisplayAlertAsync(
+                        "Intekening nodig",
+                        "Jy het ’n aktiewe intekening nodig om dié storie te luister.",
+                        "Reg so");
+                    return;
+                }
+
+                if (string.IsNullOrWhiteSpace(detail.AudioUrl))
+                {
+                    await DisplayAlertAsync(
+                        "Kon nie speel nie",
+                        "Geen audio is tans vir dié storie beskikbaar nie.",
+                        "Reg so");
+                    return;
+                }
+
+                var playbackStory = MergeContinueListeningMetadata(detail.Story, item);
+                var playlist = resolvedStory?.Playlist;
+                if (playlist is not null)
+                {
+                    _playlistPlaybackState.Set(playlist, playbackStory);
+                }
+                else
+                {
+                    _playlistPlaybackState.Clear();
+                }
+
+                var playbackUrl = await _apiClient.PrepareAudioPlaybackSourceAsync(
+                    detail.AudioUrl,
+                    playbackStory.Slug,
+                    playbackStory.Source);
+                await _storyPlaybackSession.PlayAsync(
+                    playbackUrl,
+                    playbackStory,
+                    _apiClient.BuildImageUrl(playbackStory.ImageUrl),
+                    playlist?.Slug ?? item.PlaylistSlug,
+                    playlist?.Title ?? item.PlaylistTitle,
+                    playbackStory.DurationSeconds ?? item.DurationSeconds,
+                    originPlaylist: playlist);
+            }
+            catch (Exception ex)
+            {
+                _analytics.TrackException(ex, "mobile_continue_listening_play_failed", new Dictionary<string, object>
+                {
+                    ["story_slug"] = story.Slug,
+                    ["story_source"] = story.Source
+                });
+                await DisplayAlertAsync(
+                    "Kon nie speel nie",
+                    "Die audio kon nie nou begin nie. Probeer asseblief weer.",
+                    "Reg so");
+            }
         });
     }
 

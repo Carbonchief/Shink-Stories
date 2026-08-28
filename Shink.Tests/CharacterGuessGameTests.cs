@@ -115,8 +115,8 @@ public class CharacterGuessGameTests
         StringAssert.Contains(gamePage, "public sealed class KarakterRaaiGamePage : ContentPage");
         StringAssert.Contains(gamePage, "Text = \"Wie is die\\nkarakter?\"");
         StringAssert.Contains(gamePage, "IQueryAttributable");
-        StringAssert.Contains(gamePage, "private readonly Image _mysteryImage;");
-        StringAssert.Contains(gamePage, "private readonly Image _revealImage;");
+        StringAssert.Contains(gamePage, "private readonly ProgressiveCachedImage _mysteryImage;");
+        StringAssert.Contains(gamePage, "private readonly ProgressiveCachedImage _revealImage;");
         StringAssert.Contains(gamePage, "private readonly ImageButton _newGameButton;");
         StringAssert.Contains(gamePage, "AutomationId = \"character-guess-retry\"");
         StringAssert.Contains(gamePage, "Glyph = \"\\uf2f1\"");
@@ -127,6 +127,8 @@ public class CharacterGuessGameTests
         StringAssert.Contains(gamePage, "Grid.SetColumn(choice, index);");
         StringAssert.Contains(gamePage, "Grid.SetRow(choice, 0);");
         StringAssert.Contains(gamePage, "CharacterMysteryImageResolver.Resolve(");
+        StringAssert.Contains(gamePage, "_targetCharacter.MysteryPreviewImageUrl,");
+        StringAssert.Contains(gamePage, "_targetCharacter.MatchPreviewImageUrl,");
         StringAssert.Contains(gamePage, "await RevealCharacterAsync()");
         StringAssert.Contains(gamePage, "new RowDefinition(GridLength.Star)");
         Assert.IsFalse(gamePage.Contains("ScrollView", StringComparison.Ordinal));
@@ -137,7 +139,14 @@ public class CharacterGuessGameTests
         StringAssert.Contains(configPage, "WidthRequest = 62,");
         StringAssert.Contains(configPage, "HeightRequest = 64,");
         StringAssert.Contains(configPage, "Children = { card, character }");
-        Assert.IsFalse(configPage.Contains("ScrollView", StringComparison.Ordinal));
+        StringAssert.Contains(configPage, "var contentScroll = new ScrollView");
+        StringAssert.Contains(configPage, "VerticalScrollBarVisibility = ScrollBarVisibility.Never");
+        StringAssert.Contains(configPage, "AutomationId = \"karakter-raai-config-scroll\"");
+        StringAssert.Contains(configPage, "contentScroll,");
+        StringAssert.Contains(configPage, "private const double CompactLayoutHeight = 700;");
+        StringAssert.Contains(configPage, "Height > 0 && Height < CompactLayoutHeight");
+        StringAssert.Contains(configPage, "new Thickness(0, 80, 0, 8)");
+        StringAssert.Contains(configPage, "new Thickness(0, 48, 0, 6)");
         StringAssert.Contains(configPage, "Margin = new Thickness(14, 44, 0, 0)");
         StringAssert.Contains(difficultyCatalog, "BEGINNER");
         StringAssert.Contains(difficultyCatalog, "KENNER");

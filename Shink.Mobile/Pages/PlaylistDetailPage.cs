@@ -36,6 +36,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
     private readonly IAudioPlaybackService _audioPlaybackService;
+    private readonly StoryPlaybackSession _storyPlaybackSession;
     private readonly PlaylistPlaybackState _playlistPlaybackState;
     private readonly ObservableCollection<PlaylistTrackItem> _tracks = [];
     private readonly CollectionView _trackList;
@@ -58,11 +59,13 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
         MobileApiClient apiClient,
         SessionState sessionState,
         IAudioPlaybackService audioPlaybackService,
+        StoryPlaybackSession storyPlaybackSession,
         PlaylistPlaybackState playlistPlaybackState)
     {
         _apiClient = apiClient;
         _sessionState = sessionState;
         _audioPlaybackService = audioPlaybackService;
+        _storyPlaybackSession = storyPlaybackSession;
         _playlistPlaybackState = playlistPlaybackState;
 
         Title = "Speellys";
@@ -121,13 +124,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
         _loadCts?.Cancel();
         StopProgressTimer();
         UnsubscribePlaybackEvents();
-        try
-        {
-            _audioPlaybackService.Stop();
-        }
-        catch
-        {
-        }
+        _storyPlaybackSession.NotifyPageHidden();
 
         base.OnDisappearing();
     }
@@ -135,7 +132,8 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
     private void SetPlaylist(MobilePlaylist playlist)
     {
         _playlist = playlist;
-        _currentStory = playlist.Stories.FirstOrDefault(story => !story.IsLocked)
+        _currentStory = playlist.Stories.FirstOrDefault(_storyPlaybackSession.IsCurrentStory)
+            ?? playlist.Stories.FirstOrDefault(story => !story.IsLocked)
             ?? playlist.Stories.FirstOrDefault();
         _currentDetail = null;
         _loadingStoryKey = null;
@@ -145,7 +143,11 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
         for (var index = 0; index < playlist.Stories.Count; index++)
         {
             var story = playlist.Stories[index];
-            _tracks.Add(new PlaylistTrackItem(index + 1, story, IsCurrentStory(story)));
+            _tracks.Add(new PlaylistTrackItem(
+                index + 1,
+                story,
+                IsCurrentStory(story),
+                PageHelpers.BuildStoryImageRequest(story, _apiClient, "schink_background.jpeg")));
         }
 
         RebuildHeader();
@@ -289,9 +291,10 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
 
     private View BuildCover(MobileStorySummary story)
     {
-        var image = new Image
+        var image = new ProgressiveCachedImage(
+            _apiClient,
+            PageHelpers.BuildStoryImageRequest(story, _apiClient, "schink_background.jpeg"))
         {
-            Source = _apiClient.BuildImageUrl(PageHelpers.ResolveStoryCardImageSource(story, _apiClient)),
             Aspect = Aspect.AspectFill
         };
 
@@ -362,7 +365,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
 
         _playButton = new Button
         {
-            Text = _audioPlaybackService.IsPlaying ? PauseIconGlyph : PlayIconGlyph,
+            Text = IsCurrentStoryPlaying() ? PauseIconGlyph : PlayIconGlyph,
             FontFamily = "FontAwesomeSolid",
             FontSize = 19,
             TextColor = Colors.White,
@@ -519,8 +522,13 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
         };
         index.SetBinding(Label.TextProperty, nameof(PlaylistTrackItem.Number));
 
-        var image = new Image { Aspect = Aspect.AspectFill, HeightRequest = 56, WidthRequest = 56 };
-        image.SetBinding(Image.SourceProperty, nameof(PlaylistTrackItem.ImageUrl));
+        var image = new ProgressiveCachedImage(_apiClient)
+        {
+            Aspect = Aspect.AspectFill,
+            HeightRequest = 56,
+            WidthRequest = 56
+        };
+        image.SetBinding(ProgressiveCachedImage.RequestProperty, nameof(PlaylistTrackItem.ImageRequest));
         var artwork = new Border
         {
             StrokeThickness = 0,
@@ -651,13 +659,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
             return;
         }
 
-        try
-        {
-            _audioPlaybackService.Stop();
-        }
-        catch
-        {
-        }
+        _storyPlaybackSession.Stop();
 
         _currentStory = story;
         _currentDetail = null;
@@ -717,10 +719,16 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
             {
                 if (SameStory(_tracks[index].Story, detail.Story))
                 {
-                    _tracks[index].UpdateStory(detail.Story, _apiClient.BuildImageUrl(PageHelpers.ResolveStoryCardImageSource(detail.Story, _apiClient)));
+                    _tracks[index].UpdateStory(
+                        detail.Story,
+                        PageHelpers.BuildStoryImageRequest(detail.Story, _apiClient, "schink_background.jpeg"));
                 }
             }
             RebuildHeader();
+            if (IsCurrentStoryPlaying())
+            {
+                StartProgressTimer();
+            }
             if (_autoplayAfterLoad)
             {
                 _autoplayAfterLoad = false;
@@ -748,9 +756,9 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
 
     private async Task TogglePlaybackAsync()
     {
-        if (_audioPlaybackService.IsPlaying)
+        if (_storyPlaybackSession.IsCurrentStory(_currentStory) && _storyPlaybackSession.IsPlaying)
         {
-            _audioPlaybackService.Pause();
+            _storyPlaybackSession.Pause();
             StopProgressTimer();
             UpdatePlaybackButton();
             return;
@@ -775,16 +783,26 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
     {
         try
         {
+            if (_storyPlaybackSession.IsCurrentStory(detail.Story))
+            {
+                await _storyPlaybackSession.ResumeAsync();
+                StartProgressTimer();
+                UpdatePlaybackButton();
+                return;
+            }
+
             var playbackUrl = await _apiClient.PrepareAudioPlaybackSourceAsync(
                 detail.AudioUrl,
                 detail.Story.Slug,
                 detail.Story.Source);
-            await _audioPlaybackService.PlayAsync(
+            await _storyPlaybackSession.PlayAsync(
                 playbackUrl,
-                new AudioPlaybackMetadata(
-                    detail.Story.Title,
-                    "Schink Stories",
-                    _apiClient.BuildImageUrl(detail.Story.ImageUrl)));
+                detail.Story,
+                _apiClient.BuildImageUrl(detail.Story.ImageUrl),
+                _playlist?.Slug,
+                _playlist?.Title,
+                detail.Story.DurationSeconds,
+                originPlaylist: _playlist);
             StartProgressTimer();
             UpdatePlaybackButton();
         }
@@ -886,7 +904,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
             }
 
             UpdatePlaybackButton();
-            if (_audioPlaybackService.IsPlaying)
+            if (IsCurrentStoryPlaying())
             {
                 StartProgressTimer();
             }
@@ -900,6 +918,11 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
     private void OnPlaybackEnded(object? sender, EventArgs args) =>
         MainThread.BeginInvokeOnMainThread(async () =>
         {
+            if (!_storyPlaybackSession.IsCurrentStory(_currentStory))
+            {
+                return;
+            }
+
             UpdatePlaybackButton();
             StopProgressTimer();
             UpdateProgressState();
@@ -926,8 +949,9 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
 
     private void UpdateProgressState()
     {
-        var position = _audioPlaybackService.CurrentPosition;
-        var duration = _audioPlaybackService.Duration ??
+        var isCurrentStory = _storyPlaybackSession.IsCurrentStory(_currentStory);
+        var position = isCurrentStory ? _storyPlaybackSession.CurrentPosition : TimeSpan.Zero;
+        var duration = (isCurrentStory ? _storyPlaybackSession.Duration : null) ??
             (_currentStory?.DurationSeconds is > 0 ? TimeSpan.FromSeconds((double)_currentStory.DurationSeconds.Value) : null);
 
         if (_currentTimeLabel is not null)
@@ -950,9 +974,12 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
     {
         if (_playButton is not null)
         {
-            _playButton.Text = _audioPlaybackService.IsPlaying ? PauseIconGlyph : PlayIconGlyph;
+            _playButton.Text = IsCurrentStoryPlaying() ? PauseIconGlyph : PlayIconGlyph;
         }
     }
+
+    private bool IsCurrentStoryPlaying() =>
+        _storyPlaybackSession.IsCurrentStory(_currentStory) && _storyPlaybackSession.IsPlaying;
 
     private bool HasPreviousStory() => ResolveRelativeStory(-1) is not null;
 
@@ -972,7 +999,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
     }
 
     private bool ShouldAutoplaySelection() =>
-        _audioPlaybackService.IsPlaying || _playlistPlaybackState.IsAutoplayEnabled;
+        _storyPlaybackSession.IsPlaying || _playlistPlaybackState.IsAutoplayEnabled;
 
     private void CyclePlaybackSpeed()
     {
@@ -1103,18 +1130,22 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
         private bool _isActive;
         private MobileStorySummary _story;
 
-        public PlaylistTrackItem(int number, MobileStorySummary story, bool isActive)
+        public PlaylistTrackItem(
+            int number,
+            MobileStorySummary story,
+            bool isActive,
+            ProgressiveImageRequest imageRequest)
         {
             Number = number;
             _story = story;
             _isActive = isActive;
-            ImageUrl = story.ThumbnailUrl;
+            ImageRequest = imageRequest;
         }
 
         public int Number { get; }
         public MobileStorySummary Story => _story;
         public string Title => _story.Title;
-        public string ImageUrl { get; private set; }
+        public ProgressiveImageRequest ImageRequest { get; private set; }
         public string Status => _story.IsLocked ? "Intekening nodig" : _isActive ? "Speel nou" : "Speel in speellys";
         public string ActionGlyph => _story.IsLocked ? "\uf023" : _isActive ? VolumeIconGlyph : PlayIconGlyph;
         public Color BackgroundColor => _isActive ? ActiveRowColor : RowColor;
@@ -1143,12 +1174,12 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
             Notify(nameof(FavoriteColor));
         }
 
-        public void UpdateStory(MobileStorySummary story, string imageUrl)
+        public void UpdateStory(MobileStorySummary story, ProgressiveImageRequest imageRequest)
         {
             _story = story;
-            ImageUrl = imageUrl;
+            ImageRequest = imageRequest;
             Notify(nameof(Title));
-            Notify(nameof(ImageUrl));
+            Notify(nameof(ImageRequest));
             Notify(nameof(Status));
             Notify(nameof(ActionGlyph));
             Notify(nameof(FavoriteColor));

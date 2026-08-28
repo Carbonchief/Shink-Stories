@@ -54,7 +54,8 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
     public KarakterPareGamePage(
         MobileApiClient apiClient,
         SessionState sessionState,
-        MobileAnalyticsService analytics)
+        MobileAnalyticsService analytics,
+        StoryPlaybackSession storyPlaybackSession)
     {
         _apiClient = apiClient;
         _analytics = analytics;
@@ -196,7 +197,7 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
         Grid.SetRow(_setupView, 1);
         Grid.SetRowSpan(_setupView, 2);
         Grid.SetRowSpan(_celebrationOverlay, 3);
-        Content = root;
+        Content = PersistentPlaybackHost.Wrap(root, storyPlaybackSession, edgeToEdge: true);
         SizeChanged += (_, _) => ApplyResponsiveLayout();
         ApplyResponsiveLayout();
     }
@@ -626,7 +627,7 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
 
     private View BuildTileView(CharacterMatchTile tile)
     {
-        var characterImage = new Image
+        var characterImage = new ProgressiveCachedImage(_apiClient)
         {
             Aspect = Aspect.AspectFit,
             Margin = new Thickness(2, 1),
@@ -634,8 +635,8 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
             VerticalOptions = LayoutOptions.Fill
         };
         characterImage.SetBinding(
-            Image.SourceProperty,
-            static (CharacterMatchTile tile) => tile.ImageSource);
+            ProgressiveCachedImage.RequestProperty,
+            static (CharacterMatchTile tile) => tile.ImageRequest);
 
         var characterName = new Label
         {
@@ -874,7 +875,10 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
             Guid.NewGuid(),
             character.Slug,
             character.DisplayName,
-            _apiClient.BuildCachedImageSource(GetMatchImageUrl(character)!, "schink_character_lineup.png"));
+            new ProgressiveImageRequest(
+                GetMatchImageUrl(character),
+                character.MatchPreviewImageUrl,
+                "schink_character_lineup.png"));
 
     private static bool IsUsableMatchCharacter(MobileCharacterCard character) =>
         !string.IsNullOrWhiteSpace(GetMatchImageUrl(character)) &&
@@ -1564,7 +1568,7 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
         Guid id,
         string pairKey,
         string displayName,
-        ImageSource imageSource) : INotifyPropertyChanged
+        ProgressiveImageRequest imageRequest) : INotifyPropertyChanged
     {
         private bool _isFaceUp;
         private bool _isMatched;
@@ -1578,7 +1582,7 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
 
         public string DisplayName { get; } = displayName;
 
-        public ImageSource ImageSource { get; } = imageSource;
+        public ProgressiveImageRequest ImageRequest { get; } = imageRequest;
 
         public bool IsFaceUp => _isFaceUp;
 

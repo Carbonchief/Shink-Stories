@@ -38,9 +38,10 @@ public sealed class MobilePlatformChromeSourceTests
     }
 
     [TestMethod]
-    public void BottomBarUsesLargeGlassTabsMatchingTheReferenceNavigation()
+    public void BottomBarUsesLargeTransparentTabsWithoutLiveBackdropBlur()
     {
         var source = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileBottomBar.cs"));
+        var palette = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileAndroidIcons.cs"));
 
         StringAssert.Contains(source, "Label: \"Stories\"");
         StringAssert.Contains(source, "Label: \"Karakters\"");
@@ -53,7 +54,10 @@ public sealed class MobilePlatformChromeSourceTests
         StringAssert.Contains(source, "Padding = new Thickness(10, 2, 10, 4),");
         StringAssert.Contains(source, "Margin = Thickness.Zero,");
         StringAssert.Contains(source, "bar.HeightRequest = 114;");
-        StringAssert.Contains(source, "MobileLiquidGlass.Apply(bar, 0, Colors.Transparent);");
+        StringAssert.Contains(source, "Color = MobileAndroidChromePalette.BarBackdropTint");
+        StringAssert.Contains(source, "Children = { staticBackdrop, bar }");
+        StringAssert.Contains(palette, "BarBackdropTint = Color.FromArgb(\"#CC12343B\")");
+        Assert.DoesNotContain("MobileLiquidGlass.Apply", source, StringComparison.Ordinal);
         StringAssert.Contains(source, "SafeAreaEdges = SafeAreaEdges.None,");
         StringAssert.Contains(source, "WidthRequest = 32,");
         StringAssert.Contains(source, "FontSize = 14,");
@@ -121,6 +125,15 @@ public sealed class MobilePlatformChromeSourceTests
 
         StringAssert.Contains(source, "UIBlurEffectStyle.SystemUltraThinMaterialDark");
         Assert.IsFalse(source.Contains("UIGlassEffectStyle.Regular", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void NativeGlassAppliesToIphoneAndIpad()
+    {
+        var source = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileLiquidGlass.cs"));
+
+        StringAssert.Contains(source, "DeviceInfo.Idiom == DeviceIdiom.Phone || DeviceInfo.Idiom == DeviceIdiom.Tablet");
+        StringAssert.Contains(source, "OperatingSystem.IsIOSVersionAtLeast(26)");
     }
 
     [TestMethod]

@@ -57,7 +57,14 @@ internal static class MobileBottomBar
             Content = itemGrid
         };
         bar.HeightRequest = 114;
-        MobileLiquidGlass.Apply(bar, 0, Colors.Transparent);
+
+        var staticBackdrop = new BoxView
+        {
+            Color = MobileAndroidChromePalette.BarBackdropTint,
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalOptions = LayoutOptions.Fill,
+            InputTransparent = true
+        };
 
         var host = new Grid
         {
@@ -66,7 +73,7 @@ internal static class MobileBottomBar
             VerticalOptions = LayoutOptions.End,
             BackgroundColor = Colors.Transparent,
             AutomationId = "mobile-bottom-navigation",
-            Children = { bar }
+            Children = { staticBackdrop, bar }
         };
 
         return host;

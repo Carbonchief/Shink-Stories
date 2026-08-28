@@ -283,9 +283,10 @@ internal static class MobileTopBar
             HeightRequest = 48,
             Padding = 0,
             VerticalOptions = LayoutOptions.Center,
-            Content = new Image
+            Content = new ProgressiveCachedImage(
+                apiClient,
+                new ProgressiveImageRequest(imageUrl))
             {
-                Source = ImageSource.FromUri(new Uri(imageUrl, UriKind.Absolute)),
                 Aspect = Aspect.AspectFill,
                 WidthRequest = 48,
                 HeightRequest = 48

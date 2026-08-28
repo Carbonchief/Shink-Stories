@@ -7,7 +7,7 @@ namespace Shink.Mobile.Pages;
 public sealed class KaraktersPage : ContentPage, IQueryAttributable
 {
     private const double FloatingTopBarContentInset = 92;
-    private const double BottomBarContentInset = 136;
+    private const double BottomBarContentInset = 216;
     private const double BottomBarOverlayHeight = 152;
     private const string PoppinsFontFamily = "Poppins";
     private const string PoppinsSemiBoldFontFamily = "PoppinsSemiBold";
@@ -17,6 +17,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
     private readonly IAudioPlaybackService _audioPlaybackService;
+    private readonly StoryPlaybackSession _storyPlaybackSession;
     private readonly Grid _rootLayout;
     private readonly Grid _topBarOverlay;
     private readonly Border _floatingTopBarHost;
@@ -26,10 +27,10 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     private readonly GridItemsLayout _charactersGridLayout;
     private readonly RefreshView _refreshView;
     private readonly Grid _profileOverlay;
-    private readonly Dictionary<string, ImageSource> _imageSourceCache = new(StringComparer.OrdinalIgnoreCase);
     private MobileCharactersResponse? _response;
     private string? _pendingCharacterSlug;
     private bool _isPageActive;
+    private bool _isResolvingPendingCharacter;
     private CancellationTokenSource? _imageWarmupCancellation;
     private CancellationTokenSource? _loadCancellation;
     private double _lastResponsiveWidth = -1;
@@ -37,11 +38,13 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     public KaraktersPage(
         MobileApiClient apiClient,
         SessionState sessionState,
-        IAudioPlaybackService audioPlaybackService)
+        IAudioPlaybackService audioPlaybackService,
+        StoryPlaybackSession storyPlaybackSession)
     {
         _apiClient = apiClient;
         _sessionState = sessionState;
         _audioPlaybackService = audioPlaybackService;
+        _storyPlaybackSession = storyPlaybackSession;
         Title = "Karakters";
         BackgroundColor = Color.FromArgb("#46969E");
         SafeAreaEdges = SafeAreaEdges.None;
@@ -139,6 +142,12 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         };
         _bottomBarOverlay.Children.Add(_bottomBarHost);
 
+        var nowPlayingBar = new PersistentNowPlayingBar(_storyPlaybackSession)
+        {
+            Margin = new Thickness(10, 0, 10, 124),
+            ZIndex = 120
+        };
+
         _rootLayout = new Grid
         {
             SafeAreaEdges = SafeAreaEdges.None,
@@ -147,6 +156,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
                 _refreshView,
                 _topBarOverlay,
                 _bottomBarOverlay,
+                nowPlayingBar,
                 _profileOverlay
             }
         };
@@ -161,8 +171,12 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     {
         if (query.TryGetValue("karakter", out var value))
         {
-            _pendingCharacterSlug = Uri.UnescapeDataString(value?.ToString() ?? string.Empty);
-            _ = TryOpenPendingCharacterAsync();
+            var slug = Uri.UnescapeDataString(value?.ToString() ?? string.Empty).Trim();
+            _pendingCharacterSlug = string.IsNullOrWhiteSpace(slug) ? null : slug;
+            if (_isPageActive && _response is not null)
+            {
+                _ = ResolvePendingCharacterAsync();
+            }
         }
     }
 
@@ -202,7 +216,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         }
         else
         {
-            await TryOpenPendingCharacterAsync();
+            await ResolvePendingCharacterAsync();
         }
     }
 
@@ -485,7 +499,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         private readonly Border _card;
         private readonly Grid _media;
         private readonly Border _imageFrame;
-        private readonly Image _image;
+        private readonly ProgressiveCachedImage _image;
         private readonly Border _lockButton;
         private readonly Border _speakerButton;
         private readonly Label _heading;
@@ -498,7 +512,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         public ReusableCharacterCardView(KaraktersPage owner)
         {
             _owner = owner;
-            _image = new Image
+            _image = new ProgressiveCachedImage(owner._apiClient)
             {
                 Aspect = Aspect.AspectFit,
                 HorizontalOptions = LayoutOptions.Fill,
@@ -649,7 +663,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             {
                 _character = null;
                 _imageKey = null;
-                _image.Source = null;
+                _image.Request = null;
                 IsVisible = false;
                 return;
             }
@@ -671,7 +685,10 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             var imageKey = character.ImageUrl.Trim();
             if (!string.Equals(_imageKey, imageKey, StringComparison.Ordinal))
             {
-                _image.Source = _owner.BuildCharacterImageSource(character.ImageUrl);
+                _image.SetImage(
+                    character.ImageUrl,
+                    character.PreviewImageUrl,
+                    "schink_background.jpeg");
                 _imageKey = imageKey;
             }
 
@@ -783,9 +800,13 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             AutomationId = "Maak karakterprofiel toe"
         };
         var wideLayout = MobileResponsiveLayout.IsWide(Width);
-        var profileImage = new Image
+        var profileImage = new ProgressiveCachedImage(
+            _apiClient,
+            new ProgressiveImageRequest(
+                character.ImageUrl,
+                character.PreviewImageUrl,
+                "schink_background.jpeg"))
         {
-            Source = BuildCharacterImageSource(character.ImageUrl),
             HeightRequest = wideLayout ? 340 : 260,
             Aspect = Aspect.AspectFit,
             HorizontalOptions = LayoutOptions.Fill
@@ -1059,9 +1080,13 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             Spacing = 5,
             Children =
             {
-                new Image
+                new ProgressiveCachedImage(
+                    _apiClient,
+                    new ProgressiveImageRequest(
+                        friend.ImageUrl,
+                        friend.PreviewImageUrl,
+                        "schink_background.jpeg"))
                 {
-                    Source = BuildCharacterImageSource(friend.ImageUrl),
                     HeightRequest = 72,
                     WidthRequest = 72,
                     Aspect = Aspect.AspectFit
@@ -1132,9 +1157,10 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
                         StrokeThickness = 0,
                         StrokeShape = new RoundRectangle { CornerRadius = 12 },
                         HeightRequest = 150,
-                        Content = new Image
+                        Content = new ProgressiveCachedImage(
+                            _apiClient,
+                            new ProgressiveImageRequest(story.ImageUrl, FallbackFile: "schink_background.jpeg"))
                         {
-                            Source = BuildCharacterImageSource(story.ImageUrl),
                             Aspect = Aspect.AspectFill
                         }
                     },
@@ -1194,6 +1220,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         var clip = character.PreviewAudioClips[Random.Shared.Next(character.PreviewAudioClips.Count)];
         try
         {
+            _storyPlaybackSession.Stop();
             var playbackUrl = await _apiClient.PrepareAudioPlaybackSourceAsync(
                 clip.AudioUrl,
                 character.Slug,
@@ -1235,20 +1262,52 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             parameters);
     }
 
-    private async Task TryOpenPendingCharacterAsync()
+    private async Task<bool> TryOpenPendingCharacterAsync()
     {
-        if (string.IsNullOrWhiteSpace(_pendingCharacterSlug) || _response is null)
+        if (!_isPageActive || string.IsNullOrWhiteSpace(_pendingCharacterSlug) || _response is null)
+        {
+            return false;
+        }
+
+        var character = _response.Characters.FirstOrDefault(candidate =>
+            string.Equals(candidate.Slug, _pendingCharacterSlug, StringComparison.OrdinalIgnoreCase));
+        if (character is null || !character.IsUnlocked)
+        {
+            return false;
+        }
+
+        await ShowCharacterProfileAsync(character);
+        _pendingCharacterSlug = null;
+        return true;
+    }
+
+    private async Task ResolvePendingCharacterAsync()
+    {
+        if (_isResolvingPendingCharacter || string.IsNullOrWhiteSpace(_pendingCharacterSlug))
         {
             return;
         }
 
-        var character = _response.Characters.FirstOrDefault(candidate =>
-            candidate.IsUnlocked &&
-            string.Equals(candidate.Slug, _pendingCharacterSlug, StringComparison.OrdinalIgnoreCase));
-        _pendingCharacterSlug = null;
-        if (character is not null)
+        _isResolvingPendingCharacter = true;
+        try
         {
-            await ShowCharacterProfileAsync(character);
+            if (await TryOpenPendingCharacterAsync() || string.IsNullOrWhiteSpace(_pendingCharacterSlug))
+            {
+                return;
+            }
+
+            // Character unlock notifications can arrive while this singleton page
+            // still holds the pre-unlock response. Refresh before deciding that the
+            // requested character is unavailable or still locked.
+            await LoadAsync(forceRefresh: true);
+        }
+        catch
+        {
+            // Keep the slug pending so a later appearance or manual refresh can retry.
+        }
+        finally
+        {
+            _isResolvingPendingCharacter = false;
         }
     }
 
@@ -1295,23 +1354,6 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             }
         };
 
-    private ImageSource BuildCharacterImageSource(string? url)
-    {
-        var cacheKey = url?.Trim() ?? string.Empty;
-        if (!IsIOS && !IsAndroid && _imageSourceCache.TryGetValue(cacheKey, out var source))
-        {
-            return source;
-        }
-
-        source = _apiClient.BuildCachedImageSource(url, "schink_background.jpeg");
-        if (!IsIOS && !IsAndroid)
-        {
-            _imageSourceCache[cacheKey] = source;
-        }
-
-        return source;
-    }
-
     private void StartImageWarmup(MobileCharactersResponse response)
     {
         _imageWarmupCancellation?.Cancel();
@@ -1319,7 +1361,8 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         _imageWarmupCancellation = new CancellationTokenSource();
         var token = _imageWarmupCancellation.Token;
         var imageUrls = response.Characters
-            .Select(character => character.ImageUrl)
+            .Select(character => character.PreviewImageUrl)
+            .Concat(response.Characters.Select(character => character.ImageUrl))
             .Concat(response.Characters.SelectMany(character =>
                 character.RelatedStories.Select(story => story.ImageUrl)))
             .Where(url => !string.IsNullOrWhiteSpace(url))

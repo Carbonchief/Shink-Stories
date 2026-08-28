@@ -26,7 +26,8 @@ public sealed class PlansPage : ContentPage
         MobileApiClient apiClient,
         SessionState sessionState,
         MobileAnalyticsService analytics,
-        IMobileStoreBillingService storeBilling)
+        IMobileStoreBillingService storeBilling,
+        StoryPlaybackSession storyPlaybackSession)
     {
         _apiClient = apiClient;
         _sessionState = sessionState;
@@ -47,11 +48,12 @@ public sealed class PlansPage : ContentPage
         MobileResponsiveLayout.ApplyCenteredContent(_content, Width, 820);
         SizeChanged += (_, _) => MobileResponsiveLayout.ApplyCenteredContent(_content, Width, 820);
 
-        Content = new ScrollView
+        var scrollView = new ScrollView
         {
             BackgroundColor = PageBackgroundColor,
             Content = _content
         };
+        Content = PersistentPlaybackHost.Wrap(scrollView, storyPlaybackSession);
     }
 
     public string? ReturnUrl { get; set; }

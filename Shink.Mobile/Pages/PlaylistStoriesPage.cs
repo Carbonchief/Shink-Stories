@@ -58,6 +58,7 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
         MobileApiClient apiClient,
         SessionState sessionState,
         PlaylistPlaybackState playlistPlaybackState,
+        StoryPlaybackSession storyPlaybackSession,
         PlayerTransitionBackdropState transitionBackdropState)
     {
         _apiClient = apiClient;
@@ -95,7 +96,7 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
             }
         };
 
-        Content = new Grid
+        var pageContent = new Grid
         {
             SafeAreaEdges = SafeAreaEdges.None,
             Children =
@@ -104,6 +105,7 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
                 BuildFixedBackButtonOverlay("Gaan terug na Luister")
             }
         };
+        Content = PersistentPlaybackHost.Wrap(pageContent, storyPlaybackSession);
     }
 
     public void ApplyQueryAttributes(IDictionary<string, object> query)
@@ -145,7 +147,7 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
         {
             _stories.Add(new StoryCardItem(
                 story,
-                _apiClient.BuildImageUrl(PageHelpers.ResolveStoryCardImageSource(story, _apiClient))));
+                PageHelpers.BuildStoryImageRequest(story, _apiClient, "schink_background.jpeg")));
         }
 
         _storiesView.Header = BuildHeader(playlist, appearance);
@@ -183,9 +185,10 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
 
     private View BuildHero(MobilePlaylist playlist, ShowcaseAppearance appearance)
     {
-        var backdrop = new Image
+        var backdrop = new ProgressiveCachedImage(
+            _apiClient,
+            new ProgressiveImageRequest(appearance.BackdropUrl, FallbackFile: "schink_background.jpeg"))
         {
-            Source = _apiClient.BuildImageUrl(appearance.BackdropUrl),
             Aspect = Aspect.AspectFill
         };
 
@@ -198,9 +201,10 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
 
         if (!string.IsNullOrWhiteSpace(appearance.LogoUrl))
         {
-            heroGrid.Children.Add(new Image
+            heroGrid.Children.Add(new ProgressiveCachedImage(
+                _apiClient,
+                new ProgressiveImageRequest(appearance.LogoUrl))
             {
-                Source = _apiClient.BuildImageUrl(appearance.LogoUrl),
                 Aspect = Aspect.AspectFit,
                 HorizontalOptions = LayoutOptions.Center,
                 VerticalOptions = LayoutOptions.Center,
@@ -297,9 +301,10 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
 
     private View BuildFeaturedStory(MobileStorySummary story)
     {
-        var image = new Image
+        var image = new ProgressiveCachedImage(
+            _apiClient,
+            PageHelpers.BuildStoryImageRequest(story, _apiClient, "schink_background.jpeg"))
         {
-            Source = _apiClient.BuildImageUrl(PageHelpers.ResolveStoryCardImageSource(story, _apiClient)),
             Aspect = Aspect.AspectFill
         };
         var imageGrid = new Grid { Children = { image } };
@@ -363,8 +368,8 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
 
     private View BuildStoryCard()
     {
-        var image = new Image { Aspect = Aspect.AspectFill };
-        image.SetBinding(Image.SourceProperty, nameof(StoryCardItem.ImageUrl));
+        var image = new ProgressiveCachedImage(_apiClient) { Aspect = Aspect.AspectFill };
+        image.SetBinding(ProgressiveCachedImage.RequestProperty, nameof(StoryCardItem.ImageRequest));
 
         var playBadge = new Label
         {
@@ -760,15 +765,15 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
     {
         private MobileStorySummary _story;
 
-        public StoryCardItem(MobileStorySummary story, string imageUrl)
+        public StoryCardItem(MobileStorySummary story, ProgressiveImageRequest imageRequest)
         {
             _story = story;
-            ImageUrl = imageUrl;
+            ImageRequest = imageRequest;
         }
 
         public MobileStorySummary Story => _story;
         public string Title => _story.Title;
-        public string ImageUrl { get; }
+        public ProgressiveImageRequest ImageRequest { get; }
         public string ActionGlyph => _story.IsLocked ? LockIconGlyph : PlayIconGlyph;
         public Color FavoriteColor => _story.IsFavorite ? Color.FromArgb("#FFE6EF") : Colors.White;
 

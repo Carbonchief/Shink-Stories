@@ -51,8 +51,8 @@ public sealed class MobileIosCollectionViewCrashSourceTests
         StringAssert.Contains(
             luisterPage,
             "if (!ReferenceEquals(_playlist, playlist) || Math.Abs(_lastWidth - _owner.Width) >= 1)");
-        StringAssert.Contains(luisterPage, "if (!string.Equals(_imageKey, imageUrl, StringComparison.Ordinal))");
-        StringAssert.Contains(luisterPage, "if (!IsIOS && !IsAndroid && _imageSourceCache.TryGetValue(cacheKey, out var cachedSource))");
+        StringAssert.Contains(luisterPage, "if (!string.Equals(_imageKey, imageKey, StringComparison.Ordinal))");
+        StringAssert.Contains(luisterPage, "PageHelpers.BuildStoryImageRequest(");
         StringAssert.Contains(luisterPage, "AutomationId = \"favorite-carousel-story\"");
         StringAssert.Contains(luisterPage, "ApplyFavoriteOverlayState(_favoriteButton, item.Story, updateAutomationId: false)");
         StringAssert.Contains(luisterPage, "_image.WidthRequest = coverWidth;");
@@ -61,13 +61,14 @@ public sealed class MobileIosCollectionViewCrashSourceTests
         StringAssert.Contains(luisterPage, "_artwork.HeightRequest = coverHeight;");
         StringAssert.Contains(luisterPage, "HorizontalOptions = LayoutOptions.Fill,");
         StringAssert.Contains(luisterPage, "VerticalOptions = LayoutOptions.Fill,");
-        StringAssert.Contains(luisterPage, "if (IsIOS || IsAndroid)");
         StringAssert.Contains(luisterPage, "maxDegreeOfParallelism: IsAndroid || IsIOS ? 1 : 4");
-        StringAssert.Contains(apiClient, "IosImageCacheOptimizer.ResolveDisplayPath(cachedPath)");
+        StringAssert.Contains(apiClient, "IosImageCacheOptimizer.TryResolveDisplayPath(cachedPath, out cachedPath)");
         StringAssert.Contains(apiClient, "IosImageCacheOptimizer.EnsureOptimized(cachePath, cancellationToken)");
-        StringAssert.Contains(optimizer, "private const int MaxPixelDimension = 1280;");
+        StringAssert.Contains(optimizer, "ResolveMaxPixelDimension()");
+        StringAssert.Contains(optimizer, "PhoneMaxPixelDimension = 1280");
+        StringAssert.Contains(optimizer, "TabletMaxPixelDimension = 2048");
         StringAssert.Contains(optimizer, "CreateThumbnailFromImageAlways = true");
-        StringAssert.Contains(optimizer, "MaxPixelSize = MaxPixelDimension");
+        StringAssert.Contains(optimizer, "MaxPixelSize = maxPixelDimension");
     }
 
     private static string GetRepoPath(params string[] relativeSegments)

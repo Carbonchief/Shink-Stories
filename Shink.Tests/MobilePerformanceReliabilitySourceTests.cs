@@ -199,13 +199,26 @@ public sealed class MobilePerformanceReliabilitySourceTests
         Assert.IsGreaterThan(gradientUpdate, idleGuard);
         StringAssert.Contains(luisterPage, "PauseImageWarmupForScroll();");
         StringAssert.Contains(luisterPage, "ResumeImageWarmupAfterScroll();");
+        var pauseWarmupStart = luisterPage.IndexOf("private void PauseImageWarmupForScroll()", StringComparison.Ordinal);
+        var resumeWarmupStart = luisterPage.IndexOf("private void ResumeImageWarmupAfterScroll()", pauseWarmupStart, StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(0, pauseWarmupStart);
+        Assert.IsGreaterThan(pauseWarmupStart, resumeWarmupStart);
+        Assert.DoesNotContain(
+            "if (IsIOS || IsAndroid)",
+            luisterPage[pauseWarmupStart..resumeWarmupStart],
+            StringComparison.Ordinal);
+        StringAssert.Contains(luisterPage, "InitialCarouselWarmupItemCount = 3");
+        StringAssert.Contains(luisterPage, "var visibleSections = FilterSections(_sections, _searchEntry.Text).ToArray();");
+        StringAssert.Contains(luisterPage, ".Skip(InitialCarouselWarmupItemCount)");
         StringAssert.Contains(luisterPage, "ResolvePlaylistShowcaseCoverHeight(wideLayout, pageWidth)");
         Assert.IsFalse(luisterPage.Contains("cover.SizeChanged +=", StringComparison.Ordinal));
         StringAssert.Contains(luisterPage, "AutomationId = \"luister-feed\"");
         StringAssert.Contains(luisterPage, "AutomationId = \"luister-carousel\"");
         StringAssert.Contains(luisterPage, "ItemTemplate = new LuisterFeedTemplateSelector(this)");
+        StringAssert.Contains(luisterPage, "BuildReusableStoryCarouselItems(playlist, ranked)");
         StringAssert.Contains(mauiProgram, "SchinkLuisterCollectionViewPerformance");
-        StringAssert.Contains(mauiProgram, "layoutManager.InitialPrefetchItemCount = 4;");
+        StringAssert.Contains(mauiProgram, "layoutManager.ItemPrefetchEnabled = false;");
+        StringAssert.Contains(mauiProgram, "layoutManager.InitialPrefetchItemCount = 0;");
     }
 
     [TestMethod]
@@ -222,14 +235,18 @@ public sealed class MobilePerformanceReliabilitySourceTests
         StringAssert.Contains(source, "_image.WidthRequest = imageSize;");
         StringAssert.Contains(source, "_image.HeightRequest = imageSize;");
         StringAssert.Contains(source, "AutomationId = \"characters-grid\"");
-        StringAssert.Contains(source, "if (!IsIOS && !IsAndroid && _imageSourceCache.TryGetValue(cacheKey, out var source))");
+        StringAssert.Contains(source, "_image.SetImage(");
+        StringAssert.Contains(source, "character.PreviewImageUrl,");
         StringAssert.Contains(source, "await Task.Delay(TimeSpan.FromMilliseconds(750), token);");
         StringAssert.Contains(source, "maxDegreeOfParallelism: IsAndroid || IsIOS ? 1 : 3");
         Assert.IsFalse(source.Contains("host.Content = host.BindingContext", StringComparison.Ordinal));
         Assert.IsFalse(source.Contains("_imageSourceCache.Clear();", StringComparison.Ordinal));
 
-        var portraits = source.IndexOf(".Select(character => character.ImageUrl)", StringComparison.Ordinal);
+        var previews = source.IndexOf(".Select(character => character.PreviewImageUrl)", StringComparison.Ordinal);
+        var portraits = source.IndexOf(".Concat(response.Characters.Select(character => character.ImageUrl))", StringComparison.Ordinal);
         var storyArtwork = source.IndexOf(".Concat(response.Characters.SelectMany", StringComparison.Ordinal);
+        Assert.IsGreaterThanOrEqualTo(0, previews);
+        Assert.IsGreaterThan(previews, portraits);
         Assert.IsGreaterThanOrEqualTo(0, portraits);
         Assert.IsGreaterThan(portraits, storyArtwork);
     }
@@ -254,8 +271,8 @@ public sealed class MobilePerformanceReliabilitySourceTests
             "MauiProgram.cs"));
 
         StringAssert.Contains(apiClient, "AndroidImageCacheOptimizer.ResolveDisplayPath(cachedPath)");
-        StringAssert.Contains(apiClient, "AndroidImageCacheOptimizer.EnsureOptimized(cachePath, cancellationToken)");
-        StringAssert.Contains(optimizer, "private const int MaxPixelDimension = 1280;");
+        StringAssert.Contains(apiClient, "AndroidImageCacheOptimizer.EnsureOptimized(cachePath, CancellationToken.None)");
+        StringAssert.Contains(optimizer, "ResolveMaxPixelDimension()");
         StringAssert.Contains(optimizer, "InJustDecodeBounds = true");
         StringAssert.Contains(optimizer, "InSampleSize = sampleSize");
         StringAssert.Contains(optimizer, "Bitmap.CreateScaledBitmap(decoded, targetWidth, targetHeight, filter: true)");
@@ -265,7 +282,7 @@ public sealed class MobilePerformanceReliabilitySourceTests
         StringAssert.Contains(mauiProgram, "collectionView.AutomationId == \"luister-feed\"");
         StringAssert.Contains(mauiProgram, "layoutManager.InitialPrefetchItemCount = 3;");
         StringAssert.Contains(mauiProgram, "layoutManager.InitialPrefetchItemCount = 9;");
-        StringAssert.Contains(optimizer, "Math.Max(bounds.OutWidth, bounds.OutHeight) <= MaxPixelDimension");
+        StringAssert.Contains(optimizer, "Math.Max(bounds.OutWidth, bounds.OutHeight) <= maxPixelDimension");
     }
 
     [TestMethod]

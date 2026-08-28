@@ -21,8 +21,8 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
     private readonly Label _roundLabel;
     private readonly Label _scoreLabel;
     private readonly Label _messageLabel;
-    private readonly Image _mysteryImage;
-    private readonly Image _revealImage;
+    private readonly ProgressiveCachedImage _mysteryImage;
+    private readonly ProgressiveCachedImage _revealImage;
     private readonly Border _imageStage;
     private readonly Grid _choicesGrid;
     private readonly Button _actionButton;
@@ -50,7 +50,8 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
     public KarakterRaaiGamePage(
         MobileApiClient apiClient,
         SessionState sessionState,
-        MobileAnalyticsService analytics)
+        MobileAnalyticsService analytics,
+        StoryPlaybackSession storyPlaybackSession)
     {
         _apiClient = apiClient;
         _analytics = analytics;
@@ -200,7 +201,7 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
         Grid.SetRow(_stateOverlay, 1);
         Grid.SetRowSpan(_stateOverlay, 5);
         Grid.SetRowSpan(_celebrationOverlay, 6);
-        Content = root;
+        Content = PersistentPlaybackHost.Wrap(root, storyPlaybackSession, edgeToEdge: true);
         SizeChanged += (_, _) => ApplyResponsiveLayout();
         ApplyResponsiveLayout();
     }
@@ -390,8 +391,8 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
         };
     }
 
-    private static Image BuildCharacterImage() =>
-        new()
+    private ProgressiveCachedImage BuildCharacterImage() =>
+        new(_apiClient)
         {
             Aspect = Aspect.AspectFit,
             Margin = new Thickness(18, 0),
@@ -567,14 +568,16 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
         _messageLabel.Text = "???";
         _messageLabel.FontSize = 52;
         _messageLabel.TextColor = Color.FromArgb("#5B7188");
-        _mysteryImage.Source = _apiClient.BuildCachedImageSource(
+        _mysteryImage.SetImage(
             _targetMysteryImageUrl,
-            "schink_character_lineup.png");
+            _targetCharacter.MysteryPreviewImageUrl,
+            fallbackFile: "schink_character_lineup.png");
         _mysteryImage.Opacity = 1;
         _mysteryImage.Scale = 1;
-        _revealImage.Source = _apiClient.BuildCachedImageSource(
+        _revealImage.SetImage(
             _targetCharacter.ImageUrl,
-            "schink_character_lineup.png");
+            _targetCharacter.MatchPreviewImageUrl,
+            fallbackFile: "schink_character_lineup.png");
         _revealImage.Opacity = 0;
         _revealImage.Scale = 0.94;
         RenderChoices(round);
@@ -614,9 +617,13 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
 
     private Border BuildChoiceButton(MobileCharacterCard character)
     {
-        var image = new Image
+        var image = new ProgressiveCachedImage(
+            _apiClient,
+            new ProgressiveImageRequest(
+                character.ImageUrl,
+                character.MatchPreviewImageUrl,
+                "schink_character_lineup.png"))
         {
-            Source = _apiClient.BuildCachedImageSource(character.ImageUrl, "schink_character_lineup.png"),
             Aspect = Aspect.AspectFit,
             HeightRequest = 138,
             HorizontalOptions = LayoutOptions.Fill,

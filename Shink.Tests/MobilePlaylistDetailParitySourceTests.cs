@@ -96,7 +96,8 @@ public sealed class MobilePlaylistDetailParitySourceTests
         StringAssert.Contains(source, "new CollectionView");
         StringAssert.Contains(source, "new LinearItemsLayout(ItemsLayoutOrientation.Vertical)");
         StringAssert.Contains(source, "ItemSizingStrategy = ItemSizingStrategy.MeasureFirstItem");
-        StringAssert.Contains(source, "await _audioPlaybackService.PlayAsync(");
+        StringAssert.Contains(source, "await _storyPlaybackSession.PlayAsync(");
+        StringAssert.Contains(source, "_storyPlaybackSession.NotifyPageHidden();");
         StringAssert.Contains(source, "await SelectStoryAsync(item.Story, autoplay: true);");
         StringAssert.Contains(source, "_playlistPlaybackState.CanAutoplayAdvance(_currentStory)");
         StringAssert.Contains(source, "Intekening nodig");

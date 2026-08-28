@@ -27,7 +27,8 @@ public sealed class SettingsPage : ContentPage
     public SettingsPage(
         MobileApiClient apiClient,
         SessionState sessionState,
-        IOfflineStoryDownloadService offlineDownloadService)
+        IOfflineStoryDownloadService offlineDownloadService,
+        StoryPlaybackSession storyPlaybackSession)
     {
         _apiClient = apiClient;
         _sessionState = sessionState;
@@ -47,11 +48,12 @@ public sealed class SettingsPage : ContentPage
         MobileResponsiveLayout.ApplyCenteredContent(_content, Width, 760);
         SizeChanged += (_, _) => MobileResponsiveLayout.ApplyCenteredContent(_content, Width, 760);
 
-        Content = new ScrollView
+        var scrollView = new ScrollView
         {
             BackgroundColor = PageBackgroundColor,
             Content = _content
         };
+        Content = PersistentPlaybackHost.Wrap(scrollView, storyPlaybackSession);
     }
 
     protected override async void OnAppearing()

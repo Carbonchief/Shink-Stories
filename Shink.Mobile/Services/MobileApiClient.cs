@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Collections.Concurrent;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -305,6 +306,11 @@ public sealed class MobileApiClient
     private static readonly TimeSpan DefaultStoryDetailCacheMaxAge = TimeSpan.FromHours(12);
     private static readonly TimeSpan DefaultNotificationCacheMaxAge = TimeSpan.FromDays(7);
     private static readonly TimeSpan TransientGetRetryDelay = TimeSpan.FromMilliseconds(300);
+#if IOS || ANDROID
+    private const int ImageCacheConcurrency = 2;
+#else
+    private const int ImageCacheConcurrency = 4;
+#endif
 
     private readonly HttpClient _httpClient;
     private readonly CookieContainer _cookieContainer;
@@ -318,6 +324,11 @@ public sealed class MobileApiClient
     private readonly SemaphoreSlim _notificationCacheLock = new(1, 1);
     private readonly SemaphoreSlim _offlineStoryListenQueueLock = new(1, 1);
     private readonly SemaphoreSlim _offlineStoryListenFlushLock = new(1, 1);
+    private readonly SemaphoreSlim _imageDownloadSlots = new(ImageCacheConcurrency, ImageCacheConcurrency);
+    private readonly ConcurrentDictionary<string, Task<string?>> _imageCacheTasks = new(StringComparer.OrdinalIgnoreCase);
+    private readonly object _imageCacheActivityGate = new();
+    private CancellationTokenSource _imageCacheActivityCancellation = new();
+    private bool _isImageCacheActivitySuspended;
     private MobileLuisterCacheEntry? _memoryLuisterCache;
     private MobileCharactersCacheEntry? _memoryCharactersCache;
     private MobileNotificationCacheEntry? _memoryNotificationCache;
@@ -354,6 +365,87 @@ public sealed class MobileApiClient
     {
         get => _settings.BaseUrl;
         set => _settings.BaseUrl = value;
+    }
+
+    public Task SuspendImageCacheActivity()
+    {
+        CancellationTokenSource? cancellation = null;
+        Task<string?>[] activeTasks;
+        lock (_imageCacheActivityGate)
+        {
+            if (!_isImageCacheActivitySuspended)
+            {
+                _isImageCacheActivitySuspended = true;
+                cancellation = _imageCacheActivityCancellation;
+            }
+
+            activeTasks = _imageCacheTasks.Values.Distinct().ToArray();
+        }
+
+        cancellation?.Cancel();
+        var quiescence = ObserveImageCacheTasksAsync(activeTasks);
+        if (cancellation is not null)
+        {
+            _ = DisposeCancellationAfterCompletionAsync(cancellation, quiescence);
+        }
+
+        return quiescence;
+    }
+
+    public void ResumeImageCacheActivity()
+    {
+        lock (_imageCacheActivityGate)
+        {
+            if (!_isImageCacheActivitySuspended)
+            {
+                return;
+            }
+
+            _imageCacheActivityCancellation = new CancellationTokenSource();
+            _isImageCacheActivitySuspended = false;
+        }
+    }
+
+    private CancellationToken GetImageCacheActivityToken()
+    {
+        lock (_imageCacheActivityGate)
+        {
+            return _isImageCacheActivitySuspended
+                ? new CancellationToken(canceled: true)
+                : _imageCacheActivityCancellation.Token;
+        }
+    }
+
+    private static async Task ObserveImageCacheTasksAsync(Task<string?>[] tasks)
+    {
+        if (tasks.Length == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            await Task.WhenAll(tasks).ConfigureAwait(false);
+        }
+        catch
+        {
+            // Backgrounding cancels cache work by design. The caller only needs
+            // to know when every worker has released its file handles.
+        }
+    }
+
+    private static async Task DisposeCancellationAfterCompletionAsync(
+        CancellationTokenSource cancellation,
+        Task completion)
+    {
+        try
+        {
+            await completion.ConfigureAwait(false);
+        }
+        finally
+        {
+            cancellation.Dispose();
+        }
     }
 
     public async Task<MobileSession> GetSessionAsync(CancellationToken cancellationToken = default)
@@ -1516,11 +1608,15 @@ public sealed class MobileApiClient
         {
 #if ANDROID
             cachedPath = AndroidImageCacheOptimizer.ResolveDisplayPath(cachedPath);
-#endif
-#if IOS
-            cachedPath = IosImageCacheOptimizer.ResolveDisplayPath(cachedPath);
-#endif
             return ImageSource.FromFile(cachedPath);
+#elif IOS
+            if (IosImageCacheOptimizer.TryResolveDisplayPath(cachedPath, out var displayPath))
+            {
+                return ImageSource.FromFile(displayPath);
+            }
+#else
+            return ImageSource.FromFile(cachedPath);
+#endif
         }
 
         return Uri.TryCreate(imageUrl, UriKind.Absolute, out var imageUri) && IsWebUri(imageUri)
@@ -1531,6 +1627,110 @@ public sealed class MobileApiClient
                 CacheValidity = TimeSpan.FromDays(30)
             }
             : ImageSource.FromFile(string.IsNullOrWhiteSpace(fallbackFile) ? imageUrl : fallbackFile);
+    }
+
+    public bool TryBuildCachedImageSource(string? url, out ImageSource? source)
+    {
+        source = null;
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return false;
+        }
+
+        var normalizedUrl = NormalizeIncomingImageUrl(url);
+        if (IsBundledImageName(normalizedUrl))
+        {
+            source = ImageSource.FromFile(normalizedUrl);
+            return true;
+        }
+
+        var imageUrl = BuildAbsoluteImageUrl(normalizedUrl);
+        if (!TryGetCachedImagePath(imageUrl, out var cachedPath))
+        {
+            return false;
+        }
+
+#if ANDROID
+        cachedPath = AndroidImageCacheOptimizer.ResolveDisplayPath(cachedPath);
+#elif IOS
+        if (!IosImageCacheOptimizer.TryResolveDisplayPath(cachedPath, out cachedPath))
+        {
+            // Never hand UIKit a large original from this synchronous binding
+            // path. The progressive loader prepares the bounded copy off-thread.
+            return false;
+        }
+#endif
+        source = ImageSource.FromFile(cachedPath);
+        return true;
+    }
+
+    public async Task<ImageSource?> CacheImageSourceAsync(
+        string? url,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+        {
+            return null;
+        }
+
+        var normalizedUrl = NormalizeIncomingImageUrl(url);
+        if (IsBundledImageName(normalizedUrl))
+        {
+            return ImageSource.FromFile(normalizedUrl);
+        }
+
+        var imageUrl = BuildAbsoluteImageUrl(normalizedUrl);
+        if (!Uri.TryCreate(imageUrl, UriKind.Absolute, out var imageUri) || !IsWebUri(imageUri))
+        {
+            return null;
+        }
+
+        if (TryBuildCachedImageSource(imageUrl, out var cachedSource))
+        {
+            return cachedSource;
+        }
+
+        var cacheTask = _imageCacheTasks.GetOrAdd(
+            imageUrl,
+            static (key, client) => client.CacheImageCoreAsync(key),
+            this);
+        _ = cacheTask.ContinueWith(
+            static (completedTask, state) =>
+            {
+                var (client, key) = ((MobileApiClient Client, string Key))state!;
+                client._imageCacheTasks.TryRemove(
+                    new KeyValuePair<string, Task<string?>>(key, completedTask));
+            },
+            (Client: this, Key: imageUrl),
+            CancellationToken.None,
+            TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+        try
+        {
+            var cachedPath = await cacheTask.WaitAsync(cancellationToken);
+            if (string.IsNullOrWhiteSpace(cachedPath))
+            {
+                return null;
+            }
+
+#if ANDROID
+            cachedPath = AndroidImageCacheOptimizer.ResolveDisplayPath(cachedPath);
+#elif IOS
+            if (!IosImageCacheOptimizer.TryResolveDisplayPath(cachedPath, out cachedPath))
+            {
+                return null;
+            }
+#endif
+            return ImageSource.FromFile(cachedPath);
+        }
+        finally
+        {
+            if (cacheTask.IsCompleted)
+            {
+                _imageCacheTasks.TryRemove(
+                    new KeyValuePair<string, Task<string?>>(imageUrl, cacheTask));
+            }
+        }
     }
 
     public async Task CacheImagesAsync(
@@ -1563,7 +1763,7 @@ public sealed class MobileApiClient
             {
                 try
                 {
-                    await CacheImageAsync(imageUrl, token);
+                    await CacheImageSourceAsync(imageUrl, token);
                 }
                 catch
                 {
@@ -1701,13 +1901,36 @@ public sealed class MobileApiClient
         });
     }
 
-    private async Task CacheImageAsync(string imageUrl, CancellationToken cancellationToken)
+    public Task MaintainImageCacheAsync(CancellationToken cancellationToken = default) =>
+        Task.Run(() => MaintainImageCache(cancellationToken), cancellationToken);
+
+    private Task<string?> CacheImageCoreAsync(string imageUrl)
     {
+        var activityToken = GetImageCacheActivityToken();
+        return Task.Run(async () =>
+        {
+            await _imageDownloadSlots.WaitAsync(activityToken).ConfigureAwait(false);
+            try
+            {
+                return await CacheImageCoreWithinSlotAsync(imageUrl, activityToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                _imageDownloadSlots.Release();
+            }
+        }, activityToken);
+    }
+
+    private async Task<string?> CacheImageCoreWithinSlotAsync(
+        string imageUrl,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
         await EnsureAuthCookiesLoadedAsync(cancellationToken);
 
         if (!Uri.TryCreate(imageUrl, UriKind.Absolute, out var imageUri) || !IsWebUri(imageUri))
         {
-            return;
+            return null;
         }
 
         var cachePath = BuildImageCachePath(imageUrl);
@@ -1719,7 +1942,7 @@ public sealed class MobileApiClient
 #if IOS
             IosImageCacheOptimizer.EnsureOptimized(cachePath, cancellationToken);
 #endif
-            return;
+            return cachePath;
         }
 
         Directory.CreateDirectory(System.IO.Path.GetDirectoryName(cachePath)!);
@@ -1729,32 +1952,95 @@ public sealed class MobileApiClient
             File.Delete(temporaryPath);
         }
 
-        using var request = new HttpRequestMessage(HttpMethod.Get, imageUri);
-        using var response = await _httpClient.SendAsync(
-            request,
-            HttpCompletionOption.ResponseHeadersRead,
-            cancellationToken);
-        await SaveAuthCookiesAsync(cancellationToken);
-        await EnsureSuccessAsync(response, cancellationToken);
-
-        await using (var sourceStream = await response.Content.ReadAsStreamAsync(cancellationToken))
-        await using (var fileStream = File.Create(temporaryPath))
+        try
         {
-            await sourceStream.CopyToAsync(fileStream, cancellationToken);
-        }
+            using var request = new HttpRequestMessage(HttpMethod.Get, imageUri);
+            using var response = await _httpClient.SendAsync(
+                request,
+                HttpCompletionOption.ResponseHeadersRead,
+                cancellationToken);
+            await SaveAuthCookiesAsync(cancellationToken);
+            await EnsureSuccessAsync(response, cancellationToken);
+            var contentType = response.Content.Headers.ContentType?.MediaType;
+            if (!string.IsNullOrWhiteSpace(contentType) &&
+                !contentType.StartsWith("image/", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Die beeldbediener het nie 'n geldige beeld teruggestuur nie.");
+            }
 
-        if (File.Exists(cachePath))
-        {
-            File.Delete(cachePath);
-        }
+            await using (var sourceStream = await response.Content.ReadAsStreamAsync(cancellationToken))
+            await using (var fileStream = File.Create(temporaryPath))
+            {
+                await sourceStream.CopyToAsync(fileStream, cancellationToken);
+            }
 
-        File.Move(temporaryPath, cachePath);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!File.Exists(temporaryPath) || new FileInfo(temporaryPath).Length == 0)
+            {
+                throw new InvalidOperationException("Die beeldlêer is leeg.");
+            }
+
+            if (File.Exists(cachePath))
+            {
+                File.Delete(cachePath);
+            }
+
+            File.Move(temporaryPath, cachePath);
 #if ANDROID
-        AndroidImageCacheOptimizer.EnsureOptimized(cachePath, cancellationToken);
+            AndroidImageCacheOptimizer.EnsureOptimized(cachePath, cancellationToken);
 #endif
 #if IOS
-        IosImageCacheOptimizer.EnsureOptimized(cachePath, cancellationToken);
+            IosImageCacheOptimizer.EnsureOptimized(cachePath, cancellationToken);
 #endif
+            return cachePath;
+        }
+        finally
+        {
+            TryDeleteFile(temporaryPath);
+        }
+    }
+
+    private static void MaintainImageCache(CancellationToken cancellationToken)
+    {
+        const long maxCacheBytes = 512L * 1024L * 1024L;
+        var cacheDirectory = BuildImageCacheDirectory();
+        if (!Directory.Exists(cacheDirectory))
+        {
+            return;
+        }
+
+        var expiryCutoff = DateTime.UtcNow - TimeSpan.FromDays(180);
+        var files = new List<FileInfo>();
+        foreach (var path in Directory.EnumerateFiles(cacheDirectory))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var file = new FileInfo(path);
+            if (file.Name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase) ||
+                file.LastWriteTimeUtc < expiryCutoff)
+            {
+                TryDeleteFile(file.FullName);
+                continue;
+            }
+
+            if (file.Exists)
+            {
+                files.Add(file);
+            }
+        }
+
+        var totalBytes = files.Sum(static file => file.Length);
+        foreach (var file in files.OrderBy(static file => file.LastWriteTimeUtc))
+        {
+            if (totalBytes <= maxCacheBytes)
+            {
+                break;
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            var length = file.Length;
+            TryDeleteFile(file.FullName);
+            totalBytes -= length;
+        }
     }
 
     private Uri BuildUri(string path) => new($"{_settings.BaseUrl.TrimEnd('/')}{path}", UriKind.Absolute);
@@ -2111,11 +2397,14 @@ public sealed class MobileApiClient
 
     private static string BuildImageCachePath(string imageUrl)
     {
-        var cacheDirectory = System.IO.Path.Combine(FileSystem.CacheDirectory, "story-images");
+        var cacheDirectory = BuildImageCacheDirectory();
         var cacheKey = BuildStableCacheKey(imageUrl);
         var extension = ResolveImageExtensionFromUrl(imageUrl);
         return System.IO.Path.Combine(cacheDirectory, $"{cacheKey}{extension}");
     }
+
+    private static string BuildImageCacheDirectory() =>
+        System.IO.Path.Combine(FileSystem.CacheDirectory, "story-images");
 
     private string BuildLuisterCachePath()
     {

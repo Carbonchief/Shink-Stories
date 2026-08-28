@@ -120,7 +120,14 @@ public class CharacterMatchGameTests
         StringAssert.Contains(configPage, "karakter_pare_kenner.png");
         StringAssert.Contains(configPage, "karakter_pare_meester.png");
         StringAssert.Contains(configPage, "Text = \"SPEEL NOU\"");
-        Assert.IsFalse(configPage.Contains("ScrollView", StringComparison.Ordinal));
+        StringAssert.Contains(configPage, "var contentScroll = new ScrollView");
+        StringAssert.Contains(configPage, "VerticalScrollBarVisibility = ScrollBarVisibility.Never");
+        StringAssert.Contains(configPage, "AutomationId = \"karakter-pare-config-scroll\"");
+        StringAssert.Contains(configPage, "contentScroll,");
+        StringAssert.Contains(configPage, "private const double CompactLayoutHeight = 700;");
+        StringAssert.Contains(configPage, "Height > 0 && Height < CompactLayoutHeight");
+        StringAssert.Contains(configPage, "new Thickness(0, 68, 0, 8)");
+        StringAssert.Contains(configPage, "new Thickness(0, 40, 0, 6)");
         StringAssert.Contains(configPage, "Margin = new Thickness(14, 44, 0, 0)");
         StringAssert.Contains(gamePage, "private readonly Grid _board;");
         StringAssert.Contains(gamePage, "private static Grid BuildBoard()");
@@ -152,7 +159,8 @@ public class CharacterMatchGameTests
         StringAssert.Contains(gamePage, "AnimateBoardOutAsync()");
         StringAssert.Contains(gamePage, "AnimateBoardBuildAsync()");
         StringAssert.Contains(gamePage, "AnimateTileIntoBoardAsync");
-        StringAssert.Contains(gamePage, "_apiClient.BuildCachedImageSource(GetMatchImageUrl(character)!");
+        StringAssert.Contains(gamePage, "new ProgressiveImageRequest(");
+        StringAssert.Contains(gamePage, "character.MatchPreviewImageUrl,");
         StringAssert.Contains(gamePage, "Text = \"KARAKTER-PARE\"");
         StringAssert.Contains(configPage, "private const string PoppinsFontFamily = \"Poppins\";");
         StringAssert.Contains(configPage, "private const string PoppinsBoldFontFamily = \"PoppinsBold\";");

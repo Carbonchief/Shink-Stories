@@ -132,7 +132,10 @@ public sealed record MobileCharacterCard(
     IReadOnlyList<MobileCharacterAudioClip> PreviewAudioClips,
     MobileCharacterStoryLink? PrimaryStory,
     IReadOnlyList<MobileCharacterStoryLink> RelatedStories,
-    string CallToActionLabel);
+    string CallToActionLabel,
+    string? PreviewImageUrl = null,
+    string? MatchPreviewImageUrl = null,
+    string? MysteryPreviewImageUrl = null);
 
 public sealed record MobileCharacterAudioClip(
     string Title,
