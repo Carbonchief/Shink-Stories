@@ -84,6 +84,21 @@ public sealed class MobilePlatformChromeSourceTests
     }
 
     [TestMethod]
+    public void DownloadedUsesTheSharedStoriesChromeAndSelectedDestination()
+    {
+        var downloaded = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "DownloadedPage.cs"));
+
+        StringAssert.Contains(downloaded, "private const double FloatingTopBarContentInset = 92;");
+        StringAssert.Contains(downloaded, "private const double BottomBarOverlayHeight = 152;");
+        StringAssert.Contains(downloaded, "SafeAreaEdges = SafeAreaEdges.None;");
+        StringAssert.Contains(downloaded, "MobileTopBar.BuildStoriesTopBar(");
+        StringAssert.Contains(downloaded, "MobileBottomBar.Build(this, \"downloads\")");
+        StringAssert.Contains(downloaded, "ApplyStoriesTopBar(_topBarHost, width, 1040)");
+        StringAssert.Contains(downloaded, "new PersistentNowPlayingBar(_storyPlaybackSession)");
+        Assert.DoesNotContain("Shell.Current.GoToAsync(\"..\"", downloaded, StringComparison.Ordinal);
+    }
+
+    [TestMethod]
     public void StoriesTopBarsFillTheIpadSafeAreaWidth()
     {
         var responsiveLayout = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileResponsiveLayout.cs"));

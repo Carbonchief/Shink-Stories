@@ -30,17 +30,12 @@ public sealed class SearchPage : ContentPage
     private readonly RefreshView _refreshView;
     private readonly Border _topBarHost;
     private readonly VerticalStackLayout _searchHeader;
-    private BoxView _heroSpacer = null!;
-    private Image _heroMascot = null!;
-    private Label _heroTitle = null!;
-    private Label _heroSubtitle = null!;
     private CancellationTokenSource? _loadCancellation;
     private CancellationTokenSource? _searchCancellation;
     private IReadOnlyList<StorySearchCandidate> _catalog = Array.Empty<StorySearchCandidate>();
     private bool _isPageActive;
     private bool _hasLoadedCatalog;
     private bool _isLoadingCatalog;
-    private bool _isCompactSearchHeader;
     private int _revealGeneration;
 
     public SearchPage(
@@ -87,14 +82,6 @@ public sealed class SearchPage : ContentPage
             AutomationId = "story-search-input"
         };
         _searchEntry.TextChanged += (_, _) => QueueSearch();
-        _searchEntry.Focused += async (_, _) => await SetCompactSearchHeaderAsync(true);
-        _searchEntry.Unfocused += async (_, _) =>
-        {
-            if (string.IsNullOrWhiteSpace(_searchEntry.Text))
-            {
-                await SetCompactSearchHeaderAsync(false);
-            }
-        };
 
         _searchActivity = new ActivityIndicator
         {
@@ -259,8 +246,8 @@ public sealed class SearchPage : ContentPage
 
     private VerticalStackLayout BuildSearchHeader()
     {
-        _heroSpacer = new BoxView { HeightRequest = 200, Color = Colors.Transparent };
-        _heroMascot = new Image
+        var heroSpacer = new BoxView { HeightRequest = 200, Color = Colors.Transparent };
+        var heroMascot = new Image
         {
             Source = "knibbels_search.png",
             Aspect = Aspect.AspectFit,
@@ -270,7 +257,7 @@ public sealed class SearchPage : ContentPage
             InputTransparent = true,
             AutomationId = "story-search-mascot"
         };
-        _heroTitle = new Label
+        var heroTitle = new Label
         {
             Text = "Storie soek...",
             FontFamily = PoppinsBoldFontFamily,
@@ -282,7 +269,7 @@ public sealed class SearchPage : ContentPage
             Margin = new Thickness(0, 2, 0, 0),
             AutomationId = "story-search-title"
         };
-        _heroSubtitle = new Label
+        var heroSubtitle = new Label
         {
             Text = "Tik die naam van die storie wat jy wil luister",
             FontFamily = PoppinsFontFamily,
@@ -300,10 +287,10 @@ public sealed class SearchPage : ContentPage
             Spacing = 0,
             Children =
             {
-                _heroSpacer,
-                _heroMascot,
-                _heroTitle,
-                _heroSubtitle,
+                heroSpacer,
+                heroMascot,
+                heroTitle,
+                heroSubtitle,
                 BuildSearchField(),
                 _resultsSummary,
                 new BoxView { HeightRequest = 32, Color = Colors.Transparent }
@@ -374,47 +361,6 @@ public sealed class SearchPage : ContentPage
     {
         _searchEntry.Focus();
         return Task.CompletedTask;
-    }
-
-    private async Task SetCompactSearchHeaderAsync(bool compact)
-    {
-        if (_isCompactSearchHeader == compact)
-        {
-            return;
-        }
-
-        _isCompactSearchHeader = compact;
-        var heroViews = new View[] { _heroMascot, _heroTitle, _heroSubtitle };
-        foreach (var view in heroViews)
-        {
-            view.CancelAnimations();
-        }
-
-        if (compact)
-        {
-            await Task.WhenAll(heroViews.Select(view => view.FadeToAsync(0, 130, Easing.CubicOut)));
-            if (!_isCompactSearchHeader)
-            {
-                return;
-            }
-
-            foreach (var view in heroViews)
-            {
-                view.IsVisible = false;
-            }
-
-            _heroSpacer.HeightRequest = 98;
-            return;
-        }
-
-        _heroSpacer.HeightRequest = 200;
-        foreach (var view in heroViews)
-        {
-            view.Opacity = 0;
-            view.IsVisible = true;
-        }
-
-        await Task.WhenAll(heroViews.Select(view => view.FadeToAsync(1, 210, Easing.CubicOut)));
     }
 
     private static Task OpenNotificationsAsync() =>

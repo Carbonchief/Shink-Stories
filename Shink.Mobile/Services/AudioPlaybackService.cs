@@ -21,7 +21,12 @@ public interface IAudioPlaybackService
 
     event EventHandler? PlaybackStateChanged;
 
+    Task PrepareAsync(string audioUrl, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
+
     Task PlayAsync(string audioUrl, AudioPlaybackMetadata? metadata = null);
+
+    Task SeekAsync(TimeSpan position, CancellationToken cancellationToken = default);
 
     void SetPlaybackSpeed(double speed);
 
@@ -39,9 +44,12 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
 
     private AVFoundation.AVPlayer? _player;
     private Foundation.NSObject? _endedObserver;
+    private AVFoundation.AVPlayer? _preparedPlayer;
+    private AVFoundation.AVPlayerItem? _preparedPlayerItem;
     private readonly MobileAnalyticsService _analytics;
     private readonly List<Foundation.NSObject> _remoteCommandTargets = [];
     private string? _currentAudioUrl;
+    private string? _preparedAudioUrl;
     private AudioPlaybackMetadata? _metadata;
     private MediaPlayer.MPMediaItemArtwork? _artwork;
     private string? _artworkUrl;
@@ -66,6 +74,59 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
     public event EventHandler? PlaybackEnded;
 
     public event EventHandler? PlaybackStateChanged;
+
+    public async Task PrepareAsync(string audioUrl, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(audioUrl) ||
+            string.Equals(_currentAudioUrl, audioUrl, StringComparison.Ordinal) ||
+            string.Equals(_preparedAudioUrl, audioUrl, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        AVFoundation.AVPlayerItem? playerItem = null;
+        AVFoundation.AVPlayer? player = null;
+        await MainThread.InvokeOnMainThreadAsync(() =>
+        {
+            var playerUrl = Foundation.NSUrl.FromString(audioUrl);
+            if (playerUrl is null)
+            {
+                throw new InvalidOperationException("Die audio URL is ongeldig.");
+            }
+
+            playerItem = AVFoundation.AVPlayerItem.FromUrl(playerUrl);
+            player = new AVFoundation.AVPlayer(playerItem);
+        });
+
+        try
+        {
+            await WaitUntilReadyToPlayAsync(playerItem, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                ClearPreparedPlayback();
+                _preparedAudioUrl = audioUrl;
+                _preparedPlayerItem = playerItem;
+                _preparedPlayer = player;
+                playerItem = null;
+                player = null;
+            });
+        }
+        finally
+        {
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                player?.Pause();
+                player?.Dispose();
+                playerItem?.Dispose();
+            });
+        }
+    }
 
     public async Task<TimeSpan?> GetDurationAsync(string audioUrl, CancellationToken cancellationToken = default)
     {
@@ -125,17 +186,36 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
 
             if (!string.Equals(_currentAudioUrl, audioUrl, StringComparison.Ordinal))
             {
-                var playerUrl = Foundation.NSUrl.FromString(audioUrl);
-                if (playerUrl is null)
+                AVFoundation.AVPlayer? preparedPlayer = null;
+                AVFoundation.AVPlayerItem? preparedPlayerItem = null;
+                if (string.Equals(_preparedAudioUrl, audioUrl, StringComparison.Ordinal))
                 {
-                    throw new InvalidOperationException("Die audio URL is ongeldig.");
+                    preparedPlayer = _preparedPlayer;
+                    preparedPlayerItem = _preparedPlayerItem;
+                    _preparedAudioUrl = null;
+                    _preparedPlayer = null;
+                    _preparedPlayerItem = null;
                 }
 
                 Stop();
                 _currentAudioUrl = audioUrl;
                 _metadata = metadata;
-                playerItem = AVFoundation.AVPlayerItem.FromUrl(playerUrl);
-                _player = new AVFoundation.AVPlayer(playerItem);
+                if (preparedPlayer is not null && preparedPlayerItem is not null)
+                {
+                    playerItem = preparedPlayerItem;
+                    _player = preparedPlayer;
+                }
+                else
+                {
+                    var playerUrl = Foundation.NSUrl.FromString(audioUrl);
+                    if (playerUrl is null)
+                    {
+                        throw new InvalidOperationException("Die audio URL is ongeldig.");
+                    }
+
+                    playerItem = AVFoundation.AVPlayerItem.FromUrl(playerUrl);
+                    _player = new AVFoundation.AVPlayer(playerItem);
+                }
                 _endedObserver = Foundation.NSNotificationCenter.DefaultCenter.AddObserver(
                     AVFoundation.AVPlayerItem.DidPlayToEndTimeNotification,
                     _ => OnPlaybackEnded(),
@@ -173,6 +253,29 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         });
     }
 
+    public async Task SeekAsync(TimeSpan position, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var duration = Duration;
+        var maximumSeconds = duration is { TotalSeconds: > 0 }
+            ? duration.Value.TotalSeconds
+            : Math.Max(0, position.TotalSeconds);
+        var targetSeconds = Math.Clamp(position.TotalSeconds, 0, maximumSeconds);
+
+        await MainThread.InvokeOnMainThreadAsync(() =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            _player?.Seek(CoreMedia.CMTime.FromSeconds(targetSeconds, 600));
+            UpdateNowPlayingInfo();
+        });
+
+        _analytics.TrackEvent("mobile_audio_seeked", new Dictionary<string, object>
+        {
+            ["position_seconds"] = targetSeconds,
+            ["duration_seconds"] = duration?.TotalSeconds ?? 0
+        });
+    }
+
     public void Pause()
     {
         _player?.Pause();
@@ -197,6 +300,7 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         _artworkLoadCts?.Cancel();
         _artworkLoadCts?.Dispose();
         _artworkLoadCts = null;
+        ClearPreparedPlayback();
         IsPlaying = false;
         ClearNowPlayingInfo();
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
@@ -209,6 +313,18 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         }
 
         player?.Dispose();
+    }
+
+    private void ClearPreparedPlayback()
+    {
+        var preparedPlayer = _preparedPlayer;
+        var preparedPlayerItem = _preparedPlayerItem;
+        _preparedAudioUrl = null;
+        _preparedPlayer = null;
+        _preparedPlayerItem = null;
+        preparedPlayer?.Pause();
+        preparedPlayer?.Dispose();
+        preparedPlayerItem?.Dispose();
     }
 
     private void OnPlaybackEnded()
@@ -349,7 +465,7 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
 
         try
         {
-            var imageBytes = await ArtworkHttpClient.GetByteArrayAsync(artworkUrl, cancellationToken);
+            var imageBytes = await LoadArtworkBytesAsync(artworkUrl, cancellationToken);
             if (imageBytes.Length == 0 || cancellationToken.IsCancellationRequested)
             {
                 return;
@@ -385,6 +501,21 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
                 _artworkUrl = null;
             });
         }
+    }
+
+    private static Task<byte[]> LoadArtworkBytesAsync(string artworkUrl, CancellationToken cancellationToken)
+    {
+        if (Uri.TryCreate(artworkUrl, UriKind.Absolute, out var uri) && uri.IsFile)
+        {
+            return File.ReadAllBytesAsync(Uri.UnescapeDataString(uri.LocalPath), cancellationToken);
+        }
+
+        if (System.IO.Path.IsPathRooted(artworkUrl) && File.Exists(artworkUrl))
+        {
+            return File.ReadAllBytesAsync(artworkUrl, cancellationToken);
+        }
+
+        return ArtworkHttpClient.GetByteArrayAsync(artworkUrl, cancellationToken);
     }
 
     private static void ClearNowPlayingInfo()
@@ -655,6 +786,29 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         });
     }
 
+    public Task SeekAsync(TimeSpan position, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var player = _player;
+        if (player is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        var durationMilliseconds = Math.Max(0, player.Duration);
+        var targetMilliseconds = (int)Math.Clamp(
+            position.TotalMilliseconds,
+            0,
+            Math.Min(durationMilliseconds, int.MaxValue));
+        player.SeekTo(targetMilliseconds);
+        _analytics.TrackEvent("mobile_audio_seeked", new Dictionary<string, object>
+        {
+            ["position_seconds"] = targetMilliseconds / 1000d,
+            ["duration_seconds"] = durationMilliseconds / 1000d
+        });
+        return Task.CompletedTask;
+    }
+
     public void Pause()
     {
         _player?.Pause();
@@ -781,6 +935,12 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         {
             ["playback_speed"] = PlaybackSpeed
         });
+    }
+
+    public Task SeekAsync(TimeSpan position, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return Task.CompletedTask;
     }
 
     public void Pause()

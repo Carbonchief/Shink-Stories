@@ -651,6 +651,8 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(audioService, "MediaPlayer.MPMediaItemArtwork");
         StringAssert.Contains(audioService, "LoadArtworkForMetadataAsync(metadata)");
         StringAssert.Contains(audioService, "info.Artwork = _artwork;");
+        StringAssert.Contains(audioService, "LoadArtworkBytesAsync(artworkUrl, cancellationToken)");
+        StringAssert.Contains(audioService, "File.ReadAllBytesAsync(Uri.UnescapeDataString(uri.LocalPath), cancellationToken)");
         StringAssert.Contains(audioService, "GetByteArrayAsync(artworkUrl");
         StringAssert.Contains(audioService, "player.Error += (_, args) =>");
         StringAssert.Contains(audioService, "args.Handled = true;");
@@ -744,16 +746,22 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(service, "public enum OfflineDownloadState");
         StringAssert.Contains(service, "FileSystem.AppDataDirectory");
         StringAssert.Contains(service, "offline-story-audio");
+        StringAssert.Contains(service, "offline-story-artwork");
         StringAssert.Contains(service, "offline-story-downloads.json");
         StringAssert.Contains(service, "LastAccessVerifiedAt");
         StringAssert.Contains(service, "AccessRefreshWindow = TimeSpan.FromDays(30)");
         StringAssert.Contains(service, "string? OwnerKey = null");
+        StringAssert.Contains(service, "string? ArtworkFileName = null");
         StringAssert.Contains(service, "LastSignedInOwnerKeyPreferenceKey");
         StringAssert.Contains(service, "OfflineDownloadAccessPolicy.IsPlayable(");
         StringAssert.Contains(service, "ClaimLegacyPaidDownloadsUnsafeAsync(");
         Assert.IsFalse(service.Contains("DeletePaidDownloadsAsync", StringComparison.Ordinal));
         StringAssert.Contains(service, "File.Move(temporaryPath, audioPath)");
         StringAssert.Contains(service, "DownloadAudioToFileAsync(");
+        StringAssert.Contains(service, "SaveArtworkFileAsync(");
+        StringAssert.Contains(service, "CacheImageSourceAsync(candidate, cancellationToken)");
+        StringAssert.Contains(service, "CreateOfflineStory(OfflineStoryDownload download)");
+        StringAssert.Contains(service, "DeleteArtworkFile(download)");
         StringAssert.Contains(mauiProgram, "builder.Services.AddSingleton<IOfflineStoryDownloadService, OfflineStoryDownloadService>();");
         StringAssert.Contains(androidManifest, "android.permission.ACCESS_NETWORK_STATE");
         Assert.IsFalse(service.Contains("FileSystem.CacheDirectory", StringComparison.Ordinal));
@@ -819,7 +827,19 @@ public class MobileAbsoluteUrlSourceTests
         Assert.IsFalse(luisterPage.Contains("OpenDownloadedStoryAsync", StringComparison.Ordinal));
         StringAssert.Contains(downloadedPage, "IOfflineStoryDownloadService offlineDownloadService");
         StringAssert.Contains(downloadedPage, "GetPlayableDownloadsAsync()");
+        StringAssert.Contains(downloadedPage, "_offlineDownloadService.CreateOfflineStory(download)");
         StringAssert.Contains(downloadedPage, "OpenDownloadedStoryAsync(");
+    }
+
+    [TestMethod]
+    public void MobileImagePipelineAcceptsDurableOfflineArtworkFiles()
+    {
+        var client = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
+
+        StringAssert.Contains(client, "TryResolveExistingLocalImagePath(");
+        StringAssert.Contains(client, "uri.IsFile");
+        StringAssert.Contains(client, "FileSystem.AppDataDirectory");
+        StringAssert.Contains(client, "return ImageSource.FromFile(localPath);");
     }
 
     [TestMethod]
@@ -954,14 +974,19 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(karaktersPage, "Text = \" oopgesluit\"");
         StringAssert.Contains(karaktersPage, "private sealed class ReusableCharacterCardView : ContentView");
         StringAssert.Contains(karaktersPage, "_summary.Text = character.SummaryText;");
-        StringAssert.Contains(karaktersPage, "_storyButton.Text = character.CallToActionLabel;");
+        StringAssert.Contains(karaktersPage, "Text = FontAwesomePlayGlyph");
+        StringAssert.Contains(karaktersPage, "SemanticProperties.SetDescription(_storyButton, character.CallToActionLabel);");
         StringAssert.Contains(karaktersPage, "_storyButton.BackgroundColor = character.IsUnlocked");
         StringAssert.Contains(karaktersPage, "MobileTopBar.BuildStoriesTopBar(");
         StringAssert.Contains(karaktersPage, "notificationAction: OpenStoriesNotificationsAsync");
         StringAssert.Contains(karaktersPage, "Shell.Current.GoToAsync(nameof(SearchPage), animate: false)");
         StringAssert.Contains(karaktersPage, "Shell.Current.GoToAsync(\"//Luister?surface=notifications\", animate: false)");
         StringAssert.Contains(karaktersPage, "CharacterIconPlacement.TopRight");
-        StringAssert.Contains(karaktersPage, "new SpeakerDrawable()");
+        StringAssert.Contains(karaktersPage, "Text = FontAwesomeVolumeHighGlyph");
+        StringAssert.Contains(karaktersPage, "FontFamily = FontAwesomeSolidFontFamily");
+        StringAssert.Contains(karaktersPage, "AnimateSpeakerTapAsync()");
+        StringAssert.Contains(karaktersPage, "_speakerIcon.RotateToAsync");
+        Assert.DoesNotContain("class SpeakerDrawable", karaktersPage, StringComparison.Ordinal);
         StringAssert.Contains(karaktersPage, "new LockDrawable()");
         StringAssert.Contains(karaktersPage, "HeightRequest = 28");
         StringAssert.Contains(karaktersPage, "FontFamily = PoppinsBoldFontFamily");
@@ -1017,14 +1042,16 @@ public class MobileAbsoluteUrlSourceTests
     }
 
     [TestMethod]
-    public void MobileStoryAudioUsesSignedMediaRouteForR2AndLocalProviders()
+    public void MobileStoryAudioStreamsR2DirectlyAndKeepsLocalMediaProtected()
     {
         var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
 
-        StringAssert.Contains(program, "static Task<string?> ResolveMobileAudioUrlAsync(");
-        StringAssert.Contains(program, "return Task.FromResult<string?>(ToAbsoluteUri(httpContext, audioAccessService.CreateSignedAudioUrl(story.Slug)));");
-        Assert.IsFalse(program.Contains("storyMediaStorageService.CreateAudioReadUrlAsync(\r\n            story.AudioBucket", StringComparison.Ordinal));
-        Assert.IsFalse(program.Contains("return readUri?.ToString();", StringComparison.Ordinal));
+        StringAssert.Contains(program, "static async Task<string?> ResolveMobileAudioUrlAsync(");
+        StringAssert.Contains(program, "if (string.Equals(story.AudioProvider, \"r2\", StringComparison.OrdinalIgnoreCase))");
+        StringAssert.Contains(program, "storyMediaStorageService.CreateAudioReadUrlAsync(");
+        StringAssert.Contains(program, "TimeSpan.FromHours(4)");
+        StringAssert.Contains(program, "return readUri?.ToString();");
+        StringAssert.Contains(program, "return ToAbsoluteUri(httpContext, audioAccessService.CreateSignedAudioUrl(story.Slug));");
     }
 
     [TestMethod]
@@ -1180,10 +1207,9 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(storyDetail, "await OpenPlaylistStoryAsync(previousStory, autoplay: ShouldAutoplaySelection());");
         StringAssert.Contains(storyDetail, "await OpenPlaylistStoryAsync(nextStory, autoplay: ShouldAutoplaySelection());");
         StringAssert.Contains(storyDetail, "await ReplaceActiveStoryAsync(nextStory, autoplay: ShouldAutoplaySelection());");
-        StringAssert.Contains(storyDetail, "_playlistPlaybackState.CanAutoplayAdvance(currentDetail.Story)");
         StringAssert.Contains(storyDetail, "_playlistPlaybackState.TrackAutoplayAdvance(story);");
         StringAssert.Contains(storyDetail, "_playlistPlaybackState.TrackManualStorySelection(story);");
-        StringAssert.Contains(storyDetail, "await ReplaceActiveStoryAsync(nextStory, autoplay: true);");
+        StringAssert.Contains(storyDetail, "_storyPlaybackSession.RefreshAutoplayPreparation();");
         StringAssert.Contains(playlistState, "public bool IsAutoplayEnabled { get; private set; }");
         StringAssert.Contains(playlistState, "public bool IsShuffleEnabled { get; private set; }");
         StringAssert.Contains(playlistState, "public int? AutoplayLimitStories { get; private set; }");

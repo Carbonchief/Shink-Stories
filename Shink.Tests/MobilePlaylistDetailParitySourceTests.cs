@@ -99,7 +99,8 @@ public sealed class MobilePlaylistDetailParitySourceTests
         StringAssert.Contains(source, "await _storyPlaybackSession.PlayAsync(");
         StringAssert.Contains(source, "_storyPlaybackSession.NotifyPageHidden();");
         StringAssert.Contains(source, "await SelectStoryAsync(item.Story, autoplay: true);");
-        StringAssert.Contains(source, "_playlistPlaybackState.CanAutoplayAdvance(_currentStory)");
+        StringAssert.Contains(source, "_storyPlaybackSession.AutoplayAdvanced += OnAutoplayAdvanced;");
+        Assert.DoesNotContain("_playlistPlaybackState.CanAutoplayAdvance(_currentStory)", source, StringComparison.Ordinal);
         StringAssert.Contains(source, "Intekening nodig");
     }
 

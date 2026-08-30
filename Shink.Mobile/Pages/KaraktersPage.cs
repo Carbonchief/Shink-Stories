@@ -12,6 +12,9 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     private const string PoppinsFontFamily = "Poppins";
     private const string PoppinsSemiBoldFontFamily = "PoppinsSemiBold";
     private const string PoppinsBoldFontFamily = "PoppinsBold";
+    private const string FontAwesomeSolidFontFamily = "FontAwesomeSolid";
+    private const string FontAwesomePlayGlyph = "\uf04b";
+    private const string FontAwesomeVolumeHighGlyph = "\uf028";
     private static bool IsAndroid => DeviceInfo.Current.Platform == DevicePlatform.Android;
     private static bool IsIOS => DeviceInfo.Current.Platform == DevicePlatform.iOS;
     private readonly MobileApiClient _apiClient;
@@ -502,6 +505,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         private readonly ProgressiveCachedImage _image;
         private readonly Border _lockButton;
         private readonly Border _speakerButton;
+        private readonly Label _speakerIcon;
         private readonly Label _heading;
         private readonly Label _summary;
         private readonly Button _storyButton;
@@ -532,10 +536,19 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
                 Color.FromArgb("#1B1207"),
                 "Nog gesluit",
                 CharacterIconPlacement.TopRight);
-            _speakerButton = BuildCharacterIconButton(
-                new SpeakerDrawable(),
+            _speakerIcon = new Label
+            {
+                Text = FontAwesomeVolumeHighGlyph,
+                FontFamily = FontAwesomeSolidFontFamily,
+                FontSize = 12,
+                TextColor = Color.FromArgb("#103C49"),
+                HorizontalTextAlignment = TextAlignment.Center,
+                VerticalTextAlignment = TextAlignment.Center,
+                InputTransparent = true
+            };
+            _speakerButton = BuildCharacterFontIconButton(
+                _speakerIcon,
                 Color.FromArgb("#F5FAFB"),
-                Color.FromArgb("#103C49"),
                 "Speel karakterstem",
                 CharacterIconPlacement.TopRight);
             _media = new Grid
@@ -573,14 +586,15 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             };
             _storyButton = new Button
             {
+                Text = FontAwesomePlayGlyph,
                 HeightRequest = 28,
+                WidthRequest = 28,
                 Margin = new Thickness(2, 3, 2, 0),
-                Padding = new Thickness(3, 0),
+                Padding = 0,
                 CornerRadius = 14,
-                FontSize = 8,
-                FontFamily = PoppinsBoldFontFamily,
-                FontAttributes = FontAttributes.Bold,
-                LineBreakMode = LineBreakMode.TailTruncation,
+                FontSize = 10,
+                FontFamily = FontAwesomeSolidFontFamily,
+                HorizontalOptions = LayoutOptions.Center,
                 AutomationId = "character-primary-story",
                 IsVisible = false
             };
@@ -648,9 +662,9 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
                 }
 
                 SafeHapticFeedback.TryPerform(HapticFeedbackType.Click);
-                await _speakerButton.ScaleToAsync(1.1, 90, Easing.CubicOut);
-                await _speakerButton.ScaleToAsync(1, 120, Easing.CubicIn);
+                var animation = AnimateSpeakerTapAsync();
                 await _owner.PlayCharacterAudioAsync(_character);
+                await animation;
             };
             _speakerButton.GestureRecognizers.Add(speakerTap);
             Content = _card;
@@ -717,13 +731,41 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             var showStoryButton = character.PrimaryStory is not null &&
                 !string.IsNullOrWhiteSpace(character.CallToActionLabel);
             _storyButton.IsVisible = showStoryButton;
-            _storyButton.Text = character.CallToActionLabel;
+            SemanticProperties.SetDescription(_storyButton, character.CallToActionLabel);
             _storyButton.BackgroundColor = character.IsUnlocked
                 ? Color.FromArgb("#F6A227")
                 : Color.FromArgb("#8DCD65");
             _storyButton.TextColor = character.IsUnlocked
                 ? Color.FromArgb("#243023")
                 : Color.FromArgb("#153718");
+        }
+
+        private async Task AnimateSpeakerTapAsync()
+        {
+            _speakerButton.CancelAnimations();
+            _speakerIcon.CancelAnimations();
+            _speakerButton.BackgroundColor = Color.FromArgb("#F39A32");
+            _speakerIcon.TextColor = Color.FromArgb("#1D1306");
+
+            try
+            {
+                for (var pulse = 0; pulse < 3; pulse++)
+                {
+                    await Task.WhenAll(
+                        _speakerButton.ScaleToAsync(1.08, 100, Easing.CubicOut),
+                        _speakerIcon.RotateToAsync(pulse % 2 == 0 ? -9 : 9, 100, Easing.CubicOut));
+                    await Task.WhenAll(
+                        _speakerButton.ScaleToAsync(0.98, 100, Easing.CubicInOut),
+                        _speakerIcon.RotateToAsync(pulse % 2 == 0 ? 7 : -7, 100, Easing.CubicInOut));
+                }
+            }
+            finally
+            {
+                _speakerButton.Scale = 1;
+                _speakerIcon.Rotation = 0;
+                _speakerButton.BackgroundColor = Color.FromArgb("#F5FAFB");
+                _speakerIcon.TextColor = Color.FromArgb("#103C49");
+            }
         }
     }
 
@@ -777,6 +819,38 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             }
         };
         return button;
+    }
+
+    private static Border BuildCharacterFontIconButton(
+        View icon,
+        Color backgroundColor,
+        string automationName,
+        CharacterIconPlacement placement)
+    {
+        return new Border
+        {
+            BackgroundColor = backgroundColor,
+            StrokeThickness = 0,
+            StrokeShape = new RoundRectangle { CornerRadius = 999 },
+            WidthRequest = 26,
+            HeightRequest = 26,
+            Margin = 5,
+            HorizontalOptions = LayoutOptions.End,
+            VerticalOptions = placement == CharacterIconPlacement.TopRight
+                ? LayoutOptions.Start
+                : LayoutOptions.End,
+            AutomationId = automationName,
+            Shadow = IsAndroid
+                ? null!
+                : new Shadow
+                {
+                    Brush = Brush.Black,
+                    Offset = new Point(0, 3),
+                    Radius = 6,
+                    Opacity = 0.14f
+                },
+            Content = icon
+        };
     }
 
     private async Task ShowCharacterProfileAsync(MobileCharacterCard character)
@@ -1452,44 +1526,4 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         }
     }
 
-    private sealed class SpeakerDrawable : IDrawable
-    {
-        public void Draw(ICanvas canvas, RectF dirtyRect)
-        {
-            canvas.StrokeSize = 1.9f;
-            canvas.StrokeLineCap = LineCap.Round;
-            canvas.StrokeLineJoin = LineJoin.Round;
-
-            canvas.FillRoundedRectangle(
-                new RectF(
-                    dirtyRect.Width * 0.16f,
-                    dirtyRect.Height * 0.39f,
-                    dirtyRect.Width * 0.22f,
-                    dirtyRect.Height * 0.22f),
-                2);
-            var cone = new PathF();
-            cone.MoveTo(dirtyRect.Width * 0.34f, dirtyRect.Height * 0.40f);
-            cone.LineTo(dirtyRect.Width * 0.56f, dirtyRect.Height * 0.22f);
-            cone.LineTo(dirtyRect.Width * 0.56f, dirtyRect.Height * 0.78f);
-            cone.LineTo(dirtyRect.Width * 0.34f, dirtyRect.Height * 0.60f);
-            cone.Close();
-            canvas.FillPath(cone);
-
-            canvas.DrawLine(
-                dirtyRect.Width * 0.67f,
-                dirtyRect.Height * 0.36f,
-                dirtyRect.Width * 0.75f,
-                dirtyRect.Height * 0.28f);
-            canvas.DrawLine(
-                dirtyRect.Width * 0.67f,
-                dirtyRect.Height * 0.64f,
-                dirtyRect.Width * 0.75f,
-                dirtyRect.Height * 0.72f);
-            canvas.DrawLine(
-                dirtyRect.Width * 0.72f,
-                dirtyRect.Height * 0.50f,
-                dirtyRect.Width * 0.84f,
-                dirtyRect.Height * 0.50f);
-        }
-    }
 }

@@ -1574,6 +1574,11 @@ public sealed class MobileApiClient
             return string.Empty;
         }
 
+        if (TryResolveExistingLocalImagePath(url.Trim(), out var localPath))
+        {
+            return new Uri(localPath).AbsoluteUri;
+        }
+
         var trimmedUrl = NormalizeIncomingUrl(url.Trim());
         if (TryExtractImageProxySource(trimmedUrl, out var proxiedImageUrl))
         {
@@ -1598,6 +1603,11 @@ public sealed class MobileApiClient
         }
 
         var normalizedUrl = NormalizeIncomingImageUrl(url);
+        if (TryResolveExistingLocalImagePath(normalizedUrl, out var localPath))
+        {
+            return ImageSource.FromFile(localPath);
+        }
+
         if (IsBundledImageName(normalizedUrl))
         {
             return ImageSource.FromFile(normalizedUrl);
@@ -1638,6 +1648,12 @@ public sealed class MobileApiClient
         }
 
         var normalizedUrl = NormalizeIncomingImageUrl(url);
+        if (TryResolveExistingLocalImagePath(normalizedUrl, out var localPath))
+        {
+            source = ImageSource.FromFile(localPath);
+            return true;
+        }
+
         if (IsBundledImageName(normalizedUrl))
         {
             source = ImageSource.FromFile(normalizedUrl);
@@ -1674,6 +1690,11 @@ public sealed class MobileApiClient
         }
 
         var normalizedUrl = NormalizeIncomingImageUrl(url);
+        if (TryResolveExistingLocalImagePath(normalizedUrl, out var localPath))
+        {
+            return ImageSource.FromFile(localPath);
+        }
+
         if (IsBundledImageName(normalizedUrl))
         {
             return ImageSource.FromFile(normalizedUrl);
@@ -2388,6 +2409,43 @@ public sealed class MobileApiClient
         !imageUrl.StartsWith("/", StringComparison.Ordinal) &&
         !imageUrl.StartsWith("file://", StringComparison.OrdinalIgnoreCase) &&
         !Uri.TryCreate(imageUrl, UriKind.Absolute, out _);
+
+    private static bool TryResolveExistingLocalImagePath(string imageUrl, out string localPath)
+    {
+        localPath = string.Empty;
+        if (string.IsNullOrWhiteSpace(imageUrl))
+        {
+            return false;
+        }
+
+        var candidate = imageUrl.Trim();
+        if (Uri.TryCreate(candidate, UriKind.Absolute, out var uri) && uri.IsFile)
+        {
+            candidate = Uri.UnescapeDataString(uri.LocalPath);
+        }
+
+        if (!System.IO.Path.IsPathRooted(candidate) || !File.Exists(candidate))
+        {
+            return false;
+        }
+
+        var fullPath = System.IO.Path.GetFullPath(candidate);
+        if (!IsPathWithinDirectory(fullPath, FileSystem.AppDataDirectory) &&
+            !IsPathWithinDirectory(fullPath, FileSystem.CacheDirectory))
+        {
+            return false;
+        }
+
+        localPath = fullPath;
+        return true;
+    }
+
+    private static bool IsPathWithinDirectory(string path, string directory)
+    {
+        var normalizedDirectory = System.IO.Path.GetFullPath(directory)
+            .TrimEnd(System.IO.Path.DirectorySeparatorChar) + System.IO.Path.DirectorySeparatorChar;
+        return path.StartsWith(normalizedDirectory, StringComparison.Ordinal);
+    }
 
     private static bool TryGetCachedImagePath(string imageUrl, out string cachePath)
     {

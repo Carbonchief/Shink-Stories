@@ -197,9 +197,10 @@ internal static class MobileMenuSheet
                 return;
             }
 
-            card.WidthRequest = -1;
-            card.MaximumWidthRequest = -1;
-            card.HorizontalOptions = LayoutOptions.Fill;
+            var phoneCardWidth = Math.Max(280, resolvedWidth - 40);
+            card.WidthRequest = phoneCardWidth;
+            card.MaximumWidthRequest = phoneCardWidth;
+            card.HorizontalOptions = LayoutOptions.Center;
             card.Margin = new Thickness(20, 0, 20, 22);
             cardHost.VerticalOptions = LayoutOptions.End;
         }

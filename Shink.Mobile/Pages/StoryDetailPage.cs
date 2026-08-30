@@ -59,7 +59,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     private BoxView? _castScrim;
     private MobileStoryDetailResponse? _currentDetail;
     private Button? _activePlayButton;
-    private ProgressBar? _activeProgressBar;
+    private Slider? _activeProgressSlider;
     private Label? _activeCurrentTimeLabel;
     private Label? _activeDurationLabel;
     private TimeSpan? _activeCatalogDuration;
@@ -78,11 +78,15 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     private bool _isShowingFullscreenCover;
     private bool _wasKeepScreenOnBeforeFullscreen;
     private bool _isFavoriteRequestInFlight;
+    private bool _isPlaybackRequestInFlight;
+    private bool _isProgressScrubbing;
+    private bool _isUpdatingProgressSlider;
     private bool _pendingAutoplayAfterLoad;
     private Button? _inlinePlayButton;
-    private ProgressBar? _inlineProgressBar;
+    private Slider? _inlineProgressSlider;
     private Label? _inlineCurrentTimeLabel;
     private Label? _inlineDurationLabel;
+    private readonly Dictionary<Button, (ActivityIndicator Indicator, Color TextColor)> _playLoadingIndicators = new();
     private readonly Dictionary<int, string> _selectedStoryTestOptions = new();
     private bool _isStoryTestSubmitted;
     private ContentPage? _storyTestModalPage;
@@ -997,9 +1001,12 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     private void ClearActivePlaybackUi()
     {
         _activePlayButton = null;
-        _activeProgressBar = null;
+        _activeProgressSlider = null;
         _activeCurrentTimeLabel = null;
         _activeDurationLabel = null;
+        _isProgressScrubbing = false;
+        _isUpdatingProgressSlider = false;
+        _playLoadingIndicators.Clear();
     }
 
     private static Button BuildTopIconButton(string text) =>
@@ -1239,13 +1246,9 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             return new Grid { InputTransparent = true };
         }
 
-        var progressBar = new ProgressBar
-        {
-            Progress = _activeProgressBar?.Progress ?? 0,
-            ProgressColor = PlayerAccentColor,
-            BackgroundColor = Color.FromArgb("#4D5A57"),
-            HeightRequest = 4
-        };
+        var progressSlider = BuildProgressSlider(
+            _activeProgressSlider?.Value ?? 0,
+            Color.FromArgb("#4D5A57"));
         var currentTimeLabel = BuildTimeLabel(
             _activeCurrentTimeLabel?.Text ?? "0:00",
             TextAlignment.Start);
@@ -1256,7 +1259,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         var playButton = BuildMainPlaybackButton(IsCurrentStoryPlaying(detail) ? "II" : "▶");
 
         _activePlayButton = playButton;
-        _activeProgressBar = progressBar;
+        _activeProgressSlider = progressSlider;
         _activeCurrentTimeLabel = currentTimeLabel;
         _activeDurationLabel = durationLabel;
 
@@ -1279,7 +1282,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                         Spacing = 8,
                         Children =
                         {
-                            progressBar,
+                            progressSlider,
                             new Grid
                             {
                                 ColumnDefinitions =
@@ -1314,7 +1317,8 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             return;
         }
 
-        await StartPlaybackAsync(detail, _activePlayButton ?? BuildMainPlaybackButton("▶"));
+        var playButton = _activePlayButton ?? BuildMainPlaybackButton("▶");
+        await RunPlaybackRequestAsync(playButton, () => StartPlaybackAsync(detail, playButton));
     }
 
     private void RestoreFullscreenPlaybackUi(MobileStoryDetailResponse detail)
@@ -1324,9 +1328,9 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             _activePlayButton = _inlinePlayButton;
         }
 
-        if (_inlineProgressBar is not null)
+        if (_inlineProgressSlider is not null)
         {
-            _activeProgressBar = _inlineProgressBar;
+            _activeProgressSlider = _inlineProgressSlider;
         }
 
         if (_inlineCurrentTimeLabel is not null)
@@ -1803,13 +1807,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
     private View BuildAudioPlayer(MobileStoryDetailResponse detail)
     {
-        var progressBar = new ProgressBar
-        {
-            Progress = 0,
-            ProgressColor = PlayerAccentColor,
-            BackgroundColor = Color.FromArgb("#8F8A84"),
-            HeightRequest = 4
-        };
+        var progressSlider = BuildProgressSlider(0, Color.FromArgb("#8F8A84"));
         var currentTimeLabel = BuildTimeLabel("0:00", TextAlignment.Start);
         _activeCatalogDuration = ResolveCatalogDuration(detail);
         var durationLabel = BuildTimeLabel(
@@ -1818,11 +1816,11 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         var playButton = BuildMainPlaybackButton(IsCurrentStoryPlaying(detail) ? "II" : "▶");
 
         _activePlayButton = playButton;
-        _activeProgressBar = progressBar;
+        _activeProgressSlider = progressSlider;
         _activeCurrentTimeLabel = currentTimeLabel;
         _activeDurationLabel = durationLabel;
         _inlinePlayButton = playButton;
-        _inlineProgressBar = progressBar;
+        _inlineProgressSlider = progressSlider;
         _inlineCurrentTimeLabel = currentTimeLabel;
         _inlineDurationLabel = durationLabel;
 
@@ -1838,7 +1836,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                     Spacing = 8,
                     Children =
                     {
-                        progressBar,
+                        progressSlider,
                         new Grid
                         {
                             ColumnDefinitions =
@@ -1871,7 +1869,8 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             _apiClient.BuildImageUrl(detail.Story.ImageUrl),
             _playlistSlug,
             _playlistTitle,
-            ResolveCatalogDurationSeconds(detail));
+            ResolveCatalogDurationSeconds(detail),
+            originPlaylist: ResolveOriginPlaylist());
         playButton.Text = "II";
         StartProgressTimer();
     }
@@ -1884,7 +1883,40 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             return;
         }
 
-        await StartPlaybackAsync(detail, playButton);
+        await RunPlaybackRequestAsync(playButton, () => StartPlaybackAsync(detail, playButton));
+    }
+
+    private async Task RunPlaybackRequestAsync(Button playButton, Func<Task> action)
+    {
+        if (_isPlaybackRequestInFlight)
+        {
+            return;
+        }
+
+        _isPlaybackRequestInFlight = true;
+        SetPlaybackLoading(playButton, isLoading: true);
+        try
+        {
+            await action();
+        }
+        finally
+        {
+            _isPlaybackRequestInFlight = false;
+            SetPlaybackLoading(playButton, isLoading: false);
+        }
+    }
+
+    private void SetPlaybackLoading(Button playButton, bool isLoading)
+    {
+        if (!_playLoadingIndicators.TryGetValue(playButton, out var loadingState))
+        {
+            return;
+        }
+
+        playButton.IsEnabled = !isLoading;
+        playButton.TextColor = isLoading ? Colors.Transparent : loadingState.TextColor;
+        loadingState.Indicator.IsVisible = isLoading;
+        loadingState.Indicator.IsRunning = isLoading;
     }
 
     private void PausePlayback(Button playButton)
@@ -2029,6 +2061,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     {
         _playlistPlaybackState.SetAutoplay(!_playlistPlaybackState.IsAutoplayEnabled);
         _playlistPlaybackState.TrackManualStorySelection(detail.Story);
+        _storyPlaybackSession.RefreshAutoplayPreparation();
         RenderDetail(detail, trackView: false);
     }
 
@@ -2041,6 +2074,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             _ => null
         };
         _playlistPlaybackState.SetAutoplayLimit(nextLimit, detail.Story);
+        _storyPlaybackSession.RefreshAutoplayPreparation();
         RenderDetail(detail, trackView: false);
     }
 
@@ -2048,6 +2082,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     {
         _playlistPlaybackState.SetShuffle(!_playlistPlaybackState.IsShuffleEnabled, detail.Story);
         _playlistStories = GetOrderedPlaylistStories(detail.Story);
+        _storyPlaybackSession.RefreshAutoplayPreparation();
         RenderDetail(detail, trackView: false);
     }
 
@@ -2064,6 +2099,16 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
     private bool ShouldAutoplaySelection() =>
         _storyPlaybackSession.IsPlaying || _playlistPlaybackState.IsAutoplayEnabled;
+
+    private MobilePlaylist? ResolveOriginPlaylist()
+    {
+        var playlist = _playlistPlaybackState.CurrentPlaylist;
+        return playlist is not null &&
+               !string.IsNullOrWhiteSpace(_playlistSlug) &&
+               string.Equals(playlist.Slug, _playlistSlug, StringComparison.OrdinalIgnoreCase)
+            ? playlist
+            : null;
+    }
 
     private View BuildTransportControls(MobileStoryDetailResponse detail, Button playButton)
     {
@@ -2105,9 +2150,10 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         }
 
         grid.Children.Add(previousButton);
-        grid.Children.Add(playButton);
+        var playControl = BuildLoadingPlaybackButton(playButton);
+        grid.Children.Add(playControl);
         grid.Children.Add(nextButton);
-        Grid.SetColumn(playButton, 1);
+        Grid.SetColumn(playControl, 1);
         Grid.SetColumn(nextButton, 2);
 
         return grid;
@@ -2158,9 +2204,10 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         }
 
         grid.Children.Add(previousButton);
-        grid.Children.Add(compactPlayButton);
+        var playControl = BuildLoadingPlaybackButton(compactPlayButton);
+        grid.Children.Add(playControl);
         grid.Children.Add(nextButton);
-        Grid.SetColumn(compactPlayButton, 1);
+        Grid.SetColumn(playControl, 1);
         Grid.SetColumn(nextButton, 2);
 
         return grid;
@@ -2430,6 +2477,32 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             HorizontalOptions = LayoutOptions.Center,
             VerticalOptions = LayoutOptions.Center
         };
+
+    private Grid BuildLoadingPlaybackButton(Button playButton)
+    {
+        var loadingIndicator = new ActivityIndicator
+        {
+            IsVisible = false,
+            IsRunning = false,
+            Color = PlayerAccentTextColor,
+            WidthRequest = 24,
+            HeightRequest = 24,
+            HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.Center,
+            InputTransparent = true
+        };
+        SemanticProperties.SetDescription(loadingIndicator, "Storie laai");
+        _playLoadingIndicators[playButton] = (loadingIndicator, playButton.TextColor);
+
+        return new Grid
+        {
+            WidthRequest = playButton.WidthRequest,
+            HeightRequest = playButton.HeightRequest,
+            HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = playButton.VerticalOptions,
+            Children = { playButton, loadingIndicator }
+        };
+    }
 
     private static Grid BuildCompactTransportButton(PlaybackTransportDirection direction) =>
         BuildTransportIconButton(direction, 44, 24, Colors.White, LayoutOptions.End);
@@ -3311,7 +3384,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         var position = isCurrentStory ? _storyPlaybackSession.CurrentPosition : TimeSpan.Zero;
         var duration = isCurrentStory ? _storyPlaybackSession.Duration ?? _activeCatalogDuration : _activeCatalogDuration;
 
-        if (_activeCurrentTimeLabel is not null)
+        if (_activeCurrentTimeLabel is not null && !_isProgressScrubbing)
         {
             _activeCurrentTimeLabel.Text = FormatTime(position);
         }
@@ -3321,12 +3394,96 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             _activeDurationLabel.Text = duration is null ? "--:--" : FormatTime(duration.Value);
         }
 
-        if (_activeProgressBar is not null)
+        if (_activeProgressSlider is not null)
         {
-            _activeProgressBar.Progress = duration is { TotalSeconds: > 0 }
-                ? Math.Clamp(position.TotalSeconds / duration.Value.TotalSeconds, 0, 1)
-                : 0;
+            _activeProgressSlider.IsEnabled = isCurrentStory && duration is { TotalSeconds: > 0 };
+            if (!_isProgressScrubbing)
+            {
+                _isUpdatingProgressSlider = true;
+                try
+                {
+                    _activeProgressSlider.Value = duration is { TotalSeconds: > 0 }
+                        ? Math.Clamp(position.TotalSeconds / duration.Value.TotalSeconds, 0, 1)
+                        : 0;
+                }
+                finally
+                {
+                    _isUpdatingProgressSlider = false;
+                }
+            }
         }
+    }
+
+    private Slider BuildProgressSlider(double value, Color maximumTrackColor)
+    {
+        var slider = new Slider
+        {
+            Minimum = 0,
+            Maximum = 1,
+            Value = Math.Clamp(value, 0, 1),
+            MinimumTrackColor = PlayerAccentColor,
+            MaximumTrackColor = maximumTrackColor,
+            ThumbColor = PlayerAccentColor,
+            HeightRequest = 28,
+            IsEnabled = false
+        };
+        SemanticProperties.SetDescription(slider, "Spring na 'n ander plek in die storie");
+
+        slider.DragStarted += (_, _) => _isProgressScrubbing = true;
+        slider.ValueChanged += (_, args) =>
+        {
+            if (_isUpdatingProgressSlider)
+            {
+                return;
+            }
+
+            if (!_isProgressScrubbing)
+            {
+                _ = SeekToProgressValueAsync(args.NewValue);
+                return;
+            }
+
+            if (_activeCurrentTimeLabel is null)
+            {
+                return;
+            }
+
+            var duration = ResolveActivePlaybackDuration();
+            if (duration is { TotalSeconds: > 0 })
+            {
+                _activeCurrentTimeLabel.Text = FormatTime(
+                    TimeSpan.FromSeconds(args.NewValue * duration.Value.TotalSeconds));
+            }
+        };
+        slider.DragCompleted += async (_, _) =>
+        {
+            try
+            {
+                await SeekToProgressValueAsync(slider.Value);
+            }
+            finally
+            {
+                _isProgressScrubbing = false;
+                UpdateProgressState();
+            }
+        };
+        return slider;
+    }
+
+    private TimeSpan? ResolveActivePlaybackDuration() =>
+        _storyPlaybackSession.Duration ?? _activeCatalogDuration;
+
+    private async Task SeekToProgressValueAsync(double value)
+    {
+        var duration = ResolveActivePlaybackDuration();
+        if (!_storyPlaybackSession.IsCurrentStory(_currentDetail?.Story) ||
+            duration is not { TotalSeconds: > 0 })
+        {
+            return;
+        }
+
+        await _storyPlaybackSession.SeekAsync(
+            TimeSpan.FromSeconds(Math.Clamp(value, 0, 1) * duration.Value.TotalSeconds));
     }
 
     private static decimal? NormalizeTrackingSeconds(double? seconds)
@@ -3481,6 +3638,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
         _audioPlaybackService.PlaybackEnded += OnPlaybackEnded;
         _audioPlaybackService.PlaybackStateChanged += OnPlaybackStateChanged;
+        _storyPlaybackSession.AutoplayAdvanced += OnAutoplayAdvanced;
         _isPlaybackEventSubscribed = true;
     }
 
@@ -3493,6 +3651,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
         _audioPlaybackService.PlaybackEnded -= OnPlaybackEnded;
         _audioPlaybackService.PlaybackStateChanged -= OnPlaybackStateChanged;
+        _storyPlaybackSession.AutoplayAdvanced -= OnAutoplayAdvanced;
         _isPlaybackEventSubscribed = false;
     }
 
@@ -3525,7 +3684,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
     private void OnPlaybackEnded(object? sender, EventArgs args)
     {
-        MainThread.BeginInvokeOnMainThread(async () =>
+        MainThread.BeginInvokeOnMainThread(() =>
         {
             if (!_isPageActive || !_storyPlaybackSession.IsCurrentStory(_currentDetail?.Story))
             {
@@ -3540,15 +3699,27 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 _activePlayButton.Text = "▶";
             }
 
-            if (_currentDetail is { } currentDetail &&
-                _playlistPlaybackState.CanAutoplayAdvance(currentDetail.Story))
+        });
+    }
+
+    private void OnAutoplayAdvanced(object? sender, StoryAutoplayAdvancedEventArgs args)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            if (!_isPageActive ||
+                string.IsNullOrWhiteSpace(_playlistSlug) ||
+                !string.Equals(_playlistSlug, args.Playlist.Slug, StringComparison.OrdinalIgnoreCase))
             {
-                var nextStory = ResolveNextStory(currentDetail);
-                if (nextStory is not null)
-                {
-                    await ReplaceActiveStoryAsync(nextStory, autoplay: true);
-                }
+                return;
             }
+
+            _pendingAutoplayAfterLoad = false;
+            StorySlug = args.Detail.Story.Slug;
+            Source = "luister";
+            _previewStory = args.Detail.Story;
+            _loadedKey = $"{StorySlug}:{Source}";
+            _playlistStories = _playlistPlaybackState.GetPlaybackStories(args.Detail.Story);
+            RenderDetail(args.Detail, trackView: false);
         });
     }
 

@@ -12,6 +12,10 @@ public sealed record StoryPlaybackItem(
     decimal? CatalogDurationSeconds,
     Guid TrackingSessionId);
 
+public sealed record StoryAutoplayAdvancedEventArgs(
+    MobileStoryDetailResponse Detail,
+    MobilePlaylist Playlist);
+
 public sealed class StoryPlaybackSession
 {
     private const double ListenFlushThresholdSeconds = 12;
@@ -22,22 +26,32 @@ public sealed class StoryPlaybackSession
     private readonly MobileApiClient _apiClient;
     private readonly ContinueListeningState _continueListeningState;
     private readonly MobileAppLifecycleService _lifecycleService;
+    private readonly IOfflineStoryDownloadService _offlineDownloadService;
+    private readonly PlaylistPlaybackState _playlistPlaybackState;
     private IDispatcherTimer? _trackingTimer;
     private StoryPlaybackItem? _current;
+    private PreparedAutoplayItem? _preparedAutoplay;
+    private CancellationTokenSource? _autoplayPreparationCts;
+    private Task? _autoplayPreparationTask;
     private double _pendingListenSeconds;
     private TimeSpan? _lastTrackedPosition;
     private bool _isChangingPlayback;
+    private int _isAutoplayAdvancing;
 
     public StoryPlaybackSession(
         IAudioPlaybackService audioPlaybackService,
         MobileApiClient apiClient,
         ContinueListeningState continueListeningState,
-        MobileAppLifecycleService lifecycleService)
+        MobileAppLifecycleService lifecycleService,
+        IOfflineStoryDownloadService offlineDownloadService,
+        PlaylistPlaybackState playlistPlaybackState)
     {
         _audioPlaybackService = audioPlaybackService;
         _apiClient = apiClient;
         _continueListeningState = continueListeningState;
         _lifecycleService = lifecycleService;
+        _offlineDownloadService = offlineDownloadService;
+        _playlistPlaybackState = playlistPlaybackState;
 
         _audioPlaybackService.PlaybackStateChanged += OnAudioPlaybackStateChanged;
         _audioPlaybackService.PlaybackEnded += OnAudioPlaybackEnded;
@@ -62,6 +76,8 @@ public sealed class StoryPlaybackSession
         : _audioPlaybackService.Duration ?? ToTimeSpan(_current.CatalogDurationSeconds);
 
     public event EventHandler? Changed;
+
+    public event EventHandler<StoryAutoplayAdvancedEventArgs>? AutoplayAdvanced;
 
     public bool IsCurrentStory(MobileStorySummary? story) =>
         story is not null && IsCurrentStory(story.Slug, story.Source);
@@ -96,6 +112,7 @@ public sealed class StoryPlaybackSession
         {
             FlushPendingListen("replaced", force: true);
             StopTrackingTimer();
+            CancelAutoplayPreparation();
         }
 
         var playbackItem = new StoryPlaybackItem(
@@ -142,6 +159,7 @@ public sealed class StoryPlaybackSession
             ResolveDurationSeconds(playbackItem));
         StartTrackingTimer();
         RaiseChanged();
+        ScheduleAutoplayPreparation(playbackItem);
     }
 
     public async Task ResumeAsync()
@@ -169,6 +187,31 @@ public sealed class StoryPlaybackSession
         RaiseChanged();
     }
 
+    public async Task SeekAsync(TimeSpan position, CancellationToken cancellationToken = default)
+    {
+        var current = _current;
+        if (current is null)
+        {
+            return;
+        }
+
+        var duration = Duration;
+        var maximumSeconds = duration is { TotalSeconds: > 0 }
+            ? duration.Value.TotalSeconds
+            : Math.Max(0, position.TotalSeconds);
+        var target = TimeSpan.FromSeconds(Math.Clamp(position.TotalSeconds, 0, maximumSeconds));
+
+        FlushPendingListen("seek", force: true);
+        await _audioPlaybackService.SeekAsync(target, cancellationToken);
+        _lastTrackedPosition = target;
+        _continueListeningState.UpdateProgress(
+            current.Story.Slug,
+            NormalizeSource(current.Story.Source),
+            decimal.Round((decimal)target.TotalSeconds, 3, MidpointRounding.AwayFromZero),
+            ResolveDurationSeconds(current));
+        RaiseChanged();
+    }
+
     public void Pause()
     {
         if (_current is null)
@@ -188,6 +231,7 @@ public sealed class StoryPlaybackSession
 
         FlushPendingListen("stop", force: true);
         StopTrackingTimer();
+        CancelAutoplayPreparation();
         _isChangingPlayback = true;
         try
         {
@@ -205,6 +249,18 @@ public sealed class StoryPlaybackSession
 
     public void NotifyPageHidden() =>
         FlushPendingListen("pagehide", force: true);
+
+    public void RefreshAutoplayPreparation()
+    {
+        if (_current is { } current && _audioPlaybackService.IsPlaying)
+        {
+            ScheduleAutoplayPreparation(current);
+        }
+        else
+        {
+            CancelAutoplayPreparation();
+        }
+    }
 
     private void OnAudioPlaybackStateChanged(object? sender, EventArgs args)
     {
@@ -229,7 +285,8 @@ public sealed class StoryPlaybackSession
 
     private void OnAudioPlaybackEnded(object? sender, EventArgs args)
     {
-        if (_current is null)
+        var endedItem = _current;
+        if (endedItem is null)
         {
             return;
         }
@@ -237,6 +294,196 @@ public sealed class StoryPlaybackSession
         FlushPendingListen("ended", force: true, isCompleted: true);
         StopTrackingTimer();
         RaiseChanged();
+        _ = AdvanceAutoplayAsync(endedItem);
+    }
+
+    private void ScheduleAutoplayPreparation(StoryPlaybackItem current)
+    {
+        CancelAutoplayPreparation();
+        if (!_playlistPlaybackState.IsAutoplayEnabled || ResolveOriginPlaylist(current) is null)
+        {
+            return;
+        }
+
+        _autoplayPreparationCts = new CancellationTokenSource();
+        _autoplayPreparationTask = PrepareNextAutoplayAsync(current, _autoplayPreparationCts.Token);
+    }
+
+    private async Task PrepareNextAutoplayAsync(
+        StoryPlaybackItem current,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var playlist = ResolveOriginPlaylist(current);
+            var nextStory = playlist is null ? null : ResolveNextStory(current.Story);
+            if (playlist is null || nextStory is null || nextStory.IsLocked)
+            {
+                return;
+            }
+
+            MobileStoryDetailResponse? detail;
+            try
+            {
+                detail = await _apiClient.GetStoryAsync(nextStory.Slug, "luister", cancellationToken);
+            }
+            catch when (!cancellationToken.IsCancellationRequested)
+            {
+                var download = await _offlineDownloadService.GetDownloadAsync(
+                    nextStory.Slug,
+                    "luister",
+                    cancellationToken);
+                detail = download is null ? null : _offlineDownloadService.CreateOfflineDetail(download);
+            }
+
+            if (detail is null ||
+                detail.RequiresSubscription ||
+                string.IsNullOrWhiteSpace(detail.AudioUrl))
+            {
+                return;
+            }
+
+            var offlinePlaybackUrl = await _offlineDownloadService.ResolvePlayableAudioAsync(
+                detail,
+                cancellationToken);
+            var playbackUrl = string.IsNullOrWhiteSpace(offlinePlaybackUrl)
+                ? await _apiClient.PrepareAudioPlaybackSourceAsync(
+                    detail.AudioUrl,
+                    detail.Story.Slug,
+                    "luister",
+                    cancellationToken)
+                : offlinePlaybackUrl;
+            await _audioPlaybackService.PrepareAsync(playbackUrl, cancellationToken);
+            var artworkUrl = _apiClient.BuildImageUrl(detail.Story.ImageUrl);
+
+            if (!cancellationToken.IsCancellationRequested &&
+                _current?.TrackingSessionId == current.TrackingSessionId)
+            {
+                _preparedAutoplay = new PreparedAutoplayItem(
+                    current.TrackingSessionId,
+                    detail,
+                    playbackUrl,
+                    artworkUrl,
+                    playlist);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch
+        {
+            // Autoplay preparation is best-effort. A foreground completion gets one fresh retry.
+        }
+    }
+
+    private async Task AdvanceAutoplayAsync(StoryPlaybackItem endedItem)
+    {
+        if (Interlocked.Exchange(ref _isAutoplayAdvancing, 1) == 1)
+        {
+            return;
+        }
+
+        try
+        {
+            if (_current?.TrackingSessionId != endedItem.TrackingSessionId ||
+                !_playlistPlaybackState.CanAutoplayAdvance(endedItem.Story))
+            {
+                return;
+            }
+
+            if (_autoplayPreparationTask is { } preparationTask)
+            {
+                await preparationTask;
+            }
+
+            var prepared = _preparedAutoplay;
+            if (prepared is null && !_lifecycleService.IsBackgrounded)
+            {
+                ScheduleAutoplayPreparation(endedItem);
+                if (_autoplayPreparationTask is { } retryTask)
+                {
+                    await retryTask;
+                }
+                prepared = _preparedAutoplay;
+            }
+
+            if (prepared is null ||
+                prepared.PreviousTrackingSessionId != endedItem.TrackingSessionId ||
+                _current?.TrackingSessionId != endedItem.TrackingSessionId)
+            {
+                return;
+            }
+
+            _preparedAutoplay = null;
+            await PlayAsync(
+                prepared.PlaybackUrl,
+                prepared.Detail.Story,
+                prepared.ArtworkUrl,
+                prepared.Playlist.Slug,
+                prepared.Playlist.Title,
+                prepared.Detail.Story.DurationSeconds,
+                prepared.Playlist);
+            _playlistPlaybackState.TrackAutoplayAdvance(prepared.Detail.Story);
+            RaiseAutoplayAdvanced(prepared.Detail, prepared.Playlist);
+        }
+        catch
+        {
+            // Never surface a delayed background connection alert when the app is reopened.
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _isAutoplayAdvancing, 0);
+        }
+    }
+
+    private MobilePlaylist? ResolveOriginPlaylist(StoryPlaybackItem current)
+    {
+        if (current.OriginPlaylist is { } originPlaylist &&
+            !string.IsNullOrWhiteSpace(current.PlaylistSlug) &&
+            string.Equals(originPlaylist.Slug, current.PlaylistSlug, StringComparison.OrdinalIgnoreCase))
+        {
+            return originPlaylist;
+        }
+
+        var currentPlaylist = _playlistPlaybackState.CurrentPlaylist;
+        return currentPlaylist is not null &&
+               string.Equals(currentPlaylist.Slug, current.PlaylistSlug, StringComparison.OrdinalIgnoreCase)
+            ? currentPlaylist
+            : null;
+    }
+
+    private MobileStorySummary? ResolveNextStory(MobileStorySummary currentStory)
+    {
+        var stories = _playlistPlaybackState.GetPlaybackStories(currentStory);
+        var currentIndex = stories.ToList().FindIndex(story => SameStory(story, currentStory));
+        return currentIndex >= 0 && currentIndex < stories.Count - 1
+            ? stories[currentIndex + 1]
+            : null;
+    }
+
+    private static bool SameStory(MobileStorySummary left, MobileStorySummary right) =>
+        string.Equals(left.Slug, right.Slug, StringComparison.OrdinalIgnoreCase) &&
+        string.Equals(NormalizeSource(left.Source), NormalizeSource(right.Source), StringComparison.OrdinalIgnoreCase);
+
+    private void CancelAutoplayPreparation()
+    {
+        _autoplayPreparationCts?.Cancel();
+        _autoplayPreparationCts?.Dispose();
+        _autoplayPreparationCts = null;
+        _autoplayPreparationTask = null;
+        _preparedAutoplay = null;
+    }
+
+    private void RaiseAutoplayAdvanced(MobileStoryDetailResponse detail, MobilePlaylist playlist)
+    {
+        void Raise() => AutoplayAdvanced?.Invoke(this, new StoryAutoplayAdvancedEventArgs(detail, playlist));
+        if (MainThread.IsMainThread)
+        {
+            Raise();
+            return;
+        }
+
+        MainThread.BeginInvokeOnMainThread(Raise);
     }
 
     private void OnAppStopping(object? sender, EventArgs args) =>
@@ -381,4 +628,11 @@ public sealed class StoryPlaybackSession
 
         MainThread.BeginInvokeOnMainThread(() => Changed?.Invoke(this, EventArgs.Empty));
     }
+
+    private sealed record PreparedAutoplayItem(
+        Guid PreviousTrackingSessionId,
+        MobileStoryDetailResponse Detail,
+        string PlaybackUrl,
+        string ArtworkUrl,
+        MobilePlaylist Playlist);
 }

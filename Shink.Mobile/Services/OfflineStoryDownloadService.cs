@@ -36,7 +36,8 @@ public sealed record OfflineStoryDownload(
     DateTimeOffset LastAccessVerifiedAt,
     long FileSizeBytes,
     string AudioFileName,
-    string? OwnerKey = null);
+    string? OwnerKey = null,
+    string? ArtworkFileName = null);
 
 public interface IOfflineStoryDownloadService
 {
@@ -61,6 +62,8 @@ public interface IOfflineStoryDownloadService
 
     Task<string?> ResolvePlayableAudioAsync(MobileStoryDetailResponse detail, CancellationToken cancellationToken = default);
 
+    MobileStorySummary CreateOfflineStory(OfflineStoryDownload download);
+
     MobileStoryDetailResponse CreateOfflineDetail(OfflineStoryDownload download);
 }
 
@@ -74,6 +77,7 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
     private readonly MobileAnalyticsService _analytics;
     private readonly SemaphoreSlim _metadataLock = new(1, 1);
     private readonly HashSet<string> _activeDownloads = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _activeArtworkRepairs = new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyList<OfflineStoryDownload>? _cachedDownloads;
 
     public OfflineStoryDownloadService(
@@ -113,12 +117,19 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
         var currentOwnerKey = ResolveCurrentOwnerKey();
         var session = _sessionState.Current;
         var now = DateTimeOffset.UtcNow;
-        return downloads
+        var playableDownloads = downloads
             .Where(download =>
                 IsPlayable(download, session, currentOwnerKey, now) &&
                 File.Exists(BuildAudioPath(download.AudioFileName)))
             .OrderByDescending(download => download.DownloadedAt)
             .ToArray();
+
+        foreach (var download in playableDownloads.Where(download => !HasOfflineArtwork(download)))
+        {
+            QueueArtworkRepair(download);
+        }
+
+        return playableDownloads;
     }
 
     public async Task<OfflineStoryDownload?> GetDownloadAsync(
@@ -190,6 +201,9 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
             throw new InvalidOperationException("Hierdie storie is reeds besig om af te laai.");
         }
 
+        string? completedAudioPath = null;
+        string? completedArtworkFileName = null;
+        var metadataSaved = false;
         try
         {
             _analytics.TrackEvent("mobile_story_download_started", new Dictionary<string, object>
@@ -228,6 +242,13 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
             }
 
             File.Move(temporaryPath, audioPath);
+            completedAudioPath = audioPath;
+            var artworkFileName = await SaveArtworkFileAsync(
+                detail.Story.ImageUrl,
+                detail.Story.ThumbnailUrl,
+                key,
+                cancellationToken);
+            completedArtworkFileName = artworkFileName;
             var fileInfo = new FileInfo(audioPath);
             var now = DateTimeOffset.UtcNow;
             var download = new OfflineStoryDownload(
@@ -244,9 +265,11 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
                 LastAccessVerifiedAt: now,
                 FileSizeBytes: fileInfo.Length,
                 AudioFileName: audioFileName,
-                OwnerKey: ownerKey);
+                OwnerKey: ownerKey,
+                ArtworkFileName: artworkFileName);
 
             await SaveDownloadAsync(download, cancellationToken);
+            metadataSaved = true;
             DownloadsChanged?.Invoke(this, EventArgs.Empty);
             _analytics.TrackEvent("mobile_story_download_completed", new Dictionary<string, object>
             {
@@ -260,6 +283,19 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
         catch (Exception ex)
         {
             CleanupTempFiles(key);
+            if (!metadataSaved)
+            {
+                if (!string.IsNullOrWhiteSpace(completedAudioPath) && File.Exists(completedAudioPath))
+                {
+                    File.Delete(completedAudioPath);
+                }
+
+                if (!string.IsNullOrWhiteSpace(completedArtworkFileName))
+                {
+                    DeleteArtworkFileByName(completedArtworkFileName);
+                }
+            }
+
             _analytics.TrackException(ex, "mobile_story_download_failed", new Dictionary<string, object>
             {
                 ["story_slug"] = detail.Story.Slug,
@@ -323,6 +359,7 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
             }
 
             DeleteAudioFile(download);
+            DeleteArtworkFile(download);
             downloads.Remove(download);
             await SaveDownloadsUnsafeAsync(downloads, cancellationToken);
             _analytics.TrackEvent("mobile_story_download_removed", new Dictionary<string, object>
@@ -356,19 +393,25 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
             : null;
     }
 
-    public MobileStoryDetailResponse CreateOfflineDetail(OfflineStoryDownload download)
+    public MobileStorySummary CreateOfflineStory(OfflineStoryDownload download)
     {
-        var story = new MobileStorySummary(
+        var artworkUrl = ResolveOfflineArtworkUrl(download);
+        return new MobileStorySummary(
             Slug: download.Slug,
             Title: download.Title,
             Description: download.Description,
-            ImageUrl: download.ImageUrl,
-            ThumbnailUrl: download.ThumbnailUrl,
+            ImageUrl: artworkUrl,
+            ThumbnailUrl: artworkUrl,
             Source: download.Source,
             IsLocked: false,
             IsFavorite: false,
             DetailUrl: download.DetailUrl,
             DurationSeconds: download.DurationSeconds);
+    }
+
+    public MobileStoryDetailResponse CreateOfflineDetail(OfflineStoryDownload download)
+    {
+        var story = CreateOfflineStory(download);
 
         return new MobileStoryDetailResponse(
             Story: story,
@@ -393,11 +436,17 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
     private static string AudioDirectory =>
         IoPath.Combine(FileSystem.AppDataDirectory, "offline-story-audio");
 
+    private static string ArtworkDirectory =>
+        IoPath.Combine(FileSystem.AppDataDirectory, "offline-story-artwork");
+
     private static string MetadataPath =>
         IoPath.Combine(FileSystem.AppDataDirectory, "offline-story-downloads.json");
 
     private static string BuildAudioPath(string audioFileName) =>
         IoPath.Combine(AudioDirectory, audioFileName);
+
+    private static string BuildArtworkPath(string artworkFileName) =>
+        IoPath.Combine(ArtworkDirectory, artworkFileName);
 
     private async Task SaveDownloadAsync(OfflineStoryDownload download, CancellationToken cancellationToken)
     {
@@ -413,6 +462,11 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
                 if (!string.Equals(replacedDownload.AudioFileName, download.AudioFileName, StringComparison.Ordinal))
                 {
                     DeleteAudioFile(replacedDownload);
+                }
+
+                if (!string.Equals(replacedDownload.ArtworkFileName, download.ArtworkFileName, StringComparison.Ordinal))
+                {
+                    DeleteArtworkFile(replacedDownload);
                 }
             }
 
@@ -604,6 +658,170 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
         if (File.Exists(audioPath))
         {
             File.Delete(audioPath);
+        }
+    }
+
+    private static void DeleteArtworkFile(OfflineStoryDownload download)
+    {
+        if (string.IsNullOrWhiteSpace(download.ArtworkFileName))
+        {
+            return;
+        }
+
+        DeleteArtworkFileByName(download.ArtworkFileName);
+    }
+
+    private static void DeleteArtworkFileByName(string artworkFileName)
+    {
+        var artworkPath = BuildArtworkPath(artworkFileName);
+        if (File.Exists(artworkPath))
+        {
+            File.Delete(artworkPath);
+        }
+    }
+
+    private static bool HasOfflineArtwork(OfflineStoryDownload download) =>
+        !string.IsNullOrWhiteSpace(download.ArtworkFileName) &&
+        File.Exists(BuildArtworkPath(download.ArtworkFileName));
+
+    private static string ResolveOfflineArtworkUrl(OfflineStoryDownload download)
+    {
+        if (HasOfflineArtwork(download))
+        {
+            return new Uri(BuildArtworkPath(download.ArtworkFileName!)).AbsoluteUri;
+        }
+
+        return string.IsNullOrWhiteSpace(download.ImageUrl)
+            ? download.ThumbnailUrl
+            : download.ImageUrl;
+    }
+
+    private async Task<string> SaveArtworkFileAsync(
+        string imageUrl,
+        string thumbnailUrl,
+        string downloadKey,
+        CancellationToken cancellationToken)
+    {
+        Exception? lastError = null;
+        var candidates = new[] { imageUrl, thumbnailUrl }
+            .Where(candidate => !string.IsNullOrWhiteSpace(candidate))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var candidate in candidates)
+        {
+            try
+            {
+                var source = await _apiClient.CacheImageSourceAsync(candidate, cancellationToken);
+                if (source is not FileImageSource fileSource ||
+                    string.IsNullOrWhiteSpace(fileSource.File) ||
+                    !File.Exists(fileSource.File))
+                {
+                    continue;
+                }
+
+                Directory.CreateDirectory(ArtworkDirectory);
+                var extension = ResolveArtworkExtension(fileSource.File);
+                var artworkFileName = $"{BuildStableKey(downloadKey)}{extension}";
+                var artworkPath = BuildArtworkPath(artworkFileName);
+                var temporaryPath = $"{artworkPath}.tmp";
+                try
+                {
+                    File.Copy(fileSource.File, temporaryPath, overwrite: true);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (!File.Exists(temporaryPath) || new FileInfo(temporaryPath).Length == 0)
+                    {
+                        throw new InvalidOperationException("Die storie se kunswerk is leeg.");
+                    }
+
+                    File.Move(temporaryPath, artworkPath, overwrite: true);
+                    return artworkFileName;
+                }
+                finally
+                {
+                    if (File.Exists(temporaryPath))
+                    {
+                        File.Delete(temporaryPath);
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+            }
+        }
+
+        throw new InvalidOperationException(
+            "Die storie se kunswerk kon nie vir offline gebruik gestoor word nie.",
+            lastError);
+    }
+
+    private static string ResolveArtworkExtension(string sourcePath)
+    {
+        var extension = IoPath.GetExtension(sourcePath).ToLowerInvariant();
+        return extension is ".jpg" or ".jpeg" or ".png" or ".webp" or ".gif"
+            ? extension
+            : ".jpg";
+    }
+
+    private void QueueArtworkRepair(OfflineStoryDownload download)
+    {
+        var key = BuildDownloadKey(download.Slug, download.Source, download.OwnerKey);
+        lock (_activeArtworkRepairs)
+        {
+            if (!_activeArtworkRepairs.Add(key))
+            {
+                return;
+            }
+        }
+
+        _ = RepairArtworkAsync(download, key);
+    }
+
+    private async Task RepairArtworkAsync(OfflineStoryDownload download, string key)
+    {
+        try
+        {
+            var artworkFileName = await SaveArtworkFileAsync(
+                download.ImageUrl,
+                download.ThumbnailUrl,
+                key,
+                CancellationToken.None);
+
+            await _metadataLock.WaitAsync();
+            try
+            {
+                var downloads = (await LoadDownloadsUnsafeAsync(CancellationToken.None)).ToList();
+                var index = downloads.FindIndex(item => IsSameOwnedStory(item, download));
+                if (index < 0)
+                {
+                    DeleteArtworkFile(download with { ArtworkFileName = artworkFileName });
+                    return;
+                }
+
+                downloads[index] = downloads[index] with { ArtworkFileName = artworkFileName };
+                await SaveDownloadsUnsafeAsync(downloads, CancellationToken.None);
+            }
+            finally
+            {
+                _metadataLock.Release();
+            }
+
+            DownloadsChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch
+        {
+            // Legacy artwork repair is best-effort and retries next time downloads are opened online.
+        }
+        finally
+        {
+            lock (_activeArtworkRepairs)
+            {
+                _activeArtworkRepairs.Remove(key);
+            }
         }
     }
 

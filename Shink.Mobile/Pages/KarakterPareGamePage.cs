@@ -186,6 +186,7 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
                 _stateOverlay
             }
         };
+        _boardHost.SizeChanged += (_, _) => ApplyBoardGeometry(_selectedDifficulty);
 
         root.Children.Add(topBar);
         root.Children.Add(_scoreCard);
@@ -230,14 +231,13 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
 
     private void ApplyResponsiveLayout()
     {
-        // Keep the board broad on tablets while preserving compact phone
-        // margins, and scale the score labels with the available width.
-        _board.WidthRequest = -1;
-        _board.HorizontalOptions = LayoutOptions.Fill;
+        // Keep the score labels readable while the board uses the largest
+        // square tiles that fit both the available width and height.
         var scoreFontSize = Math.Clamp(Width * 0.06, 30, 44);
         _attemptsLabel.FontSize = scoreFontSize;
         _pairsLabel.FontSize = scoreFontSize;
         _scoreCard.Margin = new Thickness(Width >= 600 ? 36 : 18, 0, Width >= 600 ? 36 : 18, 8);
+        ApplyBoardGeometry(_selectedDifficulty);
     }
 
     private static LinearGradientBrush BuildGameBackground() =>
@@ -619,8 +619,8 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
             ColumnSpacing = 8,
             RowSpacing = 8,
             Margin = new Thickness(12, 0),
-            HorizontalOptions = LayoutOptions.Fill,
-            VerticalOptions = LayoutOptions.Fill,
+            HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.Center,
             IsVisible = false,
             AutomationId = "character-match-board"
         };
@@ -638,42 +638,13 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
             ProgressiveCachedImage.RequestProperty,
             static (CharacterMatchTile tile) => tile.ImageRequest);
 
-        var characterName = new Label
-        {
-            FontSize = 11,
-            FontAttributes = FontAttributes.Bold,
-            TextColor = Color.FromArgb("#27313A"),
-            HorizontalTextAlignment = TextAlignment.Center,
-            MaxLines = 1,
-            LineBreakMode = LineBreakMode.TailTruncation
-        };
-        characterName.SetBinding(
-            Label.TextProperty,
-            static (CharacterMatchTile tile) => tile.DisplayName);
-
-        var frontContent = new Grid
-        {
-            RowDefinitions =
-            {
-                new RowDefinition(GridLength.Star),
-                new RowDefinition(GridLength.Auto)
-            },
-            RowSpacing = 1,
-            Children =
-            {
-                characterImage,
-                characterName
-            }
-        };
-        Grid.SetRow(characterName, 1);
-
         var front = new Border
         {
             BackgroundColor = Color.FromArgb("#FFF9F0"),
             StrokeThickness = 0,
             StrokeShape = new RoundRectangle { CornerRadius = 15 },
             Padding = new Thickness(5, 3, 5, 2),
-            Content = frontContent
+            Content = characterImage
         };
         front.SetBinding(
             IsVisibleProperty,
@@ -706,7 +677,6 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
         };
         var card = new Border
         {
-            MinimumHeightRequest = 64,
             HorizontalOptions = LayoutOptions.Fill,
             VerticalOptions = LayoutOptions.Fill,
             BackgroundColor = Color.FromArgb("#27313A"),
@@ -937,6 +907,33 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
         _board.RowSpacing = spacing;
         var horizontalMargin = Width >= 600 ? 36 : 18;
         _board.Margin = new Thickness(horizontalMargin, 0, horizontalMargin, 0);
+        ApplyBoardGeometry(difficulty);
+    }
+
+    private void ApplyBoardGeometry(MatchDifficultyOption difficulty)
+    {
+        var hostWidth = _boardHost.Width > 0 ? _boardHost.Width : Width;
+        var hostHeight = _boardHost.Height;
+        if (hostWidth <= 0 || hostHeight <= 0)
+        {
+            return;
+        }
+
+        var horizontalMargin = Width >= 600 ? 36d : 18d;
+        var horizontalSpacing = Math.Max(0, difficulty.Columns - 1) * _board.ColumnSpacing;
+        var verticalSpacing = Math.Max(0, difficulty.Rows - 1) * _board.RowSpacing;
+        var widthLimitedTileSize = (hostWidth - horizontalMargin * 2 - horizontalSpacing) / difficulty.Columns;
+        var heightLimitedTileSize = (hostHeight - verticalSpacing) / difficulty.Rows;
+        var tileSize = Math.Floor(Math.Min(widthLimitedTileSize, heightLimitedTileSize));
+        if (tileSize <= 0)
+        {
+            return;
+        }
+
+        _board.WidthRequest = tileSize * difficulty.Columns + horizontalSpacing;
+        _board.HeightRequest = tileSize * difficulty.Rows + verticalSpacing;
+        _board.HorizontalOptions = LayoutOptions.Center;
+        _board.VerticalOptions = LayoutOptions.Center;
     }
 
     private async Task AnimateBoardOutAsync()

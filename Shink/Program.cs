@@ -7895,13 +7895,23 @@ static bool TryExtractImageProxySource(string pathOrUrl, out string sourceUrl)
     return true;
 }
 
-static Task<string?> ResolveMobileAudioUrlAsync(
+static async Task<string?> ResolveMobileAudioUrlAsync(
     HttpContext httpContext,
     StoryItem story,
     IAudioAccessService audioAccessService,
     IStoryMediaStorageService storyMediaStorageService)
 {
-    return Task.FromResult<string?>(ToAbsoluteUri(httpContext, audioAccessService.CreateSignedAudioUrl(story.Slug)));
+    if (string.Equals(story.AudioProvider, "r2", StringComparison.OrdinalIgnoreCase))
+    {
+        var readUri = await storyMediaStorageService.CreateAudioReadUrlAsync(
+            story.AudioBucket,
+            story.AudioFileName,
+            TimeSpan.FromHours(4),
+            httpContext.RequestAborted);
+        return readUri?.ToString();
+    }
+
+    return ToAbsoluteUri(httpContext, audioAccessService.CreateSignedAudioUrl(story.Slug));
 }
 
 static MobileStorySummaryResponse BuildMobileStorySummary(

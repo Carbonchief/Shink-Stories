@@ -69,6 +69,8 @@ public sealed class MobileResponsiveLayoutSourceTests
         StringAssert.Contains(menuSheet, "SemanticProperties.SetDescription(button, \"Maak menu toe\")");
         StringAssert.Contains(menuSheet, "var columnCount = useTabletLayout ? 2 : 1;");
         StringAssert.Contains(menuSheet, "cardHost.VerticalOptions = LayoutOptions.Center;");
+        StringAssert.Contains(menuSheet, "var phoneCardWidth = Math.Max(280, resolvedWidth - 40);");
+        Assert.IsFalse(menuSheet.Contains("card.MaximumWidthRequest = -1;", StringComparison.Ordinal));
         Assert.IsFalse(menuSheet.Contains("BuildActionButton(\"Kanselleer\"", StringComparison.Ordinal));
     }
 

@@ -203,13 +203,30 @@ public class CharacterMatchGameTests
     }
 
     [TestMethod]
-    public void MatchGameBoardUsesTheFullAvailableWidth()
+    public void MatchGameBoardUsesSquareCardsAndCentersWithinTheAvailableSpace()
     {
         var gamePage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KarakterPareGamePage.cs"));
 
-        StringAssert.Contains(gamePage, "_board.WidthRequest = -1;");
-        StringAssert.Contains(gamePage, "_board.HorizontalOptions = LayoutOptions.Fill;");
+        StringAssert.Contains(gamePage, "_boardHost.SizeChanged += (_, _) => ApplyBoardGeometry(_selectedDifficulty);");
+        StringAssert.Contains(gamePage, "var widthLimitedTileSize =");
+        StringAssert.Contains(gamePage, "var heightLimitedTileSize =");
+        StringAssert.Contains(gamePage, "var tileSize = Math.Floor(Math.Min(widthLimitedTileSize, heightLimitedTileSize));");
+        StringAssert.Contains(gamePage, "_board.WidthRequest = tileSize * difficulty.Columns + horizontalSpacing;");
+        StringAssert.Contains(gamePage, "_board.HeightRequest = tileSize * difficulty.Rows + verticalSpacing;");
+        StringAssert.Contains(gamePage, "_board.HorizontalOptions = LayoutOptions.Center;");
+        StringAssert.Contains(gamePage, "_board.VerticalOptions = LayoutOptions.Center;");
+        Assert.IsFalse(gamePage.Contains("MinimumHeightRequest = 64", StringComparison.Ordinal));
         Assert.IsFalse(gamePage.Contains("Math.Min(760, Math.Max(320, availableWidth - 48))", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void MatchGameFaceUpCardsShowTheCharacterImageWithoutANameLabel()
+    {
+        var gamePage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KarakterPareGamePage.cs"));
+
+        StringAssert.Contains(gamePage, "Content = characterImage");
+        Assert.DoesNotContain("var characterName = new Label", gamePage, StringComparison.Ordinal);
+        Assert.DoesNotContain("static (CharacterMatchTile tile) => tile.DisplayName", gamePage, StringComparison.Ordinal);
     }
 
     [TestMethod]

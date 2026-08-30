@@ -53,16 +53,16 @@ public sealed class MobilePersistentPlaybackSourceTests
         Assert.DoesNotContain("_playPauseButton.Text = _playbackSession.IsPlaying ? \"II\" : \"▶\";", nowPlaying, StringComparison.Ordinal);
         StringAssert.Contains(
             nowPlaying,
-            "LineBreakMode = LineBreakMode.NoWrap,\n            VerticalOptions = LayoutOptions.Center,\n            VerticalTextAlignment = TextAlignment.Center");
+            "LineBreakMode = LineBreakMode.NoWrap,\n            VerticalOptions = LayoutOptions.End,\n            VerticalTextAlignment = TextAlignment.End");
         StringAssert.Contains(
             nowPlaying,
-            "LineBreakMode = LineBreakMode.TailTruncation,\n            VerticalOptions = LayoutOptions.Center,\n            VerticalTextAlignment = TextAlignment.Center");
-        StringAssert.Contains(nowPlaying, "new RowDefinition(GridLength.Auto)");
+            "LineBreakMode = LineBreakMode.TailTruncation,\n            VerticalOptions = LayoutOptions.Start,\n            VerticalTextAlignment = TextAlignment.Start");
         StringAssert.Contains(nowPlaying, "HeightRequest = 52");
         StringAssert.Contains(nowPlaying, "MinimumHeightRequest = 52");
-        StringAssert.Contains(nowPlaying, "Grid.SetRow(_statusLabel, 1);");
-        StringAssert.Contains(nowPlaying, "Grid.SetRow(_titleLabel, 2);");
-        Assert.DoesNotContain("Grid.SetRow(_titleLabel, 1);", nowPlaying, StringComparison.Ordinal);
+        StringAssert.Contains(nowPlaying, "Grid.SetRow(_titleLabel, 1);");
+        StringAssert.Contains(
+            nowPlaying,
+            "RowDefinitions =\n            {\n                new RowDefinition(GridLength.Star),\n                new RowDefinition(GridLength.Star)\n            },");
         StringAssert.Contains(nowPlaying, "await _playbackSession.ResumeAsync();");
         StringAssert.Contains(nowPlaying, "_playbackSession.Stop();");
         StringAssert.Contains(nowPlaying, "nameof(StoryDetailPage)");
@@ -70,7 +70,7 @@ public sealed class MobilePersistentPlaybackSourceTests
         StringAssert.Contains(nowPlaying, "nameof(PlaylistDetailPage)");
         StringAssert.Contains(nowPlaying, "[\"playlist\"] = playlist");
         StringAssert.Contains(playlistDetail, "originPlaylist: _playlist");
-        Assert.DoesNotContain("originPlaylist:", storyDetail, StringComparison.Ordinal);
+        StringAssert.Contains(storyDetail, "originPlaylist: ResolveOriginPlaylist()");
         StringAssert.Contains(luister, "new PersistentNowPlayingBar(_storyPlaybackSession)");
         StringAssert.Contains(search, "new PersistentNowPlayingBar(_storyPlaybackSession)");
         StringAssert.Contains(karakters, "new PersistentNowPlayingBar(_storyPlaybackSession)");
@@ -81,6 +81,73 @@ public sealed class MobilePersistentPlaybackSourceTests
         StringAssert.Contains(account, "PersistentPlaybackHost.Wrap(pageContent, storyPlaybackSession, edgeToEdge: true)");
         StringAssert.Contains(profile, "PersistentPlaybackHost.Wrap(profileScroll, storyPlaybackSession)");
         StringAssert.Contains(settings, "PersistentPlaybackHost.Wrap(scrollView, storyPlaybackSession)");
+    }
+
+    [TestMethod]
+    public void PlaylistAutoplayIsPreparedAndAdvancedByTheAppWideSession()
+    {
+        var playbackSession = ReadSource("Shink.Mobile", "Services", "StoryPlaybackSession.cs");
+        var storyDetail = ReadSource("Shink.Mobile", "Pages", "StoryDetailPage.cs");
+        var playlistDetail = ReadSource("Shink.Mobile", "Pages", "PlaylistDetailPage.cs");
+        var playlistState = ReadSource("Shink.Mobile", "Services", "PlaylistPlaybackState.cs");
+        var program = ReadSource("Shink", "Program.cs");
+
+        StringAssert.Contains(playbackSession, "ScheduleAutoplayPreparation(playbackItem);");
+        StringAssert.Contains(playbackSession, "await _apiClient.GetStoryAsync(nextStory.Slug, \"luister\", cancellationToken);");
+        StringAssert.Contains(playbackSession, "await _audioPlaybackService.PrepareAsync(playbackUrl, cancellationToken);");
+        StringAssert.Contains(playbackSession, "_ = AdvanceAutoplayAsync(endedItem);");
+        StringAssert.Contains(playbackSession, "prepared is null && !_lifecycleService.IsBackgrounded");
+        StringAssert.Contains(playbackSession, "RaiseAutoplayAdvanced(prepared.Detail, prepared.Playlist);");
+        StringAssert.Contains(storyDetail, "_storyPlaybackSession.AutoplayAdvanced += OnAutoplayAdvanced;");
+        StringAssert.Contains(playlistDetail, "_storyPlaybackSession.AutoplayAdvanced += OnAutoplayAdvanced;");
+        Assert.DoesNotContain("_playlistPlaybackState.CanAutoplayAdvance(currentDetail.Story)", storyDetail, StringComparison.Ordinal);
+        Assert.DoesNotContain("await SelectRelativeStoryAsync(1, autoplay: true);", playlistDetail, StringComparison.Ordinal);
+        StringAssert.Contains(playlistState, "story with { Source = \"luister\" }");
+        StringAssert.Contains(program, "storyMediaStorageService.CreateAudioReadUrlAsync(");
+        StringAssert.Contains(program, "TimeSpan.FromHours(4)");
+    }
+
+    [TestMethod]
+    public void StoryAndPlaylistPlayButtonsAnimateWhilePlaybackStarts()
+    {
+        var storyDetail = ReadSource("Shink.Mobile", "Pages", "StoryDetailPage.cs");
+        var playlistDetail = ReadSource("Shink.Mobile", "Pages", "PlaylistDetailPage.cs");
+
+        StringAssert.Contains(storyDetail, "private async Task RunPlaybackRequestAsync(Button playButton, Func<Task> action)");
+        StringAssert.Contains(storyDetail, "var loadingIndicator = new ActivityIndicator");
+        StringAssert.Contains(storyDetail, "loadingState.Indicator.IsRunning = isLoading;");
+        StringAssert.Contains(storyDetail, "await RunPlaybackRequestAsync(playButton, () => StartPlaybackAsync(detail, playButton));");
+        StringAssert.Contains(playlistDetail, "_playLoadingIndicator = new ActivityIndicator");
+        StringAssert.Contains(playlistDetail, "_playLoadingIndicator.IsRunning = isLoading;");
+        StringAssert.Contains(playlistDetail, "await LoadCurrentStoryAsync(autoplay: true);");
+        StringAssert.Contains(playlistDetail, "_playButton.TextColor = isLoading ? Colors.Transparent : Colors.White;");
+        StringAssert.Contains(playlistDetail, "actionLoadingIndicator.SetBinding(ActivityIndicator.IsRunningProperty, nameof(PlaylistTrackItem.IsLoading));");
+        StringAssert.Contains(playlistDetail, "loadingTrack?.SetLoading(true);");
+        StringAssert.Contains(playlistDetail, "loadingTrack?.SetLoading(false);");
+    }
+
+    [TestMethod]
+    public void StoryAndPlaylistProgressSlidersSeekTheSharedPlaybackSession()
+    {
+        var audioPlayback = ReadSource("Shink.Mobile", "Services", "AudioPlaybackService.cs");
+        var playbackSession = ReadSource("Shink.Mobile", "Services", "StoryPlaybackSession.cs");
+        var storyDetail = ReadSource("Shink.Mobile", "Pages", "StoryDetailPage.cs");
+        var playlistDetail = ReadSource("Shink.Mobile", "Pages", "PlaylistDetailPage.cs");
+
+        StringAssert.Contains(audioPlayback, "Task SeekAsync(TimeSpan position, CancellationToken cancellationToken = default);");
+        StringAssert.Contains(audioPlayback, "_player?.Seek(CoreMedia.CMTime.FromSeconds(targetSeconds, 600));");
+        StringAssert.Contains(audioPlayback, "player.SeekTo(targetMilliseconds);");
+        StringAssert.Contains(playbackSession, "FlushPendingListen(\"seek\", force: true);");
+        StringAssert.Contains(playbackSession, "await _audioPlaybackService.SeekAsync(target, cancellationToken);");
+        StringAssert.Contains(playbackSession, "_lastTrackedPosition = target;");
+        StringAssert.Contains(storyDetail, "private Slider BuildProgressSlider(double value, Color maximumTrackColor)");
+        StringAssert.Contains(storyDetail, "slider.DragCompleted += async (_, _) =>");
+        StringAssert.Contains(storyDetail, "await _storyPlaybackSession.SeekAsync(");
+        StringAssert.Contains(playlistDetail, "_progressSlider = new Slider");
+        StringAssert.Contains(playlistDetail, "_progressSlider.DragCompleted += async (_, _) => await CompleteProgressSeekAsync();");
+        StringAssert.Contains(playlistDetail, "await _storyPlaybackSession.SeekAsync(");
+        Assert.DoesNotContain("private ProgressBar? _activeProgressBar;", storyDetail, StringComparison.Ordinal);
+        Assert.DoesNotContain("private ProgressBar? _progressBar;", playlistDetail, StringComparison.Ordinal);
     }
 
     [TestMethod]

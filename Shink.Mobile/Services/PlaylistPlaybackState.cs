@@ -11,6 +11,8 @@ public sealed class PlaylistPlaybackState
 
     public string? Title { get; private set; }
 
+    public MobilePlaylist? CurrentPlaylist { get; private set; }
+
     public IReadOnlyList<MobileStorySummary> Stories => _stories;
 
     public bool IsAutoplayEnabled { get; private set; }
@@ -23,10 +25,20 @@ public sealed class PlaylistPlaybackState
 
     public void Set(MobilePlaylist playlist, MobileStorySummary? currentStory = null)
     {
-        Slug = playlist.Slug;
-        Title = playlist.Title;
-        _stories = playlist.Stories.ToArray();
-        RefreshShuffleOrder(currentStory);
+        var normalizedStories = playlist.Stories
+            .Select(NormalizePlaylistStory)
+            .ToArray();
+        CurrentPlaylist = playlist with
+        {
+            Stories = normalizedStories,
+            ShowcaseStory = playlist.ShowcaseStory is null
+                ? null
+                : NormalizePlaylistStory(playlist.ShowcaseStory)
+        };
+        Slug = CurrentPlaylist.Slug;
+        Title = CurrentPlaylist.Title;
+        _stories = normalizedStories;
+        RefreshShuffleOrder(currentStory is null ? null : NormalizePlaylistStory(currentStory));
     }
 
     public IReadOnlyList<MobileStorySummary> GetPlaybackStories(MobileStorySummary? currentStory = null)
@@ -36,7 +48,7 @@ public sealed class PlaylistPlaybackState
             return _stories;
         }
 
-        RefreshShuffleOrder(currentStory);
+        RefreshShuffleOrder(currentStory is null ? null : NormalizePlaylistStory(currentStory));
 
         var storiesByKey = _stories.ToDictionary(GetStoryKey, StringComparer.OrdinalIgnoreCase);
         var orderedStories = _shuffleOrder
@@ -78,6 +90,7 @@ public sealed class PlaylistPlaybackState
     {
         Slug = null;
         Title = null;
+        CurrentPlaylist = null;
         _stories = Array.Empty<MobileStorySummary>();
         _shuffleOrder = Array.Empty<string>();
         IsAutoplayEnabled = false;
@@ -172,4 +185,9 @@ public sealed class PlaylistPlaybackState
 
     private static string GetStoryKey(MobileStorySummary story) =>
         $"{story.Source}|{story.Slug}";
+
+    private static MobileStorySummary NormalizePlaylistStory(MobileStorySummary story) =>
+        string.Equals(story.Source, "luister", StringComparison.OrdinalIgnoreCase)
+            ? story
+            : story with { Source = "luister" };
 }

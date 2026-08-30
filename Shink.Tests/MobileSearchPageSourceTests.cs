@@ -35,6 +35,10 @@ public sealed class MobileSearchPageSourceTests
         StringAssert.Contains(source, "MobileBottomBar.Build(this, \"search\", FocusSearchAsync)");
         StringAssert.Contains(source, "MobileTopBar.BuildStoriesTopBar(");
         Assert.DoesNotContain("searchAction: FocusSearchAsync", source, StringComparison.Ordinal);
+        StringAssert.Contains(source, "var heroSpacer = new BoxView { HeightRequest = 200");
+        Assert.DoesNotContain("_searchEntry.Focused +=", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("SetCompactSearchHeaderAsync", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("HeightRequest = 98", source, StringComparison.Ordinal);
     }
 
     [TestMethod]
@@ -55,8 +59,6 @@ public sealed class MobileSearchPageSourceTests
         StringAssert.Contains(source, "if (IsAndroid)");
         StringAssert.Contains(source, "container.Opacity = 1;");
         StringAssert.Contains(source, "_ = AnimateResultContainerAsync(container, result);");
-        StringAssert.Contains(source, "SetCompactSearchHeaderAsync(true)");
-        StringAssert.Contains(source, "view.FadeToAsync(0, 130, Easing.CubicOut)");
         StringAssert.Contains(source, "_visibleResults.ReplaceWith(matches)");
         StringAssert.Contains(source, "SetItem(index, replacement[index])");
         StringAssert.Contains(source, "RemoveAt(Count - 1)");

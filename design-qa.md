@@ -366,3 +366,94 @@ final result: passed
 - None for the requested scope.
 
 final result: passed
+
+# iPhone Menu Visibility Regression QA — 2026-08-28
+
+**Comparison Target**
+
+- Source visual truth: `/var/folders/rs/x50hrf3x2hz_92h06ptk8s_w0000gn/T/codex-clipboard-f887902a-68b0-44c3-a380-b48ce334ebe2.png` plus the user's report that the iPhone showed only the dim backdrop.
+- Implementation screenshot: `/var/folders/rs/x50hrf3x2hz_92h06ptk8s_w0000gn/T/screenshot_optimized_5c2f42b1-a62a-4934-8437-fdc62a633989.jpg`
+- Viewport: iPhone 17 Pro simulator, iOS 26.5, portrait; 368 x 800 captured pixels.
+- Source pixels: 966 x 804 tablet crop. Implementation pixels: 368 x 800 phone capture. Native MAUI CSS size and browser device scale do not apply; the comparison checks component presence, hierarchy, and preserved visual language across responsive states.
+- State: authenticated Luister screen with the menu overlay open.
+
+**Findings**
+
+- No actionable P0, P1, or P2 differences remain in the phone visibility scope.
+- Fonts and typography: all six action labels and the `Menu` heading are visible, centered, and unwrapped.
+- Spacing and layout rhythm: the phone retains the intended single-column action stack. The card uses a finite width equal to the viewport minus 40 device-independent units and remains fully visible above the bottom bar.
+- Colors and visual tokens: cream card, charcoal buttons, turquoise dim layer, rounded corners, and shadow match the established menu styling.
+- Image quality and asset fidelity: the existing packaged Oortjies image remains sharp and centered.
+- Copy and content: `Kanselleer` remains replaced by the compact top-right close icon; all six menu destinations remain present.
+
+**Full-View and Focused Comparison Evidence**
+
+- The original tablet reference and repaired iPhone implementation were opened together in one comparison input. The phone capture clearly shows the card rather than only the dim backdrop.
+- A focused crop was unnecessary because the complete phone card, every label, the close icon, and both horizontal gutters are readable in the full 368 x 800 capture.
+
+**Interaction Evidence**
+
+- Logged into the local iPhone simulator using user-provided credentials; credentials were not written to source files.
+- Tapping the top-right menu trigger exposed `mobile-menu-close` and all six action controls in the runtime accessibility snapshot.
+- Tapping `mobile-menu-close` dismissed the overlay; a follow-up runtime wait confirmed the identifier was gone.
+
+**Comparison History**
+
+- Regression state: the phone branch set `WidthRequest` and `MaximumWidthRequest` to `-1`, allowing the iOS overlay host to collapse the card while leaving the dim layer visible.
+- Fix: assign the phone card a finite viewport-derived width and center it.
+- Post-fix evidence: the final-source iPhone capture shows the complete single-column menu and working close control.
+
+**Verification**
+
+- Focused responsive-layout source tests: 5 passed, 0 failed.
+- Android Debug build for `net10.0-android`: passed with 0 errors after a targeted restore.
+- iOS simulator source compiled successfully. Normal packaging encountered the known `com.apple.FinderInfo` metadata issue; the app was clean-copied, ad-hoc signed, strictly verified, installed, launched, logged into, and visually inspected on iPhone 17 Pro.
+
+**Open Questions**
+
+- None for the requested scope.
+
+final result: passed
+
+# Persistent Mini-Player Alignment QA — 2026-08-30
+
+**Comparison Target**
+
+- Reference screenshot: `/tmp/codex-remote-attachments/01a05145-3dea-7b10-a637-8e4b948b6f7b/06834E4E-A141-4F01-BB06-5E80E6E46CA5/1-Pasted-Image-1.jpg`.
+- Signed-in implementation screenshot: `/tmp/schink-mini-player-signed-in-qa.png`.
+- Focused side-by-side comparison: `/tmp/schink-mini-player-signed-in-focused-comparison.png`.
+- Viewport: iPhone 17 Pro simulator, iOS 26.5, portrait; 1206 x 2622 captured pixels. The supplied reference is 590 x 1280 and has the same phone aspect ratio.
+- State: authenticated Luister screen with the persistent mini-player above the four-item bottom navigation.
+
+**Findings**
+
+- No actionable P0, P1, or P2 alignment differences remain in the requested mini-player scope.
+- The reference shows the status line escaping above the cream card while the title remains lower in the content area.
+- The corrected player uses two equal-height text rows: status is bottom-aligned in the first row and title is top-aligned in the second row.
+- Artwork, text block, circular play control, and close control now share a centered 52-unit inner row inside the existing 70-unit card.
+- Existing colors, typography, corner radius, margins, control sizes, and bottom-navigation spacing are preserved.
+
+**Full-View and Focused Comparison Evidence**
+
+- The full signed-in screenshot confirms the player remains above the bottom navigation and within the phone safe area.
+- The focused comparison puts the supplied screenshot and corrected player in one image. It shows the original clipped status line on the left and the contained, vertically centered status/title stack on the right.
+- Representative packaged artwork was used only to activate the real persistent-player layout during visual QA; artwork selection is outside this alignment change.
+
+**Interaction Evidence**
+
+- The local simulator signed in through the app's normal email authentication service using user-provided credentials.
+- Credentials were supplied only as process-scoped QA environment values and were not written to source files.
+- The preview-only playback state was removed after capture. A clean final-source app was rebuilt, installed over the QA build, and launched successfully while preserving the authenticated session.
+
+**Verification**
+
+- Focused persistent-playback source tests: 5 passed, 0 failed.
+- Android Debug build for `net10.0-android`: passed with 0 errors and the two existing target-SDK warnings.
+- iOS simulator source compiled to `Shink.Mobile.dll`; normal packaging encountered the known `com.apple.FinderInfo` metadata issue.
+- The final-source iOS app was clean-copied, ad-hoc signed, strictly verified, installed, and launched on iPhone 17 Pro.
+
+**Open Questions**
+
+- None for the requested alignment scope.
+
+final result: passed

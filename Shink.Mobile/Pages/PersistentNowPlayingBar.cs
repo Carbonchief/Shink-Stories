@@ -45,8 +45,8 @@ internal sealed class PersistentNowPlayingBar : ContentView
             CharacterSpacing = 0.7,
             TextColor = BarMutedTextColor,
             LineBreakMode = LineBreakMode.NoWrap,
-            VerticalOptions = LayoutOptions.Center,
-            VerticalTextAlignment = TextAlignment.Center
+            VerticalOptions = LayoutOptions.End,
+            VerticalTextAlignment = TextAlignment.End
         };
         _titleLabel = new Label
         {
@@ -55,8 +55,8 @@ internal sealed class PersistentNowPlayingBar : ContentView
             TextColor = BarTextColor,
             MaxLines = 1,
             LineBreakMode = LineBreakMode.TailTruncation,
-            VerticalOptions = LayoutOptions.Center,
-            VerticalTextAlignment = TextAlignment.Center
+            VerticalOptions = LayoutOptions.Start,
+            VerticalTextAlignment = TextAlignment.Start
         };
 
         _playPauseButton = BuildActionButton(PlayIconGlyph, "Hervat storie", 44);
@@ -78,6 +78,7 @@ internal sealed class PersistentNowPlayingBar : ContentView
             HeightRequest = 52,
             StrokeThickness = 0,
             StrokeShape = new RoundRectangle { CornerRadius = 11 },
+            VerticalOptions = LayoutOptions.Center,
             Content = _artwork
         };
 
@@ -86,8 +87,6 @@ internal sealed class PersistentNowPlayingBar : ContentView
             RowDefinitions =
             {
                 new RowDefinition(GridLength.Star),
-                new RowDefinition(GridLength.Auto),
-                new RowDefinition(GridLength.Auto),
                 new RowDefinition(GridLength.Star)
             },
             RowSpacing = 0,
@@ -96,8 +95,7 @@ internal sealed class PersistentNowPlayingBar : ContentView
             VerticalOptions = LayoutOptions.Center,
             Children = { _statusLabel, _titleLabel }
         };
-        Grid.SetRow(_statusLabel, 1);
-        Grid.SetRow(_titleLabel, 2);
+        Grid.SetRow(_titleLabel, 1);
 
         var openStorySurface = new Grid
         {
@@ -126,6 +124,9 @@ internal sealed class PersistentNowPlayingBar : ContentView
                 new ColumnDefinition(GridLength.Auto)
             },
             ColumnSpacing = 7,
+            HeightRequest = 52,
+            MinimumHeightRequest = 52,
+            VerticalOptions = LayoutOptions.Center,
             Children = { openStorySurface, _playPauseButton, stopButton }
         };
         Grid.SetColumn(_playPauseButton, 1);
