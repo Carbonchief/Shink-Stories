@@ -2012,6 +2012,29 @@
     -moz-osx-font-smoothing: grayscale;
 }
 
+.footer-legal {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.45rem 1rem;
+}
+
+.footer-legal a {
+    color: #f2f2f2;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.2em;
+}
+
+.footer-legal a:hover {
+    color: #ffffff;
+}
+
+.footer-legal a:focus-visible {
+    outline: 3px solid color-mix(in srgb, #ffffff 70%, var(--accent));
+    outline-offset: 3px;
+    border-radius: 0.2rem;
+}
+
 .site-footer p {
     margin: 0;
 }

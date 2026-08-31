@@ -1815,3 +1815,127 @@ body.schink-night-mode .site-shell .site-main .eyebrow,
 body.schink-night-mode .site-shell .site-main .review-stars {
     color: var(--about-accent-deep);
 }
+
+.legal-page {
+    width: min(920px, calc(100% - 2rem));
+    margin: 0 auto;
+    padding: clamp(2rem, 6vw, 4.5rem) 0;
+    color: #1b2231;
+}
+
+.legal-hero {
+    padding: clamp(1.5rem, 5vw, 3rem);
+    border-radius: 28px;
+    background: #fff7e8;
+    border: 1px solid #e8ddc8;
+    margin-bottom: 1.5rem;
+}
+
+.legal-kicker {
+    margin: 0 0 0.45rem;
+    color: #0c7c83;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.legal-page h1 {
+    margin: 0 0 0.7rem;
+    font-size: clamp(2rem, 7vw, 4rem);
+    line-height: 1.04;
+    color: #123f3f;
+}
+
+.legal-page h2 {
+    margin: 0 0 0.75rem;
+    color: #123f3f;
+    font-size: clamp(1.35rem, 4vw, 1.8rem);
+}
+
+.legal-page section:not(.legal-hero) {
+    margin-top: 1rem;
+    padding: clamp(1.25rem, 4vw, 2rem);
+    border-radius: 22px;
+    border: 1px solid #e8ddc8;
+    background: #ffffff;
+}
+
+.legal-page p,
+.legal-page li {
+    line-height: 1.7;
+}
+
+.legal-page ul,
+.legal-page ol {
+    padding-left: 1.35rem;
+}
+
+.legal-page li + li {
+    margin-top: 0.55rem;
+}
+
+.legal-page a {
+    color: #0b7279;
+    font-weight: 700;
+    text-underline-offset: 0.18em;
+}
+
+.legal-updated {
+    color: #69716d;
+    font-size: 0.95rem;
+}
+
+.legal-action-card {
+    text-align: center;
+    background: #123f3f !important;
+    color: #ffffff;
+    border-color: #123f3f !important;
+}
+
+.legal-action-card h2 {
+    color: #ffffff;
+}
+
+.legal-primary-action {
+    display: inline-flex;
+    min-height: 48px;
+    align-items: center;
+    justify-content: center;
+    padding: 0.8rem 1.25rem;
+    border-radius: 999px;
+    background: #ffd45a;
+    color: #123f3f !important;
+    text-decoration: none;
+}
+
+body.schink-night-mode .legal-page {
+    color: #f7f1e7;
+}
+
+body.schink-night-mode .legal-hero,
+body.schink-night-mode .legal-page section:not(.legal-hero) {
+    color: #f7f1e7;
+    background: #18232a;
+    border-color: rgba(247, 241, 231, 0.16);
+}
+
+body.schink-night-mode .legal-page h1,
+body.schink-night-mode .legal-page h2 {
+    color: #f7f1e7;
+}
+
+body.schink-night-mode .legal-page a,
+body.schink-night-mode .legal-kicker {
+    color: #ffd39b;
+}
+
+@media (max-width: 560px) {
+    .legal-page {
+        width: min(100% - 1rem, 920px);
+    }
+
+    .legal-hero,
+    .legal-page section:not(.legal-hero) {
+        border-radius: 18px;
+    }
+}

@@ -1,0 +1,111 @@
+@page "/terme-en-voorwaardes"
+@page "/terms"
+@page "/terms-of-use"
+
+@inject NavigationManager NavigationManager
+
+<PageTitle>Schink Stories | Terme en voorwaardes</PageTitle>
+<HeadContent>
+    <link rel="canonical" href="@CanonicalUrl" />
+    <meta name="description" content="Terme en voorwaardes vir die gebruik van Schink Stories se webwerf, app, stories, winkel en intekeninge." />
+    <meta name="robots" content="index,follow" />
+</HeadContent>
+
+<article class="legal-page">
+    <header class="legal-hero">
+        <p class="legal-kicker">Duidelike voorwaardes</p>
+        <h1>Terme en voorwaardes</h1>
+        <p class="legal-updated">Laas opgedateer: 31 Augustus 2026</p>
+        <p>
+            Hierdie terme geld wanneer jy Schink Stories se webwerf, mobiele toepassing, oudiostories,
+            speletjies, hulpbronne, winkel of intekeningdienste gebruik. Deur die diens te gebruik, stem jy
+            met hierdie terme en ons <a href="/privaatheidsbeleid">Privaatheidsbeleid</a> saam.
+        </p>
+    </header>
+
+    <section>
+        <h2>Rekeninge en gesinsgebruik</h2>
+        <p>
+            'n Ouer, voog of ander volwassene moet die rekening en enige aankoop bestuur. Jy is verantwoordelik
+            vir korrekte rekeningbesonderhede, die beveiliging van jou wagwoord en aktiwiteit op toestelle waar
+            jou sessie oop is. Laat weet ons as jy vermoed dat iemand sonder toestemming toegang het.
+        </p>
+    </section>
+
+    <section>
+        <h2>Intekeninge en betalings</h2>
+        <ul>
+            <li>Die prys, faktureringstydperk en inhoud van elke plan word gewys voordat jy koop.</li>
+            <li>Intekeninge kan outomaties hernu totdat dit gekanselleer word, soos op die betrokke betaalblad of winkel aangedui.</li>
+            <li>Aankope in die iOS- of Android-toepassing word deur Apple of Google gefaktureer en is ook aan daardie winkel se terme, kansellasie- en terugbetalingsreëls onderhewig.</li>
+            <li>Webintekeninge word deur die aangeduide betaalverskaffer hanteer. Jy kan kanselleer volgens die stappe in jou rekening of deur ons te kontak.</li>
+            <li>Wanneer jy kanselleer, bly toegang gewoonlik beskikbaar tot die einde van die reeds betaalde tydperk, tensy die winkel of wet anders vereis.</li>
+            <li>Ons sal 'n prysverandering voor die volgende toepaslike hernuwing kommunikeer waar kennisgewing vereis word.</li>
+        </ul>
+    </section>
+
+    <section>
+        <h2>Lisensie en inhoud</h2>
+        <p>
+            Ons gee jou 'n beperkte, persoonlike, nie-oordraagbare reg om Schink Stories vir jou huishouding of
+            die uitdruklik aangekoopte skoolgebruik te geniet. Oudio, illustrasies, karakters, teks, handelsmerke
+            en sagteware bly die eiendom van Schink Stories en sy lisensiegewers.
+        </p>
+        <p>
+            Jy mag nie inhoud kopieer, aflaaiskakels omseil, herverkoop, publiek uitsaai, versprei, verander,
+            skraap of die diens se beveiliging probeer omseil nie. Vanlyn aflaaie is slegs vir gebruik binne
+            die toepassing en volgens jou aktiewe toegang.
+        </p>
+    </section>
+
+    <section>
+        <h2>Aanvaarbare gebruik</h2>
+        <p>
+            Moenie die diens gebruik om wetgewing te oortree, ander gebruikers of stelsels te benadeel,
+            outomatiese toegang sonder toestemming te verkry, kwaadwillige kode te versprei of rekening- en
+            betaalfunksies te misbruik nie. Ons kan toegang beperk waar dit nodig is om gebruikers, inhoud of
+            die diens te beskerm.
+        </p>
+    </section>
+
+    <section>
+        <h2>Beskikbaarheid en veranderinge</h2>
+        <p>
+            Ons werk om die diens betroubaar te hou, maar kan nie ononderbroke beskikbaarheid waarborg nie.
+            Stories, funksies en katalogusse kan verander soos lisensies, veiligheid en die diens ontwikkel.
+            Ons sal wesenlike veranderinge aan betaalde toegang redelik kommunikeer.
+        </p>
+    </section>
+
+    <section>
+        <h2>Verantwoordelikheid</h2>
+        <p>
+            Schink Stories word met redelike sorg gelewer. Sover die wet dit toelaat, is ons nie aanspreeklik
+            vir indirekte verlies of verlies wat deur onbeheerbare netwerk-, toestel-, winkel- of derdepartyprobleme
+            veroorsaak word nie. Niks in hierdie terme beperk regte wat jy ingevolge toepaslike verbruikerswetgewing het nie.
+        </p>
+    </section>
+
+    <section>
+        <h2>Beëindiging en rekeningverwydering</h2>
+        <p>
+            Jy kan ophou om die diens te gebruik, jou intekening in die toepaslike winkel of rekening kanselleer,
+            en 'n verwyderingsversoek via ons <a href="/rekening-verwydering">rekeningverwyderingsblad</a> begin.
+            Kansellasie van 'n intekening en verwydering van 'n rekening is twee afsonderlike handelinge.
+        </p>
+    </section>
+
+    <section>
+        <h2>Toepaslike reg en kontak</h2>
+        <p>
+            Hierdie terme word deur die wette van Suid-Afrika beheer, sonder om verpligte verbruikersregte uit
+            te sluit. Vir vrae of geskille, gebruik asseblief eers die
+            <a href="/#kontak-ons">Schink Stories-kontakvorm</a> sodat ons kan help. Die diens word deur
+            SCHINK PTY. LTD. aangebied.
+        </p>
+    </section>
+</article>
+
+@code {
+    private string CanonicalUrl => NavigationManager.ToAbsoluteUri("/terme-en-voorwaardes").ToString();
+}

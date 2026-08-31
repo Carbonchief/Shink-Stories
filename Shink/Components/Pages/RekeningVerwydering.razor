@@ -1,0 +1,72 @@
+@page "/rekening-verwydering"
+@page "/account-deletion"
+
+@inject NavigationManager NavigationManager
+
+<PageTitle>Schink Stories | Rekeningverwydering</PageTitle>
+<HeadContent>
+    <link rel="canonical" href="@CanonicalUrl" />
+    <meta name="description" content="Versoek die verwydering van jou Schink Stories-rekening en persoonlike data." />
+    <meta name="robots" content="index,follow" />
+</HeadContent>
+
+<article class="legal-page">
+    <header class="legal-hero">
+        <p class="legal-kicker">Jy bly in beheer</p>
+        <h1>Verwyder jou rekening</h1>
+        <p>
+            Jy kan enige tyd versoek dat jou Schink Stories-rekening en die persoonlike data wat aan die
+            rekening gekoppel is, verwyder word. Hierdie blad werk ook sonder dat jy ingeteken is.
+        </p>
+    </header>
+
+    <section>
+        <h2>Hoe om die versoek te begin</h2>
+        <ol>
+            <li>In die Schink Stories-app, maak <strong>Instellings</strong> oop.</li>
+            <li>Kies <strong>Verwyder my rekening</strong> om terug te kom na hierdie blad.</li>
+            <li>Gebruik die <a href="/#kontak-ons">kontakvorm</a> met onderwerp <strong>Rekeningverwydering</strong>.</li>
+            <li>Gebruik dieselfde e-posadres as jou Schink Stories-rekening en vra duidelik dat die rekening verwyder moet word.</li>
+            <li>Ons kan 'n beperkte verifikasiestap vra om te voorkom dat iemand anders jou rekening laat verwyder.</li>
+        </ol>
+        <p>As jy nie meer toegang tot die rekening se e-pos het nie, verduidelik dit in jou boodskap sodat ons 'n veilige alternatief kan gee.</p>
+    </section>
+
+    <section>
+        <h2>Wat verwyder word</h2>
+        <p>
+            Na verifikasie verwyder of ontkoppel ons die rekening se profiel, aanmeldtoegang, luistervordering,
+            gunstelinge, aflaaitoegang, speletjievordering, kennisgewings en ander persoonlike gebruiksdata waar
+            dit nie meer nodig is nie. Plaaslike aflaaie en sessiedata word ontoeganklik wanneer jy uitteken of
+            die toepassing verwyder.
+        </p>
+    </section>
+
+    <section>
+        <h2>Wat moontlik behou word</h2>
+        <p>
+            Ons kan minimale transaksie-, belasting-, terugbetaling-, bedrogvoorkoming- en sekuriteitsrekords
+            behou vir die tydperk wat die wet of 'n geldige dispuut vereis. Waar moontlik word sulke rekords
+            beperk of van jou aktiewe profiel ontkoppel.
+        </p>
+    </section>
+
+    <section>
+        <h2>Intekeninge moet apart gekanselleer word</h2>
+        <p>
+            Rekeningverwydering kanselleer nie noodwendig 'n Apple App Store- of Google Play-intekening nie.
+            Kanselleer eers die intekening in jou toestel se winkelinstellings om toekomstige hernuwings te stop.
+            Webintekeninge kan vanuit jou Schink Stories-rekening of met ons hulp gekanselleer word.
+        </p>
+    </section>
+
+    <section class="legal-action-card">
+        <h2>Begin nou</h2>
+        <p>Maak die kontakvorm oop en gebruik die onderwerp <strong>Rekeningverwydering</strong>.</p>
+        <a class="legal-primary-action" href="/#kontak-ons">Maak kontakvorm oop</a>
+    </section>
+</article>
+
+@code {
+    private string CanonicalUrl => NavigationManager.ToAbsoluteUri("/rekening-verwydering").ToString();
+}
