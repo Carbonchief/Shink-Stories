@@ -150,7 +150,13 @@ public sealed class SettingsPage : ContentPage
                 "Profiel",
                 "Wysig jou naam en kontakbesonderhede.",
                 () => OpenPageAsync(nameof(ProfilePage)),
-                "settings-profile-row")));
+                "settings-profile-row"),
+            BuildSettingsRow(
+                "↗",
+                "Bestuur intekening",
+                "Kanselleer of verander jou intekening by jou betaalwinkel.",
+                OpenSubscriptionManagementAsync,
+                "settings-manage-subscription-row")));
 
         _downloadSummaryLabel = new Label
         {
@@ -204,8 +210,8 @@ public sealed class SettingsPage : ContentPage
             BuildSettingsRow(
                 "×",
                 "Verwyder my rekening",
-                "Begin 'n versoek om jou rekening en persoonlike data te verwyder.",
-                () => OpenWebsiteAsync("/rekening-verwydering"),
+                "Verwyder jou rekening en persoonlike data permanent.",
+                ConfirmDeleteAccountAsync,
                 "settings-delete-account-row")));
 
         _content.Children.Add(BuildSignOutButton());
@@ -515,6 +521,30 @@ public sealed class SettingsPage : ContentPage
         });
     }
 
+    private async Task OpenSubscriptionManagementAsync()
+    {
+        var destination = DeviceInfo.Platform == DevicePlatform.iOS
+            ? "https://apps.apple.com/account/subscriptions"
+            : DeviceInfo.Platform == DevicePlatform.Android
+                ? "https://play.google.com/store/account/subscriptions?package=com.schink.stories.mobile"
+                : _apiClient.BuildAbsoluteUrl("/rekening").ToString();
+
+        await _navigationGate.RunAsync(async () =>
+        {
+            try
+            {
+                await Browser.OpenAsync(new Uri(destination), BrowserLaunchMode.External);
+            }
+            catch (Exception)
+            {
+                await DisplayAlertAsync(
+                    "Kon nie oopmaak nie",
+                    "Jou intekeninginstellings kon nie nou oopmaak nie. Probeer asseblief weer.",
+                    "Reg so");
+            }
+        });
+    }
+
     private async Task ConfirmSignOutAsync()
     {
         var shouldSignOut = await DisplayAlertAsync(
@@ -539,6 +569,63 @@ public sealed class SettingsPage : ContentPage
                 await DisplayAlertAsync(
                     "Kon nie uitteken nie",
                     "Ons kon jou nie nou uitteken nie. Probeer asseblief weer.",
+                    "Reg so");
+            }
+        });
+    }
+
+    private async Task ConfirmDeleteAccountAsync()
+    {
+        var shouldContinue = await DisplayAlertAsync(
+            "Verwyder rekening",
+            "Hierdie stap verwyder jou profiel, gunstelinge, luistervordering, aflaaie en aanmeldtoegang permanent. Aankooprekords wat wetlik behou moet word, word van jou profiel ontkoppel. Apple- of Google Play-fakturering gaan voort totdat jy dit in jou betaalwinkel kanselleer; rekeningverwydering kanselleer dit nie.",
+            "Gaan voort",
+            "Nie nou nie");
+        if (!shouldContinue)
+        {
+            return;
+        }
+
+        var confirmed = await DisplayAlertAsync(
+            "Finale bevestiging",
+            "Hierdie handeling kan nie ongedaan gemaak word nie. Wil jy jou rekening permanent verwyder?",
+            "Verwyder permanent",
+            "Kanselleer");
+        if (!confirmed)
+        {
+            return;
+        }
+
+        await _navigationGate.RunAsync(async () =>
+        {
+            try
+            {
+                var downloads = await _offlineDownloadService.GetDownloadsAsync();
+                var message = await _apiClient.DeleteAccountAsync();
+
+                foreach (var download in downloads)
+                {
+                    await _offlineDownloadService.RemoveAsync(download.Slug, download.Source);
+                }
+
+                await _apiClient.GetSessionAsync();
+                await DisplayAlertAsync(
+                    "Rekening verwyder",
+                    $"{message} Indien jy met Apple ingeteken het, kan jy Schink Stories ook onder jou Apple-rekening se ‘Teken in met Apple’-instellings verwyder.",
+                    "Reg so");
+            }
+            catch (InvalidOperationException exception)
+            {
+                await DisplayAlertAsync(
+                    "Kon nie rekening verwyder nie",
+                    exception.Message,
+                    "Reg so");
+            }
+            catch (Exception)
+            {
+                await DisplayAlertAsync(
+                    "Kon nie rekening verwyder nie",
+                    "Ons kon jou rekening nie nou verwyder nie. Probeer asseblief weer.",
                     "Reg so");
             }
         });

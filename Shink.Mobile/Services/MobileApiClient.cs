@@ -867,6 +867,16 @@ public sealed class MobileApiClient
         _analytics.TrackEvent("mobile_auth_signed_out");
     }
 
+    public async Task<string> DeleteAccountAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await PostAsync<MobileAccountDeletionResponse>(
+            "/api/mobile/account/delete",
+            new { confirmation = "VERWYDER" },
+            cancellationToken);
+        await ClearPersistedAuthCookiesAsync();
+        return result?.Message ?? "Jou rekening en persoonlike data is permanent verwyder.";
+    }
+
     public async Task<(bool IsSuccess, string Message)> UpdateProfileAsync(
         string firstName,
         string lastName,
@@ -2635,6 +2645,7 @@ public sealed class MobileApiClient
 
     private sealed record FavoriteResponse(bool IsFavorite);
     private sealed record TrackingResponse(bool Tracked, int NewNotificationsCreated = 0);
+    private sealed record MobileAccountDeletionResponse(string Message);
     private sealed record MobileLuisterCacheEntry(DateTimeOffset CachedAtUtc, MobileLuisterResponse Response);
 
     private sealed record MobileCharactersCacheEntry(

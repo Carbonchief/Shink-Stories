@@ -63,6 +63,9 @@ public interface ISupabaseAuthService
         string identityToken,
         string nonce,
         CancellationToken cancellationToken = default);
+    Task<SupabaseUserDeletionResult> DeleteUserAsync(
+        string email,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed record SignUpProfileData(
@@ -122,6 +125,13 @@ public sealed record SupabaseSessionUserResult(bool IsSuccess, string? UserEmail
     public static SupabaseSessionUserResult Success(string? userEmail) => new(true, userEmail, null);
 
     public static SupabaseSessionUserResult Failure(string errorMessage) => new(false, null, errorMessage);
+}
+
+public sealed record SupabaseUserDeletionResult(bool IsSuccess, string? ErrorMessage)
+{
+    public static SupabaseUserDeletionResult Success() => new(true, null);
+
+    public static SupabaseUserDeletionResult Failure(string errorMessage) => new(false, errorMessage);
 }
 
 public sealed record SupabaseOAuthStartResult(bool IsSuccess, Uri? RedirectUri, string? CodeVerifier, string? ErrorMessage)

@@ -567,6 +567,63 @@ public sealed class SupabaseAuthService(
             cancellationToken);
     }
 
+    public async Task<SupabaseUserDeletionResult> DeleteUserAsync(
+        string email,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(normalizedEmail) || !normalizedEmail.Contains('@', StringComparison.Ordinal))
+        {
+            return SupabaseUserDeletionResult.Failure("Gebruik asseblief 'n geldige e-posadres.");
+        }
+
+        if (!TryBuildAdminUsersEndpoint(out var adminUsersEndpoint))
+        {
+            _logger.LogWarning("Supabase auth user deletion skipped because SecretKey or URL is not configured.");
+            return SupabaseUserDeletionResult.Failure("Rekeningverwydering is nie tans beskikbaar nie. Probeer asseblief later weer.");
+        }
+
+        var userIdResult = await TryFindAdminUserIdByEmailAsync(
+            adminUsersEndpoint,
+            normalizedEmail,
+            cancellationToken);
+        if (!userIdResult.IsSuccess)
+        {
+            return userIdResult.ErrorMessage?.StartsWith("Geen Supabase gebruiker", StringComparison.Ordinal) == true
+                ? SupabaseUserDeletionResult.Success()
+                : SupabaseUserDeletionResult.Failure(
+                    userIdResult.ErrorMessage ?? "Kon nie jou aanmeldrekening nou verwyder nie.");
+        }
+
+        var userEndpoint = new Uri(
+            $"{adminUsersEndpoint.AbsoluteUri.TrimEnd('/')}/{Uri.EscapeDataString(userIdResult.UserId!)}");
+        using var request = new HttpRequestMessage(HttpMethod.Delete, userEndpoint);
+        request.Headers.TryAddWithoutValidation("apikey", _options.SecretKey);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.SecretKey);
+
+        try
+        {
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            if (response.IsSuccessStatusCode || response.StatusCode == HttpStatusCode.NotFound)
+            {
+                return SupabaseUserDeletionResult.Success();
+            }
+
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            var errorMessage = ReadErrorMessage(responseBody) ?? "Kon nie jou aanmeldrekening nou verwyder nie.";
+            _logger.LogWarning(
+                "Supabase auth user deletion rejected: Status={StatusCode} Message={Message}",
+                (int)response.StatusCode,
+                errorMessage);
+            return SupabaseUserDeletionResult.Failure(errorMessage);
+        }
+        catch (HttpRequestException exception)
+        {
+            _logger.LogWarning(exception, "Supabase auth user deletion request failed.");
+            return SupabaseUserDeletionResult.Failure("Kon nie nou met die rekeningdiens koppel nie. Probeer asseblief weer.");
+        }
+    }
+
     public async Task<SupabaseEmailChangeResult> RequestEmailChangeAsync(
         string currentEmail,
         string currentPassword,

@@ -387,6 +387,42 @@ public class SupabaseAuthServiceTests
         Assert.AreEqual("Ongeldige e-pos of wagwoord. Probeer asseblief weer.", result.ErrorMessage);
     }
 
+    [TestMethod]
+    public async Task DeleteUserAsync_DeletesTheMatchingSupabaseAuthUser()
+    {
+        var requests = new List<(HttpMethod Method, string Uri)>();
+        var handler = new RecordingHandler(request =>
+        {
+            requests.Add((request.Method, request.RequestUri?.ToString() ?? string.Empty));
+            Assert.AreEqual("secret-key", request.Headers.Authorization?.Parameter);
+
+            if (request.Method == HttpMethod.Get)
+            {
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(
+                        """{"users":[{"id":"11111111-1111-1111-1111-111111111111","email":"ouer@example.com"}]}""",
+                        Encoding.UTF8,
+                        "application/json")
+                };
+            }
+
+            Assert.AreEqual(HttpMethod.Delete, request.Method);
+            return new HttpResponseMessage(HttpStatusCode.NoContent);
+        });
+        using var httpClient = new HttpClient(handler);
+        var service = CreateService(httpClient, secretKey: "secret-key");
+
+        var result = await service.DeleteUserAsync("OUER@example.com");
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.AreEqual(2, requests.Count);
+        StringAssert.Contains(requests[0].Uri, "/auth/v1/admin/users?page=1&per_page=1000");
+        Assert.AreEqual(
+            "https://example.supabase.co/auth/v1/admin/users/11111111-1111-1111-1111-111111111111",
+            requests[1].Uri);
+    }
+
     private static SupabaseAuthService CreateService(
         HttpClient httpClient,
         string secretKey = "",

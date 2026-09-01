@@ -3837,6 +3837,90 @@ app.MapPost("/api/mobile/profile", async (
     return Results.Ok(new MobileProfileUpdateResponse("Profiel opgedateer.", session));
 }).DisableAntiforgery();
 
+app.MapPost("/api/mobile/account/delete", async (
+    HttpContext httpContext,
+    MobileAccountDeletionRequest request,
+    ISubscriptionLedgerService subscriptionLedgerService,
+    ISupabaseAuthService supabaseAuthService,
+    IAuthSessionService authSessionService,
+    ISubscriberAvatarStorageService subscriberAvatarStorageService) =>
+{
+    if (!IsMobileAppRequest(httpContext))
+    {
+        return Results.Forbid();
+    }
+
+    if (!IsLikelySameSiteRequest(httpContext))
+    {
+        return Results.Forbid();
+    }
+
+    var signedInEmail = GetSignedInEmail(httpContext.User);
+    if (string.IsNullOrWhiteSpace(signedInEmail))
+    {
+        return Results.Unauthorized();
+    }
+
+    if (!string.Equals(request.Confirmation?.Trim(), "VERWYDER", StringComparison.Ordinal))
+    {
+        return Results.BadRequest(new { message = "Bevestig asseblief die permanente rekeningverwydering." });
+    }
+
+    var currentPaidSubscription = await subscriptionLedgerService.GetCurrentPaidSubscriptionAsync(
+        signedInEmail,
+        httpContext.RequestAborted);
+    if (currentPaidSubscription is { IsCancellationScheduled: false } &&
+        (string.Equals(currentPaidSubscription.Provider, "paystack", StringComparison.OrdinalIgnoreCase) ||
+         string.Equals(currentPaidSubscription.Provider, "payfast", StringComparison.OrdinalIgnoreCase)))
+    {
+        var cancellation = await subscriptionLedgerService.CancelPaidSubscriptionAsync(
+            signedInEmail,
+            cancellationToken: httpContext.RequestAborted);
+        if (!cancellation.IsSuccess)
+        {
+            return Results.Json(
+                new
+                {
+                    message = cancellation.ErrorMessage ?? "Ons kon nie jou Schink-intekening stop voordat ons jou rekening verwyder nie. Probeer asseblief weer."
+                },
+                statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+    }
+
+    var authDeletion = await supabaseAuthService.DeleteUserAsync(
+        signedInEmail,
+        httpContext.RequestAborted);
+    if (!authDeletion.IsSuccess)
+    {
+        return Results.Json(
+            new { message = authDeletion.ErrorMessage ?? "Kon nie jou aanmeldrekening nou verwyder nie." },
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
+    var dataDeletion = await subscriptionLedgerService.DeleteAccountDataAsync(
+        signedInEmail,
+        httpContext.RequestAborted);
+    if (!dataDeletion.IsSuccess)
+    {
+        return Results.Json(
+            new { message = dataDeletion.ErrorMessage ?? "Kon nie jou rekeningdata nou verwyder nie." },
+            statusCode: StatusCodes.Status503ServiceUnavailable);
+    }
+
+    if (!string.IsNullOrWhiteSpace(dataDeletion.ProfileImageObjectKey))
+    {
+        await subscriberAvatarStorageService.DeleteObjectIfExistsAsync(
+            dataDeletion.ProfileImageObjectKey,
+            httpContext.RequestAborted);
+    }
+
+    await authSessionService.RevokeAllSessionsAsync(signedInEmail, httpContext.RequestAborted);
+    await httpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+
+    return Results.Ok(new MobileAccountDeletionResponse(
+        "Jou rekening en persoonlike data is permanent verwyder."));
+}).RequireRateLimiting("auth-submit").DisableAntiforgery();
+
 app.MapGet("/api/mobile/home", async (
     HttpContext httpContext,
     IStoryCatalogService storyCatalogService,
@@ -8335,6 +8419,8 @@ sealed record MobileAppleAuthCompleteResponse(string Message, MobileSessionRespo
 sealed record MobileGoogleAuthTokenPayload(DateTimeOffset ExpiresAtUtc, string Email);
 sealed record MobileProfileUpdateRequest(string? FirstName, string? LastName, string? DisplayName, string? MobileNumber);
 sealed record MobileProfileUpdateResponse(string Message, MobileSessionResponse Session);
+sealed record MobileAccountDeletionRequest(string? Confirmation);
+sealed record MobileAccountDeletionResponse(string Message);
 sealed record MobileSessionResponse(
     bool IsSignedIn,
     string? Email,

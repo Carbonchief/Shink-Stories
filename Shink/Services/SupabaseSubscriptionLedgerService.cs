@@ -2125,6 +2125,85 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         return new AccountClosureResult(true);
     }
 
+    public async Task<AccountDataDeletionResult> DeleteAccountDataAsync(
+        string? email,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            return new AccountDataDeletionResult(false, "Kon nie jou rekening se e-posadres lees nie.");
+        }
+
+        if (!TryBuildSupabaseBaseUri(out var baseUri))
+        {
+            _logger.LogWarning("Supabase account data deletion skipped: URL is not configured.");
+            return new AccountDataDeletionResult(false, "Rekeningverwydering is nie tans beskikbaar nie. Probeer asseblief later weer.");
+        }
+
+        var apiKey = ResolveApiKey();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            _logger.LogWarning("Supabase account data deletion skipped: SecretKey is not configured.");
+            return new AccountDataDeletionResult(false, "Rekeningverwydering is nie tans beskikbaar nie. Probeer asseblief later weer.");
+        }
+
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+        var uri = new Uri(baseUri, "rest/v1/rpc/delete_account_personal_data");
+        using var request = CreateJsonRequest(
+            HttpMethod.Post,
+            uri,
+            apiKey,
+            new { p_email = normalizedEmail },
+            "return=representation");
+
+        try
+        {
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning(
+                    "Supabase account data deletion failed. Status={StatusCode} Body={Body}",
+                    (int)response.StatusCode,
+                    responseBody);
+                return new AccountDataDeletionResult(false, "Kon nie jou rekeningdata nou verwyder nie. Probeer asseblief weer.");
+            }
+
+            using var document = JsonDocument.Parse(responseBody);
+            var result = document.RootElement.ValueKind == JsonValueKind.Array
+                ? document.RootElement.EnumerateArray().FirstOrDefault()
+                : document.RootElement;
+            if (result.ValueKind != JsonValueKind.Object)
+            {
+                return new AccountDataDeletionResult(false, "Die rekeningdiens het 'n ongeldige antwoord gegee.");
+            }
+
+            var succeeded = result.TryGetProperty("deleted", out var deletedNode) &&
+                            deletedNode.ValueKind == JsonValueKind.True;
+            if (!succeeded)
+            {
+                var errorMessage = result.TryGetProperty("message", out var messageNode) &&
+                                   messageNode.ValueKind == JsonValueKind.String
+                    ? messageNode.GetString()
+                    : null;
+                return new AccountDataDeletionResult(
+                    false,
+                    errorMessage ?? "Kon nie jou rekeningdata nou verwyder nie. Probeer asseblief weer.");
+            }
+
+            var profileImageObjectKey = result.TryGetProperty("profile_image_object_key", out var keyNode) &&
+                                        keyNode.ValueKind == JsonValueKind.String
+                ? keyNode.GetString()
+                : null;
+            return new AccountDataDeletionResult(true, ProfileImageObjectKey: profileImageObjectKey);
+        }
+        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
+        {
+            _logger.LogWarning(exception, "Supabase account data deletion request failed unexpectedly.");
+            return new AccountDataDeletionResult(false, "Kon nie jou rekeningdata nou verwyder nie. Probeer asseblief weer.");
+        }
+    }
+
     public async Task<SubscriberProfile?> GetSubscriberProfileAsync(string? email, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(email))

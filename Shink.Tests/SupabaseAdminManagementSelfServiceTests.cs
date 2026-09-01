@@ -1216,6 +1216,11 @@ public class SupabaseAdminManagementSelfServiceTests
             string nonce,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(SupabaseOAuthExchangeResult.Failure("Not implemented."));
+
+        public Task<SupabaseUserDeletionResult> DeleteUserAsync(
+            string email,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(SupabaseUserDeletionResult.Success());
     }
 
     private sealed class NoopSchoolSeatNotificationEmailService : ISchoolSeatNotificationEmailService

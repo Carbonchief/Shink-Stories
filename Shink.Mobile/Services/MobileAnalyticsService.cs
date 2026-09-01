@@ -52,7 +52,6 @@ public sealed class MobileAnalyticsService
     private readonly MobileAnalyticsSettings _settings;
     private readonly SessionState _sessionState;
     private readonly string _anonymousDistinctId;
-    private string? _identifiedDistinctId;
     private string? _lastScreenName;
 
     public MobileAnalyticsService(
@@ -64,7 +63,6 @@ public sealed class MobileAnalyticsService
         _settings = settings;
         _sessionState = sessionState;
         _anonymousDistinctId = GetOrCreateAnonymousDistinctId();
-        _sessionState.Changed += IdentifySession;
     }
 
     public bool IsConfigured => _settings.IsConfigured;
@@ -136,8 +134,11 @@ public sealed class MobileAnalyticsService
         return await FlushAsync(timeout).ConfigureAwait(false);
     }
 
-    public void IdentifyCurrentSession() =>
-        IdentifySession(_sessionState.Current);
+    public void IdentifyCurrentSession()
+    {
+        // Analytics intentionally stays anonymous. Do not attach email addresses
+        // or other account identifiers to the PostHog person profile.
+    }
 
     public void Flush() =>
         _ = FlushAsync();
@@ -167,47 +168,6 @@ public sealed class MobileAnalyticsService
         {
             // Analytics flush is best-effort.
             return false;
-        }
-    }
-
-    private void IdentifySession(MobileSession session)
-    {
-        if (!_settings.IsConfigured || !session.IsSignedIn || string.IsNullOrWhiteSpace(session.Email))
-        {
-            return;
-        }
-
-        var distinctId = NormalizeDistinctId(session.Email);
-        if (string.Equals(_identifiedDistinctId, distinctId, StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        _identifiedDistinctId = distinctId;
-        _ = IdentifySessionAsync(distinctId, session);
-    }
-
-    private async Task IdentifySessionAsync(string distinctId, MobileSession session)
-    {
-        try
-        {
-            await _postHog.IdentifyAsync(
-                distinctId,
-                new Dictionary<string, object>
-                {
-                    ["email"] = distinctId,
-                    ["has_paid_subscription"] = session.HasPaidSubscription,
-                    ["is_mobile_user"] = true,
-                    ["mobile_platform"] = DeviceInfo.Platform.ToString(),
-                    ["mobile_app_version"] = AppInfo.VersionString,
-                    ["mobile_app_build"] = AppInfo.BuildString
-                },
-                new Dictionary<string, object>(),
-                CancellationToken.None);
-        }
-        catch
-        {
-            // Identity enrichment must not affect sign-in state.
         }
     }
 
@@ -248,16 +208,7 @@ public sealed class MobileAnalyticsService
         return result;
     }
 
-    private string ResolveDistinctId()
-    {
-        var email = _sessionState.Current.Email;
-        return _sessionState.Current.IsSignedIn && !string.IsNullOrWhiteSpace(email)
-            ? NormalizeDistinctId(email)
-            : _anonymousDistinctId;
-    }
-
-    private static string NormalizeDistinctId(string value) =>
-        value.Trim().ToLowerInvariant();
+    private string ResolveDistinctId() => _anonymousDistinctId;
 
     private static object NormalizePropertyValue(object value) =>
         value switch

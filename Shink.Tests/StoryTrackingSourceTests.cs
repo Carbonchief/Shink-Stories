@@ -141,7 +141,9 @@ public class StoryTrackingSourceTests
         StringAssert.Contains(analytics, "public sealed class MobileAnalyticsService");
         StringAssert.Contains(analytics, "_postHog.Capture(");
         StringAssert.Contains(analytics, "_postHog.CaptureScreenView(");
-        StringAssert.Contains(analytics, "_postHog.IdentifyAsync(");
+        StringAssert.Contains(analytics, "private string ResolveDistinctId() => _anonymousDistinctId;");
+        Assert.IsFalse(analytics.Contains("_postHog.IdentifyAsync(", StringComparison.Ordinal));
+        Assert.IsFalse(analytics.Contains("[\"email\"]", StringComparison.Ordinal));
         StringAssert.Contains(analytics, "_postHog.CaptureException(");
         StringAssert.Contains(analytics, "_postHog.FlushAsync()");
         StringAssert.Contains(analytics, "TrackExceptionAndFlushAsync(");

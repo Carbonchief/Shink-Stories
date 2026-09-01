@@ -41,6 +41,7 @@ public interface ISubscriptionLedgerService
         SubscriptionCancellationFeedbackInput? feedback = null,
         CancellationToken cancellationToken = default);
     Task<AccountClosureResult> CloseAccountAsync(string? email, CancellationToken cancellationToken = default);
+    Task<AccountDataDeletionResult> DeleteAccountDataAsync(string? email, CancellationToken cancellationToken = default);
     Task<SubscriberProfile?> GetSubscriberProfileAsync(string? email, CancellationToken cancellationToken = default);
     Task<bool> UpsertSubscriberProfileAsync(
         string? email,
@@ -145,6 +146,10 @@ public sealed record SubscriptionCancellationFeedbackInput(
     string? ReasonCode = null,
     string? Note = null);
 public sealed record AccountClosureResult(bool IsSuccess, string? ErrorMessage = null);
+public sealed record AccountDataDeletionResult(
+    bool IsSuccess,
+    string? ErrorMessage = null,
+    string? ProfileImageObjectKey = null);
 public sealed record SubscriberProfile(
     string Email,
     string? FirstName,

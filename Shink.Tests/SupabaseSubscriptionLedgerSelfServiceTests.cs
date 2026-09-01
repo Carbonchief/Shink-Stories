@@ -1915,6 +1915,35 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     }
 
     [TestMethod]
+    public async Task DeleteAccountDataAsync_CallsPersonalDataDeletionRpc()
+    {
+        string? payload = null;
+        var handler = new RecordingHandler(request =>
+        {
+            if (request.Method == HttpMethod.Post &&
+                request.RequestUri?.AbsolutePath == "/rest/v1/rpc/delete_account_personal_data")
+            {
+                payload = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
+                return JsonResponse(
+                    """
+                    {
+                      "deleted": true,
+                      "profile_image_object_key": "subscriber-avatars/one.webp"
+                    }
+                    """);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+
+        var result = await CreateService(handler).DeleteAccountDataAsync("OUER@example.com");
+
+        Assert.IsTrue(result.IsSuccess, result.ErrorMessage);
+        Assert.AreEqual("subscriber-avatars/one.webp", result.ProfileImageObjectKey);
+        StringAssert.Contains(payload!, "\"p_email\":\"ouer@example.com\"");
+    }
+
+    [TestMethod]
     public async Task HasBillableSubscriptionForTierAsync_DetectsPaidSubscriptionOnClosedAccount()
     {
         var handler = new RecordingHandler(request =>

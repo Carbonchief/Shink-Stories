@@ -25,16 +25,36 @@ public sealed class StoreComplianceSourceTests
     }
 
     [TestMethod]
-    public void MobileSettingsLinksToStoreCompliancePages()
+    public void MobileSettingsProvidesDirectAuthenticatedAccountDeletion()
     {
         var settings = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "SettingsPage.cs"));
+        var mobileClient = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
+        var program = File.ReadAllText(GetRepoPath("Shink", "Program.cs"));
+        var migration = File.ReadAllText(GetRepoPath(
+            "Shink",
+            "Database",
+            "migrations",
+            "20260901_account_personal_data_deletion.sql"));
 
         StringAssert.Contains(settings, "settings-privacy-row");
         StringAssert.Contains(settings, "OpenWebsiteAsync(\"/privaatheidsbeleid\")");
         StringAssert.Contains(settings, "settings-terms-row");
         StringAssert.Contains(settings, "OpenWebsiteAsync(\"/terme-en-voorwaardes\")");
         StringAssert.Contains(settings, "settings-delete-account-row");
-        StringAssert.Contains(settings, "OpenWebsiteAsync(\"/rekening-verwydering\")");
+        StringAssert.Contains(settings, "ConfirmDeleteAccountAsync");
+        StringAssert.Contains(settings, "Verwyder permanent");
+        StringAssert.Contains(settings, "settings-manage-subscription-row");
+        StringAssert.Contains(settings, "https://apps.apple.com/account/subscriptions");
+        StringAssert.Contains(settings, "rekeningverwydering kanselleer dit nie");
+        StringAssert.Contains(mobileClient, "DeleteAccountAsync");
+        StringAssert.Contains(mobileClient, "/api/mobile/account/delete");
+        StringAssert.Contains(program, "MobileAccountDeletionRequest");
+        StringAssert.Contains(program, "supabaseAuthService.DeleteUserAsync");
+        StringAssert.Contains(migration, "delete_account_personal_data");
+        StringAssert.Contains(migration, "Persoonlike data deur gebruiker verwyder.");
+        StringAssert.Contains(migration, "private.wordpress_users");
+        StringAssert.Contains(migration, "to service_role;");
+        Assert.IsFalse(migration.Contains("Kanselleer asseblief eers jou aktiewe intekening", StringComparison.Ordinal));
     }
 
     private static string GetRepoPath(params string[] segments)

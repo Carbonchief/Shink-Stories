@@ -30,7 +30,6 @@ public class StoreKitConfigurationSourceTests
         CollectionAssert.AreEquivalent(
             new[]
             {
-                "storie_hoekie_maandeliks",
                 "schink_stories_maandeliks",
                 "schink_stories_jaarliks"
             },
