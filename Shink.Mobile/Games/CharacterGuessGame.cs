@@ -68,6 +68,7 @@ public sealed class CharacterGuessGame
     private readonly Random _random;
     private bool _currentRoundAnswered;
     private string? _previousTargetKey;
+    private CharacterGuessRound? _preparedRound;
 
     public CharacterGuessGame(
         IEnumerable<string> characterKeys,
@@ -132,27 +133,28 @@ public sealed class CharacterGuessGame
             throw new InvalidOperationException("Answer the current round before starting another one.");
         }
 
-        var targetCandidates = _characterKeys
-            .Where(key => !string.Equals(key, _previousTargetKey, StringComparison.OrdinalIgnoreCase))
-            .ToArray();
-        var targetKey = targetCandidates[_random.Next(targetCandidates.Length)];
-
-        var alternatives = _characterKeys
-            .Where(key => !string.Equals(key, targetKey, StringComparison.OrdinalIgnoreCase))
-            .ToList();
-        ShuffleInPlace(alternatives);
-
-        var choices = alternatives
-            .Take(ChoiceCount - 1)
-            .Append(targetKey)
-            .ToList();
-        ShuffleInPlace(choices);
-
-        RoundNumber++;
-        _previousTargetKey = targetKey;
+        var round = _preparedRound ?? BuildRound(RoundNumber + 1, _previousTargetKey);
+        _preparedRound = null;
+        RoundNumber = round.RoundNumber;
+        _previousTargetKey = round.TargetKey;
         _currentRoundAnswered = false;
-        CurrentRound = new CharacterGuessRound(RoundNumber, targetKey, choices);
+        CurrentRound = round;
         return CurrentRound;
+    }
+
+    public CharacterGuessRound? PrepareNextRound()
+    {
+        if (IsComplete || RoundNumber >= TotalRounds)
+        {
+            return null;
+        }
+
+        if (CurrentRound is null)
+        {
+            throw new InvalidOperationException("Start the current round before preparing the next one.");
+        }
+
+        return _preparedRound ??= BuildRound(RoundNumber + 1, CurrentRound.TargetKey);
     }
 
     public CharacterGuessResult Guess(string characterKey)
@@ -199,6 +201,26 @@ public sealed class CharacterGuessGame
             Score,
             Streak,
             IsComplete);
+    }
+
+    private CharacterGuessRound BuildRound(int roundNumber, string? previousTargetKey)
+    {
+        var targetCandidates = _characterKeys
+            .Where(key => !string.Equals(key, previousTargetKey, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        var targetKey = targetCandidates[_random.Next(targetCandidates.Length)];
+
+        var alternatives = _characterKeys
+            .Where(key => !string.Equals(key, targetKey, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        ShuffleInPlace(alternatives);
+
+        var choices = alternatives
+            .Take(ChoiceCount - 1)
+            .Append(targetKey)
+            .ToList();
+        ShuffleInPlace(choices);
+        return new CharacterGuessRound(roundNumber, targetKey, choices);
     }
 
     private void ShuffleInPlace<T>(IList<T> items)

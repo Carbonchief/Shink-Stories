@@ -5,9 +5,10 @@ namespace Shink.Mobile.Pages;
 
 public sealed class DownloadedPage : ContentPage
 {
+    private const string OfflinePlaylistSlug = "afgelaai-aflyn";
     private const double FloatingTopBarContentInset = 92;
     private const double BottomBarContentInset = 216;
-    private const double BottomBarOverlayHeight = 152;
+    private const double BottomBarOverlayHeight = MobileBottomBar.NavigationHeight;
     private static readonly Color PageBackgroundColor = Color.FromArgb("#46969E");
     private static readonly Color TextColor = Color.FromArgb("#1B2231");
     private static readonly Color MutedTextColor = Color.FromArgb("#69716D");
@@ -21,6 +22,7 @@ public sealed class DownloadedPage : ContentPage
     private readonly PlayerTransitionBackdropState _transitionBackdropState;
     private readonly VerticalStackLayout _content;
     private readonly Border _topBarHost;
+    private bool _isStartingPlaylist;
 
     public DownloadedPage(
         MobileApiClient apiClient,
@@ -52,7 +54,13 @@ public sealed class DownloadedPage : ContentPage
 
         var scrollView = new ScrollView
         {
-            SafeAreaEdges = SafeAreaEdges.None,
+            // The floating navbar already occupies the top safe-area band. Keep
+            // the scrollable header below that band while the page artwork stays edge-to-edge.
+            SafeAreaEdges = new SafeAreaEdges(
+                SafeAreaRegions.None,
+                SafeAreaRegions.Container,
+                SafeAreaRegions.None,
+                SafeAreaRegions.None),
             BackgroundColor = Colors.Transparent,
             Content = _content
         };
@@ -85,6 +93,7 @@ public sealed class DownloadedPage : ContentPage
             ZIndex = 100,
             Children = { _topBarHost }
         };
+        var topBarBackdropLayer = MobileTopBar.BuildStoriesBackdropLayer(topBarOverlay);
 
         var bottomBarOverlay = new Grid
         {
@@ -123,6 +132,7 @@ public sealed class DownloadedPage : ContentPage
                     InputTransparent = true
                 },
                 scrollView,
+                topBarBackdropLayer,
                 topBarOverlay,
                 bottomBarOverlay,
                 new PersistentNowPlayingBar(_storyPlaybackSession)
@@ -170,7 +180,7 @@ public sealed class DownloadedPage : ContentPage
         {
             var downloads = await _offlineDownloadService.GetPlayableDownloadsAsync();
             _content.Children.Clear();
-            _content.Children.Add(BuildHeader());
+            _content.Children.Add(BuildHeader(downloads));
 
             if (downloads.Count == 0)
             {
@@ -196,31 +206,138 @@ public sealed class DownloadedPage : ContentPage
         }
     }
 
-    private View BuildHeader()
+    private View BuildHeader(IReadOnlyList<OfflineStoryDownload>? downloads = null)
     {
-        return new VerticalStackLayout
+        var title = new Label
+        {
+            Text = "Afgelaai",
+            FontSize = 26,
+            FontAttributes = FontAttributes.Bold,
+            TextColor = Colors.White,
+            HorizontalTextAlignment = TextAlignment.Start
+        };
+        var subtitle = new Label
+        {
+            Text = "Stories gereed vir offline luister.",
+            FontSize = 14,
+            TextColor = Colors.White,
+            HorizontalTextAlignment = TextAlignment.Start
+        };
+        var heading = new VerticalStackLayout
         {
             Spacing = 4,
-            HorizontalOptions = LayoutOptions.Center,
-            Children =
-            {
-                new Label
-                {
-                    Text = "Afgelaai",
-                    FontSize = 26,
-                    FontAttributes = FontAttributes.Bold,
-                    TextColor = Colors.White,
-                    HorizontalTextAlignment = TextAlignment.Center
-                },
-                new Label
-                {
-                    Text = "Stories gereed vir offline luister.",
-                    FontSize = 14,
-                    TextColor = Colors.White,
-                    HorizontalTextAlignment = TextAlignment.Center
-                }
-            }
+            VerticalOptions = LayoutOptions.Center,
+            Children = { title, subtitle }
         };
+
+        var header = new Grid
+        {
+            ColumnDefinitions =
+            {
+                new ColumnDefinition(GridLength.Star),
+                new ColumnDefinition(GridLength.Auto)
+            },
+            ColumnSpacing = 12,
+            Children = { heading }
+        };
+
+        if (downloads is not { Count: > 0 })
+        {
+            return header;
+        }
+
+        var playAllButton = new Button
+        {
+            Text = "▶  Speel alles",
+            FontFamily = "PoppinsSemiBold",
+            FontSize = 13,
+            TextColor = Colors.White,
+            BackgroundColor = AccentColor,
+            BorderWidth = 0,
+            CornerRadius = 18,
+            HeightRequest = 38,
+            Padding = new Thickness(14, 0),
+            HorizontalOptions = LayoutOptions.End,
+            VerticalOptions = LayoutOptions.Start,
+            AutomationId = "downloads-play-all"
+        };
+        SemanticProperties.SetDescription(playAllButton, "Speel alle afgelaaide stories");
+        playAllButton.Clicked += async (_, _) => await PlayAllDownloadsAsync(downloads, playAllButton);
+        header.Children.Add(playAllButton);
+        Grid.SetColumn(playAllButton, 1);
+        return header;
+    }
+
+    private async Task PlayAllDownloadsAsync(
+        IReadOnlyList<OfflineStoryDownload> downloads,
+        Button playAllButton)
+    {
+        if (_isStartingPlaylist || downloads.Count == 0)
+        {
+            return;
+        }
+
+        _isStartingPlaylist = true;
+        playAllButton.IsEnabled = false;
+        var originalText = playAllButton.Text;
+        playAllButton.Text = "Begin...";
+        try
+        {
+            var currentDownloads = await _offlineDownloadService.GetPlayableDownloadsAsync();
+            if (currentDownloads.Count == 0)
+            {
+                await DisplayAlertAsync(
+                    "Geen aflaaie nie",
+                    "Daar is nie tans enige stories wat offline gespeel kan word nie.",
+                    "Reg so");
+                return;
+            }
+
+            var stories = currentDownloads
+                .Select(_offlineDownloadService.CreateOfflineStory)
+                .ToArray();
+            var firstDownload = currentDownloads[0];
+            var firstStory = stories[0];
+            var firstDetail = _offlineDownloadService.CreateOfflineDetail(firstDownload);
+            var playbackUrl = await _offlineDownloadService.ResolvePlayableAudioAsync(firstDetail);
+            if (string.IsNullOrWhiteSpace(playbackUrl))
+            {
+                throw new InvalidOperationException("Die eerste afgelaaide storie is nie meer beskikbaar nie.");
+            }
+
+            var playlist = new MobilePlaylist(
+                OfflinePlaylistSlug,
+                "Afgelaai",
+                "Jou afgelaaide stories",
+                firstStory.ImageUrl,
+                firstStory.ImageUrl,
+                stories);
+            _storyPlaybackSession.Stop();
+            _playlistPlaybackState.SetOfflineQueue(playlist, firstStory);
+            _playlistPlaybackState.SetShuffle(false, firstStory);
+            _playlistPlaybackState.SetAutoplayLimit(null, firstStory);
+            _playlistPlaybackState.SetAutoplay(true);
+
+            await _storyPlaybackSession.PlayAsync(
+                playbackUrl,
+                firstStory,
+                _apiClient.BuildImageUrl(firstStory.ImageUrl),
+                playlist.Slug,
+                playlist.Title,
+                firstStory.DurationSeconds,
+                originPlaylist: null);
+        }
+        catch (Exception ex)
+        {
+            _playlistPlaybackState.Clear();
+            await DisplayAlertAsync("Kon nie aflaaie speel nie", ex.Message, "Maak toe");
+        }
+        finally
+        {
+            playAllButton.Text = originalText;
+            playAllButton.IsEnabled = true;
+            _isStartingPlaylist = false;
+        }
     }
 
     private View BuildTopBar() =>
@@ -228,10 +345,10 @@ public sealed class DownloadedPage : ContentPage
             this,
             _apiClient,
             _sessionState.Current,
-            notificationAction: OpenStoriesNotificationsAsync);
+            notificationAction: OpenNotificationsAsync);
 
-    private static Task OpenStoriesNotificationsAsync() =>
-        Shell.Current.GoToAsync("//Luister?surface=notifications", animate: false);
+    private static Task OpenNotificationsAsync() =>
+        Shell.Current.GoToAsync(nameof(KennisgewingsPage), animate: false);
 
     private void ApplyResponsiveLayout()
     {

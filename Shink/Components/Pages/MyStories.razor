@@ -68,7 +68,7 @@
                                  alt=""
                                  loading="lazy"
                                  decoding="async"
-                                 onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';this.classList.add('my-stories-profile-avatar-fallback');" />
+                                 onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';this.classList.add('my-stories-profile-avatar-fallback','schink-image-placeholder');" />
                         }
                         else
                         {
@@ -124,7 +124,8 @@
                         <article class="my-story-card @(story.IsCompleted ? "is-complete" : null)" role="listitem">
                             <a class="my-story-link" href="@story.LinkPath" aria-label="@($"Maak {story.Title} oop")">
                                 <span class="my-story-image-shell" aria-hidden="true">
-                                    <img src="@story.ImagePath" alt="" width="640" height="485" loading="lazy" decoding="async" draggable="false" />
+                                    <img src="@story.ImagePath" alt="" width="640" height="485" loading="lazy" decoding="async" draggable="false"
+                                         onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
                                     <span class="my-story-play">
                                         <i class="my-story-play-icon fa-solid fa-play" aria-hidden="true"></i>
                                     </span>
@@ -168,7 +169,8 @@
                         <article class="my-story-card" role="listitem">
                             <a class="my-story-link" href="@story.LinkPath" aria-label="@($"Maak {story.Title} oop")">
                                 <span class="my-story-image-shell" aria-hidden="true">
-                                    <img src="@story.ImagePath" alt="" width="640" height="485" loading="lazy" decoding="async" draggable="false" />
+                                    <img src="@story.ImagePath" alt="" width="640" height="485" loading="lazy" decoding="async" draggable="false"
+                                         onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
                                     <span class="my-story-play">
                                         <i class="my-story-play-icon fa-solid fa-play" aria-hidden="true"></i>
                                     </span>
@@ -212,7 +214,8 @@
                         <article class="my-story-card is-complete" role="listitem">
                             <a class="my-story-link" href="@story.LinkPath" aria-label="@($"Maak {story.Title} oop")">
                                 <span class="my-story-image-shell" aria-hidden="true">
-                                    <img src="@story.ImagePath" alt="" width="640" height="485" loading="lazy" decoding="async" draggable="false" />
+                                    <img src="@story.ImagePath" alt="" width="640" height="485" loading="lazy" decoding="async" draggable="false"
+                                         onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
                                     <span class="my-story-play">
                                         <i class="my-story-play-icon fa-solid fa-play" aria-hidden="true"></i>
                                     </span>
@@ -359,7 +362,7 @@
         var title = hasCatalogStory ? catalogStory!.Title : FormatFallbackTitle(progress.StorySlug);
         var imagePath = hasCatalogStory
             ? catalogStory!.ThumbnailPath
-            : "/branding/schink-logo-green.png";
+            : StoryItem.PlaceholderImagePath;
         var linkPath = ResolveStoryLinkPath(progress);
         var durationLabel = ResolveDisplayDuration(
             progress.DurationSeconds,

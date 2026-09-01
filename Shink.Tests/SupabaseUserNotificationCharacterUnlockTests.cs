@@ -108,6 +108,12 @@ public class SupabaseUserNotificationCharacterUnlockTests
         Assert.AreEqual(
             $"character-unlocked-{CharacterId:N}-2",
             notificationPayload[0].GetProperty("source_key").GetString());
+        Assert.AreEqual(
+            "/karakters?karakter=grommel",
+            notificationPayload[0].GetProperty("href").GetString());
+        Assert.AreEqual(
+            "grommel",
+            notificationPayload[0].GetProperty("metadata").GetProperty("character_slug").GetString());
 
         var statePayload = JsonSerializer.Deserialize<JsonElement>(handler.StateUpsertPayload!);
         Assert.AreEqual(1, statePayload.GetArrayLength());

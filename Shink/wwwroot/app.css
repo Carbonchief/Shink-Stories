@@ -72,6 +72,14 @@ body {
     padding: 0;
 }
 
+img.schink-image-placeholder,
+img[src$="/branding/schink-placeholder.png"] {
+    background: #146d69 !important;
+    object-fit: contain !important;
+    object-position: center !important;
+    transform: none !important;
+}
+
 html,
 body,
 input,

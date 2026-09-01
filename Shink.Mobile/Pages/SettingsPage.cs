@@ -150,19 +150,7 @@ public sealed class SettingsPage : ContentPage
                 "Profiel",
                 "Wysig jou naam en kontakbesonderhede.",
                 () => OpenPageAsync(nameof(ProfilePage)),
-                "settings-profile-row"),
-            BuildSettingsRow(
-                "▣",
-                "Bestuur rekening",
-                "Bekyk jou rekening en toegang.",
-                () => OpenPageAsync(nameof(AccountPage)),
-                "settings-account-row"),
-            BuildSettingsRow(
-                "✦",
-                "Intekening",
-                session.HasPaidSubscription ? "Jou betaalde toegang is aktief." : "Jy gebruik tans gratis toegang.",
-                () => OpenPageAsync(nameof(PlansPage)),
-                "settings-subscription-row")));
+                "settings-profile-row")));
 
         _downloadSummaryLabel = new Label
         {
@@ -200,7 +188,25 @@ public sealed class SettingsPage : ContentPage
                 "Schink Stories webwerf",
                 "Maak die webwerf in jou blaaier oop.",
                 () => OpenWebsiteAsync("/"),
-                "settings-website-row")));
+                "settings-website-row"),
+            BuildSettingsRow(
+                "◈",
+                "Privaatheidsbeleid",
+                "Lees hoe ons jou inligting beskerm en gebruik.",
+                () => OpenWebsiteAsync("/privaatheidsbeleid"),
+                "settings-privacy-row"),
+            BuildSettingsRow(
+                "§",
+                "Terme en voorwaardes",
+                "Lees die voorwaardes vir die gebruik van Schink Stories.",
+                () => OpenWebsiteAsync("/terme-en-voorwaardes"),
+                "settings-terms-row"),
+            BuildSettingsRow(
+                "×",
+                "Verwyder my rekening",
+                "Begin 'n versoek om jou rekening en persoonlike data te verwyder.",
+                () => OpenWebsiteAsync("/rekening-verwydering"),
+                "settings-delete-account-row")));
 
         _content.Children.Add(BuildSignOutButton());
         _content.Children.Add(new Label

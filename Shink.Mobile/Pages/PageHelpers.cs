@@ -5,6 +5,83 @@ namespace Shink.Mobile.Pages;
 
 internal static class PageHelpers
 {
+    internal const string StoryPlaceholderFile = "schink_placeholder.png";
+
+    public static string BuildStoryReturnPath(MobileStorySummary story)
+    {
+        var source = string.Equals(story.Source, "gratis", StringComparison.OrdinalIgnoreCase)
+            ? "gratis"
+            : "luister";
+        return $"/{source}/{Uri.EscapeDataString(story.Slug)}";
+    }
+
+    public static Task OpenPlansForStoryAsync(MobileStorySummary story)
+    {
+        var returnPath = BuildStoryReturnPath(story);
+        return Shell.Current.GoToAsync(
+            $"{nameof(PlansPage)}?returnUrl={Uri.EscapeDataString(returnPath)}",
+            animate: true);
+    }
+
+    public static bool TryBuildStoryDetailRoute(string? returnPath, out string route)
+    {
+        route = string.Empty;
+        if (!TryParseStoryReturnPath(returnPath, out var source, out var slug))
+        {
+            return false;
+        }
+
+        route = $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(slug)}&source={source}";
+        return true;
+    }
+
+    public static bool TryParseStoryReturnPath(string? returnPath, out string source, out string slug)
+    {
+        source = string.Empty;
+        slug = string.Empty;
+        if (string.IsNullOrWhiteSpace(returnPath))
+        {
+            return false;
+        }
+
+        string decodedPath;
+        try
+        {
+            decodedPath = Uri.UnescapeDataString(returnPath.Trim());
+        }
+        catch
+        {
+            return false;
+        }
+
+        var queryIndex = decodedPath.IndexOf('?');
+        if (queryIndex >= 0)
+        {
+            decodedPath = decodedPath[..queryIndex];
+        }
+
+        var segments = decodedPath
+            .Trim('/')
+            .Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length != 2 ||
+            (segments[0] is not "luister" and not "gratis"))
+        {
+            return false;
+        }
+
+        source = segments[0];
+        try
+        {
+            slug = Uri.UnescapeDataString(segments[1]).Trim();
+        }
+        catch
+        {
+            slug = segments[1].Trim();
+        }
+
+        return !string.IsNullOrWhiteSpace(slug);
+    }
+
     public static View BuildStoryCollection(
         IReadOnlyList<MobileStorySummary> stories,
         MobileApiClient apiClient,
@@ -238,7 +315,10 @@ internal static class PageHelpers
         var previewImageUrl = IsLegacyWebsiteAsset(story.ThumbnailUrl)
             ? null
             : apiClient.BuildImageUrl(story.ThumbnailUrl);
-        return new ProgressiveImageRequest(fullImageUrl, previewImageUrl, fallbackFile);
+        return new ProgressiveImageRequest(
+            fullImageUrl,
+            previewImageUrl,
+            ResolveStoryFallbackFile(fallbackFile));
     }
 
     internal static ProgressiveImageRequest BuildStoryCardImageRequest(
@@ -247,7 +327,13 @@ internal static class PageHelpers
         string? fallbackFile = null) =>
         new(
             ResolveStoryCardImageSource(story, apiClient),
-            FallbackFile: fallbackFile);
+            FallbackFile: ResolveStoryFallbackFile(fallbackFile));
+
+    private static string ResolveStoryFallbackFile(string? fallbackFile) =>
+        string.IsNullOrWhiteSpace(fallbackFile) ||
+        string.Equals(fallbackFile, "schink_background.jpeg", StringComparison.OrdinalIgnoreCase)
+            ? StoryPlaceholderFile
+            : fallbackFile.Trim();
 
     private static bool IsLegacyWebsiteAsset(string? imageUrl)
     {

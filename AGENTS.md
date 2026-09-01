@@ -117,7 +117,8 @@ Project-specific instructions for agents working in this repository.
 - Current setup state as of 2026-08-15: internal release `12 (1.0) – Google-aanmelding regstelling` is active and available to internal testers. The app is not released to Production, open testing, or another public track.
 - Mobile Google OAuth uses the registered `schinkstories://auth/google` callback in every build configuration; the server's HTTPS callback remains the OAuth-provider bridge before returning the short-lived mobile token to the app.
 - Android app icons are wired explicitly in `Shink.Mobile/Platforms/Android/AndroidManifest.xml` to `@mipmap/schink_appicon` and `@mipmap/schink_appicon_round`; keep both references so Android does not fall back to the default puzzle-block icon.
-- Google Play's store-listing icon is a separate asset from the launcher icon. Keep `Shink.Mobile/Resources/AppIcon/schink_appicon_playstore.png` at 512x512px and under 1 MB, and submit it through the Default store listing after the required descriptions, feature graphic, and screenshots are complete.
+- Google Play's store-listing icon is a separate asset from the launcher icon. Keep `Shink.Mobile/Resources/AppIcon/schink_appicon_playstore.png` identical to the approved teal `Shink.Mobile/Resources/AppIcon/schink_appicon.png`, at 512x512px and under 1 MB, and submit it through the Default store listing after the required descriptions, feature graphic, and screenshots are complete.
+- A Google Play AAB upload does not update the store-listing icon. Before calling a test release complete, verify that the Default store listing shows the approved teal icon; obtain action-time approval before replacing the live/draft provider asset if it still differs.
 - The Default store listing draft now contains the Afrikaans descriptions, the store-listing icon, and a 1024x500 feature graphic. The listing still needs truthful phone screenshots before it can be completed; do not invent screenshots or submit the draft as a public release.
 - On 2026-08-12 the user explicitly approved a fresh Google Play signing lineage because no existing demo installs need in-place upgrades. Google Play may generate and retain the app-signing key for this app.
 - The Google-managed app-signing private key is not required on development machines. Windows and macOS use the shared upload keystore to sign bundles submitted to Play.
@@ -134,7 +135,7 @@ Project-specific instructions for agents working in this repository.
   - macOS Keychain service: `Schink Stories Google Play Upload Key`
   - macOS Keychain account: `schink-stories-play-upload`
   - Upload certificate SHA-256: `88:22:D2:69:CF:3E:81:EE:E0:9C:02:B1:EF:64:6F:59:91:AF:03:7C:9A:D5:F0:0C:13:B8:70:8C:F6:89:60:B0`
-- Use `scripts/build-mobile-play-aab.ps1` on Windows and `scripts/build-mobile-play-aab.sh` on macOS. Both read the upload-key password from the operating-system credential store and do not print or commit it.
+- Use `scripts/build-mobile-play-aab.ps1` on Windows and `scripts/build-mobile-play-aab.sh` on macOS. Both read the upload-key password from the operating-system credential store, clean stale MAUI icon outputs, and reject source, listing, or packaged launcher icons that do not match the approved teal icon. Do not bypass an icon verification failure or print or commit credentials.
 - On a new Mac, download the encrypted keystore from the `admin@prioritybit.co.za` Google Drive backup, place it at `$HOME/.android/schink-stories-play-upload.keystore`, retrieve the saved password from that account's Google Password Manager entry, and add it in Keychain Access using the documented service and account. Then run `scripts/build-mobile-play-aab.sh`.
 - Before submitting a bundle from any new machine, verify that the upload certificate SHA-256 matches the documented fingerprint.
 - Never upload a bundle signed with an unverified local default/debug certificate.
@@ -169,7 +170,7 @@ Project-specific instructions for agents working in this repository.
   - Team: `SCHINK PTY. LTD. (6DP8F4CY29)`
   - App version: `1.0`
 - Before every upload, increment `Shink.Mobile/Shink.Mobile.csproj` `ApplicationVersion`; never reuse an App Store Connect build number.
-- Build and sign Release for `ios-arm64` with the Schink Apple Distribution certificate/profile. Verify the IPA/archive bundle ID, version, build number, team, architecture, and code signature before uploading.
+- Build and sign Release for `ios-arm64` with `scripts/build-mobile-testflight-archive.sh`; it cleans stale MAUI outputs and rejects an asset catalog that does not contain the approved teal icon. Verify the IPA/archive bundle ID, version, build number, team, architecture, icon check, and code signature before uploading.
 - Open the signed archive in Xcode Organizer. If the normal MAUI archive/export is blocked by temporary macOS `com.apple.FinderInfo` or resizetizer artifacts, use a temporary archive workspace and preserve the signed app; do not change unrelated source files or signing assets.
 - In Organizer choose: `Distribute App` → `App Store Connect` → `Distribute`. Wait for Xcode to confirm the app upload completed before closing Organizer.
 - In App Store Connect, wait for `Build Uploads` to show `Complete` and the build to appear under version `1.0`. Complete export compliance before adding the build to testers. For this app, select `None of the algorithms mentioned above` only when current source/build verification still confirms there is no custom or non-Apple encryption.

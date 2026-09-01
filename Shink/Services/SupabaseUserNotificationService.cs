@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Options;
+using Shink.Components.Content;
 
 namespace Shink.Services;
 
@@ -81,7 +82,7 @@ public sealed class SupabaseUserNotificationService(
             var requestUri = new Uri(
                 baseUri,
                 "rest/v1/subscriber_notifications" +
-                "?select=notification_id,notification_type,title,body,image_path,image_alt,href,created_at,read_at,cleared_at" +
+                "?select=notification_id,notification_type,title,body,image_path,image_alt,href,metadata,created_at,read_at,cleared_at" +
                 $"&subscriber_id=eq.{escapedSubscriberId}" +
                 (history ? string.Empty : "&cleared_at=is.null") +
                 (before is DateTimeOffset beforeValue
@@ -1392,7 +1393,7 @@ public sealed class SupabaseUserNotificationService(
             return NormalizeNotificationImagePath(request.FeaturedImageUrl);
         }
 
-        return "/branding/schink-logo-green.png";
+        return StoryItem.PlaceholderImagePath;
     }
 
     private static string ResolveStoryNotificationImagePath(PublishedStoryNotificationRequest request)
@@ -1407,7 +1408,7 @@ public sealed class SupabaseUserNotificationService(
             return NormalizeNotificationImagePath(request.CoverImagePath);
         }
 
-        return "/branding/schink-logo-green.png";
+        return StoryItem.PlaceholderImagePath;
     }
 
     private static string ResolveResourceDocumentNotificationImagePath(PublishedResourceDocumentNotificationRequest request)
@@ -1417,7 +1418,7 @@ public sealed class SupabaseUserNotificationService(
             return NormalizeNotificationImagePath(request.PreviewImageUrl);
         }
 
-        return "/branding/schink-logo-green.png";
+        return StoryItem.PlaceholderImagePath;
     }
 
     private static string BuildPublishedStoryNotificationHref(string slug, string accessLevel) =>
@@ -1443,14 +1444,14 @@ public sealed class SupabaseUserNotificationService(
             return character.MysteryImagePath;
         }
 
-        return "/branding/schink-logo-green.png";
+        return StoryItem.PlaceholderImagePath;
     }
 
     private static string NormalizeNotificationImagePath(string? imagePath)
     {
         if (string.IsNullOrWhiteSpace(imagePath))
         {
-            return "/branding/schink-logo-green.png";
+            return StoryItem.PlaceholderImagePath;
         }
 
         var normalized = imagePath.Trim();
@@ -1479,34 +1480,40 @@ public sealed class SupabaseUserNotificationService(
         return normalized;
     }
 
-    private static UserAppNotificationItem MapNotification(NotificationRow row) =>
-        new(
+    private static UserAppNotificationItem MapNotification(NotificationRow row)
+    {
+        var notificationType = row.NotificationType ?? string.Empty;
+        return new UserAppNotificationItem(
             row.NotificationId,
-            row.NotificationType ?? string.Empty,
+            notificationType,
             row.Title ?? string.Empty,
             row.Body,
             NormalizeNotificationImagePath(row.ImagePath),
             row.ImageAlt,
-            NormalizeNotificationHref(row.NotificationType, row.Href),
+            NormalizeNotificationHref(notificationType, row.Href, row.Metadata),
             row.CreatedAtUtc ?? DateTimeOffset.UtcNow,
             row.ReadAtUtc is not null,
             row.ClearedAtUtc is not null);
+    }
 
-    private static string? NormalizeNotificationHref(string? notificationType, string? href)
+    private static string? NormalizeNotificationHref(
+        string? notificationType,
+        string? href,
+        JsonElement? metadata = null)
     {
         if (string.Equals(notificationType, "character_unlock", StringComparison.OrdinalIgnoreCase))
         {
-            return NormalizeCharacterUnlockHref(href);
+            return NormalizeCharacterUnlockHref(href, ReadMetadataString(metadata, "character_slug"));
         }
 
         return href;
     }
 
-    private static string NormalizeCharacterUnlockHref(string? href)
+    private static string NormalizeCharacterUnlockHref(string? href, string? characterSlug = null)
     {
         if (string.IsNullOrWhiteSpace(href))
         {
-            return "/karakters";
+            return BuildCharacterUnlockHref(characterSlug);
         }
 
         var trimmed = href.Trim();
@@ -1524,7 +1531,10 @@ public sealed class SupabaseUserNotificationService(
             trimmed.StartsWith("/karakters?", StringComparison.OrdinalIgnoreCase) ||
             trimmed.StartsWith("/karakters#", StringComparison.OrdinalIgnoreCase))
         {
-            return trimmed;
+            return trimmed.Equals("/karakters", StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(characterSlug)
+                ? BuildCharacterUnlockHref(characterSlug)
+                : trimmed;
         }
 
         var pathOnly = trimmed.Split('?', '#')[0].Trim('/');
@@ -1536,7 +1546,24 @@ public sealed class SupabaseUserNotificationService(
             return $"/karakters?karakter={Uri.EscapeDataString(segments[1])}";
         }
 
-        return "/karakters";
+        return BuildCharacterUnlockHref(characterSlug);
+    }
+
+    private static string BuildCharacterUnlockHref(string? characterSlug) =>
+        string.IsNullOrWhiteSpace(characterSlug)
+            ? "/karakters"
+            : $"/karakters?karakter={Uri.EscapeDataString(characterSlug.Trim())}";
+
+    private static string? ReadMetadataString(JsonElement? metadata, string propertyName)
+    {
+        if (!metadata.HasValue || metadata.Value.ValueKind != JsonValueKind.Object ||
+            !metadata.Value.TryGetProperty(propertyName, out var value) ||
+            value.ValueKind != JsonValueKind.String)
+        {
+            return null;
+        }
+
+        return value.GetString();
     }
 
     private static bool IsCharacterRouteSegment(string value) =>
@@ -1663,6 +1690,9 @@ public sealed class SupabaseUserNotificationService(
 
         [JsonPropertyName("href")]
         public string? Href { get; init; }
+
+        [JsonPropertyName("metadata")]
+        public JsonElement? Metadata { get; init; }
 
         [JsonPropertyName("created_at")]
         public DateTimeOffset? CreatedAtUtc { get; init; }

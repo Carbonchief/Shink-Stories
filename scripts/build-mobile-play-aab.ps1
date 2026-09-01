@@ -23,6 +23,22 @@ $credentialTarget = if ($env:SCHINK_ANDROID_PLAY_UPLOAD_CREDENTIAL_TARGET) {
 } else {
     "Schink Stories Google Play Upload Key"
 }
+$appIcon = Join-Path $repoRoot "Shink.Mobile\Resources\AppIcon\schink_appicon.png"
+$playStoreIcon = Join-Path $repoRoot "Shink.Mobile\Resources\AppIcon\schink_appicon_playstore.png"
+$expectedSourceIconHash = "30faba4a58e01bf90b4fdd3580308312aca40a5e93e9298dcbf34fd1f9e8eba8"
+$expectedAndroidIconHash = "648f5a7e5de3bf9d956d8af8c6428f3edac9d4e49dcd33d0254b639cb316476c"
+
+foreach ($iconPath in @($appIcon, $playStoreIcon)) {
+    if (-not (Test-Path -LiteralPath $iconPath -PathType Leaf)) {
+        throw "Missing approved teal app icon: $iconPath"
+    }
+
+    $iconHash = (Get-FileHash -LiteralPath $iconPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($iconHash -ne $expectedSourceIconHash) {
+        throw "App icon does not match the approved teal Schink icon: $iconPath"
+    }
+}
+
 if (-not (Test-Path -LiteralPath $keyStore -PathType Leaf)) {
     throw "Missing Google Play upload keystore: $keyStore"
 }
@@ -84,10 +100,30 @@ namespace Schink
 
 $keyPassword = [Schink.NativeCredential]::ReadGenericPassword($credentialTarget)
 
+dotnet restore $projectPath `
+    -p:TargetFramework=$Framework `
+    -p:SchinkGooglePlayBuild=true `
+    --nologo
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Google Play bundle restore failed with exit code $LASTEXITCODE."
+}
+
+dotnet clean $projectPath `
+    --framework $Framework `
+    --configuration $Configuration `
+    -p:SchinkGooglePlayBuild=true `
+    --nologo
+
+if ($LASTEXITCODE -ne 0) {
+    throw "Google Play bundle clean failed with exit code $LASTEXITCODE."
+}
+
 dotnet publish $projectPath `
     --framework $Framework `
     --configuration $Configuration `
     -p:AndroidPackageFormat=aab `
+    -p:SchinkGooglePlayBuild=true `
     --nologo
 
 if ($LASTEXITCODE -ne 0) {
@@ -97,6 +133,36 @@ if ($LASTEXITCODE -ne 0) {
 $unsignedBundle = Join-Path $repoRoot "Shink.Mobile\bin\$Configuration\$Framework\publish\com.schink.stories.mobile.aab"
 if (-not (Test-Path -LiteralPath $unsignedBundle -PathType Leaf)) {
     throw "Unsigned Google Play bundle was not produced: $unsignedBundle"
+}
+
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$bundleArchive = [System.IO.Compression.ZipFile]::OpenRead($unsignedBundle)
+try {
+    $iconEntry = $bundleArchive.GetEntry("base/res/mipmap-xxxhdpi-v4/schink_appicon.png")
+    if (-not $iconEntry) {
+        throw "Google Play bundle is missing the generated launcher icon."
+    }
+
+    $iconStream = $iconEntry.Open()
+    try {
+        $sha256 = [System.Security.Cryptography.SHA256]::Create()
+        try {
+            $embeddedIconHash = ([BitConverter]::ToString($sha256.ComputeHash($iconStream))).Replace("-", "").ToLowerInvariant()
+        }
+        finally {
+            $sha256.Dispose()
+        }
+    }
+    finally {
+        $iconStream.Dispose()
+    }
+
+    if ($embeddedIconHash -ne $expectedAndroidIconHash) {
+        throw "Google Play bundle contains a stale or unexpected launcher icon."
+    }
+}
+finally {
+    $bundleArchive.Dispose()
 }
 
 [xml]$project = Get-Content -LiteralPath $projectPath -Raw

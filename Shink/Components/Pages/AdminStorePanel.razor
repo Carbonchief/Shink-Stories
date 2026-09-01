@@ -88,7 +88,7 @@
                                  alt=""
                                  loading="eager"
                                  decoding="async"
-                                 onerror="this.onerror=null;this.src=this.dataset.fallbackSrc || '/branding/schink-logo-green.png';" />
+                                 onerror="this.onerror=null;if(!this.dataset.fallbackSrc){this.classList.add('schink-image-placeholder');}this.src=this.dataset.fallbackSrc || '/branding/schink-placeholder.png';" />
 
                             <span class="store-admin-list-copy">
                                 <span class="store-admin-list-title">@product.Name</span>
@@ -233,7 +233,7 @@
                                      alt=""
                                      loading="eager"
                                      decoding="async"
-                                     onerror="this.onerror=null;this.src=this.dataset.fallbackSrc || '/branding/schink-logo-green.png';" />
+                                     onerror="this.onerror=null;if(!this.dataset.fallbackSrc){this.classList.add('schink-image-placeholder');}this.src=this.dataset.fallbackSrc || '/branding/schink-placeholder.png';" />
                             }
                             else
                             {
@@ -750,7 +750,7 @@
     private static string ResolveStoreProductImageUrl(AdminStoreProductRecord product) =>
         ResolveStoreProductFallbackImageUrl(product.Slug)
         ?? ResolvePreviewImageUrl(product.ImagePath)
-        ?? "/branding/schink-logo-green.png";
+        ?? StoryItem.PlaceholderImagePath;
 
     private static string? ResolveStoreProductFallbackImageUrl(string? productSlug) =>
         ResolvePreviewImageUrl(StoreProductCatalog.FindBySlug(productSlug)?.ImagePath);

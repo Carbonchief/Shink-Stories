@@ -41,6 +41,7 @@ public partial class AppShell : Shell
         Routing.RegisterRoute(nameof(KarakterPareConfigPage), typeof(KarakterPareConfigPage));
         Routing.RegisterRoute(nameof(KarakterRaaiConfigPage), typeof(KarakterRaaiConfigPage));
         Routing.RegisterRoute(nameof(KarakterRaaiGamePage), typeof(KarakterRaaiGamePage));
+        Routing.RegisterRoute(nameof(KennisgewingsPage), typeof(KennisgewingsPage));
 
         _sessionState.Changed += _ => MainThread.BeginInvokeOnMainThread(RenderShellFromSessionState);
         Navigated += OnShellNavigated;

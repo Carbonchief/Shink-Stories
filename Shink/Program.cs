@@ -3535,7 +3535,7 @@ app.MapGet("/api/search/suggest", async (
             Url: $"/blog/{Uri.EscapeDataString(post.Slug)}",
             Kind: "Blog",
             Keywords: BuildBlogSearchKeywords(post),
-            ThumbnailPath: post.FeaturedImageUrl ?? "/branding/schink-logo-green.png",
+            ThumbnailPath: post.FeaturedImageUrl ?? StoryItem.PlaceholderImagePath,
             IsSitePage: false)));
 
     var results = SearchSiteCandidates(candidates, query)
@@ -3575,8 +3575,7 @@ app.MapGet("/api/mobile/session", async (
 
 app.MapGet("/api/mobile/plans", () =>
 {
-    var plans = PaymentPlanCatalog.All
-        .Where(plan => !plan.IsSchoolPlan && !plan.IsAdminOnly)
+    var plans = PaymentPlanCatalog.MobileStorePlans
         .Select(plan => new MobilePlanResponse(
             ProductId: plan.StoreProductId,
             Slug: plan.Slug,
@@ -7205,7 +7204,7 @@ static IReadOnlyList<SearchSiteCandidate> BuildSearchStaticCandidates() =>
         Url: "/",
         Kind: "Bladsy",
         Keywords: "tuis huis kontak planne afrikaans oudiostories",
-        ThumbnailPath: "/branding/schink-logo-green.png",
+        ThumbnailPath: StoryItem.PlaceholderImagePath,
         IsSitePage: true),
     new(
         Title: "Blog",
@@ -7213,7 +7212,7 @@ static IReadOnlyList<SearchSiteCandidate> BuildSearchStaticCandidates() =>
         Url: "/blog",
         Kind: "Bladsy",
         Keywords: "blog artikels nuus wenke afrikaans",
-        ThumbnailPath: "/branding/schink-logo-green.png",
+        ThumbnailPath: StoryItem.PlaceholderImagePath,
         IsSitePage: true),
     new(
         Title: "Gratis stories",
@@ -7229,7 +7228,7 @@ static IReadOnlyList<SearchSiteCandidate> BuildSearchStaticCandidates() =>
         Url: "/resources",
         Kind: "Bladsy",
         Keywords: "hulpbronne aktiwiteite storiekaarte pdf aflaai",
-        ThumbnailPath: "/branding/schink-logo-green.png",
+        ThumbnailPath: StoryItem.PlaceholderImagePath,
         IsSitePage: true),
     new(
         Title: "Alle stories",
@@ -7245,7 +7244,7 @@ static IReadOnlyList<SearchSiteCandidate> BuildSearchStaticCandidates() =>
         Url: "/my-stories",
         Kind: "Bladsy",
         Keywords: "my stories geluister vordering voortgaan",
-        ThumbnailPath: "/branding/schink-logo-green.png",
+        ThumbnailPath: StoryItem.PlaceholderImagePath,
         IsSitePage: true),
     new(
         Title: "Meer oor Ons",
@@ -7261,7 +7260,7 @@ static IReadOnlyList<SearchSiteCandidate> BuildSearchStaticCandidates() =>
         Url: "/karakters",
         Kind: "Bladsy",
         Keywords: "karakters ontsluit misterie luister profiel",
-        ThumbnailPath: "/branding/schink-logo-green.png",
+        ThumbnailPath: StoryItem.PlaceholderImagePath,
         IsSitePage: true),
     new(
         Title: "Intekening en betaling",
@@ -7269,7 +7268,7 @@ static IReadOnlyList<SearchSiteCandidate> BuildSearchStaticCandidates() =>
         Url: "/intekening-en-betaling",
         Kind: "Bladsy",
         Keywords: "intekening betaling planne opsies rekening",
-        ThumbnailPath: "/branding/schink-logo-green.png",
+        ThumbnailPath: StoryItem.PlaceholderImagePath,
         IsSitePage: true),
     new(
         Title: "Opsies",
@@ -7616,6 +7615,10 @@ static async Task<MobileSessionResponse> BuildMobileSessionResponseAsync(
     var isSignedIn = !string.IsNullOrWhiteSpace(signedInEmail);
     var hasPaidSubscription = isSignedIn &&
         await subscriptionLedgerService.HasActivePaidSubscriptionAsync(signedInEmail, httpContext.RequestAborted);
+    var activeTierCodes = isSignedIn
+        ? await subscriptionLedgerService.GetActiveTierCodesAsync(signedInEmail, httpContext.RequestAborted)
+        : Array.Empty<string>();
+    var hasFullStoryAccess = StoryAccessPolicy.HasAllStoriesAccess(activeTierCodes);
     var favoriteStorySlugs = isSignedIn
         ? await storyFavoriteService.GetFavoriteStorySlugsAsync(signedInEmail, cancellationToken: httpContext.RequestAborted)
         : Array.Empty<string>();
@@ -7634,6 +7637,7 @@ static async Task<MobileSessionResponse> BuildMobileSessionResponseAsync(
         LastName: ResolveMobileProfileLastName(httpContext.User, subscriberProfile),
         MobileNumber: ResolveMobileProfileMobileNumber(httpContext.User, subscriberProfile),
         HasPaidSubscription: hasPaidSubscription,
+        HasFullStoryAccess: hasFullStoryAccess,
         FavoriteStorySlugs: favoriteStorySlugs,
         LoginUrl: ToAbsoluteUri(httpContext, "/teken-in"),
         SignupUrl: ToAbsoluteUri(httpContext, "/teken-op"),
@@ -8212,7 +8216,7 @@ static string ResolveMobileCharacterImageUrl(
     DateTimeOffset? updatedAt)
 {
     var resolvedPath = string.IsNullOrWhiteSpace(path)
-        ? "/branding/schink-logo-green.png"
+        ? StoryItem.PlaceholderImagePath
         : StoryItem.RewriteImagePathForBrowser(path.Trim());
     var imageUrl = ToMobileMediaUri(httpContext, resolvedPath);
     if (updatedAt is null || string.IsNullOrWhiteSpace(imageUrl))
@@ -8340,6 +8344,7 @@ sealed record MobileSessionResponse(
     string? LastName,
     string? MobileNumber,
     bool HasPaidSubscription,
+    bool HasFullStoryAccess,
     IReadOnlyList<string> FavoriteStorySlugs,
     string LoginUrl,
     string SignupUrl,

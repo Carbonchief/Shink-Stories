@@ -78,15 +78,13 @@ else
             </div>
         </header>
 
-        @if (!string.IsNullOrWhiteSpace(FeaturedImageUrl))
-        {
-            <figure class="blog-post-featured">
-                <img src="@FeaturedImageUrl"
-                     alt="Voorblad vir @CurrentPost.Title"
-                     loading="eager"
-                     decoding="async" />
-            </figure>
-        }
+        <figure class="blog-post-featured">
+            <img src="@(FeaturedImageUrl ?? StoryItem.PlaceholderImagePath)"
+                 alt="Voorblad vir @CurrentPost.Title"
+                 loading="eager"
+                 decoding="async"
+                 onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
+        </figure>
 
         <div class="blog-post-content-shell">
             <div class="blog-post-content">
@@ -156,7 +154,7 @@ else
         ?? "Lees die nuutste blog plasings van Schink Stories.";
 
     private string ShareImageUrl =>
-        NavigationManager.ToAbsoluteUri(FeaturedImageUrl ?? "/branding/schink-logo-green.png").ToString();
+        NavigationManager.ToAbsoluteUri(FeaturedImageUrl ?? StoryItem.PlaceholderImagePath).ToString();
 
     private string ShareImageMimeType => GetImageMimeType(CurrentPost?.FeaturedImageUrl);
 

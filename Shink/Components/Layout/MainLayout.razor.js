@@ -1080,7 +1080,11 @@ function renderNotificationItems(parts, notifications, fallbackMessage) {
         image.decoding = "async";
         image.src = notification && typeof notification.imagePath === "string" && notification.imagePath.length > 0
             ? notification.imagePath
-            : "/branding/schink-logo-green.png";
+            : "/branding/schink-placeholder.png";
+        image.addEventListener("error", () => {
+            image.src = "/branding/schink-placeholder.png";
+            image.classList.add("schink-image-placeholder");
+        }, { once: true });
         imageWrap.append(image);
 
         const imageBadge = document.createElement("span");
@@ -1971,7 +1975,11 @@ function wireHeaderSearch(searchForm) {
             thumbnail.decoding = "async";
             thumbnail.src = typeof result.thumbnailPath === "string" && result.thumbnailPath.length > 0
                 ? result.thumbnailPath
-                : "/branding/schink-logo-green.png";
+                : "/branding/schink-placeholder.png";
+            thumbnail.addEventListener("error", () => {
+                thumbnail.src = "/branding/schink-placeholder.png";
+                thumbnail.classList.add("schink-image-placeholder");
+            }, { once: true });
             link.append(thumbnail);
 
             const copy = document.createElement("span");

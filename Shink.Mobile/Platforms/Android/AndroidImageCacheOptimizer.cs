@@ -4,6 +4,9 @@ namespace Shink.Mobile.Platforms.Android;
 
 internal static class AndroidImageCacheOptimizer
 {
+    private const int PhoneMaxPixelDimension = 1280;
+    private const int TabletMaxPixelDimension = 2048;
+
     public static string ResolveDisplayPath(string cachePath)
     {
         var optimizedPath = BuildOptimizedPath(cachePath, ResolveMaxPixelDimension());
@@ -103,18 +106,9 @@ internal static class AndroidImageCacheOptimizer
     }
 
     private static int ResolveMaxPixelDimension()
-    {
-        try
-        {
-            var display = DeviceDisplay.Current.MainDisplayInfo;
-            var longestDisplayEdge = (int)Math.Ceiling(Math.Max(display.Width, display.Height));
-            return Math.Clamp(longestDisplayEdge, 1280, 4096);
-        }
-        catch
-        {
-            return DeviceInfo.Current.Idiom == DeviceIdiom.Tablet ? 3072 : 1600;
-        }
-    }
+        => DeviceInfo.Current.Idiom == DeviceIdiom.Tablet
+            ? TabletMaxPixelDimension
+            : PhoneMaxPixelDimension;
 
     private static string BuildOptimizedPath(string cachePath, int maxPixelDimension)
     {

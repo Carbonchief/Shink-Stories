@@ -30,7 +30,7 @@ public sealed class OfflineDownloadAccessPolicyTests
             downloadOwnerKey: null,
             lastAccessVerifiedAt: Now.Subtract(TimeSpan.FromDays(90)),
             isSignedIn: false,
-            hasPaidSubscription: false,
+            hasFullStoryAccess: false,
             currentOwnerKey: null,
             now: Now,
             accessRefreshWindow: AccessWindow);
@@ -48,7 +48,7 @@ public sealed class OfflineDownloadAccessPolicyTests
             downloadOwnerKey: ownerKey,
             lastAccessVerifiedAt: Now.Subtract(TimeSpan.FromDays(2)),
             isSignedIn: false,
-            hasPaidSubscription: false,
+            hasFullStoryAccess: false,
             currentOwnerKey: null,
             now: Now,
             accessRefreshWindow: AccessWindow);
@@ -57,7 +57,7 @@ public sealed class OfflineDownloadAccessPolicyTests
             downloadOwnerKey: ownerKey,
             lastAccessVerifiedAt: Now.Subtract(TimeSpan.FromDays(2)),
             isSignedIn: true,
-            hasPaidSubscription: true,
+            hasFullStoryAccess: true,
             currentOwnerKey: ownerKey,
             now: Now,
             accessRefreshWindow: AccessWindow);
@@ -77,7 +77,7 @@ public sealed class OfflineDownloadAccessPolicyTests
             downloadOwnerKey: ownerKey,
             lastAccessVerifiedAt: Now.Subtract(TimeSpan.FromDays(2)),
             isSignedIn: true,
-            hasPaidSubscription: true,
+            hasFullStoryAccess: true,
             currentOwnerKey: otherOwnerKey,
             now: Now,
             accessRefreshWindow: AccessWindow);
@@ -86,7 +86,7 @@ public sealed class OfflineDownloadAccessPolicyTests
             downloadOwnerKey: ownerKey,
             lastAccessVerifiedAt: Now.Subtract(TimeSpan.FromDays(31)),
             isSignedIn: true,
-            hasPaidSubscription: true,
+            hasFullStoryAccess: true,
             currentOwnerKey: ownerKey,
             now: Now,
             accessRefreshWindow: AccessWindow);

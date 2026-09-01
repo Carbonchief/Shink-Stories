@@ -172,7 +172,8 @@ else
                                      width="1024"
                                      height="576"
                                      loading="lazy"
-                                     decoding="async" />
+                                     decoding="async"
+                                     onerror="this.onerror=null;this.removeAttribute('srcset');this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
                                 <span class="story-cover-play" aria-hidden="true">
                                     <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
                                 </span>
@@ -195,7 +196,8 @@ else
                                      width="1024"
                                      height="576"
                                      loading="lazy"
-                                     decoding="async" />
+                                     decoding="async"
+                                     onerror="this.onerror=null;this.removeAttribute('srcset');this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
                                 <span class="story-cover-play" aria-hidden="true">
                                     <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
                                 </span>
@@ -234,7 +236,8 @@ else
                                                  srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
                                                  sizes="(max-width: 620px) 68vw, (max-width: 980px) 42vw, 320px"
                                                  draggable="false"
-                                                 alt="Voorblad van @storyTitle" width="640" height="485" loading="lazy" decoding="async" />
+                                                 alt="Voorblad van @storyTitle" width="640" height="485" loading="lazy" decoding="async"
+                                                 onerror="this.onerror=null;this.removeAttribute('srcset');this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
                                             <span class="story-cover-play" aria-hidden="true">
                                                 <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
                                             </span>
@@ -254,7 +257,8 @@ else
                                                  srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
                                                  sizes="(max-width: 620px) 68vw, (max-width: 980px) 42vw, 320px"
                                                  draggable="false"
-                                                 alt="Voorblad van @storyTitle" width="640" height="485" loading="lazy" decoding="async" />
+                                                 alt="Voorblad van @storyTitle" width="640" height="485" loading="lazy" decoding="async"
+                                                 onerror="this.onerror=null;this.removeAttribute('srcset');this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
                                             <span class="story-cover-play" aria-hidden="true">
                                                 <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
                                             </span>
@@ -594,7 +598,8 @@ else
                                              width="1024"
                                              height="576"
                                              loading="lazy"
-                                             decoding="async" />
+                                             decoding="async"
+                                             onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
                                         <span class="story-cover-play" aria-hidden="true">
                                             <i class="story-cover-play-icon fa-solid fa-images" aria-hidden="true"></i>
                                         </span>
@@ -655,7 +660,7 @@ else
             return logoPath;
         }
 
-        return "/branding/Schink_Stories_01.png";
+        return StoryItem.PlaceholderImagePath;
     }
 
     private static string? NormalizeOptionalImagePath(string? value) =>

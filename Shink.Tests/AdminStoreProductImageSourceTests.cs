@@ -36,7 +36,7 @@ public class AdminStoreProductImageSourceTests
         StringAssert.Contains(service, "var canonicalImagePath = StoreProductCatalog.FindBySlug(normalizedSlug)?.ImagePath;");
         StringAssert.Contains(panel, "ResolveStoreProductImageUrl(product)");
         StringAssert.Contains(panel, "data-fallback-src=\"@productImageFallbackUrl\"");
-        StringAssert.Contains(panel, "this.dataset.fallbackSrc || '/branding/schink-logo-green.png'");
+        StringAssert.Contains(panel, "this.dataset.fallbackSrc || '/branding/schink-placeholder.png'");
         StringAssert.Contains(panel, "ResolveStoreProductFallbackImageUrl(product.Slug)");
     }
 

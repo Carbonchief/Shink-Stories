@@ -189,7 +189,7 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
             : null;
         if (requiresSubscription &&
             (!_sessionState.Current.IsSignedIn ||
-             !_sessionState.Current.HasPaidSubscription ||
+             !_sessionState.Current.HasFullStoryAccess ||
              string.IsNullOrWhiteSpace(ownerKey)))
         {
             throw new InvalidOperationException("Teken asseblief in met jou aktiewe rekening om hierdie storie af te laai.");
@@ -569,7 +569,7 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
             download.OwnerKey,
             download.LastAccessVerifiedAt,
             session.IsSignedIn,
-            session.HasPaidSubscription,
+            session.HasFullStoryAccess,
             currentOwnerKey,
             now,
             AccessRefreshWindow);

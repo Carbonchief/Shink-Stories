@@ -119,7 +119,27 @@ public class CharacterMatchGameTests
         StringAssert.Contains(configPage, "karakter_pare_beginner.png");
         StringAssert.Contains(configPage, "karakter_pare_kenner.png");
         StringAssert.Contains(configPage, "karakter_pare_meester.png");
-        StringAssert.Contains(configPage, "Text = \"SPEEL NOU\"");
+        Assert.DoesNotContain("SPEEL NOU", configPage, StringComparison.Ordinal);
+        Assert.DoesNotContain("_playButton", configPage, StringComparison.Ordinal);
+        Assert.DoesNotContain("SelectDifficulty(Options[0]);", configPage, StringComparison.Ordinal);
+        StringAssert.Contains(configPage, "protected override void OnAppearing()");
+        StringAssert.Contains(configPage, "ClearDifficultySelection();");
+        StringAssert.Contains(configPage, "Spacing = -3,");
+        StringAssert.Contains(configPage, "LineHeight = 0.9");
+        StringAssert.Contains(configPage, "AutomationId = \"karakter-pare-close\"");
+        StringAssert.Contains(configPage, "Glyph = \"\\uf00d\"");
+        StringAssert.Contains(configPage, "FontFamily = \"FontAwesomeSolid\"");
+        StringAssert.Contains(configPage, "Color = CloseColor");
+        StringAssert.Contains(configPage, "HorizontalOptions = LayoutOptions.Center");
+        StringAssert.Contains(configPage, "VerticalOptions = LayoutOptions.Center");
+        Assert.DoesNotContain("TranslationY = -1", configPage, StringComparison.Ordinal);
+        StringAssert.Contains(configPage, "private async Task NavigateBackAsync()");
+        Assert.AreEqual(
+            2,
+            configPage.Split("await NavigateBackAsync();", StringSplitOptions.None).Length - 1);
+        StringAssert.Contains(configPage, "tap.Tapped += async (_, _) => await StartDifficultyAsync(option);");
+        StringAssert.Contains(configPage, "SelectDifficulty(option);");
+        StringAssert.Contains(configPage, "[\"difficulty\"] = option.Level");
         StringAssert.Contains(configPage, "var contentScroll = new ScrollView");
         StringAssert.Contains(configPage, "VerticalScrollBarVisibility = ScrollBarVisibility.Never");
         StringAssert.Contains(configPage, "AutomationId = \"karakter-pare-config-scroll\"");
@@ -207,6 +227,19 @@ public class CharacterMatchGameTests
     {
         var gamePage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KarakterPareGamePage.cs"));
 
+        StringAssert.Contains(gamePage, "private const double PhoneTileCornerRadius = 12;");
+        StringAssert.Contains(gamePage, "private const double PhoneTileSpacing = 4;");
+        StringAssert.Contains(gamePage, "private const double TabletFaceUpTileCornerRadius = 15;");
+        StringAssert.Contains(gamePage, "private const double TabletTileCornerRadius = 22;");
+        StringAssert.Contains(gamePage, "private const double TabletThreeColumnTileSpacing = 10;");
+        StringAssert.Contains(gamePage, "private const double TabletFourColumnTileSpacing = 12;");
+        StringAssert.Contains(gamePage, "private static bool IsTablet => DeviceInfo.Current.Idiom == DeviceIdiom.Tablet;");
+        StringAssert.Contains(gamePage, "var faceUpCornerRadius = IsTablet ? TabletFaceUpTileCornerRadius : PhoneTileCornerRadius;");
+        StringAssert.Contains(gamePage, "var tileCornerRadius = IsTablet ? TabletTileCornerRadius : PhoneTileCornerRadius;");
+        StringAssert.Contains(gamePage, "if (!IsTablet)");
+        StringAssert.Contains(gamePage, "return PhoneTileSpacing;");
+        StringAssert.Contains(gamePage, "? TabletThreeColumnTileSpacing");
+        StringAssert.Contains(gamePage, ": TabletFourColumnTileSpacing;");
         StringAssert.Contains(gamePage, "_boardHost.SizeChanged += (_, _) => ApplyBoardGeometry(_selectedDifficulty);");
         StringAssert.Contains(gamePage, "var widthLimitedTileSize =");
         StringAssert.Contains(gamePage, "var heightLimitedTileSize =");

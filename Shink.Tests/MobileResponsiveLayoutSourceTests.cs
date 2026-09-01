@@ -75,6 +75,30 @@ public sealed class MobileResponsiveLayoutSourceTests
     }
 
     [TestMethod]
+    public void MobileBurgerMenuSlidesInFromRight()
+    {
+        var menuSheet = File.ReadAllText(GetRepoPath(
+            "Shink.Mobile",
+            "Pages",
+            "MobileMenuSheet.cs"));
+        var mobileTopBar = File.ReadAllText(GetRepoPath(
+            "Shink.Mobile",
+            "Pages",
+            "MobileTopBar.cs"));
+
+        StringAssert.Contains(mobileTopBar, "MobileMenuSheet.ShowFromRightAsync(");
+        StringAssert.Contains(menuSheet, "AutomationId = \"mobile-menu-drawer\"");
+        StringAssert.Contains(menuSheet, "HorizontalOptions = LayoutOptions.End");
+        StringAssert.Contains(menuSheet, "StrokeShape = new RoundRectangle { CornerRadius = 0 }");
+        StringAssert.Contains(menuSheet, "Margin = Thickness.Zero");
+        StringAssert.Contains(menuSheet, "VerticalOptions = LayoutOptions.Fill");
+        StringAssert.Contains(menuSheet, "panel.TranslationX = visuals.ClosedTranslation;");
+        StringAssert.Contains(menuSheet, "drawer.Panel.TranslateToAsync(0, 0, DrawerOpenDurationMilliseconds, Easing.CubicOut)");
+        StringAssert.Contains(menuSheet, "drawer.Panel.TranslateToAsync(");
+        StringAssert.Contains(menuSheet, "drawer.ClosedTranslation");
+    }
+
+    [TestMethod]
     public void MobileLuisterCarouselsMatchWebArtworkAspectRatios()
     {
         var mobileLuister = File.ReadAllText(GetRepoPath(

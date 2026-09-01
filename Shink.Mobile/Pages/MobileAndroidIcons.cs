@@ -14,16 +14,22 @@ internal enum MobileAndroidIcon
 
 internal static class MobileAndroidChromePalette
 {
-    // Keep the page visible through the shared bottom bar on both platforms.
-    // The static tint restores the dark translucent surface without asking iOS
-    // or Android to recalculate a live backdrop blur while the feed is moving.
-    public static readonly Color BarBackground = Colors.Transparent;
-    public static readonly Color BarBackdropTint = Color.FromArgb("#CC12343B");
+    // Match the website home navbar: a 3%-to-6% warm-white surface over the
+    // same colour-preserving live blur on iOS and Android.
+    public static readonly Color BarSurfaceTint = Color.FromArgb("#10FFFEFA");
+    public static readonly Color BarFeatherSoftTint = Color.FromArgb("#02FFFEFA");
+    public static readonly Color BarFeatherMidTint = Color.FromArgb("#08FFFEFA");
+    // A clearer low-opacity teal wash offsets the material's neutral-grey cast
+    // without hiding the artwork or turning the bar into a solid colour.
+    public static readonly Color BarNativeBlurTint = Color.FromArgb("#14005E68");
     public static readonly Color PrimaryIcon = Colors.White;
     public static readonly Color SecondaryIcon = Colors.White;
     public static readonly Color SelectedBackground = Colors.Transparent;
     public static readonly Color TopBarBackground = Colors.Transparent;
-    public static readonly Color TopBarIcon = Color.FromArgb("#12343B");
+    public static readonly Color TopBarSurfaceStartTint = Color.FromArgb("#08FFFEFA");
+    public static readonly Color TopBarSurfaceEndTint = Color.FromArgb("#10FFFEFA");
+    public static readonly Color TopBarNativeBlurTint = Color.FromArgb("#14005E68");
+    public static readonly Color TopBarIcon = Colors.White;
     public static readonly Color ProfileBackground = Color.FromArgb("#4D7FBE");
 }
 

@@ -348,7 +348,9 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
             MinimumTrackColor = PinkColor,
             MaximumTrackColor = Color.FromArgb("#32FFFFFF"),
             ThumbColor = PinkColor,
-            HeightRequest = 28,
+            HorizontalOptions = LayoutOptions.Fill,
+            HeightRequest = 44,
+            AutomationId = "playlist-progress-slider",
             IsEnabled = false
         };
         SemanticProperties.SetDescription(_progressSlider, "Spring na 'n ander plek in die storie");
@@ -379,6 +381,9 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
             }
         };
         _progressSlider.DragCompleted += async (_, _) => await CompleteProgressSeekAsync();
+        var timelineTap = new TapGestureRecognizer();
+        timelineTap.Tapped += async (_, args) => await SeekFromTimelineTapAsync(args);
+        _progressSlider.GestureRecognizers.Add(timelineTap);
         _currentTimeLabel = BuildTimeLabel("0:00", TextAlignment.Start);
         _durationLabel = BuildTimeLabel("--:--", TextAlignment.End);
 
@@ -723,7 +728,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
     {
         if (story.IsLocked)
         {
-            await Shell.Current.GoToAsync(nameof(PlansPage), animate: true);
+            await PageHelpers.OpenPlansForStoryAsync(story);
             return;
         }
 
@@ -859,7 +864,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
 
         if (_currentStory?.IsLocked == true)
         {
-            await Shell.Current.GoToAsync(nameof(PlansPage), animate: true);
+            await PageHelpers.OpenPlansForStoryAsync(_currentStory);
             return;
         }
 
@@ -1140,6 +1145,40 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
         }
         finally
         {
+            _isProgressScrubbing = false;
+            UpdateProgressState();
+        }
+    }
+
+    private async Task SeekFromTimelineTapAsync(TappedEventArgs args)
+    {
+        var slider = _progressSlider;
+        var tapPosition = slider is null ? null : args.GetPosition(slider);
+        if (slider is null || !slider.IsEnabled || tapPosition is null || slider.Width <= 0)
+        {
+            return;
+        }
+
+        var value = Math.Clamp(tapPosition.Value.X / slider.Width, 0, 1);
+        _isProgressScrubbing = true;
+        try
+        {
+            _isUpdatingProgressSlider = true;
+            slider.Value = value;
+            _isUpdatingProgressSlider = false;
+
+            var duration = ResolvePlaybackDuration();
+            if (_currentTimeLabel is not null && duration is { TotalSeconds: > 0 })
+            {
+                _currentTimeLabel.Text = FormatTime(
+                    TimeSpan.FromSeconds(value * duration.Value.TotalSeconds));
+            }
+
+            await SeekToProgressValueAsync(value);
+        }
+        finally
+        {
+            _isUpdatingProgressSlider = false;
             _isProgressScrubbing = false;
             UpdateProgressState();
         }

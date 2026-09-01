@@ -9,6 +9,7 @@ using MauiScrollView = Microsoft.Maui.Controls.ScrollView;
 
 namespace Shink.Mobile.Pages;
 
+[QueryProperty(nameof(ReturnUrl), "returnUrl")]
 public sealed class AccountPage : ContentPage
 {
     private static readonly Thickness SignedInTopBarMargin = new(18, 18, 18, 0);
@@ -44,6 +45,8 @@ public sealed class AccountPage : ContentPage
     private bool _hasLoadedSession;
     private bool _isAuthRequestInFlight;
     private bool _isSessionStateSubscribed;
+
+    public string? ReturnUrl { get; set; }
 
     public AccountPage(
         MobileApiClient apiClient,
@@ -531,6 +534,7 @@ public sealed class AccountPage : ContentPage
                 {
                     var result = await _apiClient.SignInAsync(loginEmailEntry.Text ?? string.Empty, loginPasswordEntry.Text ?? string.Empty);
                     await RefreshSessionAsync(result.Message);
+                    await OpenPostAuthenticationDestinationAsync();
                 }
                 catch (Exception ex)
                 {
@@ -573,6 +577,7 @@ public sealed class AccountPage : ContentPage
 
                     var signInResult = await _apiClient.CompleteGoogleSignInAsync(token);
                     await RefreshSessionAsync(signInResult.Message);
+                    await OpenPostAuthenticationDestinationAsync();
                 }
                 catch (TaskCanceledException)
                 {
@@ -625,6 +630,7 @@ public sealed class AccountPage : ContentPage
                         result.LastName,
                         result.DisplayName);
                     await RefreshSessionAsync(signInResult.Message);
+                    await OpenPostAuthenticationDestinationAsync();
                 }
                 catch (TaskCanceledException)
                 {
@@ -689,10 +695,7 @@ public sealed class AccountPage : ContentPage
                         signupMobileEntry.Text ?? string.Empty,
                         signupPasswordEntry.Text ?? string.Empty);
                     await RefreshSessionAsync(result.Message);
-                    if (_sessionState.Current.IsSignedIn)
-                    {
-                        await Shell.Current.GoToAsync(nameof(PlansPage), animate: true);
-                    }
+                    await OpenPostAuthenticationDestinationAsync(isNewAccount: true);
                 }
                 catch (Exception ex)
                 {
@@ -1225,6 +1228,50 @@ public sealed class AccountPage : ContentPage
         catch (Exception ex)
         {
             SetStatus(ex.Message, isError: true);
+        }
+    }
+
+    private async Task OpenPostAuthenticationDestinationAsync(bool isNewAccount = false)
+    {
+        if (!_sessionState.Current.IsSignedIn)
+        {
+            return;
+        }
+
+        if (PageHelpers.TryParseStoryReturnPath(ReturnUrl, out var source, out var slug))
+        {
+            try
+            {
+                var detail = await _apiClient.GetStoryAsync(slug, source);
+                if (detail?.RequiresSubscription == true)
+                {
+                    await Shell.Current.GoToAsync(
+                        $"{nameof(PlansPage)}?returnUrl={Uri.EscapeDataString(ReturnUrl!)}",
+                        animate: true);
+                    return;
+                }
+
+                if (detail is not null && PageHelpers.TryBuildStoryDetailRoute(ReturnUrl, out var storyRoute))
+                {
+                    await Shell.Current.GoToAsync(storyRoute, animate: true);
+                    return;
+                }
+            }
+            catch
+            {
+                // A story reached from sign-in is safest to resume through the paywall
+                // when its current access cannot be confirmed.
+            }
+
+            await Shell.Current.GoToAsync(
+                $"{nameof(PlansPage)}?returnUrl={Uri.EscapeDataString(ReturnUrl!)}",
+                animate: true);
+            return;
+        }
+
+        if (isNewAccount)
+        {
+            await Shell.Current.GoToAsync(nameof(PlansPage), animate: true);
         }
     }
 

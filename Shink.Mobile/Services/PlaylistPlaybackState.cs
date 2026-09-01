@@ -15,6 +15,8 @@ public sealed class PlaylistPlaybackState
 
     public IReadOnlyList<MobileStorySummary> Stories => _stories;
 
+    public bool IsOfflineQueue { get; private set; }
+
     public bool IsAutoplayEnabled { get; private set; }
 
     public bool IsShuffleEnabled { get; private set; }
@@ -23,22 +25,34 @@ public sealed class PlaylistPlaybackState
 
     public int AutoplayStoriesPlayedInRun { get; private set; }
 
-    public void Set(MobilePlaylist playlist, MobileStorySummary? currentStory = null)
+    public void Set(MobilePlaylist playlist, MobileStorySummary? currentStory = null) =>
+        SetCore(playlist, currentStory, isOfflineQueue: false);
+
+    public void SetOfflineQueue(MobilePlaylist playlist, MobileStorySummary? currentStory = null) =>
+        SetCore(playlist, currentStory, isOfflineQueue: true);
+
+    private void SetCore(
+        MobilePlaylist playlist,
+        MobileStorySummary? currentStory,
+        bool isOfflineQueue)
     {
         var normalizedStories = playlist.Stories
-            .Select(NormalizePlaylistStory)
+            .Select(story => NormalizePlaylistStory(story, preserveSource: isOfflineQueue))
             .ToArray();
         CurrentPlaylist = playlist with
         {
             Stories = normalizedStories,
             ShowcaseStory = playlist.ShowcaseStory is null
                 ? null
-                : NormalizePlaylistStory(playlist.ShowcaseStory)
+                : NormalizePlaylistStory(playlist.ShowcaseStory, preserveSource: isOfflineQueue)
         };
         Slug = CurrentPlaylist.Slug;
         Title = CurrentPlaylist.Title;
+        IsOfflineQueue = isOfflineQueue;
         _stories = normalizedStories;
-        RefreshShuffleOrder(currentStory is null ? null : NormalizePlaylistStory(currentStory));
+        RefreshShuffleOrder(currentStory is null
+            ? null
+            : NormalizePlaylistStory(currentStory, preserveSource: isOfflineQueue));
     }
 
     public IReadOnlyList<MobileStorySummary> GetPlaybackStories(MobileStorySummary? currentStory = null)
@@ -48,7 +62,9 @@ public sealed class PlaylistPlaybackState
             return _stories;
         }
 
-        RefreshShuffleOrder(currentStory is null ? null : NormalizePlaylistStory(currentStory));
+        RefreshShuffleOrder(currentStory is null
+            ? null
+            : NormalizePlaylistStory(currentStory, preserveSource: IsOfflineQueue));
 
         var storiesByKey = _stories.ToDictionary(GetStoryKey, StringComparer.OrdinalIgnoreCase);
         var orderedStories = _shuffleOrder
@@ -93,6 +109,7 @@ public sealed class PlaylistPlaybackState
         CurrentPlaylist = null;
         _stories = Array.Empty<MobileStorySummary>();
         _shuffleOrder = Array.Empty<string>();
+        IsOfflineQueue = false;
         IsAutoplayEnabled = false;
         IsShuffleEnabled = false;
         AutoplayLimitStories = null;
@@ -186,8 +203,8 @@ public sealed class PlaylistPlaybackState
     private static string GetStoryKey(MobileStorySummary story) =>
         $"{story.Source}|{story.Slug}";
 
-    private static MobileStorySummary NormalizePlaylistStory(MobileStorySummary story) =>
-        string.Equals(story.Source, "luister", StringComparison.OrdinalIgnoreCase)
+    private static MobileStorySummary NormalizePlaylistStory(MobileStorySummary story, bool preserveSource = false) =>
+        preserveSource || string.Equals(story.Source, "luister", StringComparison.OrdinalIgnoreCase)
             ? story
             : story with { Source = "luister" };
 }

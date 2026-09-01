@@ -1,4 +1,3 @@
-using System.Net;
 using System.Globalization;
 using System.Text;
 using System.Threading;
@@ -10,20 +9,7 @@ namespace Shink.Mobile.Pages;
 
 public sealed class LuisterPage : ContentPage, IQueryAttributable
 {
-    private static readonly Color LuisterModalBackgroundColor = Color.FromArgb("#FFF7E8");
-    private static readonly LinearGradientBrush LuisterBackgroundBrush = new LinearGradientBrush
-    {
-        StartPoint = new Point(0, 0),
-        EndPoint = new Point(0, 1),
-        GradientStops =
-        {
-            new GradientStop(Color.FromArgb("#408D93"), 0),
-            new GradientStop(Color.FromArgb("#4F9DB3"), 0.22f),
-            new GradientStop(Color.FromArgb("#D4CF69"), 0.56f),
-            new GradientStop(Color.FromArgb("#EFEFEF"), 0.86f),
-            new GradientStop(Color.FromArgb("#EFEFEF"), 1)
-        }
-    };
+    private static readonly Color LuisterBackgroundColor = Color.FromArgb("#408D93");
     private const double PageHorizontalPadding = 18;
     private const double CarouselItemSpacing = 14;
     // Android applies ItemSpacing between the header and first item; iOS does not.
@@ -32,19 +18,20 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     private const double CarouselEdgeSpacerWidth = PageHorizontalPadding - CarouselItemSpacing;
     private static double ResolveCarouselEdgeSpacerWidth() =>
         IsIOS ? PageHorizontalPadding : CarouselEdgeSpacerWidth;
-    private const double LuisterGradientMinimumTravelDistance = 4200;
-    private static readonly TimeSpan ScrollVisualUpdateInterval = TimeSpan.FromMilliseconds(100);
+    private static readonly TimeSpan ScrollIdlePollInterval = TimeSpan.FromMilliseconds(100);
     private const long ScrollIdleThresholdMilliseconds = 180;
     // Keep the first feed item below the native-style app bar and the last item
     // above the persistent bottom navigation on every device size.
     private const double FloatingTopBarContentInset = 92;
     private const double BottomBarContentInset = 216;
-    private const double BottomBarOverlayHeight = 152;
+    private const double BottomBarOverlayHeight = MobileBottomBar.NavigationHeight;
     private const double StoriesHeroHeight = 262;
     // Keep native carousel artwork in lockstep with the web Luister page:
     // story covers are portrait (3:4), while playlist artwork is widescreen (16:9).
     private const double StoryCarouselImageAspectRatio = 3d / 4d;
     private const double PlaylistCarouselImageAspectRatio = 16d / 9d;
+    private const string DownloadGlyph = "\uf019";
+    private const string DownloadedGlyph = "\uf00c";
     private const int InitialCarouselWarmupItemCount = 3;
     private const double OortjiesPeekWidth = 64;
     private const double OortjiesPeekHeight = 71;
@@ -70,6 +57,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     private readonly PlaylistPlaybackState _playlistPlaybackState;
     private readonly ContinueListeningState _continueListeningState;
     private readonly StoryPlaybackSession _storyPlaybackSession;
+    private readonly IOfflineStoryDownloadService _offlineDownloadService;
     private readonly PlayerTransitionBackdropState _transitionBackdropState;
     private readonly NavigationGate _navigationGate = new();
     private readonly Grid _rootLayout;
@@ -88,27 +76,28 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     private readonly Label _loginStatusLabel;
     private IReadOnlyList<MobileLuisterSection> _sections = Array.Empty<MobileLuisterSection>();
     private MobileNotificationPage? _notificationPage;
-    private ContentPage? _notificationModalPage;
-    private CancellationTokenSource? _notificationModalCancellation;
     private MobileSession? _lastRenderedSession;
     private string? _loadErrorMessage;
     private bool _hasLoaded;
     private bool _isPageActive;
+    private bool _isPageActivityReady;
     private bool _isSearchVisible;
     private bool _isRefreshingNotifications;
-    private bool _isOpeningNotificationModal;
-    private bool _isClosingNotificationModal;
     private readonly Border _floatingTopBarHost;
     private readonly ContentView _bottomBarHost;
     private IDispatcherTimer? _notificationRefreshTimer;
     private IDispatcherTimer? _oortjiesPeekTimer;
     private IDispatcherTimer? _oortjiesHideTimer;
-    private IDispatcherTimer? _scrollVisualUpdateTimer;
+    private IDispatcherTimer? _scrollIdleTimer;
     private CancellationTokenSource? _imageWarmupCancellation;
     private CancellationTokenSource? _loadCancellation;
     private CancellationTokenSource? _searchDebounceCancellation;
     private CancellationTokenSource? _pageActivityCancellation;
     private readonly HashSet<string> _favoriteRequestsInFlight = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<WeakReference<IFavoriteStateTarget>> _favoriteStateTargets = new();
+    private readonly HashSet<string> _downloadRequestsInFlight = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _downloadedStoryKeys = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<WeakReference<IDownloadStateTarget>> _downloadStateTargets = new();
     private readonly List<DateTimeOffset> _recentOortjiesPeekTimes = new();
     private OortjiesPeekSide? _lastOortjiesPeekSide;
     private OortjiesPeekPlacement? _activeOortjiesPeekPlacement;
@@ -117,13 +106,12 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     private bool _hasStartedKaraktersDestinationWarmup;
     private string? _pendingSurface;
     private bool _isApplyingPendingSurface;
+    private bool _pendingSurfaceDispatchQueued;
+    private Task? _pageActivityStartTask;
     private double _lastResponsiveWidth = -1;
-    private double _lastGradientScrollOffset;
-    private double _lastGradientViewportHeight;
     private bool _responsiveRenderQueued;
     private bool _isImageWarmupActive;
     private bool _shouldResumeImageWarmupAfterScroll;
-    private double _pendingGradientScrollOffset;
     private long _lastScrollEventTick;
     public LuisterPage(
         MobileApiClient apiClient,
@@ -133,6 +121,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         PlaylistPlaybackState playlistPlaybackState,
         ContinueListeningState continueListeningState,
         StoryPlaybackSession storyPlaybackSession,
+        IOfflineStoryDownloadService offlineDownloadService,
         PlayerTransitionBackdropState transitionBackdropState)
     {
         _apiClient = apiClient;
@@ -142,8 +131,10 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         _playlistPlaybackState = playlistPlaybackState;
         _continueListeningState = continueListeningState;
         _storyPlaybackSession = storyPlaybackSession;
+        _offlineDownloadService = offlineDownloadService;
         _transitionBackdropState = transitionBackdropState;
         Title = "Luister";
+        BackgroundColor = LuisterBackgroundColor;
         SafeAreaEdges = SafeAreaEdges.None;
         Shell.SetNavBarIsVisible(this, false);
 
@@ -248,6 +239,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             InputTransparent = false,
             ZIndex = 100
         };
+        var topBarBackdropLayer = MobileTopBar.BuildStoriesBackdropLayer(_topBarOverlay);
 
         _floatingTopBarHost = new Border
         {
@@ -309,10 +301,11 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         _rootLayout = new Grid
         {
             SafeAreaEdges = SafeAreaEdges.None,
-            Background = LuisterBackgroundBrush,
+            BackgroundColor = LuisterBackgroundColor,
             Children =
             {
                 _refreshView,
+                topBarBackdropLayer,
                 _topBarOverlay,
                 _bottomBarOverlay,
                 nowPlayingBar,
@@ -339,7 +332,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             });
         };
         SizeChanged += (_, _) => HandleResponsiveSizeChanged();
-        SizeChanged += (_, _) => ApplyLuisterGradientForScroll(_pendingGradientScrollOffset);
         HandleResponsiveSizeChanged();
     }
 
@@ -347,7 +339,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     {
         base.OnAppearing();
         await StartPageActivityAsync();
-        await ApplyPendingSurfaceAsync();
+        QueuePendingSurfaceApplication();
     }
 
     public void ApplyQueryAttributes(IDictionary<string, object> query)
@@ -358,18 +350,49 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         }
 
         var surface = Uri.UnescapeDataString(value?.ToString() ?? string.Empty);
-        if (surface is not ("search" or "notifications"))
+        if (surface != "search")
         {
             return;
         }
 
         _pendingSurface = surface;
-        _ = ApplyPendingSurfaceAsync();
+        QueuePendingSurfaceApplication();
+    }
+
+    private void QueuePendingSurfaceApplication()
+    {
+        if (!_isPageActive ||
+            !_isPageActivityReady ||
+            string.IsNullOrWhiteSpace(_pendingSurface) ||
+            _pendingSurfaceDispatchQueued ||
+            _isApplyingPendingSurface)
+        {
+            return;
+        }
+
+        _pendingSurfaceDispatchQueued = true;
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            _pendingSurfaceDispatchQueued = false;
+            _ = ApplyPendingSurfaceAsync();
+        });
     }
 
     private async Task ApplyPendingSurfaceAsync()
     {
-        if (!_isPageActive || _isApplyingPendingSurface || string.IsNullOrWhiteSpace(_pendingSurface))
+        if (!_isPageActive ||
+            !_isPageActivityReady ||
+            _isApplyingPendingSurface ||
+            string.IsNullOrWhiteSpace(_pendingSurface) ||
+            !ReferenceEquals(Shell.Current.CurrentPage, this))
+        {
+            return;
+        }
+
+        // ApplyQueryAttributes can run before Shell has completed the page
+        // transition. Give Shell one dispatcher turn before changing the page.
+        await Task.Yield();
+        if (!_isPageActive || !ReferenceEquals(Shell.Current.CurrentPage, this))
         {
             return;
         }
@@ -379,25 +402,73 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         _isApplyingPendingSurface = true;
         try
         {
-            if (surface == "search")
+            if (surface != "search")
             {
-                if (!_isSearchVisible)
-                {
-                    await ToggleSearchAsync();
-                }
-
                 return;
             }
 
-            await ShowNotificationsAsync();
+            if (!_isSearchVisible)
+            {
+                await ToggleSearchAsync();
+            }
+        }
+        catch (Exception ex)
+        {
+            _analytics.TrackException(ex, "mobile_surface_failed");
         }
         finally
         {
             _isApplyingPendingSurface = false;
+            QueuePendingSurfaceApplication();
         }
     }
 
     private async Task StartPageActivityAsync()
+    {
+        if (_isPageActivityReady)
+        {
+            return;
+        }
+
+        if (_pageActivityStartTask is not null)
+        {
+            try
+            {
+                await _pageActivityStartTask;
+            }
+            catch (Exception ex)
+            {
+                _analytics.TrackException(ex, "mobile_page_activity_start_failed");
+            }
+
+            return;
+        }
+
+        var startTask = StartPageActivityCoreAsync();
+        _pageActivityStartTask = startTask;
+        try
+        {
+            await startTask;
+            if (_isPageActive)
+            {
+                _isPageActivityReady = true;
+                QueuePendingSurfaceApplication();
+            }
+        }
+        catch (Exception ex)
+        {
+            _analytics.TrackException(ex, "mobile_page_activity_start_failed");
+        }
+        finally
+        {
+            if (ReferenceEquals(_pageActivityStartTask, startTask))
+            {
+                _pageActivityStartTask = null;
+            }
+        }
+    }
+
+    private async Task StartPageActivityCoreAsync()
     {
         if (_isPageActive)
         {
@@ -405,10 +476,12 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         }
 
         _isPageActive = true;
+        _isPageActivityReady = false;
         _pageActivityCancellation?.Cancel();
         _pageActivityCancellation?.Dispose();
         _pageActivityCancellation = new CancellationTokenSource();
         SubscribePageEvents();
+        _ = RefreshDownloadedStoryKeysAsync(_pageActivityCancellation.Token);
         StartKaraktersDestinationWarmup(_pageActivityCancellation.Token);
         if (!_hasLoaded)
         {
@@ -419,6 +492,11 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             _ = RefreshVisibleStateAfterNavigationAsync(_pageActivityCancellation.Token);
         }
 
+        if (!_isPageActive)
+        {
+            return;
+        }
+
         StartNotificationRefreshTimer();
         StartOortjiesPeekMascot();
     }
@@ -426,11 +504,12 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     protected override void OnDisappearing()
     {
         _isPageActive = false;
+        _isPageActivityReady = false;
         StopNotificationRefreshTimer();
         UnsubscribePageEvents();
         _loadCancellation?.Cancel();
         _imageWarmupCancellation?.Cancel();
-        _scrollVisualUpdateTimer?.Stop();
+        _scrollIdleTimer?.Stop();
         _shouldResumeImageWarmupAfterScroll = false;
         _searchDebounceCancellation?.Cancel();
         _pageActivityCancellation?.Cancel();
@@ -448,7 +527,9 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
 
         _apiClient.NewNotificationsAvailable += OnNewNotificationsAvailable;
         _continueListeningState.Changed += OnContinueListeningChanged;
+        _offlineDownloadService.DownloadsChanged += OnDownloadsChanged;
         _sessionState.Changed += OnSessionStateChanged;
+        Shell.Current.Navigated += OnShellNavigated;
         _isPageEventsSubscribed = true;
     }
 
@@ -461,8 +542,20 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
 
         _apiClient.NewNotificationsAvailable -= OnNewNotificationsAvailable;
         _continueListeningState.Changed -= OnContinueListeningChanged;
+        _offlineDownloadService.DownloadsChanged -= OnDownloadsChanged;
         _sessionState.Changed -= OnSessionStateChanged;
+        Shell.Current.Navigated -= OnShellNavigated;
         _isPageEventsSubscribed = false;
+    }
+
+    private void OnShellNavigated(object? sender, ShellNavigatedEventArgs args)
+    {
+        if (_isPageActive &&
+            _isPageActivityReady &&
+            ReferenceEquals(Shell.Current.CurrentPage, this))
+        {
+            QueuePendingSurfaceApplication();
+        }
     }
 
     private void OnNewNotificationsAvailable(int count)
@@ -486,6 +579,16 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         });
     }
 
+    private void OnDownloadsChanged(object? sender, EventArgs args)
+    {
+        if (!_isPageActive)
+        {
+            return;
+        }
+
+        _ = RefreshDownloadedStoryKeysAsync(_pageActivityCancellation?.Token ?? default);
+    }
+
     private void OnSessionStateChanged(MobileSession session)
     {
         MainThread.BeginInvokeOnMainThread(() =>
@@ -505,6 +608,14 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 // The session endpoint commonly returns the same state already
                 // used for the cached first render. Refresh only the lightweight
                 // chrome instead of rebuilding every native carousel.
+                RenderFloatingTopBar();
+            }
+            else if (IsFeedAccessEquivalent(_lastRenderedSession, session))
+            {
+                // A favourite response updates SessionState. Keep the existing
+                // CollectionView and its nested carousels alive, then update only
+                // matching realised heart controls so the page does not flash.
+                ApplyFavoriteSessionState(_lastRenderedSession!, session);
                 RenderFloatingTopBar();
             }
             else
@@ -731,17 +842,138 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
 
     private static bool IsFeedSessionEquivalent(MobileSession? previous, MobileSession current)
     {
-        if (previous is null ||
-            previous.IsSignedIn != current.IsSignedIn ||
-            previous.HasPaidSubscription != current.HasPaidSubscription)
+        if (!IsFeedAccessEquivalent(previous, current))
         {
             return false;
         }
 
         var previousFavorites = new HashSet<string>(
-            previous.FavoriteStorySlugs,
+            previous!.FavoriteStorySlugs,
             StringComparer.OrdinalIgnoreCase);
         return previousFavorites.SetEquals(current.FavoriteStorySlugs);
+    }
+
+    private static bool IsFeedAccessEquivalent(MobileSession? previous, MobileSession current) =>
+        previous is not null &&
+        previous.IsSignedIn == current.IsSignedIn &&
+        previous.HasPaidSubscription == current.HasPaidSubscription &&
+        previous.HasFullStoryAccess == current.HasFullStoryAccess;
+
+    private void ApplyFavoriteSessionState(MobileSession previous, MobileSession current)
+    {
+        var previousFavorites = (previous.FavoriteStorySlugs ?? Array.Empty<string>())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var currentFavorites = (current.FavoriteStorySlugs ?? Array.Empty<string>())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var slug in previousFavorites.Union(currentFavorites, StringComparer.OrdinalIgnoreCase))
+        {
+            if (previousFavorites.Contains(slug) == currentFavorites.Contains(slug))
+            {
+                continue;
+            }
+
+            var isFavorite = currentFavorites.Contains(slug);
+            UpdateFavoriteState(slug, isFavorite);
+            UpdateVisibleFavoriteState(slug, isFavorite);
+        }
+
+        _lastRenderedSession = current;
+    }
+
+    private void RegisterFavoriteStateTarget(IFavoriteStateTarget target)
+    {
+        _favoriteStateTargets.RemoveAll(reference => !reference.TryGetTarget(out _));
+        _favoriteStateTargets.Add(new WeakReference<IFavoriteStateTarget>(target));
+    }
+
+    private void RegisterDownloadStateTarget(IDownloadStateTarget target)
+    {
+        _downloadStateTargets.RemoveAll(reference => !reference.TryGetTarget(out _));
+        _downloadStateTargets.Add(new WeakReference<IDownloadStateTarget>(target));
+    }
+
+    private OfflineDownloadState ResolveDownloadState(MobileStorySummary story)
+    {
+        var key = BuildDownloadRequestKey(story);
+        if (_downloadRequestsInFlight.Contains(key))
+        {
+            return OfflineDownloadState.Downloading;
+        }
+
+        return _downloadedStoryKeys.Contains(key)
+            ? OfflineDownloadState.Downloaded
+            : OfflineDownloadState.NotDownloaded;
+    }
+
+    private void RefreshVisibleDownloadStates()
+    {
+        for (var index = _downloadStateTargets.Count - 1; index >= 0; index--)
+        {
+            var reference = _downloadStateTargets[index];
+            if (!reference.TryGetTarget(out var target))
+            {
+                _downloadStateTargets.RemoveAt(index);
+                continue;
+            }
+
+            target.RefreshDownloadState();
+        }
+    }
+
+    private async Task RefreshDownloadedStoryKeysAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            var downloads = await _offlineDownloadService.GetPlayableDownloadsAsync(cancellationToken);
+            var downloadedKeys = downloads
+                .Select(download => BuildDownloadRequestKey(download.Slug, download.Source))
+                .ToArray();
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                _downloadedStoryKeys.Clear();
+                foreach (var key in downloadedKeys)
+                {
+                    _downloadedStoryKeys.Add(key);
+                }
+
+                RefreshVisibleDownloadStates();
+            });
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex)
+        {
+            _analytics.TrackException(ex, "mobile_carousel_download_state_failed");
+        }
+    }
+
+    private MobileStorySummary ResolveCurrentFavoriteState(MobileStorySummary story)
+    {
+        var isFavorite = (_sessionState.Current.FavoriteStorySlugs ?? Array.Empty<string>())
+            .Contains(story.Slug, StringComparer.OrdinalIgnoreCase);
+        return story with { IsFavorite = isFavorite };
+    }
+
+    private void UpdateVisibleFavoriteState(string slug, bool isFavorite)
+    {
+        for (var index = _favoriteStateTargets.Count - 1; index >= 0; index--)
+        {
+            var reference = _favoriteStateTargets[index];
+            if (!reference.TryGetTarget(out var target))
+            {
+                _favoriteStateTargets.RemoveAt(index);
+                continue;
+            }
+
+            target.UpdateFavoriteState(slug, isFavorite);
+        }
     }
 
     private void RenderLoadingState()
@@ -812,70 +1044,41 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
 
     private void OnFeedViewScrolled(object? sender, ItemsViewScrolledEventArgs args)
     {
-        QueueLuisterScrollUpdate(args.VerticalOffset);
+        QueueLuisterScrollUpdate();
     }
 
     private void OnScrollViewScrolled(object? sender, ScrolledEventArgs args) =>
-        QueueLuisterScrollUpdate(args.ScrollY);
+        QueueLuisterScrollUpdate();
 
-    private void QueueLuisterScrollUpdate(double scrollOffset)
+    private void QueueLuisterScrollUpdate()
     {
-        _pendingGradientScrollOffset = Math.Max(0, scrollOffset);
         _lastScrollEventTick = Environment.TickCount64;
 
-        if (_scrollVisualUpdateTimer is null)
+        if (_scrollIdleTimer is null)
         {
-            _scrollVisualUpdateTimer = Dispatcher.CreateTimer();
-            _scrollVisualUpdateTimer.Interval = ScrollVisualUpdateInterval;
-            _scrollVisualUpdateTimer.Tick += OnScrollVisualUpdateTimerTick;
+            _scrollIdleTimer = Dispatcher.CreateTimer();
+            _scrollIdleTimer.Interval = ScrollIdlePollInterval;
+            _scrollIdleTimer.Tick += OnScrollIdleTimerTick;
         }
 
         PauseImageWarmupForScroll();
-        if (_scrollVisualUpdateTimer.IsRunning)
+        if (_scrollIdleTimer.IsRunning)
         {
             return;
         }
 
-        _scrollVisualUpdateTimer.Start();
+        _scrollIdleTimer.Start();
     }
 
-    private void OnScrollVisualUpdateTimerTick(object? sender, EventArgs args)
+    private void OnScrollIdleTimerTick(object? sender, EventArgs args)
     {
-        ApplyLuisterGradientForScroll(_pendingGradientScrollOffset);
         if (Environment.TickCount64 - _lastScrollEventTick < ScrollIdleThresholdMilliseconds)
         {
             return;
         }
 
-        _scrollVisualUpdateTimer?.Stop();
+        _scrollIdleTimer?.Stop();
         ResumeImageWarmupAfterScroll();
-    }
-
-    private void ApplyLuisterGradientForScroll(double scrollOffset)
-    {
-        var viewportHeight = Height > 0 ? Height : _rootLayout.Height;
-        if (viewportHeight <= 0)
-        {
-            return;
-        }
-
-        var measuredContentHeight = _feedView?.Height ?? _activeScrollView?.Content?.Height ?? _scrollView?.Content?.Height ?? 0;
-        var travelDistance = Math.Max(
-            measuredContentHeight,
-            Math.Max(viewportHeight * 4, LuisterGradientMinimumTravelDistance));
-
-        if (Math.Abs(scrollOffset - _lastGradientScrollOffset) < 1 &&
-            Math.Abs(viewportHeight - _lastGradientViewportHeight) < 1)
-        {
-            return;
-        }
-
-        _lastGradientScrollOffset = Math.Max(0, scrollOffset);
-        _lastGradientViewportHeight = viewportHeight;
-        LuisterBackgroundBrush.StartPoint = new Point(0, -_lastGradientScrollOffset / viewportHeight);
-        LuisterBackgroundBrush.EndPoint = new Point(
-            0,
-            (travelDistance - _lastGradientScrollOffset) / viewportHeight);
     }
 
     private void RenderBottomBar()
@@ -1325,8 +1528,13 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             this,
             _apiClient,
             _sessionState.Current,
-            notificationAction: ShowNotificationsAsync,
+            notificationAction: RequestNotificationsAsync,
             notificationCount: _notificationPage?.UnreadCount ?? 0);
+    }
+
+    private Task RequestNotificationsAsync()
+    {
+        return Shell.Current.GoToAsync(nameof(KennisgewingsPage), animate: false);
     }
 
     private View BuildSearchBox()
@@ -1406,71 +1614,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             }
         };
 
-    private View BuildNotificationButton()
-    {
-        var unreadCount = _notificationPage?.UnreadCount ?? 0;
-        var container = new Grid
-        {
-            WidthRequest = 50,
-            HeightRequest = 50,
-            VerticalOptions = LayoutOptions.Center
-        };
-        var notificationSurface = BuildHeaderCircleButton("🔔", 20, Color.FromArgb("#0B3534"), Color.FromArgb("#F4E9D1"));
-        notificationSurface.InputTransparent = true;
-        container.Children.Add(notificationSurface);
-
-        if (unreadCount > 0)
-        {
-            container.Children.Add(new Border
-            {
-                BackgroundColor = Color.FromArgb("#E11D48"),
-                Stroke = Colors.White,
-                StrokeThickness = 1,
-                StrokeShape = new RoundRectangle { CornerRadius = 999 },
-                WidthRequest = unreadCount > 9 ? 28 : 22,
-                HeightRequest = 22,
-                Padding = 0,
-                HorizontalOptions = LayoutOptions.End,
-                VerticalOptions = LayoutOptions.Start,
-                InputTransparent = true,
-                Content = new Label
-                {
-                    Text = FormatNotificationCount(unreadCount),
-                    FontSize = 10,
-                    FontAttributes = FontAttributes.Bold,
-                    TextColor = Colors.White,
-                    HorizontalTextAlignment = TextAlignment.Center,
-                    VerticalTextAlignment = TextAlignment.Center
-                }
-            });
-        }
-
-        return container;
-    }
-
-    private static string FormatNotificationCount(int unreadCount) =>
-        unreadCount > 99 ? "99+" : unreadCount.ToString(CultureInfo.InvariantCulture);
-
-    private static Border BuildNotificationCloseButton() =>
-        new()
-        {
-            BackgroundColor = Color.FromArgb("#F4E9D1"),
-            StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = 23 },
-            WidthRequest = 46,
-            HeightRequest = 46,
-            VerticalOptions = LayoutOptions.Center,
-            Content = new GraphicsView
-            {
-                Drawable = new NotificationDownCaretDrawable(),
-                WidthRequest = 22,
-                HeightRequest = 22,
-                HorizontalOptions = LayoutOptions.Center,
-                VerticalOptions = LayoutOptions.Center,
-                InputTransparent = true
-            }
-        };
-
     private Border BuildProfileButton()
     {
         var session = _sessionState.Current;
@@ -1512,8 +1655,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 "Karakter-pare",
                 "Karakter Raai",
                 "Afgelaai",
-                "Instellings",
-                "Bestuur rekening");
+                "Instellings");
             _menuOverlay.IsVisible = false;
             _menuOverlay.ZIndex = 300;
             _rootLayout.Children.Add(_menuOverlay);
@@ -1558,9 +1700,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                         break;
                     case "Instellings":
                         await Shell.Current.GoToAsync(nameof(SettingsPage), animate: true);
-                        break;
-                    case "Bestuur rekening":
-                        await OpenAccountCoreAsync();
                         break;
                 }
             }
@@ -1913,892 +2052,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
 
         return min + Random.Shared.NextDouble() * (max - min);
     }
-
-    private async Task ShowNotificationsAsync()
-    {
-        if (!_sessionState.Current.IsSignedIn)
-        {
-            await DisplayAlertAsync("Kennisgewings", "Teken in om kennisgewings te sien.", "Reg so");
-            return;
-        }
-
-        if (_notificationModalPage is not null || _isOpeningNotificationModal)
-        {
-            return;
-        }
-
-        _isOpeningNotificationModal = true;
-
-        var titleLabel = new Label
-        {
-            Text = "Kennisgewings",
-            FontSize = 25,
-            FontAttributes = FontAttributes.Bold,
-            TextColor = Color.FromArgb("#0B3534"),
-            VerticalTextAlignment = TextAlignment.Center
-        };
-        var countLabel = new Label
-        {
-            FontSize = 13,
-            TextColor = Color.FromArgb("#6B7280")
-        };
-        var statusLabel = new Label
-        {
-            Text = "Laai kennisgewings...",
-            FontSize = 14,
-            TextColor = Color.FromArgb("#6B7280"),
-            HorizontalTextAlignment = TextAlignment.Center
-        };
-        var list = new VerticalStackLayout { Spacing = 10 };
-        var clearButton = new Button
-        {
-            Text = "Maak skoon",
-            BackgroundColor = Color.FromArgb("#F4E9D1"),
-            TextColor = Color.FromArgb("#0B3534"),
-            CornerRadius = 16,
-            HeightRequest = 42,
-            Padding = new Thickness(14, 0)
-        };
-        var loadMoreButton = new Button
-        {
-            Text = "Wys vorige kennisgewings",
-            BackgroundColor = Color.FromArgb("#123F3F"),
-            TextColor = Colors.White,
-            CornerRadius = 16,
-            HeightRequest = 48,
-            IsVisible = false
-        };
-        var closeButton = BuildNotificationCloseButton();
-
-        var titleStack = new VerticalStackLayout
-        {
-            Spacing = 0,
-            Children = { titleLabel, countLabel }
-        };
-        var header = new Grid
-        {
-            ColumnDefinitions =
-            {
-                new ColumnDefinition { Width = GridLength.Auto },
-                new ColumnDefinition { Width = GridLength.Star },
-                new ColumnDefinition { Width = GridLength.Auto }
-            },
-            ColumnSpacing = 12,
-            Children =
-            {
-                closeButton,
-                titleStack,
-                clearButton
-            }
-        };
-        Grid.SetColumn(titleStack, 1);
-        Grid.SetColumn(clearButton, 2);
-
-        var notificationScrollView = new ScrollView
-        {
-            Content = list,
-            VerticalOptions = LayoutOptions.Fill
-        };
-        var modalLayout = new Grid
-        {
-            Padding = new Thickness(18, 18, 18, 28),
-            RowSpacing = 16,
-            RowDefinitions =
-            {
-                new RowDefinition { Height = GridLength.Auto },
-                new RowDefinition { Height = GridLength.Auto },
-                new RowDefinition { Height = GridLength.Star },
-                new RowDefinition { Height = GridLength.Auto }
-            },
-            Children =
-            {
-                header,
-                statusLabel,
-                notificationScrollView,
-                loadMoreButton
-            }
-        };
-        Grid.SetRow(statusLabel, 1);
-        Grid.SetRow(notificationScrollView, 2);
-        Grid.SetRow(loadMoreButton, 3);
-
-        var modal = new ContentPage
-        {
-            Title = "Kennisgewings",
-            BackgroundColor = LuisterModalBackgroundColor,
-            Content = modalLayout
-        };
-        _notificationModalCancellation?.Cancel();
-        _notificationModalCancellation?.Dispose();
-        _notificationModalCancellation = new CancellationTokenSource();
-        var cancellationToken = _notificationModalCancellation.Token;
-        _notificationModalPage = modal;
-
-        modal.Disappearing += (_, _) => EndNotificationModalSession(modal);
-        var closeTap = new TapGestureRecognizer();
-        closeTap.Tapped += async (_, _) => await CloseNotificationModalAsync(modal);
-        closeButton.GestureRecognizers.Add(closeTap);
-        clearButton.Clicked += async (_, _) =>
-            await ClearNotificationsAsync(modal, cancellationToken, list, countLabel, statusLabel, clearButton, loadMoreButton);
-        loadMoreButton.Clicked += async (_, _) =>
-            await LoadMoreNotificationsAsync(modal, cancellationToken, list, countLabel, statusLabel, clearButton, loadMoreButton);
-
-        try
-        {
-            var renderedCachedNotifications = await TryRenderCachedNotificationsAsync(
-                modal,
-                cancellationToken,
-                list,
-                countLabel,
-                statusLabel,
-                clearButton,
-                loadMoreButton);
-            if (!IsNotificationModalActive(modal, cancellationToken))
-            {
-                return;
-            }
-
-            await Navigation.PushModalAsync(modal, animated: false);
-            if (IsNotificationModalActive(modal, cancellationToken))
-            {
-                _ = LoadNotificationsAsync(
-                    modal,
-                    cancellationToken,
-                    list,
-                    countLabel,
-                    statusLabel,
-                    clearButton,
-                    loadMoreButton,
-                    renderedCachedNotifications);
-            }
-        }
-        catch (Exception ex)
-        {
-            EndNotificationModalSession(modal);
-            _analytics.TrackException(ex, "mobile_notifications_open_failed");
-        }
-        finally
-        {
-            _isOpeningNotificationModal = false;
-        }
-    }
-
-    private async Task<bool> CloseNotificationModalAsync(ContentPage modal)
-    {
-        if (!ReferenceEquals(_notificationModalPage, modal) || _isClosingNotificationModal)
-        {
-            return false;
-        }
-
-        _isClosingNotificationModal = true;
-        _notificationModalCancellation?.Cancel();
-        var didClose = false;
-        try
-        {
-            var modalStack = modal.Navigation.ModalStack;
-            if (modalStack.Count > 0 && ReferenceEquals(modalStack[^1], modal))
-            {
-                await modal.Navigation.PopModalAsync(animated: false);
-                didClose = true;
-            }
-            else
-            {
-                didClose = !modalStack.Contains(modal);
-            }
-        }
-        catch (Exception ex)
-        {
-            _analytics.TrackException(ex, "mobile_notifications_close_failed");
-        }
-        finally
-        {
-            EndNotificationModalSession(modal);
-        }
-
-        return didClose;
-    }
-
-    private bool IsNotificationModalActive(ContentPage modal, CancellationToken cancellationToken) =>
-        !cancellationToken.IsCancellationRequested &&
-        ReferenceEquals(_notificationModalPage, modal);
-
-    private void EndNotificationModalSession(ContentPage modal)
-    {
-        if (!ReferenceEquals(_notificationModalPage, modal))
-        {
-            return;
-        }
-
-        _notificationModalCancellation?.Cancel();
-        _notificationModalCancellation?.Dispose();
-        _notificationModalCancellation = null;
-        _notificationModalPage = null;
-        _isClosingNotificationModal = false;
-
-        MainThread.BeginInvokeOnMainThread(() =>
-        {
-            if (_isPageActive && Handler is not null)
-            {
-                RenderFloatingTopBar();
-            }
-        });
-    }
-
-    private async Task<bool> TryRenderCachedNotificationsAsync(
-        ContentPage modal,
-        CancellationToken cancellationToken,
-        VerticalStackLayout list,
-        Label countLabel,
-        Label statusLabel,
-        Button clearButton,
-        Button loadMoreButton)
-    {
-        var cachedPage = _notificationPage ?? await _apiClient.GetCachedNotificationsAsync(cancellationToken);
-        if (cachedPage is null || !IsNotificationModalActive(modal, cancellationToken))
-        {
-            return false;
-        }
-
-        _notificationPage = cachedPage;
-        RenderNotificationModalState(modal, cancellationToken, list, countLabel, statusLabel, clearButton, loadMoreButton);
-        return true;
-    }
-
-    private async Task LoadNotificationsAsync(
-        ContentPage modal,
-        CancellationToken cancellationToken,
-        VerticalStackLayout list,
-        Label countLabel,
-        Label statusLabel,
-        Button clearButton,
-        Button loadMoreButton,
-        bool hasRenderedCachedNotifications = false)
-    {
-        if (!IsNotificationModalActive(modal, cancellationToken))
-        {
-            return;
-        }
-
-        if (!hasRenderedCachedNotifications)
-        {
-            SetNotificationControlsBusy(statusLabel, clearButton, loadMoreButton, "Laai kennisgewings...");
-        }
-
-        try
-        {
-            var loadedPage = await _apiClient.GetNotificationsAsync(cancellationToken: cancellationToken);
-            if (!IsNotificationModalActive(modal, cancellationToken))
-            {
-                return;
-            }
-
-            _notificationPage = loadedPage;
-            RenderNotificationModalState(modal, cancellationToken, list, countLabel, statusLabel, clearButton, loadMoreButton);
-
-            if (_notificationPage?.UnreadCount > 0)
-            {
-                MarkAllNotificationsReadLocally();
-                RenderNotificationModalState(modal, cancellationToken, list, countLabel, statusLabel, clearButton, loadMoreButton);
-                _ = _apiClient.SaveNotificationsCacheAsync(_notificationPage);
-                _ = TryMarkAllNotificationsReadAsync();
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
-        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.Unauthorized)
-        {
-            _notificationPage = null;
-            if (IsNotificationModalActive(modal, cancellationToken))
-            {
-                statusLabel.IsVisible = true;
-                statusLabel.Text = "Teken in om kennisgewings te sien.";
-            }
-        }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("status 401", StringComparison.OrdinalIgnoreCase))
-        {
-            _notificationPage = null;
-            if (IsNotificationModalActive(modal, cancellationToken))
-            {
-                statusLabel.IsVisible = true;
-                statusLabel.Text = "Teken in om kennisgewings te sien.";
-            }
-        }
-        catch
-        {
-            if (!hasRenderedCachedNotifications && IsNotificationModalActive(modal, cancellationToken))
-            {
-                statusLabel.IsVisible = true;
-                statusLabel.Text = "Ons kon nie nou die kennisgewings laai nie.";
-            }
-        }
-        finally
-        {
-            if (IsNotificationModalActive(modal, cancellationToken))
-            {
-                clearButton.IsEnabled = true;
-                loadMoreButton.IsEnabled = true;
-            }
-        }
-    }
-
-    private async Task LoadMoreNotificationsAsync(
-        ContentPage modal,
-        CancellationToken cancellationToken,
-        VerticalStackLayout list,
-        Label countLabel,
-        Label statusLabel,
-        Button clearButton,
-        Button loadMoreButton)
-    {
-        if (!IsNotificationModalActive(modal, cancellationToken))
-        {
-            return;
-        }
-
-        var currentPage = _notificationPage;
-        if (currentPage is null)
-        {
-            return;
-        }
-
-        var before = currentPage.Notifications.LastOrDefault()?.CreatedAt;
-        if (before is null && !currentPage.HasHistory)
-        {
-            return;
-        }
-
-        SetNotificationControlsBusy(statusLabel, clearButton, loadMoreButton, "Laai vorige kennisgewings...");
-        try
-        {
-            var loadedPage = await _apiClient.GetNotificationsAsync(
-                before: before,
-                history: currentPage.HasHistory,
-                cancellationToken: cancellationToken);
-            if (loadedPage is not null && IsNotificationModalActive(modal, cancellationToken))
-            {
-                _notificationPage = MergeNotificationPages(currentPage, loadedPage);
-                RenderNotificationModalState(modal, cancellationToken, list, countLabel, statusLabel, clearButton, loadMoreButton);
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
-        catch
-        {
-            if (IsNotificationModalActive(modal, cancellationToken))
-            {
-                statusLabel.IsVisible = true;
-                statusLabel.Text = "Ons kon nie die vorige kennisgewings laai nie.";
-            }
-        }
-        finally
-        {
-            if (IsNotificationModalActive(modal, cancellationToken))
-            {
-                clearButton.IsEnabled = true;
-                loadMoreButton.IsEnabled = true;
-            }
-        }
-    }
-
-    private async Task ClearNotificationsAsync(
-        ContentPage modal,
-        CancellationToken cancellationToken,
-        VerticalStackLayout list,
-        Label countLabel,
-        Label statusLabel,
-        Button clearButton,
-        Button loadMoreButton)
-    {
-        if (!IsNotificationModalActive(modal, cancellationToken) ||
-            _notificationPage?.Notifications.Count > 0 != true)
-        {
-            return;
-        }
-
-        clearButton.IsEnabled = false;
-        try
-        {
-            await _apiClient.ClearNotificationsAsync(cancellationToken);
-            if (!IsNotificationModalActive(modal, cancellationToken) || _notificationPage is null)
-            {
-                return;
-            }
-
-            _notificationPage = _notificationPage with
-            {
-                Count = 0,
-                UnreadCount = 0,
-                HasMore = false,
-                HasHistory = false,
-                Notifications = Array.Empty<MobileNotificationItem>()
-            };
-            _ = _apiClient.SaveNotificationsCacheAsync(_notificationPage);
-            RenderNotificationModalState(modal, cancellationToken, list, countLabel, statusLabel, clearButton, loadMoreButton);
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
-        catch
-        {
-            if (IsNotificationModalActive(modal, cancellationToken))
-            {
-                statusLabel.IsVisible = true;
-                statusLabel.Text = "Ons kon nie die kennisgewings skoonmaak nie.";
-            }
-        }
-        finally
-        {
-            if (IsNotificationModalActive(modal, cancellationToken))
-            {
-                clearButton.IsEnabled = true;
-            }
-        }
-    }
-
-    private static void SetNotificationControlsBusy(
-        Label statusLabel,
-        Button clearButton,
-        Button loadMoreButton,
-        string message)
-    {
-        statusLabel.IsVisible = true;
-        statusLabel.Text = message;
-        clearButton.IsEnabled = false;
-        loadMoreButton.IsEnabled = false;
-    }
-
-    private void RenderNotificationModalState(
-        ContentPage modal,
-        CancellationToken cancellationToken,
-        VerticalStackLayout list,
-        Label countLabel,
-        Label statusLabel,
-        Button clearButton,
-        Button loadMoreButton)
-    {
-        if (!IsNotificationModalActive(modal, cancellationToken))
-        {
-            return;
-        }
-
-        var page = _notificationPage;
-        var notifications = page?.Notifications ?? Array.Empty<MobileNotificationItem>();
-        list.Children.Clear();
-
-        countLabel.Text = page?.UnreadCount > 0
-            ? $"{page.UnreadCount} ongelees"
-            : "Geen ongelees";
-        clearButton.IsVisible = notifications.Count > 0;
-        loadMoreButton.IsVisible = page is not null && (page.HasMore || page.HasHistory);
-
-        if (notifications.Count == 0)
-        {
-            statusLabel.IsVisible = true;
-            statusLabel.Text = "Geen kennisgewings nog nie.";
-            return;
-        }
-
-        statusLabel.IsVisible = false;
-        foreach (var notification in notifications)
-        {
-            list.Children.Add(BuildNotificationItem(
-                notification,
-                modal,
-                cancellationToken,
-                list,
-                countLabel,
-                statusLabel,
-                clearButton,
-                loadMoreButton));
-        }
-    }
-
-    private View BuildNotificationItem(
-        MobileNotificationItem notification,
-        ContentPage modal,
-        CancellationToken cancellationToken,
-        VerticalStackLayout list,
-        Label countLabel,
-        Label statusLabel,
-        Button clearButton,
-        Button loadMoreButton)
-    {
-        var isClearing = false;
-        var clearItemButton = new Button
-        {
-            Text = "×",
-            FontSize = 22,
-            BackgroundColor = Colors.Transparent,
-            TextColor = Color.FromArgb("#6B7280"),
-            WidthRequest = 40,
-            HeightRequest = 40,
-            Padding = 0
-        };
-
-        async Task ClearNotificationAsync()
-        {
-            if (isClearing || !IsNotificationModalActive(modal, cancellationToken))
-            {
-                return;
-            }
-
-            isClearing = true;
-            clearItemButton.IsEnabled = false;
-            try
-            {
-                await _apiClient.ClearNotificationAsync(notification.Id, cancellationToken);
-                if (!IsNotificationModalActive(modal, cancellationToken))
-                {
-                    return;
-                }
-
-                RemoveNotificationLocally(notification.Id);
-                if (_notificationPage is not null)
-                {
-                    _ = _apiClient.SaveNotificationsCacheAsync(_notificationPage);
-                }
-
-                RenderNotificationModalState(modal, cancellationToken, list, countLabel, statusLabel, clearButton, loadMoreButton);
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-            }
-            catch
-            {
-                if (IsNotificationModalActive(modal, cancellationToken))
-                {
-                    statusLabel.IsVisible = true;
-                    statusLabel.Text = "Ons kon nie dié kennisgewing verwyder nie.";
-                }
-            }
-            finally
-            {
-                isClearing = false;
-                if (IsNotificationModalActive(modal, cancellationToken))
-                {
-                    clearItemButton.IsEnabled = true;
-                }
-            }
-        }
-
-        clearItemButton.Clicked += async (_, _) => await ClearNotificationAsync();
-
-        var copy = new VerticalStackLayout
-        {
-            Spacing = 4,
-            Children =
-            {
-                new HorizontalStackLayout
-                {
-                    Spacing = 8,
-                    Children =
-                    {
-                        BuildNotificationTypeLabel(notification.Type),
-                        new Label
-                        {
-                            Text = FormatNotificationDate(notification.CreatedAt),
-                            FontSize = 11,
-                            TextColor = Color.FromArgb("#6B7280"),
-                            VerticalTextAlignment = TextAlignment.Center
-                        }
-                    }
-                },
-                new Label
-                {
-                    Text = string.IsNullOrWhiteSpace(notification.Title) ? "Kennisgewing" : notification.Title,
-                    FontSize = 15,
-                    FontAttributes = notification.IsRead ? FontAttributes.None : FontAttributes.Bold,
-                    TextColor = Color.FromArgb("#1B2231"),
-                    LineBreakMode = LineBreakMode.TailTruncation,
-                    MaxLines = 2
-                },
-                new Label
-                {
-                    Text = notification.Body,
-                    FontSize = 12,
-                    TextColor = Color.FromArgb("#5F5F5F"),
-                    LineBreakMode = LineBreakMode.TailTruncation,
-                    MaxLines = 2
-                }
-            }
-        };
-        var imageFrame = new Border
-        {
-            WidthRequest = 58,
-            HeightRequest = 58,
-            StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = 14 },
-            Content = new ProgressiveCachedImage(
-                _apiClient,
-                new ProgressiveImageRequest(
-                    notification.ImagePath,
-                    FallbackFile: "schink_background.jpeg"))
-            {
-                Aspect = Aspect.AspectFill,
-                WidthRequest = 58,
-                HeightRequest = 58
-            }
-        };
-        var grid = new Grid
-        {
-            ColumnDefinitions =
-            {
-                new ColumnDefinition { Width = GridLength.Auto },
-                new ColumnDefinition { Width = GridLength.Star },
-                new ColumnDefinition { Width = GridLength.Auto }
-            },
-            ColumnSpacing = 12,
-            Children =
-            {
-                imageFrame,
-                copy,
-                clearItemButton
-            }
-        };
-        Grid.SetColumn(copy, 1);
-        Grid.SetColumn(clearItemButton, 2);
-
-        var row = new Border
-        {
-            BackgroundColor = notification.IsRead ? Colors.White : Color.FromArgb("#EEF8F5"),
-            Stroke = notification.IsRead ? Color.FromArgb("#EFE4D0") : Color.FromArgb("#80A7DCCB"),
-            StrokeThickness = 1,
-            StrokeShape = new RoundRectangle { CornerRadius = 18 },
-            Padding = 12,
-            Content = grid
-        };
-
-        var tap = new TapGestureRecognizer();
-        tap.Tapped += async (_, _) =>
-        {
-            if (!IsNotificationModalActive(modal, cancellationToken))
-            {
-                return;
-            }
-
-            await OpenNotificationAsync(notification, modal);
-            if (IsNotificationModalActive(modal, cancellationToken))
-            {
-                RenderNotificationModalState(modal, cancellationToken, list, countLabel, statusLabel, clearButton, loadMoreButton);
-            }
-        };
-        row.GestureRecognizers.Add(tap);
-
-        var removeSwipeItem = new SwipeItem
-        {
-            Text = "Verwyder",
-            BackgroundColor = Color.FromArgb("#E11D48")
-        };
-        removeSwipeItem.Invoked += async (_, _) => await ClearNotificationAsync();
-
-        var swipeItems = new SwipeItems
-        {
-            Mode = SwipeMode.Reveal,
-            SwipeBehaviorOnInvoked = SwipeBehaviorOnInvoked.Close
-        };
-        swipeItems.Add(removeSwipeItem);
-
-        return new SwipeView
-        {
-            RightItems = swipeItems,
-            Content = row
-        };
-    }
-
-    private async Task OpenNotificationAsync(MobileNotificationItem notification, ContentPage modal)
-    {
-        MarkNotificationReadLocally(notification.Id);
-        if (_notificationPage is not null)
-        {
-            _ = _apiClient.SaveNotificationsCacheAsync(_notificationPage);
-        }
-
-        // Reading a notification is a local UI action first. Persist the read state
-        // independently so a slow/offline mutation can never block its destination.
-        var markReadTask = TryMarkNotificationReadAsync(notification.Id);
-        var target = MobileNotificationNavigation.Resolve(notification.Type, notification.Href);
-        try
-        {
-            switch (target.Kind)
-            {
-                case MobileNotificationNavigationKind.Story:
-                    if (!await CloseNotificationModalAsync(modal))
-                    {
-                        break;
-                    }
-
-                    await _navigationGate.RunAsync(async () =>
-                    {
-                        if (string.IsNullOrWhiteSpace(target.Value))
-                        {
-                            await Shell.Current.GoToAsync("//Luister", animate: false);
-                            return;
-                        }
-
-                        _playlistPlaybackState.Clear();
-                        await CapturePlayerTransitionBackdropAsync();
-                        await Shell.Current.GoToAsync(
-                            $"{nameof(StoryDetailPage)}?slug={Uri.EscapeDataString(target.Value)}&source={Uri.EscapeDataString(target.Source ?? "luister")}",
-                            animate: false);
-                    });
-                    break;
-                case MobileNotificationNavigationKind.Character:
-                    if (!await CloseNotificationModalAsync(modal))
-                    {
-                        break;
-                    }
-
-                    await _navigationGate.RunAsync(() =>
-                    {
-                        if (string.IsNullOrWhiteSpace(target.Value))
-                        {
-                            return Shell.Current.GoToAsync("//Karakters", animate: false);
-                        }
-
-                        var parameters = new ShellNavigationQueryParameters
-                        {
-                            ["karakter"] = target.Value
-                        };
-                        return Shell.Current.GoToAsync("//Karakters", animate: false, parameters);
-                    });
-                    break;
-                case MobileNotificationNavigationKind.ResourceWebsite when !string.IsNullOrWhiteSpace(target.Value):
-                    await Browser.OpenAsync(_apiClient.BuildAbsoluteUrl(target.Value), BrowserLaunchMode.External);
-                    break;
-            }
-        }
-        catch
-        {
-            await DisplayAlertAsync(
-                "Kon nie oopmaak nie",
-                "Dié kennisgewing kon nie nou oopmaak nie. Probeer asseblief weer.",
-                "Reg so");
-        }
-
-        await markReadTask;
-    }
-
-    private async Task TryMarkAllNotificationsReadAsync()
-    {
-        try
-        {
-            await _apiClient.MarkAllNotificationsReadAsync();
-        }
-        catch
-        {
-            // Local read state and navigation must remain usable while offline.
-        }
-    }
-
-    private async Task TryMarkNotificationReadAsync(Guid notificationId)
-    {
-        try
-        {
-            await _apiClient.MarkNotificationReadAsync(notificationId);
-        }
-        catch
-        {
-            // The next refresh can reconcile server state; never block the tap action.
-        }
-    }
-
-    private static Label BuildNotificationTypeLabel(string notificationType) =>
-        new()
-        {
-            Text = GetNotificationTypeLabel(notificationType),
-            FontSize = 11,
-            FontAttributes = FontAttributes.Bold,
-            TextColor = Color.FromArgb("#0F766E"),
-            VerticalTextAlignment = TextAlignment.Center
-        };
-
-    private static string GetNotificationTypeLabel(string notificationType) =>
-        notificationType.Trim().ToLowerInvariant() switch
-        {
-            "character_unlock" => "Karakter",
-            "story_published" => "Nuwe storie",
-            "blog_published" => "Nuwe blog",
-            "resource_document_published" => "Nuwe hulpbron",
-            _ => "Kennisgewing"
-        };
-
-    private static string FormatNotificationDate(DateTimeOffset createdAt) =>
-        createdAt.LocalDateTime.ToString("dd MMM", CultureInfo.CurrentCulture);
-
-    private static MobileNotificationPage MergeNotificationPages(
-        MobileNotificationPage currentPage,
-        MobileNotificationPage loadedPage)
-    {
-        var existingIds = currentPage.Notifications.Select(notification => notification.Id).ToHashSet();
-        var mergedNotifications = currentPage.Notifications
-            .Concat(loadedPage.Notifications.Where(notification => existingIds.Add(notification.Id)))
-            .ToArray();
-
-        return loadedPage with
-        {
-            Count = mergedNotifications.Length,
-            UnreadCount = currentPage.UnreadCount,
-            Notifications = mergedNotifications
-        };
-    }
-
-    private void MarkAllNotificationsReadLocally()
-    {
-        if (_notificationPage is null)
-        {
-            return;
-        }
-
-        _notificationPage = _notificationPage with
-        {
-            UnreadCount = 0,
-            Notifications = _notificationPage.Notifications
-                .Select(notification => notification with { IsRead = true })
-                .ToArray()
-        };
-    }
-
-    private void MarkNotificationReadLocally(Guid notificationId)
-    {
-        if (_notificationPage is null)
-        {
-            return;
-        }
-
-        var notifications = _notificationPage.Notifications
-            .Select(notification => notification.Id == notificationId
-                ? notification with { IsRead = true }
-                : notification)
-            .ToArray();
-
-        _notificationPage = _notificationPage with
-        {
-            Notifications = notifications,
-            UnreadCount = notifications.Count(notification => !notification.IsRead)
-        };
-    }
-
-    private void RemoveNotificationLocally(Guid notificationId)
-    {
-        if (_notificationPage is null)
-        {
-            return;
-        }
-
-        var notifications = _notificationPage.Notifications
-            .Where(notification => notification.Id != notificationId)
-            .ToArray();
-
-        _notificationPage = _notificationPage with
-        {
-            Count = notifications.Length,
-            Notifications = notifications,
-            UnreadCount = notifications.Count(notification => !notification.IsRead)
-        };
-    }
-
     private Task OpenAccountAsync() =>
         _navigationGate.RunAsync(OpenAccountCoreAsync);
 
@@ -3218,7 +2471,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         return carousel;
     }
 
-    private sealed class ReusablePlaylistShowcaseView : ContentView
+    private sealed class ReusablePlaylistShowcaseView : ContentView, IFavoriteStateTarget
     {
         private readonly LuisterPage _owner;
         private readonly ProgressiveCachedImage _image;
@@ -3233,6 +2486,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         public ReusablePlaylistShowcaseView(LuisterPage owner)
         {
             _owner = owner;
+            _owner.RegisterFavoriteStateTarget(this);
             _image = new ProgressiveCachedImage(owner._apiClient)
             {
                 Aspect = Aspect.AspectFill,
@@ -3301,7 +2555,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         public void Bind(MobilePlaylist playlist, MobileStorySummary story)
         {
             _playlist = playlist;
-            _story = story;
+            _story = _owner.ResolveCurrentFavoriteState(story);
             var imageKey = $"{story.ImageUrl}|{story.ThumbnailUrl}";
             if (!string.Equals(_imageKey, imageKey, StringComparison.Ordinal))
             {
@@ -3313,7 +2567,10 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             }
 
             _title.Text = string.IsNullOrWhiteSpace(story.Title) ? playlist.Title : story.Title;
-            ApplyFavoriteOverlayState(_favoriteButton, story, updateAutomationId: false);
+            if (_story is not null)
+            {
+                ApplyFavoriteOverlayState(_favoriteButton, _story, updateAutomationId: false);
+            }
 
             var wideLayout = MobileResponsiveLayout.IsWide(_owner.Width);
             var pageWidth = MobileResponsiveLayout.ResolveWidth(_owner.Width);
@@ -3344,6 +2601,17 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             _image.Request = null;
         }
 
+        public void UpdateFavoriteState(string slug, bool isFavorite)
+        {
+            if (_story is null || !string.Equals(_story.Slug, slug, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            _story = _story with { IsFavorite = isFavorite };
+            ApplyFavoriteOverlayState(_favoriteButton, _story, updateAutomationId: false);
+        }
+
         private async Task OpenCurrentStoryAsync()
         {
             if (_story is not null && _playlist is not null)
@@ -3353,12 +2621,13 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         }
     }
 
-    private sealed class ReusableStoryCarouselCardView : ContentView
+    private sealed class ReusableStoryCarouselCardView : ContentView, IFavoriteStateTarget, IDownloadStateTarget
     {
         private readonly LuisterPage _owner;
         private readonly ProgressiveCachedImage _artwork;
         private readonly Label _title;
         private readonly Button _favoriteButton;
+        private readonly Button _downloadButton;
         private readonly Border _cover;
         private readonly Label _rankBadge;
         private readonly Border _card;
@@ -3369,6 +2638,8 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         public ReusableStoryCarouselCardView(LuisterPage owner)
         {
             _owner = owner;
+            _owner.RegisterFavoriteStateTarget(this);
+            _owner.RegisterDownloadStateTarget(this);
             _artwork = new ProgressiveCachedImage(owner._apiClient)
             {
                 Aspect = Aspect.AspectFill,
@@ -3396,6 +2667,15 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                     await _owner.ToggleFavoriteAsync(_story);
                 }
             };
+            _downloadButton = CreateDownloadOverlayButton();
+            _downloadButton.AutomationId = "download-carousel-story";
+            _downloadButton.Clicked += async (_, _) =>
+            {
+                if (_story is not null)
+                {
+                    await _owner.DownloadStoryAsync(_story, _downloadButton);
+                }
+            };
 
             var openStoryTap = new TapGestureRecognizer();
             openStoryTap.Tapped += async (_, _) => await OpenCurrentStoryAsync();
@@ -3414,6 +2694,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                     {
                         _artwork,
                         _favoriteButton,
+                        _downloadButton,
                         BuildCoverPlayBadge("▶", 38, 17, 2)
                     }
                 }
@@ -3456,13 +2737,14 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 _story = null;
                 _imageKey = null;
                 _artwork.Request = null;
+                ApplyDownloadOverlayState(_downloadButton, OfflineDownloadState.NotDownloaded, null);
                 IsVisible = false;
                 return;
             }
 
             IsVisible = true;
             _playlist = item.Playlist;
-            _story = item.Story;
+            _story = _owner.ResolveCurrentFavoriteState(item.Story);
             var imageKey = $"{item.Story.ImageUrl}|{item.Story.ThumbnailUrl}";
             if (!string.Equals(_imageKey, imageKey, StringComparison.Ordinal))
             {
@@ -3474,7 +2756,11 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             }
 
             _title.Text = item.Story.Title;
-            ApplyFavoriteOverlayState(_favoriteButton, item.Story, updateAutomationId: false);
+            if (_story is not null)
+            {
+                ApplyFavoriteOverlayState(_favoriteButton, _story, updateAutomationId: false);
+                RefreshDownloadState();
+            }
             var ranked = item.Rank is not null;
             _rankBadge.IsVisible = ranked;
             _rankBadge.Text = item.Rank?.ToString(CultureInfo.InvariantCulture) ?? string.Empty;
@@ -3486,6 +2772,31 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             _artwork.HeightRequest = coverHeight;
             _cover.HeightRequest = coverHeight;
             _card.WidthRequest = cardWidth;
+        }
+
+        public void UpdateFavoriteState(string slug, bool isFavorite)
+        {
+            if (_story is null || !string.Equals(_story.Slug, slug, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            _story = _story with { IsFavorite = isFavorite };
+            ApplyFavoriteOverlayState(_favoriteButton, _story, updateAutomationId: false);
+        }
+
+        public void RefreshDownloadState()
+        {
+            if (_story is null)
+            {
+                ApplyDownloadOverlayState(_downloadButton, OfflineDownloadState.NotDownloaded, null);
+                return;
+            }
+
+            ApplyDownloadOverlayState(
+                _downloadButton,
+                _owner.ResolveDownloadState(_story),
+                _story);
         }
 
         private async Task OpenCurrentStoryAsync()
@@ -3561,6 +2872,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             {
                 artwork,
                 BuildFavoriteOverlay(story),
+                BuildDownloadOverlay(story),
                 BuildCoverPlayBadge("▶", 38, 17, 2)
             }
         };
@@ -3682,6 +2994,67 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         SemanticProperties.SetDescription(
             target,
             story.IsFavorite ? "Verwyder gunsteling" : "Voeg by gunsteling");
+    }
+
+    private View BuildDownloadOverlay(MobileStorySummary story)
+    {
+        var target = CreateDownloadOverlayButton();
+        ApplyDownloadOverlayState(target, ResolveDownloadState(story), story);
+        target.Clicked += async (_, _) => await DownloadStoryAsync(story, target);
+        return target;
+    }
+
+    private static Button CreateDownloadOverlayButton() =>
+        new()
+        {
+            Text = DownloadGlyph,
+            FontFamily = MobileFavoriteHeart.ResolveFontFamily(true),
+            FontAttributes = FontAttributes.None,
+            FontSize = 23,
+            TextColor = Color.FromArgb("#E6FFFFFF"),
+            BackgroundColor = Colors.Transparent,
+            BorderWidth = 0,
+            Padding = 0,
+            WidthRequest = 44,
+            HeightRequest = 44,
+            Margin = new Thickness(6, 0, 0, 6),
+            HorizontalOptions = LayoutOptions.Start,
+            VerticalOptions = LayoutOptions.End,
+            ZIndex = 20
+        };
+
+    private static void ApplyDownloadOverlayState(
+        Button target,
+        OfflineDownloadState state,
+        MobileStorySummary? story)
+    {
+        var isDownloaded = state == OfflineDownloadState.Downloaded;
+        var isDownloading = state == OfflineDownloadState.Downloading;
+        target.Text = isDownloaded ? DownloadedGlyph : DownloadGlyph;
+        target.FontFamily = MobileFavoriteHeart.ResolveFontFamily(true);
+        target.TextColor = isDownloaded
+            ? Color.FromArgb("#D6FFE6")
+            : Color.FromArgb("#E6FFFFFF");
+        target.IsEnabled = !isDownloading;
+        target.Opacity = isDownloading ? 0.58 : 1;
+        target.Shadow = BuildScrollContentShadow(
+            Brush.Black,
+            new Point(0, 2),
+            7,
+            isDownloaded ? 0.28f : 0.95f);
+        if (story is not null && string.IsNullOrWhiteSpace(target.AutomationId))
+        {
+            target.AutomationId = $"download-{story.Slug}";
+        }
+
+        SemanticProperties.SetDescription(
+            target,
+            state switch
+            {
+                OfflineDownloadState.Downloading => "Storie word afgelaai",
+                OfflineDownloadState.Downloaded => "Reeds afgelaai vir offline luister",
+                _ => "Laai af vir offline luister"
+            });
     }
 
     private static View BuildCoverPlayBadge(string icon, double size, double fontSize, double leftOffset) =>
@@ -4289,13 +3662,11 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 yield return PageHelpers.ResolveStoryCardImageSource(story, _apiClient);
             }
         }
-
         foreach (var imageUrl in EnumerateLuisterImageUrls())
         {
             yield return imageUrl;
         }
     }
-
     private IEnumerable<string?> EnumerateLuisterImageUrls()
     {
         foreach (var section in _sections)
@@ -4413,10 +3784,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
 
                 if (detail.RequiresSubscription)
                 {
-                    await DisplayAlertAsync(
-                        "Intekening nodig",
-                        "Jy het ’n aktiewe intekening nodig om dié storie te luister.",
-                        "Reg so");
+                    await PageHelpers.OpenPlansForStoryAsync(detail.Story);
                     return;
                 }
 
@@ -4533,6 +3901,82 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         }
     }
 
+    private async Task DownloadStoryAsync(MobileStorySummary story, Button sourceButton)
+    {
+        var downloadKey = BuildDownloadRequestKey(story);
+        if (_downloadRequestsInFlight.Contains(downloadKey))
+        {
+            return;
+        }
+
+        try
+        {
+            var playableDownloads = await _offlineDownloadService.GetPlayableDownloadsAsync();
+            if (playableDownloads.Any(download =>
+                    string.Equals(
+                        BuildDownloadRequestKey(download.Slug, download.Source),
+                        downloadKey,
+                        StringComparison.OrdinalIgnoreCase)))
+            {
+                _downloadedStoryKeys.Add(downloadKey);
+                ApplyDownloadOverlayState(sourceButton, OfflineDownloadState.Downloaded, story);
+                RefreshVisibleDownloadStates();
+                return;
+            }
+
+            _downloadRequestsInFlight.Add(downloadKey);
+            ApplyDownloadOverlayState(sourceButton, OfflineDownloadState.Downloading, story);
+            RefreshVisibleDownloadStates();
+
+            var detail = await _apiClient.GetStoryAsync(story.Slug, story.Source);
+            if (detail is null || detail.RequiresSubscription || string.IsNullOrWhiteSpace(detail.AudioUrl))
+            {
+                await DisplayAlertAsync(
+                    "Nie beskikbaar nie",
+                    "Hierdie storie kan nie tans afgelaai word nie.",
+                    "Reg so");
+                return;
+            }
+
+            if (!await ConfirmCellularDownloadAsync())
+            {
+                return;
+            }
+
+            await _offlineDownloadService.DownloadAsync(detail);
+            _downloadedStoryKeys.Add(downloadKey);
+            ApplyDownloadOverlayState(sourceButton, OfflineDownloadState.Downloaded, story);
+            RefreshVisibleDownloadStates();
+        }
+        catch (Exception ex)
+        {
+            await DisplayAlertAsync("Kon nie aflaai nie", ex.Message, "Reg so");
+        }
+        finally
+        {
+            _downloadRequestsInFlight.Remove(downloadKey);
+            var state = _downloadedStoryKeys.Contains(downloadKey)
+                ? OfflineDownloadState.Downloaded
+                : OfflineDownloadState.NotDownloaded;
+            ApplyDownloadOverlayState(sourceButton, state, story);
+            RefreshVisibleDownloadStates();
+        }
+    }
+
+    private async Task<bool> ConfirmCellularDownloadAsync()
+    {
+        if (!Connectivity.Current.ConnectionProfiles.Contains(ConnectionProfile.Cellular))
+        {
+            return true;
+        }
+
+        return await DisplayAlertAsync(
+            "Mobiele data",
+            "Hierdie aflaai kan mobiele data gebruik. Wil jy voortgaan?",
+            "Laai af",
+            "Kanselleer");
+    }
+
     private async Task ToggleFavoriteAsync(MobileStorySummary story)
     {
         if (!_sessionState.Current.IsSignedIn)
@@ -4549,28 +3993,33 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
 
         var previousIsFavorite = story.IsFavorite;
         UpdateFavoriteState(story.Slug, !previousIsFavorite);
-        RenderPlaylistContent();
+        UpdateVisibleFavoriteState(story.Slug, !previousIsFavorite);
         try
         {
             var isFavorite = await _apiClient.SetFavoriteAsync(story.Slug, story.Source, !previousIsFavorite);
             UpdateFavoriteState(story.Slug, isFavorite);
-            RenderPlaylistContent();
+            UpdateVisibleFavoriteState(story.Slug, isFavorite);
         }
         catch (Exception ex)
         {
             UpdateFavoriteState(story.Slug, previousIsFavorite);
-            RenderPlaylistContent();
+            UpdateVisibleFavoriteState(story.Slug, previousIsFavorite);
             await DisplayAlertAsync("Kon nie stoor nie", ex.Message, "Reg so");
         }
         finally
         {
             _favoriteRequestsInFlight.Remove(favoriteKey);
-            RenderPlaylistContent();
         }
     }
 
     private static string BuildFavoriteRequestKey(MobileStorySummary story) =>
         $"{story.Source}:{story.Slug}";
+
+    private static string BuildDownloadRequestKey(MobileStorySummary story) =>
+        BuildDownloadRequestKey(story.Slug, story.Source);
+
+    private static string BuildDownloadRequestKey(string slug, string source) =>
+        $"{source}:{slug}";
 
     private void UpdateFavoriteState(string slug, bool isFavorite)
     {
@@ -4641,6 +4090,16 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             ? story with { IsFavorite = isFavorite }
             : story;
 
+    private interface IFavoriteStateTarget
+    {
+        void UpdateFavoriteState(string slug, bool isFavorite);
+    }
+
+    private interface IDownloadStateTarget
+    {
+        void RefreshDownloadState();
+    }
+
     private sealed record RankedLuisterStory(MobileStorySummary Story, int Rank);
 
     private sealed record ReusableStoryCarouselItem(
@@ -4709,22 +4168,4 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             new(LuisterFeedItemKind.PlaylistSection, Playlist: playlist);
     }
 
-    private sealed class NotificationDownCaretDrawable : IDrawable
-    {
-        public void Draw(ICanvas canvas, RectF dirtyRect)
-        {
-            canvas.StrokeColor = Color.FromArgb("#0B3534");
-            canvas.StrokeSize = 3.4f;
-            canvas.StrokeLineCap = LineCap.Round;
-            canvas.StrokeLineJoin = LineJoin.Round;
-
-            var centerX = dirtyRect.Center.X;
-            var centerY = dirtyRect.Center.Y + dirtyRect.Height * 0.04f;
-            var halfWidth = dirtyRect.Width * 0.26f;
-            var halfHeight = dirtyRect.Height * 0.16f;
-
-            canvas.DrawLine(centerX - halfWidth, centerY - halfHeight, centerX, centerY + halfHeight);
-            canvas.DrawLine(centerX, centerY + halfHeight, centerX + halfWidth, centerY - halfHeight);
-        }
-    }
 }

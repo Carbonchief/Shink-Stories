@@ -8,6 +8,9 @@ KEYSTORE="${SCHINK_ANDROID_PLAY_UPLOAD_KEYSTORE:-$HOME/.android/schink-stories-p
 KEY_ALIAS="${SCHINK_ANDROID_PLAY_UPLOAD_KEY_ALIAS:-schink-stories-play-upload}"
 KEYCHAIN_SERVICE="${SCHINK_ANDROID_PLAY_UPLOAD_KEYCHAIN_SERVICE:-Schink Stories Google Play Upload Key}"
 KEYCHAIN_ACCOUNT="${SCHINK_ANDROID_PLAY_UPLOAD_KEYCHAIN_ACCOUNT:-schink-stories-play-upload}"
+ICON_VERIFY_SCRIPT="$ROOT_DIR/scripts/verify-mobile-app-icons.sh"
+
+/bin/bash "$ICON_VERIFY_SCRIPT" source
 
 if [[ ! -f "$KEYSTORE" ]]; then
   echo "Missing Google Play upload keystore: $KEYSTORE" >&2
@@ -23,10 +26,22 @@ cleanup() {
 }
 trap cleanup EXIT
 
+dotnet restore "$PROJECT_PATH" \
+  -p:TargetFramework="$ANDROID_FRAMEWORK" \
+  -p:SchinkGooglePlayBuild=true \
+  --nologo
+
+dotnet clean "$PROJECT_PATH" \
+  --framework "$ANDROID_FRAMEWORK" \
+  --configuration Release \
+  -p:SchinkGooglePlayBuild=true \
+  --nologo
+
 dotnet publish "$PROJECT_PATH" \
   --framework "$ANDROID_FRAMEWORK" \
   --configuration Release \
   -p:AndroidPackageFormat=aab \
+  -p:SchinkGooglePlayBuild=true \
   --nologo
 
 UNSIGNED_BUNDLE="$ROOT_DIR/Shink.Mobile/bin/Release/$ANDROID_FRAMEWORK/publish/com.schink.stories.mobile.aab"
@@ -34,6 +49,8 @@ if [[ ! -f "$UNSIGNED_BUNDLE" ]]; then
   echo "Unsigned Google Play bundle was not produced: $UNSIGNED_BUNDLE" >&2
   exit 1
 fi
+
+/bin/bash "$ICON_VERIFY_SCRIPT" android-aab "$UNSIGNED_BUNDLE"
 
 APPLICATION_VERSION="$(sed -n 's:.*<ApplicationVersion>\(.*\)</ApplicationVersion>.*:\1:p' "$PROJECT_PATH" | head -1)"
 if [[ -z "$APPLICATION_VERSION" ]]; then

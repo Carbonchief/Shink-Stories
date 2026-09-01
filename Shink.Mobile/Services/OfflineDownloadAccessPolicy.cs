@@ -37,7 +37,7 @@ internal static class OfflineDownloadAccessPolicy
         string? downloadOwnerKey,
         DateTimeOffset lastAccessVerifiedAt,
         bool isSignedIn,
-        bool hasPaidSubscription,
+        bool hasFullStoryAccess,
         string? currentOwnerKey,
         DateTimeOffset now,
         TimeSpan accessRefreshWindow)
@@ -48,7 +48,7 @@ internal static class OfflineDownloadAccessPolicy
         }
 
         return isSignedIn &&
-            hasPaidSubscription &&
+            hasFullStoryAccess &&
             IsOwnedByCurrentAccount(requiresSubscription, downloadOwnerKey, currentOwnerKey) &&
             now - lastAccessVerifiedAt <= accessRefreshWindow;
     }

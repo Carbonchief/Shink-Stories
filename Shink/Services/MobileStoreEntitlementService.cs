@@ -11,7 +11,9 @@ public sealed class MobileStoreOptions
 {
     public const string SectionName = "MobileStore";
 
-    public string AppleSharedSecret { get; set; } = string.Empty;
+    public string AppleIssuerId { get; set; } = string.Empty;
+    public string AppleKeyId { get; set; } = string.Empty;
+    public string ApplePrivateKey { get; set; } = string.Empty;
     public string AppleBundleId { get; set; } = "com.schink.stories.mobile";
     public string GooglePackageName { get; set; } = "com.schink.stories.mobile";
     public string GoogleServiceAccountJson { get; set; } = string.Empty;
@@ -22,8 +24,7 @@ public sealed record MobileStorePurchaseRequest(
     string ProductId,
     string ProviderPaymentId,
     string? ProviderTransactionId,
-    string? ProviderToken,
-    string? ReceiptData);
+    string? ProviderToken);
 
 public sealed record MobileStoreEntitlementResponse(
     bool IsActive,
@@ -39,8 +40,6 @@ public sealed class MobileStoreEntitlementService(
     ILogger<MobileStoreEntitlementService> logger,
     IGratisSubscriberEmailSequenceService? gratisSubscriberEmailSequenceService = null)
 {
-    private const string AppleProductionReceiptUrl = "https://buy.itunes.apple.com/verifyReceipt";
-    private const string AppleSandboxReceiptUrl = "https://sandbox.itunes.apple.com/verifyReceipt";
     private const string GoogleTokenUrl = "https://oauth2.googleapis.com/token";
     private const string GooglePublisherScope = "https://www.googleapis.com/auth/androidpublisher";
     private const string GooglePublisherBaseUrl = "https://androidpublisher.googleapis.com/androidpublisher/v3/applications";
@@ -63,12 +62,9 @@ public sealed class MobileStoreEntitlementService(
 
         var provider = request.Provider?.Trim().ToLowerInvariant() ?? string.Empty;
         var productId = request.ProductId?.Trim() ?? string.Empty;
-        var plan = PaymentPlanCatalog.FindBySlug(productId) ??
-                   PaymentPlanCatalog.FindByStoreProductId(productId);
+        var plan = PaymentPlanCatalog.FindMobileStorePlan(productId);
         if (provider is not ("apple" or "google_play") ||
             plan is null ||
-            plan.IsSchoolPlan ||
-            plan.IsAdminOnly ||
             !plan.IsSubscription)
         {
             return Failure("Die winkelproduk is nie 'n geldige huishoudelike plan nie.", provider, productId);
@@ -76,7 +72,10 @@ public sealed class MobileStoreEntitlementService(
 
         VerifiedStorePurchase? verifiedPurchase = provider switch
         {
-            "apple" => await VerifyApplePurchaseAsync(productId, request.ReceiptData, cancellationToken),
+            "apple" => await VerifyApplePurchaseAsync(
+                productId,
+                request.ProviderTransactionId ?? request.ProviderPaymentId,
+                cancellationToken),
             "google_play" => await VerifyGooglePurchaseAsync(productId, request.ProviderToken, cancellationToken),
             _ => null
         };
@@ -122,114 +121,24 @@ public sealed class MobileStoreEntitlementService(
 
     private async Task<VerifiedStorePurchase?> VerifyApplePurchaseAsync(
         string productId,
-        string? receiptData,
+        string? transactionId,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(receiptData) ||
-            string.IsNullOrWhiteSpace(_options.AppleSharedSecret))
-        {
-            _logger.LogWarning("Apple store verification is not configured or did not include receipt data.");
-            return null;
-        }
-
-        var payload = new Dictionary<string, object?>
-        {
-            ["receipt-data"] = receiptData,
-            ["password"] = _options.AppleSharedSecret,
-            ["exclude-old-transactions"] = false
-        };
-
-        var verification = await SendAppleReceiptAsync(
-            AppleProductionReceiptUrl,
-            payload,
+        var appleApi = new AppleAppStoreServerApi(_httpClient, _options, _logger);
+        var subscription = await appleApi.VerifySubscriptionAsync(
+            productId,
+            transactionId,
             cancellationToken);
-        if (verification.Status == 21007)
-        {
-            verification.Document?.Dispose();
-            verification = await SendAppleReceiptAsync(
-                AppleSandboxReceiptUrl,
-                payload,
-                cancellationToken);
-        }
-
-        if (verification.Status != 0 || verification.Document is null)
-        {
-            _logger.LogWarning("Apple store receipt verification failed. status={Status}", verification.Status);
-            verification.Document?.Dispose();
-            return null;
-        }
-
-        using (verification.Document)
-        {
-            var root = verification.Document.RootElement;
-            var bundleId = TryReadString(root, "receipt", "bundle_id");
-            if (!string.Equals(bundleId, _options.AppleBundleId, StringComparison.Ordinal))
-            {
-                _logger.LogWarning("Apple store receipt bundle identifier did not match the mobile app.");
-                return null;
-            }
-
-            var records = new List<AppleReceiptRecord>();
-            AddAppleReceiptRecords(records, root, "latest_receipt_info");
-            if (records.Count == 0)
-            {
-                AddAppleReceiptRecords(records, root, "receipt", "in_app");
-            }
-
-            var matchingRecord = records
-                .Where(record => string.Equals(record.ProductId, productId, StringComparison.Ordinal))
-                .OrderByDescending(record => record.ExpiresAtUtc ?? DateTimeOffset.MinValue)
-                .FirstOrDefault();
-            if (matchingRecord is null ||
-                matchingRecord.ExpiresAtUtc is not { } accessEndsAtUtc ||
-                accessEndsAtUtc <= DateTimeOffset.UtcNow ||
-                matchingRecord.CancelledAtUtc is not null)
-            {
-                return null;
-            }
-
-            var paymentId = matchingRecord.OriginalTransactionId ?? matchingRecord.TransactionId;
-            if (string.IsNullOrWhiteSpace(paymentId))
-            {
-                return null;
-            }
-
-            return new VerifiedStorePurchase(
+        return subscription is null
+            ? null
+            : new VerifiedStorePurchase(
                 Provider: "apple",
-                ProductId: productId,
-                ProviderPaymentId: paymentId,
-                ProviderTransactionId: matchingRecord.TransactionId,
+                ProductId: subscription.ProductId,
+                ProviderPaymentId: subscription.OriginalTransactionId,
+                ProviderTransactionId: subscription.TransactionId,
                 ProviderToken: null,
-                SubscribedAtUtc: matchingRecord.PurchasedAtUtc ?? DateTimeOffset.UtcNow,
-                AccessEndsAtUtc: accessEndsAtUtc);
-        }
-    }
-
-    private async Task<AppleReceiptVerification> SendAppleReceiptAsync(
-        string endpoint,
-        IReadOnlyDictionary<string, object?> payload,
-        CancellationToken cancellationToken)
-    {
-        try
-        {
-            using var request = new HttpRequestMessage(HttpMethod.Post, endpoint)
-            {
-                Content = new StringContent(
-                    JsonSerializer.Serialize(payload),
-                    Encoding.UTF8,
-                    "application/json")
-            };
-            using var response = await _httpClient.SendAsync(request, cancellationToken);
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
-            var status = TryReadInt32(document.RootElement, "status") ?? -1;
-            return new AppleReceiptVerification(status, document);
-        }
-        catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
-        {
-            _logger.LogWarning(exception, "Apple store receipt verification request failed.");
-            return new AppleReceiptVerification(-1, null);
-        }
+                SubscribedAtUtc: subscription.OriginalPurchaseDateUtc,
+                AccessEndsAtUtc: subscription.ExpiresAtUtc);
     }
 
     private async Task<VerifiedStorePurchase?> VerifyGooglePurchaseAsync(
@@ -373,42 +282,6 @@ public sealed class MobileStoreEntitlementService(
         }
     }
 
-    private static void AddAppleReceiptRecords(
-        ICollection<AppleReceiptRecord> records,
-        JsonElement root,
-        params string[] path)
-    {
-        var node = root;
-        foreach (var segment in path)
-        {
-            if (!node.TryGetProperty(segment, out node))
-            {
-                return;
-            }
-        }
-
-        if (node.ValueKind != JsonValueKind.Array)
-        {
-            return;
-        }
-
-        foreach (var item in node.EnumerateArray())
-        {
-            if (item.ValueKind != JsonValueKind.Object)
-            {
-                continue;
-            }
-
-            records.Add(new AppleReceiptRecord(
-                ProductId: TryReadString(item, "product_id"),
-                OriginalTransactionId: TryReadString(item, "original_transaction_id"),
-                TransactionId: TryReadString(item, "transaction_id"),
-                PurchasedAtUtc: TryParseAppleMilliseconds(item, "purchase_date_ms"),
-                ExpiresAtUtc: TryParseAppleMilliseconds(item, "expires_date_ms"),
-                CancelledAtUtc: TryParseAppleMilliseconds(item, "cancellation_date_ms")));
-        }
-    }
-
     private static string? TryReadString(JsonElement root, params string[] path)
     {
         var node = root;
@@ -426,17 +299,6 @@ public sealed class MobileStoreEntitlementService(
             JsonValueKind.Number => node.GetRawText(),
             _ => null
         };
-    }
-
-    private static int? TryReadInt32(JsonElement root, params string[] path) =>
-        int.TryParse(TryReadString(root, path), out var value) ? value : null;
-
-    private static DateTimeOffset? TryParseAppleMilliseconds(JsonElement root, string propertyName)
-    {
-        var raw = TryReadString(root, propertyName);
-        return long.TryParse(raw, out var milliseconds)
-            ? DateTimeOffset.FromUnixTimeMilliseconds(milliseconds)
-            : null;
     }
 
     private static DateTimeOffset? TryParseDateTimeOffset(string? value) =>
@@ -468,13 +330,4 @@ public sealed class MobileStoreEntitlementService(
         DateTimeOffset SubscribedAtUtc,
         DateTimeOffset? AccessEndsAtUtc);
 
-    private sealed record AppleReceiptRecord(
-        string? ProductId,
-        string? OriginalTransactionId,
-        string? TransactionId,
-        DateTimeOffset? PurchasedAtUtc,
-        DateTimeOffset? ExpiresAtUtc,
-        DateTimeOffset? CancelledAtUtc);
-
-    private sealed record AppleReceiptVerification(int Status, JsonDocument? Document);
 }

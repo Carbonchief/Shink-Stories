@@ -34,7 +34,7 @@ public class NotificationImagePathTests
     {
         var rewritten = InvokeNormalizeNotificationImagePath("   ");
 
-        Assert.AreEqual("/branding/schink-logo-green.png", rewritten);
+        Assert.AreEqual("/branding/schink-placeholder.png", rewritten);
     }
 
     private static string InvokeNormalizeNotificationImagePath(string? imagePath)

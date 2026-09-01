@@ -30,6 +30,8 @@ public sealed record StoryItem(
     string? VideoObjectKey = null,
     string? VideoContentType = null)
 {
+    public const string PlaceholderImagePath = "/branding/schink-placeholder.png";
+
     public string ImagePath => ResolveAssetPath(ImageFileName);
     public string ThumbnailPath => string.IsNullOrWhiteSpace(ThumbnailFileName)
         ? ResolveAssetPath($"thumbs/{ImageFileName}")
@@ -391,7 +393,7 @@ public static class StoryCatalog
     {
         if (ImportedImageCandidates.Count == 0)
         {
-            return NewestTop10Stories[0].ImagePath;
+            return StoryItem.PlaceholderImagePath;
         }
 
         var yearMonth = TryExtractAudioYearMonth(audioFileName);

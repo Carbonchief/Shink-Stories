@@ -8,11 +8,13 @@ public sealed class KarakterPareConfigPage : ContentPage, IQueryAttributable
     private static readonly Color PageBottomColor = Color.FromArgb("#6EC0C8");
     private static readonly Color HeadingColor = Color.FromArgb("#285A68");
     private static readonly Color BodyColor = Color.FromArgb("#3C5E66");
-    private static readonly Color GoldColor = Color.FromArgb("#F3CC59");
     private static readonly Color SelectedCardColor = Color.FromArgb("#FFF3BE");
     private static readonly Color UnselectedCardColor = Color.FromArgb("#F1F6F4");
     private static readonly Color SelectedStrokeColor = Color.FromArgb("#E4B63F");
     private static readonly Color UnselectedStrokeColor = Color.FromArgb("#E2E1D8");
+    private static readonly Color CloseColor = Color.FromArgb("#C93F45");
+    private static readonly Color CloseBackgroundColor = Color.FromArgb("#FFF4F2");
+    private static readonly Color CloseStrokeColor = Color.FromArgb("#E77B78");
     private const string PoppinsFontFamily = "Poppins";
     private const string PoppinsBoldFontFamily = "PoppinsBold";
     private const double CompactLayoutHeight = 700;
@@ -25,8 +27,8 @@ public sealed class KarakterPareConfigPage : ContentPage, IQueryAttributable
     ];
 
     private readonly List<Border> _optionCards = [];
-    private readonly Button _playButton;
-    private DifficultyOption _selectedOption;
+    private bool _isStartingGame;
+    private bool _isNavigatingBack;
 
     public KarakterPareConfigPage(StoryPlaybackSession storyPlaybackSession)
     {
@@ -34,7 +36,6 @@ public sealed class KarakterPareConfigPage : ContentPage, IQueryAttributable
         Background = BuildBackground();
         SafeAreaEdges = SafeAreaEdges.None;
         Shell.SetNavBarIsVisible(this, false);
-        _selectedOption = Options[0];
 
         var heroLogo = new Image
         {
@@ -59,24 +60,8 @@ public sealed class KarakterPareConfigPage : ContentPage, IQueryAttributable
                 difficultyOptions,
             }
         };
-
-        _playButton = new Button
-        {
-            Text = "SPEEL NOU",
-            FontFamily = PoppinsBoldFontFamily,
-            FontSize = 16,
-            TextColor = HeadingColor,
-            BackgroundColor = GoldColor,
-            CornerRadius = 20,
-            HeightRequest = 48,
-            WidthRequest = 172,
-            Padding = new Thickness(16, 0),
-            HorizontalOptions = LayoutOptions.Center,
-            Margin = new Thickness(0, 12, 0, 0),
-            AutomationId = "karakter-pare-play"
-        };
-        _playButton.Clicked += async (_, _) => await PlaySelectedDifficultyAsync();
-        content.Children.Add(_playButton);
+        var closeButton = BuildCloseButton();
+        content.Children.Add(closeButton);
 
         var contentScroll = new ScrollView
         {
@@ -94,9 +79,14 @@ public sealed class KarakterPareConfigPage : ContentPage, IQueryAttributable
             }
         };
         Content = PersistentPlaybackHost.Wrap(root, storyPlaybackSession);
-        SizeChanged += (_, _) => ApplyResponsiveLayout(content, heroLogo, difficultyOptions);
-        ApplyResponsiveLayout(content, heroLogo, difficultyOptions);
-        SelectDifficulty(_selectedOption);
+        SizeChanged += (_, _) => ApplyResponsiveLayout(content, heroLogo, difficultyOptions, closeButton);
+        ApplyResponsiveLayout(content, heroLogo, difficultyOptions, closeButton);
+    }
+
+    protected override void OnAppearing()
+    {
+        base.OnAppearing();
+        ClearDifficultySelection();
     }
 
     public void ApplyQueryAttributes(IDictionary<string, object> query)
@@ -198,7 +188,8 @@ public sealed class KarakterPareConfigPage : ContentPage, IQueryAttributable
             FontSize = 21,
             TextColor = HeadingColor,
             HorizontalTextAlignment = TextAlignment.Center,
-            VerticalTextAlignment = TextAlignment.End
+            VerticalTextAlignment = TextAlignment.Center,
+            LineHeight = 0.9
         };
         var pairs = new Label
         {
@@ -207,11 +198,12 @@ public sealed class KarakterPareConfigPage : ContentPage, IQueryAttributable
             FontSize = 14,
             TextColor = BodyColor,
             HorizontalTextAlignment = TextAlignment.Center,
-            VerticalTextAlignment = TextAlignment.Start
+            VerticalTextAlignment = TextAlignment.Center,
+            LineHeight = 0.9
         };
         var text = new VerticalStackLayout
         {
-            Spacing = 0,
+            Spacing = -3,
             HorizontalOptions = LayoutOptions.Fill,
             VerticalOptions = LayoutOptions.Center,
             Children = { title, pairs }
@@ -225,12 +217,15 @@ public sealed class KarakterPareConfigPage : ContentPage, IQueryAttributable
         {
             HeightRequest = 58,
             Padding = new Thickness(10, 0, 8, 0),
+            BackgroundColor = UnselectedCardColor,
+            Stroke = UnselectedStrokeColor,
             StrokeThickness = 2,
+            Opacity = 0.98,
             StrokeShape = new RoundRectangle { CornerRadius = 14 },
             Content = cardContent,
             AutomationId = $"karakter-pare-difficulty-{option.Level}"
         };
-        SemanticProperties.SetDescription(card, $"Kies {option.DisplayName.ToLowerInvariant()}, {option.PairCount} pare");
+        SemanticProperties.SetDescription(card, $"Speel {option.DisplayName.ToLowerInvariant()}, {option.PairCount} pare");
 
         var character = new Image
         {
@@ -251,7 +246,7 @@ public sealed class KarakterPareConfigPage : ContentPage, IQueryAttributable
         };
 
         var tap = new TapGestureRecognizer();
-        tap.Tapped += (_, _) => SelectDifficulty(option);
+        tap.Tapped += async (_, _) => await StartDifficultyAsync(option);
         card.GestureRecognizers.Add(tap);
         return (container, card);
     }
@@ -278,14 +273,79 @@ public sealed class KarakterPareConfigPage : ContentPage, IQueryAttributable
             AutomationId = "karakter-pare-back"
         };
         var tap = new TapGestureRecognizer();
-        tap.Tapped += async (_, _) => await Shell.Current.GoToAsync("..", animate: false);
+        tap.Tapped += async (_, _) => await NavigateBackAsync();
         backButton.GestureRecognizers.Add(tap);
         return backButton;
     }
 
+    private Border BuildCloseButton()
+    {
+        var closeButton = new Border
+        {
+            WidthRequest = 48,
+            HeightRequest = 48,
+            Margin = new Thickness(0, 12, 0, 0),
+            HorizontalOptions = LayoutOptions.Center,
+            BackgroundColor = CloseBackgroundColor,
+            Stroke = CloseStrokeColor,
+            StrokeThickness = 2,
+            StrokeShape = new RoundRectangle { CornerRadius = 24 },
+            Content = new Image
+            {
+                Source = new FontImageSource
+                {
+                    Glyph = "\uf00d",
+                    FontFamily = "FontAwesomeSolid",
+                    Color = CloseColor,
+                    Size = 26
+                },
+                WidthRequest = 26,
+                HeightRequest = 26,
+                Aspect = Aspect.AspectFit,
+                HorizontalOptions = LayoutOptions.Center,
+                VerticalOptions = LayoutOptions.Center,
+                InputTransparent = true
+            },
+            AutomationId = "karakter-pare-close"
+        };
+        SemanticProperties.SetDescription(closeButton, "Terug");
+
+        var tap = new TapGestureRecognizer();
+        tap.Tapped += async (_, _) => await NavigateBackAsync();
+        closeButton.GestureRecognizers.Add(tap);
+        return closeButton;
+    }
+
+    private async Task NavigateBackAsync()
+    {
+        if (_isNavigatingBack)
+        {
+            return;
+        }
+
+        _isNavigatingBack = true;
+        try
+        {
+            await Shell.Current.GoToAsync("..", animate: false);
+        }
+        finally
+        {
+            _isNavigatingBack = false;
+        }
+    }
+
+    private void ClearDifficultySelection()
+    {
+        foreach (var card in _optionCards)
+        {
+            card.BackgroundColor = UnselectedCardColor;
+            card.Stroke = UnselectedStrokeColor;
+            card.Opacity = 0.98;
+        }
+    }
+
     private void SelectDifficulty(DifficultyOption option)
     {
-        _selectedOption = option;
         for (var index = 0; index < _optionCards.Count; index++)
         {
             var isSelected = Options[index].Level == option.Level;
@@ -296,32 +356,34 @@ public sealed class KarakterPareConfigPage : ContentPage, IQueryAttributable
         }
     }
 
-    private async Task PlaySelectedDifficultyAsync()
+    private async Task StartDifficultyAsync(DifficultyOption option)
     {
-        if (!_playButton.IsEnabled)
+        if (_isStartingGame)
         {
             return;
         }
 
-        _playButton.IsEnabled = false;
+        _isStartingGame = true;
+        SelectDifficulty(option);
         try
         {
             var parameters = new ShellNavigationQueryParameters
             {
-                ["difficulty"] = _selectedOption.Level
+                ["difficulty"] = option.Level
             };
             await Shell.Current.GoToAsync(nameof(KarakterPareGamePage), parameters);
         }
         finally
         {
-            _playButton.IsEnabled = true;
+            _isStartingGame = false;
         }
     }
 
     private void ApplyResponsiveLayout(
         VerticalStackLayout content,
         Image heroLogo,
-        VerticalStackLayout difficultyOptions)
+        VerticalStackLayout difficultyOptions,
+        Border closeButton)
     {
         var useCompactLayout = Height > 0 && Height < CompactLayoutHeight;
         content.Padding = useCompactLayout
@@ -335,7 +397,7 @@ public sealed class KarakterPareConfigPage : ContentPage, IQueryAttributable
         difficultyOptions.Margin = useCompactLayout
             ? new Thickness(0, 28, 0, 0)
             : new Thickness(0, 47, 0, 0);
-        _playButton.Margin = useCompactLayout
+        closeButton.Margin = useCompactLayout
             ? new Thickness(0, 10, 0, 0)
             : new Thickness(0, 12, 0, 0);
         MobileResponsiveLayout.ApplyCenteredContent(content, DeviceDisplay.MainDisplayInfo.Width / DeviceDisplay.MainDisplayInfo.Density, 640);

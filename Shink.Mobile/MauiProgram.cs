@@ -54,6 +54,7 @@ public static class MauiProgram
         builder.Services.AddSingleton(analyticsSettings);
         builder.Services.AddSingleton<SessionState>();
         builder.Services.AddSingleton<MobileAnalyticsService>();
+        builder.Services.AddSingleton<MobileCrashReporter>();
         builder.Services.AddSingleton<PlaylistPlaybackState>();
         builder.Services.AddSingleton<ContinueListeningState>();
         builder.Services.AddSingleton<PlayerTransitionBackdropState>();
@@ -74,6 +75,7 @@ public static class MauiProgram
         builder.Services.AddTransient<KarakterPareConfigPage>();
         builder.Services.AddTransient<KarakterRaaiConfigPage>();
         builder.Services.AddTransient<KarakterRaaiGamePage>();
+        builder.Services.AddTransient<KennisgewingsPage>();
         // Shell keeps the hidden Karakters destination alive so opening it never has to
         // construct another large gallery page on the user's tap.
         builder.Services.AddSingleton<KaraktersPage>();
@@ -90,7 +92,9 @@ public static class MauiProgram
         builder.Logging.AddDebug();
 #endif
 
-        return builder.Build();
+        var app = builder.Build();
+        app.Services.GetRequiredService<MobileCrashReporter>().Start();
+        return app;
     }
 
     private static string ResolveMobileApiBaseUrl(string configuredBaseUrl)

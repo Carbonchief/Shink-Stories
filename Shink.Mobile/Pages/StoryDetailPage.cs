@@ -264,6 +264,14 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         var loadKey = $"{StorySlug}:{Source}";
         if (string.IsNullOrWhiteSpace(StorySlug) || loadKey == _loadedKey)
         {
+            if (_currentDetail?.RequiresSubscription == true && _sessionState.Current.IsSignedIn)
+            {
+                CancelActiveLoad();
+                _loadCts = new CancellationTokenSource();
+                await LoadAsync(showLoading: false, cancellationToken: _loadCts.Token);
+                return;
+            }
+
             if (_currentDetail is not null && IsCurrentStoryPlaying(_currentDetail))
             {
                 StartProgressTimer();
@@ -365,6 +373,12 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 return;
             }
 
+            if (detail.RequiresSubscription && _sessionState.Current.IsSignedIn)
+            {
+                await PageHelpers.OpenPlansForStoryAsync(detail.Story);
+                return;
+            }
+
             RenderDetail(detail, trackView: !renderedCachedDetail);
         }
         catch (OperationCanceledException)
@@ -406,6 +420,11 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 Source ?? "luister",
                 cancellationToken);
             if (cachedDetail is null || cancellationToken.IsCancellationRequested || !_isPageActive)
+            {
+                return false;
+            }
+
+            if (cachedDetail.RequiresSubscription && _sessionState.Current.IsSignedIn)
             {
                 return false;
             }
@@ -711,7 +730,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             Content = new ProgressiveCachedImage(
                 _apiClient,
                 story is null
-                    ? new ProgressiveImageRequest(null, FallbackFile: "schink_background.jpeg")
+                    ? new ProgressiveImageRequest(null, FallbackFile: PageHelpers.StoryPlaceholderFile)
                     : PageHelpers.BuildStoryImageRequest(story, _apiClient, "schink_background.jpeg"))
             {
                 Aspect = Aspect.AspectFill
@@ -1757,19 +1776,16 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
     private View BuildLockedPanel(MobileStoryDetailResponse detail)
     {
         var loginButton = BuildPrimaryButton("Teken in");
-        loginButton.Clicked += async (_, _) => await Browser.OpenAsync(detail.LoginUrl, BrowserLaunchMode.External);
-
-        var plansButton = BuildSecondaryButton("Sien planne");
-        plansButton.Clicked += async (_, _) =>
+        loginButton.Clicked += async (_, _) =>
         {
-            var source = string.Equals(detail.Story.Source, "gratis", StringComparison.OrdinalIgnoreCase)
-                ? "gratis"
-                : "luister";
-            var returnUrl = $"/{source}/{Uri.EscapeDataString(detail.Story.Slug)}";
+            var returnPath = PageHelpers.BuildStoryReturnPath(detail.Story);
             await Shell.Current.GoToAsync(
-                $"{nameof(PlansPage)}?returnUrl={Uri.EscapeDataString(returnUrl)}",
+                $"{nameof(AccountPage)}?returnUrl={Uri.EscapeDataString(returnPath)}",
                 animate: true);
         };
+
+        var plansButton = BuildSecondaryButton("Sien planne");
+        plansButton.Clicked += async (_, _) => await PageHelpers.OpenPlansForStoryAsync(detail.Story);
 
         return new Border
         {
@@ -2102,6 +2118,11 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
     private MobilePlaylist? ResolveOriginPlaylist()
     {
+        if (_playlistPlaybackState.IsOfflineQueue)
+        {
+            return null;
+        }
+
         var playlist = _playlistPlaybackState.CurrentPlaylist;
         return playlist is not null &&
                !string.IsNullOrWhiteSpace(_playlistSlug) &&
@@ -3424,7 +3445,9 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
             MinimumTrackColor = PlayerAccentColor,
             MaximumTrackColor = maximumTrackColor,
             ThumbColor = PlayerAccentColor,
-            HeightRequest = 28,
+            HorizontalOptions = LayoutOptions.Fill,
+            HeightRequest = 44,
+            AutomationId = "story-progress-slider",
             IsEnabled = false
         };
         SemanticProperties.SetDescription(slider, "Spring na 'n ander plek in die storie");
@@ -3467,7 +3490,44 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 UpdateProgressState();
             }
         };
+
+        var timelineTap = new TapGestureRecognizer();
+        timelineTap.Tapped += async (_, args) => await SeekFromTimelineTapAsync(slider, args);
+        slider.GestureRecognizers.Add(timelineTap);
         return slider;
+    }
+
+    private async Task SeekFromTimelineTapAsync(Slider slider, TappedEventArgs args)
+    {
+        var tapPosition = args.GetPosition(slider);
+        if (!slider.IsEnabled || tapPosition is null || slider.Width <= 0)
+        {
+            return;
+        }
+
+        var value = Math.Clamp(tapPosition.Value.X / slider.Width, 0, 1);
+        _isProgressScrubbing = true;
+        try
+        {
+            _isUpdatingProgressSlider = true;
+            slider.Value = value;
+            _isUpdatingProgressSlider = false;
+
+            var duration = ResolveActivePlaybackDuration();
+            if (_activeCurrentTimeLabel is not null && duration is { TotalSeconds: > 0 })
+            {
+                _activeCurrentTimeLabel.Text = FormatTime(
+                    TimeSpan.FromSeconds(value * duration.Value.TotalSeconds));
+            }
+
+            await SeekToProgressValueAsync(value);
+        }
+        finally
+        {
+            _isUpdatingProgressSlider = false;
+            _isProgressScrubbing = false;
+            UpdateProgressState();
+        }
     }
 
     private TimeSpan? ResolveActivePlaybackDuration() =>
@@ -3715,7 +3775,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
             _pendingAutoplayAfterLoad = false;
             StorySlug = args.Detail.Story.Slug;
-            Source = "luister";
+            Source = args.Detail.Story.Source;
             _previewStory = args.Detail.Story;
             _loadedKey = $"{StorySlug}:{Source}";
             _playlistStories = _playlistPlaybackState.GetPlaybackStories(args.Detail.Story);

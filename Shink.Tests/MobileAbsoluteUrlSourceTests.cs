@@ -150,12 +150,12 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "_topBarOverlay = new Grid");
         StringAssert.Contains(luisterPage, "_bottomBarOverlay = new Grid");
         StringAssert.Contains(luisterPage, "ZIndex = 100");
-        StringAssert.Contains(luisterPage, "_refreshView,\n                _topBarOverlay,\n                _bottomBarOverlay");
+        StringAssert.Contains(luisterPage, "_refreshView,\n                topBarBackdropLayer,\n                _topBarOverlay,\n                _bottomBarOverlay");
         StringAssert.Contains(luisterPage, "RenderFloatingTopBar();");
         StringAssert.Contains(luisterPage, "RenderBottomBar();");
         StringAssert.Contains(luisterPage, "_topBarOverlay.Children.Add(_floatingTopBarHost);");
         StringAssert.Contains(luisterPage, "return MobileTopBar.BuildStoriesTopBar(");
-        StringAssert.Contains(luisterPage, "notificationAction: ShowNotificationsAsync");
+        StringAssert.Contains(luisterPage, "notificationAction: RequestNotificationsAsync");
         StringAssert.Contains(luisterPage, "Header = BuildStoriesPageHeader(),");
         StringAssert.Contains(luisterPage, "ItemSizingStrategy = ItemSizingStrategy.MeasureAllItems");
         StringAssert.Contains(bottomBar, "Label: \"Soek\"");
@@ -183,7 +183,6 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(appShell, "ContentTemplate = new DataTemplate(() => _services.GetRequiredService<LuisterPage>())");
         StringAssert.Contains(luisterPage, "Shell.Current.GoToAsync(nameof(AccountPage), animate: true)");
         StringAssert.Contains(luisterPage, "Shell.Current.GoToAsync(nameof(ProfilePage), animate: true)");
-        StringAssert.Contains(mobileTopBar, "Shell.Current.GoToAsync(nameof(AccountPage), animate: true)");
         StringAssert.Contains(mobileTopBar, "Shell.Current.GoToAsync(nameof(ProfilePage), animate: true)");
         StringAssert.Contains(luisterPage, "MobileBottomBar.Build(this, \"listen\", OpenStoriesSearchAsync)");
         StringAssert.Contains(bottomBar, "Destination: \"search\"");
@@ -280,12 +279,13 @@ public class MobileAbsoluteUrlSourceTests
     public void MobileLuisterTopBarMirrorsWebNotificationCenter()
     {
         var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
+        var notificationsPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KennisgewingsPage.cs"));
         var mobileTopBar = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileTopBar.cs"));
         var bottomBar = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileBottomBar.cs"));
         var client = File.ReadAllText(GetRepoPath("Shink.Mobile", "Services", "MobileApiClient.cs"));
         var models = File.ReadAllText(GetRepoPath("Shink.Mobile", "Models", "MobileApiModels.cs"));
 
-        StringAssert.Contains(luisterPage, "notificationAction: ShowNotificationsAsync");
+        StringAssert.Contains(luisterPage, "notificationAction: RequestNotificationsAsync");
         StringAssert.Contains(mobileTopBar, "BuildNotificationButton(notificationCount)");
         StringAssert.Contains(mobileTopBar, "notificationAction");
         StringAssert.Contains(bottomBar, "Destination: \"search\"");
@@ -301,32 +301,34 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "StopNotificationRefreshTimer();");
         StringAssert.Contains(luisterPage, "private void StartNotificationRefreshTimer()");
         StringAssert.Contains(luisterPage, "_notificationRefreshTimer.Tick += (_, _) =>");
-        StringAssert.Contains(luisterPage, "private async Task ShowNotificationsAsync()");
-        StringAssert.Contains(luisterPage, "await _apiClient.GetNotificationsAsync(");
-        StringAssert.Contains(luisterPage, "_ = TryMarkAllNotificationsReadAsync();");
-        StringAssert.Contains(luisterPage, "MarkAllNotificationsReadLocally();");
-        StringAssert.Contains(luisterPage, "var markReadTask = TryMarkNotificationReadAsync(notification.Id);");
-        StringAssert.Contains(luisterPage, "await markReadTask;");
-        StringAssert.Contains(luisterPage, "private async Task TryMarkNotificationReadAsync(Guid notificationId)");
-        StringAssert.Contains(luisterPage, "Dié kennisgewing kon nie nou oopmaak nie.");
-        StringAssert.Contains(luisterPage, "RenderContent();");
-        StringAssert.Contains(luisterPage, "await _apiClient.ClearNotificationsAsync(cancellationToken)");
-        StringAssert.Contains(luisterPage, "await _apiClient.ClearNotificationAsync(notification.Id, cancellationToken)");
-        StringAssert.Contains(luisterPage, "if (before is null && !currentPage.HasHistory)");
-        StringAssert.Contains(luisterPage, "history: currentPage.HasHistory,");
-        StringAssert.Contains(luisterPage, "Teken in om kennisgewings te sien.");
-        StringAssert.Contains(luisterPage, "BuildNotificationCloseButton()");
-        StringAssert.Contains(luisterPage, "Drawable = new NotificationDownCaretDrawable()");
-        StringAssert.Contains(luisterPage, "private sealed class NotificationDownCaretDrawable : IDrawable");
-        StringAssert.Contains(luisterPage, "return new SwipeView");
-        StringAssert.Contains(luisterPage, "var removeSwipeItem = new SwipeItem");
-        StringAssert.Contains(luisterPage, "Text = \"Verwyder\"");
-        StringAssert.Contains(luisterPage, "removeSwipeItem.Invoked += async (_, _) => await ClearNotificationAsync();");
-        StringAssert.Contains(luisterPage, "SwipeBehaviorOnInvoked = SwipeBehaviorOnInvoked.Close");
-        StringAssert.Contains(luisterPage, "RowDefinitions =");
-        StringAssert.Contains(luisterPage, "new RowDefinition { Height = GridLength.Star }");
-        StringAssert.Contains(luisterPage, "Grid.SetRow(notificationScrollView, 2);");
-        Assert.IsFalse(luisterPage.Contains("Content = new VerticalStackLayout\n            {\n                Padding = new Thickness(18, 18, 18, 28),\n                Spacing = 16,\n                Children =\n                {\n                    header,\n                    statusLabel,\n                    new ScrollView", StringComparison.Ordinal));
+        StringAssert.Contains(notificationsPage, "public sealed class KennisgewingsPage : ContentPage");
+        StringAssert.Contains(notificationsPage, "private async Task LoadNotificationsAsync(");
+        StringAssert.Contains(notificationsPage, "await _apiClient.GetNotificationsAsync(");
+        StringAssert.Contains(notificationsPage, "_ = TryMarkAllNotificationsReadAsync();");
+        StringAssert.Contains(notificationsPage, "MarkAllNotificationsReadLocally();");
+        StringAssert.Contains(notificationsPage, "var markReadTask = TryMarkNotificationReadAsync(notification.Id);");
+        StringAssert.Contains(notificationsPage, "_ = markReadTask;");
+        StringAssert.Contains(mobileTopBar, "RunNotificationActionSafelyAsync(navigationGate, notificationAction)");
+        StringAssert.Contains(notificationsPage, "private async Task TryMarkNotificationReadAsync(Guid notificationId)");
+        StringAssert.Contains(notificationsPage, "Dié kennisgewing kon nie nou oopmaak nie.");
+        StringAssert.Contains(notificationsPage, "await _apiClient.ClearNotificationsAsync(cancellationToken)");
+        StringAssert.Contains(notificationsPage, "await _apiClient.ClearNotificationAsync(notification.Id, cancellationToken)");
+        StringAssert.Contains(notificationsPage, "if (before is null && !currentPage.HasHistory)");
+        StringAssert.Contains(notificationsPage, "history: currentPage.HasHistory,");
+        StringAssert.Contains(notificationsPage, "Teken in om kennisgewings te sien.");
+        StringAssert.Contains(notificationsPage, "BuildNotificationCloseButton()");
+        StringAssert.Contains(notificationsPage, "Drawable = new NotificationDownCaretDrawable()");
+        StringAssert.Contains(notificationsPage, "private sealed class NotificationDownCaretDrawable : IDrawable");
+        StringAssert.Contains(notificationsPage, "return new SwipeView");
+        StringAssert.Contains(notificationsPage, "var removeSwipeItem = new SwipeItem");
+        StringAssert.Contains(notificationsPage, "Text = \"Verwyder\"");
+        StringAssert.Contains(notificationsPage, "removeSwipeItem.Invoked += async (_, _) => await ClearNotificationAsync();");
+        StringAssert.Contains(notificationsPage, "SwipeBehaviorOnInvoked = SwipeBehaviorOnInvoked.Close");
+        StringAssert.Contains(notificationsPage, "RowDefinitions =");
+        StringAssert.Contains(notificationsPage, "new RowDefinition { Height = GridLength.Star }");
+        StringAssert.Contains(notificationsPage, "Grid.SetRow(notificationScrollView, 2);");
+        Assert.IsFalse(luisterPage.Contains("ShowNotificationsAsync", StringComparison.Ordinal));
+        Assert.IsFalse(luisterPage.Contains("Navigation.PushModalAsync", StringComparison.Ordinal));
 
         StringAssert.Contains(models, "public sealed record MobileNotificationPage(");
         StringAssert.Contains(models, "public sealed record MobileNotificationItem(");
@@ -350,42 +352,62 @@ public class MobileAbsoluteUrlSourceTests
     }
 
     [TestMethod]
-    public void MobileNotificationModalGuardsOpenCloseLifecycle()
+    public void MobileNotificationPageGuardsOpenCloseLifecycle()
+    {
+        var notificationsPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KennisgewingsPage.cs"));
+
+        StringAssert.Contains(notificationsPage, "public sealed class KennisgewingsPage : ContentPage");
+        StringAssert.Contains(notificationsPage, "private bool _isClosing;");
+        StringAssert.Contains(notificationsPage, "private async Task<bool> ClosePageAsync()");
+        StringAssert.Contains(notificationsPage, "if (_isClosing)");
+        StringAssert.Contains(notificationsPage, "_loadCancellation?.Cancel();");
+        StringAssert.Contains(notificationsPage, "await _navigationGate.RunAsync(() => Shell.Current.GoToAsync(\"..\", animate: false));");
+        StringAssert.Contains(notificationsPage, "IsNotificationPageActive(cancellationToken)");
+        StringAssert.Contains(notificationsPage, "_isPageActive = false;");
+        Assert.IsFalse(notificationsPage.Contains("Navigation.PushModalAsync", StringComparison.Ordinal));
+        Assert.IsFalse(notificationsPage.Contains("PopModalAsync", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
+    public void MobileNotificationsUseIndependentShellRoute()
     {
         var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
-        var modalStart = luisterPage.IndexOf("private async Task ShowNotificationsAsync()", StringComparison.Ordinal);
-        var modalEnd = luisterPage.IndexOf("private async Task TryMarkAllNotificationsReadAsync()", StringComparison.Ordinal);
+        var karaktersPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KaraktersPage.cs"));
+        var downloadedPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "DownloadedPage.cs"));
+        var searchPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "SearchPage.cs"));
+        var appShell = File.ReadAllText(GetRepoPath("Shink.Mobile", "AppShell.xaml.cs"));
+        var mauiProgram = File.ReadAllText(GetRepoPath("Shink.Mobile", "MauiProgram.cs"));
 
-        Assert.IsGreaterThanOrEqualTo(0, modalStart);
-        Assert.IsGreaterThan(modalStart, modalEnd);
-        var modalSource = luisterPage[modalStart..modalEnd];
-
-        StringAssert.Contains(modalSource, "_notificationModalPage is not null || _isOpeningNotificationModal");
-        StringAssert.Contains(modalSource, "modal.Disappearing += (_, _) => EndNotificationModalSession(modal)");
-        StringAssert.Contains(modalSource, "await Navigation.PushModalAsync(modal, animated: false)");
-        StringAssert.Contains(modalSource, "await modal.Navigation.PopModalAsync(animated: false)");
-        StringAssert.Contains(modalSource, "_notificationModalCancellation?.Cancel();");
-        StringAssert.Contains(modalSource, "IsNotificationModalActive(modal, cancellationToken)");
-        StringAssert.Contains(modalSource, "await CloseNotificationModalAsync(modal)");
-        Assert.IsFalse(modalSource.Contains("RenderContent();", StringComparison.Ordinal));
-        Assert.IsFalse(modalSource.Contains("await Navigation.PopModalAsync(true)", StringComparison.Ordinal));
+        StringAssert.Contains(luisterPage, "private Task RequestNotificationsAsync()");
+        StringAssert.Contains(luisterPage, "Shell.Current.GoToAsync(nameof(KennisgewingsPage), animate: false)");
+        StringAssert.Contains(karaktersPage, "Shell.Current.GoToAsync(nameof(KennisgewingsPage), animate: false)");
+        StringAssert.Contains(downloadedPage, "Shell.Current.GoToAsync(nameof(KennisgewingsPage), animate: false)");
+        StringAssert.Contains(searchPage, "Shell.Current.GoToAsync(nameof(KennisgewingsPage), animate: false)");
+        StringAssert.Contains(appShell, "Routing.RegisterRoute(nameof(KennisgewingsPage), typeof(KennisgewingsPage));");
+        StringAssert.Contains(mauiProgram, "builder.Services.AddTransient<KennisgewingsPage>();");
+        Assert.IsFalse(luisterPage.Contains("surface=notifications", StringComparison.Ordinal));
+        Assert.IsFalse(karaktersPage.Contains("surface=notifications", StringComparison.Ordinal));
+        Assert.IsFalse(karaktersPage.Contains("returnTo", StringComparison.Ordinal));
+        Assert.IsFalse(luisterPage.Contains("ShowNotificationsAsync", StringComparison.Ordinal));
     }
 
     [TestMethod]
     public void MobileCharacterUnlockNotificationRefreshesAndOpensExactProfile()
     {
-        var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
+        var notificationsPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KennisgewingsPage.cs"));
         var karaktersPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KaraktersPage.cs"));
-        var notificationStart = luisterPage.IndexOf("private async Task OpenNotificationAsync(", StringComparison.Ordinal);
-        var notificationEnd = luisterPage.IndexOf("private async Task TryMarkAllNotificationsReadAsync()", StringComparison.Ordinal);
+        var notificationStart = notificationsPage.IndexOf("private async Task OpenNotificationAsync(", StringComparison.Ordinal);
+        var notificationEnd = notificationsPage.IndexOf("private async Task CapturePlayerTransitionBackdropAsync()", StringComparison.Ordinal);
 
         Assert.IsGreaterThanOrEqualTo(0, notificationStart);
         Assert.IsGreaterThan(notificationStart, notificationEnd);
-        var notificationSource = luisterPage[notificationStart..notificationEnd];
+        var notificationSource = notificationsPage[notificationStart..notificationEnd];
         StringAssert.Contains(notificationSource, "case MobileNotificationNavigationKind.Character:");
-        StringAssert.Contains(notificationSource, "var parameters = new ShellNavigationQueryParameters");
-        StringAssert.Contains(notificationSource, "[\"karakter\"] = target.Value");
-        StringAssert.Contains(notificationSource, "Shell.Current.GoToAsync(\"//Karakters\", animate: false, parameters)");
+        StringAssert.Contains(notificationSource, "var target = await ResolveNotificationTargetAsync(notification);");
+        StringAssert.Contains(notificationSource, "await Shell.Current.GoToAsync(\"//Karakters\", animate: false);");
+        StringAssert.Contains(notificationSource, "await karaktersPage.OpenCharacterFromNotificationAsync(target.Value);");
+        StringAssert.Contains(notificationSource, "notification.Body.StartsWith(candidate.DisplayName.Trim(), StringComparison.OrdinalIgnoreCase)");
+        StringAssert.Contains(karaktersPage, "internal async Task OpenCharacterFromNotificationAsync(string characterSlug)");
         Assert.IsFalse(notificationSource.Contains("characterRoute +=", StringComparison.Ordinal));
 
         StringAssert.Contains(karaktersPage, "_ = ResolvePendingCharacterAsync();");
@@ -468,22 +490,18 @@ public class MobileAbsoluteUrlSourceTests
     }
 
     [TestMethod]
-    public void MobileLuisterUsesTheWebsiteLuisterGradientBackground()
+    public void MobileLuisterUsesTheStartingTealAsASolidBackground()
     {
         var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
 
-        StringAssert.Contains(luisterPage, "LuisterBackgroundBrush = new LinearGradientBrush");
-        StringAssert.Contains(luisterPage, "new GradientStop(Color.FromArgb(\"#408D93\"), 0)");
-        StringAssert.Contains(luisterPage, "new GradientStop(Color.FromArgb(\"#4F9DB3\"), 0.22f)");
-        StringAssert.Contains(luisterPage, "new GradientStop(Color.FromArgb(\"#D4CF69\"), 0.56f)");
-        StringAssert.Contains(luisterPage, "new GradientStop(Color.FromArgb(\"#EFEFEF\"), 0.86f)");
-        StringAssert.Contains(luisterPage, "Background = LuisterBackgroundBrush,");
+        StringAssert.Contains(luisterPage, "LuisterBackgroundColor = Color.FromArgb(\"#408D93\")");
+        StringAssert.Contains(luisterPage, "BackgroundColor = LuisterBackgroundColor;");
+        StringAssert.Contains(luisterPage, "BackgroundColor = LuisterBackgroundColor,");
         StringAssert.Contains(luisterPage, "_feedView.Scrolled += OnFeedViewScrolled;");
-        StringAssert.Contains(luisterPage, "private void QueueLuisterScrollUpdate(double scrollOffset)");
-        StringAssert.Contains(luisterPage, "private void ApplyLuisterGradientForScroll(double scrollOffset)");
-        StringAssert.Contains(luisterPage, "LuisterBackgroundBrush.StartPoint = new Point(0, -_lastGradientScrollOffset / viewportHeight);");
-        StringAssert.Contains(luisterPage, "(travelDistance - _lastGradientScrollOffset) / viewportHeight");
-        Assert.IsFalse(luisterPage.Contains("BackgroundColor = LuisterBackgroundColor", StringComparison.Ordinal));
+        StringAssert.Contains(luisterPage, "private void QueueLuisterScrollUpdate()");
+        Assert.DoesNotContain("LinearGradientBrush", luisterPage, StringComparison.Ordinal);
+        Assert.DoesNotContain("GradientStop", luisterPage, StringComparison.Ordinal);
+        Assert.DoesNotContain("ApplyLuisterGradientForScroll", luisterPage, StringComparison.Ordinal);
         StringAssert.Contains(luisterPage, "Background = Brush.Transparent");
     }
 
@@ -508,8 +526,19 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(luisterPage, "_favoriteRequestsInFlight.Remove(favoriteKey)");
         StringAssert.Contains(luisterPage, "UpdateFavoriteState(story.Slug, isFavorite);");
         StringAssert.Contains(luisterPage, "UpdateFavoriteState(story.Slug, previousIsFavorite);");
-        StringAssert.Contains(luisterPage, "RenderPlaylistContent();");
+        StringAssert.Contains(luisterPage, "UpdateVisibleFavoriteState(story.Slug, !previousIsFavorite);");
+        StringAssert.Contains(luisterPage, "UpdateVisibleFavoriteState(story.Slug, isFavorite);");
+        StringAssert.Contains(luisterPage, "UpdateVisibleFavoriteState(story.Slug, previousIsFavorite);");
+        Assert.DoesNotContain("RenderPlaylistContent", favoriteMethod, StringComparison.Ordinal);
+        Assert.DoesNotContain("RenderContent", favoriteMethod, StringComparison.Ordinal);
+        Assert.DoesNotContain("ReplaceFeedItems", favoriteMethod, StringComparison.Ordinal);
         StringAssert.Contains(luisterPage, "private void UpdateFavoriteState(string slug, bool isFavorite)");
+        StringAssert.Contains(luisterPage, "private void UpdateVisibleFavoriteState(string slug, bool isFavorite)");
+        StringAssert.Contains(luisterPage, "private interface IFavoriteStateTarget");
+        StringAssert.Contains(luisterPage, "ApplyFavoriteSessionState(_lastRenderedSession!, session);");
+        StringAssert.Contains(luisterPage, "_lastRenderedSession = current;");
+        StringAssert.Contains(luisterPage, "_owner.RegisterFavoriteStateTarget(this);");
+        StringAssert.Contains(luisterPage, "_owner.ResolveCurrentFavoriteState(item.Story);");
         StringAssert.Contains(luisterPage, "playlist.ShowcaseStory is null ? null : UpdateStoryFavoriteState(playlist.ShowcaseStory, slug, isFavorite)");
         StringAssert.Contains(luisterPage, "story with { IsFavorite = isFavorite }");
         Assert.IsFalse(favoriteMethod.Contains("LoadAsync", StringComparison.Ordinal));
@@ -815,16 +844,24 @@ public class MobileAbsoluteUrlSourceTests
     }
 
     [TestMethod]
-    public void MobileLuisterKeepsDownloadsOnDedicatedPageOnly()
+    public void MobileLuisterKeepsDownloadLibraryDedicatedAndOffersCarouselDownloads()
     {
         var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
         var downloadedPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "DownloadedPage.cs"));
 
-        Assert.IsFalse(luisterPage.Contains("IOfflineStoryDownloadService", StringComparison.Ordinal));
+        StringAssert.Contains(luisterPage, "IOfflineStoryDownloadService offlineDownloadService");
         Assert.IsFalse(luisterPage.Contains("_downloadedStories", StringComparison.Ordinal));
         Assert.IsFalse(luisterPage.Contains("BuildDownloadedSection", StringComparison.Ordinal));
         Assert.IsFalse(luisterPage.Contains("LuisterFeedItemKind.Downloaded", StringComparison.Ordinal));
         Assert.IsFalse(luisterPage.Contains("OpenDownloadedStoryAsync", StringComparison.Ordinal));
+        StringAssert.Contains(luisterPage, "BuildDownloadOverlay(story)");
+        StringAssert.Contains(luisterPage, "Margin = new Thickness(6, 0, 0, 6)");
+        StringAssert.Contains(luisterPage, "HorizontalOptions = LayoutOptions.Start");
+        StringAssert.Contains(luisterPage, "VerticalOptions = LayoutOptions.End");
+        StringAssert.Contains(luisterPage, "await _apiClient.GetStoryAsync(story.Slug, story.Source)");
+        StringAssert.Contains(luisterPage, "await _offlineDownloadService.DownloadAsync(detail)");
+        StringAssert.Contains(luisterPage, "ConfirmCellularDownloadAsync()");
+        StringAssert.Contains(luisterPage, "story is not null && string.IsNullOrWhiteSpace(target.AutomationId)");
         StringAssert.Contains(downloadedPage, "IOfflineStoryDownloadService offlineDownloadService");
         StringAssert.Contains(downloadedPage, "GetPlayableDownloadsAsync()");
         StringAssert.Contains(downloadedPage, "_offlineDownloadService.CreateOfflineStory(download)");
@@ -874,6 +911,7 @@ public class MobileAbsoluteUrlSourceTests
         var karaktersPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KaraktersPage.cs"));
         var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
         var mobileTopBar = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileTopBar.cs"));
+        var settingsPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "SettingsPage.cs"));
         var appShell = File.ReadAllText(GetRepoPath("Shink.Mobile", "AppShell.xaml.cs"));
         var mauiProgram = File.ReadAllText(GetRepoPath("Shink.Mobile", "MauiProgram.cs"));
 
@@ -933,15 +971,17 @@ public class MobileAbsoluteUrlSourceTests
         Assert.IsFalse(karaktersPage.Contains("Browser.OpenAsync", StringComparison.Ordinal));
         StringAssert.Contains(luisterPage, "MobileMenuSheet.BuildOverlay(");
         StringAssert.Contains(luisterPage, "\"Karakters\",");
-        StringAssert.Contains(luisterPage, "\"Bestuur rekening\"");
+        Assert.IsFalse(luisterPage.Contains("\"Bestuur rekening\"", StringComparison.Ordinal));
         StringAssert.Contains(luisterPage, "await Shell.Current.GoToAsync(\"//Karakters\", animate: false)");
         StringAssert.Contains(luisterPage, "StartKaraktersDestinationWarmup(_pageActivityCancellation.Token);");
         StringAssert.Contains(luisterPage, "await _apiClient.WarmCharactersCacheAsync(cancellationToken);");
         StringAssert.Contains(luisterPage, "await karaktersPage.PreloadCachedContentAsync(cancellationToken);");
         StringAssert.Contains(mobileTopBar, "\"Karakters\",");
         StringAssert.Contains(mobileTopBar, "\"Karakter-pare\",");
-        StringAssert.Contains(mobileTopBar, "\"Instellings\",");
-        StringAssert.Contains(mobileTopBar, "\"Bestuur rekening\"");
+        StringAssert.Contains(mobileTopBar, "\"Instellings\"");
+        Assert.IsFalse(mobileTopBar.Contains("\"Bestuur rekening\"", StringComparison.Ordinal));
+        Assert.IsFalse(settingsPage.Contains("\"Bestuur rekening\"", StringComparison.Ordinal));
+        Assert.IsFalse(settingsPage.Contains("\"Intekening\"", StringComparison.Ordinal));
         StringAssert.Contains(mobileTopBar, "await Shell.Current.GoToAsync(\"//Karakters\", animate: false)");
         StringAssert.Contains(appShell, "Route = \"Karakters\"");
         StringAssert.Contains(appShell, "ContentTemplate = new DataTemplate(() => _services.GetRequiredService<KaraktersPage>())");
@@ -973,14 +1013,24 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(karaktersPage, "BuildUnlockProgressText(response)");
         StringAssert.Contains(karaktersPage, "Text = \" oopgesluit\"");
         StringAssert.Contains(karaktersPage, "private sealed class ReusableCharacterCardView : ContentView");
+        StringAssert.Contains(karaktersPage, "private const double HeadingMinimumHeight = 34;");
+        StringAssert.Contains(karaktersPage, "private const double SummaryMinimumHeight = 48;");
+        StringAssert.Contains(karaktersPage, "private const double StoryActionSlotHeight = 31;");
+        StringAssert.Contains(karaktersPage, "MinimumHeightRequest = HeadingMinimumHeight");
+        StringAssert.Contains(karaktersPage, "MinimumHeightRequest = SummaryMinimumHeight");
+        StringAssert.Contains(karaktersPage, "LineBreakMode = LineBreakMode.TailTruncation");
+        StringAssert.Contains(karaktersPage, "HeightRequest = StoryActionSlotHeight");
+        StringAssert.Contains(karaktersPage, "_storyButtonSlot");
         StringAssert.Contains(karaktersPage, "_summary.Text = character.SummaryText;");
         StringAssert.Contains(karaktersPage, "Text = FontAwesomePlayGlyph");
         StringAssert.Contains(karaktersPage, "SemanticProperties.SetDescription(_storyButton, character.CallToActionLabel);");
         StringAssert.Contains(karaktersPage, "_storyButton.BackgroundColor = character.IsUnlocked");
         StringAssert.Contains(karaktersPage, "MobileTopBar.BuildStoriesTopBar(");
-        StringAssert.Contains(karaktersPage, "notificationAction: OpenStoriesNotificationsAsync");
+        StringAssert.Contains(karaktersPage, "notificationAction: OpenNotificationsAsync");
         StringAssert.Contains(karaktersPage, "Shell.Current.GoToAsync(nameof(SearchPage), animate: false)");
-        StringAssert.Contains(karaktersPage, "Shell.Current.GoToAsync(\"//Luister?surface=notifications\", animate: false)");
+        StringAssert.Contains(karaktersPage, "Shell.Current.GoToAsync(nameof(KennisgewingsPage), animate: false)");
+        Assert.IsFalse(karaktersPage.Contains("surface=notifications", StringComparison.Ordinal));
+        Assert.IsFalse(karaktersPage.Contains("returnTo", StringComparison.Ordinal));
         StringAssert.Contains(karaktersPage, "CharacterIconPlacement.TopRight");
         StringAssert.Contains(karaktersPage, "Text = FontAwesomeVolumeHighGlyph");
         StringAssert.Contains(karaktersPage, "FontFamily = FontAwesomeSolidFontFamily");
@@ -1552,7 +1602,14 @@ public class MobileAbsoluteUrlSourceTests
         var androidManifest = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "Android", "AndroidManifest.xml"));
         var androidMainActivity = File.ReadAllText(GetRepoPath("Shink.Mobile", "Platforms", "Android", "MainActivity.cs"));
         var iconPath = GetRepoPath("Shink.Mobile", "Resources", "AppIcon", "schink_appicon.png");
+        var playStoreIconPath = GetRepoPath("Shink.Mobile", "Resources", "AppIcon", "schink_appicon_playstore.png");
+        var macPlayBuild = File.ReadAllText(GetRepoPath("scripts", "build-mobile-play-aab.sh"));
+        var windowsPlayBuild = File.ReadAllText(GetRepoPath("scripts", "build-mobile-play-aab.ps1"));
+        var testFlightBuild = File.ReadAllText(GetRepoPath("scripts", "build-mobile-testflight-archive.sh"));
+        var iconVerifier = File.ReadAllText(GetRepoPath("scripts", "verify-mobile-app-icons.sh"));
         var iconBytes = File.ReadAllBytes(iconPath);
+        var playStoreIconBytes = File.ReadAllBytes(playStoreIconPath);
+        const string expectedIconSha256 = "30FABA4A58E01BF90B4FDD3580308312ACA40A5E93E9298DCBF34FD1F9E8EBA8";
 
         StringAssert.Contains(project, "<MauiIcon Include=\"Resources/AppIcon/schink_appicon.png\" />");
         StringAssert.Contains(infoPlist, "<key>XSAppIconAssets</key>");
@@ -1562,6 +1619,17 @@ public class MobileAbsoluteUrlSourceTests
         Assert.IsFalse(androidMainActivity.Contains("Icon =", StringComparison.Ordinal));
         CollectionAssert.AreEqual(new byte[] { 0x89, 0x50, 0x4E, 0x47 }, iconBytes.Take(4).ToArray());
         Assert.IsTrue(iconBytes.Length > 100_000);
+        Assert.AreEqual(expectedIconSha256, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(iconBytes)));
+        CollectionAssert.AreEqual(iconBytes, playStoreIconBytes);
+        StringAssert.Contains(macPlayBuild, "$ICON_VERIFY_SCRIPT\" source");
+        StringAssert.Contains(macPlayBuild, "$ICON_VERIFY_SCRIPT\" android-aab");
+        StringAssert.Contains(macPlayBuild, "dotnet clean");
+        StringAssert.Contains(windowsPlayBuild, "Get-FileHash -LiteralPath $iconPath -Algorithm SHA256");
+        StringAssert.Contains(windowsPlayBuild, "Google Play bundle contains a stale or unexpected launcher icon.");
+        StringAssert.Contains(testFlightBuild, "dotnet clean");
+        StringAssert.Contains(testFlightBuild, "ios-artwork");
+        StringAssert.Contains(iconVerifier, "EXPECTED_ANDROID_XXXHDPI_SHA256");
+        StringAssert.Contains(iconVerifier, "EXPECTED_IOS_MARKETING_SHA256");
     }
 
     [TestMethod]

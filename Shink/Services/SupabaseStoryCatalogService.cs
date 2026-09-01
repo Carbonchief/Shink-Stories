@@ -878,7 +878,9 @@ public sealed class SupabaseStoryCatalogService(
 
         var imageFileName = !string.IsNullOrWhiteSpace(row.CoverImagePath)
             ? row.CoverImagePath.Trim()
-            : "/branding/schink-logo-green.png";
+            : !string.IsNullOrWhiteSpace(row.ThumbnailImagePath)
+                ? row.ThumbnailImagePath.Trim()
+                : StoryItem.PlaceholderImagePath;
 
         var thumbnailFileName = !string.IsNullOrWhiteSpace(row.ThumbnailImagePath)
             ? row.ThumbnailImagePath.Trim()

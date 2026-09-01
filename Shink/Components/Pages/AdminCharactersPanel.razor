@@ -107,7 +107,7 @@
                                          loading="lazy"
                                          decoding="async"
                                          fetchpriority="low"
-                                         onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                                         onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
                                     <span class="characters-admin-grid-badge">@BuildStatusLabel(character.Status)</span>
                                 </span>
 
@@ -140,7 +140,7 @@
                                  loading="lazy"
                                  decoding="async"
                                  fetchpriority="low"
-                                 onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                                 onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
                         </button>
                     }
                 }
@@ -504,7 +504,7 @@
                                     <div class="characters-admin-image-preview">
                                         <img src="@Editor.MainImagePreviewPath"
                                              alt="@T("Hoofprent voorskou", "Main image preview")"
-                                             onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                                             onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
                                         @if (CanRemoveMainImage())
                                         {
                                             <button type="button"
@@ -526,7 +526,7 @@
                                     <div class="characters-admin-image-preview">
                                         <img src="@Editor.MysteryImagePreviewPath"
                                              alt="@T("Mysterieprent voorskou", "Mystery image preview")"
-                                             onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                                             onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
                                         @if (CanRemoveMysteryImage())
                                         {
                                             <button type="button"
@@ -848,7 +848,7 @@
         Editor.MainImageFile = null;
         Editor.ImagePath = null;
         Editor.ImageDriveFileId = null;
-        Editor.MainImagePreviewPath = "/branding/schink-logo-green.png";
+        Editor.MainImagePreviewPath = StoryItem.PlaceholderImagePath;
     }
 
     private async Task RemoveMysteryImageAsync()
@@ -864,7 +864,7 @@
         Editor.MysteryImageFile = null;
         Editor.MysteryImagePath = null;
         Editor.MysteryImageDriveFileId = null;
-        Editor.MysteryImagePreviewPath = "/branding/schink-logo-green.png";
+        Editor.MysteryImagePreviewPath = StoryItem.PlaceholderImagePath;
     }
 
     private Task OnAudioFilesSelectedAsync(InputFileChangeEventArgs args)
@@ -1543,7 +1543,7 @@
             ? ResolveBrowserImagePath(character.ImagePath)
             : !string.IsNullOrWhiteSpace(character.MysteryImagePath)
                 ? ResolveBrowserImagePath(character.MysteryImagePath)
-                : "/branding/schink-logo-green.png";
+                : StoryItem.PlaceholderImagePath;
 
     private static string ResolveCharacterAdminThumbnailPath(AdminCharacterRecord character)
     {
@@ -1569,7 +1569,7 @@
 
     private static string ResolveBrowserImagePath(string? imagePath) =>
         string.IsNullOrWhiteSpace(imagePath)
-            ? "/branding/schink-logo-green.png"
+            ? StoryItem.PlaceholderImagePath
             : StoryItem.RewriteImagePathForBrowser(imagePath);
 
     private static string? BuildFriendsValue(CharacterEditorModel editor, IReadOnlyList<AdminCharacterRecord> characters)
@@ -1698,8 +1698,8 @@
         public List<CharacterAudioClipEditorItem> AudioClips { get; set; } = [];
         public IBrowserFile? MainImageFile { get; set; }
         public IBrowserFile? MysteryImageFile { get; set; }
-        public string MainImagePreviewPath { get; set; } = "/branding/schink-logo-green.png";
-        public string MysteryImagePreviewPath { get; set; } = "/branding/schink-logo-green.png";
+        public string MainImagePreviewPath { get; set; } = StoryItem.PlaceholderImagePath;
+        public string MysteryImagePreviewPath { get; set; } = StoryItem.PlaceholderImagePath;
         public string SlugPreview => string.IsNullOrWhiteSpace(Slug) ? BuildEffectiveSlug(null, DisplayName) : Slug;
 
         public static CharacterEditorModel CreateEmpty() =>

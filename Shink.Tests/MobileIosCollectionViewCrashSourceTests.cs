@@ -54,7 +54,8 @@ public sealed class MobileIosCollectionViewCrashSourceTests
         StringAssert.Contains(luisterPage, "if (!string.Equals(_imageKey, imageKey, StringComparison.Ordinal))");
         StringAssert.Contains(luisterPage, "PageHelpers.BuildStoryImageRequest(");
         StringAssert.Contains(luisterPage, "AutomationId = \"favorite-carousel-story\"");
-        StringAssert.Contains(luisterPage, "ApplyFavoriteOverlayState(_favoriteButton, item.Story, updateAutomationId: false)");
+        StringAssert.Contains(luisterPage, "_story = _owner.ResolveCurrentFavoriteState(item.Story);");
+        StringAssert.Contains(luisterPage, "ApplyFavoriteOverlayState(_favoriteButton, _story, updateAutomationId: false)");
         StringAssert.Contains(luisterPage, "_image.WidthRequest = coverWidth;");
         StringAssert.Contains(luisterPage, "_image.HeightRequest = coverHeight;");
         StringAssert.Contains(luisterPage, "_artwork.WidthRequest = cardWidth;");

@@ -60,12 +60,14 @@ public sealed class ContinueListeningState
             return;
         }
 
-        SaveItem(current with
-        {
-            PositionSeconds = NormalizeSeconds(positionSeconds) ?? current.PositionSeconds,
-            DurationSeconds = NormalizeSeconds(durationSeconds) ?? current.DurationSeconds,
-            UpdatedAtUtc = DateTimeOffset.UtcNow
-        });
+        SaveItem(
+            current with
+            {
+                PositionSeconds = NormalizeSeconds(positionSeconds) ?? current.PositionSeconds,
+                DurationSeconds = NormalizeSeconds(durationSeconds) ?? current.DurationSeconds,
+                UpdatedAtUtc = DateTimeOffset.UtcNow
+            },
+            notifyChanged: false);
     }
 
     public void Clear()
@@ -104,11 +106,14 @@ public sealed class ContinueListeningState
         }
     }
 
-    private void SaveItem(ContinueListeningItem item)
+    private void SaveItem(ContinueListeningItem item, bool notifyChanged = true)
     {
         Preferences.Default.Set(PreferenceKey, JsonSerializer.Serialize(item, JsonOptions));
         _current = item;
-        Changed?.Invoke(item);
+        if (notifyChanged)
+        {
+            Changed?.Invoke(item);
+        }
     }
 }
 

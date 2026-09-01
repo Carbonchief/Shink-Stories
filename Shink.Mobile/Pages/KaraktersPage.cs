@@ -8,7 +8,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
 {
     private const double FloatingTopBarContentInset = 92;
     private const double BottomBarContentInset = 216;
-    private const double BottomBarOverlayHeight = 152;
+    private const double BottomBarOverlayHeight = MobileBottomBar.NavigationHeight;
     private const string PoppinsFontFamily = "Poppins";
     private const string PoppinsSemiBoldFontFamily = "PoppinsSemiBold";
     private const string PoppinsBoldFontFamily = "PoppinsBold";
@@ -106,6 +106,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             InputTransparent = false,
             ZIndex = 100
         };
+        var topBarBackdropLayer = MobileTopBar.BuildStoriesBackdropLayer(_topBarOverlay);
         _floatingTopBarHost = new Border
         {
             BackgroundColor = Colors.Transparent,
@@ -121,7 +122,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
                 this,
                 _apiClient,
                 _sessionState.Current,
-                notificationAction: OpenStoriesNotificationsAsync)
+                notificationAction: OpenNotificationsAsync)
         };
         _topBarOverlay.Children.Add(_floatingTopBarHost);
 
@@ -157,6 +158,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             Children =
             {
                 _refreshView,
+                topBarBackdropLayer,
                 _topBarOverlay,
                 _bottomBarOverlay,
                 nowPlayingBar,
@@ -181,6 +183,29 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
                 _ = ResolvePendingCharacterAsync();
             }
         }
+    }
+
+    internal async Task OpenCharacterFromNotificationAsync(string characterSlug)
+    {
+        var slug = Uri.UnescapeDataString(characterSlug ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(slug))
+        {
+            return;
+        }
+
+        _pendingCharacterSlug = slug;
+        if (!_isPageActive)
+        {
+            return;
+        }
+
+        if (_response is null)
+        {
+            await LoadAsync();
+            return;
+        }
+
+        await ResolvePendingCharacterAsync();
     }
 
     internal async Task PreloadCachedContentAsync(CancellationToken cancellationToken)
@@ -498,6 +523,9 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
 
     private sealed class ReusableCharacterCardView : ContentView
     {
+        private const double HeadingMinimumHeight = 34;
+        private const double SummaryMinimumHeight = 48;
+        private const double StoryActionSlotHeight = 31;
         private readonly KaraktersPage _owner;
         private readonly Border _card;
         private readonly Grid _media;
@@ -509,6 +537,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
         private readonly Label _heading;
         private readonly Label _summary;
         private readonly Button _storyButton;
+        private readonly Grid _storyButtonSlot;
         private MobileCharacterCard? _character;
         private string? _imageKey;
         private double _lastWidth = -1;
@@ -562,7 +591,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             };
             _heading = new Label
             {
-                HeightRequest = 24,
+                MinimumHeightRequest = HeadingMinimumHeight,
                 Margin = new Thickness(1, 4, 1, 0),
                 FontSize = 10.5,
                 FontFamily = PoppinsBoldFontFamily,
@@ -574,7 +603,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
             };
             _summary = new Label
             {
-                HeightRequest = 34,
+                MinimumHeightRequest = SummaryMinimumHeight,
                 Margin = new Thickness(2, 0),
                 FontSize = 8.5,
                 FontFamily = PoppinsFontFamily,
@@ -597,6 +626,14 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
                 HorizontalOptions = LayoutOptions.Center,
                 AutomationId = "character-primary-story",
                 IsVisible = false
+            };
+            _storyButtonSlot = new Grid
+            {
+                HeightRequest = StoryActionSlotHeight,
+                Children =
+                {
+                    _storyButton
+                }
             };
             _storyButton.Clicked += async (_, _) =>
             {
@@ -631,7 +668,7 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
                         _media,
                         _heading,
                         _summary,
-                        _storyButton
+                        _storyButtonSlot
                     }
                 }
             };
@@ -777,8 +814,8 @@ public sealed class KaraktersPage : ContentPage, IQueryAttributable
     private static Task OpenStoriesSearchAsync() =>
         Shell.Current.GoToAsync(nameof(SearchPage), animate: false);
 
-    private static Task OpenStoriesNotificationsAsync() =>
-        Shell.Current.GoToAsync("//Luister?surface=notifications", animate: false);
+    private static Task OpenNotificationsAsync() =>
+        Shell.Current.GoToAsync(nameof(KennisgewingsPage), animate: false);
 
     private static Border BuildCharacterIconButton(
         IDrawable drawable,

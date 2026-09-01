@@ -105,11 +105,38 @@ public static class PaymentPlanCatalog
     public static IReadOnlyList<PaymentPlan> PublicSchoolPlans { get; } =
         SchoolPlans.Where(plan => !plan.IsAdminOnly).ToArray();
 
+    public static IReadOnlyList<PaymentPlan> MobileStorePlans { get; } =
+    [
+        All.Single(plan => string.Equals(
+            plan.TierCode,
+            StoryAccessPolicy.AllStoriesMonthlyTierCode,
+            StringComparison.OrdinalIgnoreCase)) with
+        {
+            Name = "Schink Stories Maandeliks",
+            ItemDescription = "Volle toegang tot alle Schink Stories, elke maand.",
+            Amount = 99.00m
+        },
+        All.Single(plan => string.Equals(
+            plan.TierCode,
+            StoryAccessPolicy.AllStoriesYearlyTierCode,
+            StringComparison.OrdinalIgnoreCase)) with
+        {
+            Name = "Schink Stories Jaarliks",
+            ItemDescription = "Volle toegang tot alle Schink Stories vir 12 maande.",
+            Amount = 990.00m
+        }
+    ];
+
     public static PaymentPlan? FindBySlug(string? slug) =>
         All.FirstOrDefault(plan => string.Equals(plan.Slug, slug, StringComparison.OrdinalIgnoreCase));
 
     public static PaymentPlan? FindByStoreProductId(string? productId) =>
         All.FirstOrDefault(plan => string.Equals(plan.StoreProductId, productId, StringComparison.OrdinalIgnoreCase));
+
+    public static PaymentPlan? FindMobileStorePlan(string? slugOrProductId) =>
+        MobileStorePlans.FirstOrDefault(plan =>
+            string.Equals(plan.Slug, slugOrProductId, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(plan.StoreProductId, slugOrProductId, StringComparison.OrdinalIgnoreCase));
 
     public static PaymentPlan? FindByTierCode(string? tierCode) =>
         All.FirstOrDefault(plan => string.Equals(plan.TierCode, tierCode, StringComparison.OrdinalIgnoreCase));

@@ -15,6 +15,7 @@ internal sealed record ProgressiveImageRequest(
 internal sealed class ProgressiveCachedImage : Image
 {
     private const uint FadeInDurationMilliseconds = 120;
+    private static readonly Color PlaceholderBackgroundColor = Color.FromArgb("#146D69");
 
     public static readonly BindableProperty RequestProperty = BindableProperty.Create(
         nameof(Request),
@@ -199,6 +200,12 @@ internal sealed class ProgressiveCachedImage : Image
         }
 
         this.CancelAnimations();
+        BackgroundColor = string.Equals(
+            fallbackFile.Trim(),
+            PageHelpers.StoryPlaceholderFile,
+            StringComparison.OrdinalIgnoreCase)
+                ? PlaceholderBackgroundColor
+                : Colors.Transparent;
         Source = ImageSource.FromFile(fallbackFile);
         Opacity = 1;
         _hasDisplayedArtwork = false;
@@ -211,9 +218,16 @@ internal sealed class ProgressiveCachedImage : Image
             return;
         }
 
-        var shouldFade = !_hasDisplayedArtwork;
+        // Several recycled carousel cells can receive a new source during one
+        // Android fling. Avoid starting competing opacity animations on those
+        // frames; iOS retains the established progressive transition.
+        var shouldFade = !_hasDisplayedArtwork &&
+            DeviceInfo.Current.Platform != DevicePlatform.Android;
         _hasDisplayedArtwork = true;
         this.CancelAnimations();
+        BackgroundColor = IsPlaceholderRequest(Request)
+            ? PlaceholderBackgroundColor
+            : Colors.Transparent;
         Source = source;
         if (!shouldFade)
         {
@@ -245,10 +259,18 @@ internal sealed class ProgressiveCachedImage : Image
     private void ResetVisual()
     {
         this.CancelAnimations();
+        BackgroundColor = Colors.Transparent;
         Source = null;
         Opacity = 0;
         _hasDisplayedArtwork = false;
     }
+
+    private static bool IsPlaceholderRequest(ProgressiveImageRequest? request) =>
+        IsPlaceholderUrl(request?.FullImageUrl) || IsPlaceholderUrl(request?.PreviewImageUrl);
+
+    private static bool IsPlaceholderUrl(string? value) =>
+        !string.IsNullOrWhiteSpace(value) &&
+        value.Contains("/branding/schink-placeholder.png", StringComparison.OrdinalIgnoreCase);
 
     private void CancelCurrentListener()
     {

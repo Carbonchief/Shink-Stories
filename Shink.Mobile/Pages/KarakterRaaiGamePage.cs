@@ -23,6 +23,8 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
     private readonly Label _messageLabel;
     private readonly ProgressiveCachedImage _mysteryImage;
     private readonly ProgressiveCachedImage _revealImage;
+    private readonly ContentView _mysteryLayer;
+    private readonly ContentView _revealLayer;
     private readonly Border _imageStage;
     private readonly Grid _choicesGrid;
     private readonly Button _actionButton;
@@ -40,6 +42,8 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
     private string? _targetMysteryImageUrl;
     private CancellationTokenSource? _loadCancellation;
     private CancellationTokenSource? _autoAdvanceCancellation;
+    private CancellationTokenSource? _nextRoundPreloadCancellation;
+    private Task _nextRoundPreloadTask = Task.CompletedTask;
     private bool _hasLoaded;
     private bool _isPageActive;
     private bool _roundAnswered;
@@ -77,9 +81,9 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
         };
 
         _revealImage = BuildCharacterImage();
-        _revealImage.Opacity = 0;
-        _revealImage.Scale = 0.94;
         _mysteryImage = BuildCharacterImage();
+        _revealLayer = BuildCharacterLayer(_revealImage, isVisible: false, opacity: 0, scale: 0.94);
+        _mysteryLayer = BuildCharacterLayer(_mysteryImage);
         _imageStage = BuildImageStage();
         _choicesGrid = BuildChoicesGrid();
 
@@ -173,8 +177,8 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
             RowDefinitions =
             {
                 new RowDefinition(new GridLength(112)),
-                new RowDefinition(new GridLength(174)),
-                new RowDefinition(new GridLength(68)),
+                new RowDefinition(new GridLength(120)),
+                new RowDefinition(new GridLength(50)),
                 new RowDefinition(GridLength.Star),
                 new RowDefinition(new GridLength(190)),
                 new RowDefinition(GridLength.Auto)
@@ -302,7 +306,12 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
         }
         else if (_roundAnswered && _game?.IsComplete != true)
         {
+            PreloadNextRoundImages();
             ScheduleAutoAdvance();
+        }
+        else if (_game?.IsComplete != true)
+        {
+            PreloadNextRoundImages();
         }
     }
 
@@ -311,6 +320,7 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
         _isPageActive = false;
         _loadCancellation?.Cancel();
         CancelAutoAdvance();
+        CancelNextRoundPreload();
         _celebrationOverlay.Hide();
         base.OnDisappearing();
     }
@@ -320,7 +330,7 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
         {
             Text = "Wie is die\nkarakter?",
             FontFamily = PoppinsBoldFontFamily,
-            FontSize = 50,
+            FontSize = 36,
             TextColor = Color.FromArgb("#5B7188"),
             HorizontalTextAlignment = TextAlignment.Center,
             VerticalTextAlignment = TextAlignment.Center,
@@ -367,12 +377,12 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
             RowDefinitions =
             {
                 new RowDefinition(GridLength.Star),
-                new RowDefinition(new GridLength(76))
+                new RowDefinition(new GridLength(60))
             },
             Children =
             {
-                _revealImage,
-                _mysteryImage,
+                _revealLayer,
+                _mysteryLayer,
                 _messageLabel
             }
         };
@@ -395,7 +405,23 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
         new(_apiClient)
         {
             Aspect = Aspect.AspectFit,
-            Margin = new Thickness(18, 0),
+            Margin = new Thickness(0),
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalOptions = LayoutOptions.Fill,
+            InputTransparent = true
+        };
+
+    private static ContentView BuildCharacterLayer(
+        ProgressiveCachedImage image,
+        bool isVisible = true,
+        double opacity = 1,
+        double scale = 1) =>
+        new()
+        {
+            Content = image,
+            IsVisible = isVisible,
+            Opacity = opacity,
+            Scale = scale,
             HorizontalOptions = LayoutOptions.Fill,
             VerticalOptions = LayoutOptions.Fill,
             InputTransparent = true
@@ -426,7 +452,7 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
         {
             Text = text,
             FontFamily = PoppinsBoldFontFamily,
-            FontSize = 42,
+            FontSize = 30,
             TextColor = Color.FromArgb("#5B7188"),
             HorizontalTextAlignment = TextAlignment.Start,
             VerticalTextAlignment = TextAlignment.Center
@@ -519,6 +545,7 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
         }
 
         CancelAutoAdvance();
+        CancelNextRoundPreload();
         _celebrationOverlay.Hide();
 
         _game = new CharacterGuessGame(
@@ -568,18 +595,22 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
         _messageLabel.Text = "???";
         _messageLabel.FontSize = 52;
         _messageLabel.TextColor = Color.FromArgb("#5B7188");
+        _mysteryLayer.CancelAnimations();
+        _mysteryLayer.IsVisible = true;
+        _mysteryLayer.Opacity = 1;
+        _mysteryLayer.Scale = 1;
+        _revealLayer.CancelAnimations();
+        _revealLayer.IsVisible = false;
+        _revealLayer.Opacity = 0;
+        _revealLayer.Scale = 0.94;
         _mysteryImage.SetImage(
             _targetMysteryImageUrl,
             _targetCharacter.MysteryPreviewImageUrl,
-            fallbackFile: "schink_character_lineup.png");
-        _mysteryImage.Opacity = 1;
-        _mysteryImage.Scale = 1;
+            fallbackFile: "schink_placeholder.png");
         _revealImage.SetImage(
             _targetCharacter.ImageUrl,
             _targetCharacter.MatchPreviewImageUrl,
-            fallbackFile: "schink_character_lineup.png");
-        _revealImage.Opacity = 0;
-        _revealImage.Scale = 0.94;
+            fallbackFile: "schink_placeholder.png");
         RenderChoices(round);
 
         _actionButton.IsVisible = false;
@@ -591,6 +622,75 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
             _loadCancellation?.Token ?? default,
             maxImages: 2,
             maxDegreeOfParallelism: 2);
+        PreloadNextRoundImages();
+    }
+
+    private void PreloadNextRoundImages()
+    {
+        CancelNextRoundPreload();
+        var nextRound = _game?.PrepareNextRound();
+        if (nextRound is null)
+        {
+            _nextRoundPreloadTask = Task.CompletedTask;
+            return;
+        }
+
+        var urls = new List<string?>();
+        foreach (var choiceKey in nextRound.ChoiceKeys)
+        {
+            var choice = FindCharacter(choiceKey);
+            if (choice is null)
+            {
+                continue;
+            }
+
+            urls.Add(choice.ImageUrl);
+            urls.Add(choice.MatchPreviewImageUrl);
+        }
+
+        var target = FindCharacter(nextRound.TargetKey);
+        if (target is not null)
+        {
+            urls.Add(CharacterMysteryImageResolver.Resolve(target.ImageUrl, target.MysteryImageUrl));
+            urls.Add(target.MysteryPreviewImageUrl);
+        }
+
+        var cancellation = new CancellationTokenSource();
+        _nextRoundPreloadCancellation = cancellation;
+        _nextRoundPreloadTask = PreloadNextRoundImagesAsync(urls, cancellation);
+    }
+
+    private async Task PreloadNextRoundImagesAsync(
+        IReadOnlyList<string?> urls,
+        CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await _apiClient.CacheImagesAsync(
+                urls,
+                cancellation.Token,
+                maxImages: 10,
+                maxDegreeOfParallelism: 2);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            if (ReferenceEquals(_nextRoundPreloadCancellation, cancellation))
+            {
+                _nextRoundPreloadCancellation = null;
+            }
+
+            cancellation.Dispose();
+        }
+    }
+
+    private void CancelNextRoundPreload()
+    {
+        var cancellation = _nextRoundPreloadCancellation;
+        _nextRoundPreloadCancellation = null;
+        cancellation?.Cancel();
     }
 
     private void RenderChoices(CharacterGuessRound round)
@@ -622,7 +722,7 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
             new ProgressiveImageRequest(
                 character.ImageUrl,
                 character.MatchPreviewImageUrl,
-                "schink_character_lineup.png"))
+                "schink_placeholder.png"))
         {
             Aspect = Aspect.AspectFit,
             HeightRequest = 138,
@@ -791,6 +891,7 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
         try
         {
             await Task.Delay(AutoAdvanceDelay, cancellation.Token);
+            await _nextRoundPreloadTask.WaitAsync(cancellation.Token);
             if (_isPageActive && _roundAnswered && _game?.IsComplete != true)
             {
                 StartNextRound();
@@ -831,18 +932,24 @@ public sealed class KarakterRaaiGamePage : ContentPage, IQueryAttributable
 
     private async Task RevealCharacterAsync()
     {
-        if (_mysteryImage.Handler is null || _revealImage.Handler is null)
+        if (_mysteryLayer.Handler is null || _revealLayer.Handler is null)
         {
-            _mysteryImage.Opacity = 0;
-            _revealImage.Opacity = 1;
-            _revealImage.Scale = 1;
+            _mysteryLayer.IsVisible = false;
+            _mysteryLayer.Opacity = 0;
+            _revealLayer.IsVisible = true;
+            _revealLayer.Opacity = 1;
+            _revealLayer.Scale = 1;
             return;
         }
 
-        await _mysteryImage.FadeToAsync(0, 170, Easing.CubicIn);
+        _revealLayer.IsVisible = true;
+        _revealLayer.Opacity = 0;
+        _revealLayer.Scale = 0.94;
+        await _mysteryLayer.FadeToAsync(0, 170, Easing.CubicIn);
+        _mysteryLayer.IsVisible = false;
         await Task.WhenAll(
-            _revealImage.FadeToAsync(1, 250, Easing.CubicOut),
-            _revealImage.ScaleToAsync(1, 250, Easing.CubicOut));
+            _revealLayer.FadeToAsync(1, 250, Easing.CubicOut),
+            _revealLayer.ScaleToAsync(1, 250, Easing.CubicOut));
     }
 
     private async Task HandleActionAsync()

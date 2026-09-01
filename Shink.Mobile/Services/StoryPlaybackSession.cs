@@ -323,17 +323,28 @@ public sealed class StoryPlaybackSession
             }
 
             MobileStoryDetailResponse? detail;
-            try
-            {
-                detail = await _apiClient.GetStoryAsync(nextStory.Slug, "luister", cancellationToken);
-            }
-            catch when (!cancellationToken.IsCancellationRequested)
+            if (_playlistPlaybackState.IsOfflineQueue)
             {
                 var download = await _offlineDownloadService.GetDownloadAsync(
                     nextStory.Slug,
-                    "luister",
+                    nextStory.Source,
                     cancellationToken);
                 detail = download is null ? null : _offlineDownloadService.CreateOfflineDetail(download);
+            }
+            else
+            {
+                try
+                {
+                    detail = await _apiClient.GetStoryAsync(nextStory.Slug, "luister", cancellationToken);
+                }
+                catch when (!cancellationToken.IsCancellationRequested)
+                {
+                    var download = await _offlineDownloadService.GetDownloadAsync(
+                        nextStory.Slug,
+                        "luister",
+                        cancellationToken);
+                    detail = download is null ? null : _offlineDownloadService.CreateOfflineDetail(download);
+                }
             }
 
             if (detail is null ||
@@ -346,11 +357,16 @@ public sealed class StoryPlaybackSession
             var offlinePlaybackUrl = await _offlineDownloadService.ResolvePlayableAudioAsync(
                 detail,
                 cancellationToken);
+            if (_playlistPlaybackState.IsOfflineQueue && string.IsNullOrWhiteSpace(offlinePlaybackUrl))
+            {
+                return;
+            }
+
             var playbackUrl = string.IsNullOrWhiteSpace(offlinePlaybackUrl)
                 ? await _apiClient.PrepareAudioPlaybackSourceAsync(
                     detail.AudioUrl,
                     detail.Story.Slug,
-                    "luister",
+                    detail.Story.Source,
                     cancellationToken)
                 : offlinePlaybackUrl;
             await _audioPlaybackService.PrepareAsync(playbackUrl, cancellationToken);
@@ -422,7 +438,7 @@ public sealed class StoryPlaybackSession
                 prepared.Playlist.Slug,
                 prepared.Playlist.Title,
                 prepared.Detail.Story.DurationSeconds,
-                prepared.Playlist);
+                _playlistPlaybackState.IsOfflineQueue ? null : prepared.Playlist);
             _playlistPlaybackState.TrackAutoplayAdvance(prepared.Detail.Story);
             RaiseAutoplayAdvanced(prepared.Detail, prepared.Playlist);
         }

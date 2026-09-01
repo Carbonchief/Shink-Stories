@@ -155,19 +155,18 @@
         <div class="blog-grid">
             @foreach (var post in VisiblePosts)
             {
-                var featuredImageUrl = ResolveBrowserImageUrl(post.FeaturedImageUrl);
+                var featuredImageUrl = ResolveBrowserImageUrl(post.FeaturedImageUrl)
+                    ?? StoryItem.PlaceholderImagePath;
 
                 <article class="blog-card">
-                    @if (!string.IsNullOrWhiteSpace(featuredImageUrl))
-                    {
-                        <a class="blog-card-image-link" href="@BuildPostUrl(post)">
-                            <img class="blog-card-image"
-                                 src="@featuredImageUrl"
-                                 alt="Voorblad vir @post.Title"
-                                 loading="lazy"
-                                 decoding="async" />
-                        </a>
-                    }
+                    <a class="blog-card-image-link" href="@BuildPostUrl(post)">
+                        <img class="blog-card-image"
+                             src="@featuredImageUrl"
+                             alt="Voorblad vir @post.Title"
+                             loading="lazy"
+                             decoding="async"
+                             onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
+                    </a>
 
                     <div class="blog-card-body">
                         <div class="blog-card-meta">
@@ -280,7 +279,7 @@
 
     private string ShareImageUrl =>
         NavigationManager.ToAbsoluteUri(ResolveBrowserImageUrl(VisiblePosts.FirstOrDefault(post => !string.IsNullOrWhiteSpace(post.FeaturedImageUrl))?.FeaturedImageUrl)
-                                        ?? "/branding/schink-logo-green.png").ToString();
+                                        ?? StoryItem.PlaceholderImagePath).ToString();
 
     private string ShareImageMimeType => GetImageMimeType(VisiblePosts.FirstOrDefault(post => !string.IsNullOrWhiteSpace(post.FeaturedImageUrl))?.FeaturedImageUrl);
 

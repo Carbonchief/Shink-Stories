@@ -11,7 +11,7 @@ public sealed class SearchPage : ContentPage
     private const string PoppinsFontFamily = "Poppins";
     private const string PoppinsSemiBoldFontFamily = "PoppinsSemiBold";
     private const string PoppinsBoldFontFamily = "PoppinsBold";
-    private const double BottomBarOverlayHeight = 152;
+    private const double BottomBarOverlayHeight = MobileBottomBar.NavigationHeight;
     private const int SearchDebounceMilliseconds = 220;
     private static bool IsAndroid => DeviceInfo.Current.Platform == DevicePlatform.Android;
     private static readonly Color SearchBackgroundColor = Color.FromArgb("#279AA1");
@@ -27,16 +27,24 @@ public sealed class SearchPage : ContentPage
     private readonly Label _resultsSummary;
     private readonly CollectionView _resultsView;
     private readonly StorySearchResultCollection _visibleResults = new();
-    private readonly RefreshView _refreshView;
     private readonly Border _topBarHost;
+    private readonly Grid _topBarOverlay;
+    private readonly VerticalStackLayout _searchHero;
     private readonly VerticalStackLayout _searchHeader;
+    private readonly BoxView _searchFieldPlaceholder;
+    private readonly Border _searchField;
+    private readonly ContentView _searchFieldOverlay;
     private CancellationTokenSource? _loadCancellation;
     private CancellationTokenSource? _searchCancellation;
     private IReadOnlyList<StorySearchCandidate> _catalog = Array.Empty<StorySearchCandidate>();
     private bool _isPageActive;
     private bool _hasLoadedCatalog;
     private bool _isLoadingCatalog;
+    private double _resultsScrollOffset;
     private int _revealGeneration;
+
+    private const double SearchFieldTopInset = 14;
+    private const double MinimumStickySearchFieldTop = 84;
 
     public SearchPage(
         MobileApiClient apiClient,
@@ -81,7 +89,7 @@ public sealed class SearchPage : ContentPage
             VerticalTextAlignment = TextAlignment.Center,
             AutomationId = "story-search-input"
         };
-        _searchEntry.TextChanged += (_, _) => QueueSearch();
+        _searchEntry.TextChanged += OnSearchTextChanged;
 
         _searchActivity = new ActivityIndicator
         {
@@ -106,10 +114,21 @@ public sealed class SearchPage : ContentPage
             AutomationId = "story-search-status"
         };
 
+        _searchFieldPlaceholder = new BoxView
+        {
+            HeightRequest = 70,
+            Color = Colors.Transparent,
+            InputTransparent = true,
+            AutomationId = "story-search-field-placeholder"
+        };
+        _searchField = BuildSearchField();
+        _searchHero = BuildSearchHero();
         _searchHeader = BuildSearchHeader();
+        _searchFieldOverlay = BuildSearchFieldOverlay();
         _resultsView = new CollectionView
         {
             Background = Brush.Transparent,
+            Header = _searchHeader,
             ItemsSource = _visibleResults,
             ItemSizingStrategy = ItemSizingStrategy.MeasureFirstItem,
             SelectionMode = SelectionMode.None,
@@ -126,26 +145,15 @@ public sealed class SearchPage : ContentPage
             HorizontalScrollBarVisibility = ScrollBarVisibility.Never,
             VerticalScrollBarVisibility = ScrollBarVisibility.Never
         };
-
-        _refreshView = new RefreshView
-        {
-            SafeAreaEdges = SafeAreaEdges.None,
-            Background = Brush.Transparent,
-            Content = _resultsView,
-            Command = new Command(() => _ = LoadCatalogAsync(forceRefresh: true))
-        };
+        _resultsView.Scrolled += OnResultsScrolled;
+        _searchHero.SizeChanged += (_, _) => ScheduleStickySearchFieldPositionUpdate();
+        _searchHeader.SizeChanged += (_, _) => ScheduleStickySearchFieldPositionUpdate();
+        _searchFieldPlaceholder.SizeChanged += (_, _) => ScheduleStickySearchFieldPositionUpdate();
 
         var searchContent = new Grid
         {
-            RowSpacing = 0,
-            RowDefinitions =
-            {
-                new RowDefinition { Height = GridLength.Auto },
-                new RowDefinition { Height = GridLength.Star }
-            },
-            Children = { _searchHeader, _refreshView }
+            Children = { _resultsView }
         };
-        Grid.SetRow(_refreshView, 1);
 
         _topBarHost = new Border
         {
@@ -160,7 +168,7 @@ public sealed class SearchPage : ContentPage
             Content = BuildTopBar()
         };
 
-        var topBarOverlay = new Grid
+        _topBarOverlay = new Grid
         {
             SafeAreaEdges = new SafeAreaEdges(
                 SafeAreaRegions.Container,
@@ -175,6 +183,7 @@ public sealed class SearchPage : ContentPage
             ZIndex = 100,
             Children = { _topBarHost }
         };
+        var topBarBackdropLayer = MobileTopBar.BuildStoriesBackdropLayer(_topBarOverlay);
 
         var bottomBarOverlay = new Grid
         {
@@ -211,7 +220,9 @@ public sealed class SearchPage : ContentPage
                     InputTransparent = true
                 },
                 searchContent,
-                topBarOverlay,
+                _searchFieldOverlay,
+                topBarBackdropLayer,
+                _topBarOverlay,
                 bottomBarOverlay,
                 new PersistentNowPlayingBar(_storyPlaybackSession)
                 {
@@ -222,6 +233,7 @@ public sealed class SearchPage : ContentPage
         };
 
         SizeChanged += (_, _) => ApplyResponsiveLayout();
+        Loaded += (_, _) => ScheduleStickySearchFieldPositionUpdate();
         ApplyResponsiveLayout();
     }
 
@@ -230,9 +242,10 @@ public sealed class SearchPage : ContentPage
         base.OnAppearing();
         _isPageActive = true;
         _topBarHost.Content = BuildTopBar();
+        ScheduleStickySearchFieldPositionUpdate();
         if (!_hasLoadedCatalog && !_isLoadingCatalog)
         {
-            _ = LoadCatalogAsync(forceRefresh: false);
+            _ = LoadCatalogAsync();
         }
     }
 
@@ -246,6 +259,24 @@ public sealed class SearchPage : ContentPage
 
     private VerticalStackLayout BuildSearchHeader()
     {
+        return new VerticalStackLayout
+        {
+            MaximumWidthRequest = 720,
+            HorizontalOptions = LayoutOptions.Center,
+            Padding = new Thickness(22, 0),
+            Spacing = 0,
+            Children =
+            {
+                _searchHero,
+                _searchFieldPlaceholder,
+                _resultsSummary,
+                new BoxView { HeightRequest = 32, Color = Colors.Transparent }
+            }
+        };
+    }
+
+    private static VerticalStackLayout BuildSearchHero()
+    {
         var heroSpacer = new BoxView { HeightRequest = 200, Color = Colors.Transparent };
         var heroMascot = new Image
         {
@@ -257,18 +288,18 @@ public sealed class SearchPage : ContentPage
             InputTransparent = true,
             AutomationId = "story-search-mascot"
         };
-        var heroTitle = new Label
+        var heroTitle = new Image
         {
-            Text = "Storie soek...",
-            FontFamily = PoppinsBoldFontFamily,
-            FontSize = 37,
-            FontAttributes = FontAttributes.Bold,
-            TextColor = Colors.White,
-            HorizontalTextAlignment = TextAlignment.Center,
-            LineHeight = 1.04,
-            Margin = new Thickness(0, 2, 0, 0),
+            Source = "soek_stories_title.png",
+            Aspect = Aspect.AspectFit,
+            WidthRequest = 320,
+            HeightRequest = 48,
+            HorizontalOptions = LayoutOptions.Center,
+            Margin = new Thickness(0, 7, 0, 0),
+            InputTransparent = true,
             AutomationId = "story-search-title"
         };
+        SemanticProperties.SetDescription(heroTitle, "Soek Stories");
         var heroSubtitle = new Label
         {
             Text = "Tik die naam van die storie wat jy wil luister",
@@ -276,14 +307,11 @@ public sealed class SearchPage : ContentPage
             FontSize = 16,
             TextColor = Colors.White,
             HorizontalTextAlignment = TextAlignment.Center,
-            Margin = new Thickness(0, 3, 0, 0)
+            Margin = new Thickness(0, 8, 0, 0)
         };
 
         return new VerticalStackLayout
         {
-            MaximumWidthRequest = 720,
-            HorizontalOptions = LayoutOptions.Center,
-            Padding = new Thickness(22, 0),
             Spacing = 0,
             Children =
             {
@@ -291,9 +319,12 @@ public sealed class SearchPage : ContentPage
                 heroMascot,
                 heroTitle,
                 heroSubtitle,
-                BuildSearchField(),
-                _resultsSummary,
-                new BoxView { HeightRequest = 32, Color = Colors.Transparent }
+                new BoxView
+                {
+                    HeightRequest = 28,
+                    Color = Colors.Transparent,
+                    InputTransparent = true
+                }
             }
         };
     }
@@ -332,7 +363,7 @@ public sealed class SearchPage : ContentPage
             StrokeShape = new RoundRectangle { CornerRadius = 16 },
             HeightRequest = 50,
             Padding = new Thickness(4, 0, 8, 0),
-            Margin = new Thickness(6, 20, 6, 0),
+            Margin = new Thickness(6, SearchFieldTopInset, 6, 0),
             Content = grid,
             Shadow = new Shadow
             {
@@ -350,6 +381,72 @@ public sealed class SearchPage : ContentPage
         return field;
     }
 
+    private ContentView BuildSearchFieldOverlay() =>
+        new()
+        {
+            MaximumWidthRequest = 720,
+            HorizontalOptions = LayoutOptions.Center,
+            VerticalOptions = LayoutOptions.Start,
+            HeightRequest = _searchFieldPlaceholder.HeightRequest,
+            Padding = new Thickness(22, 0),
+            ZIndex = 110,
+            Opacity = 0,
+            Content = _searchField
+        };
+
+    private void OnSearchTextChanged(object? sender, TextChangedEventArgs args)
+    {
+        UpdateSearchPresentation();
+        QueueSearch();
+    }
+
+    private void UpdateSearchPresentation()
+    {
+        var shouldCompact = !string.IsNullOrWhiteSpace(_searchEntry.Text);
+        if (_searchHero.IsVisible == !shouldCompact)
+        {
+            return;
+        }
+
+        _searchHero.IsVisible = !shouldCompact;
+        ScheduleStickySearchFieldPositionUpdate();
+    }
+
+    private void OnResultsScrolled(object? sender, ItemsViewScrolledEventArgs args)
+    {
+        _resultsScrollOffset = Math.Max(0, args.VerticalOffset);
+        UpdateStickySearchFieldPosition();
+    }
+
+    private void UpdateStickySearchFieldPosition()
+    {
+        if (_searchHero.IsVisible && _searchHero.Height <= 0)
+        {
+            _searchFieldOverlay.Opacity = 0;
+            return;
+        }
+
+        var fieldSlotYWithinHeader = _searchHero.IsVisible
+            ? _searchHero.Height
+            : 0;
+        var fieldSlotContentY = Math.Max(0, _searchHeader.Y + fieldSlotYWithinHeader);
+        var stickyFieldTop = Math.Max(
+            MinimumStickySearchFieldTop,
+            _topBarOverlay.Height + 6);
+        var fieldTop = Math.Max(
+            stickyFieldTop,
+            fieldSlotContentY + SearchFieldTopInset - _resultsScrollOffset);
+
+        _searchFieldOverlay.TranslationY = fieldTop - SearchFieldTopInset;
+        _searchFieldOverlay.Opacity = 1;
+    }
+
+    private void ScheduleStickySearchFieldPositionUpdate()
+    {
+        UpdateStickySearchFieldPosition();
+        Dispatcher.Dispatch(UpdateStickySearchFieldPosition);
+    }
+
     private View BuildTopBar() =>
         MobileTopBar.BuildStoriesTopBar(
             this,
@@ -364,9 +461,9 @@ public sealed class SearchPage : ContentPage
     }
 
     private static Task OpenNotificationsAsync() =>
-        Shell.Current.GoToAsync("//Luister?surface=notifications", animate: false);
+        Shell.Current.GoToAsync(nameof(KennisgewingsPage), animate: false);
 
-    private async Task LoadCatalogAsync(bool forceRefresh)
+    private async Task LoadCatalogAsync()
     {
         if (_isLoadingCatalog)
         {
@@ -382,7 +479,7 @@ public sealed class SearchPage : ContentPage
 
         try
         {
-            if (!forceRefresh && !_hasLoadedCatalog)
+            if (!_hasLoadedCatalog)
             {
                 var cachedResponse = await _apiClient.GetCachedLuisterAsync(cancellationToken);
                 if (cachedResponse is not null && !cancellationToken.IsCancellationRequested)
@@ -417,11 +514,7 @@ public sealed class SearchPage : ContentPage
         finally
         {
             _isLoadingCatalog = false;
-            await MainThread.InvokeOnMainThreadAsync(() =>
-            {
-                _refreshView.IsRefreshing = false;
-                UpdateSearchActivity();
-            });
+            await MainThread.InvokeOnMainThreadAsync(UpdateSearchActivity);
         }
     }
 
@@ -593,7 +686,6 @@ public sealed class SearchPage : ContentPage
             }
         };
 
-        var actionLabel = story.IsLocked ? "Sien opsies" : "Luister";
         var details = new VerticalStackLayout
         {
             Spacing = 4,
@@ -616,7 +708,7 @@ public sealed class SearchPage : ContentPage
                     FontSize = 18,
                     TextColor = Color.FromArgb("#113D4D"),
                     MaxLines = 2,
-                    LineBreakMode = LineBreakMode.TailTruncation,
+                    LineBreakMode = LineBreakMode.WordWrap,
                     LineHeight = 1.08
                 },
                 new Label
@@ -626,9 +718,15 @@ public sealed class SearchPage : ContentPage
                     FontSize = 12,
                     TextColor = Color.FromArgb("#394847"),
                     MaxLines = 2,
-                    LineBreakMode = LineBreakMode.TailTruncation,
+                    LineBreakMode = LineBreakMode.WordWrap,
                     LineHeight = 1.08
-                },
+                }
+            }
+        };
+
+        if (!story.IsLocked)
+        {
+            details.Children.Add(
                 new Border
                 {
                     BackgroundColor = Color.FromArgb("#F39A32"),
@@ -639,15 +737,14 @@ public sealed class SearchPage : ContentPage
                     HorizontalOptions = LayoutOptions.Start,
                     Content = new Label
                     {
-                        Text = actionLabel,
+                        Text = "Luister",
                         FontFamily = PoppinsBoldFontFamily,
                         FontSize = 11,
                         TextColor = Color.FromArgb("#1E1E1E"),
                         InputTransparent = true
                     }
-                }
-            }
-        };
+                });
+        }
 
         var content = new Grid
         {
@@ -882,16 +979,19 @@ public sealed class SearchPage : ContentPage
     {
         var width = MobileResponsiveLayout.ResolveWidth(Width);
         _backgroundImage.HeightRequest = Math.Clamp(Height * 0.66, 560, 710);
+        MobileResponsiveLayout.ApplyCenteredContent(_searchFieldOverlay, width, 720);
         if (DeviceInfo.Current.Platform == DevicePlatform.Android && DeviceInfo.Idiom == DeviceIdiom.Phone)
         {
             var phoneChromeWidth = Math.Max(280, width - 36);
             _topBarHost.WidthRequest = phoneChromeWidth;
             _topBarHost.MaximumWidthRequest = phoneChromeWidth;
             _topBarHost.HorizontalOptions = LayoutOptions.Center;
+            UpdateStickySearchFieldPosition();
             return;
         }
 
         MobileResponsiveLayout.ApplyStoriesTopBar(_topBarHost, width, 1040);
+        UpdateStickySearchFieldPosition();
     }
 
     private sealed record StorySearchCandidate(

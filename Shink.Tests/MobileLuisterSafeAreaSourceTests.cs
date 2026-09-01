@@ -12,7 +12,7 @@ public sealed class MobileLuisterSafeAreaSourceTests
 
         StringAssert.Contains(source, "private const double FloatingTopBarContentInset = 92;");
         StringAssert.Contains(source, "private const double BottomBarContentInset = 216;");
-        StringAssert.Contains(source, "private const double BottomBarOverlayHeight = 152;");
+        StringAssert.Contains(source, "private const double BottomBarOverlayHeight = MobileBottomBar.NavigationHeight;");
         StringAssert.Contains(source, "Margin = Thickness.Zero,");
         StringAssert.Contains(source, "HeightRequest = 62,");
         StringAssert.Contains(source, "BackgroundColor = Colors.Transparent,");
@@ -62,7 +62,7 @@ public sealed class MobileLuisterSafeAreaSourceTests
 
         StringAssert.Contains(source, "return MobileTopBar.BuildStoriesTopBar(");
         Assert.DoesNotContain("searchAction: OpenStoriesSearchAsync", source, StringComparison.Ordinal);
-        StringAssert.Contains(source, "notificationAction: ShowNotificationsAsync");
+        StringAssert.Contains(source, "notificationAction: RequestNotificationsAsync");
         StringAssert.Contains(source, "notificationCount: _notificationPage?.UnreadCount ?? 0");
     }
 

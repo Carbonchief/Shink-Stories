@@ -5,6 +5,7 @@ namespace Shink.Mobile.Pages;
 
 internal static class MobileTopBar
 {
+    internal const double StoriesBackdropHeight = 92;
     // Matches the website header's Font Awesome `fa-solid fa-bell` exactly.
     private const string NotificationBellGlyph = "\uf0f3";
     private const string NotificationBellAppleFontFamily = "Font Awesome 6 Free Solid";
@@ -25,7 +26,8 @@ internal static class MobileTopBar
             notificationCount: notificationCount,
             backgroundColor: MobileAndroidChromePalette.TopBarBackground,
             showProfile: false,
-            brandLeadingInset: 4);
+            brandLeadingInset: 4,
+            applyMaterial: false);
 
     public static View Build(
         Page hostPage,
@@ -39,7 +41,8 @@ internal static class MobileTopBar
         int notificationCount = 0,
         Color? backgroundColor = null,
         bool showProfile = true,
-        double brandLeadingInset = 16)
+        double brandLeadingInset = 16,
+        bool applyMaterial = true)
     {
         var navigationGate = new NavigationGate();
         var isBackAction = string.Equals(leftAction, "back", StringComparison.OrdinalIgnoreCase);
@@ -85,7 +88,10 @@ internal static class MobileTopBar
         {
             var notificationButton = BuildNotificationButton(notificationCount);
             var notificationTap = new TapGestureRecognizer();
-            notificationTap.Tapped += async (_, _) => await navigationGate.RunAsync(notificationAction);
+            notificationTap.Tapped += (_, _) =>
+            {
+                _ = RunNotificationActionSafelyAsync(navigationGate, notificationAction);
+            };
             notificationButton.GestureRecognizers.Add(notificationTap);
             rightActions.Children.Add(notificationButton);
         }
@@ -133,7 +139,9 @@ internal static class MobileTopBar
         Grid.SetColumn(rightActions, 2);
         var bar = new Border
         {
-            BackgroundColor = backgroundColor ?? Colors.Transparent,
+            Background = applyMaterial
+                ? BuildMaterialBackdropBrush(backgroundColor)
+                : Brush.Transparent,
             Stroke = Colors.Transparent,
             StrokeThickness = 0,
             StrokeShape = new RoundRectangle { CornerRadius = isBackAction ? 26 : 0 },
@@ -141,7 +149,80 @@ internal static class MobileTopBar
             Content = grid
         };
 
+        // Keep colourful page artwork visible beneath the shared native blur.
+        // Both platforms use the same tint, transparency, and page-facing fade.
+        if (applyMaterial)
+        {
+            MobileLiquidGlass.ApplyTopBar(
+                bar,
+                MobileAndroidChromePalette.TopBarNativeBlurTint);
+        }
+
         return bar;
+    }
+
+    public static void ApplyStoriesBackdrop(View overlay, View? captureExclusion = null)
+    {
+        overlay.Background = BuildMaterialBackdropBrush(
+            MobileAndroidChromePalette.TopBarBackground);
+        MobileLiquidGlass.ApplyTopBar(
+            overlay,
+            MobileAndroidChromePalette.TopBarNativeBlurTint,
+            captureExclusion);
+    }
+
+    public static View BuildStoriesBackdropLayer(View safeAreaOverlay)
+    {
+        if (DeviceInfo.Current.Platform != DevicePlatform.Android)
+        {
+            ApplyStoriesBackdrop(safeAreaOverlay);
+            return new ContentView
+            {
+                IsVisible = false,
+                InputTransparent = true
+            };
+        }
+
+        // Android positions a Container-safe overlay below the status area.
+        // Keep the controls in that safe overlay, but put the material in a
+        // separate edge-to-edge layer so the status area and toolbar read as
+        // one continuous glass surface, matching iOS.
+        var backdropLayer = new Grid
+        {
+            SafeAreaEdges = SafeAreaEdges.None,
+            BackgroundColor = Colors.Transparent,
+            HeightRequest = StoriesBackdropHeight,
+            HorizontalOptions = LayoutOptions.Fill,
+            VerticalOptions = LayoutOptions.Start,
+            InputTransparent = true,
+            ZIndex = 99
+        };
+        ApplyStoriesBackdrop(backdropLayer, safeAreaOverlay);
+        return backdropLayer;
+    }
+
+    private static Brush BuildMaterialBackdropBrush(Color? requestedColor)
+    {
+        var surfaceStart = requestedColor is not null && requestedColor.Alpha > 0
+            ? requestedColor.WithAlpha(0.04f)
+            : MobileAndroidChromePalette.TopBarSurfaceStartTint;
+        var surfaceEnd = requestedColor is not null && requestedColor.Alpha > 0
+            ? requestedColor.WithAlpha(0.08f)
+            : MobileAndroidChromePalette.TopBarSurfaceEndTint;
+
+        return new LinearGradientBrush
+        {
+            StartPoint = new Point(0, 0),
+            EndPoint = new Point(0, 1),
+            GradientStops =
+            {
+                new GradientStop(surfaceStart, 0),
+                new GradientStop(surfaceEnd, 0.58f),
+                new GradientStop(surfaceEnd.WithAlpha(surfaceEnd.Alpha * 0.72f), 0.78f),
+                new GradientStop(surfaceEnd.WithAlpha(surfaceEnd.Alpha * 0.28f), 0.92f),
+                new GradientStop(Colors.Transparent, 1)
+            }
+        };
     }
 
     private static Grid BuildNotificationButton(int unreadCount)
@@ -296,15 +377,14 @@ internal static class MobileTopBar
 
     private static async Task ShowMenuAsync(Page hostPage)
     {
-        var choice = await MobileMenuSheet.ShowAsync(
+        var choice = await MobileMenuSheet.ShowFromRightAsync(
             hostPage,
             "Menu",
             "Karakters",
             "Karakter-pare",
             "Karakter Raai",
             "Afgelaai",
-            "Instellings",
-            "Bestuur rekening");
+            "Instellings");
 
         try
         {
@@ -325,9 +405,6 @@ internal static class MobileTopBar
                 case "Instellings":
                     await Shell.Current.GoToAsync(nameof(SettingsPage), animate: true);
                     break;
-                case "Bestuur rekening":
-                    await OpenAccountAsync();
-                    break;
             }
         }
         catch (Exception)
@@ -347,8 +424,20 @@ internal static class MobileTopBar
     private static Task OpenLuisterAsync() =>
         Shell.Current.GoToAsync("//Luister", animate: false);
 
-    private static Task OpenAccountAsync() =>
-        Shell.Current.GoToAsync(nameof(AccountPage), animate: true);
+    private static async Task RunNotificationActionSafelyAsync(
+        NavigationGate navigationGate,
+        Func<Task> action)
+    {
+        try
+        {
+            await navigationGate.RunAsync(action);
+        }
+        catch
+        {
+            // A Shell transition can be superseded by another tap or a page
+            // lifecycle event. Luister owns the retryable surface request.
+        }
+    }
 
     private static Task OpenProfileAsync() =>
         Shell.Current.GoToAsync(nameof(ProfilePage), animate: true);

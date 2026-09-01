@@ -53,6 +53,7 @@ public sealed class MobileAnalyticsService
     private readonly SessionState _sessionState;
     private readonly string _anonymousDistinctId;
     private string? _identifiedDistinctId;
+    private string? _lastScreenName;
 
     public MobileAnalyticsService(
         IPostHogClient postHog,
@@ -65,6 +66,8 @@ public sealed class MobileAnalyticsService
         _anonymousDistinctId = GetOrCreateAnonymousDistinctId();
         _sessionState.Changed += IdentifySession;
     }
+
+    public bool IsConfigured => _settings.IsConfigured;
 
     public void TrackAppOpened() =>
         TrackEvent("mobile_app_opened");
@@ -84,6 +87,8 @@ public sealed class MobileAnalyticsService
             return;
         }
 
+        screenName = screenName.Trim();
+        Volatile.Write(ref _lastScreenName, screenName);
         var distinctId = ResolveDistinctId();
         var eventProperties = BuildProperties(properties);
         eventProperties["screen_name"] = screenName;
@@ -101,17 +106,34 @@ public sealed class MobileAnalyticsService
         TryCapture(() => _postHog.Capture(ResolveDistinctId(), eventName, BuildProperties(properties)));
     }
 
-    public void TrackException(Exception exception, string context, IReadOnlyDictionary<string, object>? properties = null)
+    public bool TrackException(Exception exception, string context, IReadOnlyDictionary<string, object>? properties = null)
     {
         if (!_settings.IsConfigured)
         {
-            return;
+            return false;
         }
 
-        var eventProperties = BuildProperties(properties);
-        eventProperties["context"] = context;
-        eventProperties["exception_type"] = exception.GetType().Name;
-        TryCapture(() => _postHog.CaptureException(exception, ResolveDistinctId(), eventProperties));
+        return TryCapture(() =>
+        {
+            var eventProperties = BuildProperties(properties);
+            eventProperties["context"] = context;
+            eventProperties["exception_type"] = exception.GetType().Name;
+            return _postHog.CaptureException(exception, ResolveDistinctId(), eventProperties);
+        });
+    }
+
+    public async Task<bool> TrackExceptionAndFlushAsync(
+        Exception exception,
+        string context,
+        IReadOnlyDictionary<string, object>? properties = null,
+        TimeSpan? timeout = null)
+    {
+        if (!TrackException(exception, context, properties))
+        {
+            return false;
+        }
+
+        return await FlushAsync(timeout).ConfigureAwait(false);
     }
 
     public void IdentifyCurrentSession() =>
@@ -120,20 +142,31 @@ public sealed class MobileAnalyticsService
     public void Flush() =>
         _ = FlushAsync();
 
-    private async Task FlushAsync()
+    public async Task<bool> FlushAsync(TimeSpan? timeout = null)
     {
         if (!_settings.IsConfigured)
         {
-            return;
+            return false;
         }
 
         try
         {
-            await _postHog.FlushAsync();
+            var flushTask = _postHog.FlushAsync();
+            if (timeout is { } flushTimeout)
+            {
+                await flushTask.WaitAsync(flushTimeout).ConfigureAwait(false);
+            }
+            else
+            {
+                await flushTask.ConfigureAwait(false);
+            }
+
+            return true;
         }
         catch
         {
             // Analytics flush is best-effort.
+            return false;
         }
     }
 
@@ -195,6 +228,12 @@ public sealed class MobileAnalyticsService
             ["anonymous_distinct_id"] = _anonymousDistinctId
         };
 
+        var lastScreenName = Volatile.Read(ref _lastScreenName);
+        if (!string.IsNullOrWhiteSpace(lastScreenName))
+        {
+            result["last_screen_name"] = lastScreenName;
+        }
+
         if (properties is not null)
         {
             foreach (var (key, value) in properties)
@@ -245,15 +284,16 @@ public sealed class MobileAnalyticsService
         return distinctId;
     }
 
-    private void TryCapture(Func<bool> capture)
+    private bool TryCapture(Func<bool> capture)
     {
         try
         {
-            _ = capture();
+            return capture();
         }
         catch
         {
             // Analytics must never block app behavior.
+            return false;
         }
     }
 }

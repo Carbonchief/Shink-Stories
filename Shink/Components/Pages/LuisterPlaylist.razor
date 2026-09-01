@@ -99,7 +99,8 @@ else
                                  height="485"
                                  loading="eager"
                                  fetchpriority="high"
-                                 decoding="async" />
+                                 decoding="async"
+                                 onerror="this.onerror=null;this.removeAttribute('srcset');this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
                             <span class="story-cover-play" aria-hidden="true">
                                 <i class="story-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
                             </span>
@@ -310,7 +311,8 @@ else
                                          width="64"
                                          height="64"
                                          loading="eager"
-                                         decoding="async" />
+                                         decoding="async"
+                                         onerror="this.onerror=null;this.removeAttribute('srcset');this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
                                     <span class="playlist-track-copy">
                                         <span class="playlist-track-title">@story.Title</span>
                                         <span class="playlist-track-status">@(isActive ? "Speel nou" : "Speel in speellys")</span>

@@ -83,34 +83,9 @@
           ],
           "codeOffers" : [
           ],
-          "displayPrice" : "59.99",
+          "displayPrice" : "99",
           "familyShareable" : false,
           "groupNumber" : 1,
-          "internalID" : "1D6A7B4C",
-          "introductoryOffer" : null,
-          "localizations" : [
-            {
-              "description" : "Maandelikse toegang tot Storie Hoekie.",
-              "displayName" : "Storie Hoekie",
-              "locale" : "en_ZA"
-            }
-          ],
-          "productID" : "storie_hoekie_maandeliks",
-          "recurringSubscriptionPeriod" : "P1M",
-          "referenceName" : "Storie Hoekie Maandeliks",
-          "subscriptionGroupID" : "F3F1AC5C",
-          "type" : "RecurringSubscription",
-          "winbackOffers" : [
-          ]
-        },
-        {
-          "adHocOffers" : [
-          ],
-          "codeOffers" : [
-          ],
-          "displayPrice" : "79.99",
-          "familyShareable" : false,
-          "groupNumber" : 2,
           "internalID" : "2E7B8C5D",
           "introductoryOffer" : null,
           "localizations" : [
@@ -133,9 +108,9 @@
           ],
           "codeOffers" : [
           ],
-          "displayPrice" : "799.99",
+          "displayPrice" : "990",
           "familyShareable" : false,
-          "groupNumber" : 3,
+          "groupNumber" : 2,
           "internalID" : "3F8C9D6E",
           "introductoryOffer" : null,
           "localizations" : [

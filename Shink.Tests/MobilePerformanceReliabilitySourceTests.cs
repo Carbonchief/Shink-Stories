@@ -179,24 +179,18 @@ public sealed class MobilePerformanceReliabilitySourceTests
         var luisterPage = File.ReadAllText(Path.Combine(RepoRoot, "Shink.Mobile", "Pages", "LuisterPage.cs"));
         var mauiProgram = File.ReadAllText(Path.Combine(RepoRoot, "Shink.Mobile", "MauiProgram.cs"));
 
-        StringAssert.Contains(luisterPage, "ScrollVisualUpdateInterval = TimeSpan.FromMilliseconds(100)");
-        StringAssert.Contains(luisterPage, "QueueLuisterScrollUpdate(args.VerticalOffset)");
-        StringAssert.Contains(luisterPage, "ApplyLuisterGradientForScroll(_pendingGradientScrollOffset)");
+        StringAssert.Contains(luisterPage, "ScrollIdlePollInterval = TimeSpan.FromMilliseconds(100)");
+        StringAssert.Contains(luisterPage, "QueueLuisterScrollUpdate()");
         var scrollTickStart = luisterPage.IndexOf(
-            "private void OnScrollVisualUpdateTimerTick",
+            "private void OnScrollIdleTimerTick",
             StringComparison.Ordinal);
         var idleGuard = luisterPage.IndexOf(
             "Environment.TickCount64 - _lastScrollEventTick < ScrollIdleThresholdMilliseconds",
             scrollTickStart,
             StringComparison.Ordinal);
-        var gradientUpdate = luisterPage.IndexOf(
-            "ApplyLuisterGradientForScroll(_pendingGradientScrollOffset)",
-            scrollTickStart,
-            StringComparison.Ordinal);
         Assert.IsGreaterThanOrEqualTo(0, scrollTickStart);
         Assert.IsGreaterThan(scrollTickStart, idleGuard);
-        Assert.IsGreaterThan(scrollTickStart, gradientUpdate);
-        Assert.IsGreaterThan(gradientUpdate, idleGuard);
+        Assert.DoesNotContain("ApplyLuisterGradientForScroll", luisterPage, StringComparison.Ordinal);
         StringAssert.Contains(luisterPage, "PauseImageWarmupForScroll();");
         StringAssert.Contains(luisterPage, "ResumeImageWarmupAfterScroll();");
         var pauseWarmupStart = luisterPage.IndexOf("private void PauseImageWarmupForScroll()", StringComparison.Ordinal);
@@ -216,9 +210,32 @@ public sealed class MobilePerformanceReliabilitySourceTests
         StringAssert.Contains(luisterPage, "AutomationId = \"luister-carousel\"");
         StringAssert.Contains(luisterPage, "ItemTemplate = new LuisterFeedTemplateSelector(this)");
         StringAssert.Contains(luisterPage, "BuildReusableStoryCarouselItems(playlist, ranked)");
+        StringAssert.Contains(luisterPage, "ShouldShowPlaylistShowcase(section.Playlist)");
+        Assert.IsFalse(luisterPage.Contains("yield return section.Playlist.ArtworkUrl;", StringComparison.Ordinal));
         StringAssert.Contains(mauiProgram, "SchinkLuisterCollectionViewPerformance");
         StringAssert.Contains(mauiProgram, "layoutManager.ItemPrefetchEnabled = false;");
         StringAssert.Contains(mauiProgram, "layoutManager.InitialPrefetchItemCount = 0;");
+    }
+
+    [TestMethod]
+    public void ListeningProgressPersistsWithoutRebuildingTheWholeFeed()
+    {
+        var continueListening = File.ReadAllText(Path.Combine(
+            RepoRoot,
+            "Shink.Mobile",
+            "Services",
+            "ContinueListeningState.cs"));
+        var luisterPage = File.ReadAllText(Path.Combine(
+            RepoRoot,
+            "Shink.Mobile",
+            "Pages",
+            "LuisterPage.cs"));
+
+        StringAssert.Contains(continueListening, "notifyChanged: false");
+        StringAssert.Contains(continueListening, "bool notifyChanged = true");
+        StringAssert.Contains(continueListening, "if (notifyChanged)");
+        StringAssert.Contains(luisterPage, "_continueListeningState.Changed += OnContinueListeningChanged;");
+        StringAssert.Contains(luisterPage, "RenderPlaylistContent();");
     }
 
     [TestMethod]
@@ -271,8 +288,12 @@ public sealed class MobilePerformanceReliabilitySourceTests
             "MauiProgram.cs"));
 
         StringAssert.Contains(apiClient, "AndroidImageCacheOptimizer.ResolveDisplayPath(cachedPath)");
-        StringAssert.Contains(apiClient, "AndroidImageCacheOptimizer.EnsureOptimized(cachePath, CancellationToken.None)");
+        StringAssert.Contains(
+            apiClient,
+            "AndroidImageCacheOptimizer.EnsureOptimized(cachePath, cancellationToken)");
         StringAssert.Contains(optimizer, "ResolveMaxPixelDimension()");
+        StringAssert.Contains(optimizer, "PhoneMaxPixelDimension = 1280");
+        StringAssert.Contains(optimizer, "TabletMaxPixelDimension = 2048");
         StringAssert.Contains(optimizer, "InJustDecodeBounds = true");
         StringAssert.Contains(optimizer, "InSampleSize = sampleSize");
         StringAssert.Contains(optimizer, "Bitmap.CreateScaledBitmap(decoded, targetWidth, targetHeight, filter: true)");

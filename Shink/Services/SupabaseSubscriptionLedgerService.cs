@@ -52,12 +52,9 @@ public sealed partial class SupabaseSubscriptionLedgerService(
     {
         var normalizedProvider = provider?.Trim().ToLowerInvariant();
         var normalizedProductId = productId?.Trim();
-        var plan = PaymentPlanCatalog.FindBySlug(normalizedProductId) ??
-                   PaymentPlanCatalog.FindByStoreProductId(normalizedProductId);
+        var plan = PaymentPlanCatalog.FindMobileStorePlan(normalizedProductId);
         if (normalizedProvider is not ("apple" or "google_play") ||
             plan is null ||
-            plan.IsSchoolPlan ||
-            plan.IsAdminOnly ||
             !plan.IsSubscription)
         {
             return new SubscriptionPersistResult(false, "Die winkelintekening kon nie aan 'n geldige plan gekoppel word nie.");

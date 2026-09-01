@@ -9,7 +9,14 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
 {
     private const int MatchedTileAnimationZIndex = 1_000;
     private const int MergedTileAnimationZIndex = 1_001;
+    private const double PhoneTileCornerRadius = 12;
+    private const double PhoneTileSpacing = 4;
+    private const double TabletFaceUpTileCornerRadius = 15;
+    private const double TabletTileCornerRadius = 22;
+    private const double TabletThreeColumnTileSpacing = 10;
+    private const double TabletFourColumnTileSpacing = 12;
     private static bool IsAndroid => DeviceInfo.Current.Platform == DevicePlatform.Android;
+    private static bool IsTablet => DeviceInfo.Current.Idiom == DeviceIdiom.Tablet;
     private static readonly MatchDifficultyOption[] DifficultyOptions =
     [
         new(MatchDifficultyLevel.Easy, "Beginner", 3, 4),
@@ -616,8 +623,8 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
         {
             SafeAreaEdges = SafeAreaEdges.None,
             Background = Brush.Transparent,
-            ColumnSpacing = 8,
-            RowSpacing = 8,
+            ColumnSpacing = PhoneTileSpacing,
+            RowSpacing = PhoneTileSpacing,
             Margin = new Thickness(12, 0),
             HorizontalOptions = LayoutOptions.Center,
             VerticalOptions = LayoutOptions.Center,
@@ -627,6 +634,8 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
 
     private View BuildTileView(CharacterMatchTile tile)
     {
+        var faceUpCornerRadius = IsTablet ? TabletFaceUpTileCornerRadius : PhoneTileCornerRadius;
+        var tileCornerRadius = IsTablet ? TabletTileCornerRadius : PhoneTileCornerRadius;
         var characterImage = new ProgressiveCachedImage(_apiClient)
         {
             Aspect = Aspect.AspectFit,
@@ -642,7 +651,7 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
         {
             BackgroundColor = Color.FromArgb("#FFF9F0"),
             StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = 15 },
+            StrokeShape = new RoundRectangle { CornerRadius = faceUpCornerRadius },
             Padding = new Thickness(5, 3, 5, 2),
             Content = characterImage
         };
@@ -682,7 +691,7 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
             BackgroundColor = Color.FromArgb("#27313A"),
             Stroke = Colors.Transparent,
             StrokeThickness = 0,
-            StrokeShape = new RoundRectangle { CornerRadius = 22 },
+            StrokeShape = new RoundRectangle { CornerRadius = tileCornerRadius },
             Padding = 0,
             Shadow = new Shadow
             {
@@ -902,12 +911,24 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
             _board.RowDefinitions.Add(new RowDefinition(GridLength.Star));
         }
 
-        var spacing = difficulty.Columns == 3 ? 10 : 12;
+        var spacing = ResolveTileSpacing(difficulty);
         _board.ColumnSpacing = spacing;
         _board.RowSpacing = spacing;
         var horizontalMargin = Width >= 600 ? 36 : 18;
         _board.Margin = new Thickness(horizontalMargin, 0, horizontalMargin, 0);
         ApplyBoardGeometry(difficulty);
+    }
+
+    private static double ResolveTileSpacing(MatchDifficultyOption difficulty)
+    {
+        if (!IsTablet)
+        {
+            return PhoneTileSpacing;
+        }
+
+        return difficulty.Columns == 3
+            ? TabletThreeColumnTileSpacing
+            : TabletFourColumnTileSpacing;
     }
 
     private void ApplyBoardGeometry(MatchDifficultyOption difficulty)

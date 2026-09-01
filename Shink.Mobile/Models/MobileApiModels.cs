@@ -9,6 +9,7 @@ public sealed record MobileSession(
     string? LastName,
     string? MobileNumber,
     bool HasPaidSubscription,
+    bool HasFullStoryAccess,
     IReadOnlyList<string> FavoriteStorySlugs,
     string LoginUrl,
     string SignupUrl,
@@ -29,8 +30,7 @@ public sealed record MobileStorePurchaseRequest(
     string ProductId,
     string ProviderPaymentId,
     string? ProviderTransactionId,
-    string? ProviderToken,
-    string? ReceiptData);
+    string? ProviderToken);
 
 public sealed record MobileStoreEntitlementResponse(
     bool IsActive,

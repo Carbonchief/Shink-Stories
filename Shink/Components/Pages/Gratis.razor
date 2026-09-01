@@ -49,7 +49,8 @@
                         <img src="@story.ThumbnailPath"
                              srcset="@($"{story.ThumbnailPath} 640w, {story.ImagePath} 1024w")"
                              sizes="(max-width: 760px) 100vw, (max-width: 1120px) 50vw, 33vw"
-                             alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async" />
+                             alt="Voorblad van @story.Title" width="640" height="485" loading="lazy" decoding="async"
+                             onerror="this.onerror=null;this.removeAttribute('srcset');this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
                         <span class="gratis-cover-play" aria-hidden="true">
                             <i class="gratis-cover-play-icon fa-solid fa-play" aria-hidden="true"></i>
                         </span>

@@ -17,6 +17,7 @@ public sealed class MobileImageCachingSourceTests
         StringAssert.Contains(control, "if (request is null || !_isLoaded)");
         StringAssert.Contains(control, "Source = null;");
         StringAssert.Contains(control, "FadeToAsync(1, FadeInDurationMilliseconds");
+        StringAssert.Contains(control, "DeviceInfo.Current.Platform != DevicePlatform.Android");
         StringAssert.Contains(control, "private void OnUnloaded");
         var unloadedStart = control.IndexOf("private void OnUnloaded", StringComparison.Ordinal);
         var applyRequestStart = control.IndexOf("private void ApplyRequest", unloadedStart, StringComparison.Ordinal);
@@ -63,12 +64,13 @@ public sealed class MobileImageCachingSourceTests
         var android = Read("Shink.Mobile", "Platforms", "Android", "AndroidImageCacheOptimizer.cs");
         var ios = Read("Shink.Mobile", "Platforms", "iOS", "IosImageCacheOptimizer.cs");
 
-        StringAssert.Contains(android, "DeviceDisplay.Current.MainDisplayInfo");
-        StringAssert.Contains(android, "Math.Max(display.Width, display.Height)");
+        StringAssert.Contains(android, "PhoneMaxPixelDimension = 1280");
+        StringAssert.Contains(android, "TabletMaxPixelDimension = 2048");
         StringAssert.Contains(ios, "PhoneMaxPixelDimension = 1280");
         StringAssert.Contains(ios, "TabletMaxPixelDimension = 2048");
         StringAssert.Contains(ios, "PhoneOptimizedSuffix = \".ios-feed\"");
         StringAssert.Contains(ios, "TryResolveDisplayPath(");
+        Assert.IsFalse(android.Contains("Math.Max(display.Width, display.Height)", StringComparison.Ordinal));
         Assert.IsFalse(ios.Contains("Math.Max(display.Width, display.Height)", StringComparison.Ordinal));
     }
 
@@ -79,7 +81,7 @@ public sealed class MobileImageCachingSourceTests
 
         StringAssert.Contains(client, "if (!IosImageCacheOptimizer.TryResolveDisplayPath(cachedPath, out cachedPath))");
         StringAssert.Contains(client, "Task.Run(async () =>");
-        StringAssert.Contains(client, "CacheImageCoreWithinSlotAsync(imageUrl).ConfigureAwait(false)");
+        StringAssert.Contains(client, "CacheImageCoreWithinSlotAsync(imageUrl, activityToken).ConfigureAwait(false)");
     }
 
     [TestMethod]

@@ -42,7 +42,7 @@ public sealed record MobileStorePurchase(
     string ProviderPaymentId,
     string? ProviderTransactionId,
     string? ProviderToken,
-    string? ReceiptData,
+    string? FinalizationId,
     bool NeedsFinalization,
     bool IsRestored);
 
@@ -95,14 +95,15 @@ public sealed class MobileStoreBillingService : IMobileStoreBillingService
         var billing = CrossInAppBilling.Current;
         try
         {
-            if (!await billing.ConnectAsync(true))
+            if (!await billing.ConnectAsync(true, cancellationToken))
             {
                 return Array.Empty<MobileStoreProduct>();
             }
 
             var products = await billing.GetProductInfoAsync(
                 ItemType.Subscription,
-                normalizedProductIds);
+                normalizedProductIds,
+                cancellationToken);
 
             return (products ?? Array.Empty<InAppBillingProduct>())
                 .Where(product => !string.IsNullOrWhiteSpace(product.ProductId))
@@ -294,7 +295,7 @@ public sealed class MobileStoreBillingService : IMobileStoreBillingService
         var billing = CrossInAppBilling.Current;
         try
         {
-            if (!await billing.ConnectAsync(true))
+            if (!await billing.ConnectAsync(true, cancellationToken))
             {
                 return new MobileStorePurchaseResult(false, false, false, null, "Die winkel kon nie oopgemaak word nie.");
             }
@@ -304,7 +305,8 @@ public sealed class MobileStoreBillingService : IMobileStoreBillingService
                 ItemType.Subscription,
                 BuildObfuscatedAccountId(accountEmail),
                 null,
-                null);
+                null,
+                cancellationToken);
             if (purchase is null)
             {
                 return new MobileStorePurchaseResult(false, false, false, null, "Die aankoop kon nie voltooi word nie.");
@@ -363,12 +365,12 @@ public sealed class MobileStoreBillingService : IMobileStoreBillingService
         var billing = CrossInAppBilling.Current;
         try
         {
-            if (!await billing.ConnectAsync(true))
+            if (!await billing.ConnectAsync(true, cancellationToken))
             {
                 return Array.Empty<MobileStorePurchase>();
             }
 
-            var purchases = await billing.GetPurchasesAsync(ItemType.Subscription);
+            var purchases = await billing.GetPurchasesAsync(ItemType.Subscription, cancellationToken);
             return (purchases ?? Array.Empty<InAppBillingPurchase>())
                 .Where(purchase => purchase.State is PurchaseState.Purchased or PurchaseState.Restored)
                 .Select(purchase => ToStorePurchase(billing, purchase, isRestored: true))
@@ -388,7 +390,7 @@ public sealed class MobileStoreBillingService : IMobileStoreBillingService
         MobileStorePurchase purchase,
         CancellationToken cancellationToken = default)
     {
-        if (!purchase.NeedsFinalization || string.IsNullOrWhiteSpace(purchase.ProviderTransactionId))
+        if (!purchase.NeedsFinalization || string.IsNullOrWhiteSpace(purchase.FinalizationId))
         {
             return true;
         }
@@ -396,12 +398,14 @@ public sealed class MobileStoreBillingService : IMobileStoreBillingService
         var billing = CrossInAppBilling.Current;
         try
         {
-            if (!await billing.ConnectAsync(true))
+            if (!await billing.ConnectAsync(true, cancellationToken))
             {
                 return false;
             }
 
-            var finalizationResults = await billing.FinalizePurchaseAsync(new[] { purchase.ProviderTransactionId });
+            var finalizationResults = await billing.FinalizePurchaseAsync(
+                new[] { purchase.FinalizationId },
+                cancellationToken);
             return finalizationResults.Any(result => result.Success);
         }
         catch (InAppBillingPurchaseException)
@@ -431,19 +435,20 @@ public sealed class MobileStoreBillingService : IMobileStoreBillingService
             paymentId,
             transactionId,
             null,
-            billing.ReceiptData,
+            FinalizationId: null,
             NeedsFinalization: false,
             isRestored);
 #elif ANDROID
         const string provider = "google_play";
         var paymentId = purchase.PurchaseToken ?? purchase.Id;
+        var finalizationId = purchase.TransactionIdentifier ?? purchase.PurchaseToken;
         return new MobileStorePurchase(
             provider,
             purchase.ProductId,
             paymentId,
             purchase.Id,
             purchase.PurchaseToken,
-            null,
+            finalizationId,
             purchase.IsAcknowledged is false,
             isRestored);
 #else
@@ -457,7 +462,7 @@ public sealed class MobileStoreBillingService : IMobileStoreBillingService
         {
             try
             {
-                await billing.DisconnectAsync();
+                await billing.DisconnectAsync(cancellationToken);
             }
             catch
             {

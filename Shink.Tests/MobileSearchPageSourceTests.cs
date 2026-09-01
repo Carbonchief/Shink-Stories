@@ -29,8 +29,11 @@ public sealed class MobileSearchPageSourceTests
         StringAssert.Contains(source, "Source = \"schink_background.jpeg\"");
         StringAssert.Contains(source, "Source = \"knibbels_search.png\"");
         Assert.IsTrue(File.Exists(GetRepoPath("Shink.Mobile", "Resources", "Images", "knibbels_search.png")));
-        StringAssert.Contains(source, "Text = \"Storie soek...\"");
+        StringAssert.Contains(source, "Source = \"soek_stories_title.png\"");
+        Assert.IsTrue(File.Exists(GetRepoPath("Shink.Mobile", "Resources", "Images", "soek_stories_title.png")));
+        Assert.DoesNotContain("Text = \"Storie soek...\"", source, StringComparison.Ordinal);
         StringAssert.Contains(source, "Text = \"Tik die naam van die storie wat jy wil luister\"");
+        StringAssert.Contains(source, "HeightRequest = 28,");
         StringAssert.Contains(source, "Placeholder = \"Soek stories\"");
         StringAssert.Contains(source, "MobileBottomBar.Build(this, \"search\", FocusSearchAsync)");
         StringAssert.Contains(source, "MobileTopBar.BuildStoriesTopBar(");
@@ -39,6 +42,20 @@ public sealed class MobileSearchPageSourceTests
         Assert.DoesNotContain("_searchEntry.Focused +=", source, StringComparison.Ordinal);
         Assert.DoesNotContain("SetCompactSearchHeaderAsync", source, StringComparison.Ordinal);
         Assert.DoesNotContain("HeightRequest = 98", source, StringComparison.Ordinal);
+    }
+
+    [TestMethod]
+    public void SearchCompactsAfterTypingAndKeepsTheLiveEntryStable()
+    {
+        var source = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "SearchPage.cs"));
+
+        StringAssert.Contains(source, "_searchEntry.TextChanged += OnSearchTextChanged;");
+        StringAssert.Contains(source, "var shouldCompact = !string.IsNullOrWhiteSpace(_searchEntry.Text);");
+        StringAssert.Contains(source, "_searchHero.IsVisible = !shouldCompact;");
+        StringAssert.Contains(source, "Dispatcher.Dispatch(UpdateStickySearchFieldPosition);");
+        StringAssert.Contains(source, "Content = _searchField");
+        StringAssert.Contains(source, "MobileResponsiveLayout.ApplyCenteredContent(_searchFieldOverlay, width, 720);");
+        Assert.DoesNotContain("_searchEntry =", source[source.IndexOf("private void UpdateSearchPresentation", StringComparison.Ordinal)..]);
     }
 
     [TestMethod]
@@ -67,16 +84,45 @@ public sealed class MobileSearchPageSourceTests
     }
 
     [TestMethod]
-    public void SearchEntryRemainsOutsideTheRefreshingResultsCollection()
+    public void SearchResultCardsHideTheLockedBadgeAndWrapAtWordBoundaries()
     {
         var source = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "SearchPage.cs"));
 
-        Assert.DoesNotContain("Header = _searchHeader", source);
-        StringAssert.Contains(source, "Children = { _searchHeader, _refreshView }");
-        StringAssert.Contains(source, "Grid.SetRow(_refreshView, 1);");
+        Assert.DoesNotContain("Sien opsies", source, StringComparison.Ordinal);
+        StringAssert.Contains(source, "if (!story.IsLocked)");
+        StringAssert.Contains(source, "Text = \"Luister\"");
+        Assert.AreEqual(2, source.Split("LineBreakMode = LineBreakMode.WordWrap", StringSplitOptions.None).Length - 1);
+        Assert.DoesNotContain("LineBreakMode = LineBreakMode.TailTruncation", source, StringComparison.Ordinal);
+    }
+
+    [TestMethod]
+    public void SearchEntryRemainsStableAndThePageHasNoPullToRefresh()
+    {
+        var source = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "SearchPage.cs"));
+
+        StringAssert.Contains(source, "Header = _searchHeader,");
+        StringAssert.Contains(source, "Children = { _resultsView }");
+        Assert.DoesNotContain("RefreshView", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("forceRefresh", source, StringComparison.Ordinal);
+        StringAssert.Contains(source, "_searchFieldPlaceholder");
+        StringAssert.Contains(source, "_resultsView.Scrolled += OnResultsScrolled;");
+        StringAssert.Contains(source, "_searchFieldOverlay.TranslationY = fieldTop - SearchFieldTopInset;");
         Assert.DoesNotContain("RestoreSearchFocusAfterResultsUpdate", source);
         Assert.DoesNotContain("_searchEntry.CursorPosition =", source);
-        StringAssert.Contains(source, "The live search Entry is a stable sibling");
+    }
+
+    [TestMethod]
+    public void SearchFieldWaitsForTheMeasuredHeroBeforeItsFirstReveal()
+    {
+        var source = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "SearchPage.cs"));
+
+        StringAssert.Contains(source, "_searchHero.SizeChanged += (_, _) => ScheduleStickySearchFieldPositionUpdate();");
+        StringAssert.Contains(source, "Loaded += (_, _) => ScheduleStickySearchFieldPositionUpdate();");
+        StringAssert.Contains(source, "if (_searchHero.IsVisible && _searchHero.Height <= 0)");
+        StringAssert.Contains(source, "? _searchHero.Height");
+        StringAssert.Contains(source, "_searchFieldOverlay.Opacity = 0;");
+        StringAssert.Contains(source, "_searchFieldOverlay.Opacity = 1;");
+        Assert.DoesNotContain("_searchHeader.Y + _searchFieldPlaceholder.Y", source, StringComparison.Ordinal);
     }
 
     private static string GetRepoPath(params string[] segments)

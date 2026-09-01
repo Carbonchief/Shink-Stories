@@ -256,18 +256,26 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
     public async Task SeekAsync(TimeSpan position, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        var player = _player;
+        if (player is null)
+        {
+            return;
+        }
+
         var duration = Duration;
         var maximumSeconds = duration is { TotalSeconds: > 0 }
             ? duration.Value.TotalSeconds
             : Math.Max(0, position.TotalSeconds);
         var targetSeconds = Math.Clamp(position.TotalSeconds, 0, maximumSeconds);
 
-        await MainThread.InvokeOnMainThreadAsync(() =>
+        var seekCompleted = await MainThread.InvokeOnMainThreadAsync(() =>
+            player.SeekAsync(CoreMedia.CMTime.FromSeconds(targetSeconds, 600)));
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (seekCompleted && ReferenceEquals(_player, player))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            _player?.Seek(CoreMedia.CMTime.FromSeconds(targetSeconds, 600));
-            UpdateNowPlayingInfo();
-        });
+            await MainThread.InvokeOnMainThreadAsync(UpdateNowPlayingInfo);
+        }
 
         _analytics.TrackEvent("mobile_audio_seeked", new Dictionary<string, object>
         {
@@ -786,13 +794,13 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         });
     }
 
-    public Task SeekAsync(TimeSpan position, CancellationToken cancellationToken = default)
+    public async Task SeekAsync(TimeSpan position, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var player = _player;
         if (player is null)
         {
-            return Task.CompletedTask;
+            return;
         }
 
         var durationMilliseconds = Math.Max(0, player.Duration);
@@ -800,13 +808,42 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
             position.TotalMilliseconds,
             0,
             Math.Min(durationMilliseconds, int.MaxValue));
-        player.SeekTo(targetMilliseconds);
+        var seekCompleted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        EventHandler seekCompletedHandler = (_, _) => seekCompleted.TrySetResult();
+        player.SeekComplete += seekCompletedHandler;
+        try
+        {
+            if (OperatingSystem.IsAndroidVersionAtLeast(26))
+            {
+                player.SeekTo(targetMilliseconds, Android.Media.MediaPlayerSeekMode.Closest);
+            }
+            else
+            {
+                player.SeekTo(targetMilliseconds);
+            }
+
+            using var seekTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            seekTimeout.CancelAfter(TimeSpan.FromSeconds(3));
+            try
+            {
+                await seekCompleted.Task.WaitAsync(seekTimeout.Token);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // Some Android media sources do not report seek completion reliably.
+                // The native seek request has still been accepted, so keep playback responsive.
+            }
+        }
+        finally
+        {
+            player.SeekComplete -= seekCompletedHandler;
+        }
+
         _analytics.TrackEvent("mobile_audio_seeked", new Dictionary<string, object>
         {
             ["position_seconds"] = targetMilliseconds / 1000d,
             ["duration_seconds"] = durationMilliseconds / 1000d
         });
-        return Task.CompletedTask;
     }
 
     public void Pause()

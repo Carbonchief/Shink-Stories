@@ -69,6 +69,7 @@ public sealed class SessionState
     private const string LastNamePreferenceKey = "mobile_session_last_name";
     private const string MobileNumberPreferenceKey = "mobile_session_mobile_number";
     private const string HasPaidSubscriptionPreferenceKey = "mobile_session_has_paid_subscription";
+    private const string HasFullStoryAccessPreferenceKey = "mobile_session_has_full_story_access";
     private const string FavoriteStorySlugsPreferenceKey = "mobile_session_favorite_story_slugs";
     private const string LoginUrlPreferenceKey = "mobile_session_login_url";
     private const string SignupUrlPreferenceKey = "mobile_session_signup_url";
@@ -150,6 +151,7 @@ public sealed class SessionState
             LastName: legacySession?.LastName,
             MobileNumber: legacySession?.MobileNumber,
             HasPaidSubscription: Preferences.Get(HasPaidSubscriptionPreferenceKey, false),
+            HasFullStoryAccess: Preferences.Get(HasFullStoryAccessPreferenceKey, false),
             FavoriteStorySlugs: LoadFavoriteStorySlugs(),
             LoginUrl: Preferences.Get(LoginUrlPreferenceKey, string.Empty),
             SignupUrl: Preferences.Get(SignupUrlPreferenceKey, string.Empty),
@@ -187,6 +189,7 @@ public sealed class SessionState
             RemoveLegacySensitivePreferences();
             SecureStorage.Default.Remove(SensitiveSessionPreferenceKey);
             Preferences.Remove(HasPaidSubscriptionPreferenceKey);
+            Preferences.Remove(HasFullStoryAccessPreferenceKey);
             Preferences.Remove(FavoriteStorySlugsPreferenceKey);
             return;
         }
@@ -194,6 +197,7 @@ public sealed class SessionState
         RemoveLegacySensitivePreferences();
         _ = SaveSensitiveCachedSessionAsync(session);
         Preferences.Set(HasPaidSubscriptionPreferenceKey, session.HasPaidSubscription);
+        Preferences.Set(HasFullStoryAccessPreferenceKey, session.HasFullStoryAccess);
         Preferences.Set(
             FavoriteStorySlugsPreferenceKey,
             JsonSerializer.Serialize(session.FavoriteStorySlugs ?? Array.Empty<string>(), SessionJsonOptions));
@@ -451,7 +455,7 @@ public sealed class MobileApiClient
     public async Task<MobileSession> GetSessionAsync(CancellationToken cancellationToken = default)
     {
         var session = await GetAsync<MobileSession>("/api/mobile/session", cancellationToken)
-            ?? new MobileSession(false, null, null, null, null, null, null, false, Array.Empty<string>(), string.Empty, string.Empty, string.Empty);
+            ?? new MobileSession(false, null, null, null, null, null, null, false, false, Array.Empty<string>(), string.Empty, string.Empty, string.Empty);
         _sessionState.Update(session);
         return session;
     }

@@ -108,7 +108,7 @@
                                          class="character-card-image"
                                          loading="lazy"
                                          decoding="async"
-                                         onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                                         onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
                                     @if (card.HasAudio)
                                     {
                                         <button type="button"
@@ -176,7 +176,7 @@
                                          class="character-card-image"
                                          loading="lazy"
                                          decoding="async"
-                                         onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                                         onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
                                     <span class="@($"character-card-badge{(ShakingLockedCharacterId == card.Character.CharacterId ? " is-slamming" : string.Empty)}")"
                                           aria-label="Nog gesluit"
                                           title="Nog gesluit">
@@ -275,7 +275,7 @@
                      alt="Illustrasie van @ActiveProfileCard.Character.DisplayName"
                      loading="lazy"
                      decoding="async"
-                     onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                     onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
             </button>
 
             <h2 id="character-profile-popup-title">@ActiveProfileCard.Character.DisplayName</h2>
@@ -321,7 +321,7 @@
                                          class="character-profile-story-cover"
                                          loading="lazy"
                                          decoding="async"
-                                         onerror="this.onerror=null;this.src='/branding/schink-logo-green.png';" />
+                                         onerror="this.onerror=null;this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');" />
                                     <span>@story.Title</span>
                                 </a>
                             }
@@ -517,7 +517,7 @@
                 builder.AddAttribute(sequence++, "alt", $"Illustrasie van {friend.Character.DisplayName}");
                 builder.AddAttribute(sequence++, "loading", "lazy");
                 builder.AddAttribute(sequence++, "decoding", "async");
-                builder.AddAttribute(sequence++, "onerror", "this.onerror=null;this.src='/branding/schink-logo-green.png';");
+                builder.AddAttribute(sequence++, "onerror", "this.onerror=null;this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');");
                 builder.CloseElement();
 
                 builder.OpenElement(sequence++, "span");
@@ -542,7 +542,7 @@
             builder.AddAttribute(sequence++, "alt", "Mysterie karakter illustrasie");
             builder.AddAttribute(sequence++, "loading", "lazy");
             builder.AddAttribute(sequence++, "decoding", "async");
-            builder.AddAttribute(sequence++, "onerror", "this.onerror=null;this.src='/branding/schink-logo-green.png';");
+            builder.AddAttribute(sequence++, "onerror", "this.onerror=null;this.src='/branding/schink-placeholder.png';this.classList.add('schink-image-placeholder');");
             builder.CloseElement();
 
             builder.OpenElement(sequence++, "span");
@@ -903,7 +903,7 @@
     {
         if (string.IsNullOrWhiteSpace(path))
         {
-            return "/branding/schink-logo-green.png";
+            return StoryItem.PlaceholderImagePath;
         }
 
         var trimmedPath = path.Trim();
@@ -926,7 +926,7 @@
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            return "/branding/schink-logo-green.png";
+            return StoryItem.PlaceholderImagePath;
         }
 
         var normalized = value.Replace('\\', '/');
