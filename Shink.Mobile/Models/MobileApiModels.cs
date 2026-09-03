@@ -57,7 +57,8 @@ public sealed record MobileStorySummary(
     bool IsFavorite,
     string DetailUrl,
     decimal? DurationSeconds,
-    string StoryType = "story");
+    string StoryType = "story",
+    bool RequiresFullStoryAccess = true);
 
 public sealed record MobileHomeResponse(
     string HeroTitle,

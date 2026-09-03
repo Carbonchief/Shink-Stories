@@ -40,15 +40,20 @@ internal static class OfflineDownloadAccessPolicy
         bool hasFullStoryAccess,
         string? currentOwnerKey,
         DateTimeOffset now,
-        TimeSpan accessRefreshWindow)
+        TimeSpan accessRefreshWindow,
+        bool hasPaidSubscription = false,
+        bool requiresFullStoryAccess = true)
     {
         if (!requiresSubscription)
         {
             return true;
         }
 
+        var hasRequiredAccess = requiresFullStoryAccess
+            ? hasFullStoryAccess
+            : hasPaidSubscription;
         return isSignedIn &&
-            hasFullStoryAccess &&
+            hasRequiredAccess &&
             IsOwnedByCurrentAccount(requiresSubscription, downloadOwnerKey, currentOwnerKey) &&
             now - lastAccessVerifiedAt <= accessRefreshWindow;
     }

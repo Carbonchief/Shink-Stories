@@ -142,7 +142,7 @@ public sealed class MobilePerformanceReliabilitySourceTests
         StringAssert.Contains(source, "RefreshVisibleStateAfterNavigationAsync(_pageActivityCancellation.Token)");
         StringAssert.Contains(source, "await Task.Delay(120, cancellationToken);");
         StringAssert.Contains(source, "await RefreshSessionInBackgroundAsync();");
-        Assert.IsFalse(source.Contains("GetPlayableDownloadsAsync", StringComparison.Ordinal));
+        StringAssert.Contains(source, "GetPlayableDownloadsAsync(cancellationToken)");
         StringAssert.Contains(source, "GetSessionAsync(cancellationToken)");
         StringAssert.Contains(source, "GetNotificationsAsync(cancellationToken: cancellationToken)");
     }
@@ -210,7 +210,7 @@ public sealed class MobilePerformanceReliabilitySourceTests
         StringAssert.Contains(luisterPage, "AutomationId = \"luister-carousel\"");
         StringAssert.Contains(luisterPage, "ItemTemplate = new LuisterFeedTemplateSelector(this)");
         StringAssert.Contains(luisterPage, "BuildReusableStoryCarouselItems(playlist, ranked)");
-        StringAssert.Contains(luisterPage, "ShouldShowPlaylistShowcase(section.Playlist)");
+        StringAssert.Contains(luisterPage, "ShouldShowPlaylistShowcase(playlist)");
         Assert.IsFalse(luisterPage.Contains("yield return section.Playlist.ArtworkUrl;", StringComparison.Ordinal));
         StringAssert.Contains(mauiProgram, "SchinkLuisterCollectionViewPerformance");
         StringAssert.Contains(mauiProgram, "layoutManager.ItemPrefetchEnabled = false;");

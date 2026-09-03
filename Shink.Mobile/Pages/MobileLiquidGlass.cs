@@ -272,7 +272,11 @@ internal static class MobileLiquidGlass
         private bool _scrollObserverAttached;
         private bool _isDetached;
         private bool _isCapturingBackdrop;
-        private int _scrollRefreshGeneration;
+        private bool _scrollCapturePosted;
+        private Java.Lang.Runnable? _scrollCaptureRunnable;
+
+        private Java.Lang.Runnable ScrollCaptureRunnable =>
+            _scrollCaptureRunnable ??= new(RefreshBackdropForScroll);
 
         private static Android.Graphics.Paint CreateFadePaint()
         {
@@ -307,7 +311,11 @@ internal static class MobileLiquidGlass
             }
 
             _isDetached = true;
-            _scrollRefreshGeneration++;
+            _scrollCapturePosted = false;
+            if (_scrollCaptureRunnable is not null)
+            {
+                RemoveCallbacks(_scrollCaptureRunnable);
+            }
             _scrollObserverAttached = false;
             _blurredBackdrop?.Dispose();
             _blurredBackdrop = null;
@@ -326,20 +334,28 @@ internal static class MobileLiquidGlass
 
         public void OnScrollChanged()
         {
-            // Keep the already blurred native bitmap while content is moving,
-            // then recapture once scrolling settles. The two bars are staggered
-            // so they never snapshot the full page in the same frame.
-            var generation = ++_scrollRefreshGeneration;
-            var refreshDelay = fadeFromTop ? 180L : 260L;
-            PostDelayed(() =>
+            // Refresh the cached backdrop on every animation frame while the
+            // content moves. Coalescing callbacks keeps the capture work to one
+            // pass per frame without leaving the bar on a stale image until the
+            // scroll settles.
+            if (_isDetached || _scrollCapturePosted)
             {
-                if (_isDetached || generation != _scrollRefreshGeneration)
-                {
-                    return;
-                }
+                return;
+            }
 
-                CaptureBackdrop();
-            }, refreshDelay);
+            _scrollCapturePosted = true;
+            PostOnAnimation(ScrollCaptureRunnable);
+        }
+
+        private void RefreshBackdropForScroll()
+        {
+            _scrollCapturePosted = false;
+            if (_isDetached)
+            {
+                return;
+            }
+
+            CaptureBackdrop();
         }
 
         internal void ScheduleBackdropCapture(long delayMilliseconds)

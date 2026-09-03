@@ -352,6 +352,17 @@ public class MobileAbsoluteUrlSourceTests
     }
 
     [TestMethod]
+    public void MobileNotificationsTitleStaysOnOneLine()
+    {
+        var notificationsPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KennisgewingsPage.cs"));
+
+        StringAssert.Contains(notificationsPage, "Text = \"Kennisgewings\"");
+        StringAssert.Contains(notificationsPage, "FontSize = 20");
+        StringAssert.Contains(notificationsPage, "MaxLines = 1");
+        StringAssert.Contains(notificationsPage, "LineBreakMode = LineBreakMode.NoWrap");
+    }
+
+    [TestMethod]
     public void MobileNotificationPageGuardsOpenCloseLifecycle()
     {
         var notificationsPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KennisgewingsPage.cs"));
@@ -1626,7 +1637,8 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(macPlayBuild, "dotnet clean");
         StringAssert.Contains(windowsPlayBuild, "Get-FileHash -LiteralPath $iconPath -Algorithm SHA256");
         StringAssert.Contains(windowsPlayBuild, "Google Play bundle contains a stale or unexpected launcher icon.");
-        StringAssert.Contains(testFlightBuild, "dotnet clean");
+        StringAssert.Contains(testFlightBuild, "rsync -a");
+        StringAssert.Contains(testFlightBuild, "--exclude 'obj'");
         StringAssert.Contains(testFlightBuild, "ios-artwork");
         StringAssert.Contains(iconVerifier, "EXPECTED_ANDROID_XXXHDPI_SHA256");
         StringAssert.Contains(iconVerifier, "EXPECTED_IOS_MARKETING_SHA256");

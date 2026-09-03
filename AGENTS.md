@@ -79,17 +79,20 @@ Project-specific instructions for agents working in this repository.
 - Ask which sending account or sending method to use before sending email.
 
 ## 10) Supabase MCP Setup
-- This project uses the Supabase MCP server for project ref `btpsoyiyhtfbeznonygn`.
-- Add the server to Codex with:
-  - `codex mcp add supabase --url 'https://mcp.supabase.com/mcp?project_ref=btpsoyiyhtfbeznonygn'`
+- This project uses the project-specific `supabase_shink` MCP server for project ref `btpsoyiyhtfbeznonygn`.
+- Do not use the generic Supabase connector for Shink; it can target the wrong project or account.
+- Configure the server with the Shink PAT environment variable:
+  - `codex mcp add supabase_shink --url 'https://mcp.supabase.com/mcp?project_ref=btpsoyiyhtfbeznonygn' --bearer-token-env-var SUPABASE_SHINK_PAT`
+- The PAT must be available in the environment inherited by Codex. Never commit it, print it, or paste it into chat. On macOS, load it before launching Codex with:
+  - `read -rs "SUPABASE_SHINK_PAT?Paste new Supabase PAT: "; echo; launchctl setenv SUPABASE_SHINK_PAT "$SUPABASE_SHINK_PAT"; unset SUPABASE_SHINK_PAT`
 - Ensure remote MCP client support is enabled in `~/.codex/config.toml`:
   - `[mcp]`
   - `remote_mcp_client_enabled = true`
-- Authenticate the server with:
-  - `codex mcp login supabase`
 - Verify the connection with:
   - `codex mcp list`
-  - `codex mcp get supabase`
+  - `codex mcp get supabase_shink`
+  - Use the exact project-scoped tools `mcp__supabase_shink__list_tables` or `mcp__supabase_shink__execute_sql` for read-only verification before any other database work.
+- After changing the PAT or MCP configuration, fully restart Codex so the server and credentials are reloaded.
 - Optional: install the Supabase agent skill for Postgres best practices with:
   - `npx skills add supabase/agent-skills`
 - Current installed skill path on this machine:

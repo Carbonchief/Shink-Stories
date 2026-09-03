@@ -150,9 +150,19 @@ public static class MauiProgram
 #if IOS || MACCATALYST
             handler.PlatformView.BorderStyle = UIKit.UITextBorderStyle.None;
             handler.PlatformView.BackgroundColor = UIKit.UIColor.Clear;
+            if (handler.VirtualView is Entry { AutomationId: "story-search-input" })
+            {
+                handler.PlatformView.VerticalAlignment = UIKit.UIControlContentVerticalAlignment.Center;
+            }
 #elif ANDROID
             handler.PlatformView.Background = null;
             handler.PlatformView.SetPadding(0, 0, 0, 0);
+            if (handler.VirtualView is Entry { AutomationId: "story-search-input" })
+            {
+                handler.PlatformView.Gravity = Android.Views.GravityFlags.CenterVertical |
+                    Android.Views.GravityFlags.Start;
+                handler.PlatformView.SetIncludeFontPadding(false);
+            }
 #endif
         });
     }

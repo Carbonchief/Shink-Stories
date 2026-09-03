@@ -201,6 +201,10 @@ public sealed class KarakterPareConfigPage : ContentPage, IQueryAttributable
             VerticalTextAlignment = TextAlignment.Center,
             LineHeight = 0.9
         };
+#if ANDROID
+        ConfigureAndroidDifficultyLabel(title);
+        ConfigureAndroidDifficultyLabel(pairs);
+#endif
         var text = new VerticalStackLayout
         {
             Spacing = -3,
@@ -250,6 +254,19 @@ public sealed class KarakterPareConfigPage : ContentPage, IQueryAttributable
         card.GestureRecognizers.Add(tap);
         return (container, card);
     }
+
+#if ANDROID
+    private static void ConfigureAndroidDifficultyLabel(Label label)
+    {
+        label.HandlerChanged += (_, _) =>
+        {
+            if (label.Handler?.PlatformView is Android.Widget.TextView nativeLabel)
+            {
+                nativeLabel.SetIncludeFontPadding(false);
+            }
+        };
+    }
+#endif
 
     private Border BuildBackButton()
     {

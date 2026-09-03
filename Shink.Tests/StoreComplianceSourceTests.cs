@@ -57,6 +57,24 @@ public sealed class StoreComplianceSourceTests
         Assert.IsFalse(migration.Contains("Kanselleer asseblief eers jou aktiewe intekening", StringComparison.Ordinal));
     }
 
+    [TestMethod]
+    public void MobileIosPrivacyManifestDeclaresRequiredReasonApis()
+    {
+        var manifest = File.ReadAllText(GetRepoPath(
+            "Shink.Mobile",
+            "Platforms",
+            "iOS",
+            "PrivacyInfo.xcprivacy"));
+        var project = File.ReadAllText(GetRepoPath("Shink.Mobile", "Shink.Mobile.csproj"));
+
+        StringAssert.Contains(manifest, "NSPrivacyAccessedAPICategoryFileTimestamp");
+        StringAssert.Contains(manifest, "C617.1");
+        StringAssert.Contains(manifest, "NSPrivacyAccessedAPICategoryUserDefaults");
+        StringAssert.Contains(manifest, "CA92.1");
+        StringAssert.Contains(project, "Platforms/iOS/PrivacyInfo.xcprivacy");
+        StringAssert.Contains(project, "LogicalName=\"PrivacyInfo.xcprivacy\"");
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

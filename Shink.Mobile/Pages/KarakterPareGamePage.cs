@@ -52,6 +52,7 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
     private IReadOnlyList<MobileCharacterCard> _availableCharacters = Array.Empty<MobileCharacterCard>();
     private CharacterMatchGame? _game;
     private CancellationTokenSource? _loadCancellation;
+    private CancellationTokenSource? _matchImagePreloadCancellation;
     private MatchDifficultyOption _selectedDifficulty = DifficultyOptions[0];
     private bool _hasLoaded;
     private bool _isPageActive;
@@ -344,6 +345,7 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
     {
         _isPageActive = false;
         _loadCancellation?.Cancel();
+        _matchImagePreloadCancellation?.Cancel();
         _celebrationOverlay.Hide();
         base.OnDisappearing();
     }
@@ -789,13 +791,37 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
         _newGameButton.IsEnabled = false;
         _board.InputTransparent = true;
         _matchAnimationOverlay.Children.Clear();
+
+        var pairCount = difficulty.PairCount;
+        var cancellationToken = _loadCancellation is { IsCancellationRequested: false } activeLoad
+            ? activeLoad.Token
+            : CancellationToken.None;
+        var selectedCharacters = Shuffle(_availableCharacters).Take(pairCount).ToArray();
+        _matchImagePreloadCancellation?.Cancel();
+        using var preloadCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        _matchImagePreloadCancellation = preloadCancellation;
+        try
+        {
+            await PreloadMatchDisplayImagesAsync(selectedCharacters, preloadCancellation.Token);
+        }
+        finally
+        {
+            if (ReferenceEquals(_matchImagePreloadCancellation, preloadCancellation))
+            {
+                _matchImagePreloadCancellation = null;
+            }
+        }
+
+        if (cancellationToken.IsCancellationRequested || !_isPageActive)
+        {
+            return;
+        }
+
         if (animateBoard)
         {
             await AnimateBoardOutAsync();
         }
 
-        var pairCount = difficulty.PairCount;
-        var selectedCharacters = Shuffle(_availableCharacters).Take(pairCount).ToArray();
         var tiles = selectedCharacters
             .SelectMany(character => new[]
             {
@@ -844,9 +870,29 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
 
         _ = _apiClient.CacheImagesAsync(
             selectedCharacters.Select(character => GetMatchImageUrl(character)!),
-            _loadCancellation?.Token ?? default,
+            cancellationToken,
             maxImages: difficulty.PairCount,
             maxDegreeOfParallelism: 2);
+    }
+
+    private async Task PreloadMatchDisplayImagesAsync(
+        IReadOnlyList<MobileCharacterCard> selectedCharacters,
+        CancellationToken cancellationToken)
+    {
+        using var preloadCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        preloadCancellation.CancelAfter(TimeSpan.FromSeconds(8));
+        try
+        {
+            await _apiClient.CacheImagesAsync(
+                selectedCharacters.Select(GetMatchDisplayImageUrl),
+                preloadCancellation.Token,
+                maxImages: selectedCharacters.Count,
+                maxDegreeOfParallelism: 2);
+        }
+        catch (OperationCanceledException)
+        {
+            // A slow or unavailable connection must not prevent the game from starting.
+        }
     }
 
     private CharacterMatchTile CreateTile(MobileCharacterCard character) =>
@@ -857,7 +903,7 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
             new ProgressiveImageRequest(
                 GetMatchImageUrl(character),
                 character.MatchPreviewImageUrl,
-                "schink_character_lineup.png"));
+                PageHelpers.StoryPlaceholderFile));
 
     private static bool IsUsableMatchCharacter(MobileCharacterCard character) =>
         !string.IsNullOrWhiteSpace(GetMatchImageUrl(character)) &&
@@ -867,6 +913,11 @@ public sealed class KarakterPareGamePage : ContentPage, IQueryAttributable
         string.IsNullOrWhiteSpace(character.MatchImageUrl)
             ? character.ImageUrl
             : character.MatchImageUrl;
+
+    private static string? GetMatchDisplayImageUrl(MobileCharacterCard character) =>
+        string.IsNullOrWhiteSpace(character.MatchPreviewImageUrl)
+            ? GetMatchImageUrl(character)
+            : character.MatchPreviewImageUrl;
 
     private static bool IsMysteryImageUrl(string imageUrl)
     {

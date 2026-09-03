@@ -75,6 +75,44 @@ public sealed class MobileResponsiveLayoutSourceTests
     }
 
     [TestMethod]
+    public void MobileMenuHasTopRightAndBelowSettingsCloseControls()
+    {
+        var menuSheet = File.ReadAllText(GetRepoPath(
+            "Shink.Mobile",
+            "Pages",
+            "MobileMenuSheet.cs"));
+
+        StringAssert.Contains(menuSheet, "var cardContent = new Grid");
+        StringAssert.Contains(menuSheet, "var panelContent = new Grid");
+        StringAssert.Contains(menuSheet, "var bottomCloseButton = BuildGameConfigCloseButton(() => onSelection(null));");
+        StringAssert.Contains(menuSheet, "Children =\n                        {\n                            heading,\n                            actionGrid,\n                            bottomCloseButton");
+        StringAssert.Contains(menuSheet, "AutomationId = \"mobile-menu-close-bottom\"");
+        StringAssert.Contains(menuSheet, "BackgroundColor = Color.FromArgb(\"#FFF4F2\")");
+        StringAssert.Contains(menuSheet, "Stroke = Color.FromArgb(\"#E77B78\")");
+        StringAssert.Contains(menuSheet, "Color = Color.FromArgb(\"#C93F45\")");
+    }
+
+    [TestMethod]
+    public void GameDifficultyLabelsRemoveAndroidFontPadding()
+    {
+        var karakterPareConfig = File.ReadAllText(GetRepoPath(
+            "Shink.Mobile",
+            "Pages",
+            "KarakterPareConfigPage.cs"));
+        var karakterRaaiConfig = File.ReadAllText(GetRepoPath(
+            "Shink.Mobile",
+            "Pages",
+            "KarakterRaaiConfigPage.cs"));
+
+        StringAssert.Contains(karakterPareConfig, "ConfigureAndroidDifficultyLabel(title);");
+        StringAssert.Contains(karakterPareConfig, "ConfigureAndroidDifficultyLabel(pairs);");
+        StringAssert.Contains(karakterPareConfig, "nativeLabel.SetIncludeFontPadding(false);");
+        StringAssert.Contains(karakterRaaiConfig, "ConfigureAndroidDifficultyLabel(title);");
+        StringAssert.Contains(karakterRaaiConfig, "ConfigureAndroidDifficultyLabel(rounds);");
+        StringAssert.Contains(karakterRaaiConfig, "nativeLabel.SetIncludeFontPadding(false);");
+    }
+
+    [TestMethod]
     public void MobileBurgerMenuSlidesInFromRight()
     {
         var menuSheet = File.ReadAllText(GetRepoPath(

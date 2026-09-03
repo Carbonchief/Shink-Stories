@@ -146,7 +146,6 @@ internal static class MobileMenuSheet
             }
         }
 
-        var closeButton = BuildCloseButton(() => onSelection(null));
         var heading = new Grid
         {
             Children =
@@ -173,6 +172,28 @@ internal static class MobileMenuSheet
                             HorizontalTextAlignment = TextAlignment.Center
                         }
                     }
+                }
+            }
+        };
+        var closeButton = BuildCloseButton(() => onSelection(null));
+        var bottomCloseButton = BuildGameConfigCloseButton(() => onSelection(null));
+        var cardContent = new Grid
+        {
+            Children =
+            {
+                new ScrollView
+                {
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Never,
+                    Content = new VerticalStackLayout
+                    {
+                        Spacing = 14,
+                        Children =
+                        {
+                            heading,
+                            actionGrid,
+                            bottomCloseButton
+                        }
+                    }
                 },
                 closeButton
             }
@@ -193,19 +214,7 @@ internal static class MobileMenuSheet
                 Radius = 26,
                 Opacity = 0.2f
             },
-            Content = new ScrollView
-            {
-                VerticalScrollBarVisibility = ScrollBarVisibility.Never,
-                Content = new VerticalStackLayout
-                {
-                    Spacing = 14,
-                    Children =
-                    {
-                        heading,
-                        actionGrid
-                    }
-                }
-            }
+            Content = cardContent
         };
 
         var dismissLayer = new BoxView
@@ -292,7 +301,6 @@ internal static class MobileMenuSheet
             Grid.SetRow(button, index);
         }
 
-        var closeButton = BuildCloseButton(() => onSelection(null));
         var heading = new Grid
         {
             Children =
@@ -319,6 +327,29 @@ internal static class MobileMenuSheet
                             HorizontalTextAlignment = TextAlignment.Center
                         }
                     }
+                }
+            }
+        };
+        var closeButton = BuildCloseButton(() => onSelection(null));
+        var bottomCloseButton = BuildGameConfigCloseButton(() => onSelection(null));
+        var panelContent = new Grid
+        {
+            Children =
+            {
+                new ScrollView
+                {
+                    VerticalScrollBarVisibility = ScrollBarVisibility.Never,
+                    Content = new VerticalStackLayout
+                    {
+                        Spacing = 14,
+                        VerticalOptions = LayoutOptions.Center,
+                        Children =
+                        {
+                            heading,
+                            actionGrid,
+                            bottomCloseButton
+                        }
+                    }
                 },
                 closeButton
             }
@@ -342,20 +373,7 @@ internal static class MobileMenuSheet
                 Radius = 26,
                 Opacity = 0.22f
             },
-            Content = new ScrollView
-            {
-                VerticalScrollBarVisibility = ScrollBarVisibility.Never,
-                Content = new VerticalStackLayout
-                {
-                    Spacing = 14,
-                    VerticalOptions = LayoutOptions.Center,
-                    Children =
-                    {
-                        heading,
-                        actionGrid
-                    }
-                }
-            }
+            Content = panelContent
         };
         SemanticProperties.SetDescription(panel, "Menu");
 
@@ -444,6 +462,41 @@ internal static class MobileMenuSheet
                 VerticalTextAlignment = TextAlignment.Center,
                 InputTransparent = true
             }
+        };
+        SemanticProperties.SetDescription(button, "Maak menu toe");
+        AttachTapHandler(button, onTap);
+        return button;
+    }
+
+    private static Border BuildGameConfigCloseButton(Func<Task> onTap)
+    {
+        var button = new Border
+        {
+            WidthRequest = 48,
+            HeightRequest = 48,
+            Margin = new Thickness(0, 2, 0, 0),
+            HorizontalOptions = LayoutOptions.Center,
+            BackgroundColor = Color.FromArgb("#FFF4F2"),
+            Stroke = Color.FromArgb("#E77B78"),
+            StrokeThickness = 2,
+            StrokeShape = new RoundRectangle { CornerRadius = 24 },
+            Content = new Image
+            {
+                Source = new FontImageSource
+                {
+                    Glyph = CloseIconGlyph,
+                    FontFamily = "FontAwesomeSolid",
+                    Color = Color.FromArgb("#C93F45"),
+                    Size = 26
+                },
+                WidthRequest = 26,
+                HeightRequest = 26,
+                Aspect = Aspect.AspectFit,
+                HorizontalOptions = LayoutOptions.Center,
+                VerticalOptions = LayoutOptions.Center,
+                InputTransparent = true
+            },
+            AutomationId = "mobile-menu-close-bottom"
         };
         SemanticProperties.SetDescription(button, "Maak menu toe");
         AttachTapHandler(button, onTap);

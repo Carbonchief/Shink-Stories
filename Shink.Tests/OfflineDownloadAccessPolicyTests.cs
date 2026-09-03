@@ -94,4 +94,44 @@ public sealed class OfflineDownloadAccessPolicyTests
         Assert.IsFalse(differentAccount);
         Assert.IsFalse(expiredAccess);
     }
+
+    [TestMethod]
+    public void StoryCornerDownloadUsesPaidEntitlementWithoutFullLibraryAccess()
+    {
+        var ownerKey = OfflineDownloadAccessPolicy.BuildOwnerKey("parent@example.com");
+
+        var isPlayable = OfflineDownloadAccessPolicy.IsPlayable(
+            requiresSubscription: true,
+            downloadOwnerKey: ownerKey,
+            lastAccessVerifiedAt: Now.Subtract(TimeSpan.FromDays(2)),
+            isSignedIn: true,
+            hasFullStoryAccess: false,
+            currentOwnerKey: ownerKey,
+            now: Now,
+            accessRefreshWindow: AccessWindow,
+            hasPaidSubscription: true,
+            requiresFullStoryAccess: false);
+
+        Assert.IsTrue(isPlayable);
+    }
+
+    [TestMethod]
+    public void FullLibraryDownloadStillRequiresFullLibraryEntitlement()
+    {
+        var ownerKey = OfflineDownloadAccessPolicy.BuildOwnerKey("parent@example.com");
+
+        var isPlayable = OfflineDownloadAccessPolicy.IsPlayable(
+            requiresSubscription: true,
+            downloadOwnerKey: ownerKey,
+            lastAccessVerifiedAt: Now.Subtract(TimeSpan.FromDays(2)),
+            isSignedIn: true,
+            hasFullStoryAccess: false,
+            currentOwnerKey: ownerKey,
+            now: Now,
+            accessRefreshWindow: AccessWindow,
+            hasPaidSubscription: true,
+            requiresFullStoryAccess: true);
+
+        Assert.IsFalse(isPlayable);
+    }
 }

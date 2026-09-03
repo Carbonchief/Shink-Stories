@@ -9,12 +9,13 @@
     <SingleProject>true</SingleProject>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <DefaultItemExcludes>$(DefaultItemExcludes);bin\**;bin/**;obj\**;obj/**</DefaultItemExcludes>
     <MauiXamlInflator>SourceGen</MauiXamlInflator>
 
     <ApplicationTitle>Schink Stories</ApplicationTitle>
     <ApplicationId>com.schink.stories.mobile</ApplicationId>
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-		<ApplicationVersion>24</ApplicationVersion>
+		<ApplicationVersion>25</ApplicationVersion>
 
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' and '$(SchinkGooglePlayBuild)' == 'true'">23.0</SupportedOSPlatformVersion>
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' and '$(SchinkGooglePlayBuild)' != 'true'">21.0</SupportedOSPlatformVersion>
@@ -103,6 +104,11 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
+    <BundleResource Include="Platforms/iOS/PrivacyInfo.xcprivacy"
+                    LogicalName="PrivacyInfo.xcprivacy" />
+  </ItemGroup>
+
   <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
     <!-- The cached native material no longer needs the older live BlurView binding. -->
     <AndroidLibrary Remove="Platforms/Android/Libs/BlurView-version-2.0.6.aar" />
@@ -131,8 +137,8 @@
   <Target Name="StripIosAppIconAlpha"
           AfterTargets="ResizetizeImages"
           BeforeTargets="_CoreCompileImageAssets"
-          Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios' and $([MSBuild]::IsOSPlatform('OSX'))">
-    <Exec Command="set -e; for icon_file in &quot;$(IntermediateOutputPath)resizetizer/r/Assets.xcassets/schink_appicon.appiconset/&quot;*.png; do pbm_file=&quot;$icon_file.opaque.pbm&quot;; png_file=&quot;$icon_file.opaque.png&quot;; /usr/bin/sips -s format pbm &quot;$icon_file&quot; --out &quot;$pbm_file&quot; &gt;/dev/null; /usr/bin/sips -s format png &quot;$pbm_file&quot; --out &quot;$png_file&quot; &gt;/dev/null; mv -f &quot;$png_file&quot; &quot;$icon_file&quot;; rm -f &quot;$pbm_file&quot;; done" />
+          Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios' and $([MSBuild]::IsOSPlatform('OSX')) and '$(StripIosAppIconAlpha)' != 'false'">
+    <Exec Command="set -e; for icon_file in &quot;$(IntermediateOutputPath)resizetizer/r/Assets.xcassets/schink_appicon.appiconset/&quot;*.png; do [ -f &quot;$icon_file&quot; ] || continue; pbm_file=&quot;$icon_file.opaque.pbm&quot;; png_file=&quot;$icon_file.opaque.png&quot;; /usr/bin/sips -s format pbm &quot;$icon_file&quot; --out &quot;$pbm_file&quot; &gt;/dev/null; /usr/bin/sips -s format png &quot;$pbm_file&quot; --out &quot;$png_file&quot; &gt;/dev/null; mv -f &quot;$png_file&quot; &quot;$icon_file&quot;; rm -f &quot;$pbm_file&quot;; done" />
   </Target>
 
   <Target Name="SelectGooglePlayAndroidManifest"

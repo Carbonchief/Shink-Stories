@@ -125,6 +125,20 @@ public sealed class MobileSearchPageSourceTests
         Assert.DoesNotContain("_searchHeader.Y + _searchFieldPlaceholder.Y", source, StringComparison.Ordinal);
     }
 
+    [TestMethod]
+    public void SearchEntryUsesPlatformNativeVerticalCentering()
+    {
+        var source = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "SearchPage.cs"));
+        var mauiProgram = File.ReadAllText(GetRepoPath("Shink.Mobile", "MauiProgram.cs"));
+
+        StringAssert.Contains(source, "AutomationId = \"story-search-input\"");
+        StringAssert.Contains(source, "VerticalTextAlignment = TextAlignment.Center");
+        StringAssert.Contains(mauiProgram, "handler.VirtualView is Entry { AutomationId: \"story-search-input\" }");
+        StringAssert.Contains(mauiProgram, "handler.PlatformView.VerticalAlignment = UIKit.UIControlContentVerticalAlignment.Center;");
+        StringAssert.Contains(mauiProgram, "handler.PlatformView.Gravity = Android.Views.GravityFlags.CenterVertical |");
+        StringAssert.Contains(mauiProgram, "handler.PlatformView.SetIncludeFontPadding(false);");
+    }
+
     private static string GetRepoPath(params string[] segments)
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

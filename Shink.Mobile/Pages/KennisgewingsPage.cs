@@ -47,9 +47,11 @@ public sealed class KennisgewingsPage : ContentPage
         var titleLabel = new Label
         {
             Text = "Kennisgewings",
-            FontSize = 25,
+            FontSize = 20,
             FontAttributes = FontAttributes.Bold,
             TextColor = Color.FromArgb("#0B3534"),
+            MaxLines = 1,
+            LineBreakMode = LineBreakMode.NoWrap,
             VerticalTextAlignment = TextAlignment.Center
         };
         _countLabel = new Label

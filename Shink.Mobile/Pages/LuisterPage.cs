@@ -26,6 +26,8 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     private const double BottomBarContentInset = 216;
     private const double BottomBarOverlayHeight = MobileBottomBar.NavigationHeight;
     private const double StoriesHeroHeight = 262;
+    private const string OfflineFeedMessage =
+        "Jou internet is af. Gaan na \"Aflaai\".";
     // Keep native carousel artwork in lockstep with the web Luister page:
     // story covers are portrait (3:4), while playlist artwork is widescreen (16:9).
     private const double StoryCarouselImageAspectRatio = 3d / 4d;
@@ -677,7 +679,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                         return;
                     }
 
-                    RenderNoticeState("Kon nie luister stories laai nie.");
+                    RenderNoticeState(OfflineFeedMessage);
                 });
                 return;
             }
@@ -698,7 +700,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
         catch (OperationCanceledException)
         {
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             if (cancellationToken.IsCancellationRequested || !_isPageActive)
             {
@@ -711,7 +713,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             }
 
             _sections = Array.Empty<MobileLuisterSection>();
-            _loadErrorMessage = ex.Message;
+            _loadErrorMessage = OfflineFeedMessage;
             _hasLoaded = true;
             await MainThread.InvokeOnMainThreadAsync(() =>
             {
@@ -3621,7 +3623,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 continue;
             }
 
-            yield return section.Playlist.ArtworkUrl;
             if (section.Playlist.ShowcaseStory is not null)
             {
                 yield return PageHelpers.ResolveStoryCardImageSource(section.Playlist.ShowcaseStory, _apiClient);
@@ -3695,7 +3696,6 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 continue;
             }
 
-            yield return section.Playlist.ArtworkUrl;
             if (section.Playlist.ShowcaseStory is not null)
             {
                 yield return PageHelpers.ResolveStoryCardImageSource(section.Playlist.ShowcaseStory, _apiClient);
@@ -3911,6 +3911,14 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
 
         try
         {
+            if (_sessionState.Current.IsSignedIn)
+            {
+                // Entitlements can change while an existing login remains open.
+                // Refresh before consulting the offline library or requesting the
+                // signed audio URL so the current account state is authoritative.
+                await _apiClient.GetSessionAsync();
+            }
+
             var playableDownloads = await _offlineDownloadService.GetPlayableDownloadsAsync();
             if (playableDownloads.Any(download =>
                     string.Equals(

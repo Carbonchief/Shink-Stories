@@ -195,7 +195,7 @@ public sealed class MobilePlatformChromeSourceTests
     }
 
     [TestMethod]
-    public void AndroidTopAndBottomBarsUseTheSameCachedBlurAndMirroredFades()
+    public void AndroidTopAndBottomBarsRefreshCachedBlurDuringScroll()
     {
         var source = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileLiquidGlass.cs"));
         var chrome = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileAndroidIcons.cs"));
@@ -217,8 +217,14 @@ public sealed class MobilePlatformChromeSourceTests
         StringAssert.Contains(source, "Android.Graphics.PorterDuff.Mode.DstIn");
         StringAssert.Contains(source, "new[] { 0f, 0.24f, 0.68f, 0.94f, 1f, 1f }");
         StringAssert.Contains(source, "new[] { 1f, 1f, 0.78f, 0.32f, 0f }");
-        StringAssert.Contains(source, "var refreshDelay = fadeFromTop ? 180L : 260L");
-        StringAssert.Contains(source, "generation != _scrollRefreshGeneration");
+        StringAssert.Contains(source, "private bool _scrollCapturePosted;");
+        StringAssert.Contains(source, "private Java.Lang.Runnable? _scrollCaptureRunnable;");
+        StringAssert.Contains(source, "_scrollCaptureRunnable ??= new(RefreshBackdropForScroll);");
+        StringAssert.Contains(source, "if (_isDetached || _scrollCapturePosted)");
+        StringAssert.Contains(source, "PostOnAnimation(ScrollCaptureRunnable);");
+        StringAssert.Contains(source, "private void RefreshBackdropForScroll()");
+        Assert.DoesNotContain("refreshDelay = fadeFromTop ? 180L : 260L", source, StringComparison.Ordinal);
+        Assert.DoesNotContain("_scrollRefreshGeneration", source, StringComparison.Ordinal);
         StringAssert.Contains(source, "ScheduleBackdropCapture(650)");
         StringAssert.Contains(source, "PostInvalidateOnAnimation()");
         StringAssert.Contains(chrome, "BarSurfaceTint = Color.FromArgb(\"#10FFFEFA\")");

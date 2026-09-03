@@ -181,6 +181,9 @@ public class CharacterMatchGameTests
         StringAssert.Contains(gamePage, "AnimateTileIntoBoardAsync");
         StringAssert.Contains(gamePage, "new ProgressiveImageRequest(");
         StringAssert.Contains(gamePage, "character.MatchPreviewImageUrl,");
+        StringAssert.Contains(gamePage, "await PreloadMatchDisplayImagesAsync(selectedCharacters, preloadCancellation.Token);");
+        StringAssert.Contains(gamePage, "selectedCharacters.Select(GetMatchDisplayImageUrl)");
+        StringAssert.Contains(gamePage, "_matchImagePreloadCancellation?.Cancel();");
         StringAssert.Contains(gamePage, "Text = \"KARAKTER-PARE\"");
         StringAssert.Contains(configPage, "private const string PoppinsFontFamily = \"Poppins\";");
         StringAssert.Contains(configPage, "private const string PoppinsBoldFontFamily = \"PoppinsBold\";");
@@ -258,6 +261,8 @@ public class CharacterMatchGameTests
         var gamePage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "KarakterPareGamePage.cs"));
 
         StringAssert.Contains(gamePage, "Content = characterImage");
+        StringAssert.Contains(gamePage, "PageHelpers.StoryPlaceholderFile));");
+        Assert.DoesNotContain("schink_character_lineup.png", gamePage, StringComparison.Ordinal);
         Assert.DoesNotContain("var characterName = new Label", gamePage, StringComparison.Ordinal);
         Assert.DoesNotContain("static (CharacterMatchTile tile) => tile.DisplayName", gamePage, StringComparison.Ordinal);
     }

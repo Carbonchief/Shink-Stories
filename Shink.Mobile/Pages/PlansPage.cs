@@ -242,10 +242,11 @@ public sealed class PlansPage : ContentPage
                 {
                     new Image
                     {
-                        Source = "schink_stories_logo_white.png",
+                        Source = CreatePackageImageSource("schink_stories_logo_white_raw.png"),
+                        BackgroundColor = Colors.Transparent,
                         HeightRequest = 44,
                         Aspect = Aspect.AspectFit,
-                        HorizontalOptions = LayoutOptions.Start
+                        HorizontalOptions = LayoutOptions.Center
                     },
                     new Label
                     {
@@ -297,6 +298,9 @@ public sealed class PlansPage : ContentPage
         Grid.SetColumn(label, 1);
         return grid;
     }
+
+    private static ImageSource CreatePackageImageSource(string fileName) =>
+        ImageSource.FromStream(_ => FileSystem.OpenAppPackageFileAsync(fileName));
 
     private View BuildPlanCard(MobilePlan plan, MobileStoreProduct? product, decimal yearlySaving)
     {
@@ -414,7 +418,7 @@ public sealed class PlansPage : ContentPage
         {
             cardContent.Children.Add(new Label
             {
-                Text = $"Spaar R{yearlySaving:0} teenoor 12 maande se maandbetalings.",
+                Text = "Spaar 2 Maande teenoor 12 maande se maandbetalings.",
                 FontSize = 13,
                 FontAttributes = FontAttributes.Bold,
                 TextColor = Color.FromArgb("#765500")

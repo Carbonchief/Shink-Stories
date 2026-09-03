@@ -127,6 +127,19 @@ public class MobilePlansSourceTests
         StringAssert.Contains(plans, "$\"R{plan.Amount:0}\"");
         StringAssert.Contains(plans, "Tans nie beskikbaar nie");
         StringAssert.Contains(plans, "Die winkelpryse is tans nie beskikbaar nie.");
+        StringAssert.Contains(plans, "Spaar 2 Maande teenoor 12 maande se maandbetalings.");
+        Assert.DoesNotContain("Spaar R{yearlySaving:0}", plans, StringComparison.Ordinal);
+    }
+
+    [TestMethod]
+    public void MobilePlanIntroUsesTheTransparentCenteredLogo()
+    {
+        var plans = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "PlansPage.cs"));
+
+        StringAssert.Contains(plans, "CreatePackageImageSource(\"schink_stories_logo_white_raw.png\")");
+        StringAssert.Contains(plans, "BackgroundColor = Colors.Transparent");
+        StringAssert.Contains(plans, "HorizontalOptions = LayoutOptions.Center");
+        Assert.DoesNotContain("Source = \"schink_stories_logo_white.png\"", plans, StringComparison.Ordinal);
     }
 
     [TestMethod]
@@ -164,12 +177,17 @@ public class MobilePlansSourceTests
         StringAssert.Contains(ledger, "PaymentPlanCatalog.FindMobileStorePlan(normalizedProductId)");
         StringAssert.Contains(ledger, "UpsertSubscriptionAsync(");
         StringAssert.Contains(program, "HasActivePaidSubscriptionAsync(signedInEmail");
+        StringAssert.Contains(program, "GetActiveTierCodesAsync(");
+        StringAssert.Contains(program, "ActiveTierCodes: activeTierCodesTask.Result");
         StringAssert.Contains(program, "StoryAccessPolicy.HasAllStoriesAccess(activeTierCodes)");
         StringAssert.Contains(program, "HasFullStoryAccess: hasFullStoryAccess");
+        StringAssert.Contains(program, "StoryAccessPolicy.GetAllowedTierCodes");
         StringAssert.Contains(plans, "_sessionState.Current.HasFullStoryAccess");
         StringAssert.Contains(plans, "Jy hoef nie weer te betaal nie");
         StringAssert.Contains(luister, "previous.HasFullStoryAccess == current.HasFullStoryAccess");
+        StringAssert.Contains(luister, "await _apiClient.GetSessionAsync();");
         StringAssert.Contains(downloads, "_sessionState.Current.HasFullStoryAccess");
+        StringAssert.Contains(downloads, "detail.Story.RequiresFullStoryAccess");
         StringAssert.Contains(downloads, "session.HasFullStoryAccess");
     }
 

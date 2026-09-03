@@ -182,6 +182,10 @@ public sealed class KarakterRaaiConfigPage : ContentPage
             VerticalTextAlignment = TextAlignment.Center,
             LineHeight = 0.9
         };
+#if ANDROID
+        ConfigureAndroidDifficultyLabel(title);
+        ConfigureAndroidDifficultyLabel(rounds);
+#endif
         var text = new VerticalStackLayout
         {
             Spacing = -3,
@@ -232,6 +236,19 @@ public sealed class KarakterRaaiConfigPage : ContentPage
         card.GestureRecognizers.Add(tap);
         return (container, card);
     }
+
+#if ANDROID
+    private static void ConfigureAndroidDifficultyLabel(Label label)
+    {
+        label.HandlerChanged += (_, _) =>
+        {
+            if (label.Handler?.PlatformView is Android.Widget.TextView nativeLabel)
+            {
+                nativeLabel.SetIncludeFontPadding(false);
+            }
+        };
+    }
+#endif
 
     private Border BuildBackButton()
     {

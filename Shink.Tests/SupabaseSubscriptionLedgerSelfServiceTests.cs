@@ -5586,6 +5586,7 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     {
         const string subscriptionId = "22222222-2222-2222-2222-222222222222";
         const string providerPaymentId = "SUB_cardupdate";
+        var providerNextPaymentDate = DateTimeOffset.UtcNow.AddDays(7);
         var handler = new RecordingHandler(request =>
         {
             if (IsSupabaseGet(request, "/rest/v1/subscription_events"))
@@ -5666,7 +5667,7 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
                 "metadata": {
                   "source": "subscription_authorization_retry",
                   "retry_trigger": "card_update_refund",
-                  "provider_next_payment_date": "2026-08-20T16:44:00Z",
+                  "provider_next_payment_date": "{{providerNextPaymentDate:O}}",
                   "subscription_id": "{{subscriptionId}}",
                   "provider_payment_id": "{{providerPaymentId}}",
                   "tier_code": "all_stories_monthly",
@@ -5681,7 +5682,7 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
         Assert.IsTrue(
             handler.SubscriptionPatchPayloads.Any(payload =>
                 payload.Contains("\"status\":\"active\"", StringComparison.Ordinal) &&
-                payload.Contains("\"next_renewal_at\":\"2026-08-20T16:44:00Z\"", StringComparison.Ordinal)),
+                SubscriptionPatchHasNextRenewalAt(payload, providerNextPaymentDate)),
             "The async card-update success webhook must preserve Paystack's scheduled payment date.");
         Assert.IsFalse(
             handler.SubscriptionPatchPayloads.Any(payload =>

@@ -37,7 +37,8 @@ public sealed record OfflineStoryDownload(
     long FileSizeBytes,
     string AudioFileName,
     string? OwnerKey = null,
-    string? ArtworkFileName = null);
+    string? ArtworkFileName = null,
+    bool RequiresFullStoryAccess = true);
 
 public interface IOfflineStoryDownloadService
 {
@@ -189,7 +190,9 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
             : null;
         if (requiresSubscription &&
             (!_sessionState.Current.IsSignedIn ||
-             !_sessionState.Current.HasFullStoryAccess ||
+             (detail.Story.RequiresFullStoryAccess
+                 ? !_sessionState.Current.HasFullStoryAccess
+                 : !_sessionState.Current.HasPaidSubscription) ||
              string.IsNullOrWhiteSpace(ownerKey)))
         {
             throw new InvalidOperationException("Teken asseblief in met jou aktiewe rekening om hierdie storie af te laai.");
@@ -266,7 +269,8 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
                 FileSizeBytes: fileInfo.Length,
                 AudioFileName: audioFileName,
                 OwnerKey: ownerKey,
-                ArtworkFileName: artworkFileName);
+                ArtworkFileName: artworkFileName,
+                RequiresFullStoryAccess: detail.Story.RequiresFullStoryAccess);
 
             await SaveDownloadAsync(download, cancellationToken);
             metadataSaved = true;
@@ -406,7 +410,8 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
             IsLocked: false,
             IsFavorite: false,
             DetailUrl: download.DetailUrl,
-            DurationSeconds: download.DurationSeconds);
+            DurationSeconds: download.DurationSeconds,
+            RequiresFullStoryAccess: download.RequiresFullStoryAccess);
     }
 
     public MobileStoryDetailResponse CreateOfflineDetail(OfflineStoryDownload download)
@@ -572,7 +577,9 @@ public sealed class OfflineStoryDownloadService : IOfflineStoryDownloadService
             session.HasFullStoryAccess,
             currentOwnerKey,
             now,
-            AccessRefreshWindow);
+            AccessRefreshWindow,
+            hasPaidSubscription: session.HasPaidSubscription,
+            requiresFullStoryAccess: download.RequiresFullStoryAccess);
 
     private static bool IsOwnedByCurrentAccount(OfflineStoryDownload download, string? currentOwnerKey) =>
         OfflineDownloadAccessPolicy.IsOwnedByCurrentAccount(
