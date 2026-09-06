@@ -24,12 +24,32 @@ public static class MauiProgram
             .ConfigureMauiHandlers(handlers =>
             {
 #if IOS
+                // The .NET 10 CollectionView2 handler uses self-sizing compositional
+                // cells. On iPad, Luister's vertical feed contains several nested
+                // horizontal carousels, and UIKit repeatedly rebuilds the full focus
+                // map while those cells resize during a fling. Keep the optimized
+                // default on iPhone, but use the stable flow-layout handler on iPad.
+                // This changes only collection layout machinery; all native glass,
+                // shadows, animations, and touch controls remain intact.
+                if (UIKit.UIDevice.CurrentDevice.UserInterfaceIdiom == UIKit.UIUserInterfaceIdiom.Pad)
+                {
+                    handlers.AddHandler<
+                        Microsoft.Maui.Controls.CollectionView,
+                        Microsoft.Maui.Controls.Handlers.Items.CollectionViewHandler>();
+                }
+
                 handlers.AddHandler<CastRoutePickerView, Shink.Mobile.Platforms.iOS.CastRoutePickerViewHandler>();
                 handlers.AddHandler<AppleSignInButton, Shink.Mobile.Platforms.iOS.AppleSignInButtonHandler>();
 #endif
             });
         ConfigureEntryChrome();
         ConfigureCollectionViewStability();
+
+#if IOS
+        builder.ConfigureImageSources(sources => sources.AddService<
+            Shink.Mobile.Platforms.iOS.IpadStoryImageSource,
+            Shink.Mobile.Platforms.iOS.IpadStoryImageSourceService>());
+#endif
 
         var mobileAppSettings = new MobileAppSettings();
         mobileAppSettings.BaseUrl = ResolveMobileApiBaseUrl(mobileAppSettings.BaseUrl);
@@ -61,6 +81,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<MobileAppLifecycleService>();
         builder.Services.AddSingleton<MobileApiClient>();
         builder.Services.AddSingleton<IMobileStoreBillingService, MobileStoreBillingService>();
+        builder.Services.AddSingleton<MobileStoreRecoveryService>();
         builder.Services.AddSingleton<IOfflineStoryDownloadService, OfflineStoryDownloadService>();
         builder.Services.AddSingleton<IAudioPlaybackService, AudioPlaybackService>();
         builder.Services.AddSingleton<StoryPlaybackSession>();

@@ -186,6 +186,33 @@ public sealed class AppleAppStoreServerApiTests
     }
 
     [TestMethod]
+    public async Task ConfirmedRevocationIsInactiveButProviderOutageIsRetryable()
+    {
+        using var apiSigningKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        using var chain = TestCertificateChain.Create();
+        var now = DateTimeOffset.UtcNow;
+        var transaction = chain.CreateSignedTransaction(new
+        {
+            bundleId = BundleId, productId = ProductId, originalTransactionId = "original",
+            transactionId = "transaction", expiresDate = now.AddDays(20).ToUnixTimeMilliseconds(),
+            revocationDate = now.ToUnixTimeMilliseconds(), signedDate = now.ToUnixTimeMilliseconds(), environment = "Production"
+        });
+        var body = JsonSerializer.Serialize(new {bundleId=BundleId,environment="Production",
+            data=new[]{new {lastTransactions=new[]{new {status=5,signedTransactionInfo=transaction}}}}});
+        var httpStatus = HttpStatusCode.OK;
+        using var http = new HttpClient(new RecordingHandler(_ => JsonResponse(httpStatus,body)));
+        var api = new AppleAppStoreServerApi(http, CreateOptions(apiSigningKey), NullLogger<MobileStoreEntitlementService>.Instance,
+            new AppleSignedTransactionVerifier([Convert.ToHexString(SHA256.HashData(chain.Root.RawData))]));
+        var result = await api.CheckSubscriptionAsync(ProductId,"original");
+        Assert.IsTrue(result.IsInactive);
+        Assert.IsNull(result.Subscription);
+        httpStatus = HttpStatusCode.ServiceUnavailable;
+        result = await api.CheckSubscriptionAsync(ProductId,"original");
+        Assert.IsFalse(result.IsInactive);
+        Assert.IsNull(result.Subscription);
+    }
+
+    [TestMethod]
     public void SignedTransactionVerifierRejectsPayloadTampering()
     {
         using var chain = TestCertificateChain.Create();

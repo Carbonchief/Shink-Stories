@@ -1464,6 +1464,33 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
     private static IShape? BuildArtworkShape(double cornerRadius) =>
         new RoundRectangle { CornerRadius = cornerRadius };
 
+    private static void CacheIpadStoryCard(View card)
+    {
+#if IOS
+        if (DeviceInfo.Current.Idiom != DeviceIdiom.Tablet)
+        {
+            return;
+        }
+
+        void ConfigureCache(object? sender, EventArgs args)
+        {
+            if (card.Handler?.PlatformView is UIKit.UIView nativeView)
+            {
+                // Flatten the artwork, rounded mask, badges and labels once at
+                // Retina resolution. Core Animation invalidates this cache when
+                // content changes; touch targets and accessibility stay native.
+                // Apply only to cards, never to the live blurred navigation bars.
+                nativeView.Layer.RasterizationScale = nativeView.Window?.Screen.Scale ?? UIKit.UIScreen.MainScreen.Scale;
+                nativeView.Layer.ShouldRasterize = true;
+            }
+        }
+
+        card.HandlerChanged += ConfigureCache;
+        card.Loaded += ConfigureCache;
+        ConfigureCache(null, EventArgs.Empty);
+#endif
+    }
+
     private void QueueSearchRender()
     {
         if (!_hasLoaded)
@@ -2223,6 +2250,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                                         playlist.ArtworkUrl,
                                         FallbackFile: "schink_background.jpeg"))
                                 {
+                                    PrepareForScrolling = true,
                                     WidthRequest = cardWidth,
                                     HeightRequest = artworkHeight,
                                     Aspect = Aspect.AspectFill,
@@ -2304,6 +2332,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             _apiClient,
             PageHelpers.BuildStoryImageRequest(story, _apiClient, "schink_background.jpeg"))
         {
+            PrepareForScrolling = true,
             Aspect = Aspect.AspectFill,
             WidthRequest = coverWidth,
             HeightRequest = coverHeight,
@@ -2491,6 +2520,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             _owner.RegisterFavoriteStateTarget(this);
             _image = new ProgressiveCachedImage(owner._apiClient)
             {
+                PrepareForScrolling = true,
                 Aspect = Aspect.AspectFill,
                 HorizontalOptions = LayoutOptions.Fill,
                 VerticalOptions = LayoutOptions.Fill,
@@ -2552,6 +2582,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 }
             };
             Content = _showcase;
+            CacheIpadStoryCard(_showcase);
         }
 
         public void Bind(MobilePlaylist playlist, MobileStorySummary story)
@@ -2644,6 +2675,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             _owner.RegisterDownloadStateTarget(this);
             _artwork = new ProgressiveCachedImage(owner._apiClient)
             {
+                PrepareForScrolling = true,
                 Aspect = Aspect.AspectFill,
                 HorizontalOptions = LayoutOptions.Fill,
                 VerticalOptions = LayoutOptions.Fill,
@@ -2728,6 +2760,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 Content = cardShell
             };
             Content = _card;
+            CacheIpadStoryCard(_card);
         }
 
         protected override void OnBindingContextChanged()
@@ -2843,6 +2876,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             _apiClient,
             PageHelpers.BuildStoryCardImageRequest(story, _apiClient, "schink_background.jpeg"))
         {
+            PrepareForScrolling = true,
             Aspect = Aspect.AspectFill,
             WidthRequest = cardWidth,
             HeightRequest = coverHeight,
@@ -3112,6 +3146,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
                 _apiClient,
                 PageHelpers.BuildStoryCardImageRequest(story, _apiClient, "schink_background.jpeg"))
             {
+                PrepareForScrolling = true,
                 Aspect = Aspect.AspectFill
             }
         };
@@ -3784,7 +3819,7 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
 
                 if (detail.RequiresSubscription)
                 {
-                    await PageHelpers.OpenPlansForStoryAsync(detail.Story);
+                    await PageHelpers.OpenPlansForStoryAsync(detail.Story, _sessionState);
                     return;
                 }
 
@@ -3870,16 +3905,8 @@ public sealed class LuisterPage : ContentPage, IQueryAttributable
             });
     }
 
-    private Task OpenPlansAsync(string? returnUrl = null)
-    {
-        var route = nameof(PlansPage);
-        if (!string.IsNullOrWhiteSpace(returnUrl))
-        {
-            route = $"{route}?returnUrl={Uri.EscapeDataString(returnUrl)}";
-        }
-
-        return Shell.Current.GoToAsync(route, animate: true);
-    }
+    private Task OpenPlansAsync(string? returnUrl = null) =>
+        PageHelpers.OpenPlansAsync(_sessionState, returnUrl);
 
     private static string BuildStoryReturnPath(MobileStorySummary story)
     {

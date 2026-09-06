@@ -24,14 +24,16 @@ public sealed record MobileStorePurchaseRequest(
     string ProductId,
     string ProviderPaymentId,
     string? ProviderTransactionId,
-    string? ProviderToken);
+    string? ProviderToken,
+    string? ExpectedAccountEmail = null);
 
 public sealed record MobileStoreEntitlementResponse(
     bool IsActive,
     string Message,
     string? Provider,
     string? ProductId,
-    DateTimeOffset? AccessEndsAtUtc);
+    DateTimeOffset? AccessEndsAtUtc,
+    bool IsRetryable = false);
 
 public sealed class MobileStoreEntitlementService(
     HttpClient httpClient,
@@ -60,6 +62,10 @@ public sealed class MobileStoreEntitlementService(
             return Failure("Die winkelbetaling kon nie bevestig word nie.");
         }
 
+        if (!string.IsNullOrWhiteSpace(request.ExpectedAccountEmail) &&
+            !string.Equals(email.Trim(), request.ExpectedAccountEmail.Trim(), StringComparison.OrdinalIgnoreCase))
+            return Failure("Die aangemelde rekening het verander. Teken by die aankooprekening in.", isRetryable: true);
+
         var provider = request.Provider?.Trim().ToLowerInvariant() ?? string.Empty;
         var productId = request.ProductId?.Trim() ?? string.Empty;
         var plan = PaymentPlanCatalog.FindMobileStorePlan(productId);
@@ -70,22 +76,13 @@ public sealed class MobileStoreEntitlementService(
             return Failure("Die winkelproduk is nie 'n geldige huishoudelike plan nie.", provider, productId);
         }
 
-        VerifiedStorePurchase? verifiedPurchase = provider switch
-        {
-            "apple" => await VerifyApplePurchaseAsync(
-                productId,
-                request.ProviderTransactionId ?? request.ProviderPaymentId,
-                cancellationToken),
-            "google_play" => await VerifyGooglePurchaseAsync(productId, request.ProviderToken, cancellationToken),
-            _ => null
-        };
-
+        var check = await CheckAsync(provider, productId,
+            request.ProviderTransactionId ?? request.ProviderPaymentId, request.ProviderToken, email, cancellationToken);
+        var verifiedPurchase = check.Purchase;
         if (verifiedPurchase is null)
         {
-            return Failure(
-                "Die winkelbetaling kon nie bevestig word nie. Jou rekening is nie verander nie.",
-                provider,
-                productId);
+            return Failure("Die winkelbetaling kon nie bevestig word nie. Jou rekening is nie verander nie.",
+                provider, productId, isRetryable: !check.IsInactive);
         }
 
         var persistResult = await _subscriptionLedgerService.RecordVerifiedStoreSubscriptionAsync(
@@ -103,12 +100,20 @@ public sealed class MobileStoreEntitlementService(
             return Failure(
                 persistResult.ErrorMessage ?? "Die winkelintekening kon nie nou geaktiveer word nie.",
                 provider,
-                productId);
+                productId, isRetryable: true);
         }
+
+        // Acknowledgment is safe only after durable access. A failed attempt is
+        // retried by reconciliation, including if the client never opens again.
+        await AcknowledgeAsync(verifiedPurchase, cancellationToken);
 
         if (_gratisSubscriberEmailSequenceService is not null)
         {
-            await _gratisSubscriberEmailSequenceService.MarkPaidAsync(email, cancellationToken);
+            try { await _gratisSubscriberEmailSequenceService.MarkPaidAsync(email, cancellationToken); }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                _logger.LogWarning(exception, "Paid subscriber email-sequence cleanup will need retry; store access is already recorded.");
+            }
         }
 
         return new MobileStoreEntitlementResponse(
@@ -119,44 +124,36 @@ public sealed class MobileStoreEntitlementService(
             AccessEndsAtUtc: verifiedPurchase.AccessEndsAtUtc);
     }
 
-    private async Task<VerifiedStorePurchase?> VerifyApplePurchaseAsync(
-        string productId,
-        string? transactionId,
-        CancellationToken cancellationToken)
+    internal async Task<StorePurchaseCheck> CheckAsync(string provider, string productId,
+        string? transactionId, string? token, string? expectedEmail = null, CancellationToken cancellationToken = default)
     {
-        var appleApi = new AppleAppStoreServerApi(_httpClient, _options, _logger);
-        var subscription = await appleApi.VerifySubscriptionAsync(
-            productId,
-            transactionId,
-            cancellationToken);
-        return subscription is null
-            ? null
-            : new VerifiedStorePurchase(
-                Provider: "apple",
-                ProductId: subscription.ProductId,
-                ProviderPaymentId: subscription.OriginalTransactionId,
-                ProviderTransactionId: subscription.TransactionId,
-                ProviderToken: null,
-                SubscribedAtUtc: subscription.OriginalPurchaseDateUtc,
-                AccessEndsAtUtc: subscription.ExpiresAtUtc);
+        if (provider == "google_play") return await VerifyGooglePurchaseAsync(productId, token, expectedEmail, cancellationToken);
+        if (provider != "apple") return new(null);
+        var api = new AppleAppStoreServerApi(_httpClient, _options, _logger);
+        var check = await api.CheckSubscriptionAsync(productId, transactionId, cancellationToken);
+        var item = check.Subscription;
+        return item is null ? new(null, check.IsInactive) : new(new VerifiedStorePurchase(
+            "apple", item.ProductId, item.OriginalTransactionId, item.TransactionId, null,
+            item.OriginalPurchaseDateUtc, item.ExpiresAtUtc));
     }
 
-    private async Task<VerifiedStorePurchase?> VerifyGooglePurchaseAsync(
+    private async Task<StorePurchaseCheck> VerifyGooglePurchaseAsync(
         string productId,
         string? purchaseToken,
+        string? expectedEmail,
         CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(purchaseToken) ||
             string.IsNullOrWhiteSpace(_options.GoogleServiceAccountJson))
         {
             _logger.LogWarning("Google Play store verification is not configured or did not include a purchase token.");
-            return null;
+            return new(null);
         }
 
         var accessToken = await GetGoogleAccessTokenAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(accessToken))
         {
-            return null;
+            return new(null);
         }
 
         var packageName = Uri.EscapeDataString(_options.GooglePackageName.Trim());
@@ -170,24 +167,21 @@ public sealed class MobileStoreEntitlementService(
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Google Play subscription verification failed. status={Status}", (int)response.StatusCode);
-                return null;
+                return new(null);
             }
 
             await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
             using var document = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken);
             var root = document.RootElement;
+            var accountId = TryReadString(root, "externalAccountIdentifiers", "obfuscatedExternalAccountId");
+            if (!string.IsNullOrWhiteSpace(expectedEmail) && !string.IsNullOrWhiteSpace(accountId) &&
+                !string.Equals(accountId, Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(expectedEmail.Trim().ToLowerInvariant()))).ToLowerInvariant(), StringComparison.Ordinal))
+                return new(null);
             var state = TryReadString(root, "subscriptionState");
-            if (state is not ("SUBSCRIPTION_STATE_ACTIVE" or
-                              "SUBSCRIPTION_STATE_IN_GRACE_PERIOD" or
-                              "SUBSCRIPTION_STATE_CANCELED"))
-            {
-                return null;
-            }
-
             if (!root.TryGetProperty("lineItems", out var lineItems) ||
                 lineItems.ValueKind != JsonValueKind.Array)
             {
-                return null;
+                return new(null);
             }
 
             var lineItem = lineItems.EnumerateArray()
@@ -197,29 +191,48 @@ public sealed class MobileStoreEntitlementService(
                     StringComparison.Ordinal));
             if (lineItem.ValueKind != JsonValueKind.Object)
             {
-                return null;
+                return new(null);
             }
+
+            if (state is "SUBSCRIPTION_STATE_EXPIRED" or "SUBSCRIPTION_STATE_ON_HOLD" or "SUBSCRIPTION_STATE_PAUSED") return new(null, true);
+            if (state is not ("SUBSCRIPTION_STATE_ACTIVE" or "SUBSCRIPTION_STATE_IN_GRACE_PERIOD" or "SUBSCRIPTION_STATE_CANCELED")) return new(null);
 
             var accessEndsAtUtc = TryParseDateTimeOffset(TryReadString(lineItem, "expiryTime"));
-            if (accessEndsAtUtc is not { } expiry || expiry <= DateTimeOffset.UtcNow)
-            {
-                return null;
-            }
+            if (accessEndsAtUtc is not { } expiry) return new(null);
+            if (expiry <= DateTimeOffset.UtcNow) return new(null, true);
 
-            return new VerifiedStorePurchase(
+            return new(new VerifiedStorePurchase(
                 Provider: "google_play",
                 ProductId: productId,
                 ProviderPaymentId: purchaseToken.Trim(),
                 ProviderTransactionId: TryReadString(lineItem, "latestSuccessfulOrderId"),
                 ProviderToken: purchaseToken.Trim(),
                 SubscribedAtUtc: TryParseDateTimeOffset(TryReadString(root, "startTime")) ?? DateTimeOffset.UtcNow,
-                AccessEndsAtUtc: expiry);
+                AccessEndsAtUtc: expiry,
+                NeedsAcknowledgment: TryReadString(root, "acknowledgementState") == "ACKNOWLEDGEMENT_STATE_PENDING",
+                LinkedPurchaseToken: TryReadString(root, "linkedPurchaseToken")));
         }
         catch (Exception exception) when (exception is HttpRequestException or TaskCanceledException or JsonException)
         {
             _logger.LogWarning(exception, "Google Play subscription verification request failed.");
-            return null;
+            return new(null);
         }
+    }
+
+    internal async Task<bool> AcknowledgeAsync(VerifiedStorePurchase purchase, CancellationToken cancellationToken)
+    {
+        if (purchase.Provider != "google_play" || !purchase.NeedsAcknowledgment) return true;
+        var token = await GetGoogleAccessTokenAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(token)) return false;
+        try
+        {
+            var endpoint = $"{GooglePublisherBaseUrl}/{Uri.EscapeDataString(_options.GooglePackageName)}/purchases/subscriptions/{Uri.EscapeDataString(purchase.ProductId)}/tokens/{Uri.EscapeDataString(purchase.ProviderToken!)}:acknowledge";
+            using var request = new HttpRequestMessage(HttpMethod.Post, endpoint) { Content = new StringContent("{}", Encoding.UTF8, "application/json") };
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            return response.IsSuccessStatusCode;
+        }
+        catch (HttpRequestException) { return false; }
     }
 
     private async Task<string?> GetGoogleAccessTokenAsync(CancellationToken cancellationToken)
@@ -287,7 +300,7 @@ public sealed class MobileStoreEntitlementService(
         var node = root;
         foreach (var segment in path)
         {
-            if (!node.TryGetProperty(segment, out node))
+            if (node.ValueKind != JsonValueKind.Object || !node.TryGetProperty(segment, out node))
             {
                 return null;
             }
@@ -313,21 +326,23 @@ public sealed class MobileStoreEntitlementService(
     private static MobileStoreEntitlementResponse Failure(
         string message,
         string? provider = null,
-        string? productId = null) =>
+        string? productId = null, bool isRetryable = false) =>
         new(
             IsActive: false,
             Message: message,
             Provider: provider,
             ProductId: productId,
-            AccessEndsAtUtc: null);
+            AccessEndsAtUtc: null, IsRetryable: isRetryable);
 
-    private sealed record VerifiedStorePurchase(
+    internal sealed record StorePurchaseCheck(VerifiedStorePurchase? Purchase, bool IsInactive = false);
+
+    internal sealed record VerifiedStorePurchase(
         string Provider,
         string ProductId,
         string ProviderPaymentId,
         string? ProviderTransactionId,
         string? ProviderToken,
         DateTimeOffset SubscribedAtUtc,
-        DateTimeOffset? AccessEndsAtUtc);
+        DateTimeOffset? AccessEndsAtUtc, bool NeedsAcknowledgment = false, string? LinkedPurchaseToken = null);
 
 }

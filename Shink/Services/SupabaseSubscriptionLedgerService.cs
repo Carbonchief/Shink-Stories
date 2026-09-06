@@ -77,12 +77,16 @@ public sealed partial class SupabaseSubscriptionLedgerService(
             return new SubscriptionPersistResult(false, "Hierdie rekening is nie beskikbaar vir intekeninge nie.");
         }
 
-        var existingOwner = await FindSubscriptionOwnerAsync(
-            context.BaseUri,
-            context.ApiKey,
-            normalizedProvider,
-            normalizedPaymentId,
-            cancellationToken);
+        SubscriptionOwnershipRow? existingOwner;
+        try
+        {
+            existingOwner = await FindSubscriptionOwnerAsync(
+                context.BaseUri, context.ApiKey, normalizedProvider, normalizedPaymentId, cancellationToken);
+        }
+        catch (HttpRequestException)
+        {
+            return new SubscriptionPersistResult(false, "Die eienaarskap van die aankoop kon nie bevestig word nie. Probeer weer.");
+        }
         if (existingOwner is not null &&
             !string.Equals(existingOwner.SubscriberId, context.SubscriberId, StringComparison.OrdinalIgnoreCase))
         {
@@ -3106,7 +3110,7 @@ public sealed partial class SupabaseSubscriptionLedgerService(
                 providerPaymentId,
                 (int)response.StatusCode,
                 responseBody);
-            return null;
+            throw new HttpRequestException("Store subscription ownership lookup failed.");
         }
 
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -5957,7 +5961,11 @@ public sealed partial class SupabaseSubscriptionLedgerService(
         };
 
         var uri = new Uri(baseUri, "rest/v1/subscriptions?on_conflict=provider,provider_payment_id&select=subscription_id");
-        using var request = CreateJsonRequest(HttpMethod.Post, uri, apiKey, payload, "resolution=merge-duplicates,return=representation");
+        // Store ownership is immutable: an insert racing an existing purchase must
+        // never overwrite its subscriber. Existing rows are updated under an owner filter.
+        var isStore = provider is "apple" or "google_play";
+        using var request = CreateJsonRequest(HttpMethod.Post, uri, apiKey, payload,
+            isStore ? "resolution=ignore-duplicates,return=representation" : "resolution=merge-duplicates,return=representation");
         using var response = await _httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
@@ -5971,6 +5979,14 @@ public sealed partial class SupabaseSubscriptionLedgerService(
 
         var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
         var subscriptionId = ReadFirstStringProperty(responseBody, "subscription_id");
+        if (isStore && string.IsNullOrWhiteSpace(subscriptionId))
+        {
+            var ownedUri = new Uri(baseUri, $"rest/v1/subscriptions?provider=eq.{Uri.EscapeDataString(provider)}&provider_payment_id=eq.{Uri.EscapeDataString(providerPaymentId)}&subscriber_id=eq.{Uri.EscapeDataString(subscriberId)}&select=subscription_id");
+            using var update = CreateJsonRequest(HttpMethod.Patch, ownedUri, apiKey, payload, "return=representation");
+            using var updated = await _httpClient.SendAsync(update, cancellationToken);
+            if (!updated.IsSuccessStatusCode) return null;
+            subscriptionId = ReadFirstStringProperty(await updated.Content.ReadAsStringAsync(cancellationToken), "subscription_id");
+        }
         if (!string.IsNullOrWhiteSpace(subscriptionId) &&
             !string.Equals(provider, "free", StringComparison.OrdinalIgnoreCase) &&
             !string.Equals(tierCode, GratisTierCode, StringComparison.OrdinalIgnoreCase))

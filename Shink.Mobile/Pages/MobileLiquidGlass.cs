@@ -718,7 +718,7 @@ internal static class MobileLiquidGlass
             .OfType<UIVisualEffectView>()
             .FirstOrDefault(candidate => candidate.Tag == GlassViewTag);
 
-        var materialEffect = CreateMaterialEffect();
+        var materialEffect = CreateMaterialEffect(isNavigationBar: fadeFromTop || fadeFromBottom);
 
         if (glassView is null)
         {
@@ -763,12 +763,14 @@ internal static class MobileLiquidGlass
         nativeView.Opaque = false;
     }
 
-    private static UIVisualEffect CreateMaterialEffect()
+    private static UIVisualEffect CreateMaterialEffect(bool isNavigationBar)
     {
-        // The website navbar is conventional backdrop blur, not iOS 26's
-        // beveled Liquid Glass lens. Ultra-thin dark material preserves the
-        // artwork colours while the resized fade mask keeps the blur visible.
-        return UIBlurEffect.FromStyle(UIBlurEffectStyle.SystemUltraThinMaterialDark);
+        // Android blurs the artwork without a dark material underneath the
+        // shared tint. Light keeps the backdrop's approximate brightness on
+        // iPhone and iPad, including when the system is in dark mode.
+        return UIBlurEffect.FromStyle(isNavigationBar
+            ? UIBlurEffectStyle.Light
+            : UIBlurEffectStyle.SystemUltraThinMaterialDark);
     }
 
     private static void ApplyEdgeFadeMask(

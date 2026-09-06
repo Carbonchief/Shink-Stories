@@ -11,6 +11,9 @@ namespace Shink.Mobile.Services;
 
 public interface IMobileStoreBillingService
 {
+    event EventHandler? PurchasesUpdated;
+    Task<IReadOnlyList<MobileStorePurchase>> GetPendingPurchasesAsync(CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<MobileStoreProduct>> GetProductsAsync(
         IReadOnlyList<string> productIds,
         CancellationToken cancellationToken = default);
@@ -55,7 +58,91 @@ public sealed record MobileStorePurchaseResult(
 
 public sealed class MobileStoreBillingService : IMobileStoreBillingService
 {
-    public async Task<IReadOnlyList<MobileStoreProduct>> GetProductsAsync(
+    public MobileStoreBillingService()
+    {
+#if ANDROID
+        InAppBillingImplementation.OnAndroidPurchasesUpdated = (_, _) => PurchasesUpdated?.Invoke(this, EventArgs.Empty);
+#endif
+    }
+
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    public event EventHandler? PurchasesUpdated;
+#if IOS
+    private StoreTransactionObserver? _observer;
+    private TaskCompletionSource<bool>? _deferred;
+    private string? _purchasingProduct;
+
+    private void InitializeAppleObserver()
+    {
+        if (_observer is not null) return;
+        InAppBillingImplementation.FinishAllTransactions = false;
+        _observer = new StoreTransactionObserver(this);
+        SKPaymentQueue.DefaultQueue.AddTransactionObserver(_observer);
+    }
+
+    private sealed class StoreTransactionObserver(MobileStoreBillingService owner) : SKPaymentTransactionObserver
+    {
+        public override void UpdatedTransactions(SKPaymentQueue queue, SKPaymentTransaction[] transactions)
+        {
+            foreach (var transaction in transactions)
+            {
+                if (transaction.TransactionState == SKPaymentTransactionState.Failed)
+                    queue.FinishTransaction(transaction);
+                if (transaction.TransactionState == SKPaymentTransactionState.Deferred &&
+                    transaction.Payment?.ProductIdentifier == owner._purchasingProduct)
+                    owner._deferred?.TrySetResult(true);
+            }
+            if (transactions.Any(t => t.TransactionState is SKPaymentTransactionState.Purchased or SKPaymentTransactionState.Restored))
+                owner.PurchasesUpdated?.Invoke(owner, EventArgs.Empty);
+        }
+    }
+#endif
+
+    private async Task<T> SerializedAsync<T>(Func<Task<T>> operation, CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+#if IOS
+            await MainThread.InvokeOnMainThreadAsync(InitializeAppleObserver);
+#endif
+            return await operation();
+        }
+        finally { _gate.Release(); }
+    }
+
+    private async Task<T> TimedAsync<T>(Func<CancellationToken, Task<T>> operation, CancellationToken cancellationToken)
+    {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(45));
+        return await SerializedAsync(() => operation(timeout.Token), timeout.Token);
+    }
+
+    public Task<IReadOnlyList<MobileStoreProduct>> GetProductsAsync(IReadOnlyList<string> ids, CancellationToken token = default) =>
+        TimedAsync(ct => GetProductsCoreAsync(ids, ct), token);
+    public Task<MobileStorePurchaseResult> PurchaseAsync(string id, string? email, CancellationToken token = default) =>
+        SerializedAsync(() => PurchaseCoreAsync(id, email, token), token);
+    public Task<IReadOnlyList<MobileStorePurchase>> RestoreAsync(CancellationToken token = default) =>
+        TimedAsync(ct => RestoreCoreAsync(ct), token);
+    public Task<bool> FinalizeAsync(MobileStorePurchase purchase, CancellationToken token = default) =>
+        TimedAsync(ct => FinalizeCoreAsync(purchase, ct), token);
+
+    public Task<IReadOnlyList<MobileStorePurchase>> GetPendingPurchasesAsync(CancellationToken token = default) =>
+        SerializedAsync<IReadOnlyList<MobileStorePurchase>>(async () =>
+        {
+#if IOS
+            return await MainThread.InvokeOnMainThreadAsync(() => SKPaymentQueue.DefaultQueue.Transactions
+                .Where(t => t.TransactionState is SKPaymentTransactionState.Purchased or SKPaymentTransactionState.Restored)
+                .Select(t => new MobileStorePurchase("apple", t.Payment.ProductIdentifier,
+                    t.OriginalTransaction?.TransactionIdentifier ?? t.TransactionIdentifier ?? string.Empty,
+                    t.TransactionIdentifier, null, t.TransactionIdentifier, true,
+                    t.TransactionState == SKPaymentTransactionState.Restored)).ToArray());
+#else
+            return (await RestoreCoreAsync(token)).Where(p => p.NeedsFinalization).ToArray();
+#endif
+        }, token);
+
+    private async Task<IReadOnlyList<MobileStoreProduct>> GetProductsCoreAsync(
         IReadOnlyList<string> productIds,
         CancellationToken cancellationToken = default)
     {
@@ -131,6 +218,9 @@ public sealed class MobileStoreBillingService : IMobileStoreBillingService
         IReadOnlyList<string> productIds,
         CancellationToken cancellationToken)
     {
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(TimeSpan.FromSeconds(20));
+        cancellationToken = timeout.Token;
         var completion = new TaskCompletionSource<IReadOnlyList<MobileStoreProduct>>(
             TaskCreationOptions.RunContinuationsAsynchronously);
         SKProductsRequest? request = null;
@@ -286,7 +376,7 @@ public sealed class MobileStoreBillingService : IMobileStoreBillingService
 #endif
 #endif
 
-    public async Task<MobileStorePurchaseResult> PurchaseAsync(
+    private async Task<MobileStorePurchaseResult> PurchaseCoreAsync(
         string productId,
         string? accountEmail,
         CancellationToken cancellationToken = default)
@@ -300,6 +390,20 @@ public sealed class MobileStoreBillingService : IMobileStoreBillingService
                 return new MobileStorePurchaseResult(false, false, false, null, "Die winkel kon nie oopgemaak word nie.");
             }
 
+#if IOS
+            using var purchaseCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            _purchasingProduct = normalizedProductId;
+            _deferred = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            var purchaseTask = billing.PurchaseAsync(normalizedProductId, ItemType.Subscription,
+                BuildObfuscatedAccountId(accountEmail), null, null, purchaseCancellation.Token);
+            if (await Task.WhenAny(purchaseTask, _deferred.Task) != purchaseTask)
+            {
+                purchaseCancellation.Cancel();
+                try { await purchaseTask; } catch (OperationCanceledException) { }
+                return new(false, false, true, null, "Die aankoop wag op goedkeuring. Ons sal dit bevestig wanneer die goedkeuring ontvang is.");
+            }
+            var purchase = await purchaseTask;
+#else
             var purchase = await billing.PurchaseAsync(
                 normalizedProductId,
                 ItemType.Subscription,
@@ -307,6 +411,7 @@ public sealed class MobileStoreBillingService : IMobileStoreBillingService
                 null,
                 null,
                 cancellationToken);
+#endif
             if (purchase is null)
             {
                 return new MobileStorePurchaseResult(false, false, false, null, "Die aankoop kon nie voltooi word nie.");
@@ -355,11 +460,15 @@ public sealed class MobileStoreBillingService : IMobileStoreBillingService
         }
         finally
         {
+#if IOS
+            _purchasingProduct = null;
+            _deferred = null;
+#endif
             await DisconnectAsync(billing, cancellationToken);
         }
     }
 
-    public async Task<IReadOnlyList<MobileStorePurchase>> RestoreAsync(
+    private async Task<IReadOnlyList<MobileStorePurchase>> RestoreCoreAsync(
         CancellationToken cancellationToken = default)
     {
         var billing = CrossInAppBilling.Current;
@@ -367,7 +476,7 @@ public sealed class MobileStoreBillingService : IMobileStoreBillingService
         {
             if (!await billing.ConnectAsync(true, cancellationToken))
             {
-                return Array.Empty<MobileStorePurchase>();
+                throw new InvalidOperationException("Die winkel kon nie vir herstel verbind word nie.");
             }
 
             var purchases = await billing.GetPurchasesAsync(ItemType.Subscription, cancellationToken);
@@ -376,17 +485,13 @@ public sealed class MobileStoreBillingService : IMobileStoreBillingService
                 .Select(purchase => ToStorePurchase(billing, purchase, isRestored: true))
                 .ToArray();
         }
-        catch (InAppBillingPurchaseException)
-        {
-            return Array.Empty<MobileStorePurchase>();
-        }
         finally
         {
             await DisconnectAsync(billing, cancellationToken);
         }
     }
 
-    public async Task<bool> FinalizeAsync(
+    private async Task<bool> FinalizeCoreAsync(
         MobileStorePurchase purchase,
         CancellationToken cancellationToken = default)
     {
@@ -395,6 +500,17 @@ public sealed class MobileStoreBillingService : IMobileStoreBillingService
             return true;
         }
 
+#if IOS
+        return await MainThread.InvokeOnMainThreadAsync(() =>
+        {
+            var transactions = SKPaymentQueue.DefaultQueue.Transactions.Where(t =>
+                t.TransactionIdentifier == purchase.FinalizationId ||
+                (t.Payment?.ProductIdentifier == purchase.ProductId &&
+                 t.OriginalTransaction?.TransactionIdentifier == purchase.ProviderTransactionId)).ToArray();
+            foreach (var transaction in transactions) SKPaymentQueue.DefaultQueue.FinishTransaction(transaction);
+            return true;
+        });
+#else
         var billing = CrossInAppBilling.Current;
         try
         {
@@ -416,6 +532,7 @@ public sealed class MobileStoreBillingService : IMobileStoreBillingService
         {
             await DisconnectAsync(billing, cancellationToken);
         }
+#endif
     }
 
     private static MobileStorePurchase ToStorePurchase(
@@ -435,13 +552,13 @@ public sealed class MobileStoreBillingService : IMobileStoreBillingService
             paymentId,
             transactionId,
             null,
-            FinalizationId: null,
-            NeedsFinalization: false,
+            FinalizationId: transactionId,
+            NeedsFinalization: true,
             isRestored);
 #elif ANDROID
         const string provider = "google_play";
         var paymentId = purchase.PurchaseToken ?? purchase.Id;
-        var finalizationId = purchase.TransactionIdentifier ?? purchase.PurchaseToken;
+        var finalizationId = purchase.PurchaseToken;
         return new MobileStorePurchase(
             provider,
             purchase.ProductId,

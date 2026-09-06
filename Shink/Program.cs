@@ -169,6 +169,8 @@ builder.Services.AddHttpClient<PaystackCheckoutService>();
 builder.Services.AddHttpClient<PaystackAuthorizationRetryBatchService>();
 builder.Services.AddHttpClient<ISubscriptionLedgerService, SupabaseSubscriptionLedgerService>();
 builder.Services.AddHttpClient<MobileStoreEntitlementService>();
+builder.Services.AddHttpClient<StoreSubscriptionReconciliationService>();
+builder.Services.AddHostedService<StoreSubscriptionReconciliationWorker>();
 builder.Services.AddHttpClient<IStoreOrderService, SupabaseStoreOrderService>();
 builder.Services.AddHttpClient<IStoreOrderNotificationService, ResendStoreOrderNotificationService>();
 builder.Services.AddHttpClient<ISubscriptionNotificationEmailService, ResendSubscriptionNotificationEmailService>();
@@ -3608,9 +3610,7 @@ app.MapPost("/api/mobile/store/entitlement", async (
         signedInEmail,
         request,
         httpContext.RequestAborted);
-    return entitlement.IsActive
-        ? Results.Ok(entitlement)
-        : Results.BadRequest(entitlement);
+    return Results.Ok(entitlement);
 }).DisableAntiforgery();
 
 app.MapPost("/api/mobile/auth/google/complete", async (

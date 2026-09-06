@@ -36,6 +36,8 @@ internal sealed record AppleRenewalPayload(
     long? SignedDate,
     string? Environment);
 
+internal sealed record AppleSubscriptionCheck(AppleVerifiedSubscription? Subscription, bool IsInactive = false);
+
 internal sealed class AppleAppStoreServerApi
 {
     internal const string ProductionBaseUrl = "https://api.storekit.apple.com";
@@ -60,6 +62,10 @@ internal sealed class AppleAppStoreServerApi
     }
 
     internal async Task<AppleVerifiedSubscription?> VerifySubscriptionAsync(
+        string productId, string? transactionId, CancellationToken cancellationToken = default) =>
+        (await CheckSubscriptionAsync(productId, transactionId, cancellationToken)).Subscription;
+
+    internal async Task<AppleSubscriptionCheck> CheckSubscriptionAsync(
         string productId,
         string? transactionId,
         CancellationToken cancellationToken = default)
@@ -73,7 +79,7 @@ internal sealed class AppleAppStoreServerApi
             string.IsNullOrWhiteSpace(_options.AppleBundleId))
         {
             _logger.LogWarning("Apple App Store Server API verification is not configured or did not include a transaction identifier.");
-            return null;
+            return new(null);
         }
 
         string bearerToken;
@@ -84,7 +90,7 @@ internal sealed class AppleAppStoreServerApi
         catch (Exception exception) when (exception is ArgumentException or CryptographicException or JsonException)
         {
             _logger.LogWarning(exception, "Apple App Store Server API authorization token generation failed.");
-            return null;
+            return new(null);
         }
 
         var production = await GetSubscriptionStatusAsync(
@@ -96,13 +102,13 @@ internal sealed class AppleAppStoreServerApi
             cancellationToken);
         if (production.Subscription is not null)
         {
-            return production.Subscription;
+            return new(production.Subscription);
         }
 
         if (production.StatusCode != HttpStatusCode.NotFound ||
             production.ErrorCode != TransactionIdNotFoundError)
         {
-            return null;
+            return new(null, production.IsInactive);
         }
 
         var sandbox = await GetSubscriptionStatusAsync(
@@ -112,7 +118,7 @@ internal sealed class AppleAppStoreServerApi
             productId,
             bearerToken,
             cancellationToken);
-        return sandbox.Subscription;
+        return new(sandbox.Subscription, sandbox.IsInactive);
     }
 
     internal static string CreateBearerToken(MobileStoreOptions options, DateTimeOffset nowUtc)
@@ -186,7 +192,8 @@ internal sealed class AppleAppStoreServerApi
             }
 
             var subscription = FindActiveSubscription(root, productId, expectedEnvironment);
-            return new AppleSubscriptionStatusResult(subscription, response.StatusCode, null);
+            return new AppleSubscriptionStatusResult(subscription, response.StatusCode, null,
+                subscription is null && HasVerifiedInactiveSubscription(root, productId, expectedEnvironment));
         }
         catch (Exception exception) when (
             exception is HttpRequestException or TaskCanceledException or JsonException or CryptographicException)
@@ -197,6 +204,25 @@ internal sealed class AppleAppStoreServerApi
                 expectedEnvironment);
             return new AppleSubscriptionStatusResult(null, null, null);
         }
+    }
+
+    private bool HasVerifiedInactiveSubscription(JsonElement root, string productId, string environment)
+    {
+        if (!root.TryGetProperty("data", out var groups) || groups.ValueKind != JsonValueKind.Array) return false;
+        foreach (var group in groups.EnumerateArray())
+        {
+            if (!group.TryGetProperty("lastTransactions", out var transactions) || transactions.ValueKind != JsonValueKind.Array) continue;
+            foreach (var transaction in transactions.EnumerateArray())
+            {
+                var signed = TryReadString(transaction, "signedTransactionInfo");
+                var payload = signed is null ? null : _signedTransactionVerifier.VerifyAndDecode(signed, _options.AppleBundleId, environment);
+                if (payload?.ProductId != productId || string.IsNullOrWhiteSpace(payload.OriginalTransactionId)) continue;
+                var status = TryReadInt32(transaction, "status");
+                if (status is 2 or 3 or 5 || payload.RevocationDate is not null || payload.IsUpgraded ||
+                    (status == 1 && payload.ExpiresDate is { } expiry && expiry <= DateTimeOffset.UtcNow.ToUnixTimeMilliseconds())) return true;
+            }
+        }
+        return false;
     }
 
     private AppleVerifiedSubscription? FindActiveSubscription(
@@ -341,7 +367,8 @@ internal sealed class AppleAppStoreServerApi
     private sealed record AppleSubscriptionStatusResult(
         AppleVerifiedSubscription? Subscription,
         HttpStatusCode? StatusCode,
-        int? ErrorCode);
+        int? ErrorCode,
+        bool IsInactive = false);
 }
 
 internal sealed class AppleSignedTransactionVerifier

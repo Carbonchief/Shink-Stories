@@ -34,11 +34,46 @@ public class MobilePlansSourceTests
         var plans = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "PlansPage.cs"));
 
         StringAssert.Contains(luister, "if (story.IsLocked)");
-        StringAssert.Contains(luister, "await PageHelpers.OpenPlansForStoryAsync(detail.Story);");
-        StringAssert.Contains(account, "await Shell.Current.GoToAsync(nameof(PlansPage), animate: true);");
+        StringAssert.Contains(luister, "await PageHelpers.OpenPlansForStoryAsync(detail.Story, _sessionState);");
+        StringAssert.Contains(account, "await Shell.Current.GoToAsync(plansRoute, animate: true);");
         StringAssert.Contains(shell, "Routing.RegisterRoute(nameof(PlansPage), typeof(PlansPage));");
         StringAssert.Contains(plans, "plan.ProductId is \"schink_stories_maandeliks\" or \"schink_stories_jaarliks\"");
         StringAssert.Contains(plans, "mobile_paywall_viewed");
+    }
+
+    [TestMethod]
+    public void MobileSignInLandingUsesSignupButton()
+    {
+        var account = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "AccountPage.cs"));
+
+        StringAssert.Contains(account, "BuildModeButton(\"Teken op\", AuthPanelMode.SignUp, true)");
+        Assert.DoesNotContain("BuildModeButton(\"Kies ’n plan\", AuthPanelMode.SignUp, true)", account, StringComparison.Ordinal);
+    }
+
+    [TestMethod]
+    public void MobileGratisPostAuthenticationOpensPlansFirst()
+    {
+        var account = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "AccountPage.cs"));
+
+        StringAssert.Contains(account, "var hasStoryReturnPath = PageHelpers.TryParseStoryReturnPath(ReturnUrl, out var source, out var slug);");
+        StringAssert.Contains(account, "if (!_sessionState.Current.HasPaidSubscription)");
+        StringAssert.Contains(account, "await Shell.Current.GoToAsync(plansRoute, animate: true);");
+    }
+
+    [TestMethod]
+    public void PaidWebsiteUsersBypassPaywallEvenWithoutFullStoryAccess()
+    {
+        var account = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "AccountPage.cs"));
+        var helpers = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "PageHelpers.cs"));
+        var plans = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "PlansPage.cs"));
+        var destination = account[account.IndexOf("private async Task OpenPostAuthenticationDestinationAsync", StringComparison.Ordinal)..];
+        destination = destination[..destination.IndexOf("private void SetStatus", StringComparison.Ordinal)];
+        var paidBranch = destination[destination.IndexOf("        if (hasStoryReturnPath)\n", StringComparison.Ordinal)..];
+        Assert.DoesNotContain("PlansPage", paidBranch, StringComparison.Ordinal);
+        StringAssert.Contains(helpers, "if (sessionState.Current.HasPaidSubscription)");
+        Assert.IsLessThan(plans.IndexOf("mobile_paywall_viewed", StringComparison.Ordinal),
+            plans.IndexOf("if (_sessionState.Current.HasPaidSubscription)", StringComparison.Ordinal));
+        Assert.DoesNotContain("HasFullStoryAccess", paidBranch, StringComparison.Ordinal);
     }
 
     [TestMethod]
@@ -74,7 +109,7 @@ public class MobilePlansSourceTests
         StringAssert.Contains(billing, "GetDebugStoreKitProducts");
         StringAssert.Contains(billing, "PathForResource(\"SchinkStories\", \"storekit\")");
         StringAssert.Contains(billing, "displayPrice");
-        StringAssert.Contains(billing, "purchase.TransactionIdentifier ?? purchase.PurchaseToken");
+        StringAssert.Contains(billing, "var finalizationId = purchase.PurchaseToken;");
         StringAssert.Contains(billing, "purchase.FinalizationId");
         StringAssert.Contains(api, "/api/mobile/store/entitlement");
         StringAssert.Contains(program, "app.MapPost(\"/api/mobile/store/entitlement\"");
@@ -124,10 +159,10 @@ public class MobilePlansSourceTests
 
         StringAssert.Contains(plans, "foreach (var plan in plans)");
         StringAssert.Contains(plans, "_storeProducts.TryGetValue(plan.ProductId, out var product)");
-        StringAssert.Contains(plans, "$\"R{plan.Amount:0}\"");
+        StringAssert.Contains(plans, "Prys nie beskikbaar nie");
         StringAssert.Contains(plans, "Tans nie beskikbaar nie");
         StringAssert.Contains(plans, "Die winkelpryse is tans nie beskikbaar nie.");
-        StringAssert.Contains(plans, "Spaar 2 Maande teenoor 12 maande se maandbetalings.");
+        Assert.DoesNotContain("Spaar 2 Maande", plans, StringComparison.Ordinal);
         Assert.DoesNotContain("Spaar R{yearlySaving:0}", plans, StringComparison.Ordinal);
     }
 
@@ -158,9 +193,9 @@ public class MobilePlansSourceTests
         StringAssert.Contains(account, "PageHelpers.TryParseStoryReturnPath(ReturnUrl");
         StringAssert.Contains(account, "detail?.RequiresSubscription == true");
         StringAssert.Contains(story, "detail.RequiresSubscription && _sessionState.Current.IsSignedIn");
-        StringAssert.Contains(playlistStories, "PageHelpers.OpenPlansForStoryAsync(story)");
-        StringAssert.Contains(playlistDetail, "PageHelpers.OpenPlansForStoryAsync(story)");
-        StringAssert.Contains(playlistDetail, "PageHelpers.OpenPlansForStoryAsync(_currentStory)");
+        StringAssert.Contains(playlistStories, "PageHelpers.OpenPlansForStoryAsync(story, _sessionState)");
+        StringAssert.Contains(playlistDetail, "PageHelpers.OpenPlansForStoryAsync(story, _sessionState)");
+        StringAssert.Contains(playlistDetail, "PageHelpers.OpenPlansForStoryAsync(_currentStory, _sessionState)");
     }
 
     [TestMethod]
@@ -182,7 +217,7 @@ public class MobilePlansSourceTests
         StringAssert.Contains(program, "StoryAccessPolicy.HasAllStoriesAccess(activeTierCodes)");
         StringAssert.Contains(program, "HasFullStoryAccess: hasFullStoryAccess");
         StringAssert.Contains(program, "StoryAccessPolicy.GetAllowedTierCodes");
-        StringAssert.Contains(plans, "_sessionState.Current.HasFullStoryAccess");
+        StringAssert.Contains(plans, "_sessionState.Current.HasPaidSubscription");
         StringAssert.Contains(plans, "Jy hoef nie weer te betaal nie");
         StringAssert.Contains(luister, "previous.HasFullStoryAccess == current.HasFullStoryAccess");
         StringAssert.Contains(luister, "await _apiClient.GetSessionAsync();");

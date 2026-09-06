@@ -1412,7 +1412,7 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(accountPage, "FontAttributes = FontAttributes.Bold | FontAttributes.Italic");
         StringAssert.Contains(accountPage, "Text = \"Rustige, opbouende \"");
         StringAssert.Contains(accountPage, "Text = \"Afrikaanse storietyd\"");
-        StringAssert.Contains(accountPage, "Text = \"R 79 per maand. Kanselleer enige tyd.\"");
+        StringAssert.Contains(accountPage, "Text = \"R 99 per maand. Kanselleer enige tyd.\"");
         StringAssert.Contains(accountPage, "Source = \"schink_login_mouse.png\"");
         StringAssert.Contains(accountPage, "LogoHeight: Math.Clamp(height * (tight ? 0.17 : 0.2), 124, 194)");
         StringAssert.Contains(accountPage, "TitleSublineFontSize: Math.Clamp(height * (tight ? 0.0231 : 0.0259), 16, 24)");

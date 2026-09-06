@@ -261,7 +261,7 @@ public sealed class AccountPage : ContentPage
         };
         _authTaglineLabel = new Label
         {
-            Text = "R 79 per maand. Kanselleer enige tyd.",
+            Text = "R 99 per maand. Kanselleer enige tyd.",
             TextColor = Color.FromArgb("#FFF7E8"),
             FontSize = metrics.TaglineFontSize,
             FontAttributes = FontAttributes.Bold | FontAttributes.Italic,
@@ -446,10 +446,10 @@ public sealed class AccountPage : ContentPage
                 Children =
                 {
                     BuildModeButton("Teken In", AuthPanelMode.SignIn, true),
-                    BuildModeButton("Kies ’n plan", AuthPanelMode.SignUp, true),
+                    BuildModeButton("Teken op", AuthPanelMode.SignUp, true),
                     _authTaglineLabel ?? new Label
                     {
-                        Text = "R 79 per maand. Kanselleer enige tyd.",
+                        Text = "R 99 per maand. Kanselleer enige tyd.",
                         TextColor = Color.FromArgb("#FFF7E8"),
                         FontSize = metrics.TaglineFontSize,
                         FontAttributes = FontAttributes.Bold | FontAttributes.Italic,
@@ -1238,41 +1238,36 @@ public sealed class AccountPage : ContentPage
             return;
         }
 
-        if (PageHelpers.TryParseStoryReturnPath(ReturnUrl, out var source, out var slug))
+        var hasStoryReturnPath = PageHelpers.TryParseStoryReturnPath(ReturnUrl, out var source, out var slug);
+        if (!_sessionState.Current.HasPaidSubscription)
+        {
+            var plansRoute = hasStoryReturnPath
+                ? $"{nameof(PlansPage)}?returnUrl={Uri.EscapeDataString(ReturnUrl!)}"
+                : nameof(PlansPage);
+            await Shell.Current.GoToAsync(plansRoute, animate: true);
+            return;
+        }
+
+        if (hasStoryReturnPath)
         {
             try
             {
                 var detail = await _apiClient.GetStoryAsync(slug, source);
-                if (detail?.RequiresSubscription == true)
-                {
-                    await Shell.Current.GoToAsync(
-                        $"{nameof(PlansPage)}?returnUrl={Uri.EscapeDataString(ReturnUrl!)}",
-                        animate: true);
-                    return;
-                }
-
-                if (detail is not null && PageHelpers.TryBuildStoryDetailRoute(ReturnUrl, out var storyRoute))
+                if (detail is not null && !detail.RequiresSubscription &&
+                    PageHelpers.TryBuildStoryDetailRoute(ReturnUrl, out var storyRoute))
                 {
                     await Shell.Current.GoToAsync(storyRoute, animate: true);
                     return;
                 }
+                if (detail?.RequiresSubscription == true)
+                    await DisplayAlertAsync("Jou intekening", "Hierdie storie is nie by jou huidige plan ingesluit nie.", "Reg so");
             }
             catch
             {
-                // A story reached from sign-in is safest to resume through the paywall
-                // when its current access cannot be confirmed.
+                // Failure to load a story is not evidence that a paid user needs to buy again.
             }
-
-            await Shell.Current.GoToAsync(
-                $"{nameof(PlansPage)}?returnUrl={Uri.EscapeDataString(ReturnUrl!)}",
-                animate: true);
-            return;
         }
-
-        if (isNewAccount)
-        {
-            await Shell.Current.GoToAsync(nameof(PlansPage), animate: true);
-        }
+        await Shell.Current.GoToAsync("//Luister", animate: true);
     }
 
     private void SetStatus(string? message, bool isError = false)
@@ -1306,14 +1301,15 @@ public sealed class AccountPage : ContentPage
 
             var plansButton = new Button
             {
-                Text = "Sien opsies",
+                Text = session.HasPaidSubscription ? "Gaan na stories" : "Sien opsies",
                 BackgroundColor = Color.FromArgb("#146D69"),
                 TextColor = Colors.White,
                 FontAttributes = FontAttributes.Bold,
                 CornerRadius = 22,
                 HeightRequest = 50
             };
-            plansButton.Clicked += async (_, _) => await Shell.Current.GoToAsync(nameof(PlansPage), animate: true);
+            plansButton.Clicked += async (_, _) => await Shell.Current.GoToAsync(
+                session.HasPaidSubscription ? "//Luister" : nameof(PlansPage), animate: true);
 
             _signedInState.Children.Add(MobileTopBar.Build(
                 this,

@@ -2326,6 +2326,53 @@ public class SupabaseSubscriptionLedgerSelfServiceTests
     }
 
     [TestMethod]
+    public async Task StoreOwnershipLookupFailureDoesNotWriteSubscription()
+    {
+        var writes = 0;
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+                return JsonResponse("[{\"subscriber_id\":\"11111111-1111-1111-1111-111111111111\"}]");
+            if (request.Method != HttpMethod.Get) writes++;
+            return new HttpResponseMessage(HttpStatusCode.ServiceUnavailable);
+        });
+        var result = await CreateService(handler).RecordVerifiedStoreSubscriptionAsync(
+            "owner@example.com", "apple", "schink_stories_maandeliks", "purchase", null, null,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMonths(1));
+        Assert.IsFalse(result.IsSuccess);
+        Assert.AreEqual(0, writes);
+    }
+
+    [TestMethod]
+    public async Task ConcurrentStoreClaimCannotTransferAnExistingOwnersPurchase()
+    {
+        var attemptedOwnedUpdate = false;
+        var handler = new RecordingHandler(request =>
+        {
+            if (IsSupabaseGet(request, "/rest/v1/subscribers"))
+                return JsonResponse("[{\"subscriber_id\":\"11111111-1111-1111-1111-111111111111\"}]");
+            if (request.Method == HttpMethod.Get) return JsonResponse("[]"); // no owner at lookup time
+            if (request.Method == HttpMethod.Post)
+            {
+                Assert.IsTrue(request.Headers.GetValues("Prefer").Any(v => v.Contains("resolution=ignore-duplicates")));
+                return JsonResponse("[]"); // another account claimed the unique purchase first
+            }
+            if (request.Method == HttpMethod.Patch)
+            {
+                attemptedOwnedUpdate = true;
+                StringAssert.Contains(request.RequestUri!.Query, "subscriber_id=eq.11111111-1111-1111-1111-111111111111");
+                return JsonResponse("[]"); // owner predicate excludes the other account
+            }
+            return new HttpResponseMessage(HttpStatusCode.NotFound);
+        });
+        var result = await CreateService(handler).RecordVerifiedStoreSubscriptionAsync(
+            "owner@example.com", "google_play", "schink_stories_maandeliks", "purchase", null, "purchase",
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMonths(1));
+        Assert.IsTrue(attemptedOwnedUpdate);
+        Assert.IsFalse(result.IsSuccess);
+    }
+
+    [TestMethod]
     public async Task RecordVerifiedStoreSubscriptionAsync_SupersedesFreeAccessOnlyAfterPaidUpsert()
     {
         var requestOrder = new List<string>();

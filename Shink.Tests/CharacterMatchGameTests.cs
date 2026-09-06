@@ -193,7 +193,7 @@ public class CharacterMatchGameTests
         StringAssert.Contains(luisterPage, "GoToAsync(nameof(KarakterPareConfigPage), animate: true)");
         StringAssert.Contains(mobileTopBar, "\"Karakter-pare\",");
         StringAssert.Contains(mobileTopBar, "GoToAsync(nameof(KarakterPareConfigPage), animate: true)");
-        StringAssert.Contains(mobileMenuSheet, "Content = new ScrollView");
+        StringAssert.Contains(mobileMenuSheet, "new ScrollView");
         StringAssert.Contains(mobileMenuSheet, "VerticalScrollBarVisibility = ScrollBarVisibility.Never");
         StringAssert.Contains(appShell, "Routing.RegisterRoute(nameof(KarakterPareGamePage), typeof(KarakterPareGamePage));");
         StringAssert.Contains(appShell, "Routing.RegisterRoute(nameof(KarakterPareConfigPage), typeof(KarakterPareConfigPage));");

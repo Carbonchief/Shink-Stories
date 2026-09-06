@@ -30,14 +30,16 @@ public sealed record MobileStorePurchaseRequest(
     string ProductId,
     string ProviderPaymentId,
     string? ProviderTransactionId,
-    string? ProviderToken);
+    string? ProviderToken,
+    string? ExpectedAccountEmail = null);
 
 public sealed record MobileStoreEntitlementResponse(
     bool IsActive,
     string Message,
     string? Provider,
     string? ProductId,
-    DateTimeOffset? AccessEndsAtUtc);
+    DateTimeOffset? AccessEndsAtUtc,
+    bool IsRetryable = false);
 
 public sealed record MobileProfileUpdateResponse(string Message, MobileSession Session);
 

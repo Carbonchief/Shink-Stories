@@ -11,16 +11,34 @@ public sealed class MobileIosCollectionViewCrashSourceTests
         var mauiProgram = File.ReadAllText(GetRepoPath("Shink.Mobile", "MauiProgram.cs"));
         var project = File.ReadAllText(GetRepoPath("Shink.Mobile", "Shink.Mobile.csproj"));
 
-        Assert.IsFalse(
-            mauiProgram.Contains(
-                "Microsoft.Maui.Controls.Handlers.Items.CollectionViewHandler>();",
-                StringComparison.Ordinal));
         StringAssert.Contains(project, "<MauiVersion>10.0.100</MauiVersion>");
+        StringAssert.Contains(
+            mauiProgram,
+            "UIKit.UIDevice.CurrentDevice.UserInterfaceIdiom == UIKit.UIUserInterfaceIdiom.Pad");
+        StringAssert.Contains(
+            mauiProgram,
+            "Microsoft.Maui.Controls.Handlers.Items.CollectionViewHandler>();");
         StringAssert.Contains(mauiProgram, "ConfigureCollectionViewStability();");
         StringAssert.Contains(mauiProgram, "ViewHandler.ViewMapper.AppendToMapping(");
         StringAssert.Contains(mauiProgram, "view is CollectionView");
         StringAssert.Contains(mauiProgram, "handler.PlatformView is UIKit.UICollectionView collectionView");
         StringAssert.Contains(mauiProgram, "collectionView.PrefetchingEnabled = false;");
+    }
+
+    [TestMethod]
+    public void IpadCollectionHandlerKeepsTheFullVisualTreatment()
+    {
+        var liquidGlass = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileLiquidGlass.cs"));
+        var luisterPage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "LuisterPage.cs"));
+        var progressiveImage = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "ProgressiveCachedImage.cs"));
+
+        StringAssert.Contains(
+            liquidGlass,
+            "UIBlurEffect.FromStyle(");
+        StringAssert.Contains(liquidGlass, "new UIVisualEffectView(materialEffect)");
+        Assert.IsFalse(liquidGlass.Contains("SetIpadScrollActive", StringComparison.Ordinal));
+        StringAssert.Contains(luisterPage, "IsAndroid\n            ? null!");
+        StringAssert.Contains(progressiveImage, "FadeToAsync(1, FadeInDurationMilliseconds, Easing.CubicOut)");
     }
 
     [TestMethod]
@@ -67,9 +85,20 @@ public sealed class MobileIosCollectionViewCrashSourceTests
         StringAssert.Contains(apiClient, "IosImageCacheOptimizer.EnsureOptimized(cachePath, cancellationToken)");
         StringAssert.Contains(optimizer, "ResolveMaxPixelDimension()");
         StringAssert.Contains(optimizer, "PhoneMaxPixelDimension = 1280");
-        StringAssert.Contains(optimizer, "TabletMaxPixelDimension = 2048");
+        StringAssert.Contains(optimizer, "TabletMaxPixelDimension = 1280");
         StringAssert.Contains(optimizer, "CreateThumbnailFromImageAlways = true");
         StringAssert.Contains(optimizer, "MaxPixelSize = maxPixelDimension");
+    }
+
+    [TestMethod]
+    public void IosTabletFeedAvoidsOversizedDecodes()
+    {
+        var optimizer = File.ReadAllText(GetRepoPath(
+            "Shink.Mobile",
+            "Platforms",
+            "iOS",
+            "IosImageCacheOptimizer.cs"));
+        StringAssert.Contains(optimizer, "TabletMaxPixelDimension = 1280");
     }
 
     private static string GetRepoPath(params string[] relativeSegments)

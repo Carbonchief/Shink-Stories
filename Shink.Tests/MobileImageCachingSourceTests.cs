@@ -67,7 +67,8 @@ public sealed class MobileImageCachingSourceTests
         StringAssert.Contains(android, "PhoneMaxPixelDimension = 1280");
         StringAssert.Contains(android, "TabletMaxPixelDimension = 2048");
         StringAssert.Contains(ios, "PhoneMaxPixelDimension = 1280");
-        StringAssert.Contains(ios, "TabletMaxPixelDimension = 2048");
+        StringAssert.Contains(ios, "TabletMaxPixelDimension = 1280");
+        StringAssert.Contains(ios, "largest scrolling artwork on iPad is capped at 640 points");
         StringAssert.Contains(ios, "PhoneOptimizedSuffix = \".ios-feed\"");
         StringAssert.Contains(ios, "TryResolveDisplayPath(");
         Assert.IsFalse(android.Contains("Math.Max(display.Width, display.Height)", StringComparison.Ordinal));

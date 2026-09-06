@@ -15,12 +15,20 @@ internal static class PageHelpers
         return $"/{source}/{Uri.EscapeDataString(story.Slug)}";
     }
 
-    public static Task OpenPlansForStoryAsync(MobileStorySummary story)
+    public static Task OpenPlansForStoryAsync(MobileStorySummary story, SessionState sessionState) =>
+        OpenPlansAsync(sessionState, BuildStoryReturnPath(story));
+
+    public static async Task OpenPlansAsync(SessionState sessionState, string? returnPath = null)
     {
-        var returnPath = BuildStoryReturnPath(story);
-        return Shell.Current.GoToAsync(
-            $"{nameof(PlansPage)}?returnUrl={Uri.EscapeDataString(returnPath)}",
-            animate: true);
+        if (sessionState.Current.HasPaidSubscription)
+        {
+            await Shell.Current.DisplayAlertAsync("Jou intekening",
+                "Jou intekening is aktief. Hierdie storie is nie by jou huidige plan ingesluit nie. Kies 'n storie waartoe jou plan toegang gee.", "Reg so");
+            return;
+        }
+        var route = nameof(PlansPage);
+        if (!string.IsNullOrWhiteSpace(returnPath)) route += $"?returnUrl={Uri.EscapeDataString(returnPath)}";
+        await Shell.Current.GoToAsync(route, animate: true);
     }
 
     public static bool TryBuildStoryDetailRoute(string? returnPath, out string route)

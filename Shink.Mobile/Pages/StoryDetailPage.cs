@@ -373,9 +373,9 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
                 return;
             }
 
-            if (detail.RequiresSubscription && _sessionState.Current.IsSignedIn)
+            if (detail.RequiresSubscription && _sessionState.Current.IsSignedIn && !_sessionState.Current.HasPaidSubscription)
             {
-                await PageHelpers.OpenPlansForStoryAsync(detail.Story);
+                await PageHelpers.OpenPlansForStoryAsync(detail.Story, _sessionState);
                 return;
             }
 
@@ -1775,6 +1775,9 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
 
     private View BuildLockedPanel(MobileStoryDetailResponse detail)
     {
+        if (_sessionState.Current.HasPaidSubscription)
+            return BuildMessage("Jou intekening is aktief. Hierdie storie is nie by jou huidige plan ingesluit nie.");
+
         var loginButton = BuildPrimaryButton("Teken in");
         loginButton.Clicked += async (_, _) =>
         {
@@ -1785,7 +1788,7 @@ public sealed class StoryDetailPage : ContentPage, IQueryAttributable
         };
 
         var plansButton = BuildSecondaryButton("Sien planne");
-        plansButton.Clicked += async (_, _) => await PageHelpers.OpenPlansForStoryAsync(detail.Story);
+        plansButton.Clicked += async (_, _) => await PageHelpers.OpenPlansForStoryAsync(detail.Story, _sessionState);
 
         return new Border
         {

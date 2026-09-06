@@ -21,7 +21,7 @@ public sealed class PlansPage : ContentPage
     private readonly VerticalStackLayout _content;
     private readonly NavigationGate _navigationGate = new();
     private readonly Dictionary<string, MobileStoreProduct> _storeProducts = new(StringComparer.Ordinal);
-    private bool _hasLoaded;
+    private bool _isLoading;
     private bool _isOpeningPlan;
 
     public PlansPage(
@@ -65,12 +65,13 @@ public sealed class PlansPage : ContentPage
     protected override async void OnAppearing()
     {
         base.OnAppearing();
-        if (_hasLoaded)
+        if (_sessionState.Current.HasPaidSubscription)
         {
+            await Shell.Current.GoToAsync("//Luister", animate: true);
             return;
         }
+        if (_isLoading) return;
 
-        _hasLoaded = true;
         _analytics.TrackEvent(
             IsPaywall ? "mobile_paywall_viewed" : "mobile_plans_viewed",
             new Dictionary<string, object>
@@ -78,7 +79,9 @@ public sealed class PlansPage : ContentPage
                 ["has_return_path"] = IsPaywall,
                 ["is_signed_in"] = _sessionState.Current.IsSignedIn
             });
-        await LoadAsync();
+        _isLoading = true;
+        try { await LoadAsync(); }
+        finally { _isLoading = false; }
     }
 
     private async Task LoadAsync()
@@ -112,7 +115,7 @@ public sealed class PlansPage : ContentPage
             _content.Children.Add(BuildHeader());
             _content.Children.Add(BuildIntro());
 
-            if (_sessionState.Current.HasFullStoryAccess)
+            if (_sessionState.Current.HasPaidSubscription)
             {
                 _content.Children.Add(BuildActiveAccessCard());
                 _content.Children.Add(BuildPurchaseDetails());
@@ -123,21 +126,17 @@ public sealed class PlansPage : ContentPage
             if (plans.Length == 0)
             {
                 _content.Children.Add(BuildNotice("Geen planne is tans beskikbaar nie. Probeer asseblief weer."));
+                _content.Children.Add(BuildRetryButton());
                 _content.Children.Add(BuildRestoreButton());
                 _content.Children.Add(BuildPurchaseDetails());
                 _content.Children.Add(BuildLegalLinks());
                 return;
             }
 
-            var monthlyPlan = plans.FirstOrDefault(plan => plan.BillingPeriodMonths == 1);
-            var yearlyPlan = plans.FirstOrDefault(plan => plan.BillingPeriodMonths >= 12);
-            var yearlySaving = monthlyPlan is not null && yearlyPlan is not null
-                ? Math.Max(0, (monthlyPlan.Amount * 12) - yearlyPlan.Amount)
-                : 0;
             foreach (var plan in plans)
             {
                 _storeProducts.TryGetValue(plan.ProductId, out var product);
-                _content.Children.Add(BuildPlanCard(plan, product, yearlySaving));
+                _content.Children.Add(BuildPlanCard(plan, product));
             }
 
             if (_storeProducts.Count < plans.Length)
@@ -145,6 +144,7 @@ public sealed class PlansPage : ContentPage
                 _content.Children.Add(BuildNotice("Die winkelpryse is tans nie beskikbaar nie. Probeer asseblief weer voordat jy aankoop."));
             }
 
+            _content.Children.Add(BuildRetryButton());
             _content.Children.Add(BuildRestoreButton());
             _content.Children.Add(BuildPurchaseDetails());
             _content.Children.Add(BuildLegalLinks());
@@ -155,6 +155,7 @@ public sealed class PlansPage : ContentPage
             _content.Children.Add(BuildHeader());
             _content.Children.Add(BuildIntro());
             _content.Children.Add(BuildNotice("Die winkelprodukte kon nie nou gelaai word nie. Probeer asseblief weer."));
+            _content.Children.Add(BuildRetryButton());
             _content.Children.Add(BuildRestoreButton());
             _content.Children.Add(BuildPurchaseDetails());
             _content.Children.Add(BuildLegalLinks());
@@ -302,14 +303,14 @@ public sealed class PlansPage : ContentPage
     private static ImageSource CreatePackageImageSource(string fileName) =>
         ImageSource.FromStream(_ => FileSystem.OpenAppPackageFileAsync(fileName));
 
-    private View BuildPlanCard(MobilePlan plan, MobileStoreProduct? product, decimal yearlySaving)
+    private View BuildPlanCard(MobilePlan plan, MobileStoreProduct? product)
     {
         var isYearly = plan.BillingPeriodMonths >= 12;
-        var hasStoreProduct = product is not null;
+        var hasStoreProduct = product is not null && !string.IsNullOrWhiteSpace(product.LocalizedPrice);
         var displayPrice = product?.LocalizedPrice;
         if (string.IsNullOrWhiteSpace(displayPrice))
         {
-            displayPrice = $"R{plan.Amount:0}";
+            displayPrice = "Prys nie beskikbaar nie";
         }
 
         var actionButton = new Button
@@ -366,7 +367,7 @@ public sealed class PlansPage : ContentPage
                 Padding = new Thickness(10, 5),
                 Content = new Label
                 {
-                    Text = "BESTE WAARDE",
+                    Text = "JAARLIKSE PLAN",
                     FontSize = 10,
                     FontAttributes = FontAttributes.Bold,
                     TextColor = Color.FromArgb("#765500")
@@ -414,16 +415,6 @@ public sealed class PlansPage : ContentPage
                 }
             }
         };
-        if (isYearly && yearlySaving > 0)
-        {
-            cardContent.Children.Add(new Label
-            {
-                Text = "Spaar 2 Maande teenoor 12 maande se maandbetalings.",
-                FontSize = 13,
-                FontAttributes = FontAttributes.Bold,
-                TextColor = Color.FromArgb("#765500")
-            });
-        }
         cardContent.Children.Add(actionButton);
 
         var card = new Border
@@ -437,6 +428,18 @@ public sealed class PlansPage : ContentPage
         };
         MobileResponsiveLayout.ApplyCenteredContent(card, Width, 720);
         return card;
+    }
+
+    private View BuildRetryButton()
+    {
+        var button = BuildTextLinkButton("Herlaai winkelpryse");
+        button.Clicked += async (_, _) =>
+        {
+            if (_isLoading || _isOpeningPlan) return;
+            _isLoading = true;
+            try { await LoadAsync(); } finally { _isLoading = false; }
+        };
+        return button;
     }
 
     private View BuildRestoreButton()
@@ -610,6 +613,7 @@ public sealed class PlansPage : ContentPage
                 ["store_product_id"] = product.ProductId
             });
 
+            var purchaseEmail = _sessionState.Current.Email;
             var purchaseResult = await _storeBilling.PurchaseAsync(
                 product.ProductId,
                 _sessionState.Current.Email);
@@ -633,13 +637,15 @@ public sealed class PlansPage : ContentPage
                 return;
             }
 
+            if (!_sessionState.Current.IsSignedIn || !string.Equals(purchaseEmail, _sessionState.Current.Email, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Die aankooprekening het verander.");
             var entitlement = await SyncPurchaseAsync(purchaseResult.Purchase);
 
             if (entitlement is null || !entitlement.IsActive)
             {
                 await DisplayAlertAsync(
                     "Aankoop word bevestig",
-                    "Die winkel het jou aankoop ontvang. Jou toegang sal oopmaak sodra die bevestiging voltooi is.",
+                    "Die winkel het jou aankoop ontvang. Ons sal die bevestiging weer probeer wanneer die app oop is. Jy kan ook Herstel aankoop kies.",
                     "Reg so");
                 return;
             }
@@ -685,24 +691,27 @@ public sealed class PlansPage : ContentPage
         try
         {
             var purchases = await _storeBilling.RestoreAsync();
-            var activePurchases = 0;
-            foreach (var purchase in purchases)
-            {
-                var entitlement = await SyncPurchaseAsync(purchase);
-                if (entitlement?.IsActive == true)
+            var recovery = await StorePurchaseRecovery.RecoverAsync(
+                purchases.Where(p => p.ProductId is "schink_stories_maandeliks" or "schink_stories_jaarliks"), async purchase =>
                 {
-                    activePurchases++;
-                    await FinalizePurchaseAsync(purchase);
-                }
-            }
+                    var entitlement = await SyncPurchaseAsync(purchase);
+                    var retry = entitlement is null || entitlement.IsRetryable;
+                    if (!retry) retry = !await FinalizePurchaseAsync(purchase);
+                    return new StoreDeliveryOutcome(entitlement?.IsActive == true, retry);
+                });
 
             await _apiClient.GetSessionAsync();
-            if (activePurchases > 0 && _sessionState.Current.HasFullStoryAccess)
+            if (recovery.ActivePurchases > 0 && _sessionState.Current.HasPaidSubscription)
             {
                 await OpenReturnPathAsync();
                 return;
             }
 
+            if (recovery.RetryPurchases > 0)
+            {
+                await DisplayAlertAsync("Herstel word probeer", "Sommige aankope kon nie nou bevestig word nie. Ons sal weer probeer wanneer die app oop is.", "Reg so");
+                return;
+            }
             await DisplayAlertAsync(
                 "Geen aankoop gevind nie",
                 "Daar is geen aktiewe winkelintekening vir hierdie rekening gevind nie.",
@@ -726,7 +735,8 @@ public sealed class PlansPage : ContentPage
             purchase.ProductId,
             purchase.ProviderPaymentId,
             purchase.ProviderTransactionId,
-            purchase.ProviderToken);
+            purchase.ProviderToken,
+            _sessionState.Current.Email);
         var entitlement = await _apiClient.SyncStorePurchaseAsync(request);
         _analytics.TrackEvent("mobile_store_purchase_synced", new Dictionary<string, object>
         {
@@ -737,9 +747,10 @@ public sealed class PlansPage : ContentPage
         return entitlement;
     }
 
-    private async Task FinalizePurchaseAsync(MobileStorePurchase purchase)
+    private async Task<bool> FinalizePurchaseAsync(MobileStorePurchase purchase)
     {
-        if (!await _storeBilling.FinalizeAsync(purchase))
+        var finalized = await _storeBilling.FinalizeAsync(purchase);
+        if (!finalized)
         {
             _analytics.TrackEvent("mobile_store_purchase_finalize_failed", new Dictionary<string, object>
             {
@@ -747,6 +758,7 @@ public sealed class PlansPage : ContentPage
                 ["product_id"] = purchase.ProductId
             });
         }
+        return finalized;
     }
 
     private async Task OpenReturnPathAsync()

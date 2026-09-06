@@ -168,7 +168,8 @@ public sealed class MobilePlatformChromeSourceTests
     {
         var source = File.ReadAllText(GetRepoPath("Shink.Mobile", "Pages", "MobileLiquidGlass.cs"));
 
-        StringAssert.Contains(source, "UIBlurEffectStyle.SystemUltraThinMaterialDark");
+        StringAssert.Contains(source, "CreateMaterialEffect(isNavigationBar: fadeFromTop || fadeFromBottom)");
+        StringAssert.Contains(source, "? UIBlurEffectStyle.Light");
         StringAssert.Contains(source, "GlassContainerTag");
         StringAssert.Contains(source, "private sealed class GlassContainerView : UIView");
         StringAssert.Contains(source, "fadeMask.Frame = Bounds");

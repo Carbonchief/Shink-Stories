@@ -31,6 +31,10 @@ internal sealed class ProgressiveCachedImage : Image
     private bool _hasDisplayedArtwork;
     private bool _isLoaded;
 
+    // Opt in only for story-feed artwork; phone and Android image services stay
+    // on their existing paths.
+    internal bool PrepareForScrolling { get; init; }
+
     public ProgressiveCachedImage(MobileApiClient apiClient)
     {
         _apiClient = apiClient;
@@ -218,11 +222,42 @@ internal sealed class ProgressiveCachedImage : Image
             return;
         }
 
+#if IOS
+        if (PrepareForScrolling && DeviceInfo.Current.Idiom == DeviceIdiom.Tablet &&
+            source is FileImageSource fileSource && System.IO.Path.IsPathRooted(fileSource.File))
+        {
+            var density = DeviceDisplay.MainDisplayInfo.Density;
+            var pixelWidth = (int)Math.Ceiling(Math.Max(0, WidthRequest > 0 ? WidthRequest : Width) * density);
+            var pixelHeight = (int)Math.Ceiling(Math.Max(0, HeightRequest > 0 ? HeightRequest : Height) * density);
+            // Loaded can fire again for the same recycled cell without a new
+            // request. Reassigning its file forces another decode and measure.
+            if (Source is Shink.Mobile.Platforms.iOS.IpadStoryImageSource current &&
+                current.File == fileSource.File && current.PixelWidth == pixelWidth &&
+                current.PixelHeight == pixelHeight && current.AspectFill == (Aspect == Aspect.AspectFill) &&
+                _hasDisplayedArtwork)
+            {
+                Opacity = 1;
+                return;
+            }
+
+            source = new Shink.Mobile.Platforms.iOS.IpadStoryImageSource
+            {
+                File = fileSource.File,
+                PixelWidth = pixelWidth,
+                PixelHeight = pixelHeight,
+                AspectFill = Aspect == Aspect.AspectFill
+            };
+        }
+#endif
+
         // Several recycled carousel cells can receive a new source during one
-        // Android fling. Avoid starting competing opacity animations on those
-        // frames; iOS retains the established progressive transition.
+        // fling. Prepared iPad artwork is ready to display immediately; fading
+        // it would invalidate the card's raster cache on every animation frame.
+        // Keep the established transition on iPhone and outside the iPad feed.
         var shouldFade = !_hasDisplayedArtwork &&
-            DeviceInfo.Current.Platform != DevicePlatform.Android;
+            DeviceInfo.Current.Platform != DevicePlatform.Android &&
+            !(PrepareForScrolling && DeviceInfo.Current.Platform == DevicePlatform.iOS &&
+              DeviceInfo.Current.Idiom == DeviceIdiom.Tablet);
         _hasDisplayedArtwork = true;
         this.CancelAnimations();
         BackgroundColor = IsPlaceholderRequest(Request)

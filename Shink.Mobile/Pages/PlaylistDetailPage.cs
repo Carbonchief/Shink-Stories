@@ -728,7 +728,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
     {
         if (story.IsLocked)
         {
-            await PageHelpers.OpenPlansForStoryAsync(story);
+            await PageHelpers.OpenPlansForStoryAsync(story, _sessionState);
             return;
         }
 
@@ -864,7 +864,7 @@ public sealed class PlaylistDetailPage : ContentPage, IQueryAttributable
 
         if (_currentStory?.IsLocked == true)
         {
-            await PageHelpers.OpenPlansForStoryAsync(_currentStory);
+            await PageHelpers.OpenPlansForStoryAsync(_currentStory, _sessionState);
             return;
         }
 

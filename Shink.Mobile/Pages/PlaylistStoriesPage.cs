@@ -590,7 +590,7 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
 
         if (story.IsLocked)
         {
-            await PageHelpers.OpenPlansForStoryAsync(story);
+            await PageHelpers.OpenPlansForStoryAsync(story, _sessionState);
             return;
         }
 

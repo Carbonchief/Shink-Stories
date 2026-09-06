@@ -10,7 +10,10 @@ internal static class IosImageCacheOptimizer
     // cards, multiplying decode memory whenever a new row entered the viewport.
     // Keep the proven phone cache suffix so existing 1280px files remain useful.
     private const int PhoneMaxPixelDimension = 1280;
-    private const int TabletMaxPixelDimension = 2048;
+    // The largest scrolling artwork on iPad is capped at 640 points. At the
+    // iPad's 2x scale, 1280 pixels preserves native display resolution while
+    // avoiding a 16 MiB decoded bitmap for every recycled 2048px feed image.
+    private const int TabletMaxPixelDimension = 1280;
     private const string PhoneOptimizedSuffix = ".ios-feed";
 
     public static string ResolveDisplayPath(string cachePath)
