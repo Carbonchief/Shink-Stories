@@ -19,10 +19,12 @@ public class SchoolOptionsSourceTests
         Assert.IsTrue(schoolPlans.Any(plan =>
             plan.Slug == "skool-20-jaarliks" &&
             plan.TierCode == "school_20_yearly" &&
-            plan.SchoolSlotLimit == 20 &&
+            plan.Name == "Skool 24" &&
+            plan.Amount == 28800.00m &&
+            plan.SchoolSlotLimit == 24 &&
             plan.IsAdminOnly));
         Assert.AreEqual(3, PaymentPlanCatalog.PublicSchoolPlans.Count);
-        Assert.IsFalse(PaymentPlanCatalog.PublicSchoolPlans.Any(plan => plan.SchoolSlotLimit == 20));
+        Assert.IsFalse(PaymentPlanCatalog.PublicSchoolPlans.Any(plan => plan.SchoolSlotLimit == 24));
         Assert.IsTrue(schoolPlans.All(plan => !plan.IsSubscription));
     }
 

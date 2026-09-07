@@ -203,31 +203,37 @@ else
                         <div class="admin-schools-invite">
                             <label class="admin-schools-field">
                                 <span>@T("Gebruiker e-pos", "User email")</span>
-                                <input @bind="InviteEmail" type="email" maxlength="320" autocomplete="email" placeholder="gebruiker@skool.co.za" />
+                                <input @bind="InviteEmail" @bind:event="oninput" type="email" maxlength="320" autocomplete="email" placeholder="gebruiker@skool.co.za" />
                             </label>
                             <label class="admin-schools-field">
                                 <span>@T("Naam opsioneel", "Name optional")</span>
-                                <input @bind="InviteDisplayName" maxlength="120" autocomplete="name" />
+                                <input @bind="InviteDisplayName" @bind:event="oninput" maxlength="120" autocomplete="name" />
                             </label>
                             <label class="admin-schools-field">
                                 <span>@T("Tydelike wagwoord", "Temporary password")</span>
-                                <input @bind="InvitePassword" type="password" maxlength="200" autocomplete="new-password" />
+                                <input @bind="InvitePassword" @bind:event="oninput" type="password" maxlength="200" autocomplete="new-password" />
                             </label>
                             <label class="admin-schools-field">
                                 <span>@T("Bevestig wagwoord", "Confirm password")</span>
-                                <input @bind="InvitePasswordConfirmation" type="password" maxlength="200" autocomplete="new-password" />
+                                <input @bind="InvitePasswordConfirmation" @bind:event="oninput" type="password" maxlength="200" autocomplete="new-password" />
                             </label>
                             <MudButton Class="admin-icon-btn admin-action-btn"
                                        Variant="Variant.Filled"
                                        Color="Color.Primary"
                                        Disabled="@(!CanInviteSeat || IsSeatActionBusy)"
+                                       ButtonType="ButtonType.Button"
                                        OnClick="InviteSeatAsync"
                                        aria-label='@T("Nooi gebruiker", "Invite user")'
                                        title='@T("Nooi gebruiker", "Invite user")'>
                                 <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
-                                <span>@T("Nooi gebruiker", "Invite user")</span>
+                                <span>@(IsSeatActionBusy ? T("Besig...", "Working...") : T("Nooi gebruiker", "Invite user"))</span>
                             </MudButton>
                         </div>
+
+                        @if (!string.IsNullOrWhiteSpace(ErrorMessage))
+                        {
+                            <p class="admin-feedback is-error" role="alert">@ErrorMessage</p>
+                        }
 
                         @if (SelectedSchoolDashboard.Seats.Count == 0)
                         {
