@@ -87,15 +87,15 @@ public static class PaymentPlanCatalog
             SchoolSlotLimit: 8),
         new(
             Slug: "skool-20-jaarliks",
-            Name: "Skool 20",
+            Name: "Skool 24",
             TierCode: "school_20_yearly",
-            ItemName: "Schink Stories Skool 20",
-            ItemDescription: "Jaarlikse skooltoegang vir 20 klaskamers.",
+            ItemName: "Schink Stories Skool 24",
+            ItemDescription: "Jaarlikse skooltoegang vir 24 klaskamers.",
             Amount: 28800.00m,
             IsSubscription: false,
             BillingPeriodMonths: 12,
             BillingFrequency: 6,
-            SchoolSlotLimit: 20,
+            SchoolSlotLimit: 24,
             IsAdminOnly: true)
     ];
 
