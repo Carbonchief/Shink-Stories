@@ -122,6 +122,29 @@ public class LuisterPlaylistResponsiveCssTests
     }
 
     [TestMethod]
+    public void WebStoryPlayButtonsStayHiddenUntilHoverOrFocus()
+    {
+        var pageStyles = new[]
+        {
+            "Luister.razor.css",
+            "LuisterPlaylist.razor.css",
+            "Home.razor.css"
+        }.Select(fileName => File.ReadAllText(GetRepoPath(
+            "Shink",
+            "Components",
+            "Pages",
+            fileName))).ToArray();
+
+        foreach (var css in pageStyles)
+        {
+            StringAssert.Contains(css, ".story-cover-play {");
+            StringAssert.Contains(css, "opacity: 0;");
+            StringAssert.Contains(css, ":hover .story-cover-play");
+            StringAssert.Contains(css, "display: none;");
+        }
+    }
+
+    [TestMethod]
     public void PlaylistLaptopLayoutRemovesWhiteOuterCorners()
     {
         var css = File.ReadAllText(GetRepoPath(

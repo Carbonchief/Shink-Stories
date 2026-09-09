@@ -46,12 +46,13 @@ public sealed class SupabaseStoryCatalogService(
     private readonly SupabaseOptions _options = supabaseOptions.Value;
     private readonly IMemoryCache _memoryCache = memoryCache;
     private readonly ILogger<SupabaseStoryCatalogService> _logger = logger;
-    private readonly SemaphoreSlim _refreshLock = new(1, 1);
+    // Typed HTTP clients are transient, but their catalogue cache is shared across requests.
+    private static readonly SemaphoreSlim RefreshLock = new(1, 1);
 
     public async Task<IReadOnlyList<StoryItem>> GetFreeStoriesAsync(CancellationToken cancellationToken = default)
     {
         var snapshot = await GetCatalogSnapshotAsync(cancellationToken);
-        var playlistSlugsByStoryId = BuildPlaylistSlugLookup(snapshot.PlaylistRows, snapshot.PlaylistItemRows);
+        var playlistSlugsByStoryId = snapshot.PlaylistSlugsByStoryId;
         return snapshot.StoryRows
             .Where(row => string.Equals(row.AccessLevel, "free", StringComparison.OrdinalIgnoreCase))
             .OrderBy(row => row.SortOrder)
@@ -63,7 +64,7 @@ public sealed class SupabaseStoryCatalogService(
     public async Task<IReadOnlyList<StoryItem>> GetLuisterStoriesAsync(CancellationToken cancellationToken = default)
     {
         var snapshot = await GetCatalogSnapshotAsync(cancellationToken);
-        var playlistSlugsByStoryId = BuildPlaylistSlugLookup(snapshot.PlaylistRows, snapshot.PlaylistItemRows);
+        var playlistSlugsByStoryId = snapshot.PlaylistSlugsByStoryId;
         return snapshot.StoryRows
             .Where(IsLuisterStoryRow)
             .OrderByDescending(row => row.PublishedAt)
@@ -134,7 +135,7 @@ public sealed class SupabaseStoryCatalogService(
             string.Equals(candidate.AccessLevel, "free", StringComparison.OrdinalIgnoreCase) &&
             string.Equals(candidate.Slug, slug, StringComparison.OrdinalIgnoreCase));
 
-        var playlistSlugsByStoryId = BuildPlaylistSlugLookup(snapshot.PlaylistRows, snapshot.PlaylistItemRows);
+        var playlistSlugsByStoryId = snapshot.PlaylistSlugsByStoryId;
         return row is null ? null : MapToStoryItem(row, ResolvePlaylistSlugs(row.StoryId, playlistSlugsByStoryId));
     }
 
@@ -150,7 +151,7 @@ public sealed class SupabaseStoryCatalogService(
             IsLuisterStoryRow(candidate) &&
             string.Equals(candidate.Slug, slug, StringComparison.OrdinalIgnoreCase));
 
-        var playlistSlugsByStoryId = BuildPlaylistSlugLookup(snapshot.PlaylistRows, snapshot.PlaylistItemRows);
+        var playlistSlugsByStoryId = snapshot.PlaylistSlugsByStoryId;
         return row is null ? null : MapToStoryItem(row, ResolvePlaylistSlugs(row.StoryId, playlistSlugsByStoryId));
     }
 
@@ -165,7 +166,7 @@ public sealed class SupabaseStoryCatalogService(
         var row = snapshot.StoryRows.FirstOrDefault(candidate =>
             string.Equals(candidate.Slug, slug, StringComparison.OrdinalIgnoreCase));
 
-        var playlistSlugsByStoryId = BuildPlaylistSlugLookup(snapshot.PlaylistRows, snapshot.PlaylistItemRows);
+        var playlistSlugsByStoryId = snapshot.PlaylistSlugsByStoryId;
         return row is null ? null : MapToStoryItem(row, ResolvePlaylistSlugs(row.StoryId, playlistSlugsByStoryId));
     }
 
@@ -183,7 +184,7 @@ public sealed class SupabaseStoryCatalogService(
             return cachedSnapshot;
         }
 
-        await _refreshLock.WaitAsync(CancellationToken.None);
+        await RefreshLock.WaitAsync(cancellationToken);
         try
         {
             if (_memoryCache.TryGetValue(CacheKey, out cachedSnapshot) &&
@@ -198,7 +199,7 @@ public sealed class SupabaseStoryCatalogService(
         }
         finally
         {
-            _refreshLock.Release();
+            RefreshLock.Release();
         }
     }
 
@@ -227,9 +228,14 @@ public sealed class SupabaseStoryCatalogService(
                 LuisterPlaylists: BuildDefaultLuisterPlaylists(fallbackRows));
         }
 
-        var rows = await FetchPublishedRowsAsync(baseUri, apiKey, cancellationToken);
-        var playlistRows = await FetchStoryPlaylistRowsAsync(baseUri, apiKey, cancellationToken);
-        var playlistItemRows = await FetchStoryPlaylistItemRowsAsync(baseUri, apiKey, cancellationToken);
+        var rowsTask = FetchPublishedRowsAsync(baseUri, apiKey, cancellationToken);
+        var playlistRowsTask = FetchStoryPlaylistRowsAsync(baseUri, apiKey, cancellationToken);
+        var playlistItemRowsTask = FetchStoryPlaylistItemRowsAsync(baseUri, apiKey, cancellationToken);
+        await Task.WhenAll(rowsTask, playlistRowsTask, playlistItemRowsTask);
+
+        var rows = await rowsTask;
+        var playlistRows = await playlistRowsTask;
+        var playlistItemRows = await playlistItemRowsTask;
         var playlists = BuildLuisterPlaylistsFromConfiguredTables(rows, playlistRows, playlistItemRows);
         if (playlists.Count == 0)
         {
@@ -515,7 +521,7 @@ public sealed class SupabaseStoryCatalogService(
         }
 
         var favouriteStorySlugs = await FetchUserFavouriteStorySlugsAsync(normalizedEmail, cancellationToken);
-        var playlistSlugsByStoryId = BuildPlaylistSlugLookup(snapshot.PlaylistRows, snapshot.PlaylistItemRows);
+        var playlistSlugsByStoryId = snapshot.PlaylistSlugsByStoryId;
         var luisterStoriesBySlug = snapshot.StoryRows
             .Where(IsLuisterStoryRow)
             .Where(row => !string.IsNullOrWhiteSpace(row.Slug))
@@ -1630,7 +1636,11 @@ public sealed class SupabaseStoryCatalogService(
         IReadOnlyList<StoryCatalogRow> StoryRows,
         IReadOnlyList<StoryPlaylistRow> PlaylistRows,
         IReadOnlyList<StoryPlaylistItemRow> PlaylistItemRows,
-        IReadOnlyList<StoryPlaylist> LuisterPlaylists);
+        IReadOnlyList<StoryPlaylist> LuisterPlaylists)
+    {
+        public IReadOnlyDictionary<Guid, IReadOnlyList<string>> PlaylistSlugsByStoryId { get; } =
+            BuildPlaylistSlugLookup(PlaylistRows, PlaylistItemRows);
+    }
 
     private sealed record StoryDetails(
         string? Synopsis,

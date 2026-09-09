@@ -19,6 +19,6 @@ Configure these values on the website/server. Never add the private key to the m
 - `MobileStore__ApplePrivateKey`: the complete `.p8` PEM text. Escaped `\n` line breaks are accepted.
 - `MobileStore__AppleBundleId`: `com.schink.stories.mobile`.
 
-The same configuration validates Production and TestFlight transactions. Verification calls Production first and retries Apple's Sandbox API only when Production reports that the transaction identifier was not found.
+The same configuration validates Production and TestFlight transactions. Verification calls Production first and retries Apple's Sandbox API when Production reports transaction-not-found (`4040010`) or HTTP 401. Apple can deny production API access before an app's first public release, even when the key works in Sandbox; see [Apple's explanation](https://developer.apple.com/forums/thread/806452). The sandbox response must still contain a valid Apple-signed, active subscription for the configured app and requested product. Failed authorization in both environments never grants access.
 
 After configuring the settings, test a monthly or yearly purchase with a sandbox/TestFlight account and confirm that the resulting Schink account has full access on both the app and `www.schink.co.za`.

@@ -21,6 +21,8 @@ public sealed partial class SupabaseCharacterService(
     private static readonly TimeSpan PublishedCharactersCacheDuration = TimeSpan.FromMinutes(2);
     private static readonly TimeSpan SubscriberCacheDuration = TimeSpan.FromMinutes(10);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    // Catalogue and tracking interfaces resolve separate clients sharing the same published cache.
+    private static readonly SemaphoreSlim PublishedCharactersRefreshLock = new(1, 1);
 
     private readonly HttpClient _httpClient = httpClient;
     private readonly SupabaseOptions _options = supabaseOptions.Value;
@@ -35,6 +37,25 @@ public sealed partial class SupabaseCharacterService(
             return cachedCharacters;
         }
 
+        await PublishedCharactersRefreshLock.WaitAsync(cancellationToken);
+        try
+        {
+            if (_memoryCache.TryGetValue(PublishedCharactersCacheKey, out cachedCharacters) &&
+                cachedCharacters is not null)
+            {
+                return cachedCharacters;
+            }
+
+            return await FetchPublishedCharactersAsync(CancellationToken.None);
+        }
+        finally
+        {
+            PublishedCharactersRefreshLock.Release();
+        }
+    }
+
+    private async Task<IReadOnlyList<StoryCharacterItem>> FetchPublishedCharactersAsync(CancellationToken cancellationToken)
+    {
         if (!TryBuildSupabaseBaseUri(out var baseUri))
         {
             _logger.LogWarning("Supabase characters lookup skipped: URL is not configured.");

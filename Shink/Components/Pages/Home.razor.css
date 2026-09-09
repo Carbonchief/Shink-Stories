@@ -1029,6 +1029,12 @@ h2 {
     min-height: 2.6em;
 }
 
+@media (hover: none) and (pointer: coarse) {
+    .story-cover-play {
+        display: none;
+    }
+}
+
 .story-carousel-link:focus-visible {
     outline: 3px solid color-mix(in srgb, #ffffff 40%, var(--accent));
     outline-offset: 4px;

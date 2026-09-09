@@ -874,7 +874,7 @@ h1 {
     }
 
     .story-cover-play {
-        /*opacity: 1;*/
+        display: none;
         background: linear-gradient(to top, rgba(0, 0, 0, 0.33), rgba(0, 0, 0, 0.03));
     }
 }

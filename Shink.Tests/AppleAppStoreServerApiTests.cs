@@ -46,7 +46,10 @@ public sealed class AppleAppStoreServerApiTests
     }
 
     [TestMethod]
-    public async Task VerifySubscriptionFallsBackToSandboxAndAcceptsOnlyAppleSignedActiveTransaction()
+    [DataRow(HttpStatusCode.NotFound, "{\"errorCode\":4040010}")]
+    [DataRow(HttpStatusCode.Unauthorized, "")]
+    public async Task VerifySubscriptionFallsBackToSandboxAndAcceptsOnlyAppleSignedActiveTransaction(
+        HttpStatusCode productionStatus, string productionBody)
     {
         using var apiSigningKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         using var chain = TestCertificateChain.Create();
@@ -93,7 +96,7 @@ public sealed class AppleAppStoreServerApiTests
             requestedUrls.Add(request.RequestUri!.ToString());
             bearerTokens.Add(request.Headers.Authorization?.Parameter ?? string.Empty);
             return request.RequestUri.Host == "api.storekit.apple.com"
-                ? JsonResponse(HttpStatusCode.NotFound, "{\"errorCode\":4040010}")
+                ? JsonResponse(productionStatus, productionBody)
                 : JsonResponse(HttpStatusCode.OK, sandboxBody);
         });
         using var httpClient = new HttpClient(handler);
@@ -117,6 +120,54 @@ public sealed class AppleAppStoreServerApiTests
         StringAssert.StartsWith(requestedUrls[0], AppleAppStoreServerApi.ProductionBaseUrl);
         StringAssert.StartsWith(requestedUrls[1], AppleAppStoreServerApi.SandboxBaseUrl);
         Assert.IsTrue(bearerTokens.All(token => token.Split('.').Length == 3));
+    }
+
+    [TestMethod]
+    [DataRow(HttpStatusCode.Unauthorized, "")]
+    [DataRow(HttpStatusCode.OK, "{\"bundleId\":\"com.schink.stories.mobile\",\"environment\":\"Sandbox\",\"data\":[]}")]
+    public async Task ProductionUnauthorizedDoesNotGrantAccessWithoutVerifiedSandboxSubscription(
+        HttpStatusCode sandboxStatus, string sandboxBody)
+    {
+        using var signingKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var requestedHosts = new List<string>();
+        using var http = new HttpClient(new RecordingHandler(request =>
+        {
+            requestedHosts.Add(request.RequestUri!.Host);
+            return request.RequestUri.Host == "api.storekit.apple.com"
+                ? JsonResponse(HttpStatusCode.Unauthorized, "")
+                : JsonResponse(sandboxStatus, sandboxBody);
+        }));
+        var api = new AppleAppStoreServerApi(http, CreateOptions(signingKey),
+            NullLogger<MobileStoreEntitlementService>.Instance);
+
+        var result = await api.CheckSubscriptionAsync(ProductId, "200000000000099");
+
+        Assert.IsNull(result.Subscription);
+        Assert.IsFalse(result.IsInactive);
+        CollectionAssert.AreEqual(new[] { "api.storekit.apple.com", "api.storekit-sandbox.apple.com" }, requestedHosts);
+    }
+
+    [TestMethod]
+    [DataRow(HttpStatusCode.Forbidden)]
+    [DataRow(HttpStatusCode.ServiceUnavailable)]
+    [DataRow(HttpStatusCode.NotFound)]
+    public async Task OtherProductionErrorsRemainRetryableWithoutSandboxFallback(HttpStatusCode productionStatus)
+    {
+        using var signingKey = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var requestCount = 0;
+        using var http = new HttpClient(new RecordingHandler(_ =>
+        {
+            requestCount++;
+            return JsonResponse(productionStatus, "{\"errorCode\":4040005}");
+        }));
+        var api = new AppleAppStoreServerApi(http, CreateOptions(signingKey),
+            NullLogger<MobileStoreEntitlementService>.Instance);
+
+        var result = await api.CheckSubscriptionAsync(ProductId, "200000000000099");
+
+        Assert.IsNull(result.Subscription);
+        Assert.IsFalse(result.IsInactive);
+        Assert.AreEqual(1, requestCount);
     }
 
     [TestMethod]

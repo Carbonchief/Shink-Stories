@@ -21,25 +21,20 @@ public sealed class SupabaseStoreProductCatalogService(
     private readonly SupabaseOptions _options = supabaseOptions.Value;
     private readonly IMemoryCache _memoryCache = memoryCache;
     private readonly ILogger<SupabaseStoreProductCatalogService> _logger = logger;
-    private readonly SemaphoreSlim _refreshLock = new(1, 1);
+    // Typed HTTP clients are transient, but their catalogue cache is shared across requests.
+    private static readonly SemaphoreSlim RefreshLock = new(1, 1);
 
     public async Task<IReadOnlyList<StoreProduct>> GetEnabledProductsAsync(CancellationToken cancellationToken = default)
     {
         var products = await GetCatalogAsync(cancellationToken);
         return products
             .Where(product => product.IsEnabled)
-            .OrderBy(product => product.SortOrder)
-            .ThenBy(product => product.Name, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
 
     public async Task<IReadOnlyList<StoreProduct>> GetAllProductsAsync(CancellationToken cancellationToken = default)
     {
-        var products = await GetCatalogAsync(cancellationToken);
-        return products
-            .OrderBy(product => product.SortOrder)
-            .ThenBy(product => product.Name, StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        return await GetCatalogAsync(cancellationToken);
     }
 
     public async Task<StoreProduct?> FindEnabledBySlugAsync(string? slug, CancellationToken cancellationToken = default)
@@ -50,9 +45,9 @@ public sealed class SupabaseStoreProductCatalogService(
         }
 
         var normalizedSlug = slug.Trim();
-        var products = await GetEnabledProductsAsync(cancellationToken);
+        var products = await GetCatalogAsync(cancellationToken);
         return products.FirstOrDefault(product =>
-            string.Equals(product.Slug, normalizedSlug, StringComparison.OrdinalIgnoreCase));
+            product.IsEnabled && string.Equals(product.Slug, normalizedSlug, StringComparison.OrdinalIgnoreCase));
     }
 
     private async Task<IReadOnlyList<StoreProduct>> GetCatalogAsync(CancellationToken cancellationToken)
@@ -63,7 +58,7 @@ public sealed class SupabaseStoreProductCatalogService(
             return cached;
         }
 
-        await _refreshLock.WaitAsync(CancellationToken.None);
+        await RefreshLock.WaitAsync(cancellationToken);
         try
         {
             if (_memoryCache.TryGetValue(StoreProductCatalogCacheKeys.Catalog, out cached) &&
@@ -78,7 +73,7 @@ public sealed class SupabaseStoreProductCatalogService(
         }
         finally
         {
-            _refreshLock.Release();
+            RefreshLock.Release();
         }
     }
 

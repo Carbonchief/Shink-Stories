@@ -19,7 +19,8 @@ public sealed class SupabaseResourceCatalogService(
     private readonly SupabaseOptions _options = supabaseOptions.Value;
     private readonly IMemoryCache _memoryCache = memoryCache;
     private readonly ILogger<SupabaseResourceCatalogService> _logger = logger;
-    private readonly SemaphoreSlim _refreshLock = new(1, 1);
+    // Typed HTTP clients are transient, but their catalogue cache is shared across requests.
+    private static readonly SemaphoreSlim RefreshLock = new(1, 1);
 
     public async Task<IReadOnlyList<ResourceTypeCatalog>> GetResourceTypesAsync(CancellationToken cancellationToken = default)
     {
@@ -29,7 +30,7 @@ public sealed class SupabaseResourceCatalogService(
             return cachedCatalog;
         }
 
-        await _refreshLock.WaitAsync(CancellationToken.None);
+        await RefreshLock.WaitAsync(cancellationToken);
         try
         {
             if (_memoryCache.TryGetValue(ResourceCatalogCacheKeys.Catalog, out cachedCatalog) &&
@@ -44,7 +45,7 @@ public sealed class SupabaseResourceCatalogService(
         }
         finally
         {
-            _refreshLock.Release();
+            RefreshLock.Release();
         }
     }
 

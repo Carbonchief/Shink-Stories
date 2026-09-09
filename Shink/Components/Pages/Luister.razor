@@ -82,7 +82,7 @@ else if (IsLoadingPage)
         </div>
     </section>
 }
-else if (!AllowEmptyState && (LuisterPlaylists.Count == 0 || FilteredLuisterPlaylists.Count == 0))
+else if (!AllowEmptyState && LuisterPlaylists.Count == 0)
 {
     <section class="luister-loading-state" aria-live="polite" aria-busy="true">
         <div class="luister-loading-indicator" role="status" aria-label="Stories laai">

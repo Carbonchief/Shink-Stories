@@ -27,15 +27,14 @@ public sealed partial class SupabaseBlogService(
     private readonly IBlogContentRenderer _blogContentRenderer = blogContentRenderer;
     private readonly IUserNotificationService _userNotificationService = userNotificationService;
     private readonly ILogger<SupabaseBlogService> _logger = logger;
-    private readonly SemaphoreSlim _refreshLock = new(1, 1);
+    // Typed HTTP clients are transient, but their catalogue cache is shared across requests.
+    private static readonly SemaphoreSlim RefreshLock = new(1, 1);
 
     public async Task<IReadOnlyList<BlogPostListItem>> GetPublishedPostsAsync(CancellationToken cancellationToken = default)
     {
         var posts = await GetPublishedSnapshotAsync(cancellationToken);
         return posts
             .Select(MapToListItem)
-            .OrderByDescending(post => post.PublishedAt)
-            .ThenBy(post => post.Title, StringComparer.OrdinalIgnoreCase)
             .ToArray();
     }
 
@@ -386,7 +385,7 @@ public sealed partial class SupabaseBlogService(
             return cachedPosts;
         }
 
-        await _refreshLock.WaitAsync(CancellationToken.None);
+        await RefreshLock.WaitAsync(cancellationToken);
         try
         {
             if (_memoryCache.TryGetValue(PublishedBlogCacheKey, out cachedPosts) &&
@@ -401,7 +400,7 @@ public sealed partial class SupabaseBlogService(
         }
         finally
         {
-            _refreshLock.Release();
+            RefreshLock.Release();
         }
     }
 

@@ -105,8 +105,13 @@ internal sealed class AppleAppStoreServerApi
             return new(production.Subscription);
         }
 
-        if (production.StatusCode != HttpStatusCode.NotFound ||
-            production.ErrorCode != TransactionIdNotFoundError)
+        // Apple denies production API access before an app's first public release.
+        // TestFlight still needs sandbox verification in that case. A fallback
+        // never grants access without the same Apple signature and expiry checks.
+        var shouldTrySandbox = production.StatusCode == HttpStatusCode.Unauthorized ||
+            (production.StatusCode == HttpStatusCode.NotFound &&
+             production.ErrorCode == TransactionIdNotFoundError);
+        if (!shouldTrySandbox)
         {
             return new(null, production.IsInactive);
         }

@@ -426,12 +426,12 @@ public class AdminAnalyticsSourceTests
     [TestMethod]
     public void SubscriberAnalyticsCountsCurrentDistinctSubscribersOnly()
     {
-        var now = DateTimeOffset.Now.AddMinutes(-5);
+        var now = EarlierToday(DateTimeOffset.Now, 5);
         var subscriberId = Guid.NewGuid();
         var cancelledSubscriberId = Guid.NewGuid();
         var rows = CreateSubscriptionRows(
             CreateSubscriptionRow(subscriberId, "shink_app", "active", now, null, provider: "paystack", providerPaymentId: "paystack-new-today"),
-            CreateSubscriptionRow(subscriberId, "shink_app", "active", now.AddMinutes(-1), null),
+            CreateSubscriptionRow(subscriberId, "shink_app", "active", EarlierToday(now, 1), null),
             CreateSubscriptionRow(cancelledSubscriberId, "discount_code", "cancelled", now, now, provider: "paystack", providerPaymentId: "paystack-cancelled-today"),
             CreateSubscriptionRow(Guid.NewGuid(), "wordpress_pmpro", "active", now, now),
             CreateSubscriptionRow(Guid.NewGuid(), "admin_override", "active", now, now),
@@ -450,12 +450,12 @@ public class AdminAnalyticsSourceTests
     [TestMethod]
     public void SubscriberTrendIncludesFreeSubscribers()
     {
-        var now = DateTimeOffset.Now.AddMinutes(-5);
+        var now = EarlierToday(DateTimeOffset.Now, 5);
         var validSubscriberId = Guid.NewGuid();
         var importedSubscriberId = Guid.NewGuid();
         var rows = CreateSubscriptionRows(
             CreateSubscriptionRow(validSubscriberId, "shink_app", "active", now, null, providerPaymentId: "paystack-valid-subscriber", provider: "paystack"),
-            CreateSubscriptionRow(validSubscriberId, "shink_app", "active", now.AddMinutes(-2), null),
+            CreateSubscriptionRow(validSubscriberId, "shink_app", "active", EarlierToday(now, 2), null),
             CreateSubscriptionRow(importedSubscriberId, "shink_app", "active", now, null, tierCode: "gratis", providerPaymentId: "gratis-20260430"),
             CreateSubscriptionRow(Guid.NewGuid(), "admin_override", "active", now, null, tierCode: "gratis", providerPaymentId: "gratis-user-1"),
             CreateSubscriptionRow(Guid.NewGuid(), "wordpress_pmpro", "active", now, null, tierCode: "gratis", providerPaymentId: "gratis-user-2"));
@@ -478,7 +478,7 @@ public class AdminAnalyticsSourceTests
     [TestMethod]
     public void SubscriberAnalyticsIncludesLedgerPaidRowsInNewSubscriberCounts()
     {
-        var now = DateTimeOffset.Now.AddMinutes(-5);
+        var now = EarlierToday(DateTimeOffset.Now, 5);
         var paystackSubscriberId = Guid.NewGuid();
         var payfastSubscriberId = Guid.NewGuid();
         var payfastNullProviderSubscriberId = Guid.NewGuid();
@@ -510,7 +510,7 @@ public class AdminAnalyticsSourceTests
     [TestMethod]
     public void SubscriberCancellationCountsUsePaystackDisableWebhookEventsOnly()
     {
-        var now = DateTimeOffset.Now.AddMinutes(-5);
+        var now = EarlierToday(DateTimeOffset.Now, 5);
         var paystackSubscriberId = Guid.NewGuid();
         var secondPaystackSubscriberId = Guid.NewGuid();
         var payfastSubscriberId = Guid.NewGuid();
@@ -561,7 +561,7 @@ public class AdminAnalyticsSourceTests
     [TestMethod]
     public void SubscriberAnalyticsCountsLedgerRowsWithoutPaystackSubscriptionCreateEvents()
     {
-        var now = DateTimeOffset.Now.AddMinutes(-5);
+        var now = EarlierToday(DateTimeOffset.Now, 5);
         var paystackWithCreateId = Guid.NewGuid();
         var paystackWithoutCreateId = Guid.NewGuid();
         var payfastSubscriberId = Guid.NewGuid();
@@ -609,7 +609,7 @@ public class AdminAnalyticsSourceTests
     [TestMethod]
     public void SubscriberAnalyticsCountsOnlyRowsWithActivePaystackSubscriptionCreateEvents()
     {
-        var now = DateTimeOffset.Now.AddMinutes(-5);
+        var now = EarlierToday(DateTimeOffset.Now, 5);
         var paystackSubscriberId = Guid.NewGuid();
         var rows = CreateSubscriptionRows(
             CreateSubscriptionRow(
@@ -633,7 +633,7 @@ public class AdminAnalyticsSourceTests
     [TestMethod]
     public void SubscriberMembershipDetailsIncludeLedgerPaidRows()
     {
-        var now = DateTimeOffset.Now.AddMinutes(-5);
+        var now = EarlierToday(DateTimeOffset.Now, 5);
         var paystackSubscriberId = Guid.NewGuid();
         var payfastSubscriberId = Guid.NewGuid();
         var payfastNullProviderSubscriberId = Guid.NewGuid();
@@ -668,7 +668,7 @@ public class AdminAnalyticsSourceTests
     [TestMethod]
     public void SubscriberMembershipDetailsIncludePaystackRowsWithoutCreateWebhook()
     {
-        var now = DateTimeOffset.Now.AddMinutes(-5);
+        var now = EarlierToday(DateTimeOffset.Now, 5);
         var paystackWithCreateId = Guid.NewGuid();
         var paystackWithoutCreateId = Guid.NewGuid();
         var rows = CreateSubscriptionRows(
@@ -708,7 +708,7 @@ public class AdminAnalyticsSourceTests
     [TestMethod]
     public void SubscriberMembershipDetailsIncludeGratisUsersForAnalyticsFilter()
     {
-        var now = DateTimeOffset.Now.AddMinutes(-5);
+        var now = EarlierToday(DateTimeOffset.Now, 5);
         var paidSubscriberId = Guid.NewGuid();
         var gratisSubscriberId = Guid.NewGuid();
         var rows = CreateSubscriptionRows(
@@ -767,7 +767,7 @@ public class AdminAnalyticsSourceTests
     public void SubscriberMembershipDetailsUseSameSignupCandidatesAsSubscriberMetrics()
     {
         var yesterday = DateTimeOffset.Now.AddDays(-1);
-        var now = DateTimeOffset.Now.AddMinutes(-5);
+        var now = EarlierToday(DateTimeOffset.Now, 5);
         var returningFreeSubscriberId = Guid.NewGuid();
         var newFreeSubscriberId = Guid.NewGuid();
         var rows = CreateSubscriptionRows(
@@ -820,7 +820,7 @@ public class AdminAnalyticsSourceTests
     public void SubscriberSignupDetailsCountEachCustomerAtFirstSignupOnly()
     {
         var freeSignupDate = DateTimeOffset.Now.AddMonths(-2);
-        var paidSignupDate = DateTimeOffset.Now.AddMinutes(-5);
+        var paidSignupDate = EarlierToday(DateTimeOffset.Now, 5);
         var convertedSubscriberId = Guid.NewGuid();
         var paidRenewalSubscriberId = Guid.NewGuid();
         var newPaidSubscriberId = Guid.NewGuid();
@@ -914,7 +914,7 @@ public class AdminAnalyticsSourceTests
     public void SubscriberSignupDetailsUseSupabasePaystackChargeEventsForPaidRows()
     {
         var yesterday = DateTimeOffset.Now.AddDays(-1);
-        var today = DateTimeOffset.Now.AddMinutes(-5);
+        var today = EarlierToday(DateTimeOffset.Now, 5);
         var repeatSubscriberId = Guid.NewGuid();
         var wordpressSubscriberId = Guid.NewGuid();
         var newSubscriberId = Guid.NewGuid();
@@ -1045,7 +1045,7 @@ public class AdminAnalyticsSourceTests
     [TestMethod]
     public void RevenueAnalyticsUsesRecordedLedgerAmountsOnly()
     {
-        var now = DateTimeOffset.Now.AddMinutes(-5);
+        var now = EarlierToday(DateTimeOffset.Now, 5);
         var rows = CreateSubscriptionRows(
             CreateSubscriptionRow(Guid.NewGuid(), "shink_app", "active", now, null, 123.45m),
             CreateSubscriptionRow(Guid.NewGuid(), "discount_code", "active", now, null, 25m),
@@ -1066,17 +1066,17 @@ public class AdminAnalyticsSourceTests
     [TestMethod]
     public void RevenueAnalyticsUsesPaystackChargeEventsWhenRecentRowsHaveNoRecordedAmounts()
     {
-        var now = DateTimeOffset.Now.AddMinutes(-5);
+        var now = EarlierToday(DateTimeOffset.Now, 5);
         var olderThanEventCoverage = now.AddDays(-10);
         var rows = CreateSubscriptionRows(
             CreateSubscriptionRow(Guid.NewGuid(), "shink_app", "active", now, null, null, tierCode: "all_stories_monthly", providerPaymentId: "SUB_live_1", provider: "paystack"),
             CreateSubscriptionRow(Guid.NewGuid(), "shink_app", "active", now, null, null, tierCode: "all_stories_monthly", providerPaymentId: "checkout-live-1", provider: "paystack"),
-            CreateSubscriptionRow(Guid.NewGuid(), "shink_app", "active", now.AddMinutes(-30), null, 149m, tierCode: "all_stories_monthly", providerPaymentId: "payfast-live-1", provider: "payfast"),
+            CreateSubscriptionRow(Guid.NewGuid(), "shink_app", "active", EarlierToday(now, 30), null, 149m, tierCode: "all_stories_monthly", providerPaymentId: "payfast-live-1", provider: "payfast"),
             CreateSubscriptionRow(Guid.NewGuid(), "shink_app", "active", olderThanEventCoverage, null, 79m, tierCode: "all_stories_monthly", providerPaymentId: "historic-paystack-1", provider: "paystack"));
         var wordpressSnapshot = CreateWordPressRevenueSnapshot("today", 99, 9999m);
         var revenueEvents = CreateRevenueEvents(
             CreateRevenueEvent(now, 7900),
-            CreateRevenueEvent(now.AddMinutes(-20), 5500));
+            CreateRevenueEvent(EarlierToday(now, 20), 5500));
 
         var metrics = InvokeBuildSalesRevenueMetrics(wordpressSnapshot, rows, revenueEvents);
         var today = metrics.Single(metric => metric.PeriodKey == "today");
@@ -1129,7 +1129,7 @@ public class AdminAnalyticsSourceTests
     [TestMethod]
     public void RevenueAnalyticsCalculatesMonthlyAndYearlyMrrFromActiveProviderBilling()
     {
-        var now = DateTimeOffset.Now.AddMinutes(-5);
+        var now = EarlierToday(DateTimeOffset.Now, 5);
         var yearlyAttentionSubscriptionId = Guid.NewGuid();
         var monthlyAttentionSubscriptionId = Guid.NewGuid();
         var rows = CreateSubscriptionRows(
@@ -1187,6 +1187,14 @@ public class AdminAnalyticsSourceTests
         var expectedCount = saleDates.Count(isExpected);
         Assert.AreEqual(expectedCount, metric.SalesCount);
         Assert.AreEqual(expectedCount * 10m, metric.RevenueZar);
+    }
+
+    // Relative "today" fixtures must stay in today when the suite runs just after midnight.
+    private static DateTimeOffset EarlierToday(DateTimeOffset reference, int minutes)
+    {
+        var elapsedTicks = reference.TimeOfDay.Ticks;
+        var offsetTicks = Math.Min(TimeSpan.FromMinutes(minutes).Ticks, elapsedTicks / 2);
+        return reference.AddTicks(-offsetTicks);
     }
 
     private static DateTime GetStartOfWeek(DateTime value)

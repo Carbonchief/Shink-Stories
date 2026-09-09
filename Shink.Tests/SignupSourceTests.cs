@@ -119,6 +119,9 @@ public class SignupSourceTests
         Assert.IsFalse(signup.Contains("Gratis stories is onmiddellik aktief", StringComparison.Ordinal));
         StringAssert.Contains(signup, "<span class=\"membership-plan-label\">GRATIS</span>");
         StringAssert.Contains(signup, "class=\"membership-plan-gratis-copy\"");
+        StringAssert.Contains(signup, "Geniet 3 Gratis stories op ons");
+        StringAssert.Contains(signup, "membership-save-badge membership-save-badge-inline\">2 maande gratis</span>");
+        Assert.IsFalse(signup.Contains("Save 2 months", StringComparison.Ordinal));
         StringAssert.Contains(css, "grid-template-columns: auto minmax(0, 1fr);");
         StringAssert.Contains(css, ".membership-plan-gratis-copy");
     }

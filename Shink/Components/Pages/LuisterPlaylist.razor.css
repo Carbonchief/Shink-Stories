@@ -1114,7 +1114,7 @@
 
 @media (hover: none) and (pointer: coarse) {
     .story-cover-play {
-      /*  opacity: 1;*/
+        display: none;
         background: linear-gradient(to top, rgba(0, 0, 0, 0.26), rgba(0, 0, 0, 0.03));
     }
 }
