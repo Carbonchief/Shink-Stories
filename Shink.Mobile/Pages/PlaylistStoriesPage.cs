@@ -371,21 +371,6 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
         var image = new ProgressiveCachedImage(_apiClient) { Aspect = Aspect.AspectFill };
         image.SetBinding(ProgressiveCachedImage.RequestProperty, nameof(StoryCardItem.ImageRequest));
 
-        var playBadge = new Label
-        {
-            FontFamily = "FontAwesomeSolid",
-            FontSize = 16,
-            TextColor = Color.FromArgb("#1A1A1A"),
-            BackgroundColor = AccentColor,
-            WidthRequest = 48,
-            HeightRequest = 48,
-            HorizontalTextAlignment = TextAlignment.Center,
-            VerticalTextAlignment = TextAlignment.Center,
-            HorizontalOptions = LayoutOptions.Center,
-            VerticalOptions = LayoutOptions.Center
-        };
-        playBadge.SetBinding(Label.TextProperty, nameof(StoryCardItem.ActionGlyph));
-
         var favorite = new Button
         {
             Text = HeartIconGlyph,
@@ -408,7 +393,7 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
             }
         };
 
-        var coverGrid = new Grid { Children = { image, playBadge, favorite } };
+        var coverGrid = new Grid { Children = { image, favorite } };
         var cover = new Border
         {
             BackgroundColor = Color.FromArgb("#0F1116"),
@@ -774,7 +759,6 @@ public sealed class PlaylistStoriesPage : ContentPage, IQueryAttributable
         public MobileStorySummary Story => _story;
         public string Title => _story.Title;
         public ProgressiveImageRequest ImageRequest { get; }
-        public string ActionGlyph => _story.IsLocked ? LockIconGlyph : PlayIconGlyph;
         public Color FavoriteColor => _story.IsFavorite ? Color.FromArgb("#FFE6EF") : Colors.White;
 
         public event PropertyChangedEventHandler? PropertyChanged;

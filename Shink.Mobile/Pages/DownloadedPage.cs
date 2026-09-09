@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Shink.Mobile.Models;
 using Shink.Mobile.Services;
 
@@ -9,10 +10,14 @@ public sealed class DownloadedPage : ContentPage
     private const double FloatingTopBarContentInset = 92;
     private const double BottomBarContentInset = 216;
     private const double BottomBarOverlayHeight = MobileBottomBar.NavigationHeight;
+    private const string DownloadOrderPreferenceKey = "schink_downloaded_story_order_v1";
+    private const int LongPressMilliseconds = 550;
+    private const double DragStartThreshold = 10;
     private static readonly Color PageBackgroundColor = Color.FromArgb("#46969E");
     private static readonly Color TextColor = Color.FromArgb("#1B2231");
     private static readonly Color MutedTextColor = Color.FromArgb("#69716D");
     private static readonly Color AccentColor = Color.FromArgb("#123F3F");
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly MobileApiClient _apiClient;
     private readonly SessionState _sessionState;
@@ -22,6 +27,12 @@ public sealed class DownloadedPage : ContentPage
     private readonly PlayerTransitionBackdropState _transitionBackdropState;
     private readonly VerticalStackLayout _content;
     private readonly Border _topBarHost;
+    private List<OfflineStoryDownload> _orderedDownloads = [];
+    private CancellationTokenSource? _longPressCts;
+    private Border? _draggingRow;
+    private double _lastPanY;
+    private bool _isDragging;
+    private bool _suppressNextRowTap;
     private bool _isStartingPlaylist;
 
     public DownloadedPage(
@@ -158,6 +169,12 @@ public sealed class DownloadedPage : ContentPage
 
     protected override void OnDisappearing()
     {
+        CancelLongPress();
+        if (_isDragging && _draggingRow is { } row)
+        {
+            FinishDragging(row);
+        }
+
         _offlineDownloadService.DownloadsChanged -= OnDownloadsChanged;
         base.OnDisappearing();
     }
@@ -179,16 +196,17 @@ public sealed class DownloadedPage : ContentPage
         try
         {
             var downloads = await _offlineDownloadService.GetPlayableDownloadsAsync();
+            _orderedDownloads = ApplySavedOrder(downloads);
             _content.Children.Clear();
-            _content.Children.Add(BuildHeader(downloads));
+            _content.Children.Add(BuildHeader(_orderedDownloads));
 
-            if (downloads.Count == 0)
+            if (_orderedDownloads.Count == 0)
             {
                 _content.Children.Add(BuildEmptyState());
                 return;
             }
 
-            foreach (var download in downloads)
+            foreach (var download in _orderedDownloads)
             {
                 _content.Children.Add(BuildDownloadRow(download));
             }
@@ -229,6 +247,17 @@ public sealed class DownloadedPage : ContentPage
             VerticalOptions = LayoutOptions.Center,
             Children = { title, subtitle }
         };
+
+        if (downloads is { Count: > 0 })
+        {
+            heading.Children.Add(new Label
+            {
+                Text = "Hou vas en sleep om te rangskik.",
+                FontSize = 11,
+                TextColor = Colors.White,
+                Opacity = 0.82
+            });
+        }
 
         var header = new Grid
         {
@@ -283,7 +312,8 @@ public sealed class DownloadedPage : ContentPage
         playAllButton.Text = "Begin...";
         try
         {
-            var currentDownloads = await _offlineDownloadService.GetPlayableDownloadsAsync();
+            var currentDownloads = ApplySavedOrder(
+                await _offlineDownloadService.GetPlayableDownloadsAsync());
             if (currentDownloads.Count == 0)
             {
                 await DisplayAlertAsync(
@@ -488,14 +518,211 @@ public sealed class DownloadedPage : ContentPage
         };
 
         var rowTap = new TapGestureRecognizer();
-        rowTap.Tapped += async (_, _) => await OpenDownloadedStoryAsync(download);
+        rowTap.Tapped += async (_, _) => await HandleRowTapAsync(download);
         row.GestureRecognizers.Add(rowTap);
+
+        var pan = new PanGestureRecognizer();
+        pan.PanUpdated += (_, args) => HandleRowPanUpdated(row, args);
+        row.GestureRecognizers.Add(pan);
+        SemanticProperties.SetDescription(
+            row,
+            $"{download.Title}. Tik om te speel. Hou vas en sleep om die volgorde te verander.");
 
         var playTap = new TapGestureRecognizer();
         playTap.Tapped += async (_, _) => await OpenDownloadedStoryAsync(download);
         playButton.GestureRecognizers.Add(playTap);
         return row;
     }
+
+    private async Task HandleRowTapAsync(OfflineStoryDownload download)
+    {
+        if (_suppressNextRowTap)
+        {
+            _suppressNextRowTap = false;
+            return;
+        }
+
+        await OpenDownloadedStoryAsync(download);
+    }
+
+    private void HandleRowPanUpdated(Border row, PanUpdatedEventArgs args)
+    {
+        switch (args.StatusType)
+        {
+            case GestureStatus.Started:
+                CancelLongPress();
+                _longPressCts = new CancellationTokenSource();
+                _ = ActivateLongPressAsync(row, _longPressCts.Token);
+                break;
+
+            case GestureStatus.Running:
+                if (!_isDragging &&
+                    (Math.Abs(args.TotalX) > DragStartThreshold ||
+                     Math.Abs(args.TotalY) > DragStartThreshold))
+                {
+                    CancelLongPress();
+                }
+
+                if (_isDragging && ReferenceEquals(_draggingRow, row))
+                {
+                    row.TranslationY += args.TotalY - _lastPanY;
+                    _lastPanY = args.TotalY;
+                    MoveDraggedRowIfNeeded(row);
+                }
+                break;
+
+            case GestureStatus.Completed:
+            case GestureStatus.Canceled:
+                CancelLongPress();
+                if (_isDragging && ReferenceEquals(_draggingRow, row))
+                {
+                    FinishDragging(row);
+                }
+                break;
+        }
+    }
+
+    private async Task ActivateLongPressAsync(Border row, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(LongPressMilliseconds, cancellationToken);
+            if (cancellationToken.IsCancellationRequested || !row.IsVisible)
+            {
+                return;
+            }
+
+            _isDragging = true;
+            _draggingRow = row;
+            _lastPanY = 0;
+            row.ZIndex = 10;
+            row.Opacity = 0.86;
+            await row.ScaleToAsync(1.02, 100);
+            SafeHapticFeedback.TryPerform(HapticFeedbackType.LongPress);
+        }
+        catch (OperationCanceledException)
+        {
+            // The finger moved before the hold completed, so this was a normal tap.
+        }
+    }
+
+    private void MoveDraggedRowIfNeeded(Border row)
+    {
+        var rowIndex = _content.Children.IndexOf(row);
+        if (rowIndex <= 0)
+        {
+            return;
+        }
+
+        var rowCenter = row.Y + row.Height / 2 + row.TranslationY;
+        if (row.TranslationY > 0 && rowIndex < _content.Children.Count - 1 &&
+            _content.Children[rowIndex + 1] is View nextRow &&
+            rowCenter > nextRow.Y + nextRow.Height / 2)
+        {
+            MoveRow(row, rowIndex + 1);
+        }
+        else if (row.TranslationY < 0 &&
+                 _content.Children[rowIndex - 1] is View previousRow &&
+                 rowCenter < previousRow.Y + previousRow.Height / 2)
+        {
+            MoveRow(row, rowIndex - 1);
+        }
+    }
+
+    private void MoveRow(Border row, int newViewIndex)
+    {
+        var oldViewIndex = _content.Children.IndexOf(row);
+        if (oldViewIndex <= 0 || newViewIndex <= 0 || oldViewIndex == newViewIndex)
+        {
+            return;
+        }
+
+        _content.Children.RemoveAt(oldViewIndex);
+        _content.Children.Insert(newViewIndex, row);
+        var oldDownloadIndex = oldViewIndex - 1;
+        var newDownloadIndex = newViewIndex - 1;
+        var download = _orderedDownloads[oldDownloadIndex];
+        _orderedDownloads.RemoveAt(oldDownloadIndex);
+        _orderedDownloads.Insert(newDownloadIndex, download);
+        row.TranslationY = 0;
+    }
+
+    private void FinishDragging(Border row)
+    {
+        _isDragging = false;
+        _draggingRow = null;
+        row.TranslationY = 0;
+        row.Scale = 1;
+        row.Opacity = 1;
+        row.ZIndex = 0;
+        SaveDownloadOrder();
+        _suppressNextRowTap = true;
+        Dispatcher.StartTimer(TimeSpan.FromMilliseconds(700), () =>
+        {
+            _suppressNextRowTap = false;
+            return false;
+        });
+    }
+
+    private void CancelLongPress()
+    {
+        _longPressCts?.Cancel();
+        _longPressCts?.Dispose();
+        _longPressCts = null;
+    }
+
+    private static List<OfflineStoryDownload> ApplySavedOrder(
+        IReadOnlyList<OfflineStoryDownload> downloads)
+    {
+        var defaultOrder = downloads.ToList();
+        var savedJson = Preferences.Default.Get(DownloadOrderPreferenceKey, string.Empty);
+        if (string.IsNullOrWhiteSpace(savedJson))
+        {
+            return defaultOrder;
+        }
+
+        try
+        {
+            var savedKeys = JsonSerializer.Deserialize<string[]>(savedJson, JsonOptions);
+            if (savedKeys is not { Length: > 0 })
+            {
+                return defaultOrder;
+            }
+
+            var downloadsByKey = defaultOrder
+                .GroupBy(BuildDownloadOrderKey, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
+            var ordered = new List<OfflineStoryDownload>(defaultOrder.Count);
+            var orderedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var key in savedKeys)
+            {
+                if (key is not null &&
+                    downloadsByKey.TryGetValue(key, out var download) &&
+                    orderedKeys.Add(key))
+                {
+                    ordered.Add(download);
+                }
+            }
+
+            ordered.AddRange(defaultOrder.Where(download =>
+                orderedKeys.Add(BuildDownloadOrderKey(download))));
+            return ordered;
+        }
+        catch (JsonException)
+        {
+            Preferences.Default.Remove(DownloadOrderPreferenceKey);
+            return defaultOrder;
+        }
+    }
+
+    private void SaveDownloadOrder()
+    {
+        var keys = _orderedDownloads.Select(BuildDownloadOrderKey).ToArray();
+        Preferences.Default.Set(DownloadOrderPreferenceKey, JsonSerializer.Serialize(keys, JsonOptions));
+    }
+
+    private static string BuildDownloadOrderKey(OfflineStoryDownload download) =>
+        $"{download.Source.Trim().ToLowerInvariant()}:{download.Slug.Trim().ToLowerInvariant()}";
 
     private async Task OpenDownloadedStoryAsync(OfflineStoryDownload download)
     {

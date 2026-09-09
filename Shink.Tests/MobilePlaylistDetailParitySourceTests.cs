@@ -42,6 +42,22 @@ public sealed class MobilePlaylistDetailParitySourceTests
     }
 
     [TestMethod]
+    public void PlaylistStoryGridCardsDoNotRenderPlayBadgeOverlays()
+    {
+        var source = File.ReadAllText(FindRepoFile("Shink.Mobile", "Pages", "PlaylistStoriesPage.cs"));
+
+        var storyCardStart = source.IndexOf("private View BuildStoryCard()", StringComparison.Ordinal);
+        var storyCardEnd = source.IndexOf("private static Border BuildPlayBadge", storyCardStart, StringComparison.Ordinal);
+
+        Assert.IsGreaterThanOrEqualTo(0, storyCardStart);
+        Assert.IsGreaterThan(storyCardStart, storyCardEnd);
+        var storyCard = source[storyCardStart..storyCardEnd];
+        Assert.DoesNotContain("ActionGlyph", storyCard, StringComparison.Ordinal);
+        Assert.DoesNotContain("BuildPlayBadge", storyCard, StringComparison.Ordinal);
+        StringAssert.Contains(storyCard, "var coverGrid = new Grid { Children = { image, favorite } };");
+    }
+
+    [TestMethod]
     public void PlaylistDetailMatchesTheMobileWebPlayerTreatment()
     {
         var source = File.ReadAllText(FindRepoFile("Shink.Mobile", "Pages", "PlaylistDetailPage.cs"));
