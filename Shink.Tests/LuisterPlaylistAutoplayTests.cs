@@ -7,6 +7,29 @@ namespace Shink.Tests;
 public class LuisterPlaylistAutoplayTests
 {
     [TestMethod]
+    public void PlaylistAutoplayCarriesAnAuthorizedSignedQueueOutsideTheServerCircuit()
+    {
+        var page = File.ReadAllText(GetRepoPath(
+            "Shink",
+            "Components",
+            "Pages",
+            "LuisterPlaylist.razor"));
+        var script = File.ReadAllText(GetRepoPath(
+            "Shink",
+            "Components",
+            "Pages",
+            "GratisStory.razor.js"));
+
+        StringAssert.Contains(page, "data-playlist-autoplay=\"true\"");
+        StringAssert.Contains(page, "class=\"story-playlist-autoplay-data\"");
+        StringAssert.Contains(page, "audioUrl = GetSignedAudioUrl(story.Slug)");
+        StringAssert.Contains(page, "public async Task HandleJsPlaylistTrackChanged(string? slug)");
+        StringAssert.Contains(script, "function advancePlaylistAutoplayWithoutCircuit(audioElement)");
+        StringAssert.Contains(script, "parsedAudioUrl.pathname.startsWith(\"/media/audio/\")");
+        StringAssert.Contains(script, "HandleJsPlaylistTrackChanged");
+    }
+
+    [TestMethod]
     public void PlaylistAutoplayRetriesWhenSourceIsAlreadyReady()
     {
         var script = File.ReadAllText(GetRepoPath(

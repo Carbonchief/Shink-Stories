@@ -388,7 +388,7 @@ public sealed class StoryPlaybackSession
         }
         catch
         {
-            // Autoplay preparation is best-effort. A foreground completion gets one fresh retry.
+            // Autoplay preparation is best-effort; the completion path retries once.
         }
     }
 
@@ -413,7 +413,7 @@ public sealed class StoryPlaybackSession
             }
 
             var prepared = _preparedAutoplay;
-            if (prepared is null && !_lifecycleService.IsBackgrounded)
+            if (prepared is null)
             {
                 ScheduleAutoplayPreparation(endedItem);
                 if (_autoplayPreparationTask is { } retryTask)
@@ -448,6 +448,12 @@ public sealed class StoryPlaybackSession
         }
         finally
         {
+            if (_current?.TrackingSessionId == endedItem.TrackingSessionId &&
+                !_audioPlaybackService.IsPlaying)
+            {
+                _audioPlaybackService.SetBackgroundPlaybackActive(false);
+            }
+
             Interlocked.Exchange(ref _isAutoplayAdvancing, 0);
         }
     }

@@ -140,7 +140,11 @@ public sealed class SettingsPage : ContentPage
             _apiClient,
             session,
             new Thickness(0, 0, 0, 2),
-            "back"));
+            "back",
+            backgroundColor: AccentColor,
+            foregroundColor: Colors.White,
+            showProfile: true,
+            applyMaterial: false));
         _content.Children.Add(BuildAccountSummary(session));
 
         _content.Children.Add(BuildSection(

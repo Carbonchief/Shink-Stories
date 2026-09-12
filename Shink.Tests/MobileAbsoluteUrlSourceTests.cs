@@ -990,6 +990,9 @@ public class MobileAbsoluteUrlSourceTests
         StringAssert.Contains(mobileTopBar, "\"Karakters\",");
         StringAssert.Contains(mobileTopBar, "\"Karakter-pare\",");
         StringAssert.Contains(mobileTopBar, "\"Instellings\"");
+        StringAssert.Contains(settingsPage, "backgroundColor: AccentColor");
+        StringAssert.Contains(settingsPage, "foregroundColor: Colors.White");
+        StringAssert.Contains(settingsPage, "applyMaterial: false");
         Assert.IsFalse(mobileTopBar.Contains("\"Bestuur rekening\"", StringComparison.Ordinal));
         Assert.IsFalse(settingsPage.Contains("\"Bestuur rekening\"", StringComparison.Ordinal));
         Assert.IsFalse(settingsPage.Contains("\"Intekening\"", StringComparison.Ordinal));

@@ -40,15 +40,17 @@ internal static class MobileTopBar
         Func<Task>? notificationAction = null,
         int notificationCount = 0,
         Color? backgroundColor = null,
+        Color? foregroundColor = null,
         bool showProfile = true,
         double brandLeadingInset = 16,
         bool applyMaterial = true)
     {
         var navigationGate = new NavigationGate();
         var isBackAction = string.Equals(leftAction, "back", StringComparison.OrdinalIgnoreCase);
+        var chromeColor = foregroundColor ?? MobileAndroidChromePalette.TopBarIcon;
         var navigationButton = BuildChromeIconButton(
             isBackAction ? MobileAndroidIcon.Back : MobileAndroidIcon.Menu,
-            MobileAndroidChromePalette.TopBarIcon,
+            chromeColor,
             44,
             29);
         var navigationTap = new TapGestureRecognizer();
@@ -60,7 +62,7 @@ internal static class MobileTopBar
             Text = string.IsNullOrWhiteSpace(title) ? hostPage.Title : title,
             FontSize = 18,
             FontAttributes = FontAttributes.Bold,
-            TextColor = Colors.White,
+            TextColor = chromeColor,
             HorizontalTextAlignment = TextAlignment.Start,
             VerticalTextAlignment = TextAlignment.Center,
             LineBreakMode = LineBreakMode.TailTruncation,
@@ -77,7 +79,7 @@ internal static class MobileTopBar
 
         if (searchAction is not null)
         {
-            var searchButton = BuildChromeIconButton(MobileAndroidIcon.Search, MobileAndroidChromePalette.TopBarIcon, 42, 28);
+            var searchButton = BuildChromeIconButton(MobileAndroidIcon.Search, chromeColor, 42, 28);
             var searchTap = new TapGestureRecognizer();
             searchTap.Tapped += async (_, _) => await navigationGate.RunAsync(searchAction);
             searchButton.GestureRecognizers.Add(searchTap);
@@ -104,7 +106,7 @@ internal static class MobileTopBar
             profileButton.GestureRecognizers.Add(profileTap);
             rightActions.Children.Add(profileButton);
 
-            var profileCaret = BuildChromeIconButton(MobileAndroidIcon.CaretDown, MobileAndroidChromePalette.TopBarIcon, 28, 20);
+            var profileCaret = BuildChromeIconButton(MobileAndroidIcon.CaretDown, chromeColor, 28, 20);
             var caretTap = new TapGestureRecognizer();
             caretTap.Tapped += async (_, _) => await navigationGate.RunAsync(OpenProfileAsync);
             profileCaret.GestureRecognizers.Add(caretTap);
@@ -141,7 +143,9 @@ internal static class MobileTopBar
         {
             Background = applyMaterial
                 ? BuildMaterialBackdropBrush(backgroundColor)
-                : Brush.Transparent,
+                : backgroundColor is null
+                    ? Brush.Transparent
+                    : new SolidColorBrush(backgroundColor),
             Stroke = Colors.Transparent,
             StrokeThickness = 0,
             StrokeShape = new RoundRectangle { CornerRadius = isBackAction ? 26 : 0 },

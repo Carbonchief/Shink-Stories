@@ -81,7 +81,10 @@ else
         <div class="playlist-content-stack">
             <div class="playlist-player-card">
                 <div class="story-player-content"
+                     data-playlist-autoplay="true"
                      data-autoplay-enabled="@(AutoplayEnabled ? "true" : "false")"
+                     data-autoplay-limit="@(AutoplayLimitStories?.ToString() ?? string.Empty)"
+                     data-autoplay-played="@AutoplayStoriesPlayedInRun"
                      oncontextmenu="return false;">
                     <div class="playlist-player-grid">
                         <div class="@StoryCoverWrapClass">
@@ -152,6 +155,8 @@ else
                                    oncontextmenu="return false;">
                                 Jou blaaier ondersteun nie die oudioplayer nie.
                             </audio>
+
+                            <script type="application/json" class="story-playlist-autoplay-data">@PlaylistAutoplayQueueJson</script>
 
                             <div class="story-custom-player" role="group" aria-label="@($"{CurrentPlaylist.Title} speler")">
                                 <div class="story-progress-wrap">
@@ -372,6 +377,7 @@ else
     private List<string> ShuffledPlaybackOrder { get; } = [];
     private HashSet<string> FavoriteStorySlugs { get; } = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string> FavoriteStoryBusySlugs { get; } = new(StringComparer.OrdinalIgnoreCase);
+    private Dictionary<string, string> SignedAudioUrlsByStorySlug { get; } = new(StringComparer.OrdinalIgnoreCase);
     private string? SignedInEmail { get; set; }
     private bool ShowStoryAccessPopup { get; set; }
     private string PendingLockedStoryPath { get; set; } = "/luister";
@@ -471,6 +477,21 @@ else
             }
     }));
 
+    private MarkupString PlaylistAutoplayQueueJson => new(JsonSerializer.Serialize(
+        GetPlaybackStories()
+            .Select(story => new
+            {
+                slug = story.Slug,
+                title = story.Title,
+                audioUrl = GetSignedAudioUrl(story.Slug),
+                artworkUrl = NavigationManager.ToAbsoluteUri(story.ImagePath).ToString(),
+                artworkMimeType = GetImageMimeType(story.ImageFileName),
+                shareUrl = NavigationManager.ToAbsoluteUri(
+                    BuildPlaylistHref(CurrentPlaylist?.Slug ?? PlaylistSlug, story.Slug)).ToString(),
+                durationSeconds = story.DurationSeconds
+            })
+            .ToArray()));
+
     protected override async Task OnParametersSetAsync()
     {
         IsLoadingPlaylist = true;
@@ -480,6 +501,7 @@ else
         IsRedirectingToOpsies = false;
         IsManualFullscreenFocus = false;
         ResetPlaybackOrder();
+        SignedAudioUrlsByStorySlug.Clear();
         CurrentPlaylist = null;
         AccessibleStories = Array.Empty<StoryItem>();
         CurrentStory = null;
@@ -589,7 +611,7 @@ else
             }
 
             _ = LoadFavoriteStorySlugsInBackgroundAsync();
-            AudioUrl = AudioAccessService.CreateSignedAudioUrl(CurrentStory.Slug);
+            AudioUrl = GetSignedAudioUrl(CurrentStory.Slug);
             ResolveAdjacentStories();
             ShowStoryAccessPopup = false;
         }
@@ -716,7 +738,7 @@ else
         await PrepareForTrackChangeAsync();
 
         CurrentStory = nextStory;
-        AudioUrl = AudioAccessService.CreateSignedAudioUrl(nextStory.Slug);
+        AudioUrl = GetSignedAudioUrl(nextStory.Slug);
         PendingTrackAutoplay = shouldAutoplay;
         UpdateAutoplayProgressForTrackChange(isAutoplayAdvance);
         ResolveAdjacentStories();
@@ -890,6 +912,18 @@ else
         }
     }
 
+    private string GetSignedAudioUrl(string slug)
+    {
+        var normalizedSlug = slug.Trim();
+        if (!SignedAudioUrlsByStorySlug.TryGetValue(normalizedSlug, out var audioUrl))
+        {
+            audioUrl = AudioAccessService.CreateSignedAudioUrl(normalizedSlug);
+            SignedAudioUrlsByStorySlug[normalizedSlug] = audioUrl;
+        }
+
+        return audioUrl;
+    }
+
     private async Task PrepareForTrackChangeAsync()
     {
         if (_mediaSessionModule is null)
@@ -949,6 +983,25 @@ else
         }
 
         return SelectTrackAsync(NextStory.Slug, true, isAutoplayAdvance: true);
+    }
+
+    [JSInvokable]
+    public async Task HandleJsPlaylistTrackChanged(string? slug)
+    {
+        var nextStory = AccessibleStories.FirstOrDefault(story =>
+            string.Equals(story.Slug, slug, StringComparison.OrdinalIgnoreCase));
+        if (nextStory is null ||
+            string.Equals(CurrentStory?.Slug, nextStory.Slug, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        CurrentStory = nextStory;
+        AudioUrl = GetSignedAudioUrl(nextStory.Slug);
+        PendingTrackAutoplay = false;
+        UpdateAutoplayProgressForTrackChange(isAutoplayAdvance: true);
+        ResolveAdjacentStories();
+        await InvokeAsync(StateHasChanged);
     }
 
     public async ValueTask DisposeAsync()

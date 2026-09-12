@@ -90,13 +90,17 @@ public sealed class MobilePersistentPlaybackSourceTests
         var storyDetail = ReadSource("Shink.Mobile", "Pages", "StoryDetailPage.cs");
         var playlistDetail = ReadSource("Shink.Mobile", "Pages", "PlaylistDetailPage.cs");
         var playlistState = ReadSource("Shink.Mobile", "Services", "PlaylistPlaybackState.cs");
+        var audioPlayback = ReadSource("Shink.Mobile", "Services", "AudioPlaybackService.cs");
         var program = ReadSource("Shink", "Program.cs");
 
         StringAssert.Contains(playbackSession, "ScheduleAutoplayPreparation(playbackItem);");
         StringAssert.Contains(playbackSession, "await _apiClient.GetStoryAsync(nextStory.Slug, \"luister\", cancellationToken);");
         StringAssert.Contains(playbackSession, "await _audioPlaybackService.PrepareAsync(playbackUrl, cancellationToken);");
         StringAssert.Contains(playbackSession, "_ = AdvanceAutoplayAsync(endedItem);");
-        StringAssert.Contains(playbackSession, "prepared is null && !_lifecycleService.IsBackgrounded");
+        StringAssert.Contains(playlistState, "public bool IsAutoplayEnabled { get; private set; } = true;");
+        StringAssert.Contains(playlistState, "IsAutoplayEnabled = true;");
+        StringAssert.Contains(playbackSession, "if (prepared is null)");
+        Assert.DoesNotContain("prepared is null && !_lifecycleService.IsBackgrounded", playbackSession, StringComparison.Ordinal);
         StringAssert.Contains(playbackSession, "RaiseAutoplayAdvanced(prepared.Detail, prepared.Playlist);");
         StringAssert.Contains(storyDetail, "_storyPlaybackSession.AutoplayAdvanced += OnAutoplayAdvanced;");
         StringAssert.Contains(playlistDetail, "_storyPlaybackSession.AutoplayAdvanced += OnAutoplayAdvanced;");
@@ -105,6 +109,30 @@ public sealed class MobilePersistentPlaybackSourceTests
         StringAssert.Contains(playlistState, "story with { Source = \"luister\" }");
         StringAssert.Contains(program, "storyMediaStorageService.CreateAudioReadUrlAsync(");
         StringAssert.Contains(program, "TimeSpan.FromHours(4)");
+    }
+
+    [TestMethod]
+    public void AndroidPlaybackPreloadsTheNextTrackAndKeepsTheProcessAliveWhenLocked()
+    {
+        var audioPlayback = ReadSource("Shink.Mobile", "Services", "AudioPlaybackService.cs");
+        var foregroundService = ReadSource(
+            "Shink.Mobile",
+            "Platforms",
+            "Android",
+            "AudioPlaybackForegroundService.cs");
+        var manifest = ReadSource("Shink.Mobile", "Platforms", "Android", "AndroidManifest.xml");
+        var playManifest = ReadSource("Shink.Mobile", "Platforms", "Android", "AndroidManifest.Play.xml");
+
+        StringAssert.Contains(audioPlayback, "private Android.Media.MediaPlayer? _preparedPlayer;");
+        StringAssert.Contains(audioPlayback, "await PreparePlayerAsync(player, cancellationToken);");
+        StringAssert.Contains(audioPlayback, "var preparedPlayer = TakePreparedPlayer(audioUrl);");
+        StringAssert.Contains(audioPlayback, "player.SetWakeMode(");
+        StringAssert.Contains(audioPlayback, "StartBackgroundPlaybackService();");
+        StringAssert.Contains(foregroundService, "ForegroundService.TypeMediaPlayback");
+        StringAssert.Contains(manifest, "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK");
+        StringAssert.Contains(manifest, "android.permission.WAKE_LOCK");
+        StringAssert.Contains(playManifest, "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK");
+        StringAssert.Contains(playManifest, "android.permission.WAKE_LOCK");
     }
 
     [TestMethod]

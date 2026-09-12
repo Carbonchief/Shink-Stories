@@ -17,7 +17,7 @@ public sealed class PlaylistPlaybackState
 
     public bool IsOfflineQueue { get; private set; }
 
-    public bool IsAutoplayEnabled { get; private set; }
+    public bool IsAutoplayEnabled { get; private set; } = true;
 
     public bool IsShuffleEnabled { get; private set; }
 
@@ -36,6 +36,15 @@ public sealed class PlaylistPlaybackState
         MobileStorySummary? currentStory,
         bool isOfflineQueue)
     {
+        var isNewPlaylistContext = CurrentPlaylist is null ||
+                                   !string.Equals(CurrentPlaylist.Slug, playlist.Slug, StringComparison.OrdinalIgnoreCase) ||
+                                   IsOfflineQueue != isOfflineQueue;
+        if (isNewPlaylistContext)
+        {
+            IsAutoplayEnabled = true;
+            AutoplayStoriesPlayedInRun = 0;
+        }
+
         var normalizedStories = playlist.Stories
             .Select(story => NormalizePlaylistStory(story, preserveSource: isOfflineQueue))
             .ToArray();

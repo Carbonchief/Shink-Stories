@@ -3,6 +3,7 @@ const STORY_COVER_SELECTOR = ".story-cover";
 const STORY_COVER_WRAP_SELECTOR = ".story-cover-wrap";
 const STORY_PAGE_SELECTOR = ".story-player-page";
 const STORY_PLAYER_CONTENT_SELECTOR = ".story-player-content";
+const PLAYLIST_AUTOPLAY_DATA_SELECTOR = ".story-playlist-autoplay-data";
 const DEFAULT_IMAGE_PATH = "/branding/schink-logo-text.png";
 const ARTWORK_SIZES = ["96x96", "128x128", "192x192", "256x256", "384x384", "512x512"];
 const STORY_PROGRESS_PREFIX = "schink:story-progress:";
@@ -53,6 +54,7 @@ const PENDING_FULLSCREEN_INTENT_KEY = "schink:pending-story-fullscreen-intent";
 const FULLSCREEN_CHROME_HIDDEN_CLASS = "fullscreen-controls-hidden";
 const FULLSCREEN_IDLE_TIMEOUT_MS = 2200;
 const STORY_TEST_MODAL_BODY_LOCK_CLASS = "story-test-modal-open";
+const DOTNET_TRACK_ACTION_TIMEOUT_MS = 1500;
 
 const boundAudios = new WeakSet();
 const fullscreenBindings = new WeakMap();
@@ -60,6 +62,7 @@ const coverFrameBindings = new WeakMap();
 const playerCapabilityCache = new WeakMap();
 const storyTrackingStateCache = new WeakMap();
 const lastBoundAudioSource = new WeakMap();
+const playlistAutoplayStateCache = new WeakMap();
 const trackActionDotNetRefs = new WeakMap();
 let suppressFullscreenExitCallbacks = 0;
 
@@ -500,17 +503,27 @@ function persistAudioState(audioElement, eventType, useKeepalive) {
     audioElement.pause();
 }
 
-async function tryInvokeTrackAction(audioElement, methodName) {
+async function tryInvokeTrackAction(audioElement, methodName, ...args) {
     const dotNetRef = trackActionDotNetRefs.get(audioElement);
     if (!dotNetRef || typeof dotNetRef.invokeMethodAsync !== "function") {
         return false;
     }
 
+    let timeoutId = 0;
     try {
-        await dotNetRef.invokeMethodAsync(methodName);
-        return true;
+        const invocation = Promise.resolve(dotNetRef.invokeMethodAsync(methodName, ...args))
+            .then(() => true)
+            .catch(() => false);
+        const timeout = new Promise((resolve) => {
+            timeoutId = window.setTimeout(() => resolve(false), DOTNET_TRACK_ACTION_TIMEOUT_MS);
+        });
+        return await Promise.race([invocation, timeout]);
     } catch {
         return false;
+    } finally {
+        if (timeoutId) {
+            window.clearTimeout(timeoutId);
+        }
     }
 }
 
@@ -913,6 +926,183 @@ function shouldAutoplayNextTrack(audioElement) {
     }
 
     return container.dataset.autoplayEnabled === "true";
+}
+
+function normalizePlaylistStorySlug(value) {
+    return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function parsePlaylistAutoplayLimit(value) {
+    const parsed = Number.parseInt(value || "", 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function normalizePlaylistAutoplayItem(value) {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+
+    const slug = typeof value.slug === "string" ? value.slug.trim() : "";
+    const title = typeof value.title === "string" ? value.title : "Schink Stories";
+    const audioUrl = typeof value.audioUrl === "string" ? value.audioUrl.trim() : "";
+    if (!slug || !audioUrl) {
+        return null;
+    }
+
+    try {
+        const parsedAudioUrl = new URL(audioUrl, window.location.href);
+        if (parsedAudioUrl.origin !== window.location.origin ||
+            !parsedAudioUrl.pathname.startsWith("/media/audio/")) {
+            return null;
+        }
+    } catch {
+        return null;
+    }
+
+    const duration = Number(value.durationSeconds);
+    return {
+        slug,
+        title,
+        audioUrl,
+        artworkUrl: typeof value.artworkUrl === "string" ? value.artworkUrl : "",
+        artworkMimeType: typeof value.artworkMimeType === "string" ? value.artworkMimeType : "image/jpeg",
+        shareUrl: typeof value.shareUrl === "string" ? value.shareUrl : window.location.href,
+        durationSeconds: Number.isFinite(duration) && duration > 0 ? duration : null
+    };
+}
+
+function haveSamePlaylistAutoplayItems(left, right) {
+    return Array.isArray(left) &&
+        Array.isArray(right) &&
+        left.length === right.length &&
+        left.every((item, index) => normalizePlaylistStorySlug(item?.slug) === normalizePlaylistStorySlug(right[index]?.slug));
+}
+
+function getPlaylistAutoplayState(audioElement) {
+    const container = audioElement.closest(STORY_PLAYER_CONTENT_SELECTOR);
+    if (!(container instanceof HTMLElement)) {
+        return null;
+    }
+
+    const dataElement = container.querySelector(PLAYLIST_AUTOPLAY_DATA_SELECTOR);
+    if (!(dataElement instanceof HTMLScriptElement)) {
+        return null;
+    }
+
+    const serialized = dataElement.textContent || "";
+    const cached = playlistAutoplayStateCache.get(audioElement);
+    let items = cached?.serialized === serialized ? cached.items : null;
+    if (!items) {
+        try {
+            const parsed = JSON.parse(serialized);
+            items = Array.isArray(parsed)
+                ? parsed.map(normalizePlaylistAutoplayItem).filter((item) => item !== null)
+                : [];
+        } catch {
+            items = [];
+        }
+    }
+
+    if (items.length === 0) {
+        playlistAutoplayStateCache.delete(audioElement);
+        return null;
+    }
+
+    const currentSlug = normalizePlaylistStorySlug(audioElement.dataset.storySlug);
+    const currentIndex = items.findIndex((item) => normalizePlaylistStorySlug(item.slug) === currentSlug);
+    const autoplayEnabled = container.dataset.autoplayEnabled === "true";
+    const autoplayLimit = parsePlaylistAutoplayLimit(container.dataset.autoplayLimit);
+    const declaredPlayed = Number.parseInt(container.dataset.autoplayPlayed || "", 10);
+    let autoplayPlayed = autoplayEnabled && Number.isFinite(declaredPlayed) && declaredPlayed > 0
+        ? declaredPlayed
+        : 0;
+
+    if (cached &&
+        haveSamePlaylistAutoplayItems(cached.items, items) &&
+        cached.currentSlug === currentSlug &&
+        cached.autoplayEnabled === autoplayEnabled &&
+        cached.autoplayLimit === autoplayLimit) {
+        autoplayPlayed = Math.max(autoplayPlayed, cached.autoplayPlayed);
+    }
+
+    const state = {
+        serialized,
+        items,
+        currentSlug,
+        currentIndex,
+        autoplayEnabled,
+        autoplayLimit,
+        autoplayPlayed
+    };
+    playlistAutoplayStateCache.set(audioElement, state);
+    return state;
+}
+
+function syncPlaylistTrackWithCircuit(audioElement, item) {
+    if (!item || !item.slug) {
+        return;
+    }
+
+    void tryInvokeTrackAction(audioElement, "HandleJsPlaylistTrackChanged", item.slug);
+}
+
+function updateAudioElementForPlaylistItem(audioElement, item) {
+    audioElement.dataset.storySlug = item.slug;
+    audioElement.dataset.storyTitle = item.title;
+    audioElement.dataset.storyArtist = "Schink Stories";
+    audioElement.dataset.storyImage = item.artworkUrl;
+    audioElement.dataset.storyImageType = item.artworkMimeType;
+    audioElement.dataset.shareUrl = item.shareUrl;
+    if (item.durationSeconds !== null) {
+        audioElement.dataset.storyDurationSeconds = String(item.durationSeconds);
+    } else {
+        delete audioElement.dataset.storyDurationSeconds;
+    }
+    audioElement.setAttribute("src", item.audioUrl);
+}
+
+function advancePlaylistAutoplayWithoutCircuit(audioElement) {
+    const state = getPlaylistAutoplayState(audioElement);
+    if (!state || !shouldAutoplayNextTrack(audioElement) || state.currentIndex < 0) {
+        return false;
+    }
+
+    if (state.autoplayLimit !== null && state.autoplayPlayed >= state.autoplayLimit) {
+        return false;
+    }
+
+    const nextItem = state.items[state.currentIndex + 1];
+    if (!nextItem) {
+        return false;
+    }
+
+    state.currentIndex += 1;
+    state.currentSlug = normalizePlaylistStorySlug(nextItem.slug);
+    if (state.autoplayLimit !== null) {
+        state.autoplayPlayed = Math.max(1, state.autoplayPlayed) + 1;
+    }
+
+    const container = audioElement.closest(STORY_PLAYER_CONTENT_SELECTOR);
+    if (container instanceof HTMLElement) {
+        container.dataset.autoplayPlayed = String(state.autoplayPlayed);
+    }
+
+    updateAudioElementForPlaylistItem(audioElement, nextItem);
+    lastBoundAudioSource.set(audioElement, nextItem.audioUrl);
+    refreshStoryTrackingState(audioElement, true);
+    audioElement.autoplay = true;
+    setAudioTimeDisplayLoading(audioElement, true);
+    audioElement.dataset.autoplayRequested = "true";
+    queueAutoplayAfterSourceChange(audioElement);
+
+    try {
+        audioElement.load();
+    } catch {
+        // Ignore browser-specific media reload failures.
+    }
+
+    syncPlaylistTrackWithCircuit(audioElement, nextItem);
+    return true;
 }
 
 function showShareFeedback(shareToggle, message) {
@@ -1416,6 +1606,8 @@ function bindAudioEvents(audioElement, dotNetRef) {
         trackActionDotNetRefs.set(audioElement, dotNetRef);
     }
 
+    getPlaylistAutoplayState(audioElement);
+
     if (boundAudios.has(audioElement)) {
         if (declaredSource && declaredSource !== lastDeclaredSource) {
             lastBoundAudioSource.set(audioElement, declaredSource);
@@ -1790,6 +1982,14 @@ function bindAudioEvents(audioElement, dotNetRef) {
         }
 
         if (shouldAutoplayNextTrack(audioElement)) {
+            if (advancePlaylistAutoplayWithoutCircuit(audioElement)) {
+                return;
+            }
+
+            if (getPlaylistAutoplayState(audioElement)) {
+                return;
+            }
+
             void (async () => {
                 if (await tryInvokeTrackAction(audioElement, "HandleJsAutoplayNextTrackRequest")) {
                     return;
@@ -1824,6 +2024,12 @@ function bindAudioEvents(audioElement, dotNetRef) {
         if (trackingState && !audioElement.paused) {
             startListenTimer(trackingState);
         }
+
+        const playlistState = getPlaylistAutoplayState(audioElement);
+        const currentItem = playlistState && playlistState.currentIndex >= 0
+            ? playlistState.items[playlistState.currentIndex]
+            : null;
+        syncPlaylistTrackWithCircuit(audioElement, currentItem);
     });
 
     window.addEventListener("pagehide", () => {

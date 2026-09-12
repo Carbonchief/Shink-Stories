@@ -24,6 +24,10 @@ public interface IAudioPlaybackService
     Task PrepareAsync(string audioUrl, CancellationToken cancellationToken = default) =>
         Task.CompletedTask;
 
+    void SetBackgroundPlaybackActive(bool isActive)
+    {
+    }
+
     Task PlayAsync(string audioUrl, AudioPlaybackMetadata? metadata = null);
 
     Task SeekAsync(TimeSpan position, CancellationToken cancellationToken = default);
@@ -599,11 +603,15 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
 public sealed class AudioPlaybackService : IAudioPlaybackService
 {
     private static readonly TimeSpan ReadyTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan CompletionKeepAliveDelay = TimeSpan.FromSeconds(45);
     private Android.Media.MediaPlayer? _player;
+    private Android.Media.MediaPlayer? _preparedPlayer;
     private readonly MobileAnalyticsService _analytics;
     private string? _currentAudioUrl;
+    private string? _preparedAudioUrl;
     private AudioPlaybackMetadata? _metadata;
     private double _playbackSpeed = 1;
+    private CancellationTokenSource? _completionKeepAliveCts;
 
     public AudioPlaybackService(MobileAnalyticsService analytics)
     {
@@ -650,6 +658,47 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
     public event EventHandler? PlaybackEnded;
 
     public event EventHandler? PlaybackStateChanged;
+
+    public async Task PrepareAsync(string audioUrl, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(audioUrl) ||
+            string.Equals(_currentAudioUrl, audioUrl, StringComparison.Ordinal) ||
+            string.Equals(_preparedAudioUrl, audioUrl, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        Android.Media.MediaPlayer? player = new();
+        try
+        {
+            ConfigurePlayer(player);
+            player.SetDataSource(audioUrl);
+            await PreparePlayerAsync(player, cancellationToken);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (string.Equals(_currentAudioUrl, audioUrl, StringComparison.Ordinal) ||
+                string.Equals(_preparedAudioUrl, audioUrl, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            var previousPreparedPlayer = _preparedPlayer;
+            _preparedPlayer = player;
+            _preparedAudioUrl = audioUrl;
+            player = null;
+            if (previousPreparedPlayer is not null)
+            {
+                ReleasePlayer(previousPreparedPlayer, stopFirst: false);
+            }
+        }
+        finally
+        {
+            if (player is not null)
+            {
+                ReleasePlayer(player, stopFirst: false);
+            }
+        }
+    }
 
     public async Task<TimeSpan?> GetDurationAsync(string audioUrl, CancellationToken cancellationToken = default)
     {
@@ -717,6 +766,8 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
 
         if (string.Equals(_currentAudioUrl, audioUrl, StringComparison.Ordinal) && _player is not null)
         {
+            CancelCompletionKeepAliveStop();
+            StartBackgroundPlaybackService();
             _metadata = metadata ?? _metadata;
             _player.Start();
             IsPlaying = true;
@@ -726,43 +777,45 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
             return;
         }
 
+        var preparedPlayer = TakePreparedPlayer(audioUrl);
         Stop();
         _currentAudioUrl = audioUrl;
         _metadata = metadata;
-        var player = new Android.Media.MediaPlayer();
+        StartBackgroundPlaybackService();
+        var player = preparedPlayer ?? new Android.Media.MediaPlayer();
         _player = player;
-        var audioAttributesBuilder = new Android.Media.AudioAttributes.Builder();
-        audioAttributesBuilder.SetUsage(Android.Media.AudioUsageKind.Media);
-        audioAttributesBuilder.SetContentType(Android.Media.AudioContentType.Speech);
-        var audioAttributes = audioAttributesBuilder.Build();
-        if (audioAttributes is not null)
-        {
-            player.SetAudioAttributes(audioAttributes);
-        }
-
-        player.SetDataSource(audioUrl);
-
-        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        player.Prepared += (_, _) => ready.TrySetResult();
-        player.Error += (_, args) =>
-        {
-            args.Handled = true;
-            ready.TrySetException(new InvalidOperationException("Kon nie die audio stroom oopmaak nie."));
-        };
-        player.Completion += (_, _) =>
-        {
-            IsPlaying = false;
-            PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
-            _analytics.TrackEvent("mobile_audio_completed", BuildPlaybackProperties(_metadata));
-            MainThread.BeginInvokeOnMainThread(() => PlaybackEnded?.Invoke(this, EventArgs.Empty));
-        };
-        using var timeout = new CancellationTokenSource(ReadyTimeout);
-        using var registration = timeout.Token.Register(() =>
-            ready.TrySetException(new TimeoutException("Die audio het nie betyds begin laai nie.")));
-        player.PrepareAsync();
         try
         {
-            await ready.Task;
+            if (preparedPlayer is null)
+            {
+                ConfigurePlayer(player);
+                player.SetDataSource(audioUrl);
+            }
+
+            player.Completion += (_, _) =>
+            {
+                if (!ReferenceEquals(_player, player))
+                {
+                    return;
+                }
+
+                IsPlaying = false;
+                PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
+                _analytics.TrackEvent("mobile_audio_completed", BuildPlaybackProperties(_metadata));
+                ScheduleCompletionKeepAliveStop();
+                MainThread.BeginInvokeOnMainThread(() => PlaybackEnded?.Invoke(this, EventArgs.Empty));
+            };
+
+            if (preparedPlayer is null)
+            {
+                await PreparePlayerAsync(player, CancellationToken.None);
+            }
+
+            player.Start();
+            IsPlaying = true;
+            ApplyPlaybackSpeed();
+            PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
+            _analytics.TrackEvent("mobile_audio_played", BuildPlaybackProperties(_metadata));
         }
         catch
         {
@@ -771,16 +824,13 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
                 _player = null;
                 _currentAudioUrl = null;
                 _metadata = null;
+                IsPlaying = false;
             }
 
             ReleasePlayer(player, stopFirst: false);
+            StopBackgroundPlaybackService();
             throw;
         }
-        player.Start();
-        IsPlaying = true;
-        ApplyPlaybackSpeed();
-        PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
-        _analytics.TrackEvent("mobile_audio_played", BuildPlaybackProperties(_metadata));
     }
 
     public void SetPlaybackSpeed(double speed)
@@ -850,8 +900,21 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
     {
         _player?.Pause();
         IsPlaying = false;
+        StopBackgroundPlaybackService();
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
         _analytics.TrackEvent("mobile_audio_paused", BuildPlaybackProperties(_metadata));
+    }
+
+    public void SetBackgroundPlaybackActive(bool isActive)
+    {
+        if (isActive)
+        {
+            CancelCompletionKeepAliveStop();
+            StartBackgroundPlaybackService();
+            return;
+        }
+
+        StopBackgroundPlaybackService();
     }
 
     public void Stop()
@@ -860,8 +923,11 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
         var position = CurrentPosition.TotalSeconds;
         var duration = Duration?.TotalSeconds ?? 0;
         var player = _player;
+        var preparedPlayer = _preparedPlayer;
         _player = null;
         _currentAudioUrl = null;
+        _preparedPlayer = null;
+        _preparedAudioUrl = null;
         _metadata = null;
         IsPlaying = false;
         if (player is not null)
@@ -869,8 +935,156 @@ public sealed class AudioPlaybackService : IAudioPlaybackService
             ReleasePlayer(player, stopFirst: true);
         }
 
+        if (preparedPlayer is not null)
+        {
+            ReleasePlayer(preparedPlayer, stopFirst: false);
+        }
+
+        StopBackgroundPlaybackService();
         PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
         _analytics.TrackEvent("mobile_audio_stopped", BuildPlaybackProperties(metadata, position, duration));
+    }
+
+    private Android.Media.MediaPlayer? TakePreparedPlayer(string audioUrl)
+    {
+        if (!string.Equals(_preparedAudioUrl, audioUrl, StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var preparedPlayer = _preparedPlayer;
+        _preparedPlayer = null;
+        _preparedAudioUrl = null;
+        return preparedPlayer;
+    }
+
+    private static void ConfigurePlayer(Android.Media.MediaPlayer player)
+    {
+        var audioAttributesBuilder = new Android.Media.AudioAttributes.Builder();
+        audioAttributesBuilder.SetUsage(Android.Media.AudioUsageKind.Media);
+        audioAttributesBuilder.SetContentType(Android.Media.AudioContentType.Speech);
+        var audioAttributes = audioAttributesBuilder.Build();
+        if (audioAttributes is not null)
+        {
+            player.SetAudioAttributes(audioAttributes);
+        }
+
+        player.SetWakeMode(
+            Android.App.Application.Context,
+            Android.OS.WakeLockFlags.Partial);
+    }
+
+    private static async Task PreparePlayerAsync(
+        Android.Media.MediaPlayer player,
+        CancellationToken cancellationToken)
+    {
+        var ready = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        EventHandler preparedHandler = (_, _) => ready.TrySetResult();
+        EventHandler<Android.Media.MediaPlayer.ErrorEventArgs> errorHandler = (_, args) =>
+        {
+            args.Handled = true;
+            ready.TrySetException(new InvalidOperationException("Kon nie die audio stroom oopmaak nie."));
+        };
+        player.Prepared += preparedHandler;
+        player.Error += errorHandler;
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeout.CancelAfter(ReadyTimeout);
+        using var registration = timeout.Token.Register(() => ready.TrySetCanceled(timeout.Token));
+        try
+        {
+            player.PrepareAsync();
+            try
+            {
+                await ready.Task;
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new TimeoutException("Die audio het nie betyds begin laai nie.");
+            }
+        }
+        finally
+        {
+            player.Prepared -= preparedHandler;
+            player.Error -= errorHandler;
+        }
+    }
+
+    private void StartBackgroundPlaybackService()
+    {
+        try
+        {
+            var context = Android.App.Application.Context;
+            var intent = new Android.Content.Intent(
+                context,
+                typeof(Shink.Mobile.Platforms.Android.AudioPlaybackForegroundService));
+            if (Android.OS.Build.VERSION.SdkInt >= Android.OS.BuildVersionCodes.O)
+            {
+                context.StartForegroundService(intent);
+            }
+            else
+            {
+                context.StartService(intent);
+            }
+        }
+        catch (Exception exception)
+        {
+            _analytics.TrackException(exception, "mobile_audio_foreground_service_start_failed");
+        }
+    }
+
+    private void StopBackgroundPlaybackService()
+    {
+        CancelCompletionKeepAliveStop();
+        try
+        {
+            var context = Android.App.Application.Context;
+            context.StopService(new Android.Content.Intent(
+                context,
+                typeof(Shink.Mobile.Platforms.Android.AudioPlaybackForegroundService)));
+        }
+        catch (Exception exception)
+        {
+            _analytics.TrackException(exception, "mobile_audio_foreground_service_stop_failed");
+        }
+    }
+
+    private void ScheduleCompletionKeepAliveStop()
+    {
+        CancelCompletionKeepAliveStop();
+        var cancellation = new CancellationTokenSource();
+        _completionKeepAliveCts = cancellation;
+        _ = StopCompletionKeepAliveAfterDelayAsync(cancellation);
+    }
+
+    private async Task StopCompletionKeepAliveAfterDelayAsync(CancellationTokenSource cancellation)
+    {
+        try
+        {
+            await Task.Delay(CompletionKeepAliveDelay, cancellation.Token);
+            if (!cancellation.IsCancellationRequested && ReferenceEquals(_completionKeepAliveCts, cancellation))
+            {
+                StopBackgroundPlaybackService();
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            if (ReferenceEquals(_completionKeepAliveCts, cancellation))
+            {
+                _completionKeepAliveCts = null;
+            }
+
+            cancellation.Dispose();
+        }
+    }
+
+    private void CancelCompletionKeepAliveStop()
+    {
+        _completionKeepAliveCts?.Cancel();
+        _completionKeepAliveCts?.Dispose();
+        _completionKeepAliveCts = null;
     }
 
     private static void ReleasePlayer(Android.Media.MediaPlayer player, bool stopFirst)
