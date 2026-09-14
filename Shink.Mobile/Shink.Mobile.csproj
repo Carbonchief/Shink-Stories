@@ -24,6 +24,8 @@
 
   <PropertyGroup>
     <PostHogProjectApiKey Condition="'$(PostHogProjectApiKey)' == ''">$([System.Environment]::GetEnvironmentVariable('POSTHOG_PROJECT_API_KEY'))</PostHogProjectApiKey>
+    <!-- PostHog project tokens are public client keys and must be embedded in mobile binaries. -->
+    <PostHogProjectApiKey Condition="'$(PostHogProjectApiKey)' == ''">phc_q2jkXHtCxhJMut9twfaJtBZyHuivEP7N8nA7yyTTtRGL</PostHogProjectApiKey>
     <PostHogHostUrl Condition="'$(PostHogHostUrl)' == ''">$([System.Environment]::GetEnvironmentVariable('POSTHOG_HOST_URL'))</PostHogHostUrl>
     <PostHogHostUrl Condition="'$(PostHogHostUrl)' == ''">https://eu.i.posthog.com</PostHogHostUrl>
   </PropertyGroup>

@@ -52,6 +52,11 @@ fi
 
 /bin/bash "$ICON_VERIFY_SCRIPT" android-aab "$UNSIGNED_BUNDLE"
 
+if ! unzip -p "$UNSIGNED_BUNDLE" 'base/lib/arm64-v8a/libaot-Shink.Mobile.dll.so' | strings | rg -q 'PostHogProjectApiKey|phc_'; then
+  echo "The Google Play bundle is missing the embedded PostHog project token." >&2
+  exit 1
+fi
+
 APPLICATION_VERSION="$(sed -n 's:.*<ApplicationVersion>\(.*\)</ApplicationVersion>.*:\1:p' "$PROJECT_PATH" | head -1)"
 if [[ -z "$APPLICATION_VERSION" ]]; then
   echo "Could not read ApplicationVersion from $PROJECT_PATH" >&2

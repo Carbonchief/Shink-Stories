@@ -1067,6 +1067,14 @@ public sealed class PaystackCheckoutService(
             payload["plan"] = planCode;
         }
 
+        // Discounted subscriptions omit the provider plan to preserve their price,
+        // but still require a payment channel that supports recurring billing.
+        if (metadata.TryGetValue("is_subscription", out var isSubscription) && isSubscription is true)
+        {
+            payload["channels"] = new[] { "card" };
+            metadata["payment_channel_policy"] = "subscription_card_only_v1";
+        }
+
         using var request = new HttpRequestMessage(HttpMethod.Post, initializeUri)
         {
             Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json")
@@ -1141,6 +1149,7 @@ public sealed class PaystackCheckoutService(
             "&",
             "select=reference,authorization_url,expires_at",
             "provider=eq.paystack",
+            "metadata->>payment_channel_policy=eq.subscription_card_only_v1",
             "checkout_kind=eq.subscription",
             "status=eq.pending",
             $"customer_email=eq.{Uri.EscapeDataString(NormalizeEmail(email))}",

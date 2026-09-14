@@ -15,6 +15,33 @@ namespace Shink.Tests;
 public sealed class PaystackCheckoutSessionReuseTests
 {
     [TestMethod]
+    public async Task SubscriptionCheckoutIsCardOnlyButStoreCheckoutIsUnrestricted()
+    {
+        var payloads = new List<JsonElement>();
+        var handler = new RecordingHandler(request =>
+        {
+            if (request.RequestUri?.AbsolutePath == "/transaction/initialize")
+            {
+                payloads.Add(JsonDocument.Parse(request.Content!.ReadAsStringAsync().Result).RootElement.Clone());
+                return JsonResponse("""{"status":true,"data":{"authorization_url":"https://checkout.paystack.com/test","reference":"test-reference"}}""");
+            }
+            return JsonResponse("[]");
+        });
+        var service = CreateService(new HttpClient(handler));
+        var subscription = await service.InitializeCheckoutForEmailAsync(
+            PaymentPlanCatalog.FindBySlug("schink-stories-maandeliks")!, "ouer@example.com");
+        var store = await service.InitializeStoreCheckoutAsync(new StorePaystackCheckoutRequest(
+            "order-test", "book", "Book", 1, "Book", "Test", "ouer@example.com", "", 7900,
+            "/winkel", "/winkel"), CreateHttpContext());
+        Assert.IsTrue(subscription.IsSuccess);
+        Assert.IsTrue(store.IsSuccess);
+        Assert.AreEqual(2, payloads.Count);
+        Assert.AreEqual("[\"card\"]", payloads[0].GetProperty("channels").GetRawText());
+        Assert.IsTrue(payloads[0].TryGetProperty("plan", out _));
+        Assert.IsFalse(payloads[1].TryGetProperty("channels", out _));
+    }
+
+    [TestMethod]
     public void DiscountedPaystackPersistenceRevalidatesCurrentCodeAndPlanBeforeStoringTerms()
     {
         var source = File.ReadAllText(GetRepoPath("Shink", "Services", "SupabaseSubscriptionLedgerService.cs"));
@@ -48,6 +75,7 @@ public sealed class PaystackCheckoutSessionReuseTests
                 StringAssert.Contains(query, "customer_email=eq.ouer%40example.com");
                 StringAssert.Contains(query, "tier_code=eq.all_stories_monthly");
                 StringAssert.Contains(query, "status=eq.pending");
+                StringAssert.Contains(Uri.UnescapeDataString(query), "metadata->>payment_channel_policy=eq.subscription_card_only_v1");
                 StringAssert.Contains(query, "expires_at=gt.");
 
                 return JsonResponse(
@@ -357,6 +385,8 @@ public sealed class PaystackCheckoutSessionReuseTests
         Assert.AreEqual("https://checkout.paystack.com/discounted-session", result.AuthorizationUrl);
         Assert.IsTrue(initializePayload.HasValue);
         Assert.AreEqual(4950L, initializePayload.Value.GetProperty("amount").GetInt64());
+        Assert.AreEqual("[\"card\"]", initializePayload.Value.GetProperty("channels").GetRawText());
+        Assert.AreEqual("subscription_card_only_v1", initializePayload.Value.GetProperty("metadata").GetProperty("payment_channel_policy").GetString());
         Assert.IsFalse(initializePayload.Value.TryGetProperty("plan", out _), "Discounted authorization checkout must not send a Paystack plan code.");
         Assert.AreEqual("subscription_discount", initializePayload.Value.GetProperty("metadata").GetProperty("checkout_kind").GetString());
         Assert.AreEqual(55m, initializePayload.Value.GetProperty("metadata").GetProperty("original_amount_zar").GetDecimal());

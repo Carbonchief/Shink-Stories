@@ -66,4 +66,9 @@ if [[ ! -f "$archive_dir/Products/Applications/Shink.Mobile.app/PrivacyInfo.xcpr
   exit 1
 fi
 
+if ! strings "$archive_dir/Products/Applications/Shink.Mobile.app/Shink.Mobile.dll" | rg -q 'PostHogProjectApiKey|phc_'; then
+  echo "The Xcode archive is missing the embedded PostHog project token." >&2
+  exit 1
+fi
+
 echo "TestFlight archive build completed with the approved teal app icon."
