@@ -277,7 +277,7 @@ public class SupabaseAuthServiceTests
         CollectionAssert.AreEqual(
             new[]
             {
-                "https://example.supabase.co/auth/v1/admin/users?page=1&per_page=1000",
+                "https://example.supabase.co/auth/v1/admin/users?page=1&per_page=1000&filter=ouer%40example.com",
                 "https://example.supabase.co/auth/v1/admin/users/22222222-2222-2222-2222-222222222222"
             },
             requestUris);
@@ -398,6 +398,14 @@ public class SupabaseAuthServiceTests
 
             if (request.Method == HttpMethod.Get)
             {
+                if (!request.RequestUri!.Query.Contains("filter=ouer%40example.com", StringComparison.Ordinal))
+                {
+                    return new HttpResponseMessage(HttpStatusCode.InternalServerError)
+                    {
+                        Content = new StringContent("""{"msg":"Database error finding users"}""")
+                    };
+                }
+
                 return new HttpResponseMessage(HttpStatusCode.OK)
                 {
                     Content = new StringContent(
@@ -421,6 +429,46 @@ public class SupabaseAuthServiceTests
         Assert.AreEqual(
             "https://example.supabase.co/auth/v1/admin/users/11111111-1111-1111-1111-111111111111",
             requests[1].Uri);
+    }
+
+    [TestMethod]
+    public async Task DeleteUserAsync_DoesNotDeletePartialEmailMatches()
+    {
+        var handler = new RecordingHandler(request =>
+        {
+            Assert.AreEqual(HttpMethod.Get, request.Method, "A partial match must never be deleted.");
+            StringAssert.Contains(request.RequestUri!.Query, "filter=ouer%2Bdemo%40example.com");
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """{"users":[{"id":"11111111-1111-1111-1111-111111111111","email":"other-ouer+demo@example.com"}]}""",
+                    Encoding.UTF8, "application/json")
+            };
+        });
+        using var httpClient = new HttpClient(handler);
+        var result = await CreateService(httpClient, secretKey: "secret-key")
+            .DeleteUserAsync("OUER+demo@example.com");
+
+        Assert.IsTrue(result.IsSuccess, "An absent exact account is already deleted.");
+    }
+
+    [TestMethod]
+    public async Task DeleteUserAsync_LookupFailureDoesNotDeleteOrReportSuccess()
+    {
+        var handler = new RecordingHandler(request =>
+        {
+            Assert.AreEqual(HttpMethod.Get, request.Method);
+            return new HttpResponseMessage(HttpStatusCode.InternalServerError)
+            {
+                Content = new StringContent("""{"msg":"Database error finding users"}""")
+            };
+        });
+        using var httpClient = new HttpClient(handler);
+        var result = await CreateService(httpClient, secretKey: "secret-key")
+            .DeleteUserAsync("ouer@example.com");
+
+        Assert.IsFalse(result.IsSuccess);
+        Assert.AreEqual("Database error finding users", result.ErrorMessage);
     }
 
     private static SupabaseAuthService CreateService(

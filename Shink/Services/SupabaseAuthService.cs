@@ -1148,10 +1148,13 @@ public sealed class SupabaseAuthService(
     {
         const int perPage = 1000;
         const int maxPages = 100;
+        // Avoid reading unrelated auth records; the API filter is a partial match,
+        // so still require an exact email match below before using a user ID.
+        var emailFilter = Uri.EscapeDataString(email);
 
         for (var page = 1; page <= maxPages; page++)
         {
-            var pageUri = new Uri(adminUsersEndpoint, $"?page={page.ToString(CultureInfo.InvariantCulture)}&per_page={perPage.ToString(CultureInfo.InvariantCulture)}");
+            var pageUri = new Uri(adminUsersEndpoint, $"?page={page.ToString(CultureInfo.InvariantCulture)}&per_page={perPage.ToString(CultureInfo.InvariantCulture)}&filter={emailFilter}");
             using var request = new HttpRequestMessage(HttpMethod.Get, pageUri);
             request.Headers.TryAddWithoutValidation("apikey", _options.SecretKey);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.SecretKey);
