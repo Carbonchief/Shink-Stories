@@ -214,6 +214,14 @@ jobs:
               "insert into supabase_migrations.shink_action_migrations(file_name, github_sha) values ('$migration_name_sql', '$GITHUB_SHA');"
           done <<< "$MIGRATION_FILES"
 
+      - name: Verify account deletion cleanup
+        if: steps.publish_check.outputs.should_publish == 'true' && contains(steps.publish_check.outputs.migration_files, 'account_deletion')
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase --workdir "${{ env.SUPABASE_WORKDIR }}" db query --linked \
+            --file "$GITHUB_WORKSPACE/Shink/Database/tests/account_personal_data_deletion.sql"
+
       - name: Login to Azure
         if: steps.publish_check.outputs.should_publish == 'true'
         uses: azure/login@v2
